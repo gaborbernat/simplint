@@ -213,6 +213,31 @@ size = 109924
 sha256 = "d6f88de62e1d4e38ecb1077eb9724cd0eff29d2a08ca16a401e9b9e93f117cf9"
 
 [[packages]]
+name = "cachetools"
+version = "7.2.4"
+marker = "\"dev\" in dependency_groups or \"type\" in dependency_groups"
+requires-python = ">=3.10"
+index = "https://pypi.org/simple/"
+
+[packages.sdist]
+name = "cachetools-7.2.4.tar.gz"
+upload-time = 2026-10-19 19:09:44.931841+00:00
+url = "https://files.pythonhosted.org/packages/3a/5d/15ea0494ebcb9062c7ca79bf026cbba380a50538ae73753fb40bdffa79e2/cachetools-7.2.4.tar.gz"
+size = 44251
+
+[packages.sdist.hashes]
+sha256 = "e0203b04b75fe13e62098eeb5b2018c4eb1a14c04e2b5b450e70db3ee7e92ec5"
+
+[[packages.wheels]]
+name = "cachetools-7.2.4-py3-none-any.whl"
+upload-time = 2026-10-19 19:09:43.296146+00:00
+url = "https://files.pythonhosted.org/packages/5a/4c/694f7d44f2399b3901232d6ded1c88442a02fc8141936396d9289d951848/cachetools-7.2.4-py3-none-any.whl"
+size = 18571
+
+[packages.wheels.hashes]
+sha256 = "4cfbebf3eec4040d2073b19c460511ad47eef7b852dbf9a0d385099b4dafa31e"
+
+[[packages]]
 name = "certifi"
 version = "2026.10.23"
 marker = "\"docs\" in dependency_groups or \"pkg-meta\" in dependency_groups"
@@ -391,6 +416,31 @@ size = 125251
 sha256 = "255bc9599cf7748b4b1a446ccc735421bd08a2ae529a8b88597d3de5664ee360"
 
 [[packages]]
+name = "colorama"
+version = "0.4.6"
+marker = "\"dev\" in dependency_groups or \"type\" in dependency_groups"
+requires-python = "!=3.0.*,!=3.1.*,!=3.2.*,!=3.3.*,!=3.4.*,!=3.5.*,!=3.6.*,>=2.7"
+index = "https://pypi.org/simple/"
+
+[packages.sdist]
+name = "colorama-0.4.6.tar.gz"
+upload-time = 2022-10-25 02:36:22.414799+00:00
+url = "https://files.pythonhosted.org/packages/d8/53/6f443c9a4a8358a93a6792e2acffb9d9d5cb0a5cfd8802644b7b1c9a02e4/colorama-0.4.6.tar.gz"
+size = 27697
+
+[packages.sdist.hashes]
+sha256 = "08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44"
+
+[[packages.wheels]]
+name = "colorama-0.4.6-py2.py3-none-any.whl"
+upload-time = 2022-10-25 02:36:20.889702+00:00
+url = "https://files.pythonhosted.org/packages/d1/d6/3965ed04c63042e047cb6a3e6ed1a63a35087b6a609aa3a15ed8ac56c221/colorama-0.4.6-py2.py3-none-any.whl"
+size = 25335
+
+[packages.wheels.hashes]
+sha256 = "4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6"
+
+[[packages]]
 name = "covdefaults"
 version = "2.3.0"
 marker = "\"dev\" in dependency_groups or \"test\" in dependency_groups or \"type\" in dependency_groups"
@@ -553,9 +603,43 @@ size = 4780973
 sha256 = "1981f1db4630889b9ef7803fadef12b056f428cb6b85c27ba57b774793b6093c"
 
 [[packages]]
+name = "cython"
+version = "3.3.0"
+marker = "\"build\" in dependency_groups or \"release-build\" in dependency_groups"
+requires-python = ">=3.9"
+index = "https://pypi.org/simple/"
+
+[packages.sdist]
+name = "cython-3.3.0.tar.gz"
+upload-time = 2026-08-22 05:16:39.493040+00:00
+url = "https://files.pythonhosted.org/packages/a9/d8/4981ef716ad0e3ff0d3ef383aefc6b03c4a88dee33b272bf8e0d833001ca/cython-3.3.0.tar.gz"
+size = 3727515
+
+[packages.sdist.hashes]
+sha256 = "eed0d93fbca7087f143b42c34b05a825849bdf17f101572c2105acfa49aa88b8"
+
+[[packages.wheels]]
+name = "cython-3.3.0-cp315-cp315-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl"
+upload-time = 2026-08-22 05:17:36.538454+00:00
+url = "https://files.pythonhosted.org/packages/c9/aa/4c0b6773ecf6bc1ec6cda7db8312a566611b330fb6dae87d740e44a47822/cython-3.3.0-cp315-cp315-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl"
+size = 3454285
+
+[packages.wheels.hashes]
+sha256 = "b447f6906e0555f05dc4742ef1f99091b1e5d9aa9f16616e772fbf9ff6271616"
+
+[[packages.wheels]]
+name = "cython-3.3.0-py3-none-any.whl"
+upload-time = 2026-08-22 05:16:36.741632+00:00
+url = "https://files.pythonhosted.org/packages/bf/77/67b0b24e45073a699610e50f00c18474ff9b09ea29ecc95083bdf5e60acd/cython-3.3.0-py3-none-any.whl"
+size = 1349151
+
+[packages.wheels.hashes]
+sha256 = "9b24b5c8cd536946b62086fcafee6d5509d3f549f72d553d2336af87ffbe0da1"
+
+[[packages]]
 name = "distlib"
 version = "0.4.4"
-marker = "\"dev\" in dependency_groups or \"fix\" in dependency_groups"
+marker = "\"dev\" in dependency_groups or \"fix\" in dependency_groups or \"type\" in dependency_groups"
 index = "https://pypi.org/simple/"
 
 [packages.sdist]
@@ -604,7 +688,7 @@ sha256 = "25d013af9bf23bc1c7b2b093dff4208166c53a94786c9e447808335ef1185fea"
 [[packages]]
 name = "filelock"
 version = "4.2.4"
-marker = "\"dev\" in dependency_groups or \"fix\" in dependency_groups"
+marker = "\"dev\" in dependency_groups or \"fix\" in dependency_groups or \"type\" in dependency_groups"
 requires-python = ">=3.11"
 index = "https://pypi.org/simple/"
 
@@ -1361,7 +1445,7 @@ sha256 = "a00ce642f577bf7f473932318056212bc4f8bfdf53128c78bbd5af0b9b20b189"
 [[packages]]
 name = "platformdirs"
 version = "4.13.5"
-marker = "\"dev\" in dependency_groups or \"fix\" in dependency_groups"
+marker = "\"dev\" in dependency_groups or \"fix\" in dependency_groups or \"type\" in dependency_groups"
 requires-python = ">=3.11"
 index = "https://pypi.org/simple/"
 
@@ -1620,6 +1704,34 @@ size = 34460960
 sha256 = "d6b620b21c9374e3e48aabd518492bf0776b148442ee28816f6aaf52da3d4387"
 
 [[packages]]
+name = "pyproject-api"
+version = "1.12.0"
+marker = "\"dev\" in dependency_groups or \"type\" in dependency_groups"
+requires-python = ">=3.11"
+dependencies = [
+    { name = "packaging" },
+]
+index = "https://pypi.org/simple/"
+
+[packages.sdist]
+name = "pyproject_api-1.12.0.tar.gz"
+upload-time = 2026-10-18 07:00:59.632994+00:00
+url = "https://files.pythonhosted.org/packages/9a/c6/04bb77bccfa36aabc783a31e335b5441829f5ec9ff16e313b5b7022d81a8/pyproject_api-1.12.0.tar.gz"
+size = 28058
+
+[packages.sdist.hashes]
+sha256 = "2e83226079dc446a8e2357def7622c01c733284e39afc8e332d9f722fe0c2beb"
+
+[[packages.wheels]]
+name = "pyproject_api-1.12.0-py3-none-any.whl"
+upload-time = 2026-10-18 07:00:58.102004+00:00
+url = "https://files.pythonhosted.org/packages/b9/b6/ce66a85089985da9b15b0e0e0d668c4b26c994f619e28a11d609454f3d70/pyproject_api-1.12.0-py3-none-any.whl"
+size = 14055
+
+[packages.wheels.hashes]
+sha256 = "1d3cbf37ac4c3a40940e09cbd4374608d25cdd89e6019f7e06fc285afd3ab467"
+
+[[packages]]
 name = "pytest"
 version = "9.1.1"
 marker = "\"dev\" in dependency_groups or \"test\" in dependency_groups or \"type\" in dependency_groups"
@@ -1711,7 +1823,7 @@ sha256 = "1b82aa4b37137248bd687055e109723debeb07b489de1565297dc9589c5f2d6b"
 [[packages]]
 name = "python-discovery"
 version = "1.6.4"
-marker = "\"dev\" in dependency_groups or \"fix\" in dependency_groups"
+marker = "\"dev\" in dependency_groups or \"fix\" in dependency_groups or \"type\" in dependency_groups"
 requires-python = ">=3.9"
 dependencies = [
     { name = "filelock" },
@@ -1982,6 +2094,31 @@ size = 15554
 
 [packages.wheels.hashes]
 sha256 = "0ce65888c0725fcb2c5bc0fdb8e5438eece02c523557ea40ce0703c266248137"
+
+[[packages]]
+name = "setuptools"
+version = "84.2.1"
+marker = "\"build\" in dependency_groups or \"release-build\" in dependency_groups"
+requires-python = ">=3.10"
+index = "https://pypi.org/simple/"
+
+[packages.sdist]
+name = "setuptools-84.2.1.tar.gz"
+upload-time = 2026-10-20 19:01:37.742699+00:00
+url = "https://files.pythonhosted.org/packages/70/b3/c19426f783614d625699a4b247faf628ea9ab1db228674491767b417f9e1/setuptools-84.2.1.tar.gz"
+size = 1230289
+
+[packages.sdist.hashes]
+sha256 = "3ff8b3b5492a0aa66960f4419365a86b84e013070d4313e4d4a6894f5d64d6bc"
+
+[[packages.wheels]]
+name = "setuptools-84.2.1-py3-none-any.whl"
+upload-time = 2026-10-20 19:01:35.678013+00:00
+url = "https://files.pythonhosted.org/packages/ef/55/6dc6d6bb953bdfc52519a0059592c52b6e3b8ad51cf8256dffceb55b0610/setuptools-84.2.1-py3-none-any.whl"
+size = 876263
+
+[packages.wheels.hashes]
+sha256 = "ca140b45d5325a9478f880e351484f62fef15f336462e449ca0c03c873d589c2"
 
 [[packages]]
 name = "snowballstemmer"
@@ -2424,6 +2561,31 @@ size = 39814
 sha256 = "f0b0622e567335c8fabaaa659f1b33bcb6ddfe2e496071b743aa113f8774f2d3"
 
 [[packages]]
+name = "tomli-w"
+version = "1.2.0"
+marker = "\"dev\" in dependency_groups or \"type\" in dependency_groups"
+requires-python = ">=3.9"
+index = "https://pypi.org/simple/"
+
+[packages.sdist]
+name = "tomli_w-1.2.0.tar.gz"
+upload-time = 2025-01-15 12:07:24.262974+00:00
+url = "https://files.pythonhosted.org/packages/19/75/241269d1da26b624c0d5e110e8149093c759b7a286138f4efd61a60e75fe/tomli_w-1.2.0.tar.gz"
+size = 7184
+
+[packages.sdist.hashes]
+sha256 = "2dd14fac5a47c27be9cd4c976af5a12d87fb1f0b4512f81d69cce3b35ae25021"
+
+[[packages.wheels]]
+name = "tomli_w-1.2.0-py3-none-any.whl"
+upload-time = 2025-01-15 12:07:22.074224+00:00
+url = "https://files.pythonhosted.org/packages/c7/18/c86eb8e0202e32dd3df50d43d7ff9854f8e0603945ff398974c1d91ac1ef/tomli_w-1.2.0-py3-none-any.whl"
+size = 6675
+
+[packages.wheels.hashes]
+sha256 = "188306098d013b691fcadc011abd66727d3c414c571bb01b1a174ba8c983cf90"
+
+[[packages]]
 name = "towncrier"
 version = "26.9.0"
 marker = "\"docs\" in dependency_groups or \"release-notes\" in dependency_groups or \"release-prepare\" in dependency_groups"
@@ -2451,6 +2613,43 @@ size = 67030
 
 [packages.wheels.hashes]
 sha256 = "ae4d223e6aadaff98d29b7f09e58d9c9ccf4cd3b455a2d2e0486d432cd8bf660"
+
+[[packages]]
+name = "tox"
+version = "4.67.1"
+marker = "\"dev\" in dependency_groups or \"type\" in dependency_groups"
+requires-python = ">=3.11"
+dependencies = [
+    { name = "cachetools" },
+    { name = "colorama" },
+    { name = "filelock" },
+    { name = "packaging" },
+    { name = "platformdirs" },
+    { name = "pluggy" },
+    { name = "pyproject-api" },
+    { name = "python-discovery" },
+    { name = "tomli-w" },
+    { name = "virtualenv" },
+]
+index = "https://pypi.org/simple/"
+
+[packages.sdist]
+name = "tox-4.67.1.tar.gz"
+upload-time = 2026-10-18 07:34:04.348981+00:00
+url = "https://files.pythonhosted.org/packages/63/6e/677274ae411fa13f5c2ea5c633a6abfa0886e949bd2ef53c7e564a0b0b2e/tox-4.67.1.tar.gz"
+size = 347211
+
+[packages.sdist.hashes]
+sha256 = "a68602f64421b199016127364ee47347b958391d19c2b2e53fe95673a8fe98e9"
+
+[[packages.wheels]]
+name = "tox-4.67.1-py3-none-any.whl"
+upload-time = 2026-10-18 07:34:02.728361+00:00
+url = "https://files.pythonhosted.org/packages/0c/ac/cfba9de0f43b58d199f47c441efd1b670b55c480f3ec18bc1345f752c3d8/tox-4.67.1-py3-none-any.whl"
+size = 238078
+
+[packages.wheels.hashes]
+sha256 = "23d614cb703e1f7bd39e00c046d4c261b63fb9986e185134c6be2f93531d9726"
 
 [[packages]]
 name = "trove-classifiers"
@@ -2618,7 +2817,7 @@ sha256 = "fa8d26e08e34c29c0c4e820cf3181757086d547240b4f4d31ff1d8bd810ca946"
 [[packages]]
 name = "virtualenv"
 version = "21.14.13"
-marker = "\"dev\" in dependency_groups or \"fix\" in dependency_groups"
+marker = "\"dev\" in dependency_groups or \"fix\" in dependency_groups or \"type\" in dependency_groups"
 requires-python = ">=3.9"
 dependencies = [
     { name = "distlib" },

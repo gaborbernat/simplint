@@ -74,7 +74,9 @@ docs = [
   "sphinx-llm>=1.1",
 ]
 build = [
+  "cython>=3",
   "maturin>=1.15,<2",
+  "setuptools>=80",
 ]
 fix = [
   "pre-commit-uv>=4.4",
@@ -85,7 +87,9 @@ pkg-meta = [
   "uv>=0.13.1",
 ]
 release-build = [
+  "cython>=3",
   "maturin>=1.15,<2",
+  "setuptools>=80",
 ]
 release-notes = [
   "release-creator>=4.1",
