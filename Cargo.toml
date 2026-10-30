@@ -1,0 +1,16 @@
+[package]
+name = "simplint"
+version = "0.1.0"
+edition = "2024"
+description = "Ruff companion linter enforcing the simp house style"
+license = "MIT"
+repository = "https://github.com/gaborbernat/simplint"
+rust-version = "1.99"
+
+[dependencies]
+anyhow = "1.0.104"
+clap = { version = "4.6.7", features = ["derive"] }
+ignore = "0.4.34"
+rayon = "1.12.0"
+ruff_python_parser = "=0.0.20"
+ruff_source_file = "=0.0.20"
