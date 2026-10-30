@@ -1,0 +1,36 @@
+---
+source: src/snapshot.rs
+expression: "render(rule, fixture, target_version)"
+---
+6:2 SMP111 Dataclass is missing frozen, slots, kw_only; set `frozen=True, slots=True, kw_only=True` [unsafe fix]
+11:2 SMP111 Dataclass is missing frozen, slots, kw_only; set `frozen=True, slots=True, kw_only=True` [unsafe fix]
+21:2 SMP111 Dataclass is missing frozen; set `frozen=True, slots=True, kw_only=True` [unsafe fix]
+--- fixed (3 applied, 0 remaining) ---
+import dataclasses
+import functools
+from dataclasses import dataclass, field
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Plain:
+    value: int
+
+
+@dataclasses.dataclass(order=True, frozen=True, slots=True, kw_only=True)
+class Ordered:
+    value: int
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Done:
+    values: list[int] = field(default_factory=list)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Mutable:
+    value: int
+
+
+@functools.total_ordering
+class Ordering:
+    value: int

@@ -1,0 +1,136 @@
+---
+source: src/snapshot.rs
+expression: "render(rule, fixture, target_version)"
+---
+4:5 SMP020 `helper_used_by_main` is defined before its first use in `main`; move it below [fix]
+20:5 SMP020 `first_called` should directly follow `main`, its first user [fix]
+32:9 SMP020 `_private` is defined before its first use in `run`; move it below [fix]
+38:9 SMP020 `other` should directly follow `run`, its first user [fix]
+100:9 SMP020 `_check` is defined before its first use in `apply`; move it below [fix]
+116:5 SMP020 `commented_helper` should directly follow `outer_user`, its first user [fix]
+120:5 SMP020 `lambda_helper` is defined before its first use in `the statement`; move it below [fix]
+--- fixed (3 applied, 0 remaining) ---
+import functools
+
+
+def main() -> int:
+    return helper_used_by_main() + first_called()
+
+
+def helper_used_by_main() -> int:
+    return second_helper()
+
+
+def second_helper() -> int:
+    return 2
+
+
+def first_called() -> int:
+    return 1
+
+
+def unrelated() -> int:
+    return 3
+
+
+def runtime_helper() -> int:
+    return 4
+
+
+VALUE = runtime_helper()
+
+
+class Service:
+    def run(self) -> int:
+        return self._private() + self.other()
+
+    def _private(self) -> int:
+        return 1
+
+    def other(self) -> int:
+        return 2
+
+    @functools.cached_property
+    def cached(self) -> int:
+        return 3
+
+
+def recursive(depth: int) -> int:
+    return recursive(depth - 1) if depth else 0
+
+
+def overloaded() -> int:
+    return 1
+
+
+def overloaded() -> int:  # noqa: F811
+    return 2
+
+
+def make() -> object:
+    return Child()
+
+
+class Base:
+    pass
+
+
+class Child(Base):
+    pass
+
+
+def deeper() -> int:
+    return 5
+
+
+def runtime_entry() -> int:
+    return deeper()
+
+
+RESULT = runtime_entry()
+
+
+def ping(depth: int) -> int:
+    return pong(depth)
+
+
+def pong(depth: int) -> int:
+    return ping(depth - 1) if depth else 0
+
+
+class Sized:
+    LIMIT = 3
+
+    @property
+    def size(self) -> int:
+        return self._size
+
+    @size.setter
+    def size(self, value: int) -> None:
+        self._size = value
+
+    def apply(self) -> int:
+        return self._check()
+
+    def _check(self, value: int = LIMIT) -> int:
+        return value
+
+
+def outer_user() -> int:
+    return commented_helper()
+
+
+# explains the helper
+def commented_helper() -> int:
+    return 7
+
+
+def unrelated_two() -> int:
+    return 0
+
+
+CALLBACK = lambda: lambda_helper()  # noqa: E731
+
+
+def lambda_helper() -> int:
+    return 8

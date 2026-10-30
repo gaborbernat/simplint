@@ -1,0 +1,11 @@
+---
+source: src/snapshot.rs
+expression: "render(rule, fixture, target_version)"
+---
+1:1 SMP004 Test module carries a docstring; remove it [fix]
+--- fixed (1 applied, 0 remaining) ---
+import os
+
+
+def test_it() -> None:
+    assert os.sep

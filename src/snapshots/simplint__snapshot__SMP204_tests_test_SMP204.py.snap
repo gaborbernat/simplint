@@ -1,0 +1,8 @@
+---
+source: src/snapshot.rs
+expression: "render(rule, fixture, target_version)"
+---
+8:12 SMP204 Mock without a spec; build it with `create_autospec` or pass `spec=`
+11:15 SMP204 Mock without a spec; build it with `create_autospec` or pass `spec=`
+12:10 SMP204 Patch without a spec; pass `autospec=True`
+16:5 SMP204 Patch without a spec; pass `autospec=True`

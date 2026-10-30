@@ -1,0 +1,6 @@
+---
+source: src/snapshot.rs
+expression: "render(rule, fixture, target_version)"
+---
+4:21 SMP106 `object` annotation; use the precise type
+17:18 SMP106 `object` annotation; use the precise type

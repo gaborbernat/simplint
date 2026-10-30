@@ -1,0 +1,6 @@
+---
+source: src/snapshot.rs
+expression: "render(rule, fixture, target_version)"
+---
+3:1 SMP109 `__init__.py` holds code; keep only its docstring
+5:1 SMP109 `__init__.py` holds code; keep only its docstring

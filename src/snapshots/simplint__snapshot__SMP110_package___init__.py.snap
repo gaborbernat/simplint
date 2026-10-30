@@ -1,0 +1,11 @@
+---
+source: src/snapshot.rs
+expression: "render(rule, fixture, target_version)"
+---
+3:6 SMP110 Import from the same package relatively: `from .sub import ...` [fix]
+--- fixed (1 applied, 0 remaining) ---
+"""Package."""
+
+from .sub import thing
+
+__all__ = ["thing"]

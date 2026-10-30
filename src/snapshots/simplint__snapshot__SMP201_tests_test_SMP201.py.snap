@@ -1,0 +1,6 @@
+---
+source: src/snapshot.rs
+expression: "render(rule, fixture, target_version)"
+---
+8:9 SMP201 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+9:9 SMP201 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`

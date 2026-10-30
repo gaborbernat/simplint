@@ -1,0 +1,34 @@
+---
+source: src/snapshot.rs
+expression: "render(rule, fixture, target_version)"
+---
+10:5 SMP203 Pass return_value, side_effect through the mock constructor instead of assigning after creation [fix]
+13:5 SMP203 Pass return_value through the mock constructor instead of assigning after creation [fix]
+18:5 SMP203 Pass value through the mock constructor instead of assigning after creation
+20:5 SMP203 Pass value through the mock constructor instead of assigning after creation [fix]
+28:5 SMP203 Pass value through the mock constructor instead of assigning after creation [fix]
+--- fixed (4 applied, 1 remaining) ---
+from unittest.mock import MagicMock, create_autospec
+
+
+def run() -> int:
+    return 1
+
+
+def test_mocks() -> None:
+    first = MagicMock(spec=run, return_value=3, side_effect=None)
+    second = create_autospec(run, return_value=4)
+    second.name = "special"
+    third = MagicMock(spec=run, return_value=1)
+    third.total = third
+    fourth = MagicMock(spec=run,)
+    fourth.value = 2  # explained
+    fifth = MagicMock(spec=run, value=2)
+    assert first() + second() + third() + fourth() + fifth()
+
+
+def test_more() -> None:
+    plain = run()
+    plain.value = 1
+    sixth = MagicMock(value=3)
+    assert plain and sixth

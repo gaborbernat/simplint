@@ -1,0 +1,20 @@
+---
+source: src/snapshot.rs
+expression: "render(rule, fixture, target_version)"
+---
+1:5 SMP113 `shared_multiline` is imported by other modules; list it in `__all__` [fix]
+--- fixed (1 applied, 0 remaining) ---
+def shared_multiline() -> int:
+    return 1
+
+
+def other() -> int:
+    return 2
+
+
+_PRIVATE = 1
+
+__all__ = [
+    "other",
+    "shared_multiline",
+]

@@ -1,0 +1,30 @@
+---
+source: src/snapshot.rs
+expression: "render(rule, fixture, target_version)"
+---
+1:1 SMP050 `_HIDDEN` is used by one function only; define it there [unsafe fix]
+2:1 SMP050 `SHOWN` is used by one function only; define it there [unsafe fix]
+7:1 SMP050 `_SEMI` is used by one function only; define it there
+7:12 SMP050 `_OTHER` is used by one function only; define it there
+8:1 SMP050 `_SUM` is used by one function only; define it there [unsafe fix]
+9:1 SMP050 `_PAIR` is used by one function only; define it there [unsafe fix]
+10:1 SMP050 `_DOC` is used by one function only; define it there [unsafe fix]
+12:1 SMP050 `_COLLIDE` is used by one function only; define it there
+--- fixed (5 applied, 3 remaining) ---
+_TWICE = 1
+_TWICE = 2
+_UNUSED = 3
+_MODULE_LEVEL = 4
+_SEMI = 5; _OTHER = 6
+_COLLIDE = 7
+PAIR_A, PAIR_B = 1, 2
+LEVEL = _MODULE_LEVEL
+
+
+def use(collide: int) -> tuple[object, ...]:
+    doc = """first
+second"""
+    return (1, 2, _TWICE, _SEMI, _OTHER, (1 + 2), (1, 2), doc, doc, _COLLIDE, _COLLIDE, collide)
+
+
+__all__ = ["LEVEL", "PAIR_A", "PAIR_B", "use"]

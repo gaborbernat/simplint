@@ -1,0 +1,5 @@
+---
+source: src/snapshot.rs
+expression: "render(rule, fixture, target_version)"
+---
+1:5 SMP020 `helper` is defined before its first use in `main`; move it below

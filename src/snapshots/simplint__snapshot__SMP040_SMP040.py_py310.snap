@@ -1,0 +1,42 @@
+---
+source: src/snapshot.rs
+expression: "render(rule, fixture, target_version)"
+---
+6:1 SMP040 Import guard around a required dependency; import it directly and let a broken install fail [unsafe fix]
+16:1 SMP040 Import guard around a required dependency; import it directly and let a broken install fail
+28:1 SMP040 Import guard around a required dependency; import it directly and let a broken install fail [unsafe fix]
+33:1 SMP040 Import guard around a required dependency; import it directly and let a broken install fail [unsafe fix]
+--- fixed (3 applied, 1 remaining) ---
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib
+
+import requests
+
+try:
+    import optional_extra
+except ImportError:
+    optional_extra = None
+
+try:
+    import json
+except (ImportError, AttributeError):
+    json = None
+else:
+    pass
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
+
+from json import loads
+
+from . import sibling
+
+try:
+    import requests
+    FLAG = True
+except ImportError:
+    FLAG = False

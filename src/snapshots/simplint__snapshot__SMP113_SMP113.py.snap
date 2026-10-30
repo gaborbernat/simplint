@@ -1,0 +1,19 @@
+---
+source: src/snapshot.rs
+expression: "render(rule, fixture, target_version)"
+---
+1:1 SMP113 `LIMIT` is imported by other modules; list it in `__all__` [fix]
+4:5 SMP113 `shared` is imported by other modules; list it in `__all__` [fix]
+--- fixed (1 applied, 0 remaining) ---
+LIMIT = 3
+
+
+def shared() -> int:
+    return LIMIT
+
+
+def local() -> int:
+    return 1
+
+
+__all__ = ["local", "LIMIT", "shared"]

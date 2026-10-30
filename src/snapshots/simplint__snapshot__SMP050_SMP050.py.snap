@@ -1,0 +1,51 @@
+---
+source: src/snapshot.rs
+expression: "render(rule, fixture, target_version)"
+---
+3:1 SMP050 `_TIMEOUT` is used by one function only; define it there [unsafe fix]
+28:1 SMP050 `_MULTILINE` is used by one function only; define it there [unsafe fix]
+42:1 SMP050 `_REPEAT` is used by one function only; define it there [unsafe fix]
+43:1 SMP050 `_LOOPED` is used by one function only; define it there [unsafe fix]
+--- fixed (4 applied, 0 remaining) ---
+from typing import Final
+
+_RETRIES = 3
+_SHARED = 1
+# cached: rebuilding the table on every call is too slow
+_TABLE = {"a": 1}
+PUBLIC = 5
+
+
+def connect() -> int:
+    return 30
+
+
+def retry() -> int:
+    return _RETRIES + _RETRIES + _TABLE["a"]
+
+
+def first() -> int:
+    return _SHARED
+
+
+def second() -> int:
+    return _SHARED + PUBLIC
+
+
+_PATTERN = "x"
+def loop(items: list[str]) -> list[str]:
+    return [item for item in items if item == _PATTERN]
+
+
+def multi() -> str:
+    multiline = (
+        "a"
+        "b"
+    )
+    return multiline
+
+
+def twice(items: list[str]) -> list[str]:
+    repeat = 2
+    looped = "z"
+    return [item for item in items if item == looped][:repeat] * repeat

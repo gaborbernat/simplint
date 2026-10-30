@@ -1,0 +1,5 @@
+---
+source: src/snapshot.rs
+expression: "render(rule, fixture, target_version)"
+---
+1:5 SMP113 `call_shared` is imported by other modules; list it in `__all__`
