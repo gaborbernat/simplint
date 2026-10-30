@@ -1,0 +1,58 @@
+name: 📝 changelog
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, labeled, unlabeled]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  news:
+    name: 📝 News fragment
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: 📥 Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: 🔍 Validate fragments
+        env:
+          SKIP_NEWS: ${{ contains(github.event.pull_request.labels.*.name, 'skip news') }}
+          BOT_AUTHOR: ${{ github.event.pull_request.user.type == 'Bot' }}
+        run: |
+          set -euo pipefail
+          found=false
+          while IFS= read -r path; do
+            [[ "$path" == changelog.d/*.md ]] || continue
+            found=true
+            name=${path##*/}
+            category=${name%.md}
+            category=${category##*.}
+            case "$category" in
+            feature | change | bugfix | doc | breaking | security | performance | deprecation | removal | packaging) ;;
+            *)
+              echo "::error::unknown changelog category: $path"
+              exit 1
+              ;;
+            esac
+            stem=${name%.*.*}
+            if ! { [[ "$stem" == +?* && "${stem#+}" != *[!a-zA-Z0-9-]* ]] ||
+              [[ -n "$stem" && "$stem" != *[!0-9]* ]]; } ||
+              [[ -z $(tr -d '[:space:]' <"$path") ]]; then
+              echo "::error::invalid or empty changelog fragment: $path"
+              exit 1
+            fi
+          done < <(git diff --diff-filter=AM --name-only "origin/$GITHUB_BASE_REF"...HEAD)
+          if [[ "$found" != true && "$SKIP_NEWS" != true && "$BOT_AUTHOR" != true ]]; then
+            echo '::error::add a changelog.d fragment or apply the skip news label'
+            exit 1
+          fi
+      - name: 🔍 Check the fragments assemble
+        run: |
+          set -euo pipefail
+          root=$(mktemp -d -p "$RUNNER_TEMP")
+          cp -r CHANGELOG.md changelog.d "$root"
+          python3 tasks/assemble_release.py 0.0.0 --root "$root"

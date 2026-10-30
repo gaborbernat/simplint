@@ -1,0 +1,187 @@
+name: 🏗️ build
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+    inputs:
+      release-build:
+        type: boolean
+        default: false
+        description: Build the exact version from a protected release tag
+    outputs:
+      version:
+        value: ${{ jobs.prepare.outputs.version }}
+permissions:
+  contents: read
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  prepare:
+    name: 🏷️ Read versions
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      maturin-version: ${{ steps.maturin.outputs.version }}
+      source-date-epoch: ${{ steps.source-date-epoch.outputs.value }}
+    steps:
+      - name: 📥 Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: ⚙️ Read source timestamp
+        id: source-date-epoch
+        run: echo "value=$(git log -1 --format=%ct)" >>"$GITHUB_OUTPUT"
+      - name: 🐍 Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: latest-known
+          python-version: "3.15"
+          enable-cache: false
+      - name: 📦 Install locked build tool
+        uses: tox-dev/github-workflows/install-locked-tools@57a765127aae73adf7d0e24a7fe0f067f2d3ea3e # 6.2.1
+        with:
+          groups: release-build
+          venv: ${{ runner.temp }}/release-tools
+      - name: ⚙️ Read locked maturin version
+        id: maturin
+        run: |
+          version=$("$RUNNER_TEMP/release-tools/bin/maturin" --version)
+          printf 'version=v%s\n' "${version#maturin }" >>"$GITHUB_OUTPUT"
+      - name: ⚙️ Read package version
+        id: version
+        run: echo "version=$(python3 tasks/cargo_version.py Cargo.toml)" >>"$GITHUB_OUTPUT"
+  linux:
+    name: 🏗️ ${{ matrix.platform.target }}
+    needs: [prepare]
+    runs-on: ubuntu-24.04
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.prepare.outputs.source-date-epoch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - {target: x86_64, manylinux: "2_28"}
+          - {target: x86_64-unknown-linux-musl, manylinux: musllinux_1_2}
+          - {target: aarch64, manylinux: "2_28", zig: true}
+          - {target: aarch64-unknown-linux-musl, manylinux: musllinux_1_2, zig: true}
+          - {target: riscv64gc-unknown-linux-gnu, manylinux: "2_31"}
+    steps:
+      - name: 📥 Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 🏗️ Build wheel
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          maturin-version: ${{ needs.prepare.outputs.maturin-version }}
+          target: ${{ matrix.platform.target }}
+          args: --locked --release --out dist ${{ matrix.platform.zig && '--zig' || '' }}
+          manylinux: ${{ matrix.platform.manylinux }}
+          docker-options: --env SOURCE_DATE_EPOCH
+          sccache: ${{ !inputs.release-build }}
+      - name: 📤 Upload wheel
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: simplint-wheels-linux-${{ matrix.platform.target }}
+          path: dist
+  windows:
+    name: 🏗️ windows-${{ matrix.platform.target }}
+    needs: [prepare]
+    runs-on: ${{ matrix.platform.runner }}
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.prepare.outputs.source-date-epoch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - {runner: windows-2025, target: x64}
+          - {runner: windows-11-arm, target: aarch64}
+    steps:
+      - name: 📥 Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 🏗️ Build wheel
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          maturin-version: ${{ needs.prepare.outputs.maturin-version }}
+          target: ${{ matrix.platform.target }}
+          args: --locked --release --out dist
+          sccache: ${{ !inputs.release-build }}
+      - name: 📤 Upload wheel
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: simplint-wheels-windows-${{ matrix.platform.target }}
+          path: dist
+  macos:
+    name: 🏗️ macos-${{ matrix.target }}
+    needs: [prepare]
+    runs-on: macos-15
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.prepare.outputs.source-date-epoch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64, aarch64]
+    steps:
+      - name: 📥 Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 🏗️ Build wheel
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          maturin-version: ${{ needs.prepare.outputs.maturin-version }}
+          target: ${{ matrix.target }}
+          args: --locked --release --out dist
+          sccache: ${{ !inputs.release-build }}
+      - name: 📤 Upload wheel
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: simplint-wheels-macos-${{ matrix.target }}
+          path: dist
+  sdist:
+    name: 🏗️ sdist
+    needs: [prepare]
+    runs-on: ubuntu-24.04
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.prepare.outputs.source-date-epoch }}
+    steps:
+      - name: 📥 Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 🐍 Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: latest-known
+          python-version: "3.15"
+          enable-cache: false
+      - name: 📦 Export locked build constraints
+        id: constraints
+        uses: tox-dev/github-workflows/export-build-constraints@57a765127aae73adf7d0e24a7fe0f067f2d3ea3e # 6.2.1
+      - name: 🏗️ Build sdist
+        run: uv build --build-constraints "$BUILD_CONSTRAINTS" --sdist --out-dir dist
+        env:
+          BUILD_CONSTRAINTS: ${{ steps.constraints.outputs.path }}
+          UV_REQUIRE_BUILD_HASHES: "true"
+      - name: 📤 Upload sdist
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: simplint-wheels-sdist
+          path: dist
+  all-pass:
+    name: 🚦 build
+    if: always()
+    needs: [prepare, linux, windows, macos, sdist]
+    runs-on: ubuntu-26.04
+    steps:
+      - name: 🚦 Decide whether all jobs passed
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "Some jobs failed or were canceled"
+            exit 1
+          fi

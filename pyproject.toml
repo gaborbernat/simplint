@@ -1,0 +1,76 @@
+[build-system]
+build-backend = "maturin"
+requires = [ "maturin>=1.15,<2" ]
+
+[project]
+name = "simplint"
+description = "Ruff companion linter enforcing the simp house style"
+readme = "README.md"
+keywords = [ "linter", "python", "ruff", "style" ]
+license = "MIT"
+license-files = [ "LICENSE" ]
+authors = [ { name = "Bernát Gábor", email = "gaborjbernat@gmail.com" } ]
+requires-python = ">=3.10"
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Rust",
+  "Topic :: Software Development :: Quality Assurance",
+]
+dynamic = [ "version" ]
+urls.Changelog = "https://simplint.readthedocs.io/en/latest/changelog.html"
+urls.Documentation = "https://simplint.readthedocs.io"
+urls.Source = "https://github.com/gaborbernat/simplint"
+urls.Tracker = "https://github.com/gaborbernat/simplint/issues"
+
+[dependency-groups]
+build = [ "maturin>=1.15,<2" ]
+docs = [ "furo>=2025.9", "myst-parser>=4", "sphinx>=8.2", "sphinx-copybutton>=0.5.2" ]
+release-build = [ "maturin>=1.15,<2" ]
+release-notes = [ "release-creator>=4.1" ]
+release-prepare = [ "mdformat>=0.7.22", "release-creator>=4.1" ]
+
+[tool.uv]
+dependency-groups.release-build = { requires-python = ">=3.15" }
+dependency-groups.release-notes = { requires-python = ">=3.15" }
+dependency-groups.release-prepare = { requires-python = ">=3.15" }
+
+[tool.maturin]
+bindings = "bin"
+strip = true
+include = [ { path = "src/rules/docs/*.md", format = "sdist" } ]
+
+[tool.nab]
+mode = "universal"
+base-group = "project-runtime"
+default-groups = []
+uploaded-prior-to = "P7D"
+decision-order = "stable"
+matrix.python = ">=3.15,<3.16"
+matrix.platforms = [ "linux_x86_64" ]
+# release-creator 4.1 is younger than the seven-day cutoff; the override can go once it ages past it
+packages.release-creator.uploaded-prior-to = 2026-10-26T18:24:46Z
+
+[tool.ruff]
+line-length = 120
+lint.select = [ "ALL" ]
+lint.ignore = [
+  "COM812", # conflicts with the formatter
+  "CPY",    # no copyright headers
+  "D1",     # names and types document the code
+  "D203",   # incompatible with D211
+  "D213",   # incompatible with D212
+]
+lint.per-file-ignores."{docs,tasks}/*.py" = [
+  "INP001", # scripts, not packages
+  "S603",   # runs our own commands
+]
+lint.per-file-ignores."tasks/*.py" = [
+  "T201", # scripts report on stdout
+]
+
+[tool.simplint]
+per-file-ignores = { "docs/conf.py" = [ "SMP102" ] } # Sphinx reads its settings by these names
