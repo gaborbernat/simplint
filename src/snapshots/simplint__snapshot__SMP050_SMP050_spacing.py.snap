@@ -1,0 +1,16 @@
+---
+source: src/snapshot.rs
+expression: "render(rule, fixture, target_version)"
+---
+3:1 SMP050 `_FIRST` is used by one function only; define it there [unsafe fix]
+10:1 SMP050 `_SECOND` is used by one function only; define it there [unsafe fix]
+--- fixed (2 applied, 0 remaining) ---
+import os
+
+
+def first() -> int:
+    return 1
+
+
+def second() -> int:
+    return 2

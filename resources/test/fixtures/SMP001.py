@@ -1,4 +1,7 @@
 import os
+# /// script
+# requires-python = ">=3.12"
+# ///
 
 # --- helpers ---
 # =====================
@@ -12,3 +15,7 @@ import os
 #!/not-a-shebang
 VALUE = os.sep  # ---- trailing is fine
 # ...
+# compiled as C++
+# >>> run(1)
+# -- framed --
+# ++ counter

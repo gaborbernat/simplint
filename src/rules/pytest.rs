@@ -18,7 +18,9 @@ pub fn test_class(checker: &mut Checker) {
     }
     let mut found = Vec::new();
     for stmt in checker.body() {
+        // pytest only collects classes named `Test*`; any other class holding a `test*` method is a helper.
         if let Stmt::ClassDef(class) = stmt
+            && class.name.as_str().starts_with("Test")
             && class
                 .body
                 .iter()
@@ -54,9 +56,13 @@ fn flatten_class(checker: &Checker, class: &ast::StmtClassDef) -> Option<String>
     }) {
         return None;
     }
-    let prefix = snake_case(class.name.as_str().trim_start_matches("Test"));
+    // Module-level functions have nowhere to keep the class docstring, and dropping it would lose its text.
+    if docstring(&class.body).is_some() {
+        return None;
+    }
+    let prefix = snake_case(class.name.as_str().strip_prefix("Test").unwrap_or_default());
     let mut functions = Vec::new();
-    for stmt in &class.body[usize::from(docstring(&class.body).is_some())..] {
+    for stmt in &class.body {
         let Stmt::FunctionDef(function) = stmt else {
             return None;
         };
@@ -103,16 +109,18 @@ fn dedent_block(text: &str, indent: &str) -> String {
 }
 
 fn snake_case(name: &str) -> String {
+    let chars: Vec<char> = name.chars().collect();
     let mut snake = String::new();
-    for (index, char) in name.chars().enumerate() {
-        if char.is_uppercase() {
-            if index > 0 {
-                snake.push('_');
-            }
-            snake.extend(char.to_lowercase());
-        } else {
-            snake.push(char);
+    for (index, char) in chars.iter().enumerate() {
+        // A capital starts a word after a lowercase letter or digit, or ends an acronym when a lowercase letter follows:
+        // `HTTPClient` becomes `http_client`.
+        let starts_word = index > 0
+            && char.is_uppercase()
+            && (!chars[index - 1].is_uppercase() || chars.get(index + 1).is_some_and(|next| next.is_lowercase()));
+        if starts_word {
+            snake.push('_');
         }
+        snake.extend(char.to_lowercase());
     }
     snake
 }
@@ -131,6 +139,9 @@ pub fn parametrize_without_id(checker: &mut Checker) {
             let Some(values) = arguments.find_argument_value("argvalues", 1) else {
                 continue;
             };
+            if arguments.find_argument_value("ids", 3).is_some() {
+                continue;
+            }
             let (Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. })) = values else {
                 continue;
             };
@@ -205,16 +216,25 @@ pub fn constant_assert(checker: &mut Checker) {
     let mut found = Vec::new();
     for_each_body(checker.body(), &mut |statements, _| {
         for stmt in statements {
-            if let Stmt::Assert(ast::StmtAssert { test, .. }) = stmt
-                && is_truthy_constant(test)
+            if let Stmt::Assert(assert) = stmt
+                && is_truthy_constant(&assert.test)
             {
-                found.push((stmt, statements));
+                found.push((stmt, assert, statements));
             }
         }
     });
-    for (stmt, statements) in found {
-        let fix = is_alone_on_lines(checker.source, stmt.range())
-            .then(|| Fix::safe_edit(delete_statement(checker.source, stmt, statements)));
+    for (stmt, ast::StmtAssert { test, msg, .. }, statements) in found {
+        let fix = match (test.as_ref(), msg) {
+            // `assert (check, "message")` meant `assert check, "message"`; deleting it would drop the check.
+            (Expr::Tuple(ast::ExprTuple { elts, .. }), None) if elts.len() == 2 => {
+                let replacement =
+                    format!("assert {}, {}", checker.text(elts[0].range()), checker.text(elts[1].range()));
+                Some(Fix::unsafe_edit(Edit::range_replacement(replacement, stmt.range())))
+            }
+            (Expr::Tuple(_), _) => None,
+            _ => is_alone_on_lines(checker.source, stmt.range())
+                .then(|| Fix::safe_edit(delete_statement(checker.source, stmt, statements))),
+        };
         checker.report(
             Rule::ConstantAssert,
             stmt.range(),

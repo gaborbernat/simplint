@@ -13,7 +13,9 @@ expression: "render(rule, fixture, target_version)"
 68:7 SMP200 Test class `TestCollision`; use module-level test functions with a name prefix
 73:7 SMP200 Test class `TestUsesSelf`; use module-level test functions with a name prefix
 78:7 SMP200 Test class `TestMultiWordName`; use module-level test functions with a name prefix [unsafe fix]
---- fixed (4 applied, 7 remaining) ---
+83:7 SMP200 Test class `TestHTTPClient`; use module-level test functions with a name prefix [unsafe fix]
+88:7 SMP200 Test class `TestDocumented`; use module-level test functions with a name prefix
+--- fixed (5 applied, 8 remaining) ---
 import pytest
 
 
@@ -92,3 +94,19 @@ class TestUsesSelf:
 
 def test_multi_word_name_words() -> None:
     assert True is not False
+
+
+def test_http_client_get() -> None:
+    assert True
+
+
+class TestDocumented:
+    """Explains the group."""
+
+    def test_one(self) -> None:
+        assert True
+
+
+class Builder:
+    def test_shape(self) -> None:
+        assert True

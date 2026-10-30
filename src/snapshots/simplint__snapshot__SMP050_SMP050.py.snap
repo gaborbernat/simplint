@@ -33,6 +33,8 @@ def second() -> int:
 
 
 _PATTERN = "x"
+
+
 def loop(items: list[str]) -> list[str]:
     return [item for item in items if item == _PATTERN]
 

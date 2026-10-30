@@ -1,7 +1,7 @@
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::{self as ast, Expr, Stmt, UnaryOp};
 use ruff_source_file::LineRanges;
-use ruff_text_size::{Ranged, TextRange, TextSize};
+use ruff_text_size::{Ranged, TextLen, TextRange};
 
 use crate::checker::Checker;
 use crate::registry::Rule;
@@ -75,19 +75,43 @@ fn candidate<'a>(
     if first.id.as_str() != name {
         return None;
     }
-    let scope_end = function_defs(checker.body())
+    let function = function_defs(checker.body())
         .into_iter()
         .filter(|function| function.range.contains_range(if_stmt.range))
-        .map(ruff_text_size::Ranged::end)
-        .min()
-        .unwrap_or_else(|| TextSize::try_from(checker.source.len()).unwrap_or_default());
-    (!body_mentions(checker.body(), name, TextRange::new(if_stmt.end(), scope_end))).then(|| Candidate {
+        .min_by_key(|function| function.range.len());
+    let scope = function.map_or_else(|| TextRange::up_to(checker.source.text_len()), Ranged::range);
+    // Inlining deletes the binding, so any other reader of it, earlier in the scope (a closure, the previous loop
+    // iteration), in another module, or through `global`/`nonlocal`, would lose it.
+    let shared = match function {
+        Some(function) => declares_outer(&function.body, name),
+        None => checker.is_imported_elsewhere(name),
+    };
+    if shared
+        || body_mentions(checker.body(), name, TextRange::new(scope.start(), assign.start()))
+        || body_mentions(checker.body(), name, TextRange::new(if_stmt.end(), scope.end()))
+    {
+        return None;
+    }
+    Some(Candidate {
         assign,
         name,
         target: first.range,
         bare,
         single_use: !body_mentions(checker.body(), name, TextRange::new(first.end(), if_stmt.end())),
     })
+}
+
+fn declares_outer(body: &[Stmt], name: &str) -> bool {
+    let mut found = false;
+    for_each_body(body, &mut |statements, _| {
+        found |= statements.iter().any(|stmt| match stmt {
+            Stmt::Global(ast::StmtGlobal { names, .. }) | Stmt::Nonlocal(ast::StmtNonlocal { names, .. }) => {
+                names.iter().any(|declared| declared.as_str() == name)
+            }
+            _ => false,
+        });
+    });
+    found
 }
 
 fn leading_name(test: &Expr, bare: bool) -> Option<(&ast::ExprName, bool)> {

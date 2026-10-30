@@ -1,4 +1,4 @@
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
 use ruff_python_stdlib::sys::is_known_standard_library;
@@ -9,7 +9,7 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::checker::Checker;
 use crate::project::package_parts;
 use crate::registry::Rule;
-use crate::rules::{delete_statement, docstring, for_each_body, indentation, is_alone_on_lines};
+use crate::rules::{delete_statement, docstring, for_each_body, indentation, is_alone_on_lines, is_main_guard};
 
 pub fn dependency_import_guard(checker: &mut Checker) {
     let mut found = Vec::new();
@@ -116,22 +116,25 @@ pub fn future_annotations(checker: &mut Checker) {
         let Some(alias) = import.names.iter().find(|alias| alias.name.as_str() == "annotations") else {
             continue;
         };
-        let edit = if import.names.len() == 1 {
-            delete_statement(checker.source, stmt, body)
-        } else {
+        let edit = if import.names.len() > 1 {
             let kept: Vec<&str> = import
                 .names
                 .iter()
                 .filter(|other| other.name.as_str() != "annotations")
                 .map(|other| checker.text(other.range()))
                 .collect();
-            Edit::range_replacement(format!("from __future__ import {}", kept.join(", ")), import.range())
+            Some(Edit::range_replacement(format!("from __future__ import {}", kept.join(", ")), import.range()))
+        } else {
+            is_alone_on_lines(checker.source, stmt.range()).then(|| delete_statement(checker.source, stmt, body))
         };
+        // Lazy annotations still evaluate on access, so a name imported only for type checking raises there.
+        let applicability =
+            if checker.source.contains("TYPE_CHECKING") { Applicability::Unsafe } else { Applicability::Safe };
         checker.report(
             Rule::FutureAnnotations,
             alias.range(),
             "Annotations are evaluated lazily from Python 3.14; drop `from __future__ import annotations`",
-            Some(Fix::safe_edit(edit)),
+            edit.map(|edit| Fix::applicable_edit(edit, applicability)),
         );
     }
 }
@@ -172,12 +175,15 @@ pub fn absolute_sibling_import(checker: &mut Checker) {
             }
         }
     });
+    // A module with a main guard may run as `python path/to/module.py`, where relative imports fail.
+    let applicability =
+        if checker.body().iter().any(is_main_guard) { Applicability::Unsafe } else { Applicability::Safe };
     for (range, relative) in found {
         checker.report(
             Rule::AbsoluteSiblingImport,
             range,
             format!("Import from the same package relatively: `from {relative} import ...`"),
-            Some(Fix::safe_edit(Edit::range_replacement(relative, range))),
+            Some(Fix::applicable_edit(Edit::range_replacement(relative, range), applicability)),
         );
     }
 }
@@ -194,11 +200,14 @@ mod tests {
     #[test_case(Rule::DependencyImportGuard, "SMP040.py", PythonVersion::PY310 ; "dependency_import_guard_py310")]
     #[test_case(Rule::FutureAnnotations, "SMP108.py", PythonVersion::PY314 ; "future_annotations")]
     #[test_case(Rule::FutureAnnotations, "SMP108.py", PythonVersion::PY310 ; "future_annotations_py310")]
+    #[test_case(Rule::FutureAnnotations, "SMP108_checking.py", PythonVersion::PY314 ; "future_annotations_type_checking")]
+    #[test_case(Rule::FutureAnnotations, "SMP108_joined.py", PythonVersion::PY314 ; "future_annotations_joined_statement")]
     #[test_case(Rule::InitModuleContent, "package/__init__.py", PythonVersion::PY314 ; "init_module_content")]
     #[test_case(Rule::InitModuleContent, "package/sub/__init__.py", PythonVersion::PY314 ; "init_module_content_docstring_only")]
     #[test_case(Rule::InitModuleContent, "SMP003_ok.py", PythonVersion::PY314 ; "init_module_content_regular_module")]
     #[test_case(Rule::AbsoluteSiblingImport, "package/sub/module.py", PythonVersion::PY314 ; "absolute_sibling_import")]
     #[test_case(Rule::AbsoluteSiblingImport, "package/__init__.py", PythonVersion::PY314 ; "absolute_sibling_import_init")]
+    #[test_case(Rule::AbsoluteSiblingImport, "package/sub/script.py", PythonVersion::PY314 ; "absolute_sibling_import_script")]
     #[test_case(Rule::AbsoluteSiblingImport, "SMP003_ok.py", PythonVersion::PY314 ; "absolute_sibling_import_outside_package")]
     fn rule(rule: Rule, fixture: &str, target_version: PythonVersion) {
         check(rule, fixture, target_version);

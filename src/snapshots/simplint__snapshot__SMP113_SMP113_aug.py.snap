@@ -2,4 +2,11 @@
 source: src/snapshot.rs
 expression: "render(rule, fixture, target_version)"
 ---
-1:5 SMP113 `aug_shared` is imported by other modules; list it in `__all__`
+1:5 SMP113 `aug_shared` is imported by other modules; list it in `__all__` [fix]
+--- fixed (1 applied, 0 remaining) ---
+def aug_shared() -> int:
+    return 1
+
+
+__all__ = []
+__all__ += ["aug_shared"]

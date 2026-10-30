@@ -7,7 +7,7 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::checker::Checker;
 use crate::registry::Rule;
-use crate::rules::{dunder_all, is_class_like, rename_fix};
+use crate::rules::{Exports, dunder_all, is_class_like, rename_fix};
 use crate::semantic::BindingKind;
 
 pub fn single_letter_name(checker: &mut Checker) {
@@ -138,7 +138,11 @@ impl<'a> SingleLetters<'a> {
 
 pub fn module_variable_case(checker: &mut Checker) {
     const PYTEST_MAGIC: &[&str] = &["pytestmark", "pytest_plugins", "collect_ignore", "collect_ignore_glob"];
-    let exported = dunder_all(checker.body());
+    let exported = match dunder_all(checker.body()) {
+        Exports::Absent => None,
+        Exports::Listed(names) => Some(names),
+        Exports::Dynamic => return,
+    };
     let mut found: Vec<(&str, TextRange, String)> = Vec::new();
     for (name, bindings) in &checker.semantic().bindings {
         if is_dunder(name)
@@ -147,6 +151,7 @@ pub fn module_variable_case(checker: &mut Checker) {
             || bindings
                 .iter()
                 .any(|binding| matches!(binding.kind, BindingKind::Import | BindingKind::Function | BindingKind::Class))
+            || bindings.iter().all(|binding| binding.kind == BindingKind::Target)
         {
             continue;
         }
@@ -177,7 +182,7 @@ pub fn unexported_public_name(checker: &mut Checker) {
     if checker.is_test_module() {
         return;
     }
-    let Some(exported) = dunder_all(checker.body()) else {
+    let Exports::Listed(exported) = dunder_all(checker.body()) else {
         return;
     };
     let mut found = Vec::new();
@@ -234,6 +239,8 @@ mod tests {
     #[test_case(Rule::ModuleVariableCase, "SMP102_ann.py" ; "module_variable_case_annotated_all")]
     #[test_case(Rule::ModuleVariableCase, "SMP102_conflict.py" ; "module_variable_case_conflict")]
     #[test_case(Rule::UnexportedPublicName, "SMP103.py" ; "unexported_public_name")]
+    #[test_case(Rule::UnexportedPublicName, "SMP103_extend.py" ; "unexported_public_name_extended_all")]
+    #[test_case(Rule::UnexportedPublicName, "SMP103_remove.py" ; "unexported_public_name_dynamic_all")]
     #[test_case(Rule::UnexportedPublicName, "tests/test_SMP004.py" ; "unexported_public_name_test_module")]
     #[test_case(Rule::UnexportedPublicName, "SMP003_ok.py" ; "unexported_public_name_without_all")]
     fn rule(rule: Rule, fixture: &str) {

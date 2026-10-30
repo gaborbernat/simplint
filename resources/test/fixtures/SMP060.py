@@ -9,3 +9,5 @@ SIXTH = 4  # pragma: no cover - platform specific
 SEVENTH = 5  # noqa: E501 the line is a URL
 # a plain comment
 EIGHTH = 6  # noqa
+NINTH = 7  # noqa: unused because plugins import it
+TENTH = 8  # type: ignore

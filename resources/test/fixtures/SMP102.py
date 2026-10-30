@@ -13,3 +13,13 @@ def use() -> int:
 
 
 __all__ = ["PUBLIC_VALUE", "logger"]
+for item in range(2):
+    pass
+with open(__file__) as handle:
+    pass
+try:
+    pass
+except OSError as error:
+    pass
+if (walrus_value := len(__name__)):
+    pass

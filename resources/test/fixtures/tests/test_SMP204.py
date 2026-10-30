@@ -1,3 +1,5 @@
+import requests
+from httpx import Client
 from unittest import mock
 from unittest.mock import MagicMock, patch
 
@@ -20,3 +22,8 @@ def test_mocks(mocker: pytest_mock.MockerFixture) -> None:
 
 def test_plain() -> None:
     assert str(1)
+
+
+def test_http(client: Client) -> None:
+    client.patch("/items", json={})
+    requests.patch("https://example.com")

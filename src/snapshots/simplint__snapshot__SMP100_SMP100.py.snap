@@ -58,3 +58,32 @@ def shapes(text: str) -> object:
     if len(called):
         return called
     return None
+
+
+def reader() -> object:
+    return shared
+
+
+shared = len(__name__)
+if shared:
+    pass
+
+exported = len(__name__)
+if exported:
+    pass
+
+
+def loop(items: list[str]) -> None:
+    previous = ""
+    for item in items:
+        print(previous)
+        previous = item.strip()
+        if previous:
+            pass
+
+
+def rebinds() -> None:
+    global state
+    state = len(__name__)
+    if state:
+        pass

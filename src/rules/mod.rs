@@ -98,16 +98,66 @@ pub fn docstring(body: &[Stmt]) -> Option<&ast::ExprStringLiteral> {
     }
 }
 
-pub fn dunder_all(body: &[Stmt]) -> Option<Vec<&str>> {
-    body.iter().rev().find_map(|stmt| {
-        all_literal(stmt)?.1.iter().map(|element| Some(element.as_string_literal_expr()?.value.to_str())).collect()
-    })
+pub enum Exports<'a> {
+    Absent,
+    Listed(Vec<&'a str>),
+    Dynamic,
+}
+
+pub fn dunder_all(body: &[Stmt]) -> Exports<'_> {
+    let mut exports = Exports::Absent;
+    for stmt in body {
+        let (resets, elements): (bool, Option<Vec<&Expr>>) = match stmt {
+            Stmt::Assign(ast::StmtAssign { targets, .. }) if targets.iter().any(is_all_target) => {
+                (true, all_literal(stmt).map(|(_, elts)| elts.iter().collect()))
+            }
+            Stmt::AnnAssign(ast::StmtAnnAssign { target, .. }) if is_all_target(target) => {
+                (true, all_literal(stmt).map(|(_, elts)| elts.iter().collect()))
+            }
+            Stmt::AugAssign(ast::StmtAugAssign { target, .. }) if is_all_target(target) => {
+                (false, all_literal(stmt).map(|(_, elts)| elts.iter().collect()))
+            }
+            Stmt::Expr(ast::StmtExpr { value, .. }) => match value.as_ref() {
+                Expr::Call(ast::ExprCall { func, arguments, .. })
+                    if func.as_attribute_expr().is_some_and(|attribute| is_all_target(&attribute.value)) =>
+                {
+                    let method = func.as_attribute_expr().map(|attribute| attribute.attr.as_str());
+                    let elements = match (method, &*arguments.args) {
+                        (Some("append"), [element]) => Some(vec![element]),
+                        (
+                            Some("extend"),
+                            [Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. })],
+                        ) => Some(elts.iter().collect()),
+                        _ => None,
+                    };
+                    (false, elements)
+                }
+                _ => continue,
+            },
+            _ => continue,
+        };
+        let names: Option<Vec<&str>> = elements.and_then(|elements| {
+            elements.iter().map(|element| Some(element.as_string_literal_expr()?.value.to_str())).collect()
+        });
+        exports = match (exports, names) {
+            (_, None) | (Exports::Dynamic, _) => Exports::Dynamic,
+            (Exports::Listed(mut listed), Some(names)) if !resets => {
+                listed.extend(names);
+                Exports::Listed(listed)
+            }
+            (_, Some(names)) => Exports::Listed(names),
+        };
+    }
+    exports
 }
 
 pub fn all_literal(stmt: &Stmt) -> Option<(TextRange, &[Expr])> {
     let value = match stmt {
         Stmt::Assign(ast::StmtAssign { targets, value, .. }) if targets.first().is_some_and(is_all_target) => value,
         Stmt::AnnAssign(ast::StmtAnnAssign { target, value: Some(value), .. }) if is_all_target(target) => value,
+        Stmt::AugAssign(ast::StmtAugAssign { target, op: ast::Operator::Add, value, .. }) if is_all_target(target) => {
+            value
+        }
         _ => return None,
     };
     match value.as_ref() {
@@ -115,6 +165,22 @@ pub fn all_literal(stmt: &Stmt) -> Option<(TextRange, &[Expr])> {
             Some((value.range(), elts))
         }
         _ => None,
+    }
+}
+
+pub fn is_main_guard(stmt: &Stmt) -> bool {
+    let Stmt::If(ast::StmtIf { test, .. }) = stmt else {
+        return false;
+    };
+    let Expr::Compare(ast::ExprCompare { ops, operands, .. }) = test.as_ref() else {
+        return false;
+    };
+    let is_name = |expr: &Expr| expr.as_name_expr().is_some_and(|name| name.id.as_str() == "__name__");
+    let is_main =
+        |expr: &Expr| expr.as_string_literal_expr().is_some_and(|literal| literal.value.to_str() == "__main__");
+    match (&**ops, &**operands) {
+        ([ast::CmpOp::Eq], [left, right]) => (is_name(left) && is_main(right)) || (is_main(left) && is_name(right)),
+        _ => false,
     }
 }
 

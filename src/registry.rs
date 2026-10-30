@@ -72,7 +72,7 @@ rules! {
     CallableEllipsis => ("SMP105", "callable-ellipsis", "`Callable[..., T]`", None, rules::typing::callable_ellipsis),
     ObjectAnnotation => ("SMP106", "object-annotation", "`object` annotations outside `TypeIs` guards and dunders", None, rules::typing::object_annotation),
     VarsCall => ("SMP107", "vars-call", "`vars()` calls", None, rules::typing::vars_call),
-    FutureAnnotations => ("SMP108", "future-annotations", "`from __future__ import annotations` on Python 3.14+", Always, rules::imports::future_annotations),
+    FutureAnnotations => ("SMP108", "future-annotations", "`from __future__ import annotations` on Python 3.14+", Sometimes, rules::imports::future_annotations),
     InitModuleContent => ("SMP109", "init-module-content", "`__init__.py` holding more than a docstring", None, rules::imports::init_module_content),
     AbsoluteSiblingImport => ("SMP110", "absolute-sibling-import", "Absolute imports from the same package", Always, rules::imports::absolute_sibling_import),
     DataclassOptions => ("SMP111", "dataclass-options", "Dataclasses without `frozen` and `slots`", Always, rules::dataclasses::dataclass_options),

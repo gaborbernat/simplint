@@ -33,3 +33,15 @@ def _noop() -> None:
 
 def caller() -> None:
     _noop()
+
+
+def _configured(name: str) -> str:
+    return str(name, encoding="utf-8")
+
+
+def _keywords(name: str, *rest: str, **options: str) -> Path:
+    return Path(name, *rest, encoding=options)
+
+
+def more() -> tuple[str, Path]:
+    return _configured("a"), _keywords("b")

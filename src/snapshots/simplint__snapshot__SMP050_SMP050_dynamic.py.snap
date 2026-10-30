@@ -1,0 +1,14 @@
+---
+source: src/snapshot.rs
+expression: "render(rule, fixture, target_version)"
+---
+1:1 SMP050 `_LIMIT` is used by one function only; define it there [unsafe fix]
+--- fixed (1 applied, 0 remaining) ---
+SHARED_LIMIT = 4
+
+
+def check(value: int) -> bool:
+    return value < 3 < SHARED_LIMIT
+
+
+__all__ = list(("check",))

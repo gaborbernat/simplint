@@ -2,4 +2,4 @@
 source: src/snapshot.rs
 expression: "render(rule, fixture, target_version)"
 ---
-5:12 SMP107 `vars()` erases types; read attributes from a typed object
+6:12 SMP107 `vars()` erases types; read attributes from a typed object

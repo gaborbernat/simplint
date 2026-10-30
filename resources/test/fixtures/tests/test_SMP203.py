@@ -1,4 +1,8 @@
+from typing import Final
 from unittest.mock import MagicMock, create_autospec
+
+
+OPTIONS: Final[dict[str, int]] = {}
 
 
 def run() -> int:
@@ -26,4 +30,11 @@ def test_more() -> None:
     plain.value = 1
     sixth = MagicMock()
     sixth.value = 3
-    assert plain and sixth
+    seventh = MagicMock(spec=run, return_value=1)
+    seventh.return_value = 2
+    seventh.side_effect = None
+    eighth = MagicMock(spec=run, **OPTIONS)
+    eighth.return_value = 2
+    ninth = MagicMock(spec=run, return_value=1)
+    ninth.return_value = 5
+    assert plain and sixth and seventh and eighth and ninth

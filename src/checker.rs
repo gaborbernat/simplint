@@ -4,7 +4,7 @@ use std::path::Path;
 use ruff_diagnostics::Fix;
 use ruff_python_ast::parenthesize::parenthesized_range;
 use ruff_python_ast::token::TokenKind;
-use ruff_python_ast::{AnyNodeRef, Expr, ModModule, Stmt};
+use ruff_python_ast::{AnyNodeRef, Expr, ModModule, PythonVersion, Stmt};
 use ruff_python_codegen::Stylist;
 use ruff_python_parser::Parsed;
 use ruff_python_trivia::CommentRanges;
@@ -99,6 +99,14 @@ impl<'a> Checker<'a> {
 
     pub fn is_imported_elsewhere(&self, name: &str) -> bool {
         self.linter.project.is_imported(self.path, name)
+    }
+
+    pub fn annotations_are_lazy(&self) -> bool {
+        self.settings.target_version >= PythonVersion::PY314
+            || self.body().iter().filter_map(Stmt::as_import_from_stmt).any(|import| {
+                import.module.as_ref().is_some_and(|module| module.as_str() == "__future__")
+                    && import.names.iter().any(|alias| alias.name.as_str() == "annotations")
+            })
     }
 
     pub fn project(&self) -> &'a Project {

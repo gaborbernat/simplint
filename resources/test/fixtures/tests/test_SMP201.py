@@ -26,3 +26,8 @@ def test_from_variable(value: int, expected: int) -> None:
 @pytest.mark.parametrize("value")
 def test_without_values(value: int) -> None:
     assert value
+
+
+@pytest.mark.parametrize("value", [1, 2], ids=["one", "two"])
+def test_with_ids(value: int) -> None:
+    assert value

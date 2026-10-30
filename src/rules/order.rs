@@ -9,7 +9,7 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 use crate::checker::Checker;
 use crate::registry::Rule;
 use crate::rules::{class_defs, statement_block};
-use crate::semantic::{BindingKind, Evaluation};
+use crate::semantic::{BindingKind, Evaluation, Reference};
 
 pub fn definition_before_use(checker: &mut Checker) {
     let body = checker.body();
@@ -32,6 +32,14 @@ struct Uses {
 
 fn module_uses(checker: &Checker, body: &[Stmt]) -> Uses {
     let semantic = checker.semantic();
+    let lazy = checker.annotations_are_lazy();
+    // Without lazy annotations, a `def` evaluates its own signature's annotations when it runs; annotations inside a
+    // function body wait until that function is called.
+    let evaluation = |reference: &Reference| match reference.evaluation {
+        Evaluation::Annotation if !lazy && reference.function.is_none() => Evaluation::Runtime,
+        Evaluation::Annotation if !lazy => Evaluation::Deferred,
+        other => other,
+    };
     let mut uses = Uses::default();
     for (index, stmt) in body.iter().enumerate() {
         let Some(name) = definition_name(stmt).map(ast::Identifier::as_str) else {
@@ -42,7 +50,7 @@ fn module_uses(checker: &Checker, body: &[Stmt]) -> Uses {
             continue;
         }
         for reference in semantic.references_to(name) {
-            match reference.evaluation {
+            match evaluation(reference) {
                 Evaluation::Runtime => {
                     uses.runtime.insert(index);
                 }
@@ -54,7 +62,7 @@ fn module_uses(checker: &Checker, body: &[Stmt]) -> Uses {
         }
         if semantic.references.iter().any(|reference| {
             reference.statement == index
-                && reference.evaluation == Evaluation::Runtime
+                && evaluation(reference) == Evaluation::Runtime
                 && semantic
                     .bindings
                     .get(reference.name)
@@ -150,11 +158,17 @@ fn reorder(checker: &mut Checker, suite: &Suite, uses: &Uses) {
             continue;
         }
         let name = identifier.as_str();
-        let owner_name = definition_name(&suite.body[owner]).map_or("the statement", ast::Identifier::as_str);
+        let owner_name = definition_name(&suite.body[owner]).map_or_else(
+            || {
+                let line = checker.source[..suite.body[owner].start().to_usize()].matches('\n').count() + 1;
+                format!("the statement on line {line}")
+            },
+            |owner| format!("`{}`", owner.as_str()),
+        );
         let message = if index < owner {
-            format!("`{name}` is defined before its first use in `{owner_name}`; move it below")
+            format!("`{name}` is defined before its first use in {owner_name}; move it below")
         } else {
-            format!("`{name}` should directly follow `{owner_name}`, its first user")
+            format!("`{name}` should directly follow {owner_name}, its first user")
         };
         checker.report(Rule::DefinitionBeforeUse, identifier.range(), message, fix.clone());
     }
@@ -255,5 +269,11 @@ mod tests {
     #[test_case("SMP020_nonl.py" ; "without_trailing_newline")]
     fn definition_before_use(fixture: &str) {
         check(Rule::DefinitionBeforeUse, fixture, PythonVersion::PY314);
+    }
+
+    #[test_case(PythonVersion::PY314 ; "lazy_annotations")]
+    #[test_case(PythonVersion::PY310 ; "eager_annotations")]
+    fn signature_annotations(target_version: PythonVersion) {
+        check(Rule::DefinitionBeforeUse, "SMP020_annotations.py", target_version);
     }
 }

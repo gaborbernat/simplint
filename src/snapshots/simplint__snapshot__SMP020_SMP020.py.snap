@@ -8,7 +8,7 @@ expression: "render(rule, fixture, target_version)"
 38:9 SMP020 `other` should directly follow `run`, its first user [fix]
 100:9 SMP020 `_check` is defined before its first use in `apply`; move it below [fix]
 116:5 SMP020 `commented_helper` should directly follow `outer_user`, its first user [fix]
-120:5 SMP020 `lambda_helper` is defined before its first use in `the statement`; move it below [fix]
+120:5 SMP020 `lambda_helper` is defined before its first use in the statement on line 124; move it below [fix]
 --- fixed (3 applied, 0 remaining) ---
 import functools
 

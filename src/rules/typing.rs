@@ -64,7 +64,10 @@ struct ObjectAnnotations {
 
 impl ObjectAnnotations {
     fn collect(&mut self, annotation: &Expr) {
-        let mut finder = ExprFinder::new(|expr| expr.as_name_expr().is_some_and(|name| name.id.as_str() == "object"));
+        let mut finder = ExprFinder::new(|expr| {
+            UnqualifiedName::from_expr(expr)
+                .is_some_and(|name| matches!(name.segments(), ["builtins", "object"] | ["object"]))
+        });
         finder.visit_expr(annotation);
         self.found.extend(finder.found);
     }
@@ -113,8 +116,11 @@ pub fn vars_call(checker: &mut Checker) {
     if checker.semantic().is_bound("vars") {
         return;
     }
+    let builtin: Vec<TextRange> = checker.semantic().references_to("vars").map(|reference| reference.range).collect();
     let mut finder = ExprFinder::new(|expr| {
-        expr.as_call_expr().is_some_and(|call| call.func.as_name_expr().is_some_and(|name| name.id.as_str() == "vars"))
+        expr.as_call_expr()
+            .and_then(|call| call.func.as_name_expr())
+            .is_some_and(|name| name.id.as_str() == "vars" && builtin.contains(&name.range))
     });
     finder.visit_body(checker.body());
     for range in finder.found {

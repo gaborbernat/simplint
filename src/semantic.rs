@@ -71,6 +71,7 @@ pub enum BindingKind {
     Import,
     Function,
     Class,
+    Target,
     Other,
 }
 
@@ -175,6 +176,21 @@ impl<'a> Visitor<'a> for Collector<'a> {
                 visitor::walk_stmt(self, stmt);
                 self.store_kind = BindingKind::Other;
             }
+            Stmt::For(ast::StmtFor { target, iter, body, orelse, .. }) => {
+                self.visit_expr(iter);
+                self.visit_target(target);
+                self.visit_body(body);
+                self.visit_body(orelse);
+            }
+            Stmt::With(ast::StmtWith { items, body, .. }) => {
+                for item in items {
+                    self.visit_expr(&item.context_expr);
+                    if let Some(target) = &item.optional_vars {
+                        self.visit_target(target);
+                    }
+                }
+                self.visit_body(body);
+            }
             _ => visitor::walk_stmt(self, stmt),
         }
     }
@@ -232,20 +248,26 @@ impl<'a> Visitor<'a> for Collector<'a> {
     fn visit_except_handler(&mut self, handler: &'a ast::ExceptHandler) {
         let ast::ExceptHandler::ExceptHandler(handler_node) = handler;
         if let Some(name) = &handler_node.name {
-            self.bind(name.as_str(), name.range, BindingKind::Other);
+            self.bind(name.as_str(), name.range, BindingKind::Target);
         }
         visitor::walk_except_handler(self, handler);
     }
 
     fn visit_pattern(&mut self, pattern: &'a Pattern) {
         for name in pattern_names(pattern) {
-            self.bind(name.as_str(), name.range, BindingKind::Other);
+            self.bind(name.as_str(), name.range, BindingKind::Target);
         }
         visitor::walk_pattern(self, pattern);
     }
 }
 
 impl<'a> Collector<'a> {
+    fn visit_target(&mut self, target: &'a Expr) {
+        let saved = std::mem::replace(&mut self.store_kind, BindingKind::Target);
+        self.visit_expr(target);
+        self.store_kind = saved;
+    }
+
     fn visit_parameters_outside(&mut self, parameters: &'a Parameters) {
         for default in parameters.iter_non_variadic_params().filter_map(|parameter| parameter.default.as_deref()) {
             self.visit_expr(default);

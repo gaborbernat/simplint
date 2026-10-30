@@ -1,12 +1,13 @@
 use ruff_diagnostics::{Edit, Fix};
-use ruff_python_ast::{self as ast, Expr, Stmt};
+use ruff_python_ast::{self as ast, Stmt};
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::checker::Checker;
 use crate::registry::Rule;
 use crate::rules::{
-    all_literal, dunder_all, indentation, is_all_target, is_alone_on_lines, lines_with_trailing_blanks,
+    Exports, all_literal, dunder_all, indentation, is_all_target, is_alone_on_lines, is_main_guard,
+    lines_with_trailing_blanks,
 };
 
 pub fn all_not_last(checker: &mut Checker) {
@@ -30,7 +31,7 @@ pub fn all_not_last(checker: &mut Checker) {
         let content = if insertion.to_usize() == source.len() && !source.ends_with('\n') {
             format!("\n\n{text}")
         } else {
-            format!("\n{text}\n")
+            format!("\n\n{text}\n")
         };
         Fix::safe_edits(Edit::range_deletion(lines), [Edit::insertion(content, insertion)])
     });
@@ -52,26 +53,16 @@ fn binds_all(stmt: &Stmt) -> bool {
     }
 }
 
-fn is_main_guard(stmt: &Stmt) -> bool {
-    let Stmt::If(ast::StmtIf { test, .. }) = stmt else {
-        return false;
-    };
-    let Expr::Compare(ast::ExprCompare { operands, .. }) = test.as_ref() else {
-        return false;
-    };
-    operands[0].as_name_expr().is_some_and(|name| name.id.as_str() == "__name__")
-        && operands
-            .get(1)
-            .and_then(Expr::as_string_literal_expr)
-            .is_some_and(|literal| literal.value.to_str() == "__main__")
-}
-
 pub fn missing_from_all(checker: &mut Checker) {
     if checker.is_init_module() || checker.is_test_module() {
         return;
     }
     let body = checker.body();
-    let exported = dunder_all(body).unwrap_or_default();
+    let exported = match dunder_all(body) {
+        Exports::Absent => Vec::new(),
+        Exports::Listed(names) => names,
+        Exports::Dynamic => return,
+    };
     let mut missing: Vec<(&str, TextRange)> = checker
         .semantic()
         .bindings
@@ -130,6 +121,8 @@ mod tests {
 
     #[test_case(Rule::AllNotLast, "SMP104.py" ; "all_not_last")]
     #[test_case(Rule::AllNotLast, "SMP104_eof.py" ; "all_not_last_at_eof")]
+    #[test_case(Rule::AllNotLast, "SMP104_reversed.py" ; "all_not_last_reversed_main_guard")]
+    #[test_case(Rule::AllNotLast, "SMP104_negated.py" ; "all_not_last_negated_guard")]
     #[test_case(Rule::AllNotLast, "SMP104_nonl.py" ; "all_not_last_without_trailing_newline")]
     #[test_case(Rule::AllNotLast, "SMP104_ann.py" ; "all_not_last_annotated_and_augmented")]
     #[test_case(Rule::AllNotLast, "SMP003_ok.py" ; "all_not_last_without_all")]

@@ -58,6 +58,18 @@ fn forwarded<'a>(
         }
         _ => return None,
     };
+    // A wrapper that adds its own values (`check=True`, a computed argument) configures the call, so it is not a pure
+    // forward even when its body is a single call.
+    let parameters: Vec<&str> = function.parameters.iter().map(|parameter| parameter.name().as_str()).collect();
+    let is_parameter = |expr: &ast::Expr| {
+        let expr = expr.as_starred_expr().map_or(expr, |starred| &starred.value);
+        expr.as_name_expr().is_some_and(|name| parameters.contains(&name.id.as_str()))
+    };
+    if !call.arguments.args.iter().all(is_parameter)
+        || !call.arguments.keywords.iter().all(|keyword| is_parameter(&keyword.value))
+    {
+        return None;
+    }
     references
         .iter()
         .all(|range| checker.source[range.end().to_usize()..].trim_start().starts_with('('))

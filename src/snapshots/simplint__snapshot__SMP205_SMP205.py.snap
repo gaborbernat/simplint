@@ -11,7 +11,9 @@ expression: "render(rule, fixture, target_version)"
 26:5 SMP205 Assertion on a constant always passes; assert on the result under test [fix]
 27:5 SMP205 Assertion on a constant always passes; assert on the result under test [fix]
 28:5 SMP205 Assertion on a constant always passes; assert on the result under test [fix]
---- fixed (9 applied, 0 remaining) ---
+32:5 SMP205 Assertion on a constant always passes; assert on the result under test [unsafe fix]
+33:5 SMP205 Assertion on a constant always passes; assert on the result under test
+--- fixed (10 applied, 1 remaining) ---
 def check(value: int) -> None:
     assert value
     assert False, "unreachable"
@@ -34,3 +36,8 @@ def loops() -> None:
 
 def kinds() -> None:
     assert 0.0
+
+
+def tuples(value: int) -> None:
+    assert value, "value is set"
+    assert (value, "value is set", "twice")

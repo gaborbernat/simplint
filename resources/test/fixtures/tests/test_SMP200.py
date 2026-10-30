@@ -78,3 +78,20 @@ class TestUsesSelf:
 class TestMultiWordName:
     def test_words(self) -> None:
         assert True is not False
+
+
+class TestHTTPClient:
+    def test_get(self) -> None:
+        assert True
+
+
+class TestDocumented:
+    """Explains the group."""
+
+    def test_one(self) -> None:
+        assert True
+
+
+class Builder:
+    def test_shape(self) -> None:
+        assert True

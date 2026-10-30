@@ -1,3 +1,4 @@
+import builtins
 from typing import TypeIs
 
 
@@ -15,3 +16,7 @@ class Point:
 
 
 CACHE: dict[str, object] = {}
+
+
+def raw(value: builtins.object) -> None:
+    pass

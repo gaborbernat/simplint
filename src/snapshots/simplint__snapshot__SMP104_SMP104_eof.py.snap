@@ -6,4 +6,5 @@ expression: "render(rule, fixture, target_version)"
 --- fixed (1 applied, 0 remaining) ---
 VALUE = 1
 
+
 __all__ = ["VALUE"]

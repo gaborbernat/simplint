@@ -26,3 +26,8 @@ def kinds() -> None:
     assert 1j
     assert b"bytes"
     assert ...
+
+
+def tuples(value: int) -> None:
+    assert (value, "value is set")
+    assert (value, "value is set", "twice")

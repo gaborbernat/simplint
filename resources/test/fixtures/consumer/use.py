@@ -20,3 +20,4 @@ from SMP113_empty import empty_shared
 from .. import nothing
 
 EXTRA = (shared_value, aug_shared, call_shared, empty_shared, nothing)
+from SMP100 import exported

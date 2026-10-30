@@ -6,3 +6,6 @@ expression: "render(rule, fixture, target_version)"
 3:17 SMP060 Suppression comment gives no reason; add one after the codes
 5:12 SMP060 `ty: ignore` names no error code
 7:12 SMP060 Suppression comment gives no reason; add one after the codes
+11:13 SMP060 `noqa` names no error code
+12:12 SMP060 `noqa` names no error code
+13:12 SMP060 `type: ignore` names no error code

@@ -4,6 +4,7 @@ use ruff_source_file::LineRanges;
 use ruff_text_size::{TextRange, TextSize};
 
 use crate::checker::Diagnostic;
+use crate::registry::Rule;
 
 pub fn filter(source: &str, comments: Vec<TextRange>, diagnostics: &mut Vec<Diagnostic>) {
     let directives: HashMap<TextSize, Directive> = comments
@@ -43,7 +44,8 @@ impl Directive {
 
     fn suppresses(&self, code: &str) -> bool {
         match self {
-            Self::All => true,
+            // A blanket `# noqa` is itself what SMP060 reports, so it cannot silence that report.
+            Self::All => code != Rule::SuppressionWithoutReason.code(),
             Self::Codes(codes) => codes.iter().any(|candidate| candidate == code),
         }
     }

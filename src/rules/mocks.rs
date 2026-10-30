@@ -12,7 +12,22 @@ use crate::rules::{expr_mentions, for_each_body, is_alone_on_lines};
 const MOCK_CLASSES: &[&str] = &["Mock", "MagicMock", "AsyncMock", "NonCallableMock", "NonCallableMagicMock"];
 
 pub fn mock_without_spec(checker: &mut Checker) {
-    let mut finder = Unspecced { found: Vec::new() };
+    let mut patch_names = Vec::new();
+    for_each_body(checker.body(), &mut |statements, _| {
+        for stmt in statements {
+            if let Stmt::ImportFrom(ast::StmtImportFrom { module: Some(module), names, level: 0, .. }) = stmt
+                && matches!(module.as_str(), "unittest.mock" | "mock")
+            {
+                patch_names.extend(
+                    names
+                        .iter()
+                        .filter(|alias| alias.name.as_str() == "patch")
+                        .map(|alias| alias.asname.as_ref().unwrap_or(&alias.name).as_str()),
+                );
+            }
+        }
+    });
+    let mut finder = Unspecced { patch_names, found: Vec::new() };
     finder.visit_body(checker.body());
     for (range, call) in finder.found {
         let message = match call {
@@ -23,7 +38,8 @@ pub fn mock_without_spec(checker: &mut Checker) {
     }
 }
 
-struct Unspecced {
+struct Unspecced<'a> {
+    patch_names: Vec<&'a str>,
     found: Vec<(TextRange, MockCall)>,
 }
 
@@ -33,11 +49,11 @@ enum MockCall {
     PatchObject,
 }
 
-impl<'a> Visitor<'a> for Unspecced {
+impl<'a> Visitor<'a> for Unspecced<'_> {
     fn visit_expr(&mut self, expr: &'a Expr) {
         const SPEC_KEYWORDS: &[&str] = &["spec", "spec_set", "wraps", "autospec", "new", "new_callable"];
         if let Expr::Call(call) = expr
-            && let Some(kind) = classify(&call.func)
+            && let Some(kind) = self.classify(&call.func)
         {
             let positional_spec = match kind {
                 MockCall::Mock => 1,
@@ -58,14 +74,25 @@ impl<'a> Visitor<'a> for Unspecced {
     }
 }
 
-fn classify(func: &Expr) -> Option<MockCall> {
-    let name = UnqualifiedName::from_expr(func)?;
-    let segments = name.segments();
-    match segments.last()? {
-        last if MOCK_CLASSES.contains(last) => Some(MockCall::Mock),
-        &"patch" => Some(MockCall::Patch),
-        &"object" if segments.len() >= 2 && segments[segments.len() - 2] == "patch" => Some(MockCall::PatchObject),
-        _ => None,
+impl Unspecced<'_> {
+    fn classify(&self, func: &Expr) -> Option<MockCall> {
+        let name = UnqualifiedName::from_expr(func)?;
+        match name.segments() {
+            [.., last] if MOCK_CLASSES.contains(last) => Some(MockCall::Mock),
+            segments if self.is_patch(segments) => Some(MockCall::Patch),
+            [patch @ .., "object"] if self.is_patch(patch) => Some(MockCall::PatchObject),
+            _ => None,
+        }
+    }
+
+    // `patch` alone is too common a method name (HTTP clients, `requests.patch`) to match on the name; the call must
+    // reach it through a mock module, the pytest-mock fixture, or a name imported from a mock module.
+    fn is_patch(&self, segments: &[&str]) -> bool {
+        match segments {
+            [name] => self.patch_names.contains(name),
+            [.., "mock" | "mocker", "patch"] => true,
+            _ => false,
+        }
     }
 }
 
@@ -92,7 +119,9 @@ pub fn mock_attribute_assignment(checker: &mut Checker) {
     });
     let source = checker.source;
     for (call, assignments) in found {
-        let fixable = assignments.iter().all(|assignment| is_alone_on_lines(source, assignment.stmt.range()))
+        // A `**` splat may already carry any of the attributes, so the merged call could repeat a keyword.
+        let fixable = call.arguments.keywords.iter().all(|keyword| keyword.arg.is_some())
+            && assignments.iter().all(|assignment| is_alone_on_lines(source, assignment.stmt.range()))
             && !checker.comments().any(|comment| {
                 assignments
                     .iter()
@@ -100,21 +129,31 @@ pub fn mock_attribute_assignment(checker: &mut Checker) {
             });
         let fix = fixable.then(|| {
             let close = call.arguments.end() - TextSize::from(1);
-            let separator = if call.arguments.is_empty() {
-                ""
-            } else if checker.text(TextRange::new(call.arguments.start(), close)).trim_end().ends_with(',') {
-                " "
-            } else {
-                ", "
-            };
-            let keywords: Vec<String> = assignments
+            let mut keywords = Vec::new();
+            let mut edits: Vec<Edit> = assignments
                 .iter()
-                .map(|assignment| format!("{}={}", assignment.attr, checker.text(assignment.value.range())))
+                .map(|assignment| Edit::range_deletion(source.full_lines_range(assignment.stmt.range())))
                 .collect();
-            let deletions = assignments
-                .iter()
-                .map(|assignment| Edit::range_deletion(source.full_lines_range(assignment.stmt.range())));
-            Fix::safe_edits(Edit::insertion(format!("{separator}{}", keywords.join(", ")), close), deletions)
+            for assignment in &assignments {
+                let value = checker.text(assignment.value.range());
+                if let Some(existing) = call.arguments.find_keyword(assignment.attr) {
+                    edits.push(Edit::range_replacement(value.to_owned(), existing.value.range()));
+                } else {
+                    keywords.push(format!("{}={value}", assignment.attr));
+                }
+            }
+            if !keywords.is_empty() {
+                let separator = if call.arguments.is_empty() {
+                    ""
+                } else if checker.text(TextRange::new(call.arguments.start(), close)).trim_end().ends_with(',') {
+                    " "
+                } else {
+                    ", "
+                };
+                edits.push(Edit::insertion(format!("{separator}{}", keywords.join(", ")), close));
+            }
+            let first = edits.remove(0);
+            Fix::safe_edits(first, edits)
         });
         let names: Vec<&str> = assignments.iter().map(|assignment| assignment.attr).collect();
         checker.report(

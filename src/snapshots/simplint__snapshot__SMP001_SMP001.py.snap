@@ -2,14 +2,18 @@
 source: src/snapshot.rs
 expression: "render(rule, fixture, target_version)"
 ---
-3:1 SMP001 Section comment groups code; extract a named function or class instead [fix]
-4:1 SMP001 Section comment groups code; extract a named function or class instead [fix]
 6:1 SMP001 Section comment groups code; extract a named function or class instead [fix]
 7:1 SMP001 Section comment groups code; extract a named function or class instead [fix]
-8:1 SMP001 Section comment groups code; extract a named function or class instead [fix]
 9:1 SMP001 Section comment groups code; extract a named function or class instead [fix]
---- fixed (6 applied, 0 remaining) ---
+10:1 SMP001 Section comment groups code; extract a named function or class instead [fix]
+11:1 SMP001 Section comment groups code; extract a named function or class instead [fix]
+12:1 SMP001 Section comment groups code; extract a named function or class instead [fix]
+20:1 SMP001 Section comment groups code; extract a named function or class instead [fix]
+--- fixed (7 applied, 0 remaining) ---
 import os
+# /// script
+# requires-python = ">=3.12"
+# ///
 
 # Setup
 # -> arrow is fine
@@ -17,3 +21,6 @@ import os
 #!/not-a-shebang
 VALUE = os.sep  # ---- trailing is fine
 # ...
+# compiled as C++
+# >>> run(1)
+# ++ counter

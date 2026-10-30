@@ -9,7 +9,7 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 use crate::checker::Checker;
 use crate::registry::Rule;
 use crate::rules::{
-    appears_as_name, docstring, dunder_all, function_defs, indentation, is_alone_on_lines, is_class_like,
+    Exports, appears_as_name, docstring, dunder_all, function_defs, indentation, is_alone_on_lines, is_class_like,
     lines_with_trailing_blanks, needs_parentheses,
 };
 use crate::semantic::{BindingKind, Evaluation};
@@ -91,10 +91,18 @@ fn final_fix(checker: &Checker, target: TextRange, annotation: Option<&Expr>, va
 }
 
 fn final_qualifier(checker: &Checker) -> (&'static str, Option<Edit>) {
-    if checker.semantic().is_bound("Final") {
+    let body = checker.body();
+    // A `Final` bound only under `if TYPE_CHECKING:` is missing at runtime, where eager annotations evaluate it.
+    let lazy = checker.annotations_are_lazy();
+    let bound_at_top = body.iter().any(|stmt| match stmt {
+        Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
+            names.iter().any(|alias| alias.asname.as_ref().unwrap_or(&alias.name).as_str() == "Final")
+        }
+        _ => false,
+    });
+    if checker.semantic().is_bound("Final") && (lazy || bound_at_top) {
         return ("Final", None);
     }
-    let body = checker.body();
     let typing_module = body
         .iter()
         .filter_map(Stmt::as_import_stmt)
@@ -135,7 +143,10 @@ fn is_future_import(stmt: &Stmt) -> bool {
 
 pub fn single_user_constant(checker: &mut Checker) {
     let body = checker.body();
-    let exported = dunder_all(body);
+    let exported = match dunder_all(body) {
+        Exports::Listed(names) => Some(names),
+        Exports::Absent | Exports::Dynamic => None,
+    };
     let mut found = Vec::new();
     for stmt in body {
         let (target, value) = match stmt {
@@ -205,12 +216,31 @@ struct Constant<'a> {
     references: Vec<TextRange>,
 }
 
+// Deleting a statement leaves the blank lines on both sides of it next to each other; drop the shorter run so the code
+// around it keeps the wider separation, and keep everything when the statement directly follows code.
+fn deletion_keeping_separation(source: &str, range: TextRange) -> TextRange {
+    let lines = source.full_lines_range(range);
+    let before = &source[..lines.start().to_usize()];
+    let leading_text = before.trim_end_matches([' ', '\t', '\n']);
+    let leading = before[leading_text.len()..].matches('\n').count().saturating_sub(1);
+    let with_trailing = lines_with_trailing_blanks(source, range);
+    let trailing = source[lines.end().to_usize()..with_trailing.end().to_usize()].matches('\n').count();
+    if leading_text.is_empty() || (leading > 0 && trailing <= leading) {
+        with_trailing
+    } else if leading > 0 {
+        let line_end = leading_text.len() + before[leading_text.len()..].find('\n').map_or(0, |offset| offset + 1);
+        TextRange::new(TextSize::try_from(line_end).unwrap_or_default(), lines.end())
+    } else {
+        lines
+    }
+}
+
 fn move_into_function(checker: &Checker, constant: &Constant) -> Option<Fix> {
     let source = checker.source;
     if !is_alone_on_lines(source, constant.stmt.range()) {
         return None;
     }
-    let deletion = Edit::range_deletion(lines_with_trailing_blanks(source, constant.stmt.range()));
+    let deletion = Edit::range_deletion(deletion_keeping_separation(source, constant.stmt.range()));
     let value_text = checker.parenthesized_text(constant.value, constant.stmt.into());
     let function = function_defs(checker.body()).into_iter().find(|candidate| candidate.range == constant.function)?;
     if let [reference] = constant.references.as_slice()
@@ -286,6 +316,8 @@ mod tests {
 
     #[test_case(Rule::SingleUserConstant, "SMP050.py" ; "single_user_constant")]
     #[test_case(Rule::SingleUserConstant, "SMP050_all.py" ; "single_user_constant_with_all")]
+    #[test_case(Rule::SingleUserConstant, "SMP050_dynamic.py" ; "single_user_constant_dynamic_all")]
+    #[test_case(Rule::SingleUserConstant, "SMP050_spacing.py" ; "single_user_constant_spacing")]
     #[test_case(Rule::MissingFinal, "SMP101.py" ; "missing_final")]
     #[test_case(Rule::MissingFinal, "SMP101_typing.py" ; "missing_final_extends_typing_import")]
     #[test_case(Rule::MissingFinal, "SMP101_module.py" ; "missing_final_typing_module")]
@@ -293,5 +325,12 @@ mod tests {
     #[test_case(Rule::MissingFinal, "SMP101_bare.py" ; "missing_final_import_at_top")]
     fn rule(rule: Rule, fixture: &str) {
         check(rule, fixture, PythonVersion::PY314);
+    }
+
+    #[test_case("SMP101_checking.py", PythonVersion::PY310 ; "type_checking_final_eager")]
+    #[test_case("SMP101_checking.py", PythonVersion::PY314 ; "type_checking_final_lazy")]
+    #[test_case("SMP101_future.py", PythonVersion::PY310 ; "type_checking_final_future")]
+    fn missing_final_by_version(fixture: &str, target_version: PythonVersion) {
+        check(Rule::MissingFinal, fixture, target_version);
     }
 }

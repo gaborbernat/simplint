@@ -190,6 +190,21 @@ fn rule_rejects_unknown() {
 }
 
 #[test]
+fn dependency_guard_maps_import_names_and_skips_markers() {
+    let root = project(&[
+        ("pyproject.toml", "[project]\ndependencies = [\"PyYAML>=6\", \"tomli>=2; python_version < '3.11'\"]\n"),
+        (
+            "module.py",
+            "try:\n    import yaml\nexcept ImportError:\n    yaml = None\ntry:\n    import tomli\nexcept ImportError:\n    tomli = None\n",
+        ),
+    ]);
+    assert_eq!(
+        simplint(root.path(), &["check", "--select", "SMP040"]).1,
+        "./module.py:1:1: SMP040 Import guard around a required dependency; import it directly and let a broken install fail\n"
+    );
+}
+
+#[test]
 fn pyproject_configures_rules_and_target() {
     let root = project(&[
         (

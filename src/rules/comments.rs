@@ -9,7 +9,7 @@ use crate::registry::Rule;
 use crate::rules::{class_defs, docstring, function_defs};
 
 const MAX_PARAGRAPH_WORDS: usize = 100;
-const DIVIDER_CHARS: &[char] = &['-', '=', '*', '#', '~', '_', '+', '/', '<', '>'];
+const DIVIDER_CHARS: &[char] = &['-', '=', '*', '#', '~', '_', '+', '/'];
 
 pub fn section_comment(checker: &mut Checker) {
     let source = checker.source;
@@ -30,7 +30,8 @@ pub fn section_comment(checker: &mut Checker) {
 fn is_section_comment(comment: &str) -> bool {
     let hashes = comment.chars().take_while(|char| *char == '#').count();
     let content = comment[hashes..].trim();
-    if content.starts_with('!') {
+    // `#!` is a shebang and `# ///` opens or closes PEP 723 inline script metadata.
+    if content.starts_with('!') || content == "///" || content.starts_with("/// ") {
         return false;
     }
     let lower = content.to_ascii_lowercase();
@@ -41,11 +42,16 @@ fn is_section_comment(comment: &str) -> bool {
         return content.chars().filter(|char| !char.is_whitespace()).count() + hashes >= 4
             && content.chars().all(|char| char.is_whitespace() || DIVIDER_CHARS.contains(&char));
     }
-    hashes >= 2 && !content.is_empty() || divider_run(content.chars()) || divider_run(content.chars().rev())
+    // Two repeated characters also end prose (`C++`), so a single run needs three; a pair on both ends frames a title.
+    let (leading, trailing) = (divider_run(content.chars()), divider_run(content.chars().rev()));
+    hashes >= 2 && !content.is_empty() || leading.max(trailing) >= 3 || leading.min(trailing) >= 2
 }
 
-fn divider_run(mut chars: impl Iterator<Item = char>) -> bool {
-    chars.next().filter(|char| DIVIDER_CHARS.contains(char)).is_some_and(|first| chars.next() == Some(first))
+fn divider_run(mut chars: impl Iterator<Item = char>) -> usize {
+    let Some(first) = chars.next().filter(|char| DIVIDER_CHARS.contains(char)) else {
+        return 0;
+    };
+    1 + chars.take_while(|char| *char == first).count()
 }
 
 pub fn long_paragraph(checker: &mut Checker) {
@@ -73,12 +79,9 @@ pub fn long_paragraph(checker: &mut Checker) {
         .chain(class_defs(body).into_iter().map(|class| docstring(&class.body)))
         .flatten();
     for literal in docstrings {
-        if literal
-            .value
-            .to_str()
-            .split("\n\n")
-            .any(|paragraph| paragraph.split_whitespace().count() > MAX_PARAGRAPH_WORDS)
-        {
+        if literal.value.to_str().lines().collect::<Vec<_>>().split(|line| line.trim().is_empty()).any(|paragraph| {
+            paragraph.iter().map(|line| line.split_whitespace().count()).sum::<usize>() > MAX_PARAGRAPH_WORDS
+        }) {
             long.push(literal.range());
         }
     }
@@ -156,17 +159,15 @@ impl Segment {
             if let Some(rest) = lower.strip_prefix(prefix) {
                 let rest = &text[text.len() - rest.len()..];
                 let (named, reason) = codes.split(rest);
-                return Self {
-                    directive: Some(prefix),
-                    missing_codes: !named && matches!(prefix, "ty: ignore" | "pyright: ignore"),
-                    has_reason: !reason.trim().is_empty(),
-                };
+                let missing_codes = !named && !matches!(codes, Codes::None);
+                return Self { directive: Some(prefix), missing_codes, has_reason: !reason.trim().is_empty() };
             }
         }
         Self { directive: None, missing_codes: false, has_reason: !text.is_empty() }
     }
 }
 
+#[derive(Clone, Copy)]
 enum Codes {
     Colon,
     Bracket,

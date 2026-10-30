@@ -1,0 +1,25 @@
+---
+source: src/snapshot.rs
+expression: "render(rule, fixture, target_version)"
+---
+13:5 SMP103 `forgotten` is not in `__all__`; name it `_forgotten` [unsafe fix]
+--- fixed (1 applied, 0 remaining) ---
+def listed() -> int:
+    return 1
+
+
+def extended() -> int:
+    return 2
+
+
+def appended() -> int:
+    return 3
+
+
+def _forgotten() -> int:
+    return 4
+
+
+__all__ = ["listed"]
+__all__.extend(["extended"])
+__all__.append("appended")
