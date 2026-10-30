@@ -89,7 +89,12 @@ index covers only the files in the run, so check the whole project, tests includ
 Fixes come in two strengths. A **safe** fix keeps behavior. An **unsafe** fix, applied only with `--unsafe-fixes`, can
 change it. The ones to watch:
 
-- SMP111 adds `kw_only=True`, which breaks callers that build the dataclass positionally.
+- SMP114 adds `kw_only=True`, which breaks callers that build the dataclass positionally.
+- SMP111 adds `frozen=True, slots=True`. The fix is safe only when no file in the run assigns or deletes an attribute
+  named like one of the fields, the class neither inherits nor is inherited from, and its body neither sets attributes
+  nor uses `super`, `cached_property`, `__dict__`, `__weakref__`, `__slots__`, `__setattr__` or `__delattr__`. A class
+  that already sets one of the options to `False` gets an unsafe fix. The check cannot see code that adds a new
+  attribute to an instance from outside the class.
 - SMP102 and SMP103 rename module-level names. They skip any name another file in the run imports, but cannot see
   importers outside it.
 - SMP050 moves a constant into its only function, which then rebuilds it on every call.
@@ -121,9 +126,10 @@ change it. The ones to watch:
 | SMP108 | future-annotations         | `from __future__ import annotations` on Python 3.14+        | yes    |
 | SMP109 | init-module-content        | `__init__.py` holding more than a docstring                 |        |
 | SMP110 | absolute-sibling-import    | absolute imports from the same package                      | yes    |
-| SMP111 | dataclass-options          | dataclasses without `frozen`, `slots` and `kw_only`         | unsafe |
+| SMP111 | dataclass-options          | dataclasses without `frozen` and `slots`                    | yes    |
 | SMP112 | string-concatenation       | `+` between strings                                         | unsafe |
 | SMP113 | missing-from-all           | names other modules import that `__all__` omits             | yes    |
+| SMP114 | dataclass-kw-only          | dataclasses without `kw_only`                               | unsafe |
 | SMP200 | test-class                 | test classes                                                | unsafe |
 | SMP201 | parametrize-without-id     | `parametrize` rows without `pytest.param(..., id=...)`      |        |
 | SMP202 | conditional-in-test        | `if`, `match` and conditional expressions in tests          |        |

@@ -11,6 +11,7 @@ use ruff_python_trivia::CommentRanges;
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::linter::Linter;
+use crate::project::Project;
 use crate::registry::Rule;
 use crate::semantic::Semantic;
 use crate::settings::Settings;
@@ -98,6 +99,10 @@ impl<'a> Checker<'a> {
 
     pub fn is_imported_elsewhere(&self, name: &str) -> bool {
         self.linter.project.is_imported(self.path, name)
+    }
+
+    pub fn project(&self) -> &'a Project {
+        self.linter.project
     }
 
     pub fn is_init_module(&self) -> bool {

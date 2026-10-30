@@ -4,48 +4,81 @@ use std::path::{Path, PathBuf};
 use rayon::prelude::*;
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, Expr, Stmt};
+use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 use ruff_python_parser::parse_module;
 
 pub struct Project {
     imported: HashMap<String, HashSet<String>>,
+    assigned_attributes: HashSet<String>,
+    base_classes: HashSet<String>,
 }
 
 impl Project {
     pub fn index(files: &[PathBuf], entry_points: &[String]) -> Self {
-        let edges: Vec<(String, String)> = files
+        let modules: Vec<ModuleFacts> = files
             .par_iter()
-            .flat_map_iter(|path| {
-                let source = std::fs::read_to_string(path).unwrap_or_default();
-                let Ok(parsed) = parse_module(&source) else {
-                    return Vec::new();
+            .filter_map(|path| {
+                let source = std::fs::read_to_string(path).ok()?;
+                let parsed = parse_module(&source).ok()?;
+                let mut imports = Imports {
+                    package: package_parts(path),
+                    aliases: HashMap::new(),
+                    edges: Vec::new(),
+                    assigned_attributes: Vec::new(),
+                    base_classes: Vec::new(),
                 };
-                let mut imports = Imports { package: package_parts(path), aliases: HashMap::new(), edges: Vec::new() };
                 imports.visit_body(&parsed.syntax().body);
                 let own = module_name(path);
-                imports.edges.into_iter().filter(|(module, _)| *module != own).collect::<Vec<_>>()
+                imports.edges.retain(|(module, _)| *module != own);
+                Some(ModuleFacts {
+                    edges: imports.edges,
+                    assigned_attributes: imports.assigned_attributes,
+                    base_classes: imports.base_classes,
+                })
             })
             .collect();
         let mut imported: HashMap<String, HashSet<String>> = HashMap::new();
-        for (module, name) in edges {
-            imported.entry(module).or_default().insert(name);
+        let mut assigned_attributes = HashSet::new();
+        let mut base_classes = HashSet::new();
+        for module in modules {
+            for (module, name) in module.edges {
+                imported.entry(module).or_default().insert(name);
+            }
+            assigned_attributes.extend(module.assigned_attributes);
+            base_classes.extend(module.base_classes);
         }
         for (module, attribute) in entry_points.iter().filter_map(|entry_point| entry_point.split_once(':')) {
             let name = attribute.split('.').next().unwrap_or_default().trim();
             imported.entry(module.trim().to_owned()).or_default().insert(name.to_owned());
         }
-        Self { imported }
+        Self { imported, assigned_attributes, base_classes }
     }
 
     pub fn is_imported(&self, path: &Path, name: &str) -> bool {
         self.imported.get(&module_name(path)).is_some_and(|names| names.contains(name))
     }
+
+    pub fn is_attribute_assigned(&self, name: &str) -> bool {
+        self.assigned_attributes.contains(name)
+    }
+
+    pub fn is_base_class(&self, name: &str) -> bool {
+        self.base_classes.contains(name)
+    }
+}
+
+struct ModuleFacts {
+    edges: Vec<(String, String)>,
+    assigned_attributes: Vec<String>,
+    base_classes: Vec<String>,
 }
 
 struct Imports<'a> {
     package: Vec<String>,
     aliases: HashMap<&'a str, String>,
     edges: Vec<(String, String)>,
+    assigned_attributes: Vec<String>,
+    base_classes: Vec<String>,
 }
 
 pub fn package_parts(path: &Path) -> Vec<String> {
@@ -83,12 +116,22 @@ impl<'a> Visitor<'a> for Imports<'a> {
                     };
                 }
             }
+            Stmt::ClassDef(class) => {
+                self.base_classes.extend(class.bases().iter().filter_map(|base| {
+                    UnqualifiedName::from_expr(base)
+                        .and_then(|name| name.segments().last().map(|last| (*last).to_owned()))
+                }));
+                visitor::walk_stmt(self, stmt);
+            }
             _ => visitor::walk_stmt(self, stmt),
         }
     }
 
     fn visit_expr(&mut self, expr: &'a Expr) {
         match expr {
+            Expr::Attribute(ast::ExprAttribute { attr, ctx: ExprContext::Store | ExprContext::Del, .. }) => {
+                self.assigned_attributes.push(attr.as_str().to_owned());
+            }
             Expr::Attribute(_) => {
                 if let Some(path) = self.qualified(expr) {
                     self.record_path(&path);
@@ -101,11 +144,15 @@ impl<'a> Visitor<'a> for Imports<'a> {
                     self.record_path(text);
                 }
             }
-            Expr::Call(ast::ExprCall { arguments, .. }) => {
-                if let [target, Expr::StringLiteral(attribute), ..] = &*arguments.args
-                    && let Some(module) = self.qualified(target)
-                {
-                    self.edges.push((module, attribute.value.to_str().to_owned()));
+            Expr::Call(ast::ExprCall { func, arguments, .. }) => {
+                if let [target, Expr::StringLiteral(attribute), ..] = &*arguments.args {
+                    let attribute = attribute.value.to_str();
+                    if func.as_name_expr().is_some_and(|name| name.id.as_str() == "setattr") {
+                        self.assigned_attributes.push(attribute.to_owned());
+                    }
+                    if let Some(module) = self.qualified(target) {
+                        self.edges.push((module, attribute.to_owned()));
+                    }
                 }
             }
             _ => {}

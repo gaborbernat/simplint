@@ -66,6 +66,7 @@ rules! {
     DataclassOptions => ("SMP111", "dataclass-options", Always, rules::dataclasses::dataclass_options),
     StringConcatenation => ("SMP112", "string-concatenation", Sometimes, rules::strings::string_concatenation),
     MissingFromAll => ("SMP113", "missing-from-all", Sometimes, rules::exports::missing_from_all),
+    DataclassKwOnly => ("SMP114", "dataclass-kw-only", Always, rules::dataclasses::dataclass_kw_only),
     TestClass => ("SMP200", "test-class", Sometimes, rules::pytest::test_class),
     ParametrizeWithoutId => ("SMP201", "parametrize-without-id", None, rules::pytest::parametrize_without_id),
     ConditionalInTest => ("SMP202", "conditional-in-test", None, rules::pytest::conditional_in_test),
