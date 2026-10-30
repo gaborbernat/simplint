@@ -10,6 +10,7 @@ on:
       - "docs/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "rust-toolchain.toml"
       - "pyproject.toml"
       - ".github/workflows/build.yaml"
       - ".github/workflows/_build.yaml"
@@ -50,6 +51,7 @@ jobs:
               - 'tasks/**'
               - 'Cargo.toml'
               - 'Cargo.lock'
+              - 'rust-toolchain.toml'
               - 'pyproject.toml'
               - 'tox.toml'
               - '.github/workflows/build.yaml'

@@ -101,6 +101,7 @@ manifest-path = "Cargo.toml"
 include = [
   { path = "docs/", format = "sdist" },
   { path = "README.rst", format = "sdist" },
+  { path = "rust-toolchain.toml", format = "sdist" },
   { path = "src/rules/docs/*.md", format = "sdist" },
 ]
 exclude = [
