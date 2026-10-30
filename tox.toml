@@ -1,0 +1,23 @@
+requires = [ "tox>=4.30", "tox-uv>=1.28" ]
+env_list = [ "docs" ]
+
+[env.docs]
+description = "build the documentation"
+base_python = [ "3.15" ]
+package = "wheel"
+dependency_groups = [ "docs" ]
+commands = [
+  [
+    "sphinx-build",
+    "-d",
+    "{env_tmp_dir}{/}docs_tree",
+    "docs",
+    "{env:READTHEDOCS_OUTPUT:{work_dir}{/}docs_out}/html",
+    "--color",
+    "-b",
+    "html",
+    { replace = "posargs", default = [ "-b", "linkcheck" ], extend = true },
+    "-W",
+  ],
+  [ "python", "-c", 'print(r"documentation available under file://{work_dir}{/}docs_out{/}html{/}index.html")' ],
+]

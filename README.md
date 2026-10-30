@@ -17,6 +17,12 @@ Found 5 issues.
 2 hidden fixes can be enabled with `--unsafe-fixes`.
 ```
 
+## Installation
+
+simplint ships as a single binary inside a Python wheel, like Ruff. Install it as a tool with
+`uv tool install simplint`, or run it without installing with `uvx simplint check .`; `pipx` and `pip` work as well. The
+[documentation](https://simplint.readthedocs.io) explains every rule.
+
 ## Running it
 
 `simplint check [PATHS]` lints the Python files under each path, honoring `.gitignore`. Add `--fix` to apply safe fixes,
@@ -100,42 +106,11 @@ change it. The ones to watch:
 - SMP050 moves a constant into its only function, which then rebuilds it on every call.
 - SMP020 moves decorated functions and classes, which changes decorator registration order.
 
-## Rules
-
-| Code   | Name                       | Checks                                                      | Fix    |
-| ------ | -------------------------- | ----------------------------------------------------------- | ------ |
-| SMP001 | section-comment            | comments used as dividers or section headers                | yes    |
-| SMP002 | function-docstring         | docstrings on functions and classes                         | unsafe |
-| SMP003 | multiline-module-docstring | module docstrings longer than one line                      |        |
-| SMP004 | test-module-docstring      | docstrings on test modules                                  | yes    |
-| SMP005 | long-paragraph             | comment or docstring paragraphs over 100 words              |        |
-| SMP010 | single-letter-name         | single-letter names outside loop and comprehension targets  |        |
-| SMP020 | definition-before-use      | helpers defined above their first caller, or away from it   | yes    |
-| SMP030 | forwarding-function        | private functions that only forward to another call         |        |
-| SMP040 | dependency-import-guard    | `try`/`except ImportError` around a required dependency     | unsafe |
-| SMP050 | single-user-constant       | module constants only one function uses                     | unsafe |
-| SMP060 | suppression-without-reason | `noqa`, `type: ignore` and `pragma` comments with no reason |        |
-| SMP100 | walrus-candidate           | an assignment the next `if` test could absorb with `:=`     | yes    |
-| SMP101 | missing-final              | module constants not annotated `Final`                      | yes    |
-| SMP102 | module-variable-case       | module variables not `UPPER_CASE`, or wrongly `_`-prefixed  | unsafe |
-| SMP103 | unexported-public-name     | public functions and classes missing from `__all__`         | unsafe |
-| SMP104 | all-not-last               | `__all__` not at the end of the module                      | yes    |
-| SMP105 | callable-ellipsis          | `Callable[..., T]`                                          |        |
-| SMP106 | object-annotation          | `object` annotations outside `TypeIs` guards and dunders    |        |
-| SMP107 | vars-call                  | `vars()` calls                                              |        |
-| SMP108 | future-annotations         | `from __future__ import annotations` on Python 3.14+        | yes    |
-| SMP109 | init-module-content        | `__init__.py` holding more than a docstring                 |        |
-| SMP110 | absolute-sibling-import    | absolute imports from the same package                      | yes    |
-| SMP111 | dataclass-options          | dataclasses without `frozen` and `slots`                    | yes    |
-| SMP112 | string-concatenation       | `+` between strings                                         | unsafe |
-| SMP113 | missing-from-all           | names other modules import that `__all__` omits             | yes    |
-| SMP114 | dataclass-kw-only          | dataclasses without `kw_only`                               | unsafe |
-| SMP200 | test-class                 | test classes                                                | unsafe |
-| SMP201 | parametrize-without-id     | `parametrize` rows without `pytest.param(..., id=...)`      |        |
-| SMP202 | conditional-in-test        | `if`, `match` and conditional expressions in tests          |        |
-| SMP203 | mock-attribute-assignment  | mock attributes assigned after construction                 | yes    |
-| SMP204 | mock-without-spec          | mocks and patches without a spec                            |        |
-| SMP205 | constant-assert            | assertions on a truthy constant                             | yes    |
-
 A rule reports without a fix when the fix cannot be done safely in text: the statement shares its line with another, a
 string spans several lines, or the new name would collide with an existing one.
+
+## Rules
+
+`simplint rules` lists every rule, `simplint rule SMP111` explains one, and the
+[rules reference](https://simplint.readthedocs.io/en/latest/rules.html) documents all of them with examples and fix
+safety.

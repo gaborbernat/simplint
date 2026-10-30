@@ -1,1 +1,5 @@
 /target
+/.tox
+/dist
+/docs/rules
+/docs/rules.md
