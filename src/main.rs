@@ -145,6 +145,7 @@ fn discover(args: &CheckArgs) -> Result<Vec<(PathBuf, Arc<Settings>)>> {
             files.push((path.to_path_buf(), settings));
         }
     }
+    files.sort_by(|(left, _), (right, _)| left.cmp(right));
     Ok(files)
 }
 
