@@ -79,7 +79,7 @@ impl Settings {
     pub fn new(root: PathBuf) -> Self {
         Self {
             root,
-            target_version: PythonVersion::PY310,
+            target_version: PythonVersion::PY311,
             dependencies: HashSet::new(),
             entry_points: Vec::new(),
             rules: RuleSet::all(),
