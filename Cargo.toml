@@ -22,6 +22,7 @@ ruff_python_trivia = "=0.0.20"
 ruff_source_file = "=0.0.20"
 ruff_text_size = "=0.0.20"
 serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
 similar = "3.2.1"
 toml = "1.1.8"
 

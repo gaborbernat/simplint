@@ -39,30 +39,61 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    /// Lint Python files and optionally fix what is found
     Check(CheckArgs),
-    Rules,
+    /// List every rule with its fix availability
+    Rules {
+        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
+        output_format: OutputFormat,
+    },
+    /// Explain a rule
+    Rule {
+        /// Rule code or name, such as `SMP111` or `dataclass-options`
+        rule: String,
+    },
 }
 
 #[derive(Args)]
 struct CheckArgs {
+    /// Files or directories to lint
     #[arg(default_value = ".")]
     paths: Vec<PathBuf>,
+    /// Apply fixes and write the files back
     #[arg(long)]
     fix: bool,
+    /// Also apply fixes that can change behavior
     #[arg(long)]
     unsafe_fixes: bool,
+    /// Print the fixes as a unified diff instead of writing them
     #[arg(long, conflicts_with = "fix")]
     diff: bool,
+    /// Rule codes, code prefixes or names to enable; replaces the configured selection
     #[arg(long, value_delimiter = ',')]
     select: Vec<String>,
+    /// Rule codes, code prefixes or names to disable
     #[arg(long, value_delimiter = ',')]
     ignore: Vec<String>,
+}
+
+#[derive(Clone, Copy, clap::ValueEnum)]
+enum OutputFormat {
+    Text,
+    Json,
+}
+
+#[derive(serde::Serialize)]
+struct RuleEntry {
+    code: &'static str,
+    name: &'static str,
+    summary: &'static str,
+    fix: FixAvailability,
+    explanation: &'static str,
 }
 
 fn main() -> Result<ExitCode> {
     match Cli::parse().command {
         Command::Check(args) => check(&args),
-        Command::Rules => {
+        Command::Rules { output_format: OutputFormat::Text } => {
             for rule in Rule::ALL {
                 let fix = match rule.fix_availability() {
                     FixAvailability::Always => " (fix)",
@@ -71,6 +102,33 @@ fn main() -> Result<ExitCode> {
                 };
                 println!("{} {}{fix}", rule.code(), rule.name());
             }
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Rules { output_format: OutputFormat::Json } => {
+            let entries: Vec<RuleEntry> = Rule::ALL
+                .iter()
+                .map(|rule| RuleEntry {
+                    code: rule.code(),
+                    name: rule.name(),
+                    summary: rule.summary(),
+                    fix: rule.fix_availability(),
+                    explanation: rule.explanation(),
+                })
+                .collect();
+            println!("{}", serde_json::to_string_pretty(&entries)?);
+            Ok(ExitCode::SUCCESS)
+        }
+        Command::Rule { rule: selector } => {
+            let Some(rule) = Rule::ALL.iter().find(|rule| rule.code() == selector || rule.name() == selector) else {
+                eprintln!("unknown rule `{selector}`");
+                return Ok(ExitCode::FAILURE);
+            };
+            let fix = match rule.fix_availability() {
+                FixAvailability::Always => "Fix is always available.",
+                FixAvailability::Sometimes => "Fix is sometimes available.",
+                FixAvailability::None => "No fix is available.",
+            };
+            print!("# {} ({})\n\n{fix}\n\n{}", rule.name(), rule.code(), rule.explanation());
             Ok(ExitCode::SUCCESS)
         }
     }

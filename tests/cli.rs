@@ -4,6 +4,7 @@ use std::path::Path;
 
 use assert_cmd::Command;
 use tempfile::TempDir;
+use test_case::test_case;
 
 fn project(files: &[(&str, &str)]) -> TempDir {
     let root = TempDir::new().expect("temporary directory");
@@ -155,6 +156,37 @@ fn rules_lists_codes() {
             ]
         )
     );
+}
+
+#[test]
+fn rules_json_carries_explanations() {
+    let root = project(&[]);
+    let (code, stdout, _) = simplint(root.path(), &["rules", "--output-format", "json"]);
+    let first = stdout.split("},").next().expect("one entry").to_owned();
+    assert_eq!(
+        (
+            code,
+            first.contains(r#""code": "SMP001""#),
+            first.contains(r#""fix": "always""#),
+            first.contains("## What it does")
+        ),
+        (0, true, true, true)
+    );
+}
+
+#[test_case("dataclass-kw-only", "# dataclass-kw-only (SMP114)", "Fix is always available." ; "by_name_always")]
+#[test_case("SMP002", "# function-docstring (SMP002)", "Fix is sometimes available." ; "by_code_sometimes")]
+#[test_case("SMP003", "# multiline-module-docstring (SMP003)", "No fix is available." ; "by_code_never")]
+fn rule_explains(selector: &str, title: &str, fix: &str) {
+    let root = project(&[]);
+    let (code, stdout, _) = simplint(root.path(), &["rule", selector]);
+    assert_eq!((code, stdout.lines().take(3).collect::<Vec<_>>()), (0, vec![title, "", fix]));
+}
+
+#[test]
+fn rule_rejects_unknown() {
+    let root = project(&[]);
+    assert_eq!(simplint(root.path(), &["rule", "SMP999"]), (1, String::new(), "unknown rule `SMP999`\n".to_owned()));
 }
 
 #[test]
