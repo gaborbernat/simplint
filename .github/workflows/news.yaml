@@ -1,4 +1,4 @@
-name: 📝 changelog
+name: 📝 Changelog
 on:
   pull_request:
     types: [opened, reopened, synchronize, labeled, unlabeled]
@@ -12,22 +12,41 @@ jobs:
     name: 📝 News fragment
     runs-on: ubuntu-26.04
     timeout-minutes: 5
+    permissions:
+      contents: read
     steps:
       - name: 📥 Check out code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: 🧭 List changed paths
+        run: git diff --diff-filter=AM --name-only "origin/$GITHUB_BASE_REF"...HEAD >"$RUNNER_TEMP/changed-paths"
+      - name: 🧭 Detect release lock changes
+        id: release-lock
+        run: |
+          changed=$(git diff --name-only "origin/$GITHUB_BASE_REF...HEAD" -- pyproject.toml pylock.toml nab.toml)
+          if [[ -n "$changed" ]]; then
+            echo 'changed=true' >>"$GITHUB_OUTPUT"
+          else
+            echo 'changed=false' >>"$GITHUB_OUTPUT"
+          fi
+      - name: 🧭 Detect changelog changes
+        id: changelog
+        run: |
+          if [[ -n $(git diff --name-only "origin/$GITHUB_BASE_REF...HEAD" -- changelog.d) ]]; then
+            echo 'changed=true' >>"$GITHUB_OUTPUT"
+          else
+            echo 'changed=false' >>"$GITHUB_OUTPUT"
+          fi
       - name: 🔍 Validate fragments
-        env:
-          SKIP_NEWS: ${{ contains(github.event.pull_request.labels.*.name, 'skip news') }}
-          BOT_AUTHOR: ${{ github.event.pull_request.user.type == 'Bot' }}
+        id: fragments
         run: |
           set -euo pipefail
-          found=false
+          found_any=false
           while IFS= read -r path; do
             [[ "$path" == changelog.d/*.md ]] || continue
-            found=true
+            found_any=true
             name=${path##*/}
             category=${name%.md}
             category=${category##*.}
@@ -45,14 +64,34 @@ jobs:
               echo "::error::invalid or empty changelog fragment: $path"
               exit 1
             fi
-          done < <(git diff --diff-filter=AM --name-only "origin/$GITHUB_BASE_REF"...HEAD)
-          if [[ "$found" != true && "$SKIP_NEWS" != true && "$BOT_AUTHOR" != true ]]; then
-            echo '::error::add a changelog.d fragment or apply the skip news label'
-            exit 1
+          done <"$RUNNER_TEMP/changed-paths"
+          echo "any=$found_any" >>"$GITHUB_OUTPUT"
+      - name: 🔍 Require a fragment
+        env:
+          SKIP_NEWS: ${{ contains(github.event.pull_request.labels.*.name, 'skip news') }}
+          BOT_AUTHOR: ${{ github.event.pull_request.user.type == 'Bot' }}
+          FOUND_ANY: ${{ steps.fragments.outputs.any }}
+        run: |
+          if [[ "$SKIP_NEWS" == true || "$BOT_AUTHOR" == true || "$FOUND_ANY" == true ]]; then
+            exit 0
           fi
-      - name: 🔍 Check the fragments assemble
+          echo '::error::add a changelog.d fragment or apply skip news'
+          exit 1
+      - name: 🐍 Install uv
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: latest-known
+          python-version: '3.15'
+          enable-cache: false
+      - name: 🔒 Check the release lock
+        if: steps.release-lock.outputs.changed == 'true'
+        uses: tox-dev/github-workflows/refresh-release-lock@57a765127aae73adf7d0e24a7fe0f067f2d3ea3e # 6.2.1
+        with:
+          mode: check
+      - name: 🔍 Check assembled news
+        if: steps.changelog.outputs.changed == 'true'
         run: |
           set -euo pipefail
           root=$(mktemp -d -p "$RUNNER_TEMP")
           cp -r CHANGELOG.md changelog.d "$root"
-          python3 tasks/assemble_release.py 0.0.0 --root "$root"
+          uv run --no-project --python 3.15 python tasks/assemble_release.py 0.0.0 --root "$root"

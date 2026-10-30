@@ -1,0 +1,20 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 100%
+        threshold: 0%
+    patch:
+      default:
+        target: 100%
+comment:
+  layout: "condensed_header, flags, files"
+flag_management:
+  # every package proves its own 100%, so one package's report cannot cover for another's
+  default_rules:
+    statuses:
+      - type: project
+        target: 100%
+        threshold: 0%
+      - type: patch
+        target: 100%

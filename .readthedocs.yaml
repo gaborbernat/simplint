@@ -2,9 +2,10 @@ version: 2
 build:
   os: ubuntu-lts-latest
   tools:
-    rust: latest
+    rust: "latest"
   commands:
     - curl -LsSf https://astral.sh/uv/install.sh | sh
     - ~/.local/bin/uv tool install tox --with tox-uv -p 3.15 --managed-python
+    - ~/.local/bin/tox run -e readme
     - ~/.local/bin/tox run -e docs -vv --notest
     - ~/.local/bin/tox run -e docs --skip-pkg-install --

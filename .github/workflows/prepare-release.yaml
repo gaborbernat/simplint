@@ -1,4 +1,4 @@
-name: 🏷️ prepare release
+name: 🏷️ Prepare release
 on:
   workflow_dispatch:
     inputs:
@@ -22,6 +22,7 @@ jobs:
       pull-requests: read
     outputs:
       version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
       patch-sha: ${{ steps.patch.outputs.sha }}
     steps:
       - name: 📥 Check out code
@@ -42,7 +43,7 @@ jobs:
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: latest-known
-          python-version: "3.15"
+          python-version: '3.15'
           enable-cache: false
       - name: 📦 Install locked release tools
         uses: tox-dev/github-workflows/install-locked-tools@57a765127aae73adf7d0e24a7fe0f067f2d3ea3e # 6.2.1
@@ -55,16 +56,19 @@ jobs:
           BUMP: ${{ inputs.bump }}
         run: |
           set -euo pipefail
-          version=$(git tag --list | "$RUNNER_TEMP/release-tools/bin/release-creator" tags --next "$BUMP")
-          printf 'version=%s\n' "$version" >>"$GITHUB_OUTPUT"
+          tag=$(git tag --list | "$RUNNER_TEMP/release-tools/bin/release-creator" tags --next "$BUMP")
+          printf 'version=%s\ntag=%s\n' "$tag" "$tag" >>"$GITHUB_OUTPUT"
       - name: 📝 Link merged fragments and authors
         env:
           GH_TOKEN: ${{ github.token }}
-        run: '"$RUNNER_TEMP/release-tools/bin/release-creator" fragments --repository "$GITHUB_REPOSITORY"'
+        run: |
+          "$RUNNER_TEMP/release-tools/bin/release-creator" fragments --repository "$GITHUB_REPOSITORY"
       - name: 🏷️ Bump the version
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: cargo set-version "$VERSION"
+      - name: 📖 Generate README.rst
+        run: python3 tasks/generate_readme.py
       - name: 📝 Assemble the changelog
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -75,9 +79,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: >-
           "$RUNNER_TEMP/release-tools/bin/release-creator" contributors --changelog CHANGELOG.md --version "$VERSION" --repository "$GITHUB_REPOSITORY"
-      - name: 🧹 Format the changelog
-        run: '"$RUNNER_TEMP/release-tools/bin/mdformat" --wrap 120 CHANGELOG.md'
-      - name: 📝 Write the release patch
+      - name: 🧹 Format the assembled changelog
+        run: |
+          "$RUNNER_TEMP/release-tools/bin/prek" run mdformat --files CHANGELOG.md ||
+            "$RUNNER_TEMP/release-tools/bin/prek" run mdformat --files CHANGELOG.md
+      - name: 📝 Write the validated release patch
         id: patch
         run: |
           set -euo pipefail
@@ -108,7 +114,7 @@ jobs:
         with:
           name: release-patch
           path: ${{ runner.temp }}/release-patch
-      - name: 🔍 Verify and apply the patch
+      - name: 🔍 Verify the prepared source and patch
         env:
           PATCH_SHA: ${{ needs.assemble.outputs.patch-sha }}
         run: |
@@ -121,7 +127,7 @@ jobs:
           set -euo pipefail
           while IFS= read -r path; do
             case "$path" in
-            CHANGELOG.md | Cargo.lock | Cargo.toml | changelog.d/*.md) ;;
+            CHANGELOG.md | Cargo.lock | uv.lock | Cargo.toml | README.rst | changelog.d/*.md) ;;
             *)
               echo "::error::unexpected release path: $path"
               exit 1
@@ -150,8 +156,8 @@ jobs:
       - name: 🏷️ Commit and tag release
         uses: tox-dev/github-workflows/commit-and-tag@57a765127aae73adf7d0e24a7fe0f067f2d3ea3e # 6.2.1
         with:
-          version: ${{ needs.assemble.outputs.version }}
+          version: ${{ needs.assemble.outputs.tag }}
           token: ${{ steps.token.outputs.token }}
           app-slug: ${{ steps.token.outputs.app-slug }}
-          message: release ${{ needs.assemble.outputs.version }}
-          annotated: "true"
+          message: release ${{ needs.assemble.outputs.tag }}
+          annotated: 'true'

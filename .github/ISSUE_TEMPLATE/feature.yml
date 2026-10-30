@@ -1,0 +1,31 @@
+name: "Feature"
+description: Suggest a rule or an enhancement
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Proposal
+      description: Describe the requested rule or behavior.
+      placeholder: What should simplint report or fix?
+    validations:
+      required: true
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      description: Explain the current problem and who encounters it.
+      placeholder: Include a concrete file or workflow.
+    validations:
+      required: true
+  - type: textarea
+    id: example
+    attributes:
+      label: Example
+      description: Show the code before and after when possible.
+      render: python
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: List current workarounds, Ruff rules you tried, or other designs you considered.

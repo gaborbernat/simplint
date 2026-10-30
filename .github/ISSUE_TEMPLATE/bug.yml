@@ -1,0 +1,46 @@
+name: "Bug"
+description: Report a wrong diagnostic, a broken fix or a crash
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe the failure and how to reproduce it.
+      placeholder: What command did you run, and what happened?
+    validations:
+      required: true
+  - type: textarea
+    id: input
+    attributes:
+      label: Input
+      description: Include the smallest Python file that reproduces the failure, and any `[tool.simplint]` settings.
+      placeholder: Paste Python here
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+      description: Show the diagnostics or fixed code you expected.
+      render: python
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result
+      description: Show the diagnostics, fixed code or error simplint produced.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Paste the output of `simplint --version`.
+      placeholder: "simplint 0.x.x"
+    validations:
+      required: true
+  - type: textarea
+    id: additional
+    attributes:
+      label: Environment
+      description: Include the operating system and how you installed simplint.

@@ -1,0 +1,9 @@
+- id: simplint
+  name: simplint
+  description: Lint Python with the simp house style and apply safe fixes
+  entry: simplint check --fix
+  language: rust
+  types_or: [python, pyi]
+  # the rules index which names every module imports, so the hook lints the whole project rather than the changed files
+  pass_filenames: false
+  require_serial: true

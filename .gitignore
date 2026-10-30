@@ -1,5 +1,13 @@
 /target
 /.tox
 /dist
-/docs/rules
-/docs/rules.md
+__pycache__
+*.pending-snap
+*.snap.new
+*.snap.pending
+/cov-html
+coverage.lcov
+lcov.info
+README.rst
+docs/_generated
+docs/changelog.rst

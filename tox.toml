@@ -1,12 +1,52 @@
-requires = [ "tox>=4.30", "tox-uv>=1.28" ]
-env_list = [ "docs" ]
+requires = [ "tox>=4.65.5", "tox-uv>=1.37" ]
+env_list = [ "3.15", "3.14", "3.13", "3.12", "3.11", "docs", "fix", "pkg_meta", "pkg_sdist", "type" ]
+skip_missing_interpreters = true
+
+[env_run_base]
+runner = "uv-venv-lock-runner"
+uv_sync_locked = false
+description = "run the wheel tests under {env_name}"
+default_base_python = [ "3.15" ]
+package = "wheel"
+wheel_build_env = ".pkg"
+dependency_groups = [ "test" ]
+pass_env = [ "PYTEST_*", "SSL_CERT_FILE" ]
+set_env.COVERAGE_FILE = { replace = "env", name = "COVERAGE_FILE", default = "{work_dir}{/}.coverage.{env_name}" }
+commands = [
+  [
+    "pytest",
+    { replace = "posargs", default = [
+      "--durations",
+      "5",
+      "--junitxml",
+      "{work_dir}{/}junit.{env_name}.xml",
+      "--no-cov-on-fail",
+      "--cov",
+      "{tox_root}{/}tests{/}wheel",
+      "--cov-config",
+      "{tox_root}{/}pyproject.toml",
+      "--cov-context",
+      "test",
+      "--cov-report",
+      "term-missing:skip-covered",
+      "--cov-report",
+      "html:{env_tmp_dir}{/}htmlcov",
+      "--cov-report",
+      "xml:{work_dir}{/}coverage.{env_name}.xml",
+      "tests{/}wheel",
+    ], extend = true },
+  ],
+]
+
+[env_pkg_base]
+default_base_python = [ "3.15" ]
 
 [env.docs]
-description = "build the documentation"
+description = "build documentation"
 base_python = [ "3.15" ]
-package = "wheel"
 dependency_groups = [ "docs" ]
 commands = [
+  [ "python", "-m", "tasks.generate_changelog" ],
   [
     "sphinx-build",
     "-d",
@@ -16,8 +56,79 @@ commands = [
     "--color",
     "-b",
     "html",
-    { replace = "posargs", default = [ "-b", "linkcheck" ], extend = true },
+    { replace = "posargs", default = [
+      "-b",
+      "linkcheck",
+    ], extend = true },
     "-W",
   ],
-  [ "python", "-c", 'print(r"documentation available under file://{work_dir}{/}docs_out{/}html{/}index.html")' ],
+  [
+    "python",
+    "-c",
+    'print(r"documentation available under file://{work_dir}{/}docs_out{/}html{/}index.html")',
+  ],
 ]
+
+[env.fix]
+description = "run the repository hooks"
+skip_install = true
+dependency_groups = [ "fix" ]
+commands = [ [ "pre-commit", "run", "--all-files", "--show-diff-on-failure" ] ]
+
+[env.pkg_meta]
+description = "validate package metadata"
+skip_install = true
+dependency_groups = [ "pkg-meta" ]
+commands = [
+  [
+    "uv",
+    "build",
+    "--sdist",
+    "--wheel",
+    "--out-dir",
+    "{env_tmp_dir}",
+    ".",
+  ],
+  [
+    "twine",
+    "check",
+    "{env_tmp_dir}{/}*",
+  ],
+  # a binary wheel carries only the script, so its library is empty by design
+  [
+    "check-wheel-contents",
+    "--no-config",
+    "--ignore",
+    "W007",
+    "{env_tmp_dir}",
+  ],
+]
+
+[env.pkg_sdist]
+runner = "uv-venv-runner"
+description = "build and test the source distribution"
+skip_install = true
+dependency_groups = [ "test" ]
+commands = [ [ "python", "tasks{/}check_sdist.py" ] ]
+
+[env.type]
+description = "run type checks"
+skip_install = true
+dependency_groups = [ "type", "docs" ]
+commands = [ [ "mypy", "tasks", "tests", "toxfile.py" ], [ "mypy", "docs" ] ]
+
+[env.dev]
+description = "create a development environment at {envdir}"
+dependency_groups = [ "dev" ]
+commands = [
+  [ "uv", "pip", "tree" ],
+  [ "simplint", "--version" ],
+  [ "python", "-c", 'print(r"{env_python}")' ],
+]
+
+[env.readme]
+runner = "uv-venv-runner"
+description = "generate README.rst from docs"
+skip_install = true
+dependency_groups = []
+commands = [ [ "python", "tasks{/}generate_readme.py" ] ]
