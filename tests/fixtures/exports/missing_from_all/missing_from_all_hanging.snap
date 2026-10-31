@@ -1,0 +1,28 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+17:5 SMP113 `gamma` is imported by other modules; list it in `__all__` [fix: Add `gamma` to `__all__`]
+--- fixed (1 applied, 0 remaining) ---
+__all__ = [
+    "alpha",
+    "beta",
+    "delta",
+    "gamma",
+]
+
+
+def alpha() -> int:
+    return 1
+
+
+def beta() -> int:
+    return 2
+
+
+def delta() -> int:
+    return 3
+
+
+def gamma() -> int:
+    return 4

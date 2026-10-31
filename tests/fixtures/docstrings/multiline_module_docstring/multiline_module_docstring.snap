@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:1 SMP003 Module docstring spans more than one line; keep one line saying what the module is

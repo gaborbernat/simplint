@@ -22,11 +22,16 @@ _MAJOR: Final[int] = 3
 
 
 def main(*, check: bool) -> None:
+    """
+    Report the places that name outdated Python releases and rewrite them.
+
+    :param check: exit with status 1 on drift instead of rewriting the places
+    """
     newest, oldest = newest_candidate(), oldest_supported()
     places = written_places(newest, oldest)
     drifted = [(place, said) for place in places if (said := place.said()) != place.spelling]
     if not drifted:
-        print(f"the defaults name {_MAJOR}.{oldest} through {_MAJOR}.{newest}")
+        print(f"the package names {_MAJOR}.{oldest} through {_MAJOR}.{newest}")
         return
     for place, said in drifted:
         print(f"{place.path.relative_to(_ROOT)}: {said!r} -> {place.spelling!r}")
@@ -39,10 +44,20 @@ def main(*, check: bool) -> None:
 # A release still in alpha or beta is one whose own behavior is still moving, and a candidate PyPI publishes no
 # classifier for is one no project can name, so the newest release needs both.
 def newest_candidate() -> int:
+    """
+    Find the newest Python minor release that has a release candidate and a trove classifier.
+
+    :returns: the minor version number
+    """
     return max(with_a_candidate() & with_a_classifier())
 
 
 def with_a_candidate() -> set[int]:
+    """
+    List the Python minor releases that python.org has published a release candidate for.
+
+    :returns: the minor version numbers
+    """
     released = fetch("https://www.python.org/api/v2/downloads/release/?is_published=true")
     release_candidate = re.compile(
         rf"""
@@ -54,14 +69,25 @@ def with_a_candidate() -> set[int]:
 
 
 def with_a_classifier() -> set[int]:
+    """
+    List the Python minor releases that have a trove classifier.
+
+    :returns: the minor version numbers
+    """
     prefix = f"Programming Language :: Python :: {_MAJOR}."
     return {
         int(minor) for name in classifiers if name.startswith(prefix) and (minor := name.removeprefix(prefix)).isdigit()
     }
 
 
-# The oldest release still carrying fixes is the target version simplint assumes when a project names none.
+# The oldest release still carrying fixes is the oldest the package installs on; the target version a project that names
+# none gets is Ruff's default, which Ruff maintains.
 def oldest_supported() -> int:
+    """
+    Find the oldest Python minor release that has not reached end of life.
+
+    :returns: the minor version number
+    """
     today = datetime.now(tz=UTC).date().isoformat()
     cycles = fetch("https://endoflife.date/api/python.json")
     live = (row for row in cycles if isinstance(row["eol"], str) and row["eol"] > today)
@@ -69,36 +95,35 @@ def oldest_supported() -> int:
 
 
 def fetch(url: str) -> list[dict[str, str]]:
+    """
+    Download and decode a JSON list.
+
+    :param url: the address to fetch
+    :returns: the decoded rows
+    """
     with urllib.request.urlopen(url, timeout=30) as response:
         decoded: list[dict[str, str]] = json.load(response)
     return decoded
 
 
 def written_places(newest: int, oldest: int) -> list[Place]:
+    """
+    Describe each place in the project that names the supported Python releases.
+
+    :param newest: the newest supported minor release
+    :param oldest: the oldest supported minor release
+    :returns: the places with their expected spelling
+    """
     classifier_run = re.compile(
         r"""(?:\ \ "Programming\ Language\ ::\ Python\ ::\ \d+\.\d+",\n)+""",  # The per-release classifier run.
         re.VERBOSE,
     )
     run = "".join(f'  "Programming Language :: Python :: {_MAJOR}.{minor}",\n' for minor in range(oldest, newest + 1))
-    default_target = re.compile(
-        r"""target_version:\ PythonVersion::PY\d+,""",  # Fallback target version in the settings.
-        re.VERBOSE,
-    )
-    doc_target = re.compile(
-        r"""then\ to\ Python\ \d+\.\d+""",  # The documented fallback.
-        re.VERBOSE,
-    )
     requires_python = re.compile(
         r'''requires-python\ =\ ">=\d+\.\d+"''',  # The package's own floor.
         re.VERBOSE,
     )
     return [
-        Place(
-            path=_ROOT / "src/settings.rs",
-            pattern=default_target,
-            spelling=f"target_version: PythonVersion::PY{_MAJOR}{oldest},",
-        ),
-        Place(path=_ROOT / "docs/configuration.rst", pattern=doc_target, spelling=f"then to Python {_MAJOR}.{oldest}"),
         Place(
             path=_ROOT / "pyproject.toml", pattern=requires_python, spelling=f'requires-python = ">={_MAJOR}.{oldest}"'
         ),
@@ -108,11 +133,19 @@ def written_places(newest: int, oldest: int) -> list[Place]:
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Place:
+    """A spot in a file that names a Python release, with the text it should hold."""
+
     path: Path
     pattern: re.Pattern[str]
     spelling: str
 
     def said(self) -> str:
+        """
+        Return the text the file holds at this place.
+
+        :returns: the matched text
+        :raises SystemExit: if the pattern matches nothing in the file
+        """
         found = self.pattern.search(self.path.read_text(encoding="utf-8"))
         if found is None:
             print(f"{self.path.relative_to(_ROOT)}: nothing matches {self.pattern.pattern}")
@@ -120,6 +153,11 @@ class Place:
         return found.group(0)
 
     def write(self, said: str) -> None:
+        """
+        Replace the text in the file with the expected spelling.
+
+        :param said: the text the file holds now
+        """
         self.path.write_text(self.path.read_text(encoding="utf-8").replace(said, self.spelling), encoding="utf-8")
 
 

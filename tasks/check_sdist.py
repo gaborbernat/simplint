@@ -8,6 +8,11 @@ from tempfile import TemporaryDirectory
 
 
 def main() -> None:
+    """
+    Check that the sdist builds a wheel that runs offline and ships a test suite that passes.
+
+    :raises subprocess.CalledProcessError: if a build, install or test step fails
+    """
     with TemporaryDirectory() as folder:
         at = Path(folder)
         sdist = _build_sdist(at / "sdist")

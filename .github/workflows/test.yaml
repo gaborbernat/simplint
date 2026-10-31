@@ -29,7 +29,6 @@ jobs:
             run:
               - 'src/**'
               - 'tests/**'
-              - 'resources/**'
               - 'docs/**'
               - 'tasks/**'
               - 'Cargo.toml'
@@ -37,12 +36,13 @@ jobs:
               - 'rust-toolchain.toml'
               - 'pyproject.toml'
               - 'tox.toml'
+              - 'codecov.yml'
               - '.github/workflows/test.yaml'
   clippy:
     name: 🧹 clippy
     needs: changes
     if: needs.changes.outputs.run == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: 📥 Check out code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -59,7 +59,7 @@ jobs:
     name: 🧹 fmt
     needs: changes
     if: needs.changes.outputs.run == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: 📥 Check out code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -76,7 +76,7 @@ jobs:
     name: 🏗️ build
     needs: changes
     if: needs.changes.outputs.run == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - name: 📥 Check out code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -91,7 +91,7 @@ jobs:
     name: 🧪 test
     needs: changes
     if: needs.changes.outputs.run == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     environment: test
     steps:
       - name: 📥 Check out code
@@ -108,7 +108,7 @@ jobs:
         with:
           tool: cargo-llvm-cov,cargo-nextest
       - name: 🧪 Run tests with coverage
-        run: cargo llvm-cov nextest --locked --ignore-filename-regex 'guards\.rs' --fail-uncovered-lines 0 --show-missing-lines --codecov --output-path coverage.json
+        run: cargo llvm-cov nextest --locked --ignore-filename-regex 'fix/errors\.rs' --fail-uncovered-lines 0 --show-missing-lines --codecov --output-path coverage.json
       - name: 📊 Upload coverage
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
@@ -123,7 +123,11 @@ jobs:
       fail-fast: false
       matrix:
         py: ["3.15", "3.14", "3.13", "3.12", "3.11"]
-        os: [ubuntu-24.04, windows-2025, macos-15]
+        os: [ubuntu-26.04]
+        # The wheel holds one binary whatever the Python, so the other platforms run the newest Python only.
+        include:
+          - {py: "3.15", os: windows-2025}
+          - {py: "3.15", os: macos-26}
     steps:
       - name: 📥 Check out code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -144,8 +148,9 @@ jobs:
         run: uv python install --python-preference only-managed ${{ matrix.py }}
       - name: 🦀 Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
-      - name: 📖 Generate README.rst
-        run: tox run -e readme
+      # The wheel build reuses this binary from target/, so a Rust error shows in its own step.
+      - name: 🏗️ Build the binary
+        run: cargo build --release --locked
       - name: 📦 Set up test suite
         run: tox run -vv --notest --skip-missing-interpreters false -e ${{ matrix.py }}
       - name: 🧪 Run test suite
@@ -156,11 +161,11 @@ jobs:
     name: 🔍 ${{ matrix.env }}
     needs: changes
     if: needs.changes.outputs.run == 'true'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix:
-        env: [type, dev, pkg_meta, pkg_sdist]
+        env: [type, dev, docs, pkg_meta, pkg_sdist, tasks]
     steps:
       - name: 📥 Check out code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -179,8 +184,6 @@ jobs:
         run: uv tool install --python-preference only-managed --python 3.15 tox --with tox-uv
       - name: 🦀 Install Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
-      - name: 📖 Generate README.rst
-        run: tox run -e readme
       - name: 📦 Set up test suite
         run: tox run -vv --notest --skip-missing-interpreters false -e ${{ matrix.env }}
       - name: 🧪 Run test suite

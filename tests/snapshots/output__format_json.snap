@@ -1,0 +1,61 @@
+---
+source: tests/output.rs
+expression: "format!(\"exit code {code}\\n{report}\")"
+---
+exit code 1
+[
+  {
+    "cell": null,
+    "code": "SMP001",
+    "end_location": {
+      "column": 18,
+      "row": 1
+    },
+    "filename": "[ROOT]/module.py",
+    "fix": {
+      "applicability": "safe",
+      "edits": [
+        {
+          "content": "",
+          "end_location": {
+            "column": 1,
+            "row": 2
+          },
+          "location": {
+            "column": 1,
+            "row": 1
+          }
+        }
+      ],
+      "message": "Remove the section comment"
+    },
+    "location": {
+      "column": 1,
+      "row": 1
+    },
+    "message": "Section comment groups code; extract a named function or class instead",
+    "name": "section-comment",
+    "noqa_row": 1,
+    "severity": "error",
+    "url": "https://simplint.readthedocs.io/en/latest/_generated/rules/SMP001.html"
+  },
+  {
+    "cell": null,
+    "code": "SMP010",
+    "end_location": {
+      "column": 2,
+      "row": 2
+    },
+    "filename": "[ROOT]/module.py",
+    "fix": null,
+    "location": {
+      "column": 1,
+      "row": 2
+    },
+    "message": "Single-letter name `x`; only loop targets and comprehensions may use one",
+    "name": "single-letter-name",
+    "noqa_row": 2,
+    "severity": "error",
+    "url": "https://simplint.readthedocs.io/en/latest/_generated/rules/SMP010.html"
+  }
+]

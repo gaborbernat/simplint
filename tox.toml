@@ -1,5 +1,5 @@
 requires = [ "tox>=4.65.5", "tox-uv>=1.37" ]
-env_list = [ "3.15", "3.14", "3.13", "3.12", "3.11", "docs", "fix", "pkg_meta", "pkg_sdist", "type" ]
+env_list = [ "3.15", "3.14", "3.13", "3.12", "3.11", "docs", "fix", "pkg_meta", "pkg_sdist", "tasks", "type" ]
 skip_missing_interpreters = true
 
 [env_run_base]
@@ -44,6 +44,10 @@ default_base_python = [ "3.15" ]
 [env.docs]
 description = "build documentation"
 base_python = [ "3.15" ]
+# The pages only ask the binary for its rules and options, so an unoptimized build without debug info serves and keeps
+# Read the Docs within its time limit.
+set_env.MATURIN_PEP517_ARGS = "--profile dev"
+set_env.CARGO_PROFILE_DEV_DEBUG = "0"
 dependency_groups = [ "docs" ]
 commands = [
   [ "python", "-m", "tasks.generate_changelog" ],
@@ -56,6 +60,16 @@ commands = [
     "--color",
     "-b",
     "html",
+    "-W",
+  ],
+  # A builder flag replaces the one before it, so the link check is its own run over the same doctree.
+  [
+    "sphinx-build",
+    "-d",
+    "{env_tmp_dir}{/}docs_tree",
+    "docs",
+    "{work_dir}{/}docs_linkcheck",
+    "--color",
     { replace = "posargs", default = [
       "-b",
       "linkcheck",
@@ -111,11 +125,53 @@ skip_install = true
 dependency_groups = [ "test" ]
 commands = [ [ "python", "tasks{/}check_sdist.py" ] ]
 
+[env.ecosystem]
+runner = "uv-venv-runner"
+description = "lint and fix the most downloaded PyPI projects, failing on crashes and on fixes that break code"
+dependency_groups = []
+deps = [ "ruff>=0.15" ]
+commands = [
+  [
+    "python",
+    "-m",
+    "tasks.ecosystem",
+    "--cache",
+    "{work_dir}{/}ecosystem-cache",
+    "--simplint",
+    "{env_bin_dir}{/}simplint",
+    { replace = "posargs", extend = true },
+  ],
+]
+
+[env.tasks]
+description = "run the maintenance task tests"
+skip_install = true
+dependency_groups = [ "test", "docs" ]
+set_env.PYTHONPATH = "{tox_root}{/}tasks"
+commands = [
+  [
+    "python",
+    "-m",
+    "pytest",
+    { replace = "posargs", default = [
+      "--cov",
+      "{tox_root}{/}tasks",
+      "--cov",
+      "{tox_root}{/}tests{/}tasks",
+      "--cov-config",
+      "{tox_root}{/}pyproject.toml",
+      "--cov-report",
+      "term-missing:skip-covered",
+      "tests{/}tasks",
+    ], extend = true },
+  ],
+]
+
 [env.type]
 description = "run type checks"
 skip_install = true
 dependency_groups = [ "type", "docs" ]
-commands = [ [ "mypy", "tasks", "tests", "toxfile.py" ], [ "mypy", "docs" ] ]
+commands = [ [ "mypy", "tasks", "tests" ], [ "mypy", "docs" ] ]
 
 [env.dev]
 description = "create a development environment at {envdir}"

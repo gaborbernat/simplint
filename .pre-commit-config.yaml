@@ -67,6 +67,6 @@ repos:
     hooks:
       - id: end-of-file-fixer
         # fixtures and snapshots spell out exact bytes, missing final newlines and trailing spaces included
-        exclude: ^(resources/test/fixtures/|src/snapshots/)
+        exclude: ^tests/(fixtures|snapshots)/
       - id: trailing-whitespace
-        exclude: ^(resources/test/fixtures/|src/snapshots/)
+        exclude: ^tests/(fixtures|snapshots)/

@@ -1,0 +1,9 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+3:1 SMP101 `COUNT` is never reassigned; annotate it `Final` [unsafe fix: Annotate `COUNT` with `Final`]
+--- fixed (1 applied, 0 remaining) ---
+from typing import TYPE_CHECKING, Any, Final, cast
+
+COUNT: Final[int] = 3

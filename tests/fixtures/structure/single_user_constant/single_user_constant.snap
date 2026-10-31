@@ -1,0 +1,191 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+3:1 SMP050 `_TIMEOUT` is used by one function only; define it there [unsafe fix: Move `_TIMEOUT` into `connect`]
+28:1 SMP050 `_MULTILINE` is used by one function only; define it there [unsafe fix: Move `_MULTILINE` into `multi`]
+42:1 SMP050 `_REPEAT` is used by one function only; define it there [unsafe fix: Move `_REPEAT` into `twice`]
+43:1 SMP050 `_LOOPED` is used by one function only; define it there [unsafe fix: Move `_LOOPED` into `twice`]
+71:1 SMP050 `_SEEN_TYPES` is used by one function only; define it there [unsafe fix: Move `_SEEN_TYPES` into `lookup`]
+72:1 SMP050 `_NAMES` is used by one function only; define it there [unsafe fix: Move `_NAMES` into `lookup`]
+84:1 SMP050 `_FULL` is used by one function only; define it there [unsafe fix: Move `_FULL` into `describe`]
+85:1 SMP050 `_PREFIX` is used by one function only; define it there [unsafe fix: Move `_PREFIX` into `describe`]
+96:1 SMP050 `_IGNORED` is used by one function only; define it there
+104:1 SMP050 `_OPERATORS` is used by one function only; define it there
+111:1 SMP050 `_LIMITS` is used by one function only; define it there [unsafe fix: Move `_LIMITS` into `bounds`]
+118:1 SMP050 `_SIZES` is used by one function only; define it there [unsafe fix: Move `_SIZES` into `size`]
+125:1 SMP050 `_ERRORS` is used by one function only; define it there [unsafe fix: Move `_ERRORS` into `guarded`]
+135:1 SMP050 `_5_SMOOTH` is used by one function only; define it there
+136:1 SMP050 `_CLASS` is used by one function only; define it there
+143:1 SMP050 `_CHOICES` is used by one function only; define it there [unsafe fix: Move `_CHOICES` into `pick`]
+157:1 SMP050 `_FACTOR` is used by one function only; define it there [unsafe fix: Move `_FACTOR` into `scaled`]
+174:1 SMP050 `_ROOT` is used by one function only; define it there [unsafe fix: Move `_ROOT` into `render`]
+175:1 SMP050 `_HOST` is used by one function only; define it there [unsafe fix: Move `_HOST` into `prefixed`]
+184:1 SMP050 `_RESOURCE_PATTERN` is used by one function only; define it there [unsafe fix: Move `_RESOURCE_PATTERN` into `resource`]
+--- fixed (16 applied, 4 remaining) ---
+from typing import Final
+
+_RETRIES = 3
+_SHARED = 1
+# cached: rebuilding the table on every call is too slow
+_TABLE = {"a": 1}
+PUBLIC = 5
+
+
+def connect() -> int:
+    return 30
+
+
+def retry() -> int:
+    return _RETRIES + _RETRIES + _TABLE["a"]
+
+
+def first() -> int:
+    return _SHARED
+
+
+def second() -> int:
+    return _SHARED + PUBLIC
+
+
+_PATTERN = "x"
+
+
+def loop(items: list[str]) -> list[str]:
+    return [item for item in items if item == _PATTERN]
+
+
+def multi() -> str:
+    return "a" "b"
+
+
+def twice(items: list[str]) -> list[str]:
+    repeat = 2
+    looped = "z"
+    return [item for item in items if item == looped][:repeat] * repeat
+
+_LAMBDA_ONLY = 3
+HANDLER = lambda: _LAMBDA_ONLY
+
+
+_WARNED: set[str] = set()
+_CACHE = {}
+_LOG = []
+_STATE = Namespace()
+
+
+def warn_once(message: str) -> None:
+    if message not in _WARNED:
+        _WARNED.add(message)
+    _CACHE[message] = True
+    del _CACHE[message]
+    _LOG.append(message)
+    _STATE.last = message
+
+
+_LOCK = Lock()
+_COUNTER = count()
+_LIMIT = 30  # seconds before giving up
+
+
+def guarded() -> int:
+    with _LOCK:
+        return next(_COUNTER) + _LIMIT
+
+
+def lookup(key: str) -> int:
+    seen_types: dict[str, int] = {}
+    names = ("a", "b")
+    return seen_types.get(key, 0) + len(seen_types) + len(names) + len(names)
+
+
+def describe() -> str:
+    full = ".".join(str(part) for part in VERSION)
+    return f"version {full} at {PREFIX_BASE}"
+
+
+class _Empty:
+    pass
+
+
+_IGNORED = frozenset(dir(_Empty))
+del _Empty
+
+
+def ignored() -> frozenset:
+    return _IGNORED
+
+
+_OPERATORS = {"==": operator.eq}
+
+
+def compare(operator: str) -> object:
+    return _OPERATORS[operator]
+
+
+def bounds() -> int:
+    limits = (1, 2)
+    return limits[0] + limits[1]
+
+
+def size(key: str) -> int:
+    sizes: dict[str, int] = {}
+    return sizes.get(key, 0) + len(sizes)
+
+
+def guarded() -> None:
+    try:
+        print()
+    except (ValueError, *((RuntimeError,) if len(__name__) > 3 else ())):
+        pass
+
+
+_5_SMOOTH = (1, 2, 3)
+_CLASS = (4, 5, 6)
+
+
+def smooth() -> int:
+    return _5_SMOOTH[0] + _5_SMOOTH[1] + _CLASS[0] + _CLASS[1]
+
+
+def choose(**options: tuple[str, ...]) -> None:
+    print(options)
+
+
+def pick() -> None:
+    choose(choices=("first", "second"))
+
+
+def scaled() -> int:
+    factor = 3
+    base = 1; doubled = factor * factor
+    return base + doubled
+
+
+_WRAPPED: Final[int] = (
+    3  # the trailing comment `ruff format` moved inside the parentheses
+)
+
+
+def wrapped() -> int:
+    return _WRAPPED
+
+
+class Links:
+    def render(self, parts: list[str]) -> str:
+        root = "https://example.com/"
+        return "\n".join(f"{root + part}" for part in parts)
+
+    def prefixed(self, parts: list[str]) -> list[str]:
+        """Prefix each part."""
+        prefix = "/"
+        host = "https://example.org/"
+        return [host + prefix + part for part in parts]
+
+
+def resource(project: str, location: str) -> str:
+    resource_pattern = "projects/{}/locations/{}"
+    return resource_pattern.format(
+        project,
+        location,
+    )

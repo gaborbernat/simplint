@@ -1,0 +1,7 @@
+---
+source: tests/output.rs
+expression: "format!(\"exit code {code}\\n{report}\")"
+---
+exit code 1
+##vso[task.logissue type=error;sourcepath=[ROOT]/module.py;linenumber=1;columnnumber=1;code=SMP001;]Section comment groups code; extract a named function or class instead
+##vso[task.logissue type=error;sourcepath=[ROOT]/module.py;linenumber=2;columnnumber=1;code=SMP010;]Single-letter name `x`; only loop targets and comprehensions may use one

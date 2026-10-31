@@ -1,0 +1,15 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:1 SMP102 Module-scope variable `spelled` should be named `_SPELLED`
+2:1 SMP102 Module-scope variable `encoded` should be named `_ENCODED`
+3:1 SMP102 Module-scope variable `named` should be named `_NAMED`
+4:1 SMP102 Module-scope variable `plain` should be named `_PLAIN` [unsafe fix: Rename `plain` to `_PLAIN`]
+--- fixed (1 applied, 3 remaining) ---
+spelled = 1
+encoded = 2
+named = 3
+_PLAIN = 4
+
+print("sp\x65lled", b"encoded", f"named {_PLAIN}")

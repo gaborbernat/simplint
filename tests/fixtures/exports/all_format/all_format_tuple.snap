@@ -1,0 +1,25 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:11 SMP115 `__all__` is a tuple; make it a list with a trailing comma [unsafe fix: Convert `__all__` to a list]
+6:11 SMP115 `__all__` is a tuple; make it a list with a trailing comma [unsafe fix: Convert `__all__` to a list]
+7:11 SMP115 `__all__` is a tuple; make it a list [unsafe fix: Convert `__all__` to a list]
+8:11 SMP115 `__all__` is a tuple; make it a list with a trailing comma [unsafe fix: Convert `__all__` to a list]
+--- fixed (4 applied, 0 remaining) ---
+def run() -> None:
+    pass
+
+
+__all__ = [
+    "run",
+    "stop",
+]
+__all__ = [
+    "run",
+]
+__all__ = []
+__all__ = [
+    "run",
+    "stop",
+]

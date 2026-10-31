@@ -1,0 +1,7 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:21 SMP106 `object` annotation; use the precise type
+18:18 SMP106 `object` annotation; use the precise type
+21:16 SMP106 `object` annotation; use the precise type
