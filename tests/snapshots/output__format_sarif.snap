@@ -1,0 +1,138 @@
+---
+source: tests/output.rs
+expression: "format!(\"exit code {code}\\n{report}\")"
+---
+exit code 1
+{
+  "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+  "runs": [
+    {
+      "results": [
+        {
+          "fixes": [
+            {
+              "artifactChanges": [
+                {
+                  "artifactLocation": {
+                    "uri": "file://[ROOT]/module.py"
+                  },
+                  "replacements": [
+                    {
+                      "deletedRegion": {
+                        "endColumn": 1,
+                        "endLine": 2,
+                        "startColumn": 1,
+                        "startLine": 1
+                      }
+                    }
+                  ]
+                }
+              ],
+              "description": {
+                "text": "Remove the section comment"
+              }
+            }
+          ],
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://[ROOT]/module.py"
+                },
+                "region": {
+                  "endColumn": 18,
+                  "endLine": 1,
+                  "startColumn": 1,
+                  "startLine": 1
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Section comment groups code; extract a named function or class instead"
+          },
+          "ruleId": "SMP001"
+        },
+        {
+          "level": "error",
+          "locations": [
+            {
+              "physicalLocation": {
+                "artifactLocation": {
+                  "uri": "file://[ROOT]/module.py"
+                },
+                "region": {
+                  "endColumn": 2,
+                  "endLine": 2,
+                  "startColumn": 1,
+                  "startLine": 2
+                }
+              }
+            }
+          ],
+          "message": {
+            "text": "Single-letter name `x`; only loop targets and comprehensions may use one"
+          },
+          "ruleId": "SMP010"
+        }
+      ],
+      "tool": {
+        "driver": {
+          "informationUri": "https://github.com/gaborbernat/simplint",
+          "name": "simplint",
+          "rules": [
+            {
+              "defaultConfiguration": {
+                "enabled": true,
+                "level": "error"
+              },
+              "fullDescription": {
+                "text": "## What it does\n\nChecks for own-line comments used as dividers or section headers. A comment is reported when it:\n\n- is made only of divider characters (`-`, `=`, `*`, `#`, `~`, `_`, `+`, `/`), at least four of them counting the\n  leading `#`, such as `# ---` or `####`\n- starts or ends with three or more of the same divider character, such as `# --- helpers`\n- starts and ends with two or more, such as `# -- helpers --`\n- opens with two or more `#`, such as `## Setup`\n- is a `# region` or `# endregion` marker\n\nTrailing comments are skipped. So are comments starting with `#!` and the `# ///` lines that open and close\n[PEP 723](https://peps.python.org/pep-0723/) inline script metadata. Comments such as `# C++` or `# >>> run()` are not\ndividers. Ruff's\n[multiple-leading-hashes-for-block-comment (E266)](https://docs.astral.sh/ruff/rules/multiple-leading-hashes-for-block-comment/)\nalso reports the `## Setup` form.\n\n## Why is this bad?\n\nA section comment groups code by its position in the file, and nothing keeps the grouping accurate as code moves. A\nnamed function, class or module groups the same code under a name that tools can check.\n\n## Example\n\n```python\n# ---------- parsing ----------\ndef parse_header(line: str) -> str:\n    return line.split(\":\", 1)[0]\n```\n\nUse instead:\n\n```python\ndef parse_header(line: str) -> str:\n    return line.split(\":\", 1)[0]\n```\n\n## Fix safety\n\nThe fix deletes the comment line. It is always safe, since comments do not affect behavior.\n"
+              },
+              "help": {
+                "text": "Comments used as dividers or section headers"
+              },
+              "helpUri": "https://simplint.readthedocs.io/en/latest/_generated/rules/SMP001.html",
+              "id": "SMP001",
+              "properties": {
+                "id": "SMP001",
+                "kind": "simplint",
+                "name": "section-comment",
+                "problem.severity": "error"
+              },
+              "shortDescription": {
+                "text": "Comments used as dividers or section headers"
+              }
+            },
+            {
+              "defaultConfiguration": {
+                "enabled": true,
+                "level": "error"
+              },
+              "fullDescription": {
+                "text": "## What it does\n\nChecks for single-letter names. It reports the names of functions, classes, parameters (including\n[lambda](https://docs.python.org/3/reference/expressions.html#lambda) parameters), assignment and\n[walrus](https://docs.python.org/3/reference/expressions.html#assignment-expressions) targets, `with ... as`,\n`except ... as` and `import ... as` names,\n[`match`](https://docs.python.org/3/reference/compound_stmts.html#the-match-statement) captures and\n[type parameters](https://docs.python.org/3/reference/compound_stmts.html#type-params) such as `T`.\n\nThese pass:\n\n- `for` loop targets, such as `i` in `for i in range(3)`\n- every name inside a list, set or dictionary\n  [comprehension](https://docs.python.org/3/tutorial/datastructures.html#list-comprehensions) or a\n  [generator expression](https://docs.python.org/3/reference/expressions.html#generator-expressions), including a walrus\n  target or lambda parameter, so `[x * 2 for x in values]` is fine\n- `_`\n- parameters of a method decorated with [`@override`](https://docs.python.org/3/library/typing.html#typing.override),\n  which must keep the names of the method it replaces\n\nEach name is reported once per scope, at its first binding. Ruff's\n[ambiguous-variable-name (E741)](https://docs.astral.sh/ruff/rules/ambiguous-variable-name/) covers only `l`, `O` and\n`I`.\n\n## Why is this bad?\n\nA single letter says nothing about what the name holds, so the reader has to find where it is bound to learn it. Loop\ntargets and comprehensions are exempt because the iterable the names come from sits right next to them.\n\n## Example\n\n```python\ndef scale(v: float, f: float) -> float:\n    r = v * f\n    return round(r, 2)\n```\n\nUse instead:\n\n```python\ndef scale(value: float, factor: float) -> float:\n    scaled = value * factor\n    return round(scaled, 2)\n```\n\n## Fix safety\n\nNo fix is offered, since a meaningful name cannot be derived from the code.\n"
+              },
+              "help": {
+                "text": "Single-letter names outside loop targets and comprehensions"
+              },
+              "helpUri": "https://simplint.readthedocs.io/en/latest/_generated/rules/SMP010.html",
+              "id": "SMP010",
+              "properties": {
+                "id": "SMP010",
+                "kind": "simplint",
+                "name": "single-letter-name",
+                "problem.severity": "error"
+              },
+              "shortDescription": {
+                "text": "Single-letter names outside loop targets and comprehensions"
+              }
+            }
+          ],
+          "version": "[VERSION]"
+        }
+      }
+    }
+  ],
+  "version": "2.1.0"
+}

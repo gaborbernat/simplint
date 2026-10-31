@@ -1,0 +1,17 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:5 SMP113 `shared` is imported by other modules; list it in `__all__` [unsafe fix: Add `shared` to `__all__`]
+--- fixed (1 applied, 0 remaining) ---
+def shared() -> int:
+    return 1
+
+
+__all__ = [
+    "shared",
+]
+
+
+if __name__ == "__main__":
+    shared()

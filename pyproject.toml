@@ -6,7 +6,7 @@ requires = [
 
 [project]
 name = "simplint"
-description = "Ruff companion linter enforcing the simp house style"
+description = "Ruff companion linter with extra checks that make Python easier to read and review"
 readme = { file = "README.rst", content-type = "text/x-rst" }
 keywords = [
   "linter",
@@ -61,17 +61,21 @@ test = [
 type = [
   "mypy==2.4",
   "tox>=4.65.5",
+  "types-docutils>=0.22",
   { include-group = "test" },
 ]
 docs = [
   "furo>=2025.12.19; python_version>='3.14'",
+  "myst-parser>=5; python_version>='3.14'",
   "pypandoc-binary>=1.17; python_version>='3.14'",
   "release-creator>=4.1; python_version>='3.15'",
   "sphinx>=9.1; python_version>='3.14'",
+  "sphinx-argparse-cli>=1.24; python_version>='3.14'",
   "sphinx-copybutton>=0.5.2; python_version>='3.14'",
   "sphinx-design>=0.7; python_version>='3.14'",
   "sphinx-inline-tabs>=2025.12.21.14; python_version>='3.14'",
   "sphinx-llm>=1.1",
+  "sphinxcontrib-mermaid>=1; python_version>='3.14'",
 ]
 build = [
   "cython>=3",
@@ -106,14 +110,13 @@ include = [
   { path = "docs/", format = "sdist" },
   { path = "README.rst", format = "sdist" },
   { path = "rust-toolchain.toml", format = "sdist" },
-  { path = "src/rules/docs/*.md", format = "sdist" },
+  { path = "src/rules/*/*.md", format = "sdist" },
 ]
 exclude = [
   "**/*.pyc",
   "**/*.pyo",
   "**/__pycache__/**",
 ]
-strip = true
 
 [tool.uv]
 dependency-groups.release-build = { requires-python = ">=3.15" }
@@ -122,7 +125,7 @@ dependency-groups.release-prepare = { requires-python = ">=3.15" }
 
 [tool.ruff]
 line-length = 120
-extend-exclude = [ "resources" ]
+extend-exclude = [ "tests/fixtures" ]
 format.preview = true
 format.docstring-code-line-length = 100
 format.docstring-code-format = true
@@ -138,7 +141,7 @@ lint.ignore = [
   "multi-line-summary-first-line",             # incompatible with D213
   "single-line-implicit-string-concatenation", # conflicts with the formatter
 ]
-lint.per-file-ignores."docs/conf.py" = [
+lint.per-file-ignores."docs/*.py" = [
   "subprocess-without-shell-equals-true", # runs the simplint binary built for the docs
   "suspicious-subprocess-import",         # runs the simplint binary built for the docs
 ]
@@ -159,12 +162,6 @@ lint.per-file-ignores."tests/**/*.py" = [
   "subprocess-without-shell-equals-true", # tests pass trusted commands
   "suspicious-subprocess-import",         # the wheel tests run the installed binary
 ]
-lint.per-file-ignores."toxfile.py" = [
-  "implicit-namespace-package",           # tox loads the plugin as a module
-  "start-process-with-partial-path",      # tox is on PATH inside a tox run
-  "subprocess-without-shell-equals-true", # the plugin invokes tox
-  "suspicious-subprocess-import",         # the plugin invokes tox
-]
 lint.isort = { known-first-party = [
   "tasks",
 ], required-imports = [
@@ -175,11 +172,13 @@ lint.preview = true
 [tool.codespell]
 builtin = "clear,usage,en-GB_to_en-US"
 ignore-words = "ignore-words.txt"
-skip = "*.snap,resources/*,pylock.toml"
+skip = "*.snap,tests/fixtures/*,pylock.toml"
 write-changes = true
 count = true
 
 [tool.mypy]
+# the rule fixtures are linted, not run, and break type rules on purpose
+exclude = [ "^tests/fixtures/" ]
 # tasks/ and tests/ are directories of scripts; name their modules from the repository root
 explicit_package_bases = true
 strict = true
@@ -199,9 +198,6 @@ paths.source = [
 report.fail_under = 100
 html.show_contexts = true
 html.skip_covered = false
-
-[tool.simplint]
-per-file-ignores = { "docs/conf.py" = [ "SMP102" ] }  # Sphinx reads its settings by these names
 
 [tool.nab]
 mode = "universal"

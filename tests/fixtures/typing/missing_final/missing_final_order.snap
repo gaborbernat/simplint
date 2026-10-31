@@ -1,0 +1,15 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+8:1 SMP101 `COUNT` is never reassigned; annotate it `Final` [unsafe fix: Annotate `COUNT` with `Final`]
+--- fixed (1 applied, 0 remaining) ---
+import os
+from collections import abc
+from typing import Final
+from zlib import compress
+from . import sibling
+
+import requests
+
+COUNT: Final[int] = 3

@@ -662,28 +662,28 @@ sha256 = "cf09d55b1e85a89576b036aeb71550bfd68320f3f21761ca329eadadad918638"
 
 [[packages]]
 name = "docutils"
-version = "0.23"
+version = "0.22.4"
 marker = "\"docs\" in dependency_groups or \"pkg-meta\" in dependency_groups or \"release-notes\" in dependency_groups or \"release-prepare\" in dependency_groups"
 requires-python = ">=3.9"
 index = "https://pypi.org/simple/"
 
 [packages.sdist]
-name = "docutils-0.23.tar.gz"
-upload-time = 2026-05-27 17:41:06.934109+00:00
-url = "https://files.pythonhosted.org/packages/39/a4/5180d9afc57e8fca05601dd652bdff19604c218814037fe90ffc7625a50a/docutils-0.23.tar.gz"
-size = 2303823
+name = "docutils-0.22.4.tar.gz"
+upload-time = 2025-12-18 19:00:26.443107+00:00
+url = "https://files.pythonhosted.org/packages/ae/b6/03bb70946330e88ffec97aefd3ea75ba575cb2e762061e0e62a213befee8/docutils-0.22.4.tar.gz"
+size = 2291750
 
 [packages.sdist.hashes]
-sha256 = "746f5060322511280a1e50eb76846ed6bf2342984b2ac04dc42caa1a8d78799e"
+sha256 = "4db53b1fde9abecbb74d91230d32ab626d94f6badfc575d6db9194a49df29968"
 
 [[packages.wheels]]
-name = "docutils-0.23-py3-none-any.whl"
-upload-time = 2026-05-27 17:40:58.442528+00:00
-url = "https://files.pythonhosted.org/packages/32/91/30151a39f7570f448ed84529390628a651d7f27c87d73c9b887f8189695e/docutils-0.23-py3-none-any.whl"
-size = 634701
+name = "docutils-0.22.4-py3-none-any.whl"
+upload-time = 2025-12-18 19:00:18.077803+00:00
+url = "https://files.pythonhosted.org/packages/02/10/5da547df7a391dcde17f59520a231527b8571e6f46fc8efb02ccb370ab12/docutils-0.22.4-py3-none-any.whl"
+size = 633196
 
 [packages.wheels.hashes]
-sha256 = "25d013af9bf23bc1c7b2b093dff4208166c53a94786c9e447808335ef1185fea"
+sha256 = "d0013f540772d1420576855455d050a2180186c91c15779301ac2ccb3eeb68de"
 
 [[packages]]
 name = "filelock"
@@ -1341,6 +1341,39 @@ size = 4963
 
 [packages.wheels.hashes]
 sha256 = "1be4cccdb0f2482337c4743e60421de3a356cd97508abadd57d47403e94f5505"
+
+[[packages]]
+name = "myst-parser"
+version = "5.1.0"
+marker = "\"docs\" in dependency_groups"
+requires-python = ">=3.11"
+dependencies = [
+    { name = "docutils" },
+    { name = "jinja2" },
+    { name = "markdown-it-py" },
+    { name = "mdit-py-plugins" },
+    { name = "pyyaml" },
+    { name = "sphinx" },
+]
+index = "https://pypi.org/simple/"
+
+[packages.sdist]
+name = "myst_parser-5.1.0.tar.gz"
+upload-time = 2026-05-13 09:38:19.361589+00:00
+url = "https://files.pythonhosted.org/packages/21/dc/603751677fff302f34396e206b610f556a59d7fe58b9a2145f54e96b48e8/myst_parser-5.1.0.tar.gz"
+size = 101182
+
+[packages.sdist.hashes]
+sha256 = "ab69322dc6719dcc7f296479dbb70181b66df6ed315064f92dbc85c0e1bf2f02"
+
+[[packages.wheels]]
+name = "myst_parser-5.1.0-py3-none-any.whl"
+upload-time = 2026-05-13 09:38:17.904023+00:00
+url = "https://files.pythonhosted.org/packages/09/dc/f3dfb7488b770f3f67e6545085bf2abea5172e88f57b8ad25ef860ca704c/myst_parser-5.1.0-py3-none-any.whl"
+size = 85817
+
+[packages.wheels.hashes]
+sha256 = "9c91c52b3cdb4d94a6506e4fab4e2f296c7623a0da0dcbe6de1565c3dad67a8a"
 
 [[packages]]
 name = "nh3"
@@ -2214,6 +2247,34 @@ size = 3925388
 sha256 = "4c3ec13b612712c0d3ce4cbdd9e3eb91e68577e07a8e31f32f21cf178453578c"
 
 [[packages]]
+name = "sphinx-argparse-cli"
+version = "1.24.0"
+marker = "\"docs\" in dependency_groups"
+requires-python = ">=3.11"
+dependencies = [
+    { name = "sphinx" },
+]
+index = "https://pypi.org/simple/"
+
+[packages.sdist]
+name = "sphinx_argparse_cli-1.24.0.tar.gz"
+upload-time = 2026-10-11 00:32:59.524003+00:00
+url = "https://files.pythonhosted.org/packages/07/b1/bc446b4a2e81d07f18bae10654467c6d251d752ba145b8bc6acd538b41b1/sphinx_argparse_cli-1.24.0.tar.gz"
+size = 17142
+
+[packages.sdist.hashes]
+sha256 = "fe318dc199c0dd8be26ac0c22d6e7ec8b729d59185a48e684c602cbdcc0ad918"
+
+[[packages.wheels]]
+name = "sphinx_argparse_cli-1.24.0-py3-none-any.whl"
+upload-time = 2026-10-11 00:32:58.310827+00:00
+url = "https://files.pythonhosted.org/packages/17/47/ea41e003a20a7aa60d6bef54026550f1e62098ae8142a0d39172192295c9/sphinx_argparse_cli-1.24.0-py3-none-any.whl"
+size = 12181
+
+[packages.wheels.hashes]
+sha256 = "69aaced19b2bcc476450aedd014072e71a261fdb84b5e405f946006abb9f0531"
+
+[[packages]]
 name = "sphinx-basic-ng"
 version = "1.0.0b2"
 marker = "\"docs\" in dependency_groups"
@@ -2486,6 +2547,36 @@ size = 78095
 sha256 = "15ca92fe0eec82f0baf91a7efcc51ffacdb605924be6327683a52ebdacb6744c"
 
 [[packages]]
+name = "sphinxcontrib-mermaid"
+version = "2.1.1"
+marker = "\"docs\" in dependency_groups"
+requires-python = ">=3.10"
+dependencies = [
+    { name = "jinja2" },
+    { name = "pyyaml" },
+    { name = "sphinx" },
+]
+index = "https://pypi.org/simple/"
+
+[packages.sdist]
+name = "sphinxcontrib_mermaid-2.1.1.tar.gz"
+upload-time = 2026-09-01 16:10:23.671939+00:00
+url = "https://files.pythonhosted.org/packages/8c/87/06537dff20aa57df2d0f2afa87edff4afa85dec6f57f03f7acc24f83ff88/sphinxcontrib_mermaid-2.1.1.tar.gz"
+size = 22353
+
+[packages.sdist.hashes]
+sha256 = "f8d7f1b2f0ad69b7ebdd5cbf532fb4ee107893b5373bc2d0e9634089c0b2cfee"
+
+[[packages.wheels]]
+name = "sphinxcontrib_mermaid-2.1.1-py3-none-any.whl"
+upload-time = 2026-09-01 16:10:22.377054+00:00
+url = "https://files.pythonhosted.org/packages/50/6a/5bf2222b8084c7a7bc3ec23d470c91e3e03e82e4ce0bbacaa61f456ce7c1/sphinxcontrib_mermaid-2.1.1-py3-none-any.whl"
+size = 16368
+
+[packages.wheels.hashes]
+sha256 = "3b9ac1a8e0b5154dec3c0acf9b5c54dd9ba58540e416f20858c300814c25648f"
+
+[[packages]]
 name = "sphinxcontrib-qthelp"
 version = "2.0.0"
 marker = "\"docs\" in dependency_groups"
@@ -2712,6 +2803,31 @@ size = 43204
 sha256 = "b854164df26db268af05f49aa5c0344b10e27a494343ff05b1e0bad3b135f5a7"
 
 [[packages]]
+name = "types-docutils"
+version = "0.23.0.20260923"
+marker = "\"dev\" in dependency_groups or \"type\" in dependency_groups"
+requires-python = ">=3.10"
+index = "https://pypi.org/simple/"
+
+[packages.sdist]
+name = "types_docutils-0.23.0.20260923.tar.gz"
+upload-time = 2026-09-23 06:51:56.366268+00:00
+url = "https://files.pythonhosted.org/packages/00/ff/e5c4e5383a226703fc81e3e53bb2072526ec4b7e834eeb7146ea674192ed/types_docutils-0.23.0.20260923.tar.gz"
+size = 58327
+
+[packages.sdist.hashes]
+sha256 = "486d9054ea84410cc201a30c15759077a5f32234247cfc08aa7290ff2509f770"
+
+[[packages.wheels]]
+name = "types_docutils-0.23.0.20260923-py3-none-any.whl"
+upload-time = 2026-09-23 06:51:54.908318+00:00
+url = "https://files.pythonhosted.org/packages/3b/43/b39c0af29de3b02bcf6194a3d6675685d2d7b8b336a31af4525bc0022c4b/types_docutils-0.23.0.20260923-py3-none-any.whl"
+size = 92174
+
+[packages.wheels.hashes]
+sha256 = "62851b429db623e36853a4a189ce15a846e0636fe090c135d6dc5dd4f9108ef5"
+
+[[packages]]
 name = "typing-extensions"
 version = "4.16.0"
 marker = "\"dev\" in dependency_groups or \"docs\" in dependency_groups or \"pkg-meta\" in dependency_groups or \"type\" in dependency_groups"
@@ -2906,13 +3022,14 @@ size = 6195
 sha256 = "3fa599046443d4ca830d06e3d180cd0a675d5871af0a68daa5623318bb4d17e3"
 
 [tool.nab]
-nab-version = "0.0.23"
+nab-version = "0.0.22"
 created-at = 2026-10-30 14:07:58.053307+00:00
 command-line = [
     "nab",
     "lock",
     "--all-groups",
     "--all-extras",
+    "--no-cache",
 ]
 input-path = "pyproject.toml"
 mode = "universal"

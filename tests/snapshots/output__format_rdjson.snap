@@ -1,0 +1,69 @@
+---
+source: tests/output.rs
+expression: "format!(\"exit code {code}\\n{report}\")"
+---
+exit code 1
+{
+  "diagnostics": [
+    {
+      "code": {
+        "url": "https://simplint.readthedocs.io/en/latest/_generated/rules/SMP001.html",
+        "value": "SMP001"
+      },
+      "location": {
+        "path": "[ROOT]/module.py",
+        "range": {
+          "end": {
+            "column": 18,
+            "line": 1
+          },
+          "start": {
+            "column": 1,
+            "line": 1
+          }
+        }
+      },
+      "message": "Section comment groups code; extract a named function or class instead",
+      "suggestions": [
+        {
+          "range": {
+            "end": {
+              "column": 1,
+              "line": 2
+            },
+            "start": {
+              "column": 1,
+              "line": 1
+            }
+          },
+          "text": ""
+        }
+      ]
+    },
+    {
+      "code": {
+        "url": "https://simplint.readthedocs.io/en/latest/_generated/rules/SMP010.html",
+        "value": "SMP010"
+      },
+      "location": {
+        "path": "[ROOT]/module.py",
+        "range": {
+          "end": {
+            "column": 2,
+            "line": 2
+          },
+          "start": {
+            "column": 1,
+            "line": 2
+          }
+        }
+      },
+      "message": "Single-letter name `x`; only loop targets and comprehensions may use one"
+    }
+  ],
+  "severity": "WARNING",
+  "source": {
+    "name": "simplint",
+    "url": "https://simplint.readthedocs.io/"
+  }
+}

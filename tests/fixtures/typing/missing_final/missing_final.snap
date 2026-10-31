@@ -1,0 +1,46 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+6:1 SMP101 `COUNT` is never reassigned; annotate it `Final` [unsafe fix: Annotate `COUNT` with `Final`]
+7:1 SMP101 `NAME` is never reassigned; annotate it `Final` [unsafe fix: Annotate `NAME` with `Final`]
+8:1 SMP101 `RATE` is never reassigned; annotate it `Final` [unsafe fix: Annotate `RATE` with `Final`]
+9:1 SMP101 `FLAG` is never reassigned; annotate it `Final` [unsafe fix: Annotate `FLAG` with `Final`]
+10:1 SMP101 `DATA` is never reassigned; annotate it `Final` [unsafe fix: Annotate `DATA` with `Final`]
+11:1 SMP101 `LOGGER` is never reassigned; annotate it `Final`
+12:1 SMP101 `LIMIT` is never reassigned; annotate it `Final` [unsafe fix: Annotate `LIMIT` with `Final`]
+21:1 SMP101 `OPTIONAL` is never reassigned; annotate it `Final` [unsafe fix: Annotate `OPTIONAL` with `Final`]
+23:1 SMP101 `DESCRIBED` is never reassigned; annotate it `Final` [unsafe fix: Annotate `DESCRIBED` with `Final`]
+31:1 SMP101 `FLAGS` is never reassigned; annotate it `Final`
+--- fixed (8 applied, 2 remaining) ---
+from typing import Annotated, Final
+from typing import NewType, TypeVar
+
+import logging
+
+COUNT: Final[int] = 3
+NAME: Final[str] = "simplint"
+RATE: Final[float] = 0.5
+FLAG: Final[bool] = True
+DATA: Final[bytes] = b"x"
+LOGGER = logging.getLogger(__name__)
+LIMIT: Final[int] = 10
+ALREADY: "Final[int]" = 1
+CHANGED = 1
+CHANGED = 2
+Alias = int
+__version__ = "1.0"
+FIRST, SECOND = 1, 2
+T = TypeVar("T")
+UserId = NewType("UserId", int)
+OPTIONAL: Final[int | None] = 1
+QUALIFIED: Annotated[Final[int], "doc"] = 2
+DESCRIBED: Final[Annotated[int, "doc"]] = 3
+
+TYPE_CHECKING = False
+
+JSON = dict[str, Any]
+MODE = Literal["a", "b"]
+_path_t = str | bytes
+MAYBE = int | None
+FLAGS = READ | WRITE

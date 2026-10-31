@@ -4,8 +4,10 @@ build:
   tools:
     rust: "latest"
   commands:
+    # The toolchain rust-toolchain.toml pins installs on first use; building needs only rustc, Cargo and the std.
+    - rustup set profile minimal
     - curl -LsSf https://astral.sh/uv/install.sh | sh
     - ~/.local/bin/uv tool install tox --with tox-uv -p 3.15 --managed-python
-    - ~/.local/bin/tox run -e readme
     - ~/.local/bin/tox run -e docs -vv --notest
-    - ~/.local/bin/tox run -e docs --skip-pkg-install --
+    # The dummy builder stands in for the link check, which CI runs.
+    - ~/.local/bin/tox run -e docs --skip-pkg-install -- -b dummy

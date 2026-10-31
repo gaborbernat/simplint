@@ -1,0 +1,73 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:5 SMP205 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+3:5 SMP205 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+11:5 SMP205 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+16:9 SMP205 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+20:9 SMP205 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+24:5 SMP205 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+26:5 SMP205 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+27:5 SMP205 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+28:5 SMP205 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+32:5 SMP205 Assertion on a constant always passes; assert on the result under test [unsafe fix: Split the tuple into a test and a message]
+33:5 SMP205 Assertion on a constant always passes; assert on the result under test
+37:5 SMP205 Assertion on a constant always passes; assert on the result under test [unsafe fix: Split the tuple into a test and a message]
+39:5 SMP205 Assertion on a constant always passes; assert on the result under test [unsafe fix: Split the tuple into a test and a message]
+45:5 SMP205 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+46:5 SMP205 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+47:5 SMP205 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+48:5 SMP205 Assertion on a constant always passes; assert on the result under test
+49:5 SMP205 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+50:5 SMP205 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+51:5 SMP205 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+52:5 SMP205 Assertion on a constant always passes; assert on the result under test
+--- fixed (18 applied, 3 remaining) ---
+def check(value: int) -> None:
+    assert value
+    assert False, "unreachable"
+    assert 0
+    assert ()
+
+
+def only() -> None:
+    pass
+
+
+def loops() -> None:
+    for item in range(1):
+        pass
+    else:
+        pass
+    while item:
+        pass
+
+
+def kinds() -> None:
+    assert 0.0
+
+
+def tuples(value: int) -> None:
+    assert value, "value is set"
+    assert (value, "value is set", "twice")
+
+
+def split_messages(value: int) -> None:
+    assert value, ("value is "
+                    "set")
+    assert value, ("value is "
+            "set")
+
+
+def containers(value: list[int]) -> None:
+    assert list([value])
+    assert [compute()]
+    assert [*value]
+    assert (*value,)
+    assert []
+    assert {}
+
+
+def compute() -> int:
+    return 1

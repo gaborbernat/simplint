@@ -1,0 +1,66 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+8:1 SMP040 Import guard around a required dependency; import it directly and let a broken install fail [unsafe fix: Remove the import guard]
+18:1 SMP040 Import guard around a standard library module every supported Python ships; import it directly
+30:1 SMP040 Import guard around a standard library module every supported Python ships; import it directly [unsafe fix: Remove the import guard]
+46:1 SMP040 Import guard around a required dependency; import it directly and let a broken install fail [unsafe fix: Remove the import guard]
+--- fixed (3 applied, 1 remaining) ---
+import builtins
+
+try:
+    import tomllib
+except ImportError:
+    import tomli as tomllib
+
+import requests
+
+try:
+    import optional_extra
+except ImportError:
+    optional_extra = None
+
+try:
+    import json
+except (ImportError, AttributeError):
+    json = None
+else:
+    pass
+
+try:
+    import fcntl
+except ImportError:
+    fcntl = None
+
+from json import loads
+
+try:
+    from . import sibling
+except ImportError:
+    sibling = None
+
+try:
+    import requests
+    FLAG = True
+except ImportError:
+    FLAG = False
+
+import requests
+
+try:
+    from distutils import dist
+except ImportError:
+    dist = None
+
+try:
+    import ctypes
+except ImportError:
+    ctypes = None
+
+try: import tomllib
+except ImportError: import tomli as tomllib
+
+try: import json; import tomllib  # both required
+except ImportError:
+    json = None

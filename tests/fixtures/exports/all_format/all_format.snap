@@ -1,0 +1,34 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+9:11 SMP115 `__all__` has no trailing comma; add one so the formatter keeps one name per line [fix: Add a trailing comma]
+11:12 SMP115 `__all__` has no trailing comma; add one so the formatter keeps one name per line [fix: Add a trailing comma]
+16:22 SMP115 `__all__` has no trailing comma; add one so the formatter keeps one name per line [fix: Add a trailing comma]
+18:12 SMP115 `__all__` has no trailing comma; add one so the formatter keeps one name per line [fix: Add a trailing comma]
+--- fixed (4 applied, 0 remaining) ---
+def run() -> None:
+    pass
+
+
+def stop() -> None:
+    pass
+
+
+__all__ = [
+    "run",
+]
+__all__ += ["stop",]
+__all__ += [
+    "run",
+    "stop",  # the last name
+]
+__all__ += []
+__all__: list[str] = [
+    "run",
+]
+__all__ += sorted(["stop"])
+__all__ += [
+    "run",
+    "stop",
+]

@@ -41,4 +41,13 @@ def test_main_writes_the_readme_from_the_docs(tmp_path: Path) -> None:
 
     main(tmp_path)
 
-    assert (tmp_path / "README.rst").read_text() == "simplint\n========\n\nIntro\n\nSettings\n"
+    assert (tmp_path / "README.rst").read_text() == (
+        ".. image:: https://raw.githubusercontent.com/gaborbernat/simplint/main/docs/_static/wordmark-light.png\n"
+        "   :alt: simplint\n   :width: 420\n\nsimplint\n========\n\nIntro\n\nSettings\n"
+    )
+
+
+def test_process_rst_for_pypi_drops_html_and_grids() -> None:
+    source = ".. raw:: html\n\n    <section>hero</section>\n\n.. grid:: 2\n\n    .. grid-item-card:: Fast\n\nKept\n"
+
+    assert process_rst_for_pypi(source) == "Kept"

@@ -1,0 +1,10 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+7:1 SMP116 Exported variable `LIMIT` is undocumented; add a docstring below it or a `#:` comment above it
+8:1 SMP116 Exported variable `WINDOW` is undocumented; add a docstring below it or a `#:` comment above it
+17:5 SMP116 Public function `undocumented` has no docstring; document it for its users
+30:7 SMP116 Public class `Client` has no docstring; document it for its users
+31:9 SMP116 Public method `send` has no docstring; document it for its users
+47:9 SMP116 Public property `size` has no docstring; document it for its users

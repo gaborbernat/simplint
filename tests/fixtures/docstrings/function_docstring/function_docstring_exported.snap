@@ -1,0 +1,26 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+6:5 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+16:9 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+--- fixed (2 applied, 0 remaining) ---
+def run() -> None:
+    """Run the job."""
+
+
+def helper() -> None:
+    ...
+
+
+class Job:
+    """A unit of work."""
+
+    def start(self) -> None:
+        """Begin the job."""
+
+    def _step(self) -> None:
+        ...
+
+
+__all__ = ["Job", "run"]

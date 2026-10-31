@@ -1,0 +1,15 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:1 SMP104 `__all__` is not the last statement; move it to the end of the module [fix: Move `__all__` to the end of the module]
+--- fixed (1 applied, 0 remaining) ---
+def main() -> None:
+    pass
+
+
+if __name__ != "__main__":
+    main()
+
+
+__all__ = ["main"]
