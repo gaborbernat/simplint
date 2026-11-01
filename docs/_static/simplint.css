@@ -13,24 +13,24 @@
 }
 
 body[data-theme="dark"] {
-  --simplint-accent: #ffd43b;
-  --simplint-accent-soft: rgba(255, 212, 59, 0.12);
+  --simplint-accent: #f0c94a;
+  --simplint-accent-soft: rgba(240, 201, 74, 0.12);
   --simplint-accent-contrast: #062d59;
-  --simplint-good: #4ade80;
-  --simplint-good-soft: rgba(74, 222, 128, 0.1);
-  --simplint-bad: #fb923c;
-  --simplint-bad-soft: rgba(251, 146, 60, 0.1);
+  --simplint-good: #7fd3a1;
+  --simplint-good-soft: rgba(127, 211, 161, 0.1);
+  --simplint-bad: #f0a274;
+  --simplint-bad-soft: rgba(240, 162, 116, 0.1);
 }
 
 @media (prefers-color-scheme: dark) {
   body:not([data-theme="light"]) {
-    --simplint-accent: #ffd43b;
-    --simplint-accent-soft: rgba(255, 212, 59, 0.12);
+    --simplint-accent: #f0c94a;
+    --simplint-accent-soft: rgba(240, 201, 74, 0.12);
     --simplint-accent-contrast: #062d59;
-    --simplint-good: #4ade80;
-    --simplint-good-soft: rgba(74, 222, 128, 0.1);
-    --simplint-bad: #fb923c;
-    --simplint-bad-soft: rgba(251, 146, 60, 0.1);
+    --simplint-good: #7fd3a1;
+    --simplint-good-soft: rgba(127, 211, 161, 0.1);
+    --simplint-bad: #f0a274;
+    --simplint-bad-soft: rgba(240, 162, 116, 0.1);
   }
 }
 
@@ -191,7 +191,7 @@ div[class^="highlight-"] pre {
   line-height: 1.6;
   white-space: nowrap;
   text-decoration: none;
-  border: 1px solid var(--color-background-border);
+  border: 1px solid var(--color-foreground-border);
   color: var(--color-foreground-secondary);
   background: var(--color-background-secondary);
 }
@@ -205,19 +205,19 @@ a.badge:hover {
   font-family: var(--font-stack--monospace);
   color: var(--simplint-accent);
   background: var(--simplint-accent-soft);
-  border-color: transparent;
+  border-color: currentColor;
 }
 
 .badge.fix-always {
   color: var(--simplint-good);
   background: var(--simplint-good-soft);
-  border-color: transparent;
+  border-color: currentColor;
 }
 
 .badge.fix-sometimes {
   color: var(--simplint-accent);
   background: var(--simplint-accent-soft);
-  border-color: transparent;
+  border-color: currentColor;
 }
 
 /* side-by-side examples */
@@ -295,15 +295,9 @@ a.badge:hover {
   font: inherit;
   padding: 0.45rem 0.7rem;
   border-radius: calc(var(--simplint-radius) * 0.7);
-  border: 1px solid var(--color-background-border);
+  border: 1px solid var(--color-foreground-border);
   background: var(--color-background-secondary);
   color: var(--color-foreground-primary);
-}
-
-.rule-filter input:focus,
-.rule-filter select:focus {
-  outline: 2px solid var(--simplint-accent);
-  outline-offset: 1px;
 }
 
 .rule-count {
@@ -544,7 +538,8 @@ body[data-theme="light"] .highlight {
 
 /* mark the current page without bold, as a wider weight would rewrap its entry and shift the tree; a solid accent
    fill stands out from the pages above it, which this rule follows to override their color, with text at 6:1 or more in both themes */
-.sidebar-tree .current-page > .reference {
+.sidebar-tree .current-page > .reference,
+.sidebar-tree .current-page > .reference:hover {
   font-weight: inherit;
   color: var(--simplint-accent-contrast);
   background: var(--simplint-accent);
@@ -581,4 +576,50 @@ body[data-theme="light"] .highlight {
 
 .sidebar-tree .toctree-l1 > a[href$="changelog.html"] {
   --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E");
+}
+
+/* browsers draw focus rings in a fixed dark color that disappears on the navy theme; the accent reads on every
+   surface of both themes */
+:focus-visible,
+.sidebar-search:focus-visible,
+button.copybtn:focus-visible,
+.sd-tab-set > input:focus-visible + label {
+  outline: 2px solid var(--simplint-accent);
+  outline-offset: 2px;
+}
+
+/* the search field spans the sidebar edge to edge, where a ring outside it would be clipped */
+.sidebar-search:focus-visible {
+  outline-offset: -2px;
+}
+
+/* the copy button only shows while the pointer is over its code block; a keyboard user reaching it must see it too */
+button.copybtn:focus-visible {
+  opacity: 1;
+}
+
+/* every field gets an outline that holds 4.5:1 against the page, like the text in it */
+body {
+  --color-sidebar-search-border: var(--color-foreground-border);
+}
+
+::placeholder {
+  color: var(--color-foreground-muted);
+  opacity: 1;
+}
+
+/* the diagram's fullscreen button ships a fixed gray at half opacity; follow the page's colors instead */
+.mermaid-container > button.mermaid-fullscreen-btn {
+  opacity: 1 !important;
+  color: var(--color-foreground-secondary);
+  background: var(--color-background-primary);
+  border-color: var(--color-foreground-border);
+  box-shadow: none;
+}
+
+.mermaid-container > button.mermaid-fullscreen-btn:hover {
+  color: var(--simplint-accent);
+  background: var(--color-background-primary);
+  border-color: var(--simplint-accent);
+  box-shadow: none;
 }

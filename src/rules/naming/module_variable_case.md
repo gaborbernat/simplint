@@ -43,11 +43,11 @@ flowchart TD
     imported -->|no| listed{"Is it listed in #95;#95;all#95;#95;?"}
     listed -->|yes| public["UPPER_CASE"]
     listed -->|no| private["_UPPER_CASE"]
-    classDef blue fill:#3776ab,stroke:#062d59,color:#ffffff
-    classDef yellow fill:#ffd43b,stroke:#b8930b,color:#062d59
-    classDef green fill:#22c55e,stroke:#15803d,color:#052e16
-    classDef teal fill:#14b8a6,stroke:#0f766e,color:#042f2e
-    classDef orange fill:#f97316,stroke:#c2410c,color:#431407
+    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59
+    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59
+    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a
+    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28
+    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606
     class imported,listed yellow
     class keep blue
     class public green
