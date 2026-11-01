@@ -415,3 +415,27 @@ fn fix_lets_ruff_drop_a_layout_suppression_the_fix_leaves_unused(suppression: &s
         "def main() -> int:\n    return helper()\n\n\ndef helper() -> int:\n    return 1\n"
     );
 }
+
+// Folding `user.uuid = 7` into the mock's constructor leaves no assignment to a `uuid` attribute, so the dataclass with
+// that field can freeze in the same run.
+#[test]
+fn fix_lints_again_the_files_another_fix_changed_the_facts_of() {
+    let root = project(&[
+        ("model.py", "from dataclasses import dataclass\n\n\n@dataclass\nclass User:\n    uuid: int\n"),
+        (
+            "test_model.py",
+            "from unittest.mock import MagicMock\n\n\ndef test_user() -> None:\n    user = MagicMock()\n    user.uuid = \
+             7\n    assert user.uuid == 7\n",
+        ),
+    ]);
+    let fixed = check(root.path(), &["--fix", "--select", "SMP111,SMP203"]);
+    assert_eq!(
+        (fixed.1, read(root.path(), "model.py"), check(root.path(), &["--select", "SMP111,SMP203"]).1),
+        (
+            "Found 2 errors (2 fixed, 0 remaining).\n".to_owned(),
+            "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass User:\n    uuid: int\n"
+                .to_owned(),
+            "All checks passed!\n".to_owned()
+        )
+    );
+}

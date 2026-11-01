@@ -32,6 +32,11 @@ re-exports. When the star-imported module does not resolve to a file, as one fou
 ``name/__init__.py``, so the public names of each such file count as used. A module no file of the run is named after
 is outside the run.
 
+A fix can change what the index records: folding ``user.uuid = 7`` into ``MagicMock(uuid=7)`` leaves no assignment to
+a ``uuid`` attribute, which lets the dataclass with that field freeze. With ``--fix``, simplint collects the facts of
+each file a fix rewrote again, and lints and fixes again every file whose answers from the index changed, until a round
+rewrites nothing, so one run is final. Fixes that keep undoing each other's facts stop after eight rounds.
+
 .. mermaid::
 
     flowchart LR

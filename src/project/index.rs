@@ -115,6 +115,15 @@ impl Project {
         Ok(Self { imported, referenced, star_imported, assigned_attributes, base_classes, digest: hasher.finish() })
     }
 
+    // The attribute and base class names one index has and the other lacks, whose answers differ between the two.
+    pub fn changed_names<'p>(&'p self, other: &'p Self) -> HashSet<&'p str> {
+        self.assigned_attributes
+            .symmetric_difference(&other.assigned_attributes)
+            .chain(self.base_classes.symmetric_difference(&other.base_classes))
+            .map(String::as_str)
+            .collect()
+    }
+
     // A file's entry is looked up once, so rules asking about many names do not normalize and hash its path each time.
     pub fn file(&self, path: &Path) -> FileIndex<'_> {
         let path = normalized(path);
@@ -182,6 +191,14 @@ pub struct FileIndex<'a> {
     imported: Option<&'a HashSet<String>>,
     referenced: Option<&'a HashSet<String>>,
     star_imported: bool,
+}
+
+// Two indexes give a file the same answers when the names other files use from it match; the attribute and base class
+// names of the whole run are compared apart, by `Project::changed_names`.
+impl PartialEq for FileIndex<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        (self.imported, self.referenced, self.star_imported) == (other.imported, other.referenced, other.star_imported)
+    }
 }
 
 // The index slice a file's diagnostics depend on; a cached result stays valid while this is unchanged.
