@@ -9,7 +9,14 @@ expression: "lint_fixture(rule, fixture, target_version)"
 11:1 SMP001 Section comment groups code; extract a named function or class instead [fix: Remove the section comment]
 12:1 SMP001 Section comment groups code; extract a named function or class instead [fix: Remove the section comment]
 20:1 SMP001 Section comment groups code; extract a named function or class instead [fix: Remove the section comment]
---- fixed (7 applied, 0 remaining) ---
+25:1 SMP001 Decoration makes the comment read as a section divider; keep its text alone [fix: Remove the decoration]
+26:1 SMP001 Decoration makes the comment read as a section divider; keep its text alone [fix: Remove the decoration]
+27:1 SMP001 Section comment groups code; extract a named function or class instead [fix: Remove the section comment]
+28:1 SMP001 Section comment groups code; extract a named function or class instead [fix: Remove the section comment]
+29:1 SMP001 Decoration makes the comment read as a section divider; keep its text alone [fix: Remove the decoration]
+30:1 SMP001 Decoration makes the comment read as a section divider; keep its text alone [fix: Remove the decoration]
+31:1 SMP001 Decoration makes the comment read as a section divider; keep its text alone [fix: Remove the decoration]
+--- fixed (14 applied, 0 remaining) ---
 import os
 # /// script
 # requires-python = ">=3.12"
@@ -26,3 +33,11 @@ VALUE = os.sep  # ---- trailing is fine
 # ++ counter
 # the parser coerces both operands, but neither
 # is a shape the checker vouches for, so both keep ===
+
+# remove return to update cron
+# the lock must be held while the queue drains
+# start of the generated code
+# built with modern C++
+# the lock must hold
+# __getattribute__ triggered through __getattr__
+# __init__ wires the parser

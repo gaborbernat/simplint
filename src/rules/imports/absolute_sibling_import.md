@@ -4,7 +4,9 @@ Checks for `from ... import` statements that name the file's own package, or a p
 file belongs to a package when its directory holds an
 [`__init__.py`](https://docs.python.org/3/reference/import.html#regular-packages); simplint builds the package name from
 the chain of directories with an `__init__.py` above the file. Imports from a parent package and plain `import a.b`
-statements are not reported.
+statements are not reported. Neither are imports in a directory without an `__init__.py` that Ruff's
+[`namespace-packages`](https://docs.astral.sh/ruff/settings/#namespace-packages) makes a package: pytest imports a test
+module there as a top-level module, where a relative import fails.
 
 ## Why is this bad?
 

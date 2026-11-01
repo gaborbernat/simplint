@@ -35,6 +35,7 @@ use crate::common::{self, check, read};
 #[test_case("walrus-candidate", "walrus_candidate.py", "py37" ; "walrus_candidate_before_python38")]
 #[test_case("walrus-candidate", "walrus_candidate_dynamic.py", "py314" ; "walrus_candidate_computed_all")]
 #[test_case("walrus-candidate", "walrus_candidate_listed.py", "py314" ; "walrus_candidate_listed_in_all")]
+#[test_case("walrus-candidate", "walrus_candidate_width.py", "py314" ; "walrus_candidate_header_width")]
 fn rule(rule: &str, fixture: &str, target_version: &str) {
     common::assert_rule_snapshot(rule, fixture, target_version);
 }
@@ -84,11 +85,12 @@ fn walrus_candidate_keeping_if_branches_is_fixed(body: &str, fixed: &str) {
 }
 
 // Ruff collapses the nested `if` the walrus leaves only when the first line of the result fits the line length, so the
-// unformatted line would decide what a second run, over the formatted one, does.
+// unformatted line would decide what a second run, over the formatted one, does. At 84 columns the `if` the walrus
+// writes fits, and the merged one does not.
 #[test]
 fn walrus_candidate_leaving_collapsible_if_is_merged_whatever_the_layout() {
     let root = common::project(&[
-        ("pyproject.toml", "[tool.ruff]\nline-length = 60\n[tool.ruff.lint]\nselect = [\"SIM102\"]\n"),
+        ("pyproject.toml", "[tool.ruff]\nline-length = 84\n[tool.ruff.lint]\nselect = [\"SIM102\"]\n"),
         (
             "module.py",
             "import re\n\n_PATTERN = \"descendant-or-self::label[@for]\"\n\n\ndef find(text: str, flag: bool) \

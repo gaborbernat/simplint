@@ -5,7 +5,8 @@ Checks for own-line comments used as dividers or section headers. A comment is r
 - is made only of divider characters (`-`, `=`, `*`, `#`, `~`, `_`, `+`, `/`), at least four of them counting the
   leading `#`, such as `# ---` or `####`
 - starts or ends with three or more of the same divider character, such as `# --- helpers`
-- starts and ends with two or more, such as `# -- helpers --`
+- starts and ends with two or more set apart from the words by a space, such as `# -- helpers --`, but not
+  `# __init__ runs first, before __call__`
 - opens with two or more `#`, such as `## Setup`
 - is a `# region` or `# endregion` marker
 
@@ -37,4 +38,8 @@ def parse_header(line: str) -> str:
 
 ## Fix safety
 
-The fix deletes the comment line. It is always safe, since comments do not affect behavior.
+The fix deletes a comment that is only decoration, or decoration around a title of up to three words, as in
+`# === helpers ===`. A longer text, such as an instruction, is kept: the fix strips the decoration and leaves a plain
+comment, so `#  *** remove return to update cron` becomes `# remove return to update cron`. A divider run joined to a
+word without a space, such as the `++` of `C++`, stays unless it is three characters or longer. The fix is always safe,
+since comments do not affect behavior.

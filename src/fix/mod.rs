@@ -1,6 +1,6 @@
 mod apply;
 mod errors;
-mod layout;
+pub mod layout;
 pub(crate) mod ruff;
 
 use std::collections::{BTreeSet, HashSet};

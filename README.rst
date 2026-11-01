@@ -216,13 +216,29 @@ in a ``simplint`` directory inside Ruff's cache directory, ``.ruff_cache`` unles
 A cached result also depends on the names other files use from that file, so editing an importer checks the files it
 imports again.
 
+Naming
+------
+
+Some frameworks read a module variable by its exact name, so renaming it to the ``_UPPER_CASE`` form SMP102 asks for
+breaks the program. SMP102 already leaves alone the names Sphinx, Alembic, gunicorn and WSGI or ASGI servers read; list
+any other in ``naming.keep-names``:
+
+.. code-block:: toml
+
+    [tool.simplint.naming]
+    keep-names = ["urlpatterns"]  # the default is []
+
+``--config "naming.keep-names = ['urlpatterns']"`` replaces the list, and ``--show-settings`` prints it as
+``linter.naming.keep_names``.
+
 Settings shared with Ruff
 -------------------------
 
 simplint resolves Ruff's configuration with Ruff's own code, so the two tools agree on it: ``--isolated``, then
 ``--config``, then the closest ``.ruff.toml``, ``ruff.toml`` or ``pyproject.toml`` with a ``[tool.ruff]`` table, then
 your user-level Ruff configuration, then Ruff's defaults. ``extend`` chains and hierarchical configuration work as in
-Ruff.
+Ruff. simplint does not repeat Ruff's warnings about that configuration, such as an ignored rule Ruff has removed:
+``ruff check`` already shows them.
 
 - `target-version <https://docs.astral.sh/ruff/settings/#target-version>`__ and
   `per-file-target-version <https://docs.astral.sh/ruff/settings/#per-file-target-version>`__ set the Python version

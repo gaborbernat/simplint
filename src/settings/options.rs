@@ -22,6 +22,7 @@ pub struct Configuration {
     pub(super) extend_per_file_ignores: Vec<PerFileIgnoreSource>,
     pub(super) extend_safe_fixes: Vec<Selector>,
     pub(super) extend_unsafe_fixes: Vec<Selector>,
+    pub(super) keep_names: Option<Vec<String>>,
     pub(super) run: RunOptions,
 }
 
@@ -123,6 +124,7 @@ impl Configuration {
                 .unwrap_or_default(),
             extend_safe_fixes: tag("extend-safe-fixes", options.extend_safe_fixes.unwrap_or_default()),
             extend_unsafe_fixes: tag("extend-unsafe-fixes", options.extend_unsafe_fixes.unwrap_or_default()),
+            keep_names: options.naming.and_then(|naming| naming.keep_names),
             run: RunOptions {
                 fix: options.fix,
                 fix_only: options.fix_only,
@@ -146,6 +148,7 @@ impl Configuration {
                 .collect(),
             extend_safe_fixes: other.extend_safe_fixes.into_iter().chain(self.extend_safe_fixes).collect(),
             extend_unsafe_fixes: other.extend_unsafe_fixes.into_iter().chain(self.extend_unsafe_fixes).collect(),
+            keep_names: self.keep_names.or(other.keep_names),
             run: self.run.combine(other.run),
         }
     }
@@ -375,4 +378,25 @@ pub struct SimplintOptions {
         "#
     )]
     pub extend_per_file_ignores: Option<BTreeMap<String, Vec<String>>>,
+
+    /// Options for the naming rules.
+    #[option_group]
+    pub naming: Option<NamingOptions>,
+}
+
+/// The `[tool.simplint.naming]` table.
+#[derive(Deserialize, Default, Clone, OptionsMetadata)]
+#[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
+pub struct NamingOptions {
+    /// A list of module-scope names that `module-variable-case` (`SMP102`) leaves as they are, such as the variables a
+    /// framework reads from a module by their exact lowercase names.
+    #[option(
+        default = "[]",
+        value_type = "list[str]",
+        example = r#"
+            # Django reads `urlpatterns` from a URLconf module by name.
+            keep-names = ["urlpatterns"]
+        "#
+    )]
+    pub keep_names: Option<Vec<String>>,
 }

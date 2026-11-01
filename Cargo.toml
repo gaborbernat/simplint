@@ -15,6 +15,7 @@ clap = { version = "4.6.7", features = ["derive", "env"] }
 clap_complete_command = { version = "0.6.1", default-features = false, features = ["nushell"] }
 clearscreen = { version = "4.0.6", default-features = false }
 colored = "3.1.1"
+fern = "0.7.1"
 filetime = "0.2.29"
 globset = "0.4.21"
 itertools = "0.15.0"

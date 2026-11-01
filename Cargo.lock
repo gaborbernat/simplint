@@ -3028,6 +3028,7 @@ dependencies = [
  "clap_complete_command",
  "clearscreen",
  "colored",
+ "fern",
  "filetime",
  "globset",
  "insta",

@@ -14,7 +14,7 @@ use anyhow::Result;
 use clap::{CommandFactory, Parser};
 use colored::Colorize;
 use ruff::ExitStatus;
-use ruff_linter::logging::set_up_logging;
+use ruff_linter::logging::LogLevel;
 
 use crate::cli::args::{Cli, Command, TerminalColor};
 use crate::cli::check::check;
@@ -83,6 +83,34 @@ fn run(Cli { command, global_options }: Cli) -> Result<ExitStatus> {
         Command::CliSchema => subcommands::cli_schema(&Cli::command())?,
     }
     Ok(ExitStatus::Success)
+}
+
+// Ruff's `set_up_logging`, without the warnings Ruff gives about its own configuration while simplint resolves it:
+// `ruff check` already shows them, and simplint would repeat them on every run.
+fn set_up_logging(level: LogLevel) -> Result<()> {
+    fern::Dispatch::new()
+        .format(|out, message, record| match record.level() {
+            log::Level::Error => out.finish(format_args!("{}{} {message}", "error".red().bold(), ":".bold())),
+            log::Level::Warn => out.finish(format_args!("{}{} {message}", "warning".yellow().bold(), ":".bold())),
+            log::Level::Info | log::Level::Debug | log::Level::Trace => out.finish(format_args!(
+                "{}[{}][{}] {message}",
+                jiff::Zoned::now().strftime("[%Y-%m-%d][%H:%M:%S]"),
+                record.target(),
+                record.level(),
+            )),
+        })
+        .level(match level {
+            LogLevel::Default => log::LevelFilter::Info,
+            LogLevel::Verbose => log::LevelFilter::Debug,
+            LogLevel::Quiet | LogLevel::Silent => log::LevelFilter::Off,
+        })
+        .level_for("globset", log::LevelFilter::Warn)
+        .level_for("ty_python_semantic", log::LevelFilter::Warn)
+        .level_for("salsa", log::LevelFilter::Warn)
+        .filter(|metadata| metadata.level() != log::Level::Warn || !metadata.target().starts_with("ruff_workspace"))
+        .chain(std::io::stderr())
+        .apply()?;
+    Ok(())
 }
 
 // Ruff's `colored_override`: `--color` wins over a nonempty `FORCE_COLOR`.
