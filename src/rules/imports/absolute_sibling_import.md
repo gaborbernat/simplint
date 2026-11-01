@@ -8,6 +8,16 @@ statements are not reported. Neither are imports in a directory without an `__in
 [`namespace-packages`](https://docs.astral.sh/ruff/settings/#namespace-packages) makes a package: pytest imports a test
 module there as a top-level module, where a relative import fails.
 
+Code that runs outside its package is skipped too, since a relative import fails there:
+
+- a module with a top-level `if` that compares `__name__` with a string, such as
+  [`if __name__ == "__main__":`](https://docs.python.org/3/library/__main__.html#name-main) for a file run as
+  `python path/to/module.py`, or execnet's `if __name__ == "__channelexec__":` for a module sent to another interpreter
+  as source;
+- the body of a top-level function passed by name as the first argument to a `remote_exec(...)` or
+  [`inspect.getsource(...)`](https://docs.python.org/3/library/inspect.html#inspect.getsource) call in the same module,
+  since that call turns the function into source text that runs elsewhere.
+
 ## Why is this bad?
 
 An absolute import repeats the package name, so renaming or vendoring the package means editing every such import. A
@@ -37,10 +47,9 @@ from .deep import thing
 
 ## Fix safety
 
-The fix is safe unless the module has a top-level
-[`if __name__ == "__main__":`](https://docs.python.org/3/library/__main__.html#name-main) block. The relative import
-resolves to the same module when the file is imported as part of its package. A file run directly with
-`python path/to/module.py` has no package, and relative imports fail there.
+The fix is safe for a module imported as part of its package, where the relative import resolves to the same module. A
+build script that a tool runs by path without a `__name__` check, or a module that only another file sends as source, is
+not detected; turn the rule off for that file.
 
 ## Conflicts with Ruff
 
