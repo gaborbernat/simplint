@@ -85,8 +85,8 @@ fn walrus_candidate_leaving_collapsible_if_is_merged_whatever_the_layout() {
         ("pyproject.toml", "[tool.ruff]\nline-length = 60\n[tool.ruff.lint]\nselect = [\"SIM102\"]\n"),
         (
             "module.py",
-            "import re\n\n_PATTERN = re.compile(\"descendant-or-self::label[@for]\")\n\n\ndef find(text: str, flag: bool) \
-             -> list[str] | None:\n    if flag:\n        found = _PATTERN.findall(text)\n        if found:\n            \
+            "import re\n\n_PATTERN = \"descendant-or-self::label[@for]\"\n\n\ndef find(text: str, flag: bool) \
+             -> list[str] | None:\n    if flag:\n        found = re.findall(_PATTERN, text)\n        if found:\n            \
              return found\n    return None\n",
         ),
     ]);
@@ -97,7 +97,7 @@ fn walrus_candidate_leaving_collapsible_if_is_merged_whatever_the_layout() {
         (read(root.path(), "module.py"), second),
         (
             "import re\n\n\ndef find(text: str, flag: bool) -> list[str] | None:\n    if flag and (found := \
-             re.compile(\"descendant-or-self::label[@for]\").findall(text)):\n        return found\n    return None\n"
+             re.findall(\"descendant-or-self::label[@for]\", text)):\n        return found\n    return None\n"
                 .to_owned(),
             0
         )

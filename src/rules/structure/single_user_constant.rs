@@ -30,6 +30,7 @@ pub fn single_user_constant(checker: &Checker) {
             Exports::Absent | Exports::Dynamic => name.starts_with('_'),
         };
         if !private
+            || !is_literal(checker, value)
             || checker.project().is_referenced(name)
             || checker.project().is_attribute_assigned(name)
             || is_dunder(name)
@@ -77,6 +78,36 @@ pub fn single_user_constant(checker: &Checker) {
     }
 }
 
+// Only a value written out in the source moves: a call result such as a cache, logger, client, compiled pattern or path,
+// and a name or attribute read from elsewhere, may be state shared between calls or patched by tests, so it stays.
+fn is_literal(checker: &Checker, value: &Expr) -> bool {
+    let all_literal = |values: &[Expr]| values.iter().all(|value| is_literal(checker, value));
+    match value {
+        Expr::StringLiteral(_)
+        | Expr::BytesLiteral(_)
+        | Expr::NumberLiteral(_)
+        | Expr::BooleanLiteral(_)
+        | Expr::NoneLiteral(_)
+        | Expr::EllipsisLiteral(_) => true,
+        Expr::UnaryOp(ast::ExprUnaryOp { op: ast::UnaryOp::USub, operand, .. }) => operand.is_number_literal_expr(),
+        Expr::BinOp(ast::ExprBinOp { left, right, .. }) => is_literal(checker, left) && is_literal(checker, right),
+        Expr::Tuple(ast::ExprTuple { elts, .. })
+        | Expr::List(ast::ExprList { elts, .. })
+        | Expr::Set(ast::ExprSet { elts, .. }) => all_literal(elts),
+        Expr::Dict(dict) => dict.items.iter().all(|item| {
+            item.key.as_ref().is_some_and(|key| is_literal(checker, key)) && is_literal(checker, &item.value)
+        }),
+        Expr::Call(ast::ExprCall { func, arguments, .. }) => {
+            func.as_name_expr().is_some_and(|name| name.id.as_str() == "frozenset")
+                && !checker.semantic().is_bound("frozenset")
+                && arguments.keywords.is_empty()
+                && arguments.args.len() <= 1
+                && all_literal(&arguments.args)
+        }
+        _ => false,
+    }
+}
+
 struct Constant<'a> {
     stmt: &'a Stmt,
     name: &'a str,
@@ -86,7 +117,7 @@ struct Constant<'a> {
     references: Vec<TextRange>,
 }
 
-// A module value the function mutates is state that must outlive each call, such as a set of warnings already shown.
+// A container the function mutates is state that must outlive each call, such as a set of warnings already shown.
 fn is_mutated(body: &[Stmt], references: &[TextRange]) -> bool {
     let mut finder = Mutation { references, mutated: false };
     finder.visit_body(body);
@@ -99,22 +130,8 @@ struct Mutation<'a> {
 }
 
 impl<'a> Visitor<'a> for Mutation<'_> {
-    fn visit_stmt(&mut self, stmt: &'a Stmt) {
-        if let Stmt::With(with) = stmt
-            && with.items.iter().any(|item| self.references.contains(&item.context_expr.range()))
-        {
-            self.mutated = true;
-        }
-        visitor::walk_stmt(self, stmt);
-    }
-
     fn visit_expr(&mut self, expr: &'a Expr) {
         let target = match expr {
-            Expr::Call(ast::ExprCall { func, arguments, .. })
-                if func.as_name_expr().is_some_and(|name| name.id.as_str() == "next") =>
-            {
-                arguments.args.first()
-            }
             Expr::Call(ast::ExprCall { func, .. }) => func
                 .as_attribute_expr()
                 .filter(|attribute| {
@@ -141,9 +158,6 @@ impl<'a> Visitor<'a> for Mutation<'_> {
                 .map(|attribute| attribute.value.as_ref()),
             Expr::Subscript(ast::ExprSubscript {
                 value, ctx: ast::ExprContext::Store | ast::ExprContext::Del, ..
-            })
-            | Expr::Attribute(ast::ExprAttribute {
-                value, ctx: ast::ExprContext::Store | ast::ExprContext::Del, ..
             }) => Some(value.as_ref()),
             _ => None,
         };
@@ -157,28 +171,22 @@ impl<'a> Visitor<'a> for Mutation<'_> {
 fn move_into_function(checker: &Checker, constant: &Constant) -> Option<Fix> {
     let source = checker.source;
     let function = constant.function;
-    // Built inside the function, the value reads the module's names when the function runs; a name the module rebinds
-    // or deletes later, such as a helper class removed with `del`, would no longer hold what it held at import.
-    // A parameter or local of the function with the same name as a module name the value reads, such as an `operator`
-    // parameter next to `operator.eq`, would capture that name once the value moves inside.
+    // A parameter or local of the function named `frozenset` would capture the builtin the value calls.
     let mut stores = StoredNameFinder::default();
     stores.visit_body(&function.body);
     let is_local = |name: &str| {
         stores.names.contains_key(name) || function.parameters.iter().any(|parameter| parameter.name().as_str() == name)
     };
     if !is_alone_on_lines(source, constant.stmt.range())
-        || any_over_expr(constant.value, |expr| {
-            expr.as_name_expr()
-                .is_some_and(|name| checker.semantic().is_rebound(name.id.as_str()) || is_local(name.id.as_str()))
-        })
+        || any_over_expr(constant.value, |expr| expr.as_name_expr().is_some_and(|name| is_local(name.id.as_str())))
     {
         return None;
     }
     let deletion = Edit::range_deletion(deletion_keeping_separation(source, constant.stmt.range()));
     let value_text = checker.parenthesized_text(constant.value, constant.stmt.into());
     // Inside an f-string replacement field a value with quotes is a syntax error before Python 3.12, and any longer
-    // expression buries the text the f-string builds, so only a plain name or number goes there.
-    let simple = matches!(constant.value, Expr::Name(_) | Expr::Attribute(_) | Expr::NumberLiteral(_));
+    // expression buries the text the f-string builds, so only a number goes there.
+    let simple = constant.value.is_number_literal_expr();
     // A comment or a triple-quoted string keeps a value on several lines whatever the layout, so it gets a local name.
     let spans_lines =
         value_text.contains("\"\"\"") || value_text.contains("'''") || checker.has_comment_in(constant.value.range());

@@ -6,23 +6,29 @@ expression: "lint_fixture(rule, fixture, target_version)"
 28:1 SMP050 `_MULTILINE` is used by one function only; define it there [unsafe fix: Move `_MULTILINE` into `multi`]
 42:1 SMP050 `_REPEAT` is used by one function only; define it there [unsafe fix: Move `_REPEAT` into `twice`]
 43:1 SMP050 `_LOOPED` is used by one function only; define it there [unsafe fix: Move `_LOOPED` into `twice`]
-71:1 SMP050 `_SEEN_TYPES` is used by one function only; define it there [unsafe fix: Move `_SEEN_TYPES` into `lookup`]
-72:1 SMP050 `_NAMES` is used by one function only; define it there [unsafe fix: Move `_NAMES` into `lookup`]
-84:1 SMP050 `_FULL` is used by one function only; define it there [unsafe fix: Move `_FULL` into `describe`]
-85:1 SMP050 `_PREFIX` is used by one function only; define it there [unsafe fix: Move `_PREFIX` into `describe`]
-96:1 SMP050 `_IGNORED` is used by one function only; define it there
-104:1 SMP050 `_OPERATORS` is used by one function only; define it there
-111:1 SMP050 `_LIMITS` is used by one function only; define it there [unsafe fix: Move `_LIMITS` into `bounds`]
-118:1 SMP050 `_SIZES` is used by one function only; define it there [unsafe fix: Move `_SIZES` into `size`]
-125:1 SMP050 `_ERRORS` is used by one function only; define it there [unsafe fix: Move `_ERRORS` into `guarded`]
-135:1 SMP050 `_5_SMOOTH` is used by one function only; define it there
-136:1 SMP050 `_CLASS` is used by one function only; define it there
-143:1 SMP050 `_CHOICES` is used by one function only; define it there [unsafe fix: Move `_CHOICES` into `pick`]
-157:1 SMP050 `_FACTOR` is used by one function only; define it there [unsafe fix: Move `_FACTOR` into `scaled`]
-174:1 SMP050 `_ROOT` is used by one function only; define it there [unsafe fix: Move `_ROOT` into `render`]
-175:1 SMP050 `_HOST` is used by one function only; define it there [unsafe fix: Move `_HOST` into `prefixed`]
-184:1 SMP050 `_RESOURCE_PATTERN` is used by one function only; define it there [unsafe fix: Move `_RESOURCE_PATTERN` into `resource`]
---- fixed (16 applied, 4 remaining) ---
+84:1 SMP050 `_SEEN_TYPES` is used by one function only; define it there [unsafe fix: Move `_SEEN_TYPES` into `lookup`]
+85:1 SMP050 `_NAMES` is used by one function only; define it there [unsafe fix: Move `_NAMES` into `lookup`]
+93:1 SMP050 `_PORT` is used by one function only; define it there [unsafe fix: Move `_PORT` into `describe`]
+100:1 SMP050 `_IGNORED` is used by one function only; define it there [unsafe fix: Move `_IGNORED` into `ignored`]
+101:1 SMP050 `_NONE_IGNORED` is used by one function only; define it there [unsafe fix: Move `_NONE_IGNORED` into `ignored`]
+103:1 SMP050 `_SHADOWED` is used by one function only; define it there
+114:1 SMP050 `_OFFSET` is used by one function only; define it there [unsafe fix: Move `_OFFSET` into `literals`]
+115:1 SMP050 `_HOUR` is used by one function only; define it there [unsafe fix: Move `_HOUR` into `literals`]
+116:1 SMP050 `_RAW` is used by one function only; define it there [unsafe fix: Move `_RAW` into `literals`]
+117:1 SMP050 `_NOTHING` is used by one function only; define it there [unsafe fix: Move `_NOTHING` into `literals`]
+118:1 SMP050 `_ENABLED` is used by one function only; define it there [unsafe fix: Move `_ENABLED` into `literals`]
+119:1 SMP050 `_TABLE_ROWS` is used by one function only; define it there [unsafe fix: Move `_TABLE_ROWS` into `literals`]
+120:1 SMP050 `_CODES` is used by one function only; define it there [unsafe fix: Move `_CODES` into `literals`]
+134:1 SMP050 `_LIMITS` is used by one function only; define it there [unsafe fix: Move `_LIMITS` into `bounds`]
+141:1 SMP050 `_SIZES` is used by one function only; define it there [unsafe fix: Move `_SIZES` into `size`]
+158:1 SMP050 `_5_SMOOTH` is used by one function only; define it there
+159:1 SMP050 `_CLASS` is used by one function only; define it there
+166:1 SMP050 `_CHOICES` is used by one function only; define it there [unsafe fix: Move `_CHOICES` into `pick`]
+180:1 SMP050 `_FACTOR` is used by one function only; define it there [unsafe fix: Move `_FACTOR` into `scaled`]
+197:1 SMP050 `_ROOT` is used by one function only; define it there [unsafe fix: Move `_ROOT` into `render`]
+198:1 SMP050 `_HOST` is used by one function only; define it there [unsafe fix: Move `_HOST` into `prefixed`]
+207:1 SMP050 `_RESOURCE_PATTERN` is used by one function only; define it there [unsafe fix: Move `_RESOURCE_PATTERN` into `resource`]
+--- fixed (23 applied, 3 remaining) ---
 from typing import Final
 
 _RETRIES = 3
@@ -68,10 +74,9 @@ _LAMBDA_ONLY = 3
 HANDLER = lambda: _LAMBDA_ONLY
 
 
-_WARNED: set[str] = set()
+_WARNED: set[str] = {""}
 _CACHE = {}
 _LOG = []
-_STATE = Namespace()
 
 
 def warn_once(message: str) -> None:
@@ -80,17 +85,26 @@ def warn_once(message: str) -> None:
     _CACHE[message] = True
     del _CACHE[message]
     _LOG.append(message)
-    _STATE.last = message
 
 
-_LOCK = Lock()
-_COUNTER = count()
+_JWT_CACHE = VerdictCache(maxsize=128)
+_LOGGER = logging.getLogger(__name__)
+_VERSION_RE = re.compile(r"\d+")
+_CONFIG_DIR = Path("~/.config")
+_CLIENT = httpx.Client()
+_LEVEL = logging.INFO
+_ALIAS = PREFIX_BASE
+_FORMATTED = f"{PREFIX_BASE}/x"
+_SPREAD = [*PARTS]
+_MERGED = {**DEFAULTS}
+_FLIPPED = -LIMIT_BASE
 _LIMIT = 30  # seconds before giving up
 
 
-def guarded() -> int:
-    with _LOCK:
-        return next(_COUNTER) + _LIMIT
+def verify(token: str) -> object:
+    _LOGGER.info(token)
+    found = _JWT_CACHE.get(token) or _VERSION_RE.match(token) or _CONFIG_DIR / token or _CLIENT.get(token)
+    return found, _LEVEL, _ALIAS, _FORMATTED, _SPREAD, _MERGED, _FLIPPED, _LIMIT
 
 
 def lookup(key: str) -> int:
@@ -99,21 +113,27 @@ def lookup(key: str) -> int:
     return seen_types.get(key, 0) + len(seen_types) + len(names) + len(names)
 
 
+_FULL = ".".join(str(part) for part in VERSION)
+
+
 def describe() -> str:
-    full = ".".join(str(part) for part in VERSION)
-    return f"version {full} at {PREFIX_BASE}"
+    return f"version {_FULL} on {8080}"
 
 
-class _Empty:
-    pass
-
-
-_IGNORED = frozenset(dir(_Empty))
-del _Empty
+_DERIVED = frozenset(KINDS)
+_SHADOWED = frozenset((1,))
 
 
 def ignored() -> frozenset:
-    return _IGNORED
+    return frozenset({"a", "b"}) | frozenset() | _DERIVED
+
+
+def shadow(frozenset: type) -> object:
+    return frozenset, _SHADOWED
+
+
+def literals() -> tuple[object, ...]:
+    return (-1), (60 * 60), b"raw", None, True, [("a", 1.5), ("b", -2)], {"ok": 0, "error": 1}
 
 
 _OPERATORS = {"==": operator.eq}
@@ -133,10 +153,13 @@ def size(key: str) -> int:
     return sizes.get(key, 0) + len(sizes)
 
 
+_ERRORS = (RuntimeError,) if len(__name__) > 3 else ()
+
+
 def guarded() -> None:
     try:
         print()
-    except (ValueError, *((RuntimeError,) if len(__name__) > 3 else ())):
+    except (ValueError, *_ERRORS):
         pass
 
 

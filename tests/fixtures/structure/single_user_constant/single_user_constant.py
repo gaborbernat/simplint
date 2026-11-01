@@ -50,10 +50,9 @@ _LAMBDA_ONLY = 3
 HANDLER = lambda: _LAMBDA_ONLY
 
 
-_WARNED: set[str] = set()
+_WARNED: set[str] = {""}
 _CACHE = {}
 _LOG = []
-_STATE = Namespace()
 
 
 def warn_once(message: str) -> None:
@@ -62,19 +61,28 @@ def warn_once(message: str) -> None:
     _CACHE[message] = True
     del _CACHE[message]
     _LOG.append(message)
-    _STATE.last = message
 
 
-_LOCK = Lock()
-_COUNTER = count()
+_JWT_CACHE = VerdictCache(maxsize=128)
+_LOGGER = logging.getLogger(__name__)
+_VERSION_RE = re.compile(r"\d+")
+_CONFIG_DIR = Path("~/.config")
+_CLIENT = httpx.Client()
+_LEVEL = logging.INFO
+_ALIAS = PREFIX_BASE
+_FORMATTED = f"{PREFIX_BASE}/x"
+_SPREAD = [*PARTS]
+_MERGED = {**DEFAULTS}
+_FLIPPED = -LIMIT_BASE
 _LIMIT = 30  # seconds before giving up
+
+
+def verify(token: str) -> object:
+    _LOGGER.info(token)
+    found = _JWT_CACHE.get(token) or _VERSION_RE.match(token) or _CONFIG_DIR / token or _CLIENT.get(token)
+    return found, _LEVEL, _ALIAS, _FORMATTED, _SPREAD, _MERGED, _FLIPPED, _LIMIT
 _SEEN_TYPES: Final[dict[str, int]] = {}
 _NAMES: Final = ("a", "b")
-
-
-def guarded() -> int:
-    with _LOCK:
-        return next(_COUNTER) + _LIMIT
 
 
 def lookup(key: str) -> int:
@@ -82,23 +90,38 @@ def lookup(key: str) -> int:
 
 
 _FULL = ".".join(str(part) for part in VERSION)
-_PREFIX = PREFIX_BASE
+_PORT = 8080
 
 
 def describe() -> str:
-    return f"version {_FULL} at {_PREFIX}"
+    return f"version {_FULL} on {_PORT}"
 
 
-class _Empty:
-    pass
-
-
-_IGNORED = frozenset(dir(_Empty))
-del _Empty
+_IGNORED = frozenset({"a", "b"})
+_NONE_IGNORED = frozenset()
+_DERIVED = frozenset(KINDS)
+_SHADOWED = frozenset((1,))
 
 
 def ignored() -> frozenset:
-    return _IGNORED
+    return _IGNORED | _NONE_IGNORED | _DERIVED
+
+
+def shadow(frozenset: type) -> object:
+    return frozenset, _SHADOWED
+
+
+_OFFSET = -1
+_HOUR = 60 * 60
+_RAW = b"raw"
+_NOTHING = None
+_ENABLED = True
+_TABLE_ROWS = [("a", 1.5), ("b", -2)]
+_CODES = {"ok": 0, "error": 1}
+
+
+def literals() -> tuple[object, ...]:
+    return _OFFSET, _HOUR, _RAW, _NOTHING, _ENABLED, _TABLE_ROWS, _CODES
 
 
 _OPERATORS = {"==": operator.eq}

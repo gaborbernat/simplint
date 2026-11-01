@@ -287,7 +287,7 @@ fn fix_takes_the_work_ruff_cleanup_leaves_for_the_rules() {
     check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP050,SMP100,SMP102"]);
     assert_eq!(
         read(root.path(), "module.py"),
-        "import sys\n\n\ndef is_text(value: object) -> bool:\n    return isinstance(value, str)\n"
+        "import sys\n\n\n_BASESTRING = str\n\n\ndef is_text(value: object) -> bool:\n    return isinstance(value, _BASESTRING)\n"
     );
 }
 
