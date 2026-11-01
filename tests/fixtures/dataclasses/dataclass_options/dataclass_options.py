@@ -45,11 +45,11 @@ class Labelled:
 
 @dataclass
 class Cached:
-    value: int
+    radius: int
 
     @functools.cached_property
     def doubled(self) -> int:
-        return self.value * 2
+        return self.radius * 2
 
 
 @dataclass

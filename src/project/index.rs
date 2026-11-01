@@ -62,7 +62,7 @@ pub struct Project {
 struct Writes {
     on_class: HashMap<String, HashSet<String>>,
     untyped: HashSet<String>,
-    cached_property_bases: HashSet<String>,
+    unslottable_bases: HashSet<String>,
 }
 
 impl Project {
@@ -129,7 +129,7 @@ impl Project {
                 writes.on_class.entry(class.clone()).or_default().insert(attribute.clone());
             }
             writes.untyped.extend(facts.untyped.iter().cloned());
-            writes.cached_property_bases.extend(facts.cached_property_bases.iter().cloned());
+            writes.unslottable_bases.extend(facts.unslottable_bases.iter().cloned());
         }
         let environment = ResolverEnvironment::new(&db, python_version, paths);
         for (module, attribute) in entry_points.iter().filter_map(|entry_point| entry_point.split_once(':')) {
@@ -147,7 +147,7 @@ impl Project {
             class.cache_key(&mut hasher);
             attributes.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
         }
-        for names in [&writes.untyped, &writes.cached_property_bases] {
+        for names in [&writes.untyped, &writes.unslottable_bases] {
             0u8.cache_key(&mut hasher);
             names.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
         }
@@ -164,8 +164,8 @@ impl Project {
     }
 
     // The attribute and base class names one index has and the other lacks, whose answers differ between the two, and
-    // the names of the classes whose attribute writes or `cached_property` subclasses differ, which a dataclass of that
-    // name, or a namesake of it, reads.
+    // the names of the classes whose attribute writes, or subclasses that a slotted base breaks, differ, which a
+    // dataclass of that name, or a namesake of it, reads.
     pub fn changed_names<'p>(&'p self, other: &'p Self) -> HashSet<&'p str> {
         let (writes, others) = (&self.writes, &other.writes);
         let classes = writes
@@ -174,7 +174,7 @@ impl Project {
             .filter(|(class, attributes)| others.on_class.get(*class) != Some(*attributes))
             .chain(others.on_class.iter().filter(|(class, _)| !writes.on_class.contains_key(*class)))
             .map(|(class, _)| class)
-            .chain(writes.cached_property_bases.symmetric_difference(&others.cached_property_bases))
+            .chain(writes.unslottable_bases.symmetric_difference(&others.unslottable_bases))
             .map(|class| class.rsplit('.').next().unwrap_or(class));
         self.assigned_attributes
             .symmetric_difference(&other.assigned_attributes)
@@ -315,15 +315,16 @@ impl<'a> FileIndex<'a> {
         self.project.writes.on_class.get(class).into_iter().flatten().map(String::as_str)
     }
 
-    // Whether the run writes attributes on instances of, or subclasses with `cached_property`, another class with the
-    // same name: a name that resolves differently than simplint sees, as through a re-export, may still be this class.
+    // Whether the run writes attributes on instances of another class with the same name, or has subclasses of it that a
+    // slotted base breaks: a name that resolves differently than simplint sees, as through a re-export, may still be
+    // this class.
     pub fn has_namesake_hazards(&self, class: &str) -> bool {
         let name = class.rsplit('.').next().unwrap_or(class);
         let writes = &self.project.writes;
         writes
             .on_class
             .keys()
-            .chain(&writes.cached_property_bases)
+            .chain(&writes.unslottable_bases)
             .any(|other| other != class && other.rsplit('.').next() == Some(name))
     }
 
@@ -332,9 +333,9 @@ impl<'a> FileIndex<'a> {
         self.project.writes.untyped.contains(name)
     }
 
-    // Whether a class of the run that uses `functools.cached_property` inherits from the class with this qualified name.
-    pub fn has_cached_property_subclass(&self, name: &str) -> bool {
-        self.project.writes.cached_property_bases.contains(name)
+    // Whether a class of the run that a slotted base breaks inherits from the class with this qualified name.
+    pub fn has_unslottable_subclass(&self, name: &str) -> bool {
+        self.project.writes.unslottable_bases.contains(name)
     }
 }
 

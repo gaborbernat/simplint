@@ -8,6 +8,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::project::receivers::module_name;
 use crate::rules::dataclasses::{Offer, require_options};
+use crate::rules::last_segment;
 
 pub fn dataclass_options(checker: &Checker) {
     require_options(checker, Rule::DataclassOptions, &["frozen", "slots"], |checker, decorated| {
@@ -25,12 +26,15 @@ pub fn dataclass_options(checker: &Checker) {
         for attribute in project.attributes_written_on(&qualified) {
             hazards.written(attribute);
         }
-        hazards.slots |= project.has_cached_property_subclass(&qualified);
-        hazards.suspected |= decorated.explicit
-            || !class.bases().is_empty()
-            || project.is_base_class(name)
-            || project.has_namesake_hazards(&qualified)
-            || fields.iter().any(|field| project.is_attribute_written(field));
+        // A write through a receiver simplint cannot type, such as `envs[name].active = True`, may target this class. A
+        // base's methods may write to the instance, and a frozen dataclass can neither inherit from nor be inherited by
+        // a mutable one.
+        hazards.frozen |= fields.iter().any(|field| project.is_attribute_written(field))
+            || class.bases().iter().any(|base| !is_generic(base))
+            || project.is_base_class(name);
+        hazards.slots |= project.has_unslottable_subclass(&qualified);
+        hazards.suspected |=
+            decorated.explicit || !class.bases().is_empty() || project.has_namesake_hazards(&qualified);
         let options: Vec<&'static str> = decorated
             .missing
             .iter()
@@ -45,9 +49,14 @@ pub fn dataclass_options(checker: &Checker) {
     });
 }
 
+fn is_generic(base: &Expr) -> bool {
+    let base = base.as_subscript_expr().map_or(base, |subscript| &subscript.value);
+    last_segment(base) == Some("Generic")
+}
+
 // What breaks once the class is frozen or slotted. A hazard the class shows for certain withholds the option it
-// breaks; one that only might break it, such as an attribute with a field's name set on an object of unknown class,
-// makes the fix unsafe.
+// breaks; one that only might break it, such as a class body writing to something other than `self`, makes the fix
+// unsafe.
 struct Hazards<'f> {
     fields: &'f HashSet<&'f str>,
     frozen: bool,

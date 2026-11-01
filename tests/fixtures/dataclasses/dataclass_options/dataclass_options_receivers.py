@@ -1,4 +1,5 @@
 import functools
+import threading
 from typing import Optional
 from dataclasses import dataclass
 from unittest import mock
@@ -115,3 +116,12 @@ def rebind(resource: object) -> None:
     current.tag = "rebound"
     with resource as handle, mock.patch("module.tag") as (first, second):
         handle.tag = "handle"
+
+
+@dataclass
+class Stratified:
+    stratum: int
+
+
+class ThreadStratified(Stratified, threading.local):
+    pass
