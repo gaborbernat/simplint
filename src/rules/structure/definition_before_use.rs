@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 use std::ops::RangeInclusive;
 
 use ruff_diagnostics::{Edit, Fix};
-use ruff_python_ast::visitor::Visitor;
-use ruff_python_ast::{self as ast, Stmt};
+use ruff_python_ast::visitor::{Visitor, walk_expr, walk_stmt};
+use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
@@ -35,6 +35,7 @@ fn module_uses(checker: &Checker, body: &[Stmt]) -> Uses {
     let semantic = checker.semantic();
     let lazy = semantic.annotations_are_lazy();
     let eager = eager_annotations(checker);
+    let import_time = import_time_functions(body);
     // Decorators such as FastAPI routes, pydantic's `validate_call` or `dataclass` read the annotations they decorate
     // while the module loads, even when Python defers them. Without lazy annotations, a `def` evaluates its own
     // signature's annotations when it runs. A name a function only annotates with is not a helper it calls.
@@ -43,6 +44,9 @@ fn module_uses(checker: &Checker, body: &[Stmt]) -> Uses {
             if reference.function.is_none() { Evaluation::Runtime } else { Evaluation::Deferred }
         }
         Evaluation::Annotation if !lazy && reference.function.is_none() => Evaluation::Runtime,
+        Evaluation::Deferred if reference.function.is_some_and(|function| import_time.contains(&function)) => {
+            Evaluation::Runtime
+        }
         other => other,
     };
     // The statements that, as they run, read a name something other than an import binds.
@@ -100,21 +104,62 @@ fn eager_annotations(checker: &Checker) -> Vec<TextRange> {
     signatures.chain(fields).collect()
 }
 
-fn definition_name(stmt: &Stmt) -> Option<&ast::Identifier> {
-    match stmt {
-        Stmt::FunctionDef(ast::StmtFunctionDef { name, .. }) | Stmt::ClassDef(ast::StmtClassDef { name, .. }) => {
-            Some(name)
+// The functions and lambdas that may run while the module loads, so what they read must already exist: a lambda in
+// module-level code, as `(lambda: x)()` or a callback handed to a call, and a function a class body calls, as in
+// `tokens = [state(1)]`. A lambda bound straight to a name is a definition like any `def`.
+fn import_time_functions(body: &[Stmt]) -> HashSet<TextRange> {
+    let mut finder = ImportTimeFunctions::default();
+    finder.visit_body(body);
+    finder.ranges
+}
+
+#[derive(Default)]
+struct ImportTimeFunctions {
+    ranges: HashSet<TextRange>,
+}
+
+impl<'a> Visitor<'a> for ImportTimeFunctions {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        match stmt {
+            Stmt::FunctionDef(function) => {
+                for decorator in &function.decorator_list {
+                    self.visit_expr(&decorator.expression);
+                }
+                for default in
+                    function.parameters.iter_non_variadic_params().filter_map(|parameter| parameter.default.as_deref())
+                {
+                    self.visit_expr(default);
+                }
+            }
+            Stmt::ClassDef(class) => {
+                let called = class_runtime_names(class);
+                self.ranges.extend(
+                    class
+                        .body
+                        .iter()
+                        .filter_map(Stmt::as_function_def_stmt)
+                        .filter(|function| called.contains(function.name.as_str()))
+                        .map(Ranged::range),
+                );
+                walk_stmt(self, stmt);
+            }
+            Stmt::Assign(ast::StmtAssign { targets, value, .. })
+                if targets.len() == 1 && targets[0].is_name_expr() && value.is_lambda_expr() => {}
+            _ => walk_stmt(self, stmt),
         }
-        _ => None,
+    }
+
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        if let Expr::Lambda(lambda) = expr {
+            self.ranges.insert(lambda.range);
+        } else {
+            walk_expr(self, expr);
+        }
     }
 }
 
-fn class_uses(checker: &Checker, class: &ast::StmtClassDef) -> Uses {
-    let mut uses = Uses::default();
-    let mut counts: HashMap<&str, usize> = HashMap::new();
-    for name in class.body.iter().filter_map(definition_name) {
-        *counts.entry(name.as_str()).or_default() += 1;
-    }
+// The names a class body reads as it runs: outside its methods, or in their decorators and default values.
+fn class_runtime_names(class: &ast::StmtClassDef) -> HashSet<&str> {
     let mut runtime_names = ExprCollector::new(|expr| expr.as_name_expr().map(|name| name.id.as_str()));
     for stmt in &class.body {
         match stmt {
@@ -131,7 +176,25 @@ fn class_uses(checker: &Checker, class: &ast::StmtClassDef) -> Uses {
             other => runtime_names.visit_stmt(other),
         }
     }
-    let runtime_names: HashSet<&str> = runtime_names.found.into_iter().collect();
+    runtime_names.found.into_iter().collect()
+}
+
+fn definition_name(stmt: &Stmt) -> Option<&ast::Identifier> {
+    match stmt {
+        Stmt::FunctionDef(ast::StmtFunctionDef { name, .. }) | Stmt::ClassDef(ast::StmtClassDef { name, .. }) => {
+            Some(name)
+        }
+        _ => None,
+    }
+}
+
+fn class_uses(checker: &Checker, class: &ast::StmtClassDef) -> Uses {
+    let mut uses = Uses::default();
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    for name in class.body.iter().filter_map(definition_name) {
+        *counts.entry(name.as_str()).or_default() += 1;
+    }
+    let runtime_names = class_runtime_names(class);
     for (index, stmt) in class.body.iter().enumerate() {
         let Some(name) = definition_name(stmt).map(ast::Identifier::as_str) else {
             continue;
