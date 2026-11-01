@@ -30,9 +30,9 @@ pub(super) struct NameUse {
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub(super) enum UseKind {
-    // A call passing this many arguments by position, and nothing unpacked.
+    // A call passing this many arguments by position, and no `*args`.
     Positional(u32),
-    // A use no rewrite can follow: a call unpacking arguments, a class pattern matching by position, or the name passed
+    // A use no rewrite can follow: a call unpacking `*args`, a class pattern matching by position, or the name passed
     // around as a value.
     Opaque,
     // `from module import name as written`, or `from module import *` with `*` for the name.
@@ -330,11 +330,10 @@ pub(crate) enum CallKind {
 }
 
 impl CallKind {
+    // `**kwargs` passes by keyword, which `kw_only=True` leaves working; only `*args` can carry a field by position.
     pub(crate) fn of(call: &ast::ExprCall) -> Self {
         let arguments = &call.arguments;
-        if arguments.args.iter().any(Expr::is_starred_expr)
-            || arguments.keywords.iter().any(|keyword| keyword.arg.is_none())
-        {
+        if arguments.args.iter().any(Expr::is_starred_expr) {
             Self::Unpacked
         } else if arguments.args.is_empty() {
             Self::Keyword

@@ -13,9 +13,9 @@ expression: "lint_fixture(rule, fixture, target_version)"
 68:2 SMP114 Dataclass is missing kw_only; set `kw_only=True`
 76:2 SMP114 Dataclass is missing kw_only; set `kw_only=True`
 81:2 SMP114 Dataclass is missing kw_only; set `kw_only=True` [unsafe fix: Pass `kw_only=True` to `@dataclass`]
-104:2 SMP114 Dataclass is missing kw_only; set `kw_only=True`
-109:2 SMP114 Dataclass is missing kw_only; set `kw_only=True`
-114:2 SMP114 Dataclass is missing kw_only; set `kw_only=True`
+106:2 SMP114 Dataclass is missing kw_only; set `kw_only=True`
+111:2 SMP114 Dataclass is missing kw_only; set `kw_only=True`
+116:2 SMP114 Dataclass is missing kw_only; set `kw_only=True`
 --- fixed (4 applied, 10 remaining) ---
 import functools
 from dataclasses import KW_ONLY, InitVar, dataclass, field
@@ -105,6 +105,8 @@ class Typed:
 
 def build(pairs: list[tuple[int, int]], match_me: object) -> object:
     endpoint = Endpoint(host="localhost", port=(8080))
+    keyed = Endpoint(**{"host": "localhost"})
+    mixed = Endpoint(host="localhost", **{"port": 80})
     layered = Layered(seed=1, label="x")
     grown = Grown(root="root", leaf="leaf", weight=2)
     spread = Spread(*pairs[0])
@@ -117,7 +119,7 @@ def build(pairs: list[tuple[int, int]], match_me: object) -> object:
     single = Typed(value=(value for value in (1,)))
     if isinstance(match_me, (Typed, Endpoint)) and issubclass(type(match_me), Typed):
         return Typed.__name__
-    return endpoint, layered, grown, spread, handed, overfed, typed, single
+    return endpoint, keyed, mixed, layered, grown, spread, handed, overfed, typed, single
 
 
 @dataclass

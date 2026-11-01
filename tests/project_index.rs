@@ -216,6 +216,9 @@ const PARTITION: &str =
 )]
 #[test_case("import models\n\nmodels.Partition(\"a\", 1)\n", "models.Partition(topic=\"a\", number=1)" ; "module")]
 #[test_case("from models import Partition as P\n\nP(\"a\", 1)\n", "P(topic=\"a\", number=1)" ; "alias")]
+#[test_case(
+    "from models import Partition\n\nrow = {\"number\": 1}\nPartition(\"a\", **row)\n", "Partition(topic=\"a\", **row)" ; "keyword_unpacking"
+)]
 fn dataclass_kw_only_rewrites_calls_in_other_files(caller: &str, rewritten: &str) {
     let models = format!("{PARTITION}\n\ndef helper(value):\n    return value\n");
     let root = project(&[("models.py", &models), ("caller.py", caller)]);
@@ -241,7 +244,7 @@ fn dataclass_kw_only_rewrites_calls_in_other_files(caller: &str, rewritten: &str
 // A use no rewrite can follow keeps the decorator as it is, however often the fixes run.
 #[test_case(&[("caller.py", "from models import *\n\nPartition(\"a\", 1)\n")] ; "star_import")]
 #[test_case(&[("caller.py", "import functools\n\nfrom models import Partition\n\nfunctools.partial(Partition, \"a\")\nPartition(\"b\", 2)\n")] ; "partial")]
-#[test_case(&[("caller.py", "from models import Partition\n\nPartition(*(\"a\", 1))\n")] ; "unpacked")]
+#[test_case(&[("caller.py", "from models import Partition\n\nrow = (\"a\", 1)\nPartition(*row)\n")] ; "unpacked")]
 #[test_case(&[("caller.py", "from models import Partition\n\nPartition(\"a\", 1, 2)\n")] ; "too_many")]
 #[test_case(
     &[("relay.py", "from models import Partition\n"), ("caller.py", "from relay import Partition\n\nPartition(topic=\"a\", number=1)\n")]

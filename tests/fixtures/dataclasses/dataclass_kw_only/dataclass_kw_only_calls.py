@@ -86,6 +86,8 @@ class Typed:
 
 def build(pairs: list[tuple[int, int]], match_me: object) -> object:
     endpoint = Endpoint("localhost", (8080))
+    keyed = Endpoint(**{"host": "localhost"})
+    mixed = Endpoint("localhost", **{"port": 80})
     layered = Layered(1, label="x")
     grown = Grown("root", "leaf", weight=2)
     spread = Spread(*pairs[0])
@@ -98,7 +100,7 @@ def build(pairs: list[tuple[int, int]], match_me: object) -> object:
     single = Typed(value for value in (1,))
     if isinstance(match_me, (Typed, Endpoint)) and issubclass(type(match_me), Typed):
         return Typed.__name__
-    return endpoint, layered, grown, spread, handed, overfed, typed, single
+    return endpoint, keyed, mixed, layered, grown, spread, handed, overfed, typed, single
 
 
 @dataclass

@@ -44,13 +44,14 @@ Release(name="simplint", version="1.0.0")
 The fix sets `kw_only=True` on the decorator and passes every positional argument of the calls in the same module by
 keyword, using the field order of the generated `__init__`: inherited fields first, without `ClassVar` fields, fields
 with `init=False` or `kw_only=True` and the fields after `KW_ONLY`, and with `InitVar` fields. Calls through `cls(...)`
-in the class's own methods are rewritten too. In another file, each positional call gets its own report, whose fix
-passes the arguments by keyword. That fix is safe, as the call does the same before and after.
+in the class's own methods are rewritten too. A call that unpacks `**kwargs` passes those fields by keyword, so it keeps
+working. In another file, each positional call gets its own report, whose fix passes the arguments by keyword. That fix
+is safe, as the call does the same before and after.
 
 The fix of the decorator counts on those reports: the same `--fix` run rewrites the calls of the other files and adds
 `kw_only=True`. No fix is offered while any use could still pass fields by position:
 
-- a call that unpacks `*args` or `**kwargs`, or passes more arguments than the class has positional fields;
+- a call that unpacks `*args`, or passes more arguments than the class has positional fields;
 - the class used as a value, as in `functools.partial(Partition, topic)`, or matched by position in a `case` pattern;
 - a subclass, or a call through `type(self)(...)` or `self.__class__(...)`;
 - a file that imports the module with `*`, or that imports the class and passes it on to other modules;

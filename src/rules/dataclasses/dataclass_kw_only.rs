@@ -23,7 +23,7 @@ pub fn dataclass_kw_only(checker: &Checker) {
 }
 
 // The edits that pass every positional call of `class` in this module by keyword, or `None` when some use of the class
-// could still pass fields by position once it is keyword-only: a call unpacking `*args` or `**kwargs`, the class handed
+// could still pass fields by position once it is keyword-only: a call unpacking `*args`, the class handed
 // around as a value, a subclass, or a positional call in another file that file's own report cannot rewrite. The other
 // files' reports rewrite their calls in the same run.
 fn keyword_calls(checker: &Checker, class: &ast::StmtClassDef) -> Option<Vec<Edit>> {
