@@ -9,6 +9,8 @@ use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 use ruff_python_parser::parse_module;
 use ruff_python_stdlib::identifiers::is_identifier;
 
+use crate::rules::exports::{Exports, dunder_all};
+
 // The names a file uses from other modules, before they resolve to files; parsing finds them and the cache keeps them.
 // Names are grouped by module, so each module resolves once per file.
 #[derive(Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
@@ -18,6 +20,10 @@ pub struct FileFacts {
     pub(super) declared: Vec<String>,
     pub(super) assigned_attributes: Vec<String>,
     pub(super) base_classes: Vec<String>,
+    // The modules the file star-imports, which hand it whatever names their `import *` exports.
+    pub(super) star_imports: Vec<String>,
+    // The names a static `__all__` lists, which are all `import *` takes; without one it takes every public name.
+    pub(super) exports: Option<Vec<String>>,
 }
 
 impl FileFacts {
@@ -33,6 +39,7 @@ impl FileFacts {
             references: BTreeMap::new(),
             assigned_attributes: Vec::new(),
             base_classes: Vec::new(),
+            stars: BTreeSet::new(),
         };
         imports.visit_body(&parsed.syntax().body);
         // A stub publishes what it declares, so its names are the API of the module it describes.
@@ -47,6 +54,11 @@ impl FileFacts {
             declared,
             assigned_attributes: imports.assigned_attributes,
             base_classes: imports.base_classes,
+            star_imports: imports.stars.into_iter().collect(),
+            exports: match dunder_all(&parsed.syntax().body) {
+                Exports::Listed(names) => Some(names.into_iter().map(str::to_owned).collect()),
+                Exports::Absent | Exports::Dynamic => None,
+            },
         })
     }
 }
@@ -65,6 +77,7 @@ struct Imports<'a> {
     references: BTreeMap<String, BTreeSet<String>>,
     assigned_attributes: Vec<String>,
     base_classes: Vec<String>,
+    stars: BTreeSet<String>,
 }
 
 impl<'a> Visitor<'a> for Imports<'a> {
@@ -75,6 +88,9 @@ impl<'a> Visitor<'a> for Imports<'a> {
                 if let Some(resolved) =
                     resolve_imported_module_path(*level, module, self.module_path).map(Cow::into_owned)
                 {
+                    if names.iter().any(|alias| alias.name.as_str() == "*") {
+                        self.stars.insert(resolved.clone());
+                    }
                     for alias in names.iter().filter(|alias| alias.name.as_str() != "*") {
                         self.edges.entry(resolved.clone()).or_default().insert(alias.name.as_str().to_owned());
                         let bound = alias.asname.as_ref().unwrap_or(&alias.name).as_str();

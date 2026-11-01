@@ -75,21 +75,17 @@ fn stub_declarations_are_public_api(stub: &str, stdout: &str) {
     assert_eq!(check(root.path(), &["--select", "SMP102,SMP103"]).1, stdout);
 }
 
-// Patching an attribute of the module's own import reaches `os` through `files` without importing it from there.
-#[test_case("mocker.patch(\"pkg.files.os.getcwd\")", "All checks passed!\n" ; "patch_of_an_attribute")]
-#[test_case(
-    "from pkg.files import os",
-    "pkg/files.py:1:8: SMP113 `os` is imported by other modules; list it in `__all__`\nFound 1 error.\n1 \
-     unsafe fix available with `--fix --unsafe-fixes`.\n" ;
-    "import_of_the_name"
-)]
-fn patch_target_through_module_import_is_not_an_export(reference: &str, stdout: &str) {
+// Patching an attribute of the module's own import reaches `os` through `files` without importing it from there, and
+// importing it from there borrows a name `files` uses rather than one it exports.
+#[test_case("mocker.patch(\"pkg.files.os.getcwd\")" ; "patch_of_an_attribute")]
+#[test_case("from pkg.files import os" ; "import_of_the_name")]
+fn module_import_is_not_an_export(reference: &str) {
     let root = project(&[
         ("pkg/__init__.py", ""),
         ("pkg/files.py", "import os\n\n\ndef cwd() -> str:\n    return os.getcwd()\n"),
         ("test_files.py", &format!("def test_cwd(mocker):\n    {reference}\n")),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP113"]).1, common::native(stdout));
+    assert_eq!(check(root.path(), &["--select", "SMP113"]).1, "All checks passed!\n");
 }
 
 #[test_case("pkg.manager._load", "All checks passed!\n" ; "patched")]
@@ -109,4 +105,65 @@ fn patched_forwarding_function_is_a_seam(target: &str, stdout: &str) {
         ("test_manager.py", &format!("def test_run(mocker):\n    mocker.patch(\"{target}\")\n")),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP030"]).1, common::native(stdout));
+}
+
+// `import *` takes the names `__all__` lists, or without one every public name, so those may be in use unnamed.
+#[test_case("", "All checks passed!\n" ; "every_public_name")]
+#[test_case(
+    "__all__ = [\"run\"]\n",
+    "pkg/data.py:2:1: SMP102 Module-scope variable `TAG` should be named `_TAG`\nFound 1 error.\n1 unsafe fix available \
+     with `--fix --unsafe-fixes`.\n" ;
+    "listed_names"
+)]
+fn star_import_reaches_public_names(all: &str, stdout: &str) {
+    let root = project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/data.py", &format!("{all}TAG = {{\"a\": 1}}\n\n\ndef run() -> None:\n    pass\n")),
+        ("pkg/user.py", "from pkg.data import *\n\n\ndef get() -> dict:\n    return TAG\n"),
+    ]);
+    assert_eq!(check(root.path(), &["--select", "SMP102"]).1, common::native(stdout));
+}
+
+// A name imported from a package counts in the module its `__init__.py` star-imports it from, where an `__all__` would
+// narrow what the package re-exports.
+#[test]
+fn star_reexport_keeps_names_of_the_package() {
+    let types = "class ResourceType:\n    pass\n\n\ndef parse() -> None:\n    pass\n";
+    let root = project(&[
+        ("lib/__init__.py", ""),
+        ("lib/humio/__init__.py", "from ._types import *\n"),
+        ("lib/humio/_types.py", types),
+        ("app.py", "from lib import humio\nfrom lib.humio import parse\n\n_TYPES = (humio.ResourceType, parse)\n"),
+    ]);
+    let (_, stdout, _) = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP102,SMP103,SMP113"]);
+    assert_eq!(
+        (stdout, common::read(root.path(), "lib/humio/_types.py")),
+        (
+            common::native(
+                "lib/humio/_types.py:1:7: SMP113 `ResourceType` is imported by other modules; list it in `__all__`\n\
+                 lib/humio/_types.py:5:5: SMP113 `parse` is imported by other modules; list it in `__all__`\nFound 2 \
+                 errors.\n"
+            ),
+            types.to_owned()
+        )
+    );
+}
+
+// `oci_test_init` resolves only through a `sys.path` entry a `conftest.py` adds, so any module of the run by that name
+// may be the one star-imported and keeps its names, while modules by other names cannot be.
+#[test]
+fn unresolved_star_import_keeps_names_of_modules_by_its_name() {
+    let root = project(&[
+        ("support/oci_test_init.py", "region = \"x\"\n"),
+        ("support/other.py", "region = \"y\"\n"),
+        ("tests/test_oci.py", "from oci_test_init import *\n\n\ndef test_region() -> None:\n    assert region\n"),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP102"]).1,
+        common::native(
+            "support/oci_test_init.py:1:1: SMP102 Module-scope variable `region` should be named `REGION`\n\
+             support/other.py:1:1: SMP102 Module-scope variable `region` should be named `_REGION`\nFound 2 errors.\n1 \
+             unsafe fix available with `--fix --unsafe-fixes`.\n"
+        )
+    );
 }

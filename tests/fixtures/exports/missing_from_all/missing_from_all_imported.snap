@@ -1,0 +1,19 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:21 SMP113 `join` is imported by other modules; list it in `__all__` [fix: Add `join` to `__all__`]
+--- fixed (1 applied, 0 remaining) ---
+import sys
+from os.path import join  # noqa: F401
+from pathlib import Path
+
+
+def run() -> Path:
+    return Path(sys.argv[0])
+
+
+__all__ = [
+    "join",
+    "run",
+]

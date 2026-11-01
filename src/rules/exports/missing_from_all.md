@@ -20,6 +20,10 @@ alone.
 Names starting with `_`, `__init__.py` files, test modules (as defined in [SMP200](SMP200.html)) and modules that import
 `__all__` from elsewhere are skipped.
 
+Names the module imports and uses itself are skipped too: another module reaching `sys` as `app.sys` borrows a name
+`app` needs, which is not part of its API. An import the module never uses is there for its importers, so it counts as a
+re-export and is reported.
+
 simplint reads `__all__` from module-level `=`, annotated and `+=` assignments of list or tuple literals, and from
 `.extend([...])` and `.append("name")` calls, all holding string literals. When any other statement builds it, such as
 `list(...)` or `.remove(...)`, or when `__all__` is bound inside a nested block such as an `if`, `try` or function,
@@ -91,5 +95,7 @@ Each name goes before the first listed name that Ruff's
 `ruff format` gives it. Adding names is safe.
 
 A module without `__all__` gets a new one, sorted and one name per line, as its last statement, or above a closing
-`if __name__ == "__main__":` block. That fix is unsafe, since it narrows what `from module import *` exports. Importers
-outside the run are not seen.
+`if __name__ == "__main__":` block. That fix is unsafe, since it narrows what `from module import *` exports. A module
+another file of the run star-imports, or may star-import, gets no new `__all__`: `import *` takes every public name of
+it, and a name such as `ResourceType` that `pkg/__init__.py` re-exports with `from ._types import *` would vanish from
+`pkg`. A name imported from `pkg` counts as imported from `pkg/_types.py`. Importers outside the run are not seen.
