@@ -82,6 +82,11 @@ fn framework_names<'a>(checker: &Checker<'a>) -> FxHashSet<&'a str> {
     {
         names.extend(settings);
     }
+    // setuptools-scm and hatch-vcs write a version file whose lowercase names tools and callers read, and projects that
+    // write their own keep the same names alongside `__version__`.
+    if bound("__version__") {
+        names.extend(["version", "version_tuple", "commit_id"].into_iter().filter(|name| bound(name)));
+    }
     // WSGI and ASGI servers load the application by its module path and the name `app` or `application`.
     for stmt in checker.body() {
         let (target, value) = match stmt {

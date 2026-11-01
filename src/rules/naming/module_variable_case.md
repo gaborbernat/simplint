@@ -27,6 +27,8 @@ Names bound with `:=` are checked. The rule skips:
 - [gunicorn settings](https://gunicorn.org/reference/settings/), such as `bind`, `workers` or `timeout`, in a gunicorn
   configuration file: a file whose name contains `gunicorn`, such as `gunicorn.conf.py`, or a module that binds at least
   three settings, one of them `bind`, `workers` or `worker_class`
+- `version`, `version_tuple` and `commit_id` in a module that also binds `__version__`, the names of the version file
+  [setuptools-scm](https://setuptools-scm.readthedocs.io/en/latest/usage/#version-files) writes
 - `app` and `application` assigned at the top level of the module from a call that builds a WSGI or ASGI application,
   which servers load by name: `aiohttp.web.Application`, `bottle.Bottle`, Django's `get_wsgi_application` and
   `get_asgi_application`, `falcon.App`, `falcon.API` and `falcon.asgi.App`, `fastapi.FastAPI`, `flask.Flask`,

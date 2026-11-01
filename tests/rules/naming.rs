@@ -16,6 +16,7 @@ use crate::common;
 #[test_case("module-variable-case", "module_variable_case_gunicorn.py" ; "module_variable_case_gunicorn_named")]
 #[test_case("module-variable-case", "module_variable_case_frameworks.py" ; "module_variable_case_framework_names")]
 #[test_case("module-variable-case", "module_variable_case_lookalikes.py" ; "module_variable_case_framework_lookalikes")]
+#[test_case("module-variable-case", "module_variable_case_version.py" ; "module_variable_case_version_file")]
 #[test_case("unexported-public-name", "unexported_public_name.py" ; "unexported_public_name")]
 #[test_case("unexported-public-name", "unexported_public_name_extend.py" ; "unexported_public_name_extended_all")]
 #[test_case("unexported-public-name", "unexported_public_name_remove.py" ; "unexported_public_name_dynamic_all")]
