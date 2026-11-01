@@ -1,0 +1,22 @@
+---
+source: tests/output.rs
+expression: "format!(\"exit code {code}\\n{report}\")"
+---
+exit code 1
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites name="simplint" tests="2" skipped="0" failures="2" errors="0">
+    <testsuite name="[ROOT]/module.py" tests="2" skipped="0" errors="0" failures="2" package="org.simplint">
+        <testcase name="org.simplint.SMP001" classname="[ROOT]/module" line="1" column="1">
+            <properties>
+                <property name="severity" value="error"/>
+            </properties>
+            <failure message="Section comment groups code; extract a named function or class instead">line 1, col 1, Section comment groups code; extract a named function or class instead</failure>
+        </testcase>
+        <testcase name="org.simplint.SMP010" classname="[ROOT]/module" line="2" column="1">
+            <properties>
+                <property name="severity" value="error"/>
+            </properties>
+            <failure message="Single-letter name `x`; only loop targets and comprehensions may use one">line 2, col 1, Single-letter name `x`; only loop targets and comprehensions may use one</failure>
+        </testcase>
+    </testsuite>
+</testsuites>

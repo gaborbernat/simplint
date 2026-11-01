@@ -1,5 +1,0 @@
----
-source: src/snapshot.rs
-expression: "render(rule, fixture, target_version)"
----
-5:1 SMP102 Module-scope variable `counter` should be named `_COUNTER`

@@ -6,6 +6,11 @@ from pathlib import Path
 
 
 def main(path: Path) -> None:
+    """
+    Print the package version from a Cargo manifest.
+
+    :param path: the ``Cargo.toml`` to read
+    """
     with path.open("rb") as stream:
         print(tomllib.load(stream)["package"]["version"])
 

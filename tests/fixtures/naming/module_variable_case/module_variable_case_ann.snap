@@ -1,0 +1,9 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:1 SMP102 Module-scope variable `counter` should be named `_COUNTER` [unsafe fix: Rename `counter` to `_COUNTER`]
+--- fixed (1 applied, 0 remaining) ---
+_COUNTER = 1
+VALUE = _COUNTER
+__all__: list[str] = ["VALUE"]

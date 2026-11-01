@@ -1,0 +1,14 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:1 SMP050 `_LIMIT` is used by one function only; define it there [unsafe fix: Move `_LIMIT` into `check`]
+--- fixed (1 applied, 0 remaining) ---
+SHARED_LIMIT = 4
+
+
+def check(value: int) -> bool:
+    return value < 3 < SHARED_LIMIT
+
+
+__all__ = list(("check",))

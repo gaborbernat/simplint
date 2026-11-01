@@ -13,6 +13,12 @@ if TYPE_CHECKING:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    """
+    Print the next cargo-edit version or bump the workflow pins, as the command line asks.
+
+    :param argv: the arguments to parse, ``sys.argv`` when omitted
+    :raises ValueError: if the version list on stdin is not a list, or a pin is missing or invalid
+    """
     parser = argparse.ArgumentParser(description="Check or update the cargo-edit workflow pin")
     parser.add_argument("command", choices=("candidate", "update"))
     parser.add_argument("version", nargs="?")
@@ -35,6 +41,15 @@ def main(argv: Sequence[str] | None = None) -> None:
 
 
 def candidate(root: Path, versions: list[dict[str, str | bool | None]], rust_version: str) -> str | None:
+    """
+    Pick the newest unyanked cargo-edit release newer than the pin that the Rust toolchain can build.
+
+    :param root: the project root
+    :param versions: the crates.io version entries
+    :param rust_version: the available Rust version
+    :returns: the chosen version, ``None`` when no release qualifies
+    :raises ValueError: if the workflow pins are missing, disagree or the Rust version is invalid
+    """
     current = version_parts(current_version(root))
     rust = version_parts(rust_version)
     compatible = []
@@ -54,6 +69,13 @@ def candidate(root: Path, versions: list[dict[str, str | bool | None]], rust_ver
 
 
 def update(root: Path, candidate: str) -> None:
+    """
+    Rewrite every workflow cargo-edit pin to a newer version.
+
+    :param root: the project root
+    :param candidate: the version to pin
+    :raises ValueError: if the version is not newer or a workflow does not hold exactly one pin
+    """
     current = current_version(root)
     if version_parts(candidate) <= version_parts(current):
         msg = f"cargo-edit {candidate} is not newer than {current}"
@@ -84,6 +106,13 @@ def update(root: Path, candidate: str) -> None:
 
 
 def current_version(root: Path) -> str:
+    """
+    Read the cargo-edit version the workflows pin.
+
+    :param root: the project root
+    :returns: the pinned version
+    :raises ValueError: if a workflow does not hold exactly one pin, the pins disagree or the version is invalid
+    """
     marker = "          crate: cargo-edit\n          version: "
     values = []
     for name in ("prepare-release.yaml", "_build.yaml"):
@@ -102,6 +131,13 @@ def current_version(root: Path) -> str:
 
 
 def version_parts(value: str) -> tuple[int, int, int]:
+    """
+    Split a version into a comparable triple, padding a missing patch with zero.
+
+    :param value: a ``major.minor`` or ``major.minor.patch`` version
+    :returns: the major, minor and patch numbers
+    :raises ValueError: if the version has another shape or a non-numeric part
+    """
     parts = value.split(".")
     if len(parts) not in {2, 3} or any(not part.isdecimal() for part in parts):
         msg = f"invalid version: {value}"

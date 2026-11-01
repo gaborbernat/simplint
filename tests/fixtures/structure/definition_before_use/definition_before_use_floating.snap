@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:5 SMP020 `helper` is defined before its first use in `main`; move it below `main`

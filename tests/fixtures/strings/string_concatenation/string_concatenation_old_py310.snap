@@ -1,0 +1,18 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:12 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+6:12 SMP112 Build text with an f-string instead of `+`
+10:23 SMP112 Build text with an f-string instead of `+`
+--- fixed (1 applied, 2 remaining) ---
+def greet(names: dict[str, str]) -> str:
+    return f"Hello {names['first']} and {names['last']}"
+
+
+def quoted(names: dict[str, str]) -> str:
+    return "Hello " + names["it's"]
+
+
+def nested(prefix: str, width: int) -> str:
+    return f"{prefix}{'a' + ('b' * width)}"

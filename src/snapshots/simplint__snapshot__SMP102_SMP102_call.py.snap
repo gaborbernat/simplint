@@ -1,4 +1,0 @@
----
-source: src/snapshot.rs
-expression: "render(rule, fixture, target_version)"
----

@@ -19,16 +19,19 @@ def test_check_reports_and_fails(simplint: str, tmp_path: Path) -> None:
     (tmp_path / "module.py").write_text("x = 1\n")
 
     result = subprocess.run(
-        [simplint, "check", "--select", "SMP010", "module.py"],
+        [simplint, "check", "--isolated", "--select", "SMP010", "--output-format", "concise", "module.py"],
         cwd=tmp_path,
         capture_output=True,
         text=True,
         check=False,
     )
 
-    assert (result.returncode, result.stdout) == (
+    assert (result.returncode, result.stdout.splitlines()) == (
         1,
-        "module.py:1:1: SMP010 Single-letter name `x`; only loop and comprehension targets may use one\n",
+        [
+            "module.py:1:1: SMP010 Single-letter name `x`; only loop targets and comprehensions may use one",
+            "Found 1 error.",
+        ],
     )
 
 
@@ -36,7 +39,9 @@ def test_check_fix_rewrites_the_file(simplint: str, tmp_path: Path) -> None:
     module = tmp_path / "module.py"
     module.write_text("# --- helpers ---\nVALUE = 1\n")
 
-    subprocess.run([simplint, "check", "--fix", "--select", "SMP001", "module.py"], cwd=tmp_path, check=True)
+    subprocess.run(
+        [simplint, "check", "--isolated", "--fix", "--select", "SMP001", "module.py"], cwd=tmp_path, check=True
+    )
 
     assert module.read_text() == "VALUE = 1\n"
 

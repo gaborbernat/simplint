@@ -1,0 +1,17 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+6:5 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+--- fixed (1 applied, 0 remaining) ---
+def shared_doc() -> int:
+    return 1
+
+
+def helper() -> int:
+    return 2
+
+
+def documented_import() -> int:
+    """Return one."""
+    return 1

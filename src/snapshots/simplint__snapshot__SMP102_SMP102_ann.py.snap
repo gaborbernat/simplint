@@ -1,9 +1,0 @@
----
-source: src/snapshot.rs
-expression: "render(rule, fixture, target_version)"
----
-1:1 SMP102 Module-scope variable `counter` should be named `_COUNTER` [unsafe fix]
---- fixed (1 applied, 0 remaining) ---
-_COUNTER = 1
-VALUE = _COUNTER
-__all__: list[str] = ["VALUE"]

@@ -38,7 +38,7 @@ def test_oldest_supported_skips_ended_cycles(mocker: MockerFixture) -> None:
     assert python_versions.oldest_supported() == 11
 
 
-@pytest.mark.parametrize("index", range(4), ids=("settings", "docs", "requires-python", "classifiers"))
+@pytest.mark.parametrize("index", range(2), ids=("requires-python", "classifiers"))
 def test_written_places_match_expected_spelling(tmp_path: Path, index: int) -> None:
     place = python_versions.written_places(15, 11)[index]
     previous = python_versions.written_places(14, 10)[index].spelling
@@ -50,27 +50,27 @@ def test_written_places_match_expected_spelling(tmp_path: Path, index: int) -> N
 
 def test_place_write_replaces_the_old_spelling(tmp_path: Path) -> None:
     source = tmp_path / "source"
-    source.write_text("then to Python 3.10 here\n")
+    source.write_text('requires-python = ">=3.10" here\n')
     place = python_versions.Place(
-        path=source, pattern=python_versions.written_places(15, 11)[1].pattern, spelling="then to Python 3.11"
+        path=source, pattern=python_versions.written_places(15, 11)[0].pattern, spelling='requires-python = ">=3.11"'
     )
 
     place.write(place.said())
 
-    assert source.read_text() == "then to Python 3.11 here\n"
+    assert source.read_text() == 'requires-python = ">=3.11" here\n'
 
 
 @pytest.fixture
 def drifted(tmp_path: Path, mocker: MockerFixture) -> Path:
-    source = tmp_path / "settings.rs"
-    source.write_text("target_version: PythonVersion::PY310,\n")
+    source = tmp_path / "pyproject.toml"
+    source.write_text('requires-python = ">=3.10"\n')
     mocker.patch("tasks.python_versions._ROOT", tmp_path)
     mocker.patch("tasks.python_versions.newest_candidate", autospec=True, return_value=15)
     mocker.patch("tasks.python_versions.oldest_supported", autospec=True, return_value=11)
     place = python_versions.Place(
         path=source,
         pattern=python_versions.written_places(15, 11)[0].pattern,
-        spelling="target_version: PythonVersion::PY311,",
+        spelling='requires-python = ">=3.11"',
     )
     mocker.patch("tasks.python_versions.written_places", autospec=True, return_value=[place])
     return source
@@ -79,7 +79,7 @@ def drifted(tmp_path: Path, mocker: MockerFixture) -> Path:
 def test_main_writes_the_drifted_spelling(drifted: Path) -> None:
     python_versions.main(check=False)
 
-    assert drifted.read_text(encoding="utf-8") == "target_version: PythonVersion::PY311,\n"
+    assert drifted.read_text(encoding="utf-8") == 'requires-python = ">=3.11"\n'
 
 
 @pytest.mark.usefixtures("drifted")
@@ -95,7 +95,7 @@ def test_main_reports_when_nothing_drifted(capsys: pytest.CaptureFixture[str]) -
 
     python_versions.main(check=True)
 
-    assert capsys.readouterr().out == "the defaults name 3.11 through 3.15\n"
+    assert capsys.readouterr().out == "the package names 3.11 through 3.15\n"
 
 
 def test_newest_candidate_needs_both_a_candidate_and_a_classifier(mocker: MockerFixture) -> None:

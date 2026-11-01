@@ -1,0 +1,40 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+3:1 SMP102 Module-scope variable `limit` should be named `_LIMIT` [unsafe fix: Rename `limit` to `_LIMIT`]
+4:1 SMP102 Module-scope variable `_timeout` should be named `_TIMEOUT` [unsafe fix: Rename `_timeout` to `_TIMEOUT`]
+6:1 SMP102 Module-scope variable `logger` should be named `LOGGER` [unsafe fix: Rename `logger` to `LOGGER`]
+24:5 SMP102 Module-scope variable `walrus_value` should be named `_WALRUS_VALUE` [unsafe fix: Rename `walrus_value` to `_WALRUS_VALUE`]
+28:1 SMP102 Module-scope variable `zip` should be named `_ZIP`
+29:1 SMP102 Module-scope variable `HANDLER_WALRUS` should be named `_HANDLER_WALRUS` [unsafe fix: Rename `HANDLER_WALRUS` to `_HANDLER_WALRUS`]
+--- fixed (5 applied, 1 remaining) ---
+import os
+
+_LIMIT = 3
+_TIMEOUT = 1
+PUBLIC_VALUE = 2
+LOGGER = os.getenv("X")
+Alias = int
+pytestmark = []
+
+
+def use() -> int:
+    return _LIMIT + _TIMEOUT + PUBLIC_VALUE
+
+
+__all__ = ["PUBLIC_VALUE", "LOGGER"]
+for item in range(2):
+    pass
+with open(__file__) as handle:
+    pass
+try:
+    pass
+except OSError as error:
+    pass
+if (_WALRUS_VALUE := len(__name__)):
+    pass
+
+TYPE_CHECKING = False
+zip = zip
+_HANDLER_WALRUS = lambda: (inner := 1)

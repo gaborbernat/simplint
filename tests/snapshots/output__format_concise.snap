@@ -1,0 +1,9 @@
+---
+source: tests/output.rs
+expression: "format!(\"exit code {code}\\n{report}\")"
+---
+exit code 1
+module.py:1:1: SMP001 [*] Section comment groups code; extract a named function or class instead
+module.py:2:1: SMP010 Single-letter name `x`; only loop targets and comprehensions may use one
+Found 2 errors.
+[*] 1 fixable with `--fix`.

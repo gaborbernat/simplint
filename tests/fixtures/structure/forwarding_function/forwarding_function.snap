@@ -1,0 +1,7 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:5 SMP030 `_forward` only forwards to `Path`; call `Path` at its call sites instead
+23:9 SMP030 `_make` only forwards to `Path`; call `Path` at its call sites instead
+43:5 SMP030 `_keywords` only forwards to `Path`; call `Path` at its call sites instead

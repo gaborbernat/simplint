@@ -1,0 +1,16 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+3:1 SMP050 `_FIRST` is used by one function only; define it there [unsafe fix: Move `_FIRST` into `first`]
+10:1 SMP050 `_SECOND` is used by one function only; define it there [unsafe fix: Move `_SECOND` into `second`]
+--- fixed (2 applied, 0 remaining) ---
+import os
+
+
+def first() -> int:
+    return 1
+
+
+def second() -> int:
+    return 2

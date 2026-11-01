@@ -1,7 +1,0 @@
----
-source: src/snapshot.rs
-expression: "render(rule, fixture, target_version)"
----
-4:5 SMP030 `_forward` only forwards to `Path`; call `Path` at its call sites instead
-22:9 SMP030 `_make` only forwards to `Path`; call `Path` at its call sites instead
-42:5 SMP030 `_keywords` only forwards to `Path`; call `Path` at its call sites instead

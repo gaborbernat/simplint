@@ -1,0 +1,7 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:5 SMP202 Branching inside a test; parameterize instead
+7:13 SMP202 Branching inside a test; parameterize instead
+8:5 SMP202 Branching inside a test; parameterize instead
