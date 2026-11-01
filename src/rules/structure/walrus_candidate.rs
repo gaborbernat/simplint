@@ -9,11 +9,11 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::exports::Exports;
 use crate::rules::structure::needs_parentheses;
-use crate::rules::{expr_mentions, for_each_body, for_each_child_body, statement_deletion};
+use crate::rules::{expr_mentions, for_each_body, for_each_child_body, has_version_gate, statement_deletion};
 
 pub fn walrus_candidate(checker: &Checker) {
     // `:=` arrived in Python 3.8.
-    if checker.settings.from_ruff.target_version < PythonVersion::PY38 {
+    if checker.settings.from_ruff.target_version < PythonVersion::PY38 || has_version_gate(checker.body()) {
         return;
     }
     check_body(checker, checker.body(), Scope::Module);

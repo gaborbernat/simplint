@@ -9,7 +9,9 @@ A name counts as reassigned, and is skipped, when the module binds it more than 
 assignment, `+=` and other augmented assignments, `del`, an import, a `def`, a loop target, or an assignment in a
 function that declares the name [`global`](https://docs.python.org/3/reference/simple_stmts.html#the-global-statement).
 
-The rule does not run when the target Python version is older than 3.8, which introduced `typing.Final`. It also skips:
+The rule does not run when the target Python version is older than 3.8, which introduced `typing.Final`, nor in a module
+with a version gate: a top-level `if` that tests `sys.version_info` and ends in `raise` or `sys.exit(...)`, which exists
+to run on older interpreters and report them. It also skips:
 
 - dunder names such as `__version__`
 - implicit type aliases: a generic such as `dict[str, Any]` or `Literal["a"]`, or a union of builtin types such as
