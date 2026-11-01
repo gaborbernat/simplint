@@ -168,10 +168,12 @@ fn unresolved_star_import_keeps_names_of_modules_by_its_name() {
     );
 }
 
-// Another file's writes count by the class of their receiver: a mock's never, an instance's always.
+// Another file's writes count by the class of their receiver: a mock's never, an instance's or an unknown object's
+// always.
 #[test_case("mock = MagicMock()\n    mock.log = log\n", "[*] ", "@dataclass(frozen=True, slots=True)" ; "mock")]
 #[test_case("result = Result(log=\"\")\n    result.log = log\n", "[*] ", "@dataclass(slots=True)" ; "instance")]
-#[test_case("thing = make()\n    thing.log = log\n", "", "@dataclass(frozen=True, slots=True)" ; "unknown")]
+#[test_case("thing = make()\n    thing.log = log\n", "[*] ", "@dataclass(slots=True)" ; "unknown")]
+#[test_case("results: dict[str, Result] = {}\n    results[\"a\"].log = log\n", "[*] ", "@dataclass(slots=True)" ; "subscript")]
 #[test_case(
     "pass\n\n\nclass Result:\n    def __init__(self) -> None:\n        self.extra = 1\n",
     "",

@@ -33,6 +33,7 @@ use crate::common::{self, check, read};
 #[test_case("single-user-constant", "single_user_constant_spacing.py", "py314" ; "single_user_constant_spacing")]
 #[test_case("walrus-candidate", "walrus_candidate.py", "py314" ; "walrus_candidate")]
 #[test_case("walrus-candidate", "walrus_candidate.py", "py37" ; "walrus_candidate_before_python38")]
+#[test_case("walrus-candidate", "walrus_candidate_gate.py", "py314" ; "walrus_candidate_version_gate")]
 #[test_case("walrus-candidate", "walrus_candidate_dynamic.py", "py314" ; "walrus_candidate_computed_all")]
 #[test_case("walrus-candidate", "walrus_candidate_listed.py", "py314" ; "walrus_candidate_listed_in_all")]
 #[test_case("walrus-candidate", "walrus_candidate_width.py", "py314" ; "walrus_candidate_header_width")]

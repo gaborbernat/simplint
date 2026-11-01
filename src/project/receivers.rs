@@ -13,8 +13,9 @@ use ruff_python_ast::{self as ast, Expr, ExprContext, Pattern, Stmt};
 pub struct AttributeWrites {
     pub(super) typed: Vec<(String, String)>,
     pub(super) untyped: Vec<String>,
-    // The qualified bases of classes that use `functools.cached_property`, which stores into an instance `__dict__`.
-    pub(super) cached_property_bases: Vec<String>,
+    // The qualified bases of classes a slotted base breaks: one using `functools.cached_property`, which stores into an
+    // instance `__dict__`, or one with several bases, as a slotted base's layout conflicts with another's.
+    pub(super) unslottable_bases: Vec<String>,
 }
 
 impl AttributeWrites {
@@ -77,13 +78,13 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
                 self.scopes.pop();
             }
             Stmt::ClassDef(class) => {
-                if class_mentions(class, "cached_property") {
+                if class.bases().len() > 1 || class_mentions(class, "cached_property") {
                     let bases = class.bases().iter().filter_map(|base| {
                         let written = UnqualifiedName::from_expr(base)?.segments().join(".");
                         Some(self.qualified(&written))
                     });
                     let bases: Vec<String> = bases.collect();
-                    self.writes.cached_property_bases.extend(bases);
+                    self.writes.unslottable_bases.extend(bases);
                 }
                 for decorator in &class.decorator_list {
                     self.visit_decorator(decorator);

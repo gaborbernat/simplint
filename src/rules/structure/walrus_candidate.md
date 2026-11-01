@@ -11,7 +11,8 @@ name. The test starts with the name when the name is:
 Nothing else may read the name: not after the `if` statement, and not before the assignment either, such as a closure or
 an earlier statement of the same loop. The search covers the enclosing function, or the whole file at module level.
 
-The rule does not run when the target Python version is older than 3.8, which introduced `:=`. It skips:
+The rule does not run when the target Python version is older than 3.8, which introduced `:=`, nor in a module with a
+version gate, as [SMP101](SMP101.html) describes. It skips:
 
 - assignments in a class body, including inside an `if`, `for` or `try` block of the class, unless a function sits
   between

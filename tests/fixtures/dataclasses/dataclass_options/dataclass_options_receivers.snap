@@ -2,16 +2,18 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-8:2 SMP111 Dataclass is missing frozen, slots; set `frozen=True, slots=True` [fix: Pass `frozen=True, slots=True` to `@dataclass`]
-13:2 SMP111 Dataclass is missing frozen, slots; set `frozen=True, slots=True` [fix: Pass `slots=True` to `@dataclass`]
-18:2 SMP111 Dataclass is missing frozen, slots; set `frozen=True, slots=True`
-23:2 SMP111 Dataclass is missing frozen, slots; set `frozen=True, slots=True` [unsafe fix: Pass `frozen=True` to `@dataclass`]
-34:2 SMP111 Dataclass is missing frozen, slots; set `frozen=True, slots=True` [unsafe fix: Pass `frozen=True, slots=True` to `@dataclass`]
-73:2 SMP111 Dataclass is missing frozen, slots; set `frozen=True, slots=True` [fix: Pass `frozen=True` to `@dataclass`]
-79:2 SMP111 Dataclass is missing frozen, slots; set `frozen=True, slots=True` [unsafe fix: Pass `frozen=True, slots=True` to `@dataclass`]
-87:2 SMP111 Dataclass is missing frozen, slots; set `frozen=True, slots=True` [unsafe fix: Pass `slots=True` to `@dataclass`]
---- fixed (7 applied, 5 remaining) ---
+9:2 SMP111 Dataclass is missing frozen, slots; set `frozen=True, slots=True` [fix: Pass `frozen=True, slots=True` to `@dataclass`]
+14:2 SMP111 Dataclass is missing frozen, slots; set `frozen=True, slots=True` [fix: Pass `slots=True` to `@dataclass`]
+19:2 SMP111 Dataclass is missing frozen, slots; set `frozen=True, slots=True`
+24:2 SMP111 Dataclass is missing frozen, slots; set `frozen=True, slots=True`
+35:2 SMP111 Dataclass is missing frozen, slots; set `frozen=True, slots=True` [fix: Pass `slots=True` to `@dataclass`]
+74:2 SMP111 Dataclass is missing frozen, slots; set `frozen=True, slots=True` [fix: Pass `frozen=True` to `@dataclass`]
+80:2 SMP111 Dataclass is missing frozen, slots; set `frozen=True, slots=True` [unsafe fix: Pass `slots=True` to `@dataclass`]
+88:2 SMP111 Dataclass is missing frozen, slots; set `frozen=True, slots=True` [fix: Pass `slots=True` to `@dataclass`]
+121:2 SMP111 Dataclass is missing frozen, slots; set `frozen=True, slots=True`
+--- fixed (6 applied, 8 remaining) ---
 import functools
+import threading
 from typing import Optional
 from dataclasses import dataclass
 from unittest import mock
@@ -33,7 +35,7 @@ class Extended:
     size: int
 
 
-@dataclass(frozen=True)
+@dataclass
 class Parent:
     name: str
 
@@ -44,7 +46,7 @@ class Child(Parent):
         return self.name.upper()
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class Shape:
     corners: int
 
@@ -89,7 +91,7 @@ class Slotted:
     __slots__ = ("width",)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class Linked:
     link: int
 
@@ -128,3 +130,12 @@ def rebind(resource: object) -> None:
     current.tag = "rebound"
     with resource as handle, mock.patch("module.tag") as (first, second):
         handle.tag = "handle"
+
+
+@dataclass
+class Stratified:
+    stratum: int
+
+
+class ThreadStratified(Stratified, threading.local):
+    pass

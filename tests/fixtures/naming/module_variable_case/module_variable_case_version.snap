@@ -1,0 +1,13 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:1 SMP102 Module-scope variable `build_tag` should be named `BUILD_TAG` [unsafe fix: Rename `build_tag` to `BUILD_TAG`]
+--- fixed (1 applied, 0 remaining) ---
+version = "1.2"
+__version__ = version
+version_tuple = (1, 2)
+commit_id = None
+BUILD_TAG = "x"
+
+__all__ = ["__version__", "BUILD_TAG", "commit_id", "version", "version_tuple"]

@@ -184,6 +184,22 @@ pub fn last_segment(expr: &Expr) -> Option<&str> {
     UnqualifiedName::from_expr(expr)?.segments().last().copied()
 }
 
+// A module-level `if sys.version_info < ...: raise ...` or `sys.exit(...)` exists to run on interpreters older than the
+// target and report them, so fixes must not add syntax or imports those
+// interpreters lack.
+pub fn has_version_gate(body: &[Stmt]) -> bool {
+    body.iter().filter_map(Stmt::as_if_stmt).any(|gate| {
+        any_over_expr(&gate.test, &|expr: &Expr| last_segment(expr) == Some("version_info"))
+            && gate.body.last().is_some_and(|last| match last {
+                Stmt::Raise(_) => true,
+                Stmt::Expr(ast::StmtExpr { value, .. }) => {
+                    value.as_call_expr().is_some_and(|call| last_segment(&call.func) == Some("exit"))
+                }
+                _ => false,
+            })
+    })
+}
+
 // `name = value` or `name: annotation = value`, binding a single plain name.
 pub fn single_assignment(stmt: &Stmt) -> Option<(&ast::ExprName, Option<&Expr>, &Expr)> {
     let (target, annotation, value) = match stmt {

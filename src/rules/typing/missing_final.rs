@@ -7,12 +7,12 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::{is_class_like, last_segment, single_assignment};
+use crate::rules::{has_version_gate, is_class_like, last_segment, single_assignment};
 use crate::semantic::{Semantic, future_import};
 
 pub fn missing_final(checker: &Checker) {
     // `typing.Final` arrived in Python 3.8.
-    if checker.settings.from_ruff.target_version < PythonVersion::PY38 {
+    if checker.settings.from_ruff.target_version < PythonVersion::PY38 || has_version_gate(checker.body()) {
         return;
     }
     for stmt in checker.body() {
