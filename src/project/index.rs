@@ -50,7 +50,16 @@ pub struct Project {
     star_imported: HashSet<PathBuf>,
     assigned_attributes: HashSet<String>,
     base_classes: HashSet<String>,
+    writes: Writes,
     digest: u64,
+}
+
+// The attribute writes of the run: by the class of the instance written to when parsing tells, and otherwise by name.
+#[derive(Default)]
+struct Writes {
+    on_class: HashMap<String, HashSet<String>>,
+    untyped: HashSet<String>,
+    cached_property_bases: HashSet<String>,
 }
 
 impl Project {
@@ -102,6 +111,15 @@ impl Project {
             files.iter().flat_map(|(_, facts)| facts.assigned_attributes.iter().cloned()).collect();
         let base_classes: HashSet<String> =
             files.iter().flat_map(|(_, facts)| facts.base_classes.iter().cloned()).collect();
+        let mut writes = Writes::default();
+        for (_, facts) in files {
+            let facts = &facts.attribute_writes;
+            for (class, attribute) in &facts.typed {
+                writes.on_class.entry(class.clone()).or_default().insert(attribute.clone());
+            }
+            writes.untyped.extend(facts.untyped.iter().cloned());
+            writes.cached_property_bases.extend(facts.cached_property_bases.iter().cloned());
+        }
         let environment = ResolverEnvironment::new(&db, python_version, paths);
         for (module, attribute) in entry_points.iter().filter_map(|entry_point| entry_point.split_once(':')) {
             if let Some(file) = resolve(&db, environment, None, module.trim()) {
@@ -112,7 +130,23 @@ impl Project {
         let mut hasher = CacheKeyHasher::new();
         assigned_attributes.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
         base_classes.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
-        Ok(Self { imported, referenced, star_imported, assigned_attributes, base_classes, digest: hasher.finish() })
+        for (class, attributes) in writes.on_class.iter().sorted_by(|left, right| left.0.cmp(right.0)) {
+            class.cache_key(&mut hasher);
+            attributes.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
+        }
+        for names in [&writes.untyped, &writes.cached_property_bases] {
+            0u8.cache_key(&mut hasher);
+            names.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
+        }
+        Ok(Self {
+            imported,
+            referenced,
+            star_imported,
+            assigned_attributes,
+            base_classes,
+            writes,
+            digest: hasher.finish(),
+        })
     }
 
     // The attribute and base class names one index has and the other lacks, whose answers differ between the two.
@@ -236,6 +270,21 @@ impl FileIndex<'_> {
 
     pub fn is_base_class(&self, name: &str) -> bool {
         self.project.base_classes.contains(name)
+    }
+
+    // The attributes the run sets or deletes on instances it knows are of a class with this name, `self` included.
+    pub fn attributes_written_on(&self, class: &str) -> impl Iterator<Item = &str> {
+        self.project.writes.on_class.get(class).into_iter().flatten().map(String::as_str)
+    }
+
+    // Whether the run sets or deletes an attribute with this name on an object of unknown class; mocks do not count.
+    pub fn is_attribute_written(&self, name: &str) -> bool {
+        self.project.writes.untyped.contains(name)
+    }
+
+    // Whether a class of the run that uses `functools.cached_property` names a base class with this name.
+    pub fn has_cached_property_subclass(&self, name: &str) -> bool {
+        self.project.writes.cached_property_bases.contains(name)
     }
 }
 

@@ -167,3 +167,35 @@ fn unresolved_star_import_keeps_names_of_modules_by_its_name() {
         )
     );
 }
+
+// Another file's writes count by the class of their receiver: a mock's never, an instance's always.
+#[test_case("mock = MagicMock()\n    mock.log = log\n", "[*] ", "@dataclass(frozen=True, slots=True)" ; "mock")]
+#[test_case("result = Result(log=\"\")\n    result.log = log\n", "[*] ", "@dataclass(slots=True)" ; "instance")]
+#[test_case("thing = make()\n    thing.log = log\n", "", "@dataclass(frozen=True, slots=True)" ; "unknown")]
+fn dataclass_options_reads_writes_in_other_files(body: &str, marker: &str, decorator: &str) {
+    let root = project(&[
+        ("models.py", "from dataclasses import dataclass\n\n\n@dataclass\nclass Result:\n    log: str\n"),
+        (
+            "use.py",
+            &format!(
+                "from unittest.mock import MagicMock\n\nfrom models import Result\n\n\ndef run(log: str) -> None:\n    \
+                 {body}"
+            ),
+        ),
+    ]);
+    let select = ["--no-cache", "--select", "SMP111", "--target-version", "py314"];
+    let report = check(root.path(), &select).1;
+    check(root.path(), &[&select[..], &["--fix", "--unsafe-fixes"]].concat());
+    assert_eq!(
+        (report.lines().next(), common::read(root.path(), "models.py").lines().nth(3)),
+        (
+            Some(
+                common::native(&format!(
+                    "models.py:4:2: SMP111 {marker}Dataclass is missing frozen, slots; set `frozen=True, slots=True`"
+                ))
+                .as_str()
+            ),
+            Some(decorator)
+        )
+    );
+}

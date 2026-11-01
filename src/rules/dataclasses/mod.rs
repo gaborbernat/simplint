@@ -11,17 +11,32 @@ use ruff_text_size::Ranged;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 
+// A dataclass decorator that leaves some of a rule's options unset.
+struct Decorated<'a> {
+    class: &'a ast::StmtClassDef,
+    missing: Vec<&'static str>,
+    // Whether the decorator sets one of the missing options to something other than `True`.
+    explicit: bool,
+}
+
+// The options a fix sets, any edits it makes beyond the decorator, and how safe it is.
+struct Offer {
+    options: Vec<&'static str>,
+    edits: Vec<Edit>,
+    applicability: Applicability,
+}
+
 fn require_options(
     checker: &Checker,
     rule: Rule,
-    options: &[&str],
-    applicability: impl Fn(&Checker, &ast::StmtClassDef, bool) -> Applicability,
+    options: &[&'static str],
+    offer: impl Fn(&Checker, &Decorated) -> Option<Offer>,
 ) {
     // `slots=` and `kw_only=` arrived in Python 3.10; an older target cannot use them.
     if checker.settings.from_ruff.target_version < PythonVersion::PY310 {
         return;
     }
-    let wanted: Vec<String> = options.iter().map(|option| format!("{option}=True")).collect();
+    let wanted = settings(options);
     for class in checker.class_defs() {
         for decorator in &class.decorator_list {
             let (func, arguments) = match &decorator.expression {
@@ -49,24 +64,36 @@ fn require_options(
             }
             let explicit =
                 keywords.iter().any(|keyword| keyword.arg.as_ref().is_some_and(|arg| missing.contains(&arg.as_str())));
-            let arguments: Vec<&str> = keywords
-                .iter()
-                .filter(|keyword| keyword.arg.as_ref().is_none_or(|arg| !options.contains(&arg.as_str())))
-                .map(|keyword| checker.text(keyword.range()))
-                .chain(wanted.iter().map(String::as_str))
-                .collect();
             let range = decorator.expression.range();
-            let fix = Fix::applicable_edit(
-                Edit::range_replacement(format!("{}({})", checker.text(func), arguments.join(", ")), range),
-                applicability(checker, class, explicit),
-            );
+            let offered = offer(checker, &Decorated { class, missing: missing.clone(), explicit })
+                .filter(|offer| !offer.options.is_empty());
+            let title = offered
+                .as_ref()
+                .map_or_else(String::new, |offer| format!("Pass `{}` to `@dataclass`", settings(&offer.options)));
+            let fix = offered.map(|Offer { options, edits, applicability }| {
+                let arguments: Vec<&str> = keywords
+                    .iter()
+                    .filter(|keyword| keyword.arg.as_ref().is_none_or(|arg| !options.contains(&arg.as_str())))
+                    .map(|keyword| checker.text(keyword.range()))
+                    .collect();
+                let arguments =
+                    arguments.into_iter().map(str::to_owned).chain([settings(&options)]).collect::<Vec<_>>();
+                let decorator =
+                    Edit::range_replacement(format!("{}({})", checker.text(func), arguments.join(", ")), range);
+                Fix::applicable_edits(decorator, edits, applicability)
+            });
             checker.report_fix(
                 rule,
                 range,
-                format!("Dataclass is missing {}; set `{}`", missing.join(", "), wanted.join(", ")),
-                Some(fix),
-                format!("Pass `{}` to `@dataclass`", wanted.join(", ")),
+                format!("Dataclass is missing {}; set `{wanted}`", missing.join(", ")),
+                fix,
+                title,
             );
         }
     }
+}
+
+// `frozen=True, slots=True` for `["frozen", "slots"]`.
+fn settings(options: &[&str]) -> String {
+    options.iter().map(|option| format!("{option}=True")).collect::<Vec<_>>().join(", ")
 }
