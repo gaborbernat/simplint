@@ -306,6 +306,25 @@ fn ruff_lint_exclude_applies() {
     assert_eq!(check(root.path(), &["--select", "SMP010"]).0, 0);
 }
 
+// pytest imports a test module whose directory lacks `__init__.py` as a top-level module, where a relative import
+// fails, even when Ruff's `namespace-packages` names the directory.
+#[test_case(&[], 0 ; "namespace_package_directory")]
+#[test_case(&[("tests/unit/__init__.py", "")], 1 ; "regular_package_directory")]
+fn absolute_sibling_import_needs_an_init_module(files: &[(&str, &str)], code: i32) {
+    let root = project(
+        &[
+            files,
+            &[
+                ("pyproject.toml", "[tool.ruff]\nnamespace-packages = [\"tests\"]\n"),
+                ("tests/unit/support.py", "VALUE = 1\n"),
+                ("tests/unit/test_module.py", "from tests.unit.support import VALUE\n\nassert VALUE\n"),
+            ],
+        ]
+        .concat(),
+    );
+    assert_eq!(check(root.path(), &["--select", "SMP110"]).0, code);
+}
+
 const LAZY_ANNOTATIONS: &str = "module.py:1:24: SMP108 [*] Annotations are evaluated lazily from Python 3.14; drop `from \
                                  __future__ import annotations`\nFound 1 error.\n[*] 1 fixable with `--fix`.\n";
 const PASSED: &str = "All checks passed!\n";

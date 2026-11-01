@@ -10,6 +10,11 @@ pub fn absolute_sibling_import(checker: &Checker) {
     let Some((_, package)) = checker.module_path().and_then(<[String]>::split_last) else {
         return;
     };
+    // Ruff's `namespace-packages` makes a directory without `__init__.py` a package, yet pytest imports a test module
+    // there as a top-level module, where a relative import fails.
+    if !checker.path.with_file_name("__init__.py").is_file() {
+        return;
+    }
     let current = package.join(".");
     // A module with a main guard may run as `python path/to/module.py`, where relative imports fail.
     let applicability =
