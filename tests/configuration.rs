@@ -306,6 +306,18 @@ fn ruff_lint_exclude_applies() {
     assert_eq!(check(root.path(), &["--select", "SMP010"]).0, 0);
 }
 
+// `ruff check` already warns about its own configuration, so simplint repeating it on every run is noise; a warning
+// about simplint's own work still shows.
+#[test_case("module.py", "" ; "ruff_configuration")]
+#[test_case("notes.txt", "warning: No Python files found under the given path(s)\n" ; "simplint_warning")]
+fn ruff_configuration_warnings_stay_with_ruff(file: &str, stderr: &str) {
+    let root = project(&[
+        ("pyproject.toml", "[tool.ruff]\nextend-select = [\"E\"]\n\n[tool.ruff.lint]\nignore = [\"ANN101\"]\n"),
+        (file, "VALUE = 1\n"),
+    ]);
+    assert_eq!(check(root.path(), &["--select", "SMP010"]).2, stderr);
+}
+
 // pytest imports a test module whose directory lacks `__init__.py` as a top-level module, where a relative import
 // fails, even when Ruff's `namespace-packages` names the directory.
 #[test_case(&[], 0 ; "namespace_package_directory")]

@@ -95,7 +95,8 @@ Settings shared with Ruff
 simplint resolves Ruff's configuration with Ruff's own code, so the two tools agree on it: ``--isolated``, then
 ``--config``, then the closest ``.ruff.toml``, ``ruff.toml`` or ``pyproject.toml`` with a ``[tool.ruff]`` table, then
 your user-level Ruff configuration, then Ruff's defaults. ``extend`` chains and hierarchical configuration work as in
-Ruff.
+Ruff. simplint does not repeat Ruff's warnings about that configuration, such as an ignored rule Ruff has removed:
+``ruff check`` already shows them.
 
 - `target-version <https://docs.astral.sh/ruff/settings/#target-version>`__ and
   `per-file-target-version <https://docs.astral.sh/ruff/settings/#per-file-target-version>`__ set the Python version
