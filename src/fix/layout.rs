@@ -484,3 +484,27 @@ impl Frozen {
 fn is_pragma(comment: &str) -> bool {
     is_pragma_comment(comment) || comment.trim_start_matches('#').trim_start().starts_with("simplint:")
 }
+
+// The width of the code in `range` once the formatter joins it on one line: its tokens spaced as `collapsed` spaces
+// words, whatever line breaks the code has now. A comment or a string over several lines keeps the code from fitting on
+// one line, so there is none.
+pub fn joined_width(source: &str, tokens: &Tokens, range: TextRange) -> Option<usize> {
+    let mut width = 0;
+    let mut previous: Option<&Token> = None;
+    for token in tokens.in_range(range) {
+        let kind = token.kind();
+        if matches!(kind, TokenKind::NonLogicalNewline | TokenKind::Newline | TokenKind::Indent | TokenKind::Dedent) {
+            continue;
+        }
+        let text = &source[token.range()];
+        if kind == TokenKind::Comment || text.contains(['\n', '\r']) {
+            return None;
+        }
+        let spaced = previous.is_some_and(|previous| {
+            previous.end() < token.start() && !opens_bracket(previous.kind()) && !closes_bracket(kind)
+        });
+        width += usize::from(spaced) + text.chars().count();
+        previous = Some(token);
+    }
+    Some(width)
+}

@@ -24,6 +24,11 @@ The rule does not run when the target Python version is older than 3.8, which in
   module-level name when `__all__` is computed
 - names the function declares [`global`](https://docs.python.org/3/reference/simple_stmts.html#the-global-statement) or
   [`nonlocal`](https://docs.python.org/3/reference/simple_stmts.html#the-nonlocal-statement)
+- an `if` whose header, with the value folded in, would not fit
+  [`line-length`](https://docs.astral.sh/ruff/settings/#line-length) on one line at its block's indentation, since
+  `ruff format` would then split it over several lines; the header is measured joined on one line without parentheses
+  around the test, which the formatter drops, so how the code is laid out now does not matter, and one with a comment or
+  a string over several lines never fits
 
 ## Why is this bad?
 
@@ -70,3 +75,5 @@ strings, such as an `__all__` entry.
 - [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and
   [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to
   [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python)
+- [`line-length`](https://docs.astral.sh/ruff/settings/#line-length) and
+  [`indent-width`](https://docs.astral.sh/ruff/settings/#indent-width), which give the width an `if` header must fit

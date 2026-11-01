@@ -131,8 +131,11 @@ impl<'a> Checker<'a> {
     }
 
     pub fn parenthesized_text(&self, expr: &Expr, parent: AnyNodeRef) -> &'a str {
-        let range = parenthesized_range(expr.into(), parent, self.comment_ranges(), self.source);
-        &self.source[range.unwrap_or_else(|| expr.range())]
+        &self.source[self.parenthesized_range(expr, parent)]
+    }
+
+    pub fn parenthesized_range(&self, expr: &Expr, parent: AnyNodeRef) -> TextRange {
+        parenthesized_range(expr.into(), parent, self.comment_ranges(), self.source).unwrap_or_else(|| expr.range())
     }
 
     pub fn comment_ranges(&self) -> &'a CommentRanges {

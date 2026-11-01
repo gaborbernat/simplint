@@ -1,8 +1,10 @@
 use ruff_diagnostics::{Edit, Fix};
+use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt, UnaryOp};
 use ruff_text_size::{Ranged, TextLen, TextRange};
 
+use crate::fix::layout::joined_width;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::exports::Exports;
@@ -45,8 +47,9 @@ fn check_body<'a>(checker: &Checker<'a>, body: &'a [Stmt], scope: Scope<'a>) {
 }
 
 fn report(checker: &Checker, candidate: &Candidate) {
-    let &Candidate { assign, deleted, name, target, bare, single_use } = candidate;
-    let value = checker.parenthesized_text(&assign.value, assign.into());
+    let &Candidate { assign, deleted, name, target, bare, single_use, .. } = candidate;
+    let value_range = checker.parenthesized_range(&assign.value, assign.into());
+    let value = checker.text(value_range);
     let replacement = match (single_use, bare) {
         (true, false) if needs_parentheses(&assign.value) && value == checker.text(assign.value.range()) => {
             format!("({value})")
@@ -55,6 +58,10 @@ fn report(checker: &Checker, candidate: &Candidate) {
         (false, true) => format!("{name} := {value}"),
         (false, false) => format!("({name} := {value})"),
     };
+    let wrapping = replacement.chars().count() - value.chars().count();
+    if !header_fits(checker, candidate, value_range, wrapping) {
+        return;
+    }
     let (message, title) = if single_use {
         (format!("Inline single-use `{name}` into the `if` test"), format!("Inline `{name}` into the `if` test"))
     } else {
@@ -73,8 +80,29 @@ fn report(checker: &Checker, candidate: &Candidate) {
     );
 }
 
+// The formatter splits an `if` header wider than its line width over several lines, which reads worse than the
+// assignment and the `if` the fix joins. The width is judged on `if <test>:` joined on one line at its block's
+// indentation, without parentheses around the test, which the formatter drops from a header that fits, so the answer
+// does not depend on how the code is laid out now.
+fn header_fits(checker: &Checker, candidate: &Candidate, value_range: TextRange, wrapping: usize) -> bool {
+    let (source, tokens) = (checker.source, checker.parsed.tokens());
+    let (Some(test), Some(value)) =
+        (joined_width(source, tokens, candidate.test.range()), joined_width(source, tokens, value_range))
+    else {
+        return false;
+    };
+    let if_start = candidate.if_stmt.start();
+    let before = &tokens[..tokens.partition_point(|token| token.end() <= if_start)];
+    let count = |kind: TokenKind| before.iter().filter(|token| token.kind() == kind).count();
+    let indent = checker.settings.from_ruff.indent_width * (count(TokenKind::Indent) - count(TokenKind::Dedent));
+    let header = "if ".len() + test - candidate.name.chars().count() + value + wrapping + ":".len();
+    indent + header <= checker.settings.from_ruff.line_width
+}
+
 struct Candidate<'a> {
     assign: &'a ast::StmtAssign,
+    if_stmt: &'a Stmt,
+    test: &'a Expr,
     deleted: TextRange,
     name: &'a str,
     target: TextRange,
@@ -136,6 +164,8 @@ fn candidate<'a>(
     }
     Some(Candidate {
         assign,
+        if_stmt,
+        test,
         deleted,
         name,
         target: first.range,
