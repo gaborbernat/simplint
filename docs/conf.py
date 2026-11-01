@@ -61,16 +61,24 @@ html_theme_options: Final[dict[str, str | bool | dict[str, str]]] = {
         # its dark palette sets both, so they apply to the light theme only
         "color-foreground-secondary": "#3b3f46",
         "color-foreground-muted": "#4a4f57",
+        # a near-black on off-white reads at 15:1 without the glare of pure black on white
+        "color-foreground-primary": "#1e2329",
+        "color-background-primary": "#fcfcfb",
+        # Furo draws pager arrows, link underlines on hover and, through simplint.css, control outlines in this color;
+        # its default reaches only 3.6:1
+        "color-foreground-border": "#63676f",
     },
     "dark_css_variables": {
-        "color-brand-primary": "#ffd43b",
-        "color-brand-content": "#ffd43b",
-        "color-brand-visited": "#ffd43b",
+        # the logo's yellow, toned down a step so links and the current page do not glare on the navy
+        "color-brand-primary": "#f0c94a",
+        "color-brand-content": "#f0c94a",
+        "color-brand-visited": "#f0c94a",
         "color-background-primary": "#0b1626",
         "color-background-secondary": "#0f1e33",
         "color-background-hover": "#14273f",
         "color-background-border": "#1f3654",
         "color-sidebar-link-text--top-level": "#d6dde8",
+        "color-foreground-border": "#8a96a8",
     },
 }
 

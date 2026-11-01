@@ -44,11 +44,11 @@ flowchart LR
     load["① load"] -->|"calls first"| parse["② _parse"]
     parse -->|calls| split["③ _split"]
     load -->|"calls second"| validate["④ _validate"]
-    classDef blue fill:#3776ab,stroke:#062d59,color:#ffffff
-    classDef yellow fill:#ffd43b,stroke:#b8930b,color:#062d59
-    classDef green fill:#22c55e,stroke:#15803d,color:#052e16
-    classDef teal fill:#14b8a6,stroke:#0f766e,color:#042f2e
-    classDef orange fill:#f97316,stroke:#c2410c,color:#431407
+    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59
+    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59
+    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a
+    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28
+    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606
     class load blue
     class parse,validate yellow
     class split green
