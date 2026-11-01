@@ -182,35 +182,29 @@ fn fix_lets_ruff_clean_up_over_several_passes() {
     assert_eq!(read(root.path(), "module.py"), "\n\ndef limit() -> int:\n    return 3 + 1\n");
 }
 
+// Ruff's PLR2004 would report the value the fix inlines into a comparison.
+const RUFF_PLR2004: (&str, &str) = ("pyproject.toml", "[tool.ruff.lint]\nselect = [\"PLR2004\"]\n");
+const COMPARED: &str = "_LIMIT = 3\n\n\ndef over(value: int) -> bool:\n    return value > _LIMIT\n";
+const SINGLE_USER: &str = "SMP050 `_LIMIT` is used by one function only; define it there";
+
 #[test]
 fn fix_is_withdrawn_when_ruff_would_report_the_result() {
-    let source = "def run() -> None:\n    \"\"\"Run.\"\"\"\n    print()\n";
-    let root = project(&[("pyproject.toml", "[tool.ruff.lint]\nselect = [\"D103\"]\n"), ("module.py", source)]);
-    let stdout = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP002"]).1;
+    let root = project(&[RUFF_PLR2004, ("module.py", COMPARED)]);
+    let stdout = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP050"]).1;
     assert_eq!(
         (stdout, read(root.path(), "module.py")),
-        (
-            "module.py:2:5: SMP002 Function docstring on internal code; let the name, signature and types document \
-             it\nFound 1 error.\n"
-                .to_owned(),
-            source.to_owned()
-        )
+        (format!("module.py:1:1: {SINGLE_USER}\nFound 1 error.\n"), COMPARED.to_owned())
     );
 }
 
 #[test]
 fn fix_withdraws_only_the_rule_whose_result_ruff_would_report() {
-    let source = "# --- helpers ---\ndef run() -> None:\n    \"\"\"Run.\"\"\"\n    print()\n";
-    let root = project(&[("pyproject.toml", "[tool.ruff.lint]\nselect = [\"D103\"]\n"), ("module.py", source)]);
-    let stdout = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP001,SMP002"]).1;
+    let source = COMPARED.replace("def", "# --- helpers ---\ndef");
+    let root = project(&[RUFF_PLR2004, ("module.py", &source)]);
+    let stdout = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP001,SMP050"]).1;
     assert_eq!(
         (stdout, read(root.path(), "module.py")),
-        (
-            "module.py:2:5: SMP002 Function docstring on internal code; let the name, signature and types document it\n\
-             Found 2 errors (1 fixed, 1 remaining).\n"
-                .to_owned(),
-            "def run() -> None:\n    \"\"\"Run.\"\"\"\n    print()\n".to_owned()
-        )
+        (format!("module.py:1:1: {SINGLE_USER}\nFound 2 errors (1 fixed, 1 remaining).\n"), COMPARED.to_owned())
     );
 }
 
@@ -226,17 +220,12 @@ fn ruff_violations_already_present_are_not_fixed_by_simplint() {
 
 #[test]
 fn fix_is_withdrawn_when_ruff_already_reports_the_same_rule_elsewhere() {
-    let source = "def first() -> None:\n    print()\n\n\ndef run() -> None:\n    \"\"\"Run.\"\"\"\n    print()\n";
-    let root = project(&[("pyproject.toml", "[tool.ruff.lint]\nselect = [\"D103\"]\n"), ("module.py", source)]);
-    let stdout = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP002"]).1;
+    let source = format!("def first(value: int) -> bool:\n    return value > 7\n\n\n{COMPARED}");
+    let root = project(&[RUFF_PLR2004, ("module.py", &source)]);
+    let stdout = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP050"]).1;
     assert_eq!(
         (stdout, read(root.path(), "module.py")),
-        (
-            "module.py:6:5: SMP002 Function docstring on internal code; let the name, signature and types document it\n\
-             Found 1 error.\n"
-                .to_owned(),
-            source.to_owned()
-        )
+        (format!("module.py:5:1: {SINGLE_USER}\nFound 1 error.\n"), source)
     );
 }
 
@@ -336,18 +325,14 @@ fn fix_handles_a_byte_order_mark() {
     );
 }
 
+// Ruff's COM819 takes the comma off again: with the comment after the first name, the list looks like one line to it.
 #[test]
 fn fix_that_ruff_undoes_is_not_a_fix() {
     let root = project(&[
-        (
-            "pyproject.toml",
-            "[tool.ruff.lint]\nselect = [\"TID252\"]\n[tool.ruff.lint.flake8-tidy-imports]\nban-relative-imports = \"all\"\n",
-        ),
-        ("pkg/__init__.py", ""),
-        ("pkg/a.py", "VALUE = 1\n"),
-        ("pkg/b.py", "from pkg.a import VALUE\n\nprint(VALUE)\n"),
+        ("pyproject.toml", "[tool.ruff.lint]\nselect = [\"COM819\"]\n"),
+        ("module.py", "__all__ = [\"alpha\",  # first\n           \"delta\"]\n"),
     ]);
-    let (code, stdout, _) = check(root.path(), &["--diff", "--unsafe-fixes", "--select", "SMP110"]);
+    let (code, stdout, _) = check(root.path(), &["--diff", "--select", "SMP115"]);
     assert_eq!((code, stdout), (0, String::new()));
 }
 

@@ -45,6 +45,8 @@ nothing follows it but a semicolon.
 ## Conflicts with Ruff
 
 Ruff's [undocumented-public-module (D100)](https://docs.astral.sh/ruff/rules/undocumented-public-module/) asks for the
-docstring this rule removes, since a test module is public unless its name starts with `_`. While D100 applies to test
-files, simplint withdraws the fix and keeps the report; turn D100 off for them with
-[`per-file-ignores`](https://docs.astral.sh/ruff/settings/#lint_per-file-ignores).
+docstring this rule removes, since a test module is public unless its name starts with `_`, and
+[undocumented-public-package (D104)](https://docs.astral.sh/ruff/rules/undocumented-public-package/) does the same for
+the `__init__.py` of a test package. simplint stops with an error before linting while either applies to a test module;
+turn them off for test files with [`per-file-ignores`](https://docs.astral.sh/ruff/settings/#lint_per-file-ignores), or
+turn this rule off.

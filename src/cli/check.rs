@@ -29,6 +29,7 @@ use crate::cli::watch::watch;
 use crate::lint::Linter;
 use crate::project::cache::{self, Cache, Caches, FileKey, Fingerprints};
 use crate::project::{FileFacts, Project, SearchRoots};
+use crate::settings::conflicts::{self, Scope};
 use crate::settings::{FileSettings, Settings, SettingsResolver, ShownSettings};
 
 // `ruff check`'s flow: resolve both configurations, decide the fix mode, lint every file in parallel, print, and pick
@@ -139,6 +140,12 @@ impl Resolved {
             SettingsResolver::new(arguments.config_file.as_deref(), arguments.isolated, arguments.overrides)?;
         let pyproject_config = ruff::resolve::resolve(&config_arguments, cli.stdin_filename.as_deref())?;
         Ok(Self { config_arguments, settings_resolver, pyproject_config })
+    }
+
+    // Ruff's `output-prefer-rule-codes`: in preview, messages name rules unless it is set.
+    fn names_rules(&self) -> bool {
+        self.pyproject_config.settings.linter.preview.is_enabled()
+            && !self.pyproject_config.settings.output_prefer_rule_codes
     }
 }
 
@@ -282,6 +289,14 @@ fn for_each_file<T: Send>(
     let roots = SearchRoots::new(&resolved.pyproject_config.settings, packages.values().flatten().copied());
     let package = |path: &Path| path.parent().and_then(|parent| packages.get(parent)).copied().flatten();
     let module_path = |path: &Path| package(path).and_then(|package| to_module_path(package.path(), path));
+    let scopes = settings
+        .iter()
+        .map(|(path, project)| {
+            let (ruff, ruff_config) = resolver.resolve_with_path(path);
+            Scope { path, project, ruff, ruff_config, package: package(path) }
+        })
+        .collect_vec();
+    conflicts::ensure_compatible(&scopes, resolved.names_rules())?;
     let caches = cache_dir.map(|cache_dir| {
         Caches::open(cache_dir, packages.iter().map(|(parent, package)| package.map_or(*parent, PackageRoot::path)))
     });
@@ -367,6 +382,14 @@ fn check_stdin(cli: &CheckCommand, resolved: &Resolved, mode: &Mode) -> Result<D
         .parent()
         .and_then(|parent| detect_package_root(parent, &ruff.linter.namespace_packages))
         .map(PackageRoot::root);
+    let scope = Scope {
+        path: &absolute,
+        project: &settings,
+        ruff,
+        ruff_config: resolved.pyproject_config.path.as_deref(),
+        package,
+    };
+    conflicts::ensure_compatible(&[scope], resolved.names_rules())?;
     let project = Project::index(&[], &settings.metadata.entry_points, &SearchRoots::new(ruff, package))?;
     let linter = file_linter(&absolute, &settings, ruff, &project, package);
     lint_stdin(&path, &source, &linter, mode)

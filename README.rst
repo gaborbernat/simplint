@@ -291,10 +291,15 @@ Pairing with Ruff
 -----------------
 
 simplint does not repeat what Ruff already checks. To cover what its rules leave to Ruff, run Ruff with every rule
-selected (``select = ["ALL"]``) and add these
+selected (``select = ["ALL"]``) but the missing-docstring rules, which ask for the docstrings simplint removes (see
+`Rules that work against each other`_), and add these
 `flake8-tidy-imports <https://docs.astral.sh/ruff/settings/#lintflake8-tidy-imports>`__ settings:
 
 .. code-block:: toml
+
+    [tool.ruff.lint]
+    select = ["ALL"]
+    ignore = ["D1"]
 
     [tool.ruff.lint.flake8-tidy-imports]
     ban-relative-imports = "parents"
@@ -319,3 +324,40 @@ nested table replaces the parent's. The ``unittest.mock`` ban steers tests from
     "typing.cast".msg = "narrow with isinstance or TypeIs instead"
     "unittest.mock".msg = "mock through pytest-mock's mocker"
     "time.sleep".msg = "wait on an event the mock sets"
+
+Rules that work against each other
+----------------------------------
+
+Some simplint rules undo what a Ruff rule asks for, under some Ruff settings. With both on for a file, one side's fix
+undoes the other's, or leaves code the other reports, so no run of ``ruff check --fix`` and ``simplint check --fix``
+leaves that file clean. simplint checks every file's settings before it lints any, and exits with status 2 when it finds
+such a pair. The error names both rules, the configuration files their settings come from, the first file they meet in,
+and how to resolve it:
+
+.. code-block:: text
+
+    simplint failed
+      Cause: simplint and Ruff rules work against each other, so fixing never leaves the code clean:
+      - SMP108 (future-annotations) removes `from __future__ import annotations` on Python 3.14 and newer, which Ruff's I002 (missing-required-import) adds back because `lint.isort.required-imports` lists it; ignore SMP108 in `[tool.simplint]`, or drop the import from `required-imports`.
+        simplint settings: /project/pyproject.toml; Ruff settings: /project/pyproject.toml; first file: src/app.py
+
+The pairs are:
+
+- `SMP002 <https://simplint.readthedocs.io/en/latest/_generated/rules/SMP002.html>`__ removes docstrings that Ruff's
+  ``D101``, ``D102``, ``D103``, ``D105``, ``D106`` and ``D107`` ask for. Ignore those, and let `SMP116
+  <https://simplint.readthedocs.io/en/latest/_generated/rules/SMP116.html>`__ ask for documentation on the public API.
+- `SMP004 <https://simplint.readthedocs.io/en/latest/_generated/rules/SMP004.html>`__ removes the module docstrings of
+  tests that Ruff's ``D100`` and ``D104`` ask for. Turn those off for test files in Ruff's ``per-file-ignores``.
+- `SMP108 <https://simplint.readthedocs.io/en/latest/_generated/rules/SMP108.html>`__ removes ``from __future__ import
+  annotations`` on Python 3.14 and newer, which Ruff's ``I002`` adds back when ``lint.isort.required-imports`` lists it.
+  Drop it from the list once the project targets Python 3.14.
+- `SMP110 <https://simplint.readthedocs.io/en/latest/_generated/rules/SMP110.html>`__ makes imports from the file's own
+  package relative, which Ruff's ``TID252`` turns back when ``lint.flake8-tidy-imports.ban-relative-imports`` is
+  ``"all"``. Set it to ``"parents"``.
+
+Per-file ignores on either side count, so a Ruff rule turned off for tests does not conflict there. In preview, as in
+Ruff's reports, the message names rules instead of codes. Other combinations clash only on some code, such as `SMP050
+<https://simplint.readthedocs.io/en/latest/_generated/rules/SMP050.html>`__ inlining a value into a comparison Ruff's
+``PLR2004`` reports: simplint then offers no fix for that report and keeps it, and the run goes on. No setting accepts a
+conflicting pair; turn one side off. ``--show-settings`` and ``--show-files`` do not check for conflicts, so they help
+find where a rule comes from.
