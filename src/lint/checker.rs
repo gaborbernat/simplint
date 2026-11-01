@@ -210,16 +210,7 @@ impl<'a> Checker<'a> {
     }
 
     pub fn is_test_module(&self) -> bool {
-        let name = self.file_name();
-        name.starts_with("test_")
-            || name.ends_with("_test.py")
-            || name == "conftest.py"
-            || self
-                .path
-                .strip_prefix(&self.settings.project.root)
-                .unwrap_or(self.path)
-                .components()
-                .any(|part| matches!(part.as_os_str().to_str(), Some("tests" | "test")))
+        self.settings.is_test_module(self.path)
     }
 
     pub fn file_name(&self) -> &str {
