@@ -21,3 +21,13 @@ VALUE = os.sep  # ---- trailing is fine
 # ++ counter
 # the parser coerces both operands, but neither
 # is a shape the checker vouches for, so both keep ===
+
+#       *** remove return to update cron
+## the lock must be held while the queue drains
+# === helpers ===
+#### Public API ####
+# ---- start of the generated code ----
+# --- built with modern C++
+# -- the lock must hold --
+# __getattribute__ triggered through __getattr__
+# __init__ wires the parser
