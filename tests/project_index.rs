@@ -327,3 +327,69 @@ fn module_docstring_read_is_no_docstring_reader() {
         )
     );
 }
+
+// Python names a module of a namespace package, one without an `__init__.py`, from its search root, so its relative
+// imports reach the package above it.
+#[test]
+fn relative_import_from_namespace_package_counts_as_imported() {
+    let root = project(&[
+        ("src/pkg/__init__.py", ""),
+        ("src/pkg/config.py", "__all__ = [\"Config\"]\n\n\nclass Config:\n    pass\n\n\nclass Attribute:\n    pass\n"),
+        ("src/pkg/sansio/app.py", "from ..config import Attribute, Config\n\n_TYPES = (Attribute, Config)\n"),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP103,SMP113"]).1,
+        common::native(
+            "src/pkg/config.py:8:7: SMP113 [*] `Attribute` is imported by other modules; list it in `__all__`\nFound \
+             1 error.\n[*] 1 fixable with `--fix`.\n"
+        )
+    );
+}
+
+// A module loaded by a computed name may be any module, so what is read off it keeps its name everywhere; a name read
+// off a module simplint resolves keeps it only there.
+#[test_case(
+    "def test_app() -> None:\n    mod = importlib.import_module(f\"docs.{_NAME}\")\n    assert mod.client\n" ;
+    "import_module"
+)]
+#[test_case("def test_app(mod: ModuleType) -> None:\n    assert mod.client\n" ; "module_type_parameter")]
+#[test_case(
+    "@pytest.fixture(name=\"loaded\")\ndef get_mod():\n    return importlib.import_module(f\"docs.{_NAME}\")\n\n\n\
+     def test_app(loaded) -> None:\n    alias = cast(Any, loaded)\n    alias.client = None\n" ;
+    "fixture_alias"
+)]
+fn attributes_of_dynamically_loaded_modules_keep_their_names(test: &str) {
+    let root = project(&[
+        ("docs/__init__.py", ""),
+        ("docs/tutorial.py", "client = object()\nengine = object()\n"),
+        ("tests/test_docs.py", &format!("import importlib\n\n_NAME = \"tutorial\"\n\n\n{test}")),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP102"]).1,
+        common::native(
+            "docs/tutorial.py:1:1: SMP102 Module-scope variable `client` should be named `CLIENT`\n\
+             docs/tutorial.py:2:1: SMP102 Module-scope variable `engine` should be named `_ENGINE`\nFound 2 errors.\n1 \
+             unsafe fix available with `--fix --unsafe-fixes`.\n"
+        )
+    );
+}
+
+// The package's `import *` of `backends` would bind the dict named `backends` over the attribute that holds the module.
+#[test]
+fn name_of_a_module_its_package_star_imports_stays_unlisted() {
+    let root = project(&[
+        ("pkg/__init__.py", "from pkg.backends import *\n"),
+        (
+            "pkg/backends.py",
+            "__all__ = [\"dispatch\"]\nbackends = {}\ninfo = {}\n\n\ndef dispatch() -> None:\n    pass\n",
+        ),
+        ("pkg/user.py", "from pkg.backends import backends, info\n\n_ALL = (backends, info)\n"),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP113"]).1,
+        common::native(
+            "pkg/backends.py:3:1: SMP113 [*] `info` is imported by other modules; list it in `__all__`\nFound 1 \
+             error.\n[*] 1 fixable with `--fix`.\n"
+        )
+    );
+}

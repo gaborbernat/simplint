@@ -299,6 +299,11 @@ fn for_each_file<T: Send>(
     let roots = SearchRoots::new(&resolved.pyproject_config.settings, packages.values().flatten().copied());
     let package = |path: &Path| path.parent().and_then(|parent| packages.get(parent)).copied().flatten();
     let module_path = |path: &Path| package(path).and_then(|package| to_module_path(package.path(), path));
+    // Ruff sees no package around a file of a namespace package, yet Python resolves its relative imports.
+    let module_paths = |path: &Path| match module_path(path) {
+        Some(module_path) => (Some(module_path), None),
+        None => (None, roots.module_path(path)),
+    };
     let scopes = settings
         .iter()
         .map(|(path, project)| {
@@ -324,10 +329,8 @@ fn for_each_file<T: Send>(
     // A file a fix rewrote has a new key.
     let recache = |path: &Path| Some((file_caches.get(path)?.0, FileKey::of(path)?));
     let start = Instant::now();
-    let mut facts: FxHashMap<&Path, Cow<FileFacts>> = paths
-        .par_iter()
-        .filter_map(|&path| Some((path, file_facts(path, module_path(path).as_deref(), cache(path))?)))
-        .collect();
+    let mut facts: FxHashMap<&Path, Cow<FileFacts>> =
+        paths.par_iter().filter_map(|&path| Some((path, file_facts(path, module_paths(path), cache(path))?))).collect();
     let rewrites_calls: HashSet<&Path> = settings
         .iter()
         .filter(|(path, settings)| FileSettings::new(settings, resolver.resolve(path), path).rewrites_dataclass_calls())
@@ -348,7 +351,7 @@ fn for_each_file<T: Send>(
                 break;
             }
             let changed: Vec<&Path> = rewritten.iter().map(|&at| settings[at].0.as_path()).collect();
-            let collect = |path: &Path| file_facts(path, module_path(path).as_deref(), recache(path));
+            let collect = |path: &Path| file_facts(path, module_paths(path), recache(path));
             let (next, dependents) =
                 reindex(&mut facts, &changed, collect, &settings, &project, (&entry_points, &roots, &rewrites_calls))?;
             project = next;
@@ -375,13 +378,13 @@ fn for_each_file<T: Send>(
 // there.
 fn file_facts<'c>(
     path: &Path,
-    module_path: Option<&[String]>,
+    (module_path, importable): (Option<Vec<String>>, Option<Vec<String>>),
     cache: Option<(&'c Cache, FileKey)>,
 ) -> Option<Cow<'c, FileFacts>> {
     if let Some(facts) = cache.and_then(|(cache, key)| cache.facts(path, key)) {
         return Some(Cow::Borrowed(facts));
     }
-    let facts = FileFacts::collect(path, module_path)?;
+    let facts = FileFacts::collect(path, module_path.as_deref(), importable.as_deref())?;
     if let Some((cache, key)) = cache {
         cache.set_facts(path, key, facts.clone());
     }

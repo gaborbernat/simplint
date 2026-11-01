@@ -40,6 +40,32 @@ fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
     Some(Fix::unsafe_edits(edits.next()?, edits))
 }
 
+// PLY's `lex` and `yacc` build a lexer and a parser from the names the calling module defines, so a module that imports
+// either reads its grammar by name.
+fn uses_ply(checker: &Checker) -> bool {
+    checker.body().iter().any(|stmt| match stmt {
+        Stmt::Import(ast::StmtImport { names, .. }) => names.iter().any(|alias| is_ply_module(alias.name.as_str())),
+        Stmt::ImportFrom(ast::StmtImportFrom { module, names, .. }) => {
+            let module = module.as_ref().map_or("", ast::Identifier::as_str);
+            is_ply_module(module) || names.iter().any(|alias| is_ply_module(&format!("{module}.{}", alias.name)))
+        }
+        _ => false,
+    })
+}
+
+// PLY is often vendored, as `jsonpath_ng._ply`, so any module under a package named after it counts.
+fn is_ply_module(module: &str) -> bool {
+    let mut parts = module.rsplit('.');
+    parts.next().is_some_and(|last| matches!(last, "lex" | "yacc")) && parts.any(|part| part.contains("ply"))
+}
+
+// The token list, the `t_` lexer rules and `p_` grammar productions, and the settings PLY reads off a grammar module.
+fn is_ply_name(name: &str) -> bool {
+    name.starts_with("t_")
+        || name.starts_with("p_")
+        || matches!(name, "tokens" | "literals" | "precedence" | "states" | "start")
+}
+
 // The text a string holds, not its source: `ruff format` rewrites escapes, as `\N{latin small letter x}` into
 // `\N{LATIN SMALL LETTER X}`, so a word in the source can come or go while the value stays.
 fn appears_in_strings(checker: &Checker, name: &str, exports: &[&ast::ExprStringLiteral]) -> bool {

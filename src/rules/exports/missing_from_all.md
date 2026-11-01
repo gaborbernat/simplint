@@ -17,6 +17,12 @@ such as `mocker.patch("pkg.mod.name")` and calls such as `patch.object(module, "
 the module without making the name part of its API. Fixes that rename or move a name still leave names reached this way
 alone.
 
+A name equal to the module's own name is skipped when the package's `__init__.py` star-imports the module: listing it
+would make the `import *` bind it over the package attribute that holds the submodule.
+
+A module of a namespace package, a directory without `__init__.py`, is named from the search root above it, as Python
+names it, so its relative imports count.
+
 Names starting with `_`, `__init__.py` files, test modules (as defined in [SMP200](SMP200.html)) and modules that import
 `__all__` from elsewhere are skipped.
 
