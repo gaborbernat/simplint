@@ -1,6 +1,0 @@
----
-source: src/snapshot.rs
-expression: "render(rule, fixture, target_version)"
----
-4:11 SMP105 `Callable[..., T]` hides the signature; describe it with a `Protocol`
-7:19 SMP105 `Callable[..., T]` hides the signature; describe it with a `Protocol`

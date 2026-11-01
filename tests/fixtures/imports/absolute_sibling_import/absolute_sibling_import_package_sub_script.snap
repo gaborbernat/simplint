@@ -1,0 +1,10 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:6 SMP110 Import from the same package relatively: `from .module import ...` [unsafe fix: Import from `.module`]
+--- fixed (1 applied, 0 remaining) ---
+from .module import run
+
+if __name__ == "__main__":
+    run()

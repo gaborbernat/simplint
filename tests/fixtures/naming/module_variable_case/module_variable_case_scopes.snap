@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:1 SMP102 Module-scope variable `counter` should be named `_COUNTER`

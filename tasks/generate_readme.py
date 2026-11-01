@@ -8,14 +8,30 @@ _ROOT: Final[Path] = Path(__file__).resolve().parents[1]
 
 
 def main(root: Path) -> None:
+    """
+    Write ``README.rst`` for PyPI from the index and configuration docs pages.
+
+    :param root: the project root
+    """
     docs_dir = root / "docs"
-    processed = process_rst_for_pypi((docs_dir / "index.rst").read_text(encoding="utf-8"))
+    # PyPI renders the README on a light page and cannot resolve repository-relative image paths
+    logo = (
+        ".. image:: https://raw.githubusercontent.com/gaborbernat/simplint/main/docs/_static/wordmark-light.png\n"
+        "   :alt: simplint\n   :width: 420\n\n"
+    )
+    processed = logo + process_rst_for_pypi((docs_dir / "index.rst").read_text(encoding="utf-8"))
     configuration = (docs_dir / "configuration.rst").read_text(encoding="utf-8")
     processed += f"\n\n{process_rst_for_pypi(strip_main_title(configuration))}"
     (root / "README.rst").write_text(f"{processed.rstrip()}\n", encoding="utf-8")
 
 
 def process_rst_for_pypi(content: str) -> str:
+    """
+    Rewrite Sphinx-only reStructuredText into markup PyPI can render.
+
+    :param content: the Sphinx source
+    :returns: the content with roles turned into links and unsupported directives and the CLI section dropped
+    """
     content = unwrap_dropdowns(content)
     pypi_role = re.compile(
         r""":pypi:`(?P<target>[^`]+)`""",  # Link text is also the PyPI project path.
@@ -55,7 +71,7 @@ def process_rst_for_pypi(content: str) -> str:
             skip_section = False
         if line.startswith(".. tab:: uv"):
             continue
-        if line.startswith((".. tab::", ".. toctree::", ".. literalinclude::")):
+        if line.startswith((".. tab::", ".. toctree::", ".. sphinx_argparse_cli::", ".. raw::", ".. grid::")):
             skip_tab = True
             continue
         if skip_tab:
@@ -68,6 +84,12 @@ def process_rst_for_pypi(content: str) -> str:
 
 
 def unwrap_dropdowns(content: str) -> str:
+    """
+    Replace each dropdown directive with its dedented body.
+
+    :param content: the reStructuredText source
+    :returns: the content without dropdown wrappers
+    """
     result: list[str] = []
     in_dropdown = False
     for line in content.splitlines():
@@ -87,6 +109,12 @@ def unwrap_dropdowns(content: str) -> str:
 
 
 def strip_main_title(content: str) -> str:
+    """
+    Drop the top-level title of a page.
+
+    :param content: the reStructuredText source
+    :returns: the content after its ``=`` underlined title, or the content unchanged when it has none
+    """
     lines = content.splitlines()
     match lines:
         case [_, underline, *body] if underline and set(underline) == {"="}:

@@ -1,0 +1,6 @@
+# Settings for the PGO training run in tasks/pgo.py: every rule, preview ones included, so the profile covers each
+# rule's check and fix path.
+target-version = "py314"
+line-length = 120
+lint.select = [ "ALL" ]
+lint.preview = true

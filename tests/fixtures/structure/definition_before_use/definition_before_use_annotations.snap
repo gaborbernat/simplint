@@ -1,0 +1,18 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:7 SMP020 `Token` is defined before its first use in `parse`; move it below `parse`
+9:5 SMP020 `parse` should directly follow `main`, its first user [unsafe fix: Move `parse` right after `main`]
+--- fixed (1 applied, 0 remaining) ---
+def main() -> None:
+    parse("x")
+
+
+def parse(text: str) -> Token:
+    token: Token = Token()
+    return token
+
+
+class Token:
+    pass

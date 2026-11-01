@@ -1,0 +1,29 @@
+## What it does
+
+Checks for module docstrings that span more than one line once leading and trailing whitespace is stripped. Test modules
+are skipped, since [SMP004](SMP004.html) asks for their docstring to be removed.
+
+## Why is this bad?
+
+A module docstring should be a one-line summary of what the module is, in the style of a PEP 257
+[one-line docstring](https://peps.python.org/pep-0257/#one-line-docstrings). Longer explanations belong next to the code
+they describe, where they are more likely to be kept up to date.
+
+## Example
+
+```python
+"""Release tooling.
+
+Builds the changelog, tags the commit and uploads the wheel. Run it from the repository root after bumping the version.
+"""
+```
+
+Use instead:
+
+```python
+"""Release tooling: changelog, tag and upload."""
+```
+
+## Fix safety
+
+No fix is offered, since condensing the text into one line needs a person.

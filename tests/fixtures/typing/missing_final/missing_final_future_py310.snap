@@ -1,0 +1,14 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+8:1 SMP101 `LIMIT` is never reassigned; annotate it `Final` [unsafe fix: Annotate `LIMIT` with `Final`]
+--- fixed (1 applied, 0 remaining) ---
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from typing import Final
+
+LIMIT: Final[int] = 3

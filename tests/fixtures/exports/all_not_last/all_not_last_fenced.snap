@@ -1,0 +1,19 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+6:1 SMP104 `__all__` is not the last statement; move it to the end of the module [fix: Move `__all__` to the end of the module]
+--- fixed (1 applied, 0 remaining) ---
+def run() -> None:
+    pass
+
+
+def stop() -> None:
+    pass
+
+
+# fmt: off
+__all__ = [
+    'run', 'stop',  # ruff: ignore[undefined-export]
+]
+# fmt: on

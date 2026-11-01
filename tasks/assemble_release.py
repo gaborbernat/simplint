@@ -12,6 +12,11 @@ if TYPE_CHECKING:
 
 
 def main(argv: Sequence[str] | None = None) -> None:
+    """
+    Assemble the pending fragments into a release dated today from the command line.
+
+    :param argv: the arguments to parse, ``sys.argv`` when omitted
+    """
     parser = argparse.ArgumentParser(description="Assemble the release history")
     parser.add_argument("version")
     parser.add_argument("--root", type=Path, default=Path.cwd())
@@ -20,6 +25,14 @@ def main(argv: Sequence[str] | None = None) -> None:
 
 
 def assemble(root: Path, version: str, date: str) -> None:
+    """
+    Move the pending fragments into the changelog as a new release section and delete them.
+
+    :param root: the project root holding ``CHANGELOG.md`` and ``changelog.d``
+    :param version: the version being released
+    :param date: the release date in ISO format
+    :raises ValueError: if the changelog lacks its heading or a fragment is invalid
+    """
     fragments = sorted((root / "changelog.d").glob("*.md"))
     changelog = root / "CHANGELOG.md"
     heading = "# Changelog\n"
@@ -34,6 +47,15 @@ def assemble(root: Path, version: str, date: str) -> None:
 
 
 def release_section(fragments: Sequence[Path], title: str, anchor: str) -> list[str]:
+    """
+    Render the fragments as Markdown lines of one release, grouped by category.
+
+    :param fragments: the fragment files, named ``<issue>.<category>.md`` or ``+<slug>.<category>.md``
+    :param title: the release heading text
+    :param anchor: the HTML anchor of the release, also the prefix of each category anchor
+    :returns: the lines of the release section
+    :raises ValueError: if a fragment has an invalid name or is not one nonempty paragraph
+    """
     names = {
         "feature": "Added",
         "change": "Changes",

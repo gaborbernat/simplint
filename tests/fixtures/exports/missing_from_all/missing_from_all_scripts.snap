@@ -1,0 +1,13 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:5 SMP113 `run` is imported by other modules; list it in `__all__` [unsafe fix: Add `run` to `__all__`]
+--- fixed (1 applied, 0 remaining) ---
+def run() -> int:
+    return 0
+
+
+__all__ = [
+    "run",
+]

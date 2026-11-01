@@ -1,270 +1,95 @@
-mod checker;
+mod cli;
 mod fix;
-mod guards;
-mod linter;
-mod noqa;
+mod lint;
 mod project;
-mod registry;
 mod rules;
 mod semantic;
 mod settings;
-#[cfg(test)]
-mod snapshot;
 
-use std::collections::HashMap;
-use std::fmt::Write;
-use std::path::{Path, PathBuf};
+use std::ffi::OsString;
+use std::io::Write;
 use std::process::ExitCode;
-use std::sync::Arc;
 
-use anyhow::{Context, Result};
-use clap::{Args, Parser, Subcommand};
-use rayon::prelude::*;
-use ruff_diagnostics::Applicability;
-use ruff_source_file::LineIndex;
-use similar::TextDiff;
+use anyhow::Result;
+use clap::{CommandFactory, Parser};
+use colored::Colorize;
+use ruff::ExitStatus;
+use ruff_linter::logging::set_up_logging;
 
-use crate::checker::Diagnostic;
-use crate::linter::Linter;
-use crate::project::Project;
-use crate::registry::{FixAvailability, Rule};
-use crate::settings::Settings;
+use crate::cli::args::{Cli, Command, TerminalColor};
+use crate::cli::check::check;
+use crate::cli::subcommands;
 
-#[derive(Parser)]
-#[command(version, about = "Ruff companion linter enforcing the simp house style")]
-struct Cli {
-    #[command(subcommand)]
-    command: Command,
+// Ruff's allocators, on the same platforms: linting allocates many small objects across threads, which the system
+// allocator serves slower.
+#[cfg(target_os = "windows")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
+#[cfg(all(
+    not(target_os = "windows"),
+    not(target_os = "openbsd"),
+    not(target_os = "aix"),
+    not(target_os = "android"),
+    any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "powerpc64", target_arch = "riscv64")
+))]
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
+fn main() -> ExitCode {
+    let cli = Cli::parse();
+    match run(cli) {
+        Ok(status) => status.into(),
+        Err(error) => report_error(&error),
+    }
 }
 
-#[derive(Subcommand)]
-enum Command {
-    /// Lint Python files and optionally fix what is found
-    Check(CheckArgs),
-    /// List every rule with its fix availability
-    Rules {
-        #[arg(long, value_enum, default_value_t = OutputFormat::Text)]
-        output_format: OutputFormat,
-    },
-    /// Explain a rule
-    Rule {
-        /// Rule code or name, such as `SMP111` or `dataclass-options`
-        rule: String,
-    },
+// As `ruff` does: a failed run prints its cause chain and exits 2, while a closed pipe ends the run quietly.
+fn report_error(error: &anyhow::Error) -> ExitCode {
+    if error.chain().any(|cause| {
+        cause.downcast_ref::<std::io::Error>().is_some_and(|io| io.kind() == std::io::ErrorKind::BrokenPipe)
+    }) {
+        return ExitCode::from(0);
+    }
+    let mut stderr = std::io::stderr().lock();
+    writeln!(stderr, "{}", "simplint failed".red().bold()).ok();
+    for cause in error.chain() {
+        writeln!(stderr, "  {} {cause}", "Cause:".bold()).ok();
+    }
+    ExitStatus::Error.into()
 }
 
-#[derive(Args)]
-struct CheckArgs {
-    /// Files or directories to lint
-    #[arg(default_value = ".")]
-    paths: Vec<PathBuf>,
-    /// Apply fixes and write the files back
-    #[arg(long)]
-    fix: bool,
-    /// Also apply fixes that can change behavior
-    #[arg(long)]
-    unsafe_fixes: bool,
-    /// Print the fixes as a unified diff instead of writing them
-    #[arg(long, conflicts_with = "fix")]
-    diff: bool,
-    /// Rule codes, code prefixes or names to enable; replaces the configured selection
-    #[arg(long, value_delimiter = ',')]
-    select: Vec<String>,
-    /// Rule codes, code prefixes or names to disable
-    #[arg(long, value_delimiter = ',')]
-    ignore: Vec<String>,
-}
-
-#[derive(Clone, Copy, clap::ValueEnum)]
-enum OutputFormat {
-    Text,
-    Json,
-}
-
-#[derive(serde::Serialize)]
-struct RuleEntry {
-    code: &'static str,
-    name: &'static str,
-    summary: &'static str,
-    fix: FixAvailability,
-    explanation: &'static str,
-}
-
-fn main() -> Result<ExitCode> {
-    match Cli::parse().command {
-        Command::Check(args) => check(&args),
-        Command::Rules { output_format: OutputFormat::Text } => {
-            for rule in Rule::ALL {
-                let fix = match rule.fix_availability() {
-                    FixAvailability::Always => " (fix)",
-                    FixAvailability::Sometimes => " (fix sometimes)",
-                    FixAvailability::None => "",
-                };
-                println!("{} {}{fix}", rule.code(), rule.name());
+fn run(Cli { command, global_options }: Cli) -> Result<ExitStatus> {
+    if let Some(color) = colored_override(global_options.color, std::env::var_os("FORCE_COLOR")) {
+        colored::control::set_override(color);
+    }
+    set_up_logging(global_options.log_level())?;
+    match command {
+        Command::Check(args) => return check(&args, &global_options),
+        Command::Rule { rule, all, output_format } => {
+            if all {
+                subcommands::rules(output_format)?;
             }
-            Ok(ExitCode::SUCCESS)
+            if let Some(rule) = rule {
+                subcommands::rule(rule, output_format)?;
+            }
         }
-        Command::Rules { output_format: OutputFormat::Json } => {
-            let entries: Vec<RuleEntry> = Rule::ALL
-                .iter()
-                .map(|rule| RuleEntry {
-                    code: rule.code(),
-                    name: rule.name(),
-                    summary: rule.summary(),
-                    fix: rule.fix_availability(),
-                    explanation: rule.explanation(),
-                })
-                .collect();
-            println!("{}", serde_json::to_string_pretty(&entries)?);
-            Ok(ExitCode::SUCCESS)
-        }
-        Command::Rule { rule: selector } => {
-            let Some(rule) = Rule::ALL.iter().find(|rule| rule.code() == selector || rule.name() == selector) else {
-                eprintln!("unknown rule `{selector}`");
-                return Ok(ExitCode::FAILURE);
-            };
-            let fix = match rule.fix_availability() {
-                FixAvailability::Always => "Fix is always available.",
-                FixAvailability::Sometimes => "Fix is sometimes available.",
-                FixAvailability::None => "No fix is available.",
-            };
-            print!("# {} ({})\n\n{fix}\n\n{}", rule.name(), rule.code(), rule.explanation());
-            Ok(ExitCode::SUCCESS)
-        }
+        Command::Rules { output_format } => subcommands::rule_list(output_format)?,
+        Command::Config { option, output_format } => subcommands::config(option.as_deref(), output_format)?,
+        Command::Linter { output_format } => subcommands::linter(output_format)?,
+        Command::Clean => subcommands::clean(global_options.log_level())?,
+        Command::GenerateShellCompletion { shell } => shell.generate(&mut Cli::command(), &mut std::io::stdout()),
+        Command::Version { output_format } => subcommands::version(output_format)?,
+        Command::CliSchema => subcommands::cli_schema(&Cli::command())?,
     }
+    Ok(ExitStatus::Success)
 }
 
-fn check(args: &CheckArgs) -> Result<ExitCode> {
-    let files = discover(args)?;
-    let paths: Vec<PathBuf> = files.iter().map(|(path, _)| path.clone()).collect();
-    let mut entry_points: Vec<String> =
-        files.iter().flat_map(|(_, settings)| settings.entry_points.iter().cloned()).collect();
-    entry_points.sort_unstable();
-    entry_points.dedup();
-    let project = Project::index(&paths, &entry_points);
-    let reports = files
-        .par_iter()
-        .map(|(path, settings)| {
-            report(path, &Linter { settings, project: &project, rules: settings.rules_for(path) }, args)
-        })
-        .collect::<Result<Vec<_>>>()?;
-    let mut remaining = 0;
-    let mut fixed = 0;
-    let mut fixable = 0;
-    let mut hidden = 0;
-    for report in &reports {
-        print!("{}", report.output);
-        remaining += report.diagnostics;
-        fixed += report.fixed;
-        fixable += report.fixable;
-        hidden += report.hidden;
+// Ruff's `colored_override`: `--color` wins over a nonempty `FORCE_COLOR`.
+fn colored_override(color: Option<TerminalColor>, force_color: Option<OsString>) -> Option<bool> {
+    match color {
+        Some(TerminalColor::Always) => Some(true),
+        Some(TerminalColor::Never) => Some(false),
+        Some(TerminalColor::Auto) | None => force_color.map(|force_color| !force_color.is_empty()),
     }
-    if fixed > 0 {
-        eprintln!("Fixed {fixed} issues.");
-    }
-    if remaining == 0 {
-        if fixed == 0 {
-            eprintln!("All checks passed!");
-        }
-        return Ok(ExitCode::SUCCESS);
-    }
-    eprintln!("Found {remaining} issues.");
-    if fixable > 0 {
-        eprintln!("[*] {fixable} fixable with `--fix`.");
-    }
-    if hidden > 0 {
-        eprintln!("{hidden} hidden fixes can be enabled with `--unsafe-fixes`.");
-    }
-    Ok(ExitCode::FAILURE)
-}
-
-fn discover(args: &CheckArgs) -> Result<Vec<(PathBuf, Arc<Settings>)>> {
-    let mut cache: HashMap<PathBuf, Arc<Settings>> = HashMap::new();
-    let mut walk = ignore::WalkBuilder::new(&args.paths[0]);
-    for path in &args.paths[1..] {
-        walk.add(path);
-    }
-    let mut files = Vec::new();
-    for entry in walk.build() {
-        let entry = entry?;
-        let path = entry.path();
-        if !entry.file_type().is_some_and(|kind| kind.is_file()) || path.extension().is_none_or(|ext| ext != "py") {
-            continue;
-        }
-        let directory = path.parent().unwrap_or(Path::new(".")).to_path_buf();
-        let settings = if let Some(settings) = cache.get(&directory) {
-            Arc::clone(settings)
-        } else {
-            let settings = Arc::new(Settings::discover(path)?.with_rules(&args.select, &args.ignore)?);
-            cache.insert(directory, Arc::clone(&settings));
-            settings
-        };
-        if !settings.is_excluded(path) {
-            files.push((path.to_path_buf(), settings));
-        }
-    }
-    files.sort_by(|(left, _), (right, _)| left.cmp(right));
-    Ok(files)
-}
-
-struct Report {
-    output: String,
-    diagnostics: usize,
-    fixed: usize,
-    fixable: usize,
-    hidden: usize,
-}
-
-fn report(path: &Path, linter: &Linter, args: &CheckArgs) -> Result<Report> {
-    let source = std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-    let mut output = String::new();
-    let (diagnostics, fixed, text) = if args.fix || args.diff {
-        let applicability = if args.unsafe_fixes { Applicability::Unsafe } else { Applicability::Safe };
-        let outcome = linter.fix(path, &source, applicability)?;
-        if args.fix && outcome.fixed > 0 {
-            std::fs::write(path, &outcome.source).with_context(|| format!("writing {}", path.display()))?;
-        }
-        if args.diff && outcome.fixed > 0 {
-            let name = path.display().to_string();
-            output.push_str(
-                &TextDiff::from_lines(&source, &outcome.source).unified_diff().header(&name, &name).to_string(),
-            );
-        }
-        (outcome.diagnostics, outcome.fixed, outcome.source)
-    } else {
-        (linter.lint(path, &source)?, 0, source)
-    };
-    if !args.diff {
-        let index = LineIndex::from_source_text(&text);
-        for diagnostic in &diagnostics {
-            let location = index.line_column(diagnostic.range.start(), &text);
-            let marker =
-                if diagnostic.fix.as_ref().is_some_and(|fix| fix.applies(Applicability::Safe)) { " [*]" } else { "" };
-            writeln!(
-                output,
-                "{}:{}:{}: {}{marker} {}",
-                path.display(),
-                location.line,
-                location.column,
-                diagnostic.rule.code(),
-                diagnostic.message
-            )
-            .expect("writing to a String cannot fail");
-        }
-    }
-    let fixable = count_fixes(&diagnostics, Applicability::Safe);
-    Ok(Report {
-        output,
-        diagnostics: diagnostics.len(),
-        fixed,
-        fixable,
-        hidden: count_fixes(&diagnostics, Applicability::Unsafe) - fixable,
-    })
-}
-
-fn count_fixes(diagnostics: &[Diagnostic], applicability: Applicability) -> usize {
-    diagnostics
-        .iter()
-        .filter(|diagnostic| diagnostic.fix.as_ref().is_some_and(|fix| fix.applies(applicability)))
-        .count()
 }

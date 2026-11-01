@@ -1,6 +1,6 @@
 - id: simplint
   name: simplint
-  description: Lint Python with the simp house style and apply safe fixes
+  description: Lint Python with extra checks that make it easier to read and review, and apply safe fixes
   entry: simplint check --fix
   language: rust
   types_or: [python, pyi]

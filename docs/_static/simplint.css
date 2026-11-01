@@ -1,0 +1,584 @@
+:root {
+  --simplint-accent: #2b6599;
+  --simplint-accent-soft: rgba(55, 118, 171, 0.12);
+  --simplint-accent-contrast: #ffffff;
+  --simplint-yellow: #ffd43b;
+  --simplint-navy: #062d59;
+  /* text colors meet WCAG AA (4.5:1) on their own soft tint */
+  --simplint-good: #0b6447;
+  --simplint-good-soft: rgba(18, 128, 92, 0.1);
+  --simplint-bad: #9a3412;
+  --simplint-bad-soft: rgba(194, 65, 12, 0.1);
+  --simplint-radius: 0.6rem;
+}
+
+body[data-theme="dark"] {
+  --simplint-accent: #ffd43b;
+  --simplint-accent-soft: rgba(255, 212, 59, 0.12);
+  --simplint-accent-contrast: #062d59;
+  --simplint-good: #4ade80;
+  --simplint-good-soft: rgba(74, 222, 128, 0.1);
+  --simplint-bad: #fb923c;
+  --simplint-bad-soft: rgba(251, 146, 60, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  body:not([data-theme="light"]) {
+    --simplint-accent: #ffd43b;
+    --simplint-accent-soft: rgba(255, 212, 59, 0.12);
+    --simplint-accent-contrast: #062d59;
+    --simplint-good: #4ade80;
+    --simplint-good-soft: rgba(74, 222, 128, 0.1);
+    --simplint-bad: #fb923c;
+    --simplint-bad-soft: rgba(251, 146, 60, 0.1);
+  }
+}
+
+/* Furo fixes the reading column at 46em; the rule tables and side-by-side examples need more room. */
+.content {
+  width: min(100%, 60em);
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.015em;
+}
+
+article h1 {
+  font-weight: 750;
+  font-size: clamp(1.7rem, 4.5vw, 2.5rem);
+  overflow-wrap: anywhere;
+}
+
+/* the hero carries the landing page's headline; keep the page title for screen readers and the browser tab */
+section#simplint > h1 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+/* line sphinx-design grids up with the text column instead of indenting them by the gutter */
+article .sd-container-fluid {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+article .sd-container-fluid > .sd-row {
+  margin-left: calc(-0.5 * var(--sd-gutter-x));
+  margin-right: calc(-0.5 * var(--sd-gutter-x));
+}
+
+/* console output lines stay readable; the theme's own code colors would otherwise gray them out */
+.highlight .go {
+  color: var(--color-foreground-secondary) !important;
+}
+
+article h2 {
+  margin-top: 2.2rem;
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--color-background-border);
+}
+
+.highlight,
+div[class^="highlight-"] pre {
+  border-radius: var(--simplint-radius);
+}
+
+/* landing page */
+
+/* the page's view, edit and theme icons sit in the top-right corner; start the hero below them */
+.hero {
+  margin: 3.6rem 0 2rem;
+  padding: 2.4rem 2rem;
+  border-radius: calc(var(--simplint-radius) * 2);
+  background:
+    radial-gradient(circle at 100% 0%, rgba(55, 118, 171, 0.22), transparent 55%),
+    radial-gradient(circle at 0% 100%, rgba(255, 212, 59, 0.16), transparent 50%),
+    var(--color-background-secondary);
+  border: 1px solid var(--color-background-border);
+}
+
+.hero-logo {
+  float: right;
+  width: clamp(4.5rem, 14vw, 8.5rem);
+  margin: 0 0 0.5rem 1.2rem;
+}
+
+.hero-title {
+  margin: 0;
+  font-size: clamp(2rem, 5vw, 3rem);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.hero-title span {
+  color: var(--simplint-accent);
+}
+
+.hero-tagline {
+  margin: 0.9rem 0 1.4rem;
+  max-width: 40em;
+  font-size: 1.15rem;
+  color: var(--color-foreground-secondary);
+}
+
+.hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.hero-actions a {
+  padding: 0.55rem 1.1rem;
+  border-radius: 999px;
+  font-weight: 600;
+  text-decoration: none;
+  border: 1px solid var(--simplint-accent);
+}
+
+.hero-actions a.primary {
+  background: var(--simplint-accent);
+  color: var(--simplint-accent-contrast);
+}
+
+.hero-actions a.secondary {
+  color: var(--simplint-accent);
+}
+
+.hero-actions a:hover {
+  filter: brightness(1.1);
+}
+
+.sd-card.feature {
+  border-radius: var(--simplint-radius);
+  border-color: var(--color-background-border);
+  background: var(--color-background-secondary);
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.sd-card.feature:hover {
+  transform: translateY(-2px);
+  border-color: var(--simplint-accent);
+}
+
+.sd-card.feature .sd-card-title {
+  font-size: 1.05rem;
+}
+
+/* badges */
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: -0.4rem 0 1.4rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
+  text-decoration: none;
+  border: 1px solid var(--color-background-border);
+  color: var(--color-foreground-secondary);
+  background: var(--color-background-secondary);
+}
+
+a.badge:hover {
+  border-color: var(--simplint-accent);
+  color: var(--simplint-accent);
+}
+
+.badge.code {
+  font-family: var(--font-stack--monospace);
+  color: var(--simplint-accent);
+  background: var(--simplint-accent-soft);
+  border-color: transparent;
+}
+
+.badge.fix-always {
+  color: var(--simplint-good);
+  background: var(--simplint-good-soft);
+  border-color: transparent;
+}
+
+.badge.fix-sometimes {
+  color: var(--simplint-accent);
+  background: var(--simplint-accent-soft);
+  border-color: transparent;
+}
+
+/* side-by-side examples */
+
+.sd-card.example {
+  border-radius: var(--simplint-radius);
+  height: 100%;
+}
+
+.sd-card.example .sd-card-title {
+  margin-bottom: 0.5rem;
+  font-weight: 700;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.sd-card.example.bad {
+  border-color: var(--simplint-bad);
+}
+
+.sd-card.example.bad .sd-card-title {
+  color: var(--simplint-bad);
+}
+
+.sd-card.example.bad {
+  background: var(--simplint-bad-soft);
+}
+
+.sd-card.example.good {
+  border-color: var(--simplint-good);
+}
+
+.sd-card.example.good .sd-card-title {
+  color: var(--simplint-good);
+}
+
+.sd-card.example.good {
+  background: var(--simplint-good-soft);
+}
+
+.sd-card.example .sd-card-body {
+  padding: 0.8rem;
+}
+
+.sd-card.example .highlight,
+.sd-card.example div[class^="highlight-"] {
+  margin: 0;
+}
+
+.sd-card.example .sd-card-body > :last-child {
+  margin-bottom: 0;
+}
+
+/* rules index */
+
+.rule-filter {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: minmax(12rem, 1fr) auto auto;
+  gap: 0.6rem;
+  align-items: center;
+  margin: 1rem 0;
+  padding: 0.8rem;
+  border-radius: var(--simplint-radius);
+  border: 1px solid var(--color-background-border);
+  background: var(--color-background-primary);
+  box-shadow: 0 6px 18px -14px rgba(0, 0, 0, 0.6);
+}
+
+.rule-filter input,
+.rule-filter select {
+  font: inherit;
+  padding: 0.45rem 0.7rem;
+  border-radius: calc(var(--simplint-radius) * 0.7);
+  border: 1px solid var(--color-background-border);
+  background: var(--color-background-secondary);
+  color: var(--color-foreground-primary);
+}
+
+.rule-filter input:focus,
+.rule-filter select:focus {
+  outline: 2px solid var(--simplint-accent);
+  outline-offset: 1px;
+}
+
+.rule-count {
+  grid-column: 1 / -1;
+  font-size: 0.85rem;
+  color: var(--color-foreground-muted);
+}
+
+table.rules {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.92rem;
+}
+
+table.rules th {
+  text-align: left;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-foreground-muted);
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--color-background-border);
+}
+
+table.rules td {
+  padding: 0.65rem 0.6rem;
+  vertical-align: top;
+  border-bottom: 1px solid var(--color-background-border);
+}
+
+table.rules tr:hover td {
+  background: var(--color-background-hover);
+}
+
+table.rules td.rule-code a {
+  font-family: var(--font-stack--monospace);
+  font-weight: 700;
+  color: var(--simplint-accent);
+  text-decoration: none;
+}
+
+table.rules td.rule-name {
+  font-family: var(--font-stack--monospace);
+  font-size: 0.85rem;
+}
+
+table.rules td.rule-fix {
+  white-space: nowrap;
+}
+
+table.rules tr.group-row td {
+  padding-top: 1.4rem;
+  font-weight: 700;
+  border-bottom: 2px solid var(--simplint-accent);
+}
+
+.rule-empty {
+  padding: 1.5rem;
+  text-align: center;
+  color: var(--color-foreground-muted);
+}
+
+.rule-filter > * {
+  min-width: 0;
+}
+
+@media (max-width: 63em) {
+  .rule-filter {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .rule-filter input {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 46em) {
+  .rule-filter {
+    position: static;
+  }
+
+  table.rules td.rule-name,
+  table.rules th.rule-name {
+    display: none;
+  }
+
+  .hero {
+    padding: 1.6rem 1.2rem;
+  }
+
+  .hero-logo {
+    float: none;
+    display: block;
+    margin: 0 0 1rem;
+  }
+}
+
+/* diagrams: mermaid scopes its own styles to each SVG, so these overrides need to win over them */
+
+pre.mermaid {
+  margin: 1.2rem 0;
+  padding: 1rem;
+  border-radius: var(--simplint-radius);
+  border: 1px solid var(--color-background-border);
+  background: var(--color-background-secondary);
+  text-align: center;
+}
+
+/* diagrams scale with the column; cap them so a wide screen does not blow them up past reading size */
+pre.mermaid > svg {
+  display: block;
+  margin: 0 auto;
+  max-width: min(100%, 44rem) !important;
+  max-height: 28rem;
+}
+
+pre.mermaid .node rect,
+pre.mermaid .node polygon {
+  stroke-width: 2px !important;
+  filter: drop-shadow(0 4px 10px rgba(6, 45, 89, 0.18));
+}
+
+pre.mermaid .node rect {
+  rx: 10px;
+  ry: 10px;
+}
+
+pre.mermaid .nodeLabel,
+pre.mermaid .label {
+  font-family: var(--font-stack) !important;
+  font-weight: 600;
+}
+
+pre.mermaid .edgeLabel {
+  color: var(--color-foreground-primary) !important;
+  font-family: var(--font-stack) !important;
+  font-size: 0.85em;
+}
+
+pre.mermaid .edgeLabel,
+pre.mermaid .edgeLabel p,
+pre.mermaid .labelBkg {
+  background-color: var(--color-background-secondary) !important;
+}
+
+pre.mermaid .flowchart-link,
+pre.mermaid .edgePath path {
+  stroke: var(--color-foreground-secondary) !important;
+  stroke-width: 2px !important;
+}
+
+pre.mermaid marker path,
+pre.mermaid .arrowheadPath {
+  fill: var(--color-foreground-secondary) !important;
+  stroke: var(--color-foreground-secondary) !important;
+}
+
+/* rule entries in the sidebar tree: compact enough that a whole group fits on screen */
+.sidebar-tree .toctree-l3 > .reference {
+  padding-top: 0.2em;
+  padding-bottom: 0.2em;
+  font-size: 0.85em;
+  line-height: 1.35;
+}
+
+/* short pages have no scrollbar; reserving its space keeps the layout from shifting between pages */
+html {
+  scrollbar-gutter: stable;
+}
+
+/* on large screens let the content take the room furo leaves empty, keeping the layout within 1600px */
+@media (min-width: 82em) {
+  /* 20% wider than furo's 15em, so most rule names in the tree fit on one line */
+  .sidebar-drawer {
+    width: max(18em, calc(50% - 800px + 18em));
+  }
+
+  .sidebar-container {
+    width: 18em;
+  }
+
+  /* the sidebar drawer absorbs half of any width beyond 1600px; capping the rest leaves the other half on the right,
+     so the 1600px layout stays centered on wide and 4K screens */
+  .main {
+    flex: 0 1 auto;
+    width: calc(100% - max(18em, calc(50% - 800px + 18em)));
+    max-width: calc(1600px - 18em);
+  }
+
+  .content {
+    flex: 1 1 auto;
+    width: auto;
+    max-width: none;
+  }
+
+  /* the contents column takes only the width its entries need, up to furo's 15em, and gives the rest to the page */
+  .toc-drawer {
+    flex: 0 0 auto;
+    width: max-content;
+    min-width: 9em;
+    max-width: 15em;
+  }
+}
+
+/* example snippets: soft-wrap long lines and keep line numbers out of copy and selection */
+.sd-card.example pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.sd-card.example .linenos {
+  user-select: none;
+  margin-right: 0.8em;
+}
+
+/* xcode highlights on white; a faint gray keeps code blocks distinct from the page without losing contrast */
+body[data-theme="light"] .highlight {
+  background: #f6f8fa;
+}
+
+@media (prefers-color-scheme: light) {
+  body[data-theme="auto"] .highlight {
+    background: #f6f8fa;
+  }
+}
+
+/* the highlighting themes color line numbers below 4.5:1; use the page's secondary text color instead */
+.highlight .linenos {
+  color: var(--color-foreground-secondary) !important;
+}
+
+/* the pages above the current one stay highlighted, by color alone so their entries never rewrap */
+.sidebar-tree .current > .reference {
+  font-weight: inherit;
+  color: var(--color-brand-primary);
+}
+
+/* mark the current page without bold, as a wider weight would rewrap its entry and shift the tree; a solid accent
+   fill stands out from the pages above it, which this rule follows to override their color, with text at 6:1 or more in both themes */
+.sidebar-tree .current-page > .reference {
+  font-weight: inherit;
+  color: var(--simplint-accent-contrast);
+  background: var(--simplint-accent);
+  border-radius: 0.35rem;
+}
+
+/* icons on the top-level sidebar entries; masks take the text color, so they follow the theme and the current page */
+.sidebar-tree .toctree-l1 > .reference::before {
+  content: "";
+  display: inline-block;
+  width: 1.05em;
+  height: 1.05em;
+  margin-right: 0.55em;
+  vertical-align: -0.17em;
+  background-color: currentColor;
+  mask: var(--nav-icon) no-repeat center / contain;
+}
+
+.sidebar-tree .toctree-l1 > a[href="#"], .sidebar-tree .toctree-l1 > a[href$="index.html"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .toctree-l1 > a[href$="configuration.html"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1'/%3E%3Ccircle cx='15' cy='6' r='2'/%3E%3Ccircle cx='9' cy='12' r='2'/%3E%3Ccircle cx='17' cy='18' r='2'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .toctree-l1 > a[href$="cli.html"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 17 6-5-6-5M12 19h8'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .toctree-l1 > a[href$="rules.html"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3 6 2 2 4-4M3 14l2 2 4-4M13 6h8M13 14h8M13 20h8'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .toctree-l1 > a[href$="changelog.html"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E");
+}

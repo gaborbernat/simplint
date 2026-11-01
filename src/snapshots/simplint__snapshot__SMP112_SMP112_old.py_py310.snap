@@ -1,5 +1,0 @@
----
-source: src/snapshot.rs
-expression: "render(rule, fixture, target_version)"
----
-2:12 SMP112 Build text with an f-string instead of `+`

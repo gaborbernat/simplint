@@ -1,0 +1,27 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+4:1 SMP102 Module-scope variable `limit` should be named `_LIMIT` [unsafe fix: Rename `limit` to `_LIMIT`]
+--- fixed (1 applied, 0 remaining) ---
+import os.path
+from os.path import *
+
+_LIMIT: int
+_LIMIT = 3
+_LIMIT: int
+
+match os.sep:
+    case "/" as captured:
+        pass
+
+type Pair[T] = tuple[T, T]
+
+
+class Box[T]:
+    size = _LIMIT
+    scale = lambda self: self.size * _LIMIT
+
+
+def first[T](items: list[T]) -> T:
+    return items[_LIMIT]

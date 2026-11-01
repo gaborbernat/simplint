@@ -1,0 +1,11 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+3:6 SMP110 Import from the same package relatively: `from .sub import ...` [fix: Import from `.sub`]
+--- fixed (1 applied, 0 remaining) ---
+"""Package."""
+
+from .sub import thing
+
+__all__ = ["thing"]

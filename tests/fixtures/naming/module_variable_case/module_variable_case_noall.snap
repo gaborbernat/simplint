@@ -1,0 +1,18 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:1 SMP102 Module-scope variable `VALUE` should be named `_VALUE` [unsafe fix: Rename `VALUE` to `_VALUE`]
+2:1 SMP102 Module-scope variable `counter` should be named `_COUNTER` [unsafe fix: Rename `counter` to `_COUNTER`]
+10:1 SMP102 Module-scope variable `shared_value` should be named `SHARED_VALUE`
+--- fixed (2 applied, 1 remaining) ---
+_VALUE = 1
+_COUNTER = 0
+
+
+def bump() -> None:
+    global _COUNTER
+    _COUNTER += _VALUE
+
+
+shared_value = 1
