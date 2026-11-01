@@ -39,6 +39,13 @@ body[data-theme="dark"] {
   width: min(100%, 60em);
 }
 
+/* both are flex items, which by default never shrink below their widest child, so one long line in a code block would
+   widen the whole page; letting them shrink keeps that line scrolling inside its own block */
+.main,
+.content {
+  min-width: 0;
+}
+
 h1,
 h2,
 h3 {
@@ -398,7 +405,9 @@ table.rules tr.group-row td {
 
 /* diagrams: mermaid scopes its own styles to each SVG, so these overrides need to win over them */
 
+/* mermaid sizes the block to the full width, so its padding and border must fit inside that width */
 pre.mermaid {
+  box-sizing: border-box;
   margin: 1.2rem 0;
   padding: 1rem;
   border-radius: var(--simplint-radius);
