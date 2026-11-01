@@ -8,6 +8,7 @@ use crate::lint::registry::Rule;
 use crate::rules::exports::exploded;
 use crate::rules::exports::{Exports, all_binding, all_literal};
 use crate::rules::{indentation, is_main_guard};
+use crate::semantic::BindingKind;
 
 pub fn missing_from_all(checker: &Checker) {
     if checker.is_init_module() || checker.is_test_module() {
@@ -21,7 +22,15 @@ pub fn missing_from_all(checker: &Checker) {
     let mut missing: Vec<(&str, TextRange)> = checker
         .semantic()
         .all_bindings()
-        .filter(|(name, _)| !name.starts_with('_') && !exported.contains(name) && checker.project().is_imported(name))
+        .filter(|(name, bindings)| {
+            !name.starts_with('_')
+                && !exported.contains(name)
+                // Another module reaching a name this one imports and uses, as `app.sys`, borrows it rather than
+                // relying on an export; an import the module never uses is there for its importers, a re-export.
+                && (!bindings.iter().any(|binding| binding.kind == BindingKind::Import)
+                    || checker.semantic().references_to(name).is_empty())
+                && checker.project().is_imported(name)
+        })
         .map(|(name, bindings)| (name, bindings[0].range))
         .collect();
     if missing.is_empty() {

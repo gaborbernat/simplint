@@ -27,6 +27,7 @@ use crate::common;
 #[test_case("missing-from-all", "missing_from_all_call.py" ; "missing_from_all_dynamic")]
 #[test_case("missing-from-all", "missing_from_all_nested.py" ; "missing_from_all_nested_all")]
 #[test_case("missing-from-all", "missing_from_all_empty.py" ; "missing_from_all_empty")]
+#[test_case("missing-from-all", "missing_from_all_imported.py" ; "missing_from_all_imported_name")]
 #[test_case("missing-from-all", "missing_from_all_scripts.py" ; "missing_from_all_entry_point")]
 #[test_case("missing-from-all", "tests/test_module_docstring.py" ; "missing_from_all_test_module")]
 #[test_case("missing-from-all", "package/__init__.py" ; "missing_from_all_init_module")]

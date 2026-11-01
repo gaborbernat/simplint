@@ -75,21 +75,17 @@ fn stub_declarations_are_public_api(stub: &str, stdout: &str) {
     assert_eq!(check(root.path(), &["--select", "SMP102,SMP103"]).1, stdout);
 }
 
-// Patching an attribute of the module's own import reaches `os` through `files` without importing it from there.
-#[test_case("mocker.patch(\"pkg.files.os.getcwd\")", "All checks passed!\n" ; "patch_of_an_attribute")]
-#[test_case(
-    "from pkg.files import os",
-    "pkg/files.py:1:8: SMP113 `os` is imported by other modules; list it in `__all__`\nFound 1 error.\n1 \
-     unsafe fix available with `--fix --unsafe-fixes`.\n" ;
-    "import_of_the_name"
-)]
-fn patch_target_through_module_import_is_not_an_export(reference: &str, stdout: &str) {
+// Patching an attribute of the module's own import reaches `os` through `files` without importing it from there, and
+// importing it from there borrows a name `files` uses rather than one it exports.
+#[test_case("mocker.patch(\"pkg.files.os.getcwd\")" ; "patch_of_an_attribute")]
+#[test_case("from pkg.files import os" ; "import_of_the_name")]
+fn module_import_is_not_an_export(reference: &str) {
     let root = project(&[
         ("pkg/__init__.py", ""),
         ("pkg/files.py", "import os\n\n\ndef cwd() -> str:\n    return os.getcwd()\n"),
         ("test_files.py", &format!("def test_cwd(mocker):\n    {reference}\n")),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP113"]).1, common::native(stdout));
+    assert_eq!(check(root.path(), &["--select", "SMP113"]).1, "All checks passed!\n");
 }
 
 #[test_case("pkg.manager._load", "All checks passed!\n" ; "patched")]

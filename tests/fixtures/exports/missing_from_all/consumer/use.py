@@ -29,3 +29,7 @@ from missing_from_all_hanging_comment import gamma as other_gamma
 from missing_from_all_bare import gamma as bare_gamma
 from missing_from_all_reexport import helper as reexported_helper
 from missing_from_all_sorted import Gamma, alpha, beta
+import missing_from_all_imported
+from missing_from_all_imported import Path, join, run
+
+IMPORTED = (missing_from_all_imported.sys, Path, join, run)

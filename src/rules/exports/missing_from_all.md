@@ -20,6 +20,10 @@ alone.
 Names starting with `_`, `__init__.py` files, test modules (as defined in [SMP200](SMP200.html)) and modules that import
 `__all__` from elsewhere are skipped.
 
+Names the module imports and uses itself are skipped too: another module reaching `sys` as `app.sys` borrows a name
+`app` needs, which is not part of its API. An import the module never uses is there for its importers, so it counts as a
+re-export and is reported.
+
 simplint reads `__all__` from module-level `=`, annotated and `+=` assignments of list or tuple literals, and from
 `.extend([...])` and `.append("name")` calls, all holding string literals. When any other statement builds it, such as
 `list(...)` or `.remove(...)`, or when `__all__` is bound inside a nested block such as an `if`, `try` or function,
