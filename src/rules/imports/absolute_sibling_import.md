@@ -44,5 +44,6 @@ resolves to the same module when the file is imported as part of its package. A 
 
 Ruff's [relative-imports (TID252)](https://docs.astral.sh/ruff/rules/relative-imports/) with
 [`ban-relative-imports`](https://docs.astral.sh/ruff/settings/#lint_flake8-tidy-imports_ban-relative-imports) set to
-`"all"` asks for the absolute import this rule replaces, and its fix turns the relative import back. simplint then
-offers no fix and keeps the report; turn off one of the two rules.
+`"all"` asks for the absolute import this rule replaces, and its fix turns the relative import back. simplint stops with
+an error before linting while both apply to a file; set `ban-relative-imports` to `"parents"`, or turn one of the two
+rules off.

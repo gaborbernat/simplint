@@ -19,6 +19,18 @@ impl<'a> FileSettings<'a> {
     pub fn new(project: &'a Settings, ruff: &ruff_workspace::Settings, path: &Path) -> Self {
         Self { project, from_ruff: FromRuff::of(ruff, path), rules: project.rules_for(path) }
     }
+
+    pub fn is_test_module(&self, path: &Path) -> bool {
+        let name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
+        name.starts_with("test_")
+            || name.ends_with("_test.py")
+            || name == "conftest.py"
+            || path
+                .strip_prefix(&self.project.root)
+                .unwrap_or(path)
+                .components()
+                .any(|part| matches!(part.as_os_str().to_str(), Some("tests" | "test")))
+    }
 }
 
 // What Ruff's settings decide for a file: what simplint's rules follow, and how Ruff parses and formats it.

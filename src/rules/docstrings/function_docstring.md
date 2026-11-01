@@ -48,7 +48,10 @@ statement goes up to that statement; no fix is offered when a comment sits betwe
 ## Conflicts with Ruff
 
 Ruff's [undocumented-public-class (D101)](https://docs.astral.sh/ruff/rules/undocumented-public-class/),
-[undocumented-public-method (D102)](https://docs.astral.sh/ruff/rules/undocumented-public-method/) and
-[undocumented-public-function (D103)](https://docs.astral.sh/ruff/rules/undocumented-public-function/) ask for the
-docstrings this rule removes. While they are enabled, simplint withdraws the fix and keeps the report; turn them off and
-let [SMP116](SMP116.html) ask for documentation on the public API.
+[undocumented-public-method (D102)](https://docs.astral.sh/ruff/rules/undocumented-public-method/),
+[undocumented-public-function (D103)](https://docs.astral.sh/ruff/rules/undocumented-public-function/),
+[undocumented-magic-method (D105)](https://docs.astral.sh/ruff/rules/undocumented-magic-method/),
+[undocumented-public-nested-class (D106)](https://docs.astral.sh/ruff/rules/undocumented-public-nested-class/) and
+[undocumented-public-init (D107)](https://docs.astral.sh/ruff/rules/undocumented-public-init/) ask for the docstrings
+this rule removes. simplint stops with an error before linting while any of them applies to a file this rule checks;
+turn them off and let [SMP116](SMP116.html) ask for documentation on the public API, or turn this rule off.

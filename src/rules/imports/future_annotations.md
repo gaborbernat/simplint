@@ -49,6 +49,6 @@ Otherwise the fix is safe.
 
 When Ruff's isort setting [`required-imports`](https://docs.astral.sh/ruff/settings/#lint_isort_required-imports) lists
 `from __future__ import annotations`,
-[missing-required-import (I002)](https://docs.astral.sh/ruff/rules/missing-required-import/) asks for the import this
-rule removes. simplint then withdraws the fix and keeps the report; drop the import from `required-imports` once the
-project targets Python 3.14.
+[missing-required-import (I002)](https://docs.astral.sh/ruff/rules/missing-required-import/) adds back the import this
+rule removes. simplint stops with an error before linting while both apply to a file that targets Python 3.14 or newer;
+drop the import from `required-imports` once the project targets Python 3.14, or turn this rule off.

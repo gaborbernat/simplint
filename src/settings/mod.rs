@@ -1,3 +1,4 @@
+pub mod conflicts;
 mod file;
 mod metadata;
 mod options;

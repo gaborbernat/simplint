@@ -179,10 +179,10 @@ fn cache_tracks_skip_magic_trailing_comma() {
     assert_eq!((quiet, check(root.path(), &["--select", "SMP115"]).0), (0, 1));
 }
 
-// Ruff's D103 would report the public function once its docstring goes, so the fix loop withdraws SMP002's fix.
-const RUFF_D103: (&str, &str) = ("pyproject.toml", "[tool.ruff.lint]\nselect = [\"D103\"]\n");
-const PUBLIC: &str = "def run() -> None:\n    \"\"\"Run.\"\"\"\n    print()\n";
-const PRIVATE: &str = "def _run() -> None:\n    \"\"\"Run.\"\"\"\n    print()\n";
+// Ruff's PLR2004 would report the value inlined into a comparison, so the fix loop withdraws SMP050's fix.
+const RUFF_PLR2004: (&str, &str) = ("pyproject.toml", "[tool.ruff.lint]\nselect = [\"PLR2004\"]\n");
+const COMPARED: &str = "_LIMIT = 3\n\n\ndef over(value: int) -> bool:\n    return value > _LIMIT\n";
+const ADDED: &str = "_LIMIT = 3\n\n\ndef over(value: int) -> int:\n    return value + _LIMIT\n";
 
 #[test_case(&["--fix", "--unsafe-fixes"] ; "fix")]
 #[test_case(&["--fix"] ; "unsafe_fix_hint")]
@@ -191,8 +191,8 @@ const PRIVATE: &str = "def _run() -> None:\n    \"\"\"Run.\"\"\"\n    print()\n"
 #[test_case(&["--fix", "--unsafe-fixes", "--exit-non-zero-on-fix"] ; "exit_non_zero_on_fix")]
 #[test_case(&["--fix", "--unsafe-fixes", "--statistics"] ; "statistics")]
 fn settled_file_reports_the_same_from_the_cache(flags: &[&str]) {
-    let root = project(&[RUFF_D103, ("module.py", &format!("{PUBLIC}\n\nx = 1\n"))]);
-    let args = [&["--select", "SMP002,SMP010"], flags].concat();
+    let root = project(&[RUFF_PLR2004, ("module.py", &format!("{COMPARED}\n\nx = 1\n"))]);
+    let args = [&["--select", "SMP050,SMP010"], flags].concat();
     let (first, cached) = (check(root.path(), &args), check(root.path(), &args));
     assert_eq!((&first, &cached), (&check(root.path(), &[&args[..], &["--no-cache"]].concat()), &first));
 }
@@ -200,31 +200,31 @@ fn settled_file_reports_the_same_from_the_cache(flags: &[&str]) {
 // An edit that keeps the modification time goes unseen, so the cached withdrawal holds back a fix the loop would apply.
 #[test]
 fn settled_file_reuses_the_withdrawn_fixes() {
-    let root = project(&[RUFF_D103, ("module.py", PUBLIC)]);
+    let root = project(&[RUFF_PLR2004, ("module.py", COMPARED)]);
     let path = root.path().join("module.py");
     let modified = fs::metadata(&path).expect("metadata").modified().expect("modified time");
-    check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP002"]);
-    fs::write(&path, PRIVATE).expect("write");
+    check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP050"]);
+    fs::write(&path, ADDED).expect("write");
     fs::File::options().write(true).open(&path).expect("open").set_modified(modified).expect("set modified time");
-    let cached = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP002"]).0;
+    let cached = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP050"]).0;
     let unchanged = read(root.path(), "module.py");
-    let fresh = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP002", "--no-cache"]).0;
-    assert_eq!((cached, unchanged, fresh), (1, PRIVATE.to_owned(), 0));
+    let fresh = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP050", "--no-cache"]).0;
+    assert_eq!((cached, unchanged, fresh), (1, ADDED.to_owned(), 0));
 }
 
-#[test_case(&[("module.py", PRIVATE)], &["--fix"], None, &["--fix", "--unsafe-fixes"] ; "unsafe_fixes")]
-#[test_case(&[RUFF_D103, ("module.py", PUBLIC)], &["--fix", "--unsafe-fixes"], Some(""), &["--fix", "--unsafe-fixes"] ; "ruff_settings")]
-#[test_case(&[("pyproject.toml", "[tool.simplint]\nunfixable = [\"SMP002\"]\n"), ("module.py", PRIVATE)], &["--fix", "--unsafe-fixes"], Some(""), &["--fix", "--unsafe-fixes"] ; "fixable")]
-#[test_case(&[("module.py", PRIVATE)], &["--fix"], Some("[tool.simplint]\nextend-safe-fixes = [\"SMP002\"]\n"), &["--fix"] ; "fix_safety")]
+#[test_case(&[("module.py", ADDED)], &["--fix"], None, &["--fix", "--unsafe-fixes"] ; "unsafe_fixes")]
+#[test_case(&[RUFF_PLR2004, ("module.py", COMPARED)], &["--fix", "--unsafe-fixes"], Some(""), &["--fix", "--unsafe-fixes"] ; "ruff_settings")]
+#[test_case(&[("pyproject.toml", "[tool.simplint]\nunfixable = [\"SMP050\"]\n"), ("module.py", ADDED)], &["--fix", "--unsafe-fixes"], Some(""), &["--fix", "--unsafe-fixes"] ; "fixable")]
+#[test_case(&[("module.py", ADDED)], &["--fix"], Some("[tool.simplint]\nextend-safe-fixes = [\"SMP050\"]\n"), &["--fix"] ; "fix_safety")]
 fn settled_file_is_fixed_again(files: &[(&str, &str)], first: &[&str], pyproject: Option<&str>, second: &[&str]) {
     let root = project(files);
-    check(root.path(), &[first, &["--select", "SMP002"]].concat());
+    check(root.path(), &[first, &["--select", "SMP050"]].concat());
     if let Some(pyproject) = pyproject {
         fs::write(root.path().join("pyproject.toml"), pyproject).expect("write");
     }
-    let code = check(root.path(), &[second, &["--select", "SMP002"]].concat()).0;
+    let code = check(root.path(), &[second, &["--select", "SMP050"]].concat()).0;
     let fixed = read(root.path(), "module.py");
-    assert_eq!((code, fixed.contains("Run.")), (0, false));
+    assert_eq!((code, fixed.contains("_LIMIT")), (0, false));
 }
 
 #[test]
