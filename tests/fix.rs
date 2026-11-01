@@ -439,3 +439,27 @@ fn fix_lints_again_the_files_another_fix_changed_the_facts_of() {
         )
     );
 }
+
+// Renaming `other.Lit` to `_Lit` leaves the dataclass `Lit` no namesake whose instances get attributes, so its fix turns
+// safe and applies in the same run.
+#[test]
+fn fix_lints_again_the_dataclasses_whose_class_writes_changed() {
+    let root = project(&[
+        ("pyproject.toml", "[tool.simplint]\nextend-safe-fixes = [\"SMP103\"]\n"),
+        ("models.py", "from dataclasses import dataclass\n\n\n@dataclass(kw_only=True)\nclass Lit:\n    value: int\n"),
+        (
+            "other.py",
+            "class Lit:\n    def __init__(self) -> None:\n        self.extra = 1\n\n\ndef run() -> Lit:\n    return \
+             Lit()\n\n\n__all__ = [\n    \"run\",\n]\n",
+        ),
+    ]);
+    let select = ["--select", "SMP103,SMP111", "--target-version", "py314"];
+    let fixed = check(root.path(), &[&["--fix"], &select[..]].concat());
+    assert_eq!(
+        (fixed.1, read(root.path(), "models.py").lines().nth(3).map(str::to_owned)),
+        (
+            "Found 2 errors (2 fixed, 0 remaining).\n".to_owned(),
+            Some("@dataclass(kw_only=True, frozen=True, slots=True)".to_owned())
+        )
+    );
+}

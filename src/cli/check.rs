@@ -328,7 +328,12 @@ fn for_each_file<T: Send>(
         .par_iter()
         .filter_map(|&path| Some((path, file_facts(path, module_path(path).as_deref(), cache(path))?)))
         .collect();
-    let mut project = index_project(&facts, &entry_points, &roots)?;
+    let rewrites_calls: HashSet<&Path> = settings
+        .iter()
+        .filter(|(path, settings)| FileSettings::new(settings, resolver.resolve(path), path).rewrites_dataclass_calls())
+        .map(|(path, _)| path.as_path())
+        .collect();
+    let mut project = index_project(&facts, &entry_points, &roots, &rewrites_calls)?;
     debug!("Indexed {} files in: {:?}", facts.len(), start.elapsed());
     let lint = |(path, settings): &(PathBuf, Arc<Settings>), project: &Project, cache| {
         let linter = file_linter(path, settings, resolver.resolve(path), project, package(path));
@@ -345,7 +350,7 @@ fn for_each_file<T: Send>(
             let changed: Vec<&Path> = rewritten.iter().map(|&at| settings[at].0.as_path()).collect();
             let collect = |path: &Path| file_facts(path, module_path(path).as_deref(), recache(path));
             let (next, dependents) =
-                reindex(&mut facts, &changed, collect, &settings, &project, &entry_points, &roots)?;
+                reindex(&mut facts, &changed, collect, &settings, &project, (&entry_points, &roots, &rewrites_calls))?;
             project = next;
             let relinted: Vec<(usize, T)> = dependents
                 .into_par_iter()
@@ -391,14 +396,13 @@ fn reindex<'f>(
     collect: impl Fn(&Path) -> Option<Cow<'f, FileFacts>> + Sync,
     files: &[(PathBuf, Arc<Settings>)],
     project: &Project,
-    entry_points: &[String],
-    roots: &SearchRoots,
+    (entry_points, roots, rewrites_calls): (&[String], &SearchRoots, &HashSet<&Path>),
 ) -> Result<(Project, Vec<usize>)> {
     // A fix never leaves a file that does not parse, so a rewritten file keeps having facts.
     let fresh: Vec<(&Path, FileFacts)> =
         rewritten.par_iter().filter_map(|&path| Some((path, collect(path)?.into_owned()))).collect();
     facts.extend(fresh.into_iter().map(|(path, file)| (path, Cow::Owned(file))));
-    let next = index_project(facts, entry_points, roots)?;
+    let next = index_project(facts, entry_points, roots, rewrites_calls)?;
     let changed = next.changed_names(project);
     let dependents = (0..files.len())
         .into_par_iter()
@@ -410,13 +414,15 @@ fn reindex<'f>(
     Ok((next, dependents))
 }
 
+// `rewrites_calls` holds the files whose own `dataclass-kw-only` reports rewrite their positional dataclass calls.
 fn index_project(
     facts: &FxHashMap<&Path, Cow<FileFacts>>,
     entry_points: &[String],
     roots: &SearchRoots,
+    rewrites_calls: &HashSet<&Path>,
 ) -> Result<Project> {
     let indexed: Vec<(&Path, &FileFacts)> = facts.iter().map(|(path, facts)| (*path, facts.as_ref())).collect();
-    Project::index(&indexed, entry_points, roots)
+    Project::index(&indexed, entry_points, roots, rewrites_calls)
 }
 
 // Whether a file names any of the attribute or base class names whose answers changed; the rules ask about names the
@@ -461,7 +467,8 @@ fn check_stdin(cli: &CheckCommand, resolved: &Resolved, mode: &Mode) -> Result<D
         package,
     };
     conflicts::ensure_compatible(&[scope], resolved.names_rules())?;
-    let project = Project::index(&[], &settings.metadata.entry_points, &SearchRoots::new(ruff, package))?;
+    let roots = SearchRoots::new(ruff, package);
+    let project = Project::index(&[], &settings.metadata.entry_points, &roots, &HashSet::new())?;
     let linter = file_linter(&absolute, &settings, ruff, &project, package);
     lint_stdin(&path, &source, &linter, mode)
 }

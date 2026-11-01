@@ -124,7 +124,7 @@ impl Cache {
     }
 
     pub fn set_facts(&self, path: &Path, key: FileKey, facts: FileFacts) {
-        self.update(path, key, ChangeData::Facts(facts));
+        self.update(path, key, ChangeData::Facts(Box::new(facts)));
     }
 
     // A file whose content, settings and slice of the project index, which `fingerprint` stands for, match a cached
@@ -194,7 +194,7 @@ impl Cache {
                 })
                 .or_insert_with(|| FileCache::new(key, now));
             match data {
-                ChangeData::Facts(facts) => file.facts = Some(facts),
+                ChangeData::Facts(facts) => file.facts = Some(*facts),
                 ChangeData::Clean(fingerprint) => file.clean = Some(fingerprint),
                 ChangeData::Settled(fingerprint, withdrawn) => {
                     let withdrawn = withdrawn.iter().map(|rule| rule.code().to_owned()).collect();
@@ -277,7 +277,7 @@ struct Change {
 }
 
 enum ChangeData {
-    Facts(FileFacts),
+    Facts(Box<FileFacts>),
     Clean(u64),
     Settled(u64, RuleSet),
 }

@@ -34,11 +34,15 @@ struct Uses {
 fn module_uses(checker: &Checker, body: &[Stmt]) -> Uses {
     let semantic = checker.semantic();
     let lazy = semantic.annotations_are_lazy();
-    // Without lazy annotations, a `def` evaluates its own signature's annotations when it runs; annotations inside a
-    // function body wait until that function is called.
+    let eager = eager_annotations(checker);
+    // Decorators such as FastAPI routes, pydantic's `validate_call` or `dataclass` read the annotations they decorate
+    // while the module loads, even when Python defers them. Without lazy annotations, a `def` evaluates its own
+    // signature's annotations when it runs. A name a function only annotates with is not a helper it calls.
     let evaluation = |reference: &Reference| match reference.evaluation {
+        Evaluation::Annotation if eager.iter().any(|range| range.contains_range(reference.range)) => {
+            if reference.function.is_none() { Evaluation::Runtime } else { Evaluation::Deferred }
+        }
         Evaluation::Annotation if !lazy && reference.function.is_none() => Evaluation::Runtime,
-        Evaluation::Annotation if !lazy => Evaluation::Deferred,
         other => other,
     };
     // The statements that, as they run, read a name something other than an import binds.
@@ -75,6 +79,25 @@ fn module_uses(checker: &Checker, body: &[Stmt]) -> Uses {
         }
     }
     uses
+}
+
+// The annotations a decorator sees: the signature of a decorated function and the class-level annotations of a
+// decorated class.
+fn eager_annotations(checker: &Checker) -> Vec<TextRange> {
+    let signatures =
+        checker.function_defs().iter().filter(|function| !function.decorator_list.is_empty()).flat_map(|function| {
+            function
+                .parameters
+                .iter()
+                .filter_map(ast::AnyParameterRef::annotation)
+                .chain(function.returns.as_deref())
+                .map(Ranged::range)
+        });
+    let fields =
+        checker.class_defs().iter().filter(|class| !class.decorator_list.is_empty()).flat_map(|class| {
+            class.body.iter().filter_map(Stmt::as_ann_assign_stmt).map(|field| field.annotation.range())
+        });
+    signatures.chain(fields).collect()
 }
 
 fn definition_name(stmt: &Stmt) -> Option<&ast::Identifier> {
