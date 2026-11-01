@@ -271,3 +271,35 @@ fn dataclass_kw_only_withholds_fix_for_unfollowed_uses(callers: &[(&str, &str)])
     check(root.path(), &fix);
     assert_eq!(common::read(root.path(), "models.py"), PARTITION);
 }
+
+// Code reading docstrings off objects may read any docstring of the run, so none is reported.
+#[test_case("print(_helper.__doc__)\n" ; "attribute")]
+#[test_case("import inspect\n\nprint(inspect.getdoc(_helper))\n" ; "getdoc")]
+#[test_case("print(getattr(_helper, \"__doc__\"))\n" ; "getattr")]
+fn docstring_reader_keeps_docstrings(reader: &str) {
+    let root = project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/helpers.py", "def _helper() -> None:\n    \"\"\"Help.\"\"\"\n"),
+        ("pkg/reader.py", &format!("from pkg.helpers import _helper\n\n{reader}")),
+    ]);
+    assert_eq!(check(root.path(), &["--select", "SMP002"]).1, "All checks passed!\n");
+}
+
+#[test]
+fn module_docstring_read_is_no_docstring_reader() {
+    let root = project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/helpers.py", "def _helper() -> None:\n    \"\"\"Help.\"\"\"\n"),
+        ("pkg/reader.py", "print(__doc__)\n"),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP002"]).1.lines().next(),
+        Some(
+            common::native(
+                "pkg/helpers.py:2:5: SMP002 Function docstring on internal code; let the name, signature and types \
+                 document it"
+            )
+            .as_str()
+        )
+    );
+}

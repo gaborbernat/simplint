@@ -53,6 +53,8 @@ pub struct Project {
     base_classes: HashSet<String>,
     writes: Writes,
     calls: DataclassCalls,
+    // Whether any file of the run reads docstrings off objects, so any docstring may be data it reads.
+    reads_docstrings: bool,
     digest: u64,
 }
 
@@ -140,7 +142,9 @@ impl Project {
         }
         let declared = files.iter().map(|(path, facts)| (normalized(path), facts.constructors.dataclasses.as_slice()));
         let calls = DataclassCalls::index(declared, &constructor_uses, &imported);
+        let reads_docstrings = files.iter().any(|(_, facts)| facts.reads_docstrings);
         let mut hasher = CacheKeyHasher::new();
+        reads_docstrings.cache_key(&mut hasher);
         assigned_attributes.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
         base_classes.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
         for (class, attributes) in writes.on_class.iter().sorted_by(|left, right| left.0.cmp(right.0)) {
@@ -159,6 +163,7 @@ impl Project {
             base_classes,
             writes,
             calls,
+            reads_docstrings,
             digest: hasher.finish(),
         })
     }
@@ -256,12 +261,13 @@ pub struct FileIndex<'a> {
     calls: FileCalls<'a>,
 }
 
-// Two indexes give a file the same answers when the names other files use from it and its dataclass calls match; the
-// attribute and base class names of the whole run are compared apart, by `Project::changed_names`.
+// Two indexes give a file the same answers when the names other files use from it, its dataclass calls and whether the
+// run reads docstrings match; the attribute and base class names of the whole run are compared apart, by
+// `Project::changed_names`.
 impl PartialEq for FileIndex<'_> {
     fn eq(&self, other: &Self) -> bool {
-        (self.imported, self.referenced, self.star_imported, self.calls)
-            == (other.imported, other.referenced, other.star_imported, other.calls)
+        (self.imported, self.referenced, self.star_imported, self.calls, self.project.reads_docstrings)
+            == (other.imported, other.referenced, other.star_imported, other.calls, other.project.reads_docstrings)
     }
 }
 
@@ -301,6 +307,10 @@ impl<'a> FileIndex<'a> {
 
     pub fn is_base_class(&self, name: &str) -> bool {
         self.project.base_classes.contains(name)
+    }
+
+    pub fn reads_docstrings(&self) -> bool {
+        self.project.reads_docstrings
     }
 
     // How other files of the run use this file's dataclass `name`, and the positional fields of the dataclass a call

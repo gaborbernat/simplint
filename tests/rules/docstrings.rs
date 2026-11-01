@@ -6,6 +6,7 @@ use crate::common;
 #[test_case("function-docstring", "function_docstring_exported.py" ; "function_docstring_exported")]
 #[test_case("function-docstring", "function_docstring_dynamic.py" ; "function_docstring_dynamic_all")]
 #[test_case("function-docstring", "function_docstring_contract.py" ; "function_docstring_contract")]
+#[test_case("function-docstring", "function_docstring_runtime.py" ; "function_docstring_runtime")]
 #[test_case("undocumented-public-api", "undocumented_public_api.py" ; "undocumented_public_api")]
 #[test_case("function-docstring", "undocumented_public_api.py" ; "function_docstring_public_api")]
 #[test_case("undocumented-public-api", "undocumented_public_api_imported.py" ; "undocumented_public_api_imported")]

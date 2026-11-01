@@ -28,6 +28,8 @@ pub struct FileFacts {
     pub(super) exports: Option<Vec<String>>,
     pub(super) attribute_writes: AttributeWrites,
     pub(super) constructors: Constructors,
+    // Whether the file reads a docstring off an object, through `__doc__` or a `getdoc` call.
+    pub(super) reads_docstrings: bool,
 }
 
 impl FileFacts {
@@ -44,6 +46,7 @@ impl FileFacts {
             assigned_attributes: Vec::new(),
             base_classes: Vec::new(),
             stars: BTreeSet::new(),
+            reads_docstrings: false,
         };
         imports.visit_body(&parsed.syntax().body);
         // A stub publishes what it declares, so its names are the API of the module it describes.
@@ -68,6 +71,7 @@ impl FileFacts {
             },
             attribute_writes,
             constructors,
+            reads_docstrings: imports.reads_docstrings,
         })
     }
 }
@@ -87,6 +91,7 @@ struct Imports<'a> {
     assigned_attributes: Vec<String>,
     base_classes: Vec<String>,
     stars: BTreeSet<String>,
+    reads_docstrings: bool,
 }
 
 impl<'a> Visitor<'a> for Imports<'a> {
@@ -130,6 +135,7 @@ impl<'a> Visitor<'a> for Imports<'a> {
     }
 
     fn visit_expr(&mut self, expr: &'a Expr) {
+        self.reads_docstrings |= reads_docstring(expr);
         match expr {
             Expr::Attribute(ast::ExprAttribute { attr, ctx: ExprContext::Store | ExprContext::Del, .. }) => {
                 self.assigned_attributes.push(attr.as_str().to_owned());
@@ -176,6 +182,21 @@ impl Imports<'_> {
         for split in 1..parts.len() {
             names.entry(parts[..split].join(".")).or_default().insert(parts[split].to_owned());
         }
+    }
+}
+
+// `obj.__doc__`, `getattr(obj, "__doc__")` or a call to a `getdoc`, such as `inspect.getdoc(obj)`; a bare `__doc__` is
+// the module's own docstring, which no function or class docstring feeds.
+fn reads_docstring(expr: &Expr) -> bool {
+    match expr {
+        Expr::Attribute(ast::ExprAttribute { attr, ctx: ExprContext::Load, .. }) => attr.as_str() == "__doc__",
+        Expr::Call(ast::ExprCall { func, arguments, .. }) => {
+            let is_doc = |arg: &Expr| arg.as_string_literal_expr().is_some_and(|text| text.value.to_str() == "__doc__");
+            UnqualifiedName::from_expr(func).is_some_and(|name| name.segments().last() == Some(&"getdoc"))
+                || func.as_name_expr().is_some_and(|name| name.id.as_str() == "getattr")
+                    && arguments.args.get(1).is_some_and(is_doc)
+        }
+        _ => false,
     }
 }
 

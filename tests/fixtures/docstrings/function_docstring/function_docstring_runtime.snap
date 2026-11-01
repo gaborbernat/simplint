@@ -1,0 +1,86 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+40:5 SMP002 Class docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+48:9 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+53:9 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+57:9 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+62:9 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+67:5 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+73:5 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+78:5 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+--- fixed (8 applied, 0 remaining) ---
+import functools
+from dataclasses import dataclass
+from functools import cache
+from typing import override
+
+import click
+import pytest
+
+
+def _doubled_value(value: int) -> int:
+    """
+    >>> _doubled_value(2)
+    4
+    """
+    return value * 2
+
+
+class _DoctestedBox:
+    """Hold one value.
+
+    >>> _DoctestedBox().value
+    0
+    """
+
+    value = 0
+
+
+@click.command()
+def _greet_command() -> None:
+    """Greet the world."""
+
+
+@functools.partial(click.command, name="other")
+def _other_command() -> None:
+    """Greet the other world."""
+
+
+@dataclass
+class _PlainRecord:
+    name: str
+
+
+class _Shelf:
+    @property
+    def size_of_shelf(self) -> int:
+        return 1
+
+    @size_of_shelf.setter
+    def size_of_shelf(self, value: int) -> None:
+        ...
+
+    @override
+    def __len__(self) -> int:
+        return 0
+
+    @staticmethod
+    def _build_shelf() -> None:
+        ...
+
+
+@cache
+def _cached_lookup() -> int:
+    return 1
+
+
+@pytest.fixture
+def _shelf_fixture() -> None:
+    ...
+
+
+@pytest.mark.parametrize("value", [1])
+def _parametrized_shelf(value: int) -> None:
+    ...
