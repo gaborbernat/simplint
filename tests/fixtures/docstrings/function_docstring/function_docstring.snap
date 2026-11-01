@@ -10,7 +10,7 @@ expression: "lint_fixture(rule, fixture, target_version)"
 25:26 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
 29:5 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
 33:5 SMP002 Function docstring on internal code; let the name, signature and types document it
-38:5 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+38:5 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
 42:5 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
 --- fixed (9 applied, 1 remaining) ---
 def documented() -> None:
@@ -46,6 +46,7 @@ def commented() -> None:
 
 
 def pragma() -> int:
+    # A docstring this line-length suppression was written for, and nothing else at all.
     ...
 
 

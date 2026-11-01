@@ -44,12 +44,15 @@ pub struct FromRuff {
     pub line_width: usize,
     pub indent_width: usize,
     pub formatted: bool,
+    // The longest comment line Ruff accepts: its line length limit, or its doc line limit when that is shorter.
+    pub comment_width: usize,
 }
 
 impl FromRuff {
     fn of(settings: &ruff_workspace::Settings, path: &Path) -> Self {
         let target_version = settings.linter.resolve_target_version(path);
         let formatter = &settings.formatter;
+        let pycodestyle = &settings.linter.pycodestyle;
         Self {
             target_version: target_version.linter_version(),
             magic_trailing_comma: !formatter.magic_trailing_comma.is_ignore(),
@@ -57,6 +60,8 @@ impl FromRuff {
             line_width: usize::from(formatter.line_width.value()),
             indent_width: formatter.indent_width.value() as usize,
             formatted: !match_exclusion(path, path.file_name().unwrap_or_default(), &formatter.exclude),
+            comment_width: usize::from(pycodestyle.max_line_length.value())
+                .min(pycodestyle.max_doc_length.map_or(usize::MAX, |length| usize::from(length.value()))),
         }
     }
 }
