@@ -21,8 +21,16 @@ Annotations do not make a user when Python evaluates them lazily: when the targe
 [`from __future__ import annotations`](https://docs.python.org/3/library/__future__.html). The target version comes from
 Ruff's [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) or
 [`requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python). Otherwise an
-annotation runs with its statement. In a module-level or class-level `def` signature or variable annotation, it counts
-as an import-time use. Inside a function body, it counts as a use by that function.
+annotation in a module-level or class-level `def` signature or variable annotation counts as an import-time use.
+Annotations inside a function body never make that function a user: a name a function only annotates with is not a
+helper it calls.
+
+The signature of a decorated function and the class-level annotations of a decorated class count as an import-time use
+whatever the target version, because many decorators read them while the module loads: a
+[FastAPI](https://fastapi.tiangolo.com/) route builds its response model from the return annotation, and pydantic's
+`validate_call`, typer, click, [`dataclass`](https://docs.python.org/3/library/dataclasses.html), attrs and
+[`functools.singledispatch`](https://docs.python.org/3/library/functools.html#functools.singledispatch) read them too.
+Moving such a name below its user would leave the decorator with an unresolved forward reference.
 
 ## Why is this bad?
 
