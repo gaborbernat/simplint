@@ -21,6 +21,19 @@ Names bound with `:=` are checked. The rule skips:
 - `TYPE_CHECKING`, since type checkers recognize the guard by that name whatever its value
 - every name in a `conf.py`, since [Sphinx](https://www.sphinx-doc.org/en/master/usage/configuration.html) reads its
   settings by their lowercase names
+- `revision`, `down_revision`, `branch_labels` and `depends_on` in an
+  [Alembic](https://alembic.sqlalchemy.org/en/latest/tutorial.html#create-a-migration-script) revision file: a module
+  that binds `revision` and `down_revision` and defines an `upgrade` function
+- [gunicorn settings](https://gunicorn.org/reference/settings/), such as `bind`, `workers` or `timeout`, in a gunicorn
+  configuration file: a file whose name contains `gunicorn`, such as `gunicorn.conf.py`, or a module that binds at least
+  three settings, one of them `bind`, `workers` or `worker_class`
+- `app` and `application` assigned at the top level of the module from a call that builds a WSGI or ASGI application,
+  which servers load by name: `aiohttp.web.Application`, `bottle.Bottle`, Django's `get_wsgi_application` and
+  `get_asgi_application`, `falcon.App`, `falcon.API` and `falcon.asgi.App`, `fastapi.FastAPI`, `flask.Flask`,
+  `litestar.Litestar`, `quart.Quart`, `sanic.Sanic`, `starlette.applications.Starlette`, and Pyramid's
+  `make_wsgi_app()`; the call is resolved through the module's imports
+- the names listed in `naming.keep-names`, under Options below, for any other framework that reads a module variable by
+  name
 
 Ruff's [mixed-case-variable-in-global-scope](https://docs.astral.sh/ruff/rules/mixed-case-variable-in-global-scope/)
 (N816) flags only `mixedCase` names. This rule also flags `lower_case` names and a wrong leading underscore.
@@ -90,6 +103,8 @@ No fix is offered when:
 
 ## Options
 
+- `naming.keep-names` in `[tool.simplint]`: module-scope names the rule leaves as they are, such as
+  `keep-names = ["urlpatterns"]` under `[tool.simplint.naming]`
 - [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and
   [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to
   [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python)

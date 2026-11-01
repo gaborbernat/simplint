@@ -132,6 +132,17 @@ fn cached_clean_file_is_checked_again_under_other_settings() {
 }
 
 #[test]
+fn cached_clean_file_is_checked_again_once_keep_names_change() {
+    let root = project(&[
+        ("pyproject.toml", "[tool.simplint.naming]\nkeep-names = [\"limit\"]\n"),
+        ("module.py", "limit = 3\n"),
+    ]);
+    let first = check(root.path(), &["--select", "SMP102"]).0;
+    fs::write(root.path().join("pyproject.toml"), "[tool.simplint]\n").expect("write");
+    assert_eq!((first, check(root.path(), &["--select", "SMP102"]).0), (0, 1));
+}
+
+#[test]
 fn cached_clean_file_is_checked_again_once_its_directory_becomes_a_package() {
     let root = project(&[("pkg/a.py", "from pkg.b import VALUE\n\nprint(VALUE)\n"), ("pkg/b.py", "VALUE = 1\n")]);
     let first = check(root.path(), &["--select", "SMP110"]).0;

@@ -1,0 +1,21 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+3:1 SMP102 Module-scope variable `revision` should be named `_REVISION` [unsafe fix: Rename `revision` to `_REVISION`]
+4:1 SMP102 Module-scope variable `down_revision` should be named `_DOWN_REVISION` [unsafe fix: Rename `down_revision` to `_DOWN_REVISION`]
+5:1 SMP102 Module-scope variable `timeout` should be named `_TIMEOUT` [unsafe fix: Rename `timeout` to `_TIMEOUT`]
+6:1 SMP102 Module-scope variable `threads` should be named `_THREADS` [unsafe fix: Rename `threads` to `_THREADS`]
+7:1 SMP102 Module-scope variable `user` should be named `_USER` [unsafe fix: Rename `user` to `_USER`]
+8:1 SMP102 Module-scope variable `app` should be named `_APP` [unsafe fix: Rename `app` to `_APP`]
+9:1 SMP102 Module-scope variable `application` should be named `_APPLICATION` [unsafe fix: Rename `application` to `_APPLICATION`]
+--- fixed (7 applied, 0 remaining) ---
+from app_factory import create_app
+
+_REVISION = 3
+_DOWN_REVISION = 2
+_TIMEOUT = 30
+_THREADS = 2
+_USER = "nobody"
+_APP = create_app()
+_APPLICATION = None

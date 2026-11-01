@@ -12,7 +12,7 @@ use ruff::args::{ConfigArguments, FormatCommand, HelpFormat, LogLevelArgs, Singl
 use ruff_linter::SuppressionKind;
 use ruff_linter::logging::LogLevel;
 use ruff_linter::settings::types::{OutputFormat, PatternPrefixPair, PythonVersion};
-use ruff_options_metadata::OptionsMetadata;
+use ruff_options_metadata::{OptionField, OptionSet, OptionsMetadata, Visit};
 use serde::Deserialize;
 
 use crate::lint::registry::Rule;
@@ -399,6 +399,7 @@ impl CheckCommand {
             extend_unsafe_fixes: None,
             per_file_ignores: self.per_file_ignores.as_deref().map(collect_per_file_ignores),
             extend_per_file_ignores: self.extend_per_file_ignores.as_deref().map(collect_per_file_ignores),
+            naming: None,
         }
     }
 }
@@ -459,8 +460,9 @@ pub enum ConfigArgument {
 }
 
 // Ruff's parser decides between a file and inline TOML and reports invalid values with its own messages. Every
-// `[tool.simplint]` key is also a (deprecated, top-level) `ruff.toml` key of the same type, so what Ruff accepts, the
-// `[tool.simplint]` table accepts too; those keys go to simplint, and only the rest to Ruff.
+// top-level `[tool.simplint]` key is also a (deprecated, top-level) `ruff.toml` key of the same type, so what Ruff
+// accepts, the `[tool.simplint]` table accepts too; those keys go to simplint, and only the rest to Ruff. Ruff knows
+// none of simplint's own tables, such as `naming`, so they leave the value before Ruff's parser sees it.
 #[derive(Clone)]
 struct ConfigArgumentParser;
 
@@ -473,14 +475,42 @@ impl TypedValueParser for ConfigArgumentParser {
         arg: Option<&clap::Arg>,
         value: &std::ffi::OsStr,
     ) -> Result<Self::Value, clap::Error> {
-        if let SingleConfigArgument::FilePath(path) = ruff::args::ConfigArgumentParser.parse_ref(cmd, arg, value)? {
+        let mut tables = toml::Table::new();
+        let mut ruff_value = value.to_owned();
+        if let Some(mut table) = value.to_str().and_then(|text| toml::Table::from_str(text).ok()) {
+            tables = option_names()
+                .into_iter()
+                .filter(|option| option.table)
+                .filter_map(|option| table.remove_entry(&option.name))
+                .collect();
+            if !tables.is_empty() {
+                ruff_value = OsString::from(table.to_string());
+            }
+        }
+        if let SingleConfigArgument::FilePath(path) =
+            ruff::args::ConfigArgumentParser.parse_ref(cmd, arg, &ruff_value)?
+        {
             return Ok(ConfigArgument::File(path));
         }
-        let text = value.to_str().expect("Ruff accepts inline TOML only as UTF-8");
+        let text = ruff_value.to_str().expect("Ruff accepts inline TOML only as UTF-8");
         let mut ruff = toml::Table::from_str(text).expect("Ruff accepted the value as TOML");
-        let simplint: toml::Table =
-            SimplintOptions::metadata().collect_fields().iter().filter_map(|(key, _)| ruff.remove_entry(key)).collect();
-        let simplint = SimplintOptions::deserialize(simplint).expect("Ruff accepted these keys with the same types");
+        let simplint: toml::Table = SimplintOptions::metadata()
+            .collect_fields()
+            .iter()
+            .filter_map(|(key, _)| ruff.remove_entry(key))
+            .chain(tables)
+            .collect();
+        // Ruff checked its own keys, but not simplint's tables.
+        let simplint = SimplintOptions::deserialize(simplint).map_err(|error| {
+            let mut invalid = clap::Error::new(clap::error::ErrorKind::ValueValidation).with_cmd(cmd);
+            invalid.insert(
+                ContextKind::InvalidArg,
+                ContextValue::String(arg.map(ToString::to_string).unwrap_or_default()),
+            );
+            invalid.insert(ContextKind::InvalidValue, ContextValue::String(value.to_string_lossy().into_owned()));
+            invalid.insert(ContextKind::Suggested, ContextValue::StyledStrs(vec![error.message().to_owned().into()]));
+            invalid
+        })?;
         Ok(ConfigArgument::Override {
             simplint: Box::new(simplint),
             ruff: (!ruff.is_empty()).then(|| ruff.to_string()),
@@ -534,11 +564,42 @@ impl TypedValueParser for OptionParser {
         arg: Option<&clap::Arg>,
         value: &std::ffi::OsStr,
     ) -> Result<Self::Value, clap::Error> {
-        let fields = SimplintOptions::metadata().collect_fields();
-        let values = fields
-            .iter()
-            .map(|(name, field)| PossibleValue::new(name).help(field.doc.lines().next().unwrap_or_default()));
+        let values = option_names().into_iter().map(|option| PossibleValue::new(option.name).help(option.summary));
         without_choices(PossibleValuesParser::new(values).parse_ref(cmd, arg, value))
+    }
+}
+
+// Every `[tool.simplint]` option and table, by its dotted name, with the first line of its documentation.
+fn option_names() -> Vec<OptionName> {
+    let mut names = OptionNames { prefix: String::new(), names: Vec::new() };
+    SimplintOptions::metadata().record(&mut names);
+    names.names
+}
+
+struct OptionName {
+    name: String,
+    summary: String,
+    table: bool,
+}
+
+struct OptionNames {
+    prefix: String,
+    names: Vec<OptionName>,
+}
+
+impl Visit for OptionNames {
+    fn record_field(&mut self, name: &str, field: OptionField) {
+        let summary = field.doc.lines().next().unwrap_or_default().to_owned();
+        self.names.push(OptionName { name: format!("{}{name}", self.prefix), summary, table: false });
+    }
+
+    fn record_set(&mut self, name: &str, set: OptionSet) {
+        let name = format!("{}{name}", self.prefix);
+        let summary = set.documentation().and_then(|doc| doc.lines().next()).unwrap_or_default().to_owned();
+        let mut nested = Self { prefix: format!("{name}."), names: Vec::new() };
+        set.record(&mut nested);
+        self.names.push(OptionName { name, summary, table: true });
+        self.names.extend(nested.names);
     }
 }
 

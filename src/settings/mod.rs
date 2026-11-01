@@ -30,6 +30,7 @@ pub struct Settings {
     pub path: Option<PathBuf>,
     pub metadata: ProjectMetadata,
     pub run: RunOptions,
+    pub keep_names: Vec<String>,
     rules: RuleSet,
     fixable: RuleSet,
     fix_safety: FixSafetyTable,
@@ -61,6 +62,7 @@ impl Settings {
             path: pyproject.map(Path::to_path_buf),
             metadata,
             run: configuration.run,
+            keep_names: configuration.keep_names.unwrap_or_default(),
             rules,
             fixable,
             fix_safety,
@@ -101,6 +103,7 @@ impl CacheKey for Settings {
         self.fixable.cache_key(state);
         self.fix_safety.forced_safe.cache_key(state);
         self.fix_safety.forced_unsafe.cache_key(state);
+        self.keep_names.cache_key(state);
     }
 }
 
@@ -115,7 +118,7 @@ impl Display for ShownSettings<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let rules = |set: RuleSet| set.iter().map(|rule| format!("{} ({})", rule.name(), rule.code())).collect_vec();
         let quoted = |items: &mut dyn Iterator<Item = &String>| items.map(|item| format!("{item:?}")).collect_vec();
-        let Settings { root, metadata, run, rules: enabled, fixable, fix_safety, per_file_ignores, .. } =
+        let Settings { root, metadata, run, keep_names, rules: enabled, fixable, fix_safety, per_file_ignores, .. } =
             self.settings.project;
         writeln!(f, "\n# General Settings")?;
         writeln!(f, "cache_dir = \"{}\"", self.cache_dir.display())?;
@@ -135,7 +138,8 @@ impl Display for ShownSettings<'_> {
         write_list(f, "linter.safety_table.forced_safe", &rules(fix_safety.forced_safe))?;
         write_list(f, "linter.safety_table.forced_unsafe", &rules(fix_safety.forced_unsafe))?;
         write_list(f, "linter.dependencies", &quoted(&mut metadata.dependencies.iter()))?;
-        write_list(f, "linter.entry_points", &quoted(&mut metadata.entry_points.iter()))
+        write_list(f, "linter.entry_points", &quoted(&mut metadata.entry_points.iter()))?;
+        write_list(f, "linter.naming.keep_names", &quoted(&mut keep_names.iter()))
     }
 }
 

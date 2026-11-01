@@ -216,6 +216,21 @@ in a ``simplint`` directory inside Ruff's cache directory, ``.ruff_cache`` unles
 A cached result also depends on the names other files use from that file, so editing an importer checks the files it
 imports again.
 
+Naming
+------
+
+Some frameworks read a module variable by its exact name, so renaming it to the ``_UPPER_CASE`` form SMP102 asks for
+breaks the program. SMP102 already leaves alone the names Sphinx, Alembic, gunicorn and WSGI or ASGI servers read; list
+any other in ``naming.keep-names``:
+
+.. code-block:: toml
+
+    [tool.simplint.naming]
+    keep-names = ["urlpatterns"]  # the default is []
+
+``--config "naming.keep-names = ['urlpatterns']"`` replaces the list, and ``--show-settings`` prints it as
+``linter.naming.keep_names``.
+
 Settings shared with Ruff
 -------------------------
 

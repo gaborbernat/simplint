@@ -276,6 +276,29 @@ fn inline_config_splits_simplint_and_ruff_keys() {
     assert_eq!((code, stdout), (0, "All checks passed!\n".to_owned()));
 }
 
+#[test_case(&[("pyproject.toml", "[tool.simplint.naming]\nkeep-names = [\"app_name\"]\n")], &[] ; "pyproject")]
+#[test_case(&[], &["--config", "naming.keep-names = ['app_name']"] ; "inline")]
+#[test_case(
+    &[("pyproject.toml", "[tool.simplint.naming]\nkeep-names = [\"other\"]\n")],
+    &["--config", "naming = { keep-names = ['app_name'] }\nline-length = 100"] ;
+    "inline_beats_pyproject"
+)]
+fn keep_names_spare_module_variables(files: &[(&str, &str)], flags: &[&str]) {
+    let root = project(&[files, &[("module.py", "app_name = \"shop\"\nlimit = 3\n")]].concat());
+    assert_eq!(
+        check(root.path(), &[&["--select", "SMP102"], flags].concat()).1,
+        "module.py:2:1: SMP102 Module-scope variable `limit` should be named `_LIMIT`\nFound 1 error.\n\
+         1 unsafe fix available with `--fix --unsafe-fixes`.\n"
+    );
+}
+
+#[test]
+fn inline_config_reports_simplint_table_errors() {
+    let root = project(&[("module.py", "x = 1\n")]);
+    let (code, _, stderr) = check(root.path(), &["--config", "naming.keep-names = 1"]);
+    assert_eq!((code, stderr.contains("tip: invalid type: integer `1`, expected a sequence")), (2, true));
+}
+
 #[test]
 fn inline_config_reports_ruff_errors() {
     let root = project(&[("module.py", "x = 1\n")]);
@@ -400,7 +423,7 @@ fn show_settings_describes_the_first_file() {
     let root = project(&[
         (
             "pyproject.toml",
-            "[project]\nrequires-python = \">=3.12\"\ndependencies = [\"requests\"]\nscripts = { tool = \"cli:main\" }\n[tool.simplint]\nselect = [\"SMP001\"]\nper-file-ignores = { \"!b.py\" = [\"SMP001\"] }\nextend-safe-fixes = [\"SMP001\"]\n",
+            "[project]\nrequires-python = \">=3.12\"\ndependencies = [\"requests\"]\nscripts = { tool = \"cli:main\" }\n[tool.simplint]\nselect = [\"SMP001\"]\nper-file-ignores = { \"!b.py\" = [\"SMP001\"] }\nextend-safe-fixes = [\"SMP001\"]\n[tool.simplint.naming]\nkeep-names = [\"app_name\"]\n",
         ),
         ("b.py", ""),
         ("a.py", ""),
@@ -423,7 +446,8 @@ fn show_settings_describes_the_first_file() {
                  linter.target_version = 3.12\nlinter.rules.enabled = [\n\tsection-comment (SMP001),\n]\n\
                  linter.rules.should_fix = []\nlinter.per_file_ignores = [\n\t{ignored} = [\"section-comment (SMP001)\"],\n]\n\
                  linter.safety_table.forced_safe = [\n\tsection-comment (SMP001),\n]\nlinter.safety_table.forced_unsafe = []\n\
-                 linter.dependencies = [\n\t\"requests\",\n]\nlinter.entry_points = [\n\t\"cli:main\",\n]\n"
+                 linter.dependencies = [\n\t\"requests\",\n]\nlinter.entry_points = [\n\t\"cli:main\",\n]\n\
+                 linter.naming.keep_names = [\n\t\"app_name\",\n]\n"
             )
         )
     );
