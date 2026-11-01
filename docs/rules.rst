@@ -24,6 +24,14 @@ name another module imports, and :doc:`SMP113 <_generated/rules/SMP113>` reports
 ``__all__`` leaves it out. The index covers only the files in the run, so check the whole project, tests included,
 before trusting these rules.
 
+A ``from module import *`` hands the importer every name ``__all__`` of ``module`` lists, or without an ``__all__``
+every public name, so the index counts each of those as used, and fixes leave them alone. A name another module takes
+from a package whose ``__init__.py`` star-imports a submodule counts in that submodule, through any chain of such
+re-exports. When the star-imported module does not resolve to a file, as one found only on a ``sys.path`` entry a
+``conftest.py`` adds, it may be any file of the run Python could import under its last name, ``name.py`` or
+``name/__init__.py``, so the public names of each such file count as used. A module no file of the run is named after
+is outside the run.
+
 .. mermaid::
 
     flowchart LR

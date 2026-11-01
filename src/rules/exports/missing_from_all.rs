@@ -59,6 +59,10 @@ fn all_insertion<'a>(checker: &Checker, names: impl Iterator<Item = &'a str>) ->
     let body = checker.body();
     let source = checker.source;
     let Some(stmt) = body.iter().rev().find(|stmt| all_binding(stmt).is_some()) else {
+        // An `import *` of this module takes every public name, which a new `__all__` would narrow to the listed ones.
+        if checker.project().is_star_imported() {
+            return None;
+        }
         let items: Vec<String> = names.iter().map(|name| quoted(name)).collect();
         let declaration = format!("__all__ = {}\n", exploded(checker, "", &items));
         // A module without `__all__` exports every public name to `from module import *`; adding one narrows that.

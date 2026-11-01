@@ -95,5 +95,7 @@ Each name goes before the first listed name that Ruff's
 `ruff format` gives it. Adding names is safe.
 
 A module without `__all__` gets a new one, sorted and one name per line, as its last statement, or above a closing
-`if __name__ == "__main__":` block. That fix is unsafe, since it narrows what `from module import *` exports. Importers
-outside the run are not seen.
+`if __name__ == "__main__":` block. That fix is unsafe, since it narrows what `from module import *` exports. A module
+another file of the run star-imports, or may star-import, gets no new `__all__`: `import *` takes every public name of
+it, and a name such as `ResourceType` that `pkg/__init__.py` re-exports with `from ._types import *` would vanish from
+`pkg`. A name imported from `pkg` counts as imported from `pkg/_types.py`. Importers outside the run are not seen.
