@@ -163,12 +163,25 @@ impl Project {
         })
     }
 
-    // The attribute and base class names one index has and the other lacks, whose answers differ between the two.
+    // The attribute and base class names one index has and the other lacks, whose answers differ between the two, and
+    // the names of the classes whose attribute writes or `cached_property` subclasses differ, which a dataclass of that
+    // name, or a namesake of it, reads.
     pub fn changed_names<'p>(&'p self, other: &'p Self) -> HashSet<&'p str> {
+        let (writes, others) = (&self.writes, &other.writes);
+        let classes = writes
+            .on_class
+            .iter()
+            .filter(|(class, attributes)| others.on_class.get(*class) != Some(*attributes))
+            .chain(others.on_class.iter().filter(|(class, _)| !writes.on_class.contains_key(*class)))
+            .map(|(class, _)| class)
+            .chain(writes.cached_property_bases.symmetric_difference(&others.cached_property_bases))
+            .map(|class| class.rsplit('.').next().unwrap_or(class));
         self.assigned_attributes
             .symmetric_difference(&other.assigned_attributes)
             .chain(self.base_classes.symmetric_difference(&other.base_classes))
+            .chain(writes.untyped.symmetric_difference(&others.untyped))
             .map(String::as_str)
+            .chain(classes)
             .collect()
     }
 
@@ -243,11 +256,12 @@ pub struct FileIndex<'a> {
     calls: FileCalls<'a>,
 }
 
-// Two indexes give a file the same answers when the names other files use from it match; the attribute and base class
-// names of the whole run are compared apart, by `Project::changed_names`.
+// Two indexes give a file the same answers when the names other files use from it and its dataclass calls match; the
+// attribute and base class names of the whole run are compared apart, by `Project::changed_names`.
 impl PartialEq for FileIndex<'_> {
     fn eq(&self, other: &Self) -> bool {
-        (self.imported, self.referenced, self.star_imported) == (other.imported, other.referenced, other.star_imported)
+        (self.imported, self.referenced, self.star_imported, self.calls)
+            == (other.imported, other.referenced, other.star_imported, other.calls)
     }
 }
 

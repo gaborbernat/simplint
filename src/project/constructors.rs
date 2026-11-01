@@ -189,7 +189,7 @@ impl DataclassCalls {
 
 // What the index knows of one file's dataclass calls: how other files use its dataclasses, and the dataclasses of
 // other files it calls by position.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 pub struct FileCalls<'a> {
     opaque: Option<&'a HashSet<String>>,
     star_imported: bool,
