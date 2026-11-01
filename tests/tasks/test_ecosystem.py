@@ -85,6 +85,14 @@ def _fails(stderr: str) -> _Behavior:
     return behavior
 
 
+def _refuses_unless_ignored(command: list[str], cwd: Path) -> tuple[int, str, str]:
+    del cwd
+    if command[0] == "ruff" or command[2:4] == ["--ignore", "SMP108"]:
+        return 0, "", ""
+    conflict = "  - SMP108 (future-annotations) removes it; ignore SMP108 in `[tool.simplint]`, or drop the import.\n"
+    return 2, "", f"simplint failed\n  Cause: rules work against each other:\n{conflict}"
+
+
 def _cannot_read(command: list[str], cwd: Path) -> tuple[int, str, str]:
     del cwd
     if command[0] == "ruff" or {"--fix-only", "--diff"} & set(command):
@@ -132,6 +140,7 @@ def _keeps_fixing_where_format_strands_a_pragma(command: list[str], cwd: Path) -
         ),
         pytest.param(_fails("simplint failed\n  Cause: boom\n"), ["check: simplint failed"], id="error"),
         pytest.param(_fails("panic\n"), ["check: panic"], id="error-without-message"),
+        pytest.param(_refuses_unless_ignored, [], id="conflicting-rule-ignored"),
         pytest.param(_cannot_read, ["check: mod.py:1:1: E902 Permission denied"], id="io-error"),
         pytest.param(_cannot_read_like_ruff, [], id="io-error-ruff-shares"),
         pytest.param(_writes("def broken(:\n"), ["mod.py no longer parses"], id="syntax"),

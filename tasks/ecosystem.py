@@ -183,12 +183,19 @@ def check(package: Package, archive: Path, simplint: str) -> list[str]:
         shutil.copytree(original, fixed)
         report = ["--output-format", "concise", "."]
         ruff_fix = ["ruff", "check", "--fix", "--unsafe-fixes", "--exit-zero", "--quiet", "."]
-        simplint_fix = [simplint, "check", "--fix-only", "--unsafe-fixes", *report]
         for tree in (original, fixed):
             _run(ruff_fix, tree)
         # A file Ruff cannot read either, such as one in another encoding, is not simplint's failure.
         unreadable = set(_io_errors(_run(["ruff", "check", "--exit-zero", *report], fixed)))
-        problems = [f"check: {line}" for line in _failures(_run([simplint, "check", *report], fixed), unreadable)]
+        # simplint refuses to run when the project's Ruff settings work against one of its rules; a user of the
+        # project would turn that rule off, as the error says.
+        simplint_check = [simplint, "check"]
+        checked = _run([*simplint_check, *report], fixed)
+        if refused := re.findall(r"ignore (\S+) in `\[tool\.simplint\]`", checked.stderr):
+            simplint_check += ["--ignore", ",".join(refused)]
+            checked = _run([*simplint_check, *report], fixed)
+        problems = [f"check: {line}" for line in _failures(checked, unreadable)]
+        simplint_fix = [*simplint_check, "--fix-only", "--unsafe-fixes", *report]
         problems += [f"fix: {line}" for line in _failures(_run(simplint_fix, fixed), unreadable)]
         # Rules Ruff warns conflict with its formatter for this project cannot hold after `ruff format`, with or without
         # simplint, as Ruff documents; their findings say nothing about simplint.
@@ -208,7 +215,7 @@ def check(package: Package, archive: Path, simplint: str) -> list[str]:
         undefined = ["--select", "F821,F811,F823", "--ignore-noqa", "--config", "lint.per-file-ignores = {}"]
         problems += [f"{path}: new {code}" for path, code in _new_findings(original, fixed, undefined)]
         problems += [f"{path}: new {code}" for path, code in _new_findings(original, fixed, unaffected)]
-        problems += _second_round(simplint, (original, fixed), unaffected, stranding)
+        problems += _second_round(simplint_check, (original, fixed), unaffected, stranding)
         return problems
 
 
@@ -272,14 +279,16 @@ def _findings(root: Path, options: list[str]) -> Counter[tuple[str, str]]:
 
 
 # What a second round of the pipeline changes in the fixed tree, which it must not.
-def _second_round(simplint: str, trees: tuple[Path, Path], unaffected: list[str], stranding: set[str]) -> list[str]:
+def _second_round(
+    simplint_check: list[str], trees: tuple[Path, Path], unaffected: list[str], stranding: set[str]
+) -> list[str]:
     original, fixed = trees
     problems = []
     # Ruff alone does not always settle in one round, so its second round counts only where it settles the baseline.
     ruff_again = ["ruff", "check", "--fix-only", "--unsafe-fixes", "--diff", "--quiet", *unaffected, "."]
     if _run(ruff_again, fixed).returncode == 1 and _run(ruff_again, original).returncode == 0:
         problems.append("a second round of ruff check --fix changed the code")
-    diff = _run([simplint, "check", "--unsafe-fixes", "--diff", "."], fixed).stdout
+    diff = _run([*simplint_check, "--unsafe-fixes", "--diff", "."], fixed).stdout
     if set(re.findall(r"^--- (\S+)$", diff, re.MULTILINE)) - stranding:
         problems.append("a second round of simplint check --fix changed the code")
     if _run(["ruff", "format", "--check", "--quiet", "."], fixed).returncode == 1:
