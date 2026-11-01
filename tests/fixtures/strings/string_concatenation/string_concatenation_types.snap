@@ -1,0 +1,102 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+15:9 SMP112 Build text with an f-string instead of `+`
+16:9 SMP112 Build text with an f-string instead of `+`
+17:9 SMP112 Build text with an f-string instead of `+`
+18:9 SMP112 Build text with an f-string instead of `+`
+19:9 SMP112 Build text with an f-string instead of `+`
+20:9 SMP112 Build text with an f-string instead of `+`
+21:9 SMP112 Build text with an f-string instead of `+`
+30:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+31:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+32:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+33:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+34:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+35:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+36:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+37:9 SMP112 Build text with an f-string instead of `+`
+38:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+45:15 SMP112 Build text with an f-string instead of `+`
+48:13 SMP112 Build text with an f-string instead of `+`
+48:35 SMP112 Build text with an f-string instead of `+`
+53:12 SMP112 Build text with an f-string instead of `+`
+67:16 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+69:31 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+70:16 SMP112 Build text with an f-string instead of `+`
+73:30 SMP112 Build text with an f-string instead of `+`
+--- fixed (10 applied, 14 remaining) ---
+from os import pathsep
+from pathlib import Path
+from typing import Final
+
+from markupsafe import Markup
+from pypdf import PageRange
+
+CONCAT_SEPARATOR = "-"
+CONCAT_PREFIX: Final[str] = "pre"
+concat_counter = 0
+
+
+def concat_opaque(value, path: Path, items: list[str]) -> list[object]:
+    return [
+        PageRange(slice(0, 5)) + "2:7",
+        Markup("foo") + "bar",
+        value + "",
+        path + pathsep + "foo",
+        "a" + items[0],
+        "a" + concat_counter,
+        "a" + len(items),
+    ]
+
+
+def concat_known(label: str, items: list[str], flag: bool) -> list[str]:
+    built = "start"
+    built += label
+    joined = ", ".join(items)
+    return [
+        f"{label}!",
+        f"{built}?",
+        f"{joined}.",
+        f"{"ab".replace("a", "c")}{label}.",
+        f"{label if flag else "none"}x",
+        f"{label.upper()}-{label[0]}",
+        f"<{CONCAT_PREFIX}{label}",
+        "<" + CONCAT_SEPARATOR + label,
+        f"n={flag!s}",
+    ]
+
+
+def concat_rebound(label: str, items: list[str]) -> list[str]:
+    for label in items:
+        pass
+    looped = [label + "!" for label in items]
+    shadow = "x"
+    shadow = len(items)
+    return [label + "?", *looped, "s" + shadow]
+
+
+def concat_shadowed_builtin(value: int) -> str:
+    str = repr
+    return "v=" + str(value)
+
+
+def concat_global(text: str) -> str:
+    def reset() -> None:
+        global CONCAT_SEPARATOR
+        CONCAT_SEPARATOR = 1
+
+    reset()
+    return CONCAT_SEPARATOR + text
+
+
+class ConcatHolder:
+    suffix = "!"
+    combined = f"a{suffix}"
+
+    def describe(self, suffix=f"{suffix}?") -> str:
+        return "b" + suffix
+
+
+concat_lambda = lambda part: "x" + part

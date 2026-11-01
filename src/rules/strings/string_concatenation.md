@@ -24,8 +24,15 @@ message = f"Hello, {name}!"
 ## Fix safety
 
 The fix is always unsafe. `+` raises [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError) for a
-non-string operand and honors a custom [`__add__`](https://docs.python.org/3/reference/datamodel.html#object.__add__),
-while an f-string formats any value.
+non-string operand and honors a custom [`__add__`](https://docs.python.org/3/reference/datamodel.html#object.__add__) or
+`__radd__`, such as `markupsafe.Markup` escaping the other operand, while an f-string formats any value. So the fix is
+offered only when every operand is surely a `str`: a string literal or f-string; a call to the builtin `str`, `repr`,
+`ascii`, `format`, `chr`, `hex`, `oct` or `bin`; a `str` method such as `join`, `format` or `upper` called on such a
+value; an index or slice of one; a conditional or `and`/`or` between them; or a name every binding of which, in the
+scope it resolves to, gives such a value or is annotated `str` (also as `Final[str]` or `Annotated[str, ...]`). A name a
+loop, import, unannotated parameter, comprehension, `global` or `nonlocal` binds is not known, so `value + "!"` for an
+unannotated `value` is reported without a fix. A parameter annotated `str` can still receive a `str` subclass with its
+own `__add__`.
 
 The fix copies each non-literal operand into a placeholder as written. A call to the builtin `str`, `repr` or `ascii`
 becomes the matching conversion, as Ruff's

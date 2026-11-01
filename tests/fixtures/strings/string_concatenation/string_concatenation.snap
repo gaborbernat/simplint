@@ -16,13 +16,13 @@ expression: "lint_fixture(rule, fixture, target_version)"
 19:42 SMP112 Build text with an f-string instead of `+`
 23:13 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 23:30 SMP112 Build text with an f-string instead of `+`
-26:5 SMP112 Build text with an f-string instead of `+`
-30:13 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-31:10 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-32:10 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+27:5 SMP112 Build text with an f-string instead of `+`
+31:13 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+32:10 SMP112 Build text with an f-string instead of `+`
 33:10 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-36:9 SMP112 Build text with an f-string instead of `+`
---- fixed (13 applied, 7 remaining) ---
+34:10 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+37:9 SMP112 Build text with an f-string instead of `+`
+--- fixed (12 applied, 8 remaining) ---
 def greet(name: str, count: int) -> list[str]:
     return [
         f"Hello, {name}!",
@@ -47,13 +47,14 @@ def more(name: str) -> list[str]:
 def fstrings(name: str) -> list[str]:
     return [f"ab{name}", rf"c" + name]
 
+name = "world"
 COMMENTED = (
     "<a>"  # open
     + name
     + "</a>"
 )
 CONVERTED = f"a{count!s}b{name!r}"
-CALLED = f"a{describe(count)}"
+CALLED = "a" + describe(count)
 QUOTED = f'say {name} "hi"'
-SPREAD = f"at {describe(count)}"
+SPREAD = f"at {format(count)}"
 NAMED = "dot " + name + "\N{BULLET}"

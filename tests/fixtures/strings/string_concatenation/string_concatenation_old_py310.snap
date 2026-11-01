@@ -7,11 +7,11 @@ expression: "lint_fixture(rule, fixture, target_version)"
 10:23 SMP112 Build text with an f-string instead of `+`
 --- fixed (1 applied, 2 remaining) ---
 def greet(names: dict[str, str]) -> str:
-    return f"Hello {names['first']} and {names['last']}"
+    return f"Hello {names['first']!s} and {names['last']!s}"
 
 
 def quoted(names: dict[str, str]) -> str:
-    return "Hello " + names["it's"]
+    return "Hello " + str(names["it's"])
 
 
 def nested(prefix: str, width: int) -> str:

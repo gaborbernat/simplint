@@ -22,6 +22,7 @@ def more(name: str) -> list[str]:
 def fstrings(name: str) -> list[str]:
     return [f"a" "b" + name, rf"c" + name]
 
+name = "world"
 COMMENTED = (
     "<a>"  # open
     + name
@@ -30,7 +31,7 @@ COMMENTED = (
 CONVERTED = "a" + str(count) + "b" + repr(name)
 CALLED = "a" + describe(count)
 QUOTED = "say " + name + ' "hi"'
-SPREAD = "at " + describe(
+SPREAD = "at " + format(
     count,
 )
 NAMED = "dot " + name + "\N{BULLET}"
