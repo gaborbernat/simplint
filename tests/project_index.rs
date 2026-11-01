@@ -199,3 +199,64 @@ fn dataclass_options_reads_writes_in_other_files(body: &str, marker: &str, decor
         )
     );
 }
+
+const PARTITION: &str =
+    "from dataclasses import dataclass\n\n\n@dataclass\nclass Partition:\n    topic: str\n    number: int\n";
+
+// Each file rewrites its own positional calls in the same run that gives the decorator `kw_only=True`, so a second
+// run finds nothing.
+#[test_case(
+    "from models import Partition, helper\n\nhelper(1)\nPartition(\"a\", 1)\n", "Partition(topic=\"a\", number=1)" ; "imported"
+)]
+#[test_case("import models\n\nmodels.Partition(\"a\", 1)\n", "models.Partition(topic=\"a\", number=1)" ; "module")]
+#[test_case("from models import Partition as P\n\nP(\"a\", 1)\n", "P(topic=\"a\", number=1)" ; "alias")]
+fn dataclass_kw_only_rewrites_calls_in_other_files(caller: &str, rewritten: &str) {
+    let models = format!("{PARTITION}\n\ndef helper(value):\n    return value\n");
+    let root = project(&[("models.py", &models), ("caller.py", caller)]);
+    let fix = ["--select", "SMP114", "--fix", "--unsafe-fixes", "--target-version", "py314"];
+    let first = check(root.path(), &fix).1;
+    let second = check(root.path(), &[&fix[..], &["--diff"]].concat()).0;
+    assert_eq!(
+        (
+            first,
+            common::read(root.path(), "caller.py").lines().last().map(str::to_owned),
+            common::read(root.path(), "models.py").lines().nth(3).map(str::to_owned),
+            second,
+        ),
+        (
+            "Found 2 errors (2 fixed, 0 remaining).\n".to_owned(),
+            Some(rewritten.to_owned()),
+            Some("@dataclass(kw_only=True)".to_owned()),
+            0
+        )
+    );
+}
+
+// A use no rewrite can follow keeps the decorator as it is, however often the fixes run.
+#[test_case(&[("caller.py", "from models import *\n\nPartition(\"a\", 1)\n")] ; "star_import")]
+#[test_case(&[("caller.py", "import functools\n\nfrom models import Partition\n\nfunctools.partial(Partition, \"a\")\nPartition(\"b\", 2)\n")] ; "partial")]
+#[test_case(&[("caller.py", "from models import Partition\n\nPartition(*(\"a\", 1))\n")] ; "unpacked")]
+#[test_case(&[("caller.py", "from models import Partition\n\nPartition(\"a\", 1, 2)\n")] ; "too_many")]
+#[test_case(
+    &[("relay.py", "from models import Partition\n"), ("caller.py", "from relay import Partition\n\nPartition(topic=\"a\", number=1)\n")]
+    ; "reexported"
+)]
+#[test_case(
+    &[("caller.py", "from models import Partition\n\n\ndef run(make):\n    Partition = make\n    Partition(\"a\", 1)\n")]
+    ; "shadowed"
+)]
+#[test_case(&[("caller.py", "from models import Partition\n\nPartition(\"a\", 1)  # noqa: E501\n")] ; "suppressed")]
+#[test_case(
+    &[
+        ("pyproject.toml", "[tool.simplint]\nper-file-ignores = { \"caller.py\" = [\"SMP114\"] }\n"),
+        ("caller.py", "from models import Partition\n\nPartition(\"a\", 1)\n"),
+    ]
+    ; "ignored_in_caller"
+)]
+fn dataclass_kw_only_withholds_fix_for_unfollowed_uses(callers: &[(&str, &str)]) {
+    let root = project(&[&[("models.py", PARTITION)], callers].concat());
+    let fix = ["--no-cache", "--select", "SMP114", "--fix", "--unsafe-fixes", "--target-version", "py314"];
+    check(root.path(), &fix);
+    check(root.path(), &fix);
+    assert_eq!(common::read(root.path(), "models.py"), PARTITION);
+}

@@ -17,6 +17,7 @@ use ty_module_resolver::{
 };
 
 use super::FileFacts;
+use super::constructors::{DataclassCalls, FileCalls, NameUse};
 use super::facts::ModuleNames;
 
 // Where imports resolve, as `ruff analyze graph` searches: the configured `src` directories first, then the directory
@@ -51,6 +52,7 @@ pub struct Project {
     assigned_attributes: HashSet<String>,
     base_classes: HashSet<String>,
     writes: Writes,
+    calls: DataclassCalls,
     digest: u64,
 }
 
@@ -63,7 +65,13 @@ struct Writes {
 }
 
 impl Project {
-    pub fn index(files: &[(&Path, &FileFacts)], entry_points: &[String], roots: &SearchRoots) -> Result<Self> {
+    // `rewrites_calls` holds the files whose own `dataclass-kw-only` reports rewrite their positional dataclass calls.
+    pub fn index(
+        files: &[(&Path, &FileFacts)],
+        entry_points: &[String],
+        roots: &SearchRoots,
+        rewrites_calls: &HashSet<&Path>,
+    ) -> Result<Self> {
         let cwd = SystemPathBuf::from_path_buf(std::env::current_dir()?)
             .map_err(|path| anyhow::anyhow!("{} is not a UTF-8 path", path.display()))?;
         let system = OsSystem::new(cwd);
@@ -77,14 +85,16 @@ impl Project {
             .par_iter()
             .map_with(db.clone(), |db, (path, facts)| {
                 let environment = ResolverEnvironment::new(db, python_version, paths.clone());
-                ModuleFacts::resolve(db, environment, path, facts)
+                ModuleFacts::resolve(db, environment, path, facts, rewrites_calls.contains(path))
             })
             .collect();
         let mut imported: HashMap<PathBuf, HashSet<String>> = HashMap::new();
         let mut referenced: HashMap<PathBuf, HashSet<String>> = HashMap::new();
         let mut stars: Vec<(PathBuf, PathBuf)> = Vec::new();
         let mut unresolved_stars: HashSet<&str> = HashSet::new();
+        let mut constructor_uses = Vec::new();
         for module in modules {
+            constructor_uses.push((module.path.clone(), module.rewrites_calls, module.constructors));
             for (file, names) in module.imports {
                 imported.entry(file).or_default().extend(names.iter().cloned());
             }
@@ -127,6 +137,8 @@ impl Project {
                 imported.entry(file).or_default().insert(name.to_owned());
             }
         }
+        let declared = files.iter().map(|(path, facts)| (normalized(path), facts.constructors.dataclasses.as_slice()));
+        let calls = DataclassCalls::index(declared, &constructor_uses, &imported);
         let mut hasher = CacheKeyHasher::new();
         assigned_attributes.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
         base_classes.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
@@ -145,6 +157,7 @@ impl Project {
             assigned_attributes,
             base_classes,
             writes,
+            calls,
             digest: hasher.finish(),
         })
     }
@@ -166,6 +179,7 @@ impl Project {
             imported: self.imported.get(&path),
             referenced: self.referenced.get(&path),
             star_imported: self.star_imported.contains(&path),
+            calls: self.calls.file(&path),
         }
     }
 }
@@ -225,6 +239,7 @@ pub struct FileIndex<'a> {
     imported: Option<&'a HashSet<String>>,
     referenced: Option<&'a HashSet<String>>,
     star_imported: bool,
+    calls: FileCalls<'a>,
 }
 
 // Two indexes give a file the same answers when the names other files use from it match; the attribute and base class
@@ -244,10 +259,11 @@ impl CacheKey for FileIndex<'_> {
             0u8.cache_key(state);
         }
         self.star_imported.cache_key(state);
+        self.calls.cache_key(state);
     }
 }
 
-impl FileIndex<'_> {
+impl<'a> FileIndex<'a> {
     pub fn is_imported(&self, name: &str) -> bool {
         self.imported.is_some_and(|names| names.contains(name))
     }
@@ -270,6 +286,12 @@ impl FileIndex<'_> {
 
     pub fn is_base_class(&self, name: &str) -> bool {
         self.project.base_classes.contains(name)
+    }
+
+    // How other files of the run use this file's dataclass `name`, and the positional fields of the dataclass a call
+    // spelled `written` constructs in this file.
+    pub fn dataclass_calls(&self) -> FileCalls<'a> {
+        self.calls
     }
 
     // The attributes the run sets or deletes on instances it knows are of a class with this name, `self` included.
@@ -296,6 +318,8 @@ fn normalized(path: &Path) -> PathBuf {
 // name of each star-imported module that resolves to no file.
 struct ModuleFacts<'f> {
     path: PathBuf,
+    rewrites_calls: bool,
+    constructors: Vec<(PathBuf, &'f [NameUse])>,
     imports: Vec<(PathBuf, &'f [String])>,
     references: Vec<(PathBuf, &'f [String])>,
     stars: Vec<PathBuf>,
@@ -303,7 +327,13 @@ struct ModuleFacts<'f> {
 }
 
 impl<'f> ModuleFacts<'f> {
-    fn resolve(db: &ModuleDb, environment: ResolverEnvironment<'_>, path: &Path, facts: &'f FileFacts) -> Self {
+    fn resolve(
+        db: &ModuleDb,
+        environment: ResolverEnvironment<'_>,
+        path: &Path,
+        facts: &'f FileFacts,
+        rewrites_calls: bool,
+    ) -> Self {
         let own = normalized(path);
         let importing =
             SystemPathBuf::from_path_buf(own.clone()).ok().and_then(|path| system_path_to_file(db, path).ok());
@@ -327,7 +357,14 @@ impl<'f> ModuleFacts<'f> {
                 None => unresolved_stars.extend(module.rsplit('.').next()),
             }
         }
-        Self { path: own, imports, references, stars, unresolved_stars }
+        let constructors = facts
+            .constructors
+            .uses
+            .iter()
+            .filter_map(|(module, uses)| Some((resolve(db, environment, importing, module)?, uses.as_slice())))
+            .filter(|(file, _)| *file != own)
+            .collect();
+        Self { path: own, rewrites_calls, constructors, imports, references, stars, unresolved_stars }
     }
 }
 

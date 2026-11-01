@@ -4,7 +4,7 @@ use ruff_macros::CacheKey;
 use ruff_python_ast::PythonVersion;
 use ruff_workspace::resolver::match_exclusion;
 
-use crate::lint::registry::RuleSet;
+use crate::lint::registry::{Rule, RuleSet};
 use crate::settings::Settings;
 
 // The settings a file is linted with: its project's, the rules left on for it, and what Ruff decides for it.
@@ -18,6 +18,14 @@ pub struct FileSettings<'a> {
 impl<'a> FileSettings<'a> {
     pub fn new(project: &'a Settings, ruff: &ruff_workspace::Settings, path: &Path) -> Self {
         Self { project, from_ruff: FromRuff::of(ruff, path), rules: project.rules_for(path) }
+    }
+
+    // Whether `dataclass-kw-only` reports and fixes this file's positional calls of dataclasses defined elsewhere, which
+    // the fix of their decorator relies on.
+    pub fn rewrites_dataclass_calls(&self) -> bool {
+        self.rules.contains(Rule::DataclassKwOnly)
+            && self.project.is_fixable(Rule::DataclassKwOnly)
+            && self.from_ruff.target_version >= PythonVersion::PY310
     }
 
     pub fn is_test_module(&self, path: &Path) -> bool {

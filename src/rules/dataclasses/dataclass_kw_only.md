@@ -10,6 +10,9 @@ Positional construction ties every caller to the field order, so reordering or i
 into the wrong fields. Keyword-only fields name each value at the call site. The `kw_only` option needs Python 3.10 or
 later, so nothing is reported when the target version is older.
 
+In the other files simplint checks, the rule also reports each call that passes such a dataclass's fields by position,
+so the fix can rewrite it.
+
 [SMP111](SMP111.html) asks for `frozen=True` and `slots=True` on the same decorator.
 
 ## Example
@@ -38,7 +41,27 @@ Release(name="simplint", version="1.0.0")
 
 ## Fix safety
 
-The fix is always unsafe: it breaks every caller that passes fields positionally, in any file.
+The fix sets `kw_only=True` on the decorator and passes every positional argument of the calls in the same module by
+keyword, using the field order of the generated `__init__`: inherited fields first, without `ClassVar` fields, fields
+with `init=False` or `kw_only=True` and the fields after `KW_ONLY`, and with `InitVar` fields. Calls through `cls(...)`
+in the class's own methods are rewritten too. In another file, each positional call gets its own report, whose fix
+passes the arguments by keyword. That fix is safe, as the call does the same before and after.
+
+The fix of the decorator counts on those reports: the same `--fix` run rewrites the calls of the other files and adds
+`kw_only=True`. No fix is offered while any use could still pass fields by position:
+
+- a call that unpacks `*args` or `**kwargs`, or passes more arguments than the class has positional fields;
+- the class used as a value, as in `functools.partial(Partition, topic)`, or matched by position in a `case` pattern;
+- a subclass, or a call through `type(self)(...)` or `self.__class__(...)`;
+- a file that imports the module with `*`, or that imports the class and passes it on to other modules;
+- a positional call simplint cannot tie to the class, such as through a local name that shadows the import;
+- a positional call in a file whose own report cannot rewrite it: one that ignores `dataclass-kw-only`, does not have it
+  in `fixable`, targets a Python version before 3.10, or has a suppression comment on the call;
+- a class nested in a function or another class, one that defines `__init__` or `__new__`, sets `init=False`, or has a
+  base class that is not a dataclass of the same module.
+
+The fix stays unsafe: a caller's fix that simplint withdraws because it gives Ruff work it cannot fix, and code outside
+the checked files, such as the users of a published library, can still call the class by position.
 
 ## Options
 

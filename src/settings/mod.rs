@@ -85,9 +85,13 @@ impl Settings {
     // Ruff drops the fix of a rule `fixable` leaves out, and `extend-safe-fixes` and `extend-unsafe-fixes` change how
     // safe the rest are.
     pub fn fix_for(&self, rule: Rule, fix: Option<Fix>) -> Option<Fix> {
-        let fix = fix.filter(|_| self.fixable.contains(rule))?;
+        let fix = fix.filter(|_| self.is_fixable(rule))?;
         let applicability = self.fix_safety.resolve_applicability(rule, fix.applicability());
         Some(fix.with_applicability(applicability))
+    }
+
+    pub fn is_fixable(&self, rule: Rule) -> bool {
+        self.fixable.contains(rule)
     }
 }
 

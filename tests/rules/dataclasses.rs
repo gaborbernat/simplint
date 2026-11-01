@@ -6,6 +6,7 @@ use crate::common;
 #[test_case("dataclass-options", "dataclass_options_receivers.py", "py314" ; "dataclass_options_receivers")]
 #[test_case("dataclass-kw-only", "dataclass_kw_only.py", "py314" ; "dataclass_kw_only")]
 #[test_case("dataclass-kw-only", "dataclass_kw_only.py", "py39" ; "dataclass_kw_only_py39")]
+#[test_case("dataclass-kw-only", "dataclass_kw_only_calls.py", "py314" ; "dataclass_kw_only_calls")]
 fn rule(rule: &str, fixture: &str, target_version: &str) {
     common::assert_rule_snapshot(rule, fixture, target_version);
 }

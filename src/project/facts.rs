@@ -9,6 +9,7 @@ use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 use ruff_python_parser::parse_module;
 use ruff_python_stdlib::identifiers::is_identifier;
 
+use super::constructors::Constructors;
 use super::receivers::AttributeWrites;
 use crate::rules::exports::{Exports, dunder_all};
 
@@ -26,6 +27,7 @@ pub struct FileFacts {
     // The names a static `__all__` lists, which are all `import *` takes; without one it takes every public name.
     pub(super) exports: Option<Vec<String>>,
     pub(super) attribute_writes: AttributeWrites,
+    pub(super) constructors: Constructors,
 }
 
 impl FileFacts {
@@ -51,6 +53,7 @@ impl FileFacts {
             Vec::new()
         };
         let attribute_writes = AttributeWrites::collect(&parsed.syntax().body, &imports.aliases);
+        let constructors = Constructors::collect(&source, &parsed.syntax().body, &imports.aliases, module_path);
         Some(Self {
             imports: grouped(imports.edges),
             references: grouped(imports.references),
@@ -63,6 +66,7 @@ impl FileFacts {
                 Exports::Absent | Exports::Dynamic => None,
             },
             attribute_writes,
+            constructors,
         })
     }
 }
