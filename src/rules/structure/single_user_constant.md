@@ -1,9 +1,23 @@
 ## What it does
 
 Checks for module-level constants that only one function uses. A constant here is a name assigned once, with `=` or an
-[annotated assignment](https://docs.python.org/3/reference/simple_stmts.html#annotated-assignment-statements). It is
-reported when every reference to it sits inside the body of a single top-level function or method, including functions
-nested in it. A constant used only inside a module-level lambda is not reported.
+[annotated assignment](https://docs.python.org/3/reference/simple_stmts.html#annotated-assignment-statements), to a
+value written out in the source:
+
+- a string, bytes, number, `True`, `False`, `None` or `...`, including strings joined by placing them side by side
+- a negative number, such as `-1`
+- an arithmetic or other binary operation between such values, such as `60 * 60` or `"-" * 40`
+- a tuple, list, set or dict display made only of such values, such as `("a", 1)` or `{"ok": 0}`
+- `frozenset()`, or `frozenset` called with one such value, while the module does not bind the name `frozenset`
+
+It is reported when every reference to it sits inside the body of a single top-level function or method, including
+functions nested in it. A constant used only inside a module-level lambda is not reported.
+
+Any other value stays at module level and is not reported: a call result such as a cache, a logger from
+`logging.getLogger(__name__)`, a pattern from `re.compile`, a `Path` or a client instance, a name or attribute such as
+`logging.INFO`, an f-string, or a display unpacking another value with `*` or `**`. Built once at import, such a value
+may hold state that every call shares, or be the object a test patches, and moving it into the function would build a
+new one on every call.
 
 These are skipped:
 
@@ -18,9 +32,8 @@ These are skipped:
 - constants with a comment on the line directly above or at the end of their line
 - names another module in the run assigns as an attribute, such as `config._TIMEOUT = 5`, since a local copy would
   ignore the override
-- values the function changes, which are state that must outlive each call: it calls a mutating method on them such as
-  `add`, `append` or `update`, assigns or deletes an item or attribute, uses them in a `with` statement, or passes them
-  to `next`
+- containers the function changes, which are state that must outlive each call: it calls a mutating method on them such
+  as `add`, `append` or `update`, or assigns or deletes an item
 - constants referenced at import time, such as in a default value or decorator, or in any annotation
 
 ## Why is this bad?
@@ -53,8 +66,8 @@ a new object for mutable ones. The fix moves the value in one of two ways:
 
 - When the constant is used once, outside any loop, nested function or class, lambda or comprehension, and its value
   fits on one line, the fix inlines the value at the use, adding parentheses when needed. Inside an f-string it inlines
-  only a name, attribute or number: a value with quotes there is a syntax error before Python 3.12, and a longer one
-  buries the text the f-string builds. A string that calls `format` keeps a name: as a literal it becomes Ruff's
+  only a number: a value with quotes there is a syntax error before Python 3.12, and a longer one buries the text the
+  f-string builds. A string that calls `format` keeps a name: as a literal it becomes Ruff's
   [f-string (UP032)](https://docs.astral.sh/ruff/rules/f-string/) candidate, which Ruff reports only while no argument
   spans lines, so the result would depend on how `ruff format` lays out the call.
 - Otherwise it declares a local before the statement that first uses it and renames the uses. The local takes the
@@ -67,14 +80,10 @@ No fix is offered when:
 
 - the constant shares a line with other code;
 - the local name already appears in the file;
-- the value reads a module name the module binds again or deletes later, since the function would see the later value;
-- the value reads a module name the function also uses for a parameter or local, such as `operator.eq` in a function
-  taking an `operator` argument.
+- the value calls `frozenset` and the function has a parameter or local named `frozenset`.
 
 ## Conflicts with Ruff
 
 Ruff's [magic-value-comparison (PLR2004)](https://docs.astral.sh/ruff/rules/magic-value-comparison/) asks for a named
-constant where the inlined value lands in a comparison, and
-[except-with-non-exception-classes (B030)](https://docs.astral.sh/ruff/rules/except-with-non-exception-classes/) reports
-a conditional value inlined into an `except` clause. When a fix would give either rule a new report, simplint withdraws
-it and keeps the report.
+constant where the inlined value lands in a comparison. When a fix would give it a new report, simplint withdraws the
+fix and keeps the report.
