@@ -65,6 +65,8 @@ struct Writes {
     on_class: HashMap<String, HashSet<String>>,
     untyped: HashSet<String>,
     unslottable_bases: HashSet<String>,
+    stateful_bases: HashSet<String>,
+    pickles_low_protocol: bool,
 }
 
 impl Project {
@@ -132,6 +134,8 @@ impl Project {
             }
             writes.untyped.extend(facts.untyped.iter().cloned());
             writes.unslottable_bases.extend(facts.unslottable_bases.iter().cloned());
+            writes.stateful_bases.extend(facts.stateful_bases.iter().cloned());
+            writes.pickles_low_protocol |= facts.pickles_low_protocol;
         }
         let environment = ResolverEnvironment::new(&db, python_version, paths);
         for (module, attribute) in entry_points.iter().filter_map(|entry_point| entry_point.split_once(':')) {
@@ -141,7 +145,9 @@ impl Project {
             }
         }
         let declared = files.iter().map(|(path, facts)| (normalized(path), facts.constructors.dataclasses.as_slice()));
-        let calls = DataclassCalls::index(declared, &constructor_uses, &imported);
+        let dynamic: HashSet<&str> =
+            files.iter().flat_map(|(_, facts)| facts.constructors.dynamic.iter().map(String::as_str)).collect();
+        let calls = DataclassCalls::index(declared, &constructor_uses, &imported, &dynamic);
         let reads_docstrings = files.iter().any(|(_, facts)| facts.reads_docstrings);
         let mut hasher = CacheKeyHasher::new();
         reads_docstrings.cache_key(&mut hasher);
@@ -151,10 +157,11 @@ impl Project {
             class.cache_key(&mut hasher);
             attributes.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
         }
-        for names in [&writes.untyped, &writes.unslottable_bases] {
+        for names in [&writes.untyped, &writes.unslottable_bases, &writes.stateful_bases] {
             0u8.cache_key(&mut hasher);
             names.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
         }
+        writes.pickles_low_protocol.cache_key(&mut hasher);
         Ok(Self {
             imported,
             referenced,
@@ -170,7 +177,8 @@ impl Project {
 
     // The attribute and base class names one index has and the other lacks, whose answers differ between the two, and
     // the names of the classes whose attribute writes, or subclasses that a slotted base breaks, differ, which a
-    // dataclass of that name, or a namesake of it, reads.
+    // dataclass of that name, or a namesake of it, reads. Low protocol pickling concerns every dataclass, so its change
+    // names `dataclass`.
     pub fn changed_names<'p>(&'p self, other: &'p Self) -> HashSet<&'p str> {
         let (writes, others) = (&self.writes, &other.writes);
         let classes = writes
@@ -180,13 +188,16 @@ impl Project {
             .chain(others.on_class.iter().filter(|(class, _)| !writes.on_class.contains_key(*class)))
             .map(|(class, _)| class)
             .chain(writes.unslottable_bases.symmetric_difference(&others.unslottable_bases))
+            .chain(writes.stateful_bases.symmetric_difference(&others.stateful_bases))
             .map(|class| class.rsplit('.').next().unwrap_or(class));
+        let pickling = (writes.pickles_low_protocol != others.pickles_low_protocol).then_some("dataclass");
         self.assigned_attributes
             .symmetric_difference(&other.assigned_attributes)
             .chain(self.base_classes.symmetric_difference(&other.base_classes))
             .chain(writes.untyped.symmetric_difference(&others.untyped))
             .map(String::as_str)
             .chain(classes)
+            .chain(pickling)
             .collect()
     }
 
@@ -346,6 +357,17 @@ impl<'a> FileIndex<'a> {
     // Whether a class of the run that a slotted base breaks inherits from the class with this qualified name.
     pub fn has_unslottable_subclass(&self, name: &str) -> bool {
         self.project.writes.unslottable_bases.contains(name)
+    }
+
+    // Whether a class of the run whose methods store attributes on `self` inherits from the class with this qualified
+    // name.
+    pub fn has_stateful_subclass(&self, name: &str) -> bool {
+        self.project.writes.stateful_bases.contains(name)
+    }
+
+    // Whether the run pickles with a protocol that may be 0 or 1.
+    pub fn pickles_low_protocol(&self) -> bool {
+        self.project.writes.pickles_low_protocol
     }
 }
 

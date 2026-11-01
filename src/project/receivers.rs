@@ -8,7 +8,8 @@ use ruff_python_ast::{self as ast, Expr, ExprContext, Pattern, Stmt};
 // The attributes code sets or deletes on objects, keyed by the class of the object when parsing tells it: the receiver
 // is `self` in a method, or a name bound by a call to a class or annotated with one. A class goes by its qualified
 // name, such as `pkg.models.Result`, as two modules can each define a class with the same name. A mock accepts any attribute and
-// is never a real instance, so writes to one are left out; writes to anything else are untyped.
+// is never a real instance, so writes to one are left out; writes to anything else are untyped. Reaching the instance
+// `__dict__`, as `obj.__dict__` or `vars(obj)` do, counts as writing `__dict__`.
 #[derive(Clone, Default, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct AttributeWrites {
     pub(super) typed: Vec<(String, String)>,
@@ -16,6 +17,12 @@ pub struct AttributeWrites {
     // The qualified bases of classes a slotted base breaks: one using `functools.cached_property`, which stores into an
     // instance `__dict__`, or one with several bases, as a slotted base's layout conflicts with another's.
     pub(super) unslottable_bases: Vec<String>,
+    // The qualified bases of classes whose methods store attributes on `self`. The `__getstate__` a frozen slotted
+    // dataclass gets pickles only fields, so a pickled instance of such a subclass loses the others.
+    pub(super) stateful_bases: Vec<String>,
+    // Whether the file pickles with a protocol that may be 0 or 1, which cannot pickle a slotted class without its own
+    // `__getstate__`, as a dataclass gets only when frozen.
+    pub(super) pickles_low_protocol: bool,
 }
 
 impl AttributeWrites {
@@ -78,12 +85,19 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
                 self.scopes.pop();
             }
             Stmt::ClassDef(class) => {
-                if class.bases().len() > 1 || class_mentions(class, "cached_property") {
-                    let bases = class.bases().iter().filter_map(|base| {
+                let bases: Vec<String> = class
+                    .bases()
+                    .iter()
+                    .filter_map(|base| {
                         let written = UnqualifiedName::from_expr(base)?.segments().join(".");
                         Some(self.qualified(&written))
-                    });
-                    let bases: Vec<String> = bases.collect();
+                    })
+                    .collect();
+                let members = members(class);
+                if !members.is_empty() {
+                    self.writes.stateful_bases.extend(bases.iter().cloned());
+                }
+                if class.bases().len() > 1 || class_mentions(class, "cached_property") {
                     self.writes.unslottable_bases.extend(bases);
                 }
                 for decorator in &class.decorator_list {
@@ -92,7 +106,6 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
                 if let Some(arguments) = &class.arguments {
                     self.visit_arguments(arguments);
                 }
-                let members = members(class);
                 let bindings = self.bindings(&class.body, &[]);
                 self.scopes.push(Scope { kind: ScopeKind::Class { name: class.name.as_str(), members }, bindings });
                 self.visit_body(&class.body);
@@ -107,12 +120,19 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
             Expr::Attribute(ast::ExprAttribute { value, attr, ctx: ExprContext::Store | ExprContext::Del, .. }) => {
                 self.record(value, attr.as_str());
             }
-            Expr::Call(ast::ExprCall { func, arguments, .. }) => {
-                if let [target, Expr::StringLiteral(attribute), ..] = &*arguments.args
-                    && func.as_name_expr().is_some_and(|name| matches!(name.id.as_str(), "setattr" | "delattr"))
-                {
-                    self.record(target, attribute.value.to_str());
+            Expr::Attribute(ast::ExprAttribute { value, attr, .. }) if attr.as_str() == "__dict__" => {
+                self.record(value, "__dict__");
+            }
+            Expr::Call(call @ ast::ExprCall { func, arguments, .. }) => {
+                let builtin = func.as_name_expr().map(|name| name.id.as_str());
+                match (&*arguments.args, builtin) {
+                    ([target, Expr::StringLiteral(attribute), ..], Some("setattr" | "delattr")) => {
+                        self.record(target, attribute.value.to_str());
+                    }
+                    ([target], Some("vars")) => self.record(target, "__dict__"),
+                    _ => {}
                 }
+                self.writes.pickles_low_protocol |= self.pickles_low_protocol(call);
             }
             // A lambda's parameters and a comprehension's targets shadow the names around them.
             Expr::Lambda(_) | Expr::ListComp(_) | Expr::SetComp(_) | Expr::DictComp(_) | Expr::Generator(_) => {
@@ -142,6 +162,26 @@ impl<'a> Collector<'a, '_> {
             Receiver::Mock => {}
             Receiver::Unknown => self.writes.untyped.push(attribute.to_owned()),
         }
+    }
+
+    // `pickle.dumps(obj, protocol)`, `pickle.dump(obj, file, protocol)` or `pickle.Pickler(file, protocol)` with a
+    // protocol that is not known to be 2 or above, such as a test looping over every protocol.
+    fn pickles_low_protocol(&self, call: &ast::ExprCall) -> bool {
+        let Some(written) = UnqualifiedName::from_expr(&call.func) else {
+            return false;
+        };
+        let position = match self.qualified(&written.segments().join(".")).as_str() {
+            "pickle.dumps" | "pickle.Pickler" => 1,
+            "pickle.dump" => 2,
+            _ => return false,
+        };
+        let protocol = call.arguments.find_argument_value("protocol", position);
+        protocol.is_some_and(|protocol| match protocol {
+            Expr::NumberLiteral(ast::ExprNumberLiteral { value: ast::Number::Int(value), .. }) => {
+                value.as_u8().is_none_or(|value| value < 2)
+            }
+            other => !last_segment(other).is_some_and(|name| matches!(name, "HIGHEST_PROTOCOL" | "DEFAULT_PROTOCOL")),
+        })
     }
 
     // A class name as written here, qualified through the imports that bind its head, or else by this module.
@@ -408,10 +448,20 @@ impl<'a> Members<'a> {
     }
 }
 
-// What the methods of `class` store on `self`, so `self.client.name = value` knows when `client` is a mock.
+// What the methods of `class` store on `self`, so `self.client.name = value` knows when `client` is a mock. An
+// annotation in the class body, such as `client: Client`, declares what its methods store, whatever they assign.
 fn members(class: &ast::StmtClassDef) -> HashMap<&str, Receiver> {
     let mut scan = Members { members: HashMap::new() };
     scan.visit_body(&class.body);
+    for stmt in &class.body {
+        if let Stmt::AnnAssign(ast::StmtAnnAssign { target, annotation, .. }) = stmt
+            && let Expr::Name(name) = target.as_ref()
+            && scan.members.contains_key(name.id.as_str())
+            && let declared @ Receiver::Instance(_) = annotated(annotation)
+        {
+            scan.members.insert(name.id.as_str(), declared);
+        }
+    }
     scan.members
 }
 
@@ -483,9 +533,13 @@ impl<'a> Visitor<'a> for Mentions<'_> {
 }
 
 // The dotted name of the module a file defines, or its file name outside a package.
+// A package's `__init__.py` defines the package itself, which imports name without `__init__`.
 pub(crate) fn module_name(module_path: Option<&[String]>, path: &Path) -> String {
     module_path.map_or_else(
         || path.file_stem().and_then(|stem| stem.to_str()).unwrap_or_default().to_owned(),
-        |module_path| module_path.join("."),
+        |module_path| match module_path {
+            [package @ .., last] if last == "__init__" && !package.is_empty() => package.join("."),
+            _ => module_path.join("."),
+        },
     )
 }

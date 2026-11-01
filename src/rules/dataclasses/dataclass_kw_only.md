@@ -55,7 +55,9 @@ The fix of the decorator counts on those reports: the same `--fix` run rewrites 
 - the class used as a value, as in `functools.partial(Partition, topic)`, or matched by position in a `case` pattern;
 - a subclass, or a call through `type(self)(...)` or `self.__class__(...)`;
 - a file that imports the module with `*`, or that imports the class and passes it on to other modules;
-- a positional call simplint cannot tie to the class, such as through a local name that shadows the import;
+- a positional call simplint cannot tie to the class, such as through a local name that shadows the import, or of an
+  attribute with the class's name on something no import binds, such as `module.Partition("a", 1)` on a module a test
+  loads from its file path;
 - a positional call in a file whose own report cannot rewrite it: one that ignores `dataclass-kw-only`, does not have it
   in `fixable`, targets a Python version before 3.10, or has a suppression comment on the call;
 - a class nested in a function or another class, one that defines `__init__` or `__new__`, sets `init=False`, or has a
