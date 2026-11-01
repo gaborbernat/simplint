@@ -1,7 +1,7 @@
 ## What it does
 
-Checks for `try` statements whose body holds only imports of required modules and that have an `except` handler catching
-[`ImportError`](https://docs.python.org/3/builtins/exceptions.html#ImportError) or
+Checks for `try` statements whose body holds only `import` statements of required modules and that have an `except`
+handler catching [`ImportError`](https://docs.python.org/3/builtins/exceptions.html#ImportError) or
 [`ModuleNotFoundError`](https://docs.python.org/3/builtins/exceptions.html#ModuleNotFoundError), alone or in a tuple,
 also when spelled `builtins.ImportError` or `builtins.ModuleNotFoundError`. A module is required when its top-level
 package:
@@ -16,9 +16,10 @@ package:
   [`project.dependencies`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies) of
   `pyproject.toml`
 
-[Relative imports](https://docs.python.org/3/reference/import.html#package-relative-imports) and imports of the package
-the file belongs to never count as required, so guarding an optional compiled extension of your own package is not
-reported.
+Imports of the package the file belongs to never count as required, so guarding an optional compiled extension of your
+own package is not reported. A `from` import never counts either, as it also fails when the module lacks the name on
+some platform or version, such as `from os import geteuid` outside POSIX or `from yaml import CSafeLoader` without
+libyaml.
 
 A requirement with an [environment marker](https://peps.python.org/pep-0508/#environment-markers) (`;`) is conditional
 and does not count. Optional dependencies and dependency groups are not read. Dependencies are matched by their

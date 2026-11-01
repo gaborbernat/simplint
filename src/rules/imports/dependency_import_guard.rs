@@ -48,14 +48,10 @@ fn is_import_guard(checker: &Checker, stmt: &ast::StmtTry) -> bool {
     })
 }
 
+// `from` imports can fail on a name the module lacks on some platform or version, such as `os.geteuid` or
+// `yaml.CSafeLoader`, so their guard serves a present module.
 fn imported_modules(stmt: &Stmt) -> Option<Vec<&str>> {
-    match stmt {
-        Stmt::Import(ast::StmtImport { names, .. }) => Some(names.iter().map(|alias| alias.name.as_str()).collect()),
-        // A relative import (level above 0) reaches the project's own modules, which may be optional, such as a
-        // compiled speedup, so only absolute imports can name a required dependency.
-        Stmt::ImportFrom(ast::StmtImportFrom { module, level: 0, .. }) => Some(vec![module.as_ref()?.as_str()]),
-        _ => None,
-    }
+    Some(stmt.as_import_stmt()?.names.iter().map(|alias| alias.name.as_str()).collect())
 }
 
 const LATEST_MINOR: u8 = 15;

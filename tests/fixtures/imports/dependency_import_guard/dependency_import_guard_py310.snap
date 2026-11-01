@@ -4,9 +4,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 ---
 8:1 SMP040 Import guard around a required dependency; import it directly and let a broken install fail [unsafe fix: Remove the import guard]
 18:1 SMP040 Import guard around a standard library module every supported Python ships; import it directly
-30:1 SMP040 Import guard around a standard library module every supported Python ships; import it directly [unsafe fix: Remove the import guard]
 46:1 SMP040 Import guard around a required dependency; import it directly and let a broken install fail [unsafe fix: Remove the import guard]
---- fixed (3 applied, 1 remaining) ---
+--- fixed (2 applied, 1 remaining) ---
 import builtins
 
 try:
@@ -33,7 +32,10 @@ try:
 except ImportError:
     fcntl = None
 
-from json import loads
+try:
+    from json import loads
+except ImportError:
+    loads = None
 
 try:
     from . import sibling
