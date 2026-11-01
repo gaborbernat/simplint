@@ -6,12 +6,14 @@ use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::project::receivers::module_name;
 use crate::rules::dataclasses::{Offer, require_options};
 
 pub fn dataclass_options(checker: &Checker) {
     require_options(checker, Rule::DataclassOptions, &["frozen", "slots"], |checker, decorated| {
         let class = decorated.class;
         let name = class.name.as_str();
+        let qualified = format!("{}.{name}", module_name(checker.module_path(), checker.path));
         let project = checker.project();
         let fields: HashSet<&str> = class
             .body
@@ -20,13 +22,14 @@ pub fn dataclass_options(checker: &Checker) {
             .collect();
         let mut hazards = Hazards { fields: &fields, frozen: false, slots: false, suspected: false, depth: 0 };
         hazards.visit_body(&class.body);
-        for attribute in project.attributes_written_on(name) {
+        for attribute in project.attributes_written_on(&qualified) {
             hazards.written(attribute);
         }
-        hazards.slots |= project.has_cached_property_subclass(name);
+        hazards.slots |= project.has_cached_property_subclass(&qualified);
         hazards.suspected |= decorated.explicit
             || !class.bases().is_empty()
             || project.is_base_class(name)
+            || project.has_namesake_hazards(&qualified)
             || fields.iter().any(|field| project.is_attribute_written(field));
         let options: Vec<&'static str> = decorated
             .missing

@@ -10,7 +10,7 @@ use ruff_python_parser::parse_module;
 use ruff_python_stdlib::identifiers::is_identifier;
 
 use super::constructors::Constructors;
-use super::receivers::AttributeWrites;
+use super::receivers::{AttributeWrites, module_name};
 use crate::rules::exports::{Exports, dunder_all};
 
 // The names a file uses from other modules, before they resolve to files; parsing finds them and the cache keeps them.
@@ -52,7 +52,8 @@ impl FileFacts {
         } else {
             Vec::new()
         };
-        let attribute_writes = AttributeWrites::collect(&parsed.syntax().body, &imports.aliases);
+        let attribute_writes =
+            AttributeWrites::collect(&parsed.syntax().body, &imports.aliases, &module_name(module_path, path));
         let constructors = Constructors::collect(&source, &parsed.syntax().body, &imports.aliases, module_path);
         Some(Self {
             imports: grouped(imports.edges),

@@ -54,6 +54,9 @@ The fix is safe only when nothing else in the checked files might notice the cha
 - the class has base classes, or any class in the checked files inherits from a class with its name;
 - any checked file assigns or deletes an attribute named like one of the fields on an object of unknown class, directly
   or through `setattr`;
+- another class with the same name, defined in another module, gets attributes written on its instances or has a
+  subclass that uses `cached_property`, as an import simplint cannot follow, such as through a re-export, may name this
+  class;
 - the class body assigns or deletes an attribute on anything other than `self`, or mentions `super`, `__dict__`,
   `__weakref__`, `__setattr__` or `__delattr__`.
 

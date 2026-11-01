@@ -172,6 +172,12 @@ fn unresolved_star_import_keeps_names_of_modules_by_its_name() {
 #[test_case("mock = MagicMock()\n    mock.log = log\n", "[*] ", "@dataclass(frozen=True, slots=True)" ; "mock")]
 #[test_case("result = Result(log=\"\")\n    result.log = log\n", "[*] ", "@dataclass(slots=True)" ; "instance")]
 #[test_case("thing = make()\n    thing.log = log\n", "", "@dataclass(frozen=True, slots=True)" ; "unknown")]
+#[test_case(
+    "pass\n\n\nclass Result:\n    def __init__(self) -> None:\n        self.extra = 1\n",
+    "",
+    "@dataclass(frozen=True, slots=True)"
+    ; "namesake"
+)]
 fn dataclass_options_reads_writes_in_other_files(body: &str, marker: &str, decorator: &str) {
     let root = project(&[
         ("models.py", "from dataclasses import dataclass\n\n\n@dataclass\nclass Result:\n    log: str\n"),

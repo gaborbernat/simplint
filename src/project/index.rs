@@ -56,7 +56,8 @@ pub struct Project {
     digest: u64,
 }
 
-// The attribute writes of the run: by the class of the instance written to when parsing tells, and otherwise by name.
+// The attribute writes of the run: by the qualified class of the instance written to when parsing tells, and otherwise
+// by name.
 #[derive(Default)]
 struct Writes {
     on_class: HashMap<String, HashSet<String>>,
@@ -294,9 +295,22 @@ impl<'a> FileIndex<'a> {
         self.calls
     }
 
-    // The attributes the run sets or deletes on instances it knows are of a class with this name, `self` included.
+    // The attributes the run sets or deletes on instances it knows are of the class with this qualified name, `self`
+    // included.
     pub fn attributes_written_on(&self, class: &str) -> impl Iterator<Item = &str> {
         self.project.writes.on_class.get(class).into_iter().flatten().map(String::as_str)
+    }
+
+    // Whether the run writes attributes on instances of, or subclasses with `cached_property`, another class with the
+    // same name: a name that resolves differently than simplint sees, as through a re-export, may still be this class.
+    pub fn has_namesake_hazards(&self, class: &str) -> bool {
+        let name = class.rsplit('.').next().unwrap_or(class);
+        let writes = &self.project.writes;
+        writes
+            .on_class
+            .keys()
+            .chain(&writes.cached_property_bases)
+            .any(|other| other != class && other.rsplit('.').next() == Some(name))
     }
 
     // Whether the run sets or deletes an attribute with this name on an object of unknown class; mocks do not count.
@@ -304,7 +318,7 @@ impl<'a> FileIndex<'a> {
         self.project.writes.untyped.contains(name)
     }
 
-    // Whether a class of the run that uses `functools.cached_property` names a base class with this name.
+    // Whether a class of the run that uses `functools.cached_property` inherits from the class with this qualified name.
     pub fn has_cached_property_subclass(&self, name: &str) -> bool {
         self.project.writes.cached_property_bases.contains(name)
     }

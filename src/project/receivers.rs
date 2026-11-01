@@ -1,23 +1,25 @@
 use std::collections::HashMap;
+use std::path::Path;
 
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Pattern, Stmt};
 
 // The attributes code sets or deletes on objects, keyed by the class of the object when parsing tells it: the receiver
-// is `self` in a method, or a name bound by a call to a class or annotated with one. A mock accepts any attribute and
+// is `self` in a method, or a name bound by a call to a class or annotated with one. A class goes by its qualified
+// name, such as `pkg.models.Result`, as two modules can each define a class with the same name. A mock accepts any attribute and
 // is never a real instance, so writes to one are left out; writes to anything else are untyped.
 #[derive(Clone, Default, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct AttributeWrites {
     pub(super) typed: Vec<(String, String)>,
     pub(super) untyped: Vec<String>,
-    // The bases of classes that use `functools.cached_property`, which stores into an instance `__dict__`.
+    // The qualified bases of classes that use `functools.cached_property`, which stores into an instance `__dict__`.
     pub(super) cached_property_bases: Vec<String>,
 }
 
 impl AttributeWrites {
-    pub(super) fn collect(body: &[Stmt], aliases: &HashMap<&str, String>) -> Self {
-        let mut collector = Collector { aliases, scopes: Vec::new(), writes: Self::default() };
+    pub(super) fn collect(body: &[Stmt], aliases: &HashMap<&str, String>, module: &str) -> Self {
+        let mut collector = Collector { aliases, module, scopes: Vec::new(), writes: Self::default() };
         let bindings = collector.bindings(body, &[]);
         collector.scopes.push(Scope { kind: ScopeKind::Plain, bindings });
         collector.visit_body(body);
@@ -28,7 +30,10 @@ impl AttributeWrites {
 // What a receiver is known to be.
 #[derive(Clone, PartialEq, Eq)]
 enum Receiver {
+    // An instance of the class named as written here.
     Instance(String),
+    // `self`, an instance of the class around the method, by its qualified name, which no import can shadow.
+    Own(String),
     Mock,
     Unknown,
 }
@@ -49,6 +54,7 @@ enum ScopeKind<'a> {
 
 struct Collector<'a, 'm> {
     aliases: &'m HashMap<&'a str, String>,
+    module: &'m str,
     scopes: Vec<Scope<'a>>,
     writes: AttributeWrites,
 }
@@ -72,9 +78,12 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
             }
             Stmt::ClassDef(class) => {
                 if class_mentions(class, "cached_property") {
-                    self.writes
-                        .cached_property_bases
-                        .extend(class.bases().iter().filter_map(|base| last_segment(base).map(str::to_owned)));
+                    let bases = class.bases().iter().filter_map(|base| {
+                        let written = UnqualifiedName::from_expr(base)?.segments().join(".");
+                        Some(self.qualified(&written))
+                    });
+                    let bases: Vec<String> = bases.collect();
+                    self.writes.cached_property_bases.extend(bases);
                 }
                 for decorator in &class.decorator_list {
                     self.visit_decorator(decorator);
@@ -127,9 +136,19 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
 impl<'a> Collector<'a, '_> {
     fn record(&mut self, receiver: &Expr, attribute: &str) {
         match self.receiver(receiver) {
-            Receiver::Instance(class) => self.writes.typed.push((class, attribute.to_owned())),
+            Receiver::Instance(class) => self.writes.typed.push((self.qualified(&class), attribute.to_owned())),
+            Receiver::Own(class) => self.writes.typed.push((class, attribute.to_owned())),
             Receiver::Mock => {}
             Receiver::Unknown => self.writes.untyped.push(attribute.to_owned()),
+        }
+    }
+
+    // A class name as written here, qualified through the imports that bind its head, or else by this module.
+    fn qualified(&self, written: &str) -> String {
+        let mut segments = written.split('.');
+        match segments.next().and_then(|head| self.aliases.get(head)) {
+            Some(module) => std::iter::once(module.as_str()).chain(segments).collect::<Vec<_>>().join("."),
+            None => format!("{}.{written}", self.module),
         }
     }
 
@@ -139,7 +158,9 @@ impl<'a> Collector<'a, '_> {
             Expr::Name(name) => self.lookup(name.id.as_str()),
             Expr::Attribute(ast::ExprAttribute { value, attr, .. }) => match self.receiver(value) {
                 Receiver::Mock => Receiver::Mock,
-                Receiver::Instance(class) => self.member(&class, attr.as_str()),
+                Receiver::Instance(class) | Receiver::Own(class) => {
+                    self.member(class.rsplit('.').next().unwrap_or_default(), attr.as_str())
+                }
                 Receiver::Unknown => Receiver::Unknown,
             },
             Expr::Call(ast::ExprCall { func, .. }) | Expr::Subscript(ast::ExprSubscript { value: func, .. })
@@ -191,7 +212,9 @@ impl<'a> Collector<'a, '_> {
             .enumerate()
             .map(|(index, parameter)| {
                 let receiver = match (index, class) {
-                    (0, Some(class)) if is_method && !parameter.is_variadic() => Receiver::Instance(class.to_owned()),
+                    (0, Some(class)) if is_method && !parameter.is_variadic() => {
+                        Receiver::Own(format!("{}.{class}", self.module))
+                    }
                     _ => parameter.annotation().map_or(Receiver::Unknown, annotated),
                 };
                 (parameter.name().as_str(), receiver)
@@ -456,4 +479,12 @@ impl<'a> Visitor<'a> for Mentions<'_> {
         };
         visitor::walk_expr(self, expr);
     }
+}
+
+// The dotted name of the module a file defines, or its file name outside a package.
+pub(crate) fn module_name(module_path: Option<&[String]>, path: &Path) -> String {
+    module_path.map_or_else(
+        || path.file_stem().and_then(|stem| stem.to_str()).unwrap_or_default().to_owned(),
+        |module_path| module_path.join("."),
+    )
 }
