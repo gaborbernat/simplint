@@ -81,7 +81,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
       - name: 📦 Update Cargo.toml dependencies
         run: |
-          cargo install cargo-edit --version 0.13.13 --locked
+          cargo install cargo-edit --version 0.13.14 --locked
           cargo upgrade --incompatible --pinned allow
       - name: 🔒 Update Cargo.lock
         run: cargo update
