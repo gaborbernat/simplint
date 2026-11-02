@@ -30,11 +30,12 @@ def main(root: Path, rules: dict[str, str]) -> None:
     for index, line in enumerate(lines):
         if not line.startswith('<a name="'):
             continue
-        # A category anchor leads its heading; a release anchor trails the version heading above it.
+        # A category anchor leads its `###` heading; a release anchor trails the version heading above it, even when the
+        # release lists nothing and the next version's heading follows.
         following = next((position for position in range(index + 1, len(lines)) if lines[position].strip()), None)
         heading = (
             following
-            if following is not None and lines[following].startswith("#")
+            if following is not None and lines[following].startswith("### ")
             else next((position for position in range(index - 1, -1, -1) if lines[position].startswith("#")), None)
         )
         if heading is None or heading in anchors:
