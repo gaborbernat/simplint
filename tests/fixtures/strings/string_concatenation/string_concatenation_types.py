@@ -1,6 +1,6 @@
 from os import pathsep
 from pathlib import Path
-from typing import Final
+from typing import Annotated, Final
 
 from markupsafe import Markup
 from pypdf import PageRange
@@ -71,3 +71,54 @@ class ConcatHolder:
 
 
 concat_lambda = lambda part: "x" + part
+
+
+def concat_forms(
+    label: str,
+    quoted: "str",
+    tagged: Annotated[str, "tag"],
+    numbered: Annotated[int, "n"],
+    maybe: str | None,
+    listed: list[str],
+) -> list[object]:
+    annotated: object = "x"
+    prefixed = "b" + label
+    repeated = "ab"
+    repeated *= 2
+    try:
+        pass
+    except ValueError as caught:
+        pass
+    match label:
+        case "a":
+            pass
+        case str() as matched:
+            pass
+        case [*rest]:
+            pass
+        case {**extra}:
+            pass
+    return [
+        "a" + prefixed,
+        (label or "none") + "x",
+        "a" + listed.pop(),
+        "a" + (lambda: label)(),
+        "a" + concat_undefined,
+        "a" + annotated,
+        "a" + repeated,
+        "a" + caught,
+        "a" + matched,
+        quoted + "!",
+        tagged + "!",
+        numbered + "!",
+        maybe + "!",
+    ]
+
+
+def concat_declared_global() -> str:
+    global concat_counter
+    return "a" + concat_counter
+
+
+def concat_comprehension(label: str, listed: list[str]) -> list[str]:
+    return ["a" + label for label in listed]

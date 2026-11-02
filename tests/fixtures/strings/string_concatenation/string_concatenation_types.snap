@@ -26,10 +26,26 @@ expression: "lint_fixture(rule, fixture, target_version)"
 69:31 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 70:16 SMP112 Build text with an f-string instead of `+`
 73:30 SMP112 Build text with an f-string instead of `+`
---- fixed (10 applied, 14 remaining) ---
+85:16 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+102:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+103:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+104:9 SMP112 Build text with an f-string instead of `+`
+105:9 SMP112 Build text with an f-string instead of `+`
+106:9 SMP112 Build text with an f-string instead of `+`
+107:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+108:9 SMP112 Build text with an f-string instead of `+`
+109:9 SMP112 Build text with an f-string instead of `+`
+110:9 SMP112 Build text with an f-string instead of `+`
+111:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+112:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+113:9 SMP112 Build text with an f-string instead of `+`
+114:9 SMP112 Build text with an f-string instead of `+`
+120:12 SMP112 Build text with an f-string instead of `+`
+124:13 SMP112 Build text with an f-string instead of `+`
+--- fixed (16 applied, 24 remaining) ---
 from os import pathsep
 from pathlib import Path
-from typing import Final
+from typing import Annotated, Final
 
 from markupsafe import Markup
 from pypdf import PageRange
@@ -100,3 +116,54 @@ class ConcatHolder:
 
 
 concat_lambda = lambda part: "x" + part
+
+
+def concat_forms(
+    label: str,
+    quoted: "str",
+    tagged: Annotated[str, "tag"],
+    numbered: Annotated[int, "n"],
+    maybe: str | None,
+    listed: list[str],
+) -> list[object]:
+    annotated: object = "x"
+    prefixed = f"b{label}"
+    repeated = "ab"
+    repeated *= 2
+    try:
+        pass
+    except ValueError as caught:
+        pass
+    match label:
+        case "a":
+            pass
+        case str() as matched:
+            pass
+        case [*rest]:
+            pass
+        case {**extra}:
+            pass
+    return [
+        f"a{prefixed}",
+        f"{label or "none"}x",
+        "a" + listed.pop(),
+        "a" + (lambda: label)(),
+        "a" + concat_undefined,
+        f"a{annotated}",
+        "a" + repeated,
+        "a" + caught,
+        "a" + matched,
+        f"{quoted}!",
+        f"{tagged}!",
+        numbered + "!",
+        maybe + "!",
+    ]
+
+
+def concat_declared_global() -> str:
+    global concat_counter
+    return "a" + concat_counter
+
+
+def concat_comprehension(label: str, listed: list[str]) -> list[str]:
+    return ["a" + label for label in listed]

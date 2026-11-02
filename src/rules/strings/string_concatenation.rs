@@ -100,10 +100,6 @@ impl<'w, 'a> Types<'w, 'a> {
     }
 
     fn name_is_str(&mut self, name: &'a str, depth: usize) -> bool {
-        // A comprehension binds its targets in a scope of its own, which the walker does not track.
-        if self.walker.expressions().iter().any(|expr| comprehension_binds(expr, name)) {
-            return false;
-        }
         let Some((bindings, depth)) = self.lookup(name, depth) else {
             return false;
         };
@@ -170,28 +166,6 @@ fn body_range(scope: Scope) -> TextRange {
         Scope::Lambda(lambda) => return lambda.body.range(),
     };
     TextRange::new(body.first().map_or(end, Ranged::start), end)
-}
-
-fn comprehension_binds(expr: &Expr, name: &str) -> bool {
-    let generators = match expr {
-        Expr::ListComp(ast::ExprListComp { generators, .. })
-        | Expr::SetComp(ast::ExprSetComp { generators, .. })
-        | Expr::Generator(ast::ExprGenerator { generators, .. }) => generators.as_slice(),
-        Expr::DictComp(ast::ExprDictComp { generators, .. }) => generators,
-        _ => return false,
-    };
-    generators.iter().any(|generator| target_binds(&generator.target, name))
-}
-
-fn target_binds(target: &Expr, name: &str) -> bool {
-    match target {
-        Expr::Name(target) => target.id == name,
-        Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => {
-            elts.iter().any(|elt| target_binds(elt, name))
-        }
-        Expr::Starred(ast::ExprStarred { value, .. }) => target_binds(value, name),
-        _ => false,
-    }
 }
 
 // How one scope binds a name: the values plain assignments give it, whether an annotation declares it a `str`, and
