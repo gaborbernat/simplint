@@ -26,6 +26,9 @@ use crate::common::{self, check, read};
 #[test_case(
     "definition-before-use", "definition_before_use_decorated.py", "py310" ; "definition_before_use_decorated_eager"
 )]
+#[test_case(
+    "definition-before-use", "definition_before_use_import_time.py", "py314" ; "definition_before_use_import_time"
+)]
 #[test_case("forwarding-function", "forwarding_function.py", "py314" ; "forwarding_function")]
 #[test_case("single-user-constant", "single_user_constant.py", "py314" ; "single_user_constant")]
 #[test_case("single-user-constant", "single_user_constant_all.py", "py314" ; "single_user_constant_with_all")]

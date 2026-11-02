@@ -8,6 +8,9 @@ helper by name. In a class body, a method refers to another through `self.name`,
 Definitions that must exist while the module or class body runs stay where they are:
 
 - anything referenced at import time: module-level code, decorators, default values and base classes
+- anything read by a function that runs at import time: a lambda in module-level code or a class body, such as
+  `(lambda: options)()` or a callback handed to a call like `build(skip=lambda case: is_slow(case))`, and a function a
+  class body calls, such as `tokens = [state(1)]`; a lambda bound straight to a name counts as a definition instead
 - names bound more than once, such as a [property](https://docs.python.org/3/builtins/functions.html#property) and its
   setter
 - at module level, definitions whose own statement evaluates another module-level name that is not an import, for
