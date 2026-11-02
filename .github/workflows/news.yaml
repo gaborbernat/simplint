@@ -2,9 +2,6 @@ name: 📝 Changelog
 on:
   pull_request:
     types: [opened, reopened, synchronize, labeled, unlabeled]
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -14,15 +11,31 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
+      pull-requests: read
     steps:
+      # `gh pr create --label` labels the PR right after opening it, which fires `labeled` beside `opened`; the run for
+      # `opened` reads the labels as they are when it checks, so the run for that label has nothing to add.
+      - name: 🧭 Skip labels added at opening
+        id: gate
+        if: github.event.action == 'labeled' || github.event.action == 'unlabeled'
+        env:
+          CREATED: ${{ github.event.pull_request.created_at }}
+          UPDATED: ${{ github.event.pull_request.updated_at }}
+        run: |
+          if (($(date -d "$UPDATED" +%s) - $(date -d "$CREATED" +%s) < 60)); then
+            echo 'skip=true' >>"$GITHUB_OUTPUT"
+          fi
       - name: 📥 Check out code
+        if: steps.gate.outputs.skip != 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
       - name: 🧭 List changed paths
+        if: steps.gate.outputs.skip != 'true'
         run: git diff --diff-filter=AM --name-only "origin/$GITHUB_BASE_REF"...HEAD >"$RUNNER_TEMP/changed-paths"
       - name: 🧭 Detect release lock changes
+        if: steps.gate.outputs.skip != 'true'
         id: release-lock
         run: |
           changed=$(git diff --name-only "origin/$GITHUB_BASE_REF...HEAD" -- pyproject.toml pylock.toml nab.toml)
@@ -32,6 +45,7 @@ jobs:
             echo 'changed=false' >>"$GITHUB_OUTPUT"
           fi
       - name: 🧭 Detect changelog changes
+        if: steps.gate.outputs.skip != 'true'
         id: changelog
         run: |
           if [[ -n $(git diff --name-only "origin/$GITHUB_BASE_REF...HEAD" -- changelog.d) ]]; then
@@ -40,6 +54,7 @@ jobs:
             echo 'changed=false' >>"$GITHUB_OUTPUT"
           fi
       - name: 🔍 Validate fragments
+        if: steps.gate.outputs.skip != 'true'
         id: fragments
         run: |
           set -euo pipefail
@@ -67,29 +82,34 @@ jobs:
           done <"$RUNNER_TEMP/changed-paths"
           echo "any=$found_any" >>"$GITHUB_OUTPUT"
       - name: 🔍 Require a fragment
+        if: steps.gate.outputs.skip != 'true'
         env:
-          SKIP_NEWS: ${{ contains(github.event.pull_request.labels.*.name, 'skip news') }}
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
           BOT_AUTHOR: ${{ github.event.pull_request.user.type == 'Bot' }}
           FOUND_ANY: ${{ steps.fragments.outputs.any }}
         run: |
-          if [[ "$SKIP_NEWS" == true || "$BOT_AUTHOR" == true || "$FOUND_ANY" == true ]]; then
+          # The event's labels are those at opening; a label added a moment later must count too.
+          skip_news=$(gh pr view "$PR" --repo "$GITHUB_REPOSITORY" --json labels --jq 'any(.labels[]; .name == "skip news")')
+          if [[ "$skip_news" == true || "$BOT_AUTHOR" == true || "$FOUND_ANY" == true ]]; then
             exit 0
           fi
           echo '::error::add a changelog.d fragment or apply skip news'
           exit 1
       - name: 🐍 Install uv
+        if: steps.gate.outputs.skip != 'true'
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: latest-known
           python-version: '3.15'
           enable-cache: false
       - name: 🔒 Check the release lock
-        if: steps.release-lock.outputs.changed == 'true'
+        if: steps.gate.outputs.skip != 'true' && steps.release-lock.outputs.changed == 'true'
         uses: tox-dev/github-workflows/refresh-release-lock@57a765127aae73adf7d0e24a7fe0f067f2d3ea3e # 6.2.1
         with:
           mode: check
       - name: 🔍 Check assembled news
-        if: steps.changelog.outputs.changed == 'true'
+        if: steps.gate.outputs.skip != 'true' && steps.changelog.outputs.changed == 'true'
         run: |
           set -euo pipefail
           root=$(mktemp -d -p "$RUNNER_TEMP")
