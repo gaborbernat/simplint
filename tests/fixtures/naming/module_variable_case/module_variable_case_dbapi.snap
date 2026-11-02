@@ -1,0 +1,10 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+4:1 SMP102 Module-scope variable `max_rows` should be named `_MAX_ROWS` [unsafe fix: Rename `max_rows` to `_MAX_ROWS`]
+--- fixed (1 applied, 0 remaining) ---
+apilevel = "2.0"
+threadsafety = 1
+paramstyle = "format"
+_MAX_ROWS = 100

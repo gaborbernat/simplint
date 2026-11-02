@@ -19,6 +19,10 @@ pub fn missing_from_all(checker: &Checker) {
         Exports::Listed(names) => names.as_slice(),
         Exports::Dynamic => return,
     };
+    // The package's `import *` of this module would bind its namesake over the attribute holding the module.
+    let shadows_module = |name: &str| {
+        checker.project().is_package_star_imported() && checker.path.file_stem().is_some_and(|stem| stem == name)
+    };
     let mut missing: Vec<(&str, TextRange)> = checker
         .semantic()
         .all_bindings()
@@ -30,6 +34,7 @@ pub fn missing_from_all(checker: &Checker) {
                 && (!bindings.iter().any(|binding| binding.kind == BindingKind::Import)
                     || checker.semantic().references_to(name).is_empty())
                 && checker.project().is_imported(name)
+                && !shadows_module(name)
         })
         .map(|(name, bindings)| (name, bindings[0].range))
         .collect();

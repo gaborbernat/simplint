@@ -17,11 +17,16 @@ use crate::common;
 #[test_case("module-variable-case", "module_variable_case_frameworks.py" ; "module_variable_case_framework_names")]
 #[test_case("module-variable-case", "module_variable_case_lookalikes.py" ; "module_variable_case_framework_lookalikes")]
 #[test_case("module-variable-case", "module_variable_case_version.py" ; "module_variable_case_version_file")]
+#[test_case("module-variable-case", "module_variable_case_ply.py" ; "module_variable_case_ply_grammar")]
+#[test_case("module-variable-case", "module_variable_case_ply_table.py" ; "module_variable_case_ply_table")]
+#[test_case("module-variable-case", "module_variable_case_dbapi.py" ; "module_variable_case_db_api_globals")]
+#[test_case("module-variable-case", "module_variable_case_typer.py" ; "module_variable_case_typer_app")]
 #[test_case("unexported-public-name", "unexported_public_name.py" ; "unexported_public_name")]
 #[test_case("unexported-public-name", "unexported_public_name_extend.py" ; "unexported_public_name_extended_all")]
 #[test_case("unexported-public-name", "unexported_public_name_remove.py" ; "unexported_public_name_dynamic_all")]
 #[test_case("unexported-public-name", "tests/test_module_docstring.py" ; "unexported_public_name_test_module")]
 #[test_case("unexported-public-name", "multiline_module_docstring_ok.py" ; "unexported_public_name_without_all")]
+#[test_case("unexported-public-name", "unexported_public_name_ply.py" ; "unexported_public_name_ply_grammar")]
 fn rule(rule: &str, fixture: &str) {
     common::assert_rule_snapshot(rule, fixture, "py314");
 }

@@ -4,7 +4,7 @@ use ruff_text_size::Ranged;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::exports::Exports;
-use crate::rules::naming::rename_fix;
+use crate::rules::naming::{is_ply_name, rename_fix, uses_ply};
 
 pub fn unexported_public_name(checker: &Checker) {
     if checker.is_test_module() {
@@ -13,6 +13,7 @@ pub fn unexported_public_name(checker: &Checker) {
     let Exports::Listed(exported) = checker.dunder_all() else {
         return;
     };
+    let ply = uses_ply(checker);
     for stmt in checker.body() {
         let identifier = match stmt {
             Stmt::FunctionDef(ast::StmtFunctionDef { name, decorator_list, .. })
@@ -26,6 +27,7 @@ pub fn unexported_public_name(checker: &Checker) {
         let name = identifier.as_str();
         if name.starts_with('_')
             || is_discovered_by_name(name)
+            || ply && is_ply_name(name)
             || exported.contains(&name)
             || checker.project().is_referenced(name)
         {

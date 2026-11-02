@@ -1,0 +1,10 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+4:1 SMP102 Module-scope variable `cli` should be named `_CLI` [unsafe fix: Rename `cli` to `_CLI`]
+--- fixed (1 applied, 0 remaining) ---
+import typer
+
+app = typer.Typer()
+_CLI = typer.Typer()

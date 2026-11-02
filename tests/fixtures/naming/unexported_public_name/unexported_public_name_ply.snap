@@ -1,0 +1,25 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+14:5 SMP103 `evaluate` is not in `__all__`; name it `_evaluate` [unsafe fix: Rename `evaluate` to `_evaluate`]
+--- fixed (1 applied, 0 remaining) ---
+import ply.yacc as yacc
+
+__all__ = ["build"]
+
+
+def p_expression(production):
+    production[0] = production[1]
+
+
+def p_error(production):
+    raise SyntaxError(production)
+
+
+def _evaluate(text):
+    return text
+
+
+def build():
+    return yacc.yacc()

@@ -29,11 +29,18 @@ Names bound with `:=` are checked. The rule skips:
   three settings, one of them `bind`, `workers` or `worker_class`
 - `version`, `version_tuple` and `commit_id` in a module that also binds `__version__`, the names of the version file
   [setuptools-scm](https://setuptools-scm.readthedocs.io/en/latest/usage/#version-files) writes
-- `app` and `application` assigned at the top level of the module from a call that builds a WSGI or ASGI application,
-  which servers load by name: `aiohttp.web.Application`, `bottle.Bottle`, Django's `get_wsgi_application` and
-  `get_asgi_application`, `falcon.App`, `falcon.API` and `falcon.asgi.App`, `fastapi.FastAPI`, `flask.Flask`,
-  `litestar.Litestar`, `quart.Quart`, `sanic.Sanic`, `starlette.applications.Starlette`, and Pyramid's
-  `make_wsgi_app()`; the call is resolved through the module's imports
+- `apilevel`, `threadsafety` and `paramstyle` in a module that binds all three, the
+  [PEP 249](https://peps.python.org/pep-0249/#globals) globals of a database driver
+- in a module that imports [PLY](https://github.com/dabeaz/ply)'s `lex` or `yacc`, including a vendored copy such as
+  `pkg._ply.yacc`: `tokens`, `literals`, `precedence`, `states`, `start` and the `t_` and `p_` rules, which PLY reads
+  off the module by name
+- every name in a PLY table module, one that binds `_tabversion`, since PLY reads its tables back by name
+- `app` and `application` assigned at the top level of the module from a call that builds a WSGI, ASGI or
+  [Typer](https://typer.tiangolo.com/tutorial/typer-command/) application, which servers and the `typer` command load by
+  name: `aiohttp.web.Application`, `bottle.Bottle`, Django's `get_wsgi_application` and `get_asgi_application`,
+  `falcon.App`, `falcon.API` and `falcon.asgi.App`, `fastapi.FastAPI`, `flask.Flask`, `litestar.Litestar`,
+  `quart.Quart`, `sanic.Sanic`, `starlette.applications.Starlette`, `typer.Typer`, and Pyramid's `make_wsgi_app()`; the
+  call is resolved through the module's imports
 - the names listed in `naming.keep-names`, under Options below, for any other framework that reads a module variable by
   name
 
@@ -96,6 +103,9 @@ keep the old name, and so do string references in unchecked files, such as
 No fix is offered when:
 
 - another module in the run imports the name or reaches it by a dotted string, such as a `mocker.patch` target
+- a file of the run reads an attribute by that name off a module it loads by a computed name: the result of
+  `importlib.import_module`, `__import__` or `sys.modules[...]`, a parameter annotated `ModuleType`, or a pytest fixture
+  that returns such a module
 - the new name is already used as a name in the file
 - the name shadows a builtin, as in `zip = zip`, where the value reads the builtin under the same name
 - the old name appears in the text of a string, as written or through an escape such as `\N{LATIN SMALL LETTER X}`,

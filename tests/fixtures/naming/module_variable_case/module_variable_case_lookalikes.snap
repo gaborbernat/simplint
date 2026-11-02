@@ -9,7 +9,11 @@ expression: "lint_fixture(rule, fixture, target_version)"
 7:1 SMP102 Module-scope variable `user` should be named `_USER` [unsafe fix: Rename `user` to `_USER`]
 8:1 SMP102 Module-scope variable `app` should be named `_APP` [unsafe fix: Rename `app` to `_APP`]
 9:1 SMP102 Module-scope variable `application` should be named `_APPLICATION` [unsafe fix: Rename `application` to `_APPLICATION`]
---- fixed (7 applied, 0 remaining) ---
+10:1 SMP102 Module-scope variable `apilevel` should be named `_APILEVEL` [unsafe fix: Rename `apilevel` to `_APILEVEL`]
+11:1 SMP102 Module-scope variable `paramstyle` should be named `_PARAMSTYLE` [unsafe fix: Rename `paramstyle` to `_PARAMSTYLE`]
+12:1 SMP102 Module-scope variable `tokens` should be named `_TOKENS` [unsafe fix: Rename `tokens` to `_TOKENS`]
+13:1 SMP102 Module-scope variable `t_PLUS` should be named `_T_PLUS` [unsafe fix: Rename `t_PLUS` to `_T_PLUS`]
+--- fixed (11 applied, 0 remaining) ---
 from app_factory import create_app
 
 _REVISION = 3
@@ -19,3 +23,7 @@ _THREADS = 2
 _USER = "nobody"
 _APP = create_app()
 _APPLICATION = None
+_APILEVEL = "2.0"
+_PARAMSTYLE = "qmark"
+_TOKENS = ("NUMBER",)
+_T_PLUS = r"\+"

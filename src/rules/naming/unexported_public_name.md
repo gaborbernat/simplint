@@ -20,6 +20,8 @@ These names are skipped:
   [`load_tests`](https://docs.python.org/3/library/unittest.html#load-tests-protocol), and
   [`setup_module` and `teardown_module`](https://docs.pytest.org/en/stable/how-to/xunit_setup.html#module-level-setup-teardown)
 - `setup`, the entry point Sphinx calls in an [extension](https://www.sphinx-doc.org/en/master/extdev/index.html)
+- the `t_` lexer rules and `p_` grammar productions of a module that imports [PLY](https://github.com/dabeaz/ply)'s
+  `lex` or `yacc`, which PLY finds by name
 
 [SMP102](SMP102.html) applies the same convention to module variables.
 
@@ -65,6 +67,8 @@ name. If the name is meant to be public, add it to `__all__` instead.
 No fix is offered when:
 
 - the new name is already used as a name in the file
+- a file of the run reads an attribute by that name off a module it loads by a computed name, such as the result of
+  `importlib.import_module` or a parameter annotated `ModuleType`
 - the old name appears in a string, other than an entry of an `__all__` list assigned with `=` or `+=`
 - the old name also names something a text rename cannot tell apart: a parameter, a local variable, a class attribute, a
   keyword argument or an attribute access

@@ -168,10 +168,11 @@ fn show_settings(files: &[PathBuf], resolved: &Resolved, writer: &mut dyn Write)
 
 // The files simplint checks, from Ruff's resolver, so the walk, `.gitignore`, the default and configured excludes and
 // the per-file target version match `ruff check`. Stubs are not linted, but the names they declare are the API of
-// their module.
+// their module. Files Ruff's `lint.exclude` leaves out are not linted either, yet the run still indexes them: a package
+// `__init__.py` excluded there still imports and re-exports the names of the modules it covers.
 struct Discovered<'a> {
     python: Vec<PathBuf>,
-    stubs: Vec<PathBuf>,
+    unlinted: Vec<PathBuf>,
     resolver: Resolver<'a>,
 }
 
@@ -179,7 +180,7 @@ fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Result<Discov
     let (found, resolver) =
         project_files_in_path(files, &configuration.pyproject_config, &configuration.config_arguments)?;
     let mut python = Vec::new();
-    let mut stubs = Vec::new();
+    let mut unlinted = Vec::new();
     for file in found {
         let file = match file {
             Ok(file) => file,
@@ -191,7 +192,7 @@ fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Result<Discov
         let path = file.path();
         let extension = path.extension().and_then(|extension| extension.to_str());
         if extension == Some("pyi") {
-            stubs.push(path.to_path_buf());
+            unlinted.push(path.to_path_buf());
             continue;
         }
         // A file named on the command line is Python whatever its extension, as Ruff treats it, unless it is a
@@ -204,12 +205,13 @@ fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Result<Discov
         if (settings.file_resolver.force_exclude || !file.is_root())
             && match_exclusion(path, file.file_name(), &settings.linter.exclude)
         {
+            unlinted.push(path.to_path_buf());
             continue;
         }
         python.push(path.to_path_buf());
     }
     python.sort();
-    Ok(Discovered { python, stubs, resolver })
+    Ok(Discovered { python, unlinted, resolver })
 }
 
 fn show_files(files: &[PathBuf], resolved: &Resolved, writer: &mut dyn Write) -> Result<()> {
@@ -275,7 +277,7 @@ fn for_each_file<T: Send>(
     // reports stand.
     const ROUNDS: usize = 8;
     let start = Instant::now();
-    let Discovered { python, stubs, resolver } = discover(files, resolved)?;
+    let Discovered { python, unlinted, resolver } = discover(files, resolved)?;
     debug!("Identified files to lint in: {:?}", start.elapsed());
     if python.is_empty() {
         warn_user_once!("No Python files found under the given path(s)");
@@ -286,7 +288,7 @@ fn for_each_file<T: Send>(
         .map(|path| Ok((path.clone(), resolved.settings_resolver.for_file(&path)?)))
         .collect::<Result<_>>()?;
     let paths: Vec<&Path> =
-        settings.iter().map(|(path, _)| path.as_path()).chain(stubs.iter().map(PathBuf::as_path)).collect();
+        settings.iter().map(|(path, _)| path.as_path()).chain(unlinted.iter().map(PathBuf::as_path)).collect();
     let entry_points: Vec<String> = settings
         .iter()
         .map(|(_, settings)| settings)
@@ -299,6 +301,11 @@ fn for_each_file<T: Send>(
     let roots = SearchRoots::new(&resolved.pyproject_config.settings, packages.values().flatten().copied());
     let package = |path: &Path| path.parent().and_then(|parent| packages.get(parent)).copied().flatten();
     let module_path = |path: &Path| package(path).and_then(|package| to_module_path(package.path(), path));
+    // Ruff sees no package around a file of a namespace package, yet Python resolves its relative imports.
+    let module_paths = |path: &Path| match module_path(path) {
+        Some(module_path) => (Some(module_path), None),
+        None => (None, roots.module_path(path)),
+    };
     let scopes = settings
         .iter()
         .map(|(path, project)| {
@@ -324,10 +331,8 @@ fn for_each_file<T: Send>(
     // A file a fix rewrote has a new key.
     let recache = |path: &Path| Some((file_caches.get(path)?.0, FileKey::of(path)?));
     let start = Instant::now();
-    let mut facts: FxHashMap<&Path, Cow<FileFacts>> = paths
-        .par_iter()
-        .filter_map(|&path| Some((path, file_facts(path, module_path(path).as_deref(), cache(path))?)))
-        .collect();
+    let mut facts: FxHashMap<&Path, Cow<FileFacts>> =
+        paths.par_iter().filter_map(|&path| Some((path, file_facts(path, module_paths(path), cache(path))?))).collect();
     let rewrites_calls: HashSet<&Path> = settings
         .iter()
         .filter(|(path, settings)| FileSettings::new(settings, resolver.resolve(path), path).rewrites_dataclass_calls())
@@ -348,7 +353,7 @@ fn for_each_file<T: Send>(
                 break;
             }
             let changed: Vec<&Path> = rewritten.iter().map(|&at| settings[at].0.as_path()).collect();
-            let collect = |path: &Path| file_facts(path, module_path(path).as_deref(), recache(path));
+            let collect = |path: &Path| file_facts(path, module_paths(path), recache(path));
             let (next, dependents) =
                 reindex(&mut facts, &changed, collect, &settings, &project, (&entry_points, &roots, &rewrites_calls))?;
             project = next;
@@ -375,13 +380,13 @@ fn for_each_file<T: Send>(
 // there.
 fn file_facts<'c>(
     path: &Path,
-    module_path: Option<&[String]>,
+    (module_path, importable): (Option<Vec<String>>, Option<Vec<String>>),
     cache: Option<(&'c Cache, FileKey)>,
 ) -> Option<Cow<'c, FileFacts>> {
     if let Some(facts) = cache.and_then(|(cache, key)| cache.facts(path, key)) {
         return Some(Cow::Borrowed(facts));
     }
-    let facts = FileFacts::collect(path, module_path)?;
+    let facts = FileFacts::collect(path, module_path.as_deref(), importable.as_deref())?;
     if let Some((cache, key)) = cache {
         cache.set_facts(path, key, facts.clone());
     }

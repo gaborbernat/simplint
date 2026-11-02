@@ -37,6 +37,19 @@ impl SearchRoots {
         }
         Self { roots, python_version: settings.linter.unresolved_target_version.linter_version() }
     }
+
+    // The module a file imports as from the innermost search root above it, which is how Python names a module of a
+    // namespace package, one without an `__init__.py` that Ruff does not count as a package.
+    pub fn module_path(&self, path: &Path) -> Option<Vec<String>> {
+        let path = normalized(path);
+        let root =
+            self.roots.iter().filter(|root| path.starts_with(root)).max_by_key(|root| root.components().count())?;
+        path.strip_prefix(root)
+            .ok()?
+            .iter()
+            .map(|part| Path::new(part).file_stem()?.to_str().map(str::to_owned))
+            .collect()
+    }
 }
 
 // Which names of each file other files use, keyed by the file a name resolves to. Module names resolve with ty's module
@@ -49,7 +62,10 @@ pub struct Project {
     referenced: HashMap<PathBuf, HashSet<String>>,
     // Modules without a static `__all__` that an `import *` may read, so each of their public names may be in use.
     star_imported: HashSet<PathBuf>,
+    // Modules their own package's `__init__.py` star-imports, where the package binds the submodule under its own name.
+    package_star_imported: HashSet<PathBuf>,
     assigned_attributes: HashSet<String>,
+    module_reads: HashSet<String>,
     base_classes: HashSet<String>,
     writes: Writes,
     calls: DataclassCalls,
@@ -96,7 +112,7 @@ impl Project {
         let mut imported: HashMap<PathBuf, HashSet<String>> = HashMap::new();
         let mut referenced: HashMap<PathBuf, HashSet<String>> = HashMap::new();
         let mut stars: Vec<(PathBuf, PathBuf)> = Vec::new();
-        let mut unresolved_stars: HashSet<&str> = HashSet::new();
+        let (mut unresolved_stars, mut unreached): (HashSet<&str>, Vec<Unreached>) = (HashSet::new(), Vec::new());
         let mut constructor_uses = Vec::new();
         for module in modules {
             constructor_uses.push((module.path.clone(), module.rewrites_calls, module.constructors));
@@ -108,14 +124,21 @@ impl Project {
             }
             stars.extend(module.stars.into_iter().map(|source| (module.path.clone(), source)));
             unresolved_stars.extend(module.unresolved_stars);
+            unreached.extend(module.unreached);
         }
         let exports: HashMap<PathBuf, Option<&[String]>> = files
             .iter()
             .filter(|(path, _)| path.extension().is_none_or(|extension| extension != "pyi"))
             .map(|(path, facts)| (normalized(path), facts.exports.as_deref()))
             .collect();
+        reach_by_last_name(&mut referenced, &unreached, exports.keys());
         reexport(&mut imported, &stars, &exports);
         reexport(&mut referenced, &stars, &exports);
+        let package_star_imported = stars
+            .iter()
+            .filter(|(importer, source)| source.parent().is_some_and(|parent| *importer == parent.join("__init__.py")))
+            .map(|(_, source)| source.clone())
+            .collect();
         let star_imported = stars
             .iter()
             .map(|(_, source)| source.clone())
@@ -124,19 +147,11 @@ impl Project {
             .collect();
         let assigned_attributes: HashSet<String> =
             files.iter().flat_map(|(_, facts)| facts.assigned_attributes.iter().cloned()).collect();
+        let module_reads: HashSet<String> =
+            files.iter().flat_map(|(_, facts)| facts.module_reads.iter().cloned()).collect();
         let base_classes: HashSet<String> =
             files.iter().flat_map(|(_, facts)| facts.base_classes.iter().cloned()).collect();
-        let mut writes = Writes::default();
-        for (_, facts) in files {
-            let facts = &facts.attribute_writes;
-            for (class, attribute) in &facts.typed {
-                writes.on_class.entry(class.clone()).or_default().insert(attribute.clone());
-            }
-            writes.untyped.extend(facts.untyped.iter().cloned());
-            writes.unslottable_bases.extend(facts.unslottable_bases.iter().cloned());
-            writes.stateful_bases.extend(facts.stateful_bases.iter().cloned());
-            writes.pickles_low_protocol |= facts.pickles_low_protocol;
-        }
+        let writes = Writes::collect(files);
         let environment = ResolverEnvironment::new(&db, python_version, paths);
         for (module, attribute) in entry_points.iter().filter_map(|entry_point| entry_point.split_once(':')) {
             if let Some(file) = resolve(&db, environment, None, module.trim()) {
@@ -152,6 +167,8 @@ impl Project {
         let mut hasher = CacheKeyHasher::new();
         reads_docstrings.cache_key(&mut hasher);
         assigned_attributes.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
+        0u8.cache_key(&mut hasher);
+        module_reads.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
         base_classes.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
         for (class, attributes) in writes.on_class.iter().sorted_by(|left, right| left.0.cmp(right.0)) {
             class.cache_key(&mut hasher);
@@ -166,7 +183,9 @@ impl Project {
             imported,
             referenced,
             star_imported,
+            package_star_imported,
             assigned_attributes,
+            module_reads,
             base_classes,
             writes,
             calls,
@@ -175,10 +194,10 @@ impl Project {
         })
     }
 
-    // The attribute and base class names one index has and the other lacks, whose answers differ between the two, and
-    // the names of the classes whose attribute writes, or subclasses that a slotted base breaks, differ, which a
-    // dataclass of that name, or a namesake of it, reads. Low protocol pickling concerns every dataclass, so its change
-    // names `dataclass`.
+    // The attribute, module read and base class names one index has and the other lacks, whose answers differ between
+    // the two, and the names of the classes whose attribute writes, or subclasses that a slotted base breaks, differ,
+    // which a dataclass of that name, or a namesake of it, reads. Low protocol pickling concerns every dataclass, so its
+    // change names `dataclass`.
     pub fn changed_names<'p>(&'p self, other: &'p Self) -> HashSet<&'p str> {
         let (writes, others) = (&self.writes, &other.writes);
         let classes = writes
@@ -193,6 +212,7 @@ impl Project {
         let pickling = (writes.pickles_low_protocol != others.pickles_low_protocol).then_some("dataclass");
         self.assigned_attributes
             .symmetric_difference(&other.assigned_attributes)
+            .chain(self.module_reads.symmetric_difference(&other.module_reads))
             .chain(self.base_classes.symmetric_difference(&other.base_classes))
             .chain(writes.untyped.symmetric_difference(&others.untyped))
             .map(String::as_str)
@@ -209,8 +229,26 @@ impl Project {
             imported: self.imported.get(&path),
             referenced: self.referenced.get(&path),
             star_imported: self.star_imported.contains(&path),
+            package_star_imported: self.package_star_imported.contains(&path),
             calls: self.calls.file(&path),
         }
+    }
+}
+
+impl Writes {
+    fn collect(files: &[(&Path, &FileFacts)]) -> Self {
+        let mut writes = Self::default();
+        for (_, facts) in files {
+            let facts = &facts.attribute_writes;
+            for (class, attribute) in &facts.typed {
+                writes.on_class.entry(class.clone()).or_default().insert(attribute.clone());
+            }
+            writes.untyped.extend(facts.untyped.iter().cloned());
+            writes.unslottable_bases.extend(facts.unslottable_bases.iter().cloned());
+            writes.stateful_bases.extend(facts.stateful_bases.iter().cloned());
+            writes.pickles_low_protocol |= facts.pickles_low_protocol;
+        }
+        writes
     }
 }
 
@@ -247,18 +285,37 @@ fn reexport(
 // file of the run Python could import under that module's last name: `name.py` or `name/__init__.py`. A module no file
 // of the run is named after is outside the run, so it reads none of them.
 fn unresolved_candidates<'p>(files: impl Iterator<Item = &'p PathBuf>, unresolved: &HashSet<&str>) -> Vec<PathBuf> {
-    files
-        .filter(|file| {
-            let stem = file.file_stem().and_then(|stem| stem.to_str());
-            let name = if stem == Some("__init__") {
-                file.parent().and_then(Path::file_name).and_then(|name| name.to_str())
-            } else {
-                stem
-            };
-            name.is_some_and(|name| unresolved.contains(name))
-        })
-        .cloned()
-        .collect()
+    files.filter(|file| last_name(file).is_some_and(|name| unresolved.contains(name))).cloned().collect()
+}
+
+// A dotted path through a package that names no module, as `nx.reportviews.Name` where `networkx` re-exports its
+// `networkx.classes.reportviews` submodule, may reach any module of that package with the path's last name. Those
+// names count as referenced rather than imported: they are kept, yet not made part of the module's API.
+fn reach_by_last_name<'p>(
+    referenced: &mut HashMap<PathBuf, HashSet<String>>,
+    unreached: &[Unreached],
+    files: impl Iterator<Item = &'p PathBuf>,
+) {
+    if unreached.is_empty() {
+        return;
+    }
+    let mut by_name: HashMap<&str, Vec<&PathBuf>> = HashMap::new();
+    for file in files {
+        if let Some(name) = last_name(file) {
+            by_name.entry(name).or_default().push(file);
+        }
+    }
+    for (package, name, names) in unreached {
+        for file in by_name.get(name).into_iter().flatten().filter(|file| file.starts_with(package)) {
+            referenced.entry((*file).clone()).or_default().extend(names.iter().cloned());
+        }
+    }
+}
+
+// The last name of the module a file defines: `name` for `name.py` and `name/__init__.py`.
+fn last_name(file: &Path) -> Option<&str> {
+    let stem = file.file_stem().and_then(|stem| stem.to_str());
+    if stem == Some("__init__") { file.parent().and_then(Path::file_name).and_then(|name| name.to_str()) } else { stem }
 }
 
 // What the index knows about one file: the names other files use from it, and the attribute and base class names of
@@ -269,6 +326,7 @@ pub struct FileIndex<'a> {
     imported: Option<&'a HashSet<String>>,
     referenced: Option<&'a HashSet<String>>,
     star_imported: bool,
+    package_star_imported: bool,
     calls: FileCalls<'a>,
 }
 
@@ -277,8 +335,21 @@ pub struct FileIndex<'a> {
 // `Project::changed_names`.
 impl PartialEq for FileIndex<'_> {
     fn eq(&self, other: &Self) -> bool {
-        (self.imported, self.referenced, self.star_imported, self.calls, self.project.reads_docstrings)
-            == (other.imported, other.referenced, other.star_imported, other.calls, other.project.reads_docstrings)
+        (
+            self.imported,
+            self.referenced,
+            self.star_imported,
+            self.package_star_imported,
+            self.calls,
+            self.project.reads_docstrings,
+        ) == (
+            other.imported,
+            other.referenced,
+            other.star_imported,
+            other.package_star_imported,
+            other.calls,
+            other.project.reads_docstrings,
+        )
     }
 }
 
@@ -291,6 +362,7 @@ impl CacheKey for FileIndex<'_> {
             0u8.cache_key(state);
         }
         self.star_imported.cache_key(state);
+        self.package_star_imported.cache_key(state);
         self.calls.cache_key(state);
     }
 }
@@ -300,16 +372,24 @@ impl<'a> FileIndex<'a> {
         self.imported.is_some_and(|names| names.contains(name))
     }
 
-    // A public name of a module some `import *` reads may be used under that import, though no file names it.
+    // A public name of a module some `import *` reads may be used under that import, though no file names it, and any
+    // name may be read off a module loaded by a computed name.
     pub fn is_referenced(&self, name: &str) -> bool {
         self.is_imported(name)
             || self.referenced.is_some_and(|names| names.contains(name))
             || (self.star_imported && !name.starts_with('_'))
+            || self.project.module_reads.contains(name)
     }
 
     // Whether an `import *` takes every public name of the module, which adding an `__all__` would narrow.
     pub fn is_star_imported(&self) -> bool {
         self.star_imported
+    }
+
+    // Whether the `__init__.py` of the module's package star-imports it, so a name the module exports lands in the
+    // package next to its submodules.
+    pub fn is_package_star_imported(&self) -> bool {
+        self.package_star_imported
     }
 
     pub fn is_attribute_assigned(&self, name: &str) -> bool {
@@ -375,6 +455,10 @@ fn normalized(path: &Path) -> PathBuf {
     std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
+// A dotted path that resolves to no module, by the directory of the package of the run it starts from and its last
+// name, with the names it uses.
+type Unreached<'f> = (PathBuf, &'f str, &'f [String]);
+
 // The files a file's names resolve to, with the names it uses from each, and the files it star-imports, or the last
 // name of each star-imported module that resolves to no file.
 struct ModuleFacts<'f> {
@@ -385,6 +469,7 @@ struct ModuleFacts<'f> {
     references: Vec<(PathBuf, &'f [String])>,
     stars: Vec<PathBuf>,
     unresolved_stars: Vec<&'f str>,
+    unreached: Vec<Unreached<'f>>,
 }
 
 impl<'f> ModuleFacts<'f> {
@@ -407,6 +492,18 @@ impl<'f> ModuleFacts<'f> {
         };
         let mut imports = resolve_all(&facts.imports);
         let references = resolve_all(&facts.references);
+        let unreached = facts
+            .imports
+            .iter()
+            .chain(&facts.references)
+            .filter_map(|(module, names)| {
+                let (top, rest) = module.split_once('.')?;
+                let package = resolve(db, environment, importing, top)?;
+                let directory = package.parent().filter(|_| package.ends_with("__init__.py"))?.to_path_buf();
+                let last = rest.rsplit('.').next()?;
+                resolve(db, environment, importing, module).is_none().then_some((directory, last, names.as_slice()))
+            })
+            .collect();
         if !facts.declared.is_empty() {
             imports.push((own.with_extension("py"), &facts.declared));
         }
@@ -425,7 +522,7 @@ impl<'f> ModuleFacts<'f> {
             .filter_map(|(module, uses)| Some((resolve(db, environment, importing, module)?, uses.as_slice())))
             .filter(|(file, _)| *file != own)
             .collect();
-        Self { path: own, rewrites_calls, constructors, imports, references, stars, unresolved_stars }
+        Self { path: own, rewrites_calls, constructors, imports, references, stars, unresolved_stars, unreached }
     }
 }
 

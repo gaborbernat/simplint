@@ -7,7 +7,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::exports::Exports;
 use crate::rules::is_class_like;
-use crate::rules::naming::rename_fix;
+use crate::rules::naming::{is_ply_name, rename_fix, uses_ply};
 use crate::semantic::BindingKind;
 
 pub fn module_variable_case(checker: &Checker) {
@@ -87,7 +87,19 @@ fn framework_names<'a>(checker: &Checker<'a>) -> FxHashSet<&'a str> {
     if bound("__version__") {
         names.extend(["version", "version_tuple", "commit_id"].into_iter().filter(|name| bound(name)));
     }
-    // WSGI and ASGI servers load the application by its module path and the name `app` or `application`.
+    // PEP 249 has a database driver publish its API level, thread safety and parameter style as module globals.
+    if DB_API_GLOBALS.iter().all(|name| bound(name)) {
+        names.extend(DB_API_GLOBALS);
+    }
+    // PLY writes its parser and lexer tables as modules, and reads every table back by name next to `_tabversion`.
+    if bound("_tabversion") {
+        names.extend(semantic.all_bindings().map(|(name, _)| name));
+    }
+    if uses_ply(checker) {
+        names.extend(semantic.all_bindings().map(|(name, _)| name).filter(|name| is_ply_name(name)));
+    }
+    // WSGI and ASGI servers, and the `typer` command, load the application by its module path and the name `app` or
+    // `application`.
     for stmt in checker.body() {
         let (target, value) = match stmt {
             Stmt::Assign(ast::StmtAssign { targets, value, .. }) => (targets.as_slice(), Some(value)),
@@ -107,6 +119,8 @@ fn framework_names<'a>(checker: &Checker<'a>) -> FxHashSet<&'a str> {
     }
     names
 }
+
+const DB_API_GLOBALS: [&str; 3] = ["apilevel", "threadsafety", "paramstyle"];
 
 // The setting names of gunicorn's configuration file, from its `gunicorn/config.py`.
 const GUNICORN_SETTINGS: &[&str] = &[
@@ -231,7 +245,7 @@ const GUNICORN_SETTINGS: &[&str] = &[
     "wsgi_app",
 ];
 
-// The calls that build a WSGI or ASGI application; Pyramid's comes from `Configurator.make_wsgi_app()` instead.
+// The calls that build a WSGI, ASGI or Typer application; Pyramid's comes from `Configurator.make_wsgi_app()` instead.
 const APPLICATIONS: &[&[&str]] = &[
     &["aiohttp", "web", "Application"],
     &["bottle", "Bottle"],
@@ -246,4 +260,6 @@ const APPLICATIONS: &[&[&str]] = &[
     &["quart", "Quart"],
     &["sanic", "Sanic"],
     &["starlette", "applications", "Starlette"],
+    &["typer", "Typer"],
+    &["typer", "main", "Typer"],
 ];
