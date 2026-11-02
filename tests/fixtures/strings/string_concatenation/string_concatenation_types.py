@@ -122,3 +122,7 @@ def concat_declared_global() -> str:
 
 def concat_comprehension(label: str, listed: list[str]) -> list[str]:
     return ["a" + label for label in listed]
+
+
+def concat_nested_sum(label: str) -> str:
+    return "a" + ("b" + label)

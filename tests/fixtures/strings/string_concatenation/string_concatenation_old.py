@@ -8,3 +8,7 @@ def quoted(names: dict[str, str]) -> str:
 
 def nested(prefix: str, width: int) -> str:
     return f"{prefix}{'a' + ('b' * width)}"
+
+
+def nested_sum(label: str) -> str:
+    return "a" + ("b" + label)

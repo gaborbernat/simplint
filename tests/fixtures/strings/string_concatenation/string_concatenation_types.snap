@@ -42,7 +42,9 @@ expression: "lint_fixture(rule, fixture, target_version)"
 114:9 SMP112 Build text with an f-string instead of `+`
 120:12 SMP112 Build text with an f-string instead of `+`
 124:13 SMP112 Build text with an f-string instead of `+`
---- fixed (16 applied, 24 remaining) ---
+128:12 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+128:19 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+--- fixed (18 applied, 24 remaining) ---
 from os import pathsep
 from pathlib import Path
 from typing import Annotated, Final
@@ -167,3 +169,7 @@ def concat_declared_global() -> str:
 
 def concat_comprehension(label: str, listed: list[str]) -> list[str]:
     return ["a" + label for label in listed]
+
+
+def concat_nested_sum(label: str) -> str:
+    return f"a{f"b{label}"}"
