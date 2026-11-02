@@ -168,10 +168,11 @@ fn show_settings(files: &[PathBuf], resolved: &Resolved, writer: &mut dyn Write)
 
 // The files simplint checks, from Ruff's resolver, so the walk, `.gitignore`, the default and configured excludes and
 // the per-file target version match `ruff check`. Stubs are not linted, but the names they declare are the API of
-// their module.
+// their module. Files Ruff's `lint.exclude` leaves out are not linted either, yet the run still indexes them: a package
+// `__init__.py` excluded there still imports and re-exports the names of the modules it covers.
 struct Discovered<'a> {
     python: Vec<PathBuf>,
-    stubs: Vec<PathBuf>,
+    unlinted: Vec<PathBuf>,
     resolver: Resolver<'a>,
 }
 
@@ -179,7 +180,7 @@ fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Result<Discov
     let (found, resolver) =
         project_files_in_path(files, &configuration.pyproject_config, &configuration.config_arguments)?;
     let mut python = Vec::new();
-    let mut stubs = Vec::new();
+    let mut unlinted = Vec::new();
     for file in found {
         let file = match file {
             Ok(file) => file,
@@ -191,7 +192,7 @@ fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Result<Discov
         let path = file.path();
         let extension = path.extension().and_then(|extension| extension.to_str());
         if extension == Some("pyi") {
-            stubs.push(path.to_path_buf());
+            unlinted.push(path.to_path_buf());
             continue;
         }
         // A file named on the command line is Python whatever its extension, as Ruff treats it, unless it is a
@@ -204,12 +205,13 @@ fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Result<Discov
         if (settings.file_resolver.force_exclude || !file.is_root())
             && match_exclusion(path, file.file_name(), &settings.linter.exclude)
         {
+            unlinted.push(path.to_path_buf());
             continue;
         }
         python.push(path.to_path_buf());
     }
     python.sort();
-    Ok(Discovered { python, stubs, resolver })
+    Ok(Discovered { python, unlinted, resolver })
 }
 
 fn show_files(files: &[PathBuf], resolved: &Resolved, writer: &mut dyn Write) -> Result<()> {
@@ -275,7 +277,7 @@ fn for_each_file<T: Send>(
     // reports stand.
     const ROUNDS: usize = 8;
     let start = Instant::now();
-    let Discovered { python, stubs, resolver } = discover(files, resolved)?;
+    let Discovered { python, unlinted, resolver } = discover(files, resolved)?;
     debug!("Identified files to lint in: {:?}", start.elapsed());
     if python.is_empty() {
         warn_user_once!("No Python files found under the given path(s)");
@@ -286,7 +288,7 @@ fn for_each_file<T: Send>(
         .map(|path| Ok((path.clone(), resolved.settings_resolver.for_file(&path)?)))
         .collect::<Result<_>>()?;
     let paths: Vec<&Path> =
-        settings.iter().map(|(path, _)| path.as_path()).chain(stubs.iter().map(PathBuf::as_path)).collect();
+        settings.iter().map(|(path, _)| path.as_path()).chain(unlinted.iter().map(PathBuf::as_path)).collect();
     let entry_points: Vec<String> = settings
         .iter()
         .map(|(_, settings)| settings)

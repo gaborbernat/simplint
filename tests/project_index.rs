@@ -397,3 +397,45 @@ fn name_of_a_module_its_package_star_imports_stays_unlisted() {
         )
     );
 }
+
+// A package `__init__.py` that Ruff's `lint.exclude` leaves unlinted still star-imports the module.
+#[test]
+fn package_init_excluded_from_linting_still_star_imports() {
+    let root = project(&[
+        ("pyproject.toml", "[tool.ruff.lint]\nexclude = [\"pkg/__init__.py\"]\n"),
+        ("pkg/__init__.py", "from pkg.backends import *\n"),
+        ("pkg/backends.py", "__all__ = [\"dispatch\"]\nbackends = {}\n\n\ndef dispatch() -> None:\n    pass\n"),
+        ("pkg/user.py", "from pkg.backends import backends\n\n_ALL = (backends,)\n"),
+        ("other/__init__.py", ""),
+        ("other/backends.py", "__all__ = [\"dispatch\"]\nbackends = {}\n\n\ndef dispatch() -> None:\n    pass\n"),
+        ("other/user.py", "from other.backends import backends\n\n_ALL = (backends,)\n"),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP113"]).1,
+        common::native(
+            "other/backends.py:2:1: SMP113 [*] `backends` is imported by other modules; list it in `__all__`\nFound 1 \
+             error.\n[*] 1 fixable with `--fix`.\n"
+        )
+    );
+}
+
+// `pkg.views` is no module, yet reaches `pkg/sub/views.py` through the submodule the package re-exports; `pkg.missing`
+// names no module of the package, and nothing reaches `pkg/sub/other.py`.
+#[test]
+fn attribute_path_through_a_reexported_submodule_counts_as_referenced() {
+    let module = "__all__ = [\"View\"]\n\n\nclass View:\n    pass\n\n\nclass ViewBase:\n    pass\n";
+    let root = project(&[
+        ("pkg/__init__.py", "from pkg.sub import *\n"),
+        ("pkg/sub/__init__.py", "from pkg.sub import views\n"),
+        ("pkg/sub/views.py", module),
+        ("pkg/sub/other.py", module),
+        ("user.py", "import pkg\n\n_BASES = (pkg.views.ViewBase, pkg.missing.ViewBase)\n"),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP103"]).1,
+        common::native(
+            "pkg/sub/other.py:8:7: SMP103 `ViewBase` is not in `__all__`; name it `_ViewBase`\nFound 1 error.\n1 unsafe \
+             fix available with `--fix --unsafe-fixes`.\n"
+        )
+    );
+}

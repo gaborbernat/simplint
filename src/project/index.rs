@@ -112,7 +112,7 @@ impl Project {
         let mut imported: HashMap<PathBuf, HashSet<String>> = HashMap::new();
         let mut referenced: HashMap<PathBuf, HashSet<String>> = HashMap::new();
         let mut stars: Vec<(PathBuf, PathBuf)> = Vec::new();
-        let mut unresolved_stars: HashSet<&str> = HashSet::new();
+        let (mut unresolved_stars, mut unreached): (HashSet<&str>, Vec<Unreached>) = (HashSet::new(), Vec::new());
         let mut constructor_uses = Vec::new();
         for module in modules {
             constructor_uses.push((module.path.clone(), module.rewrites_calls, module.constructors));
@@ -124,12 +124,14 @@ impl Project {
             }
             stars.extend(module.stars.into_iter().map(|source| (module.path.clone(), source)));
             unresolved_stars.extend(module.unresolved_stars);
+            unreached.extend(module.unreached);
         }
         let exports: HashMap<PathBuf, Option<&[String]>> = files
             .iter()
             .filter(|(path, _)| path.extension().is_none_or(|extension| extension != "pyi"))
             .map(|(path, facts)| (normalized(path), facts.exports.as_deref()))
             .collect();
+        reach_by_last_name(&mut referenced, &unreached, exports.keys());
         reexport(&mut imported, &stars, &exports);
         reexport(&mut referenced, &stars, &exports);
         let package_star_imported = stars
@@ -283,18 +285,37 @@ fn reexport(
 // file of the run Python could import under that module's last name: `name.py` or `name/__init__.py`. A module no file
 // of the run is named after is outside the run, so it reads none of them.
 fn unresolved_candidates<'p>(files: impl Iterator<Item = &'p PathBuf>, unresolved: &HashSet<&str>) -> Vec<PathBuf> {
-    files
-        .filter(|file| {
-            let stem = file.file_stem().and_then(|stem| stem.to_str());
-            let name = if stem == Some("__init__") {
-                file.parent().and_then(Path::file_name).and_then(|name| name.to_str())
-            } else {
-                stem
-            };
-            name.is_some_and(|name| unresolved.contains(name))
-        })
-        .cloned()
-        .collect()
+    files.filter(|file| last_name(file).is_some_and(|name| unresolved.contains(name))).cloned().collect()
+}
+
+// A dotted path through a package that names no module, as `nx.reportviews.Name` where `networkx` re-exports its
+// `networkx.classes.reportviews` submodule, may reach any module of that package with the path's last name. Those
+// names count as referenced rather than imported: they are kept, yet not made part of the module's API.
+fn reach_by_last_name<'p>(
+    referenced: &mut HashMap<PathBuf, HashSet<String>>,
+    unreached: &[Unreached],
+    files: impl Iterator<Item = &'p PathBuf>,
+) {
+    if unreached.is_empty() {
+        return;
+    }
+    let mut by_name: HashMap<&str, Vec<&PathBuf>> = HashMap::new();
+    for file in files {
+        if let Some(name) = last_name(file) {
+            by_name.entry(name).or_default().push(file);
+        }
+    }
+    for (package, name, names) in unreached {
+        for file in by_name.get(name).into_iter().flatten().filter(|file| file.starts_with(package)) {
+            referenced.entry((*file).clone()).or_default().extend(names.iter().cloned());
+        }
+    }
+}
+
+// The last name of the module a file defines: `name` for `name.py` and `name/__init__.py`.
+fn last_name(file: &Path) -> Option<&str> {
+    let stem = file.file_stem().and_then(|stem| stem.to_str());
+    if stem == Some("__init__") { file.parent().and_then(Path::file_name).and_then(|name| name.to_str()) } else { stem }
 }
 
 // What the index knows about one file: the names other files use from it, and the attribute and base class names of
@@ -434,6 +455,10 @@ fn normalized(path: &Path) -> PathBuf {
     std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
+// A dotted path that resolves to no module, by the directory of the package of the run it starts from and its last
+// name, with the names it uses.
+type Unreached<'f> = (PathBuf, &'f str, &'f [String]);
+
 // The files a file's names resolve to, with the names it uses from each, and the files it star-imports, or the last
 // name of each star-imported module that resolves to no file.
 struct ModuleFacts<'f> {
@@ -444,6 +469,7 @@ struct ModuleFacts<'f> {
     references: Vec<(PathBuf, &'f [String])>,
     stars: Vec<PathBuf>,
     unresolved_stars: Vec<&'f str>,
+    unreached: Vec<Unreached<'f>>,
 }
 
 impl<'f> ModuleFacts<'f> {
@@ -466,6 +492,18 @@ impl<'f> ModuleFacts<'f> {
         };
         let mut imports = resolve_all(&facts.imports);
         let references = resolve_all(&facts.references);
+        let unreached = facts
+            .imports
+            .iter()
+            .chain(&facts.references)
+            .filter_map(|(module, names)| {
+                let (top, rest) = module.split_once('.')?;
+                let package = resolve(db, environment, importing, top)?;
+                let directory = package.parent().filter(|_| package.ends_with("__init__.py"))?.to_path_buf();
+                let last = rest.rsplit('.').next()?;
+                resolve(db, environment, importing, module).is_none().then_some((directory, last, names.as_slice()))
+            })
+            .collect();
         if !facts.declared.is_empty() {
             imports.push((own.with_extension("py"), &facts.declared));
         }
@@ -484,7 +522,7 @@ impl<'f> ModuleFacts<'f> {
             .filter_map(|(module, uses)| Some((resolve(db, environment, importing, module)?, uses.as_slice())))
             .filter(|(file, _)| *file != own)
             .collect();
-        Self { path: own, rewrites_calls, constructors, imports, references, stars, unresolved_stars }
+        Self { path: own, rewrites_calls, constructors, imports, references, stars, unresolved_stars, unreached }
     }
 }
 
