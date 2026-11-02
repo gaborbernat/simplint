@@ -31,7 +31,7 @@ Names bound with `:=` are checked. The rule skips:
   [setuptools-scm](https://setuptools-scm.readthedocs.io/en/latest/usage/#version-files) writes
 - `apilevel`, `threadsafety` and `paramstyle` in a module that binds all three, the
   [PEP 249](https://peps.python.org/pep-0249/#globals) globals of a database driver
-- in a module that imports [PLY](https://www.dabeaz.com/ply/)'s `lex` or `yacc`, including a vendored copy such as
+- in a module that imports [PLY](https://github.com/dabeaz/ply)'s `lex` or `yacc`, including a vendored copy such as
   `pkg._ply.yacc`: `tokens`, `literals`, `precedence`, `states`, `start` and the `t_` and `p_` rules, which PLY reads
   off the module by name
 - every name in a PLY table module, one that binds `_tabversion`, since PLY reads its tables back by name

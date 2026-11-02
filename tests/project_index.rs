@@ -354,6 +354,10 @@ fn relative_import_from_namespace_package_counts_as_imported() {
 )]
 #[test_case("def test_app(mod: ModuleType) -> None:\n    assert mod.client\n" ; "module_type_parameter")]
 #[test_case(
+    "def test_app(mod: ModuleType) -> None:\n    assert getattr(mod, \"client\")\n    assert hasattr(mod, _NAME)\n" ;
+    "getattr"
+)]
+#[test_case(
     "@pytest.fixture(name=\"loaded\")\ndef get_mod():\n    return importlib.import_module(f\"docs.{_NAME}\")\n\n\n\
      def test_app(loaded) -> None:\n    alias = cast(Any, loaded)\n    alias.client = None\n" ;
     "fixture_alias"

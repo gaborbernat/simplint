@@ -20,8 +20,8 @@ These names are skipped:
   [`load_tests`](https://docs.python.org/3/library/unittest.html#load-tests-protocol), and
   [`setup_module` and `teardown_module`](https://docs.pytest.org/en/stable/how-to/xunit_setup.html#module-level-setup-teardown)
 - `setup`, the entry point Sphinx calls in an [extension](https://www.sphinx-doc.org/en/master/extdev/index.html)
-- the `t_` lexer rules and `p_` grammar productions of a module that imports [PLY](https://www.dabeaz.com/ply/)'s `lex`
-  or `yacc`, which PLY finds by name
+- the `t_` lexer rules and `p_` grammar productions of a module that imports [PLY](https://github.com/dabeaz/ply)'s
+  `lex` or `yacc`, which PLY finds by name
 
 [SMP102](SMP102.html) applies the same convention to module variables.
 
