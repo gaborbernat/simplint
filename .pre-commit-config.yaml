@@ -7,12 +7,6 @@ ci:
 repos:
   - repo: local
     hooks:
-      - id: readme
-        name: regenerate README.rst from the docs
-        language: system
-        entry: python3 tasks/generate_readme.py
-        pass_filenames: false
-        always_run: true
       - id: simplint
         name: lint the repository's Python with this checkout of simplint
         language: system

@@ -67,8 +67,6 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: cargo set-version "$VERSION"
-      - name: 📖 Generate README.rst
-        run: python3 tasks/generate_readme.py
       - name: 📝 Assemble the changelog
         env:
           VERSION: ${{ steps.version.outputs.version }}
@@ -127,7 +125,7 @@ jobs:
           set -euo pipefail
           while IFS= read -r path; do
             case "$path" in
-            CHANGELOG.md | Cargo.lock | uv.lock | Cargo.toml | README.rst | changelog.d/*.md) ;;
+            CHANGELOG.md | Cargo.lock | uv.lock | Cargo.toml | changelog.d/*.md) ;;
             *)
               echo "::error::unexpected release path: $path"
               exit 1
