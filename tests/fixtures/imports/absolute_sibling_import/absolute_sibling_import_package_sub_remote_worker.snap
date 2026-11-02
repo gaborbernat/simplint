@@ -4,7 +4,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 ---
 3:6 SMP110 Import from the same package relatively: `from .module import ...` [fix: Import from `.module`]
 29:10 SMP110 Import from the same package relatively: `from .module import ...` [fix: Import from `.module`]
---- fixed (2 applied, 0 remaining) ---
+46:10 SMP110 Import from the same package relatively: `from .module import ...` [fix: Import from `.module`]
+--- fixed (3 applied, 0 remaining) ---
 import inspect
 
 from .module import run
@@ -33,6 +34,23 @@ def build_remote_payload():
 
 
 def local_helper():
+    from .module import handle
+
+    return handle
+
+
+REMOTE_DEBUG = False
+if REMOTE_DEBUG:
+    pass
+if __name__ in {"package.sub.remote_worker"}:
+    pass
+
+
+def dispatch_remote():
+    return [start_remote_session][0](dispatched_payload)
+
+
+def dispatched_payload():
     from .module import handle
 
     return handle

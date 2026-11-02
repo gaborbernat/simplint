@@ -29,3 +29,20 @@ def local_helper():
     from package.sub.module import handle
 
     return handle
+
+
+REMOTE_DEBUG = False
+if REMOTE_DEBUG:
+    pass
+if __name__ in {"package.sub.remote_worker"}:
+    pass
+
+
+def dispatch_remote():
+    return [start_remote_session][0](dispatched_payload)
+
+
+def dispatched_payload():
+    from package.sub.module import handle
+
+    return handle

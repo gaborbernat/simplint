@@ -16,6 +16,7 @@ use crate::common;
 #[test_case("absolute-sibling-import", "package/sub/script.py", "py314" ; "absolute_sibling_import_script")]
 #[test_case("absolute-sibling-import", "package/sub/channel_exec.py", "py314" ; "absolute_sibling_import_channel_exec")]
 #[test_case("absolute-sibling-import", "package/sub/remote_worker.py", "py314" ; "absolute_sibling_import_remote_worker")]
+#[test_case("absolute-sibling-import", "package/sub/reversed_guard.py", "py314" ; "absolute_sibling_import_reversed_guard")]
 #[test_case(
     "absolute-sibling-import", "multiline_module_docstring_ok.py", "py314" ; "absolute_sibling_import_outside_package"
 )]
