@@ -4,6 +4,7 @@ use std::path::Path;
 
 use ruff_python_ast::identifier::Identifier;
 
+use ruff_python_ast::name::QualifiedName;
 use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
 use ruff_python_semantic::{BindingId, BindingKind as RuffBindingKind, ScopeKind, SemanticModel};
 use ruff_text_size::{Ranged, TextRange};
@@ -37,6 +38,11 @@ impl<'a> Semantic<'a> {
     // after `from unittest import mock` names `unittest.mock.patch`.
     pub fn resolves_to(&self, expr: &Expr, segments: &[&str]) -> bool {
         self.model.resolve_qualified_name(expr).is_some_and(|name| name.segments() == segments)
+    }
+
+    // What `expr` names, resolved as `resolves_to` does; a builtin's first segment is empty.
+    pub fn qualified_name<'e>(&'e self, expr: &'e Expr) -> Option<QualifiedName<'e>> {
+        self.model.resolve_qualified_name(expr)
     }
 
     // Whether `expr` names `typing.{member}`, or its `typing_extensions` backport.

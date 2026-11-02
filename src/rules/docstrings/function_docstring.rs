@@ -1,6 +1,6 @@
 use ruff_diagnostics::{Edit, Fix};
-use ruff_python_ast::Stmt;
 use ruff_python_ast::token::TokenKind;
+use ruff_python_ast::{Expr, Stmt};
 use ruff_python_trivia::textwrap::dedent;
 use ruff_python_trivia::{
     SuppressionKind as FormatSuppression, has_leading_content, has_trailing_content, is_pragma_comment,
@@ -13,24 +13,36 @@ use crate::rules::docstrings::PublicApi;
 use crate::rules::{docstring, indentation, lines_with_trailing_blanks, statement_deletion};
 
 pub fn function_docstring(checker: &Checker) {
+    // Code that reads docstrings off objects, such as a test asserting `func.__doc__` or a framework turning them into
+    // help text or a schema, may read any of them, and which ones it reads does not show.
+    if checker.project().reads_docstrings() {
+        return;
+    }
     let body = checker.body();
     let api = PublicApi::of(checker, body);
     let owners = checker
         .function_defs()
         .iter()
         .filter(|function| !api.covers(function.range))
-        .map(|function| (function.range, function.body.as_slice(), "Function"))
+        .map(|function| (function.range, function.body.as_slice(), function.decorator_list.as_slice(), "Function"))
         .chain(
             checker
                 .class_defs()
                 .iter()
                 .filter(|class| !api.covers(class.range))
-                .map(|class| (class.range, class.body.as_slice(), "Class")),
+                .map(|class| (class.range, class.body.as_slice(), class.decorator_list.as_slice(), "Class")),
         );
-    for (owner, owner_body, kind) in owners {
+    for (owner, owner_body, decorators, kind) in owners {
         let Some(literal) = docstring(owner_body) else {
             continue;
         };
+        // A decorator receives the object and may read its docstring, as `click.command` does for help text, unless it
+        // is one known to leave it unread.
+        if decorators.iter().any(|decorator| !is_doc_blind(checker, &decorator.expression))
+            || literal.value.to_str().lines().any(|line| line.trim_start().starts_with(">>>"))
+        {
+            continue;
+        }
         let stmt = &owner_body[0];
         // The text as written, since an escape such as `\n` would otherwise end the comment line.
         let written: String = literal.value.iter().map(|part| checker.text(part.content_range())).collect();
@@ -54,6 +66,40 @@ pub fn function_docstring(checker: &Checker) {
             title,
         );
     }
+}
+
+// Decorators that wrap or register the object without reading its docstring; copying it, as `functools.wraps` or
+// `property` do, only hands it to `help()`. pytest shows a fixture's docstring in `pytest --fixtures`, a listing of the
+// suite's own helpers like `help()`.
+fn is_doc_blind(checker: &Checker, decorator: &Expr) -> bool {
+    let decorator = decorator.as_call_expr().map_or(decorator, |call| &call.func);
+    // `name.setter` on a property, whose name the module scope does not resolve.
+    if decorator
+        .as_attribute_expr()
+        .is_some_and(|attribute| matches!(attribute.attr.as_str(), "setter" | "getter" | "deleter"))
+    {
+        return true;
+    }
+    let semantic = checker.semantic();
+    if ["override", "overload", "final", "no_type_check"]
+        .iter()
+        .any(|member| semantic.match_typing_expr(decorator, member))
+    {
+        return true;
+    }
+    semantic.qualified_name(decorator).is_some_and(|name| {
+        matches!(
+            name.segments(),
+            ["", "staticmethod" | "classmethod" | "property"]
+                | ["abc", "abstractmethod"]
+                | ["functools", "cache" | "lru_cache" | "cached_property" | "wraps" | "total_ordering"]
+                | ["contextlib", "contextmanager" | "asynccontextmanager"]
+                | ["dataclasses", "dataclass"]
+                | ["enum", "unique"]
+                | ["pytest", "fixture"]
+                | ["pytest", "mark", ..]
+        )
+    })
 }
 
 fn removal(checker: &Checker, stmt: &Stmt, owner_body: &[Stmt]) -> Option<Edit> {

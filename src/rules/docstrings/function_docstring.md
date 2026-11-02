@@ -9,6 +9,21 @@ its overrides and its property setters keep their docstrings too, since document
 builds `__all__` dynamically, every name without a leading `_` is treated as possibly public and skipped. Module
 docstrings are left to [SMP003](SMP003.html) and [SMP004](SMP004.html).
 
+Some docstrings are data that code reads at runtime rather than documentation, so the rule leaves alone:
+
+- a docstring holding a [doctest](https://docs.python.org/3/library/doctest.html) example, a line starting with `>>>`,
+  which `pytest --doctest-modules` runs as a test;
+- the docstring of a decorated function or class, since the decorator receives it and may read `__doc__`, as
+  `click.command` does for help text or `deprecated` does to build its warning. Decorators known to leave it unread
+  still let the rule report: `staticmethod`, `classmethod`, `property` and its `setter`, `getter` and `deleter`,
+  `abc.abstractmethod`, `typing.override`, `overload`, `final` and `no_type_check`, `functools.cache`, `lru_cache`,
+  `cached_property`, `wraps` and `total_ordering`, `contextlib.contextmanager` and `asynccontextmanager`,
+  `dataclasses.dataclass`, `enum.unique`, `pytest.fixture` and the `pytest.mark` decorators;
+- every docstring of a run in which some file reads docstrings off objects, through `obj.__doc__`,
+  `getattr(obj, "__doc__")` or a `getdoc` call such as `inspect.getdoc`, since a test asserting a function's `__doc__`
+  or a framework building a schema from endpoint docstrings may read any of them. A bare `__doc__`, the module's own
+  docstring, does not count.
+
 Use SMP116 in place of Ruff's [pydocstyle rules](https://docs.astral.sh/ruff/rules/#pydocstyle-d) that ask for
 docstrings, such as
 [undocumented-public-function (D103)](https://docs.astral.sh/ruff/rules/undocumented-public-function/) and
@@ -95,8 +110,8 @@ No fix is offered when:
   reports for comments.
 
 The fix is always unsafe, because code that reads `__doc__` sees the change, such as
-[doctest](https://docs.python.org/3/library/doctest.html) or
-[`help()`](https://docs.python.org/3/builtins/functions.html#help).
+[`help()`](https://docs.python.org/3/builtins/functions.html#help), or code outside the run: a framework the function is
+handed to as a value, such as a Starlette route, or a pydantic model whose docstring becomes its schema description.
 
 ## Conflicts with Ruff
 
