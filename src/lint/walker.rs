@@ -53,6 +53,10 @@ impl<'c, 'a> Walker<'c, 'a> {
         self.expressions.iter().rev().nth(1).copied()
     }
 
+    pub fn expressions(&self) -> &[&'a Expr] {
+        &self.expressions
+    }
+
     pub fn scopes(&self) -> &[Scope<'a>] {
         &self.scopes
     }

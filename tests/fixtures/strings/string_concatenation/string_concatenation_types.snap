@@ -6,7 +6,7 @@ expression: "lint_fixture(rule, fixture, target_version)"
 16:9 SMP112 Build text with an f-string instead of `+`
 17:9 SMP112 Build text with an f-string instead of `+`
 18:9 SMP112 Build text with an f-string instead of `+`
-19:9 SMP112 Build text with an f-string instead of `+`
+19:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 20:9 SMP112 Build text with an f-string instead of `+`
 21:9 SMP112 Build text with an f-string instead of `+`
 30:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
@@ -18,33 +18,33 @@ expression: "lint_fixture(rule, fixture, target_version)"
 36:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 37:9 SMP112 Build text with an f-string instead of `+`
 38:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-45:15 SMP112 Build text with an f-string instead of `+`
-48:13 SMP112 Build text with an f-string instead of `+`
-48:35 SMP112 Build text with an f-string instead of `+`
-53:12 SMP112 Build text with an f-string instead of `+`
-67:16 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-69:31 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-70:16 SMP112 Build text with an f-string instead of `+`
-73:30 SMP112 Build text with an f-string instead of `+`
-85:16 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-102:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-103:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-104:9 SMP112 Build text with an f-string instead of `+`
-105:9 SMP112 Build text with an f-string instead of `+`
+47:15 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+50:13 SMP112 Build text with an f-string instead of `+`
+50:35 SMP112 Build text with an f-string instead of `+`
+55:12 SMP112 Build text with an f-string instead of `+`
+69:16 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+71:31 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+72:16 SMP112 Build text with an f-string instead of `+`
+75:30 SMP112 Build text with an f-string instead of `+`
+87:16 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+104:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+105:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 106:9 SMP112 Build text with an f-string instead of `+`
-107:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+107:9 SMP112 Build text with an f-string instead of `+`
 108:9 SMP112 Build text with an f-string instead of `+`
 109:9 SMP112 Build text with an f-string instead of `+`
 110:9 SMP112 Build text with an f-string instead of `+`
-111:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-112:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-113:9 SMP112 Build text with an f-string instead of `+`
-114:9 SMP112 Build text with an f-string instead of `+`
-120:12 SMP112 Build text with an f-string instead of `+`
-124:13 SMP112 Build text with an f-string instead of `+`
-128:12 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-128:19 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
---- fixed (18 applied, 24 remaining) ---
+111:9 SMP112 Build text with an f-string instead of `+`
+112:9 SMP112 Build text with an f-string instead of `+`
+113:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+114:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+115:9 SMP112 Build text with an f-string instead of `+`
+116:9 SMP112 Build text with an f-string instead of `+`
+122:12 SMP112 Build text with an f-string instead of `+`
+126:13 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+130:12 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+130:19 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+--- fixed (20 applied, 22 remaining) ---
 from os import pathsep
 from pathlib import Path
 from typing import Annotated, Final
@@ -63,7 +63,7 @@ def concat_opaque(value, path: Path, items: list[str]) -> list[object]:
         Markup("foo") + "bar",
         value + "",
         path + pathsep + "foo",
-        "a" + items[0],
+        f"a{items[0]}",
         "a" + concat_counter,
         "a" + len(items),
     ]
@@ -89,7 +89,9 @@ def concat_known(label: str, items: list[str], flag: bool) -> list[str]:
 def concat_rebound(label: str, items: list[str]) -> list[str]:
     for label in items:
         pass
-    looped = [label + "!" for label in items]
+    for label in range(3):
+        pass
+    looped = [f"{label}!" for label in items]
     shadow = "x"
     shadow = len(items)
     return [label + "?", *looped, "s" + shadow]
@@ -151,7 +153,7 @@ def concat_forms(
         "a" + listed.pop(),
         "a" + (lambda: label)(),
         "a" + concat_undefined,
-        f"a{annotated}",
+        "a" + annotated,
         "a" + repeated,
         "a" + caught,
         "a" + matched,
@@ -168,7 +170,7 @@ def concat_declared_global() -> str:
 
 
 def concat_comprehension(label: str, listed: list[str]) -> list[str]:
-    return ["a" + label for label in listed]
+    return [f"a{label}" for label in listed]
 
 
 def concat_nested_sum(label: str) -> str:

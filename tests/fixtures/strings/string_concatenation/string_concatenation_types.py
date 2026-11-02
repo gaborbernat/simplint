@@ -42,6 +42,8 @@ def concat_known(label: str, items: list[str], flag: bool) -> list[str]:
 def concat_rebound(label: str, items: list[str]) -> list[str]:
     for label in items:
         pass
+    for label in range(3):
+        pass
     looped = [label + "!" for label in items]
     shadow = "x"
     shadow = len(items)
