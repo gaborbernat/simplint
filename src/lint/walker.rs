@@ -14,15 +14,18 @@ pub struct Walker<'c, 'a> {
     reported_names: Vec<FxHashSet<&'a str>>,
     // The expressions holding the current one, outermost first, ending with the current one.
     expressions: Vec<&'a Expr>,
+    // The scopes holding the current node, outermost first, the module left out.
+    scopes: Vec<Scope<'a>>,
     in_fstring: bool,
     in_comprehension: bool,
     in_for_target: bool,
 }
 
 // A def, class or lambda opens a scope covering its header, decorators and default values included.
+#[derive(Clone, Copy)]
 pub enum Scope<'a> {
     Function(&'a ast::StmtFunctionDef),
-    Class,
+    Class(&'a ast::StmtClassDef),
     Lambda(&'a ast::ExprLambda),
 }
 
@@ -33,6 +36,7 @@ impl<'c, 'a> Walker<'c, 'a> {
             rules,
             reported_names: vec![FxHashSet::default()],
             expressions: Vec::new(),
+            scopes: Vec::new(),
             in_fstring: false,
             in_comprehension: false,
             in_for_target: false,
@@ -47,6 +51,14 @@ impl<'c, 'a> Walker<'c, 'a> {
 
     pub fn expression_parent(&self) -> Option<&'a Expr> {
         self.expressions.iter().rev().nth(1).copied()
+    }
+
+    pub fn expressions(&self) -> &[&'a Expr] {
+        &self.expressions
+    }
+
+    pub fn scopes(&self) -> &[Scope<'a>] {
+        &self.scopes
     }
 
     pub fn in_fstring(&self) -> bool {
@@ -69,7 +81,7 @@ impl<'a> Visitor<'a> for Walker<'_, 'a> {
             Stmt::FunctionDef(function) => {
                 self.in_scope(&Scope::Function(function), |walker| visitor::walk_stmt(walker, stmt));
             }
-            Stmt::ClassDef(_) => self.in_scope(&Scope::Class, |walker| visitor::walk_stmt(walker, stmt)),
+            Stmt::ClassDef(class) => self.in_scope(&Scope::Class(class), |walker| visitor::walk_stmt(walker, stmt)),
             Stmt::For(ast::StmtFor { target, iter, body, orelse, .. }) => {
                 self.visit_expr(iter);
                 let outer = std::mem::replace(&mut self.in_for_target, true);
@@ -124,7 +136,9 @@ impl<'a> Walker<'_, 'a> {
     fn in_scope(&mut self, scope: &Scope<'a>, walk: impl FnOnce(&mut Self)) {
         self.reported_names.push(FxHashSet::default());
         registry::scope(self.rules, self, scope);
+        self.scopes.push(*scope);
         walk(self);
+        self.scopes.pop();
         self.reported_names.pop();
     }
 }

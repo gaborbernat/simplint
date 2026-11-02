@@ -8,6 +8,7 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
+use crate::rules::strings::kinds::Kinds;
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let Expr::BinOp(ast::ExprBinOp { op: Operator::Add, .. }) = expr else {
@@ -29,9 +30,13 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     }
     let checker = walker.checker;
     let range = expr.range();
+    // `+` calls an operand's own `__add__` or `__radd__`, and raises `TypeError` for one that is not text, where the
+    // f-string formats any value: the two agree only when every operand is surely a `str`.
+    let mut kinds = Kinds::new(walker, range);
+    let texts = operands.iter().all(|operand| kinds.is_str(operand));
     // A comment between the operands has no place in the f-string, so rewriting would drop it.
     let fix = fstring(checker, &operands, walker.in_fstring())
-        .filter(|_| !checker.has_comment_in(range))
+        .filter(|_| texts && !checker.has_comment_in(range))
         .map(|text| Fix::unsafe_edit(Edit::range_replacement(text, range)));
     checker.report_fix(
         Rule::StringConcatenation,
