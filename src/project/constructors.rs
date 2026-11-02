@@ -18,6 +18,9 @@ use ruff_text_size::Ranged;
 pub struct Constructors {
     pub(super) dataclasses: Vec<(String, Option<Vec<String>>)>,
     pub(super) uses: Vec<(String, Vec<NameUse>)>,
+    // The capitalized names called with positional arguments as attributes of something no import binds, such as
+    // `module.Ranked(issue, score)` on a module a test loads from its file path; any dataclass so named may be the one.
+    pub(super) dynamic: Vec<String>,
 }
 
 // A name used from a module, as the file spells it.
@@ -52,6 +55,24 @@ impl Constructors {
             Some((module.to_owned(), member.to_owned(), UnqualifiedName::from_expr(expr)?.segments().join(".")))
         });
         uses.visit_body(body);
+        let mut dynamic = Uses::new(|expr: &Expr| {
+            let ast::ExprAttribute { value, attr, .. } = expr.as_attribute_expr()?;
+            let mut head = value.as_ref();
+            while let Expr::Attribute(attribute) = head {
+                head = &attribute.value;
+            }
+            let unbound = head.as_name_expr().is_none_or(|name| !aliases.contains_key(name.id.as_str()));
+            (unbound && attr.starts_with(|first: char| first.is_ascii_uppercase())).then(|| attr.to_string())
+        });
+        dynamic.visit_body(body);
+        let dynamic: BTreeSet<String> = dynamic
+            .found
+            .into_iter()
+            .filter_map(|(name, found)| match found {
+                Use::Call(call) if CallKind::of(call) != CallKind::Keyword => Some(name),
+                _ => None,
+            })
+            .collect();
         let mut grouped: BTreeMap<String, BTreeSet<NameUse>> = BTreeMap::new();
         for ((module, name, written), found) in uses.found {
             let kind = match found {
@@ -108,6 +129,7 @@ impl Constructors {
         Self {
             dataclasses,
             uses: grouped.into_iter().map(|(module, uses)| (module, uses.into_iter().collect())).collect(),
+            dynamic: dynamic.into_iter().collect(),
         }
     }
 }
@@ -143,9 +165,16 @@ impl DataclassCalls {
         declared: impl Iterator<Item = (PathBuf, Declared<'f>)>,
         uses: &[FileUses],
         imported: &HashMap<PathBuf, HashSet<String>>,
+        dynamic: &HashSet<&str>,
     ) -> Self {
         let declared: HashMap<PathBuf, Declared<'f>> = declared.filter(|(_, classes)| !classes.is_empty()).collect();
         let mut calls = Self::default();
+        for (file, classes) in &declared {
+            let called = classes.iter().filter(|(class, _)| dynamic.contains(class.as_str()));
+            for (class, _) in called {
+                calls.opaque.entry(file.clone()).or_default().insert(class.clone());
+            }
+        }
         for (caller, rewrites_calls, modules) in uses {
             for (file, uses) in modules {
                 let Some(classes) = declared.get(file) else {

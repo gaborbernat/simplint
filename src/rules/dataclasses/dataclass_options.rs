@@ -16,11 +16,20 @@ pub fn dataclass_options(checker: &Checker) {
         let name = class.name.as_str();
         let qualified = format!("{}.{name}", module_name(checker.module_path(), checker.path));
         let project = checker.project();
-        let fields: HashSet<&str> = class
+        // A class without fields, such as a fixture standing for a dataclass with the default options, has no state the
+        // options would protect, and code may rely on those defaults; a test expecting the class to fail keeps it as is.
+        if !class.body.iter().any(Stmt::is_ann_assign_stmt) || is_expected_to_raise(checker.body(), name) {
+            return None;
+        }
+        let (class_variables, fields): (Vec<_>, Vec<_>) = class
             .body
             .iter()
-            .filter_map(|stmt| stmt.as_ann_assign_stmt()?.target.as_name_expr().map(|field| field.id.as_str()))
-            .collect();
+            .filter_map(|stmt| {
+                let stmt = stmt.as_ann_assign_stmt()?;
+                Some((stmt.target.as_name_expr()?.id.as_str(), is_class_variable(&stmt.annotation)))
+            })
+            .partition(|(_, class_variable)| *class_variable);
+        let fields: HashSet<&str> = fields.into_iter().map(|(field, _)| field).collect();
         let mut hazards = Hazards { fields: &fields, frozen: false, slots: false, suspected: false, depth: 0 };
         hazards.visit_body(&class.body);
         for attribute in project.attributes_written_on(&qualified) {
@@ -32,7 +41,17 @@ pub fn dataclass_options(checker: &Checker) {
         hazards.frozen |= fields.iter().any(|field| project.is_attribute_written(field))
             || class.bases().iter().any(|base| !is_generic(base))
             || project.is_base_class(name);
+        // A class variable written through an instance becomes read-only once slots leave no `__dict__` to shadow it.
+        if class_variables.iter().any(|(variable, _)| project.is_attribute_written(variable)) {
+            hazards.frozen = true;
+            hazards.slots = true;
+        }
         hazards.slots |= project.has_unslottable_subclass(&qualified);
+        // Only a frozen slotted dataclass gets a `__getstate__`: without one, pickle protocols 0 and 1 refuse a slotted
+        // instance, and with one, a pickled subclass instance keeps only the fields.
+        let frozen = !decorated.missing.contains(&"frozen") || !hazards.frozen;
+        hazards.slots |=
+            if frozen { project.has_stateful_subclass(&qualified) } else { project.pickles_low_protocol() };
         hazards.suspected |=
             decorated.explicit || !class.bases().is_empty() || project.has_namesake_hazards(&qualified);
         let options: Vec<&'static str> = decorated
@@ -47,6 +66,55 @@ pub fn dataclass_options(checker: &Checker) {
         let applicability = if hazards.suspected { Applicability::Unsafe } else { Applicability::Safe };
         Some(Offer { options, edits: Vec::new(), applicability })
     });
+}
+
+// Whether code in the module creates an instance inside `pytest.raises(...)` or `self.assertRaises(...)`: the test
+// expects the instance to fail somewhere, as an unhashable dict key, and either option can change that.
+fn is_expected_to_raise(body: &[Stmt], class: &str) -> bool {
+    let mut blocks = Raises { class, depth: 0, found: false };
+    blocks.visit_body(body);
+    blocks.found
+}
+
+struct Raises<'c> {
+    class: &'c str,
+    // How many `with` blocks expecting an exception the walk is in.
+    depth: usize,
+    found: bool,
+}
+
+impl<'a> Visitor<'a> for Raises<'_> {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        let Stmt::With(with) = stmt else {
+            return visitor::walk_stmt(self, stmt);
+        };
+        let raises = with.items.iter().any(|item| {
+            item.context_expr.as_call_expr().is_some_and(|call| {
+                last_segment(&call.func).is_some_and(|name| matches!(name, "raises" | "assertRaises"))
+            })
+        });
+        self.depth += usize::from(raises);
+        visitor::walk_stmt(self, stmt);
+        self.depth -= usize::from(raises);
+    }
+
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        self.found |= self.depth > 0
+            && expr
+                .as_call_expr()
+                .is_some_and(|call| call.func.as_name_expr().is_some_and(|func| func.id.as_str() == self.class));
+        visitor::walk_expr(self, expr);
+    }
+}
+
+// `ClassVar[...]` and `InitVar[...]` annotations declare no instance field, and so no slot.
+fn is_class_variable(annotation: &Expr) -> bool {
+    if let Some(text) = annotation.as_string_literal_expr() {
+        let text = text.value.to_str();
+        return text.contains("ClassVar") || text.contains("InitVar");
+    }
+    let annotation = annotation.as_subscript_expr().map_or(annotation, |subscript| &subscript.value);
+    last_segment(annotation).is_some_and(|name| matches!(name, "ClassVar" | "InitVar"))
 }
 
 fn is_generic(base: &Expr) -> bool {
@@ -69,9 +137,10 @@ struct Hazards<'f> {
 impl Hazards<'_> {
     const SUSPECTED: [&str; 5] = ["__dict__", "__weakref__", "__setattr__", "__delattr__", "super"];
 
-    // A frozen instance rejects every write, and a slotted one has no room for an attribute that is not a field.
+    // A frozen instance rejects every write, and a slotted one has no room for an attribute that is not a field. Writing
+    // into `__dict__` gets past `frozen=True`, but a slotted instance has none.
     fn written(&mut self, attribute: &str) {
-        self.frozen = true;
+        self.frozen |= attribute != "__dict__";
         self.slots |= !self.fields.contains(attribute);
     }
 

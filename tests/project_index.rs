@@ -180,6 +180,15 @@ fn unresolved_star_import_keeps_names_of_modules_by_its_name() {
     "@dataclass(frozen=True, slots=True)"
     ; "namesake"
 )]
+#[test_case(
+    "import pickle\n\n    result = Result(log=\"\")\n    result.log = log\n    pickle.dumps(result, 1)\n", "", "@dataclass" ; "low_protocol_pickle"
+)]
+#[test_case(
+    "import pickle\n\n    result = Result(log=\"\")\n    result.log = log\n    pickle.dumps(result, protocol=pickle.HIGHEST_PROTOCOL)\n",
+    "[*] ",
+    "@dataclass(slots=True)"
+    ; "highest_protocol_pickle"
+)]
 fn dataclass_options_reads_writes_in_other_files(body: &str, marker: &str, decorator: &str) {
     let root = project(&[
         ("models.py", "from dataclasses import dataclass\n\n\n@dataclass\nclass Result:\n    log: str\n"),
@@ -206,6 +215,17 @@ fn dataclass_options_reads_writes_in_other_files(body: &str, marker: &str, decor
             Some(decorator)
         )
     );
+}
+
+// A package's `__init__.py` defines the package, so a write on an instance of a class it imports from there counts.
+#[test]
+fn dataclass_options_reads_writes_on_package_classes() {
+    let root = project(&[
+        ("pkg/__init__.py", "from dataclasses import dataclass\n\n\n@dataclass\nclass Context:\n    count: int\n"),
+        ("pkg/run.py", "from pkg import Context\n\n\ndef run(context: Context) -> None:\n    context.count = 1\n"),
+    ]);
+    check(root.path(), &["--no-cache", "--select", "SMP111", "--target-version", "py314", "--fix", "--unsafe-fixes"]);
+    assert_eq!(common::read(root.path(), "pkg/__init__.py").lines().nth(3), Some("@dataclass(slots=True)"));
 }
 
 const PARTITION: &str =
@@ -257,6 +277,10 @@ fn dataclass_kw_only_rewrites_calls_in_other_files(caller: &str, rewritten: &str
     ; "shadowed"
 )]
 #[test_case(&[("caller.py", "from models import Partition\n\nPartition(\"a\", 1)  # noqa: E501\n")] ; "suppressed")]
+#[test_case(
+    &[("caller.py", "import importlib\n\nloaded = importlib.import_module(\"models\")\nloaded.Partition(\"a\", 1)\n")]
+    ; "loaded_module"
+)]
 #[test_case(
     &[
         ("pyproject.toml", "[tool.simplint]\nper-file-ignores = { \"caller.py\" = [\"SMP114\"] }\n"),
