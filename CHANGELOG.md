@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.2 (2026-11-02)
+
+<a name="release-0-2-2"></a>
+
+<a name="release-0-2-2-fixed"></a>
+
+### Fixed
+
+- Release wheels build again: the profile-guided optimization run no longer stops on the Ruff docstring rules simplint
+  refuses to run beside ([#17](https://github.com/gaborbernat/simplint/pull/17)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.2.1 (2026-11-02)
 
 <a name="release-0-2-1"></a>
