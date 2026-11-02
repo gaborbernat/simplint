@@ -38,7 +38,7 @@ jobs:
         uses: baptiste0928/cargo-install@8195d4f734a149db85385bb4102b42efcd373759 # v3.5.0
         with:
           crate: cargo-edit
-          version: 0.13.13
+          version: 0.13.14
       - name: 🐍 Install uv
         uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
