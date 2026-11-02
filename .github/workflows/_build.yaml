@@ -84,9 +84,6 @@ jobs:
         if: ${{ !inputs.release-build }}
         uses: tox-dev/action-pre-commit-uv@4de52c139ed1a6963bcc4c30042c4ef9d75d8b11 # v1.1.0
         continue-on-error: true
-      - name: 📖 Generate README.rst
-        if: ${{ !inputs.release-build }}
-        run: python3 tasks/generate_readme.py
       - name: 🔍 Show changes
         if: ${{ !inputs.release-build }}
         run: git diff HEAD -u

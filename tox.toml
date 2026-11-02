@@ -181,10 +181,3 @@ commands = [
   [ "simplint", "--version" ],
   [ "python", "-c", 'print(r"{env_python}")' ],
 ]
-
-[env.readme]
-runner = "uv-venv-runner"
-description = "generate README.rst from docs"
-skip_install = true
-dependency_groups = []
-commands = [ [ "python", "tasks{/}generate_readme.py" ] ]

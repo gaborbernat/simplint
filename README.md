@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/_static/wordmark-dark.png">
-    <img alt="simplint" src="docs/_static/wordmark-light.png" width="420">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/gaborbernat/simplint/main/docs/_static/wordmark-dark.png">
+    <img alt="simplint" src="https://raw.githubusercontent.com/gaborbernat/simplint/main/docs/_static/wordmark-light.png" width="420">
   </picture>
 </p>
 
@@ -31,5 +31,5 @@ Install it with `uv tool install simplint` ([uv](https://docs.astral.sh/uv/)) or
 - [Configuration](https://simplint.readthedocs.io/en/latest/configuration.html)
 - [Rules](https://simplint.readthedocs.io/en/latest/rules.html)
 - [PyPI package](https://pypi.org/project/simplint)
-- [Release history](CHANGELOG.md)
-- [CONTRIBUTING.md](CONTRIBUTING.md): repository layout and development commands
+- [Release history](https://github.com/gaborbernat/simplint/blob/main/CHANGELOG.md)
+- [CONTRIBUTING.md](https://github.com/gaborbernat/simplint/blob/main/CONTRIBUTING.md): repository layout and development commands

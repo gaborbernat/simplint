@@ -138,11 +138,7 @@ can change behavior, run the suite of an affected project by hand. Refresh the p
 
 ## Documentation
 
-Edit the files under `docs/`. Generate the published README from those sources:
-
-```bash
-tox run -e readme
-```
+Edit the files under `docs/`. PyPI shows `README.md`, so keep its links absolute.
 
 Build and check links with the documentation environment:
 
