@@ -2,10 +2,10 @@ use std::collections::HashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rest::{FieldKind, field_deletion, targets};
+use crate::rules::docstrings::rest::{FieldKind, field_deletion};
 
 pub fn rest_unknown_param(checker: &Checker) {
-    for target in targets(checker) {
+    for target in checker.rest_targets() {
         // `**kwargs` takes any keyword, which `:keyword name:` or `:param name:` fields document.
         let Some(parameters) = target.parameters().filter(|_| !target.takes_keywords()) else {
             continue;

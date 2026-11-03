@@ -2,10 +2,10 @@ use ruff_diagnostics::{Edit, Fix};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rest::{FieldKind, Owner, field_deletion, targets};
+use crate::rules::docstrings::rest::{FieldKind, Owner, field_deletion};
 
 pub fn rest_type_field(checker: &Checker) {
-    for target in targets(checker) {
+    for target in checker.rest_targets() {
         let parameters = target.parameters().unwrap_or_default();
         let annotated = |name: &str| parameters.iter().any(|parameter| parameter.name == name && parameter.annotated);
         let returns_annotated = matches!(target.owner, Owner::Function { def, .. } if def.returns.is_some());

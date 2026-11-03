@@ -2,10 +2,10 @@ use std::collections::HashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rest::{Field, FieldKind, Owner, constructor_docstring, field_deletion, targets};
+use crate::rules::docstrings::rest::{Field, FieldKind, Owner, constructor_docstring, field_deletion};
 
 pub fn rest_duplicate_param(checker: &Checker) {
-    for target in targets(checker) {
+    for target in checker.rest_targets() {
         let Owner::Class(class) = target.owner else {
             continue;
         };

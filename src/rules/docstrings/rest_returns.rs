@@ -6,12 +6,12 @@ use ruff_text_size::{TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rest::{Field, FieldKind, Owner, Target, field_deletion, field_insertion, rank, targets};
+use crate::rules::docstrings::rest::{Field, FieldKind, Owner, Target, field_deletion, field_insertion, rank};
 use crate::rules::last_segment;
 
 pub fn rest_returns(checker: &Checker) {
-    for target in targets(checker) {
-        let Some(def) = returning_function(checker, &target) else {
+    for target in checker.rest_targets() {
+        let Some(def) = returning_function(checker, target) else {
             continue;
         };
         // A constructor returns nothing to document.

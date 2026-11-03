@@ -5,11 +5,11 @@ use ruff_python_ast::{self as ast, Expr, Stmt};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rest::{FieldKind, Owner, field_insertion, rank, targets};
+use crate::rules::docstrings::rest::{FieldKind, Owner, field_insertion, rank};
 use crate::rules::last_segment;
 
 pub fn rest_missing_raises(checker: &Checker) {
-    for target in targets(checker).into_iter().filter(|target| target.public) {
+    for target in checker.rest_targets().iter().filter(|target| target.public) {
         let Owner::Function { def, .. } = target.owner else {
             continue;
         };

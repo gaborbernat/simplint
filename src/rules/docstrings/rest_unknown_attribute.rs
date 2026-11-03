@@ -4,10 +4,10 @@ use ruff_python_ast::Stmt;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rest::{FieldKind, Owner, attributes, field_deletion, has_attribute_bases, targets};
+use crate::rules::docstrings::rest::{FieldKind, Owner, attributes, field_deletion, has_attribute_bases};
 
 pub fn rest_unknown_attribute(checker: &Checker) {
-    for target in targets(checker) {
+    for target in checker.rest_targets() {
         // A base class may define the attribute a field documents.
         let Owner::Class(class) = target.owner else {
             continue;

@@ -4,10 +4,10 @@ use ruff_diagnostics::{Edit, Fix};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rest::{FieldKind, targets};
+use crate::rules::docstrings::rest::FieldKind;
 
 pub fn rest_field_syntax(checker: &Checker) {
-    for target in targets(checker) {
+    for target in checker.rest_targets() {
         let docstring = &target.docstring;
         for section in &docstring.sections {
             let message = if section.numpy {

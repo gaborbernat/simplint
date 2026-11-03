@@ -1,9 +1,9 @@
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rest::{FieldKind, targets};
+use crate::rules::docstrings::rest::FieldKind;
 
 pub fn rest_param_order(checker: &Checker) {
-    for target in targets(checker) {
+    for target in checker.rest_targets() {
         let Some(parameters) = target.parameters() else {
             continue;
         };

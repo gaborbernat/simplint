@@ -2,12 +2,10 @@ use std::collections::HashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rest::{
-    FieldKind, Owner, constructor_docstring, field_insertion, is_internal, rank, targets,
-};
+use crate::rules::docstrings::rest::{FieldKind, Owner, constructor_docstring, field_insertion, is_internal, rank};
 
 pub fn rest_missing_param(checker: &Checker) {
-    for target in targets(checker).into_iter().filter(|target| target.public) {
+    for target in checker.rest_targets().iter().filter(|target| target.public) {
         let Some(parameters) = target.parameters() else {
             continue;
         };

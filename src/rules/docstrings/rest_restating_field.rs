@@ -2,10 +2,10 @@ use std::collections::HashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rest::{FieldKind, targets};
+use crate::rules::docstrings::rest::FieldKind;
 
 pub fn rest_restating_field(checker: &Checker) {
-    for target in targets(checker) {
+    for target in checker.rest_targets() {
         let fields =
             target.docstring.fields.iter().filter(|field| matches!(field.kind, FieldKind::Param | FieldKind::Var));
         for field in fields {

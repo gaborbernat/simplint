@@ -3,7 +3,6 @@ use ruff_text_size::{TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rest::targets;
 
 // The roles of Sphinx and its Python domain that take a target in backticks.
 const ROLES: &[&str] = &[
@@ -16,7 +15,7 @@ const CODE_DIRECTIVES: &[&str] =
     &["code-block", "code", "sourcecode", "doctest", "testcode", "testoutput", "ipython", "jupyter-execute"];
 
 pub fn rest_inline_markup(checker: &Checker) {
-    for target in targets(checker) {
+    for target in checker.rest_targets() {
         // Positions in the source hold only for a docstring whose text is its source.
         let Some(content) = target.docstring.content else {
             continue;

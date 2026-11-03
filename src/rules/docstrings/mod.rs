@@ -1,5 +1,5 @@
 mod function_docstring;
-mod rest;
+pub(crate) mod rest;
 mod rest_attribute_kind;
 mod rest_duplicate_param;
 mod rest_field_syntax;
@@ -37,12 +37,12 @@ pub(crate) use undocumented_public_api::undocumented_public_api;
 
 use std::path::Path;
 
-use ruff_python_ast::helpers::is_dunder;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::project::Exposure;
+use crate::rules::Visibility;
 use crate::rules::exports::Exports;
 use crate::rules::{last_segment, module_statements};
 
@@ -76,7 +76,9 @@ pub(crate) struct PublicApi<'a> {
 }
 
 impl<'a> PublicApi<'a> {
-    pub(crate) fn of(checker: &Checker<'a>, body: &'a [Stmt]) -> Self {
+    // Built once per file; rules read it through `Checker::public_api`.
+    pub(crate) fn of(checker: &Checker<'a>) -> Self {
+        let body = checker.body();
         let project = checker.project();
         let role = project.role();
         let exports = checker.dunder_all();
@@ -84,10 +86,10 @@ impl<'a> PublicApi<'a> {
         // read here too. A name another module imports counts, since `missing-from-all` lists it in `__all__`.
         let offered = |name: &str| {
             role.public
-                && (!name.starts_with('_') && project.is_imported(name)
+                && (Visibility::of(name) == Visibility::Public && project.is_imported(name)
                     || match exports {
                         Exports::Listed(names) => names.contains(&name),
-                        Exports::Absent => !name.starts_with('_'),
+                        Exports::Absent => Visibility::of(name) == Visibility::Public,
                         Exports::Dynamic => false,
                     })
         };
@@ -109,13 +111,17 @@ impl<'a> PublicApi<'a> {
                             let kind = ApiKind::Function;
                             api.items.push(ApiItem { stmt, name: name.to_owned(), range, kind, via });
                         }
-                        None if dynamic && !name.starts_with('_') => api.maybe_public.push(function.range),
+                        None if dynamic && Visibility::of(name) == Visibility::Public => {
+                            api.maybe_public.push(function.range);
+                        }
                         None => {}
                     }
                 }
                 Stmt::ClassDef(class) => match reach(class.name.as_str()) {
                     Some(via) => api.class(stmt, class, class.name.as_str(), via),
-                    None if dynamic && !class.name.starts_with('_') => api.maybe_public.push(class.range),
+                    None if dynamic && Visibility::of(&class.name) == Visibility::Public => {
+                        api.maybe_public.push(class.range);
+                    }
                     None => {}
                 },
                 Stmt::Assign(ast::StmtAssign { targets, .. }) => {
@@ -149,19 +155,20 @@ impl<'a> PublicApi<'a> {
         // Members in `if` and `try` blocks of the class body, as a version switch, are the class's too.
         for member in module_statements(&class.body) {
             match member {
-                Stmt::ClassDef(nested) if !nested.name.starts_with('_') => {
+                Stmt::ClassDef(nested) if Visibility::of(&nested.name) == Visibility::Public => {
                     self.class(member, nested, &format!("{name}.{}", nested.name), via);
                 }
                 Stmt::FunctionDef(method) => {
                     let method_name = method.name.as_str();
                     let decorators = decorator_names(&method.decorator_list);
-                    if is_dunder(method_name)
+                    let visibility = Visibility::of(method_name);
+                    if visibility == Visibility::Dunder
                         || decorators
                             .iter()
                             .any(|decorator| matches!(*decorator, "override" | "setter" | "deleter" | "overload"))
                     {
                         self.optional.push(member.range());
-                    } else if !method_name.starts_with('_') {
+                    } else if visibility == Visibility::Public {
                         let kind = if decorators.contains(&"property") { ApiKind::Property } else { ApiKind::Method };
                         self.items.push(ApiItem {
                             stmt: member,

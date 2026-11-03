@@ -4,14 +4,14 @@ use ruff_python_ast::{self as ast, Stmt};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::docstring;
-use crate::rules::docstrings::{ApiKind, PublicApi, is_documented_variable};
+use crate::rules::docstrings::{ApiKind, is_documented_variable};
 
 pub fn undocumented_public_api(checker: &Checker) {
     if checker.is_test_module() {
         return;
     }
     let body = checker.body();
-    let api = PublicApi::of(checker, body);
+    let api = checker.public_api();
     for item in &api.items {
         let documented = match item.stmt {
             Stmt::FunctionDef(ast::StmtFunctionDef { body, .. }) | Stmt::ClassDef(ast::StmtClassDef { body, .. }) => {

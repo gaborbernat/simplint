@@ -2,10 +2,11 @@ use std::collections::HashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rest::{FieldKind, Owner, attributes, field_insertion, rank, targets};
+use crate::rules::Visibility;
+use crate::rules::docstrings::rest::{FieldKind, Owner, attributes, field_insertion, rank};
 
 pub fn rest_missing_attribute(checker: &Checker) {
-    for target in targets(checker).into_iter().filter(|target| target.public) {
+    for target in checker.rest_targets().iter().filter(|target| target.public) {
         let Owner::Class(class) = target.owner else {
             continue;
         };
@@ -20,7 +21,7 @@ pub fn rest_missing_attribute(checker: &Checker) {
         let missing: Vec<(&str, &str)> = attributes(checker, class)
             .into_iter()
             .filter(|attribute| {
-                !attribute.name.starts_with('_')
+                Visibility::of(attribute.name) == Visibility::Public
                     && !attribute.documented
                     && !documented.contains(attribute.name)
                     && !parameters.iter().any(|parameter| parameter.name == attribute.name)
