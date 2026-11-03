@@ -16,7 +16,13 @@ fn cache_is_kept_in_ruffs_cache_directory() {
         (
             fs::read_to_string(cache.join("CACHEDIR.TAG")).expect("read"),
             fs::read_to_string(cache.join(".gitignore")).expect("read"),
-            fs::read_dir(cache.join("simplint").join(env!("CARGO_PKG_VERSION"))).expect("read").count(),
+            fs::read_dir(cache.join("simplint").join(concat!(
+                env!("CARGO_PKG_VERSION"),
+                "-",
+                env!("SIMPLINT_CACHE_FORMAT")
+            )))
+            .expect("read")
+            .count(),
         ),
         (
             "Signature: 8a477f597d28d172789f06886806bc55".to_owned(),
@@ -68,12 +74,16 @@ fn cache_dir_moves_the_cache(flags: &[&str], extra: &[(&str, &str)], env: &[(&st
 fn cache_is_not_written_when_nothing_changed() {
     let root = project(&[("module.py", "x = 1\n")]);
     check(root.path(), &["--select", "SMP010"]);
-    let cache = fs::read_dir(root.path().join(".ruff_cache/simplint").join(env!("CARGO_PKG_VERSION")))
-        .expect("read")
-        .next()
-        .expect("a cache file")
-        .expect("entry")
-        .path();
+    let cache = fs::read_dir(root.path().join(".ruff_cache/simplint").join(concat!(
+        env!("CARGO_PKG_VERSION"),
+        "-",
+        env!("SIMPLINT_CACHE_FORMAT")
+    )))
+    .expect("read")
+    .next()
+    .expect("a cache file")
+    .expect("entry")
+    .path();
     let old = std::time::SystemTime::UNIX_EPOCH + Duration::from_hours(24);
     fs::File::options().write(true).open(&cache).expect("open").set_modified(old).expect("set modified time");
     check(root.path(), &["--select", "SMP010"]);
@@ -84,7 +94,11 @@ fn cache_is_not_written_when_nothing_changed() {
 fn unreadable_cache_is_replaced() {
     let root = project(&[("module.py", "VALUE = 1\n")]);
     check(root.path(), &["--select", "SMP010"]);
-    let directory = root.path().join(".ruff_cache/simplint").join(env!("CARGO_PKG_VERSION"));
+    let directory = root.path().join(".ruff_cache/simplint").join(concat!(
+        env!("CARGO_PKG_VERSION"),
+        "-",
+        env!("SIMPLINT_CACHE_FORMAT")
+    ));
     for entry in fs::read_dir(&directory).expect("read") {
         fs::write(entry.expect("entry").path(), "not a cache").expect("write");
     }

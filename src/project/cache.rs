@@ -3,7 +3,8 @@
 // also keeps each file's import facts, so the project index does not parse unchanged files, and a clean result counts
 // only while the file's settings and its slice of the project index are what they were. With fixes on, a file the fix
 // loop left as it was keeps the rules whose fixes the loop withdrew, so a later run reproduces its reports from one
-// lint. The files live in a `simplint` directory inside Ruff's cache directory, apart from Ruff's own.
+// lint. The files live in a `simplint` directory inside Ruff's cache directory, apart from Ruff's own, under a directory
+// named by `FORMAT`.
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::io::{self, Write};
@@ -57,7 +58,7 @@ pub struct Caches(FxHashMap<PathBuf, Cache>);
 
 impl Caches {
     pub fn open<'p>(ruff_cache_dir: &Path, roots: impl Iterator<Item = &'p Path>) -> Self {
-        let directory = directory(ruff_cache_dir).join(env!("CARGO_PKG_VERSION"));
+        let directory = directory(ruff_cache_dir).join(FORMAT);
         if let Err(error) = init(ruff_cache_dir, &directory) {
             error!("Failed to initialize cache at {}: {error:?}", ruff_cache_dir.display());
         }
@@ -73,6 +74,10 @@ impl Caches {
         self.0.into_par_iter().try_for_each(|(_, cache)| cache.persist())
     }
 }
+
+// The version and a hash of the cached types' source, which `build.rs` computes, so a development build that changes
+// them does not read caches an earlier build of the same version wrote.
+const FORMAT: &str = concat!(env!("CARGO_PKG_VERSION"), "-", env!("SIMPLINT_CACHE_FORMAT"));
 
 // simplint's directory in Ruff's cache directory.
 pub fn directory(ruff_cache_dir: &Path) -> PathBuf {
