@@ -85,6 +85,13 @@ class TestHTTPClient:
         assert True
 
 
+class TestMethodDocstring:
+    def test_spread(self) -> None:
+        """ Fails if the default axis changes
+        """
+        assert True
+
+
 class TestDocumented:
     """Explains the group."""
 
