@@ -277,3 +277,18 @@ fn reexport_added_later_checks_the_source_again() {
         ("All checks passed!\n".to_owned(), Some(true))
     );
 }
+
+#[test]
+fn caches_of_other_builds_expire_after_thirty_days() {
+    let root = project(&[
+        ("module.py", "VALUE = 1\n"),
+        (".ruff_cache/simplint/0.0.1-stale/1", "old"),
+        (".ruff_cache/simplint/0.0.2-recent/1", "new"),
+    ]);
+    let stale = root.path().join(".ruff_cache/simplint/0.0.1-stale/1");
+    let old = std::time::SystemTime::now() - Duration::from_hours(24 * 31);
+    fs::File::options().write(true).open(&stale).expect("open").set_modified(old).expect("set modified time");
+    check(root.path(), &["--select", "SMP010"]);
+    let simplint = root.path().join(".ruff_cache/simplint");
+    assert_eq!((simplint.join("0.0.1-stale").exists(), simplint.join("0.0.2-recent").exists()), (false, true));
+}

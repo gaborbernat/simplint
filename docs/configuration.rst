@@ -88,6 +88,9 @@ in a ``simplint`` directory inside Ruff's cache directory, ``.ruff_cache`` unles
 ``--cache-dir`` or ``RUFF_CACHE_DIR`` names another, and never touches Ruff's own files there; ``--no-cache`` skips it.
 A cached result also depends on the names other files use from that file, so editing an importer checks the files it
 imports again.
+Each simplint build keeps its own subdirectory there, and a run removes the subdirectories of other builds that no run
+has written to for 30 days, so a project that runs two versions, as one pinned in pre-commit and another on the command
+line, keeps both caches.
 
 Naming
 ------
