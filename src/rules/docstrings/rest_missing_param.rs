@@ -19,8 +19,12 @@ pub fn rest_missing_param(checker: &Checker) {
             .chain(constructor.iter().flat_map(|docstring| docstring.fields(FieldKind::Param)))
             .filter_map(|field| field.subject())
             .collect();
-        let missing: Vec<&str> =
-            parameters.iter().map(|parameter| parameter.name).filter(|name| !documented.contains(name)).collect();
+        // A parameter with a leading underscore is internal, a knob the documentation leaves out.
+        let missing: Vec<&str> = parameters
+            .iter()
+            .map(|parameter| parameter.name)
+            .filter(|name| !name.starts_with('_') && !documented.contains(name))
+            .collect();
         // The fields go where the constructor's parameters are documented already, the class docstring otherwise.
         let into =
             constructor.as_ref().filter(|docstring| docstring.has(FieldKind::Param)).unwrap_or(&target.docstring);

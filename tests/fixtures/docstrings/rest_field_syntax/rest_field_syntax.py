@@ -83,3 +83,13 @@ def joined(path: str) -> str:
     :param path: Where it is.
     """
     return path
+
+
+def twice(path: str) -> str:
+    """Read a file.
+
+    :param path: Where it is.
+    :raises OSError: When it is missing.
+    :raises OSError: When it cannot be read.
+    """
+    return path

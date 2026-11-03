@@ -1,0 +1,31 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:25 SMP322 Role `:class:Path` has no backticks around its target, so it renders as plain text [unsafe fix: Put the target in backticks]
+2:41 SMP322 Role `:py:func:open()` has no backticks around its target, so it renders as plain text [unsafe fix: Put the target in backticks]
+2:63 SMP322 Role `:meth:Reader.read` has no backticks around its target, so it renders as plain text [unsafe fix: Put the target in backticks]
+5:37 SMP322 Inline literal opened with ``` `` ``` is not closed in its paragraph, so the rest renders as code
+21:14 SMP322 Inline literal opened with ``` `` ``` is not closed in its paragraph, so the rest renders as code
+--- fixed (3 applied, 2 remaining) ---
+def open_file(path: str) -> None:
+    """Open the file at :class:`Path`, as :py:func:`open()` does (:meth:`Reader.read`).
+
+    See https://example.com:8080/path for details, and :term:`file` for the term.
+    A literal ``open`` is fine, and ``this one is not.
+
+    Example::
+
+        call(``unbalanced)
+
+    :param path: Where it is.
+    """
+
+
+def later_paragraph() -> None:
+    """Stop.
+
+    A ``closed`` literal and an ``open one
+    that spans two lines``.
+
+    The last ``one is open."""

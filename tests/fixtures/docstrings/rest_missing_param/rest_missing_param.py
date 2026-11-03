@@ -101,3 +101,10 @@ class CfgNoInit:
     """
 
     size: int = 0
+
+
+def knobbed(url: str, _retries: int = 3) -> None:
+    """Fetch a resource.
+
+    :param url: Where it is.
+    """

@@ -56,8 +56,9 @@ pub(crate) struct Field {
     pub(crate) marker: Option<TextRange>,
     // Whether text other than fields separates the field from an earlier one.
     pub(crate) after_text: bool,
-    // Whether the field says anything after its name, on its line or on the lines that continue it.
+    // Whether the field says anything after its name, on its line or on the lines that continue it, and what.
     pub(crate) described: bool,
+    pub(crate) description: String,
     // Whether the field starts a field list right under a line of text, which reStructuredText then reads as part of
     // that paragraph rather than as a field.
     pub(crate) joins_text: bool,
@@ -88,7 +89,7 @@ pub(crate) struct Docstring<'a> {
     pub(crate) fields: Vec<Field>,
     pub(crate) sections: Vec<Section>,
     // Where the text between the quotes sits in the source; `None` when escapes make the text differ from its source.
-    content: Option<TextRange>,
+    pub(crate) content: Option<TextRange>,
     // Whether a comment follows the closing quotes, such as a `# noqa` for the docstring's line, which a fix moving the
     // quotes to another line would strand.
     commented: bool,
@@ -149,7 +150,8 @@ impl<'a> Docstring<'a> {
             {
                 let words: Vec<String> = marker.split_whitespace().map(str::to_owned).collect();
                 let in_source = start.filter(|_| index > 0);
-                let described = !trimmed[marker.len() + 2..].trim().is_empty();
+                let description = trimmed[marker.len() + 2..].trim().to_owned();
+                let described = !description.is_empty();
                 let joins_text = index > 0 && open.is_none() && !lines[index - 1].1.trim().is_empty();
                 fields.push(Field {
                     kind: FieldKind::of(&words[0]),
@@ -163,6 +165,7 @@ impl<'a> Docstring<'a> {
                     }),
                     after_text: text_since_field && !fields.is_empty(),
                     described,
+                    description,
                     joins_text,
                 });
                 open = Some((fields.len() - 1, level));
@@ -172,6 +175,8 @@ impl<'a> Docstring<'a> {
             if let Some((at, _)) = open.filter(|(_, field)| level > *field) {
                 let field = &mut fields[at];
                 field.described = true;
+                field.description.push(' ');
+                field.description.push_str(trimmed);
                 if let (Some(start), Some(lines)) = (start, field.lines) {
                     field.lines = Some(TextRange::new(lines.start(), start + offset + TextSize::of(*line)));
                 }
@@ -251,7 +256,7 @@ pub(crate) enum Owner<'a> {
     Class(&'a ast::StmtClassDef),
 }
 
-// A docstring the `SMP31` rules check, with what it documents and whether that is part of a library's public API, which
+// A docstring the reStructuredText rules check, with what it documents and whether that is part of a library's public API, which
 // must document all of its parameters, return value and exceptions; any other docstring must only be accurate.
 pub(crate) struct Target<'a> {
     pub(crate) owner: Owner<'a>,

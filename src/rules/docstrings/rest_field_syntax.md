@@ -10,12 +10,12 @@ when `docstring-style = "rest"`. It reports:
   tools accept for generators
 - a field missing what it describes, such as `:param:` without a name or `:raises:` without an exception, and a
   `:returns:`, `:rtype:`, `:yields:` or `:ytype:` field with a name
-- a field that repeats an earlier one, such as two `:param path:` fields
+- a field that repeats an earlier one, such as two `:param path:` fields or two `:raises ValueError:` fields
 - a field after prose that follows the field list, once per docstring
 - a field list right under a line of text, without the blank line reStructuredText needs to read it as a field list
   rather than as the end of that paragraph
 - a `:param:`, `:raises:`, `:returns:`, `:yields:` or `:var:` field with no description, as the fixes of the other
-  `SMP31` rules add it
+  reStructuredText rules add it
 - a Google-style section, such as `Args:`, or a numpydoc one, such as `Parameters` over a line of dashes
 
 A field is a line at the docstring's own indentation that starts with `:name:` followed by a space or the end of the

@@ -140,18 +140,20 @@ prints the result as ``linter.project_kind``, ``linter.api_packages`` and ``lint
 Docstring markup
 ----------------
 
-The ``SMP31`` rules check the field lists of `reStructuredText docstrings
+The reStructuredText rules, SMP310 to SMP323, check the field lists of `reStructuredText docstrings
 <https://www.sphinx-doc.org/en/master/usage/domains/python.html#info-field-lists>`__, as Sphinx renders them:
 
 .. code-block:: toml
 
     [tool.simplint]
-    docstring-style = "rest"  # unset by default, which turns the SMP31 rules off
+    docstring-style = "rest"  # unset by default, which turns SMP310 to SMP323 off
 
 Every docstring has to be accurate: no field for a parameter or attribute that does not exist, no ``:returns:`` on a
 function that returns nothing, no ``:yields:`` on one that is not a generator, ``:ivar:`` and ``:cvar:`` for instance and
-class attributes, and no types, which belong in annotations. Every field needs a description, a field list needs a blank
-line above it, and a constructor parameter is documented once, in the class docstring or in ``__init__``. A docstring
+class attributes, and no types, which belong in annotations. Every field needs a description that says more than the name, a
+field list needs a blank line above it, a constructor parameter is documented once, in the class docstring or in
+``__init__``, roles such as ``:class:`` need their target in backticks, inline literals need closing, and the public API
+leaves out internal names with a leading underscore. A docstring
 of the public API also has to be complete: a ``:param:`` for each parameter, ``:returns:`` or ``:yields:`` when the
 function hands back a value, ``:raises:`` for each exception it raises itself, and an ``:ivar:`` or ``:cvar:`` for each
 attribute of a class. The fixes add the missing fields with empty descriptions, in the order Sphinx renders them, for you

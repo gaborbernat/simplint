@@ -185,6 +185,9 @@ rules! {
     RestUnknownAttribute => ("SMP318", "rest-unknown-attribute", "`:ivar:`, `:cvar:` and `:var:` fields for attributes the class lacks", Sometimes, docstrings::rest_unknown_attribute { module }),
     RestDuplicateParam => ("SMP319", "rest-duplicate-param", "Constructor parameters documented in both the class and `__init__` docstrings", Sometimes, docstrings::rest_duplicate_param { module }),
     RestAttributeKind => ("SMP320", "rest-attribute-kind", "`:ivar:` on class variables and `:cvar:` on instance attributes", Sometimes, docstrings::rest_attribute_kind { module }),
+    RestRestatingField => ("SMP321", "rest-restating-field", "Field descriptions that only repeat the name", None, docstrings::rest_restating_field { module }),
+    RestInlineMarkup => ("SMP322", "rest-inline-markup", "Roles without backticks and unclosed inline literals", Sometimes, docstrings::rest_inline_markup { module }),
+    RestPrivateField => ("SMP323", "rest-private-field", "Public docstrings documenting internal names", Sometimes, docstrings::rest_private_field { module }),
 }
 
 // The simplint rule behind a diagnostic; `None` for Ruff's own diagnostics, such as a syntax error.
