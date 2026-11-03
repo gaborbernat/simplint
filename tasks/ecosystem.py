@@ -21,20 +21,18 @@ from typing import Final
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Package:
-    """A pinned source distribution."""
-
     name: str
     version: str
     sha256: str
 
     @property
     def url(self) -> str:
-        """PyPI's stable address for the archive, which redirects to where the file is stored."""
+        # PyPI's stable address for the archive, which redirects to where the file is stored.
         return f"https://files.pythonhosted.org/packages/source/{self.name[0]}/{self.name}/{self.filename}"
 
     @property
     def filename(self) -> str:
-        """The archive name PyPI gives the source distribution."""
+        # The archive name PyPI gives the source distribution.
         return f"{self.name.replace('-', '_')}-{self.version}.tar.gz"
 
 
@@ -107,13 +105,11 @@ PACKAGES: Final[tuple[Package, ...]] = (
 
 
 def main(arguments: list[str]) -> int:
-    """
-    Lint and fix each pinned project, and report what went wrong.
-
-    :param arguments: the command line, without the program name
-    :returns: the exit status, 1 when any project has a problem
-    :raises ValueError: if a name is not pinned or a download does not match its hash
-    """
+    # Lint and fix each pinned project, and report what went wrong.
+    #
+    # :param arguments: the command line, without the program name
+    # :returns: the exit status, 1 when any project has a problem
+    # :raises ValueError: if a name is not pinned or a download does not match its hash
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cache", type=Path, default=Path(".tox") / "ecosystem", help="keeps the downloads")
     parser.add_argument("--simplint", default="simplint", help="the simplint executable to check")
@@ -140,14 +136,12 @@ class _Options(argparse.Namespace):
 
 
 def download(package: Package, cache: Path) -> Path:
-    """
-    Fetch a source distribution into the cache unless it is already there.
-
-    :param package: the distribution to fetch
-    :param cache: the download directory
-    :returns: the path of the verified archive
-    :raises ValueError: if the archive does not match its pinned hash
-    """
+    # Fetch a source distribution into the cache unless it is already there.
+    #
+    # :param package: the distribution to fetch
+    # :param cache: the download directory
+    # :returns: the path of the verified archive
+    # :raises ValueError: if the archive does not match its pinned hash
     archive = cache / package.filename
     if not archive.is_file():
         cache.mkdir(parents=True, exist_ok=True)
@@ -161,17 +155,15 @@ def download(package: Package, cache: Path) -> Path:
 
 
 def check(package: Package, archive: Path, simplint: str) -> list[str]:
-    """
-    Run the documented pipeline on a project and check that one round of it reaches a fixed point.
-
-    The pipeline is ``ruff check --fix --unsafe-fixes``, ``simplint check --fix --unsafe-fixes`` and ``ruff format``.
-    The baseline runs the same commands without simplint.
-
-    :param package: the project, for its name in messages
-    :param archive: its source distribution
-    :param simplint: the simplint executable
-    :returns: one message per problem found, empty when the project passes
-    """
+    # Run the documented pipeline on a project and check that one round of it reaches a fixed point.
+    #
+    # The pipeline is ``ruff check --fix --unsafe-fixes``, ``simplint check --fix --unsafe-fixes`` and ``ruff format``.
+    # The baseline runs the same commands without simplint.
+    #
+    # :param package: the project, for its name in messages
+    # :param archive: its source distribution
+    # :param simplint: the simplint executable
+    # :returns: one message per problem found, empty when the project passes
     with TemporaryDirectory(prefix=f"{package.name}-") as folder:
         unpacked = Path(folder) / "original"
         with tarfile.open(archive) as tar:

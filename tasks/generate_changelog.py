@@ -14,13 +14,11 @@ from tasks.assemble_release import release_section
 
 
 def main(root: Path, rules: dict[str, str]) -> None:
-    """
-    Write ``docs/changelog.rst`` from the changelog and the pending fragments.
-
-    :param root: the project root
-    :param rules: rule names keyed by code, used to link rule mentions
-    :raises ValueError: if an anchor has no heading to attach to
-    """
+    # Write ``docs/changelog.rst`` from the changelog and the pending fragments.
+    #
+    # :param root: the project root
+    # :param rules: rule names keyed by code, used to link rule mentions
+    # :raises ValueError: if an anchor has no heading to attach to
     history = (root / "CHANGELOG.md").read_text(encoding="utf-8").removeprefix("# Changelog\n").strip()
     pending = sorted((root / "changelog.d").glob("*.md"))
     draft = "\n".join(release_section(pending, "Draft", "release-draft")) if pending else ""
@@ -52,7 +50,7 @@ def main(root: Path, rules: dict[str, str]) -> None:
 
 
 def link_rules(markdown: str, rules: dict[str, str]) -> str:
-    """Link each rule, named by its code or its backticked name, to its page under its name."""
+    # Link each rule, named by its code or its backticked name, to its page under its name.
     codes = {name: code for code, name in rules.items()}
 
     # A raw `:doc:` role lets Sphinx resolve the page and fail the build when it is missing; a Markdown link would turn
@@ -66,12 +64,10 @@ def link_rules(markdown: str, rules: dict[str, str]) -> str:
 
 
 def rule_names() -> dict[str, str]:
-    """
-    Read the rule names from the installed ``simplint`` binary.
-
-    :returns: rule names keyed by code, empty when the binary is not on the path
-    :raises subprocess.CalledProcessError: if the binary fails to list its rules
-    """
+    # Read the rule names from the installed ``simplint`` binary.
+    #
+    # :returns: rule names keyed by code, empty when the binary is not on the path
+    # :raises subprocess.CalledProcessError: if the binary fails to list its rules
     # the docs environment installs the binary, whose rule list maps each code to its name
     if (binary := shutil.which("simplint")) is None:
         return {}
