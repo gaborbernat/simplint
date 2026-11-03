@@ -14,6 +14,8 @@
 [![Build](https://github.com/gaborbernat/simplint/actions/workflows/build.yaml/badge.svg)](https://github.com/gaborbernat/simplint/actions/workflows/build.yaml)
 [![Test](https://github.com/gaborbernat/simplint/actions/workflows/test.yaml/badge.svg)](https://github.com/gaborbernat/simplint/actions/workflows/test.yaml)
 [![Documentation status](https://readthedocs.org/projects/simplint/badge/?version=latest)](https://simplint.readthedocs.io/en/latest/)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/gaborbernat/simplint/badge)](https://scorecard.dev/viewer/?uri=github.com/gaborbernat/simplint)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16281/badge)](https://www.bestpractices.dev/projects/16281)
 
 simplint is a companion linter for [Ruff](https://docs.astral.sh/ruff/), written in [Rust](https://www.rust-lang.org/).
 It adds checks that make Python code easier to read and review, and fixes what it reports when the fix is mechanical.
@@ -32,4 +34,5 @@ Install it with `uv tool install simplint` ([uv](https://docs.astral.sh/uv/)) or
 - [Rules](https://simplint.readthedocs.io/en/latest/rules.html)
 - [PyPI package](https://pypi.org/project/simplint)
 - [Release history](https://github.com/gaborbernat/simplint/blob/main/CHANGELOG.md)
-- [CONTRIBUTING.md](https://github.com/gaborbernat/simplint/blob/main/CONTRIBUTING.md): repository layout and development commands
+- [CONTRIBUTING.md](https://github.com/gaborbernat/simplint/blob/main/CONTRIBUTING.md): repository layout and
+  development commands
