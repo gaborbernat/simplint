@@ -82,7 +82,8 @@ jobs:
       - name: 📦 Update Cargo.toml dependencies
         run: |
           cargo install cargo-edit --version 0.13.14 --locked
-          cargo upgrade --incompatible --pinned allow
+          # ruff pins tikv-jemallocator 0.6, and 0.7 cannot coexist with it: both link the jemalloc native library.
+          cargo upgrade --incompatible --pinned allow --exclude tikv-jemallocator
       - name: 🔒 Update Cargo.lock
         run: cargo update
       - name: 🔍 Check for a compatible cargo-edit update
