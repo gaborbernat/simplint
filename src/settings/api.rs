@@ -116,7 +116,9 @@ impl ApiScope {
                 .max(),
             None => path.first().filter(|top| !matches!(top.as_str(), "docs" | "doc")).map(|_| 1),
         };
-        let public = root.is_some() && !path.iter().any(|part| part.starts_with('_') && !is_dunder(part));
+        // A dunder module such as `__about__` is public, but `__main__` runs as a script rather than being imported.
+        let public = root.is_some()
+            && !path.iter().any(|part| part.starts_with('_') && (!is_dunder(part) || part == "__main__"));
         ModuleRole {
             public,
             entry: public && (root == Some(path.len()) || self.modules.iter().any(|module| module == path)),

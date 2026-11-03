@@ -55,3 +55,30 @@ class Summary:
     """Summarize."""
 
     total = 0
+
+
+from typing import NamedTuple
+
+
+class PairTuple(NamedTuple):
+    """A pair.
+
+    :param left: L.
+    :param right: R.
+    """
+
+    left: int
+    right: int
+
+
+class Builder:
+    """Build things."""
+
+    @staticmethod
+    def build(obj: object) -> None:
+        obj.thing = 1
+
+    def spread(*args: int) -> None: ...
+
+    def collect(self) -> None:
+        self.collect.cache_clear()

@@ -117,3 +117,25 @@ class Box:
 
     def __init__(self, size: int) -> None:
         self.size = size
+
+
+from typing import overload
+
+
+class SpanRange:
+    """A span.
+
+    :param start: Start.
+    :param end: End.
+    :param length: Length.
+    """
+
+    @overload
+    def __init__(self, start: int, end: int) -> None: ...
+
+    @overload
+    def __init__(self, *, length: int) -> None: ...
+
+    def __init__(self, start: int = 0, end: int = 0, *, length: int = 0) -> None:
+        self.start = start
+        self.end = end or start + length

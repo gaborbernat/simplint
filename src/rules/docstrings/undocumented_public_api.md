@@ -5,7 +5,8 @@ Checks that a library's public API is documented. The public API is what users o
 and [PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces):
 
 - a module is public when it belongs to one of the library's API packages and no part of its path starts with `_`, so
-  everything under `package/_internal/` or in `package/_core.py` is internal;
+  everything under `package/_internal/` or in `package/_core.py` is internal; a dunder module such as `__about__` is
+  public, but `__main__`, which runs as a script, is not;
 - a public module offers the names its
   [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package) lists, or, without `__all__`,
   every name it defines without a leading `_`, and the names another module imports from it, which [SMP113](SMP113.html)
@@ -25,7 +26,7 @@ What it asks for:
 These are skipped:
 
 - functions decorated with [`@overload`](https://docs.python.org/3/library/typing.html#typing.overload), since the
-  implementation carries the docstring
+  implementation carries the docstring; [SMP300](SMP300.html) leaves their docstrings alone too
 - dunder methods, such as `__init__`, whose parameters the class docstring describes
 - methods decorated with [`@override`](https://docs.python.org/3/library/typing.html#typing.override), since
   documentation tools show the base method's docstring

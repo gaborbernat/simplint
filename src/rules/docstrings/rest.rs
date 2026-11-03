@@ -6,7 +6,7 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::rules::docstrings::{PublicApi, is_documented_variable};
-use crate::rules::{docstring, for_each_body, indentation, last_segment};
+use crate::rules::{docstring, for_each_body, indentation, last_segment, module_statements};
 use crate::settings::DocstringStyle;
 
 // What a field documents, by its name: the info fields of Sphinx's Python domain and their aliases, and the `yields` and
@@ -92,6 +92,9 @@ pub(crate) struct Docstring<'a> {
     // Whether a comment follows the closing quotes, such as a `# noqa` for the docstring's line, which a fix moving the
     // quotes to another line would strand.
     commented: bool,
+    // The indentation of the docstring's lines after the first, which a field must keep to belong to its field list;
+    // `None` for a docstring of one line.
+    indent: Option<String>,
 }
 
 impl<'a> Docstring<'a> {
@@ -123,6 +126,12 @@ impl<'a> Docstring<'a> {
             .map(indent)
             .min()
             .unwrap_or_default();
+        let body_indent = lines
+            .iter()
+            .skip(1)
+            .map(|(_, line)| line.trim_end())
+            .find(|line| !line.is_empty() && indent(line) == base)
+            .map(|line| line[..base].to_owned());
         let mut fields: Vec<Field> = Vec::new();
         let mut sections = Vec::new();
         // The position and indentation of the field whose body a deeper line continues.
@@ -176,7 +185,8 @@ impl<'a> Docstring<'a> {
                 sections.push(section);
             }
         }
-        Self { literal, fields, sections, content, commented: checker.trailing_comment(literal).is_some() }
+        let commented = checker.trailing_comment(literal).is_some();
+        Self { literal, fields, sections, content, commented, indent: body_indent }
     }
 
     pub(crate) fn fields(&self, kind: FieldKind) -> impl Iterator<Item = &Field> {
@@ -282,7 +292,9 @@ pub(crate) fn targets<'a>(checker: &Checker<'a>) -> Vec<Target<'a>> {
     let methods: HashMap<TextRange, &ast::StmtClassDef> = checker
         .class_defs()
         .iter()
-        .flat_map(|class| class.body.iter().filter_map(Stmt::as_function_def_stmt).map(move |def| (def.range, *class)))
+        .flat_map(|class| {
+            module_statements(&class.body).filter_map(Stmt::as_function_def_stmt).map(move |def| (def.range, *class))
+        })
         .collect();
     let functions = checker.function_defs().iter().filter_map(|def| {
         let docstring = Docstring::parse(checker, docstring(&def.body)?);
@@ -320,8 +332,15 @@ fn parameters(def: &ast::StmtFunctionDef, is_method: bool) -> Vec<Parameter<'_>>
         .collect()
 }
 
+// The `__init__` that runs: the last one, since `@overload` stubs come before the implementation.
 fn constructor(class: &ast::StmtClassDef) -> Option<&ast::StmtFunctionDef> {
-    class.body.iter().filter_map(Stmt::as_function_def_stmt).find(|def| def.name.as_str() == "__init__")
+    module_statements(&class.body)
+        .filter_map(Stmt::as_function_def_stmt)
+        .filter(|def| {
+            def.name.as_str() == "__init__"
+                && !def.decorator_list.iter().any(|decorator| last_segment(&decorator.expression) == Some("overload"))
+        })
+        .last()
 }
 
 // A class's constructor parameters: its `__init__`'s, or the fields a dataclass or attrs class turns into them, those
@@ -332,10 +351,17 @@ fn class_parameters(class: &ast::StmtClassDef) -> Option<Vec<Parameter<'_>>> {
     if let Some(init) = constructor(class) {
         return Some(parameters(init, true));
     }
+    // A generator called with `init=False` writes no constructor, so the class keeps `object`'s.
     let generated = class.decorator_list.iter().any(|decorator| {
-        let decorator = decorator.expression.as_call_expr().map_or(&decorator.expression, |call| &call.func);
-        matches!(last_segment(decorator), Some("dataclass" | "define" | "frozen" | "mutable" | "attrs" | "s"))
-    });
+        let call = decorator.expression.as_call_expr();
+        let name = last_segment(call.map_or(&decorator.expression, |call| &call.func));
+        let writes_init = !call.is_some_and(|call| {
+            call.arguments
+                .find_keyword("init")
+                .is_some_and(|keyword| keyword.value.as_boolean_literal_expr().is_some_and(|literal| !literal.value))
+        });
+        writes_init && matches!(name, Some("dataclass" | "define" | "frozen" | "mutable" | "attrs" | "s"))
+    }) || class.bases().iter().any(|base| last_segment(base) == Some("NamedTuple"));
     if !generated || has_attribute_bases(class) {
         return None;
     }
@@ -346,7 +372,7 @@ fn class_parameters(class: &ast::StmtClassDef) -> Option<Vec<Parameter<'_>>> {
                 .is_some_and(|keyword| keyword.value.as_boolean_literal_expr().is_some_and(|literal| !literal.value))
         })
     };
-    let fields = class.body.iter().filter_map(|stmt| match stmt {
+    let fields = module_statements(&class.body).filter_map(|stmt| match stmt {
         Stmt::AnnAssign(ast::StmtAnnAssign { target, annotation, value, .. }) => {
             let annotation = annotation.as_subscript_expr().map_or(annotation.as_ref(), |subscript| &subscript.value);
             let marker = matches!(last_segment(annotation), Some("ClassVar" | "KW_ONLY"));
@@ -447,7 +473,7 @@ pub(crate) fn field_insertion(
 ) -> Option<Fix> {
     let content = docstring.content?;
     let source = checker.source;
-    let indent = indentation(source, docstring.literal);
+    let indent = docstring.indent.as_deref().unwrap_or_else(|| indentation(source, docstring.literal));
     let newline = checker.stylist.line_ending().as_str();
     let existing: Vec<(usize, TextRange)> = docstring
         .fields
@@ -460,7 +486,10 @@ pub(crate) fn field_insertion(
     added.sort_by_key(|(rank, _)| *rank);
     for (rank, text) in added {
         let line = format!("{indent}{text}{newline}");
-        match existing.iter().find(|(existing, _)| existing > rank) {
+        // After the last field that goes before it, so a field out of order, as one for a parameter that is gone, does
+        // not pull the new one away from its neighbors.
+        let next = existing.iter().rposition(|(existing, _)| existing <= rank).map_or(0, |anchor| anchor + 1);
+        match existing.get(next) {
             Some((_, lines)) => match before.iter_mut().find(|(at, _)| *at == lines.start()) {
                 Some((_, block)) => block.push_str(&line),
                 None => before.push((lines.start(), line)),
@@ -522,7 +551,7 @@ pub(crate) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) ->
         }
         None => found.push(Attribute { name, class_var, on_instance: !class_var, documented }),
     };
-    for stmt in &class.body {
+    for stmt in module_statements(&class.body) {
         let documented = is_documented_variable(checker, &class.body, stmt);
         match stmt {
             Stmt::AnnAssign(ast::StmtAnnAssign { target, annotation, .. }) => {
@@ -532,20 +561,38 @@ pub(crate) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) ->
                     add(name.id.as_str(), last_segment(annotation) == Some("ClassVar"), documented);
                 }
             }
-            Stmt::Assign(ast::StmtAssign { targets, .. }) => {
+            Stmt::Assign(ast::StmtAssign { targets, value, .. }) => {
+                // An attrs or dataclass field declared by a call holds a value per instance.
+                let field = value
+                    .as_call_expr()
+                    .is_some_and(|call| matches!(last_segment(&call.func), Some("ib" | "attrib" | "field")));
                 for name in targets.iter().filter_map(Expr::as_name_expr) {
-                    add(name.id.as_str(), true, documented);
+                    add(name.id.as_str(), !field, documented);
                 }
             }
             _ => {}
         }
     }
-    for method in class.body.iter().filter_map(Stmt::as_function_def_stmt) {
-        let Some(receiver) = method.parameters.args.first().map(|parameter| parameter.name().as_str()) else {
+    for method in module_statements(&class.body).filter_map(Stmt::as_function_def_stmt) {
+        // A static method receives nothing; a class method receives the class, whose attributes are class variables.
+        let decorators: Vec<&str> =
+            method.decorator_list.iter().filter_map(|decorator| last_segment(&decorator.expression)).collect();
+        if decorators.contains(&"staticmethod") {
+            continue;
+        }
+        let on_class = decorators.contains(&"classmethod");
+        let parameters = &method.parameters;
+        let Some(receiver) =
+            parameters.posonlyargs.iter().chain(&parameters.args).next().map(|parameter| parameter.name().as_str())
+        else {
             continue;
         };
         for_each_body(&method.body, &mut |body, _| {
             for stmt in body {
+                // A frozen dataclass sets its own attributes with `object.__setattr__(self, "name", value)`.
+                if let Some(name) = set_through_object(stmt, receiver) {
+                    add(name, on_class, is_documented_variable(checker, body, stmt));
+                }
                 let mut targets: Vec<&Expr> = match stmt {
                     Stmt::Assign(ast::StmtAssign { targets, .. }) => targets.iter().collect(),
                     Stmt::AnnAssign(ast::StmtAnnAssign { target, .. })
@@ -568,7 +615,7 @@ pub(crate) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) ->
                         Expr::Attribute(attribute)
                             if attribute.value.as_name_expr().is_some_and(|name| name.id.as_str() == receiver) =>
                         {
-                            add(attribute.attr.as_str(), false, is_documented_variable(checker, body, stmt));
+                            add(attribute.attr.as_str(), on_class, is_documented_variable(checker, body, stmt));
                         }
                         _ => {}
                     }
@@ -577,6 +624,21 @@ pub(crate) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) ->
         });
     }
     found
+}
+
+// The attribute an `object.__setattr__(receiver, "name", value)` call sets.
+fn set_through_object<'a>(stmt: &'a Stmt, receiver: &str) -> Option<&'a str> {
+    let call = stmt.as_expr_stmt()?.value.as_call_expr()?;
+    let attribute = call.func.as_attribute_expr()?;
+    let is_object = attribute.value.as_name_expr().is_some_and(|name| name.id.as_str() == "object");
+    match call.arguments.args.as_ref() {
+        [Expr::Name(target), Expr::StringLiteral(name), ..]
+            if is_object && attribute.attr.as_str() == "__setattr__" && target.id.as_str() == receiver =>
+        {
+            Some(name.value.to_str())
+        }
+        _ => None,
+    }
 }
 
 // Whether the class takes attributes from a base that may define them, as a field list cannot tell.

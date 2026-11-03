@@ -129,3 +129,20 @@ def hierarchy() -> None:
         raise ValueError
     except KeyError:
         pass
+
+
+def documented_base(path: str) -> None:
+    """Open a file.
+
+    :param path: The file.
+    :raises OSError: When it cannot be opened.
+    """
+    raise FileNotFoundError(path)
+
+
+def exits() -> None:
+    """Stop."""
+    try:
+        raise SystemExit(1)
+    except Exception:
+        pass

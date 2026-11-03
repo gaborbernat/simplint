@@ -602,3 +602,22 @@ fn namespace_package_is_public_api(settings: &str) {
         )
     );
 }
+
+// `__main__` runs as a script, so it offers no API, while another dunder module, as `__about__`, does.
+#[test]
+fn main_module_is_not_public_api() {
+    let root = project(&[
+        ("pyproject.toml", LIBRARY),
+        ("pkg/__init__.py", ""),
+        ("pkg/__main__.py", "def main() -> None: ...\n"),
+        ("pkg/__about__.py", "def helper() -> None: ...\n"),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP302"]).1,
+        format!(
+            "pkg{}__about__.py:1:5: SMP302 Public function `helper` has no docstring; document it for its users\n\
+             Found 1 error.\n",
+            std::path::MAIN_SEPARATOR_STR
+        )
+    );
+}

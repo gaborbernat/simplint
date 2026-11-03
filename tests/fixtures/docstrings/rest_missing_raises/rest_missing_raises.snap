@@ -5,7 +5,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 5:5 SMP316 `parse` raises `ParseError`, which its docstring does not document; add `:raises ParseError:` [unsafe fix: Add `:raises ParseError:`, `:raises LookupError:`]
 5:5 SMP316 `parse` raises `LookupError`, which its docstring does not document; add `:raises LookupError:` [unsafe fix: Add `:raises ParseError:`, `:raises LookupError:`]
 87:5 SMP316 `hierarchy` raises `ValueError`, which its docstring does not document; add `:raises ValueError:` [unsafe fix: Add `:raises ValueError:`]
---- fixed (3 applied, 0 remaining) ---
+144:5 SMP316 `exits` raises `SystemExit`, which its docstring does not document; add `:raises SystemExit:` [unsafe fix: Add `:raises SystemExit:`]
+--- fixed (4 applied, 0 remaining) ---
 import errors
 
 
@@ -141,4 +142,24 @@ def hierarchy() -> None:
     try:
         raise ValueError
     except KeyError:
+        pass
+
+
+def documented_base(path: str) -> None:
+    """Open a file.
+
+    :param path: The file.
+    :raises OSError: When it cannot be opened.
+    """
+    raise FileNotFoundError(path)
+
+
+def exits() -> None:
+    """Stop.
+
+    :raises SystemExit:
+    """
+    try:
+        raise SystemExit(1)
+    except Exception:
         pass

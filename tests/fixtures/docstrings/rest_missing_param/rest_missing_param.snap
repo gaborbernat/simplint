@@ -12,7 +12,9 @@ expression: "lint_fixture(rule, fixture, target_version)"
 50:5 SMP312 Docstring of `Bare` does not document parameter `quiet`; add `:param quiet:` [unsafe fix: Add `:param quiet:`]
 57:5 SMP312 Docstring of `single` does not document parameter `value`; add `:param value:`
 65:5 SMP312 Docstring of `Settings` does not document parameter `retries`; add `:param retries:` [unsafe fix: Add `:param retries:`]
---- fixed (9 applied, 1 remaining) ---
+81:5 SMP312 Docstring of `reordered` does not document parameter `b`; add `:param b:` [unsafe fix: Add `:param b:`]
+90:5 SMP312 Docstring of `indented` does not document parameter `b`; add `:param b:` [unsafe fix: Add `:param b:`]
+--- fixed (11 applied, 1 remaining) ---
 def copy(source: str, target: str, *args: str, **kwargs: str) -> None:
     r"""Copy a file.
 
@@ -107,3 +109,31 @@ class Settings:
 
     def describe(self) -> str:
         return self.name
+
+
+def reordered(a: int, b: int, c: int) -> None:
+    """Do it.
+
+    :param old: Renamed away.
+    :param a: A.
+    :param b:
+    :param c: C.
+    """
+
+
+def indented(a: int, b: int) -> None:
+    """Summary.
+
+        :param a: A.
+        :param b:
+    """
+
+
+@dataclass(init=False)
+class CfgNoInit:
+    """Config.
+
+    :ivar size: Size.
+    """
+
+    size: int = 0

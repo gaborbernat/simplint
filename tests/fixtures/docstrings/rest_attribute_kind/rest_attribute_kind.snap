@@ -29,3 +29,29 @@ class Engine:
     def __init__(self) -> None:
         self.state = "idle"
         self.mode = "slow"
+
+
+import attr
+
+
+class RegistryKind:
+    """A registry.
+
+    :cvar default: The default entry.
+    """
+
+    @classmethod
+    def configure(cls) -> None:
+        cls.default = 1
+
+
+@attr.s
+class AttrsCache:
+    """Cached.
+
+    :param x: X.
+    :ivar cache: Computed cache.
+    """
+
+    x = attr.ib()
+    cache = attr.ib(init=False, factory=dict)

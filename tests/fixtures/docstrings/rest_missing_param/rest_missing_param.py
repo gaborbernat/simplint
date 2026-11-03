@@ -75,3 +75,29 @@ class Settings:
 
     def describe(self) -> str:
         return self.name
+
+
+def reordered(a: int, b: int, c: int) -> None:
+    """Do it.
+
+    :param old: Renamed away.
+    :param a: A.
+    :param c: C.
+    """
+
+
+def indented(a: int, b: int) -> None:
+    """Summary.
+
+        :param a: A.
+    """
+
+
+@dataclass(init=False)
+class CfgNoInit:
+    """Config.
+
+    :ivar size: Size.
+    """
+
+    size: int = 0

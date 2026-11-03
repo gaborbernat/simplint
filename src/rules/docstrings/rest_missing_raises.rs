@@ -22,8 +22,10 @@ pub fn rest_missing_raises(checker: &Checker) {
             .map(|subject| subject.rsplit('.').next().unwrap_or(subject))
             .collect();
         let mut missing: Vec<&str> = Vec::new();
+        // A field for a built-in base documents its subclasses too, as `:raises OSError:` does `FileNotFoundError`.
         for name in raises.raised {
-            if !documented.contains(name) && !missing.contains(&name) {
+            let covered = documented.contains(name) || builtin_bases(name).iter().any(|base| documented.contains(base));
+            if !covered && !missing.contains(&name) {
                 missing.push(name);
             }
         }
@@ -84,9 +86,12 @@ impl<'a> Visitor<'a> for Raises<'a> {
                 let Some(name) = last_segment(raised) else {
                     return;
                 };
+                // `Exception` catches all but the exceptions that end the program or a generator.
+                let exits = matches!(name, "SystemExit" | "KeyboardInterrupt" | "GeneratorExit");
                 let caught = self.caught.iter().flatten().any(|caught| {
                     *caught == name
-                        || matches!(*caught, "Exception" | "BaseException")
+                        || *caught == "BaseException"
+                        || *caught == "Exception" && !exits
                         || builtin_bases(name).contains(caught)
                 });
                 if name.starts_with(char::is_uppercase)

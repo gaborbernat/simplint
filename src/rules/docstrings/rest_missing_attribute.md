@@ -7,7 +7,9 @@ attributes without an `:ivar name:`, `:cvar name:` or `:var name:` field. The at
 - names the class body assigns: a `ClassVar` or a name assigned without an annotation is a class variable, an annotated
   name, such as a dataclass field, an instance attribute, and a class variable a method also sets on `self` is an
   instance attribute with a default
-- attributes a method sets on `self`, at any depth of its body
+- attributes a method sets on its first parameter, at any depth of its body, directly or through
+  `object.__setattr__(self, "name", value)` as a frozen dataclass does; a class method's are class variables, and a
+  static method sets none
 
 These are skipped:
 

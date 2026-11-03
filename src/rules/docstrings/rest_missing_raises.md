@@ -5,7 +5,10 @@ exceptions the function raises itself without a `:raises Error:` field. A field 
 `:raises errors.ParseError:` documents `raise errors.ParseError(...)`. These are not counted:
 
 - a bare `raise`, and a `raise` of an exception the function caught, as `raise error` in `except ... as error`
-- an exception a surrounding `try` of the same function catches, by name or through `Exception` or `BaseException`
+- an exception a surrounding `try` of the same function catches, by name, through a built-in base such as `OSError` for
+  `FileNotFoundError`, or through `Exception`, which does not catch `SystemExit`, `KeyboardInterrupt` or
+  `GeneratorExit`, or `BaseException`
+- an exception whose built-in base a field documents, as `:raises OSError:` does `FileNotFoundError`
 - `NotImplementedError`, which marks a method for subclasses to override
 - a `raise` inside a nested function or class
 - a name starting in lowercase, which is a variable rather than an exception class

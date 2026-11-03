@@ -96,12 +96,12 @@ impl<'a> PublicApi<'a> {
                 Stmt::FunctionDef(function) => {
                     let name = function.name.as_str();
                     match reach(name) {
+                        // An `@overload` variant of a public function may carry a docstring, but needs none.
+                        Some(_) if is_overload(&function.decorator_list) => api.optional.push(function.range),
                         Some(via) => {
-                            if !is_overload(&function.decorator_list) {
-                                let range = function.name.range;
-                                let kind = ApiKind::Function;
-                                api.items.push(ApiItem { stmt, name: name.to_owned(), range, kind, via });
-                            }
+                            let range = function.name.range;
+                            let kind = ApiKind::Function;
+                            api.items.push(ApiItem { stmt, name: name.to_owned(), range, kind, via });
                         }
                         None if dynamic && !name.starts_with('_') => api.maybe_public.push(function.range),
                         None => {}
@@ -140,7 +140,8 @@ impl<'a> PublicApi<'a> {
     // A public class, its public methods and properties, and its public nested classes with theirs.
     fn class(&mut self, stmt: &'a Stmt, class: &'a ast::StmtClassDef, name: &str, via: Option<&'a Path>) {
         self.items.push(ApiItem { stmt, name: name.to_owned(), range: class.name.range, kind: ApiKind::Class, via });
-        for member in &class.body {
+        // Members in `if` and `try` blocks of the class body, as a version switch, are the class's too.
+        for member in module_statements(&class.body) {
             match member {
                 Stmt::ClassDef(nested) if !nested.name.starts_with('_') => {
                     self.class(member, nested, &format!("{name}.{}", nested.name), via);
@@ -149,10 +150,12 @@ impl<'a> PublicApi<'a> {
                     let method_name = method.name.as_str();
                     let decorators = decorator_names(&method.decorator_list);
                     if is_dunder(method_name)
-                        || decorators.iter().any(|decorator| matches!(*decorator, "override" | "setter" | "deleter"))
+                        || decorators
+                            .iter()
+                            .any(|decorator| matches!(*decorator, "override" | "setter" | "deleter" | "overload"))
                     {
                         self.optional.push(member.range());
-                    } else if !method_name.starts_with('_') && !decorators.contains(&"overload") {
+                    } else if !method_name.starts_with('_') {
                         let kind = if decorators.contains(&"property") { ApiKind::Property } else { ApiKind::Method };
                         self.items.push(ApiItem {
                             stmt: member,

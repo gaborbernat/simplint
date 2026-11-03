@@ -55,3 +55,45 @@ class Pair:
             pass
         self.total += 1
         local = 1
+
+
+import sys
+from dataclasses import dataclass
+
+
+class PointPos:
+    """A point.
+
+    :param x: The x.
+    :ivar total: The total.
+    """
+
+    def __init__(self, /, x: int) -> None:
+        """Make it."""
+        self.total = x
+
+
+class ConfSwitch:
+    """Configuration.
+
+    :cvar sep: The separator.
+    """
+
+    if sys.platform == "win32":
+        sep = "\\"
+    else:
+        sep = "/"
+
+
+@dataclass(frozen=True)
+class FrozenParsed:
+    """Frozen.
+
+    :param raw: Raw.
+    :ivar parsed: Parsed form.
+    """
+
+    raw: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "parsed", self.raw.split())
