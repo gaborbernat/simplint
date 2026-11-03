@@ -338,7 +338,10 @@ fn for_each_file<T: Send>(
         .filter(|(path, settings)| FileSettings::new(settings, resolver.resolve(path), path).rewrites_dataclass_calls())
         .map(|(path, _)| path.as_path())
         .collect();
-    let roles = module_roles(&paths, resolved, module_paths)?;
+    let roles = module_roles(&paths, resolved, |path| {
+        let (module_path, _) = module_paths(path);
+        module_path.into_iter().chain(roots.module_paths(path)).collect()
+    })?;
     let inputs =
         IndexInputs { entry_points: &entry_points, roots: &roots, rewrites_calls: &rewrites_calls, roles: &roles };
     let mut project = index_project(&facts, &inputs)?;
@@ -378,18 +381,22 @@ fn for_each_file<T: Send>(
     Ok(Some(passes))
 }
 
-// Where each file sits in its library's public API. Unlinted files count too: an `__init__.py` Ruff's `lint.exclude`
-// leaves out still re-exports public names.
+// Where each file sits in its library's public API, by the first of the names the file imports as, from its package or
+// from a search root, that an API package holds. Unlinted files count too: an `__init__.py` Ruff's `lint.exclude` leaves
+// out still re-exports public names.
 fn module_roles<'p>(
     paths: &[&'p Path],
     resolved: &Resolved,
-    module_paths: impl Fn(&Path) -> (Option<Vec<String>>, Option<Vec<String>>),
+    module_paths: impl Fn(&Path) -> Vec<Vec<String>>,
 ) -> Result<HashMap<&'p Path, ModuleRole>> {
     paths
         .iter()
         .map(|&path| {
-            let (module_path, importable) = module_paths(path);
-            Ok((path, resolved.settings_resolver.for_file(path)?.role(path, module_path.or(importable).as_deref())))
+            let settings = resolved.settings_resolver.for_file(path)?;
+            let roles: Vec<ModuleRole> =
+                module_paths(path).iter().map(|module_path| settings.role(path, Some(module_path))).collect();
+            let role = roles.iter().copied().find(|role| role.public).or_else(|| roles.first().copied());
+            Ok((path, role.unwrap_or_else(|| settings.role(path, None))))
         })
         .collect()
 }

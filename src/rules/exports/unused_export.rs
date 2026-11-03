@@ -1,18 +1,28 @@
 use ruff_diagnostics::{Edit, Fix};
-use ruff_python_ast::{Expr, Stmt};
-use ruff_source_file::LineRanges;
+use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::exports::{Exports, all_binding, all_literal, is_all_target};
+use crate::rules::module_statements;
 use crate::settings::ProjectKind;
 
 pub fn unused_export(checker: &Checker) {
     let project = checker.project();
     // The `__all__` of a library's top-level package, or of a module `api-modules` names, declares what users outside the
-    // run import; an `import *` of the module hands every listed name to the importing module, which may use it there.
-    if checker.is_test_module() || project.role().entry || project.is_star_import_source() {
+    // run import; an `import *` of the module hands every listed name to the importing module, which may use it there. A
+    // package's `__init__.py` lists what it re-exports, and Ruff, which counts its imports as re-exports, puts any it
+    // leaves out back into `__all__`.
+    // A module-level `__getattr__` serves names `__all__` lists without the module binding them, as a deprecation shim or
+    // a lazy loader does, so whether anything imports them shows only outside the run.
+    if checker.is_test_module()
+        || checker.is_init_module()
+        || project.role().entry
+        || project.is_star_import_source()
+        || module_statements(checker.body())
+            .any(|stmt| stmt.as_function_def_stmt().is_some_and(|def| def.name.as_str() == "__getattr__"))
+    {
         return;
     }
     let Exports::Listed(exported) = checker.dunder_all() else {
@@ -29,7 +39,11 @@ pub fn unused_export(checker: &Checker) {
         _ => None,
     };
     let elements = literal.map_or(&[][..], |(_, elements)| elements);
-    let fix = literal.and_then(|(value, elements)| removal(checker, value, elements, &unused));
+    // Ruff's fix for the import this leaves unused drops every binding of a name imported twice from one module, as in
+    // `from .question import Question, Question as Alias`, the one still in use included.
+    let fix = literal
+        .filter(|_| !unused.iter().any(|name| is_double_import(checker, name)))
+        .and_then(|(value, elements)| removal(checker, value, elements, &unused));
     let title = format!(
         "Remove {} from `__all__`",
         unused.iter().map(|name| format!("`{name}`")).collect::<Vec<_>>().join(", ")
@@ -58,40 +72,58 @@ fn builds_all(stmt: &Stmt) -> bool {
         })
 }
 
-// Names listed one per line lose their lines; a list on one line is written again without them. A comment inside the
-// list may belong to a name, so the fix leaves such a list alone unless each name has a line of its own.
+// Each run of unused names goes with the separator after it, or, at the end of the list, with the separator before it,
+// so the layout and comments around the names kept stay as they are, whatever the layout. A comment inside a run may
+// belong to a removed name, so the fix leaves such a list alone.
 fn removal(checker: &Checker, value: TextRange, elements: &[Expr], unused: &[&str]) -> Option<Fix> {
     let source = checker.source;
     let is_unused =
         |element: &Expr| element.as_string_literal_expr().is_some_and(|text| unused.contains(&text.value.to_str()));
     let (open, close) = if source[value].starts_with('[') { ("[", "]") } else { ("(", ")") };
-    let kept: Vec<&str> =
-        elements.iter().filter(|element| !is_unused(element)).map(|element| checker.text(element)).collect();
-    let one_per_line = elements.iter().all(|element| {
-        source[TextRange::new(source.line_start(element.start()), element.start())].trim().is_empty()
-            && source[TextRange::new(element.end(), source.line_end(element.end()))]
-                .trim()
-                .trim_start_matches(',')
-                .trim()
-                .is_empty()
-    });
-    let edit = if kept.is_empty() {
-        Edit::range_replacement(format!("{open}{close}"), value)
-    } else if source.contains_line_break(value) && one_per_line {
-        let mut edits = elements
-            .iter()
-            .filter(|element| is_unused(element))
-            .map(|element| Edit::range_deletion(source.full_lines_range(element.range())));
-        let first = edits.next()?;
-        return Some(applicability(checker, Fix::safe_edits(first, edits)));
-    } else if checker.has_comment_in(value) {
-        return None;
-    } else {
-        // A tuple of one needs its trailing comma.
-        let comma = if open == "(" && kept.len() == 1 { "," } else { "" };
-        Edit::range_replacement(format!("{open}{}{comma}{close}", kept.join(", ")), value)
-    };
-    Some(applicability(checker, Fix::safe_edit(edit)))
+    let kept = elements.iter().filter(|element| !is_unused(element)).count();
+    if kept == 0 {
+        return (!checker.has_comment_in(value))
+            .then(|| applicability(checker, Fix::safe_edit(Edit::range_replacement(format!("{open}{close}"), value))));
+    }
+    // A tuple left with one name needs a comma after it.
+    let lone = open == "(" && kept == 1;
+    let mut edits = Vec::new();
+    let mut index = 0;
+    while index < elements.len() {
+        if !is_unused(&elements[index]) {
+            index += 1;
+            continue;
+        }
+        let first = index;
+        while index < elements.len() && is_unused(&elements[index]) {
+            index += 1;
+        }
+        let edit = if let Some(next) = elements.get(index) {
+            Edit::range_deletion(TextRange::new(elements[first].start(), next.start()))
+        } else {
+            let range = TextRange::new(elements[first - 1].end(), elements[index - 1].end());
+            let has_comma = source[range.end().to_usize()..].trim_start().starts_with(',');
+            if lone && !has_comma {
+                Edit::range_replacement(",".to_owned(), range)
+            } else {
+                Edit::range_deletion(range)
+            }
+        };
+        if checker.has_comment_in(edit.range()) {
+            return None;
+        }
+        edits.push(edit);
+    }
+    if lone
+        && !elements.last().is_some_and(is_unused)
+        && let Some(last) = elements.last()
+        && !source[last.end().to_usize()..].trim_start().starts_with(',')
+    {
+        edits.push(Edit::insertion(",".to_owned(), last.end()));
+    }
+    let mut edits = edits.into_iter();
+    let first = edits.next()?;
+    Some(applicability(checker, Fix::safe_edits(first, edits)))
 }
 
 // Code outside the run, such as a library's users, may import a name the run does not; an application has no such code.
@@ -101,4 +133,25 @@ fn applicability(checker: &Checker, fix: Fix) -> Fix {
     } else {
         Fix::unsafe_edits(fix.edits()[0].clone(), fix.edits()[1..].iter().cloned())
     }
+}
+
+// Whether `name` is bound by importing a name the module also imports under another binding from the same module.
+fn is_double_import(checker: &Checker, name: &str) -> bool {
+    let imports: Vec<&ast::StmtImportFrom> = checker.body().iter().filter_map(Stmt::as_import_from_stmt).collect();
+    imports.iter().any(|import| {
+        import.names.iter().any(|alias| {
+            alias.asname.as_ref().unwrap_or(&alias.name).as_str() == name
+                && imports
+                    .iter()
+                    .filter(|other| import_source(other) == import_source(import))
+                    .flat_map(|other| &other.names)
+                    .filter(|other| other.name.as_str() == alias.name.as_str())
+                    .count()
+                    > 1
+        })
+    })
+}
+
+fn import_source(import: &ast::StmtImportFrom) -> (u32, Option<&str>) {
+    (import.level, import.module.as_ref().map(ast::Identifier::as_str))
 }

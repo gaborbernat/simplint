@@ -30,7 +30,7 @@ pub fn rest_unknown_attribute(checker: &Checker) {
                 Rule::RestUnknownAttribute,
                 field.marker.unwrap_or_else(|| target.docstring.range()),
                 format!("`{text}` documents `{subject}`, which `{}` does not have", target.name()),
-                field_deletion(&[field]),
+                field_deletion(checker, &target.docstring, &[field]),
                 format!("Remove `{text}`"),
             );
         }

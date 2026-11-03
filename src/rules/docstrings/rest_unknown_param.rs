@@ -22,7 +22,7 @@ pub fn rest_unknown_param(checker: &Checker) {
                 Rule::RestUnknownParam,
                 field.marker.unwrap_or_else(|| target.docstring.range()),
                 format!("`{text}` documents `{subject}`, which `{}` does not take", target.name()),
-                field_deletion(&[field]),
+                field_deletion(checker, &target.docstring, &[field]),
                 format!("Remove `{text}`"),
             );
         }

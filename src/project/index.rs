@@ -42,13 +42,24 @@ impl SearchRoots {
     // The module a file imports as from the innermost search root above it, which is how Python names a module of a
     // namespace package, one without an `__init__.py` that Ruff does not count as a package.
     pub fn module_path(&self, path: &Path) -> Option<Vec<String>> {
+        self.module_paths(path).into_iter().next()
+    }
+
+    // The module a file imports as from each search root above it, the innermost first: a namespace package under `src`
+    // is `namespace.package` from `src`, though the directory above the package is a search root too.
+    pub fn module_paths(&self, path: &Path) -> Vec<Vec<String>> {
         let path = normalized(path);
-        let root =
-            self.roots.iter().filter(|root| path.starts_with(root)).max_by_key(|root| root.components().count())?;
-        path.strip_prefix(root)
-            .ok()?
-            .iter()
-            .map(|part| Path::new(part).file_stem()?.to_str().map(str::to_owned))
+        let mut roots: Vec<&PathBuf> = self.roots.iter().filter(|root| path.starts_with(root)).collect();
+        roots.sort_by_key(|root| std::cmp::Reverse(root.components().count()));
+        roots
+            .into_iter()
+            .filter_map(|root| {
+                path.strip_prefix(root)
+                    .ok()?
+                    .iter()
+                    .map(|part| Path::new(part).file_stem()?.to_str().map(str::to_owned))
+                    .collect()
+            })
             .collect()
     }
 }

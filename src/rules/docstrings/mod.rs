@@ -34,7 +34,7 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::project::Exposure;
 use crate::rules::exports::Exports;
-use crate::rules::last_segment;
+use crate::rules::{last_segment, module_statements};
 
 enum ApiKind {
     Function,
@@ -86,7 +86,8 @@ impl<'a> PublicApi<'a> {
         };
         let dynamic = matches!(exports, Exports::Dynamic);
         let mut api = Self { items: Vec::new(), maybe_public: Vec::new(), optional: Vec::new() };
-        for stmt in body {
+        // Definitions in top-level `if` and `try` blocks, as a version switch or an optional accelerator, are the module's too.
+        for stmt in module_statements(body) {
             match stmt {
                 Stmt::FunctionDef(function) => {
                     let name = function.name.as_str();

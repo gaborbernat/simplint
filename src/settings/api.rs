@@ -87,7 +87,7 @@ impl ApiScope {
         let kind = if library { ProjectKind::Library } else { ProjectKind::Application };
         let packages = packages.map_or_else(
             || shipped_packages(root, build, metadata),
-            |names| Some(names.iter().map(|name| top_level(name).to_owned()).collect()),
+            |names| Some(names.iter().map(|name| package_name(name)).collect()),
         );
         let modules =
             modules.unwrap_or_default().iter().map(|module| module.split('.').map(str::to_owned).collect()).collect();
@@ -104,12 +104,23 @@ impl ApiScope {
             Some((last, rest)) if last == "__init__" => rest,
             _ => module_path,
         };
-        let shipped = path.first().is_some_and(|top| match &self.packages {
-            Some(packages) => packages.contains(top),
-            None => !matches!(top.as_str(), "docs" | "doc"),
-        });
-        let public = shipped && !path.iter().any(|part| part.starts_with('_') && !is_dunder(part));
-        ModuleRole { public, entry: public && (path.len() == 1 || self.modules.iter().any(|module| module == path)) }
+        // The API package a module belongs to, the most specific when one nests in another, by how many parts its name has.
+        let root = match &self.packages {
+            Some(packages) => packages
+                .iter()
+                .map(|package| package.split('.').collect::<Vec<_>>())
+                .filter(|parts| {
+                    parts.len() <= path.len() && parts.iter().zip(path).all(|(part, segment)| part == segment)
+                })
+                .map(|parts| parts.len())
+                .max(),
+            None => path.first().filter(|top| !matches!(top.as_str(), "docs" | "doc")).map(|_| 1),
+        };
+        let public = root.is_some() && !path.iter().any(|part| part.starts_with('_') && !is_dunder(part));
+        ModuleRole {
+            public,
+            entry: public && (root == Some(path.len()) || self.modules.iter().any(|module| module == path)),
+        }
     }
 }
 
@@ -133,7 +144,7 @@ fn is_installable(root: &Path, build: &BuildConfiguration) -> bool {
 // The distribution's top-level packages, from the first source that names any: the build backend's settings, the
 // packages that carry a `py.typed` marker, then the package named after the project.
 fn shipped_packages(root: &Path, build: &BuildConfiguration, metadata: &ProjectMetadata) -> Option<BTreeSet<String>> {
-    let configured: BTreeSet<String> = build.packages.iter().map(|name| top_level(name).to_owned()).collect();
+    let configured: BTreeSet<String> = build.packages.iter().map(|name| package_name(name)).collect();
     if !configured.is_empty() {
         return Some(configured);
     }
@@ -168,9 +179,13 @@ fn shipped_packages(root: &Path, build: &BuildConfiguration, metadata: &ProjectM
     (!named.is_empty()).then_some(named)
 }
 
-// The top-level package of a dotted module name or of a path such as `src/package`.
-fn top_level(name: &str) -> &str {
+// A package by its dotted import name: the last part of a path such as `src/package`, which a build backend ships at
+// the top level, or a dotted name such as `namespace.package`, without trailing private modules, as the `_native` of
+// maturin's `package._native`.
+fn package_name(name: &str) -> String {
     let name = name.trim_end_matches(['/', '\\']);
     let name = name.rsplit(['/', '\\']).next().unwrap_or(name);
-    name.split('.').next().unwrap_or(name)
+    let parts: Vec<&str> = name.split('.').collect();
+    let kept = parts.iter().rposition(|part| !part.starts_with('_')).map_or(parts.len(), |last| last + 1);
+    parts[..kept].join(".")
 }

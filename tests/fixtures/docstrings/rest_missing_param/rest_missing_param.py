@@ -51,3 +51,27 @@ class Bare:
 
     def __init__(self, _: str, quiet: bool) -> None:
         self.quiet = quiet
+
+
+def single(value: int) -> None:
+    "Do a thing with the value."
+
+
+from dataclasses import KW_ONLY, dataclass, field
+
+
+@dataclass
+class Settings:
+    """Settings.
+
+    :param name: The name.
+    """
+
+    name: str
+    label = "settings"
+    _: KW_ONLY
+    retries: int = 3
+    cache: dict = field(init=False, default_factory=dict)
+
+    def describe(self) -> str:
+        return self.name

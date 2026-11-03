@@ -64,3 +64,49 @@ def escaped(path: str) -> str:
     :param missing: Left in place by the fix, as escapes make the text differ from the source.
     """
     return path
+
+
+import attr
+
+
+@attr.s
+class Classic:
+    """A classic attrs class.
+
+    :param x: Across.
+    :param y: Down.
+    """
+
+    x = attr.ib()
+    y = attr.ib(default=0)
+
+
+@dataclass
+class Base:
+    """A base.
+
+    :param a: The first.
+    """
+
+    a: int
+
+
+@dataclass
+class Child(Base):
+    """A child.
+
+    :param a: The first, from the base.
+    :param b: The second.
+    """
+
+    b: int
+
+
+class Box:
+    """Hold things.
+
+    :param size: How big.
+    :param gone: Removed long ago."""
+
+    def __init__(self, size: int) -> None:
+        self.size = size

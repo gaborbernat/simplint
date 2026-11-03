@@ -51,9 +51,9 @@ class Engine:
 ## Fix safety
 
 The fix adds a `:cvar name:` or `:ivar name:` field for each attribute, with an empty description for you to write,
-which [SMP310](SMP310.html) reports until you do. The fields go after the parameters and before the return and
-exception fields, in the order Sphinx renders them. The fix is unsafe, since code may read the docstring through
-`__doc__`. No fix is offered when escapes in the docstring make its text differ from the source.
+which [SMP310](SMP310.html) reports until you do. The fields go after the parameters and before the return and exception
+fields, in the order Sphinx renders them. The fix is unsafe, since code may read the docstring through `__doc__`. No fix
+is offered when escapes in the docstring make its text differ from the source.
 
 ## Options
 

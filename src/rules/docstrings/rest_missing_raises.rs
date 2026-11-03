@@ -84,11 +84,11 @@ impl<'a> Visitor<'a> for Raises<'a> {
                 let Some(name) = last_segment(raised) else {
                     return;
                 };
-                let caught = self
-                    .caught
-                    .iter()
-                    .flatten()
-                    .any(|caught| *caught == name || matches!(*caught, "Exception" | "BaseException"));
+                let caught = self.caught.iter().flatten().any(|caught| {
+                    *caught == name
+                        || matches!(*caught, "Exception" | "BaseException")
+                        || builtin_bases(name).contains(caught)
+                });
                 if name.starts_with(char::is_uppercase)
                     && name != "NotImplementedError"
                     && !self.bound.contains(name)
@@ -99,5 +99,30 @@ impl<'a> Visitor<'a> for Raises<'a> {
             }
             _ => visitor::walk_stmt(self, stmt),
         }
+    }
+}
+
+// The built-in classes a built-in exception derives from below `Exception`, so `except OSError` catches a
+// `FileNotFoundError`; the bases of a project's own exceptions are not known.
+fn builtin_bases(name: &str) -> &'static [&'static str] {
+    match name {
+        "FileNotFoundError" | "FileExistsError" | "PermissionError" | "IsADirectoryError" | "NotADirectoryError"
+        | "TimeoutError" | "BlockingIOError" | "ChildProcessError" | "InterruptedError" | "ProcessLookupError" => {
+            &["OSError", "IOError", "EnvironmentError"]
+        }
+        "BrokenPipeError" | "ConnectionAbortedError" | "ConnectionRefusedError" | "ConnectionResetError" => {
+            &["ConnectionError", "OSError", "IOError", "EnvironmentError"]
+        }
+        "ConnectionError" => &["OSError", "IOError", "EnvironmentError"],
+        "KeyError" | "IndexError" => &["LookupError"],
+        "ZeroDivisionError" | "OverflowError" | "FloatingPointError" => &["ArithmeticError"],
+        "UnicodeDecodeError" | "UnicodeEncodeError" | "UnicodeTranslateError" => &["UnicodeError", "ValueError"],
+        "UnicodeError" => &["ValueError"],
+        "ModuleNotFoundError" => &["ImportError"],
+        "RecursionError" => &["RuntimeError"],
+        "UnboundLocalError" => &["NameError"],
+        "TabError" => &["IndentationError", "SyntaxError"],
+        "IndentationError" => &["SyntaxError"],
+        _ => &[],
     }
 }

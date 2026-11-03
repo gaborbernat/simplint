@@ -498,6 +498,10 @@ fn project_kind_follows_how_the_project_installs(pyproject: &str, files: &[(&str
     "hatch_packages"
 )]
 #[test_case("[tool.uv.build-backend]\nmodule-name = \"built\"\n", &[], "[\n\t\"built\",\n]" ; "uv_module_name")]
+#[test_case(
+    "[tool.uv.build-backend]\nmodule-name = \"acme.widgets\"\n", &[], "[\n\t\"acme.widgets\",\n]" ;
+    "uv_namespace_module_name"
+)]
 #[test_case("[tool.maturin]\nmodule-name = \"native._core\"\n", &[], "[\n\t\"native\",\n]" ; "maturin_module_name")]
 #[test_case(
     "[tool.setuptools]\npackages = 3\n", &[("src/typed/py.typed", ""), ("src/plain/__init__.py", "")],
@@ -505,7 +509,7 @@ fn project_kind_follows_how_the_project_installs(pyproject: &str, files: &[(&str
 )]
 #[test_case("[project]\nname = \"named-package\"\n", &[("named_package/__init__.py", "")], "[\n\t\"named_package\",\n]" ; "project_name")]
 #[test_case("[project]\nname = \"absent\"\n", &[], "every module outside docs and tests" ; "fallback")]
-#[test_case("[tool.simplint]\napi-packages = [\"chosen.sub\"]\n", &[], "[\n\t\"chosen\",\n]" ; "configured")]
+#[test_case("[tool.simplint]\napi-packages = [\"chosen.sub\"]\n", &[], "[\n\t\"chosen.sub\",\n]" ; "configured")]
 fn api_packages_come_from_the_build_configuration(pyproject: &str, files: &[(&str, &str)], packages: &str) {
     let root = project(&[&[("pyproject.toml", pyproject), ("module.py", "")], files].concat());
     let stdout = check(root.path(), &["--show-settings"]).1;

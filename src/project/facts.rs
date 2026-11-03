@@ -12,6 +12,7 @@ use ruff_python_stdlib::identifiers::is_identifier;
 use super::constructors::Constructors;
 use super::receivers::{AttributeWrites, module_name};
 use crate::rules::exports::{Exports, dunder_all};
+use crate::rules::module_statements;
 
 // The names a file uses from other modules, before they resolve to files; parsing finds them and the cache keeps them.
 // Names are grouped by module, so each module resolves once per file.
@@ -84,7 +85,7 @@ impl FileFacts {
             exports_unknown: matches!(dunder_all(&parsed.syntax().body), Exports::Dynamic)
                 || has_module_getattr(&parsed.syntax().body),
             bindings: top_level_bindings(&parsed.syntax().body, module_path.or(importable)),
-            defined: top_level_statements(&parsed.syntax().body).flat_map(declared_names).collect(),
+            defined: module_statements(&parsed.syntax().body).flat_map(declared_names).collect(),
             attribute_writes,
             constructors,
             reads_docstrings: imports.reads_docstrings,
@@ -105,30 +106,8 @@ pub struct ImportBinding {
     pub(super) redundant: bool,
 }
 
-// The statements that run when the module loads, including those of its top-level `if` and `try` blocks, where
-// modules pick an implementation by version or availability.
-fn top_level_statements(body: &[Stmt]) -> impl Iterator<Item = &Stmt> {
-    body.iter().flat_map(|stmt| -> Box<dyn Iterator<Item = &Stmt> + '_> {
-        match stmt {
-            Stmt::If(ast::StmtIf { body, elif_else_clauses, .. }) => Box::new(
-                top_level_statements(body)
-                    .chain(elif_else_clauses.iter().flat_map(|clause| top_level_statements(&clause.body))),
-            ),
-            Stmt::Try(ast::StmtTry { body, handlers, orelse, finalbody, .. }) => Box::new(
-                top_level_statements(body)
-                    .chain(handlers.iter().flat_map(|handler| match handler {
-                        ast::ExceptHandler::ExceptHandler(handler) => top_level_statements(&handler.body),
-                    }))
-                    .chain(top_level_statements(orelse))
-                    .chain(top_level_statements(finalbody)),
-            ),
-            _ => Box::new(std::iter::once(stmt)),
-        }
-    })
-}
-
 fn top_level_bindings(body: &[Stmt], module_path: Option<&[String]>) -> Vec<ImportBinding> {
-    top_level_statements(body)
+    module_statements(body)
         .filter_map(Stmt::as_import_from_stmt)
         .filter_map(|import| {
             let module = import.module.as_ref().map(ast::Identifier::as_str);
@@ -146,7 +125,7 @@ fn top_level_bindings(body: &[Stmt], module_path: Option<&[String]>) -> Vec<Impo
 
 // PEP 562's module `__getattr__` answers for names the module does not bind, as lazily loaded submodules.
 fn has_module_getattr(body: &[Stmt]) -> bool {
-    top_level_statements(body)
+    module_statements(body)
         .any(|stmt| stmt.as_function_def_stmt().is_some_and(|def| def.name.as_str() == "__getattr__"))
 }
 

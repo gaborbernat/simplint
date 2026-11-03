@@ -17,7 +17,7 @@ pub fn rest_type_field(checker: &Checker) {
             let (message, fix, title) = match (field.kind, field.subject()) {
                 (FieldKind::Type, Some(name)) => (
                     format!("`{text}` puts a type in the docstring; annotate `{name}` in the signature instead"),
-                    annotated(name).then(|| field_deletion(&[field])).flatten(),
+                    annotated(name).then(|| field_deletion(checker, &target.docstring, &[field])).flatten(),
                     format!("Remove `{text}`"),
                 ),
                 (FieldKind::VarType, Some(name)) => (
@@ -27,7 +27,7 @@ pub fn rest_type_field(checker: &Checker) {
                 ),
                 (FieldKind::ReturnType | FieldKind::YieldType, _) => (
                     format!("`{text}` puts a type in the docstring; annotate the return type in the signature instead"),
-                    returns_annotated.then(|| field_deletion(&[field])).flatten(),
+                    returns_annotated.then(|| field_deletion(checker, &target.docstring, &[field])).flatten(),
                     format!("Remove `{text}`"),
                 ),
                 (FieldKind::Param | FieldKind::Var, Some(name)) if field.words.len() > 2 => {

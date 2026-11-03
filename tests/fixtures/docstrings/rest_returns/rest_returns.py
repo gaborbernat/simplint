@@ -110,3 +110,25 @@ class Shape(ABC):
 
         :returns: Nothing.
         """
+
+
+def middle(values: list[int]) -> None:
+    """Check the values.
+
+    :returns: Nothing at all.
+    :raises ValueError: When one is negative.
+    :rtype: None
+    """
+    if min(values) < 0:
+        raise ValueError
+
+
+def pragma(values: list[int]) -> int:
+    """Add the values, which can be long enough to need the line length suppression after it."""  # noqa: E501
+    return sum(values)
+
+
+def pragma_closing() -> None:
+    """Stop.
+
+    :returns: Nothing at all."""  # noqa: E501

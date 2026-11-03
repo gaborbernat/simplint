@@ -583,3 +583,22 @@ fn application_drops_unused_exports_safely() {
     check(root.path(), &["--select", "SMP117", "--fix"]);
     assert_eq!(common::read(root.path(), "tool/cli.py"), "def run() -> None: ...\n\n\n__all__ = []\n");
 }
+
+// A namespace package's API package is its dotted name, so its modules are public below the namespace.
+#[test_case("[tool.uv.build-backend]\nmodule-name = \"acme.widgets\"\n" ; "build_backend")]
+#[test_case("[tool.simplint]\napi-packages = [\"acme.widgets\"]\n" ; "setting")]
+fn namespace_package_is_public_api(settings: &str) {
+    let root = project(&[
+        ("pyproject.toml", &format!("[project]\nname = \"acme-widgets\"\n[build-system]\nrequires = []\n{settings}")),
+        ("src/acme/widgets/__init__.py", ""),
+        ("src/acme/widgets/shapes.py", "def circle() -> int: ...\n"),
+        ("src/acme/other.py", "def square() -> int: ...\n"),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP302"]).1,
+        format!(
+            "{}:1:5: SMP302 Public function `circle` has no docstring; document it for its users\nFound 1 error.\n",
+            ["src", "acme", "widgets", "shapes.py"].join(std::path::MAIN_SEPARATOR_STR)
+        )
+    );
+}

@@ -10,7 +10,9 @@ expression: "lint_fixture(rule, fixture, target_version)"
 42:9 SMP312 Docstring of `run` does not document parameter `verbose`; add `:param verbose:` [unsafe fix: Add `:param verbose:`]
 46:9 SMP312 Docstring of `check` does not document parameter `path`; add `:param path:` [unsafe fix: Add `:param path:`]
 50:5 SMP312 Docstring of `Bare` does not document parameter `quiet`; add `:param quiet:` [unsafe fix: Add `:param quiet:`]
---- fixed (8 applied, 0 remaining) ---
+57:5 SMP312 Docstring of `single` does not document parameter `value`; add `:param value:`
+65:5 SMP312 Docstring of `Settings` does not document parameter `retries`; add `:param retries:` [unsafe fix: Add `:param retries:`]
+--- fixed (9 applied, 1 remaining) ---
 def copy(source: str, target: str, *args: str, **kwargs: str) -> None:
     r"""Copy a file.
 
@@ -80,3 +82,28 @@ class Bare:
 
     def __init__(self, _: str, quiet: bool) -> None:
         self.quiet = quiet
+
+
+def single(value: int) -> None:
+    "Do a thing with the value."
+
+
+from dataclasses import KW_ONLY, dataclass, field
+
+
+@dataclass
+class Settings:
+    """Settings.
+
+    :param name: The name.
+    :param retries:
+    """
+
+    name: str
+    label = "settings"
+    _: KW_ONLY
+    retries: int = 3
+    cache: dict = field(init=False, default_factory=dict)
+
+    def describe(self) -> str:
+        return self.name

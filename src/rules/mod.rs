@@ -211,3 +211,25 @@ pub fn single_assignment(stmt: &Stmt) -> Option<(&ast::ExprName, Option<&Expr>, 
     };
     Some((target.as_name_expr()?, annotation, value))
 }
+
+// The statements that run when the module loads, including those of its top-level `if` and `try` blocks, where
+// modules pick an implementation by version or availability.
+pub fn module_statements(body: &[Stmt]) -> impl Iterator<Item = &Stmt> {
+    body.iter().flat_map(|stmt| -> Box<dyn Iterator<Item = &Stmt> + '_> {
+        match stmt {
+            Stmt::If(ast::StmtIf { body, elif_else_clauses, .. }) => Box::new(
+                module_statements(body)
+                    .chain(elif_else_clauses.iter().flat_map(|clause| module_statements(&clause.body))),
+            ),
+            Stmt::Try(ast::StmtTry { body, handlers, orelse, finalbody, .. }) => Box::new(
+                module_statements(body)
+                    .chain(handlers.iter().flat_map(|handler| match handler {
+                        ast::ExceptHandler::ExceptHandler(handler) => module_statements(&handler.body),
+                    }))
+                    .chain(module_statements(orelse))
+                    .chain(module_statements(finalbody)),
+            ),
+            _ => Box::new(std::iter::once(stmt)),
+        }
+    })
+}

@@ -89,7 +89,7 @@ pub fn rest_returns(checker: &Checker) {
                 Rule::RestReturns,
                 fields[0].marker.unwrap_or_else(|| docstring.range()),
                 format!("`{name}` returns nothing, yet its docstring has a `:returns:` field"),
-                field_deletion(&fields),
+                field_deletion(checker, docstring, &fields),
                 "Remove the return fields",
             );
         }

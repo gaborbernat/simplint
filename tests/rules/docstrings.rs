@@ -19,6 +19,8 @@ use crate::common;
 #[test_case("undocumented-public-api", "loose/_stars.py" ; "undocumented_public_api_star_import")]
 #[test_case("undocumented-public-api", "loose/_extra.py" ; "undocumented_public_api_star_import_without_all")]
 #[test_case("undocumented-public-api", "loose/_deep.py" ; "undocumented_public_api_chain")]
+#[test_case("undocumented-public-api", "switched.py" ; "undocumented_public_api_top_level_blocks")]
+#[test_case("function-docstring", "switched.py" ; "function_docstring_top_level_blocks")]
 #[test_case("function-docstring", "facade/_core.py" ; "function_docstring_reexported_through_all")]
 #[test_case("function-docstring", "facade/_helpers.py" ; "function_docstring_shared_internally")]
 #[test_case("test-module-docstring", "tests/test_module_docstring.py" ; "test_module_docstring")]

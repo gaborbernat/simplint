@@ -8,7 +8,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 37:10 SMP311 `:param self:` documents `self`, which `read` does not take [unsafe fix: Remove `:param self:`]
 48:6 SMP311 `:param z:` documents `z`, which `Point` does not take [unsafe fix: Remove `:param z:`]
 62:5 SMP311 `:param missing:` documents `missing`, which `escaped` does not take
---- fixed (5 applied, 1 remaining) ---
+109:6 SMP311 `:param gone:` documents `gone`, which `Box` does not take [unsafe fix: Remove `:param gone:`]
+--- fixed (6 applied, 1 remaining) ---
 from dataclasses import dataclass
 
 
@@ -70,3 +71,49 @@ def escaped(path: str) -> str:
     :param missing: Left in place by the fix, as escapes make the text differ from the source.
     """
     return path
+
+
+import attr
+
+
+@attr.s
+class Classic:
+    """A classic attrs class.
+
+    :param x: Across.
+    :param y: Down.
+    """
+
+    x = attr.ib()
+    y = attr.ib(default=0)
+
+
+@dataclass
+class Base:
+    """A base.
+
+    :param a: The first.
+    """
+
+    a: int
+
+
+@dataclass
+class Child(Base):
+    """A child.
+
+    :param a: The first, from the base.
+    :param b: The second.
+    """
+
+    b: int
+
+
+class Box:
+    """Hold things.
+
+    :param size: How big.
+    """
+
+    def __init__(self, size: int) -> None:
+        self.size = size

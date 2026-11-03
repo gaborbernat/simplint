@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use ruff_diagnostics::{Edit, Fix};
-use ruff_python_ast::{self as ast, Expr, Stmt};
+use ruff_python_ast::{self as ast, Expr, Stmt, StringFlags};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
@@ -86,6 +86,9 @@ pub(crate) struct Docstring<'a> {
     pub(crate) sections: Vec<Section>,
     // Where the text between the quotes sits in the source; `None` when escapes make the text differ from its source.
     content: Option<TextRange>,
+    // Whether a comment follows the closing quotes, such as a `# noqa` for the docstring's line, which a fix moving the
+    // quotes to another line would strand.
+    commented: bool,
 }
 
 impl<'a> Docstring<'a> {
@@ -93,7 +96,10 @@ impl<'a> Docstring<'a> {
         let text = literal.value.to_str();
         // Offsets into the source hold only while the text is the source as written, one part without escapes.
         let content = match literal.value.as_slice() {
-            [part] if checker.text(part.content_range()) == text => Some(part.content_range()),
+            // A single-quoted string cannot take the line breaks a fix writes.
+            [part] if part.flags.is_triple_quoted() && checker.text(part.content_range()) == text => {
+                Some(part.content_range())
+            }
             _ => None,
         };
         let start = content.map(TextRange::start);
@@ -165,7 +171,7 @@ impl<'a> Docstring<'a> {
                 sections.push(section);
             }
         }
-        Self { literal, fields, sections, content }
+        Self { literal, fields, sections, content, commented: checker.trailing_comment(literal).is_some() }
     }
 
     pub(crate) fn fields(&self, kind: FieldKind) -> impl Iterator<Item = &Field> {
@@ -313,8 +319,10 @@ fn constructor(class: &ast::StmtClassDef) -> Option<&ast::StmtFunctionDef> {
     class.body.iter().filter_map(Stmt::as_function_def_stmt).find(|def| def.name.as_str() == "__init__")
 }
 
-// A class's constructor parameters: its `__init__`'s, or the annotated fields a dataclass or attrs class turns into
-// them, `ClassVar`s aside.
+// A class's constructor parameters: its `__init__`'s, or the fields a dataclass or attrs class turns into them, those
+// annotated in its body and those an `attr.ib()` or `field()` call declares, without `ClassVar`s, the `KW_ONLY`
+// marker and fields that set `init=False`. `None` when they come from elsewhere: a base class, or a class that is not
+// generated.
 fn class_parameters(class: &ast::StmtClassDef) -> Option<Vec<Parameter<'_>>> {
     if let Some(init) = constructor(class) {
         return Some(parameters(init, true));
@@ -323,22 +331,41 @@ fn class_parameters(class: &ast::StmtClassDef) -> Option<Vec<Parameter<'_>>> {
         let decorator = decorator.expression.as_call_expr().map_or(&decorator.expression, |call| &call.func);
         matches!(last_segment(decorator), Some("dataclass" | "define" | "frozen" | "mutable" | "attrs" | "s"))
     });
-    generated.then(|| {
-        class
-            .body
-            .iter()
-            .filter_map(Stmt::as_ann_assign_stmt)
-            .filter(|field| {
-                let annotation = field
-                    .annotation
-                    .as_subscript_expr()
-                    .map_or(field.annotation.as_ref(), |subscript| &subscript.value);
-                last_segment(annotation) != Some("ClassVar")
-            })
-            .filter_map(|field| field.target.as_name_expr())
-            .map(|name| Parameter { name: name.id.as_str(), annotated: true })
-            .collect()
-    })
+    if !generated || has_attribute_bases(class) {
+        return None;
+    }
+    let skips_init = |value: Option<&Expr>| {
+        value.and_then(Expr::as_call_expr).is_some_and(|call| {
+            call.arguments
+                .find_keyword("init")
+                .is_some_and(|keyword| keyword.value.as_boolean_literal_expr().is_some_and(|literal| !literal.value))
+        })
+    };
+    let fields = class.body.iter().filter_map(|stmt| match stmt {
+        Stmt::AnnAssign(ast::StmtAnnAssign { target, annotation, value, .. }) => {
+            let annotation = annotation.as_subscript_expr().map_or(annotation.as_ref(), |subscript| &subscript.value);
+            let marker = matches!(last_segment(annotation), Some("ClassVar" | "KW_ONLY"));
+            target.as_name_expr().filter(|_| !marker && !skips_init(value.as_deref())).map(|name| (name, true))
+        }
+        Stmt::Assign(ast::StmtAssign { targets, value, .. }) => match targets.as_slice() {
+            [Expr::Name(name)]
+                if value
+                    .as_call_expr()
+                    .is_some_and(|call| matches!(last_segment(&call.func), Some("ib" | "attrib" | "field")))
+                    && !skips_init(Some(value)) =>
+            {
+                Some((name, false))
+            }
+            _ => None,
+        },
+        _ => None,
+    });
+    Some(
+        fields
+            .filter(|(name, _)| !name.id.as_str().chars().all(|char| char == '_'))
+            .map(|(name, annotated)| Parameter { name: name.id.as_str(), annotated })
+            .collect(),
+    )
 }
 
 // The docstring of a class's `__init__`, where some projects document the constructor's parameters instead.
@@ -346,12 +373,47 @@ pub(crate) fn constructor_docstring<'a>(checker: &Checker, class: &'a ast::StmtC
     Some(Docstring::parse(checker, docstring(&constructor(class)?.body)?))
 }
 
-// Deletes whole fields, each with the lines that continue it.
-pub(crate) fn field_deletion(fields: &[&Field]) -> Option<Fix> {
-    let mut edits = fields.iter().map(|field| field.lines.map(Edit::range_deletion));
-    let first = edits.next()??;
-    let rest: Option<Vec<Edit>> = edits.collect();
-    Some(Fix::unsafe_edits(first, rest?))
+// Deletes whole fields, each with the lines that continue it. Fields that end the docstring take the blank lines before
+// them too, and the closing quotes go after the text left, on a line of their own at the docstring's indentation when
+// that text spans several lines, and on its last line otherwise.
+pub(crate) fn field_deletion(checker: &Checker, docstring: &Docstring, fields: &[&Field]) -> Option<Fix> {
+    let content = docstring.content?;
+    let source = checker.source;
+    let mut ranges: Vec<TextRange> = fields.iter().map(|field| field.lines).collect::<Option<_>>()?;
+    ranges.sort_by_key(Ranged::start);
+    let blank_between = |start: TextSize, end: TextSize| source[TextRange::new(start, end)].trim().is_empty();
+    let mut trailing = ranges.len();
+    let mut end = content.end();
+    while trailing > 0 && blank_between(ranges[trailing - 1].end(), end) {
+        trailing -= 1;
+        end = ranges[trailing].start();
+    }
+    let mut edits: Vec<Edit> = ranges[..trailing].iter().map(|range| Edit::range_deletion(*range)).collect();
+    if trailing < ranges.len() {
+        if docstring.commented {
+            return None;
+        }
+        let before = &source[TextRange::new(content.start(), ranges[trailing].start())];
+        let text_end = content.start() + TextSize::of(before.trim_end());
+        let kept: String = ranges[..trailing]
+            .iter()
+            .fold((content.start(), String::new()), |(at, mut kept), range| {
+                kept.push_str(&source[TextRange::new(at, range.start())]);
+                (range.end(), kept)
+            })
+            .1
+            + &source[TextRange::new(ranges[..trailing].last().map_or(content.start(), Ranged::end), text_end)];
+        let range = TextRange::new(text_end, content.end());
+        edits.push(if kept.contains('\n') {
+            let line_ending = checker.stylist.line_ending().as_str();
+            Edit::range_replacement(format!("{line_ending}{}", indentation(source, docstring.literal)), range)
+        } else {
+            Edit::range_deletion(range)
+        });
+    }
+    let mut edits = edits.into_iter();
+    let first = edits.next()?;
+    Some(Fix::unsafe_edits(first, edits))
 }
 
 // Where a field goes in the order Sphinx renders a field list: parameters in the order the signature takes them, then
@@ -418,6 +480,8 @@ pub(crate) fn field_insertion(
         // Text before the closing quotes on the same line moves the quotes to a line of their own.
         let edit = if source[..at.to_usize()].ends_with('\n') {
             Edit::insertion(format!("{prefix}{at_end}"), at)
+        } else if docstring.commented {
+            return None;
         } else {
             let separator = if existing.is_empty() { format!("{newline}{newline}") } else { newline.to_owned() };
             Edit::insertion(format!("{separator}{at_end}{indent}"), at)
@@ -472,14 +536,31 @@ pub(crate) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) ->
         };
         for_each_body(&method.body, &mut |body, _| {
             for stmt in body {
-                let targets = match stmt {
-                    Stmt::Assign(ast::StmtAssign { targets, .. }) => targets.as_slice(),
-                    Stmt::AnnAssign(ast::StmtAnnAssign { target, .. }) => std::slice::from_ref(target.as_ref()),
-                    _ => &[],
+                let mut targets: Vec<&Expr> = match stmt {
+                    Stmt::Assign(ast::StmtAssign { targets, .. }) => targets.iter().collect(),
+                    Stmt::AnnAssign(ast::StmtAnnAssign { target, .. })
+                    | Stmt::AugAssign(ast::StmtAugAssign { target, .. })
+                    | Stmt::For(ast::StmtFor { target, .. }) => vec![target.as_ref()],
+                    Stmt::With(ast::StmtWith { items, .. }) => {
+                        items.iter().filter_map(|item| item.optional_vars.as_deref()).collect()
+                    }
+                    _ => Vec::new(),
                 };
-                for attribute in targets.iter().filter_map(Expr::as_attribute_expr) {
-                    if attribute.value.as_name_expr().is_some_and(|name| name.id.as_str() == receiver) {
-                        add(attribute.attr.as_str(), false, is_documented_variable(checker, body, stmt));
+                // `self.left, self.right = pair` sets both, in the order written.
+                let mut next = 0;
+                while let Some(&target) = targets.get(next) {
+                    next += 1;
+                    match target {
+                        Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => {
+                            targets.extend(elts);
+                        }
+                        Expr::Starred(ast::ExprStarred { value, .. }) => targets.push(value),
+                        Expr::Attribute(attribute)
+                            if attribute.value.as_name_expr().is_some_and(|name| name.id.as_str() == receiver) =>
+                        {
+                            add(attribute.attr.as_str(), false, is_documented_variable(checker, body, stmt));
+                        }
+                        _ => {}
                     }
                 }
             }

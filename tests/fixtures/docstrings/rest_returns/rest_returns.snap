@@ -10,7 +10,10 @@ expression: "lint_fixture(rule, fixture, target_version)"
 61:6 SMP315 `stop` returns nothing, yet its docstring has a `:returns:` field [unsafe fix: Remove the return fields]
 67:5 SMP315 `numbers` is a generator; document what it yields with `:yields:` instead of `:returns:` [unsafe fix: Rename the field to `:yields:`]
 75:5 SMP315 `silent` yields values, yet its docstring has no `:yields:` field [unsafe fix: Add `:yields:`]
---- fixed (8 applied, 0 remaining) ---
+118:6 SMP315 `middle` returns nothing, yet its docstring has a `:returns:` field [unsafe fix: Remove the return fields]
+127:5 SMP315 `pragma` returns a value, yet its docstring has no `:returns:` field
+134:6 SMP315 `pragma_closing` returns nothing, yet its docstring has a `:returns:` field
+--- fixed (9 applied, 2 remaining) ---
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from typing import NoReturn
@@ -33,16 +36,12 @@ def untyped(values):
 
 
 def nothing(values: list[int]) -> None:
-    """Print the values.
-
-    """
+    """Print the values."""
     print(values)
 
 
 def implicit(values):
-    """Print the values.
-
-    """
+    """Print the values."""
     print(values)
     return
 
@@ -64,16 +63,12 @@ def placeholder_raise(values):
 
 
 def assigned(values):
-    """Keep the values.
-
-    """
+    """Keep the values."""
     kept = values
 
 
 def stop() -> NoReturn:
-    """Stop.
-
-    """
+    """Stop."""
     raise SystemExit
 
 
@@ -127,3 +122,23 @@ class Shape(ABC):
 
         :returns: Nothing.
         """
+
+
+def middle(values: list[int]) -> None:
+    """Check the values.
+
+    :raises ValueError: When one is negative.
+    """
+    if min(values) < 0:
+        raise ValueError
+
+
+def pragma(values: list[int]) -> int:
+    """Add the values, which can be long enough to need the line length suppression after it."""  # noqa: E501
+    return sum(values)
+
+
+def pragma_closing() -> None:
+    """Stop.
+
+    :returns: Nothing at all."""  # noqa: E501
