@@ -10,7 +10,7 @@ pub(crate) mod testing;
 pub(crate) mod typing;
 
 use ruff_diagnostics::Edit;
-use ruff_python_ast::helpers::any_over_expr;
+use ruff_python_ast::helpers::{any_over_expr, is_dunder};
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
@@ -176,6 +176,28 @@ impl<'a, F: FnMut(&'a Expr) -> Option<T>, T> Visitor<'a> for ExprCollector<F, T>
             self.found.push(value);
         }
         visitor::walk_expr(self, expr);
+    }
+}
+
+// What a name's leading underscores say about who may use it. The two readings of "public" differ on dunders:
+// `from module import *` without `__all__` skips every name with a leading underscore, dunders included, while the
+// typing spec and PEP 8 treat only a non-dunder underscore name as internal, so `__version__` is public.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Visibility {
+    Public,
+    Dunder,
+    Private,
+}
+
+impl Visibility {
+    pub(crate) fn of(name: &str) -> Self {
+        if !name.starts_with('_') {
+            Self::Public
+        } else if is_dunder(name) {
+            Self::Dunder
+        } else {
+            Self::Private
+        }
     }
 }
 

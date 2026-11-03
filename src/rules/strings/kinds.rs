@@ -5,6 +5,7 @@ use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
 use crate::lint::walker::{Scope, Walker};
+use crate::rules::Visibility;
 use crate::rules::for_each_child_body;
 use crate::semantic::BindingKind;
 
@@ -455,7 +456,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
         if members.values.is_empty()
             || project.is_base_class(&class.name)
             || project.is_attribute_written(attr)
-            || !attr.starts_with('_') && project.is_referenced(&class.name)
+            || Visibility::of(attr) == Visibility::Public && project.is_referenced(&class.name)
             || written_outside(self.walker.checker.body(), class, attr)
             || self.reading.contains(&key)
         {

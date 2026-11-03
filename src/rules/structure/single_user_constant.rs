@@ -12,6 +12,7 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::Visibility;
 use crate::rules::exports::Exports;
 use crate::rules::structure::needs_parentheses;
 use crate::rules::{
@@ -27,7 +28,7 @@ pub fn single_user_constant(checker: &Checker) {
         let name = target.id.as_str();
         let private = match checker.dunder_all() {
             Exports::Listed(names) => !names.contains(&name),
-            Exports::Absent | Exports::Dynamic => name.starts_with('_'),
+            Exports::Absent | Exports::Dynamic => Visibility::of(name) != Visibility::Public,
         };
         if !private
             || !is_literal(checker, value)

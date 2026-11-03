@@ -3,6 +3,7 @@ use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::Visibility;
 use crate::rules::exports::Exports;
 use crate::rules::naming::{is_ply_name, rename_fix, uses_ply};
 
@@ -25,7 +26,7 @@ pub fn unexported_public_name(checker: &Checker) {
             _ => continue,
         };
         let name = identifier.as_str();
-        if name.starts_with('_')
+        if Visibility::of(name) != Visibility::Public
             || is_discovered_by_name(name)
             || ply && is_ply_name(name)
             || exported.contains(&name)

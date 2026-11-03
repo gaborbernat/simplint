@@ -3,9 +3,9 @@ use std::fmt::{Display, Formatter};
 use std::path::Path;
 
 use ruff_cache::{CacheKey, CacheKeyHasher};
-use ruff_python_ast::helpers::is_dunder;
 use serde::Deserialize;
 
+use crate::rules::Visibility;
 use crate::settings::metadata::{BuildConfiguration, ProjectMetadata, import_names};
 
 // What `project-kind` asks for; `auto` reads it from how the project builds.
@@ -118,7 +118,7 @@ impl ApiScope {
         };
         // A dunder module such as `__about__` is public, but `__main__` runs as a script rather than being imported.
         let public = root.is_some()
-            && !path.iter().any(|part| part.starts_with('_') && (!is_dunder(part) || part == "__main__"));
+            && !path.iter().any(|part| Visibility::of(part) == Visibility::Private || part == "__main__");
         ModuleRole {
             public,
             entry: public && (root == Some(path.len()) || self.modules.iter().any(|module| module == path)),
@@ -188,6 +188,7 @@ fn package_name(name: &str) -> String {
     let name = name.trim_end_matches(['/', '\\']);
     let name = name.rsplit(['/', '\\']).next().unwrap_or(name);
     let parts: Vec<&str> = name.split('.').collect();
-    let kept = parts.iter().rposition(|part| !part.starts_with('_')).map_or(parts.len(), |last| last + 1);
+    let kept =
+        parts.iter().rposition(|part| Visibility::of(part) == Visibility::Public).map_or(parts.len(), |last| last + 1);
     parts[..kept].join(".")
 }

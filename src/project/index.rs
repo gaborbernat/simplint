@@ -19,6 +19,7 @@ use ty_module_resolver::{
 use super::FileFacts;
 use super::constructors::{DataclassCalls, FileCalls, NameUse};
 use super::facts::{ImportBinding, ModuleNames};
+use crate::rules::Visibility;
 use crate::settings::ModuleRole;
 
 // Where imports resolve, as `ruff analyze graph` searches: the configured `src` directories first, then the directory
@@ -317,10 +318,12 @@ fn user_facing(
         .map(|(path, facts)| (normalized(path), *facts))
         .collect();
     // What `import *` of a module takes: its `__all__`, or every name it defines without a leading underscore.
+    // What `from module import *` takes from a module without `__all__`.
+    let starred = |name: &&str| Visibility::of(name) == Visibility::Public;
     let star_exports = |path: &Path| -> Vec<&str> {
         facts.get(path).map_or_else(Vec::new, |facts| match &facts.exports {
             Some(listed) => listed.iter().map(String::as_str).collect(),
-            None => facts.defined.iter().map(String::as_str).filter(|name| !name.starts_with('_')).collect(),
+            None => facts.defined.iter().map(String::as_str).filter(starred).collect(),
         })
     };
     let mut names: HashMap<PathBuf, HashMap<String, Option<PathBuf>>> = HashMap::new();
@@ -337,13 +340,19 @@ fn user_facing(
             None if facts.exports_unknown => {}
             None => {
                 let redundant = facts.bindings.iter().filter(|binding| binding.redundant).map(|binding| &binding.bound);
-                facts.defined.iter().chain(redundant).filter(|name| !name.starts_with('_')).for_each(|name| add(name));
+                facts
+                    .defined
+                    .iter()
+                    .map(String::as_str)
+                    .chain(redundant.map(String::as_str))
+                    .filter(starred)
+                    .for_each(&mut add);
                 for (_, source) in stars.iter().filter(|(importer, _)| importer == path) {
                     star_exports(source).into_iter().for_each(&mut add);
                 }
             }
         }
-        imported.get(path).into_iter().flatten().filter(|name| !name.starts_with('_')).for_each(|name| add(name));
+        imported.get(path).into_iter().flatten().map(String::as_str).filter(starred).for_each(&mut add);
     }
     loop {
         let mut reached: Vec<(PathBuf, String, PathBuf)> = Vec::new();
@@ -547,7 +556,7 @@ impl<'a> FileIndex<'a> {
     pub fn is_referenced(&self, name: &str) -> bool {
         self.is_imported(name)
             || self.referenced.is_some_and(|names| names.contains(name))
-            || (self.star_imported && !name.starts_with('_'))
+            || (self.star_imported && Visibility::of(name) == Visibility::Public)
             || self.project.module_reads.contains(name)
     }
 
