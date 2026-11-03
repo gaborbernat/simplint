@@ -104,6 +104,57 @@ any other in ``naming.keep-names``:
 ``--config "naming.keep-names = ['urlpatterns']"`` replaces the list, and ``--show-settings`` prints it as
 ``linter.naming.keep_names``.
 
+Public API
+----------
+
+The documentation rules treat a library's public API apart from its internal code. `SMP116
+<https://simplint.readthedocs.io/en/latest/_generated/rules/SMP116.html>`__ asks for docstrings on what users import,
+`SMP002 <https://simplint.readthedocs.io/en/latest/_generated/rules/SMP002.html>`__ removes them everywhere else, and
+:doc:`SMP117 <_generated/rules/SMP117>` keeps ``__all__`` to the names other
+modules use. An application has no Python API, so all of its code is internal.
+
+.. code-block:: toml
+
+    [tool.simplint]
+    project-kind = "library"           # the default is "auto"
+    api-packages = ["my_package"]      # the default comes from the build backend
+    api-modules = ["my_package.errors"]
+
+- ``project-kind`` is ``"library"`` or ``"application"``. ``"auto"`` picks a library when something installs the
+  project: a ``[build-system]`` table, or a ``setup.py`` or ``setup.cfg``. ``[tool.uv]`` with ``package = false``, and
+  maturin building only a binary (``bindings = "bin"``), make it an application, as does a project with none of these.
+  Neither a ``py.typed`` marker nor console scripts decide it: many libraries ship without the first and with the
+  second.
+- ``api-packages`` names the top-level packages or modules the library ships. Without it, they come from the build
+  backend's settings (hatch ``packages``, uv's ``module-name``, flit's ``module.name``, setuptools ``packages`` and
+  ``py-modules``, maturin's ``module-name``), then from the packages next to the ``pyproject.toml``, or in its ``src``
+  directory, that hold a ``py.typed`` marker, then from the package named after the project. When none is found, every
+  module outside ``docs`` and the tests counts.
+- ``api-modules`` names modules, besides the top-level packages, that users import from directly. Their ``__all__`` is
+  the interface you declare, so SMP117 keeps the names no module of the project imports.
+
+A module of an API package is public unless a part of its path starts with ``_``, as `PEP 8
+<https://peps.python.org/pep-0008/#public-and-internal-interfaces>`__ describes, so a layout that keeps its code in
+``my_package/_core.py`` and lists the public names in ``my_package/__init__.py`` exposes only those. ``--show-settings``
+prints the result as ``linter.project_kind``, ``linter.api_packages`` and ``linter.api_modules``.
+
+Docstring markup
+----------------
+
+The ``SMP3`` rules check the field lists of `reStructuredText docstrings
+<https://www.sphinx-doc.org/en/master/usage/domains/python.html#info-field-lists>`__, as Sphinx renders them:
+
+.. code-block:: toml
+
+    [tool.simplint]
+    docstring-style = "rest"  # unset by default, which turns the SMP3 rules off
+
+Every docstring has to be accurate: no field for a parameter the function does not take, no type that repeats an
+annotation, no ``:returns:`` on a function that returns nothing. A docstring of the public API also has to be complete:
+a ``:param:`` for each parameter, ``:returns:`` or ``:yields:`` when the function hands back a value, and ``:raises:``
+for each exception it raises itself. Ruff's ``pydocstyle`` and ``pydoclint`` rules read Google and numpydoc sections
+only, so they report reStructuredText fields as missing; see `Rules that work against each other`_.
+
 Settings shared with Ruff
 -------------------------
 
@@ -243,6 +294,9 @@ The pairs are:
 - `SMP110 <https://simplint.readthedocs.io/en/latest/_generated/rules/SMP110.html>`__ makes imports from the file's own
   package relative, which Ruff's ``TID252`` turns back when ``lint.flake8-tidy-imports.ban-relative-imports`` is
   ``"all"``. Set it to ``"parents"``.
+- With ``docstring-style = "rest"``, the :doc:`SMP3 <_generated/groups/SMP3>`
+  rules check field lists that Ruff's ``D417`` and ``DOC`` rules read as missing sections, since those know Google and
+  numpydoc sections only. Ignore the Ruff rules the error names.
 
 Per-file ignores on either side count, so a Ruff rule turned off for tests does not conflict there. In preview, as in
 Ruff's reports, the message names rules instead of codes. Other combinations clash only on some code, such as `SMP050

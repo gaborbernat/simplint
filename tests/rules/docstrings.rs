@@ -2,7 +2,7 @@ use test_case::test_case;
 
 use crate::common;
 
-#[test_case("function-docstring", "function_docstring.py" ; "function_docstring")]
+#[test_case("function-docstring", "_internal/function_docstring.py" ; "function_docstring")]
 #[test_case("function-docstring", "function_docstring_exported.py" ; "function_docstring_exported")]
 #[test_case("function-docstring", "function_docstring_dynamic.py" ; "function_docstring_dynamic_all")]
 #[test_case("function-docstring", "function_docstring_contract.py" ; "function_docstring_contract")]
@@ -13,11 +13,22 @@ use crate::common;
 #[test_case("function-docstring", "undocumented_public_api_imported.py" ; "function_docstring_imported")]
 #[test_case("undocumented-public-api", "function_docstring_dynamic.py" ; "undocumented_public_api_dynamic_all")]
 #[test_case("undocumented-public-api", "tests/test_module_docstring.py" ; "undocumented_public_api_test_module")]
+#[test_case("undocumented-public-api", "facade/_core.py" ; "undocumented_public_api_reexported_through_all")]
+#[test_case("undocumented-public-api", "facade/_helpers.py" ; "undocumented_public_api_shared_internally")]
+#[test_case("undocumented-public-api", "loose/_impl.py" ; "undocumented_public_api_redundant_alias")]
+#[test_case("undocumented-public-api", "loose/_stars.py" ; "undocumented_public_api_star_import")]
+#[test_case("undocumented-public-api", "loose/_extra.py" ; "undocumented_public_api_star_import_without_all")]
+#[test_case("undocumented-public-api", "loose/_deep.py" ; "undocumented_public_api_chain")]
+#[test_case("function-docstring", "facade/_core.py" ; "function_docstring_reexported_through_all")]
+#[test_case("function-docstring", "facade/_helpers.py" ; "function_docstring_shared_internally")]
 #[test_case("multiline-module-docstring", "multiline_module_docstring.py" ; "multiline_module_docstring")]
 #[test_case(
     "multiline-module-docstring", "multiline_module_docstring_ok.py" ; "multiline_module_docstring_single_line"
 )]
 #[test_case("multiline-module-docstring", "tests/test_module_docstring.py" ; "multiline_module_docstring_test_module")]
+#[test_case(
+    "multiline-module-docstring", "_internal/multiline_module_docstring_internal.py" ; "multiline_module_docstring_internal"
+)]
 #[test_case("test-module-docstring", "tests/test_module_docstring.py" ; "test_module_docstring")]
 #[test_case("test-module-docstring", "tests/test_module_docstring_inline.py" ; "test_module_docstring_inline")]
 #[test_case("test-module-docstring", "multiline_module_docstring.py" ; "test_module_docstring_non_test")]

@@ -54,6 +54,15 @@ const BOTH_IN_PYPROJECT: &str = "simplint settings: <root>/pyproject.toml; Ruff 
          (undocumented-public-module) asks for; ignore D100 for test files in Ruff's `lint.per-file-ignores`, or \
          ignore SMP004 in `[tool.simplint]`.\n    {BOTH_IN_PYPROJECT}; first file: tests/test_module.py"
     ) ; "test_module_docstring")]
+#[test_case(
+    "[tool.simplint]\ndocstring-style = \"rest\"\n[tool.ruff]\nlint.preview = true\nlint.select = [\"DOC201\", \"DOC501\"]\n",
+    "module.py",
+    &format!(
+        "`docstring-style = \"rest\"` writes docstrings as reStructuredText field lists, which rest-field-syntax \
+         (SMP300) checks and Ruff's docstring-missing-returns (DOC201), docstring-missing-exception (DOC501) misread as \
+         missing sections; ignore docstring-missing-returns, docstring-missing-exception in Ruff's `lint.ignore`, or \
+         unset `docstring-style`.\n    {BOTH_IN_PYPROJECT}; first file: module.py"
+    ) ; "rest_docstrings")]
 fn conflict_fails_before_linting(pyproject: &str, file: &str, conflict: &str) {
     let root = project(&[("pyproject.toml", pyproject), (file, "value = 1\n")]);
     assert_eq!(conflicts(root.path(), &[]), (2, header(conflict)));
@@ -66,10 +75,11 @@ fn conflict_fails_before_linting(pyproject: &str, file: &str, conflict: &str) {
 #[test_case("[tool.ruff]\nlint.select = [\"D103\"]\n", "_private.py" ; "private_module")]
 #[test_case("[tool.ruff]\nlint.select = [\"D100\"]\n", "module.py" ; "not_a_test_module")]
 #[test_case("[tool.ruff]\nlint.select = [\"D100\"]\nlint.per-file-ignores = { \"tests/*\" = [\"D100\"] }\n", "tests/test_module.py" ; "ruff_rule_ignored_for_tests")]
+#[test_case("[tool.ruff]\nlint.preview = true\nlint.select = [\"DOC201\"]\n", "module.py" ; "docstrings_not_rest")]
 fn combination_without_conflict_lints(pyproject: &str, file: &str) {
     let root = project(&[("pyproject.toml", pyproject), (file, "value = 1\n")]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP002,SMP004,SMP108,SMP110"]),
+        check(root.path(), &["--select", "SMP002,SMP004,SMP108,SMP110,SMP300"]),
         (0, "All checks passed!\n".to_owned(), String::new())
     );
 }

@@ -1,7 +1,9 @@
 ## What it does
 
 Checks for module docstrings that span more than one line once leading and trailing whitespace is stripped. Test modules
-are skipped, since [SMP004](SMP004.html) asks for their docstring to be removed.
+are skipped, since [SMP004](SMP004.html) asks for their docstring to be removed, and so are the public modules of a
+library (see [SMP116](SMP116.html)), whose docstring introduces the API to its users and, as
+[PEP 257](https://peps.python.org/pep-0257/#multi-line-docstrings) asks, lists what the module exports.
 
 ## Why is this bad?
 

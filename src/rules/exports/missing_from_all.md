@@ -35,6 +35,8 @@ simplint reads `__all__` from module-level `=`, annotated and `+=` assignments o
 `list(...)` or `.remove(...)`, or when `__all__` is bound inside a nested block such as an `if`, `try` or function,
 nothing is reported.
 
+[SMP117](SMP117.html) removes the opposite: names `__all__` lists that no other module imports.
+
 ## Why is this bad?
 
 `__all__` lists the names that make up a module's public interface

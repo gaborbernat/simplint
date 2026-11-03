@@ -167,13 +167,21 @@ rules! {
     MissingFromAll => ("SMP113", "missing-from-all", "Names other modules import that `__all__` omits", Sometimes, exports::missing_from_all { module }),
     DataclassKwOnly => ("SMP114", "dataclass-kw-only", "Dataclasses without `kw_only`", Always, dataclasses::dataclass_kw_only { module }),
     AllFormat => ("SMP115", "all-format", "`__all__` not a list with a trailing comma", Always, exports::all_format { module }),
-    UndocumentedPublicApi => ("SMP116", "undocumented-public-api", "Exported functions, classes, methods and variables without documentation", None, docstrings::undocumented_public_api { module }),
+    UndocumentedPublicApi => ("SMP116", "undocumented-public-api", "Public functions, classes, methods and variables without documentation", None, docstrings::undocumented_public_api { module }),
+    UnusedExport => ("SMP117", "unused-export", "`__all__` entries no other module imports", Sometimes, exports::unused_export { module }),
     TestClass => ("SMP200", "test-class", "Test classes", Sometimes, testing::test_class { module }),
     ParametrizeWithoutId => ("SMP201", "parametrize-without-id", "`parametrize` rows without `pytest.param(..., id=...)`", None, testing::parametrize_without_id { module }),
     ConditionalInTest => ("SMP202", "conditional-in-test", "`if`, `match` and conditional expressions in tests", None, testing::conditional_in_test { module }),
     MockAttributeAssignment => ("SMP203", "mock-attribute-assignment", "Mock attributes assigned after construction", Sometimes, testing::mock_attribute_assignment { module }),
     MockWithoutSpec => ("SMP204", "mock-without-spec", "Mocks and patches without a spec", None, testing::mock_without_spec { expression }),
     ConstantAssert => ("SMP205", "constant-assert", "Assertions on a truthy constant", Sometimes, testing::constant_assert { module }),
+    RestFieldSyntax => ("SMP300", "rest-field-syntax", "Malformed or misplaced reStructuredText docstring fields", None, rest::rest_field_syntax { module }),
+    RestUnknownParam => ("SMP301", "rest-unknown-param", "`:param:` and `:type:` fields for parameters the signature lacks", Sometimes, rest::rest_unknown_param { module }),
+    RestMissingParam => ("SMP302", "rest-missing-param", "Public API docstrings that leave a parameter undocumented", None, rest::rest_missing_param { module }),
+    RestParamOrder => ("SMP303", "rest-param-order", "`:param:` fields out of the signature's order", None, rest::rest_param_order { module }),
+    RestRedundantType => ("SMP304", "rest-redundant-type", "Docstring types that repeat the annotations", Sometimes, rest::rest_redundant_type { module }),
+    RestReturns => ("SMP305", "rest-returns", "Missing, extraneous or misused `:returns:` and `:yields:` fields", Sometimes, rest::rest_returns { module }),
+    RestMissingRaises => ("SMP306", "rest-missing-raises", "Public API docstrings that leave a raised exception undocumented", None, rest::rest_missing_raises { module }),
 }
 
 // The simplint rule behind a diagnostic; `None` for Ruff's own diagnostics, such as a syntax error.
@@ -227,8 +235,12 @@ impl RuleSet {
 }
 
 // The rule groups `simplint linter` lists, as `ruff linter` lists the linters Ruff ports.
-pub const GROUPS: [(&str, &str); 3] =
-    [("SMP0", "Comments, docstrings and structure"), ("SMP1", "Modules, typing and exports"), ("SMP2", "Tests")];
+pub const GROUPS: [(&str, &str); 4] = [
+    ("SMP0", "Comments, docstrings and structure"),
+    ("SMP1", "Modules, typing and exports"),
+    ("SMP2", "Tests"),
+    ("SMP3", "reStructuredText docstrings"),
+];
 
 impl Rule {
     pub fn group(self) -> &'static str {

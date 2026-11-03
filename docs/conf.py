@@ -169,6 +169,7 @@ _GROUPS: Final[dict[str, str]] = {
     "SMP0": "Comments, docstrings and structure",
     "SMP1": "Modules, typing and exports",
     "SMP2": "Tests",
+    "SMP3": "reStructuredText docstrings",
 }
 _FIX_BADGES: Final[dict[str, tuple[str, str]]] = {
     "Always": ("fix-always", "🛠️ Fix always available"),

@@ -1,3 +1,4 @@
+use ruff_linter::fs::relativize_path;
 use ruff_python_ast::{self as ast, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 
@@ -22,15 +23,20 @@ pub fn undocumented_public_api(checker: &Checker) {
         if documented {
             continue;
         }
-        let name = item.name;
+        let name = &item.name;
+        let reason = item.via.map_or_else(String::new, |via| format!("; `{}` re-exports it", relativize_path(via)));
         let message = match item.kind {
             ApiKind::Variable => format!(
-                "Exported variable `{name}` is undocumented; add a docstring below it or a `#:` comment above it"
+                "Public variable `{name}` is undocumented; add a docstring below it or a `#:` comment above it{reason}"
             ),
-            ApiKind::Function => format!("Public function `{name}` has no docstring; document it for its users"),
-            ApiKind::Class => format!("Public class `{name}` has no docstring; document it for its users"),
-            ApiKind::Method => format!("Public method `{name}` has no docstring; document it for its users"),
-            ApiKind::Property => format!("Public property `{name}` has no docstring; document it for its users"),
+            ApiKind::Function => {
+                format!("Public function `{name}` has no docstring; document it for its users{reason}")
+            }
+            ApiKind::Class => format!("Public class `{name}` has no docstring; document it for its users{reason}"),
+            ApiKind::Method => format!("Public method `{name}` has no docstring; document it for its users{reason}"),
+            ApiKind::Property => {
+                format!("Public property `{name}` has no docstring; document it for its users{reason}")
+            }
         };
         checker.report(Rule::UndocumentedPublicApi, item.range, message);
     }

@@ -12,6 +12,7 @@ use ruff_macros::OptionsMetadata;
 use serde::Deserialize;
 
 use crate::lint::registry::RuleSet;
+use crate::settings::api::{DocstringStyle, ProjectKindOption};
 
 // Ruff's `Configuration` for simplint's options: one layer of settings, before it is resolved, so the command line can
 // go on top of a configuration file the way Ruff combines them.
@@ -23,6 +24,10 @@ pub struct Configuration {
     pub(super) extend_safe_fixes: Vec<Selector>,
     pub(super) extend_unsafe_fixes: Vec<Selector>,
     pub(super) keep_names: Option<Vec<String>>,
+    pub(super) project_kind: Option<ProjectKindOption>,
+    pub(super) api_packages: Option<Vec<String>>,
+    pub(super) api_modules: Option<Vec<String>>,
+    pub(super) docstring_style: Option<DocstringStyle>,
     pub(super) run: RunOptions,
 }
 
@@ -125,6 +130,10 @@ impl Configuration {
             extend_safe_fixes: tag("extend-safe-fixes", options.extend_safe_fixes.unwrap_or_default()),
             extend_unsafe_fixes: tag("extend-unsafe-fixes", options.extend_unsafe_fixes.unwrap_or_default()),
             keep_names: options.naming.and_then(|naming| naming.keep_names),
+            project_kind: options.project_kind,
+            api_packages: options.api_packages,
+            api_modules: options.api_modules,
+            docstring_style: options.docstring_style,
             run: RunOptions {
                 fix: options.fix,
                 fix_only: options.fix_only,
@@ -149,6 +158,10 @@ impl Configuration {
             extend_safe_fixes: other.extend_safe_fixes.into_iter().chain(self.extend_safe_fixes).collect(),
             extend_unsafe_fixes: other.extend_unsafe_fixes.into_iter().chain(self.extend_unsafe_fixes).collect(),
             keep_names: self.keep_names.or(other.keep_names),
+            project_kind: self.project_kind.or(other.project_kind),
+            api_packages: self.api_packages.or(other.api_packages),
+            api_modules: self.api_modules.or(other.api_modules),
+            docstring_style: self.docstring_style.or(other.docstring_style),
             run: self.run.combine(other.run),
         }
     }
@@ -378,6 +391,54 @@ pub struct SimplintOptions {
         "#
     )]
     pub extend_per_file_ignores: Option<BTreeMap<String, Vec<String>>>,
+
+    /// Whether the project is a `"library"`, whose public API other code imports, or an `"application"`, which has no
+    /// Python API, so all of its code is internal. `"auto"` picks `"library"` when something installs the project: a
+    /// `[build-system]` table, or a `setup.py` or `setup.cfg`, unless `[tool.uv]` sets `package = false` or maturin
+    /// builds only a binary.
+    #[option(
+        default = r#""auto""#,
+        value_type = r#""auto" | "library" | "application""#,
+        example = r#"
+            # A command-line tool whose modules nobody imports.
+            project-kind = "application"
+        "#
+    )]
+    pub project_kind: Option<ProjectKindOption>,
+
+    /// The top-level packages and modules a library ships, whose modules make up its public API. By default they come
+    /// from the build backend's settings, then from the packages holding a `py.typed` marker, then from the package
+    /// named after the project; when none is found, every module outside `docs` and the tests counts.
+    #[option(
+        default = "[]",
+        value_type = "list[str]",
+        example = r#"
+            api-packages = ["my_package"]
+        "#
+    )]
+    pub api_packages: Option<Vec<String>>,
+
+    /// Modules of a library, besides its top-level packages, that users import from directly. Their `__all__` is the
+    /// interface you declare, so `unused-export` (`SMP117`) keeps names no module of the project imports.
+    #[option(
+        default = "[]",
+        value_type = "list[str]",
+        example = r#"
+            api-modules = ["my_package.errors"]
+        "#
+    )]
+    pub api_modules: Option<Vec<String>>,
+
+    /// The markup of docstrings, which the `SMP3` rules check: `"rest"` for reStructuredText field lists, such as
+    /// `:param name:`, `:returns:` and `:raises Error:`. Unset, the `SMP3` rules do not report.
+    #[option(
+        default = "null",
+        value_type = r#""rest""#,
+        example = r#"
+            docstring-style = "rest"
+        "#
+    )]
+    pub docstring_style: Option<DocstringStyle>,
 
     /// Options for the naming rules.
     #[option_group]

@@ -1,0 +1,1 @@
+`init-module-content` (SMP109) lets a public package of a library re-export its API from private modules, and `multiline-module-docstring` (SMP003) lets a library's public modules introduce their API in a longer docstring.

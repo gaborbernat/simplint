@@ -1,6 +1,6 @@
 // `simplint check`: the files it covers, the import index built over them, and each file's linter.
 use std::borrow::Cow;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -29,9 +29,9 @@ use crate::cli::printer::{Flags, Printer};
 use crate::cli::watch::watch;
 use crate::lint::Linter;
 use crate::project::cache::{self, Cache, Caches, FileKey, Fingerprints};
-use crate::project::{FileFacts, Project, SearchRoots};
+use crate::project::{FileFacts, IndexInputs, Project, SearchRoots};
 use crate::settings::conflicts::{self, Scope};
-use crate::settings::{FileSettings, Settings, SettingsResolver, ShownSettings};
+use crate::settings::{FileSettings, ModuleRole, Settings, SettingsResolver, ShownSettings};
 
 // `ruff check`'s flow: resolve both configurations, decide the fix mode, lint every file in parallel, print, and pick
 // the exit status.
@@ -338,7 +338,10 @@ fn for_each_file<T: Send>(
         .filter(|(path, settings)| FileSettings::new(settings, resolver.resolve(path), path).rewrites_dataclass_calls())
         .map(|(path, _)| path.as_path())
         .collect();
-    let mut project = index_project(&facts, &entry_points, &roots, &rewrites_calls)?;
+    let roles = module_roles(&paths, resolved, module_paths)?;
+    let inputs =
+        IndexInputs { entry_points: &entry_points, roots: &roots, rewrites_calls: &rewrites_calls, roles: &roles };
+    let mut project = index_project(&facts, &inputs)?;
     debug!("Indexed {} files in: {:?}", facts.len(), start.elapsed());
     let lint = |(path, settings): &(PathBuf, Arc<Settings>), project: &Project, cache| {
         let linter = file_linter(path, settings, resolver.resolve(path), project, package(path));
@@ -354,8 +357,7 @@ fn for_each_file<T: Send>(
             }
             let changed: Vec<&Path> = rewritten.iter().map(|&at| settings[at].0.as_path()).collect();
             let collect = |path: &Path| file_facts(path, module_paths(path), recache(path));
-            let (next, dependents) =
-                reindex(&mut facts, &changed, collect, &settings, &project, (&entry_points, &roots, &rewrites_calls))?;
+            let (next, dependents) = reindex(&mut facts, &changed, collect, &settings, &project, &inputs)?;
             project = next;
             let relinted: Vec<(usize, T)> = dependents
                 .into_par_iter()
@@ -374,6 +376,22 @@ fn for_each_file<T: Send>(
         caches.persist()?;
     }
     Ok(Some(passes))
+}
+
+// Where each file sits in its library's public API. Unlinted files count too: an `__init__.py` Ruff's `lint.exclude`
+// leaves out still re-exports public names.
+fn module_roles<'p>(
+    paths: &[&'p Path],
+    resolved: &Resolved,
+    module_paths: impl Fn(&Path) -> (Option<Vec<String>>, Option<Vec<String>>),
+) -> Result<HashMap<&'p Path, ModuleRole>> {
+    paths
+        .iter()
+        .map(|&path| {
+            let (module_path, importable) = module_paths(path);
+            Ok((path, resolved.settings_resolver.for_file(path)?.role(path, module_path.or(importable).as_deref())))
+        })
+        .collect()
 }
 
 // A file's import facts: those its cache holds while the file is unchanged, and otherwise freshly collected and stored
@@ -401,13 +419,13 @@ fn reindex<'f>(
     collect: impl Fn(&Path) -> Option<Cow<'f, FileFacts>> + Sync,
     files: &[(PathBuf, Arc<Settings>)],
     project: &Project,
-    (entry_points, roots, rewrites_calls): (&[String], &SearchRoots, &HashSet<&Path>),
+    inputs: &IndexInputs,
 ) -> Result<(Project, Vec<usize>)> {
     // A fix never leaves a file that does not parse, so a rewritten file keeps having facts.
     let fresh: Vec<(&Path, FileFacts)> =
         rewritten.par_iter().filter_map(|&path| Some((path, collect(path)?.into_owned()))).collect();
     facts.extend(fresh.into_iter().map(|(path, file)| (path, Cow::Owned(file))));
-    let next = index_project(facts, entry_points, roots, rewrites_calls)?;
+    let next = index_project(facts, inputs)?;
     let changed = next.changed_names(project);
     let dependents = (0..files.len())
         .into_par_iter()
@@ -419,15 +437,9 @@ fn reindex<'f>(
     Ok((next, dependents))
 }
 
-// `rewrites_calls` holds the files whose own `dataclass-kw-only` reports rewrite their positional dataclass calls.
-fn index_project(
-    facts: &FxHashMap<&Path, Cow<FileFacts>>,
-    entry_points: &[String],
-    roots: &SearchRoots,
-    rewrites_calls: &HashSet<&Path>,
-) -> Result<Project> {
+fn index_project(facts: &FxHashMap<&Path, Cow<FileFacts>>, inputs: &IndexInputs) -> Result<Project> {
     let indexed: Vec<(&Path, &FileFacts)> = facts.iter().map(|(path, facts)| (*path, facts.as_ref())).collect();
-    Project::index(&indexed, entry_points, roots, rewrites_calls)
+    Project::index(&indexed, inputs)
 }
 
 // Whether a file names any of the attribute or base class names whose answers changed; the rules ask about names the
@@ -473,7 +485,17 @@ fn check_stdin(cli: &CheckCommand, resolved: &Resolved, mode: &Mode) -> Result<D
     };
     conflicts::ensure_compatible(&[scope], resolved.names_rules())?;
     let roots = SearchRoots::new(ruff, package);
-    let project = Project::index(&[], &settings.metadata.entry_points, &roots, &HashSet::new())?;
+    let module_path =
+        package.and_then(|package| to_module_path(package.path(), &absolute)).or_else(|| roots.module_path(&absolute));
+    let roles = HashMap::from([(absolute.as_path(), settings.role(&absolute, module_path.as_deref()))]);
+    let rewrites_calls = HashSet::new();
+    let inputs = IndexInputs {
+        entry_points: &settings.metadata.entry_points,
+        roots: &roots,
+        rewrites_calls: &rewrites_calls,
+        roles: &roles,
+    };
+    let project = Project::index(&[], &inputs)?;
     let linter = file_linter(&absolute, &settings, ruff, &project, package);
     lint_stdin(&path, &source, &linter, mode)
 }

@@ -93,7 +93,7 @@ fn rule_all_explains_every_rule() {
             stdout.matches("\n## What it does").count(),
             stdout.starts_with("# section-comment (SMP001)\n\nFix is always available.\n\n")
         ),
-        (0, 34, true)
+        (0, 42, true)
     );
 }
 
@@ -102,7 +102,7 @@ fn rule_all_json_lists_every_rule() {
     let root = project(&[]);
     let (code, stdout, _) = simplint(root.path(), &["rule", "--all", "--output-format", "json"]);
     let rules: Vec<serde_json::Value> = serde_json::from_str(&stdout).expect("json");
-    assert_eq!((code, rules.len(), rules[0]["fix_availability"].as_str()), (0, 34, Some("Always")));
+    assert_eq!((code, rules.len(), rules[0]["fix_availability"].as_str()), (0, 42, Some("Always")));
 }
 
 #[test]
@@ -132,7 +132,7 @@ fn rule_needs_a_rule_or_all() {
 #[test_case(&["config"], "output-format\nfix\n" ; "list")]
 #[test_case(&["config", "fix"], "Enable fix behavior by-default" ; "text")]
 #[test_case(&["config", "fix", "--output-format", "json"], "{\n  \"doc\": \"Enable fix behavior" ; "json")]
-#[test_case(&["config", "--output-format", "json"], "{\n  \"extend-fixable\": {" ; "list_json")]
+#[test_case(&["config", "--output-format", "json"], "{\n  \"api-modules\": {" ; "list_json")]
 #[test_case(&["config", "naming.keep-names"], "A list of module-scope names" ; "nested")]
 fn config_describes_options(args: &[&str], start: &str) {
     let root = project(&[]);
@@ -147,8 +147,12 @@ fn config_rejects_unknown_options() {
     assert_eq!((code, stderr.starts_with("error: invalid value 'nope' for '[OPTION]'")), (2, true));
 }
 
-#[test_case("text", "SMP0 Comments, docstrings and structure\nSMP1 Modules, typing and exports\nSMP2 Tests\n" ; "text")]
-#[test_case("json", "[\n  {\n    \"prefix\": \"SMP0\",\n    \"name\": \"Comments, docstrings and structure\"\n  },\n  {\n    \"prefix\": \"SMP1\",\n    \"name\": \"Modules, typing and exports\"\n  },\n  {\n    \"prefix\": \"SMP2\",\n    \"name\": \"Tests\"\n  }\n]\n" ; "json")]
+#[test_case(
+    "text",
+    "SMP0 Comments, docstrings and structure\nSMP1 Modules, typing and exports\nSMP2 Tests\nSMP3 reStructuredText docstrings\n" ;
+    "text"
+)]
+#[test_case("json", "[\n  {\n    \"prefix\": \"SMP0\",\n    \"name\": \"Comments, docstrings and structure\"\n  },\n  {\n    \"prefix\": \"SMP1\",\n    \"name\": \"Modules, typing and exports\"\n  },\n  {\n    \"prefix\": \"SMP2\",\n    \"name\": \"Tests\"\n  },\n  {\n    \"prefix\": \"SMP3\",\n    \"name\": \"reStructuredText docstrings\"\n  }\n]\n" ; "json")]
 fn linter_lists_rule_groups(format: &str, stdout: &str) {
     let root = project(&[]);
     assert_eq!(simplint(root.path(), &["linter", "--output-format", format]), (0, stdout.to_owned(), String::new()));

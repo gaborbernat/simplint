@@ -29,15 +29,7 @@ impl<'a> FileSettings<'a> {
     }
 
     pub fn is_test_module(&self, path: &Path) -> bool {
-        let name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
-        name.starts_with("test_")
-            || name.ends_with("_test.py")
-            || name == "conftest.py"
-            || path
-                .strip_prefix(&self.project.root)
-                .unwrap_or(path)
-                .components()
-                .any(|part| matches!(part.as_os_str().to_str(), Some("tests" | "test")))
+        self.project.is_test_module(path)
     }
 }
 

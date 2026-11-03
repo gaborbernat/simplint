@@ -246,3 +246,20 @@ fn settled_file_is_fixed_again_once_no_other_file_imports_the_name() {
     check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP102"]);
     assert_eq!((first, read(root.path(), "helpers.py")), (1, "_LIMIT = 3\n".to_owned()));
 }
+
+// A cached clean result of a module stops holding once a package starts re-exporting one of its names.
+#[test]
+fn reexport_added_later_checks_the_source_again() {
+    let root = project(&[
+        ("pyproject.toml", "[project]\nname = \"pkg\"\n[build-system]\nrequires = []\n"),
+        ("pkg/__init__.py", "\"\"\"Package.\"\"\"\n"),
+        ("pkg/_core.py", "def run() -> None: ...\n"),
+    ]);
+    let first = check(root.path(), &["--select", "SMP116"]).1;
+    fs::write(root.path().join("pkg/__init__.py"), "from ._core import run\n\n__all__ = [\"run\"]\n").expect("write");
+    let second = check(root.path(), &["--select", "SMP116"]).1;
+    assert_eq!(
+        (first, second.lines().next().map(|line| line.contains("`run`"))),
+        ("All checks passed!\n".to_owned(), Some(true))
+    );
+}

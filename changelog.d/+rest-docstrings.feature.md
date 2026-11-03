@@ -1,0 +1,1 @@
+The new `SMP3` rules check reStructuredText field lists in docstrings when `docstring-style = "rest"`: field syntax, parameters the signature lacks or the public API leaves undocumented, parameter order, types that repeat annotations, `:returns:` and `:yields:` fields, and undocumented exceptions.

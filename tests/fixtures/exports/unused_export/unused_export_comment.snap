@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+8:5 SMP117 `spare_comment` is in `__all__`, yet no other module imports it; list only what other modules use

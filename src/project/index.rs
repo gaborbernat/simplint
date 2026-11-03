@@ -18,7 +18,8 @@ use ty_module_resolver::{
 
 use super::FileFacts;
 use super::constructors::{DataclassCalls, FileCalls, NameUse};
-use super::facts::ModuleNames;
+use super::facts::{ImportBinding, ModuleNames};
+use crate::settings::ModuleRole;
 
 // Where imports resolve, as `ruff analyze graph` searches: the configured `src` directories first, then the directory
 // above each package.
@@ -64,6 +65,13 @@ pub struct Project {
     star_imported: HashSet<PathBuf>,
     // Modules their own package's `__init__.py` star-imports, where the package binds the submodule under its own name.
     package_star_imported: HashSet<PathBuf>,
+    // Modules some file star-imports, whatever their `__all__`, so a name they export may be in use where it lands.
+    star_sources: HashSet<PathBuf>,
+    // Where each file sits in its library's public API.
+    roles: HashMap<PathBuf, ModuleRole>,
+    // The names of each file a library's users can reach: those its public module exports, and those a public module
+    // re-exports, each with the file that re-exports it, if any.
+    user_facing: HashMap<PathBuf, HashMap<String, Option<PathBuf>>>,
     assigned_attributes: HashSet<String>,
     module_reads: HashSet<String>,
     base_classes: HashSet<String>,
@@ -85,14 +93,19 @@ struct Writes {
     pickles_low_protocol: bool,
 }
 
+// What the index reads besides the files' facts: the entry points, where imports resolve, the files whose own
+// `dataclass-kw-only` reports rewrite their positional dataclass calls, and where each file sits in its library's
+// public API.
+pub struct IndexInputs<'a> {
+    pub entry_points: &'a [String],
+    pub roots: &'a SearchRoots,
+    pub rewrites_calls: &'a HashSet<&'a Path>,
+    pub roles: &'a HashMap<&'a Path, ModuleRole>,
+}
+
 impl Project {
-    // `rewrites_calls` holds the files whose own `dataclass-kw-only` reports rewrite their positional dataclass calls.
-    pub fn index(
-        files: &[(&Path, &FileFacts)],
-        entry_points: &[String],
-        roots: &SearchRoots,
-        rewrites_calls: &HashSet<&Path>,
-    ) -> Result<Self> {
+    pub fn index(files: &[(&Path, &FileFacts)], inputs: &IndexInputs) -> Result<Self> {
+        let IndexInputs { entry_points, roots, rewrites_calls, roles } = *inputs;
         let cwd = SystemPathBuf::from_path_buf(std::env::current_dir()?)
             .map_err(|path| anyhow::anyhow!("{} is not a UTF-8 path", path.display()))?;
         let system = OsSystem::new(cwd);
@@ -114,8 +127,11 @@ impl Project {
         let mut stars: Vec<(PathBuf, PathBuf)> = Vec::new();
         let (mut unresolved_stars, mut unreached): (HashSet<&str>, Vec<Unreached>) = (HashSet::new(), Vec::new());
         let mut constructor_uses = Vec::new();
+        let mut bindings: Vec<(PathBuf, PathBuf, &ImportBinding)> = Vec::new();
         for module in modules {
             constructor_uses.push((module.path.clone(), module.rewrites_calls, module.constructors));
+            bindings
+                .extend(module.bindings.into_iter().map(|(source, binding)| (module.path.clone(), source, binding)));
             for (file, names) in module.imports {
                 imported.entry(file).or_default().extend(names.iter().cloned());
             }
@@ -139,6 +155,7 @@ impl Project {
             .filter(|(importer, source)| source.parent().is_some_and(|parent| *importer == parent.join("__init__.py")))
             .map(|(_, source)| source.clone())
             .collect();
+        let star_sources = stars.iter().map(|(_, source)| source.clone()).collect();
         let star_imported = stars
             .iter()
             .map(|(_, source)| source.clone())
@@ -163,34 +180,25 @@ impl Project {
         let dynamic: HashSet<&str> =
             files.iter().flat_map(|(_, facts)| facts.constructors.dynamic.iter().map(String::as_str)).collect();
         let calls = DataclassCalls::index(declared, &constructor_uses, &imported, &dynamic);
+        let roles: HashMap<PathBuf, ModuleRole> = roles.iter().map(|(path, role)| (normalized(path), *role)).collect();
+        let user_facing = user_facing(files, &roles, &imported, &bindings, &stars);
         let reads_docstrings = files.iter().any(|(_, facts)| facts.reads_docstrings);
-        let mut hasher = CacheKeyHasher::new();
-        reads_docstrings.cache_key(&mut hasher);
-        assigned_attributes.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
-        0u8.cache_key(&mut hasher);
-        module_reads.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
-        base_classes.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
-        for (class, attributes) in writes.on_class.iter().sorted_by(|left, right| left.0.cmp(right.0)) {
-            class.cache_key(&mut hasher);
-            attributes.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
-        }
-        for names in [&writes.untyped, &writes.unslottable_bases, &writes.stateful_bases] {
-            0u8.cache_key(&mut hasher);
-            names.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
-        }
-        writes.pickles_low_protocol.cache_key(&mut hasher);
+        let digest = digest(reads_docstrings, [&assigned_attributes, &module_reads, &base_classes], &writes);
         Ok(Self {
             imported,
             referenced,
             star_imported,
             package_star_imported,
+            star_sources,
+            roles,
+            user_facing,
             assigned_attributes,
             module_reads,
             base_classes,
             writes,
             calls,
             reads_docstrings,
-            digest: hasher.finish(),
+            digest,
         })
     }
 
@@ -230,9 +238,37 @@ impl Project {
             referenced: self.referenced.get(&path),
             star_imported: self.star_imported.contains(&path),
             package_star_imported: self.package_star_imported.contains(&path),
+            star_source: self.star_sources.contains(&path),
+            role: self.roles.get(&path).copied().unwrap_or_default(),
+            user_facing: self.user_facing.get(&path),
             calls: self.calls.file(&path),
         }
     }
+}
+
+// The names of the whole run that every file's answers depend on: what the run's attribute writes, module reads and base
+// classes are, and whether it reads docstrings.
+fn digest(
+    reads_docstrings: bool,
+    [assigned, module_reads, base_classes]: [&HashSet<String>; 3],
+    writes: &Writes,
+) -> u64 {
+    let mut hasher = CacheKeyHasher::new();
+    reads_docstrings.cache_key(&mut hasher);
+    assigned.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
+    0u8.cache_key(&mut hasher);
+    module_reads.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
+    base_classes.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
+    for (class, attributes) in writes.on_class.iter().sorted_by(|left, right| left.0.cmp(right.0)) {
+        class.cache_key(&mut hasher);
+        attributes.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
+    }
+    for names in [&writes.untyped, &writes.unslottable_bases, &writes.stateful_bases] {
+        0u8.cache_key(&mut hasher);
+        names.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
+    }
+    writes.pickles_low_protocol.cache_key(&mut hasher);
+    hasher.finish()
 }
 
 impl Writes {
@@ -249,6 +285,84 @@ impl Writes {
             writes.pickles_low_protocol |= facts.pickles_low_protocol;
         }
         writes
+    }
+}
+
+// The names a library's users reach. A public module offers what its `__all__` lists, or, without one, every name it
+// defines or re-exports without a leading underscore, as the typing spec reads a module; a name another module imports
+// from it counts too, since `missing-from-all` lists it there. A module that re-exports a public name, through
+// `__all__`, a redundant alias or `import *`, makes it public where it is defined, through any chain of re-exports.
+// Names only spread, so this settles.
+fn user_facing(
+    files: &[(&Path, &FileFacts)],
+    roles: &HashMap<PathBuf, ModuleRole>,
+    imported: &HashMap<PathBuf, HashSet<String>>,
+    bindings: &[(PathBuf, PathBuf, &ImportBinding)],
+    stars: &[(PathBuf, PathBuf)],
+) -> HashMap<PathBuf, HashMap<String, Option<PathBuf>>> {
+    let facts: HashMap<PathBuf, &FileFacts> = files
+        .iter()
+        .filter(|(path, _)| path.extension().is_none_or(|extension| extension != "pyi"))
+        .map(|(path, facts)| (normalized(path), *facts))
+        .collect();
+    // What `import *` of a module takes: its `__all__`, or every name it defines without a leading underscore.
+    let star_exports = |path: &Path| -> Vec<&str> {
+        facts.get(path).map_or_else(Vec::new, |facts| match &facts.exports {
+            Some(listed) => listed.iter().map(String::as_str).collect(),
+            None => facts.defined.iter().map(String::as_str).filter(|name| !name.starts_with('_')).collect(),
+        })
+    };
+    let mut names: HashMap<PathBuf, HashMap<String, Option<PathBuf>>> = HashMap::new();
+    for (path, facts) in &facts {
+        if !roles.get(path).is_some_and(|role| role.public) {
+            continue;
+        }
+        let own = names.entry(path.clone()).or_default();
+        let mut add = |name: &str| {
+            own.entry(name.to_owned()).or_insert(None);
+        };
+        match &facts.exports {
+            Some(listed) => listed.iter().for_each(|name| add(name)),
+            None if facts.exports_unknown => {}
+            None => {
+                let redundant = facts.bindings.iter().filter(|binding| binding.redundant).map(|binding| &binding.bound);
+                facts.defined.iter().chain(redundant).filter(|name| !name.starts_with('_')).for_each(|name| add(name));
+                for (_, source) in stars.iter().filter(|(importer, _)| importer == path) {
+                    star_exports(source).into_iter().for_each(&mut add);
+                }
+            }
+        }
+        imported.get(path).into_iter().flatten().filter(|name| !name.starts_with('_')).for_each(|name| add(name));
+    }
+    loop {
+        let mut reached: Vec<(PathBuf, String, PathBuf)> = Vec::new();
+        for (importer, source, binding) in bindings {
+            if names.get(importer).is_some_and(|known| known.contains_key(&binding.bound)) {
+                reached.push((source.clone(), binding.name.clone(), importer.clone()));
+            }
+        }
+        for (importer, source) in stars {
+            let Some(known) = names.get(importer) else {
+                continue;
+            };
+            let exported = star_exports(source);
+            reached.extend(
+                exported
+                    .into_iter()
+                    .filter(|name| known.contains_key(*name))
+                    .map(|name| (source.clone(), name.to_owned(), importer.clone())),
+            );
+        }
+        let mut spread = false;
+        for (source, name, importer) in reached {
+            if let std::collections::hash_map::Entry::Vacant(entry) = names.entry(source).or_default().entry(name) {
+                entry.insert(Some(importer));
+                spread = true;
+            }
+        }
+        if !spread {
+            return names;
+        }
     }
 }
 
@@ -318,6 +432,22 @@ fn last_name(file: &Path) -> Option<&str> {
     if stem == Some("__init__") { file.parent().and_then(Path::file_name).and_then(|name| name.to_str()) } else { stem }
 }
 
+// How users reach a name of a module: the module offers it, or another module re-exports it.
+#[derive(Clone, Copy)]
+pub enum Exposure<'a> {
+    Offered,
+    Reexported(&'a Path),
+}
+
+impl<'a> Exposure<'a> {
+    pub fn reexporter(self) -> Option<&'a Path> {
+        match self {
+            Self::Offered => None,
+            Self::Reexported(path) => Some(path),
+        }
+    }
+}
+
 // What the index knows about one file: the names other files use from it, and the attribute and base class names of
 // the whole run.
 #[derive(Clone, Copy)]
@@ -327,6 +457,9 @@ pub struct FileIndex<'a> {
     referenced: Option<&'a HashSet<String>>,
     star_imported: bool,
     package_star_imported: bool,
+    star_source: bool,
+    role: ModuleRole,
+    user_facing: Option<&'a HashMap<String, Option<PathBuf>>>,
     calls: FileCalls<'a>,
 }
 
@@ -340,6 +473,9 @@ impl PartialEq for FileIndex<'_> {
             self.referenced,
             self.star_imported,
             self.package_star_imported,
+            self.star_source,
+            self.role,
+            self.user_facing,
             self.calls,
             self.project.reads_docstrings,
         ) == (
@@ -347,6 +483,9 @@ impl PartialEq for FileIndex<'_> {
             other.referenced,
             other.star_imported,
             other.package_star_imported,
+            other.star_source,
+            other.role,
+            other.user_facing,
             other.calls,
             other.project.reads_docstrings,
         )
@@ -363,6 +502,12 @@ impl CacheKey for FileIndex<'_> {
         }
         self.star_imported.cache_key(state);
         self.package_star_imported.cache_key(state);
+        self.star_source.cache_key(state);
+        self.role.cache_key(state);
+        for (name, importer) in self.user_facing.into_iter().flatten().sorted() {
+            name.cache_key(state);
+            importer.cache_key(state);
+        }
         self.calls.cache_key(state);
     }
 }
@@ -370,6 +515,20 @@ impl CacheKey for FileIndex<'_> {
 impl<'a> FileIndex<'a> {
     pub fn is_imported(&self, name: &str) -> bool {
         self.imported.is_some_and(|names| names.contains(name))
+    }
+
+    // Whether a library's users reach the name, and how.
+    pub fn user_facing(&self, name: &str) -> Option<Exposure<'a>> {
+        self.user_facing?.get(name).map(|importer| importer.as_deref().map_or(Exposure::Offered, Exposure::Reexported))
+    }
+
+    pub fn role(&self) -> ModuleRole {
+        self.role
+    }
+
+    // Whether some file star-imports the module, so the names its `__all__` lists land there.
+    pub fn is_star_import_source(&self) -> bool {
+        self.star_source
     }
 
     // A public name of a module some `import *` reads may be used under that import, though no file names it, and any
@@ -466,6 +625,7 @@ struct ModuleFacts<'f> {
     rewrites_calls: bool,
     constructors: Vec<(PathBuf, &'f [NameUse])>,
     imports: Vec<(PathBuf, &'f [String])>,
+    bindings: Vec<(PathBuf, &'f ImportBinding)>,
     references: Vec<(PathBuf, &'f [String])>,
     stars: Vec<PathBuf>,
     unresolved_stars: Vec<&'f str>,
@@ -522,7 +682,23 @@ impl<'f> ModuleFacts<'f> {
             .filter_map(|(module, uses)| Some((resolve(db, environment, importing, module)?, uses.as_slice())))
             .filter(|(file, _)| *file != own)
             .collect();
-        Self { path: own, rewrites_calls, constructors, imports, references, stars, unresolved_stars, unreached }
+        let bindings = facts
+            .bindings
+            .iter()
+            .filter_map(|binding| Some((resolve(db, environment, importing, &binding.module)?, binding)))
+            .filter(|(file, _)| *file != own)
+            .collect();
+        Self {
+            path: own,
+            rewrites_calls,
+            constructors,
+            imports,
+            bindings,
+            references,
+            stars,
+            unresolved_stars,
+            unreached,
+        }
     }
 }
 

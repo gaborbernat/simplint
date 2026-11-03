@@ -31,6 +31,16 @@ use crate::common;
 #[test_case("missing-from-all", "missing_from_all_scripts.py" ; "missing_from_all_entry_point")]
 #[test_case("missing-from-all", "tests/test_module_docstring.py" ; "missing_from_all_test_module")]
 #[test_case("missing-from-all", "package/__init__.py" ; "missing_from_all_init_module")]
+#[test_case("unused-export", "exporting/unused_export.py" ; "unused_export")]
+#[test_case("unused-export", "exporting/unused_export_inline.py" ; "unused_export_inline")]
+#[test_case("unused-export", "exporting/unused_export_tuple.py" ; "unused_export_tuple")]
+#[test_case("unused-export", "exporting/unused_export_all.py" ; "unused_export_all_unused")]
+#[test_case("unused-export", "exporting/unused_export_comment.py" ; "unused_export_comment")]
+#[test_case("unused-export", "exporting/unused_export_extend.py" ; "unused_export_extended")]
+#[test_case("unused-export", "exporting/unused_export_call.py" ; "unused_export_extend_call")]
+#[test_case("unused-export", "exporting/unused_export_star.py" ; "unused_export_star_imported")]
+#[test_case("unused-export", "unused_export_root.py" ; "unused_export_api_root")]
+#[test_case("unused-export", "tests/test_module_docstring.py" ; "unused_export_test_module")]
 fn rule(rule: &str, fixture: &str) {
     common::assert_rule_snapshot(rule, fixture, "py314");
 }

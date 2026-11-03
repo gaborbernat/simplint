@@ -4,6 +4,7 @@ pub(crate) mod docstrings;
 pub(crate) mod exports;
 pub(crate) mod imports;
 pub(crate) mod naming;
+pub(crate) mod rest;
 pub(crate) mod strings;
 pub(crate) mod structure;
 pub(crate) mod testing;

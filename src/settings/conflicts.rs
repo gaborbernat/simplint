@@ -16,7 +16,7 @@ use ruff_python_ast::PySourceType;
 use ruff_python_semantic::NameImport;
 
 use crate::lint::registry::Rule;
-use crate::settings::{FileSettings, Settings};
+use crate::settings::{DocstringStyle, FileSettings, Settings};
 
 // A file the run is about to lint: simplint's settings for it, Ruff's with the configuration file they come from, and
 // the package it sits in, which decides whether Ruff counts its module as public.
@@ -132,7 +132,7 @@ struct Names {
     public_api: String,
 }
 
-const CLASHES: [Clash; 4] = [
+const CLASHES: [Clash; 5] = [
     Clash {
         simplint: Rule::FunctionDocstring,
         ruff: &[
@@ -210,6 +210,33 @@ const CLASHES: [Clash; 4] = [
                  because `lint.flake8-tidy-imports.ban-relative-imports` is `\"all\"`; ignore {} in `[tool.simplint]`, \
                  or set `ban-relative-imports` to `\"parents\"`",
                 names.simplint, names.ruff, names.simplint_selector,
+            )
+        },
+    },
+    Clash {
+        simplint: Rule::RestFieldSyntax,
+        ruff: &[
+            RuffRule::UndocumentedParam,
+            RuffRule::DocstringExtraneousParameter,
+            RuffRule::DocstringMissingReturns,
+            RuffRule::DocstringExtraneousReturns,
+            RuffRule::DocstringMissingYields,
+            RuffRule::DocstringExtraneousYields,
+            RuffRule::DocstringMissingException,
+            RuffRule::DocstringExtraneousException,
+        ],
+        probe: "def function(value):\n    \"\"\"Check the value.\n\n    :param value: The value.\n    :returns: The value.\n    \
+                :raises ValueError: When it is empty.\n    \"\"\"\n    if not value:\n        raise ValueError\n    return value\n\n\n\
+                def generator():\n    \"\"\"Count.\n\n    :yields: The numbers.\n    \"\"\"\n    yield 1\n",
+        acts_on: |settings, _, _| settings.project.docstring_style == Some(DocstringStyle::Rest),
+        explain: |names| {
+            format!(
+                "`docstring-style = \"rest\"` writes docstrings as reStructuredText field lists, which {} checks and \
+                 Ruff's {} {} as missing sections; ignore {} in Ruff's `lint.ignore`, or unset `docstring-style`",
+                names.simplint,
+                names.ruff,
+                if names.many { "misread" } else { "misreads" },
+                names.ruff_selectors,
             )
         },
     },

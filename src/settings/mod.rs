@@ -1,3 +1,4 @@
+mod api;
 pub mod conflicts;
 mod file;
 mod metadata;
@@ -16,11 +17,12 @@ use ruff_diagnostics::{Applicability, Fix};
 use ruff_linter::settings::types::GlobPath;
 use serde::Deserialize;
 
+pub use api::{ApiScope, DocstringStyle, ModuleRole, ProjectKind};
 pub use file::{FileSettings, FromRuff};
 pub use options::{Configuration, Overrides, RunOptions, SimplintOptions, Source};
 
 use crate::lint::registry::{Rule, RuleSet};
-use crate::settings::metadata::ProjectMetadata;
+use crate::settings::metadata::{BuildConfiguration, ProjectMetadata};
 use crate::settings::options::{PerFileIgnoreSource, Selector, SelectorLayer};
 
 // simplint's own options and the project metadata its rules read. The Python version, the files to check and what to
@@ -31,6 +33,8 @@ pub struct Settings {
     pub metadata: ProjectMetadata,
     pub run: RunOptions,
     pub keep_names: Vec<String>,
+    pub api: ApiScope,
+    pub docstring_style: Option<DocstringStyle>,
     rules: RuleSet,
     fixable: RuleSet,
     fix_safety: FixSafetyTable,
@@ -41,26 +45,41 @@ impl Settings {
     // Ruff's `Configuration::into_settings`: the command line goes on top of the `pyproject.toml`'s options, then the
     // rule selections resolve in order. Without a `pyproject.toml`, the defaults apply.
     fn resolve(root: &Path, pyproject: Option<&Path>, overrides: &Overrides) -> Result<Self> {
-        let (metadata, configuration) = match pyproject {
+        let (metadata, build, configuration) = match pyproject {
             Some(path) => {
                 let text =
                     std::fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
-                let pyproject: Pyproject =
+                let table: toml::Table =
                     toml::from_str(&text).with_context(|| format!("Failed to parse {}", path.display()))?;
+                let pyproject: Pyproject =
+                    table.clone().try_into().with_context(|| format!("Failed to parse {}", path.display()))?;
                 let source = Source::File(Arc::from(path));
-                (pyproject.project, Configuration::from_options(pyproject.tool.simplint, root, &source))
+                (
+                    pyproject.project,
+                    BuildConfiguration::of(&table),
+                    Configuration::from_options(pyproject.tool.simplint, root, &source),
+                )
             }
-            None => (ProjectMetadata::default(), Configuration::default()),
+            None => (ProjectMetadata::default(), BuildConfiguration::default(), Configuration::default()),
         };
         let configuration = overrides.transform(configuration);
         let rules = resolve_rules(configuration.rule_selections.iter().map(|selection| &selection.enabled))?;
         let fixable = resolve_rules(configuration.rule_selections.iter().map(|selection| &selection.fixable))?;
         let fix_safety =
             FixSafetyTable::from_selectors(&configuration.extend_safe_fixes, &configuration.extend_unsafe_fixes)?;
+        let api = ApiScope::resolve(
+            root,
+            configuration.project_kind.unwrap_or_default(),
+            &build,
+            &metadata,
+            (configuration.api_packages.as_deref(), configuration.api_modules.as_deref()),
+        );
         Ok(Self {
             root: root.to_path_buf(),
             path: pyproject.map(Path::to_path_buf),
             metadata,
+            api,
+            docstring_style: configuration.docstring_style,
             run: configuration.run,
             keep_names: configuration.keep_names.unwrap_or_default(),
             rules,
@@ -95,6 +114,23 @@ impl Settings {
     pub fn is_fixable(&self, rule: Rule) -> bool {
         self.fixable.contains(rule)
     }
+
+    pub fn is_test_module(&self, path: &Path) -> bool {
+        let name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
+        name.starts_with("test_")
+            || name.ends_with("_test.py")
+            || name == "conftest.py"
+            || path
+                .strip_prefix(&self.root)
+                .unwrap_or(path)
+                .components()
+                .any(|part| matches!(part.as_os_str().to_str(), Some("tests" | "test")))
+    }
+
+    // Where a file sits in its library's public API; `module_path` is the module Python imports it as.
+    pub fn role(&self, path: &Path, module_path: Option<&[String]>) -> ModuleRole {
+        self.api.role(module_path, self.is_test_module(path))
+    }
 }
 
 // The part of a file's settings its whole project shares that its diagnostics depend on, so a cached result is reused
@@ -108,6 +144,8 @@ impl CacheKey for Settings {
         self.fix_safety.forced_safe.cache_key(state);
         self.fix_safety.forced_unsafe.cache_key(state);
         self.keep_names.cache_key(state);
+        self.api.cache_key(state);
+        self.docstring_style.map(|style| style.to_string()).cache_key(state);
     }
 }
 
@@ -122,8 +160,19 @@ impl Display for ShownSettings<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         let rules = |set: RuleSet| set.iter().map(|rule| format!("{} ({})", rule.name(), rule.code())).collect_vec();
         let quoted = |items: &mut dyn Iterator<Item = &String>| items.map(|item| format!("{item:?}")).collect_vec();
-        let Settings { root, metadata, run, keep_names, rules: enabled, fixable, fix_safety, per_file_ignores, .. } =
-            self.settings.project;
+        let Settings {
+            root,
+            metadata,
+            run,
+            keep_names,
+            api,
+            docstring_style,
+            rules: enabled,
+            fixable,
+            fix_safety,
+            per_file_ignores,
+            ..
+        } = self.settings.project;
         writeln!(f, "\n# General Settings")?;
         writeln!(f, "cache_dir = \"{}\"", self.cache_dir.display())?;
         writeln!(f, "fix = {}", run.fix.unwrap_or_default())?;
@@ -143,7 +192,18 @@ impl Display for ShownSettings<'_> {
         write_list(f, "linter.safety_table.forced_unsafe", &rules(fix_safety.forced_unsafe))?;
         write_list(f, "linter.dependencies", &quoted(&mut metadata.dependencies.iter()))?;
         write_list(f, "linter.entry_points", &quoted(&mut metadata.entry_points.iter()))?;
-        write_list(f, "linter.naming.keep_names", &quoted(&mut keep_names.iter()))
+        write_list(f, "linter.naming.keep_names", &quoted(&mut keep_names.iter()))?;
+        writeln!(f, "linter.project_kind = {}", api.kind)?;
+        match &api.packages {
+            Some(packages) => write_list(f, "linter.api_packages", &quoted(&mut packages.iter()))?,
+            None => writeln!(f, "linter.api_packages = every module outside docs and tests")?,
+        }
+        let modules = api.modules.iter().map(|module| format!("{:?}", module.join("."))).collect_vec();
+        write_list(f, "linter.api_modules", &modules)?;
+        match docstring_style {
+            Some(style) => writeln!(f, "linter.docstring_style = {style}"),
+            None => writeln!(f, "linter.docstring_style = none"),
+        }
     }
 }
 
