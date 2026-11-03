@@ -482,9 +482,13 @@ impl TypedValueParser for ConfigArgumentParser {
         let mut tables = toml::Table::new();
         let mut ruff_value = value.to_owned();
         if let Some(mut table) = value.to_str().and_then(|text| toml::Table::from_str(text).ok()) {
+            // Ruff validates the rest, so it gets neither simplint's tables nor the options it has no namesake for.
+            let ruff_options = ruff_workspace::options::Options::metadata();
             tables = option_names()
                 .into_iter()
-                .filter(|option| option.table)
+                .filter(|option| {
+                    option.table || !option.name.contains('.') && ruff_options.find(&option.name).is_none()
+                })
                 .filter_map(|option| table.remove_entry(&option.name))
                 .collect();
             if !tables.is_empty() {

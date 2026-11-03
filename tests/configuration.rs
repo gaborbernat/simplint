@@ -512,3 +512,25 @@ fn api_packages_come_from_the_build_configuration(pyproject: &str, files: &[(&st
     let shown = shown(&stdout, "linter.api_packages", "\nlinter.api_modules");
     assert_eq!(shown, format!("linter.api_packages = {packages}"));
 }
+
+// Ruff has no namesake for these options, so an inline `--config` must not hand them to Ruff's parser.
+#[test]
+fn inline_config_sets_options_ruff_does_not_know() {
+    let root = project(&[("module.py", "")]);
+    let args = [
+        "--show-settings",
+        "--config",
+        "project-kind = \"library\"",
+        "--config",
+        "api-packages = [\"module\"]",
+        "--config",
+        "api-modules = [\"module.errors\"]",
+        "--config",
+        "docstring-style = \"rest\"",
+    ];
+    let stdout = check(root.path(), &args).1;
+    assert_eq!(
+        shown(&stdout, "linter.project_kind", "\nlinter.docstring_style = rest\n"),
+        "linter.project_kind = library\nlinter.api_packages = [\n\t\"module\",\n]\nlinter.api_modules = [\n\t\"module.errors\",\n]"
+    );
+}
