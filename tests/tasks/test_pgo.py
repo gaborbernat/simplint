@@ -6,16 +6,19 @@ import io
 import json
 import subprocess
 import tarfile
+import time
 import urllib.error
 from pathlib import Path
+from types import SimpleNamespace
 from typing import TYPE_CHECKING, Final
 
 import pytest
 
+from tasks import pgo
 from tasks.pgo import Sdist, download, extract, llvm_profdata, main, pin_sdist, read_manifest, write_manifest
 
 if TYPE_CHECKING:
-    from pytest_mock import MockerFixture
+    from pytest_mock import MockerFixture, MockType
 
 _FILES: Final = "https://files.pythonhosted.org/packages/ab/cd"
 
@@ -49,8 +52,16 @@ def test_pin_sdist_rejects_a_wheel_only_release(mocker: MockerFixture) -> None:
         pin_sdist("demo")
 
 
+@pytest.fixture
+def sleep(mocker: MockerFixture) -> MockType:
+    # The module's own clock, so the patch does not reach other threads that call the shared `time.sleep`.
+    sleep = mocker.create_autospec(time.sleep)
+    mocker.patch.object(pgo, "time", SimpleNamespace(sleep=sleep, monotonic=time.monotonic))
+    return sleep
+
+
+@pytest.mark.usefixtures("sleep")
 def test_pin_sdist_retries_a_transient_failure(mocker: MockerFixture, capsys: pytest.CaptureFixture[str]) -> None:
-    mocker.patch("time.sleep", autospec=True)
     release = _release(("demo-1.0.tar.gz", "sdist"))
     mocker.patch("urllib.request.urlopen", autospec=True, side_effect=[urllib.error.URLError("reset"), release])
 
@@ -102,8 +113,8 @@ def test_download_reuses_a_verified_file(tmp_path: Path, mocker: MockerFixture) 
     urlopen.assert_not_called()
 
 
+@pytest.mark.usefixtures("sleep")
 def test_download_retries_a_truncated_transfer(tmp_path: Path, mocker: MockerFixture) -> None:
-    mocker.patch("time.sleep", autospec=True)
     responses = [http.client.IncompleteRead(b"arch"), io.BytesIO(b"archive")]
     mocker.patch("urllib.request.urlopen", autospec=True, side_effect=responses)
 
@@ -112,8 +123,7 @@ def test_download_retries_a_truncated_transfer(tmp_path: Path, mocker: MockerFix
     assert archive.read_bytes() == b"archive"
 
 
-def test_download_gives_up_after_the_last_attempt(tmp_path: Path, mocker: MockerFixture) -> None:
-    sleep = mocker.patch("time.sleep", autospec=True)
+def test_download_gives_up_after_the_last_attempt(tmp_path: Path, mocker: MockerFixture, sleep: MockType) -> None:
     error = urllib.error.HTTPError(_FILES, 503, "Unavailable", None, None)  # type: ignore[arg-type] # no headers
     mocker.patch("urllib.request.urlopen", autospec=True, side_effect=error)
 
