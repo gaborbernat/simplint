@@ -14,10 +14,11 @@ expression: "lint_fixture(rule, fixture, target_version)"
 73:7 SMP200 Test class `TestUsesSelf`; use module-level test functions with a name prefix
 78:7 SMP200 Test class `TestMultiWordName`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `TestMultiWordName` into module-level functions]
 83:7 SMP200 Test class `TestHTTPClient`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `TestHTTPClient` into module-level functions]
-88:7 SMP200 Test class `TestDocumented`; use module-level test functions with a name prefix
-100:7 SMP200 Test class `TestBase`; use module-level test functions with a name prefix
-105:7 SMP200 Test class `TestDerived`; use module-level test functions with a name prefix
---- fixed (5 applied, 10 remaining) ---
+88:7 SMP200 Test class `TestMethodDocstring`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `TestMethodDocstring` into module-level functions]
+95:7 SMP200 Test class `TestDocumented`; use module-level test functions with a name prefix
+107:7 SMP200 Test class `TestBase`; use module-level test functions with a name prefix
+112:7 SMP200 Test class `TestDerived`; use module-level test functions with a name prefix
+--- fixed (6 applied, 10 remaining) ---
 import pytest
 
 
@@ -99,6 +100,12 @@ def test_multi_word_name_words() -> None:
 
 
 def test_http_client_get() -> None:
+    assert True
+
+
+def test_method_docstring_spread() -> None:
+    """ Fails if the default axis changes
+    """
     assert True
 
 
