@@ -10,7 +10,8 @@ when `docstring-style = "rest"`. It reports:
   tools accept for generators
 - a field missing what it describes, such as `:param:` without a name or `:raises:` without an exception, and a
   `:returns:`, `:rtype:`, `:yields:` or `:ytype:` field with a name
-- a field that repeats an earlier one, such as two `:param path:` fields or two `:raises ValueError:` fields
+- a field that repeats an earlier one, such as two `:param path:` fields; two `:raises ValueError:` fields may document
+  two conditions that raise it
 - a field after prose that follows the field list, once per docstring
 - a field list right under a line of text, without the blank line reStructuredText needs to read it as a field list
   rather than as the end of that paragraph

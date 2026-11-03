@@ -23,3 +23,25 @@ def _helper(_value: int) -> None:
 
     :param _value: Internal.
     """
+
+
+def unwrap(__obj: object) -> None:
+    """Unwrap a callable.
+
+    :param __obj: The positional-only callable.
+    """
+
+
+class Wrapper:
+    """Wrap a callable.
+
+    :ivar __wrapped__: The wrapped callable.
+    """
+
+    def __init__(self, size: int, _cache: bool = False) -> None:
+        """Make the wrapper.
+
+        :param size: How many it holds.
+        :param _cache: Whether to cache, for the test suite.
+        """
+        self.__wrapped__ = size

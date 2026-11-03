@@ -1,14 +1,16 @@
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rest::{FieldKind, field_deletion, targets};
+use crate::rules::docstrings::rest::{FieldKind, field_deletion, is_internal, targets};
 
 pub fn rest_private_field(checker: &Checker) {
-    for target in targets(checker).into_iter().filter(|target| target.public) {
-        let fields = target.docstring.fields.iter().filter(|field| {
-            matches!(field.kind, FieldKind::Param | FieldKind::Type | FieldKind::Var | FieldKind::VarType)
-        });
-        for field in fields {
-            let Some(name) = field.subject().filter(|name| name.starts_with('_')) else {
+    // A public class's `__init__` docstring documents its constructor as the class docstring may.
+    for target in targets(checker).into_iter().filter(|target| target.public || target.public_constructor) {
+        for field in &target.docstring.fields {
+            let parameter = matches!(field.kind, FieldKind::Param | FieldKind::Type);
+            if !parameter && !matches!(field.kind, FieldKind::Var | FieldKind::VarType) {
+                continue;
+            }
+            let Some(name) = field.subject().filter(|name| is_internal(name, parameter)) else {
                 continue;
             };
             let text = field.text();

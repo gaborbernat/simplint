@@ -14,8 +14,7 @@ expression: "lint_fixture(rule, fixture, target_version)"
 73:6 SMP310 Field `:returns:` has no description; say what it documents
 74:6 SMP310 Field `:raises OSError:` has no description; say what it documents
 83:6 SMP310 Field `:param path:` follows text without a blank line, so it renders as part of that paragraph [unsafe fix: Add a blank line before the field list]
-93:6 SMP310 Field `:raises OSError:` repeats an earlier field
---- fixed (1 applied, 12 remaining) ---
+--- fixed (1 applied, 11 remaining) ---
 def google(path: str) -> str:
     """Read a file.
 

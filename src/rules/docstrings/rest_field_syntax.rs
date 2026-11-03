@@ -88,8 +88,8 @@ pub fn rest_field_syntax(checker: &Checker) {
                     format!("Field `{text}` has no description; say what it documents"),
                 );
             }
-            // Several `:raises:` fields document several exceptions, so only one naming the same exception repeats.
-            let repeatable = matches!(field.kind, FieldKind::Meta | FieldKind::Unknown);
+            // `:raises:` may name one exception twice, for each of the conditions that raise it.
+            let repeatable = matches!(field.kind, FieldKind::Raises | FieldKind::Meta | FieldKind::Unknown);
             if !repeatable && !seen.insert((field.kind as u8, field.subject())) {
                 checker.report(Rule::RestFieldSyntax, range, format!("Field `{text}` repeats an earlier field"));
             }

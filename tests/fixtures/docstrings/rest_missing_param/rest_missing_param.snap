@@ -14,7 +14,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 65:5 SMP312 Docstring of `Settings` does not document parameter `retries`; add `:param retries:` [unsafe fix: Add `:param retries:`]
 81:5 SMP312 Docstring of `reordered` does not document parameter `b`; add `:param b:` [unsafe fix: Add `:param b:`]
 90:5 SMP312 Docstring of `indented` does not document parameter `b`; add `:param b:` [unsafe fix: Add `:param b:`]
---- fixed (11 applied, 1 remaining) ---
+114:5 SMP312 Docstring of `positional` does not document parameter `__obj`; add `:param __obj:` [unsafe fix: Add `:param __obj:`]
+--- fixed (12 applied, 1 remaining) ---
 def copy(source: str, target: str, *args: str, **kwargs: str) -> None:
     r"""Copy a file.
 
@@ -143,4 +144,11 @@ def knobbed(url: str, _retries: int = 3) -> None:
     """Fetch a resource.
 
     :param url: Where it is.
+    """
+
+
+def positional(__obj: object, _hidden: int = 0) -> None:
+    """Take a positional-only object.
+
+    :param __obj:
     """

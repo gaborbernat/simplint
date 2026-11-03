@@ -3,8 +3,9 @@
 Checks the docstrings of a library's public API (see [SMP302](SMP302.html)), when `docstring-style = "rest"`, for
 parameters without a `:param name:` field. A class's constructor parameters may be documented in the class docstring or
 in its `__init__` docstring. `*args` and `**kwargs` count as `args` and `kwargs`, written with or without their stars,
-as `:param \*args:`. The instance or class a method receives first and names with a leading underscore, which are
-internal, are skipped; [SMP323](SMP323.html) reports documentation of the latter in the public API.
+as `:param \*args:`. The instance or class a method receives first and parameters named with one leading underscore,
+which are internal, are skipped; [SMP323](SMP323.html) reports documentation of the latter in the public API. A
+parameter named with two leading underscores, such as `__obj`, marks it positional-only and is checked.
 
 Docstrings outside the public API are not checked, since [SMP300](SMP300.html) asks for none there.
 

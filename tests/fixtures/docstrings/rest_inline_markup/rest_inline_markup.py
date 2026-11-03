@@ -19,3 +19,21 @@ def later_paragraph() -> None:
     that spans two lines``.
 
     The last ``one is open."""
+
+
+def roles() -> None:
+    """Roles with targets backticks cannot always fix.
+
+    See :ref:getting-started, call :func:foo(x), and set :attr:debug=True.
+
+    .. code-block:: python
+
+        value = ``unclosed and :func:inside
+
+    .. note::
+
+        Prose with :func:outside here.
+
+    >>> print(``doctest and :func:skipped)
+    ``doctest and :func:skipped
+    """

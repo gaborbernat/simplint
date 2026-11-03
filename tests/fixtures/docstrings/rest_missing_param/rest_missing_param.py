@@ -108,3 +108,7 @@ def knobbed(url: str, _retries: int = 3) -> None:
 
     :param url: Where it is.
     """
+
+
+def positional(__obj: object, _hidden: int = 0) -> None:
+    """Take a positional-only object."""

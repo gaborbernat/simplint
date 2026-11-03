@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use ruff_diagnostics::{Edit, Fix};
+use ruff_python_ast::helpers::is_dunder;
 use ruff_python_ast::{self as ast, Expr, Stmt, StringFlags};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
@@ -262,6 +263,9 @@ pub(crate) struct Target<'a> {
     pub(crate) owner: Owner<'a>,
     pub(crate) docstring: Docstring<'a>,
     pub(crate) public: bool,
+    // Whether the docstring is the `__init__` docstring of a public class, which documents its constructor's
+    // parameters as the class docstring may.
+    pub(crate) public_constructor: bool,
 }
 
 impl<'a> Target<'a> {
@@ -303,12 +307,16 @@ pub(crate) fn targets<'a>(checker: &Checker<'a>) -> Vec<Target<'a>> {
         .collect();
     let functions = checker.function_defs().iter().filter_map(|def| {
         let docstring = Docstring::parse(checker, docstring(&def.body)?);
-        let owner = Owner::Function { def, class: methods.get(&def.range).copied() };
-        Some(Target { owner, docstring, public: api.is_public(def.range) })
+        let class = methods.get(&def.range).copied();
+        let public_constructor =
+            def.name.as_str() == "__init__" && class.is_some_and(|class| api.is_public(class.range));
+        let owner = Owner::Function { def, class };
+        Some(Target { owner, docstring, public: api.is_public(def.range), public_constructor })
     });
     let classes = checker.class_defs().iter().filter_map(|class| {
         let docstring = Docstring::parse(checker, docstring(&class.body)?);
-        Some(Target { owner: Owner::Class(class), docstring, public: api.is_public(class.range) })
+        let public = api.is_public(class.range);
+        Some(Target { owner: Owner::Class(class), docstring, public, public_constructor: false })
     });
     let mut targets: Vec<Target> = functions.chain(classes).collect();
     targets.sort_by_key(|target| target.docstring.range().start());
@@ -450,6 +458,12 @@ pub(crate) fn field_deletion(checker: &Checker, docstring: &Docstring, fields: &
     let mut edits = edits.into_iter();
     let first = edits.next()?;
     Some(Fix::unsafe_edits(first, edits))
+}
+
+// Whether a parameter or attribute name is internal. A leading underscore marks one, but not a dunder, as `__wrapped__`,
+// and not a parameter named with two underscores, which marks it positional-only, as in typeshed.
+pub(crate) fn is_internal(name: &str, parameter: bool) -> bool {
+    name.starts_with('_') && !is_dunder(name) && !(parameter && name.starts_with("__"))
 }
 
 // Where a field goes in the order Sphinx renders a field list: parameters in the order the signature takes them, then

@@ -2,7 +2,9 @@ use std::collections::HashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rest::{FieldKind, Owner, constructor_docstring, field_insertion, rank, targets};
+use crate::rules::docstrings::rest::{
+    FieldKind, Owner, constructor_docstring, field_insertion, is_internal, rank, targets,
+};
 
 pub fn rest_missing_param(checker: &Checker) {
     for target in targets(checker).into_iter().filter(|target| target.public) {
@@ -23,7 +25,7 @@ pub fn rest_missing_param(checker: &Checker) {
         let missing: Vec<&str> = parameters
             .iter()
             .map(|parameter| parameter.name)
-            .filter(|name| !name.starts_with('_') && !documented.contains(name))
+            .filter(|name| !is_internal(name, true) && !documented.contains(name))
             .collect();
         // The fields go where the constructor's parameters are documented already, the class docstring otherwise.
         let into =
