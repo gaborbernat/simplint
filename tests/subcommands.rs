@@ -86,7 +86,7 @@ fn rule_all_explains_every_rule() {
             stdout.matches("\n## What it does").count(),
             stdout.starts_with("# section-comment (SMP001)\n\nFix is always available.\n\n")
         ),
-        (0, 43, true)
+        (0, 45, true)
     );
 }
 
@@ -95,7 +95,7 @@ fn rule_all_json_lists_every_rule() {
     let root = project(&[]);
     let (code, stdout, _) = simplint(root.path(), &["rule", "--all", "--output-format", "json"]);
     let rules: Vec<serde_json::Value> = serde_json::from_str(&stdout).expect("json");
-    assert_eq!((code, rules.len(), rules[0]["fix_availability"].as_str()), (0, 43, Some("Always")));
+    assert_eq!((code, rules.len(), rules[0]["fix_availability"].as_str()), (0, 45, Some("Always")));
 }
 
 #[test]

@@ -1,5 +1,7 @@
 mod function_docstring;
 mod rest;
+mod rest_attribute_kind;
+mod rest_duplicate_param;
 mod rest_field_syntax;
 mod rest_missing_attribute;
 mod rest_missing_param;
@@ -13,6 +15,8 @@ mod test_module_docstring;
 mod undocumented_public_api;
 
 pub(crate) use function_docstring::function_docstring;
+pub(crate) use rest_attribute_kind::rest_attribute_kind;
+pub(crate) use rest_duplicate_param::rest_duplicate_param;
 pub(crate) use rest_field_syntax::rest_field_syntax;
 pub(crate) use rest_missing_attribute::rest_missing_attribute;
 pub(crate) use rest_missing_param::rest_missing_param;

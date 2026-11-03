@@ -58,6 +58,9 @@ pub(crate) struct Field {
     pub(crate) after_text: bool,
     // Whether the field says anything after its name, on its line or on the lines that continue it.
     pub(crate) described: bool,
+    // Whether the field starts a field list right under a line of text, which reStructuredText then reads as part of
+    // that paragraph rather than as a field.
+    pub(crate) joins_text: bool,
 }
 
 impl Field {
@@ -138,6 +141,7 @@ impl<'a> Docstring<'a> {
                 let words: Vec<String> = marker.split_whitespace().map(str::to_owned).collect();
                 let in_source = start.filter(|_| index > 0);
                 let described = !trimmed[marker.len() + 2..].trim().is_empty();
+                let joins_text = index > 0 && open.is_none() && !lines[index - 1].1.trim().is_empty();
                 fields.push(Field {
                     kind: FieldKind::of(&words[0]),
                     words,
@@ -150,6 +154,7 @@ impl<'a> Docstring<'a> {
                     }),
                     after_text: text_since_field && !fields.is_empty(),
                     described,
+                    joins_text,
                 });
                 open = Some((fields.len() - 1, level));
                 text_since_field = false;
@@ -497,8 +502,10 @@ pub(crate) fn field_insertion(
 pub(crate) struct Attribute<'a> {
     pub(crate) name: &'a str,
     // Whether it belongs to the class rather than its instances: a `ClassVar`, or a name the body assigns without an
-    // annotation.
+    // annotation; and whether instances hold it, as an annotated field or a name a method sets on `self`, which a class
+    // default may be too.
     pub(crate) class_var: bool,
+    pub(crate) on_instance: bool,
     // Whether a `#:` comment or a string right after it documents it, as autodoc reads.
     pub(crate) documented: bool,
 }
@@ -509,8 +516,11 @@ pub(crate) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) ->
         .iter_mut()
         .find(|attribute| attribute.name == name)
     {
-        Some(attribute) => attribute.documented |= documented,
-        None => found.push(Attribute { name, class_var, documented }),
+        Some(attribute) => {
+            attribute.documented |= documented;
+            attribute.on_instance |= !class_var;
+        }
+        None => found.push(Attribute { name, class_var, on_instance: !class_var, documented }),
     };
     for stmt in &class.body {
         let documented = is_documented_variable(checker, &class.body, stmt);

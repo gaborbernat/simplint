@@ -35,6 +35,8 @@ use crate::common;
 #[test_case("rest-missing-raises", "rest_missing_raises.py" ; "rest_missing_raises")]
 #[test_case("rest-missing-attribute", "rest_missing_attribute.py" ; "rest_missing_attribute")]
 #[test_case("rest-unknown-attribute", "rest_unknown_attribute.py" ; "rest_unknown_attribute")]
+#[test_case("rest-duplicate-param", "rest_duplicate_param.py" ; "rest_duplicate_param")]
+#[test_case("rest-attribute-kind", "rest_attribute_kind.py" ; "rest_attribute_kind")]
 fn rule(rule: &str, fixture: &str) {
     common::assert_rule_snapshot(rule, fixture, "py314");
 }

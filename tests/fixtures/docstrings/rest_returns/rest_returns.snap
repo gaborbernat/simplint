@@ -13,7 +13,11 @@ expression: "lint_fixture(rule, fixture, target_version)"
 118:6 SMP315 `middle` returns nothing, yet its docstring has a `:returns:` field [unsafe fix: Remove the return fields]
 127:5 SMP315 `pragma` returns a value, yet its docstring has no `:returns:` field
 134:6 SMP315 `pragma_closing` returns nothing, yet its docstring has a `:returns:` field
---- fixed (9 applied, 2 remaining) ---
+141:6 SMP315 `not_a_generator` is not a generator, yet its docstring has a `:yields:` field [unsafe fix: Remove the yield fields]
+149:6 SMP315 `Built` is a class, so its docstring has no `:returns:` to document
+156:10 SMP315 `size` is a property; describe its value in the text rather than in `:returns:`
+157:10 SMP315 `size` is a property; describe its value in the text rather than in `:rtype:`
+--- fixed (10 applied, 5 remaining) ---
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from typing import NoReturn
@@ -142,3 +146,27 @@ def pragma_closing() -> None:
     """Stop.
 
     :returns: Nothing at all."""  # noqa: E501
+
+
+def not_a_generator(values: list[int]) -> list[int]:
+    """Sort the values.
+
+    :returns: The sorted values.
+    """
+    return sorted(values)
+
+
+class Built:
+    """Build things.
+
+    :returns: A new builder.
+    """
+
+    @property
+    def size(self) -> int:
+        """The size.
+
+        :returns: How many.
+        :rtype: int
+        """
+        return 1

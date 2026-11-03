@@ -149,7 +149,9 @@ The ``SMP31`` rules check the field lists of `reStructuredText docstrings
     docstring-style = "rest"  # unset by default, which turns the SMP31 rules off
 
 Every docstring has to be accurate: no field for a parameter or attribute that does not exist, no ``:returns:`` on a
-function that returns nothing, and no types, which belong in annotations. Every field needs a description. A docstring
+function that returns nothing, no ``:yields:`` on one that is not a generator, ``:ivar:`` and ``:cvar:`` for instance and
+class attributes, and no types, which belong in annotations. Every field needs a description, a field list needs a blank
+line above it, and a constructor parameter is documented once, in the class docstring or in ``__init__``. A docstring
 of the public API also has to be complete: a ``:param:`` for each parameter, ``:returns:`` or ``:yields:`` when the
 function hands back a value, ``:raises:`` for each exception it raises itself, and an ``:ivar:`` or ``:cvar:`` for each
 attribute of a class. The fixes add the missing fields with empty descriptions, in the order Sphinx renders them, for you

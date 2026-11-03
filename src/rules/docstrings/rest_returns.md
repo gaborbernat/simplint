@@ -5,12 +5,20 @@ Checks the `:returns:` and `:yields:` fields of reStructuredText docstrings, whe
 - a docstring of a library's public API (see [SMP302](SMP302.html)) without `:returns:` for a function that returns a
   value: its return annotation is not `None`, `NoReturn` or `Never`, or, without one, it returns something other than
   `None`
+
 - a docstring of a public generator without `:yields:`
+
 - any docstring with `:returns:` for a function that returns nothing: its annotation says so, or, without one, it has no
   `return` with a value and its body is more than a placeholder such as `...`, as in an abstract method
+
 - any docstring of a generator with `:returns:` and no `:yields:`
 
-Properties, whose docstring describes the value they hold, and `__init__` are skipped.
+- any docstring of a function that is not a generator with `:yields:`
+
+- a `:returns:`, `:rtype:`, `:yields:` or `:ytype:` field in the docstring of a class, which describes the class, or of
+  a property, whose text describes the value it holds
+
+`__init__` is skipped.
 
 ## Why is this bad?
 
@@ -45,11 +53,12 @@ def total(values: list[int]) -> int:
 - for a function that returns nothing, the fix deletes the `:returns:` and `:rtype:` fields with the lines that continue
   them
 - for a generator documented with `:returns:`, it renames the field to `:yields:`, keeping its description
+- for a function that is not a generator, it deletes the `:yields:` and `:ytype:` fields
 - for a missing field, it adds `:returns:` or `:yields:` after the parameter fields, with an empty description for you
   to write, which [SMP310](SMP310.html) reports until you do
 
 Each is unsafe, since code may read the docstring through `__doc__`. No fix is offered when escapes in the docstring
-make its text differ from the source.
+make its text differ from the source, nor for a field of a class or property, whose text belongs in the description.
 
 ## Options
 

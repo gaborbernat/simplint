@@ -174,7 +174,7 @@ rules! {
     FunctionDocstring => ("SMP300", "function-docstring", "Docstrings on internal functions and classes", Sometimes, docstrings::function_docstring { module }),
     TestModuleDocstring => ("SMP301", "test-module-docstring", "Docstrings on test modules", Sometimes, docstrings::test_module_docstring { module }),
     UndocumentedPublicApi => ("SMP302", "undocumented-public-api", "Public functions, classes, methods and variables without documentation", None, docstrings::undocumented_public_api { module }),
-    RestFieldSyntax => ("SMP310", "rest-field-syntax", "Malformed or misplaced reStructuredText docstring fields", None, docstrings::rest_field_syntax { module }),
+    RestFieldSyntax => ("SMP310", "rest-field-syntax", "Malformed or misplaced reStructuredText docstring fields", Sometimes, docstrings::rest_field_syntax { module }),
     RestUnknownParam => ("SMP311", "rest-unknown-param", "`:param:` and `:type:` fields for parameters the signature lacks", Sometimes, docstrings::rest_unknown_param { module }),
     RestMissingParam => ("SMP312", "rest-missing-param", "Public API docstrings that leave a parameter undocumented", Sometimes, docstrings::rest_missing_param { module }),
     RestParamOrder => ("SMP313", "rest-param-order", "`:param:` fields out of the signature's order", None, docstrings::rest_param_order { module }),
@@ -183,6 +183,8 @@ rules! {
     RestMissingRaises => ("SMP316", "rest-missing-raises", "Public API docstrings that leave a raised exception undocumented", Sometimes, docstrings::rest_missing_raises { module }),
     RestMissingAttribute => ("SMP317", "rest-missing-attribute", "Public classes whose docstring leaves an attribute undocumented", Sometimes, docstrings::rest_missing_attribute { module }),
     RestUnknownAttribute => ("SMP318", "rest-unknown-attribute", "`:ivar:`, `:cvar:` and `:var:` fields for attributes the class lacks", Sometimes, docstrings::rest_unknown_attribute { module }),
+    RestDuplicateParam => ("SMP319", "rest-duplicate-param", "Constructor parameters documented in both the class and `__init__` docstrings", Sometimes, docstrings::rest_duplicate_param { module }),
+    RestAttributeKind => ("SMP320", "rest-attribute-kind", "`:ivar:` on class variables and `:cvar:` on instance attributes", Sometimes, docstrings::rest_attribute_kind { module }),
 }
 
 // The simplint rule behind a diagnostic; `None` for Ruff's own diagnostics, such as a syntax error.

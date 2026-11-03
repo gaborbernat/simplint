@@ -132,3 +132,28 @@ def pragma_closing() -> None:
     """Stop.
 
     :returns: Nothing at all."""  # noqa: E501
+
+
+def not_a_generator(values: list[int]) -> list[int]:
+    """Sort the values.
+
+    :returns: The sorted values.
+    :yields: Each value.
+    """
+    return sorted(values)
+
+
+class Built:
+    """Build things.
+
+    :returns: A new builder.
+    """
+
+    @property
+    def size(self) -> int:
+        """The size.
+
+        :returns: How many.
+        :rtype: int
+        """
+        return 1

@@ -25,7 +25,7 @@ pub fn rest_missing_attribute(checker: &Checker) {
                     && !documented.contains(attribute.name)
                     && !parameters.iter().any(|parameter| parameter.name == attribute.name)
             })
-            .map(|attribute| (attribute.name, if attribute.class_var { "cvar" } else { "ivar" }))
+            .map(|attribute| (attribute.name, if attribute.on_instance { "ivar" } else { "cvar" }))
             .collect();
         let added: Vec<(usize, String)> = missing
             .iter()

@@ -5,7 +5,8 @@ attributes without an `:ivar name:`, `:cvar name:` or `:var name:` field. The at
 [autodoc](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html) documents:
 
 - names the class body assigns: a `ClassVar` or a name assigned without an annotation is a class variable, an annotated
-  name, such as a dataclass field, an instance attribute
+  name, such as a dataclass field, an instance attribute, and a class variable a method also sets on `self` is an
+  instance attribute with a default
 - attributes a method sets on `self`, at any depth of its body
 
 These are skipped:

@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 
+use ruff_diagnostics::{Edit, Fix};
+
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::docstrings::rest::{FieldKind, targets};
@@ -27,6 +29,21 @@ pub fn rest_field_syntax(checker: &Checker) {
             let range = field.marker.unwrap_or_else(|| docstring.range());
             let text = field.text();
             let word = &field.words[0];
+            if field.joins_text {
+                // A blank line before the field separates the field list from the paragraph above it.
+                let fix = field.lines.map(|lines| {
+                    Fix::unsafe_edit(Edit::insertion(checker.stylist.line_ending().as_str().to_owned(), lines.start()))
+                });
+                checker.report_fix(
+                    Rule::RestFieldSyntax,
+                    range,
+                    format!(
+                        "Field `{text}` follows text without a blank line, so it renders as part of that paragraph"
+                    ),
+                    fix,
+                    "Add a blank line before the field list",
+                );
+            }
             if field.after_text && !reported_placement {
                 reported_placement = true;
                 checker.report(

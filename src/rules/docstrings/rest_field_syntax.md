@@ -12,6 +12,8 @@ when `docstring-style = "rest"`. It reports:
   `:returns:`, `:rtype:`, `:yields:` or `:ytype:` field with a name
 - a field that repeats an earlier one, such as two `:param path:` fields
 - a field after prose that follows the field list, once per docstring
+- a field list right under a line of text, without the blank line reStructuredText needs to read it as a field list
+  rather than as the end of that paragraph
 - a `:param:`, `:raises:`, `:returns:`, `:yields:` or `:var:` field with no description, as the fixes of the other
   `SMP31` rules add it
 - a Google-style section, such as `Args:`, or a numpydoc one, such as `Parameters` over a line of dashes
@@ -47,7 +49,8 @@ def read(path: str) -> str:
 
 ## Fix safety
 
-No fix is offered, since the intended field depends on what the author meant.
+For a field list right under a line of text, the fix adds the blank line. It is unsafe, since code may read the
+docstring through `__doc__`. No other report has a fix, since the intended field depends on what the author meant.
 
 ## Options
 

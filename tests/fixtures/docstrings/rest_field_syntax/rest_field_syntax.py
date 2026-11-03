@@ -76,3 +76,10 @@ def empty(path: str) -> str:
     if not path:
         raise OSError
     return path
+
+
+def joined(path: str) -> str:
+    """Read a file.
+    :param path: Where it is.
+    """
+    return path
