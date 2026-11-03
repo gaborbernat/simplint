@@ -1699,7 +1699,7 @@ wheels = [
 
 [[package]]
 name = "release-creator"
-version = "4.1.0"
+version = "4.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "docutils", version = "0.22.4", source = { registry = "https://pypi.org/simple" } },
@@ -1707,12 +1707,11 @@ dependencies = [
     { name = "mdformat" },
     { name = "mdformat-gfm" },
     { name = "packaging" },
-    { name = "pyyaml" },
     { name = "towncrier" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7f/fd/05d7f3c604476a238d67d5aaa2a4085312e7078c193dbd7ad99ad48d560d/release_creator-4.1.0.tar.gz", hash = "sha256:c783037f5ca2efc16fa7cccfb1c2abf0a442f116a63ca82bd7bfb7e2a8343a15", size = 186016, upload-time = "2026-10-26T18:24:45.805Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d8/cf/8f376cc925c26fa5434d327ba03f4ed709b80d2077edda865fc3b2fe1940/release_creator-4.4.0.tar.gz", hash = "sha256:263d518ddee6371fa13d25bd07f7b5af0fa7a6e421b16f1e8143b0a9443bc84d", size = 171450, upload-time = "2026-11-02T21:44:48.475Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/30/d0/38480e99025c021d07e0710af02547562dfadbd798bef26dc01869a3f81e/release_creator-4.1.0-py3-none-any.whl", hash = "sha256:67deae16d11ac261a1512f18a22c0cf13418f43afc3e56cb74e58ad4422062e3", size = 52922, upload-time = "2026-10-26T18:24:44.353Z" },
+    { url = "https://files.pythonhosted.org/packages/7b/29/6f2a3158b082b3bf8a94eb93662d80b4db4212abea0fc1fae07ac9a043da/release_creator-4.4.0-py3-none-any.whl", hash = "sha256:560ed208cca0dc53bc227878e5596e3e26e44fa277658c5d0dc662901d95f8cb", size = 54784, upload-time = "2026-11-02T21:44:47.195Z" },
 ]
 
 [[package]]
@@ -1895,7 +1894,7 @@ docs = [
     { name = "furo", marker = "python_full_version >= '3.14'", specifier = ">=2025.12.19" },
     { name = "myst-parser", marker = "python_full_version >= '3.14'", specifier = ">=5" },
     { name = "pypandoc-binary", marker = "python_full_version >= '3.14'", specifier = ">=1.17" },
-    { name = "release-creator", marker = "python_full_version >= '3.15'", specifier = ">=4.1" },
+    { name = "release-creator", marker = "python_full_version >= '3.15'", specifier = ">=4.4" },
     { name = "sphinx", marker = "python_full_version >= '3.14'", specifier = ">=9.1" },
     { name = "sphinx-argparse-cli", marker = "python_full_version >= '3.14'", specifier = ">=1.24" },
     { name = "sphinx-copybutton", marker = "python_full_version >= '3.14'", specifier = ">=0.5.2" },
@@ -1915,10 +1914,10 @@ release-build = [
     { name = "maturin", marker = "python_full_version >= '3.15'", specifier = ">=1.15,<2" },
     { name = "setuptools", marker = "python_full_version >= '3.15'", specifier = ">=80" },
 ]
-release-notes = [{ name = "release-creator", marker = "python_full_version >= '3.15'", specifier = ">=4.1" }]
+release-notes = [{ name = "release-creator", marker = "python_full_version >= '3.15'", specifier = ">=4.4" }]
 release-prepare = [
     { name = "prek", marker = "python_full_version >= '3.15'", specifier = ">=0.3" },
-    { name = "release-creator", marker = "python_full_version >= '3.15'", specifier = ">=4.1" },
+    { name = "release-creator", marker = "python_full_version >= '3.15'", specifier = ">=4.4" },
 ]
 test = [
     { name = "covdefaults", specifier = ">=2.3" },
