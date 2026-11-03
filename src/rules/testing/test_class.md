@@ -39,7 +39,8 @@ No fix is offered when:
 
 - the class has bases, decorators or a docstring;
 - another class extends it, or the file refers to it by name;
-- the class contains a string that spans several lines;
+- the class contains a string that spans several lines, other than a method's docstring, whose indentation `ruff format`
+  rewrites anyway;
 - the class body holds anything besides methods whose names start with `test`;
 - a method uses `self`, has no `self` as its first parameter, or takes positional-only parameters;
 - a new name is already used in the file.

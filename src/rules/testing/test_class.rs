@@ -45,10 +45,18 @@ fn flatten_class(checker: &Checker, class: &ast::StmtClassDef) -> Option<String>
         return None;
     }
     let source = checker.source;
-    // Dedenting the methods would change the text of any string spanning several lines.
+    // Dedenting the methods would change the text of any string spanning several lines, except a method's docstring,
+    // whose indentation tools strip as `inspect.cleandoc` does and `ruff format` rewrites the same way.
+    let docstrings: Vec<TextRange> = class
+        .body
+        .iter()
+        .filter_map(Stmt::as_function_def_stmt)
+        .filter_map(|function| docstring(&function.body).map(Ranged::range))
+        .collect();
     if checker.parsed.tokens().in_range(class.range()).iter().any(|token| {
         matches!(token.kind(), TokenKind::String | TokenKind::FStringMiddle | TokenKind::TStringMiddle)
             && source.contains_line_break(token.range())
+            && !docstrings.iter().any(|docstring| docstring.contains_range(token.range()))
     }) {
         return None;
     }
