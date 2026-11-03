@@ -2,4 +2,4 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-1:1 SMP116 Public variable `DEPTH` is undocumented; add a docstring below it or a `#:` comment above it; `loose/_stars.py` re-exports it
+1:1 SMP302 Public variable `DEPTH` is undocumented; add a docstring below it or a `#:` comment above it; `loose/_stars.py` re-exports it

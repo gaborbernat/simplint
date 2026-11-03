@@ -306,7 +306,7 @@ fn docstring_reader_keeps_docstrings(reader: &str) {
         ("pkg/helpers.py", "def _helper() -> None:\n    \"\"\"Help.\"\"\"\n"),
         ("pkg/reader.py", &format!("from pkg.helpers import _helper\n\n{reader}")),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP002"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP300"]).1, "All checks passed!\n");
 }
 
 #[test]
@@ -317,10 +317,10 @@ fn module_docstring_read_is_no_docstring_reader() {
         ("pkg/reader.py", "print(__doc__)\n"),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP002"]).1.lines().next(),
+        check(root.path(), &["--select", "SMP300"]).1.lines().next(),
         Some(
             common::native(
-                "pkg/helpers.py:2:5: SMP002 Function docstring on internal code; let the name, signature and types \
+                "pkg/helpers.py:2:5: SMP300 Function docstring on internal code; let the name, signature and types \
                  document it"
             )
             .as_str()
@@ -455,8 +455,8 @@ fn application_has_no_public_api() {
         ("tool/__main__.py", "from tool.cli import run\n\nrun()\n"),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP002,SMP116"]).1,
-        "tool/cli.py:2:5: SMP002 Function docstring on internal code; let the name, signature and types document it\n\
+        check(root.path(), &["--select", "SMP300,SMP302"]).1,
+        "tool/cli.py:2:5: SMP300 Function docstring on internal code; let the name, signature and types document it\n\
          Found 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n"
             .replace('/', std::path::MAIN_SEPARATOR_STR)
     );
@@ -471,8 +471,8 @@ fn documentation_is_not_public_api() {
         ("lib.py", "def run() -> None: ...\n"),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP116"]).1,
-        "lib.py:1:5: SMP116 Public function `run` has no docstring; document it for its users\nFound 1 error.\n"
+        check(root.path(), &["--select", "SMP302"]).1,
+        "lib.py:1:5: SMP302 Public function `run` has no docstring; document it for its users\nFound 1 error.\n"
     );
 }
 
@@ -493,7 +493,7 @@ fn reexports_in_top_level_blocks_count() {
         ("pkg/_linux.py", "path = 1\n"),
         ("pkg/_posix.py", "path = 1\n"),
     ]);
-    let reports = check(root.path(), &["--select", "SMP116"]).1;
+    let reports = check(root.path(), &["--select", "SMP302"]).1;
     assert_eq!(reports.lines().count(), 6, "{reports}");
 }
 
@@ -506,8 +506,8 @@ fn excluded_init_module_still_reexports() {
         ("pkg/_core.py", "def run() -> None: ...\n"),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP116"]).1,
-        "pkg/_core.py:1:5: SMP116 Public function `run` has no docstring; document it for its users; \
+        check(root.path(), &["--select", "SMP302"]).1,
+        "pkg/_core.py:1:5: SMP302 Public function `run` has no docstring; document it for its users; \
          `pkg/__init__.py` re-exports it\nFound 1 error.\n"
             .replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
     );
@@ -519,14 +519,14 @@ fn standard_input_reads_its_own_exports() {
     let root = project(&[("pyproject.toml", LIBRARY), ("pkg/__init__.py", "")]);
     let stdout = check_with_stdin(
         root.path(),
-        &["--select", "SMP116", "--stdin-filename", "pkg/mod.py", "-"],
+        &["--select", "SMP302", "--stdin-filename", "pkg/mod.py", "-"],
         "def run() -> None: ...\n\n\ndef helper() -> None: ...\n\n\n__all__ = [\"run\"]\n",
     )
     .1;
     assert_eq!(
         stdout,
         format!(
-            "pkg{}mod.py:1:5: SMP116 Public function `run` has no docstring; document it for its users\nFound 1 error.\n",
+            "pkg{}mod.py:1:5: SMP302 Public function `run` has no docstring; document it for its users\nFound 1 error.\n",
             std::path::MAIN_SEPARATOR_STR
         )
     );
@@ -543,9 +543,9 @@ fn lazy_module_offers_what_it_defines() {
         ),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP116"]).1,
+        check(root.path(), &["--select", "SMP302"]).1,
         format!(
-            "pkg{}__init__.py:5:5: SMP116 Public function `helper` has no docstring; document it for its users\n\
+            "pkg{}__init__.py:5:5: SMP302 Public function `helper` has no docstring; document it for its users\n\
              Found 1 error.\n",
             std::path::MAIN_SEPARATOR_STR
         )

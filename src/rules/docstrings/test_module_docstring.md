@@ -7,7 +7,7 @@ first two patterns are pytest's default
 [test discovery](https://docs.pytest.org/en/stable/explanation/goodpractices.html#conventions-for-python-test-discovery)
 names.
 
-Other modules are checked by [SMP003](SMP003.html). This rule conflicts with Ruff's
+This rule conflicts with Ruff's
 [undocumented-public-module (D100)](https://docs.astral.sh/ruff/rules/undocumented-public-module/).
 
 ## Why is this bad?

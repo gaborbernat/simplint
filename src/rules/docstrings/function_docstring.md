@@ -1,13 +1,12 @@
 ## What it does
 
 Checks for [docstrings](https://docs.python.org/3/glossary.html#term-docstring) on internal functions, methods and
-classes, at any nesting depth. A library's public API is exempt, since [SMP116](SMP116.html) requires it to be
+classes, at any nesting depth. A library's public API is exempt, since [SMP302](SMP302.html) requires it to be
 documented: what its public modules offer and re-export, and the methods of a public class whose names do not start with
-`_` (SMP116 describes how the public API is found). A public class's dunder methods, such as `__init__`, its overrides
+`_` (SMP302 describes how the public API is found). A public class's dunder methods, such as `__init__`, its overrides
 and its property setters keep their docstrings too, since documentation tools show them. An application has no public
 API, so the rule checks all of its code. When the module builds `__all__` dynamically, every name without a leading `_`
-is treated as possibly public and skipped. Module docstrings are left to [SMP003](SMP003.html) and
-[SMP004](SMP004.html).
+is treated as possibly public and skipped. Module docstrings are left to [SMP301](SMP301.html).
 
 A function another module imports is still internal when it lives in a private module, such as `package/_helpers.py`,
 and the public modules do not re-export it.
@@ -27,11 +26,11 @@ Some docstrings are data that code reads at runtime rather than documentation, s
   or a framework building a schema from endpoint docstrings may read any of them. A bare `__doc__`, the module's own
   docstring, does not count.
 
-Use SMP116 in place of Ruff's [pydocstyle rules](https://docs.astral.sh/ruff/rules/#pydocstyle-d) that ask for
+Use SMP302 in place of Ruff's [pydocstyle rules](https://docs.astral.sh/ruff/rules/#pydocstyle-d) that ask for
 docstrings, such as
 [undocumented-public-function (D103)](https://docs.astral.sh/ruff/rules/undocumented-public-function/) and
 [undocumented-public-class (D101)](https://docs.astral.sh/ruff/rules/undocumented-public-class/): they treat every name
-without a leading `_` as public, while SMP116 follows `__all__`.
+without a leading `_` as public, while SMP302 follows `__all__`.
 
 ## Why is this bad?
 
@@ -129,7 +128,7 @@ Ruff's [undocumented-public-class (D101)](https://docs.astral.sh/ruff/rules/undo
 [undocumented-public-nested-class (D106)](https://docs.astral.sh/ruff/rules/undocumented-public-nested-class/) and
 [undocumented-public-init (D107)](https://docs.astral.sh/ruff/rules/undocumented-public-init/) ask for the docstrings
 this rule removes. simplint stops with an error before linting while any of them applies to a file this rule checks;
-turn them off and let [SMP116](SMP116.html) ask for documentation on the public API, or turn this rule off.
+turn them off and let [SMP302](SMP302.html) ask for documentation on the public API, or turn this rule off.
 
 When the comment the fix writes gives a Ruff rule a new report, such as
 [commented-out-code (ERA001)](https://docs.astral.sh/ruff/rules/commented-out-code/) for code in the docstring, simplint

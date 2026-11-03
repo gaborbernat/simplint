@@ -1,0 +1,15 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:5 SMP310 Google-style section `Args:` in a reStructuredText docstring; write fields such as `:param name:`
+11:5 SMP310 numpydoc section `Parameters` in a reStructuredText docstring; write fields such as `:param name:`
+23:6 SMP310 Unknown field `:parm path:`; Sphinx reads `param`, `type`, `raises`, `returns`, `rtype`, `var`, `vartype` and their aliases
+24:6 SMP310 Field `:param:` names nothing; write `:param name:`
+25:6 SMP310 Field `:raises:` names no exception; write `:raises Error:`
+26:6 SMP310 Field `:returns str:` takes no name; write `:returns:`
+35:6 SMP310 Field `:param path:` repeats an earlier field
+48:6 SMP310 Field `:param mode:` follows text after the field list; keep the fields together at the end
+72:6 SMP310 Field `:param path:` has no description; say what it documents
+73:6 SMP310 Field `:returns:` has no description; say what it documents
+74:6 SMP310 Field `:raises OSError:` has no description; say what it documents

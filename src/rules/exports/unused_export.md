@@ -8,8 +8,7 @@ declarations of the module's `.pyi` stub.
 
 These modules are not checked:
 
-- the top-level package or module of a library, and the modules
-  the `api-modules` setting names, whose `__all__`
+- the top-level package or module of a library, and the modules the `api-modules` setting names, whose `__all__`
   declares the interface users outside the project import
 - modules another file star-imports, since `import *` hands every listed name to the importing module
 - test modules, as defined in [SMP200](SMP200.html)
@@ -21,8 +20,8 @@ modules use.
 ## Why is this bad?
 
 `__all__` tells readers, and tools such as type checkers and documentation generators, which names a module offers. A
-name nothing imports is not part of any interface; listing it makes the module look larger than it is, and keeps a
-stale entry after its last user is gone.
+name nothing imports is not part of any interface; listing it makes the module look larger than it is, and keeps a stale
+entry after its last user is gone.
 
 ## Example
 
@@ -51,8 +50,8 @@ __all__ = ["parse"]
 ## Fix safety
 
 The fix removes the names from `__all__`: their lines when each name has a line of its own, or the names from a list
-written on one line. In a library it is unsafe, since code outside the run may import the name; in an application,
-which nothing outside the run imports, it is safe.
+written on one line. In a library it is unsafe, since code outside the run may import the name; in an application, which
+nothing outside the run imports, it is safe.
 
 No fix is offered when the list holds a comment and its names share lines, or when more than one statement builds
 `__all__`, such as `__all__ += [...]`.

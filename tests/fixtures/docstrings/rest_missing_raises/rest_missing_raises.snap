@@ -1,0 +1,75 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:5 SMP316 `parse` raises `ParseError`, which its docstring does not document; add `:raises ParseError:` [unsafe fix: Add `:raises ParseError:`, `:raises LookupError:`]
+5:5 SMP316 `parse` raises `LookupError`, which its docstring does not document; add `:raises LookupError:` [unsafe fix: Add `:raises ParseError:`, `:raises LookupError:`]
+--- fixed (2 applied, 0 remaining) ---
+import errors
+
+
+def parse(text: str) -> int:
+    """Parse a number.
+
+    :param text: The text.
+    :raises ValueError: When it is not a number.
+    :raises ParseError:
+    :raises LookupError:
+    """
+    if not text:
+        raise ValueError("empty")
+    if text == "-":
+        raise errors.ParseError(text)
+    if text == "?":
+        raise LookupError
+    if text == "!":
+        raise LookupError
+    try:
+        return int(text)
+    except TypeError as error:
+        raise error
+    except OverflowError:
+        raise
+
+
+def guarded(text: str) -> int:
+    """Parse a number.
+
+    :param text: The text.
+    :raises errors.ParseError: When it is not a number.
+    """
+    try:
+        if not text:
+            raise KeyError(text)
+    except KeyError:
+        pass
+    try:
+        if text == "-":
+            raise IndexError(text)
+    except Exception:
+        pass
+    try:
+        if text == "+":
+            raise KeyError(text)
+    except (KeyError, IndexError):
+        pass
+    if text == "*":
+        raise errors.table[0]
+    try:
+        if text == "~":
+            raise TimeoutError
+    except:
+        pass
+
+    def nested() -> None:
+        raise RuntimeError
+
+    nested()
+    if text == "?":
+        raise errors.ParseError(text)
+    raise NotImplementedError
+
+
+def _private(text: str) -> int:
+    """Parse a number."""
+    raise ValueError(text)

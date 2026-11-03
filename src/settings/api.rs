@@ -34,7 +34,7 @@ impl Display for ProjectKind {
     }
 }
 
-// The docstring markup the `SMP3` rules check.
+// The docstring markup the `SMP31` rules check.
 #[derive(Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum DocstringStyle {

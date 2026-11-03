@@ -1,6 +1,0 @@
----
-source: tests/common/mod.rs
-expression: "lint_fixture(rule, fixture, target_version)"
----
-5:5 SMP306 `parse` raises `ParseError`, which its docstring does not document; add `:raises ParseError:`
-5:5 SMP306 `parse` raises `LookupError`, which its docstring does not document; add `:raises LookupError:`

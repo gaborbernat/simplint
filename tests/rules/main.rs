@@ -7,7 +7,6 @@ mod docstrings;
 mod exports;
 mod imports;
 mod naming;
-mod rest;
 mod strings;
 mod structure;
 mod testing;

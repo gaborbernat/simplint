@@ -10,7 +10,7 @@ exposes functionality from submodules: its `__init__.py` may hold imports whose 
 `__all__`, a redundant alias such as `from ._core import run as run`, or `import *`, the `__all__` that lists them, and
 `from __future__` imports. Any other statement is reported there too, including an import of a name it does not export.
 A package is public when it belongs to one of the library's API packages and no part of its path starts with `_`; see
-[SMP116](SMP116.html).
+[SMP302](SMP302.html).
 
 ## Why is this bad?
 

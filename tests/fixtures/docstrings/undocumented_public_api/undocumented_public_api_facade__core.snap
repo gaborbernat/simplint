@@ -2,8 +2,8 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-4:7 SMP116 Public class `Engine` has no docstring; document it for its users; `facade/__init__.py` re-exports it
-5:9 SMP116 Public method `Engine.start` has no docstring; document it for its users; `facade/__init__.py` re-exports it
-10:11 SMP116 Public class `Engine.Settings` has no docstring; document it for its users; `facade/__init__.py` re-exports it
-11:13 SMP116 Public method `Engine.Settings.load` has no docstring; document it for its users; `facade/__init__.py` re-exports it
-14:5 SMP116 Public function `run` has no docstring; document it for its users; `facade/__init__.py` re-exports it
+4:7 SMP302 Public class `Engine` has no docstring; document it for its users; `facade/__init__.py` re-exports it
+5:9 SMP302 Public method `Engine.start` has no docstring; document it for its users; `facade/__init__.py` re-exports it
+10:11 SMP302 Public class `Engine.Settings` has no docstring; document it for its users; `facade/__init__.py` re-exports it
+11:13 SMP302 Public method `Engine.Settings.load` has no docstring; document it for its users; `facade/__init__.py` re-exports it
+14:5 SMP302 Public function `run` has no docstring; document it for its users; `facade/__init__.py` re-exports it

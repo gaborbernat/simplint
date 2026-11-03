@@ -4,7 +4,6 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstring;
 
 const MAX_PARAGRAPH_WORDS: usize = 100;
 
@@ -32,35 +31,6 @@ pub fn long_paragraph(checker: &Checker) {
         block.push(range);
     }
     long_comment_paragraphs(source, &block).into_iter().for_each(report);
-    let body = checker.body();
-    let docstrings = std::iter::once(docstring(body))
-        .chain(checker.function_defs().iter().map(|function| docstring(&function.body)))
-        .chain(checker.class_defs().iter().map(|class| docstring(&class.body)))
-        .flatten();
-    for literal in docstrings {
-        if docstring_paragraphs(literal.value.to_str()).any(|paragraph| {
-            paragraph.iter().map(|line| line.split_whitespace().count()).sum::<usize>() > MAX_PARAGRAPH_WORDS
-        }) {
-            report(literal.range());
-        }
-    }
-}
-
-// A blank line ends a paragraph, and so does the start of a reST field such as `:param name:`, since each field documents
-// its own topic.
-fn docstring_paragraphs(text: &str) -> impl Iterator<Item = Vec<&str>> {
-    let mut paragraphs: Vec<Vec<&str>> = vec![Vec::new()];
-    for line in text.lines() {
-        let trimmed = line.trim();
-        let field = trimmed.starts_with(':') && trimmed[1..].contains(':');
-        if trimmed.is_empty() || field {
-            paragraphs.push(Vec::new());
-        }
-        if !trimmed.is_empty() {
-            paragraphs.last_mut().expect("starts with one paragraph").push(line);
-        }
-    }
-    paragraphs.into_iter()
 }
 
 fn long_comment_paragraphs(source: &str, block: &[TextRange]) -> Vec<TextRange> {

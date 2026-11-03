@@ -10,14 +10,7 @@ fn rules_lists_codes() {
     let (code, stdout, _) = simplint(root.path(), &["rules"]);
     assert_eq!(
         (code, stdout.lines().take(3).collect::<Vec<_>>()),
-        (
-            0,
-            vec![
-                "SMP001 section-comment (fix)",
-                "SMP002 function-docstring (fix sometimes)",
-                "SMP003 multiline-module-docstring"
-            ]
-        )
+        (0, vec!["SMP001 section-comment (fix)", "SMP005 long-paragraph", "SMP010 single-letter-name"])
     );
 }
 
@@ -38,8 +31,8 @@ fn rules_json_carries_explanations() {
 }
 
 #[test_case("dataclass-kw-only", "# dataclass-kw-only (SMP114)", "Fix is always available." ; "by_name_always")]
-#[test_case("SMP002", "# function-docstring (SMP002)", "Fix is sometimes available." ; "by_code_sometimes")]
-#[test_case("SMP003", "# multiline-module-docstring (SMP003)", "## What it does" ; "by_code_never")]
+#[test_case("SMP300", "# function-docstring (SMP300)", "Fix is sometimes available." ; "by_code_sometimes")]
+#[test_case("SMP005", "# long-paragraph (SMP005)", "## What it does" ; "by_code_never")]
 fn rule_explains(selector: &str, title: &str, third: &str) {
     let root = project(&[]);
     let (code, stdout, _) = simplint(root.path(), &["rule", selector]);
@@ -93,7 +86,7 @@ fn rule_all_explains_every_rule() {
             stdout.matches("\n## What it does").count(),
             stdout.starts_with("# section-comment (SMP001)\n\nFix is always available.\n\n")
         ),
-        (0, 42, true)
+        (0, 43, true)
     );
 }
 
@@ -102,23 +95,17 @@ fn rule_all_json_lists_every_rule() {
     let root = project(&[]);
     let (code, stdout, _) = simplint(root.path(), &["rule", "--all", "--output-format", "json"]);
     let rules: Vec<serde_json::Value> = serde_json::from_str(&stdout).expect("json");
-    assert_eq!((code, rules.len(), rules[0]["fix_availability"].as_str()), (0, 42, Some("Always")));
+    assert_eq!((code, rules.len(), rules[0]["fix_availability"].as_str()), (0, 43, Some("Always")));
 }
 
 #[test]
 fn rule_json_describes_the_rule() {
     let root = project(&[]);
-    let (code, stdout, _) = simplint(root.path(), &["rule", "SMP003", "--output-format", "json"]);
+    let (code, stdout, _) = simplint(root.path(), &["rule", "SMP005", "--output-format", "json"]);
     let rule: serde_json::Value = serde_json::from_str(&stdout).expect("json");
     assert_eq!(
         (code, rule["name"].as_str(), rule["linter"].as_str(), rule["fix"].as_str(), rule["preview"].as_bool()),
-        (
-            0,
-            Some("multiline-module-docstring"),
-            Some("Comments, docstrings and structure"),
-            Some("Fix is not available."),
-            Some(false)
-        )
+        (0, Some("long-paragraph"), Some("Comments and structure"), Some("Fix is not available."), Some(false))
     );
 }
 
@@ -149,10 +136,10 @@ fn config_rejects_unknown_options() {
 
 #[test_case(
     "text",
-    "SMP0 Comments, docstrings and structure\nSMP1 Modules, typing and exports\nSMP2 Tests\nSMP3 reStructuredText docstrings\n" ;
+    "SMP0 Comments and structure\nSMP1 Modules, typing and exports\nSMP2 Tests\nSMP3 Docstrings\n" ;
     "text"
 )]
-#[test_case("json", "[\n  {\n    \"prefix\": \"SMP0\",\n    \"name\": \"Comments, docstrings and structure\"\n  },\n  {\n    \"prefix\": \"SMP1\",\n    \"name\": \"Modules, typing and exports\"\n  },\n  {\n    \"prefix\": \"SMP2\",\n    \"name\": \"Tests\"\n  },\n  {\n    \"prefix\": \"SMP3\",\n    \"name\": \"reStructuredText docstrings\"\n  }\n]\n" ; "json")]
+#[test_case("json", "[\n  {\n    \"prefix\": \"SMP0\",\n    \"name\": \"Comments and structure\"\n  },\n  {\n    \"prefix\": \"SMP1\",\n    \"name\": \"Modules, typing and exports\"\n  },\n  {\n    \"prefix\": \"SMP2\",\n    \"name\": \"Tests\"\n  },\n  {\n    \"prefix\": \"SMP3\",\n    \"name\": \"Docstrings\"\n  }\n]\n" ; "json")]
 fn linter_lists_rule_groups(format: &str, stdout: &str) {
     let root = project(&[]);
     assert_eq!(simplint(root.path(), &["linter", "--output-format", format]), (0, stdout.to_owned(), String::new()));

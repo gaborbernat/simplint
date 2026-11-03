@@ -1,0 +1,82 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:5 SMP312 Docstring of `copy` does not document parameter `target`; add `:param target:` [unsafe fix: Add `:param target:`, `:param kwargs:`]
+2:5 SMP312 Docstring of `copy` does not document parameter `kwargs`; add `:param kwargs:` [unsafe fix: Add `:param target:`, `:param kwargs:`]
+10:5 SMP312 Docstring of `later` does not document parameter `first`; add `:param first:` [unsafe fix: Add `:param first:`, `:param second:`]
+10:5 SMP312 Docstring of `later` does not document parameter `second`; add `:param second:` [unsafe fix: Add `:param first:`, `:param second:`]
+17:5 SMP312 Docstring of `summary` does not document parameter `source`; add `:param source:` [unsafe fix: Add `:param source:`]
+42:9 SMP312 Docstring of `run` does not document parameter `verbose`; add `:param verbose:` [unsafe fix: Add `:param verbose:`]
+46:9 SMP312 Docstring of `check` does not document parameter `path`; add `:param path:` [unsafe fix: Add `:param path:`]
+50:5 SMP312 Docstring of `Bare` does not document parameter `quiet`; add `:param quiet:` [unsafe fix: Add `:param quiet:`]
+--- fixed (8 applied, 0 remaining) ---
+def copy(source: str, target: str, *args: str, **kwargs: str) -> None:
+    r"""Copy a file.
+
+    :param source: Where from.
+    :param target:
+    :param \*args: More sources.
+    :param kwargs:
+    """
+
+
+def later(first: str, second: str, third: str) -> None:
+    """Copy a file.
+
+    :param first:
+    :param second:
+    :param third: The last.
+    """
+
+
+def summary(source: str) -> None:
+    """Copy a file.
+
+    :param source:
+    """
+
+
+def _helper(source: str) -> None:
+    """Copy a file.
+
+    :param other: Unrelated.
+    """
+
+
+class Copier:
+    """Copy files.
+
+    :param source: Where from.
+    """
+
+    def __init__(self, source: str, target: str) -> None:
+        """Set up.
+
+        :param target: Where to.
+        """
+        self.source = source
+        self.target = target
+
+    def run(self, verbose: bool) -> None:
+        """Run it.
+
+        :param verbose:
+        """
+
+    @staticmethod
+    def check(path: str) -> None:
+        """Check a path.
+
+        :param path:
+        """
+
+
+class Bare:
+    """Copy files.
+
+    :param quiet:
+    """
+
+    def __init__(self, _: str, quiet: bool) -> None:
+        self.quiet = quiet

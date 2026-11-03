@@ -16,7 +16,7 @@ fn check_fix_writes_file() {
 
 #[test_case(
     &["--fix"],
-    "module.py:2:5: SMP002 Function docstring on internal code; let the name, signature and types document it\nFound 1 \
+    "module.py:2:5: SMP300 Function docstring on internal code; let the name, signature and types document it\nFound 1 \
      error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n",
     DOCUMENTED ;
     "hinted_by_default"
@@ -27,21 +27,21 @@ fn check_fix_writes_file() {
 )]
 #[test_case(
     &["--no-unsafe-fixes"],
-    "module.py:2:5: SMP002 Function docstring on internal code; let the name, signature and types document it\nFound 1 \
+    "module.py:2:5: SMP300 Function docstring on internal code; let the name, signature and types document it\nFound 1 \
      error.\n",
     DOCUMENTED ;
     "hint_hidden"
 )]
 #[test_case(
     &["--unsafe-fixes"],
-    "module.py:2:5: SMP002 [*] Function docstring on internal code; let the name, signature and types document it\nFound \
+    "module.py:2:5: SMP300 [*] Function docstring on internal code; let the name, signature and types document it\nFound \
      1 error.\n[*] 1 fixable with `--fix`.\n",
     DOCUMENTED ;
     "fixable_when_enabled"
 )]
 fn check_unsafe_fixes(flags: &[&str], stdout: &str, content: &str) {
     let root = project(&[("module.py", DOCUMENTED)]);
-    let result = check(root.path(), &[&["--select", "SMP002"], flags].concat()).1;
+    let result = check(root.path(), &[&["--select", "SMP300"], flags].concat()).1;
     assert_eq!((result, read(root.path(), "module.py")), (stdout.to_owned(), content.to_owned()));
 }
 
@@ -51,7 +51,7 @@ const DOCUMENTED: &str = "def run() -> None:\n    \"\"\"Run.\"\"\"\n    print()\
 fn check_safe_and_unsafe_fixes_are_counted_apart() {
     let root = project(&[("module.py", "# --- helpers ---\ndef run() -> None:\n    \"\"\"Run.\"\"\"\n    print()\n")]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP001,SMP002"]).1.lines().last(),
+        check(root.path(), &["--select", "SMP001,SMP300"]).1.lines().last(),
         Some("[*] 1 fixable with `--fix` (1 unsafe fix available with `--fix --unsafe-fixes`).")
     );
 }
@@ -92,7 +92,7 @@ fn check_fix_exit_status(flags: &[&str], code: i32, stdout: &str) {
 fn check_fix_only_reports_unsafe_fixes_left() {
     let root = project(&[("module.py", "def run() -> None:\n    \"\"\"Run.\"\"\"\n    print()\n")]);
     assert_eq!(
-        check(root.path(), &["--fix-only", "--select", "SMP002"]),
+        check(root.path(), &["--fix-only", "--select", "SMP300"]),
         (0, "No errors fixed (1 fix available with `--unsafe-fixes`).\n".to_owned(), String::new())
     );
 }
@@ -101,7 +101,7 @@ fn check_fix_only_reports_unsafe_fixes_left() {
 fn check_fix_only_reports_fixed_and_unsafe_fixes_left() {
     let root = project(&[("module.py", "# --- helpers ---\ndef run() -> None:\n    \"\"\"Run.\"\"\"\n    print()\n")]);
     assert_eq!(
-        check(root.path(), &["--fix-only", "--select", "SMP001,SMP002"]).1,
+        check(root.path(), &["--fix-only", "--select", "SMP001,SMP300"]).1,
         "Fixed 1 error (1 additional fix available with `--unsafe-fixes`).\n"
     );
 }

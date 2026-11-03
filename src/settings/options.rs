@@ -429,8 +429,8 @@ pub struct SimplintOptions {
     )]
     pub api_modules: Option<Vec<String>>,
 
-    /// The markup of docstrings, which the `SMP3` rules check: `"rest"` for reStructuredText field lists, such as
-    /// `:param name:`, `:returns:` and `:raises Error:`. Unset, the `SMP3` rules do not report.
+    /// The markup of docstrings, which the `SMP31` rules check: `"rest"` for reStructuredText field lists, such as
+    /// `:param name:`, `:returns:` and `:raises Error:`. Unset, the `SMP31` rules do not report.
     #[option(
         default = "null",
         value_type = r#""rest""#,

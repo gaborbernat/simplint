@@ -32,36 +32,39 @@ const BOTH_IN_PYPROJECT: &str = "simplint settings: <root>/pyproject.toml; Ruff 
     "[tool.ruff]\nlint.select = [\"D103\"]\n",
     "module.py",
     &format!(
-        "SMP002 (function-docstring) removes the docstrings of internal functions, classes and methods, which Ruff's \
-         D103 (undocumented-public-function) asks for; ignore D103 in Ruff's `lint.ignore` and let SMP116 \
-         (undocumented-public-api) ask for documentation of the public API, or ignore SMP002 in `[tool.simplint]`.\n    \
+        "SMP300 (function-docstring) removes the docstrings of internal functions, classes and methods, which Ruff's \
+         D103 (undocumented-public-function) asks for; ignore D103 in Ruff's `lint.ignore` and let SMP302 \
+         (undocumented-public-api) ask for documentation of the public API, or ignore SMP300 in `[tool.simplint]`.\n    \
          {BOTH_IN_PYPROJECT}; first file: module.py"
     ) ; "function_docstring")]
 #[test_case(
     "[tool.ruff]\nlint.select = [\"D101\", \"D102\"]\n",
     "module.py",
     &format!(
-        "SMP002 (function-docstring) removes the docstrings of internal functions, classes and methods, which Ruff's \
+        "SMP300 (function-docstring) removes the docstrings of internal functions, classes and methods, which Ruff's \
          D101 (undocumented-public-class), D102 (undocumented-public-method) ask for; ignore D101, D102 in Ruff's \
-         `lint.ignore` and let SMP116 (undocumented-public-api) ask for documentation of the public API, or ignore \
-         SMP002 in `[tool.simplint]`.\n    {BOTH_IN_PYPROJECT}; first file: module.py"
+         `lint.ignore` and let SMP302 (undocumented-public-api) ask for documentation of the public API, or ignore \
+         SMP300 in `[tool.simplint]`.\n    {BOTH_IN_PYPROJECT}; first file: module.py"
     ) ; "function_docstring_classes")]
 #[test_case(
     "[tool.ruff]\nlint.select = [\"D100\"]\n",
     "tests/test_module.py",
     &format!(
-        "SMP004 (test-module-docstring) removes the docstrings of test modules, which Ruff's D100 \
+        "SMP301 (test-module-docstring) removes the docstrings of test modules, which Ruff's D100 \
          (undocumented-public-module) asks for; ignore D100 for test files in Ruff's `lint.per-file-ignores`, or \
-         ignore SMP004 in `[tool.simplint]`.\n    {BOTH_IN_PYPROJECT}; first file: tests/test_module.py"
+         ignore SMP301 in `[tool.simplint]`.\n    {BOTH_IN_PYPROJECT}; first file: tests/test_module.py"
     ) ; "test_module_docstring")]
 #[test_case(
     "[tool.simplint]\ndocstring-style = \"rest\"\n[tool.ruff]\nlint.preview = true\nlint.select = [\"DOC201\", \"DOC501\"]\n",
     "module.py",
     &format!(
-        "`docstring-style = \"rest\"` writes docstrings as reStructuredText field lists, which rest-field-syntax \
-         (SMP300) checks and Ruff's docstring-missing-returns (DOC201), docstring-missing-exception (DOC501) misread as \
-         missing sections; ignore docstring-missing-returns, docstring-missing-exception in Ruff's `lint.ignore`, or \
-         unset `docstring-style`.\n    {BOTH_IN_PYPROJECT}; first file: module.py"
+        "rest-returns (SMP315) asks for the `:returns:` and `:yields:` fields of reStructuredText docstrings, which \
+         Ruff's docstring-missing-returns (DOC201) reads as missing sections; ignore docstring-missing-returns in Ruff's \
+         `lint.ignore`, or ignore rest-returns in `[tool.simplint]`.\n    {BOTH_IN_PYPROJECT}; first file: module.py\n  \
+         - rest-missing-raises (SMP316) asks for the `:raises:` fields of reStructuredText docstrings, which Ruff's \
+         docstring-missing-exception (DOC501) reads as a missing section; ignore docstring-missing-exception in Ruff's \
+         `lint.ignore`, or ignore rest-missing-raises in `[tool.simplint]`.\n    {BOTH_IN_PYPROJECT}; first file: \
+         module.py"
     ) ; "rest_docstrings")]
 fn conflict_fails_before_linting(pyproject: &str, file: &str, conflict: &str) {
     let root = project(&[("pyproject.toml", pyproject), (file, "value = 1\n")]);
@@ -79,7 +82,7 @@ fn conflict_fails_before_linting(pyproject: &str, file: &str, conflict: &str) {
 fn combination_without_conflict_lints(pyproject: &str, file: &str) {
     let root = project(&[("pyproject.toml", pyproject), (file, "value = 1\n")]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP002,SMP004,SMP108,SMP110,SMP300"]),
+        check(root.path(), &["--select", "SMP300,SMP301,SMP108,SMP110,SMP315"]),
         (0, "All checks passed!\n".to_owned(), String::new())
     );
 }
@@ -102,7 +105,7 @@ fn conflicts_list_by_name_in_preview_without_configuration_files() {
         (
             2,
             header(&format!(
-                "test-module-docstring (SMP004) removes the docstrings of test modules, which Ruff's \
+                "test-module-docstring (SMP301) removes the docstrings of test modules, which Ruff's \
                  undocumented-public-module (D100) asks for; ignore undocumented-public-module for test files in \
                  Ruff's `lint.per-file-ignores`, or ignore test-module-docstring in `[tool.simplint]`.\n    {place}\n  \
                  - absolute-sibling-import (SMP110) makes imports from the file's own package relative, which Ruff's \

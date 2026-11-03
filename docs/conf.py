@@ -166,10 +166,10 @@ def _generate(docs: Path) -> dict[str, str]:
 
 
 _GROUPS: Final[dict[str, str]] = {
-    "SMP0": "Comments, docstrings and structure",
+    "SMP0": "Comments and structure",
     "SMP1": "Modules, typing and exports",
     "SMP2": "Tests",
-    "SMP3": "reStructuredText docstrings",
+    "SMP3": "Docstrings",
 }
 _FIX_BADGES: Final[dict[str, tuple[str, str]]] = {
     "Always": ("fix-always", "🛠️ Fix always available"),

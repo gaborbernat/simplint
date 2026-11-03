@@ -1,12 +1,10 @@
 ## What it does
 
-Checks for comment and docstring paragraphs longer than 100 words.
+Checks for comment paragraphs longer than 100 words. A paragraph is a run of own-line comments on consecutive lines at
+the same indentation; an empty `#` line, a line of code or a comment at another indentation ends it. Trailing comments
+are ignored. The report spans from the paragraph's first line to the line where it passes 100 words.
 
-- In comments, a paragraph is a run of own-line comments on consecutive lines at the same indentation. An empty `#`
-  line, a line of code or a comment at another indentation ends it. Trailing comments are ignored. The report spans from
-  the paragraph's first line to the line where it passes 100 words.
-- In [docstrings](https://peps.python.org/pep-0257/) of modules, classes and functions, an empty or whitespace-only line
-  separates paragraphs. The report covers the whole docstring.
+Docstrings are not checked: their length is up to what they document.
 
 ## Why is this bad?
 

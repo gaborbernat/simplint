@@ -1,10 +1,27 @@
 mod function_docstring;
-mod multiline_module_docstring;
+mod rest;
+mod rest_field_syntax;
+mod rest_missing_attribute;
+mod rest_missing_param;
+mod rest_missing_raises;
+mod rest_param_order;
+mod rest_returns;
+mod rest_type_field;
+mod rest_unknown_attribute;
+mod rest_unknown_param;
 mod test_module_docstring;
 mod undocumented_public_api;
 
 pub(crate) use function_docstring::function_docstring;
-pub(crate) use multiline_module_docstring::multiline_module_docstring;
+pub(crate) use rest_field_syntax::rest_field_syntax;
+pub(crate) use rest_missing_attribute::rest_missing_attribute;
+pub(crate) use rest_missing_param::rest_missing_param;
+pub(crate) use rest_missing_raises::rest_missing_raises;
+pub(crate) use rest_param_order::rest_param_order;
+pub(crate) use rest_returns::rest_returns;
+pub(crate) use rest_type_field::rest_type_field;
+pub(crate) use rest_unknown_attribute::rest_unknown_attribute;
+pub(crate) use rest_unknown_param::rest_unknown_param;
 pub(crate) use test_module_docstring::test_module_docstring;
 pub(crate) use undocumented_public_api::undocumented_public_api;
 
@@ -165,4 +182,15 @@ fn is_overload(decorators: &[ast::Decorator]) -> bool {
 // The last segment of each decorator, so `typing.override` and `@name.setter` read as `override` and `setter`.
 fn decorator_names(decorators: &[ast::Decorator]) -> Vec<&str> {
     decorators.iter().filter_map(|decorator| last_segment(&decorator.expression)).collect()
+}
+
+// A variable is documented the two ways Sphinx autodoc reads: a string right after it, or `#:` comments right above.
+pub(crate) fn is_documented_variable(checker: &Checker, body: &[Stmt], stmt: &Stmt) -> bool {
+    let next = body.iter().skip_while(|candidate| candidate.range() != stmt.range()).nth(1);
+    let docstring_below =
+        next.is_some_and(|next| next.as_expr_stmt().is_some_and(|expr| expr.value.is_string_literal_expr()));
+    let is_doc_comment = |comment: TextRange| checker.text(comment).starts_with("#:");
+    docstring_below
+        || checker.comment_above(stmt).is_some_and(is_doc_comment)
+        || checker.trailing_comment(stmt).is_some_and(is_doc_comment)
 }

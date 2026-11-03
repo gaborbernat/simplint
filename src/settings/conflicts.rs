@@ -132,7 +132,7 @@ struct Names {
     public_api: String,
 }
 
-const CLASHES: [Clash; 5] = [
+const CLASHES: [Clash; 6] = [
     Clash {
         simplint: Rule::FunctionDocstring,
         ruff: &[
@@ -214,29 +214,34 @@ const CLASHES: [Clash; 5] = [
         },
     },
     Clash {
-        simplint: Rule::RestFieldSyntax,
-        ruff: &[
-            RuffRule::UndocumentedParam,
-            RuffRule::DocstringExtraneousParameter,
-            RuffRule::DocstringMissingReturns,
-            RuffRule::DocstringExtraneousReturns,
-            RuffRule::DocstringMissingYields,
-            RuffRule::DocstringExtraneousYields,
-            RuffRule::DocstringMissingException,
-            RuffRule::DocstringExtraneousException,
-        ],
-        probe: "def function(value):\n    \"\"\"Check the value.\n\n    :param value: The value.\n    :returns: The value.\n    \
-                :raises ValueError: When it is empty.\n    \"\"\"\n    if not value:\n        raise ValueError\n    return value\n\n\n\
+        simplint: Rule::RestReturns,
+        ruff: &[RuffRule::DocstringMissingReturns, RuffRule::DocstringMissingYields],
+        probe: "def function(value):\n    \"\"\"Return the value.\n\n    :returns: The value.\n    \"\"\"\n    return value\n\n\n\
                 def generator():\n    \"\"\"Count.\n\n    :yields: The numbers.\n    \"\"\"\n    yield 1\n",
         acts_on: |settings, _, _| settings.project.docstring_style == Some(DocstringStyle::Rest),
         explain: |names| {
             format!(
-                "`docstring-style = \"rest\"` writes docstrings as reStructuredText field lists, which {} checks and \
-                 Ruff's {} {} as missing sections; ignore {} in Ruff's `lint.ignore`, or unset `docstring-style`",
+                "{} asks for the `:returns:` and `:yields:` fields of reStructuredText docstrings, which Ruff's {} {} as \
+                 missing sections; ignore {} in Ruff's `lint.ignore`, or ignore {} in `[tool.simplint]`",
                 names.simplint,
                 names.ruff,
-                if names.many { "misread" } else { "misreads" },
+                if names.many { "read" } else { "reads" },
                 names.ruff_selectors,
+                names.simplint_selector,
+            )
+        },
+    },
+    Clash {
+        simplint: Rule::RestMissingRaises,
+        ruff: &[RuffRule::DocstringMissingException],
+        probe: "def function(value):\n    \"\"\"Check the value.\n\n    :raises ValueError: When it is empty.\n    \"\"\"\n    \
+                if not value:\n        raise ValueError\n",
+        acts_on: |settings, _, _| settings.project.docstring_style == Some(DocstringStyle::Rest),
+        explain: |names| {
+            format!(
+                "{} asks for the `:raises:` fields of reStructuredText docstrings, which Ruff's {} reads as a missing \
+                 section; ignore {} in Ruff's `lint.ignore`, or ignore {} in `[tool.simplint]`",
+                names.simplint, names.ruff, names.ruff_selectors, names.simplint_selector,
             )
         },
     },

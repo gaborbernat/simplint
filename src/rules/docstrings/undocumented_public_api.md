@@ -42,7 +42,7 @@ The report names the module that re-exports the name when its own module is priv
 
 Users of a library reach its public API through their editor's hover help and the generated reference, not through the
 source. A docstring is what they read there: what the function promises, what each parameter means, what it returns and
-what it raises. Internal code is the opposite case: its readers have the source open, so [SMP002](SMP002.html) asks for
+what it raises. Internal code is the opposite case: its readers have the source open, so [SMP300](SMP300.html) asks for
 no docstring there.
 
 ## Example

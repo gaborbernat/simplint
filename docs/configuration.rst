@@ -25,7 +25,7 @@ simplint's own settings live in ``[tool.simplint]``:
     [tool.simplint]
     select = ["ALL"]                              # the default
     extend-select = []
-    ignore = ["SMP002"]
+    ignore = ["SMP300"]
     per-file-ignores = { "tests/*" = ["SMP101"] }
     extend-per-file-ignores = {}
 
@@ -107,9 +107,8 @@ any other in ``naming.keep-names``:
 Public API
 ----------
 
-The documentation rules treat a library's public API apart from its internal code. `SMP116
-<https://simplint.readthedocs.io/en/latest/_generated/rules/SMP116.html>`__ asks for docstrings on what users import,
-`SMP002 <https://simplint.readthedocs.io/en/latest/_generated/rules/SMP002.html>`__ removes them everywhere else, and
+The documentation rules treat a library's public API apart from its internal code. :doc:`SMP302 <_generated/rules/SMP302>` asks for docstrings on what users import,
+:doc:`SMP300 <_generated/rules/SMP300>` removes them everywhere else, and
 :doc:`SMP117 <_generated/rules/SMP117>` keeps ``__all__`` to the names other
 modules use. An application has no Python API, so all of its code is internal.
 
@@ -141,19 +140,23 @@ prints the result as ``linter.project_kind``, ``linter.api_packages`` and ``lint
 Docstring markup
 ----------------
 
-The ``SMP3`` rules check the field lists of `reStructuredText docstrings
+The ``SMP31`` rules check the field lists of `reStructuredText docstrings
 <https://www.sphinx-doc.org/en/master/usage/domains/python.html#info-field-lists>`__, as Sphinx renders them:
 
 .. code-block:: toml
 
     [tool.simplint]
-    docstring-style = "rest"  # unset by default, which turns the SMP3 rules off
+    docstring-style = "rest"  # unset by default, which turns the SMP31 rules off
 
-Every docstring has to be accurate: no field for a parameter the function does not take, no type that repeats an
-annotation, no ``:returns:`` on a function that returns nothing. A docstring of the public API also has to be complete:
-a ``:param:`` for each parameter, ``:returns:`` or ``:yields:`` when the function hands back a value, and ``:raises:``
-for each exception it raises itself. Ruff's ``pydocstyle`` and ``pydoclint`` rules read Google and numpydoc sections
-only, so they report reStructuredText fields as missing; see `Rules that work against each other`_.
+Every docstring has to be accurate: no field for a parameter or attribute that does not exist, no ``:returns:`` on a
+function that returns nothing, and no types, which belong in annotations. Every field needs a description. A docstring
+of the public API also has to be complete: a ``:param:`` for each parameter, ``:returns:`` or ``:yields:`` when the
+function hands back a value, ``:raises:`` for each exception it raises itself, and an ``:ivar:`` or ``:cvar:`` for each
+attribute of a class. The fixes add the missing fields with empty descriptions, in the order Sphinx renders them, for you
+to fill in.
+
+Ruff's ``DOC201``, ``DOC402`` and ``DOC501`` read Google and numpydoc sections only, so they report the ``:returns:``,
+``:yields:`` and ``:raises:`` fields as missing; see `Rules that work against each other`_.
 
 Settings shared with Ruff
 -------------------------
@@ -283,10 +286,9 @@ and how to resolve it:
 
 The pairs are:
 
-- `SMP002 <https://simplint.readthedocs.io/en/latest/_generated/rules/SMP002.html>`__ removes docstrings that Ruff's
-  ``D101``, ``D102``, ``D103``, ``D105``, ``D106`` and ``D107`` ask for. Ignore those, and let `SMP116
-  <https://simplint.readthedocs.io/en/latest/_generated/rules/SMP116.html>`__ ask for documentation on the public API.
-- `SMP004 <https://simplint.readthedocs.io/en/latest/_generated/rules/SMP004.html>`__ removes the module docstrings of
+- :doc:`SMP300 <_generated/rules/SMP300>` removes docstrings that Ruff's
+  ``D101``, ``D102``, ``D103``, ``D105``, ``D106`` and ``D107`` ask for. Ignore those, and let :doc:`SMP302 <_generated/rules/SMP302>` ask for documentation on the public API.
+- :doc:`SMP301 <_generated/rules/SMP301>` removes the module docstrings of
   tests that Ruff's ``D100`` and ``D104`` ask for. Turn those off for test files in Ruff's ``per-file-ignores``.
 - `SMP108 <https://simplint.readthedocs.io/en/latest/_generated/rules/SMP108.html>`__ removes ``from __future__ import
   annotations`` on Python 3.14 and newer, which Ruff's ``I002`` adds back when ``lint.isort.required-imports`` lists it.
@@ -294,9 +296,10 @@ The pairs are:
 - `SMP110 <https://simplint.readthedocs.io/en/latest/_generated/rules/SMP110.html>`__ makes imports from the file's own
   package relative, which Ruff's ``TID252`` turns back when ``lint.flake8-tidy-imports.ban-relative-imports`` is
   ``"all"``. Set it to ``"parents"``.
-- With ``docstring-style = "rest"``, the :doc:`SMP3 <_generated/groups/SMP3>`
-  rules check field lists that Ruff's ``D417`` and ``DOC`` rules read as missing sections, since those know Google and
-  numpydoc sections only. Ignore the Ruff rules the error names.
+- With ``docstring-style = "rest"``, :doc:`SMP315 <_generated/rules/SMP315>` asks for the ``:returns:`` and
+  ``:yields:`` fields that Ruff's ``DOC201`` and ``DOC402`` read as missing sections, and
+  :doc:`SMP316 <_generated/rules/SMP316>` for the ``:raises:`` fields ``DOC501`` reads the same way, since those know
+  Google and numpydoc sections only. Ignore the Ruff rules.
 
 Per-file ignores on either side count, so a Ruff rule turned off for tests does not conflict there. In preview, as in
 Ruff's reports, the message names rules instead of codes. Other combinations clash only on some code, such as `SMP050
