@@ -1,3 +1,5 @@
+use std::cell::OnceCell;
+
 use ruff_diagnostics::{Edit, Fix, IsolationLevel};
 use ruff_python_ast::helpers::{is_docstring_stmt, is_dunder};
 use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
@@ -15,6 +17,7 @@ pub fn missing_final(checker: &Checker) {
     if checker.settings.from_ruff.target_version < PythonVersion::PY38 || has_version_gate(checker.body()) {
         return;
     }
+    let spelling = OnceCell::new();
     for stmt in checker.body() {
         let Some((target, annotation, value)) = single_assignment(stmt) else {
             continue;
@@ -31,7 +34,8 @@ pub fn missing_final(checker: &Checker) {
         {
             continue;
         }
-        let fix = final_fix(checker, target.range, annotation, value);
+        let (qualifier, import) = spelling.get_or_init(|| final_qualifier(checker));
+        let fix = final_fix(checker, qualifier, import.as_ref(), target.range, annotation, value);
         checker.report_fix(
             Rule::MissingFinal,
             target.range,
@@ -109,8 +113,14 @@ fn is_type_alias(value: &Expr) -> bool {
     }
 }
 
-fn final_fix(checker: &Checker, target: TextRange, annotation: Option<&Expr>, value: &Expr) -> Option<Fix> {
-    let (qualifier, import) = final_qualifier(checker);
+fn final_fix(
+    checker: &Checker,
+    qualifier: &str,
+    import: Option<&Edit>,
+    target: TextRange,
+    annotation: Option<&Expr>,
+    value: &Expr,
+) -> Option<Fix> {
     let edit = if let Some(annotation) = annotation {
         Edit::range_replacement(format!("{qualifier}[{}]", checker.text(annotation.range())), annotation.range())
     } else {
@@ -126,7 +136,7 @@ fn final_fix(checker: &Checker, target: TextRange, annotation: Option<&Expr>, va
     };
     Some(match import {
         // One import-adding fix per pass, so the next pass sees the import instead of adding it twice.
-        Some(import) => Fix::unsafe_edits(edit, [import]).isolate(IsolationLevel::Group(1)),
+        Some(import) => Fix::unsafe_edits(edit, [import.clone()]).isolate(IsolationLevel::Group(1)),
         None => Fix::unsafe_edit(edit),
     })
 }
