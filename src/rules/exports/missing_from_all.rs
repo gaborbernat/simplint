@@ -5,6 +5,7 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::Visibility;
 use crate::rules::exports::exploded;
 use crate::rules::exports::{Exports, all_binding, all_literal};
 use crate::rules::{indentation, is_main_guard};
@@ -27,7 +28,7 @@ pub fn missing_from_all(checker: &Checker) {
         .semantic()
         .all_bindings()
         .filter(|(name, bindings)| {
-            !name.starts_with('_')
+            Visibility::of(name) == Visibility::Public
                 && !exported.contains(name)
                 // Another module reaching a name this one imports and uses, as `app.sys`, borrows it rather than
                 // relying on an export; an import the module never uses is there for its importers, a re-export.

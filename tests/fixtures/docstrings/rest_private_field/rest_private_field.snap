@@ -1,0 +1,52 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:6 SMP323 `:param _retries:` documents the internal `_retries` in the public API; leave internal names out [unsafe fix: Remove `:param _retries:`]
+13:6 SMP323 `:ivar _store:` documents the internal `_store` in the public API; leave internal names out [unsafe fix: Remove `:ivar _store:`]
+45:10 SMP323 `:param _cache:` documents the internal `_cache` in the public API; leave internal names out [unsafe fix: Remove `:param _cache:`]
+--- fixed (3 applied, 0 remaining) ---
+def fetch(url: str, _retries: int = 3) -> None:
+    """Download a resource.
+
+    :param url: Address of the resource.
+    """
+
+
+class StoreCache:
+    """Cache values.
+
+    :ivar size: How many it holds.
+    """
+
+    def __init__(self) -> None:
+        self.size = 0
+        self._store = {}
+
+
+def _helper(_value: int) -> None:
+    """Help.
+
+    :param _value: Internal.
+    """
+
+
+def unwrap(__obj: object) -> None:
+    """Unwrap a callable.
+
+    :param __obj: The positional-only callable.
+    """
+
+
+class Wrapper:
+    """Wrap a callable.
+
+    :ivar __wrapped__: The wrapped callable.
+    """
+
+    def __init__(self, size: int, _cache: bool = False) -> None:
+        """Make the wrapper.
+
+        :param size: How many it holds.
+        """
+        self.__wrapped__ = size

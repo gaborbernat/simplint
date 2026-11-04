@@ -25,7 +25,7 @@ simplint's own settings live in ``[tool.simplint]``:
     [tool.simplint]
     select = ["ALL"]                              # the default
     extend-select = []
-    ignore = ["SMP002"]
+    ignore = ["SMP300"]
     per-file-ignores = { "tests/*" = ["SMP101"] }
     extend-per-file-ignores = {}
 
@@ -88,6 +88,9 @@ in a ``simplint`` directory inside Ruff's cache directory, ``.ruff_cache`` unles
 ``--cache-dir`` or ``RUFF_CACHE_DIR`` names another, and never touches Ruff's own files there; ``--no-cache`` skips it.
 A cached result also depends on the names other files use from that file, so editing an importer checks the files it
 imports again.
+Each simplint build keeps its own subdirectory there, and a run removes the subdirectories of other builds that no run
+has written to for 30 days, so a project that runs two versions, as one pinned in pre-commit and another on the command
+line, keeps both caches.
 
 Naming
 ------
@@ -103,6 +106,64 @@ any other in ``naming.keep-names``:
 
 ``--config "naming.keep-names = ['urlpatterns']"`` replaces the list, and ``--show-settings`` prints it as
 ``linter.naming.keep_names``.
+
+Public API
+----------
+
+The documentation rules treat a library's public API apart from its internal code. :doc:`SMP302 <_generated/rules/SMP302>` asks for docstrings on what users import,
+:doc:`SMP300 <_generated/rules/SMP300>` removes them everywhere else, and
+:doc:`SMP117 <_generated/rules/SMP117>` keeps ``__all__`` to the names other
+modules use. An application has no Python API, so all of its code is internal.
+
+.. code-block:: toml
+
+    [tool.simplint]
+    project-kind = "library"           # the default is "auto"
+    api-packages = ["my_package"]      # the default comes from the build backend
+    api-modules = ["my_package.errors"]
+
+- ``project-kind`` is ``"library"`` or ``"application"``. ``"auto"`` picks a library when something installs the
+  project: a ``[build-system]`` table, or a ``setup.py`` or ``setup.cfg``. ``[tool.uv]`` with ``package = false``, and
+  maturin building only a binary (``bindings = "bin"``), make it an application, as does a project with none of these.
+  Neither a ``py.typed`` marker nor console scripts decide it: many libraries ship without the first and with the
+  second.
+- ``api-packages`` names the top-level packages or modules the library ships. Without it, they come from the build
+  backend's settings (hatch ``packages``, uv's ``module-name``, flit's ``module.name``, setuptools ``packages`` and
+  ``py-modules``, maturin's ``module-name``), then from the packages next to the ``pyproject.toml``, or in its ``src``
+  directory, that hold a ``py.typed`` marker, then from the package named after the project. When none is found, every
+  module outside ``docs`` and the tests counts.
+- ``api-modules`` names modules, besides the top-level packages, that users import from directly. Their ``__all__`` is
+  the interface you declare, so SMP117 keeps the names no module of the project imports.
+
+A module of an API package is public unless a part of its path starts with ``_``, as `PEP 8
+<https://peps.python.org/pep-0008/#public-and-internal-interfaces>`__ describes, so a layout that keeps its code in
+``my_package/_core.py`` and lists the public names in ``my_package/__init__.py`` exposes only those. ``--show-settings``
+prints the result as ``linter.project_kind``, ``linter.api_packages`` and ``linter.api_modules``.
+
+Docstring markup
+----------------
+
+The reStructuredText rules, SMP310 to SMP323, check the field lists of `reStructuredText docstrings
+<https://www.sphinx-doc.org/en/master/usage/domains/python.html#info-field-lists>`__, as Sphinx renders them:
+
+.. code-block:: toml
+
+    [tool.simplint]
+    docstring-style = "rest"  # unset by default, which turns SMP310 to SMP323 off
+
+Every docstring has to be accurate: no field for a parameter or attribute that does not exist, no ``:returns:`` on a
+function that returns nothing, no ``:yields:`` on one that is not a generator, ``:ivar:`` and ``:cvar:`` for instance and
+class attributes, and no types, which belong in annotations. Every field needs a description that says more than the name, a
+field list needs a blank line above it, a constructor parameter is documented once, in the class docstring or in
+``__init__``, roles such as ``:class:`` need their target in backticks, inline literals need closing, and the public API
+leaves out internal names with a leading underscore. A docstring
+of the public API also has to be complete: a ``:param:`` for each parameter, ``:returns:`` or ``:yields:`` when the
+function hands back a value, ``:raises:`` for each exception it raises itself, and an ``:ivar:`` or ``:cvar:`` for each
+attribute of a class. The fixes add the missing fields with empty descriptions, in the order Sphinx renders them, for you
+to fill in.
+
+Ruff's ``DOC201``, ``DOC402`` and ``DOC501`` read Google and numpydoc sections only, so they report the ``:returns:``,
+``:yields:`` and ``:raises:`` fields as missing; see `Rules that work against each other`_.
 
 Settings shared with Ruff
 -------------------------
@@ -232,10 +293,9 @@ and how to resolve it:
 
 The pairs are:
 
-- `SMP002 <https://simplint.readthedocs.io/en/latest/_generated/rules/SMP002.html>`__ removes docstrings that Ruff's
-  ``D101``, ``D102``, ``D103``, ``D105``, ``D106`` and ``D107`` ask for. Ignore those, and let `SMP116
-  <https://simplint.readthedocs.io/en/latest/_generated/rules/SMP116.html>`__ ask for documentation on the public API.
-- `SMP004 <https://simplint.readthedocs.io/en/latest/_generated/rules/SMP004.html>`__ removes the module docstrings of
+- :doc:`SMP300 <_generated/rules/SMP300>` removes docstrings that Ruff's
+  ``D101``, ``D102``, ``D103``, ``D105``, ``D106`` and ``D107`` ask for. Ignore those, and let :doc:`SMP302 <_generated/rules/SMP302>` ask for documentation on the public API.
+- :doc:`SMP301 <_generated/rules/SMP301>` removes the module docstrings of
   tests that Ruff's ``D100`` and ``D104`` ask for. Turn those off for test files in Ruff's ``per-file-ignores``.
 - `SMP108 <https://simplint.readthedocs.io/en/latest/_generated/rules/SMP108.html>`__ removes ``from __future__ import
   annotations`` on Python 3.14 and newer, which Ruff's ``I002`` adds back when ``lint.isort.required-imports`` lists it.
@@ -243,6 +303,10 @@ The pairs are:
 - `SMP110 <https://simplint.readthedocs.io/en/latest/_generated/rules/SMP110.html>`__ makes imports from the file's own
   package relative, which Ruff's ``TID252`` turns back when ``lint.flake8-tidy-imports.ban-relative-imports`` is
   ``"all"``. Set it to ``"parents"``.
+- With ``docstring-style = "rest"``, :doc:`SMP315 <_generated/rules/SMP315>` asks for the ``:returns:`` and
+  ``:yields:`` fields that Ruff's ``DOC201`` and ``DOC402`` read as missing sections, and
+  :doc:`SMP316 <_generated/rules/SMP316>` for the ``:raises:`` fields ``DOC501`` reads the same way, since those know
+  Google and numpydoc sections only. Ignore the Ruff rules.
 
 Per-file ignores on either side count, so a Ruff rule turned off for tests does not conflict there. In preview, as in
 Ruff's reports, the message names rules instead of codes. Other combinations clash only on some code, such as `SMP050

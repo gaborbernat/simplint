@@ -5,6 +5,7 @@ use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::Visibility;
 use crate::rules::exports::Exports;
 use crate::rules::is_class_like;
 use crate::rules::naming::{is_ply_name, rename_fix, uses_ply};
@@ -38,7 +39,7 @@ pub fn module_variable_case(checker: &Checker) {
             continue;
         }
         let private = if checker.project().is_referenced(name) {
-            name.starts_with('_')
+            Visibility::of(name) != Visibility::Public
         } else {
             !exported.is_some_and(|names| names.contains(&name))
         };

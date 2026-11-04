@@ -1,0 +1,10 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+4:12 SMP117 `lonely` is in `__all__`, yet no other module imports it; list only what other modules use [unsafe fix: Remove `lonely` from `__all__`]
+--- fixed (1 applied, 0 remaining) ---
+def lonely() -> None: ...
+
+
+__all__ = []

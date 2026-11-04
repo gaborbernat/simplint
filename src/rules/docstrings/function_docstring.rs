@@ -9,7 +9,6 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::PublicApi;
 use crate::rules::{docstring, indentation, lines_with_trailing_blanks, statement_deletion};
 
 pub fn function_docstring(checker: &Checker) {
@@ -18,8 +17,7 @@ pub fn function_docstring(checker: &Checker) {
     if checker.project().reads_docstrings() {
         return;
     }
-    let body = checker.body();
-    let api = PublicApi::of(checker, body);
+    let api = checker.public_api();
     let owners = checker
         .function_defs()
         .iter()

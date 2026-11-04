@@ -125,8 +125,8 @@ fn check_statistics_mark_partly_and_not_fixable_rules() {
         "# --- helpers ---\nx = 1\n\n\ndef run() -> None:\n    \"\"\"Run.\"\"\"\n\n\ndef stop() -> None:\n    \"\"\"Stop.\"\"\";  # kept\n    print()\n",
     )]);
     assert_eq!(
-        check(root.path(), &["--statistics", "--unsafe-fixes", "--select", "SMP001,SMP002,SMP010"]).1,
-        "2\tSMP002\t[-] function-docstring\n1\tSMP001\t[*] section-comment\n1\tSMP010\t[ ] single-letter-name\n\
+        check(root.path(), &["--statistics", "--unsafe-fixes", "--select", "SMP001,SMP300,SMP010"]).1,
+        "2\tSMP300\t[-] function-docstring\n1\tSMP001\t[*] section-comment\n1\tSMP010\t[ ] single-letter-name\n\
          Found 4 errors.\n[*] 2 fixable with `--fix`.\n"
     );
 }

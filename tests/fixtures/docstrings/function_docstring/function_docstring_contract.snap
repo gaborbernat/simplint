@@ -2,26 +2,26 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-2:5 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
-11:5 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
-15:5 SMP002 Class docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
-25:9 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
-28:24 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
-31:30 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
-35:5 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
-40:5 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
-45:5 SMP002 Function docstring on internal code; let the name, signature and types document it
-50:5 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
-61:5 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
-66:5 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
-75:5 SMP002 Function docstring on internal code; let the name, signature and types document it
-80:5 SMP002 Function docstring on internal code; let the name, signature and types document it
-89:2 SMP002 Function docstring on internal code; let the name, signature and types document it
-95:5 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
-100:5 SMP002 Function docstring on internal code; let the name, signature and types document it
-107:2 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
-112:2 SMP002 Function docstring on internal code; let the name, signature and types document it
-122:9 SMP002 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
+2:5 SMP300 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
+11:5 SMP300 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
+15:5 SMP300 Class docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
+25:9 SMP300 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
+28:24 SMP300 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
+31:30 SMP300 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
+35:5 SMP300 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
+40:5 SMP300 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
+45:5 SMP300 Function docstring on internal code; let the name, signature and types document it
+50:5 SMP300 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
+61:5 SMP300 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+66:5 SMP300 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
+75:5 SMP300 Function docstring on internal code; let the name, signature and types document it
+80:5 SMP300 Function docstring on internal code; let the name, signature and types document it
+89:2 SMP300 Function docstring on internal code; let the name, signature and types document it
+95:5 SMP300 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
+100:5 SMP300 Function docstring on internal code; let the name, signature and types document it
+107:2 SMP300 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
+112:2 SMP300 Function docstring on internal code; let the name, signature and types document it
+122:9 SMP300 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
 --- fixed (14 applied, 6 remaining) ---
 def _pick(items: list[int]) -> int:
     # Return the largest item, or the first one on a tie.

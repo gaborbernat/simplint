@@ -19,6 +19,8 @@ use crate::lint::Linter;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
 use crate::project::FileIndex;
+use crate::rules::docstrings::PublicApi;
+use crate::rules::docstrings::rest::{Target, collect_targets};
 use crate::rules::exports::{Exports, dunder_all};
 use crate::rules::for_each_body;
 use crate::rules::naming::string_values;
@@ -40,6 +42,8 @@ pub struct Checker<'a> {
     class_defs: OnceCell<Vec<&'a ast::StmtClassDef>>,
     name_tokens: OnceCell<FxHashMap<&'a str, usize>>,
     string_values: OnceCell<Vec<(TextRange, Cow<'a, str>)>>,
+    public_api: OnceCell<PublicApi<'a>>,
+    rest_targets: OnceCell<Vec<Target<'a>>>,
     // Rules report while they read the checker, as in Ruff's own `Checker`.
     diagnostics: RefCell<Vec<(Rule, Diagnostic)>>,
 }
@@ -68,6 +72,8 @@ impl<'a> Checker<'a> {
             class_defs: OnceCell::new(),
             name_tokens: OnceCell::new(),
             string_values: OnceCell::new(),
+            public_api: OnceCell::new(),
+            rest_targets: OnceCell::new(),
             diagnostics: RefCell::default(),
         }
     }
@@ -167,6 +173,16 @@ impl<'a> Checker<'a> {
             .first()
             .copied()
             .filter(|comment| !has_leading_content(comment.start(), self.source))
+    }
+
+    // The definitions of this file that belong to the library's public API, which the docstring rules share.
+    pub(crate) fn public_api(&self) -> &PublicApi<'a> {
+        self.public_api.get_or_init(|| PublicApi::of(self))
+    }
+
+    // The parsed docstrings the reStructuredText rules check, empty unless `docstring-style = "rest"`.
+    pub(crate) fn rest_targets(&self) -> &[Target<'a>] {
+        self.rest_targets.get_or_init(|| collect_targets(self))
     }
 
     pub fn dunder_all(&self) -> &Exports<'a> {

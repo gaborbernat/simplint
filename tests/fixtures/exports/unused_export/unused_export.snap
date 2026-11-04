@@ -1,0 +1,19 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+11:5 SMP117 `other` is in `__all__`, yet no other module imports it; list only what other modules use [unsafe fix: Remove `other`, `spare` from `__all__`]
+12:5 SMP117 `spare` is in `__all__`, yet no other module imports it; list only what other modules use [unsafe fix: Remove `other`, `spare` from `__all__`]
+--- fixed (2 applied, 0 remaining) ---
+def used() -> None: ...
+
+
+def spare() -> None: ...
+
+
+def other() -> None: ...
+
+
+__all__ = [
+    "used",
+]

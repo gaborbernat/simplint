@@ -16,7 +16,7 @@ use ruff_python_ast::PySourceType;
 use ruff_python_semantic::NameImport;
 
 use crate::lint::registry::Rule;
-use crate::settings::{FileSettings, Settings};
+use crate::settings::{DocstringStyle, FileSettings, Settings};
 
 // A file the run is about to lint: simplint's settings for it, Ruff's with the configuration file they come from, and
 // the package it sits in, which decides whether Ruff counts its module as public.
@@ -132,7 +132,7 @@ struct Names {
     public_api: String,
 }
 
-const CLASHES: [Clash; 4] = [
+const CLASHES: [Clash; 6] = [
     Clash {
         simplint: Rule::FunctionDocstring,
         ruff: &[
@@ -210,6 +210,38 @@ const CLASHES: [Clash; 4] = [
                  because `lint.flake8-tidy-imports.ban-relative-imports` is `\"all\"`; ignore {} in `[tool.simplint]`, \
                  or set `ban-relative-imports` to `\"parents\"`",
                 names.simplint, names.ruff, names.simplint_selector,
+            )
+        },
+    },
+    Clash {
+        simplint: Rule::RestReturns,
+        ruff: &[RuffRule::DocstringMissingReturns, RuffRule::DocstringMissingYields],
+        probe: "def function(value):\n    \"\"\"Return the value.\n\n    :returns: The value.\n    \"\"\"\n    return value\n\n\n\
+                def generator():\n    \"\"\"Count.\n\n    :yields: The numbers.\n    \"\"\"\n    yield 1\n",
+        acts_on: |settings, _, _| settings.project.docstring_style == Some(DocstringStyle::Rest),
+        explain: |names| {
+            format!(
+                "{} asks for the `:returns:` and `:yields:` fields of reStructuredText docstrings, which Ruff's {} {} as \
+                 missing sections; ignore {} in Ruff's `lint.ignore`, or ignore {} in `[tool.simplint]`",
+                names.simplint,
+                names.ruff,
+                if names.many { "read" } else { "reads" },
+                names.ruff_selectors,
+                names.simplint_selector,
+            )
+        },
+    },
+    Clash {
+        simplint: Rule::RestMissingRaises,
+        ruff: &[RuffRule::DocstringMissingException],
+        probe: "def function(value):\n    \"\"\"Check the value.\n\n    :raises ValueError: When it is empty.\n    \"\"\"\n    \
+                if not value:\n        raise ValueError\n",
+        acts_on: |settings, _, _| settings.project.docstring_style == Some(DocstringStyle::Rest),
+        explain: |names| {
+            format!(
+                "{} asks for the `:raises:` fields of reStructuredText docstrings, which Ruff's {} reads as a missing \
+                 section; ignore {} in Ruff's `lint.ignore`, or ignore {} in `[tool.simplint]`",
+                names.simplint, names.ruff, names.ruff_selectors, names.simplint_selector,
             )
         },
     },

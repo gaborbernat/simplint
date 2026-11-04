@@ -423,7 +423,7 @@ fn show_settings_describes_the_first_file() {
     let root = project(&[
         (
             "pyproject.toml",
-            "[project]\nrequires-python = \">=3.12\"\ndependencies = [\"requests\"]\nscripts = { tool = \"cli:main\" }\n[tool.simplint]\nselect = [\"SMP001\"]\nper-file-ignores = { \"!b.py\" = [\"SMP001\"] }\nextend-safe-fixes = [\"SMP001\"]\n[tool.simplint.naming]\nkeep-names = [\"app_name\"]\n",
+            "[project]\nrequires-python = \">=3.12\"\ndependencies = [\"requests\"]\nscripts = { tool = \"cli:main\" }\n[tool.simplint]\nselect = [\"SMP001\"]\nper-file-ignores = { \"!b.py\" = [\"SMP001\"] }\nextend-safe-fixes = [\"SMP001\"]\nproject-kind = \"library\"\napi-packages = [\"src/app\"]\napi-modules = [\"app.errors\"]\ndocstring-style = \"rest\"\n[tool.simplint.naming]\nkeep-names = [\"app_name\"]\n",
         ),
         ("b.py", ""),
         ("a.py", ""),
@@ -447,7 +447,9 @@ fn show_settings_describes_the_first_file() {
                  linter.rules.should_fix = []\nlinter.per_file_ignores = [\n\t{ignored} = [\"section-comment (SMP001)\"],\n]\n\
                  linter.safety_table.forced_safe = [\n\tsection-comment (SMP001),\n]\nlinter.safety_table.forced_unsafe = []\n\
                  linter.dependencies = [\n\t\"requests\",\n]\nlinter.entry_points = [\n\t\"cli:main\",\n]\n\
-                 linter.naming.keep_names = [\n\t\"app_name\",\n]\n"
+                 linter.naming.keep_names = [\n\t\"app_name\",\n]\nlinter.project_kind = library\n\
+                 linter.api_packages = [\n\t\"app\",\n]\nlinter.api_modules = [\n\t\"app.errors\",\n]\n\
+                 linter.docstring_style = rest\n"
             )
         )
     );
@@ -469,4 +471,70 @@ fn show_settings_without_files_fails() {
     let root = project(&[("notes.txt", "")]);
     let (code, _, stderr) = check(root.path(), &["--show-settings"]);
     assert_eq!((code, stderr.contains("No files found under the given path")), (2, true));
+}
+
+// What `--show-settings` prints for one setting, from its name up to the next setting.
+fn shown<'s>(stdout: &'s str, setting: &str, next: &str) -> &'s str {
+    let start = stdout.find(setting).expect("the setting is shown");
+    &stdout[start..stdout[start..].find(next).map_or(stdout.len(), |end| start + end)]
+}
+
+#[test_case("[build-system]\nrequires = []\n", &[], "library" ; "build_system")]
+#[test_case("", &[("setup.py", "")], "library" ; "setup_py")]
+#[test_case("", &[("setup.cfg", "")], "library" ; "setup_cfg")]
+#[test_case("[project]\nname = \"tool\"\n", &[], "application" ; "nothing_installs_it")]
+#[test_case("[build-system]\nrequires = []\n[tool.uv]\npackage = false\n", &[], "application" ; "uv_installs_no_package")]
+#[test_case("[build-system]\nrequires = []\n[tool.maturin]\nbindings = \"bin\"\n", &[], "application" ; "maturin_binary")]
+#[test_case("[tool.simplint]\nproject-kind = \"library\"\n", &[], "library" ; "set_to_library")]
+#[test_case("[build-system]\nrequires = []\n[tool.simplint]\nproject-kind = \"application\"\n", &[], "application" ; "set_to_application")]
+fn project_kind_follows_how_the_project_installs(pyproject: &str, files: &[(&str, &str)], kind: &str) {
+    let root = project(&[&[("pyproject.toml", pyproject), ("module.py", "")], files].concat());
+    let stdout = check(root.path(), &["--show-settings"]).1;
+    assert_eq!(shown(&stdout, "linter.project_kind", "\n"), format!("linter.project_kind = {kind}"));
+}
+
+#[test_case(
+    "[tool.hatch.build.targets.wheel]\npackages = [\"src/hatched\"]\n", &[], "[\n\t\"hatched\",\n]" ;
+    "hatch_packages"
+)]
+#[test_case("[tool.uv.build-backend]\nmodule-name = \"built\"\n", &[], "[\n\t\"built\",\n]" ; "uv_module_name")]
+#[test_case(
+    "[tool.uv.build-backend]\nmodule-name = \"acme.widgets\"\n", &[], "[\n\t\"acme.widgets\",\n]" ;
+    "uv_namespace_module_name"
+)]
+#[test_case("[tool.maturin]\nmodule-name = \"native._core\"\n", &[], "[\n\t\"native\",\n]" ; "maturin_module_name")]
+#[test_case(
+    "[tool.setuptools]\npackages = 3\n", &[("src/typed/py.typed", ""), ("src/plain/__init__.py", "")],
+    "[\n\t\"typed\",\n]" ; "py_typed_marker"
+)]
+#[test_case("[project]\nname = \"named-package\"\n", &[("named_package/__init__.py", "")], "[\n\t\"named_package\",\n]" ; "project_name")]
+#[test_case("[project]\nname = \"absent\"\n", &[], "every module outside docs and tests" ; "fallback")]
+#[test_case("[tool.simplint]\napi-packages = [\"chosen.sub\"]\n", &[], "[\n\t\"chosen.sub\",\n]" ; "configured")]
+fn api_packages_come_from_the_build_configuration(pyproject: &str, files: &[(&str, &str)], packages: &str) {
+    let root = project(&[&[("pyproject.toml", pyproject), ("module.py", "")], files].concat());
+    let stdout = check(root.path(), &["--show-settings"]).1;
+    let shown = shown(&stdout, "linter.api_packages", "\nlinter.api_modules");
+    assert_eq!(shown, format!("linter.api_packages = {packages}"));
+}
+
+// Ruff has no namesake for these options, so an inline `--config` must not hand them to Ruff's parser.
+#[test]
+fn inline_config_sets_options_ruff_does_not_know() {
+    let root = project(&[("module.py", "")]);
+    let args = [
+        "--show-settings",
+        "--config",
+        "project-kind = \"library\"",
+        "--config",
+        "api-packages = [\"module\"]",
+        "--config",
+        "api-modules = [\"module.errors\"]",
+        "--config",
+        "docstring-style = \"rest\"",
+    ];
+    let stdout = check(root.path(), &args).1;
+    assert_eq!(
+        shown(&stdout, "linter.project_kind", "\nlinter.docstring_style = rest\n"),
+        "linter.project_kind = library\nlinter.api_packages = [\n\t\"module\",\n]\nlinter.api_modules = [\n\t\"module.errors\",\n]"
+    );
 }

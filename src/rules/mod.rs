@@ -10,7 +10,7 @@ pub(crate) mod testing;
 pub(crate) mod typing;
 
 use ruff_diagnostics::Edit;
-use ruff_python_ast::helpers::any_over_expr;
+use ruff_python_ast::helpers::{any_over_expr, is_dunder};
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
@@ -179,6 +179,28 @@ impl<'a, F: FnMut(&'a Expr) -> Option<T>, T> Visitor<'a> for ExprCollector<F, T>
     }
 }
 
+// What a name's leading underscores say about who may use it. The two readings of "public" differ on dunders:
+// `from module import *` without `__all__` skips every name with a leading underscore, dunders included, while the
+// typing spec and PEP 8 treat only a non-dunder underscore name as internal, so `__version__` is public.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Visibility {
+    Public,
+    Dunder,
+    Private,
+}
+
+impl Visibility {
+    pub(crate) fn of(name: &str) -> Self {
+        if !name.starts_with('_') {
+            Self::Public
+        } else if is_dunder(name) {
+            Self::Dunder
+        } else {
+            Self::Private
+        }
+    }
+}
+
 // The name an expression such as `typing.Final` or `@name.setter` ends with.
 pub fn last_segment(expr: &Expr) -> Option<&str> {
     UnqualifiedName::from_expr(expr)?.segments().last().copied()
@@ -210,4 +232,26 @@ pub fn single_assignment(stmt: &Stmt) -> Option<(&ast::ExprName, Option<&Expr>, 
         _ => return None,
     };
     Some((target.as_name_expr()?, annotation, value))
+}
+
+// The statements that run when the module loads, including those of its top-level `if` and `try` blocks, where
+// modules pick an implementation by version or availability.
+pub fn module_statements(body: &[Stmt]) -> impl Iterator<Item = &Stmt> {
+    body.iter().flat_map(|stmt| -> Box<dyn Iterator<Item = &Stmt> + '_> {
+        match stmt {
+            Stmt::If(ast::StmtIf { body, elif_else_clauses, .. }) => Box::new(
+                module_statements(body)
+                    .chain(elif_else_clauses.iter().flat_map(|clause| module_statements(&clause.body))),
+            ),
+            Stmt::Try(ast::StmtTry { body, handlers, orelse, finalbody, .. }) => Box::new(
+                module_statements(body)
+                    .chain(handlers.iter().flat_map(|handler| match handler {
+                        ast::ExceptHandler::ExceptHandler(handler) => module_statements(&handler.body),
+                    }))
+                    .chain(module_statements(orelse))
+                    .chain(module_statements(finalbody)),
+            ),
+            _ => Box::new(std::iter::once(stmt)),
+        }
+    })
 }

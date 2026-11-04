@@ -3,7 +3,8 @@
 // also keeps each file's import facts, so the project index does not parse unchanged files, and a clean result counts
 // only while the file's settings and its slice of the project index are what they were. With fixes on, a file the fix
 // loop left as it was keeps the rules whose fixes the loop withdrew, so a later run reproduces its reports from one
-// lint. The files live in a `simplint` directory inside Ruff's cache directory, apart from Ruff's own.
+// lint. The files live in a `simplint` directory inside Ruff's cache directory, apart from Ruff's own, under a directory
+// named by `FORMAT`.
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::io::{self, Write};
@@ -57,10 +58,11 @@ pub struct Caches(FxHashMap<PathBuf, Cache>);
 
 impl Caches {
     pub fn open<'p>(ruff_cache_dir: &Path, roots: impl Iterator<Item = &'p Path>) -> Self {
-        let directory = directory(ruff_cache_dir).join(env!("CARGO_PKG_VERSION"));
+        let directory = directory(ruff_cache_dir).join(FORMAT);
         if let Err(error) = init(ruff_cache_dir, &directory) {
             error!("Failed to initialize cache at {}: {error:?}", ruff_cache_dir.display());
         }
+        remove_stale(&directory);
         let roots: Vec<&Path> = roots.unique().collect();
         Self(roots.into_par_iter().map(|root| (root.to_path_buf(), Cache::open(&directory, root))).collect())
     }
@@ -74,9 +76,41 @@ impl Caches {
     }
 }
 
+// The version and a hash of the cached types' source, which `build.rs` computes, so a development build that changes
+// them does not read caches an earlier build of the same version wrote.
+const FORMAT: &str = concat!(env!("CARGO_PKG_VERSION"), "-", env!("SIMPLINT_CACHE_FORMAT"));
+
+// How long a cached file, or the directory of another simplint build, stays without a run that uses it, as in Ruff.
+const MAX_LAST_SEEN: Duration = Duration::from_hours(720);
+
 // simplint's directory in Ruff's cache directory.
 pub fn directory(ruff_cache_dir: &Path) -> PathBuf {
     ruff_cache_dir.join("simplint")
+}
+
+// Removes the directories other simplint builds wrote that no run has written to for `MAX_LAST_SEEN`. A directory
+// another version still writes to stays, as when pre-commit pins one version and the command line runs another. Its
+// newest file tells its age, since Windows does not move a directory's modification time when a file in it changes.
+fn remove_stale(current: &Path) {
+    let Some(Ok(siblings)) = current.parent().map(fs::read_dir) else {
+        return;
+    };
+    let now = SystemTime::now();
+    for sibling in siblings.filter_map(Result::ok).map(|entry| entry.path()) {
+        if sibling == current || !sibling.is_dir() {
+            continue;
+        }
+        let newest = fs::read_dir(&sibling)
+            .into_iter()
+            .flatten()
+            .filter_map(|entry| entry.ok()?.metadata().ok()?.modified().ok())
+            .max();
+        let stale = newest.is_none_or(|modified| now.duration_since(modified).is_ok_and(|age| age > MAX_LAST_SEEN));
+        // Removal is best effort: a directory it cannot remove, as one another process has open, waits for a later run.
+        if stale {
+            let _ = fs::remove_dir_all(&sibling);
+        }
+    }
 }
 
 // Ruff's `init`: the tag and the `.gitignore` mark Ruff's cache directory whichever tool creates it first, so an existing
@@ -173,7 +207,6 @@ impl Cache {
     // Ruff's `persist`: files not seen for 30 days are dropped, and the cache goes to a temporary file renamed over the
     // old one, so a run killed midway or another simplint process never leaves a torn file.
     fn persist(mut self) -> Result<()> {
-        const MAX_LAST_SEEN: Duration = Duration::from_hours(720);
         let changes = std::mem::take(self.changes.get_mut().expect("no worker panics while recording"));
         if changes.is_empty() {
             return Ok(());

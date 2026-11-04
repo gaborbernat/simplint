@@ -1,10 +1,12 @@
 mod all_format;
 mod all_not_last;
 mod missing_from_all;
+mod unused_export;
 
 pub(crate) use all_format::all_format;
 pub(crate) use all_not_last::all_not_last;
 pub(crate) use missing_from_all::missing_from_all;
+pub(crate) use unused_export::unused_export;
 
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};

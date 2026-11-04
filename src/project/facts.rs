@@ -12,6 +12,7 @@ use ruff_python_stdlib::identifiers::is_identifier;
 use super::constructors::Constructors;
 use super::receivers::{AttributeWrites, module_name};
 use crate::rules::exports::{Exports, dunder_all};
+use crate::rules::module_statements;
 
 // The names a file uses from other modules, before they resolve to files; parsing finds them and the cache keeps them.
 // Names are grouped by module, so each module resolves once per file.
@@ -28,6 +29,14 @@ pub struct FileFacts {
     pub(super) star_imports: Vec<String>,
     // The names a static `__all__` lists, which are all `import *` takes; without one it takes every public name.
     pub(super) exports: Option<Vec<String>>,
+    // Whether `__all__` is built in a way parsing cannot follow, or a module-level `__getattr__` supplies names lazily,
+    // so the module's exports are unknown.
+    pub(super) exports_unknown: bool,
+    // The names the module's own top-level statements import from other modules, which `__all__`, a redundant alias
+    // such as `from .core import run as run`, or the absence of `__all__` may re-export.
+    pub(super) bindings: Vec<ImportBinding>,
+    // The names the module's top-level statements define, which a module without `__all__` exports.
+    pub(super) defined: Vec<String>,
     pub(super) attribute_writes: AttributeWrites,
     pub(super) constructors: Constructors,
     // Whether the file reads a docstring off an object, through `__doc__` or a `getdoc` call.
@@ -73,6 +82,10 @@ impl FileFacts {
                 Exports::Listed(names) => Some(names.into_iter().map(str::to_owned).collect()),
                 Exports::Absent | Exports::Dynamic => None,
             },
+            exports_unknown: matches!(dunder_all(&parsed.syntax().body), Exports::Dynamic)
+                || has_module_getattr(&parsed.syntax().body),
+            bindings: top_level_bindings(&parsed.syntax().body, module_path.or(importable)),
+            defined: module_statements(&parsed.syntax().body).flat_map(declared_names).collect(),
             attribute_writes,
             constructors,
             reads_docstrings: imports.reads_docstrings,
@@ -82,6 +95,39 @@ impl FileFacts {
 
 // A module and the names used from it.
 pub(super) type ModuleNames = (String, Vec<String>);
+
+// A name a `from module import name as bound` statement binds; `redundant` marks `name as name`, which the typing spec
+// reads as a re-export.
+#[derive(Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+pub struct ImportBinding {
+    pub(super) module: String,
+    pub(super) name: String,
+    pub(super) bound: String,
+    pub(super) redundant: bool,
+}
+
+fn top_level_bindings(body: &[Stmt], module_path: Option<&[String]>) -> Vec<ImportBinding> {
+    module_statements(body)
+        .filter_map(Stmt::as_import_from_stmt)
+        .filter_map(|import| {
+            let module = import.module.as_ref().map(ast::Identifier::as_str);
+            let resolved = resolve_imported_module_path(import.level, module, module_path)?.into_owned();
+            Some(import.names.iter().filter(|alias| alias.name.as_str() != "*").map(move |alias| ImportBinding {
+                module: resolved.clone(),
+                name: alias.name.to_string(),
+                bound: alias.asname.as_ref().unwrap_or(&alias.name).to_string(),
+                redundant: alias.asname.as_ref().is_some_and(|asname| asname.as_str() == alias.name.as_str()),
+            }))
+        })
+        .flatten()
+        .collect()
+}
+
+// PEP 562's module `__getattr__` answers for names the module does not bind, as lazily loaded submodules.
+fn has_module_getattr(body: &[Stmt]) -> bool {
+    module_statements(body)
+        .any(|stmt| stmt.as_function_def_stmt().is_some_and(|def| def.name.as_str() == "__getattr__"))
+}
 
 fn grouped(names: BTreeMap<String, BTreeSet<String>>) -> Vec<ModuleNames> {
     names.into_iter().map(|(module, names)| (module, names.into_iter().collect())).collect()

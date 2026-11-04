@@ -240,7 +240,7 @@ fn code_list(codes: &str) -> impl Iterator<Item = &str> {
     codes.split(|char: char| char == ',' || char.is_whitespace()).filter(|part| !part.is_empty())
 }
 
-// A `# simplint: ignore[SMP001, SMP002]` comment, simplint's counterpart of Ruff's `# ruff: ignore[...]`: the codes
+// A `# simplint: ignore[SMP001, SMP300]` comment, simplint's counterpart of Ruff's `# ruff: ignore[...]`: the codes
 // and the offset of its `#` in the comment.
 fn parse_ignore(comment: &str) -> Option<(TextSize, Vec<String>)> {
     parse_bracket(comment, "simplint:", "ignore[")

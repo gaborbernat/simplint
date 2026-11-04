@@ -2,7 +2,7 @@ mod common;
 
 use test_case::test_case;
 
-use common::{check, project};
+use common::{check, check_with_stdin, project};
 
 #[test]
 fn import_through_directory_without_init_counts_as_imported() {
@@ -306,7 +306,7 @@ fn docstring_reader_keeps_docstrings(reader: &str) {
         ("pkg/helpers.py", "def _helper() -> None:\n    \"\"\"Help.\"\"\"\n"),
         ("pkg/reader.py", &format!("from pkg.helpers import _helper\n\n{reader}")),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP002"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP300"]).1, "All checks passed!\n");
 }
 
 #[test]
@@ -317,10 +317,10 @@ fn module_docstring_read_is_no_docstring_reader() {
         ("pkg/reader.py", "print(__doc__)\n"),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP002"]).1.lines().next(),
+        check(root.path(), &["--select", "SMP300"]).1.lines().next(),
         Some(
             common::native(
-                "pkg/helpers.py:2:5: SMP002 Function docstring on internal code; let the name, signature and types \
+                "pkg/helpers.py:2:5: SMP300 Function docstring on internal code; let the name, signature and types \
                  document it"
             )
             .as_str()
@@ -436,6 +436,188 @@ fn attribute_path_through_a_reexported_submodule_counts_as_referenced() {
         common::native(
             "pkg/sub/other.py:8:7: SMP103 `ViewBase` is not in `__all__`; name it `_ViewBase`\nFound 1 error.\n1 unsafe \
              fix available with `--fix --unsafe-fixes`.\n"
+        )
+    );
+}
+
+const LIBRARY: &str = "[project]\nname = \"pkg\"\n[build-system]\nrequires = []\n";
+
+// An application has no Python API, so a function other modules import is internal, its docstring included.
+#[test]
+fn application_has_no_public_api() {
+    let root = project(&[
+        ("pyproject.toml", "[project]\nname = \"tool\"\n"),
+        ("tool/__init__.py", ""),
+        (
+            "tool/cli.py",
+            "def run() -> None:\n    \"\"\"Run the tool from the command line.\"\"\"\n\n\n__all__ = [\"run\"]\n",
+        ),
+        ("tool/__main__.py", "from tool.cli import run\n\nrun()\n"),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP300,SMP302"]).1,
+        "tool/cli.py:2:5: SMP300 Function docstring on internal code; let the name, signature and types document it\n\
+         Found 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n"
+            .replace('/', std::path::MAIN_SEPARATOR_STR)
+    );
+}
+
+// Without an API package to go by, every module counts but those of the documentation.
+#[test]
+fn documentation_is_not_public_api() {
+    let root = project(&[
+        ("pyproject.toml", "[build-system]\nrequires = []\n"),
+        ("docs/conf.py", "def setup() -> None: ...\n"),
+        ("lib.py", "def run() -> None: ...\n"),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP302"]).1,
+        "lib.py:1:5: SMP302 Public function `run` has no docstring; document it for its users\nFound 1 error.\n"
+    );
+}
+
+// A package picks its implementation in top-level `if` and `try` blocks, and re-exports whichever it picked.
+#[test]
+fn reexports_in_top_level_blocks_count() {
+    let root = project(&[
+        ("pyproject.toml", LIBRARY),
+        (
+            "pkg/__init__.py",
+            "import sys\n\ntry:\n    from ._fast import run\nexcept ImportError:\n    from ._slow import run\nelse:\n    \
+             pass\nfinally:\n    pass\nif sys.platform == \"win32\":\n    from ._windows import path\nelif sys.platform == \
+             \"linux\":\n    from ._linux import path\nelse:\n    from ._posix import path\n\n__all__ = [\"path\", \"run\"]\n",
+        ),
+        ("pkg/_fast.py", "def run() -> None: ...\n"),
+        ("pkg/_slow.py", "def run() -> None: ...\n"),
+        ("pkg/_windows.py", "path = 1\n"),
+        ("pkg/_linux.py", "path = 1\n"),
+        ("pkg/_posix.py", "path = 1\n"),
+    ]);
+    let reports = check(root.path(), &["--select", "SMP302"]).1;
+    assert_eq!(reports.lines().count(), 6, "{reports}");
+}
+
+// A package `__init__.py` Ruff's `lint.exclude` leaves out still presents the API of the modules behind it.
+#[test]
+fn excluded_init_module_still_reexports() {
+    let root = project(&[
+        ("pyproject.toml", &format!("{LIBRARY}[tool.ruff.lint]\nexclude = [\"pkg/__init__.py\"]\n")),
+        ("pkg/__init__.py", "from ._core import run\n\n__all__ = [\"run\"]\n"),
+        ("pkg/_core.py", "def run() -> None: ...\n"),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP302"]).1,
+        "pkg/_core.py:1:5: SMP302 Public function `run` has no docstring; document it for its users; \
+         `pkg/__init__.py` re-exports it\nFound 1 error.\n"
+            .replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+    );
+}
+
+// A module read from standard input has no index, so its own `__all__` tells what it offers.
+#[test]
+fn standard_input_reads_its_own_exports() {
+    let root = project(&[("pyproject.toml", LIBRARY), ("pkg/__init__.py", "")]);
+    let stdout = check_with_stdin(
+        root.path(),
+        &["--select", "SMP302", "--stdin-filename", "pkg/mod.py", "-"],
+        "def run() -> None: ...\n\n\ndef helper() -> None: ...\n\n\n__all__ = [\"run\"]\n",
+    )
+    .1;
+    assert_eq!(
+        stdout,
+        format!(
+            "pkg{}mod.py:1:5: SMP302 Public function `run` has no docstring; document it for its users\nFound 1 error.\n",
+            std::path::MAIN_SEPARATOR_STR
+        )
+    );
+}
+
+// A module-level `__getattr__` supplies names the index cannot list, so only what the module defines counts.
+#[test]
+fn lazy_module_offers_what_it_defines() {
+    let root = project(&[
+        ("pyproject.toml", LIBRARY),
+        (
+            "pkg/__init__.py",
+            "def __getattr__(name: str) -> int:\n    return len(name)\n\n\ndef helper() -> None: ...\n",
+        ),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP302"]).1,
+        format!(
+            "pkg{}__init__.py:5:5: SMP302 Public function `helper` has no docstring; document it for its users\n\
+             Found 1 error.\n",
+            std::path::MAIN_SEPARATOR_STR
+        )
+    );
+}
+
+// `api-modules` names a module users import from directly, so its `__all__` stays as written.
+#[test_case(
+    "",
+    "pkg/errors.py:4:12: SMP117 `Oops` is in `__all__`, yet no other module imports it; list only what other modules \
+     use\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    "unused_export_reported"
+)]
+#[test_case("[tool.simplint]\napi-modules = [\"pkg.errors\"]\n", "All checks passed!\n" ; "declared_api_module_kept")]
+fn api_modules_keep_their_exports(settings: &str, stdout: &str) {
+    let root = project(&[
+        ("pyproject.toml", &format!("{LIBRARY}{settings}")),
+        ("pkg/__init__.py", "\"\"\"Package.\"\"\"\n"),
+        ("pkg/errors.py", "class Oops(Exception): ...\n\n\n__all__ = [\"Oops\"]\n"),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP117"]).1,
+        stdout.replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+    );
+}
+
+// Nothing outside an application imports its modules, so dropping an unused export is safe there.
+#[test]
+fn application_drops_unused_exports_safely() {
+    let root = project(&[
+        ("pyproject.toml", "[project]\nname = \"tool\"\n"),
+        ("tool/__init__.py", ""),
+        ("tool/cli.py", "def run() -> None: ...\n\n\n__all__ = [\"run\"]\n"),
+    ]);
+    check(root.path(), &["--select", "SMP117", "--fix"]);
+    assert_eq!(common::read(root.path(), "tool/cli.py"), "def run() -> None: ...\n\n\n__all__ = []\n");
+}
+
+// A namespace package's API package is its dotted name, so its modules are public below the namespace.
+#[test_case("[tool.uv.build-backend]\nmodule-name = \"acme.widgets\"\n" ; "build_backend")]
+#[test_case("[tool.simplint]\napi-packages = [\"acme.widgets\"]\n" ; "setting")]
+fn namespace_package_is_public_api(settings: &str) {
+    let root = project(&[
+        ("pyproject.toml", &format!("[project]\nname = \"acme-widgets\"\n[build-system]\nrequires = []\n{settings}")),
+        ("src/acme/widgets/__init__.py", ""),
+        ("src/acme/widgets/shapes.py", "def circle() -> int: ...\n"),
+        ("src/acme/other.py", "def square() -> int: ...\n"),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP302"]).1,
+        format!(
+            "{}:1:5: SMP302 Public function `circle` has no docstring; document it for its users\nFound 1 error.\n",
+            ["src", "acme", "widgets", "shapes.py"].join(std::path::MAIN_SEPARATOR_STR)
+        )
+    );
+}
+
+// `__main__` runs as a script, so it offers no API, while another dunder module, as `__about__`, does.
+#[test]
+fn main_module_is_not_public_api() {
+    let root = project(&[
+        ("pyproject.toml", LIBRARY),
+        ("pkg/__init__.py", ""),
+        ("pkg/__main__.py", "def main() -> None: ...\n"),
+        ("pkg/__about__.py", "def helper() -> None: ...\n"),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP302"]).1,
+        format!(
+            "pkg{}__about__.py:1:5: SMP302 Public function `helper` has no docstring; document it for its users\n\
+             Found 1 error.\n",
+            std::path::MAIN_SEPARATOR_STR
         )
     );
 }

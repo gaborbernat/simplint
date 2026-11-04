@@ -1,0 +1,13 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+7:24 SMP117 `spare_end` is in `__all__`, yet no other module imports it; list only what other modules use [unsafe fix: Remove `spare_end` from `__all__`]
+--- fixed (1 applied, 0 remaining) ---
+def used_end() -> None: ...
+
+
+def spare_end() -> None: ...
+
+
+__all__ = ("used_end",)

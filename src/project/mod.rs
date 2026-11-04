@@ -5,4 +5,4 @@ mod index;
 pub(crate) mod receivers;
 
 pub use facts::FileFacts;
-pub use index::{FileIndex, Project, SearchRoots};
+pub use index::{Exposure, FileIndex, IndexInputs, Project, SearchRoots};
