@@ -179,6 +179,12 @@ impl Line {
     }
 }
 
+// Whether a comment's `noqa` or `simplint: ignore` directive suppresses `code` on its line.
+pub fn suppresses(comment: &str, code: &str) -> bool {
+    Directive::parse(comment).is_some_and(|(_, directive)| directive.suppresses(code))
+        || parse_ignore(comment).is_some_and(|(_, codes)| codes.iter().any(|candidate| candidate == code))
+}
+
 // A `noqa` directive; one without codes suppresses every rule.
 struct Directive {
     codes: Vec<String>,

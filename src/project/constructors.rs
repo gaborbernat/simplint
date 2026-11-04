@@ -1,14 +1,20 @@
 use std::borrow::Cow;
+use std::cell::OnceCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_python_ast::helpers::resolve_imported_module_path;
 use ruff_python_ast::name::UnqualifiedName;
+use ruff_python_ast::token::{TokenKind, Tokens};
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Pattern, Stmt};
+use ruff_python_trivia::CommentRanges;
 use ruff_source_file::LineRanges;
 use ruff_text_size::Ranged;
+
+use crate::lint::noqa;
+use crate::lint::registry::Rule;
 
 // What `dataclass-kw-only` needs to rewrite every positional call of a dataclass it makes keyword-only: the dataclasses
 // a file declares without `kw_only=True`, with the fields their `__init__` takes by position, and how the file uses
@@ -44,6 +50,7 @@ pub(super) enum UseKind {
 impl Constructors {
     pub(super) fn collect(
         source: &str,
+        tokens: &Tokens,
         body: &[Stmt],
         aliases: &HashMap<&str, String>,
         module_path: Option<&[String]>,
@@ -72,16 +79,14 @@ impl Constructors {
                 _ => None,
             })
             .collect();
+        let comments = OnceCell::new();
         let mut grouped: BTreeMap<String, BTreeSet<NameUse>> = BTreeMap::new();
         for ((module, name, written), found) in uses.found {
             let kind = match found {
                 Use::Call(call) => match CallKind::of(call) {
                     CallKind::Keyword => continue,
-                    // A suppression comment on the call can keep its own report from rewriting it.
                     CallKind::Positional
-                        if ["noqa", "simplint: ignore"]
-                            .iter()
-                            .any(|marker| source[source.full_lines_range(call.range())].contains(marker)) =>
+                        if is_suppressed(source, comments.get_or_init(|| comment_ranges(tokens)), call) =>
                     {
                         UseKind::Opaque
                     }
@@ -131,6 +136,18 @@ impl Constructors {
             dynamic: dynamic.into_iter().collect(),
         }
     }
+}
+
+// A suppression comment on the call keeps its own `dataclass-kw-only` report from rewriting it.
+fn is_suppressed(source: &str, comments: &CommentRanges, call: &ast::ExprCall) -> bool {
+    comments
+        .comments_in_range(source.full_lines_range(call.range()))
+        .iter()
+        .any(|comment| noqa::suppresses(&source[*comment], Rule::DataclassKwOnly.code()))
+}
+
+fn comment_ranges(tokens: &Tokens) -> CommentRanges {
+    CommentRanges::new(tokens.iter().filter(|token| token.kind() == TokenKind::Comment).map(Ranged::range).collect())
 }
 
 // The dotted name `expr` stands for through the imports that bind its head, such as `pkg.models.Partition` for

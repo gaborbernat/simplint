@@ -68,8 +68,13 @@ impl FileFacts {
         };
         let attribute_writes =
             AttributeWrites::collect(&parsed.syntax().body, &imports.aliases, &module_name(module_path, path));
-        let constructors =
-            Constructors::collect(&source, &parsed.syntax().body, &imports.aliases, module_path.or(importable));
+        let constructors = Constructors::collect(
+            &source,
+            parsed.tokens(),
+            &parsed.syntax().body,
+            &imports.aliases,
+            module_path.or(importable),
+        );
         Some(Self {
             imports: grouped(imports.edges),
             references: grouped(imports.references),
