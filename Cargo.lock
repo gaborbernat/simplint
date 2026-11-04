@@ -409,6 +409,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "clearscreen"
+version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ebe9918b237e4e17e25a04d539d99ef3515417a85f703e0ed8bf44353eb17b3"
+dependencies = [
+ "nix",
+ "terminfo",
+ "thiserror 2.0.21",
+ "which",
+ "windows-sys",
+]
+
+[[package]]
 name = "collection_literals"
 version = "1.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2137,7 +2150,7 @@ dependencies = [
  "cachedir",
  "clap",
  "clap_complete_command",
- "clearscreen",
+ "clearscreen 4.0.6",
  "colored",
  "filetime",
  "globwalk",
@@ -3026,7 +3039,7 @@ dependencies = [
  "cachedir",
  "clap",
  "clap_complete_command",
- "clearscreen",
+ "clearscreen 5.0.0",
  "colored",
  "fern",
  "filetime",
