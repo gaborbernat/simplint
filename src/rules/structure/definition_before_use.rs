@@ -234,10 +234,7 @@ fn reorder(checker: &Checker, suite: &Suite, uses: &Uses) {
         }
         let name = identifier.as_str();
         let owner_name = definition_name(&suite.body[owner]).map_or_else(
-            || {
-                let line = checker.source[..suite.body[owner].start().to_usize()].matches('\n').count() + 1;
-                format!("the statement on line {line}")
-            },
+            || format!("the statement on line {}", checker.line_number(suite.body[owner].start())),
             |owner| format!("`{}`", owner.as_str()),
         );
         let (message, title) = if index < owner {

@@ -11,7 +11,7 @@ use ruff_python_codegen::Stylist;
 use ruff_python_index::Indexer;
 use ruff_python_parser::Parsed;
 use ruff_python_trivia::{CommentRanges, has_leading_content};
-use ruff_source_file::{LineRanges, SourceFile};
+use ruff_source_file::{LineRanges, OneIndexed, SourceFile};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 use rustc_hash::FxHashMap;
 
@@ -261,5 +261,10 @@ impl<'a> Checker<'a> {
 
     pub fn is_init_module(&self) -> bool {
         self.file_name() == "__init__.py"
+    }
+
+    // The source file indexes its lines once, for every report that names one and for rendering the diagnostics.
+    pub fn line_number(&self, offset: TextSize) -> OneIndexed {
+        self.file.index().line_index(offset)
     }
 }
