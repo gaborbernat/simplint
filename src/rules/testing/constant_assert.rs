@@ -5,7 +5,8 @@ use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::{delete_statement, for_each_body, is_alone_on_lines};
+use crate::rules::{delete_statement, is_alone_on_lines};
+use crate::syntax::for_each_body;
 
 pub fn constant_assert(checker: &Checker) {
     let is_builtin = |name: &str| !checker.semantic().is_bound(name);

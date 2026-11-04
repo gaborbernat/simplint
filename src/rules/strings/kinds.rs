@@ -9,9 +9,8 @@ use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
 use crate::lint::walker::{Scope, Walker};
-use crate::rules::Visibility;
-use crate::rules::for_each_child_body;
 use crate::semantic::BindingKind;
+use crate::syntax::{Visibility, for_each_child_body};
 
 // The few types the code can show for sure, enough to tell what `+` and `*` on them return.
 #[derive(Clone, Copy, PartialEq, Eq)]

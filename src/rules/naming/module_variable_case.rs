@@ -5,11 +5,10 @@ use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::Visibility;
-use crate::rules::exports::Exports;
 use crate::rules::naming::{is_ply_name, rename_fix, uses_ply};
 use crate::rules::{is_class_like, single_assignment};
 use crate::semantic::BindingKind;
+use crate::syntax::{Exports, Visibility};
 
 pub fn module_variable_case(checker: &Checker) {
     const MAGIC: &[&str] = &["pytestmark", "pytest_plugins", "collect_ignore", "collect_ignore_glob", "TYPE_CHECKING"];

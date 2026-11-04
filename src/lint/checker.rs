@@ -21,12 +21,10 @@ use crate::lint::walker::Walker;
 use crate::project::FileIndex;
 use crate::rules::docstrings::PublicApi;
 use crate::rules::docstrings::rest::{Target, collect_targets};
-use crate::rules::exports::{Exports, dunder_all};
-use crate::rules::for_each_body;
-use crate::rules::naming::string_values;
 use crate::rules::strings::kinds::KindsCache;
 use crate::semantic::Semantic;
 use crate::settings::FileSettings;
+use crate::syntax::{Exports, dunder_all, for_each_body, string_values};
 
 pub struct Checker<'a> {
     pub path: &'a Path,

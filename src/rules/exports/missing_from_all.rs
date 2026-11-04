@@ -5,11 +5,10 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::Visibility;
 use crate::rules::exports::exploded;
-use crate::rules::exports::{Exports, all_binding, all_literal};
 use crate::rules::{export_key, indentation, is_main_guard};
 use crate::semantic::BindingKind;
+use crate::syntax::{Exports, Visibility, all_binding, all_literal};
 
 pub fn missing_from_all(checker: &Checker) {
     if checker.is_init_module() || checker.is_test_module() {

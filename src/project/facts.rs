@@ -11,8 +11,7 @@ use ruff_python_stdlib::identifiers::is_identifier;
 
 use super::constructors::Constructors;
 use super::receivers::{AttributeWrites, module_name};
-use crate::rules::exports::{Exports, dunder_all};
-use crate::rules::module_statements;
+use crate::syntax::{Exports, dunder_all, module_statements};
 
 // The names a file uses from other modules, before they resolve to files; parsing finds them and the cache keeps them.
 // Names are grouped by module, so each module resolves once per file.

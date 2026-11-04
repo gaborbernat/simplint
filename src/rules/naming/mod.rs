@@ -5,16 +5,13 @@ mod unexported_public_name;
 pub(crate) use module_variable_case::module_variable_case;
 pub(crate) use unexported_public_name::unexported_public_name;
 
-use std::borrow::Cow;
-
 use ruff_diagnostics::{Edit, Fix};
-use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_python_stdlib::builtins::is_python_builtin;
-use ruff_text_size::{Ranged, TextRange};
+use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
-use crate::rules::exports::all_literal;
+use crate::syntax::all_literal;
 
 fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
     let ranges = checker.semantic().name_ranges(old);
@@ -87,33 +84,6 @@ fn contains_word(text: &str, word: &str) -> bool {
 
 fn is_word_char(char: char) -> bool {
     char.is_alphanumeric() || char == '_'
-}
-
-// The text of every string and bytes literal of the module, and of each literal part of an f-string or t-string, with
-// its range.
-pub(crate) fn string_values(body: &[Stmt]) -> Vec<(TextRange, Cow<'_, str>)> {
-    let mut values = StringValues(Vec::new());
-    values.visit_body(body);
-    values.0
-}
-
-struct StringValues<'a>(Vec<(TextRange, Cow<'a, str>)>);
-
-impl<'a> Visitor<'a> for StringValues<'a> {
-    fn visit_string_literal(&mut self, string_literal: &'a ast::StringLiteral) {
-        self.0.push((string_literal.range, Cow::Borrowed(&string_literal.value)));
-    }
-
-    fn visit_bytes_literal(&mut self, bytes_literal: &'a ast::BytesLiteral) {
-        self.0.push((bytes_literal.range, String::from_utf8_lossy(&bytes_literal.value)));
-    }
-
-    fn visit_interpolated_string_element(&mut self, element: &'a ast::InterpolatedStringElement) {
-        if let ast::InterpolatedStringElement::Literal(literal) = element {
-            self.0.push((literal.range, Cow::Borrowed(&literal.value)));
-        }
-        visitor::walk_interpolated_string_element(self, element);
-    }
 }
 
 fn all_elements(body: &[Stmt]) -> Vec<&ast::ExprStringLiteral> {

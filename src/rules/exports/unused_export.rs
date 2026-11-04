@@ -4,9 +4,8 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::exports::{Exports, all_binding, all_literal, all_mutation};
-use crate::rules::module_statements;
 use crate::settings::ProjectKind;
+use crate::syntax::{Exports, all_binding, all_literal, all_mutation, module_statements};
 
 pub fn unused_export(checker: &Checker) {
     let project = checker.project();

@@ -10,7 +10,8 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::{for_each_body, indentation, is_alone_on_lines};
+use crate::rules::{indentation, is_alone_on_lines};
+use crate::syntax::for_each_body;
 
 pub fn dependency_import_guard(checker: &Checker) {
     for_each_body(checker.body(), &mut |statements, _| {

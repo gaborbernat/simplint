@@ -42,9 +42,7 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::project::Exposure;
-use crate::rules::Visibility;
-use crate::rules::exports::Exports;
-use crate::rules::{last_segment, module_statements};
+use crate::syntax::{Exports, Visibility, last_segment, module_statements};
 
 enum ApiKind {
     Function,

@@ -5,7 +5,7 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::Visibility;
+use crate::syntax::Visibility;
 
 pub fn forwarding_function(checker: &Checker) {
     for stmt in checker.body() {

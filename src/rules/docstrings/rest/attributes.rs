@@ -2,7 +2,7 @@ use ruff_python_ast::{self as ast, Expr, Stmt};
 
 use crate::lint::checker::Checker;
 use crate::rules::docstrings::{decorator_names, is_documented_variable, module_statements_with_next};
-use crate::rules::{for_each_body, last_segment, module_statements};
+use crate::syntax::{for_each_body, last_segment, module_statements};
 
 // An attribute of a class as autodoc documents it: one its body assigns, or one a method sets on `self`.
 pub(crate) struct Attribute<'a> {

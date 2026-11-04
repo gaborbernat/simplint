@@ -6,7 +6,8 @@ use ruff_text_size::Ranged;
 
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
-use crate::rules::{ExprCollector, last_segment};
+use crate::rules::ExprCollector;
+use crate::syntax::last_segment;
 
 pub fn statement(walker: &mut Walker, stmt: &Stmt) {
     match stmt {

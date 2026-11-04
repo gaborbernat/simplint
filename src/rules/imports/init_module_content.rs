@@ -4,8 +4,8 @@ use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::exports::{Exports, all_binding, all_mutation};
 use crate::semantic::future_import;
+use crate::syntax::{Exports, all_binding, all_mutation};
 
 pub fn init_module_content(checker: &Checker) {
     if !checker.is_init_module() {

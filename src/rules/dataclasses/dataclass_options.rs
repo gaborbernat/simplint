@@ -9,7 +9,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::project::receivers::module_name;
 use crate::rules::dataclasses::{Offer, require_options};
-use crate::rules::last_segment;
+use crate::syntax::last_segment;
 
 pub fn dataclass_options(checker: &Checker) {
     let expected_to_raise = OnceCell::new();

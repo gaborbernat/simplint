@@ -7,7 +7,7 @@ use ruff_text_size::{TextRange, TextSize};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::docstrings::rest::{Field, FieldKind, Owner, Target, field_deletion, field_insertion, rank};
-use crate::rules::last_segment;
+use crate::syntax::last_segment;
 
 pub fn rest_returns(checker: &Checker) {
     for target in checker.rest_targets() {

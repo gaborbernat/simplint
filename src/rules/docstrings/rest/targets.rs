@@ -8,8 +8,9 @@ use ruff_text_size::TextRange;
 use super::attributes::{Attribute, attributes, is_field_call, skips_init, unsubscripted};
 use super::{Docstring, has_attribute_bases};
 use crate::lint::checker::Checker;
-use crate::rules::{Visibility, docstring, last_segment, module_statements};
+use crate::rules::docstring;
 use crate::settings::DocstringStyle;
+use crate::syntax::{Visibility, last_segment, module_statements};
 
 pub(crate) enum Owner<'a> {
     Function { def: &'a ast::StmtFunctionDef, class: Option<&'a ast::StmtClassDef> },

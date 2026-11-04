@@ -6,7 +6,7 @@ use ruff_python_ast::{self as ast, Expr, Stmt};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::docstrings::rest::{FieldKind, Owner, rank, report_missing};
-use crate::rules::last_segment;
+use crate::syntax::last_segment;
 
 pub fn rest_missing_raises(checker: &Checker) {
     for target in checker.rest_targets().iter().filter(|target| target.public) {

@@ -19,8 +19,8 @@ use ty_module_resolver::{
 use super::FileFacts;
 use super::constructors::{DataclassCalls, FileCalls, NameUse};
 use super::facts::{ImportBinding, ModuleNames};
-use crate::rules::Visibility;
 use crate::settings::ModuleRole;
+use crate::syntax::Visibility;
 
 // Where imports resolve, as `ruff analyze graph` searches: the configured `src` directories first, then the directory
 // above each package.

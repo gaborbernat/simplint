@@ -2,8 +2,8 @@ use std::collections::HashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::Visibility;
 use crate::rules::docstrings::rest::{FieldKind, Owner, rank, report_missing};
+use crate::syntax::Visibility;
 
 pub fn rest_missing_attribute(checker: &Checker) {
     for target in checker.rest_targets().iter().filter(|target| target.public) {

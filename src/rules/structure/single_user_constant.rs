@@ -10,13 +10,10 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::Visibility;
-use crate::rules::exports::Exports;
 use crate::rules::structure::needs_parentheses;
-use crate::rules::{
-    indentation, is_alone_on_lines, is_class_like, last_segment, lines_with_trailing_blanks, single_assignment,
-};
+use crate::rules::{indentation, is_alone_on_lines, is_class_like, lines_with_trailing_blanks, single_assignment};
 use crate::semantic::{Binding, BindingKind, Evaluation};
+use crate::syntax::{Exports, Visibility, last_segment};
 
 pub fn single_user_constant(checker: &Checker) {
     for stmt in checker.body() {

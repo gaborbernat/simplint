@@ -9,8 +9,9 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::{has_version_gate, is_class_like, isort_key, last_segment, single_assignment};
+use crate::rules::{has_version_gate, is_class_like, isort_key, single_assignment};
 use crate::semantic::{Semantic, future_import};
+use crate::syntax::last_segment;
 
 pub fn missing_final(checker: &Checker) {
     // `typing.Final` arrived in Python 3.8.

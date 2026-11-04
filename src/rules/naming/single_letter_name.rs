@@ -3,7 +3,7 @@ use ruff_text_size::TextRange;
 
 use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
-use crate::rules::last_segment;
+use crate::syntax::last_segment;
 
 pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     match stmt {

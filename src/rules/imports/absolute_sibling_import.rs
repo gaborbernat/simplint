@@ -6,7 +6,7 @@ use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::for_each_body;
+use crate::syntax::for_each_body;
 
 pub fn absolute_sibling_import(checker: &Checker) {
     let Some((_, package)) = checker.module_path().and_then(<[String]>::split_last) else {

@@ -5,6 +5,7 @@ mod project;
 mod rules;
 mod semantic;
 mod settings;
+mod syntax;
 
 use std::ffi::OsString;
 use std::io::Write;

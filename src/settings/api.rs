@@ -5,8 +5,8 @@ use std::path::Path;
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use serde::Deserialize;
 
-use crate::rules::Visibility;
 use crate::settings::metadata::{BuildConfiguration, ProjectMetadata, import_names};
+use crate::syntax::Visibility;
 
 // What `project-kind` asks for; `auto` reads it from how the project builds.
 #[derive(Deserialize, Clone, Copy, Default, PartialEq, Eq)]

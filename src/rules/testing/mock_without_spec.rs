@@ -4,9 +4,9 @@ use ruff_text_size::Ranged;
 
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
-use crate::rules::last_segment;
 use crate::rules::testing::MOCK_CLASSES;
 use crate::semantic::Semantic;
+use crate::syntax::last_segment;
 
 pub fn expression(walker: &mut Walker, expr: &Expr) {
     const SPEC_KEYWORDS: &[&str] = &["spec", "spec_set", "wraps", "autospec", "new", "new_callable"];

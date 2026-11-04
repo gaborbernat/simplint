@@ -10,8 +10,7 @@ pub(crate) mod testing;
 pub(crate) mod typing;
 
 use ruff_diagnostics::Edit;
-use ruff_python_ast::helpers::{any_over_expr, is_dunder};
-use ruff_python_ast::name::UnqualifiedName;
+use ruff_python_ast::helpers::any_over_expr;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_python_trivia::{has_leading_content, has_trailing_content, leading_indentation};
@@ -19,6 +18,7 @@ use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
+use crate::syntax::last_segment;
 
 pub fn is_alone_on_lines(source: &str, range: TextRange) -> bool {
     !has_leading_content(range.start(), source) && !has_trailing_content(range.end(), source)
@@ -73,49 +73,6 @@ pub fn lines_with_trailing_blanks(source: &str, range: TextRange) -> TextRange {
         }
     }
     TextRange::new(start, end)
-}
-
-pub fn for_each_body<'a>(body: &'a [Stmt], visit: &mut impl FnMut(&'a [Stmt], Option<&'a Stmt>)) {
-    walk_bodies(body, None, visit);
-}
-
-fn walk_bodies<'a>(body: &'a [Stmt], owner: Option<&'a Stmt>, visit: &mut impl FnMut(&'a [Stmt], Option<&'a Stmt>)) {
-    visit(body, owner);
-    for stmt in body {
-        for_each_child_body(stmt, &mut |child| walk_bodies(child, Some(stmt), visit));
-    }
-}
-
-pub fn for_each_child_body<'a>(stmt: &'a Stmt, visit: &mut impl FnMut(&'a [Stmt])) {
-    match stmt {
-        Stmt::FunctionDef(ast::StmtFunctionDef { body, .. })
-        | Stmt::ClassDef(ast::StmtClassDef { body, .. })
-        | Stmt::With(ast::StmtWith { body, .. }) => visit(body),
-        Stmt::For(ast::StmtFor { body, orelse, .. }) | Stmt::While(ast::StmtWhile { body, orelse, .. }) => {
-            visit(body);
-            visit(orelse);
-        }
-        Stmt::If(ast::StmtIf { body, elif_else_clauses, .. }) => {
-            visit(body);
-            for clause in elif_else_clauses {
-                visit(&clause.body);
-            }
-        }
-        Stmt::Try(ast::StmtTry { body, handlers, orelse, finalbody, .. }) => {
-            visit(body);
-            for ast::ExceptHandler::ExceptHandler(handler) in handlers {
-                visit(&handler.body);
-            }
-            visit(orelse);
-            visit(finalbody);
-        }
-        Stmt::Match(ast::StmtMatch { cases, .. }) => {
-            for case in cases {
-                visit(&case.body);
-            }
-        }
-        _ => {}
-    }
 }
 
 pub fn docstring(body: &[Stmt]) -> Option<&ast::ExprStringLiteral> {
@@ -179,33 +136,6 @@ impl<'a, F: FnMut(&'a Expr) -> Option<T>, T> Visitor<'a> for ExprCollector<F, T>
     }
 }
 
-// What a name's leading underscores say about who may use it. The two readings of "public" differ on dunders:
-// `from module import *` without `__all__` skips every name with a leading underscore, dunders included, while the
-// typing spec and PEP 8 treat only a non-dunder underscore name as internal, so `__version__` is public.
-#[derive(Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Visibility {
-    Public,
-    Dunder,
-    Private,
-}
-
-impl Visibility {
-    pub(crate) fn of(name: &str) -> Self {
-        if !name.starts_with('_') {
-            Self::Public
-        } else if is_dunder(name) {
-            Self::Dunder
-        } else {
-            Self::Private
-        }
-    }
-}
-
-// The name an expression such as `typing.Final` or `@name.setter` ends with.
-pub fn last_segment(expr: &Expr) -> Option<&str> {
-    UnqualifiedName::from_expr(expr)?.segments().last().copied()
-}
-
 // A module-level `if sys.version_info < ...: raise ...` or `sys.exit(...)` exists to run on interpreters older than the
 // target and report them, so fixes must not add syntax or imports those
 // interpreters lack.
@@ -258,26 +188,4 @@ pub fn single_assignment(stmt: &Stmt) -> Option<(&ast::ExprName, Option<&Expr>, 
         _ => return None,
     };
     Some((target.as_name_expr()?, annotation, value))
-}
-
-// The statements that run when the module loads, including those of its top-level `if` and `try` blocks, where
-// modules pick an implementation by version or availability.
-pub fn module_statements(body: &[Stmt]) -> impl Iterator<Item = &Stmt> {
-    body.iter().flat_map(|stmt| -> Box<dyn Iterator<Item = &Stmt> + '_> {
-        match stmt {
-            Stmt::If(ast::StmtIf { body, elif_else_clauses, .. }) => Box::new(
-                module_statements(body)
-                    .chain(elif_else_clauses.iter().flat_map(|clause| module_statements(&clause.body))),
-            ),
-            Stmt::Try(ast::StmtTry { body, handlers, orelse, finalbody, .. }) => Box::new(
-                module_statements(body)
-                    .chain(handlers.iter().flat_map(|handler| match handler {
-                        ast::ExceptHandler::ExceptHandler(handler) => module_statements(&handler.body),
-                    }))
-                    .chain(module_statements(orelse))
-                    .chain(module_statements(finalbody)),
-            ),
-            _ => Box::new(std::iter::once(stmt)),
-        }
-    })
 }

@@ -3,9 +3,8 @@ use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::Visibility;
-use crate::rules::exports::Exports;
 use crate::rules::naming::{is_ply_name, rename_fix, uses_ply};
+use crate::syntax::{Exports, Visibility};
 
 pub fn unexported_public_name(checker: &Checker) {
     if checker.is_test_module() {

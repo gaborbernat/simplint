@@ -6,7 +6,7 @@ use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Pattern, Stmt};
 
 use super::facts::qualified;
-use crate::rules::last_segment;
+use crate::syntax::last_segment;
 
 // The attributes code sets or deletes on objects, keyed by the class of the object when parsing tells it: the receiver
 // is `self` in a method, or a name bound by a call to a class or annotated with one. A class goes by its qualified

@@ -8,7 +8,7 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::exports::exploded;
-use crate::rules::exports::{AllBinding, all_binding};
+use crate::syntax::{AllBinding, all_binding};
 
 pub fn all_format(checker: &Checker) {
     for stmt in checker.body() {
