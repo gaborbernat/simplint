@@ -24,6 +24,7 @@ use crate::rules::docstrings::rest::{Target, collect_targets};
 use crate::rules::exports::{Exports, dunder_all};
 use crate::rules::for_each_body;
 use crate::rules::naming::string_values;
+use crate::rules::strings::kinds::KindsCache;
 use crate::semantic::Semantic;
 use crate::settings::FileSettings;
 
@@ -44,6 +45,7 @@ pub struct Checker<'a> {
     string_values: OnceCell<Vec<(TextRange, Cow<'a, str>)>>,
     public_api: OnceCell<PublicApi<'a>>,
     rest_targets: OnceCell<Vec<Target<'a>>>,
+    kinds: KindsCache<'a>,
     // Rules report while they read the checker, as in Ruff's own `Checker`.
     diagnostics: RefCell<Vec<(Rule, Diagnostic)>>,
 }
@@ -74,6 +76,7 @@ impl<'a> Checker<'a> {
             string_values: OnceCell::new(),
             public_api: OnceCell::new(),
             rest_targets: OnceCell::new(),
+            kinds: KindsCache::default(),
             diagnostics: RefCell::default(),
         }
     }
@@ -183,6 +186,11 @@ impl<'a> Checker<'a> {
     // The parsed docstrings the reStructuredText rules check, empty unless `docstring-style = "rest"`.
     pub(crate) fn rest_targets(&self) -> &[Target<'a>] {
         self.rest_targets.get_or_init(|| collect_targets(self))
+    }
+
+    // What `string-concatenation` reads off the module to tell the types of its operands.
+    pub(crate) fn kinds(&self) -> &KindsCache<'a> {
+        &self.kinds
     }
 
     pub fn dunder_all(&self) -> &Exports<'a> {
