@@ -2,7 +2,6 @@ use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use itertools::Itertools;
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_python_ast::helpers::resolve_imported_module_path;
 use ruff_python_ast::name::UnqualifiedName;
@@ -242,11 +241,9 @@ impl<'a> FileCalls<'a> {
 
 impl CacheKey for FileCalls<'_> {
     fn cache_key(&self, state: &mut CacheKeyHasher) {
-        self.opaque.into_iter().flatten().sorted().for_each(|name| name.cache_key(state));
+        self.opaque.cache_key(state);
         self.star_imported.cache_key(state);
-        for (written, fields) in self.fields.into_iter().flatten().sorted_by(|left, right| left.0.cmp(right.0)) {
-            (written, fields).cache_key(state);
-        }
+        self.fields.cache_key(state);
     }
 }
 

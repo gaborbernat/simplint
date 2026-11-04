@@ -3,7 +3,6 @@ use std::hash::Hasher;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
-use itertools::Itertools;
 use rayon::prelude::*;
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_db::files::{File, system_path_to_file};
@@ -267,18 +266,13 @@ fn digest(
 ) -> u64 {
     let mut hasher = CacheKeyHasher::new();
     reads_docstrings.cache_key(&mut hasher);
-    assigned.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
-    0u8.cache_key(&mut hasher);
-    module_reads.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
-    base_classes.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
-    for (class, attributes) in writes.on_class.iter().sorted_by(|left, right| left.0.cmp(right.0)) {
-        class.cache_key(&mut hasher);
-        attributes.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
+    // Each set is hashed behind its length, so a name moving from one set to the next changes the digest.
+    for names in
+        [assigned, module_reads, base_classes, &writes.untyped, &writes.unslottable_bases, &writes.stateful_bases]
+    {
+        names.cache_key(&mut hasher);
     }
-    for names in [&writes.untyped, &writes.unslottable_bases, &writes.stateful_bases] {
-        0u8.cache_key(&mut hasher);
-        names.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
-    }
+    writes.on_class.cache_key(&mut hasher);
     writes.pickles_low_protocol.cache_key(&mut hasher);
     hasher.finish()
 }
@@ -516,18 +510,13 @@ impl PartialEq for FileIndex<'_> {
 impl CacheKey for FileIndex<'_> {
     fn cache_key(&self, state: &mut CacheKeyHasher) {
         self.project.digest.cache_key(state);
-        for names in [self.imported, self.referenced] {
-            names.into_iter().flatten().sorted().for_each(|name| name.cache_key(state));
-            0u8.cache_key(state);
-        }
+        self.imported.cache_key(state);
+        self.referenced.cache_key(state);
         self.star_imported.cache_key(state);
         self.package_star_imported.cache_key(state);
         self.star_source.cache_key(state);
         self.role.cache_key(state);
-        for (name, importer) in self.user_facing.into_iter().flatten().sorted() {
-            name.cache_key(state);
-            importer.cache_key(state);
-        }
+        self.user_facing.cache_key(state);
         self.calls.cache_key(state);
     }
 }

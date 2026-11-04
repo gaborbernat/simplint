@@ -278,6 +278,19 @@ fn reexport_added_later_checks_the_source_again() {
     );
 }
 
+// A name another file reads off a module counts as used; once it is a base class instead, the run's sets hold the same
+// names in another order, and the cached clean result of the constant's module no longer holds.
+#[test]
+fn cached_clean_file_is_checked_again_once_a_name_moves_between_run_sets() {
+    let root = project(&[
+        ("module.py", COMPARED),
+        ("reader.py", "import importlib\n\nloaded = importlib.import_module(\"module\")\nprint(loaded._LIMIT)\n"),
+    ]);
+    let first = check(root.path(), &["--select", "SMP050"]).0;
+    fs::write(root.path().join("reader.py"), "class Limit(_LIMIT):\n    pass\n").expect("write");
+    assert_eq!((first, check(root.path(), &["--select", "SMP050"]).0), (0, 1));
+}
+
 #[test]
 fn caches_of_other_builds_expire_after_thirty_days() {
     let root = project(&[
