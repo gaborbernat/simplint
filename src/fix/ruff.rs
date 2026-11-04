@@ -21,8 +21,8 @@ use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::fix::apply::{FixResult, fix_ruff_file};
-use crate::fix::layout::{Layout, Widths};
 use crate::fix::{add_fixes, errors};
+use crate::layout::{Layout, Widths};
 use crate::settings::FromRuff;
 
 // The file as Ruff sees it: the project's Ruff settings for it and the package it belongs to.

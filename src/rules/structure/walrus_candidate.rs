@@ -3,7 +3,7 @@ use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt, UnaryOp};
 use ruff_text_size::{Ranged, TextLen, TextRange};
 
-use crate::fix::layout::joined_width;
+use crate::layout::joined_width;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::structure::needs_parentheses;
