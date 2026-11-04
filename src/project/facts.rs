@@ -57,6 +57,8 @@ impl FileFacts {
             assigned_attributes: Vec::new(),
             base_classes: Vec::new(),
             stars: BTreeSet::new(),
+            from_statements: Vec::new(),
+            top_level: true,
             reads_docstrings: false,
         };
         imports.visit_body(&parsed.syntax().body);
@@ -73,7 +75,7 @@ impl FileFacts {
             parsed.tokens(),
             &parsed.syntax().body,
             &imports.aliases,
-            module_path.or(importable),
+            &imports.from_statements,
         );
         Some(Self {
             imports: grouped(imports.edges),
@@ -89,7 +91,7 @@ impl FileFacts {
             },
             exports_unknown: matches!(dunder_all(&parsed.syntax().body), Exports::Dynamic)
                 || has_module_getattr(&parsed.syntax().body),
-            bindings: top_level_bindings(&parsed.syntax().body, module_path.or(importable)),
+            bindings: top_level_bindings(&imports.from_statements),
             defined: module_statements(&parsed.syntax().body).flat_map(declared_names).collect(),
             attribute_writes,
             constructors,
@@ -111,21 +113,27 @@ pub struct ImportBinding {
     pub(super) redundant: bool,
 }
 
-fn top_level_bindings(body: &[Stmt], module_path: Option<&[String]>) -> Vec<ImportBinding> {
-    module_statements(body)
-        .filter_map(Stmt::as_import_from_stmt)
-        .filter_map(|import| {
-            let module = import.module.as_ref().map(ast::Identifier::as_str);
-            let resolved = resolve_imported_module_path(import.level, module, module_path)?.into_owned();
-            Some(import.names.iter().filter(|alias| alias.name.as_str() != "*").map(move |alias| ImportBinding {
-                module: resolved.clone(),
+fn top_level_bindings(from_imports: &[FromImport]) -> Vec<ImportBinding> {
+    from_imports
+        .iter()
+        .filter(|import| import.top_level)
+        .flat_map(|import| {
+            import.names.iter().filter(|alias| alias.name.as_str() != "*").map(|alias| ImportBinding {
+                module: import.module.clone(),
                 name: alias.name.to_string(),
                 bound: alias.asname.as_ref().unwrap_or(&alias.name).to_string(),
                 redundant: alias.asname.as_ref().is_some_and(|asname| asname.as_str() == alias.name.as_str()),
-            }))
+            })
         })
-        .flatten()
         .collect()
+}
+
+// A `from module import ...` statement, with the module resolved against the file's module path, and whether it runs
+// when the module loads, as `module_statements` reads that.
+pub(super) struct FromImport<'a> {
+    pub(super) module: String,
+    pub(super) names: &'a [ast::Alias],
+    top_level: bool,
 }
 
 // PEP 562's module `__getattr__` answers for names the module does not bind, as lazily loaded submodules.
@@ -146,11 +154,17 @@ struct Imports<'a> {
     assigned_attributes: Vec<String>,
     base_classes: Vec<String>,
     stars: BTreeSet<String>,
+    from_statements: Vec<FromImport<'a>>,
+    // Whether the statement visited runs when the module loads: it sits at module level, or in a top-level `if` or
+    // `try` block.
+    top_level: bool,
     reads_docstrings: bool,
 }
 
 impl<'a> Visitor<'a> for Imports<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        let top_level = self.top_level;
+        self.top_level &= matches!(stmt, Stmt::If(_) | Stmt::Try(_));
         match stmt {
             Stmt::ImportFrom(ast::StmtImportFrom { module, names, level, .. }) => {
                 let module = module.as_ref().map(ast::Identifier::as_str);
@@ -165,6 +179,7 @@ impl<'a> Visitor<'a> for Imports<'a> {
                         let bound = alias.asname.as_ref().unwrap_or(&alias.name).as_str();
                         self.aliases.insert(bound, format!("{resolved}.{}", alias.name.as_str()));
                     }
+                    self.from_statements.push(FromImport { module: resolved, names, top_level });
                 }
             }
             Stmt::Import(ast::StmtImport { names, .. }) => {
@@ -187,6 +202,7 @@ impl<'a> Visitor<'a> for Imports<'a> {
             }
             _ => visitor::walk_stmt(self, stmt),
         }
+        self.top_level = top_level;
     }
 
     fn visit_expr(&mut self, expr: &'a Expr) {
@@ -224,12 +240,17 @@ impl<'a> Visitor<'a> for Imports<'a> {
     }
 }
 
+// The dotted name `segments` stand for through the import that binds their head, such as `pkg.models.Partition` for
+// `models.Partition` after `from pkg import models`.
+pub(super) fn qualified(segments: &[&str], aliases: &HashMap<&str, String>) -> Option<String> {
+    let (first, rest) = segments.split_first()?;
+    let module = aliases.get(first)?;
+    Some(std::iter::once(module.as_str()).chain(rest.iter().copied()).collect::<Vec<_>>().join("."))
+}
+
 impl Imports<'_> {
     fn qualified(&self, expr: &Expr) -> Option<String> {
-        let name = UnqualifiedName::from_expr(expr)?;
-        let (first, rest) = name.segments().split_first()?;
-        let module = self.aliases.get(first)?;
-        Some(std::iter::once(module.as_str()).chain(rest.iter().copied()).collect::<Vec<_>>().join("."))
+        qualified(UnqualifiedName::from_expr(expr)?.segments(), &self.aliases)
     }
 
     fn record_path(names: &mut BTreeMap<String, BTreeSet<String>>, path: &str) {

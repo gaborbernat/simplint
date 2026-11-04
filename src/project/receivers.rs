@@ -5,6 +5,9 @@ use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Pattern, Stmt};
 
+use super::facts::qualified;
+use crate::rules::last_segment;
+
 // The attributes code sets or deletes on objects, keyed by the class of the object when parsing tells it: the receiver
 // is `self` in a method, or a name bound by a call to a class or annotated with one. A class goes by its qualified
 // name, such as `pkg.models.Result`, as two modules can each define a class with the same name. A mock accepts any attribute and
@@ -186,11 +189,8 @@ impl<'a> Collector<'a, '_> {
 
     // A class name as written here, qualified through the imports that bind its head, or else by this module.
     fn qualified(&self, written: &str) -> String {
-        let mut segments = written.split('.');
-        match segments.next().and_then(|head| self.aliases.get(head)) {
-            Some(module) => std::iter::once(module.as_str()).chain(segments).collect::<Vec<_>>().join("."),
-            None => format!("{}.{written}", self.module),
-        }
+        let segments: Vec<&str> = written.split('.').collect();
+        qualified(&segments, self.aliases).unwrap_or_else(|| format!("{}.{written}", self.module))
     }
 
     // Anything reached from a mock, such as `client.return_value.session`, is a mock too.
@@ -281,11 +281,8 @@ impl<'a> Collector<'a, '_> {
             Expr::Attribute(ast::ExprAttribute { value, attr, .. }) if attr.as_str() == "object" => value.as_ref(),
             other => other,
         };
-        let module = UnqualifiedName::from_expr(target).and_then(|name| {
-            let (first, rest) = name.segments().split_first()?;
-            let head = self.aliases.get(first).map_or(*first, String::as_str);
-            Some(std::iter::once(head).chain(rest.iter().copied()).collect::<Vec<_>>().join("."))
-        });
+        let module = UnqualifiedName::from_expr(target)
+            .map(|name| qualified(name.segments(), self.aliases).unwrap_or_else(|| name.segments().join(".")));
         match module.as_deref() {
             Some("unittest.mock.patch" | "mock.patch") => Receiver::Mock,
             _ => assigned(value),
@@ -302,15 +299,20 @@ struct Bindings<'a, 'c, 'm> {
 
 impl<'a> Bindings<'a, '_, '_> {
     fn bind(&mut self, name: &'a str, receiver: Receiver) {
-        self.bound
-            .entry(name)
-            .and_modify(|known| {
-                if *known != receiver {
-                    *known = Receiver::Unknown;
-                }
-            })
-            .or_insert(receiver);
+        bind(&mut self.bound, name, receiver);
     }
+}
+
+// A name bound to two different receivers holds something unknown.
+fn bind<'a>(bound: &mut HashMap<&'a str, Receiver>, name: &'a str, receiver: Receiver) {
+    bound
+        .entry(name)
+        .and_modify(|known| {
+            if *known != receiver {
+                *known = Receiver::Unknown;
+            }
+        })
+        .or_insert(receiver);
 }
 
 impl<'a> Visitor<'a> for Bindings<'a, '_, '_> {
@@ -434,14 +436,7 @@ impl<'a> Members<'a> {
         if let Expr::Attribute(ast::ExprAttribute { value, attr, .. }) = target
             && value.as_name_expr().is_some_and(|name| name.id.as_str() == "self")
         {
-            self.members
-                .entry(attr.as_str())
-                .and_modify(|known| {
-                    if *known != receiver {
-                        *known = Receiver::Unknown;
-                    }
-                })
-                .or_insert(receiver);
+            bind(&mut self.members, attr.as_str(), receiver);
         } else {
             self.visit_expr(target);
         }
@@ -504,10 +499,6 @@ fn instance(name: &str) -> Receiver {
     let is_class = name.starts_with(|first: char| first.is_ascii_uppercase())
         && name.chars().any(|character| character.is_ascii_lowercase());
     if is_class { Receiver::Instance(name.to_owned()) } else { Receiver::Unknown }
-}
-
-fn last_segment(expr: &Expr) -> Option<&str> {
-    UnqualifiedName::from_expr(expr)?.segments().last().copied()
 }
 
 fn class_mentions(class: &ast::StmtClassDef, name: &str) -> bool {

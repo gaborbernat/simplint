@@ -1,10 +1,8 @@
-use std::borrow::Cow;
 use std::cell::OnceCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use ruff_cache::{CacheKey, CacheKeyHasher};
-use ruff_python_ast::helpers::resolve_imported_module_path;
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::token::{TokenKind, Tokens};
 use ruff_python_ast::visitor::{self, Visitor};
@@ -13,6 +11,7 @@ use ruff_python_trivia::CommentRanges;
 use ruff_source_file::LineRanges;
 use ruff_text_size::Ranged;
 
+use super::facts::{FromImport, qualified};
 use crate::lint::noqa;
 use crate::lint::registry::Rule;
 
@@ -53,10 +52,11 @@ impl Constructors {
         tokens: &Tokens,
         body: &[Stmt],
         aliases: &HashMap<&str, String>,
-        module_path: Option<&[String]>,
+        from_imports: &[FromImport],
     ) -> Self {
+        let qualify = |expr: &Expr| qualified(UnqualifiedName::from_expr(expr)?.segments(), aliases);
         let mut uses = Uses::new(|expr: &Expr| {
-            let full = qualified(expr, aliases)?;
+            let full = qualify(expr)?;
             let (module, member) = full.rsplit_once('.')?;
             Some((module.to_owned(), member.to_owned(), UnqualifiedName::from_expr(expr)?.segments().join(".")))
         });
@@ -99,23 +99,14 @@ impl Constructors {
             };
             grouped.entry(module).or_default().insert(NameUse { name, written, kind });
         }
-        let mut imports = Vec::new();
-        crate::rules::for_each_body(body, &mut |statements, _| {
-            imports.extend(statements.iter().filter_map(Stmt::as_import_from_stmt));
-        });
-        for import in imports {
-            let module = import.module.as_ref().map(ast::Identifier::as_str);
-            let Some(module) = resolve_imported_module_path(import.level, module, module_path).map(Cow::into_owned)
-            else {
-                continue;
-            };
-            for alias in &import.names {
+        for FromImport { module, names, .. } in from_imports {
+            for alias in *names {
                 let written = alias.asname.as_ref().unwrap_or(&alias.name).to_string();
                 let name = alias.name.to_string();
                 grouped.entry(module.clone()).or_default().insert(NameUse { name, written, kind: UseKind::Imported });
             }
         }
-        let is_dataclass = |expr: &Expr| qualified(expr, aliases).is_some_and(|name| name == "dataclasses.dataclass");
+        let is_dataclass = |expr: &Expr| qualify(expr).is_some_and(|name| name == "dataclasses.dataclass");
         let mut known: Vec<(&str, Option<Vec<String>>)> = Vec::new();
         let mut dataclasses: Vec<(String, Option<Vec<String>>)> = Vec::new();
         for class in body.iter().filter_map(Stmt::as_class_def_stmt) {
@@ -148,15 +139,6 @@ fn is_suppressed(source: &str, comments: &CommentRanges, call: &ast::ExprCall) -
 
 fn comment_ranges(tokens: &Tokens) -> CommentRanges {
     CommentRanges::new(tokens.iter().filter(|token| token.kind() == TokenKind::Comment).map(Ranged::range).collect())
-}
-
-// The dotted name `expr` stands for through the imports that bind its head, such as `pkg.models.Partition` for
-// `models.Partition` after `from pkg import models`.
-fn qualified(expr: &Expr, aliases: &HashMap<&str, String>) -> Option<String> {
-    let name = UnqualifiedName::from_expr(expr)?;
-    let (first, rest) = name.segments().split_first()?;
-    let module = aliases.get(first)?;
-    Some(std::iter::once(module.as_str()).chain(rest.iter().copied()).collect::<Vec<_>>().join("."))
 }
 
 // Over the run: how other files use each file's dataclasses, and for each file the fields of the dataclasses it calls
