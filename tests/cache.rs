@@ -112,7 +112,7 @@ fn cache_directory_that_cannot_be_created_fails_the_run() {
     let root = project(&[("module.py", "VALUE = 1\n"), ("blocked", "")]);
     let (code, _, stderr) = check(root.path(), &["--select", "SMP010", "--cache-dir", "blocked"]);
     assert_eq!(
-        (code, stderr.contains("Failed to initialize cache"), stderr.contains("Failed to create temporary file")),
+        (code, stderr.contains("Failed to initialize cache"), stderr.contains("Failed to create cache directory")),
         (2, true, true)
     );
 }
@@ -304,4 +304,18 @@ fn caches_of_other_builds_expire_after_thirty_days() {
     check(root.path(), &["--select", "SMP010"]);
     let simplint = root.path().join(".ruff_cache/simplint");
     assert_eq!((simplint.join("0.0.1-stale").exists(), simplint.join("0.0.2-recent").exists()), (false, true));
+}
+
+// Another build's run creates its directory before it writes a cache there, so an empty directory goes by its own age.
+#[test]
+fn empty_caches_of_other_builds_expire_by_their_own_age() {
+    let root = project(&[("module.py", "VALUE = 1\n")]);
+    let simplint = root.path().join(".ruff_cache/simplint");
+    let (stale, fresh) = (simplint.join("0.0.1-stale"), simplint.join("0.0.2-fresh"));
+    fs::create_dir_all(&stale).expect("create");
+    fs::create_dir_all(&fresh).expect("create");
+    let old = filetime::FileTime::from_system_time(std::time::SystemTime::now() - Duration::from_hours(24 * 31));
+    filetime::set_file_mtime(&stale, old).expect("set modified time");
+    check(root.path(), &["--select", "SMP010"]);
+    assert_eq!((stale.exists(), fresh.exists()), (false, true));
 }
