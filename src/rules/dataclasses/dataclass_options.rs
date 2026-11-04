@@ -1,3 +1,4 @@
+use std::cell::OnceCell;
 use std::collections::HashSet;
 
 use ruff_diagnostics::Applicability;
@@ -11,14 +12,17 @@ use crate::rules::dataclasses::{Offer, require_options};
 use crate::rules::last_segment;
 
 pub fn dataclass_options(checker: &Checker) {
-    require_options(checker, Rule::DataclassOptions, &["frozen", "slots"], |checker, decorated| {
+    let expected_to_raise = OnceCell::new();
+    require_options(checker, Rule::DataclassOptions, &["frozen", "slots"], |decorated| {
         let class = decorated.class;
         let name = class.name.as_str();
         let qualified = format!("{}.{name}", module_name(checker.module_path(), checker.path));
         let project = checker.project();
         // A class without fields, such as a fixture standing for a dataclass with the default options, has no state the
         // options would protect, and code may rely on those defaults; a test expecting the class to fail keeps it as is.
-        if !class.body.iter().any(Stmt::is_ann_assign_stmt) || is_expected_to_raise(checker.body(), name) {
+        if !class.body.iter().any(Stmt::is_ann_assign_stmt)
+            || expected_to_raise.get_or_init(|| expected_to_raise_classes(checker.body())).contains(name)
+        {
             return None;
         }
         let (class_variables, fields): (Vec<_>, Vec<_>) = class
@@ -68,22 +72,21 @@ pub fn dataclass_options(checker: &Checker) {
     });
 }
 
-// Whether code in the module creates an instance inside `pytest.raises(...)` or `self.assertRaises(...)`: the test
-// expects the instance to fail somewhere, as an unhashable dict key, and either option can change that.
-fn is_expected_to_raise(body: &[Stmt], class: &str) -> bool {
-    let mut blocks = Raises { class, depth: 0, found: false };
+// The names the module calls inside `pytest.raises(...)` or `self.assertRaises(...)`: a test creating an instance there
+// expects it to fail somewhere, as an unhashable dict key, and either option can change that.
+fn expected_to_raise_classes(body: &[Stmt]) -> HashSet<&str> {
+    let mut blocks = Raises { depth: 0, called: HashSet::new() };
     blocks.visit_body(body);
-    blocks.found
+    blocks.called
 }
 
-struct Raises<'c> {
-    class: &'c str,
+struct Raises<'a> {
     // How many `with` blocks expecting an exception the walk is in.
     depth: usize,
-    found: bool,
+    called: HashSet<&'a str>,
 }
 
-impl<'a> Visitor<'a> for Raises<'_> {
+impl<'a> Visitor<'a> for Raises<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         let Stmt::With(with) = stmt else {
             return visitor::walk_stmt(self, stmt);
@@ -99,10 +102,11 @@ impl<'a> Visitor<'a> for Raises<'_> {
     }
 
     fn visit_expr(&mut self, expr: &'a Expr) {
-        self.found |= self.depth > 0
-            && expr
-                .as_call_expr()
-                .is_some_and(|call| call.func.as_name_expr().is_some_and(|func| func.id.as_str() == self.class));
+        if self.depth > 0
+            && let Some(func) = expr.as_call_expr().and_then(|call| call.func.as_name_expr())
+        {
+            self.called.insert(func.id.as_str());
+        }
         visitor::walk_expr(self, expr);
     }
 }
