@@ -1,5 +1,4 @@
 use ruff_diagnostics::{Edit, Fix};
-use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt, UnaryOp};
 use ruff_text_size::{Ranged, TextLen, TextRange};
@@ -16,7 +15,7 @@ pub fn walrus_candidate(checker: &Checker) {
     if checker.settings.from_ruff.target_version < PythonVersion::PY38 || has_version_gate(checker.body()) {
         return;
     }
-    check_body(checker, checker.body(), Scope::Module);
+    check_body(checker, checker.body(), Scope::Module, 0);
 }
 
 // The innermost `def` or `class` around a body.
@@ -28,12 +27,13 @@ enum Scope<'a> {
     Class,
 }
 
-fn check_body<'a>(checker: &Checker<'a>, body: &'a [Stmt], scope: Scope<'a>) {
+// `depth` counts the indented blocks around `body`.
+fn check_body<'a>(checker: &Checker<'a>, body: &'a [Stmt], scope: Scope<'a>, depth: usize) {
     for pair in body.windows(2) {
         if let [Stmt::Assign(assign), if_stmt @ Stmt::If(ast::StmtIf { test, .. })] = pair
             && let Some(candidate) = candidate(checker, scope, assign, if_stmt, test)
         {
-            report(checker, &candidate);
+            report(checker, &candidate, depth);
         }
     }
     for stmt in body {
@@ -42,11 +42,13 @@ fn check_body<'a>(checker: &Checker<'a>, body: &'a [Stmt], scope: Scope<'a>) {
             Stmt::ClassDef(_) => Scope::Class,
             _ => scope,
         };
-        for_each_child_body(stmt, &mut |child| check_body(checker, child, inner));
+        // A `case` body sits a block inside the `match` block.
+        let blocks = if stmt.is_match_stmt() { 2 } else { 1 };
+        for_each_child_body(stmt, &mut |child| check_body(checker, child, inner, depth + blocks));
     }
 }
 
-fn report(checker: &Checker, candidate: &Candidate) {
+fn report(checker: &Checker, candidate: &Candidate, depth: usize) {
     let &Candidate { assign, deleted, name, target, bare, single_use, .. } = candidate;
     let value_range = checker.parenthesized_range(&assign.value, assign.into());
     let value = checker.text(value_range);
@@ -59,7 +61,7 @@ fn report(checker: &Checker, candidate: &Candidate) {
         (false, false) => format!("({name} := {value})"),
     };
     let wrapping = replacement.chars().count() - value.chars().count();
-    if !header_fits(checker, candidate, value_range, wrapping) {
+    if !header_fits(checker, candidate, value_range, wrapping, depth) {
         return;
     }
     let (message, title) = if single_use {
@@ -84,24 +86,26 @@ fn report(checker: &Checker, candidate: &Candidate) {
 // assignment and the `if` the fix joins. The width is judged on `if <test>:` joined on one line at its block's
 // indentation, without parentheses around the test, which the formatter drops from a header that fits, so the answer
 // does not depend on how the code is laid out now.
-fn header_fits(checker: &Checker, candidate: &Candidate, value_range: TextRange, wrapping: usize) -> bool {
+fn header_fits(
+    checker: &Checker,
+    candidate: &Candidate,
+    value_range: TextRange,
+    wrapping: usize,
+    depth: usize,
+) -> bool {
     let (source, tokens) = (checker.source, checker.parsed.tokens());
     let (Some(test), Some(value)) =
         (joined_width(source, tokens, candidate.test.range()), joined_width(source, tokens, value_range))
     else {
         return false;
     };
-    let if_start = candidate.if_stmt.start();
-    let before = &tokens[..tokens.partition_point(|token| token.end() <= if_start)];
-    let count = |kind: TokenKind| before.iter().filter(|token| token.kind() == kind).count();
-    let indent = checker.settings.from_ruff.indent_width * (count(TokenKind::Indent) - count(TokenKind::Dedent));
+    let indent = checker.settings.from_ruff.indent_width * depth;
     let header = "if ".len() + test - candidate.name.chars().count() + value + wrapping + ":".len();
     indent + header <= checker.settings.from_ruff.line_width
 }
 
 struct Candidate<'a> {
     assign: &'a ast::StmtAssign,
-    if_stmt: &'a Stmt,
     test: &'a Expr,
     deleted: TextRange,
     name: &'a str,
@@ -164,7 +168,6 @@ fn candidate<'a>(
     }
     Some(Candidate {
         assign,
-        if_stmt,
         test,
         deleted,
         name,
