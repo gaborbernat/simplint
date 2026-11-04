@@ -4,7 +4,8 @@ use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::exports::{Exports, all_binding, is_all_target};
+use crate::rules::exports::{Exports, all_binding, all_mutation};
+use crate::semantic::future_import;
 
 pub fn init_module_content(checker: &Checker) {
     if !checker.is_init_module() {
@@ -29,8 +30,8 @@ pub fn init_module_content(checker: &Checker) {
 // that lists them, and `from __future__` imports, which change no behavior at run time.
 fn is_reexport(stmt: &Stmt, exports: &Exports) -> bool {
     match stmt {
-        Stmt::ImportFrom(ast::StmtImportFrom { module, names, .. }) => {
-            module.as_ref().is_some_and(|module| module.as_str() == "__future__")
+        Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
+            future_import(stmt).is_some()
                 || names.iter().all(|alias| {
                     let bound = alias.asname.as_ref().unwrap_or(&alias.name).as_str();
                     alias.name.as_str() == "*"
@@ -38,9 +39,6 @@ fn is_reexport(stmt: &Stmt, exports: &Exports) -> bool {
                         || matches!(exports, Exports::Listed(names) if names.contains(&bound))
                 })
         }
-        Stmt::Expr(ast::StmtExpr { value, .. }) => value
-            .as_call_expr()
-            .is_some_and(|call| call.func.as_attribute_expr().is_some_and(|attribute| is_all_target(&attribute.value))),
-        _ => all_binding(stmt).is_some(),
+        _ => all_binding(stmt).is_some() || all_mutation(stmt).is_some(),
     }
 }

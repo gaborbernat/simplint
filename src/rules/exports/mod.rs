@@ -43,27 +43,17 @@ pub fn dunder_all(body: &[Stmt]) -> Exports<'_> {
     for stmt in body {
         let (resets, elements): (bool, Option<Vec<&Expr>>) = if let Some(binding) = all_binding(stmt) {
             (binding.operator.is_none(), all_literal(stmt).map(|(_, elts)| elts.iter().collect()))
+        } else if let Some((method, arguments)) = all_mutation(stmt) {
+            let elements = match (method, &*arguments.args) {
+                ("append", [element]) => Some(vec![element]),
+                ("extend", [Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. })]) => {
+                    Some(elts.iter().collect())
+                }
+                _ => None,
+            };
+            (false, elements)
         } else {
-            match stmt {
-                Stmt::Expr(ast::StmtExpr { value, .. }) => match value.as_ref() {
-                    Expr::Call(ast::ExprCall { func, arguments, .. })
-                        if func.as_attribute_expr().is_some_and(|attribute| is_all_target(&attribute.value)) =>
-                    {
-                        let method = func.as_attribute_expr().map(|attribute| attribute.attr.as_str());
-                        let elements = match (method, &*arguments.args) {
-                            (Some("append"), [element]) => Some(vec![element]),
-                            (
-                                Some("extend"),
-                                [Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. })],
-                            ) => Some(elts.iter().collect()),
-                            _ => None,
-                        };
-                        (false, elements)
-                    }
-                    _ => continue,
-                },
-                _ => continue,
-            }
+            continue;
         };
         let names: Option<Vec<&str>> = elements.and_then(|elements| {
             elements.iter().map(|element| Some(element.as_string_literal_expr()?.value.to_str())).collect()
@@ -99,6 +89,13 @@ pub fn all_binding(stmt: &Stmt) -> Option<AllBinding<'_>> {
         }
         _ => None,
     }
+}
+
+// A method call on `__all__` as a statement, such as `__all__.append("name")`: the method and its arguments.
+pub fn all_mutation(stmt: &Stmt) -> Option<(&str, &ast::Arguments)> {
+    let call = stmt.as_expr_stmt()?.value.as_call_expr()?;
+    let attribute = call.func.as_attribute_expr().filter(|attribute| is_all_target(&attribute.value))?;
+    Some((attribute.attr.as_str(), &call.arguments))
 }
 
 pub fn all_literal(stmt: &Stmt) -> Option<(TextRange, &[Expr])> {

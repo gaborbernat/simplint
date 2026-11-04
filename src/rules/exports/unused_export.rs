@@ -4,7 +4,7 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::exports::{Exports, all_binding, all_literal, is_all_target};
+use crate::rules::exports::{Exports, all_binding, all_literal, all_mutation};
 use crate::rules::module_statements;
 use crate::settings::ProjectKind;
 
@@ -64,12 +64,7 @@ pub fn unused_export(checker: &Checker) {
 }
 
 fn builds_all(stmt: &Stmt) -> bool {
-    all_binding(stmt).is_some()
-        || stmt.as_expr_stmt().is_some_and(|expr| {
-            expr.value.as_call_expr().is_some_and(|call| {
-                call.func.as_attribute_expr().is_some_and(|attribute| is_all_target(&attribute.value))
-            })
-        })
+    all_binding(stmt).is_some() || all_mutation(stmt).is_some()
 }
 
 // Each run of unused names goes with the separator after it, or, at the end of the list, with the separator before it,
