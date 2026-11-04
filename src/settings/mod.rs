@@ -1,11 +1,9 @@
 mod api;
-pub mod conflicts;
 mod file;
 mod metadata;
 mod options;
 
 use std::collections::{BTreeMap, HashMap};
-use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -123,6 +121,16 @@ impl Settings {
                 .any(|part| matches!(part.as_os_str().to_str(), Some("tests" | "test")))
     }
 
+    // The rule tables `--show-settings` lists: enabled, fixable, forced safe and forced unsafe.
+    pub fn rule_sets(&self) -> [RuleSet; 4] {
+        [self.rules, self.fixable, self.fix_safety.forced_safe, self.fix_safety.forced_unsafe]
+    }
+
+    // Each per-file ignore's pattern, anchored at the configuration that set it, and the rules it turns off.
+    pub fn per_file_ignores(&self) -> impl Iterator<Item = (&str, RuleSet)> {
+        self.per_file_ignores.iter().map(|ignore| (ignore.pattern.as_str(), ignore.rules))
+    }
+
     // Where a file sits in its library's public API; `module_path` is the module Python imports it as.
     pub fn role(&self, path: &Path, module_path: Option<&[String]>) -> ModuleRole {
         self.api.role(module_path, self.is_test_module(path))
@@ -143,75 +151,6 @@ impl CacheKey for Settings {
         self.api.cache_key(state);
         self.docstring_style.map(|style| style.to_string()).cache_key(state);
     }
-}
-
-// What `--show-settings` prints for a file: its settings and the directory simplint caches in.
-pub struct ShownSettings<'a> {
-    pub settings: FileSettings<'a>,
-    pub cache_dir: &'a Path,
-}
-
-// `ruff check --show-settings`'s layout, with simplint's settings and the Python version Ruff gives the file.
-impl Display for ShownSettings<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let rules = |set: RuleSet| set.iter().map(|rule| format!("{} ({})", rule.name(), rule.code())).collect_vec();
-        let quoted = |items: &mut dyn Iterator<Item = &String>| items.map(|item| format!("{item:?}")).collect_vec();
-        let Settings {
-            root,
-            metadata,
-            run,
-            keep_names,
-            api,
-            docstring_style,
-            rules: enabled,
-            fixable,
-            fix_safety,
-            per_file_ignores,
-            ..
-        } = self.settings.project;
-        writeln!(f, "\n# General Settings")?;
-        writeln!(f, "cache_dir = \"{}\"", self.cache_dir.display())?;
-        writeln!(f, "fix = {}", run.fix.unwrap_or_default())?;
-        writeln!(f, "fix_only = {}", run.fix_only.unwrap_or_default())?;
-        writeln!(f, "output_format = {}", run.output_format.unwrap_or_default())?;
-        writeln!(f, "show_fixes = {}", run.show_fixes.unwrap_or_default())?;
-        writeln!(f, "unsafe_fixes = {}", run.unsafe_fixes())?;
-        writeln!(f, "\n# Linter Settings")?;
-        writeln!(f, "linter.project_root = \"{}\"", root.display())?;
-        writeln!(f, "linter.target_version = {}", self.settings.from_ruff.target_version)?;
-        write_list(f, "linter.rules.enabled", &rules(*enabled))?;
-        write_list(f, "linter.rules.should_fix", &rules(*fixable))?;
-        let per_file_ignores =
-            per_file_ignores.iter().map(|ignore| format!("{:?} = {:?}", ignore.pattern, rules(ignore.rules)));
-        write_list(f, "linter.per_file_ignores", &per_file_ignores.collect_vec())?;
-        write_list(f, "linter.safety_table.forced_safe", &rules(fix_safety.forced_safe))?;
-        write_list(f, "linter.safety_table.forced_unsafe", &rules(fix_safety.forced_unsafe))?;
-        write_list(f, "linter.dependencies", &quoted(&mut metadata.dependencies.iter()))?;
-        write_list(f, "linter.entry_points", &quoted(&mut metadata.entry_points.iter()))?;
-        write_list(f, "linter.naming.keep_names", &quoted(&mut keep_names.iter()))?;
-        writeln!(f, "linter.project_kind = {}", api.kind)?;
-        match &api.packages {
-            Some(packages) => write_list(f, "linter.api_packages", &quoted(&mut packages.iter()))?,
-            None => writeln!(f, "linter.api_packages = every module outside docs and tests")?,
-        }
-        let modules = api.modules.iter().map(|module| format!("{:?}", module.join("."))).collect_vec();
-        write_list(f, "linter.api_modules", &modules)?;
-        match docstring_style {
-            Some(style) => writeln!(f, "linter.docstring_style = {style}"),
-            None => writeln!(f, "linter.docstring_style = none"),
-        }
-    }
-}
-
-fn write_list(f: &mut Formatter<'_>, name: &str, items: &[String]) -> std::fmt::Result {
-    if items.is_empty() {
-        return writeln!(f, "{name} = []");
-    }
-    writeln!(f, "{name} = [")?;
-    for item in items {
-        writeln!(f, "\t{item},")?;
-    }
-    writeln!(f, "]")
 }
 
 // Ruff's `as_rule_table`: each layer applies its selectors from the least to the most specific, an ignore beating a

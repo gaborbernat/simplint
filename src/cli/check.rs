@@ -19,19 +19,21 @@ use ruff_linter::package::PackageRoot;
 use ruff_linter::packaging::detect_package_root;
 use ruff_linter::settings::flags;
 use ruff_linter::{SuppressionKind, warn_user, warn_user_once};
+use ruff_python_ast::PythonVersion;
 use ruff_python_ast::helpers::to_module_path;
 use ruff_workspace::resolver::{PyprojectConfig, Resolver, match_exclusion, project_files_in_path};
 use rustc_hash::FxHashMap;
 
 use crate::cli::args::{CheckCommand, GlobalConfigArgs, suppression_flag};
+use crate::cli::conflicts::{self, Scope};
 use crate::cli::diagnostics::{Diagnostics, Mode, lint_path, lint_stdin, write_source};
 use crate::cli::printer::{Flags, Printer};
 use crate::cli::watch::watch;
 use crate::lint::Linter;
+use crate::lint::registry::RuleSet;
 use crate::project::cache::{self, Cache, Caches, FileKey, Fingerprints};
 use crate::project::{FileFacts, IndexInputs, Project, SearchRoots};
-use crate::settings::conflicts::{self, Scope};
-use crate::settings::{FileSettings, ModuleRole, Settings, SettingsResolver, ShownSettings};
+use crate::settings::{FileSettings, ModuleRole, Settings, SettingsResolver};
 
 // `ruff check`'s flow: resolve both configurations, decide the fix mode, lint every file in parallel, print, and pick
 // the exit status.
@@ -160,10 +162,64 @@ fn show_settings(files: &[PathBuf], resolved: &Resolved, writer: &mut dyn Write)
     if let Some(settings_path) = &settings.path {
         writeln!(writer, "Settings path: {:?}", settings_path.display().to_string())?;
     }
-    let settings = FileSettings::new(&settings, resolver.resolve(path), path);
+    let target_version = FileSettings::new(&settings, resolver.resolve(path), path).from_ruff.target_version;
     let cache_dir = cache::directory(&resolved.pyproject_config.settings.cache_dir);
-    write!(writer, "{}", ShownSettings { settings, cache_dir: &cache_dir })?;
+    write_settings(writer, &settings, target_version, &cache_dir)?;
     Ok(())
+}
+
+// `ruff check --show-settings`'s layout, with simplint's settings and the Python version Ruff gives the file.
+fn write_settings(
+    writer: &mut dyn Write,
+    settings: &Settings,
+    target_version: PythonVersion,
+    cache_dir: &Path,
+) -> std::io::Result<()> {
+    let rules = |set: RuleSet| set.iter().map(|rule| format!("{} ({})", rule.name(), rule.code())).collect_vec();
+    let quoted = |items: &mut dyn Iterator<Item = &String>| items.map(|item| format!("{item:?}")).collect_vec();
+    let Settings { root, metadata, run, keep_names, api, docstring_style, .. } = settings;
+    let [enabled, fixable, forced_safe, forced_unsafe] = settings.rule_sets();
+    writeln!(writer, "\n# General Settings")?;
+    writeln!(writer, "cache_dir = \"{}\"", cache_dir.display())?;
+    writeln!(writer, "fix = {}", run.fix.unwrap_or_default())?;
+    writeln!(writer, "fix_only = {}", run.fix_only.unwrap_or_default())?;
+    writeln!(writer, "output_format = {}", run.output_format.unwrap_or_default())?;
+    writeln!(writer, "show_fixes = {}", run.show_fixes.unwrap_or_default())?;
+    writeln!(writer, "unsafe_fixes = {}", run.unsafe_fixes())?;
+    writeln!(writer, "\n# Linter Settings")?;
+    writeln!(writer, "linter.project_root = \"{}\"", root.display())?;
+    writeln!(writer, "linter.target_version = {target_version}")?;
+    write_list(writer, "linter.rules.enabled", &rules(enabled))?;
+    write_list(writer, "linter.rules.should_fix", &rules(fixable))?;
+    let per_file_ignores = settings.per_file_ignores().map(|(pattern, set)| format!("{pattern:?} = {:?}", rules(set)));
+    write_list(writer, "linter.per_file_ignores", &per_file_ignores.collect_vec())?;
+    write_list(writer, "linter.safety_table.forced_safe", &rules(forced_safe))?;
+    write_list(writer, "linter.safety_table.forced_unsafe", &rules(forced_unsafe))?;
+    write_list(writer, "linter.dependencies", &quoted(&mut metadata.dependencies.iter()))?;
+    write_list(writer, "linter.entry_points", &quoted(&mut metadata.entry_points.iter()))?;
+    write_list(writer, "linter.naming.keep_names", &quoted(&mut keep_names.iter()))?;
+    writeln!(writer, "linter.project_kind = {}", api.kind)?;
+    match &api.packages {
+        Some(packages) => write_list(writer, "linter.api_packages", &quoted(&mut packages.iter()))?,
+        None => writeln!(writer, "linter.api_packages = every module outside docs and tests")?,
+    }
+    let modules = api.modules.iter().map(|module| format!("{:?}", module.join("."))).collect_vec();
+    write_list(writer, "linter.api_modules", &modules)?;
+    match docstring_style {
+        Some(style) => writeln!(writer, "linter.docstring_style = {style}"),
+        None => writeln!(writer, "linter.docstring_style = none"),
+    }
+}
+
+fn write_list(writer: &mut dyn Write, name: &str, items: &[String]) -> std::io::Result<()> {
+    if items.is_empty() {
+        return writeln!(writer, "{name} = []");
+    }
+    writeln!(writer, "{name} = [")?;
+    for item in items {
+        writeln!(writer, "\t{item},")?;
+    }
+    writeln!(writer, "]")
 }
 
 // The files simplint checks, from Ruff's resolver, so the walk, `.gitignore`, the default and configured excludes and
