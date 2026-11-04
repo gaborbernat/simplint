@@ -23,11 +23,7 @@ pub struct Configuration {
     pub(super) extend_per_file_ignores: Vec<PerFileIgnoreSource>,
     pub(super) extend_safe_fixes: Vec<Selector>,
     pub(super) extend_unsafe_fixes: Vec<Selector>,
-    pub(super) keep_names: Option<Vec<String>>,
-    pub(super) project_kind: Option<ProjectKindOption>,
-    pub(super) api_packages: Option<Vec<String>>,
-    pub(super) api_modules: Option<Vec<String>>,
-    pub(super) docstring_style: Option<DocstringStyle>,
+    pub(super) project: ProjectOptions,
     pub(super) run: RunOptions,
 }
 
@@ -137,11 +133,13 @@ impl Configuration {
                 .unwrap_or_default(),
             extend_safe_fixes: tag("extend-safe-fixes", options.extend_safe_fixes.unwrap_or_default()),
             extend_unsafe_fixes: tag("extend-unsafe-fixes", options.extend_unsafe_fixes.unwrap_or_default()),
-            keep_names: options.naming.and_then(|naming| naming.keep_names),
-            project_kind: options.project_kind,
-            api_packages: options.api_packages,
-            api_modules: options.api_modules,
-            docstring_style: options.docstring_style,
+            project: ProjectOptions {
+                keep_names: options.naming.and_then(|naming| naming.keep_names),
+                project_kind: options.project_kind,
+                api_packages: options.api_packages,
+                api_modules: options.api_modules,
+                docstring_style: options.docstring_style,
+            },
             run: RunOptions {
                 fix: options.fix,
                 fix_only: options.fix_only,
@@ -165,11 +163,7 @@ impl Configuration {
                 .collect(),
             extend_safe_fixes: other.extend_safe_fixes.into_iter().chain(self.extend_safe_fixes).collect(),
             extend_unsafe_fixes: other.extend_unsafe_fixes.into_iter().chain(self.extend_unsafe_fixes).collect(),
-            keep_names: self.keep_names.or(other.keep_names),
-            project_kind: self.project_kind.or(other.project_kind),
-            api_packages: self.api_packages.or(other.api_packages),
-            api_modules: self.api_modules.or(other.api_modules),
-            docstring_style: self.docstring_style.or(other.docstring_style),
+            project: self.project.combine(other.project),
             run: self.run.combine(other.run),
         }
     }
@@ -186,6 +180,28 @@ pub struct Overrides {
 impl Overrides {
     pub(super) fn transform(&self, configuration: Configuration) -> Configuration {
         self.flags.clone().combine(self.inline.clone().combine(configuration))
+    }
+}
+
+// The options that describe the project and its API, each taken from the last layer that sets it.
+#[derive(Clone, Default)]
+pub(super) struct ProjectOptions {
+    pub(super) keep_names: Option<Vec<String>>,
+    pub(super) project_kind: Option<ProjectKindOption>,
+    pub(super) api_packages: Option<Vec<String>>,
+    pub(super) api_modules: Option<Vec<String>>,
+    pub(super) docstring_style: Option<DocstringStyle>,
+}
+
+impl ProjectOptions {
+    fn combine(self, other: Self) -> Self {
+        Self {
+            keep_names: self.keep_names.or(other.keep_names),
+            project_kind: self.project_kind.or(other.project_kind),
+            api_packages: self.api_packages.or(other.api_packages),
+            api_modules: self.api_modules.or(other.api_modules),
+            docstring_style: self.docstring_style.or(other.docstring_style),
+        }
     }
 }
 

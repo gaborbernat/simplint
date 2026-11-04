@@ -23,7 +23,7 @@ pub use options::{Configuration, Overrides, RunOptions, SimplintOptions, Source,
 
 use crate::lint::registry::{Rule, RuleSet};
 use crate::settings::metadata::{BuildConfiguration, ProjectMetadata};
-use crate::settings::options::{PerFileIgnoreSource, Selector, SelectorLayer};
+use crate::settings::options::{PerFileIgnoreSource, ProjectOptions, Selector, SelectorLayer};
 
 // simplint's own options and the project metadata its rules read. The Python version, the files to check and what to
 // exclude come from Ruff's configuration instead, resolved the way `ruff check` resolves them.
@@ -67,21 +67,23 @@ impl Settings {
         let fixable = resolve_rules(configuration.rule_selections.iter().map(|selection| &selection.fixable))?;
         let fix_safety =
             FixSafetyTable::from_selectors(&configuration.extend_safe_fixes, &configuration.extend_unsafe_fixes)?;
+        let ProjectOptions { keep_names, project_kind, api_packages, api_modules, docstring_style } =
+            configuration.project;
         let api = ApiScope::resolve(
             root,
-            configuration.project_kind.unwrap_or_default(),
+            project_kind.unwrap_or_default(),
             &build,
             &metadata,
-            (configuration.api_packages.as_deref(), configuration.api_modules.as_deref()),
+            (api_packages.as_deref(), api_modules.as_deref()),
         );
         Ok(Self {
             root: root.to_path_buf(),
             path: pyproject.map(Path::to_path_buf),
             metadata,
             api,
-            docstring_style: configuration.docstring_style,
+            docstring_style,
             run: configuration.run,
-            keep_names: configuration.keep_names.unwrap_or_default(),
+            keep_names: keep_names.unwrap_or_default(),
             rules,
             fixable,
             fix_safety,
