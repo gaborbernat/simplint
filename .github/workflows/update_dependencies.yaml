@@ -16,7 +16,7 @@ permissions: {}
 jobs:
   python:
     name: 📦 Bump Python dependencies
-    uses: tox-dev/github-workflows/.github/workflows/update-python-dependencies.yaml@bceb5c005e19823dc8835f536f53f172ae223927 # 6.5.0
+    uses: tox-dev/github-workflows/.github/workflows/update-python-dependencies.yaml@e406a30296cdc06197691769fd40843ddd8c7eb0 # 6.5.1
     permissions:
       contents: read
     with:
@@ -29,7 +29,7 @@ jobs:
       RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
   release-tools:
     name: 🔀 Upgrade release tools
-    uses: tox-dev/github-workflows/.github/workflows/upgrade-release-tools.yaml@bceb5c005e19823dc8835f536f53f172ae223927 # 6.5.0
+    uses: tox-dev/github-workflows/.github/workflows/upgrade-release-tools.yaml@e406a30296cdc06197691769fd40843ddd8c7eb0 # 6.5.1
     permissions:
       contents: read
     secrets:
