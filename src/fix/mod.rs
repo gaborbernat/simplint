@@ -13,7 +13,7 @@ use ruff_db::diagnostic::Diagnostic;
 use ruff_linter::linter::FixTable;
 use ruff_linter::settings::flags;
 use ruff_linter::settings::types::UnsafeFixes;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::fix::apply::{FixResult, fix_file};
 use crate::fix::ruff::{Checked, RuffFile};
@@ -26,6 +26,9 @@ pub struct FixerResult {
     pub fixed: FixTable,
 }
 
+// A source and the Ruff rules, sorted, whose findings a cleanup of it fixes.
+type CleanupKey = (Arc<str>, Vec<&'static str>);
+
 // One file's fix loop. The withdrawal candidates often reach the same code, so each source is linted once, by simplint
 // and by Ruff, and each cleanup runs once; the Ruff passes of a cleanup are the same runs that count Ruff's findings.
 pub struct Fixer<'l, 'a> {
@@ -33,10 +36,11 @@ pub struct Fixer<'l, 'a> {
     path: &'l Path,
     unsafe_fixes: UnsafeFixes,
     noqa: flags::Noqa,
+    sources: Sources,
     lints: Memo<Vec<Diagnostic>>,
     checks: Memo<Arc<Checked>>,
     failing: Memo<Arc<HashSet<&'static str>>>,
-    cleanups: Mutex<FxHashMap<(String, Vec<&'static str>), String>>,
+    cleanups: Mutex<FxHashMap<CleanupKey, Arc<str>>>,
 }
 
 impl<'l, 'a> Fixer<'l, 'a> {
@@ -46,6 +50,7 @@ impl<'l, 'a> Fixer<'l, 'a> {
             path,
             unsafe_fixes,
             noqa,
+            sources: Sources::default(),
             lints: Memo::default(),
             checks: Memo::default(),
             failing: Memo::default(),
@@ -157,7 +162,9 @@ impl<'l, 'a> Fixer<'l, 'a> {
     // never runs Ruff.
     fn clean_up(&self, start: &str, transformed: &str) -> Option<(String, usize)> {
         let baseline = self.check(start);
-        let failing = || self.failing.get_or(start, || Arc::new(self.linter.ruff.fixable_at_limit(self.path, start)));
+        let failing = || {
+            self.failing.get_or(&self.sources, start, || Arc::new(self.linter.ruff.fixable_at_limit(self.path, start)))
+        };
         let mut introduced = self.check(transformed).findings.introduced_since(&baseline.findings, failing);
         if introduced.is_empty() {
             return None;
@@ -179,13 +186,14 @@ impl<'l, 'a> Fixer<'l, 'a> {
     fn cleanup(&self, source: &str, introduced: &HashSet<&'static str>) -> String {
         let mut rules: Vec<&'static str> = introduced.iter().copied().collect();
         rules.sort_unstable();
-        let key = (source.to_owned(), rules);
+        // Ruff checked the source before it asked for a cleanup, so interning it finds the copy already held.
+        let key = (self.sources.intern(source), rules);
         if let Some(known) = self.cleanups.lock().expect("no worker panics while cleaning up").get(&key) {
-            return known.clone();
+            return known.to_string();
         }
         let parser_version = self.linter.settings.from_ruff.parser_version;
         let cleaned = RuffFile::cleanup(self.path, source, introduced, parser_version, |source| self.check(source));
-        self.cleanups.lock().expect("no worker panics while cleaning up").insert(key, cleaned.clone());
+        self.cleanups.lock().expect("no worker panics while cleaning up").insert(key, self.sources.intern(&cleaned));
         cleaned
     }
 
@@ -210,12 +218,13 @@ impl<'l, 'a> Fixer<'l, 'a> {
     }
 
     fn lint(&self, source: &str) -> Vec<Diagnostic> {
-        self.lints.get_or(source, || self.linter.lint(self.path, source, self.noqa))
+        self.lints.get_or(&self.sources, source, || self.linter.lint(self.path, source, self.noqa))
     }
 
     fn check(&self, source: &str) -> Arc<Checked> {
-        self.checks
-            .get_or(source, || Arc::new(self.linter.ruff.check(self.path, source, &self.linter.settings.from_ruff)))
+        self.checks.get_or(&self.sources, source, || {
+            Arc::new(self.linter.ruff.check(self.path, source, &self.linter.settings.from_ruff))
+        })
     }
 }
 
@@ -244,7 +253,7 @@ struct Candidate {
 
 // Results keyed by the source they were computed from. The lock is not held while computing, so parallel candidates
 // do not wait on each other; two that need the same source at once both compute it.
-struct Memo<T>(Mutex<FxHashMap<String, T>>);
+struct Memo<T>(Mutex<FxHashMap<Arc<str>, T>>);
 
 impl<T> Default for Memo<T> {
     fn default() -> Self {
@@ -253,17 +262,33 @@ impl<T> Default for Memo<T> {
 }
 
 impl<T: Clone> Memo<T> {
-    fn get_or(&self, source: &str, compute: impl FnOnce() -> T) -> T {
+    fn get_or(&self, sources: &Sources, source: &str, compute: impl FnOnce() -> T) -> T {
         if let Some(known) = self.entries().get(source) {
             return known.clone();
         }
         let computed = compute();
-        self.entries().insert(source.to_owned(), computed.clone());
+        self.entries().insert(sources.intern(source), computed.clone());
         computed
     }
 
-    fn entries(&self) -> MutexGuard<'_, FxHashMap<String, T>> {
+    fn entries(&self) -> MutexGuard<'_, FxHashMap<Arc<str>, T>> {
         self.0.lock().expect("no worker panics while computing")
+    }
+}
+
+// The sources a fix loop meets, each held once however many memos it keys.
+#[derive(Default)]
+struct Sources(Mutex<FxHashSet<Arc<str>>>);
+
+impl Sources {
+    fn intern(&self, source: &str) -> Arc<str> {
+        let mut sources = self.0.lock().expect("no worker panics while computing");
+        if let Some(known) = sources.get(source) {
+            return Arc::clone(known);
+        }
+        let interned = Arc::<str>::from(source);
+        sources.insert(Arc::clone(&interned));
+        interned
     }
 }
 
