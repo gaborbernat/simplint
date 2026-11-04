@@ -43,3 +43,17 @@ def convert(value: str) -> str: ...
 def convert(value: int | str) -> int | str:
     """Convert a value."""
     return value
+
+
+if sys.version_info >= (3, 12):
+    LIMIT = 10
+    """The most a call takes on new versions."""
+else:
+    LIMIT = 5
+    """The most a call takes on old versions."""
+
+try:
+    TIMEOUT = float(sys.argv[1])
+    """Seconds to wait, as given."""
+except IndexError:
+    TIMEOUT = 1.0

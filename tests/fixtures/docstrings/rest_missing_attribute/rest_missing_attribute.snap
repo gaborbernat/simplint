@@ -8,7 +8,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 6:5 SMP317 Docstring of `Engine` does not document attribute `resets`; add `:ivar resets:` [unsafe fix: Add `:cvar limit:`, `:ivar count:`, `:ivar started:`, `:ivar resets:`]
 34:5 SMP317 Docstring of `Point` does not document attribute `label`; add `:cvar label:` [unsafe fix: Add `:cvar label:`]
 55:5 SMP317 Docstring of `Summary` does not document attribute `total`; add `:cvar total:` [unsafe fix: Add `:cvar total:`]
---- fixed (6 applied, 0 remaining) ---
+88:5 SMP317 Docstring of `Probed` does not document attribute `fallback`; add `:cvar fallback:` [unsafe fix: Add `:cvar fallback:`]
+--- fixed (7 applied, 0 remaining) ---
 from dataclasses import dataclass
 from typing import ClassVar
 
@@ -101,3 +102,17 @@ class Builder:
 
     def collect(self) -> None:
         self.collect.cache_clear()
+
+
+class Probed:
+    """Probe for a backend.
+
+    :cvar fallback:
+    """
+
+    try:
+        backend = __import__("fast")
+        """The accelerated backend."""
+    except ImportError:
+        backend = None
+        fallback = True

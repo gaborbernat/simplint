@@ -59,6 +59,8 @@ struct ApiItem<'a> {
     name: String,
     range: TextRange,
     kind: ApiKind,
+    // The statement after a variable's in its block, where its docstring goes.
+    next: Option<&'a Stmt>,
     // The file that re-exports the item to users, when its own module does not offer it.
     via: Option<&'a Path>,
 }
@@ -99,7 +101,7 @@ impl<'a> PublicApi<'a> {
         let dynamic = matches!(exports, Exports::Dynamic);
         let mut api = Self { items: Vec::new(), maybe_public: Vec::new(), optional: Vec::new() };
         // Definitions in top-level `if` and `try` blocks, as a version switch or an optional accelerator, are the module's too.
-        for stmt in module_statements(body) {
+        for (stmt, next) in module_statements_with_next(body) {
             match stmt {
                 Stmt::FunctionDef(function) => {
                     let name = function.name.as_str();
@@ -109,7 +111,7 @@ impl<'a> PublicApi<'a> {
                         Some(via) => {
                             let range = function.name.range;
                             let kind = ApiKind::Function;
-                            api.items.push(ApiItem { stmt, name: name.to_owned(), range, kind, via });
+                            api.items.push(ApiItem { stmt, name: name.to_owned(), range, kind, next: None, via });
                         }
                         None if dynamic && Visibility::of(name) == Visibility::Public => {
                             api.maybe_public.push(function.range);
@@ -127,7 +129,7 @@ impl<'a> PublicApi<'a> {
                 Stmt::Assign(ast::StmtAssign { targets, .. }) => {
                     for target in targets.iter().filter_map(Expr::as_name_expr) {
                         if let Some(via) = reach(target.id.as_str()) {
-                            api.variable(stmt, target, via);
+                            api.variable(stmt, next, target, via);
                         }
                     }
                 }
@@ -135,7 +137,7 @@ impl<'a> PublicApi<'a> {
                     if let Some(target) = target.as_name_expr()
                         && let Some(via) = reach(target.id.as_str())
                     {
-                        api.variable(stmt, target, via);
+                        api.variable(stmt, next, target, via);
                     }
                 }
                 _ => {}
@@ -144,14 +146,15 @@ impl<'a> PublicApi<'a> {
         api
     }
 
-    fn variable(&mut self, stmt: &'a Stmt, target: &'a ast::ExprName, via: Option<&'a Path>) {
+    fn variable(&mut self, stmt: &'a Stmt, next: Option<&'a Stmt>, target: &'a ast::ExprName, via: Option<&'a Path>) {
         let name = target.id.to_string();
-        self.items.push(ApiItem { stmt, name, range: target.range, kind: ApiKind::Variable, via });
+        self.items.push(ApiItem { stmt, name, range: target.range, kind: ApiKind::Variable, next, via });
     }
 
     // A public class, its public methods and properties, and its public nested classes with theirs.
     fn class(&mut self, stmt: &'a Stmt, class: &'a ast::StmtClassDef, name: &str, via: Option<&'a Path>) {
-        self.items.push(ApiItem { stmt, name: name.to_owned(), range: class.name.range, kind: ApiKind::Class, via });
+        let range = class.name.range;
+        self.items.push(ApiItem { stmt, name: name.to_owned(), range, kind: ApiKind::Class, next: None, via });
         // Members in `if` and `try` blocks of the class body, as a version switch, are the class's too.
         for member in module_statements(&class.body) {
             match member {
@@ -175,6 +178,7 @@ impl<'a> PublicApi<'a> {
                             name: format!("{name}.{method_name}"),
                             range: method.name.range,
                             kind,
+                            next: None,
                             via,
                         });
                     }
@@ -205,9 +209,37 @@ fn decorator_names(decorators: &[ast::Decorator]) -> Vec<&str> {
     decorators.iter().filter_map(|decorator| last_segment(&decorator.expression)).collect()
 }
 
+// The statements `module_statements` yields, each with the one after it in its own block, which may be inside an `if`
+// or `try`.
+fn module_statements_with_next(body: &[Stmt]) -> Vec<(&Stmt, Option<&Stmt>)> {
+    fn collect<'a>(body: &'a [Stmt], found: &mut Vec<(&'a Stmt, Option<&'a Stmt>)>) {
+        for (index, stmt) in body.iter().enumerate() {
+            match stmt {
+                Stmt::If(ast::StmtIf { body, elif_else_clauses, .. }) => {
+                    collect(body, found);
+                    for clause in elif_else_clauses {
+                        collect(&clause.body, found);
+                    }
+                }
+                Stmt::Try(ast::StmtTry { body, handlers, orelse, finalbody, .. }) => {
+                    collect(body, found);
+                    for ast::ExceptHandler::ExceptHandler(handler) in handlers {
+                        collect(&handler.body, found);
+                    }
+                    collect(orelse, found);
+                    collect(finalbody, found);
+                }
+                _ => found.push((stmt, body.get(index + 1))),
+            }
+        }
+    }
+    let mut found = Vec::new();
+    collect(body, &mut found);
+    found
+}
+
 // A variable is documented the two ways Sphinx autodoc reads: a string right after it, or `#:` comments right above.
-pub(crate) fn is_documented_variable(checker: &Checker, body: &[Stmt], stmt: &Stmt) -> bool {
-    let next = body.iter().skip_while(|candidate| candidate.range() != stmt.range()).nth(1);
+fn is_documented_variable(checker: &Checker, stmt: &Stmt, next: Option<&Stmt>) -> bool {
     let docstring_below =
         next.is_some_and(|next| next.as_expr_stmt().is_some_and(|expr| expr.value.is_string_literal_expr()));
     let is_doc_comment = |comment: TextRange| checker.text(comment).starts_with("#:");

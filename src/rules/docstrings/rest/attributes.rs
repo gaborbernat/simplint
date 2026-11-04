@@ -1,7 +1,7 @@
 use ruff_python_ast::{self as ast, Expr, Stmt};
 
 use crate::lint::checker::Checker;
-use crate::rules::docstrings::is_documented_variable;
+use crate::rules::docstrings::{is_documented_variable, module_statements_with_next};
 use crate::rules::{for_each_body, last_segment, module_statements};
 
 // An attribute of a class as autodoc documents it: one its body assigns, or one a method sets on `self`.
@@ -28,8 +28,8 @@ pub(crate) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) ->
         }
         None => found.push(Attribute { name, class_var, on_instance: !class_var, documented }),
     };
-    for stmt in module_statements(&class.body) {
-        let documented = is_documented_variable(checker, &class.body, stmt);
+    for (stmt, next) in module_statements_with_next(&class.body) {
+        let documented = is_documented_variable(checker, stmt, next);
         match stmt {
             Stmt::AnnAssign(ast::StmtAnnAssign { target, annotation, .. }) => {
                 let annotation =
@@ -65,10 +65,11 @@ pub(crate) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) ->
             continue;
         };
         for_each_body(&method.body, &mut |body, _| {
-            for stmt in body {
+            for (index, stmt) in body.iter().enumerate() {
+                let documented = || is_documented_variable(checker, stmt, body.get(index + 1));
                 // A frozen dataclass sets its own attributes with `object.__setattr__(self, "name", value)`.
                 if let Some(name) = set_through_object(stmt, receiver) {
-                    add(name, on_class, is_documented_variable(checker, body, stmt));
+                    add(name, on_class, documented());
                 }
                 let mut targets: Vec<&Expr> = match stmt {
                     Stmt::Assign(ast::StmtAssign { targets, .. }) => targets.iter().collect(),
@@ -92,7 +93,7 @@ pub(crate) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) ->
                         Expr::Attribute(attribute)
                             if attribute.value.as_name_expr().is_some_and(|name| name.id.as_str() == receiver) =>
                         {
-                            add(attribute.attr.as_str(), on_class, is_documented_variable(checker, body, stmt));
+                            add(attribute.attr.as_str(), on_class, documented());
                         }
                         _ => {}
                     }
