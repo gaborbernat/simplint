@@ -16,13 +16,13 @@ use ruff_python_ast::PySourceType;
 use ruff_python_semantic::NameImport;
 
 use crate::lint::registry::Rule;
-use crate::settings::{DocstringStyle, FileSettings, Settings};
+use crate::settings::{DocstringStyle, FileSettings};
 
 // A file the run is about to lint: simplint's settings for it, Ruff's with the configuration file they come from, and
 // the package it sits in, which decides whether Ruff counts its module as public.
 pub struct Scope<'a> {
     pub path: &'a Path,
-    pub project: &'a Settings,
+    pub settings: FileSettings<'a>,
     pub ruff: &'a ruff_workspace::Settings,
     pub ruff_config: Option<&'a Path>,
     pub package: Option<PackageRoot<'a>>,
@@ -38,7 +38,7 @@ pub fn ensure_compatible(scopes: &[Scope], by_name: bool) -> Result<()> {
     let groups = scopes
         .iter()
         .into_group_map_by(|scope| {
-            (std::ptr::from_ref(scope.project) as usize, std::ptr::from_ref(scope.ruff) as usize)
+            (std::ptr::from_ref(scope.settings.project) as usize, std::ptr::from_ref(scope.ruff) as usize)
         })
         .into_values()
         .sorted_by_key(|group| group[0].path)
@@ -56,7 +56,7 @@ pub fn ensure_compatible(scopes: &[Scope], by_name: bool) -> Result<()> {
             };
             let conflict = Conflict {
                 clash: index,
-                simplint_config: scope.project.path.as_deref(),
+                simplint_config: scope.settings.project.path.as_deref(),
                 ruff_config: scope.ruff_config,
                 rules,
             };
@@ -265,8 +265,7 @@ impl Clash {
     // Where the Ruff rules that work against the simplint rule in the file sit in `ruff`; `None` when either side is off
     // there.
     fn reported(&self, scope: &Scope, narrowed: &LinterSettings) -> Option<Vec<usize>> {
-        let settings = FileSettings::new(scope.project, scope.ruff, scope.path);
-        if !settings.rules.contains(self.simplint) || !(self.acts_on)(&settings, scope.path, narrowed) {
+        if !scope.settings.rules.contains(self.simplint) || !(self.acts_on)(&scope.settings, scope.path, narrowed) {
             return None;
         }
         let diagnostics = lint_only(
