@@ -201,14 +201,13 @@ impl Directive {
     // `# ruff: file-ignore[...]` at module scope. Ruff skips a `noqa` whose codes do not parse rather than reading it
     // as blanket, so the codes follow Ruff's `lex_directive`.
     fn parse_file_level(comment: &str, indentation: Option<&str>) -> Option<Self> {
-        if let Some((_, codes)) = parse_bracket(comment, "ruff:", "file-ignore[") {
+        if let Some((_, codes)) = parse_bracket(comment, "ruff", "file-ignore[") {
             return (indentation == Some("") && !codes.is_empty()).then_some(Self { codes });
         }
         indentation?;
         let rest = comment.match_indices('#').find_map(|(index, _)| {
             let rest = comment[index + 1..].trim_start();
-            let rest = rest.strip_prefix("ruff").or_else(|| rest.strip_prefix("flake8"))?;
-            let rest = rest.trim_start().strip_prefix(':')?.trim_start();
+            let rest = after_tool(rest, "ruff").or_else(|| after_tool(rest, "flake8"))?;
             rest.get(..4).filter(|noqa| noqa.eq_ignore_ascii_case("noqa")).map(|_| &rest[4..])
         })?;
         let codes = match rest.trim_start().strip_prefix(':') {
@@ -243,17 +242,22 @@ fn code_list(codes: &str) -> impl Iterator<Item = &str> {
 // A `# simplint: ignore[SMP001, SMP300]` comment, simplint's counterpart of Ruff's `# ruff: ignore[...]`: the codes
 // and the offset of its `#` in the comment.
 fn parse_ignore(comment: &str) -> Option<(TextSize, Vec<String>)> {
-    parse_bracket(comment, "simplint:", "ignore[")
+    parse_bracket(comment, "simplint", "ignore[")
 }
 
 // A `# tool: action[CODES]` comment: the codes and the offset of its `#` in the comment.
 fn parse_bracket(comment: &str, tool: &str, action: &str) -> Option<(TextSize, Vec<String>)> {
     comment.match_indices('#').find_map(|(index, _)| {
-        let rest = comment[index + 1..].trim_start().strip_prefix(tool)?.trim_start();
+        let rest = after_tool(comment[index + 1..].trim_start(), tool)?;
         let (codes, _) = rest.strip_prefix(action)?.split_once(']')?;
         let codes = code_list(codes).map(str::to_owned).collect();
         Some((TextSize::try_from(index).expect("a comment fits a text size"), codes))
     })
+}
+
+// What follows `tool:` at the start of a directive, with any space around the colon, as Ruff reads `# ruff : noqa`.
+pub fn after_tool<'t>(text: &'t str, tool: &str) -> Option<&'t str> {
+    Some(text.strip_prefix(tool)?.trim_start().strip_prefix(':')?.trim_start())
 }
 
 pub fn is_code(part: &str) -> bool {

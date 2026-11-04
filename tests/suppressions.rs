@@ -42,6 +42,7 @@ fn noqa_after_a_multiline_string_suppresses_its_start() {
 #[test_case("def solve():\n    # ruff: noqa\n    x = 1\n    return x\n", 0 ; "ruff_noqa_indented")]
 #[test_case("# ruff: file-ignore[SMP010] paper\nx = 1\n", 0 ; "file_ignore")]
 #[test_case("#ruff:file-ignore[SMP101,SMP010]\nx = 1\n", 0 ; "file_ignore_without_spaces")]
+#[test_case("# ruff :  file-ignore[SMP010]\nx = 1\n", 0 ; "file_ignore_spaced_colon")]
 #[test_case("# ruff: file-ignore[SMP101]\nx = 1\n", 1 ; "file_ignore_other_codes")]
 #[test_case("# ruff: file-ignore[SMP010\nx = 1\n", 1 ; "file_ignore_unclosed")]
 #[test_case("def solve():\n    # ruff: file-ignore[SMP010]\n    x = 1\n    return x\n", 1 ; "file_ignore_indented")]

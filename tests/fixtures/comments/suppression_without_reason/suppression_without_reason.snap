@@ -16,3 +16,7 @@ expression: "lint_fixture(rule, fixture, target_version)"
 20:15 SMP060 Suppression comment gives no reason; add one after the codes
 21:13 SMP060 Suppression comment gives no reason; add one after the codes
 22:21 SMP060 Suppression comment gives no reason; add one after the codes
+24:17 SMP060 Suppression comment gives no reason; add one after the codes
+25:20 SMP060 Suppression comment gives no reason; add one after the codes
+26:19 SMP060 Suppression comment gives no reason; add one after the codes
+27:1 SMP060 `flake8: noqa` names no error code; list the codes it suppresses
