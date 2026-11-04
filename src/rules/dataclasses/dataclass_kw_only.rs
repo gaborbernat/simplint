@@ -9,7 +9,7 @@ use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::project::constructors::{CallKind, Use, Uses, dataclass_arguments, init_fields};
+use crate::project::constructors::{CallKind, Use, Uses, dataclass_decorator, init_fields};
 use crate::rules::ExprCollector;
 use crate::rules::dataclasses::{Offer, require_options};
 use crate::semantic::BindingKind;
@@ -105,12 +105,12 @@ fn makes_own_instances(class: &ast::StmtClassDef) -> bool {
 // The fields the class takes by position, following its bases while they are dataclasses of this module.
 fn positional_fields(checker: &Checker, module: &ModuleClasses, class: &ast::StmtClassDef) -> Option<Vec<String>> {
     let is_dataclass = |expr: &Expr| checker.semantic().resolves_to(expr, &["dataclasses", "dataclass"]);
-    let keywords = dataclass_arguments(class, &is_dataclass)?;
+    let decorator = dataclass_decorator(class, &is_dataclass)?;
     let base_fields = |name: &str| {
         let base = module.classes.get(name)?.iter().find(|base| base.end() <= class.start())?;
         positional_fields(checker, module, base)
     };
-    init_fields(class, keywords, &base_fields)
+    init_fields(class, decorator, &base_fields)
 }
 
 // Each positional argument gets its field's name; a bare generator, the only argument, needs brackets once it has one.

@@ -110,13 +110,13 @@ impl Constructors {
         let mut known: Vec<(&str, Option<Vec<String>>)> = Vec::new();
         let mut dataclasses: Vec<(String, Option<Vec<String>>)> = Vec::new();
         for class in body.iter().filter_map(Stmt::as_class_def_stmt) {
-            let Some(arguments) = dataclass_arguments(class, &is_dataclass) else {
+            let Some(decorator) = dataclass_decorator(class, &is_dataclass) else {
                 continue;
             };
             let base_fields =
                 |name: &str| known.iter().find(|(base, _)| *base == name).and_then(|(_, fields)| fields.clone());
-            let fields = init_fields(class, arguments, &base_fields);
-            if !is_keyword_only(arguments) {
+            let fields = init_fields(class, decorator, &base_fields);
+            if !is_keyword_only(decorator) {
                 dataclasses.push((class.name.to_string(), fields.clone()));
             }
             known.push((class.name.as_str(), fields));
@@ -246,28 +246,23 @@ impl CacheKey for FileCalls<'_> {
     }
 }
 
-// The decorator's arguments when `class` is a dataclass, an empty list for a bare `@dataclass`.
-pub(crate) fn dataclass_arguments<'a>(
+// The `@dataclass` decorator of `class`, bare or called.
+pub(crate) fn dataclass_decorator<'a>(
     class: &'a ast::StmtClassDef,
     is_dataclass: &impl Fn(&Expr) -> bool,
-) -> Option<&'a [ast::Keyword]> {
-    class.decorator_list.iter().find_map(|decorator| match &decorator.expression {
-        Expr::Call(ast::ExprCall { func, arguments, .. }) if is_dataclass(func) => Some(&arguments.keywords[..]),
-        other if is_dataclass(other) => Some(&[][..]),
-        _ => None,
-    })
-}
-
-pub(crate) fn is_keyword_only(keywords: &[ast::Keyword]) -> bool {
-    keyword(keywords, "kw_only")
-        .is_some_and(|value| value.as_boolean_literal_expr().is_some_and(|literal| literal.value))
-}
-
-fn keyword<'a>(keywords: &'a [ast::Keyword], name: &str) -> Option<&'a Expr> {
-    keywords
+) -> Option<&'a Expr> {
+    class
+        .decorator_list
         .iter()
-        .find(|keyword| keyword.arg.as_ref().is_some_and(|arg| arg.as_str() == name))
-        .map(|keyword| &keyword.value)
+        .map(|decorator| &decorator.expression)
+        .find(|expr| is_dataclass(expr.as_call_expr().map_or(expr, |call| &call.func)))
+}
+
+fn is_keyword_only(decorator: &Expr) -> bool {
+    decorator
+        .as_call_expr()
+        .and_then(|call| call.arguments.find_keyword("kw_only"))
+        .is_some_and(|keyword| keyword.value.as_boolean_literal_expr().is_some_and(|literal| literal.value))
 }
 
 // The fields the generated `__init__` takes by position, in order; `None` when simplint cannot tell them, as when the
@@ -275,11 +270,13 @@ fn keyword<'a>(keywords: &'a [ast::Keyword], name: &str) -> Option<&'a Expr> {
 // whose fields `base_fields` gives, comes first, as dataclasses order inherited fields.
 pub(crate) fn init_fields(
     class: &ast::StmtClassDef,
-    keywords: &[ast::Keyword],
+    decorator: &Expr,
     base_fields: &impl Fn(&str) -> Option<Vec<String>>,
 ) -> Option<Vec<String>> {
-    if keyword(keywords, "init")
-        .is_some_and(|init| !init.as_boolean_literal_expr().is_some_and(|literal| literal.value))
+    if decorator
+        .as_call_expr()
+        .and_then(|call| call.arguments.find_keyword("init"))
+        .is_some_and(|init| !init.value.as_boolean_literal_expr().is_some_and(|literal| literal.value))
         || class.body.iter().any(|stmt| {
             stmt.as_function_def_stmt().is_some_and(|function| matches!(function.name.as_str(), "__init__" | "__new__"))
         })
@@ -295,7 +292,7 @@ pub(crate) fn init_fields(
             _ => return None,
         }
     }
-    let keyword_only = is_keyword_only(keywords);
+    let keyword_only = is_keyword_only(decorator);
     let mut rest_keyword_only = false;
     let declared = class.body.iter().filter_map(|stmt| {
         let field = stmt.as_ann_assign_stmt()?;
@@ -323,15 +320,15 @@ pub(crate) fn init_fields(
             Expr::Call(ast::ExprCall { func, arguments, .. })
                 if UnqualifiedName::from_expr(func).is_some_and(|func| func.segments().last() == Some(&"field")) =>
             {
-                Some(&arguments.keywords[..])
+                Some(arguments)
             }
             _ => None,
         });
-        let flag = |option: &str, default: bool| match options.and_then(|keywords| keyword(keywords, option)) {
+        let flag = |option: &str, default: bool| match options.and_then(|arguments| arguments.find_keyword(option)) {
             None => Some(default),
-            Some(value) => value.as_boolean_literal_expr().map(|literal| literal.value),
+            Some(keyword) => keyword.value.as_boolean_literal_expr().map(|literal| literal.value),
         };
-        if options.is_some_and(|keywords| keywords.iter().any(|keyword| keyword.arg.is_none())) {
+        if options.is_some_and(|arguments| arguments.keywords.iter().any(|keyword| keyword.arg.is_none())) {
             return None;
         }
         let in_init = flag("init", true)?;
