@@ -37,9 +37,15 @@ pub struct Kinds<'w, 'a> {
     // The names whose bindings are being checked, with the scope they resolve in and the kind assumed for a binding
     // that reads the name it binds, as `text = text + "!"` does.
     resolving: Vec<(&'a str, TextRange, Option<Kind>)>,
+    // The kinds of names whose bindings read no assumption made before their own, which hold wherever the name is
+    // read; caching only those keeps a chain of names that each read themselves linear.
     resolved: FxHashMap<(&'a str, TextRange), Option<Kind>>,
-    // The attributes whose values are being checked, by class and name: one that reads itself stays unknown.
-    reading: Vec<(TextRange, &'a str)>,
+    // The attributes whose values are being checked, by class and name, with the length of `resolving` then: one that
+    // reads itself stays unknown.
+    reading: Vec<(TextRange, &'a str, usize)>,
+    // The shortest length of `resolving` the kind being found relies on: a self-read assumed at index `i` relies on
+    // `i + 1` entries, an attribute read while it was being checked on as many as `resolving` held when that started.
+    relies_on: usize,
 }
 
 impl<'w, 'a> Kinds<'w, 'a> {
@@ -54,6 +60,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
             resolving: Vec::new(),
             resolved: FxHashMap::default(),
             reading: Vec::new(),
+            relies_on: usize::MAX,
         }
     }
 
@@ -301,33 +308,40 @@ impl<'w, 'a> Kinds<'w, 'a> {
             return None;
         }
         let key = (name, self.scope_key(depth));
-        if let Some((_, _, assumed)) = self.resolving.iter().find(|(other, at, _)| (*other, *at) == key) {
-            return *assumed;
+        if let Some(index) = self.resolving.iter().position(|(other, at, _)| (*other, *at) == key) {
+            self.relies_on = self.relies_on.min(index + 1);
+            return self.resolving[index].2;
         }
+        if let Some(kind) = self.resolved.get(&key) {
+            return *kind;
+        }
+        let floor = self.resolving.len();
+        let outer = std::mem::replace(&mut self.relies_on, usize::MAX);
+        let kind = self.bound(&bindings, key, depth);
+        if self.relies_on > floor {
+            self.resolved.insert(key, kind);
+        }
+        self.relies_on = self.relies_on.min(outer);
+        kind
+    }
+
+    // The kind every binding of a name gives it.
+    fn bound(&mut self, bindings: &Bindings<'a>, key: (&'a str, TextRange), depth: usize) -> Option<Kind> {
         // An annotation holds unless a value the code shows contradicts it, as a loop over numbers would.
         if let Some(declared) = bindings.declared {
             let kinds = self.values(&bindings.values, key, Some(declared), depth);
             return kinds.iter().flatten().all(|kind| *kind == declared).then_some(declared);
         }
-        let top = self.at_spot && self.resolving.is_empty();
-        if top && let Some(kind) = self.resolved.get(&key) {
-            return *kind;
-        }
         // A binding that reads the name it binds has the kind the others give it, so first find that kind with such
         // reads unknown, then check every binding against it.
         let first = self.values(&bindings.values, key, None, depth);
         let guess = shared(first.iter().flatten().copied());
-        let kind = if first.iter().all(Option::is_some) {
-            guess
-        } else {
-            guess.filter(|guess| {
-                self.values(&bindings.values, key, Some(*guess), depth).iter().all(|kind| kind == &Some(*guess))
-            })
-        };
-        if top {
-            self.resolved.insert(key, kind);
+        if first.iter().all(Option::is_some) {
+            return guess;
         }
-        kind
+        guess.filter(|guess| {
+            self.values(&bindings.values, key, Some(*guess), depth).iter().all(|kind| kind == &Some(*guess))
+        })
     }
 
     fn values(
@@ -458,11 +472,14 @@ impl<'w, 'a> Kinds<'w, 'a> {
             || project.is_attribute_written(attr)
             || Visibility::of(attr) == Visibility::Public && project.is_referenced(&class.name)
             || written_outside(self.walker.checker.body(), class, attr)
-            || self.reading.contains(&key)
         {
             return None;
         }
-        self.reading.push(key);
+        if let Some(&(_, _, started)) = self.reading.iter().find(|(range, name, _)| (*range, *name) == key) {
+            self.relies_on = self.relies_on.min(started);
+            return None;
+        }
+        self.reading.push((key.0, key.1, self.resolving.len()));
         let outer_at_spot = std::mem::replace(&mut self.at_spot, false);
         let mut kinds = Vec::new();
         for (value, method) in &members.values {
