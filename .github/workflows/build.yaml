@@ -19,7 +19,7 @@ on:
       - ".github/workflows/build.yaml"
   workflow_call:
   schedule:
-    - cron: "0 8 * * *"
+    - cron: "7 10 * * *"
 concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
