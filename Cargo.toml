@@ -1,6 +1,6 @@
 [package]
 name = "simplint"
-version = "0.2.2"
+version = "0.3.0"
 edition = "2024"
 description = "Ruff companion linter with extra checks that make Python easier to read and review"
 license = "MIT"

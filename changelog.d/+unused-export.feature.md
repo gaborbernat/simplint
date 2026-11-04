@@ -1,2 +1,0 @@
-`unused-export` (SMP117) removes names from `__all__` that no other module of the run imports, keeping the `__all__` of
-a library's top-level package and of the modules `api-modules` names as written.

@@ -1,5 +1,85 @@
 # Changelog
 
+## 0.3.0 (2026-11-04)
+
+<a name="release-0-3-0"></a>
+
+<a name="release-0-3-0-added"></a>
+
+### Added
+
+- The docstring rules share the new `SMP3` group, so `select = ["SMP3"]` picks all of them: `function-docstring` is
+  SMP300 (was SMP002), `test-module-docstring` SMP301 (was SMP004) and `undocumented-public-api` SMP302 (was SMP116);
+  update `select`, `ignore` and `noqa` comments that name the old codes. Docstrings no longer have a length limit:
+  `multiline-module-docstring` (SMP003) is gone, and `long-paragraph` (SMP005) checks comments only
+  ([#27](https://github.com/gaborbernat/simplint/pull/27)) by [@gaborbernat](https://github.com/gaborbernat).
+- `undocumented-public-api` (SMP302) and `function-docstring` (SMP300) now follow a library's public API as the typing
+  spec and PEP 8 define it: modules under a `_`-prefixed path are internal, a public module without `__all__` offers
+  every name without a leading underscore, and a name a public module re-exports through `__all__`,
+  `from m import name as name` or `import *` needs its docstring where it is defined. A name another module imports
+  counts as public only in a public module, where `missing-from-all` (SMP113) lists it in `__all__`, and an application,
+  which nothing installs, has no public API at all. The new `project-kind`, `api-packages` and `api-modules` settings
+  tune this ([#27](https://github.com/gaborbernat/simplint/pull/27)) by [@gaborbernat](https://github.com/gaborbernat).
+- `init-module-content` (SMP109) lets a public package of a library re-export its API from private modules
+  ([#27](https://github.com/gaborbernat/simplint/pull/27)) by [@gaborbernat](https://github.com/gaborbernat).
+- The new reStructuredText rules, SMP310 to SMP323, check reStructuredText field lists in docstrings when
+  `docstring-style = "rest"`: every field is well formed, described with more than its name and separated from the text
+  above by a blank line, documents a parameter or attribute that exists, with `:ivar:` or `:cvar:` as fits, once, and
+  carries no type, which belongs in annotations; roles keep their backticks and inline literals close; a public function
+  or class documents each parameter, attribute, return or yield value and exception it raises itself, and no internal
+  name. Their fixes add each missing field with an empty description for you to fill in, and remove or correct fields
+  for what no longer exists ([#27](https://github.com/gaborbernat/simplint/pull/27)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `unused-export` (SMP117) removes names from `__all__` that no other module of the run imports, keeping the `__all__`
+  of a library's top-level package and of the modules `api-modules` names as written
+  ([#27](https://github.com/gaborbernat/simplint/pull/27)) by [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-3-0-fixed"></a>
+
+### Fixed
+
+- `--fix`, `--add-noqa` and `--add-ignore` write a file by renaming a complete copy over it, so a failed write no longer
+  leaves a cut-short source, and a file edited during the run keeps the edit. A symlink stays a symlink and the file
+  keeps its permissions ([#33](https://github.com/gaborbernat/simplint/pull/33)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- A run no longer deletes the new, still empty cache directory of another simplint version running at the same time, as
+  pre-commit and the command line can, which made that other run fail
+  ([#33](https://github.com/gaborbernat/simplint/pull/33)) by [@gaborbernat](https://github.com/gaborbernat).
+- A development build no longer warns that it cannot read the cache an earlier build of the same version wrote, and the
+  caches of other builds go away once no run has written to them for 30 days
+  ([#27](https://github.com/gaborbernat/simplint/pull/27)) by [@gaborbernat](https://github.com/gaborbernat).
+- A file that linted clean is checked again when a name moves between two of the run's sets, as from a name read off a
+  module to a base class, instead of reusing its stale cached result
+  ([#33](https://github.com/gaborbernat/simplint/pull/33)) by [@gaborbernat](https://github.com/gaborbernat).
+- `dataclass-kw-only` (SMP114) rewrites a positional call that a `noqa` comment for another code sits on, or that holds
+  `noqa` in a string, instead of leaving the dataclass without `kw_only=True`; only a comment that suppresses SMP114
+  keeps the call as it is ([#33](https://github.com/gaborbernat/simplint/pull/33)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `string-concatenation` (SMP112) no longer slows to a crawl on a function where many names each extend themselves in
+  turn, as `text = text + "!"` does; such chains now take time in proportion to their length
+  ([#33](https://github.com/gaborbernat/simplint/pull/33)) by [@gaborbernat](https://github.com/gaborbernat).
+- `suppression-without-reason` (SMP060) reads suppression comments the way they take effect, so it now also flags
+  `# flake8: noqa` and a directive with extra space around its colon, such as `# ruff :  ignore[...]`
+  ([#33](https://github.com/gaborbernat/simplint/pull/33)) by [@gaborbernat](https://github.com/gaborbernat).
+- `test-class` (SMP200) now fixes a class whose methods have docstrings spanning several lines, as it does once
+  `ruff format` has joined them, so one round of fixes settles ([#28](https://github.com/gaborbernat/simplint/pull/28))
+  by [@gaborbernat](https://github.com/gaborbernat).
+- `undocumented-public-api` (SMP302) and the reStructuredText attribute rules now see the docstring under a variable
+  defined in an `if` or `try` block, so they no longer report it as undocumented
+  ([#33](https://github.com/gaborbernat/simplint/pull/33)) by [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-3-0-documentation"></a>
+
+### Documentation
+
+- The changelog page renders again when a release lists no changes
+  ([#18](https://github.com/gaborbernat/simplint/pull/18)) by [@gaborbernat](https://github.com/gaborbernat).
+- The pre-commit setup uses the `simplint-pre-commit` mirror, which installs the released wheel and so runs on
+  pre-commit.ci without a Rust toolchain ([#27](https://github.com/gaborbernat/simplint/pull/27)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- The PyPI page shows a short introduction with links to the documentation instead of the full documentation pages
+  ([#20](https://github.com/gaborbernat/simplint/pull/20)) by [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.2.2 (2026-11-02)
 
 <a name="release-0-2-2"></a>
