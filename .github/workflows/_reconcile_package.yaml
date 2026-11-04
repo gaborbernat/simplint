@@ -31,13 +31,13 @@ jobs:
           path: dist
           merge-multiple: true
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: latest-known
           python-version: '3.15'
           enable-cache: false
       - name: 🔍 Verify PyPI artifacts
-        uses: tox-dev/github-workflows/reconcile-pypi-artifacts@57a765127aae73adf7d0e24a7fe0f067f2d3ea3e # 6.2.1
+        uses: tox-dev/github-workflows/reconcile-pypi-artifacts@534a196a132a52365c464e1227d4c46f30968f29 # 6.4.0
         with:
           project: ${{ inputs.package }}
           version: ${{ inputs.version }}

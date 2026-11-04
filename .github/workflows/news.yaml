@@ -98,14 +98,14 @@ jobs:
           exit 1
       - name: 🐍 Install uv
         if: steps.gate.outputs.skip != 'true'
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: latest-known
           python-version: '3.15'
           enable-cache: false
       - name: 🔒 Check the release lock
         if: steps.gate.outputs.skip != 'true' && steps.release-lock.outputs.changed == 'true'
-        uses: tox-dev/github-workflows/refresh-release-lock@57a765127aae73adf7d0e24a7fe0f067f2d3ea3e # 6.2.1
+        uses: tox-dev/github-workflows/refresh-release-lock@534a196a132a52365c464e1227d4c46f30968f29 # 6.4.0
         with:
           mode: check
       - name: 🔍 Check assembled news
