@@ -2,7 +2,7 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-9:1 SMP102 Module-scope variable `table_name` should be named `_TABLE_NAME` [unsafe fix: Rename `table_name` to `_TABLE_NAME`]
+9:1 SMP102 Module-scope variable `table_name` should be named `TABLE_NAME` [unsafe fix: Rename `table_name` to `TABLE_NAME`]
 --- fixed (1 applied, 0 remaining) ---
 """Add the users table."""
 
@@ -12,12 +12,12 @@ revision = "1a2b3c4d5e6f"
 down_revision = None
 branch_labels = None
 depends_on = None
-_TABLE_NAME = "users"
+TABLE_NAME = "users"
 
 
 def upgrade() -> None:
-    op.create_table(_TABLE_NAME)
+    op.create_table(TABLE_NAME)
 
 
 def downgrade() -> None:
-    op.drop_table(_TABLE_NAME)
+    op.drop_table(TABLE_NAME)

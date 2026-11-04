@@ -2,19 +2,19 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-1:14 SMP010 Single-letter name `o`; only comprehensions may use one
-2:24 SMP010 Single-letter name `p`; only comprehensions may use one
-5:5 SMP010 Single-letter name `f`; only comprehensions may use one
-5:7 SMP010 Single-letter name `a`; only comprehensions may use one
-5:18 SMP010 Single-letter name `b`; only comprehensions may use one
-6:5 SMP010 Single-letter name `x`; only comprehensions may use one
-7:9 SMP010 Single-letter name `i`; only comprehensions may use one
-9:16 SMP010 Single-letter name `w`; only comprehensions may use one
-15:26 SMP010 Single-letter name `e`; only comprehensions may use one
-17:29 SMP010 Single-letter name `h`; only comprehensions may use one
-19:9 SMP010 Single-letter name `n`; only comprehensions may use one
-22:22 SMP010 Single-letter name `c`; only comprehensions may use one
-24:18 SMP010 Single-letter name `z`; only comprehensions may use one
-29:7 SMP010 Single-letter name `C`; only comprehensions may use one
-29:9 SMP010 Single-letter name `T`; only comprehensions may use one
-35:23 SMP010 Single-letter name `r`; only comprehensions may use one
+1:14 SMP101 Single-letter name `o`; only comprehensions may use one
+2:24 SMP101 Single-letter name `p`; only comprehensions may use one
+5:5 SMP101 Single-letter name `f`; only comprehensions may use one
+5:7 SMP101 Single-letter name `a`; only comprehensions may use one
+5:18 SMP101 Single-letter name `b`; only comprehensions may use one
+6:5 SMP101 Single-letter name `x`; only comprehensions may use one
+7:9 SMP101 Single-letter name `i`; only comprehensions may use one
+9:16 SMP101 Single-letter name `w`; only comprehensions may use one
+15:26 SMP101 Single-letter name `e`; only comprehensions may use one
+17:29 SMP101 Single-letter name `h`; only comprehensions may use one
+19:9 SMP101 Single-letter name `n`; only comprehensions may use one
+22:22 SMP101 Single-letter name `c`; only comprehensions may use one
+24:18 SMP101 Single-letter name `z`; only comprehensions may use one
+29:7 SMP101 Single-letter name `C`; only comprehensions may use one
+29:9 SMP101 Single-letter name `T`; only comprehensions may use one
+35:23 SMP101 Single-letter name `r`; only comprehensions may use one

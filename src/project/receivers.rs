@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use rustc_hash::FxHashMap;
 use std::path::Path;
 
 use ruff_python_ast::name::UnqualifiedName;
@@ -6,7 +6,7 @@ use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Pattern, Stmt};
 
 use super::facts::qualified;
-use crate::syntax::{is_classmethod, last_segment, receiver};
+use crate::syntax::{alias_binding, is_classmethod, is_name, last_segment, receiver};
 
 // The attributes code sets or deletes on objects, keyed by the class of the object when parsing tells it: the receiver
 // is `self` in a method, or a name bound by a call to a class or annotated with one. A class goes by its qualified
@@ -29,7 +29,7 @@ pub struct AttributeWrites {
 }
 
 impl AttributeWrites {
-    pub(super) fn collect(body: &[Stmt], aliases: &HashMap<&str, String>, module: &str) -> Self {
+    pub(super) fn collect(body: &[Stmt], aliases: &FxHashMap<&str, String>, module: &str) -> Self {
         let mut collector = Collector { aliases, module, scopes: Vec::new(), writes: Self::default() };
         let bindings = collector.bindings(body, &[]);
         collector.scopes.push(Scope { kind: ScopeKind::Plain, bindings });
@@ -54,17 +54,17 @@ const MOCKS: [&str; 7] =
 
 struct Scope<'a> {
     kind: ScopeKind<'a>,
-    bindings: HashMap<&'a str, Receiver>,
+    bindings: FxHashMap<&'a str, Receiver>,
 }
 
 // A class scope keeps what its methods store on `self`; names a class body binds are not visible to its methods.
 enum ScopeKind<'a> {
     Plain,
-    Class { name: &'a str, members: HashMap<&'a str, Receiver> },
+    Class { name: &'a str, members: FxHashMap<&'a str, Receiver> },
 }
 
 struct Collector<'a, 'm> {
-    aliases: &'m HashMap<&'a str, String>,
+    aliases: &'m FxHashMap<&'a str, String>,
     module: &'m str,
     scopes: Vec<Scope<'a>>,
     writes: AttributeWrites,
@@ -139,7 +139,7 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
             }
             // A lambda's parameters and a comprehension's targets shadow the names around them.
             Expr::Lambda(_) | Expr::ListComp(_) | Expr::SetComp(_) | Expr::DictComp(_) | Expr::Generator(_) => {
-                let mut scan = Bindings { collector: self, bound: HashMap::new() };
+                let mut scan = Bindings { collector: self, bound: FxHashMap::default() };
                 visitor::walk_expr(&mut scan, expr);
                 let parameters = expr.as_lambda_expr().and_then(|lambda| lambda.parameters.as_deref());
                 for parameter in parameters.into_iter().flat_map(|parameters| parameters.iter()) {
@@ -258,8 +258,8 @@ impl<'a> Collector<'a, '_> {
             .collect()
     }
 
-    fn bindings(&self, body: &'a [Stmt], parameters: &[(&'a str, Receiver)]) -> HashMap<&'a str, Receiver> {
-        let mut scan = Bindings { collector: self, bound: HashMap::new() };
+    fn bindings(&self, body: &'a [Stmt], parameters: &[(&'a str, Receiver)]) -> FxHashMap<&'a str, Receiver> {
+        let mut scan = Bindings { collector: self, bound: FxHashMap::default() };
         for (name, receiver) in parameters {
             scan.bind(name, receiver.clone());
         }
@@ -289,7 +289,7 @@ impl<'a> Collector<'a, '_> {
 // holds something unknown. Nested functions and classes are scopes of their own.
 struct Bindings<'a, 'c, 'm> {
     collector: &'c Collector<'a, 'm>,
-    bound: HashMap<&'a str, Receiver>,
+    bound: FxHashMap<&'a str, Receiver>,
 }
 
 impl<'a> Bindings<'a, '_, '_> {
@@ -299,7 +299,7 @@ impl<'a> Bindings<'a, '_, '_> {
 }
 
 // A name bound to two different receivers holds something unknown.
-fn bind<'a>(bound: &mut HashMap<&'a str, Receiver>, name: &'a str, receiver: Receiver) {
+fn bind<'a>(bound: &mut FxHashMap<&'a str, Receiver>, name: &'a str, receiver: Receiver) {
     bound
         .entry(name)
         .and_modify(|known| {
@@ -347,7 +347,7 @@ impl<'a> Visitor<'a> for Bindings<'a, '_, '_> {
             }
             Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
                 for alias in names {
-                    let bound = alias.asname.as_ref().unwrap_or(&alias.name).as_str();
+                    let bound = alias_binding(alias);
                     self.bind(bound.split('.').next().unwrap_or(bound), Receiver::Unknown);
                 }
             }
@@ -398,7 +398,7 @@ impl<'a> Visitor<'a> for Bindings<'a, '_, '_> {
 
 // What the methods of a class assign to `self.{name}`, each a single target.
 struct Members<'a> {
-    members: HashMap<&'a str, Receiver>,
+    members: FxHashMap<&'a str, Receiver>,
 }
 
 impl<'a> Visitor<'a> for Members<'a> {
@@ -418,7 +418,7 @@ impl<'a> Visitor<'a> for Members<'a> {
     fn visit_expr(&mut self, expr: &'a Expr) {
         if let Expr::Attribute(ast::ExprAttribute { value, attr, ctx: ExprContext::Store | ExprContext::Del, .. }) =
             expr
-            && value.as_name_expr().is_some_and(|name| name.id.as_str() == "self")
+            && is_name(value, "self")
         {
             self.members.insert(attr.as_str(), Receiver::Unknown);
         }
@@ -429,7 +429,7 @@ impl<'a> Visitor<'a> for Members<'a> {
 impl<'a> Members<'a> {
     fn member(&mut self, target: &'a Expr, receiver: Receiver) {
         if let Expr::Attribute(ast::ExprAttribute { value, attr, .. }) = target
-            && value.as_name_expr().is_some_and(|name| name.id.as_str() == "self")
+            && is_name(value, "self")
         {
             bind(&mut self.members, attr.as_str(), receiver);
         } else {
@@ -440,8 +440,8 @@ impl<'a> Members<'a> {
 
 // What the methods of `class` store on `self`, so `self.client.name = value` knows when `client` is a mock. An
 // annotation in the class body, such as `client: Client`, declares what its methods store, whatever they assign.
-fn members(class: &ast::StmtClassDef) -> HashMap<&str, Receiver> {
-    let mut scan = Members { members: HashMap::new() };
+fn members(class: &ast::StmtClassDef) -> FxHashMap<&str, Receiver> {
+    let mut scan = Members { members: FxHashMap::default() };
     scan.visit_body(&class.body);
     for stmt in &class.body {
         if let Stmt::AnnAssign(ast::StmtAnnAssign { target, annotation, .. }) = stmt

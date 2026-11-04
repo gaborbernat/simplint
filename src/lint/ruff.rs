@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::ops::Deref;
 use std::path::Path;
 use std::sync::OnceLock;
@@ -109,7 +109,7 @@ impl<'a> RuffFile<'a> {
 
     // The rules with findings Ruff would fix at the project's line length. `ruff check --fix` ran at that length before
     // simplint, so a fix it offers yet left in place is one that fails, such as one that breaks the syntax.
-    pub fn fixable_at_limit(&self, path: &Path, source: &str) -> HashSet<&'static str> {
+    pub fn fixable_at_limit(&self, path: &Path, source: &str) -> FxHashSet<&'static str> {
         lint_only(
             path,
             self.package,
@@ -194,8 +194,8 @@ pub struct Checked {
 // such as merging nested `with` statements, and a fix that rewrites or reindents its lines can let it fit.
 #[derive(Default)]
 pub struct Findings {
-    counts: HashMap<&'static str, Counts>,
-    spans: HashSet<(&'static str, String)>,
+    counts: FxHashMap<&'static str, Counts>,
+    spans: FxHashSet<(&'static str, String)>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -207,12 +207,12 @@ struct Counts {
 impl Findings {
     // The rules with more findings than before, or more that Ruff would fix, such as a return type it can now infer, or
     // a tracked one on lines that changed, unless its fix is one that fails.
-    pub fn introduced_since<F: Deref<Target = HashSet<&'static str>>>(
+    pub fn introduced_since<F: Deref<Target = FxHashSet<&'static str>>>(
         &self,
         before: &Self,
         failing: impl Fn() -> F,
-    ) -> HashSet<&'static str> {
-        let mut introduced: HashSet<&'static str> = self
+    ) -> FxHashSet<&'static str> {
+        let mut introduced: FxHashSet<&'static str> = self
             .counts
             .iter()
             .filter(|(name, counts)| {
@@ -223,7 +223,7 @@ impl Findings {
             .collect();
         // Which fixes fail takes a Ruff run of its own, needed only for findings on changed lines of rules not already
         // introduced.
-        let moved: HashSet<&'static str> = self
+        let moved: FxHashSet<&'static str> = self
             .spans
             .difference(&before.spans)
             .map(|(name, _)| *name)

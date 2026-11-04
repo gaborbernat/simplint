@@ -16,7 +16,7 @@ fn check_clean_project_passes() {
 fn check_reports_violations() {
     let root = project(&[("module.py", "# --- helpers ---\nx = 1\n")]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP001,SMP010"]),
+        check(root.path(), &["--select", "SMP001,SMP101"]),
         (
             1,
             format!(
@@ -31,7 +31,7 @@ fn check_reports_violations() {
 fn check_exit_zero_succeeds_with_violations() {
     let root = project(&[("module.py", "x = 1\n")]);
     assert_eq!(
-        check(root.path(), &["--exit-zero", "--select", "SMP010"]),
+        check(root.path(), &["--exit-zero", "--select", "SMP101"]),
         (0, format!("module.py:1:1: {SINGLE_X}\nFound 1 error.\n"), String::new())
     );
 }
@@ -40,12 +40,12 @@ fn check_exit_zero_succeeds_with_violations() {
 fn check_accepts_several_paths() {
     let root = project(&[("first/module.py", "x = 1\n"), ("second/module.py", "y = 1\n")]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP010", "first", "second"]).1.lines().last(),
+        check(root.path(), &["--select", "SMP101", "first", "second"]).1.lines().last(),
         Some("Found 2 errors.")
     );
 }
 
-#[test_case(&["--select", "SMP010"], "All checks passed!\n" ; "check")]
+#[test_case(&["--select", "SMP101"], "All checks passed!\n" ; "check")]
 #[test_case(&["--show-files"], "" ; "show_files")]
 fn check_without_python_files_warns(flags: &[&str], stdout: &str) {
     let root = project(&[("notes.txt", "x = 1\n")]);
@@ -58,7 +58,7 @@ fn check_without_python_files_warns(flags: &[&str], stdout: &str) {
 #[test]
 fn check_lints_a_file_named_on_the_command_line_whatever_its_extension() {
     let root = project(&[("script", "x = 1\n")]);
-    assert_eq!(check(root.path(), &["--select", "SMP010", "script"]).1.lines().last(), Some("Found 1 error."));
+    assert_eq!(check(root.path(), &["--select", "SMP101", "script"]).1.lines().last(), Some("Found 1 error."));
 }
 
 #[test]
@@ -76,7 +76,7 @@ fn show_files_lists_the_files_to_check() {
 #[test_case(&["--extend-exclude", "module.py", "--force-exclude", "--no-force-exclude", "module.py"], 1 ; "no_force_exclude")]
 fn exclusion_flags(flags: &[&str], code: i32) {
     let root = project(&[("module.py", "x = 1\n")]);
-    let mut args = vec!["--select", "SMP010"];
+    let mut args = vec!["--select", "SMP101"];
     args.extend_from_slice(flags);
     assert_eq!(check(root.path(), &args).0, code);
 }
@@ -86,7 +86,7 @@ fn exclusion_flags(flags: &[&str], code: i32) {
 fn gitignore_flags(flags: &[&str], code: i32) {
     let root = project(&[(".gitignore", "module.py\n"), ("module.py", "x = 1\n")]);
     fs::create_dir(root.path().join(".git")).expect("git directory");
-    let mut args = vec!["--select", "SMP010"];
+    let mut args = vec!["--select", "SMP101"];
     args.extend_from_slice(flags);
     assert_eq!(check(root.path(), &args).0, code);
 }
@@ -104,7 +104,7 @@ fn check_extend_select_adds_rules() {
         ("module.py", "# --- helpers ---\nx = 1\n"),
     ]);
     assert_eq!(
-        check(root.path(), &["--extend-select", "SMP010"]).1,
+        check(root.path(), &["--extend-select", "SMP101"]).1,
         format!("module.py:1:1: {SECTION}\nmodule.py:2:1: {SINGLE_X}\nFound 2 errors.\n[*] 1 fixable with `--fix`.\n")
     );
 }
@@ -113,31 +113,31 @@ fn check_extend_select_adds_rules() {
 fn extend_ignore_removes_rules() {
     let root = project(&[("module.py", "# --- helpers ---\nx = 1\n")]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP001,SMP010", "--extend-ignore", "SMP001"]).1,
+        check(root.path(), &["--select", "SMP001,SMP101", "--extend-ignore", "SMP001"]).1,
         format!("module.py:2:1: {SINGLE_X}\nFound 1 error.\n")
     );
 }
 
-#[test_case(&["--select", "SMP0", "--ignore", "SMP001"], 1 ; "specific_ignore")]
-#[test_case(&["--select", "SMP001,SMP010", "--ignore", "SMP0"], 2 ; "specific_select")]
+#[test_case(&["--select", "SMP1", "--ignore", "SMP101"], 1 ; "specific_ignore")]
+#[test_case(&["--select", "SMP001,SMP101", "--ignore", "SMP0"], 2 ; "specific_select")]
 fn more_specific_selector_wins(flags: &[&str], reported: usize) {
     let root = project(&[("module.py", "# --- helpers ---\nx = 1\n")]);
     assert_eq!(check(root.path(), flags).1.matches("module.py:").count(), reported);
 }
 
-#[test_case(&["--per-file-ignores", "module.py:SMP010"], 0 ; "basename")]
-#[test_case(&["--per-file-ignores", "pkg/*:SMP010"], 0 ; "relative_path")]
-#[test_case(&["--per-file-ignores", "./pkg/*:SMP010"], 0 ; "dot_relative_path")]
-#[test_case(&["--per-file-ignores", "!other.py:SMP010"], 0 ; "negated")]
-#[test_case(&["--per-file-ignores", "other.py:SMP010"], 1 ; "other_file")]
-#[test_case(&["--per-file-ignores", "other.py:SMP010", "--extend-per-file-ignores", "module.py:SMP010"], 0 ; "extend")]
-#[test_case(&["--per-file-ignores", "other.py:SMP010"], 1 ; "replaces_configuration")]
+#[test_case(&["--per-file-ignores", "module.py:SMP101"], 0 ; "basename")]
+#[test_case(&["--per-file-ignores", "pkg/*:SMP101"], 0 ; "relative_path")]
+#[test_case(&["--per-file-ignores", "./pkg/*:SMP101"], 0 ; "dot_relative_path")]
+#[test_case(&["--per-file-ignores", "!other.py:SMP101"], 0 ; "negated")]
+#[test_case(&["--per-file-ignores", "other.py:SMP101"], 1 ; "other_file")]
+#[test_case(&["--per-file-ignores", "other.py:SMP101", "--extend-per-file-ignores", "module.py:SMP101"], 0 ; "extend")]
+#[test_case(&["--per-file-ignores", "other.py:SMP101"], 1 ; "replaces_configuration")]
 fn per_file_ignores_flags(flags: &[&str], code: i32) {
     let root = project(&[
-        ("pyproject.toml", "[tool.simplint]\nper-file-ignores = { \"pkg/*\" = [\"SMP010\"] }\n"),
+        ("pyproject.toml", "[tool.simplint]\nper-file-ignores = { \"pkg/*\" = [\"SMP101\"] }\n"),
         ("pkg/module.py", "x = 1\n"),
     ]);
-    let mut args = vec!["--select", "SMP010"];
+    let mut args = vec!["--select", "SMP101"];
     args.extend_from_slice(flags);
     assert_eq!(check(root.path(), &args).0, code);
 }
@@ -151,16 +151,16 @@ fn per_file_ignores_flag_needs_a_pattern_and_code() {
 
 #[test_case(&["--select", "NOPE"], "`NOPE` in `select`" ; "select")]
 #[test_case(&["--select", ""], "`` in `select`" ; "empty")]
-#[test_case(&["--extend-select", "SMP9"], "`SMP9` in `extend-select`" ; "extend_select")]
-#[test_case(&["--ignore", "SMP9"], "`SMP9` in `ignore`" ; "ignore")]
-#[test_case(&["--fixable", "SMP9"], "`SMP9` in `fixable`" ; "fixable")]
-#[test_case(&["--extend-fixable", "SMP9"], "`SMP9` in `extend-fixable`" ; "extend_fixable")]
-#[test_case(&["--unfixable", "SMP9"], "`SMP9` in `unfixable`" ; "unfixable")]
-#[test_case(&["--per-file-ignores", "a.py:SMP9"], "`SMP9` in `per-file-ignores`" ; "per_file_ignores")]
-#[test_case(&["--config", "extend-unfixable = [\"SMP9\"]"], "`SMP9` in `extend-unfixable`" ; "inline_extend_unfixable")]
-#[test_case(&["--config", "extend-safe-fixes = [\"SMP9\"]"], "`SMP9` in `extend-safe-fixes`" ; "inline_extend_safe_fixes")]
-#[test_case(&["--config", "extend-unsafe-fixes = [\"SMP9\"]"], "`SMP9` in `extend-unsafe-fixes`" ; "inline_extend_unsafe_fixes")]
-#[test_case(&["--config", "extend-per-file-ignores = { \"a.py\" = [\"SMP9\"] }"], "`SMP9` in `extend-per-file-ignores`" ; "inline_extend_per_file_ignores")]
+#[test_case(&["--extend-select", "SMP99"], "`SMP99` in `extend-select`" ; "extend_select")]
+#[test_case(&["--ignore", "SMP99"], "`SMP99` in `ignore`" ; "ignore")]
+#[test_case(&["--fixable", "SMP99"], "`SMP99` in `fixable`" ; "fixable")]
+#[test_case(&["--extend-fixable", "SMP99"], "`SMP99` in `extend-fixable`" ; "extend_fixable")]
+#[test_case(&["--unfixable", "SMP99"], "`SMP99` in `unfixable`" ; "unfixable")]
+#[test_case(&["--per-file-ignores", "a.py:SMP99"], "`SMP99` in `per-file-ignores`" ; "per_file_ignores")]
+#[test_case(&["--config", "extend-unfixable = [\"SMP99\"]"], "`SMP99` in `extend-unfixable`" ; "inline_extend_unfixable")]
+#[test_case(&["--config", "extend-safe-fixes = [\"SMP99\"]"], "`SMP99` in `extend-safe-fixes`" ; "inline_extend_safe_fixes")]
+#[test_case(&["--config", "extend-unsafe-fixes = [\"SMP99\"]"], "`SMP99` in `extend-unsafe-fixes`" ; "inline_extend_unsafe_fixes")]
+#[test_case(&["--config", "extend-per-file-ignores = { \"a.py\" = [\"SMP99\"] }"], "`SMP99` in `extend-per-file-ignores`" ; "inline_extend_per_file_ignores")]
 fn check_unknown_selector_names_the_cli(flags: &[&str], selector: &str) {
     let root = project(&[("module.py", "VALUE = 1\n")]);
     assert_eq!(
@@ -209,14 +209,14 @@ fn conflicting_flags_fail(flags: &[&str]) {
 #[test_case("py315" ; "py315")]
 fn check_accepts_every_target_version(version: &str) {
     let root = project(&[("module.py", "VALUE = 1\n")]);
-    assert_eq!(check(root.path(), &["--target-version", version, "--select", "SMP010"]).0, 0);
+    assert_eq!(check(root.path(), &["--target-version", version, "--select", "SMP101"]).0, 0);
 }
 
 #[test]
 fn check_syntax_error_is_reported() {
     let root = project(&[("broken.py", "def broken(:\n"), ("module.py", "x = 1\n")]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP010"]).1,
+        check(root.path(), &["--select", "SMP101"]).1,
         format!(
             "broken.py:1:12: invalid-syntax: Expected a parameter or the end of the parameter list\nbroken.py:2:1: \
              invalid-syntax: unexpected EOF while parsing\nmodule.py:1:1: {SINGLE_X}\nFound 3 errors.\n"
@@ -252,7 +252,7 @@ fn unreadable_file_is_a_warning_while_ruff_io_error_is_off() {
 fn check_warns_about_unreadable_directories() {
     let root = project(&[("locked/module.py", "x = 1\n"), ("module.py", "VALUE = 1\n")]);
     common::set_mode(&root.path().join("locked"), 0o000);
-    let (code, _, stderr) = check(root.path(), &["--select", "SMP010"]);
+    let (code, _, stderr) = check(root.path(), &["--select", "SMP101"]);
     common::set_mode(&root.path().join("locked"), 0o755);
     assert_eq!((code, stderr.starts_with("warning: Encountered error:")), (0, true));
 }
@@ -281,7 +281,7 @@ fn check_verbose_logs_debug_output() {
 fn check_reads_stdin() {
     let root = project(&[]);
     assert_eq!(
-        check_with_stdin(root.path(), &["--select", "SMP010", "-"], "x = 1\n"),
+        check_with_stdin(root.path(), &["--select", "SMP101", "-"], "x = 1\n"),
         (1, format!("-:1:1: {SINGLE_X}\nFound 1 error.\n"), String::new())
     );
 }
@@ -312,12 +312,12 @@ fn check_stdin_resolves_the_package_of_its_filename() {
     let root = project(&[("pkg/__init__.py", "")]);
     let (code, stdout, _) = check_with_stdin(
         root.path(),
-        &["--select", "SMP110", "--stdin-filename", "pkg/module.py"],
+        &["--select", "SMP302", "--stdin-filename", "pkg/module.py"],
         "from pkg.other import VALUE\n",
     );
     assert_eq!(
         (code, stdout.lines().next()),
-        (1, Some("pkg/module.py:1:6: SMP110 [*] Import from the same package relatively: `from .other import ...`"))
+        (1, Some("pkg/module.py:1:6: SMP302 [*] Import from the same package relatively: `from .other import ...`"))
     );
 }
 
@@ -325,7 +325,7 @@ fn check_stdin_resolves_the_package_of_its_filename() {
     &[("pyproject.toml", "[tool.ruff]\ntarget-version = \"py39\"\nper-file-target-version = { \"legacy/*.py\" = \"py314\" }\n")],
     "legacy/model.py",
     "from dataclasses import dataclass\n\n\n@dataclass\nclass Point:\n    x: int\n",
-    "SMP111"
+    "SMP701"
     ; "per_file_target_version"
 )]
 #[test_case(
@@ -335,7 +335,7 @@ fn check_stdin_resolves_the_package_of_its_filename() {
     ],
     "lib/pkg/cli.py",
     "__all__ = []\n\n\ndef main() -> None: ...\n",
-    "SMP113"
+    "SMP401"
     ; "entry_point_outside_the_source_roots"
 )]
 fn check_stdin_lints_like_the_file_it_stands_for(files: &[(&str, &str)], name: &str, source: &str, rule: &str) {

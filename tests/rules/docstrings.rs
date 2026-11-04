@@ -7,10 +7,16 @@ use crate::common;
 #[test_case("function-docstring", "function_docstring_dynamic.py" ; "function_docstring_dynamic_all")]
 #[test_case("function-docstring", "function_docstring_contract.py" ; "function_docstring_contract")]
 #[test_case("function-docstring", "function_docstring_runtime.py" ; "function_docstring_runtime")]
-#[test_case("undocumented-public-api", "undocumented_public_api.py" ; "undocumented_public_api")]
 #[test_case("function-docstring", "undocumented_public_api.py" ; "function_docstring_public_api")]
-#[test_case("undocumented-public-api", "undocumented_public_api_imported.py" ; "undocumented_public_api_imported")]
 #[test_case("function-docstring", "undocumented_public_api_imported.py" ; "function_docstring_imported")]
+#[test_case("function-docstring", "switched.py" ; "function_docstring_top_level_blocks")]
+#[test_case("function-docstring", "facade/_core.py" ; "function_docstring_reexported_through_all")]
+#[test_case("function-docstring", "facade/_helpers.py" ; "function_docstring_shared_internally")]
+#[test_case("test-module-docstring", "tests/test_module_docstring.py" ; "test_module_docstring")]
+#[test_case("test-module-docstring", "tests/test_module_docstring_inline.py" ; "test_module_docstring_inline")]
+#[test_case("test-module-docstring", "multiline_module_docstring.py" ; "test_module_docstring_non_test")]
+#[test_case("undocumented-public-api", "undocumented_public_api.py" ; "undocumented_public_api")]
+#[test_case("undocumented-public-api", "undocumented_public_api_imported.py" ; "undocumented_public_api_imported")]
 #[test_case("undocumented-public-api", "function_docstring_dynamic.py" ; "undocumented_public_api_dynamic_all")]
 #[test_case("undocumented-public-api", "tests/test_module_docstring.py" ; "undocumented_public_api_test_module")]
 #[test_case("undocumented-public-api", "facade/_core.py" ; "undocumented_public_api_reexported_through_all")]
@@ -20,26 +26,22 @@ use crate::common;
 #[test_case("undocumented-public-api", "loose/_extra.py" ; "undocumented_public_api_star_import_without_all")]
 #[test_case("undocumented-public-api", "loose/_deep.py" ; "undocumented_public_api_chain")]
 #[test_case("undocumented-public-api", "switched.py" ; "undocumented_public_api_top_level_blocks")]
-#[test_case("function-docstring", "switched.py" ; "function_docstring_top_level_blocks")]
-#[test_case("function-docstring", "facade/_core.py" ; "function_docstring_reexported_through_all")]
-#[test_case("function-docstring", "facade/_helpers.py" ; "function_docstring_shared_internally")]
-#[test_case("test-module-docstring", "tests/test_module_docstring.py" ; "test_module_docstring")]
-#[test_case("test-module-docstring", "tests/test_module_docstring_inline.py" ; "test_module_docstring_inline")]
-#[test_case("test-module-docstring", "multiline_module_docstring.py" ; "test_module_docstring_non_test")]
-#[test_case("rest-field-syntax", "rest_field_syntax.py" ; "rest_field_syntax")]
-#[test_case("rest-unknown-param", "rest_unknown_param.py" ; "rest_unknown_param")]
-#[test_case("rest-missing-param", "rest_missing_param.py" ; "rest_missing_param")]
-#[test_case("rest-param-order", "rest_param_order.py" ; "rest_param_order")]
-#[test_case("rest-type-field", "rest_type_field.py" ; "rest_type_field")]
-#[test_case("rest-returns", "rest_returns.py" ; "rest_returns")]
-#[test_case("rest-missing-raises", "rest_missing_raises.py" ; "rest_missing_raises")]
-#[test_case("rest-missing-attribute", "rest_missing_attribute.py" ; "rest_missing_attribute")]
-#[test_case("rest-unknown-attribute", "rest_unknown_attribute.py" ; "rest_unknown_attribute")]
-#[test_case("rest-duplicate-param", "rest_duplicate_param.py" ; "rest_duplicate_param")]
-#[test_case("rest-attribute-kind", "rest_attribute_kind.py" ; "rest_attribute_kind")]
-#[test_case("rest-restating-field", "rest_restating_field.py" ; "rest_restating_field")]
-#[test_case("rest-inline-markup", "rest_inline_markup.py" ; "rest_inline_markup")]
-#[test_case("rest-private-field", "rest_private_field.py" ; "rest_private_field")]
+#[test_case("long-docstring-paragraph", "long_docstring_paragraph.py" ; "long_docstring_paragraph")]
+#[test_case("rst-field-syntax", "rst_field_syntax.py" ; "rst_field_syntax")]
+#[test_case("rst-inline-markup", "rst_inline_markup.py" ; "rst_inline_markup")]
+#[test_case("rst-type-field", "rst_type_field.py" ; "rst_type_field")]
+#[test_case("rst-restating-field", "rst_restating_field.py" ; "rst_restating_field")]
+#[test_case("rst-empty-field", "rst_empty_field.py" ; "rst_empty_field")]
+#[test_case("rst-private-field", "rst_private_field.py" ; "rst_private_field")]
+#[test_case("rst-missing-param", "rst_missing_param.py" ; "rst_missing_param")]
+#[test_case("rst-unknown-param", "rst_unknown_param.py" ; "rst_unknown_param")]
+#[test_case("rst-duplicate-param", "rst_duplicate_param.py" ; "rst_duplicate_param")]
+#[test_case("rst-param-order", "rst_param_order.py" ; "rst_param_order")]
+#[test_case("rst-missing-attribute", "rst_missing_attribute.py" ; "rst_missing_attribute")]
+#[test_case("rst-unknown-attribute", "rst_unknown_attribute.py" ; "rst_unknown_attribute")]
+#[test_case("rst-attribute-kind", "rst_attribute_kind.py" ; "rst_attribute_kind")]
+#[test_case("rst-returns", "rst_returns.py" ; "rst_returns")]
+#[test_case("rst-missing-raises", "rst_missing_raises.py" ; "rst_missing_raises")]
 fn rule(rule: &str, fixture: &str) {
     common::assert_rule_snapshot(rule, fixture, "py314");
 }
@@ -51,7 +53,7 @@ fn test_module_docstring_removal_leaves_no_blank_lines_ending_the_file() {
         ("pyproject.toml", ""),
         ("tests/__init__.py", "# Licensed under the license.\n#\n\n\n\"\"\"Tests.\n\nMore.\n\"\"\"\n"),
     ]);
-    common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP301"]);
+    common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP902"]);
     assert_eq!(common::read(root.path(), "tests/__init__.py"), "# Licensed under the license.\n#\n");
 }
 
@@ -73,7 +75,7 @@ fn function_docstring_comment_wraps_to_ruff_limits(indent: &str) {
             ),
         ),
     ]);
-    common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP300"]);
+    common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP901"]);
     assert_eq!(
         common::read(root.path(), "module.py"),
         format!(
@@ -89,11 +91,11 @@ fn function_docstring_comment_is_withdrawn_when_ruff_reports_it() {
         "def _run() -> None:\n    \"\"\"Call it as shown below.\n\n    result = run(config)\n    \"\"\"\n    print()\n";
     let root =
         common::project(&[("pyproject.toml", "[tool.ruff.lint]\nselect = [\"ERA001\"]\n"), ("module.py", source)]);
-    let stdout = common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP300"]).1;
+    let stdout = common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP901"]).1;
     assert_eq!(
         (stdout, common::read(root.path(), "module.py")),
         (
-            "module.py:2:5: SMP300 Function docstring on internal code; let the name, signature and types document it\n\
+            "module.py:2:5: SMP901 Function docstring on internal code; let the name, signature and types document it\n\
              Found 1 error.\n"
                 .to_owned(),
             source.to_owned()
@@ -105,7 +107,7 @@ fn function_docstring_comment_is_withdrawn_when_ruff_reports_it() {
 fn function_docstring_comment_keeps_the_line_endings() {
     let source = "def _run() -> None: \"\"\"Retry once, as the first call\r\n    after a restart times out.\"\"\"\r\n";
     let root = common::project(&[("pyproject.toml", ""), ("module.py", source)]);
-    common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP300"]);
+    common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP901"]);
     assert_eq!(
         common::read(root.path(), "module.py"),
         "def _run() -> None:\r\n    # Retry once, as the first call\r\n    # after a restart times out.\r\n    ...\r\n"
@@ -123,7 +125,7 @@ fn function_docstring_comment_waits_for_a_removed_statement() {
             "def test_probe() -> None:\n    \"\"\"Check that adding one more test keeps the run stable.\"\"\"\n    assert True\n",
         ),
     ]);
-    common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP300,SMP205"]);
+    common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP901,SMP804"]);
     assert_eq!(
         common::read(root.path(), "test_module.py"),
         "def test_probe() -> None:\n    # Check that adding one more test keeps the run stable.\n    pass\n"
@@ -132,7 +134,7 @@ fn function_docstring_comment_waits_for_a_removed_statement() {
 
 // Without `docstring-style`, the field lists of a project's docstrings are not known to be reStructuredText.
 #[test]
-fn rest_rules_need_the_docstring_style() {
+fn rst_rules_need_the_docstring_style() {
     let root = common::project(&[
         ("pyproject.toml", "[project]\nname = \"demo\"\n[build-system]\nrequires = []\n"),
         (
@@ -140,5 +142,28 @@ fn rest_rules_need_the_docstring_style() {
             "def run(path: str) -> str:\n    \"\"\"Run.\n\n    :parm path: Where.\n    \"\"\"\n    return path\n",
         ),
     ]);
-    assert_eq!(common::check(root.path(), &["--select", "SMP31"]).1, "All checks passed!\n");
+    assert_eq!(common::check(root.path(), &["--select", "SMP91,SMP92"]).1, "All checks passed!\n");
+}
+
+// Renaming an alias edits the field another rule's fix rewrites or removes, so one of the two waits for the next pass.
+#[test_case(
+    "def run(path: str) -> None:\n    \"\"\"Run.\n\n    :param path: Where.\n    :arg gone: Removed.\n    \"\"\"\n    print(path)\n",
+    "def run(path: str) -> None:\n    \"\"\"Run.\n\n    :param path: Where.\n    \"\"\"\n    print(path)\n" ;
+    "removed_field"
+)]
+#[test_case(
+    "def run(count: int):\n    \"\"\"Run.\n\n    :param count: How far.\n    :return: Each number.\n    \"\"\"\n    yield from range(count)\n",
+    "def run(count: int):\n    \"\"\"Run.\n\n    :param count: How far.\n    :yields: Each number.\n    \"\"\"\n    yield from range(count)\n" ;
+    "renamed_field"
+)]
+fn alias_fix_composes(source: &str, fixed: &str) {
+    let root = common::project(&[
+        (
+            "pyproject.toml",
+            "[project]\nname = \"demo\"\n[build-system]\nrequires = []\n[tool.simplint]\ndocstring-style = \"rst\"\n",
+        ),
+        ("demo.py", source),
+    ]);
+    common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP910,SMP917,SMP923"]);
+    assert_eq!(common::read(root.path(), "demo.py"), fixed);
 }

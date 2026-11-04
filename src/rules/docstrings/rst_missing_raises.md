@@ -1,0 +1,380 @@
+Flags exceptions a public API function raises itself that its reStructuredText docstring leaves without a
+`:raises Error:` field. Callers handle the exceptions they know about, so an undocumented one reaches them as a
+surprise.
+
+## Why is this bad?
+
+Callers handle the exceptions they know about. One the docstring leaves out reaches them as a surprise, often in
+production, where the error path is first exercised.
+
+## Example
+
+```toml config
+[tool.simplint]
+docstring-style = "rst"
+project-kind = "library"
+```
+
+```python report
+def parse(text: str) -> int:
+    """Parse a number.
+
+    :param text: The text.
+    :returns: The number.
+    """
+    if not text:
+        raise ValueError("empty")
+    return int(text)
+```
+
+Use instead:
+
+```python ok
+def parse(text: str) -> int:
+    """Parse a number.
+
+    :param text: The text.
+    :returns: The number.
+    :raises ValueError: When the text is empty.
+    """
+    if not text:
+        raise ValueError("empty")
+    return int(text)
+```
+
+## Conflicts with Ruff
+
+Ruff's [docstring-missing-exception](https://docs.astral.sh/ruff/rules/docstring-missing-exception/) reads Google and
+numpydoc sections only, so it reports the `:raises:` fields this rule asks for as a missing section. simplint stops with
+an error before linting while it applies to a file this rule checks; turn it off in Ruff, or turn this rule off.
+
+## Configuration
+
+- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in
+  `[tool.simplint]`: `"rst"` turns the rule on
+
+  ```toml config
+  [project]
+  name = "demo"
+
+  [build-system]
+  requires = []
+
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python report
+  def parse(text: str) -> int:
+      """Parse a number.
+
+      :param text: The text.
+      :returns: The number.
+      """
+      if not text:
+          raise ValueError("empty")
+      return int(text)
+  ```
+
+## What it does
+
+Checks the docstrings of a library's public API (see [undocumented-public-api](SMP903.html)), when
+`docstring-style = "rst"`, for exceptions the function raises itself without a `:raises Error:` field.
+
+### Active on
+
+- **`raise` statements that name an exception class**: each exception the function raises by name and lets escape needs
+  a field. A field matches by the exception's last name, so `:raises errors.ParseError:` documents
+  `raise errors.ParseError(...)`.
+
+  ```toml config
+  [project]
+  name = "demo"
+
+  [build-system]
+  requires = []
+
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python report
+  import errors
+
+
+  def parse(text: str) -> int:
+      """Parse a number.
+
+      :param text: The text.
+      :returns: The number.
+      """
+      raise errors.ParseError(text)
+  ```
+
+### Exceptions
+
+- **A bare `raise`, and a `raise` of an exception the function caught, as `raise error` in `except ... as error`**:
+  these re-raise an exception that came from elsewhere rather than naming one.
+
+  - A bare `raise` in an `except` block
+
+    ```toml config
+    [project]
+    name = "demo"
+
+    [build-system]
+    requires = []
+
+    [tool.simplint]
+    docstring-style = "rst"
+    ```
+
+    ```python ok
+    def parse(text: str) -> int:
+        """Parse a number.
+
+        :param text: The text.
+        :returns: The number.
+        """
+        try:
+            return int(text)
+        except ValueError:
+            raise
+    ```
+
+  - A `raise error` of the exception that `except ValueError as error` caught
+
+    ```toml config
+    [project]
+    name = "demo"
+
+    [build-system]
+    requires = []
+
+    [tool.simplint]
+    docstring-style = "rst"
+    ```
+
+    ```python ok
+    def parse(text: str) -> int:
+        """Parse a number.
+
+        :param text: The text.
+        :returns: The number.
+        """
+        try:
+            return int(text)
+        except ValueError as error:
+            raise error
+    ```
+
+- **An exception a surrounding `try` of the same function catches**: it does not escape the function. The `try` catches
+  it by name, through a built-in base such as `OSError` for `FileNotFoundError`, through `Exception`, which does not
+  catch `SystemExit`, `KeyboardInterrupt` or `GeneratorExit`, or through `BaseException`.
+
+  ```toml config
+  [project]
+  name = "demo"
+
+  [build-system]
+  requires = []
+
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python ok
+  def read(path: str) -> str:
+      """Read a file.
+
+      :param path: Where it is.
+      :returns: The text.
+      """
+      try:
+          raise FileNotFoundError(path)
+      except OSError:
+          return ""
+  ```
+
+  ```toml config
+  [project]
+  name = "demo"
+
+  [build-system]
+  requires = []
+
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python report
+  def stop(code: int) -> int:
+      """Stop the job.
+
+      :param code: The exit code.
+      :returns: Nothing.
+      """
+      try:
+          raise SystemExit(code)
+      except Exception:
+          return 0
+  ```
+
+- **An exception whose built-in base a field documents**: a field for the base documents its subclasses too, as
+  `:raises OSError:` does `FileNotFoundError`.
+
+  ```toml config
+  [project]
+  name = "demo"
+
+  [build-system]
+  requires = []
+
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python ok
+  def read(path: str) -> str:
+      """Read a file.
+
+      :param path: Where it is.
+      :raises OSError: When the file cannot be read.
+      :returns: The text.
+      """
+      raise FileNotFoundError(path)
+  ```
+
+- **`NotImplementedError`**: it marks a method for subclasses to override.
+
+  ```toml config
+  [project]
+  name = "demo"
+
+  [build-system]
+  requires = []
+
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python ok
+  def run() -> None:
+      """Run the job."""
+      raise NotImplementedError
+  ```
+
+- **A `raise` inside a nested function or class**: it runs when the nested function or class does, not as part of this
+  function's body.
+
+  ```toml config
+  [project]
+  name = "demo"
+
+  [build-system]
+  requires = []
+
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python ok
+  def make() -> object:
+      """Make a callback.
+
+      :returns: The callback.
+      """
+
+      def callback() -> None:
+          raise ValueError("later")
+
+      return callback
+  ```
+
+- **A name starting in lowercase**: it is a variable rather than an exception class.
+
+  ```toml config
+  [project]
+  name = "demo"
+
+  [build-system]
+  requires = []
+
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python ok
+  def run(problem: Exception) -> None:
+      """Run the job.
+
+      :param problem: What to raise.
+      """
+      raise problem
+  ```
+
+- **Exceptions raised by the functions it calls**: the code does not show them.
+
+  ```toml config
+  [project]
+  name = "demo"
+
+  [build-system]
+  requires = []
+
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python ok
+  def run() -> None:
+      """Run the job."""
+      load()
+  ```
+
+The bases of built-in exceptions are known; those of a project's own exceptions are not.
+
+### Fix
+
+The fix adds a `:raises Error:` field for each exception, at the end of the field list, with an empty description for
+you to write, which [rst-empty-field](SMP914.html) reports until you do.
+
+**Unsafe fix:** code may read the docstring through `__doc__`.
+
+```toml config
+[project]
+name = "demo"
+
+[build-system]
+requires = []
+
+[tool.simplint]
+docstring-style = "rst"
+```
+
+```python report
+def parse(text: str) -> int:
+    """Parse a number.
+
+    :param text: The text.
+    :returns: The number.
+    """
+    if not text:
+        raise ValueError("empty")
+    return int(text)
+```
+
+```python fixed
+def parse(text: str) -> int:
+    """Parse a number.
+
+    :param text: The text.
+    :returns: The number.
+    :raises ValueError:
+    """
+    if not text:
+        raise ValueError("empty")
+    return int(text)
+```
+
+No fix is offered when escapes in the docstring make its text differ from the source.

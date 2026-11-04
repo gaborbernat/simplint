@@ -23,10 +23,10 @@ line-length = 100
 extend-exclude = ["generated"]
 
 [tool.simplint]
-select = ["SMP0", "SMP108", "SMP113"]
-extend-select = ["SMP040"]
+select = ["SMP0", "SMP301", "SMP401"]
+extend-select = ["SMP303"]
 ignore = ["SMP001"]
-per-file-ignores = { "legacy.py" = ["SMP010"] }
+per-file-ignores = { "legacy.py" = ["SMP101"] }
 "#,
         ),
         ("cli.py", "def main() -> None:\n    pass\n"),
@@ -39,9 +39,9 @@ per-file-ignores = { "legacy.py" = ["SMP010"] }
     ]);
     assert_eq!(
         check(root.path(), &[]).1,
-        "cli.py:1:5: SMP113 `main` is imported by other modules; list it in `__all__`\n\
-         module.py:2:24: SMP108 [*] Annotations are evaluated lazily from Python 3.14; drop `from __future__ import annotations`\n\
-         module.py:3:1: SMP040 Import guard around a required dependency; import it directly and let a broken install fail\n\
+        "cli.py:1:5: SMP401 `main` is imported by other modules; list it in `__all__`\n\
+         module.py:2:24: SMP301 [*] Annotations are evaluated lazily from Python 3.14; drop `from __future__ import annotations`\n\
+         module.py:3:1: SMP303 Import guard around a required dependency; import it directly and let a broken install fail\n\
          Found 3 errors.\n[*] 1 fixable with `--fix` (2 unsafe fixes available with `--fix --unsafe-fixes`).\n"
     );
 }
@@ -83,6 +83,7 @@ fn pyproject_unknown_simplint_key_fails() {
 
 #[test_case("[tool.simplint]\nselect = 1\n" ; "wrong_type")]
 #[test_case("[project\n" ; "not_toml")]
+#[test_case("[tool.simplint]\ndocstring-style = \"numpy\"\n" ; "unknown_docstring_style")]
 fn pyproject_invalid_fails(content: &str) {
     let root = project(&[("pyproject.toml", content), ("module.py", "VALUE = 1\n")]);
     let (code, _, stderr) = check(root.path(), &[]);
@@ -94,13 +95,13 @@ fn pyproject_extend_per_file_ignores_adds_to_per_file_ignores() {
     let root = project(&[
         (
             "pyproject.toml",
-            "[tool.simplint]\nper-file-ignores = { \"other.py\" = [\"SMP001\"] }\nextend-per-file-ignores = { \"module.py\" = [\"SMP010\"] }\n",
+            "[tool.simplint]\nper-file-ignores = { \"other.py\" = [\"SMP001\"] }\nextend-per-file-ignores = { \"module.py\" = [\"SMP101\"] }\n",
         ),
         ("module.py", "x = 1\n"),
         ("other.py", "# --- helpers ---\nx = 1\n"),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP001,SMP010"]),
+        check(root.path(), &["--select", "SMP001,SMP101"]),
         (1, format!("other.py:2:1: {SINGLE_X}\nFound 1 error.\n"), String::new())
     );
 }
@@ -115,8 +116,8 @@ fn dependency_guard_maps_import_names_and_skips_markers() {
         ),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP040"]).1,
-        "module.py:1:1: SMP040 Import guard around a required dependency; import it directly and let a broken install \
+        check(root.path(), &["--select", "SMP303"]).1,
+        "module.py:1:1: SMP303 Import guard around a required dependency; import it directly and let a broken install \
          fail\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n"
     );
 }
@@ -124,7 +125,7 @@ fn dependency_guard_maps_import_names_and_skips_markers() {
 #[test]
 fn nested_pyproject_configures_its_own_files() {
     let root = project(&[
-        ("pyproject.toml", "[tool.simplint]\nselect = [\"SMP010\"]\n"),
+        ("pyproject.toml", "[tool.simplint]\nselect = [\"SMP101\"]\n"),
         ("sub/pyproject.toml", "[tool.simplint]\nselect = [\"SMP001\"]\n"),
         ("module.py", "x = 1\n"),
         ("sub/module.py", "x = 1\n"),
@@ -136,7 +137,7 @@ fn nested_pyproject_configures_its_own_files() {
 #[test]
 fn nested_pyproject_without_simplint_table_keeps_the_parent_settings() {
     let root = project(&[
-        ("pyproject.toml", "[tool.simplint]\nselect = [\"SMP0\"]\nignore = [\"SMP001\"]\n"),
+        ("pyproject.toml", "[tool.simplint]\nselect = [\"SMP1\"]\nignore = [\"SMP102\"]\n"),
         ("sub/pyproject.toml", "[project]\nname = \"sub\"\n"),
         ("sub/module.py", "# --- helpers ---\nx = 1\n"),
     ]);
@@ -151,7 +152,7 @@ fn pyproject_without_simplint_table_still_gives_project_metadata() {
         ("sub/pyproject.toml", "[project]\nname = \"sub\"\ndependencies = [\"PyYAML\"]\n"),
         ("sub/module.py", "try:\n    import yaml\nexcept ImportError:\n    yaml = None\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP040"]).0, 1);
+    assert_eq!(check(root.path(), &["--select", "SMP303"]).0, 1);
 }
 
 #[cfg(unix)]
@@ -187,10 +188,10 @@ fn unknown_selector_names_its_pyproject(flags: &[&str]) {
 #[test]
 fn isolated_ignores_configuration() {
     let root = project(&[
-        ("pyproject.toml", "[tool.simplint]\nignore = [\"SMP010\"]\n[tool.ruff]\nexclude = [\"module.py\"]\n"),
+        ("pyproject.toml", "[tool.simplint]\nignore = [\"SMP101\"]\n[tool.ruff]\nexclude = [\"module.py\"]\n"),
         ("module.py", "x = 1\n"),
     ]);
-    assert_eq!(check(root.path(), &["--isolated", "--select", "SMP010"]).0, 1);
+    assert_eq!(check(root.path(), &["--isolated", "--select", "SMP101"]).0, 1);
 }
 
 #[test]
@@ -207,16 +208,17 @@ fn isolated_rejects_a_config_file() {
 // defaults apply.
 #[test_case(
     "pyproject.toml",
-    "[tool.simplint]\nselect = [\"SMP010\"]\n",
-    "module.py:1:1: SMP010 Single-letter name `x`; only comprehensions may use one\nFound 1 error.\n" ;
+    "[tool.simplint]\nselect = [\"SMP101\"]\n",
+    "module.py:1:1: SMP101 Single-letter name `x`; only comprehensions may use one\nFound 1 error.\n" ;
     "pyproject"
 )]
 #[test_case(
     "ruff.toml",
     "target-version = \"py310\"\n",
-    "module.py:1:1: SMP010 Single-letter name `x`; only comprehensions may use one\nmodule.py:1:1: \
-     SMP101 `x` is never reassigned; annotate it `Final`\nmodule.py:1:1: SMP102 Module-scope variable `x` should be \
-     named `_X`\nFound 3 errors.\n2 unsafe fixes available with `--fix --unsafe-fixes`.\n" ;
+    "module.py:1:1: SMP101 Single-letter name `x`; only comprehensions may use one\nmodule.py:1:1: \
+     SMP102 Module-scope variable `x` should be named `X`\nmodule.py:1:1: SMP404 `x` is not in `__all__`; name it `_x`\n\
+     module.py:1:1: SMP601 `x` is never reassigned; annotate it `Final`\nFound 4 errors.\n3 unsafe fixes available with \
+     `--fix --unsafe-fixes`.\n" ;
     "ruff_toml"
 )]
 fn config_file_is_used_for_every_file(name: &str, content: &str, stdout: &str) {
@@ -232,21 +234,21 @@ fn config_file_is_used_for_every_file(name: &str, content: &str, stdout: &str) {
 #[test]
 fn relative_config_anchors_per_file_ignores_at_its_directory() {
     let root = project(&[
-        ("sub/pyproject.toml", "[tool.simplint]\nper-file-ignores = { \"pkg/*\" = [\"SMP010\"] }\n"),
+        ("sub/pyproject.toml", "[tool.simplint]\nper-file-ignores = { \"pkg/*\" = [\"SMP101\"] }\n"),
         ("sub/pkg/pyproject.toml", "[tool.simplint]\n"),
         ("sub/pkg/module.py", "x = 1\n"),
     ]);
     assert_eq!(
-        check(root.path(), &["--config", "sub/pyproject.toml", "--select", "SMP010"]),
+        check(root.path(), &["--config", "sub/pyproject.toml", "--select", "SMP101"]),
         (0, "All checks passed!\n".to_owned(), String::new())
     );
 }
 
 #[test_case(&["--config", "select = ['SMP001']"] ; "after_the_subcommand")]
-#[test_case(&["--config", "select = ['SMP001']", "--config", "select = ['SMP010']"] ; "first_override_wins")]
+#[test_case(&["--config", "select = ['SMP001']", "--config", "select = ['SMP101']"] ; "first_override_wins")]
 fn inline_config_overrides_simplint_options(flags: &[&str]) {
     let root = project(&[
-        ("pyproject.toml", "[tool.simplint]\nselect = [\"SMP010\"]\n"),
+        ("pyproject.toml", "[tool.simplint]\nselect = [\"SMP101\"]\n"),
         ("module.py", "# --- helpers ---\nx = 1\n"),
     ]);
     let mut args = vec!["check", "--output-format", "concise"];
@@ -272,7 +274,7 @@ fn inline_config_splits_simplint_and_ruff_keys() {
         ("pyproject.toml", "[project]\nrequires-python = \">=3.14\"\n"),
         ("module.py", "from __future__ import annotations\nx = 1\n"),
     ]);
-    let (code, stdout, _) = check(root.path(), &["--config", "select = ['SMP108']\ntarget-version = 'py313'"]);
+    let (code, stdout, _) = check(root.path(), &["--config", "select = ['SMP301']\ntarget-version = 'py313'"]);
     assert_eq!((code, stdout), (0, "All checks passed!\n".to_owned()));
 }
 
@@ -287,9 +289,63 @@ fn keep_names_spare_module_variables(files: &[(&str, &str)], flags: &[&str]) {
     let root = project(&[files, &[("module.py", "app_name = \"shop\"\nlimit = 3\n")]].concat());
     assert_eq!(
         check(root.path(), &[&["--select", "SMP102"], flags].concat()).1,
-        "module.py:2:1: SMP102 Module-scope variable `limit` should be named `_LIMIT`\nFound 1 error.\n\
+        "module.py:2:1: SMP102 Module-scope variable `limit` should be named `LIMIT`\nFound 1 error.\n\
          1 unsafe fix available with `--fix --unsafe-fixes`.\n"
     );
+}
+
+#[test_case("[tool.simplint.imports]\nmodule-attributes = [\"pkg.findings\"]\n", &[] ; "pyproject")]
+#[test_case("", &["--config", "imports.module-attributes = ['pkg.findings']"] ; "inline")]
+fn module_attributes_leave_listed_modules_alone(pyproject: &str, flags: &[&str]) {
+    let root = project(&[
+        ("pyproject.toml", pyproject),
+        ("pkg/__init__.py", "# A package.\n"),
+        ("pkg/findings.py", "class DbWriter:\n    pass\n"),
+        ("pkg/consumer.py", "from . import findings\n\nwriter = findings.DbWriter()\n"),
+    ]);
+    assert_eq!(
+        check(root.path(), &[&["--select", "SMP304"], flags].concat()),
+        (0, "All checks passed!\n".to_owned(), String::new())
+    );
+}
+
+#[test]
+fn module_attributes_report_unlisted_modules() {
+    let root = project(&[
+        ("pkg/__init__.py", "# A package.\n"),
+        ("pkg/findings.py", "class DbWriter:\n    pass\n"),
+        ("pkg/consumer.py", "from . import findings\n\nwriter = findings.DbWriter()\n"),
+    ]);
+    assert!(check(root.path(), &["--select", "SMP304"]).1.contains("SMP304 Import `DbWriter` from `.findings`"));
+}
+
+#[test]
+fn module_attributes_ignore_modules_outside_the_run() {
+    let root = project(&[
+        ("pyproject.toml", "[tool.ruff]\nextend-exclude = [\"excluded\"]\n"),
+        ("excluded/__init__.py", "# Excluded.\n"),
+        ("excluded/mod.py", "class Writer:\n    pass\n"),
+        ("pkg/__init__.py", "# A package.\n"),
+        ("pkg/consumer.py", "from excluded import mod\n\nwriter = mod.Writer()\n"),
+    ]);
+    assert_eq!(check(root.path(), &["--select", "SMP304"]), (0, "All checks passed!\n".to_owned(), String::new()));
+}
+
+#[test_case(&[], &["--config", "max-paragraph-words = 4"], "module.py:1:1: SMP002 Paragraph exceeds 4 words; split it at a change of topic\nFound 1 error.\n" ; "limit_inline")]
+#[test_case(&[("pyproject.toml", "[tool.simplint]\nmax-paragraph-words = 4\n")], &[], "module.py:1:1: SMP002 Paragraph exceeds 4 words; split it at a change of topic\nFound 1 error.\n" ; "limit_in_pyproject")]
+#[test_case(&[], &[], "All checks passed!\n" ; "default_limit")]
+fn paragraph_word_limit_decides_long_paragraphs(files: &[(&str, &str)], flags: &[&str], expected: &str) {
+    let root = project(&[files, &[("module.py", "# One two three four five.\nVALUE = 1\n")]].concat());
+    assert_eq!(check(root.path(), &[&["--select", "SMP002"], flags].concat()).1, expected);
+}
+
+#[test_case(&[], &[], "module.py:6:5: SMP505 `_parse_header` is called only from `load`, and inlining keeps `load` short; inline it\nFound 1 error.\n" ; "defaults")]
+#[test_case(&[("pyproject.toml", "[tool.simplint.logic]\nmax-helper-statements = 2\n")], &[], "All checks passed!\n" ; "helper_limit_in_pyproject")]
+#[test_case(&[], &["--config", "logic.max-caller-statements = 3"], "All checks passed!\n" ; "caller_limit_inline")]
+fn logic_limits_decide_single_caller_helpers(files: &[(&str, &str)], flags: &[&str], expected: &str) {
+    let source = "def load(text):\n    header = _parse_header(text)\n    return {\"header\": header}\n\n\ndef _parse_header(text):\n    first = text.splitlines()[0]\n    return first.strip()\n";
+    let root = project(&[files, &[("module.py", source)]].concat());
+    assert_eq!(check(root.path(), &[&["--select", "SMP505"], flags].concat()).1, expected);
 }
 
 #[test]
@@ -319,14 +375,14 @@ fn ruff_excludes_apply() {
         ("module.py", "VALUE = 1\n"),
     ]);
     fs::create_dir(root.path().join(".git")).expect("git directory");
-    assert_eq!(check(root.path(), &["--select", "SMP010"]).0, 0);
+    assert_eq!(check(root.path(), &["--select", "SMP101"]).0, 0);
 }
 
 #[test]
 fn ruff_lint_exclude_applies() {
     let root =
         project(&[("pyproject.toml", "[tool.ruff.lint]\nexclude = [\"module.py\"]\n"), ("module.py", "x = 1\n")]);
-    assert_eq!(check(root.path(), &["--select", "SMP010"]).0, 0);
+    assert_eq!(check(root.path(), &["--select", "SMP101"]).0, 0);
 }
 
 // `ruff check` already warns about its own configuration, so simplint repeating it on every run is noise; a warning
@@ -338,7 +394,7 @@ fn ruff_configuration_warnings_stay_with_ruff(file: &str, stderr: &str) {
         ("pyproject.toml", "[tool.ruff]\nextend-select = [\"E\"]\n\n[tool.ruff.lint]\nignore = [\"ANN101\"]\n"),
         (file, "VALUE = 1\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP010"]).2, stderr);
+    assert_eq!(check(root.path(), &["--select", "SMP101"]).2, stderr);
 }
 
 // pytest imports a test module whose directory lacks `__init__.py` as a top-level module, where a relative import
@@ -357,10 +413,10 @@ fn absolute_sibling_import_needs_an_init_module(files: &[(&str, &str)], code: i3
         ]
         .concat(),
     );
-    assert_eq!(check(root.path(), &["--select", "SMP110"]).0, code);
+    assert_eq!(check(root.path(), &["--select", "SMP302"]).0, code);
 }
 
-const LAZY_ANNOTATIONS: &str = "module.py:1:24: SMP108 [*] Annotations are evaluated lazily from Python 3.14; drop `from \
+const LAZY_ANNOTATIONS: &str = "module.py:1:24: SMP301 [*] Annotations are evaluated lazily from Python 3.14; drop `from \
                                  __future__ import annotations`\nFound 1 error.\n[*] 1 fixable with `--fix`.\n";
 const PASSED: &str = "All checks passed!\n";
 
@@ -415,7 +471,7 @@ const PASSED: &str = "All checks passed!\n";
 )]
 fn target_version_resolution(files: &[(&str, &str)], flags: &[&str], stdout: &str) {
     let root = project(&[files, &[("module.py", "from __future__ import annotations\n")]].concat());
-    assert_eq!(check(root.path(), &[&["--select", "SMP108"], flags].concat()).1, stdout);
+    assert_eq!(check(root.path(), &[&["--select", "SMP301"], flags].concat()).1, stdout);
 }
 
 #[test]
@@ -423,7 +479,7 @@ fn show_settings_describes_the_first_file() {
     let root = project(&[
         (
             "pyproject.toml",
-            "[project]\nrequires-python = \">=3.12\"\ndependencies = [\"requests\"]\nscripts = { tool = \"cli:main\" }\n[tool.simplint]\nselect = [\"SMP001\"]\nper-file-ignores = { \"!b.py\" = [\"SMP001\"] }\nextend-safe-fixes = [\"SMP001\"]\nproject-kind = \"library\"\napi-packages = [\"src/app\"]\napi-modules = [\"app.errors\"]\ndocstring-style = \"rest\"\n[tool.simplint.naming]\nkeep-names = [\"app_name\"]\n",
+            "[project]\nrequires-python = \">=3.12\"\ndependencies = [\"requests\"]\nscripts = { tool = \"cli:main\" }\n[tool.simplint]\nselect = [\"SMP001\"]\nper-file-ignores = { \"!b.py\" = [\"SMP001\"] }\nextend-safe-fixes = [\"SMP001\"]\nproject-kind = \"library\"\napi-packages = [\"src/app\"]\napi-modules = [\"app.errors\"]\ndocstring-style = \"rst\"\n[tool.simplint.naming]\nkeep-names = [\"app_name\"]\n[tool.simplint.imports]\nmodule-attributes = [\"app.settings\"]\n",
         ),
         ("b.py", ""),
         ("a.py", ""),
@@ -447,9 +503,10 @@ fn show_settings_describes_the_first_file() {
                  linter.rules.should_fix = []\nlinter.per_file_ignores = [\n\t{ignored} = [\"section-comment (SMP001)\"],\n]\n\
                  linter.safety_table.forced_safe = [\n\tsection-comment (SMP001),\n]\nlinter.safety_table.forced_unsafe = []\n\
                  linter.dependencies = [\n\t\"requests\",\n]\nlinter.entry_points = [\n\t\"cli:main\",\n]\n\
-                 linter.naming.keep_names = [\n\t\"app_name\",\n]\nlinter.project_kind = library\n\
+                 linter.max_paragraph_words = 100\nlinter.naming.keep_names = [\n\t\"app_name\",\n]\nlinter.imports.module_attributes = [\n\t\"app.settings\",\n]\n\
+                 linter.logic.max_helper_statements = 3\nlinter.logic.max_caller_statements = 20\nlinter.project_kind = library\n\
                  linter.api_packages = [\n\t\"app\",\n]\nlinter.api_modules = [\n\t\"app.errors\",\n]\n\
-                 linter.docstring_style = rest\n"
+                 linter.docstring_style = rst\n"
             )
         )
     );
@@ -530,11 +587,48 @@ fn inline_config_sets_options_ruff_does_not_know() {
         "--config",
         "api-modules = [\"module.errors\"]",
         "--config",
-        "docstring-style = \"rest\"",
+        "docstring-style = \"rst\"",
     ];
     let stdout = check(root.path(), &args).1;
     assert_eq!(
-        shown(&stdout, "linter.project_kind", "\nlinter.docstring_style = rest\n"),
+        shown(&stdout, "linter.project_kind", "\nlinter.docstring_style = rst\n"),
         "linter.project_kind = library\nlinter.api_packages = [\n\t\"module\",\n]\nlinter.api_modules = [\n\t\"module.errors\",\n]"
     );
+}
+
+// Ruff quotes the text of an `extend`ed file it cannot load; one outside the project is named without it.
+#[test]
+fn extend_outside_the_project_is_named_without_its_text() {
+    let root = project(&[
+        ("repo/pyproject.toml", "[tool.ruff]\nextend = \"../outside/notes.txt\"\n"),
+        ("repo/module.py", "VALUE = 1\n"),
+        ("outside/notes.txt", "API_TOKEN = \"hunter2\"\n"),
+    ]);
+    let (code, _, stderr) = check(&root.path().join("repo"), &["--select", "SMP101"]);
+    assert_eq!((code, stderr.contains("hunter2"), stderr.contains("is not valid configuration")), (2, false, true));
+}
+
+// The same goes for a nested configuration file that `extend`s outside the project, which Ruff loads per directory.
+#[test]
+fn nested_extend_outside_the_project_is_named_without_its_text() {
+    let root = project(&[
+        ("pyproject.toml", "[tool.ruff]\n"),
+        ("nested/pyproject.toml", "[tool.ruff]\nextend = \"../../outside/notes.txt\"\n"),
+        ("nested/module.py", "VALUE = 1\n"),
+        ("outside/notes.txt", "API_TOKEN = \"hunter2\"\n"),
+    ]);
+    let (code, _, stderr) = check(root.path(), &["--select", "SMP101"]);
+    assert_eq!((code, stderr.contains("hunter2"), stderr.contains("is not valid configuration")), (2, false, true));
+}
+
+// An `extend`ed file inside the project is part of the run, so Ruff's report of it stays.
+#[test]
+fn extend_inside_the_project_keeps_ruffs_report() {
+    let root = project(&[
+        ("pyproject.toml", "[tool.ruff]\nextend = \"extra.toml\"\n"),
+        ("extra.toml", "API_TOKEN = \"hunter2\"\n"),
+        ("module.py", "VALUE = 1\n"),
+    ]);
+    let (code, _, stderr) = check(root.path(), &["--select", "SMP101"]);
+    assert_eq!((code, stderr.contains("Failed to load extended configuration")), (2, true));
 }

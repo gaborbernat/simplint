@@ -1,0 +1,162 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:5 SMP916 Docstring of `copy` does not document parameter `target`; add `:param target:` [unsafe fix: Add `:param target:`, `:param kwargs:`]
+2:5 SMP916 Docstring of `copy` does not document parameter `kwargs`; add `:param kwargs:` [unsafe fix: Add `:param target:`, `:param kwargs:`]
+10:5 SMP916 Docstring of `later` does not document parameter `first`; add `:param first:` [unsafe fix: Add `:param first:`, `:param second:`]
+10:5 SMP916 Docstring of `later` does not document parameter `second`; add `:param second:` [unsafe fix: Add `:param first:`, `:param second:`]
+17:5 SMP916 Docstring of `summary` does not document parameter `source`; add `:param source:` [unsafe fix: Add `:param source:`]
+42:9 SMP916 Docstring of `run` does not document parameter `verbose`; add `:param verbose:` [unsafe fix: Add `:param verbose:`]
+46:9 SMP916 Docstring of `check` does not document parameter `path`; add `:param path:` [unsafe fix: Add `:param path:`]
+49:9 SMP916 Docstring of `spread` does not document parameter `args`; add `:param args:` [unsafe fix: Add `:param args:`]
+56:5 SMP916 Docstring of `Bare` does not document parameter `quiet`; add `:param quiet:` [unsafe fix: Add `:param quiet:`]
+63:5 SMP916 Docstring of `single` does not document parameter `value`; add `:param value:`
+71:5 SMP916 Docstring of `Settings` does not document parameter `retries`; add `:param retries:` [unsafe fix: Add `:param retries:`]
+87:5 SMP916 Docstring of `reordered` does not document parameter `b`; add `:param b:` [unsafe fix: Add `:param b:`]
+96:5 SMP916 Docstring of `indented` does not document parameter `b`; add `:param b:` [unsafe fix: Add `:param b:`]
+120:5 SMP916 Docstring of `positional` does not document parameter `__obj`; add `:param __obj:` [unsafe fix: Add `:param __obj:`]
+--- fixed (13 applied, 1 remaining) ---
+def copy(source: str, target: str, *args: str, **kwargs: str) -> None:
+    r"""Copy a file.
+
+    :param source: Where from.
+    :param target:
+    :param \*args: More sources.
+    :param kwargs:
+    """
+
+
+def later(first: str, second: str, third: str) -> None:
+    """Copy a file.
+
+    :param first:
+    :param second:
+    :param third: The last.
+    """
+
+
+def summary(source: str) -> None:
+    """Copy a file.
+
+    :param source:
+    """
+
+
+def _helper(source: str) -> None:
+    """Copy a file.
+
+    :param other: Unrelated.
+    """
+
+
+class Copier:
+    """Copy files.
+
+    :param source: Where from.
+    """
+
+    def __init__(self, source: str, target: str) -> None:
+        """Set up.
+
+        :param target: Where to.
+        """
+        self.source = source
+        self.target = target
+
+    def run(self, verbose: bool) -> None:
+        """Run it.
+
+        :param verbose:
+        """
+
+    @staticmethod
+    def check(path: str) -> None:
+        """Check a path.
+
+        :param path:
+        """
+
+    def spread(*args: str, flag: bool) -> None:
+        """Spread the values.
+
+        :param args:
+        :param flag: Whether to spread.
+        """
+
+
+class Bare:
+    """Copy files.
+
+    :param quiet:
+    """
+
+    def __init__(self, _: str, quiet: bool) -> None:
+        self.quiet = quiet
+
+
+def single(value: int) -> None:
+    "Do a thing with the value."
+
+
+from dataclasses import KW_ONLY, dataclass, field
+
+
+@dataclass
+class Settings:
+    """Settings.
+
+    :param name: The name.
+    :param retries:
+    """
+
+    name: str
+    label = "settings"
+    _: KW_ONLY
+    retries: int = 3
+    cache: dict = field(init=False, default_factory=dict)
+
+    def describe(self) -> str:
+        return self.name
+
+
+def reordered(a: int, b: int, c: int) -> None:
+    """Do it.
+
+    :param old: Renamed away.
+    :param a: A.
+    :param b:
+    :param c: C.
+    """
+
+
+def indented(a: int, b: int) -> None:
+    """Summary.
+
+        :param a: A.
+        :param b:
+    """
+
+
+@dataclass(init=False)
+class CfgNoInit:
+    """Config.
+
+    :ivar size: Size.
+    """
+
+    size: int = 0
+
+
+def knobbed(url: str, _retries: int = 3) -> None:
+    """Fetch a resource.
+
+    :param url: Where it is.
+    """
+
+
+def positional(__obj: object, _hidden: int = 0) -> None:
+    """Take a positional-only object.
+
+    :param __obj:
+    """

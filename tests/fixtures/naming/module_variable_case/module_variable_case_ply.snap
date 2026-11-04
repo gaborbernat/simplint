@@ -2,8 +2,8 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-7:1 SMP102 Module-scope variable `word_values` should be named `_WORD_VALUES` [unsafe fix: Rename `word_values` to `_WORD_VALUES`]
-19:1 SMP102 Module-scope variable `lexer` should be named `_LEXER`
+7:1 SMP102 Module-scope variable `word_values` should be named `WORD_VALUES` [unsafe fix: Rename `word_values` to `WORD_VALUES`]
+19:1 SMP102 Module-scope variable `lexer` should be named `LEXER`
 --- fixed (1 applied, 1 remaining) ---
 from ply import lex
 
@@ -11,11 +11,11 @@ tokens = ("NUMBER", "PLUS")
 literals = ["(", ")"]
 t_PLUS = r"\+"
 t_ignore = " \t"
-_WORD_VALUES = {"one": 1}
+WORD_VALUES = {"one": 1}
 
 
 def t_NUMBER(token):
-    token.value = _WORD_VALUES.get(token.value, token.value)
+    token.value = WORD_VALUES.get(token.value, token.value)
     return token
 
 

@@ -87,9 +87,9 @@ def _fails(stderr: str) -> _Behavior:
 
 def _refuses_unless_ignored(command: list[str], cwd: Path) -> tuple[int, str, str]:
     del cwd
-    if command[0] == "ruff" or command[2:4] == ["--ignore", "SMP108"]:
+    if command[0] == "ruff" or command[2:4] == ["--ignore", "SMP301"]:
         return 0, "", ""
-    conflict = "  - SMP108 (future-annotations) removes it; ignore SMP108 in `[tool.simplint]`, or drop the import.\n"
+    conflict = "  - SMP301 (future-annotations) removes it; ignore SMP301 in `[tool.simplint]`, or drop the import.\n"
     return 2, "", f"simplint failed\n  Cause: rules work against each other:\n{conflict}"
 
 
@@ -178,8 +178,7 @@ def test_main_checks_the_selected_packages(
     behavior: _Behavior,
     expected: tuple[int, str],
 ) -> None:
-    sdist = _sdist(tmp_path)
-    selected = Package(name="demo", version="1.0", sha256=hashlib.sha256(sdist.read_bytes()).hexdigest())
+    selected = Package(name="demo", version="1.0", sha256=hashlib.sha256(_sdist(tmp_path).read_bytes()).hexdigest())
     mocker.patch("tasks.ecosystem.PACKAGES", (selected, Package(name="other", version="2.0", sha256="")))
     mocker.patch("subprocess.run", autospec=True, side_effect=_tools(behavior))
 

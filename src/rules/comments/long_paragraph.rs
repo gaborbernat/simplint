@@ -4,16 +4,16 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-
-const MAX_PARAGRAPH_WORDS: usize = 100;
+use crate::rules::long_paragraphs;
 
 pub fn long_paragraph(checker: &Checker) {
     let source = checker.source;
+    let limit = checker.settings.project.knobs.max_paragraph_words;
     let report = |range| {
         checker.report(
             Rule::LongParagraph,
             range,
-            format!("Paragraph exceeds {MAX_PARAGRAPH_WORDS} words; split it at a change of topic"),
+            format!("Paragraph exceeds {limit} words; split it at a change of topic"),
         );
     };
     let mut block: Vec<TextRange> = Vec::new();
@@ -25,30 +25,20 @@ pub fn long_paragraph(checker: &Checker) {
                     == range.start() - source.line_start(range.start())
         });
         if !continues {
-            long_comment_paragraphs(source, &block).into_iter().for_each(report);
+            long_comment_paragraphs(source, &block, limit).into_iter().for_each(report);
             block.clear();
         }
         block.push(range);
     }
-    long_comment_paragraphs(source, &block).into_iter().for_each(report);
+    long_comment_paragraphs(source, &block, limit).into_iter().for_each(report);
 }
 
-fn long_comment_paragraphs(source: &str, block: &[TextRange]) -> Vec<TextRange> {
-    let mut long = Vec::new();
-    let mut words = 0;
-    let mut start = None;
-    for range in block {
-        let text = source[*range].trim_start_matches('#').trim();
-        if text.is_empty() {
-            words = 0;
-            start = None;
-            continue;
-        }
-        let first = *start.get_or_insert(range.start());
-        words += text.split_whitespace().count();
-        if words > MAX_PARAGRAPH_WORDS && long.last().is_none_or(|last: &TextRange| last.start() != first) {
-            long.push(TextRange::new(first, range.end()));
-        }
-    }
-    long
+fn long_comment_paragraphs(source: &str, block: &[TextRange], limit: usize) -> Vec<TextRange> {
+    long_paragraphs(
+        block.iter().map(|range| {
+            let text = source[*range].trim_start_matches('#').trim();
+            (!text.is_empty()).then(|| (*range, text.split_whitespace().count()))
+        }),
+        limit,
+    )
 }

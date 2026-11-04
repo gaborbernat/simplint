@@ -24,8 +24,8 @@ exit code 1
     }
   },
   {
-    "check_name": "SMP010",
-    "description": "SMP010: Single-letter name `x`; only comprehensions may use one",
+    "check_name": "SMP101",
+    "description": "SMP101: Single-letter name `x`; only comprehensions may use one",
     "severity": "major",
     "fingerprint": "24265194e37d0b86",
     "location": {

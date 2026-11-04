@@ -2,4 +2,4 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-1:5 SMP302 Public function `glow` has no docstring; document it for its users; `loose/__init__.py` re-exports it
+1:5 SMP903 Public function `glow` has no docstring; document it for its users; `loose/__init__.py` re-exports it

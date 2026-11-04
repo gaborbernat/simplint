@@ -28,3 +28,16 @@ updates:
       - skip news
     cooldown:
       default-days: 7
+  - package-ecosystem: cargo
+    directory: /
+    patterns:
+      - '*'
+    multi-ecosystem-group: dependencies
+    labels:
+      - dependencies
+      - skip news
+    ignore:
+      # ruff pins tikv-jemallocator 0.6, and 0.7 cannot coexist with it: both link the jemalloc native library.
+      - dependency-name: tikv-jemallocator
+    cooldown:
+      default-days: 7

@@ -109,6 +109,7 @@ impl Configuration {
                 })
                 .collect_vec()
         };
+        let logic = options.logic.unwrap_or_default();
         Self {
             rule_selections: vec![RuleSelection {
                 enabled: SelectorLayer {
@@ -134,7 +135,11 @@ impl Configuration {
             extend_safe_fixes: tag("extend-safe-fixes", options.extend_safe_fixes.unwrap_or_default()),
             extend_unsafe_fixes: tag("extend-unsafe-fixes", options.extend_unsafe_fixes.unwrap_or_default()),
             project: ProjectOptions {
+                max_paragraph_words: options.max_paragraph_words,
                 keep_names: options.naming.and_then(|naming| naming.keep_names),
+                module_attributes: options.imports.and_then(|imports| imports.module_attributes),
+                max_helper_statements: logic.max_helper_statements,
+                max_caller_statements: logic.max_caller_statements,
                 project_kind: options.project_kind,
                 api_packages: options.api_packages,
                 api_modules: options.api_modules,
@@ -186,21 +191,29 @@ impl Overrides {
 // The options that describe the project and its API, each taken from the last layer that sets it.
 #[derive(Clone, Default)]
 pub(super) struct ProjectOptions {
+    pub(super) max_paragraph_words: Option<usize>,
     pub(super) keep_names: Option<Vec<String>>,
+    pub(super) module_attributes: Option<Vec<String>>,
     pub(super) project_kind: Option<ProjectKindOption>,
     pub(super) api_packages: Option<Vec<String>>,
     pub(super) api_modules: Option<Vec<String>>,
     pub(super) docstring_style: Option<DocstringStyle>,
+    pub(super) max_helper_statements: Option<usize>,
+    pub(super) max_caller_statements: Option<usize>,
 }
 
 impl ProjectOptions {
     fn combine(self, other: Self) -> Self {
         Self {
+            max_paragraph_words: self.max_paragraph_words.or(other.max_paragraph_words),
             keep_names: self.keep_names.or(other.keep_names),
+            module_attributes: self.module_attributes.or(other.module_attributes),
             project_kind: self.project_kind.or(other.project_kind),
             api_packages: self.api_packages.or(other.api_packages),
             api_modules: self.api_modules.or(other.api_modules),
             docstring_style: self.docstring_style.or(other.docstring_style),
+            max_helper_statements: self.max_helper_statements.or(other.max_helper_statements),
+            max_caller_statements: self.max_caller_statements.or(other.max_caller_statements),
         }
     }
 }
@@ -276,7 +289,7 @@ pub struct SimplintOptions {
     )]
     pub show_fixes: Option<bool>,
 
-    /// A list of rule codes, prefixes or names to enable. Prefixes can specify exact rules (like `SMP101`), entire
+    /// A list of rule codes, prefixes or names to enable. Prefixes can specify exact rules (like `SMP601`), entire
     /// groups (like `SMP1`), or anything in between.
     ///
     /// When breaking ties between enabled and disabled rules (via `select` and `ignore`, respectively), more specific
@@ -303,14 +316,14 @@ pub struct SimplintOptions {
     )]
     pub extend_select: Option<Vec<String>>,
 
-    /// A list of rule codes, prefixes or names to ignore. Prefixes can specify exact rules (like `SMP101`), entire
+    /// A list of rule codes, prefixes or names to ignore. Prefixes can specify exact rules (like `SMP601`), entire
     /// groups (like `SMP1`), or anything in between.
     #[option(
         default = "[]",
         value_type = "list[RuleSelector]",
         example = r#"
-            # Skip the missing `Final` rule (`SMP101`).
-            ignore = ["SMP101"]
+            # Skip the missing `Final` rule (`SMP601`).
+            ignore = ["SMP601"]
         "#
     )]
     pub ignore: Option<Vec<String>>,
@@ -343,8 +356,8 @@ pub struct SimplintOptions {
         default = "[]",
         value_type = "list[RuleSelector]",
         example = r#"
-            # Disable fix for the dataclass rules (`SMP111`, `SMP114`).
-            unfixable = ["SMP111", "SMP114"]
+            # Disable fix for the dataclass rules (`SMP701`, `SMP703`).
+            unfixable = ["SMP701", "SMP703"]
         "#
     )]
     pub unfixable: Option<Vec<String>>,
@@ -355,8 +368,8 @@ pub struct SimplintOptions {
         default = "[]",
         value_type = "list[RuleSelector]",
         example = r#"
-            # Also disable fix for the walrus rule (`SMP100`).
-            extend-unfixable = ["SMP100"]
+            # Also disable fix for the walrus rule (`SMP502`).
+            extend-unfixable = ["SMP502"]
         "#
     )]
     pub extend_unfixable: Option<Vec<String>>,
@@ -366,8 +379,8 @@ pub struct SimplintOptions {
         default = "[]",
         value_type = "list[RuleSelector]",
         example = r#"
-            # Allow applying the unsafe fixes of `SMP101` without the `--unsafe-fixes` flag.
-            extend-safe-fixes = ["SMP101"]
+            # Allow applying the unsafe fixes of `SMP601` without the `--unsafe-fixes` flag.
+            extend-safe-fixes = ["SMP601"]
         "#
     )]
     pub extend_safe_fixes: Option<Vec<String>>,
@@ -377,8 +390,8 @@ pub struct SimplintOptions {
         default = "[]",
         value_type = "list[RuleSelector]",
         example = r#"
-            # Require the `--unsafe-fixes` flag when fixing `SMP111`.
-            extend-unsafe-fixes = ["SMP111"]
+            # Require the `--unsafe-fixes` flag when fixing `SMP701`.
+            extend-unsafe-fixes = ["SMP701"]
         "#
     )]
     pub extend_unsafe_fixes: Option<Vec<String>>,
@@ -394,11 +407,11 @@ pub struct SimplintOptions {
         value_type = "dict[str, list[RuleSelector]]",
         scope = "per-file-ignores",
         example = r#"
-            # Ignore `SMP101` (missing `Final`) in all `__init__.py` files, and in `path/to/file.py`.
-            "__init__.py" = ["SMP101"]
-            "path/to/file.py" = ["SMP101"]
+            # Ignore `SMP601` (missing `Final`) in all `__init__.py` files, and in `path/to/file.py`.
+            "__init__.py" = ["SMP601"]
+            "path/to/file.py" = ["SMP601"]
             # Ignore the test rules everywhere except for the `tests/` directory.
-            "!tests/**.py" = ["SMP2"]
+            "!tests/**.py" = ["SMP8"]
         "#
     )]
     pub per_file_ignores: Option<BTreeMap<String, Vec<String>>>,
@@ -410,8 +423,8 @@ pub struct SimplintOptions {
         value_type = "dict[str, list[RuleSelector]]",
         scope = "extend-per-file-ignores",
         example = r#"
-            # Also ignore `SMP101` in all `__init__.py` files.
-            "__init__.py" = ["SMP101"]
+            # Also ignore `SMP601` in all `__init__.py` files.
+            "__init__.py" = ["SMP601"]
         "#
     )]
     pub extend_per_file_ignores: Option<BTreeMap<String, Vec<String>>>,
@@ -443,7 +456,7 @@ pub struct SimplintOptions {
     pub api_packages: Option<Vec<String>>,
 
     /// Modules of a library, besides its top-level packages, that users import from directly. Their `__all__` is the
-    /// interface you declare, so `unused-export` (`SMP117`) keeps names no module of the project imports.
+    /// interface you declare, so `unused-export` (`SMP402`) keeps names no module of the project imports.
     #[option(
         default = "[]",
         value_type = "list[str]",
@@ -453,28 +466,47 @@ pub struct SimplintOptions {
     )]
     pub api_modules: Option<Vec<String>>,
 
-    /// The markup of docstrings, which the reStructuredText rules, `SMP310` to `SMP323`, check: `"rest"` for reStructuredText field lists, such as
-    /// `:param name:`, `:returns:` and `:raises Error:`. Unset, those rules do not report.
+    /// The markup of docstrings, which the reStructuredText rules, `SMP910` to `SMP925`, check: `"rst"` for
+    /// reStructuredText field lists, such as `:param name:`, `:returns:` and `:raises Error:`. Unset, those rules do not
+    /// report.
     #[option(
         default = "null",
-        value_type = r#""rest""#,
+        value_type = r#""rst""#,
         example = r#"
-            docstring-style = "rest"
+            docstring-style = "rst"
         "#
     )]
     pub docstring_style: Option<DocstringStyle>,
 
+    /// The most words a paragraph may hold: a comment paragraph for `long-paragraph` (`SMP002`), and a docstring
+    /// paragraph for `long-docstring-paragraph` (`SMP904`).
+    #[option(
+        default = "100",
+        value_type = "int",
+        example = r#"
+            max-paragraph-words = 80
+        "#
+    )]
+    pub max_paragraph_words: Option<usize>,
+
     /// Options for the naming rules.
     #[option_group]
     pub naming: Option<NamingOptions>,
+
+    /// Options for the import rules.
+    #[option_group]
+    pub imports: Option<ImportsOptions>,
+    /// Options for the logic rules.
+    #[option_group]
+    pub logic: Option<LogicOptions>,
 }
 
 /// The `[tool.simplint.naming]` table.
 #[derive(Deserialize, Default, Clone, OptionsMetadata)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct NamingOptions {
-    /// A list of module-scope names that `module-variable-case` (`SMP102`) leaves as they are, such as the variables a
-    /// framework reads from a module by their exact lowercase names.
+    /// A list of module-scope names that `module-variable-case` (`SMP102`) and `module-variable-prefix` (`SMP404`) leave
+    /// as they are, such as the variables a framework reads from a module by their exact lowercase names.
     #[option(
         default = "[]",
         value_type = "list[str]",
@@ -484,4 +516,48 @@ pub struct NamingOptions {
         "#
     )]
     pub keep_names: Option<Vec<String>>,
+}
+
+/// The `[tool.simplint.imports]` table.
+#[derive(Deserialize, Default, Clone, OptionsMetadata)]
+#[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
+pub struct ImportsOptions {
+    /// Absolute names of modules whose attributes the code may reach as `module.Name`, such as a module that tests patch
+    /// attribute by attribute. `module-attribute-import` (`SMP304`) leaves them alone.
+    #[option(
+        default = "[]",
+        value_type = "list[str]",
+        example = r#"
+            # Tests patch `settings` by its module attribute.
+            module-attributes = ["app.settings"]
+        "#
+    )]
+    pub module_attributes: Option<Vec<String>>,
+}
+
+/// The `[tool.simplint.logic]` table.
+#[derive(Deserialize, Default, Clone, OptionsMetadata)]
+#[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
+pub struct LogicOptions {
+    /// The most statements a private helper may have for `single-caller-helper` (`SMP505`) to suggest inlining it into
+    /// its one caller. A docstring does not count.
+    #[option(
+        default = "3",
+        value_type = "int",
+        example = r#"
+            # Only one-line helpers are inlined.
+            max-helper-statements = 2
+        "#
+    )]
+    pub max_helper_statements: Option<usize>,
+
+    /// The most statements the caller of such a helper may have once the helper's statements are added to its own.
+    #[option(
+        default = "20",
+        value_type = "int",
+        example = r#"
+            max-caller-statements = 30
+        "#
+    )]
+    pub max_caller_statements: Option<usize>,
 }

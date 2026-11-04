@@ -214,11 +214,11 @@ const CLASHES: [Clash; 6] = [
         },
     },
     Clash {
-        simplint: Rule::RestReturns,
+        simplint: Rule::RstReturns,
         ruff: &[RuffRule::DocstringMissingReturns, RuffRule::DocstringMissingYields],
         probe: "def function(value):\n    \"\"\"Return the value.\n\n    :returns: The value.\n    \"\"\"\n    return value\n\n\n\
                 def generator():\n    \"\"\"Count.\n\n    :yields: The numbers.\n    \"\"\"\n    yield 1\n",
-        acts_on: |settings, _, _| settings.project.docstring_style == Some(DocstringStyle::Rest),
+        acts_on: |settings, _, _| settings.project.docstring_style == Some(DocstringStyle::Rst),
         explain: |names| {
             format!(
                 "{} asks for the `:returns:` and `:yields:` fields of reStructuredText docstrings, which Ruff's {} {} as \
@@ -232,11 +232,11 @@ const CLASHES: [Clash; 6] = [
         },
     },
     Clash {
-        simplint: Rule::RestMissingRaises,
+        simplint: Rule::RstMissingRaises,
         ruff: &[RuffRule::DocstringMissingException],
         probe: "def function(value):\n    \"\"\"Check the value.\n\n    :raises ValueError: When it is empty.\n    \"\"\"\n    \
                 if not value:\n        raise ValueError\n",
-        acts_on: |settings, _, _| settings.project.docstring_style == Some(DocstringStyle::Rest),
+        acts_on: |settings, _, _| settings.project.docstring_style == Some(DocstringStyle::Rst),
         explain: |names| {
             format!(
                 "{} asks for the `:raises:` fields of reStructuredText docstrings, which Ruff's {} reads as a missing \

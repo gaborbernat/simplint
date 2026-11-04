@@ -98,8 +98,9 @@ fn remove_stale(current: &Path) {
         return;
     };
     let now = SystemTime::now();
-    for sibling in siblings.filter_map(Result::ok).map(|entry| entry.path()) {
-        if sibling == current || !sibling.is_dir() {
+    for entry in siblings.filter_map(Result::ok) {
+        let sibling = entry.path();
+        if sibling == current || !is_build_directory(&entry) {
             continue;
         }
         let newest = fs::read_dir(&sibling)
@@ -114,6 +115,40 @@ fn remove_stale(current: &Path) {
             let _ = fs::remove_dir_all(&sibling);
         }
     }
+}
+
+// Whether an entry is another build's cache directory, the only kind `remove_stale` removes: a real directory, not a
+// link, named as `FORMAT` names one and holding nothing but cache files. Anything else in the `simplint` directory, as
+// a directory a user put there, stays.
+fn is_build_directory(entry: &fs::DirEntry) -> bool {
+    entry.file_name().to_str().is_some_and(is_build_name)
+        && entry.file_type().is_ok_and(|file_type| file_type.is_dir())
+        && holds_only_cache_files(&entry.path())
+}
+
+// Whether a name has the shape `FORMAT` gives: a version, then the 16 hex digits of the hash `build.rs` computes.
+fn is_build_name(name: &str) -> bool {
+    name.rsplit_once('-').is_some_and(|(version, hash)| {
+        !version.is_empty()
+            && version.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'-' | b'+'))
+            && hash.len() == 16
+            && hash.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    })
+}
+
+// Whether a directory holds only cache files, which `persist` names by their package's key, in decimal.
+fn holds_only_cache_files(directory: &Path) -> bool {
+    fs::read_dir(directory).is_ok_and(|mut entries| {
+        entries.all(|entry| {
+            entry.is_ok_and(|entry| {
+                entry.file_type().is_ok_and(|file_type| file_type.is_file())
+                    && entry
+                        .file_name()
+                        .to_str()
+                        .is_some_and(|name| !name.is_empty() && name.bytes().all(|byte| byte.is_ascii_digit()))
+            })
+        })
+    })
 }
 
 // Ruff's `init`: the tag and the `.gitignore` mark Ruff's cache directory whichever tool creates it first, so an existing

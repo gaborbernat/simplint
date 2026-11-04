@@ -1,321 +1,84 @@
-Configuration
-=============
-
-simplint takes two kinds of settings. Which files to check and which Python version to assume come from Ruff's
-configuration, found and merged exactly as ``ruff check`` finds it. simplint's own settings come from the
-``[tool.simplint]`` table of `pyproject.toml <https://packaging.python.org/en/latest/specifications/pyproject-toml/>`__:
-for each file, the nearest ``pyproject.toml`` with a ``[tool.simplint]`` table in the file's directory or a parent
-directory. As Ruff does with ``[tool.ruff]``, simplint passes over a ``pyproject.toml`` without the table, so a nested
-package inherits its parent's settings. That directory is the project root, and the paths in the settings below are
-relative to it. When no ``pyproject.toml`` has the table, simplint runs every rule with the defaults, and the nearest
-``pyproject.toml`` still gives the project metadata.
-
-``--config PATH`` reads both from one file instead, for every file checked, and ``--isolated`` ignores every
-configuration file, as in Ruff. ``--config "KEY = VALUE"`` overrides one setting on top of every configuration file:
-a ``[tool.simplint]`` key overrides simplint's setting, and any other key Ruff's. ``simplint config`` lists the
-``[tool.simplint]`` options, and ``simplint config KEY`` describes one.
-
-Selecting rules
----------------
-
-simplint's own settings live in ``[tool.simplint]``:
-
-.. code-block:: toml
-
-    [tool.simplint]
-    select = ["ALL"]                              # the default
-    extend-select = []
-    ignore = ["SMP300"]
-    per-file-ignores = { "tests/*" = ["SMP101"] }
-    extend-per-file-ignores = {}
-
-- ``select`` enables rules. The default, ``ALL``, enables every rule.
-- ``extend-select`` adds rules to ``select``.
-- ``ignore`` removes rules from the selection.
-- ``per-file-ignores`` maps a glob pattern to the rules to disable in matching files. A pattern matches either the path
-  relative to the project root or the bare file name, and a leading ``!`` disables the rules in every file the pattern
-  does not match. ``extend-per-file-ignores`` adds to it.
-
-Each entry is a rule code (``SMP101``), a code prefix (``SMP1``) or a rule name (``missing-final``). An entry that
-matches no rule stops the run with an error, and so does a key the table does not know. As in Ruff, the more specific
-entry wins when ``select`` and ``ignore`` both match a rule, so ``select = ["SMP1"]`` with ``ignore = ["SMP101"]``
-enables every ``SMP1`` rule but ``SMP101``, and ``ignore`` wins a tie. On the command line, ``--select`` replaces
-``select``, ``extend-select`` and ``ignore``, ``--extend-select`` adds rules, and ``--ignore`` removes rules from
-whatever is selected. ``--per-file-ignores`` replaces ``per-file-ignores`` and ``--extend-per-file-ignores`` adds to
-it.
-
-Fixes
------
-
-Which fixes apply and how safe they count follows the same pattern:
-
-.. code-block:: toml
-
-    [tool.simplint]
-    fixable = ["ALL"]                # the default
-    extend-fixable = []
-    unfixable = ["SMP111"]
-    extend-unfixable = []
-    extend-safe-fixes = ["SMP101"]
-    extend-unsafe-fixes = ["SMP001"]
-
-- ``fixable`` lists the rules whose fixes simplint offers, ``extend-fixable`` adds to it and ``unfixable`` and
-  ``extend-unfixable`` remove from it. A rule left out is still reported, without a fix.
-- ``extend-safe-fixes`` makes the unsafe fixes of the listed rules safe, so ``--fix`` applies them without
-  ``--unsafe-fixes``; ``extend-unsafe-fixes`` makes safe fixes unsafe. When both list a rule, the more specific entry
-  wins, and ``extend-unsafe-fixes`` wins a tie.
-
-The ``--fixable``, ``--unfixable``, ``--extend-fixable`` and ``--extend-unfixable`` flags override these keys.
-
-Run options
------------
-
-The table also takes the run options Ruff reads from ``[tool.ruff]``, with the same names. The options of the table
-found for the current directory apply to the whole run, and the matching command-line flag, or its ``--no-`` form,
-overrides them:
-
-.. code-block:: toml
-
-    [tool.simplint]
-    fix = false            # apply safe fixes, like --fix
-    fix-only = false       # fix and report nothing else, like --fix-only
-    unsafe-fixes = false   # include unsafe fixes, like --unsafe-fixes; unset shows a hint instead
-    show-fixes = false     # list what was fixed, like --show-fixes
-    output-format = "full" # like --output-format
-
-Like Ruff, simplint caches which files had nothing to report, keyed by each file's modification time. The cache lives
-in a ``simplint`` directory inside Ruff's cache directory, ``.ruff_cache`` unless Ruff's ``cache-dir`` setting,
-``--cache-dir`` or ``RUFF_CACHE_DIR`` names another, and never touches Ruff's own files there; ``--no-cache`` skips it.
-A cached result also depends on the names other files use from that file, so editing an importer checks the files it
-imports again.
-Each simplint build keeps its own subdirectory there, and a run removes the subdirectories of other builds that no run
-has written to for 30 days, so a project that runs two versions, as one pinned in pre-commit and another on the command
-line, keeps both caches.
-
-Naming
-------
-
-Some frameworks read a module variable by its exact name, so renaming it to the ``_UPPER_CASE`` form SMP102 asks for
-breaks the program. SMP102 already leaves alone the names Sphinx, Alembic, gunicorn and WSGI or ASGI servers read; list
-any other in ``naming.keep-names``:
-
-.. code-block:: toml
-
-    [tool.simplint.naming]
-    keep-names = ["urlpatterns"]  # the default is []
-
-``--config "naming.keep-names = ['urlpatterns']"`` replaces the list, and ``--show-settings`` prints it as
-``linter.naming.keep_names``.
-
-Public API
-----------
-
-The documentation rules treat a library's public API apart from its internal code. :doc:`SMP302 <_generated/rules/SMP302>` asks for docstrings on what users import,
-:doc:`SMP300 <_generated/rules/SMP300>` removes them everywhere else, and
-:doc:`SMP117 <_generated/rules/SMP117>` keeps ``__all__`` to the names other
-modules use. An application has no Python API, so all of its code is internal.
-
-.. code-block:: toml
-
-    [tool.simplint]
-    project-kind = "library"           # the default is "auto"
-    api-packages = ["my_package"]      # the default comes from the build backend
-    api-modules = ["my_package.errors"]
-
-- ``project-kind`` is ``"library"`` or ``"application"``. ``"auto"`` picks a library when something installs the
-  project: a ``[build-system]`` table, or a ``setup.py`` or ``setup.cfg``. ``[tool.uv]`` with ``package = false``, and
-  maturin building only a binary (``bindings = "bin"``), make it an application, as does a project with none of these.
-  Neither a ``py.typed`` marker nor console scripts decide it: many libraries ship without the first and with the
-  second.
-- ``api-packages`` names the top-level packages or modules the library ships. Without it, they come from the build
-  backend's settings (hatch ``packages``, uv's ``module-name``, flit's ``module.name``, setuptools ``packages`` and
-  ``py-modules``, maturin's ``module-name``), then from the packages next to the ``pyproject.toml``, or in its ``src``
-  directory, that hold a ``py.typed`` marker, then from the package named after the project. When none is found, every
-  module outside ``docs`` and the tests counts.
-- ``api-modules`` names modules, besides the top-level packages, that users import from directly. Their ``__all__`` is
-  the interface you declare, so SMP117 keeps the names no module of the project imports.
-
-A module of an API package is public unless a part of its path starts with ``_``, as `PEP 8
-<https://peps.python.org/pep-0008/#public-and-internal-interfaces>`__ describes, so a layout that keeps its code in
-``my_package/_core.py`` and lists the public names in ``my_package/__init__.py`` exposes only those. ``--show-settings``
-prints the result as ``linter.project_kind``, ``linter.api_packages`` and ``linter.api_modules``.
-
-Docstring markup
-----------------
-
-The reStructuredText rules, SMP310 to SMP323, check the field lists of `reStructuredText docstrings
-<https://www.sphinx-doc.org/en/master/usage/domains/python.html#info-field-lists>`__, as Sphinx renders them:
-
-.. code-block:: toml
-
-    [tool.simplint]
-    docstring-style = "rest"  # unset by default, which turns SMP310 to SMP323 off
-
-Every docstring has to be accurate: no field for a parameter or attribute that does not exist, no ``:returns:`` on a
-function that returns nothing, no ``:yields:`` on one that is not a generator, ``:ivar:`` and ``:cvar:`` for instance and
-class attributes, and no types, which belong in annotations. Every field needs a description that says more than the name, a
-field list needs a blank line above it, a constructor parameter is documented once, in the class docstring or in
-``__init__``, roles such as ``:class:`` need their target in backticks, inline literals need closing, and the public API
-leaves out internal names with a leading underscore. A docstring
-of the public API also has to be complete: a ``:param:`` for each parameter, ``:returns:`` or ``:yields:`` when the
-function hands back a value, ``:raises:`` for each exception it raises itself, and an ``:ivar:`` or ``:cvar:`` for each
-attribute of a class. The fixes add the missing fields with empty descriptions, in the order Sphinx renders them, for you
-to fill in.
-
-Ruff's ``DOC201``, ``DOC402`` and ``DOC501`` read Google and numpydoc sections only, so they report the ``:returns:``,
-``:yields:`` and ``:raises:`` fields as missing; see `Rules that work against each other`_.
-
-Settings shared with Ruff
--------------------------
-
-simplint resolves Ruff's configuration with Ruff's own code, so the two tools agree on it: ``--isolated``, then
-``--config``, then the closest ``.ruff.toml``, ``ruff.toml`` or ``pyproject.toml`` with a ``[tool.ruff]`` table, then
-your user-level Ruff configuration, then Ruff's defaults. ``extend`` chains and hierarchical configuration work as in
-Ruff. simplint does not repeat Ruff's warnings about that configuration, such as an ignored rule Ruff has removed:
-``ruff check`` already shows them.
-
-- `target-version <https://docs.astral.sh/ruff/settings/#target-version>`__ and
-  `per-file-target-version <https://docs.astral.sh/ruff/settings/#per-file-target-version>`__ set the Python version
-  the rules assume for each file, and ``--target-version`` overrides them. Without them, the version comes from
-  `requires-python <https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python>`__, and
-  then from Ruff's default, Python 3.14. Every rule and fix that depends on the language version follows it: SMP100
-  offers ``:=`` and SMP101 offers ``Final`` only from Python 3.8, SMP111 and SMP114 need 3.10, the SMP112 fix reuses
-  the string's quotes inside an f-string only from 3.12, SMP020 and SMP108 treat annotations as lazy from 3.14, and
-  SMP040 counts a module as standard library only when every version from the target onward ships it.
-- `exclude <https://docs.astral.sh/ruff/settings/#exclude>`__,
-  `extend-exclude <https://docs.astral.sh/ruff/settings/#extend-exclude>`__,
-  `lint.exclude <https://docs.astral.sh/ruff/settings/#lint_exclude>`__,
-  `respect-gitignore <https://docs.astral.sh/ruff/settings/#respect-gitignore>`__ and
-  `force-exclude <https://docs.astral.sh/ruff/settings/#force-exclude>`__ pick the files to check, Ruff's built-in
-  excludes included, and the command-line flags of the same names override them.
-
-Settings read from ``[project]``
---------------------------------
-
-simplint also reads the `project metadata <https://peps.python.org/pep-0621/>`__:
-
-- `dependencies
-  <https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies>`__
-  are the packages SMP040 treats as required, so it reports a ``try``/``except ImportError`` around their imports. A
-  requirement with an `environment marker
-  <https://packaging.python.org/en/latest/specifications/dependency-specifiers/#environment-markers>`__ is conditional
-  and does not count.
-- `Entry points <https://packaging.python.org/en/latest/specifications/entry-points/>`__ in ``scripts``,
-  ``gui-scripts`` and ``entry-points`` count as imports of the names they reference. Fixes leave those names in place,
-  and `SMP113 <https://simplint.readthedocs.io/en/latest/_generated/rules/SMP113.html>`__ expects them in
-  ``__all__``.
-
-Suppressing a report
---------------------
-
-simplint honors the same `noqa comments <https://docs.astral.sh/ruff/linter/#error-suppression>`__ as Ruff. Put the
-comment on the line where the report starts, and give a reason after the codes:
-
-.. code-block:: python
-
-    x = solve(matrix)  # noqa: SMP010 matches the paper's notation
-
-A report on a multi-line string or a line continued with ``\`` takes the comment on the last line of the string or
-continuation, as in Ruff. A bare ``# noqa`` suppresses every simplint rule on its line, but
-`SMP060 <https://simplint.readthedocs.io/en/latest/_generated/rules/SMP060.html>`__ reports it for giving no reason.
-
-The file-level comments work as in Ruff too. ``# ruff: noqa: SMP010`` (or ``# flake8: noqa: SMP010``) on its own line
-suppresses the listed rules in the whole file, a bare ``# ruff: noqa`` every rule but SMP060, and
-``# ruff: file-ignore[SMP010]`` at module scope the listed rules.
-
-``# simplint: ignore[SMP010]`` suppresses the listed rules on its line too, the way Ruff's ``# ruff: ignore[...]``
-does for Ruff's rules. ``simplint check --add-noqa`` writes a ``# noqa`` comment for every
-report left, merged into the line's existing ``# noqa`` comment, and ``--add-ignore`` writes ``# simplint: ignore``
-comments the same way. Both take a reason to write after the codes: ``--add-noqa="matches the paper's notation"``.
-
-Ruff does not know the ``SMP`` codes. List them in
-`lint.external <https://docs.astral.sh/ruff/settings/#lint_external>`__ so that Ruff keeps these comments instead of
-reporting them as unused (`RUF100 <https://docs.astral.sh/ruff/rules/unused-noqa/>`__):
-
-.. code-block:: toml
-
-    [tool.ruff]
-    lint.external = ["SMP"]
-
-Pairing with Ruff
------------------
-
-simplint does not repeat what Ruff already checks. To cover what its rules leave to Ruff, run Ruff with every rule
-selected (``select = ["ALL"]``) but the missing-docstring rules, which ask for the docstrings simplint removes (see
-`Rules that work against each other`_), and add these
-`flake8-tidy-imports <https://docs.astral.sh/ruff/settings/#lintflake8-tidy-imports>`__ settings:
-
-.. code-block:: toml
-
-    [tool.ruff.lint]
-    select = ["ALL"]
-    ignore = ["D1"]
-
-    [tool.ruff.lint.flake8-tidy-imports]
-    ban-relative-imports = "parents"
-
-    [tool.ruff.lint.flake8-tidy-imports.banned-api]
-    "typing.Any".msg = "use the precise type"
-    "typing.cast".msg = "narrow with isinstance or TypeIs instead"
-
-Ruff reads `banned-api <https://docs.astral.sh/ruff/settings/#lint_flake8-tidy-imports_banned-api>`__ per
-configuration file, so the test-only bans go in a ``ruff.toml`` inside the tests directory. That file
-`extends <https://docs.astral.sh/ruff/settings/#extend>`__ the root configuration and repeats the bans above, because a
-nested table replaces the parent's. The ``unittest.mock`` ban steers tests from
-`unittest.mock <https://docs.python.org/3/library/unittest.mock.html>`__ to the ``mocker`` fixture of
-`pytest-mock <https://pytest-mock.readthedocs.io/en/latest/>`__:
-
-.. code-block:: toml
-
-    extend = "../pyproject.toml"
-
-    [lint.flake8-tidy-imports.banned-api]
-    "typing.Any".msg = "use the precise type"
-    "typing.cast".msg = "narrow with isinstance or TypeIs instead"
-    "unittest.mock".msg = "mock through pytest-mock's mocker"
-    "time.sleep".msg = "wait on an event the mock sets"
-
-Rules that work against each other
-----------------------------------
-
-Some simplint rules undo what a Ruff rule asks for, under some Ruff settings. With both on for a file, one side's fix
-undoes the other's, or leaves code the other reports, so no run of ``ruff check --fix`` and ``simplint check --fix``
-leaves that file clean. simplint checks every file's settings before it lints any, and exits with status 2 when it finds
-such a pair. The error names both rules, the configuration files their settings come from, the first file they meet in,
-and how to resolve it:
-
-.. code-block:: text
-
-    simplint failed
-      Cause: simplint and Ruff rules work against each other, so fixing never leaves the code clean:
-      - SMP108 (future-annotations) removes `from __future__ import annotations` on Python 3.14 and newer, which Ruff's I002 (missing-required-import) adds back because `lint.isort.required-imports` lists it; ignore SMP108 in `[tool.simplint]`, or drop the import from `required-imports`.
-        simplint settings: /project/pyproject.toml; Ruff settings: /project/pyproject.toml; first file: src/app.py
-
-The pairs are:
-
-- :doc:`SMP300 <_generated/rules/SMP300>` removes docstrings that Ruff's
-  ``D101``, ``D102``, ``D103``, ``D105``, ``D106`` and ``D107`` ask for. Ignore those, and let :doc:`SMP302 <_generated/rules/SMP302>` ask for documentation on the public API.
-- :doc:`SMP301 <_generated/rules/SMP301>` removes the module docstrings of
-  tests that Ruff's ``D100`` and ``D104`` ask for. Turn those off for test files in Ruff's ``per-file-ignores``.
-- `SMP108 <https://simplint.readthedocs.io/en/latest/_generated/rules/SMP108.html>`__ removes ``from __future__ import
-  annotations`` on Python 3.14 and newer, which Ruff's ``I002`` adds back when ``lint.isort.required-imports`` lists it.
-  Drop it from the list once the project targets Python 3.14.
-- `SMP110 <https://simplint.readthedocs.io/en/latest/_generated/rules/SMP110.html>`__ makes imports from the file's own
-  package relative, which Ruff's ``TID252`` turns back when ``lint.flake8-tidy-imports.ban-relative-imports`` is
-  ``"all"``. Set it to ``"parents"``.
-- With ``docstring-style = "rest"``, :doc:`SMP315 <_generated/rules/SMP315>` asks for the ``:returns:`` and
-  ``:yields:`` fields that Ruff's ``DOC201`` and ``DOC402`` read as missing sections, and
-  :doc:`SMP316 <_generated/rules/SMP316>` for the ``:raises:`` fields ``DOC501`` reads the same way, since those know
-  Google and numpydoc sections only. Ignore the Ruff rules.
-
-Per-file ignores on either side count, so a Ruff rule turned off for tests does not conflict there. In preview, as in
-Ruff's reports, the message names rules instead of codes. Other combinations clash only on some code, such as `SMP050
-<https://simplint.readthedocs.io/en/latest/_generated/rules/SMP050.html>`__ inlining a value into a comparison Ruff's
-``PLR2004`` reports: simplint then offers no fix for that report and keeps it, and the run goes on. No setting accepts a
-conflicting pair; turn one side off. ``--show-settings`` and ``--show-files`` do not check for conflicts, so they help
-find where a rule comes from.
+Settings
+========
+
+simplint takes two kinds of settings:
+
+.. list-table::
+    :header-rows: 1
+    :widths: 35 65
+
+    * - Settings
+      - Where they come from
+    * - Which files to check, which Python version to assume
+      - Ruff's configuration, found and merged exactly as ``ruff check`` finds it. See :ref:`settings-shared-with-ruff`.
+    * - simplint's own settings
+      - The ``[tool.simplint]`` table of
+        `pyproject.toml <https://packaging.python.org/en/latest/specifications/pyproject-toml/>`__.
+
+Where ``[tool.simplint]`` comes from
+------------------------------------
+
+For each file, simplint uses the **nearest** ``pyproject.toml`` **with a** ``[tool.simplint]`` **table**, in the file's
+directory or a parent directory. That directory is the project root, and the paths in the settings below are relative
+to it.
+
+.. mermaid::
+
+    flowchart TD
+        start["File to check"] --> iso{"--isolated?"}
+        iso -->|yes| defaults["Defaults"]
+        iso -->|no| cfg{"--config PATH?"}
+        cfg -->|yes| named{"Named<br/>pyproject.toml?"}
+        named -->|yes| path["Its [tool.simplint],<br/>for every file"]
+        named -->|no| defaults
+        cfg -->|no| walk{"Nearest pyproject.toml<br/>with [tool.simplint]?"}
+        walk -->|found| table["That table"]
+        walk -->|none| defaults
+        defaults --> over["--config KEY = VALUE<br/>on top"]
+        path --> over
+        table --> over
+        classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59
+        classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59
+        classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a
+        class start blue
+        class iso,cfg,named,walk yellow
+        class defaults,path,table,over green
+
+Details of each step:
+
+- As Ruff does with ``[tool.ruff]``, simplint passes over a ``pyproject.toml`` without the table, so a nested package
+  inherits its parent's settings.
+
+- When no ``pyproject.toml`` has the table, simplint runs every rule with the defaults, and the nearest
+  ``pyproject.toml`` still gives the project metadata.
+
+- ``--config PATH`` replaces per-directory discovery with one file for every file checked. Ruff reads its settings
+  from that file. simplint reads its ``[tool.simplint]`` only when the file is a ``pyproject.toml``; with a
+  ``ruff.toml`` or any other name, simplint uses its defaults.
+
+- ``--isolated`` ignores every configuration file, as in Ruff.
+
+- ``--config "KEY = VALUE"`` overrides one setting on top of every configuration file: a ``[tool.simplint]`` key
+  overrides simplint's setting, and any other key Ruff's.
+
+.. tip::
+
+    ``simplint config`` lists the ``[tool.simplint]`` options, and ``simplint config KEY`` describes one.
+
+The rest of the reference is split by topic:
+
+- :doc:`Running <configuration/running>`: the options of a ``simplint check`` run, and the cache that speeds up the
+  next one.
+- :doc:`Rule settings <configuration/rule-settings>`: settings that tune individual rules.
+- :doc:`Project settings <configuration/project>`: what simplint learns about the project, from its Python version to
+  its ``[project]`` table.
+
+Choosing rules, suppressing a report and pairing with Ruff are tasks, covered by the :doc:`how-to guides
+</how-to/select-rules>`.
 
 .. toctree::
    :hidden:
 
-   cli
+   configuration/running
+   configuration/rule-settings
+   configuration/project

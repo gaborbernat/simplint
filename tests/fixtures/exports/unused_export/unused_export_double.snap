@@ -1,6 +1,0 @@
----
-source: tests/common/mod.rs
-expression: "lint_fixture(rule, fixture, target_version)"
----
-5:12 SMP117 `VALUE` is in `__all__`, yet no other module imports it; list only what other modules use
-5:21 SMP117 `alias` is in `__all__`, yet no other module imports it; list only what other modules use

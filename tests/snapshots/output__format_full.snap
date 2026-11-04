@@ -16,7 +16,7 @@ help: Remove the section comment
 1 | x = 1
   |
 
-SMP010 Single-letter name `x`; only comprehensions may use one
+SMP101 Single-letter name `x`; only comprehensions may use one
  --> module.py:2:1
   |
 1 | # --- helpers ---

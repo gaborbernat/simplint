@@ -1,9 +1,5 @@
-## What it does
-
-Checks for direct calls to the builtin [`vars()`](https://docs.python.org/3/builtins/functions.html#vars). Passing
-`vars` as a value, or calling `builtins.vars(...)`, is not reported. Neither is a call through a parameter or local
-variable named `vars`. Files that bind `vars` at module level, for example by defining a function of that name, are
-skipped.
+Flags direct calls to the builtin `vars()`. It returns a `dict[str, Any]`, so the attribute types are lost and a
+misspelled key fails only at runtime.
 
 ## Why is this bad?
 
@@ -16,14 +12,14 @@ the example.
 
 ## Example
 
-```python
+```python report
 def options(parser: argparse.ArgumentParser) -> dict[str, str]:
     return vars(parser.parse_args())
 ```
 
 Use instead:
 
-```python
+```python ok
 class Options(argparse.Namespace):
     output: str
 
@@ -32,6 +28,54 @@ def options(parser: argparse.ArgumentParser) -> Options:
     return parser.parse_args(namespace=Options())
 ```
 
-## Fix safety
+## What it does
 
 No fix is offered: the typed replacement depends on how the result is used.
+
+### Active on
+
+- **Direct calls to the builtin [`vars()`](https://docs.python.org/3/builtins/functions.html#vars)**: each one turns a
+  typed object into an untyped `dict`.
+
+  ```python report
+  def names(obj: object) -> list[str]:
+      return list(vars(obj))
+  ```
+
+### Exceptions
+
+- **A call through a parameter or local variable named `vars`**: the name does not refer to the builtin there.
+
+  ```python ok
+  from collections.abc import Callable
+
+
+  def read(vars: Callable[[str], str]) -> str:
+      return vars("name")
+  ```
+
+- **Any call in a file that binds `vars` at module level**, for example by defining a function of that name: `vars`
+  refers to that binding, not the builtin.
+
+  ```python ok
+  def vars(value: int) -> int:
+      return value
+
+
+  print(vars(1))
+  ```
+
+- **Passing `vars` as a value**: these are not reported.
+
+  ```python ok
+  items = [{"a": 1}]
+  names = list(map(vars, items))
+  ```
+
+- **Calling `builtins.vars(...)`**: these are not reported.
+
+  ```python ok
+  import builtins
+
+  values = builtins.vars(object())
+  ```

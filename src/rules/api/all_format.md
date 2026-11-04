@@ -1,0 +1,236 @@
+Flags an `__all__` written as a tuple, or as a list without a trailing comma after its last name. With the comma, Ruff's
+formatter puts each name on its own line, so adding or removing an export changes one line.
+
+## Why is this bad?
+
+A trailing comma after the last name makes Ruff's formatter put each name on its own line, unless
+[`skip-magic-trailing-comma`](https://docs.astral.sh/ruff/settings/#format_skip-magic-trailing-comma) is set. Adding or
+removing an export then changes one line, so the diff shows exactly which name changed.
+
+Using a list in every module gives `__all__` one shape to read and edit, and it is the shape the
+[missing-from-all](SMP401.html) fix writes for a new `__all__`. To also sort the names, see Ruff's
+[unsorted-dunder-all](https://docs.astral.sh/ruff/rules/unsorted-dunder-all/).
+
+## Example
+
+```python report
+__all__ = ("load", "save")
+```
+
+Use instead:
+
+```python ok
+__all__ = [
+    "load",
+    "save",
+]
+```
+
+## Configuration
+
+- [`format.skip-magic-trailing-comma`](https://docs.astral.sh/ruff/settings/#format_skip-magic-trailing-comma); see
+  [Settings shared with Ruff](https://simplint.readthedocs.io/en/latest/configuration/project.html#settings-shared-with-ruff)
+
+  ```toml config
+  [tool.ruff.format]
+  skip-magic-trailing-comma = true
+  ```
+
+  ```python ok
+  __all__ = ["load", "save"]
+  ```
+
+## What it does
+
+The rule checks module-level `=`, annotated and augmented assignments to
+[`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package) whose value is a list or tuple
+literal.
+
+### Active on
+
+- **Lists without a trailing comma**: a list must have a trailing comma after its last name, so the formatter splits it
+  one name per line. With Ruff's
+  [`skip-magic-trailing-comma`](https://docs.astral.sh/ruff/settings/#format_skip-magic-trailing-comma) set, the
+  formatter keeps the list as written, with or without the comma, so the rule does not report it.
+
+  - a plain assignment:
+
+    ```python report
+    __all__ = ["load", "save"]
+    ```
+
+  - an annotated assignment:
+
+    ```python report
+    __all__: list[str] = ["load", "save"]
+    ```
+
+- **Tuples**: always reported, whether parenthesized or bare, so every module uses the same list shape. **Unsafe fix:**
+  code that concatenates `__all__` with another tuple stops working once it is a list.
+
+  - parenthesized:
+
+    ```python report
+    __all__ = ("load", "save")
+    ```
+
+  - bare, without brackets:
+
+    ```python report
+    __all__ = "run", "stop"
+    ```
+
+### Exceptions
+
+- **An empty list**: it has no name to put a comma after.
+
+  ```python ok
+  __all__ = []
+  ```
+
+- **Other values**, such as `sorted([...])`: they are not a list or tuple literal, so there are no brackets or comma to
+  check.
+
+  ```python ok
+  __all__ = sorted(["load", "save"])
+  ```
+
+### Fix
+
+| Value                                                                                | Fix                                                   | Safe |
+| ------------------------------------------------------------------------------------ | ----------------------------------------------------- | :--: |
+| list without the trailing comma, no comment, closing bracket after a name            | rewrites it, one name per line, with a trailing comma |  ✓   |
+| list without the trailing comma, with a comment or a closing bracket on its own line | adds the comma after the last name                    |  ✓   |
+| tuple                                                                                | rewrites it as a list                                 |  ✗   |
+| empty tuple                                                                          | becomes `[]`                                          |  ✗   |
+
+```python report
+__all__ = ["load", "save"]
+```
+
+```python fixed
+__all__ = [
+    "load",
+    "save",
+]
+```
+
+```python report
+# fmt: off
+__all__ = [
+    "load",
+    "save"
+]
+# fmt: on
+```
+
+```python fixed
+# fmt: off
+__all__ = [
+    "load",
+    "save",
+]
+# fmt: on
+```
+
+```python report
+__all__ = ()
+```
+
+```python fixed
+__all__ = []
+```
+
+The fix keeps the names in their order. The layout depends on how the literal is written:
+
+- **On one line**: it becomes a list with one name per line and a trailing comma, the layout `ruff format` gives it, so
+  `("load", "save")` needs no formatter pass. A list on one line is rewritten the same way.
+
+  ```python report
+  __all__ = ("load", "save")
+  ```
+
+  ```python fixed
+  __all__ = [
+      "load",
+      "save",
+  ]
+  ```
+
+- **A list whose closing bracket follows the last name**: it is rewritten one name per line, as a list on one line is.
+
+  ```python report
+  # fmt: off
+  __all__ = [
+      "load",
+      "save"]
+  # fmt: on
+  ```
+
+  ```python fixed
+  # fmt: off
+  __all__ = [
+      "load",
+      "save",
+  ]
+  # fmt: on
+  ```
+
+- **A list whose closing bracket is on its own line, or that holds a comment**: the fix adds only the comma after the
+  last name, so the layout and the comment stay.
+
+  - the closing bracket on its own line:
+
+    ```python report
+    # fmt: off
+    __all__ = [
+        "load",
+        "save"
+    ]
+    # fmt: on
+    ```
+
+    ```python fixed
+    # fmt: off
+    __all__ = [
+        "load",
+        "save",
+    ]
+    # fmt: on
+    ```
+
+  - a comment inside the list:
+
+    ```python report
+    # fmt: off
+    __all__ = [
+        "load",
+        "save"  # the public API
+    ]
+    # fmt: on
+    ```
+
+    ```python fixed
+    # fmt: off
+    __all__ = [
+        "load",
+        "save",  # the public API
+    ]
+    # fmt: on
+    ```
+
+- **A tuple across several lines**: it keeps its layout; the fix swaps the brackets and adds the comma.
+
+  ```python report
+  __all__ = (
+      "load",
+      "save",
+  )
+  ```
+
+  ```python fixed
+  __all__ = [
+      "load",
+      "save",
+  ]
+  ```

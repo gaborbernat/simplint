@@ -6,7 +6,7 @@ use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::syntax::for_each_body;
+use crate::syntax::{for_each_body, is_name};
 
 pub fn absolute_sibling_import(checker: &Checker) {
     let Some((_, package)) = checker.module_path().and_then(<[String]>::split_last) else {
@@ -68,11 +68,10 @@ fn tests_module_name(stmt: &Stmt) -> bool {
             let Expr::Compare(ast::ExprCompare { ops, operands, .. }) = test else {
                 return false;
             };
-            let is_name = |expr: &Expr| expr.as_name_expr().is_some_and(|name| name.id.as_str() == "__name__");
             match (&**ops, &**operands) {
                 ([ast::CmpOp::Eq | ast::CmpOp::NotEq], [left, right]) => {
-                    (is_name(left) && right.is_string_literal_expr())
-                        || (left.is_string_literal_expr() && is_name(right))
+                    (is_name(left, "__name__") && right.is_string_literal_expr())
+                        || (left.is_string_literal_expr() && is_name(right, "__name__"))
                 }
                 _ => false,
             }

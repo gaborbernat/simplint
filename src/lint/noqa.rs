@@ -1,4 +1,5 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use rustc_hash::FxHashMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use ruff_db::diagnostic::Diagnostic;
@@ -24,7 +25,7 @@ pub struct Suppressions<'a> {
     parsed: &'a Parsed<ModModule>,
     indexer: &'a Indexer,
     stylist: &'a Stylist<'a>,
-    lines: HashMap<TextSize, Line>,
+    lines: FxHashMap<TextSize, Line>,
     file: Vec<Directive>,
 }
 
@@ -42,7 +43,7 @@ impl<'a> Suppressions<'a> {
         indexer: &'a Indexer,
         stylist: &'a Stylist<'a>,
     ) -> Self {
-        let mut lines: HashMap<TextSize, Line> = HashMap::new();
+        let mut lines: FxHashMap<TextSize, Line> = FxHashMap::default();
         let mut file = Vec::new();
         for range in indexer.comment_ranges() {
             let comment = &source[range];
@@ -231,10 +232,10 @@ impl Directive {
         self.codes.is_empty()
     }
 
-    // A blanket `# noqa` is itself what SMP060 reports, so it cannot silence that report.
+    // A blanket `# noqa` is itself what SMP003 and SMP004 report, so it cannot silence those reports.
     fn suppresses(&self, code: &str) -> bool {
         if self.is_blanket() {
-            code != Rule::SuppressionWithoutReason.code()
+            code != Rule::SuppressionWithoutReason.code() && code != Rule::BlanketIgnore.code()
         } else {
             self.codes.iter().any(|candidate| candidate == code)
         }
@@ -245,7 +246,7 @@ fn code_list(codes: &str) -> impl Iterator<Item = &str> {
     codes.split(|char: char| char == ',' || char.is_whitespace()).filter(|part| !part.is_empty())
 }
 
-// A `# simplint: ignore[SMP001, SMP300]` comment, simplint's counterpart of Ruff's `# ruff: ignore[...]`: the codes
+// A `# simplint: ignore[SMP001, SMP901]` comment, simplint's counterpart of Ruff's `# ruff: ignore[...]`: the codes
 // and the offset of its `#` in the comment.
 fn parse_ignore(comment: &str) -> Option<(TextSize, Vec<String>)> {
     parse_bracket(comment, "simplint", "ignore[")

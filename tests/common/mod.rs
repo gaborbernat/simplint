@@ -13,7 +13,7 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 pub const SECTION: &str = "SMP001 [*] Section comment groups code; extract a named function or class instead";
-pub const SINGLE_X: &str = "SMP010 Single-letter name `x`; only comprehensions may use one";
+pub const SINGLE_X: &str = "SMP101 Single-letter name `x`; only comprehensions may use one";
 
 pub fn project(files: &[(&str, &str)]) -> TempDir {
     let root = TempDir::new().expect("temporary directory");
@@ -193,7 +193,7 @@ fn fixture_project() -> TempDir {
     fs::write(
         root.path().join("pyproject.toml"),
         "[project]\ndependencies = [\"requests\"]\nscripts = { run = \"missing_from_all_scripts:run\" }\n\n\
-         [tool.simplint]\nproject-kind = \"library\"\ndocstring-style = \"rest\"\n\n[tool.ruff.lint]\nselect = []\n",
+         [tool.simplint]\nproject-kind = \"library\"\ndocstring-style = \"rst\"\n\n[tool.ruff.lint]\nselect = []\n",
     )
     .expect("write pyproject.toml");
     root
@@ -224,7 +224,7 @@ pub struct Watched {
 impl Watched {
     pub fn start(root: &Path, flags: &[&str]) -> Self {
         let mut child = command(root)
-            .args(["check", "--watch", "--output-format", "concise", "--select", "SMP010"])
+            .args(["check", "--watch", "--output-format", "concise", "--select", "SMP101"])
             .args(flags)
             .stdout(process::Stdio::piped())
             .stderr(process::Stdio::piped())

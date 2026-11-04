@@ -31,6 +31,23 @@ def test_main_attaches_anchors_and_shows_pending_news(tmp_path: Path, mocker: Mo
     )
 
 
+def test_main_links_codes_only_in_pending_news(tmp_path: Path, mocker: MockerFixture) -> None:
+    (tmp_path / "CHANGELOG.md").write_text("# Changelog\n\n## 1.0.0 (2026-01-01)\n\n- SMP101 meant `missing-final`.\n")
+    (tmp_path / "changelog.d").mkdir()
+    (tmp_path / "changelog.d" / "+next.bugfix.md").write_text("SMP601 and `missing-final` now agree.\n")
+    (tmp_path / "docs").mkdir()
+    convert = mocker.patch("pypandoc.convert_text", autospec=True, return_value="rendered")
+
+    main(tmp_path, {"SMP101": "single-letter-name", "SMP601": "missing-final"})
+
+    assert convert.call_args.args[0] == (
+        "# Changelog\n\n## Draft {#release-draft}\n\n\n\n### Fixed {#release-draft-fixed}\n\n"
+        "- `` :doc:`missing-final <_generated/rules/SMP601>` ``{=rst} and "
+        "`` :doc:`missing-final <_generated/rules/SMP601>` ``{=rst} now agree.\n\n\n"
+        "## 1.0.0 (2026-01-01)\n\n- SMP101 meant `` :doc:`missing-final <_generated/rules/SMP601>` ``{=rst}."
+    )
+
+
 def test_main_keeps_the_anchor_of_a_release_without_entries(tmp_path: Path, mocker: MockerFixture) -> None:
     (tmp_path / "CHANGELOG.md").write_text(
         '# Changelog\n\n## 1.0.1 (2026-01-02)\n\n<a name="release-1-0-1"></a>\n\n'
@@ -59,12 +76,29 @@ def test_main_rejects_an_anchor_without_a_heading(tmp_path: Path) -> None:
         main(tmp_path, {})
 
 
-def test_link_rules_names_each_rule_by_its_long_name() -> None:
-    rules = {"SMP115": "all-format", "SMP113": "missing-from-all"}
+def test_link_rules_links_codes_and_names() -> None:
+    rules = {"SMP405": "all-format", "SMP401": "missing-from-all"}
 
-    assert link_rules("`all-format` fixes `__all__`, like SMP113.", rules) == (
-        "`` :doc:`all-format <_generated/rules/SMP115>` ``{=rst} fixes `__all__`, like "
-        "`` :doc:`missing-from-all <_generated/rules/SMP113>` ``{=rst}."
+    assert link_rules("`all-format` fixes `__all__`, like SMP401.", rules, codes=True) == (
+        "`` :doc:`all-format <_generated/rules/SMP405>` ``{=rst} fixes `__all__`, like "
+        "`` :doc:`missing-from-all <_generated/rules/SMP401>` ``{=rst}."
+    )
+
+
+def test_link_rules_drops_code_after_linked_name() -> None:
+    rules = {"SMP405": "all-format", "SMP401": "missing-from-all"}
+
+    assert link_rules("`all-format` (SMP405) fixes `__all__`, like SMP401.", rules, codes=True) == (
+        "`` :doc:`all-format <_generated/rules/SMP405>` ``{=rst} fixes `__all__`, like "
+        "`` :doc:`missing-from-all <_generated/rules/SMP401>` ``{=rst}."
+    )
+
+
+def test_link_rules_leaves_codes_plain_without_codes() -> None:
+    rules = {"SMP405": "all-format", "SMP401": "missing-from-all"}
+
+    assert link_rules("`all-format` fixes `__all__`, like SMP401.", rules, codes=False) == (
+        "`` :doc:`all-format <_generated/rules/SMP405>` ``{=rst} fixes `__all__`, like SMP401."
     )
 
 
@@ -73,10 +107,10 @@ def test_rule_names_reads_the_installed_binary(mocker: MockerFixture) -> None:
     mocker.patch(
         "subprocess.run",
         autospec=True,
-        return_value=subprocess.CompletedProcess([], 0, stdout='[{"code": "SMP115", "name": "all-format"}]'),
+        return_value=subprocess.CompletedProcess([], 0, stdout='[{"code": "SMP405", "name": "all-format"}]'),
     )
 
-    assert rule_names() == {"SMP115": "all-format"}
+    assert rule_names() == {"SMP405": "all-format"}
 
 
 def test_rule_names_without_the_binary_links_nothing(mocker: MockerFixture) -> None:

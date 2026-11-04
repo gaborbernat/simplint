@@ -1,37 +1,41 @@
 mod function_docstring;
-pub(crate) mod rest;
-mod rest_attribute_kind;
-mod rest_duplicate_param;
-mod rest_field_syntax;
-mod rest_inline_markup;
-mod rest_missing_attribute;
-mod rest_missing_param;
-mod rest_missing_raises;
-mod rest_param_order;
-mod rest_private_field;
-mod rest_restating_field;
-mod rest_returns;
-mod rest_type_field;
-mod rest_unknown_attribute;
-mod rest_unknown_param;
+mod long_docstring_paragraph;
+pub(crate) mod rst;
+mod rst_attribute_kind;
+mod rst_duplicate_param;
+mod rst_empty_field;
+mod rst_field_syntax;
+mod rst_inline_markup;
+mod rst_missing_attribute;
+mod rst_missing_param;
+mod rst_missing_raises;
+mod rst_param_order;
+mod rst_private_field;
+mod rst_restating_field;
+mod rst_returns;
+mod rst_type_field;
+mod rst_unknown_attribute;
+mod rst_unknown_param;
 mod test_module_docstring;
 mod undocumented_public_api;
 
 pub(crate) use function_docstring::function_docstring;
-pub(crate) use rest_attribute_kind::rest_attribute_kind;
-pub(crate) use rest_duplicate_param::rest_duplicate_param;
-pub(crate) use rest_field_syntax::rest_field_syntax;
-pub(crate) use rest_inline_markup::rest_inline_markup;
-pub(crate) use rest_missing_attribute::rest_missing_attribute;
-pub(crate) use rest_missing_param::rest_missing_param;
-pub(crate) use rest_missing_raises::rest_missing_raises;
-pub(crate) use rest_param_order::rest_param_order;
-pub(crate) use rest_private_field::rest_private_field;
-pub(crate) use rest_restating_field::rest_restating_field;
-pub(crate) use rest_returns::rest_returns;
-pub(crate) use rest_type_field::rest_type_field;
-pub(crate) use rest_unknown_attribute::rest_unknown_attribute;
-pub(crate) use rest_unknown_param::rest_unknown_param;
+pub(crate) use long_docstring_paragraph::long_docstring_paragraph;
+pub(crate) use rst_attribute_kind::rst_attribute_kind;
+pub(crate) use rst_duplicate_param::rst_duplicate_param;
+pub(crate) use rst_empty_field::rst_empty_field;
+pub(crate) use rst_field_syntax::rst_field_syntax;
+pub(crate) use rst_inline_markup::rst_inline_markup;
+pub(crate) use rst_missing_attribute::rst_missing_attribute;
+pub(crate) use rst_missing_param::rst_missing_param;
+pub(crate) use rst_missing_raises::rst_missing_raises;
+pub(crate) use rst_param_order::rst_param_order;
+pub(crate) use rst_private_field::rst_private_field;
+pub(crate) use rst_restating_field::rst_restating_field;
+pub(crate) use rst_returns::rst_returns;
+pub(crate) use rst_type_field::rst_type_field;
+pub(crate) use rst_unknown_attribute::rst_unknown_attribute;
+pub(crate) use rst_unknown_param::rst_unknown_param;
 pub(crate) use test_module_docstring::test_module_docstring;
 pub(crate) use undocumented_public_api::undocumented_public_api;
 
@@ -42,7 +46,7 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::project::Exposure;
-use crate::syntax::{Exports, Visibility, decorator_names, module_statements};
+use crate::syntax::{Exports, Visibility, decorator_names, has_decorator, module_statements};
 
 enum ApiKind {
     Function,
@@ -105,7 +109,9 @@ impl<'a> PublicApi<'a> {
                     let name = function.name.as_str();
                     match reach(name) {
                         // An `@overload` variant of a public function may carry a docstring, but needs none.
-                        Some(_) if is_overload(&function.decorator_list) => api.optional.push(function.range),
+                        Some(_) if has_decorator(&function.decorator_list, &["overload"]) => {
+                            api.optional.push(function.range);
+                        }
                         Some(via) => {
                             let range = function.name.range;
                             let kind = ApiKind::Function;
@@ -191,15 +197,12 @@ impl<'a> PublicApi<'a> {
         self.items.iter().any(|item| item.stmt.range() == range)
     }
 
-    fn covers(&self, range: TextRange) -> bool {
+    // Whether the definition at `range` may be part of the public API, which includes optional and possibly public ones.
+    pub(crate) fn covers(&self, range: TextRange) -> bool {
         self.items.iter().any(|item| item.stmt.range() == range)
             || self.optional.contains(&range)
             || self.maybe_public.iter().any(|public| public.contains_range(range))
     }
-}
-
-fn is_overload(decorators: &[ast::Decorator]) -> bool {
-    decorator_names(decorators).contains(&"overload")
 }
 
 // The statements `module_statements` yields, each with the one after it in its own block, which may be inside an `if`

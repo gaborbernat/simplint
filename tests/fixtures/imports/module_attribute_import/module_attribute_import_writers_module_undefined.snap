@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+3:10 SMP304 Import `MISSING` from `.findings` instead of reaching it through the module

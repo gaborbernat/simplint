@@ -2,19 +2,19 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-14:5 SMP203 Pass return_value, side_effect through the mock constructor instead of assigning after creation [fix: Pass return_value, side_effect to the mock constructor]
-17:5 SMP203 Pass return_value through the mock constructor instead of assigning after creation [fix: Pass return_value to the mock constructor]
-22:5 SMP203 Pass value through the mock constructor instead of assigning after creation
-24:5 SMP203 Pass value through the mock constructor instead of assigning after creation [fix: Pass value to the mock constructor]
-32:5 SMP203 Pass value through the mock constructor instead of assigning after creation [fix: Pass value to the mock constructor]
-34:5 SMP203 Pass return_value, side_effect through the mock constructor instead of assigning after creation [fix: Pass return_value, side_effect to the mock constructor]
-37:5 SMP203 Pass return_value through the mock constructor instead of assigning after creation
-39:5 SMP203 Pass return_value through the mock constructor instead of assigning after creation [fix: Pass return_value to the mock constructor]
-45:5 SMP203 Pass return_value through the mock constructor instead of assigning after creation [fix: Pass return_value to the mock constructor]
-50:5 SMP203 Pass label through the mock constructor instead of assigning after creation [unsafe fix: Pass label to the mock constructor]
-52:5 SMP203 Pass return_value through the mock constructor instead of assigning after creation [fix: Pass return_value to the mock constructor]
-57:5 SMP203 Pass return_value through the mock constructor instead of assigning after creation [fix: Pass return_value to the mock constructor]
-63:5 SMP203 Pass return_value through the mock constructor instead of assigning after creation [fix: Pass return_value to the mock constructor]
+14:5 SMP805 Pass return_value, side_effect through the mock constructor instead of assigning after creation [fix: Pass return_value, side_effect to the mock constructor]
+17:5 SMP805 Pass return_value through the mock constructor instead of assigning after creation [fix: Pass return_value to the mock constructor]
+22:5 SMP805 Pass value through the mock constructor instead of assigning after creation
+24:5 SMP805 Pass value through the mock constructor instead of assigning after creation [fix: Pass value to the mock constructor]
+32:5 SMP805 Pass value through the mock constructor instead of assigning after creation [fix: Pass value to the mock constructor]
+34:5 SMP805 Pass return_value, side_effect through the mock constructor instead of assigning after creation [fix: Pass return_value, side_effect to the mock constructor]
+37:5 SMP805 Pass return_value through the mock constructor instead of assigning after creation
+39:5 SMP805 Pass return_value through the mock constructor instead of assigning after creation [fix: Pass return_value to the mock constructor]
+45:5 SMP805 Pass return_value through the mock constructor instead of assigning after creation [fix: Pass return_value to the mock constructor]
+50:5 SMP805 Pass label through the mock constructor instead of assigning after creation [unsafe fix: Pass label to the mock constructor]
+52:5 SMP805 Pass return_value through the mock constructor instead of assigning after creation [fix: Pass return_value to the mock constructor]
+57:5 SMP805 Pass return_value through the mock constructor instead of assigning after creation [fix: Pass return_value to the mock constructor]
+63:5 SMP805 Pass return_value through the mock constructor instead of assigning after creation [fix: Pass return_value to the mock constructor]
 --- fixed (11 applied, 2 remaining) ---
 from typing import Final
 from unittest.mock import MagicMock, create_autospec

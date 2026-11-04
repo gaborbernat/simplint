@@ -22,8 +22,9 @@ def main(root: Path, rules: dict[str, str]) -> None:
     history = (root / "CHANGELOG.md").read_text(encoding="utf-8").removeprefix("# Changelog\n").strip()
     pending = sorted((root / "changelog.d").glob("*.md"))
     draft = "\n".join(release_section(pending, "Draft", "release-draft")) if pending else ""
-    source = link_rules("\n\n".join(part for part in ("# Changelog", draft, history) if part), rules)
-    lines = source.splitlines()
+    # Released history keeps its codes as plain text: a code there meant the rule it had before the renumbering.
+    parts = (link_rules(draft, rules, codes=True), link_rules(history, rules, codes=False))
+    lines = "\n\n".join(part for part in ("# Changelog", *parts) if part).splitlines()
     anchors: dict[int, str] = {}
     for index, line in enumerate(lines):
         if not line.startswith('<a name="'):
@@ -49,18 +50,22 @@ def main(root: Path, rules: dict[str, str]) -> None:
     (root / "docs" / "changelog.rst").write_text(converted, encoding="utf-8")
 
 
-def link_rules(markdown: str, rules: dict[str, str]) -> str:
-    # Link each rule, named by its code or its backticked name, to its page under its name.
-    codes = {name: code for code, name in rules.items()}
+def link_rules(markdown: str, rules: dict[str, str], *, codes: bool) -> str:
+    # Link each backticked rule name to its page, and each code too when `codes` is set.
+    by_name = {name: code for code, name in rules.items()}
 
     # A raw `:doc:` role lets Sphinx resolve the page and fail the build when it is missing; a Markdown link would turn
     # into an external URL that neither Sphinx nor linkcheck can follow.
     def link(match: re.Match[str]) -> str:
-        code = match["code"] or codes[match["name"]]
+        code = match.groupdict().get("code") or by_name[match["name"]]
         return f"`` :doc:`{rules[code]} <_generated/rules/{code}>` ``{{=rst}}"
 
-    names = "|".join(re.escape(name) for name in sorted(codes, key=len, reverse=True)) or "(?!)"
-    return re.sub(rf"\b(?P<code>{'|'.join(rules) or '(?!)'})\b|`(?P<name>{names})`", link, markdown)
+    named = f"`(?P<name>{'|'.join(re.escape(name) for name in sorted(by_name, key=len, reverse=True)) or '(?!)'})`"
+    if not codes:
+        return re.sub(named, link, markdown)
+    # The link already names the rule, so a code right after it would link the same rule twice; the code goes.
+    code_pattern = "|".join(rules) or "(?!)"
+    return re.sub(rf"\b(?P<code>{code_pattern})\b|{named}(?: \((?:{code_pattern})\))?", link, markdown)
 
 
 def rule_names() -> dict[str, str]:

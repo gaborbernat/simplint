@@ -1,24 +1,26 @@
+pub(crate) mod api;
+pub(crate) mod classes;
 pub(crate) mod comments;
-pub(crate) mod dataclasses;
 pub(crate) mod docstrings;
-pub(crate) mod exports;
 pub(crate) mod imports;
+pub(crate) mod layout;
+pub(crate) mod logic;
+mod module_variable;
 pub(crate) mod naming;
-pub(crate) mod strings;
-pub(crate) mod structure;
+mod rename;
 pub(crate) mod testing;
 pub(crate) mod typing;
 
 use ruff_diagnostics::Edit;
 use ruff_python_ast::helpers::any_over_expr;
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, Expr, Stmt};
+use ruff_python_ast::{self as ast, Expr, OperatorPrecedence, Stmt};
 use ruff_python_trivia::{has_leading_content, has_trailing_content, leading_indentation};
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
-use crate::syntax::last_segment;
+use crate::syntax::{is_name, last_segment};
 
 pub fn is_alone_on_lines(source: &str, range: TextRange) -> bool {
     !has_leading_content(range.start(), source) && !has_trailing_content(range.end(), source)
@@ -89,11 +91,12 @@ pub fn is_main_guard(stmt: &Stmt) -> bool {
     let Expr::Compare(ast::ExprCompare { ops, operands, .. }) = test.as_ref() else {
         return false;
     };
-    let is_name = |expr: &Expr| expr.as_name_expr().is_some_and(|name| name.id.as_str() == "__name__");
     let is_main =
         |expr: &Expr| expr.as_string_literal_expr().is_some_and(|literal| literal.value.to_str() == "__main__");
     match (&**ops, &**operands) {
-        ([ast::CmpOp::Eq], [left, right]) => (is_name(left) && is_main(right)) || (is_main(left) && is_name(right)),
+        ([ast::CmpOp::Eq], [left, right]) => {
+            (is_name(left, "__name__") && is_main(right)) || (is_main(left) && is_name(right, "__name__"))
+        }
         _ => false,
     }
 }
@@ -108,8 +111,13 @@ pub fn is_class_like(name: &str) -> bool {
     trimmed.chars().next().is_some_and(char::is_uppercase) && trimmed.chars().any(char::is_lowercase)
 }
 
+pub fn needs_parentheses(value: &Expr) -> bool {
+    OperatorPrecedence::from_expr(value) < OperatorPrecedence::CallAttribute
+        || matches!(value, Expr::Tuple(tuple) if !tuple.parenthesized)
+}
+
 pub fn expr_mentions(expr: &Expr, name: &str) -> bool {
-    any_over_expr(expr, |expr| expr.as_name_expr().is_some_and(|found| found.id.as_str() == name))
+    any_over_expr(expr, |expr| is_name(expr, name))
 }
 
 // Each expression `pick` maps to a value, in the order a `Visitor` walks them.
@@ -150,6 +158,31 @@ pub fn has_version_gate(body: &[Stmt]) -> bool {
                 _ => false,
             })
     })
+}
+
+// The paragraphs of prose longer than `limit` words, each reported once from its first line to the line that passes
+// the limit. Each item is a line's range and word count, or `None` where a line ends the paragraph.
+pub(crate) fn long_paragraphs(
+    lines: impl IntoIterator<Item = Option<(TextRange, usize)>>,
+    limit: usize,
+) -> Vec<TextRange> {
+    let mut long = Vec::new();
+    let mut words = 0;
+    let mut first = None;
+    for line in lines {
+        let Some((range, count)) = line else {
+            words = 0;
+            first = None;
+            continue;
+        };
+        let start = *first.get_or_insert(range.start());
+        let before = words;
+        words += count;
+        if before <= limit && words > limit {
+            long.push(TextRange::new(start, range.end()));
+        }
+    }
+    long
 }
 
 // Ruff ranks names isort-style: constants in SCREAMING_SNAKE_CASE first, then CamelCase classes, then the rest. The two

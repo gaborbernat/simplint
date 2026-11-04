@@ -38,15 +38,15 @@ _PYTHON: Final[tuple[str, ...]] = (".py", ".pyi")
 #: What the optimized build prints, given ``-Cllvm-args=-pgo-warn-missing-function``, for a function the profile has no
 #: counts for, or counts of other code. Cargo hides the warnings of dependencies, so they all come from simplint's own
 #: codegen units, which also hold the instances of its dependencies' generic functions.
-_PGO_WARNING: Final = re.compile(
+_PGO_WARNING: Final[re.Pattern[str]] = re.compile(
     r"^warning: \S+: (no profile data available for function|function [a-z ]+ change detected \([a-z ]+\)) (\S+)",
     re.MULTILINE,
 )
 #: The first crate root of a v0 mangled symbol, the crate defining the function: ``C``, an optional ``s<base62>_``
 #: disambiguator, and the length of the name that follows.
-_CRATE_ROOT: Final = re.compile(r"C(?:s[0-9A-Za-z]*_)?(\d+)_?")
+_CRATE_ROOT: Final[re.Pattern[str]] = re.compile(r"C(?:s[0-9A-Za-z]*_)?(\d+)_?")
 #: Cargo colors its output when the toolchain action sets CARGO_TERM_COLOR.
-_ANSI: Final = re.compile(r"\x1b\[[0-9;]*m")
+_ANSI: Final[re.Pattern[str]] = re.compile(r"\x1b\[[0-9;]*m")
 #: The crates of the hot path. With a matching profile none of their functions lack data; cold startup code, such as
 #: fs_err, argfile or ruff_command_line, may, and does not matter.
 _GUARDED: Final[frozenset[str]] = frozenset({"ruff_linter", "ruff_python_parser", "simplint"})
@@ -131,8 +131,7 @@ def _release_files(url: str) -> list[_File]:
 
 # Retry what the network or a server can fail transiently, backing off, and let the last failure through.
 def _retried(action: Callable[[], _T], what: str) -> _T:
-    attempts = 4
-    for attempt in range(1, attempts):
+    for attempt in range(1, 4):
         try:
             return action()
         except (OSError, http.client.HTTPException) as error:

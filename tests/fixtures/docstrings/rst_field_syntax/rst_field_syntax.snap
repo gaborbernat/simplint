@@ -1,0 +1,164 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:5 SMP910 Google-style section `Args:` in a reStructuredText docstring; write fields such as `:param name:`
+11:5 SMP910 numpydoc section `Parameters` in a reStructuredText docstring; write fields such as `:param name:`
+23:6 SMP910 Unknown field `:parm path:`; Sphinx reads `param`, `type`, `raises`, `returns`, `rtype`, `var`, `vartype` and their aliases
+24:6 SMP910 Field `:param:` names nothing; write `:param name:`
+25:6 SMP910 Field `:raises:` names no exception; write `:raises Error:`
+26:6 SMP910 Field `:returns str:` takes no name; write `:returns:`
+35:6 SMP910 Field `:param path:` repeats an earlier field
+48:6 SMP910 Field `:param mode:` follows text after the field list; keep the fields together at the end
+71:6 SMP910 Field `:param path:` follows text without a blank line, so it renders as part of that paragraph [unsafe fix: Add a blank line before the field list]
+89:6 SMP910 Field `:parameter path:` uses the alias `parameter`; write `param` [fix: Rename the field to `:param:`]
+90:6 SMP910 Field `:arg mode:` uses the alias `arg`; write `param` [fix: Rename the field to `:param:`]
+91:6 SMP910 Field `:keyword flag:` uses the alias `keyword`; write `param` [fix: Rename the field to `:param:`]
+92:6 SMP910 Field `:raise OSError:` uses the alias `raise`; write `raises` [fix: Rename the field to `:raises:`]
+93:6 SMP910 Field `:exception ValueError:` uses the alias `exception`; write `raises` [fix: Rename the field to `:raises:`]
+94:6 SMP910 Field `:return:` uses the alias `return`; write `returns` [fix: Rename the field to `:returns:`]
+102:6 SMP910 Field `:argument count:` uses the alias `argument`; write `param` [fix: Rename the field to `:param:`]
+103:6 SMP910 Field `:key:` uses the alias `key`; write `param` [fix: Rename the field to `:param:`]
+103:6 SMP910 Field `:key:` names nothing; write `:key name:`
+104:6 SMP910 Field `:except:` uses the alias `except`; write `raises` [fix: Rename the field to `:raises:`]
+104:6 SMP910 Field `:except:` names no exception; write `:except Error:`
+105:6 SMP910 Field `:yield:` uses the alias `yield`; write `yields` [fix: Rename the field to `:yields:`]
+128:6 SMP910 Field `:param:` names nothing; write `:param name:`
+134:5 SMP910 Field `:arg path:` uses the alias `arg`; write `param`
+--- fixed (11 applied, 12 remaining) ---
+def google(path: str) -> str:
+    """Read a file.
+
+    Args:
+        path: Where it is.
+    """
+    return path
+
+
+def numpy(path: str) -> str:
+    """Read a file.
+
+    Parameters
+    ----------
+    path : str
+    """
+    return path
+
+
+def unknown(path: str) -> str:
+    """Read a file.
+
+    :parm path: Where it is.
+    :param: Nothing named.
+    :raises: Nothing named.
+    :returns str: Named.
+    """
+    return path
+
+
+def repeated(path: str) -> str:
+    """Read a file.
+
+    :param path: Where it is.
+    :param path: Where it is, again.
+    :returns: The text.
+    """
+    return path
+
+
+def scattered(path: str, mode: str) -> str:
+    """Read a file.
+
+    :param path: Where it is.
+
+    More prose after the fields.
+
+    :param mode: How to open it.
+    :raises OSError: When it is missing.
+    :raises ValueError: When the mode is unknown.
+    """
+    return path + mode
+
+
+def roles(path: str) -> str:
+    """Read a file.
+
+    :class:`str` is what comes back, and the example shows a field in a literal block::
+
+        :param other: Not a field of this docstring.
+
+    :param path: Where it is,
+        across two lines.
+    :returns: The text.
+    """
+    return path
+
+
+def joined(path: str) -> str:
+    """Read a file.
+
+    :param path: Where it is.
+    """
+    return path
+
+
+def twice(path: str) -> str:
+    """Read a file.
+
+    :param path: Where it is.
+    :raises OSError: When it is missing.
+    :raises OSError: When it cannot be read.
+    """
+    return path
+
+
+def spelled(path: str, mode: str, flag: bool) -> str:
+    """Read a file.
+
+    :param path: Where it is.
+    :param mode: How to open it.
+    :param flag: Whether to follow links.
+    :raises OSError: When it is missing.
+    :raises ValueError: When the mode is unknown.
+    :returns: The text.
+    """
+    return path + mode + str(flag)
+
+
+def produced(count: int):
+    """Count up.
+
+    :param count: How far.
+    :param: Nothing named.
+    :raises: Nothing named.
+    :yields: Each number.
+    """
+    yield from range(count)
+
+
+class Settings:
+    """Settings.
+
+    :var name: The name.
+    :ivar size: The size.
+    :cvar limit: The limit.
+    """
+
+    limit = 1
+
+    def __init__(self) -> None:
+        self.name = ""
+        self.size = 0
+
+
+def unnamed(path: str) -> str:
+    """Read a file.
+
+    :param:
+    """
+    return path
+
+
+def escaped(path: str) -> str:
+    "Read a file.\n\n:arg path: Where it is.\n"
+    return path

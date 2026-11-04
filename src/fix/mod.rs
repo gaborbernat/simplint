@@ -2,7 +2,7 @@ mod apply;
 mod cleanup;
 mod errors;
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -39,7 +39,7 @@ pub struct Fixer<'l, 'a> {
     sources: Sources,
     lints: Memo<Vec<Diagnostic>>,
     checks: Memo<Arc<Checked>>,
-    failing: Memo<Arc<HashSet<&'static str>>>,
+    failing: Memo<Arc<FxHashSet<&'static str>>>,
     cleanups: Mutex<FxHashMap<CleanupKey, Arc<str>>>,
 }
 
@@ -68,7 +68,7 @@ impl<'l, 'a> Fixer<'l, 'a> {
     // source seen before, makes a single run final.
     pub fn fix(&self, source: &str) -> Result<(FixerResult, RuleSet)> {
         let mut fixed = FixTable::default();
-        let mut seen = HashSet::from([source.to_owned()]);
+        let mut seen = FxHashSet::from_iter([source.to_owned()]);
         let mut current = source.to_owned();
         let (mut result, unfixable) = loop {
             let (result, unfixable) = self.run(&current)?;
@@ -76,6 +76,7 @@ impl<'l, 'a> Fixer<'l, 'a> {
             if result.fixed.is_empty() || !seen.insert(result.transformed.clone()) {
                 break (result, unfixable);
             }
+            errors::ensure_converging(self.path, seen.len(), &result.diagnostics)?;
             current.clone_from(&result.transformed);
         };
         result.fixed = fixed;
@@ -142,7 +143,7 @@ impl<'l, 'a> Fixer<'l, 'a> {
     // fixes and cleanups alternate until the fixes bring Ruff nothing new, or the cleanup returns to code it already
     // gave, as when it undoes a fix.
     fn settle(&self, linted: &Linted, unfixable: RuleSet) -> Result<(FixerResult, usize)> {
-        let mut seen = HashSet::from([linted.source.to_owned()]);
+        let mut seen = FxHashSet::from_iter([linted.source.to_owned()]);
         let mut fixed = FixTable::default();
         let mut round = self.fix_with(linted, unfixable)?;
         loop {
@@ -188,7 +189,7 @@ impl<'l, 'a> Fixer<'l, 'a> {
     }
 
     // Ruff's cleanup gives the same result for the same source and rules, which withdrawal candidates often share.
-    fn cleanup(&self, source: &str, introduced: &HashSet<&'static str>) -> String {
+    fn cleanup(&self, source: &str, introduced: &FxHashSet<&'static str>) -> String {
         let mut rules: Vec<&'static str> = introduced.iter().copied().collect();
         rules.sort_unstable();
         // Ruff checked the source before it asked for a cleanup, so interning it finds the copy already held.

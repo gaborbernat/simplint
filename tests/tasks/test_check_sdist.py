@@ -31,8 +31,7 @@ def _build(command: list[str], cwd: Path | None = None) -> None:
         out = Path(command[command.index("--out-dir") + 1])
         out.mkdir(parents=True, exist_ok=True)
         with tarfile.open(out / "simplint-1.0.0.tar.gz", "w:gz") as tar:
-            info = tarfile.TarInfo("simplint-1.0.0/Cargo.toml")
-            tar.addfile(info, io.BytesIO(b""))
+            tar.addfile(tarfile.TarInfo("simplint-1.0.0/Cargo.toml"), io.BytesIO(b""))
     elif "--wheel" in command:
         out = Path(command[command.index("--out-dir") + 1])
         out.mkdir(parents=True, exist_ok=True)

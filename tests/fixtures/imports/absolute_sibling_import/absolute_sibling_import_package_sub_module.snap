@@ -2,8 +2,8 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-2:6 SMP110 Import from the same package relatively: `from . import ...` [fix: Import from `.`]
-3:6 SMP110 Import from the same package relatively: `from .deep import ...` [fix: Import from `.deep`]
+2:6 SMP302 Import from the same package relatively: `from . import ...` [fix: Import from `.`]
+3:6 SMP302 Import from the same package relatively: `from .deep import ...` [fix: Import from `.deep`]
 --- fixed (2 applied, 0 remaining) ---
 from package import other
 from . import sibling

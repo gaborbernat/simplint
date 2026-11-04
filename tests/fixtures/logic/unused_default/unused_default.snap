@@ -1,0 +1,121 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+4:28 SMP506 Every call to `_connect` passes `timeout`; drop its default `30` [unsafe fix: Remove the default of `timeout`]
+8:18 SMP506 Every call to `_retry` passes `count`; drop its default `3` [unsafe fix: Remove the default of `count`]
+8:30 SMP506 Every call to `_retry` passes `delay`; drop its default `1` [unsafe fix: Remove the default of `delay`]
+12:25 SMP506 Every call to `_fetch` passes `retries`; drop its default `2` [unsafe fix: Remove the default of `retries`]
+16:17 SMP506 Every call to `_pair` passes `first`; drop its default `1` [unsafe fix: Remove the default of `first`]
+16:27 SMP506 Every call to `_pair` passes `second`; drop its default `2`
+41:37 SMP506 Every call to `_last_param_default` passes `flag`; drop its default `True` [unsafe fix: Remove the default of `flag`]
+45:29 SMP506 Every call to `_annotated` passes `value`; drop its default `1` [unsafe fix: Remove the default of `value`]
+68:39 SMP506 Every call to `send_frames` passes `flush`; drop its default `False` [unsafe fix: Remove the default of `flush`]
+--- fixed (9 applied, 0 remaining) ---
+import functools
+
+
+def _connect(host, timeout):
+    return host, timeout
+
+
+def _retry(count, *, delay):
+    return count, delay
+
+
+def _fetch(url, retries, timeout=5):
+    return url, retries, timeout
+
+
+def _pair(first, second):
+    return first, second
+
+
+def _unused(value=1):
+    return value
+
+
+def _spread(value=1):
+    return value
+
+
+def _mapping(value=1):
+    return value
+
+
+def _passed_as_value(value=1):
+    return value
+
+
+@functools.cache
+def _memoized(value=1):
+    return value
+
+
+def _last_param_default(value, flag):
+    return value, flag
+
+
+def _annotated(value: int) -> int:
+    return value
+
+
+_connect("a", 5)
+_connect("b", timeout=7)
+_retry(4, delay=2)
+_fetch("a", 3)
+_pair(1, 2)
+_pair(second=3, first=4)
+_spread(*[1])
+_mapping(**{"value": 2})
+_spread(1)
+_mapping(1)
+_memoized(1)
+_last_param_default("x", False)
+_last_param_default("y", flag=True)
+list(map(_passed_as_value, [1]))
+_passed_as_value(1)
+_annotated(2)
+
+
+class _Client:
+    def send_frames(self, data, flush):
+        return data, flush
+
+    def close_stream(self, force=False):
+        return force
+
+    def __init__(self, mode=0):
+        self.mode = mode
+
+    def run(self):
+        self.send_frames("x", True)
+        self.send_frames("y", flush=False)
+        return self.close_stream()
+
+
+class _Holder:
+    pass
+
+
+class _Derived(_Holder):
+    def ping_host(self, quick=True):
+        return quick
+
+    def again(self):
+        return self.ping_host()
+
+
+def _use_client(client):
+    return client.close_stream(True)
+
+
+_Derived(0).ping_host(False)
+
+
+class _Relay:
+    def hop(self, value=1):
+        return value
+
+    def pass_on(self, other):
+        return other.hop() + self.hop(2)

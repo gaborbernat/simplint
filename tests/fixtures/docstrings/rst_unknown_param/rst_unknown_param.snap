@@ -1,0 +1,141 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+8:6 SMP917 `:param mode:` documents `mode`, which `load` does not take [unsafe fix: Remove `:param mode:`]
+9:6 SMP917 `:type mode:` documents `mode`, which `load` does not take [unsafe fix: Remove `:type mode:`]
+28:6 SMP917 `:param limit:` documents `limit`, which `Reader` does not take [unsafe fix: Remove `:param limit:`]
+37:10 SMP917 `:param self:` documents `self`, which `read` does not take [unsafe fix: Remove `:param self:`]
+48:6 SMP917 `:param z:` documents `z`, which `Point` does not take [unsafe fix: Remove `:param z:`]
+62:5 SMP917 `:param missing:` documents `missing`, which `escaped` does not take
+109:6 SMP917 `:param gone:` documents `gone`, which `Box` does not take [unsafe fix: Remove `:param gone:`]
+--- fixed (6 applied, 1 remaining) ---
+from dataclasses import dataclass
+
+
+def load(path: str, encoding: str) -> str:
+    """Load a file.
+
+    :param path: Where it is.
+    :param encoding: How to decode it,
+        defaulting to UTF-8.
+    """
+    return path + encoding
+
+
+def options(**settings: str) -> dict[str, str]:
+    """Collect options.
+
+    :keyword color: Any keyword is accepted.
+    """
+    return settings
+
+
+class Reader:
+    """Read files.
+
+    :param source: Where to read from.
+    """
+
+    def __init__(self, source: str) -> None:
+        self.source = source
+
+    def read(self, size: int) -> str:
+        """Read some.
+
+        :param size: How much.
+        """
+        return self.source[:size]
+
+
+@dataclass(frozen=True)
+class Point:
+    """A point.
+
+    :param x: Across.
+    """
+
+    x: int
+
+
+class Inherited(Reader):
+    """Read files.
+
+    :param anything: The base class decides.
+    """
+
+
+def escaped(path: str) -> str:
+    """Load a file\x2e
+
+    :param missing: Left in place by the fix, as escapes make the text differ from the source.
+    """
+    return path
+
+
+import attr
+
+
+@attr.s
+class Classic:
+    """A classic attrs class.
+
+    :param x: Across.
+    :param y: Down.
+    """
+
+    x = attr.ib()
+    y = attr.ib(default=0)
+
+
+@dataclass
+class Base:
+    """A base.
+
+    :param a: The first.
+    """
+
+    a: int
+
+
+@dataclass
+class Child(Base):
+    """A child.
+
+    :param a: The first, from the base.
+    :param b: The second.
+    """
+
+    b: int
+
+
+class Box:
+    """Hold things.
+
+    :param size: How big.
+    """
+
+    def __init__(self, size: int) -> None:
+        self.size = size
+
+
+from typing import overload
+
+
+class SpanRange:
+    """A span.
+
+    :param start: Start.
+    :param end: End.
+    :param length: Length.
+    """
+
+    @overload
+    def __init__(self, start: int, end: int) -> None: ...
+
+    @overload
+    def __init__(self, *, length: int) -> None: ...
+
+    def __init__(self, start: int = 0, end: int = 0, *, length: int = 0) -> None:
+        self.start = start
+        self.end = end or start + length

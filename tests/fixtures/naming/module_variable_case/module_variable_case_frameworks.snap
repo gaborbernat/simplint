@@ -2,7 +2,7 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-8:1 SMP102 Module-scope variable `configurator` should be named `_CONFIGURATOR` [unsafe fix: Rename `configurator` to `_CONFIGURATOR`]
+8:1 SMP102 Module-scope variable `configurator` should be named `CONFIGURATOR` [unsafe fix: Rename `configurator` to `CONFIGURATOR`]
 --- fixed (1 applied, 0 remaining) ---
 from flask import Flask
 from pyramid.config import Configurator
@@ -11,5 +11,5 @@ bind = "unix:/run/app.sock"
 worker_class = "gthread"
 threads = 4
 app = Flask(__name__)
-_CONFIGURATOR = Configurator()
-application: object = _CONFIGURATOR.make_wsgi_app()
+CONFIGURATOR = Configurator()
+application: object = CONFIGURATOR.make_wsgi_app()

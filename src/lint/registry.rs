@@ -59,6 +59,13 @@ macro_rules! rules {
                 format!("https://simplint.readthedocs.io/en/latest/_generated/rules/{}.html", self.code())
             }
 
+            // The directory under `src/rules` the rule lives in, which names its group.
+            pub fn family(self) -> &'static str {
+                match self {
+                    $(Rule::$variant => stringify!($family),)*
+                }
+            }
+
             pub fn fix_availability(self) -> FixAvailability {
                 match self {
                     $(Rule::$variant => FixAvailability::$fix,)*
@@ -141,53 +148,68 @@ macro_rules! hook {
 
 rules! {
     SectionComment => ("SMP001", "section-comment", "Comments used as dividers or section headers", Always, comments::section_comment { module }),
-    LongParagraph => ("SMP005", "long-paragraph", "Comment paragraphs over 100 words", None, comments::long_paragraph { module }),
-    SingleLetterName => ("SMP010", "single-letter-name", "Single-letter names outside comprehensions", None, naming::single_letter_name { statement, expression, scope, except_handler, pattern, type_param }),
-    DefinitionBeforeUse => ("SMP020", "definition-before-use", "Helpers defined above their first caller, or away from it", Sometimes, structure::definition_before_use { module }),
-    ForwardingFunction => ("SMP030", "forwarding-function", "Private functions that only forward to another call", None, structure::forwarding_function { module }),
-    DependencyImportGuard => ("SMP040", "dependency-import-guard", "`try`/`except ImportError` around a required dependency", Sometimes, imports::dependency_import_guard { module }),
-    SingleUserConstant => ("SMP050", "single-user-constant", "Module constants only one function uses", Sometimes, structure::single_user_constant { module }),
-    SuppressionWithoutReason => ("SMP060", "suppression-without-reason", "`noqa`, `type: ignore` and `pragma` comments with no reason", None, comments::suppression_without_reason { module }),
-    WalrusCandidate => ("SMP100", "walrus-candidate", "An assignment the next `if` test could absorb with `:=`", Always, structure::walrus_candidate { module }),
-    MissingFinal => ("SMP101", "missing-final", "Module constants not annotated `Final`", Sometimes, typing::missing_final { module }),
-    ModuleVariableCase => ("SMP102", "module-variable-case", "Module variables not `UPPER_CASE`, or wrongly `_`-prefixed", Sometimes, naming::module_variable_case { module }),
-    UnexportedPublicName => ("SMP103", "unexported-public-name", "Public functions and classes missing from `__all__`", Sometimes, naming::unexported_public_name { module }),
-    AllNotLast => ("SMP104", "all-not-last", "`__all__` not at the end of the module", Sometimes, exports::all_not_last { module }),
-    CallableEllipsis => ("SMP105", "callable-ellipsis", "`Callable[..., T]`", None, typing::callable_ellipsis { expression }),
-    ObjectAnnotation => ("SMP106", "object-annotation", "`object` annotations outside `TypeIs` guards and dunders", None, typing::object_annotation { statement }),
-    VarsCall => ("SMP107", "vars-call", "`vars()` calls", None, typing::vars_call { expression }),
-    FutureAnnotations => ("SMP108", "future-annotations", "`from __future__ import annotations` on Python 3.14+", Sometimes, imports::future_annotations { module }),
-    InitModuleContent => ("SMP109", "init-module-content", "`__init__.py` holding more than a docstring", None, imports::init_module_content { module }),
-    AbsoluteSiblingImport => ("SMP110", "absolute-sibling-import", "Absolute imports from the same package", Always, imports::absolute_sibling_import { module }),
-    DataclassOptions => ("SMP111", "dataclass-options", "Dataclasses without `frozen` and `slots`", Always, dataclasses::dataclass_options { module }),
-    StringConcatenation => ("SMP112", "string-concatenation", "`+` between strings", Sometimes, strings::string_concatenation { expression }),
-    MissingFromAll => ("SMP113", "missing-from-all", "Names other modules import that `__all__` omits", Sometimes, exports::missing_from_all { module }),
-    DataclassKwOnly => ("SMP114", "dataclass-kw-only", "Dataclasses without `kw_only`", Always, dataclasses::dataclass_kw_only { module }),
-    AllFormat => ("SMP115", "all-format", "`__all__` not a list with a trailing comma", Always, exports::all_format { module }),
-    UnusedExport => ("SMP117", "unused-export", "`__all__` entries no other module imports", Sometimes, exports::unused_export { module }),
-    TestClass => ("SMP200", "test-class", "Test classes", Sometimes, testing::test_class { module }),
-    ParametrizeWithoutId => ("SMP201", "parametrize-without-id", "`parametrize` rows without `pytest.param(..., id=...)`", None, testing::parametrize_without_id { module }),
-    ConditionalInTest => ("SMP202", "conditional-in-test", "`if`, `match` and conditional expressions in tests", None, testing::conditional_in_test { module }),
-    MockAttributeAssignment => ("SMP203", "mock-attribute-assignment", "Mock attributes assigned after construction", Sometimes, testing::mock_attribute_assignment { module }),
-    MockWithoutSpec => ("SMP204", "mock-without-spec", "Mocks and patches without a spec", None, testing::mock_without_spec { expression }),
-    ConstantAssert => ("SMP205", "constant-assert", "Assertions on a truthy constant", Sometimes, testing::constant_assert { module }),
-    FunctionDocstring => ("SMP300", "function-docstring", "Docstrings on internal functions and classes", Sometimes, docstrings::function_docstring { module }),
-    TestModuleDocstring => ("SMP301", "test-module-docstring", "Docstrings on test modules", Sometimes, docstrings::test_module_docstring { module }),
-    UndocumentedPublicApi => ("SMP302", "undocumented-public-api", "Public functions, classes, methods and variables without documentation", None, docstrings::undocumented_public_api { module }),
-    RestFieldSyntax => ("SMP310", "rest-field-syntax", "Malformed or misplaced reStructuredText docstring fields", Sometimes, docstrings::rest_field_syntax { module }),
-    RestUnknownParam => ("SMP311", "rest-unknown-param", "`:param:` and `:type:` fields for parameters the signature lacks", Sometimes, docstrings::rest_unknown_param { module }),
-    RestMissingParam => ("SMP312", "rest-missing-param", "Public API docstrings that leave a parameter undocumented", Sometimes, docstrings::rest_missing_param { module }),
-    RestParamOrder => ("SMP313", "rest-param-order", "`:param:` fields out of the signature's order", None, docstrings::rest_param_order { module }),
-    RestTypeField => ("SMP314", "rest-type-field", "Types in docstrings, which belong in annotations", Sometimes, docstrings::rest_type_field { module }),
-    RestReturns => ("SMP315", "rest-returns", "Missing, extraneous or misused `:returns:` and `:yields:` fields", Sometimes, docstrings::rest_returns { module }),
-    RestMissingRaises => ("SMP316", "rest-missing-raises", "Public API docstrings that leave a raised exception undocumented", Sometimes, docstrings::rest_missing_raises { module }),
-    RestMissingAttribute => ("SMP317", "rest-missing-attribute", "Public classes whose docstring leaves an attribute undocumented", Sometimes, docstrings::rest_missing_attribute { module }),
-    RestUnknownAttribute => ("SMP318", "rest-unknown-attribute", "`:ivar:`, `:cvar:` and `:var:` fields for attributes the class lacks", Sometimes, docstrings::rest_unknown_attribute { module }),
-    RestDuplicateParam => ("SMP319", "rest-duplicate-param", "Constructor parameters documented in both the class and `__init__` docstrings", Sometimes, docstrings::rest_duplicate_param { module }),
-    RestAttributeKind => ("SMP320", "rest-attribute-kind", "`:ivar:` on class variables and `:cvar:` on instance attributes", Sometimes, docstrings::rest_attribute_kind { module }),
-    RestRestatingField => ("SMP321", "rest-restating-field", "Field descriptions that only repeat the name", None, docstrings::rest_restating_field { module }),
-    RestInlineMarkup => ("SMP322", "rest-inline-markup", "Roles without backticks and unclosed inline literals", Sometimes, docstrings::rest_inline_markup { module }),
-    RestPrivateField => ("SMP323", "rest-private-field", "Public docstrings documenting internal names", Sometimes, docstrings::rest_private_field { module }),
+    LongParagraph => ("SMP002", "long-paragraph", "Comment paragraphs over the word limit", None, comments::long_paragraph { module }),
+    SuppressionWithoutReason => ("SMP003", "suppression-without-reason", "`noqa`, `type: ignore` and `pragma` comments with no reason", None, comments::suppression_without_reason { module }),
+    BlanketIgnore => ("SMP004", "blanket-ignore", "Suppression comments that name no error code", None, comments::blanket_ignore { module }),
+    SingleLetterName => ("SMP101", "single-letter-name", "Single-letter names outside comprehensions", None, naming::single_letter_name { statement, expression, scope, except_handler, pattern, type_param }),
+    ModuleVariableCase => ("SMP102", "module-variable-case", "Module variables not `UPPER_CASE`", Sometimes, naming::module_variable_case { module }),
+    DefinitionBeforeUse => ("SMP201", "definition-before-use", "Helpers defined above their first caller, or away from it", Sometimes, layout::definition_before_use { module }),
+    SingleUserConstant => ("SMP202", "single-user-constant", "Module constants only one function uses", Sometimes, layout::single_user_constant { module }),
+    FutureAnnotations => ("SMP301", "future-annotations", "`from __future__ import annotations` on Python 3.14+", Sometimes, imports::future_annotations { module }),
+    AbsoluteSiblingImport => ("SMP302", "absolute-sibling-import", "Absolute imports from the same package", Always, imports::absolute_sibling_import { module }),
+    DependencyImportGuard => ("SMP303", "dependency-import-guard", "`try`/`except ImportError` around a required dependency", Sometimes, imports::dependency_import_guard { module }),
+    ModuleAttributeImport => ("SMP304", "module-attribute-import", "Module attributes reached as `module.Name` instead of imported", Sometimes, imports::module_attribute_import { module }),
+    MissingFromAll => ("SMP401", "missing-from-all", "Names other modules import that `__all__` omits", Sometimes, api::missing_from_all { module }),
+    UnusedExport => ("SMP402", "unused-export", "`__all__` entries no other module imports", Sometimes, api::unused_export { module }),
+    UnexportedPublicName => ("SMP403", "unexported-public-name", "Public functions and classes missing from `__all__`", Sometimes, api::unexported_public_name { module }),
+    ModuleVariablePrefix => ("SMP404", "module-variable-prefix", "Module variables whose leading `_` does not match their visibility", Sometimes, api::module_variable_prefix { module }),
+    AllFormat => ("SMP405", "all-format", "`__all__` not a list with a trailing comma", Always, api::all_format { module }),
+    AllNotLast => ("SMP406", "all-not-last", "`__all__` not at the end of the module", Sometimes, api::all_not_last { module }),
+    InitModuleContent => ("SMP407", "init-module-content", "`__init__.py` holding more than a docstring", None, api::init_module_content { module }),
+    TestOnlyCode => ("SMP408", "test-only-code", "Module-level functions and classes only test modules use", None, api::test_only_code { module }),
+    ForwardingFunction => ("SMP501", "forwarding-function", "Private functions that only forward to another call", None, logic::forwarding_function { module }),
+    WalrusCandidate => ("SMP502", "walrus-candidate", "An assignment the next `if` test could absorb with `:=`", Always, logic::walrus_candidate { module }),
+    StringConcatenation => ("SMP503", "string-concatenation", "`+` between strings", Sometimes, logic::string_concatenation { expression }),
+    SingleUseVariable => ("SMP504", "single-use-variable", "Variables read once, right below their assignment", Always, logic::single_use_variable { module }),
+    SingleCallerHelper => ("SMP505", "single-caller-helper", "Private helpers with one short call site, which inlining would keep short", None, logic::single_caller_helper { module }),
+    UnusedDefault => ("SMP506", "unused-default", "Parameter defaults that every call passes explicitly", Sometimes, logic::unused_default { module }),
+    ErrorMessageMatching => ("SMP507", "error-message-matching", "Exceptions told apart by their message text", None, logic::error_message_matching { except_handler }),
+    MissingFinal => ("SMP601", "missing-final", "Module constants not annotated `Final`", Sometimes, typing::missing_final { module }),
+    ImpreciseAnnotation => ("SMP602", "imprecise-annotation", "`object` and `Any` in annotations", None, typing::imprecise_annotation { statement }),
+    CallableEllipsis => ("SMP603", "callable-ellipsis", "`Callable[..., T]`", None, typing::callable_ellipsis { expression }),
+    VarsCall => ("SMP604", "vars-call", "`vars()` calls", None, typing::vars_call { expression }),
+    DataclassFrozen => ("SMP701", "dataclass-frozen", "Dataclasses without `frozen`", Always, classes::dataclass_frozen { module }),
+    DataclassSlots => ("SMP702", "dataclass-slots", "Dataclasses without `slots`", Always, classes::dataclass_slots { module }),
+    DataclassKwOnly => ("SMP703", "dataclass-kw-only", "Dataclasses without `kw_only`", Always, classes::dataclass_kw_only { module }),
+    IndistinctErrorClass => ("SMP704", "indistinct-error-class", "Exception classes no handler catches by name", None, classes::indistinct_error_class { module }),
+    TestClass => ("SMP801", "test-class", "Test classes", Sometimes, testing::test_class { module }),
+    ParametrizeWithoutId => ("SMP802", "parametrize-without-id", "`parametrize` rows without `pytest.param(..., id=...)`", None, testing::parametrize_without_id { module }),
+    ConditionalInTest => ("SMP803", "conditional-in-test", "`if`, `match` and conditional expressions in tests", None, testing::conditional_in_test { module }),
+    ConstantAssert => ("SMP804", "constant-assert", "Assertions on a truthy constant", Sometimes, testing::constant_assert { module }),
+    MockAttributeAssignment => ("SMP805", "mock-attribute-assignment", "Mock attributes assigned after construction", Sometimes, testing::mock_attribute_assignment { module }),
+    MockWithoutSpec => ("SMP806", "mock-without-spec", "Mocks and patches without a spec", None, testing::mock_without_spec { expression }),
+    SplitCompositeAssert => ("SMP807", "split-composite-assert", "Consecutive asserts comparing fields of one object", Sometimes, testing::split_composite_assert { module }),
+    SleepInTest => ("SMP808", "sleep-in-test", "`time.sleep` and `asyncio.sleep` calls in tests", None, testing::sleep_in_test { module }),
+    StdlibMock => ("SMP809", "stdlib-mock", "`unittest.mock` imports in projects that depend on pytest-mock", None, testing::stdlib_mock { module }),
+    FunctionDocstring => ("SMP901", "function-docstring", "Docstrings on internal functions and classes", Sometimes, docstrings::function_docstring { module }),
+    TestModuleDocstring => ("SMP902", "test-module-docstring", "Docstrings on test modules", Sometimes, docstrings::test_module_docstring { module }),
+    UndocumentedPublicApi => ("SMP903", "undocumented-public-api", "Public functions, classes, methods and variables without documentation", None, docstrings::undocumented_public_api { module }),
+    LongDocstringParagraph => ("SMP904", "long-docstring-paragraph", "Docstring paragraphs over the word limit", None, docstrings::long_docstring_paragraph { module }),
+    RstFieldSyntax => ("SMP910", "rst-field-syntax", "Malformed or misplaced reStructuredText docstring fields", Sometimes, docstrings::rst_field_syntax { module }),
+    RstInlineMarkup => ("SMP911", "rst-inline-markup", "Roles without backticks and unclosed inline literals", Sometimes, docstrings::rst_inline_markup { module }),
+    RstTypeField => ("SMP912", "rst-type-field", "Types in docstrings, which belong in annotations", Sometimes, docstrings::rst_type_field { module }),
+    RstRestatingField => ("SMP913", "rst-restating-field", "Field descriptions that only repeat the name", None, docstrings::rst_restating_field { module }),
+    RstEmptyField => ("SMP914", "rst-empty-field", "Fields with no description", None, docstrings::rst_empty_field { module }),
+    RstPrivateField => ("SMP915", "rst-private-field", "Public docstrings documenting internal names", Sometimes, docstrings::rst_private_field { module }),
+    RstMissingParam => ("SMP916", "rst-missing-param", "Public API docstrings that leave a parameter undocumented", Sometimes, docstrings::rst_missing_param { module }),
+    RstUnknownParam => ("SMP917", "rst-unknown-param", "`:param:` and `:type:` fields for parameters the signature lacks", Sometimes, docstrings::rst_unknown_param { module }),
+    RstDuplicateParam => ("SMP918", "rst-duplicate-param", "Constructor parameters documented in both the class and `__init__` docstrings", Sometimes, docstrings::rst_duplicate_param { module }),
+    RstParamOrder => ("SMP919", "rst-param-order", "`:param:` fields out of the signature's order", None, docstrings::rst_param_order { module }),
+    RstMissingAttribute => ("SMP920", "rst-missing-attribute", "Public classes whose docstring leaves an attribute undocumented", Sometimes, docstrings::rst_missing_attribute { module }),
+    RstUnknownAttribute => ("SMP921", "rst-unknown-attribute", "`:ivar:`, `:cvar:` and `:var:` fields for attributes the class lacks", Sometimes, docstrings::rst_unknown_attribute { module }),
+    RstAttributeKind => ("SMP922", "rst-attribute-kind", "`:ivar:` on class variables and `:cvar:` on instance attributes", Sometimes, docstrings::rst_attribute_kind { module }),
+    RstReturns => ("SMP923", "rst-returns", "Missing, extraneous or misused `:returns:` and `:yields:` fields", Sometimes, docstrings::rst_returns { module }),
+    RstMissingRaises => ("SMP924", "rst-missing-raises", "Public API docstrings that leave a raised exception undocumented", Sometimes, docstrings::rst_missing_raises { module }),
 }
 
 // The simplint rule behind a diagnostic; `None` for Ruff's own diagnostics, such as a syntax error.
@@ -240,16 +262,76 @@ impl RuleSet {
     }
 }
 
-// The rule groups `simplint linter` lists, as `ruff linter` lists the linters Ruff ports.
-pub const GROUPS: [(&str, &str); 4] = [
-    ("SMP0", "Comments and structure"),
-    ("SMP1", "Modules, typing and exports"),
-    ("SMP2", "Tests"),
-    ("SMP3", "Docstrings"),
+// The rule groups `simplint linter` lists, as `ruff linter` lists the linters Ruff ports. Each group owns the code
+// digit in this order: `SMP0` is the first group, `SMP9` the last. The short title fits the documentation's sidebar.
+pub const GROUPS: [(&str, &str, &str); 10] = [
+    ("comments", "Comments", "Comments"),
+    ("naming", "Naming", "Naming"),
+    ("layout", "Module layout", "Module layout"),
+    ("imports", "Imports and dependencies", "Imports"),
+    ("api", "Public API", "Public API"),
+    ("logic", "Logic", "Logic"),
+    ("typing", "Typing", "Typing"),
+    ("classes", "Classes", "Classes"),
+    ("testing", "Tests", "Tests"),
+    ("docstrings", "Docstrings", "Docstrings"),
 ];
 
 impl Rule {
+    fn group_entry(self) -> Option<(&'static str, &'static str, &'static str)> {
+        GROUPS.iter().copied().find(|(family, _, _)| *family == self.family())
+    }
+
     pub fn group(self) -> &'static str {
-        GROUPS.iter().find(|(prefix, _)| self.code().starts_with(prefix)).map_or("", |(_, name)| name)
+        self.group_entry().map_or("", |(_, name, _)| name)
+    }
+
+    pub fn short_group(self) -> &'static str {
+        self.group_entry().map_or("", |(_, _, short)| short)
+    }
+
+    // The rules that read the project index, directly or through the public API, the rst targets, string kinds or the
+    // rename fix, so another file of the run can change what they report or fix. Keep in step with `Checker::project`.
+    pub fn reads_other_files(self) -> bool {
+        matches!(
+            self,
+            Rule::ForwardingFunction
+                | Rule::SingleUserConstant
+                | Rule::WalrusCandidate
+                | Rule::SingleCallerHelper
+                | Rule::MissingFinal
+                | Rule::ModuleVariableCase
+                | Rule::ModuleVariablePrefix
+                | Rule::UnexportedPublicName
+                | Rule::InitModuleContent
+                | Rule::DataclassFrozen
+                | Rule::DataclassSlots
+                | Rule::StringConcatenation
+                | Rule::UnusedDefault
+                | Rule::MissingFromAll
+                | Rule::ModuleAttributeImport
+                | Rule::DataclassKwOnly
+                | Rule::IndistinctErrorClass
+                | Rule::UnusedExport
+                | Rule::TestOnlyCode
+                | Rule::TestClass
+                | Rule::FunctionDocstring
+                | Rule::UndocumentedPublicApi
+                | Rule::RstFieldSyntax
+                | Rule::RstUnknownParam
+                | Rule::RstMissingParam
+                | Rule::RstParamOrder
+                | Rule::RstTypeField
+                | Rule::RstReturns
+                | Rule::RstMissingRaises
+                | Rule::RstMissingAttribute
+                | Rule::RstUnknownAttribute
+                | Rule::RstDuplicateParam
+                | Rule::RstAttributeKind
+                | Rule::RstRestatingField
+                | Rule::RstEmptyField
+                | Rule::RstInlineMarkup
+                | Rule::RstPrivateField
+        )
     }
 }

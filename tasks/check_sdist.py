@@ -13,19 +13,18 @@ def main() -> None:
     # :raises subprocess.CalledProcessError: if a build, install or test step fails
     with TemporaryDirectory() as folder:
         at = Path(folder)
-        sdist = _build_sdist(at / "sdist")
-        _runs_on_its_own(_wheel_from(sdist, at / "wheel"))
+        subprocess.check_call([
+            "uv",
+            "build",
+            "--sdist",
+            "--out-dir",
+            str(at / "sdist"),
+            str(Path(__file__).resolve().parents[1]),
+        ])
+        sdist = next((at / "sdist").glob("*.tar.gz"))
+        subprocess.check_call(["uv", "build", "--wheel", "--out-dir", str(at / "wheel"), str(sdist)])
+        _runs_on_its_own(next((at / "wheel").glob("*.whl")))
         _ships_a_suite_that_passes(sdist, at / "unpacked")
-
-
-def _build_sdist(at: Path) -> Path:
-    subprocess.check_call(["uv", "build", "--sdist", "--out-dir", str(at), str(Path(__file__).resolve().parents[1])])
-    return next(at.glob("*.tar.gz"))
-
-
-def _wheel_from(sdist: Path, at: Path) -> Path:
-    subprocess.check_call(["uv", "build", "--wheel", "--out-dir", str(at), str(sdist)])
-    return next(at.glob("*.whl"))
 
 
 def _runs_on_its_own(wheel: Path) -> None:
@@ -40,8 +39,7 @@ def _ships_a_suite_that_passes(sdist: Path, at: Path) -> None:
     at.mkdir()
     with tar_open(sdist) as tar:
         tar.extractall(at, filter="data")
-    root = next(at.iterdir())
-    subprocess.check_call(["cargo", "test", "--locked"], cwd=root)
+    subprocess.check_call(["cargo", "test", "--locked"], cwd=next(at.iterdir()))
     print(f"{sdist.name} passes the suite it ships")
 
 

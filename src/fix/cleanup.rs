@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use rustc_hash::FxHashSet;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -23,7 +23,7 @@ use crate::lint::ruff::{Checked, RuffFile};
 pub fn cleanup(
     path: &Path,
     source: &str,
-    introduced: &HashSet<&'static str>,
+    introduced: &FxHashSet<&'static str>,
     parser_version: PythonVersion,
     check: impl Fn(&str) -> Arc<Checked>,
 ) -> String {
@@ -41,7 +41,7 @@ pub fn cleanup(
 fn lint_fix(
     path: &Path,
     start: &str,
-    introduced: &HashSet<&'static str>,
+    introduced: &FxHashSet<&'static str>,
     check: impl Fn(&str) -> Arc<Checked>,
 ) -> Result<String> {
     let mut checked = check(start);

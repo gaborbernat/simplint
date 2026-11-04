@@ -2,14 +2,14 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-40:5 SMP300 Class docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
-48:9 SMP300 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
-53:9 SMP300 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
-57:9 SMP300 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
-62:9 SMP300 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
-67:5 SMP300 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
-73:5 SMP300 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
-78:5 SMP300 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+40:5 SMP901 Class docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+48:9 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+53:9 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+57:9 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+62:9 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+67:5 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+73:5 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+78:5 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
 --- fixed (8 applied, 0 remaining) ---
 import functools
 from dataclasses import dataclass

@@ -1,0 +1,177 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+15:9 SMP503 Build text with an f-string instead of `+`
+16:9 SMP503 Build text with an f-string instead of `+`
+17:9 SMP503 Build text with an f-string instead of `+`
+18:9 SMP503 Build text with an f-string instead of `+`
+19:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+20:9 SMP503 Build text with an f-string instead of `+`
+21:9 SMP503 Build text with an f-string instead of `+`
+30:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+31:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+32:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+33:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+34:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+35:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+36:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+37:9 SMP503 Build text with an f-string instead of `+`
+38:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+47:15 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+50:13 SMP503 Build text with an f-string instead of `+`
+50:35 SMP503 Build text with an f-string instead of `+`
+55:12 SMP503 Build text with an f-string instead of `+`
+69:16 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+71:31 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+72:16 SMP503 Build text with an f-string instead of `+`
+75:30 SMP503 Build text with an f-string instead of `+`
+87:16 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+104:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+105:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+106:9 SMP503 Build text with an f-string instead of `+`
+107:9 SMP503 Build text with an f-string instead of `+`
+108:9 SMP503 Build text with an f-string instead of `+`
+109:9 SMP503 Build text with an f-string instead of `+`
+110:9 SMP503 Build text with an f-string instead of `+`
+111:9 SMP503 Build text with an f-string instead of `+`
+112:9 SMP503 Build text with an f-string instead of `+`
+113:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+114:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+115:9 SMP503 Build text with an f-string instead of `+`
+116:9 SMP503 Build text with an f-string instead of `+`
+122:12 SMP503 Build text with an f-string instead of `+`
+126:13 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+130:12 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+130:19 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+--- fixed (20 applied, 22 remaining) ---
+from os import pathsep
+from pathlib import Path
+from typing import Annotated, Final
+
+from markupsafe import Markup
+from pypdf import PageRange
+
+CONCAT_SEPARATOR = "-"
+CONCAT_PREFIX: Final[str] = "pre"
+concat_counter = 0
+
+
+def concat_opaque(value, path: Path, items: list[str]) -> list[object]:
+    return [
+        PageRange(slice(0, 5)) + "2:7",
+        Markup("foo") + "bar",
+        value + "",
+        path + pathsep + "foo",
+        f"a{items[0]}",
+        "a" + concat_counter,
+        "a" + len(items),
+    ]
+
+
+def concat_known(label: str, items: list[str], flag: bool) -> list[str]:
+    built = "start"
+    built += label
+    joined = ", ".join(items)
+    return [
+        f"{label}!",
+        f"{built}?",
+        f"{joined}.",
+        f"{"ab".replace("a", "c")}{label}.",
+        f"{label if flag else "none"}x",
+        f"{label.upper()}-{label[0]}",
+        f"<{CONCAT_PREFIX}{label}",
+        "<" + CONCAT_SEPARATOR + label,
+        f"n={flag!s}",
+    ]
+
+
+def concat_rebound(label: str, items: list[str]) -> list[str]:
+    for label in items:
+        pass
+    for label in range(3):
+        pass
+    looped = [f"{label}!" for label in items]
+    shadow = "x"
+    shadow = len(items)
+    return [label + "?", *looped, "s" + shadow]
+
+
+def concat_shadowed_builtin(value: int) -> str:
+    str = repr
+    return "v=" + str(value)
+
+
+def concat_global(text: str) -> str:
+    def reset() -> None:
+        global CONCAT_SEPARATOR
+        CONCAT_SEPARATOR = 1
+
+    reset()
+    return CONCAT_SEPARATOR + text
+
+
+class ConcatHolder:
+    suffix = "!"
+    combined = f"a{suffix}"
+
+    def describe(self, suffix=f"{suffix}?") -> str:
+        return "b" + suffix
+
+
+concat_lambda = lambda part: "x" + part
+
+
+def concat_forms(
+    label: str,
+    quoted: "str",
+    tagged: Annotated[str, "tag"],
+    numbered: Annotated[int, "n"],
+    maybe: str | None,
+    listed: list[str],
+) -> list[object]:
+    annotated: object = "x"
+    prefixed = f"b{label}"
+    repeated = "ab"
+    repeated *= 2
+    try:
+        pass
+    except ValueError as caught:
+        pass
+    match label:
+        case "a":
+            pass
+        case str() as matched:
+            pass
+        case [*rest]:
+            pass
+        case {**extra}:
+            pass
+    return [
+        f"a{prefixed}",
+        f"{label or "none"}x",
+        "a" + listed.pop(),
+        "a" + (lambda: label)(),
+        "a" + concat_undefined,
+        "a" + annotated,
+        "a" + repeated,
+        "a" + caught,
+        "a" + matched,
+        f"{quoted}!",
+        f"{tagged}!",
+        numbered + "!",
+        maybe + "!",
+    ]
+
+
+def concat_declared_global() -> str:
+    global concat_counter
+    return "a" + concat_counter
+
+
+def concat_comprehension(label: str, listed: list[str]) -> list[str]:
+    return [f"a{label}" for label in listed]
+
+
+def concat_nested_sum(label: str) -> str:
+    return f"a{f"b{label}"}"
