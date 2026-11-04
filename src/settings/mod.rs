@@ -43,22 +43,16 @@ pub struct Settings {
 
 impl Settings {
     // Ruff's `Configuration::into_settings`: the command line goes on top of the `pyproject.toml`'s options, then the
-    // rule selections resolve in order. Without a `pyproject.toml`, the defaults apply.
-    fn resolve(root: &Path, pyproject: Option<&Path>, overrides: &Overrides) -> Result<Self> {
+    // rule selections resolve in order. Without a `pyproject.toml`, the defaults apply; one comes with its parsed table.
+    fn resolve(root: &Path, pyproject: Option<(&Path, toml::Table)>, overrides: &Overrides) -> Result<Self> {
+        let path = pyproject.as_ref().map(|(path, _)| *path);
         let (metadata, build, configuration) = match pyproject {
-            Some(path) => {
-                let text =
-                    std::fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
-                let table: toml::Table =
-                    toml::from_str(&text).with_context(|| format!("Failed to parse {}", path.display()))?;
+            Some((path, table)) => {
+                let build = BuildConfiguration::of(&table);
                 let pyproject: Pyproject =
-                    table.clone().try_into().with_context(|| format!("Failed to parse {}", path.display()))?;
+                    table.try_into().with_context(|| format!("Failed to parse {}", path.display()))?;
                 let source = Source::File(Arc::from(path));
-                (
-                    pyproject.project,
-                    BuildConfiguration::of(&table),
-                    Configuration::from_options(pyproject.tool.simplint, root, &source),
-                )
+                (pyproject.project, build, Configuration::from_options(pyproject.tool.simplint, root, &source))
             }
             None => (ProjectMetadata::default(), BuildConfiguration::default(), Configuration::default()),
         };
@@ -78,7 +72,7 @@ impl Settings {
         );
         Ok(Self {
             root: root.to_path_buf(),
-            path: pyproject.map(Path::to_path_buf),
+            path: path.map(Path::to_path_buf),
             metadata,
             api,
             docstring_style,
@@ -334,9 +328,13 @@ impl SettingsResolver {
                 Some(config).filter(|config| config.file_name().is_some_and(|name| name == "pyproject.toml")),
             ),
             None => {
-                let discovery = Discovery::Hierarchical(Mutex::new(HashMap::new()));
+                let discovery = Discovery::Hierarchical(Mutex::default());
                 return Ok(Self { root: discovery.settings(&cwd, &overrides)?, overrides, discovery });
             }
+        };
+        let pyproject = match pyproject {
+            Some(path) => Some((path, read_table(path)?)),
+            None => None,
         };
         let fixed = Arc::new(Settings::resolve(root, pyproject, &overrides)?);
         Ok(Self { root: Arc::clone(&fixed), overrides, discovery: Discovery::Fixed(fixed) })
@@ -351,54 +349,83 @@ impl SettingsResolver {
 // read once per project.
 enum Discovery {
     Fixed(Arc<Settings>),
-    Hierarchical(Mutex<HashMap<PathBuf, Arc<Settings>>>),
+    Hierarchical(Mutex<Projects>),
 }
 
 impl Discovery {
     // The closest `pyproject.toml` with a `[tool.simplint]` table holds the settings and the project's metadata;
     // without one, the defaults apply, rooted at the file's directory. Projects are cached by both the directory a
-    // lookup starts from and their root, so each `pyproject.toml` is read once.
+    // lookup starts from and their root.
     fn settings(&self, path: &Path, overrides: &Overrides) -> Result<Arc<Settings>> {
-        let discovered = match self {
+        let projects = match self {
             Self::Fixed(settings) => return Ok(Arc::clone(settings)),
-            Self::Hierarchical(discovered) => discovered,
+            Self::Hierarchical(projects) => projects,
         };
         let absolute = std::path::absolute(path)?;
         let start = if absolute.is_dir() { absolute.as_path() } else { absolute.parent().unwrap_or(&absolute) };
-        let mut discovered = discovered.lock().expect("no worker panics while resolving settings");
-        if let Some(settings) = discovered.get(start) {
+        let mut projects = projects.lock().expect("no worker panics while resolving settings");
+        if let Some(settings) = projects.settings.get(start) {
             return Ok(Arc::clone(settings));
         }
-        let pyproject = Self::find_pyproject(start)?;
+        let pyproject = projects.find_pyproject(start)?;
         let root = pyproject.as_deref().and_then(Path::parent).unwrap_or(start);
-        let settings = match discovered.get(root) {
-            Some(settings) => Arc::clone(settings),
-            None => Arc::new(Settings::resolve(root, pyproject.as_deref(), overrides)?),
+        let settings = if let Some(settings) = projects.settings.get(root) {
+            Arc::clone(settings)
+        } else {
+            let parsed = pyproject.as_deref().map(|path| (path, projects.take_table(path)));
+            Arc::new(Settings::resolve(root, parsed, overrides)?)
         };
-        discovered.insert(root.to_path_buf(), Arc::clone(&settings));
-        discovered.insert(start.to_path_buf(), Arc::clone(&settings));
+        projects.settings.insert(root.to_path_buf(), Arc::clone(&settings));
+        projects.settings.insert(start.to_path_buf(), Arc::clone(&settings));
         Ok(settings)
     }
+}
 
+// What hierarchical discovery found so far: the settings by the directories they apply to, and each `pyproject.toml`
+// it met, so every one is read and parsed once.
+#[derive(Default)]
+struct Projects {
+    settings: HashMap<PathBuf, Arc<Settings>>,
+    pyprojects: HashMap<PathBuf, PyprojectFile>,
+}
+
+// A `pyproject.toml` met: whether it configures simplint, and its table until the project rooted next to it takes it.
+struct PyprojectFile {
+    configures: bool,
+    table: Option<toml::Table>,
+}
+
+impl Projects {
     // Like Ruff's `settings_toml`, which passes over a `pyproject.toml` without `[tool.ruff]`, so that a nested package
     // inherits its parent's settings. When no ancestor configures simplint, the nearest `pyproject.toml` still gives
     // the project's metadata.
-    fn find_pyproject(start: &Path) -> Result<Option<PathBuf>> {
+    fn find_pyproject(&mut self, start: &Path) -> Result<Option<PathBuf>> {
         let candidates =
             start.ancestors().map(|dir| dir.join("pyproject.toml")).filter(|candidate| candidate.is_file());
         let mut nearest = None;
         for candidate in candidates {
-            let text = std::fs::read_to_string(&candidate)
-                .with_context(|| format!("Failed to read {}", candidate.display()))?;
-            let table: toml::Table =
-                toml::from_str(&text).with_context(|| format!("Failed to parse {}", candidate.display()))?;
-            if table.get("tool").and_then(|tool| tool.get("simplint")).is_some() {
+            if !self.pyprojects.contains_key(&candidate) {
+                let table = read_table(&candidate)?;
+                let configures = table.get("tool").and_then(|tool| tool.get("simplint")).is_some();
+                self.pyprojects.insert(candidate.clone(), PyprojectFile { configures, table: Some(table) });
+            }
+            if self.pyprojects[&candidate].configures {
                 return Ok(Some(candidate));
             }
             nearest.get_or_insert(candidate);
         }
         Ok(nearest)
     }
+
+    // A project resolves once, from the table `find_pyproject` parsed.
+    fn take_table(&mut self, path: &Path) -> toml::Table {
+        self.pyprojects.get_mut(path).and_then(|file| file.table.take()).expect("a project resolves once")
+    }
+}
+
+fn read_table(path: &Path) -> Result<toml::Table> {
+    let text = std::fs::read_to_string(path).with_context(|| format!("Failed to read {}", path.display()))?;
+    toml::from_str(&text).with_context(|| format!("Failed to parse {}", path.display()))
 }
 
 #[derive(Deserialize, Default)]
