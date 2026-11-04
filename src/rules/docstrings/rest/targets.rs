@@ -10,7 +10,7 @@ use super::{Docstring, has_attribute_bases};
 use crate::lint::checker::Checker;
 use crate::rules::docstring;
 use crate::settings::DocstringStyle;
-use crate::syntax::{Visibility, last_segment, module_statements};
+use crate::syntax::{Visibility, last_segment, module_statements, receiver};
 
 pub(crate) enum Owner<'a> {
     Function { def: &'a ast::StmtFunctionDef, class: Option<&'a ast::StmtClassDef> },
@@ -124,15 +124,14 @@ pub(crate) struct Parameter<'a> {
 // A function's parameters in order, without the instance or class a method receives first and without names made of
 // underscores only, which take a value nobody reads.
 fn parameters(def: &ast::StmtFunctionDef, is_method: bool) -> Vec<Parameter<'_>> {
-    let receives = is_method
-        && !def.decorator_list.iter().any(|decorator| last_segment(&decorator.expression) == Some("staticmethod"));
+    let received = if is_method { receiver(def) } else { None };
     let parameters = &def.parameters;
     let positional = parameters.posonlyargs.iter().chain(&parameters.args).map(|parameter| &parameter.parameter);
     let all = positional
         .chain(parameters.vararg.as_deref())
         .chain(parameters.kwonlyargs.iter().map(|parameter| &parameter.parameter))
         .chain(parameters.kwarg.as_deref());
-    all.skip(usize::from(receives))
+    all.filter(|parameter| Some(parameter.name.as_str()) != received)
         .filter(|parameter| !parameter.name.as_str().chars().all(|char| char == '_'))
         .map(|parameter| Parameter { name: parameter.name.as_str(), annotated: parameter.annotation.is_some() })
         .collect()

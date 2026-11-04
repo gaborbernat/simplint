@@ -10,7 +10,7 @@ use rustc_hash::FxHashMap;
 use crate::lint::checker::Checker;
 use crate::lint::walker::{Scope, Walker};
 use crate::semantic::BindingKind;
-use crate::syntax::{Visibility, for_each_child_body};
+use crate::syntax::{Visibility, for_each_child_body, is_classmethod, receiver};
 
 // The few types the code can show for sure, enough to tell what `+` and `*` on them return.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -438,7 +438,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
         };
         let checker = self.walker.checker;
         // The parameter must be the only binding of the name, so it still holds the instance.
-        if self_parameter(checker, method) != Some(receiver.id.as_str())
+        if self_parameter(method) != Some(receiver.id.as_str())
             || self.lookup(&receiver.id, depth).is_none_or(|(bindings, at)| {
                 at != index + 1
                     || !bindings.values.is_empty()
@@ -657,21 +657,8 @@ fn target_binds(target: &Expr, name: &str) -> bool {
 }
 
 // The name a method calls its instance, unless it is a static or class method.
-fn self_parameter<'a>(checker: &Checker, method: &'a ast::StmtFunctionDef) -> Option<&'a str> {
-    if method
-        .decorator_list
-        .iter()
-        .any(|decorator| is_builtin_call(checker, &decorator.expression, &["staticmethod", "classmethod"]))
-    {
-        return None;
-    }
-    method
-        .parameters
-        .posonlyargs
-        .iter()
-        .chain(&method.parameters.args)
-        .next()
-        .map(|parameter| parameter.name().as_str())
+fn self_parameter(method: &ast::StmtFunctionDef) -> Option<&str> {
+    receiver(method).filter(|_| !is_classmethod(method))
 }
 
 fn is_builtin_call(checker: &Checker, expr: &Expr, names: &[&str]) -> bool {
@@ -1135,7 +1122,7 @@ impl<'a> Members<'a> {
         let mut members = Self { declared: body.declared, values, properties, methods, opaque };
         for stmt in &class.body {
             if let Stmt::FunctionDef(method) = stmt
-                && let Some(receiver) = self_parameter(checker, method)
+                && let Some(receiver) = self_parameter(method)
             {
                 let mut writes = Writes { checker, receiver, attr, method, members: &mut members, nested: 0 };
                 writes.visit_body(&method.body);

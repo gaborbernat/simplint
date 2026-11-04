@@ -6,7 +6,7 @@ use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Pattern, Stmt};
 
 use super::facts::qualified;
-use crate::syntax::last_segment;
+use crate::syntax::{is_classmethod, last_segment, receiver};
 
 // The attributes code sets or deletes on objects, keyed by the class of the object when parsing tells it: the receiver
 // is `self` in a method, or a name bound by a call to a class or annotated with one. A class goes by its qualified
@@ -243,22 +243,17 @@ impl<'a> Collector<'a, '_> {
             Some(ScopeKind::Class { name, .. }) => Some(*name),
             _ => None,
         };
-        let is_method = class.is_some()
-            && !function.decorator_list.iter().any(|decorator| {
-                last_segment(&decorator.expression).is_some_and(|name| matches!(name, "staticmethod" | "classmethod"))
-            });
+        let instance = receiver(function).filter(|_| !is_classmethod(function));
         function
             .parameters
             .iter()
-            .enumerate()
-            .map(|(index, parameter)| {
-                let receiver = match (index, class) {
-                    (0, Some(class)) if is_method && !parameter.is_variadic() => {
-                        Receiver::Own(format!("{}.{class}", self.module))
-                    }
+            .map(|parameter| {
+                let name = parameter.name().as_str();
+                let receiver = match class {
+                    Some(class) if instance == Some(name) => Receiver::Own(format!("{}.{class}", self.module)),
                     _ => parameter.annotation().map_or(Receiver::Unknown, annotated),
                 };
-                (parameter.name().as_str(), receiver)
+                (name, receiver)
             })
             .collect()
     }

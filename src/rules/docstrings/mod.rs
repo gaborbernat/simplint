@@ -42,7 +42,7 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::project::Exposure;
-use crate::syntax::{Exports, Visibility, last_segment, module_statements};
+use crate::syntax::{Exports, Visibility, decorator_names, module_statements};
 
 enum ApiKind {
     Function,
@@ -200,11 +200,6 @@ impl<'a> PublicApi<'a> {
 
 fn is_overload(decorators: &[ast::Decorator]) -> bool {
     decorator_names(decorators).contains(&"overload")
-}
-
-// The last segment of each decorator, so `typing.override` and `@name.setter` read as `override` and `setter`.
-fn decorator_names(decorators: &[ast::Decorator]) -> Vec<&str> {
-    decorators.iter().filter_map(|decorator| last_segment(&decorator.expression)).collect()
 }
 
 // The statements `module_statements` yields, each with the one after it in its own block, which may be inside an `if`

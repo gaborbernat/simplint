@@ -1,8 +1,8 @@
 use ruff_python_ast::{self as ast, Expr, Stmt};
 
 use crate::lint::checker::Checker;
-use crate::rules::docstrings::{decorator_names, is_documented_variable, module_statements_with_next};
-use crate::syntax::{for_each_body, last_segment, module_statements};
+use crate::rules::docstrings::{is_documented_variable, module_statements_with_next};
+use crate::syntax::{for_each_body, is_classmethod, last_segment, module_statements, receiver};
 
 // An attribute of a class as autodoc documents it: one its body assigns, or one a method sets on `self`.
 pub(crate) struct Attribute<'a> {
@@ -47,17 +47,10 @@ pub(crate) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) ->
     }
     for method in module_statements(&class.body).filter_map(Stmt::as_function_def_stmt) {
         // A static method receives nothing; a class method receives the class, whose attributes are class variables.
-        let decorators = decorator_names(&method.decorator_list);
-        if decorators.contains(&"staticmethod") {
-            continue;
-        }
-        let on_class = decorators.contains(&"classmethod");
-        let parameters = &method.parameters;
-        let Some(receiver) =
-            parameters.posonlyargs.iter().chain(&parameters.args).next().map(|parameter| parameter.name().as_str())
-        else {
+        let Some(receiver) = receiver(method) else {
             continue;
         };
+        let on_class = is_classmethod(method);
         for_each_body(&method.body, &mut |body, _| {
             for (index, stmt) in body.iter().enumerate() {
                 let documented = || is_documented_variable(checker, stmt, body.get(index + 1));

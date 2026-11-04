@@ -78,6 +78,24 @@ pub fn last_segment(expr: &Expr) -> Option<&str> {
     UnqualifiedName::from_expr(expr)?.segments().last().copied()
 }
 
+// The last segment of each decorator, so `typing.override` and `@name.setter` read as `override` and `setter`.
+pub fn decorator_names(decorators: &[ast::Decorator]) -> Vec<&str> {
+    decorators.iter().filter_map(|decorator| last_segment(&decorator.expression)).collect()
+}
+
+// The parameter a method receives its instance or class in: the first positional one, unless the method is static.
+pub fn receiver(method: &ast::StmtFunctionDef) -> Option<&str> {
+    if decorator_names(&method.decorator_list).contains(&"staticmethod") {
+        return None;
+    }
+    let parameters = &method.parameters;
+    parameters.posonlyargs.iter().chain(&parameters.args).next().map(|parameter| parameter.name().as_str())
+}
+
+pub fn is_classmethod(method: &ast::StmtFunctionDef) -> bool {
+    decorator_names(&method.decorator_list).contains(&"classmethod")
+}
+
 // The statements that run when the module loads, including those of its top-level `if` and `try` blocks, where
 // modules pick an implementation by version or availability.
 pub fn module_statements(body: &[Stmt]) -> impl Iterator<Item = &Stmt> {
