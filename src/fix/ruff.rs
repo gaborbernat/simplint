@@ -21,8 +21,8 @@ use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::fix::apply::{FixResult, fix_ruff_file};
-use crate::fix::errors;
 use crate::fix::layout::{Layout, Widths};
+use crate::fix::{add_fixes, errors};
 use crate::settings::FromRuff;
 
 // The file as Ruff sees it: the project's Ruff settings for it and the package it belongs to.
@@ -170,9 +170,7 @@ impl<'a> RuffFile<'a> {
             let Some(FixResult { code, fixes }) = fix_ruff_file(&transformed, offered).filter(|_| converging()) else {
                 break;
             };
-            for (id, code, count) in fixes.iter() {
-                *fixed.entry(id).or_default(code) += count;
-            }
+            add_fixes(&mut fixed, &fixes);
             transformed = code;
             checked = check(&transformed);
             ensure!(!valid || checked.parses, errors::ruff_broken_syntax(path, &transformed, &fixed));

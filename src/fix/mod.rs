@@ -62,7 +62,7 @@ impl<'l, 'a> Fixer<'l, 'a> {
         let mut current = source.to_owned();
         let (mut result, unfixable) = loop {
             let (result, unfixable) = self.run(&current)?;
-            Self::add_fixes(&mut fixed, &result.fixed);
+            add_fixes(&mut fixed, &result.fixed);
             if result.fixed.is_empty() || !seen.insert(result.transformed.clone()) {
                 break (result, unfixable);
             }
@@ -71,12 +71,6 @@ impl<'l, 'a> Fixer<'l, 'a> {
         result.fixed = fixed;
         Self::withdraw(&mut result.diagnostics, unfixable);
         Ok((result, unfixable))
-    }
-
-    fn add_fixes(total: &mut FixTable, fixes: &FixTable) {
-        for (id, secondary_code, count) in fixes.iter() {
-            *total.entry(id).or_default(secondary_code) += count;
-        }
     }
 
     // A withdrawn fix is no longer offered, so the summary does not count it as fixable.
@@ -145,7 +139,7 @@ impl<'l, 'a> Fixer<'l, 'a> {
             if round.fixed.is_empty() {
                 return Ok((FixerResult { fixed, ..round }, 0));
             }
-            Self::add_fixes(&mut fixed, &round.fixed);
+            add_fixes(&mut fixed, &round.fixed);
             let Some((transformed, left)) = self.clean_up(linted.source, &round.transformed) else {
                 return Ok((FixerResult { fixed, ..round }, 0));
             };
@@ -205,7 +199,7 @@ impl<'l, 'a> Fixer<'l, 'a> {
         let mut iterations = 0;
         while let Some(FixResult { code, fixes }) = fix_file(&transformed, &diagnostics, self.unsafe_fixes, unfixable) {
             errors::ensure_converging(self.path, iterations, &diagnostics)?;
-            Self::add_fixes(&mut fixed, &fixes);
+            add_fixes(&mut fixed, &fixes);
             transformed = code;
             iterations += 1;
             diagnostics = self.lint(&transformed);
@@ -222,6 +216,12 @@ impl<'l, 'a> Fixer<'l, 'a> {
     fn check(&self, source: &str) -> Arc<Checked> {
         self.checks
             .get_or(source, || Arc::new(self.linter.ruff.check(self.path, source, &self.linter.settings.from_ruff)))
+    }
+}
+
+pub fn add_fixes(total: &mut FixTable, fixes: &FixTable) {
+    for (id, secondary_code, count) in fixes.iter() {
+        *total.entry(id).or_default(secondary_code) += count;
     }
 }
 

@@ -19,7 +19,7 @@ use ruff_text_size::TextRange;
 use rustc_hash::FxHashMap;
 use tempfile::NamedTempFile;
 
-use crate::fix::{Fixer, FixerResult};
+use crate::fix::{Fixer, FixerResult, add_fixes};
 use crate::lint::Linter;
 use crate::lint::registry::RuleSet;
 
@@ -87,10 +87,7 @@ impl AddAssign for FixMap {
     fn add_assign(&mut self, other: Self) {
         #[expect(clippy::iter_over_hash_type, reason = "fix counts merge independently for each file")]
         for (filename, fixed) in other.0 {
-            let fixed_in_file = self.0.entry(filename).or_default();
-            for (id, code, count) in fixed.iter() {
-                *fixed_in_file.entry(id).or_default(code) += count;
-            }
+            add_fixes(self.0.entry(filename).or_default(), &fixed);
         }
     }
 }
