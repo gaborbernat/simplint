@@ -3,6 +3,7 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use super::{Docstring, Field, FieldKind, Parameter};
 use crate::lint::checker::Checker;
+use crate::lint::registry::Rule;
 use crate::rules::indentation;
 
 // Deletes whole fields, each with the lines that continue it. Fields that end the docstring take the blank lines before
@@ -59,6 +60,25 @@ pub(crate) fn rank(kind: FieldKind, subject: Option<&str>, parameters: &[Paramet
         FieldKind::Returns | FieldKind::ReturnType | FieldKind::Yields | FieldKind::YieldType => 2 << 16,
         FieldKind::Raises => 3 << 16,
         FieldKind::Meta | FieldKind::Unknown => 4 << 16,
+    }
+}
+
+// Reports each missing field on the docstring at `range`, all with the one fix that adds every field to `docstring`, so
+// applying any of them settles the rest. `missing` holds each field's rank, its text, such as `:param path:`, and the
+// message reporting it.
+pub(crate) fn report_missing(
+    checker: &Checker,
+    rule: Rule,
+    range: TextRange,
+    docstring: &Docstring,
+    parameters: &[Parameter],
+    missing: Vec<(usize, String, String)>,
+) {
+    let added: Vec<(usize, String)> = missing.iter().map(|(rank, text, _)| (*rank, text.clone())).collect();
+    let fix = field_insertion(checker, docstring, parameters, &added);
+    let title = format!("Add {}", added.iter().map(|(_, text)| format!("`{text}`")).collect::<Vec<_>>().join(", "));
+    for (_, _, message) in missing {
+        checker.report_fix(rule, range, message, fix.clone(), title.clone());
     }
 }
 

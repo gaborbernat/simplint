@@ -6,6 +6,6 @@ mod parse;
 mod targets;
 
 pub(crate) use attributes::has_attribute_bases;
-pub(crate) use edits::{field_deletion, field_insertion, rank};
+pub(crate) use edits::{field_deletion, field_insertion, rank, report_missing};
 pub(crate) use parse::{Docstring, Field, FieldKind};
 pub(crate) use targets::{Owner, Parameter, Target, collect_targets, is_internal};

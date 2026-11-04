@@ -5,7 +5,7 @@ use ruff_python_ast::{self as ast, Expr, Stmt};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rest::{FieldKind, Owner, field_insertion, rank};
+use crate::rules::docstrings::rest::{FieldKind, Owner, rank, report_missing};
 use crate::rules::last_segment;
 
 pub fn rest_missing_raises(checker: &Checker) {
@@ -29,19 +29,19 @@ pub fn rest_missing_raises(checker: &Checker) {
                 missing.push(name);
             }
         }
-        let added: Vec<(usize, String)> =
-            missing.iter().map(|name| (rank(FieldKind::Raises, Some(name), &[]), format!(":raises {name}:"))).collect();
-        let fix = field_insertion(checker, &target.docstring, &target.parameters().unwrap_or_default(), &added);
-        let title = format!("Add {}", added.iter().map(|(_, text)| format!("`{text}`")).collect::<Vec<_>>().join(", "));
-        for name in missing {
-            checker.report_fix(
-                Rule::RestMissingRaises,
-                target.docstring.range(),
-                format!("`{}` raises `{name}`, which its docstring does not document; add `:raises {name}:`", def.name),
-                fix.clone(),
-                title.clone(),
-            );
-        }
+        let missing = missing
+            .into_iter()
+            .map(|name| {
+                let message = format!(
+                    "`{}` raises `{name}`, which its docstring does not document; add `:raises {name}:`",
+                    def.name
+                );
+                (rank(FieldKind::Raises, Some(name), &[]), format!(":raises {name}:"), message)
+            })
+            .collect();
+        let parameters = target.parameters().unwrap_or_default();
+        let range = target.docstring.range();
+        report_missing(checker, Rule::RestMissingRaises, range, &target.docstring, &parameters, missing);
     }
 }
 

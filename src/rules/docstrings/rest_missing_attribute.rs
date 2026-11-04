@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::Visibility;
-use crate::rules::docstrings::rest::{FieldKind, Owner, field_insertion, rank};
+use crate::rules::docstrings::rest::{FieldKind, Owner, rank, report_missing};
 
 pub fn rest_missing_attribute(checker: &Checker) {
     for target in checker.rest_targets().iter().filter(|target| target.public) {
@@ -18,7 +18,7 @@ pub fn rest_missing_attribute(checker: &Checker) {
             .filter_map(|field| field.subject())
             .collect();
         // An attribute the constructor takes is documented by its `:param:` field, which `rest-missing-param` asks for.
-        let missing: Vec<(&str, &str)> = target
+        let missing = target
             .attributes(checker)
             .iter()
             .filter(|attribute| {
@@ -27,25 +27,16 @@ pub fn rest_missing_attribute(checker: &Checker) {
                     && !documented.contains(attribute.name)
                     && !parameters.iter().any(|parameter| parameter.name == attribute.name)
             })
-            .map(|attribute| (attribute.name, if attribute.on_instance { "ivar" } else { "cvar" }))
-            .collect();
-        let added: Vec<(usize, String)> = missing
-            .iter()
-            .map(|(name, field)| (rank(FieldKind::Var, None, &parameters), format!(":{field} {name}:")))
-            .collect();
-        let fix = field_insertion(checker, &target.docstring, &parameters, &added);
-        let title = format!("Add {}", added.iter().map(|(_, text)| format!("`{text}`")).collect::<Vec<_>>().join(", "));
-        for (name, field) in missing {
-            checker.report_fix(
-                Rule::RestMissingAttribute,
-                target.docstring.range(),
-                format!(
+            .map(|attribute| {
+                let (name, field) = (attribute.name, if attribute.on_instance { "ivar" } else { "cvar" });
+                let message = format!(
                     "Docstring of `{}` does not document attribute `{name}`; add `:{field} {name}:`",
                     target.name()
-                ),
-                fix.clone(),
-                title.clone(),
-            );
-        }
+                );
+                (rank(FieldKind::Var, None, &parameters), format!(":{field} {name}:"), message)
+            })
+            .collect();
+        let range = target.docstring.range();
+        report_missing(checker, Rule::RestMissingAttribute, range, &target.docstring, &parameters, missing);
     }
 }
