@@ -77,6 +77,17 @@ impl FileFacts {
             &imports.aliases,
             &imports.from_statements,
         );
+        let (exports, dynamic_exports) = match dunder_all(&parsed.syntax().body) {
+            Exports::Listed(names) => (Some(names.into_iter().map(str::to_owned).collect()), false),
+            Exports::Absent => (None, false),
+            Exports::Dynamic => (None, true),
+        };
+        let (mut defined, mut module_getattr) = (Vec::new(), false);
+        for stmt in module_statements(&parsed.syntax().body) {
+            // PEP 562's module `__getattr__` answers for names the module does not bind, as lazily loaded submodules.
+            module_getattr |= stmt.as_function_def_stmt().is_some_and(|def| def.name.as_str() == "__getattr__");
+            defined.extend(declared_names(stmt));
+        }
         Some(Self {
             imports: grouped(imports.edges),
             references: grouped(imports.references),
@@ -85,14 +96,10 @@ impl FileFacts {
             module_reads: module_reads(&parsed.syntax().body),
             base_classes: imports.base_classes,
             star_imports: imports.stars.into_iter().collect(),
-            exports: match dunder_all(&parsed.syntax().body) {
-                Exports::Listed(names) => Some(names.into_iter().map(str::to_owned).collect()),
-                Exports::Absent | Exports::Dynamic => None,
-            },
-            exports_unknown: matches!(dunder_all(&parsed.syntax().body), Exports::Dynamic)
-                || has_module_getattr(&parsed.syntax().body),
+            exports,
+            exports_unknown: dynamic_exports || module_getattr,
             bindings: top_level_bindings(&imports.from_statements),
-            defined: module_statements(&parsed.syntax().body).flat_map(declared_names).collect(),
+            defined,
             attribute_writes,
             constructors,
             reads_docstrings: imports.reads_docstrings,
@@ -134,12 +141,6 @@ pub(super) struct FromImport<'a> {
     pub(super) module: String,
     pub(super) names: &'a [ast::Alias],
     top_level: bool,
-}
-
-// PEP 562's module `__getattr__` answers for names the module does not bind, as lazily loaded submodules.
-fn has_module_getattr(body: &[Stmt]) -> bool {
-    module_statements(body)
-        .any(|stmt| stmt.as_function_def_stmt().is_some_and(|def| def.name.as_str() == "__getattr__"))
 }
 
 fn grouped(names: BTreeMap<String, BTreeSet<String>>) -> Vec<ModuleNames> {
