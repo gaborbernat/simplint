@@ -102,6 +102,8 @@ struct Writes {
     unslottable_bases: HashSet<String>,
     stateful_bases: HashSet<String>,
     pickles_low_protocol: bool,
+    // How many entries of `on_class` and `unslottable_bases` each unqualified class name has.
+    namesakes: HashMap<String, usize>,
 }
 
 // What the index reads besides the files' facts: the entry points, where imports resolve, the files whose own
@@ -153,14 +155,14 @@ impl Project {
             unresolved_stars.extend(module.unresolved_stars);
             unreached.extend(module.unreached);
         }
-        let exports: HashMap<PathBuf, Option<&[String]>> = files
+        let sources: HashMap<PathBuf, &FileFacts> = files
             .iter()
             .filter(|(path, _)| path.extension().is_none_or(|extension| extension != "pyi"))
-            .map(|(path, facts)| (normalized(path), facts.exports.as_deref()))
+            .map(|(path, facts)| (normalized(path), *facts))
             .collect();
-        reach_by_last_name(&mut referenced, &unreached, exports.keys());
-        reexport(&mut imported, &stars, &exports);
-        reexport(&mut referenced, &stars, &exports);
+        reach_by_last_name(&mut referenced, &unreached, sources.keys());
+        reexport(&mut imported, &stars, &sources);
+        reexport(&mut referenced, &stars, &sources);
         let package_star_imported = stars
             .iter()
             .filter(|(importer, source)| source.parent().is_some_and(|parent| *importer == parent.join("__init__.py")))
@@ -170,8 +172,8 @@ impl Project {
         let star_imported = stars
             .iter()
             .map(|(_, source)| source.clone())
-            .chain(unresolved_candidates(exports.keys(), &unresolved_stars))
-            .filter(|file| exports.get(file).is_some_and(Option::is_none))
+            .chain(unresolved_candidates(sources.keys(), &unresolved_stars))
+            .filter(|file| sources.get(file).is_some_and(|facts| facts.exports.is_none()))
             .collect();
         let assigned_attributes: HashSet<String> =
             files.iter().flat_map(|(_, facts)| facts.assigned_attributes.iter().cloned()).collect();
@@ -192,7 +194,7 @@ impl Project {
             files.iter().flat_map(|(_, facts)| facts.constructors.dynamic.iter().map(String::as_str)).collect();
         let calls = DataclassCalls::index(declared, &constructor_uses, &imported, &dynamic);
         let roles: HashMap<PathBuf, ModuleRole> = roles.iter().map(|(path, role)| (normalized(path), *role)).collect();
-        let user_facing = user_facing(files, &roles, &imported, &bindings, &stars);
+        let user_facing = user_facing(&sources, &roles, &imported, &bindings, &stars);
         let reads_docstrings = files.iter().any(|(_, facts)| facts.reads_docstrings);
         let digest = digest(reads_docstrings, [&assigned_attributes, &module_reads, &base_classes], &writes);
         Ok(Self {
@@ -227,7 +229,7 @@ impl Project {
             .map(|(class, _)| class)
             .chain(writes.unslottable_bases.symmetric_difference(&others.unslottable_bases))
             .chain(writes.stateful_bases.symmetric_difference(&others.stateful_bases))
-            .map(|class| class.rsplit('.').next().unwrap_or(class));
+            .map(|class| unqualified(class));
         let pickling = (writes.pickles_low_protocol != others.pickles_low_protocol).then_some("dataclass");
         self.assigned_attributes
             .symmetric_difference(&other.assigned_attributes)
@@ -290,8 +292,17 @@ impl Writes {
             writes.stateful_bases.extend(facts.stateful_bases.iter().cloned());
             writes.pickles_low_protocol |= facts.pickles_low_protocol;
         }
+        let mut namesakes: HashMap<String, usize> = HashMap::new();
+        for class in writes.on_class.keys().chain(&writes.unslottable_bases) {
+            *namesakes.entry(unqualified(class).to_owned()).or_default() += 1;
+        }
+        writes.namesakes = namesakes;
         writes
     }
+}
+
+fn unqualified(class: &str) -> &str {
+    class.rsplit('.').next().unwrap_or(class)
 }
 
 // The names a library's users reach. A public module offers what its `__all__` lists, or, without one, every name it
@@ -300,28 +311,26 @@ impl Writes {
 // `__all__`, a redundant alias or `import *`, makes it public where it is defined, through any chain of re-exports.
 // Names only spread, so this settles.
 fn user_facing(
-    files: &[(&Path, &FileFacts)],
+    sources: &HashMap<PathBuf, &FileFacts>,
     roles: &HashMap<PathBuf, ModuleRole>,
     imported: &HashMap<PathBuf, HashSet<String>>,
     bindings: &[(PathBuf, PathBuf, &ImportBinding)],
     stars: &[(PathBuf, PathBuf)],
 ) -> HashMap<PathBuf, HashMap<String, Option<PathBuf>>> {
-    let facts: HashMap<PathBuf, &FileFacts> = files
-        .iter()
-        .filter(|(path, _)| path.extension().is_none_or(|extension| extension != "pyi"))
-        .map(|(path, facts)| (normalized(path), *facts))
-        .collect();
     // What `import *` of a module takes: its `__all__`, or every name it defines without a leading underscore.
-    // What `from module import *` takes from a module without `__all__`.
     let starred = |name: &&str| Visibility::of(name) == Visibility::Public;
-    let star_exports = |path: &Path| -> Vec<&str> {
-        facts.get(path).map_or_else(Vec::new, |facts| match &facts.exports {
-            Some(listed) => listed.iter().map(String::as_str).collect(),
-            None => facts.defined.iter().map(String::as_str).filter(starred).collect(),
+    let star_exports: HashMap<&Path, Vec<&str>> = stars
+        .iter()
+        .map(|(_, source)| {
+            let exported = sources.get(source).map_or_else(Vec::new, |facts| match &facts.exports {
+                Some(listed) => listed.iter().map(String::as_str).collect(),
+                None => facts.defined.iter().map(String::as_str).filter(starred).collect(),
+            });
+            (source.as_path(), exported)
         })
-    };
+        .collect();
     let mut names: HashMap<PathBuf, HashMap<String, Option<PathBuf>>> = HashMap::new();
-    for (path, facts) in &facts {
+    for (path, facts) in sources {
         if !roles.get(path).is_some_and(|role| role.public) {
             continue;
         }
@@ -342,7 +351,7 @@ fn user_facing(
                     .filter(starred)
                     .for_each(&mut add);
                 for (_, source) in stars.iter().filter(|(importer, _)| importer == path) {
-                    star_exports(source).into_iter().for_each(&mut add);
+                    star_exports[source.as_path()].iter().copied().for_each(&mut add);
                 }
             }
         }
@@ -359,12 +368,11 @@ fn user_facing(
             let Some(known) = names.get(importer) else {
                 continue;
             };
-            let exported = star_exports(source);
             reached.extend(
-                exported
-                    .into_iter()
-                    .filter(|name| known.contains_key(*name))
-                    .map(|name| (source.clone(), name.to_owned(), importer.clone())),
+                star_exports[source.as_path()]
+                    .iter()
+                    .filter(|name| known.contains_key(**name))
+                    .map(|name| (source.clone(), (*name).to_owned(), importer.clone())),
             );
         }
         let mut spread = false;
@@ -386,12 +394,12 @@ fn user_facing(
 fn reexport(
     names: &mut HashMap<PathBuf, HashSet<String>>,
     stars: &[(PathBuf, PathBuf)],
-    exports: &HashMap<PathBuf, Option<&[String]>>,
+    sources: &HashMap<PathBuf, &FileFacts>,
 ) {
     loop {
         let mut spread = false;
         for (importer, source) in stars {
-            let listed = exports.get(source).copied().flatten();
+            let listed = sources.get(source).and_then(|facts| facts.exports.as_deref());
             let reached: Vec<String> = names
                 .get(importer)
                 .into_iter()
@@ -588,13 +596,10 @@ impl<'a> FileIndex<'a> {
     // slotted base breaks: a name that resolves differently than simplint sees, as through a re-export, may still be
     // this class.
     pub fn has_namesake_hazards(&self, class: &str) -> bool {
-        let name = class.rsplit('.').next().unwrap_or(class);
         let writes = &self.project.writes;
-        writes
-            .on_class
-            .keys()
-            .chain(&writes.unslottable_bases)
-            .any(|other| other != class && other.rsplit('.').next() == Some(name))
+        let own =
+            usize::from(writes.on_class.contains_key(class)) + usize::from(writes.unslottable_bases.contains(class));
+        writes.namesakes.get(unqualified(class)).is_some_and(|count| *count > own)
     }
 
     // Whether the run sets or deletes an attribute with this name on an object of unknown class; mocks do not count.
