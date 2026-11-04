@@ -1,8 +1,9 @@
+use std::fs::OpenOptions;
 use std::io::Write;
 use std::ops::{Add, AddAssign};
 use std::path::Path;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use colored::Colorize;
 use log::warn;
 use ruff_db::diagnostic::Diagnostic;
@@ -16,6 +17,7 @@ use ruff_linter::{IOError, Violation};
 use ruff_source_file::SourceFileBuilder;
 use ruff_text_size::TextRange;
 use rustc_hash::FxHashMap;
+use tempfile::NamedTempFile;
 
 use crate::fix::{Fixer, FixerResult};
 use crate::lint::Linter;
@@ -123,13 +125,28 @@ fn fix_path(
     let Linted { diagnostics, transformed, fixed, settled } = lint_source(path, &source, linter, mode, settled);
     if let Some(transformed) = transformed.filter(|_| !fixed.is_empty()) {
         if mode.fix.is_apply() {
-            std::fs::write(path, &transformed).with_context(|| format!("writing {}", path.display()))?;
+            write_source(path, &source, &transformed).with_context(|| format!("writing {}", path.display()))?;
         } else {
             write!(std::io::stdout().lock(), "{}", SourceKindDiff::from_text(&source, &transformed, Some(path)))?;
         }
     }
     let diagnostics = Diagnostics { inner: diagnostics, fixed: FixMap::from_iter([(relativize_path(path), fixed)]) };
     Ok((diagnostics, settled))
+}
+
+// Replaces a file read as `original` with `fixed`. Writing a temporary file next to it and renaming that over it never
+// leaves a cut-short source behind, and a file edited since it was read keeps the edit. A symlink keeps pointing at the
+// file it names, which gets the new source with its permissions.
+pub(super) fn write_source(path: &Path, original: &str, fixed: &str) -> Result<()> {
+    let target = std::fs::canonicalize(path)?;
+    // The rename would replace a file the user cannot write, so opening it for writing checks that first.
+    let permissions = OpenOptions::new().write(true).open(&target)?.metadata()?.permissions();
+    ensure!(std::fs::read_to_string(&target)? == original, "{} changed while simplint fixed it", path.display());
+    let mut temporary = NamedTempFile::new_in(target.parent().expect("a file sits in a directory"))?;
+    temporary.write_all(fixed.as_bytes())?;
+    temporary.as_file().set_permissions(permissions)?;
+    temporary.persist(&target)?;
+    Ok(())
 }
 
 // Ruff's `lint_stdin`: the source comes from standard input, and with `--fix` the source, fixed or not, goes to
@@ -175,4 +192,21 @@ struct Linted {
     transformed: Option<String>,
     fixed: FixTable,
     settled: Option<RuleSet>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::write_source;
+
+    #[test]
+    fn write_source_keeps_a_file_changed_since_it_was_read() {
+        let directory = tempfile::TempDir::new().expect("temporary directory");
+        let path = directory.path().join("module.py");
+        std::fs::write(&path, "edited = 1\n").expect("write file");
+        let error = write_source(&path, "read = 1\n", "fixed = 1\n").expect_err("the file changed");
+        assert_eq!(
+            (error.to_string(), std::fs::read_to_string(&path).expect("read file")),
+            (format!("{} changed while simplint fixed it", path.display()), "edited = 1\n".to_owned())
+        );
+    }
 }

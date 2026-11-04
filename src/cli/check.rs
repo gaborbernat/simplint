@@ -24,7 +24,7 @@ use ruff_workspace::resolver::{PyprojectConfig, Resolver, match_exclusion, proje
 use rustc_hash::FxHashMap;
 
 use crate::cli::args::{CheckCommand, GlobalConfigArgs, suppression_flag};
-use crate::cli::diagnostics::{Diagnostics, Mode, lint_path, lint_stdin};
+use crate::cli::diagnostics::{Diagnostics, Mode, lint_path, lint_stdin, write_source};
 use crate::cli::printer::{Flags, Printer};
 use crate::cli::watch::watch;
 use crate::lint::Linter;
@@ -243,7 +243,7 @@ fn add_suppressions(
         };
         let (count, output) = linter.add_suppressions(path, &source, kind, reason);
         if count > 0
-            && let Err(error) = std::fs::write(path, output)
+            && let Err(error) = write_source(path, &source, &output)
         {
             error!("Failed to add suppression to {}: {error}", path.display());
             return 0;
