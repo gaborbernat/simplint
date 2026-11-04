@@ -3,11 +3,11 @@ use std::collections::HashSet;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::Visibility;
-use crate::rules::docstrings::rest::{FieldKind, Owner, attributes, field_insertion, rank};
+use crate::rules::docstrings::rest::{FieldKind, Owner, field_insertion, rank};
 
 pub fn rest_missing_attribute(checker: &Checker) {
     for target in checker.rest_targets().iter().filter(|target| target.public) {
-        let Owner::Class(class) = target.owner else {
+        let Owner::Class(_) = target.owner else {
             continue;
         };
         let parameters = target.parameters().unwrap_or_default();
@@ -18,8 +18,9 @@ pub fn rest_missing_attribute(checker: &Checker) {
             .filter_map(|field| field.subject())
             .collect();
         // An attribute the constructor takes is documented by its `:param:` field, which `rest-missing-param` asks for.
-        let missing: Vec<(&str, &str)> = attributes(checker, class)
-            .into_iter()
+        let missing: Vec<(&str, &str)> = target
+            .attributes(checker)
+            .iter()
             .filter(|attribute| {
                 Visibility::of(attribute.name) == Visibility::Public
                     && !attribute.documented

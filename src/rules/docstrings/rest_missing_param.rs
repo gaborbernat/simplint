@@ -2,17 +2,14 @@ use std::collections::HashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rest::{FieldKind, Owner, constructor_docstring, field_insertion, is_internal, rank};
+use crate::rules::docstrings::rest::{FieldKind, field_insertion, is_internal, rank};
 
 pub fn rest_missing_param(checker: &Checker) {
     for target in checker.rest_targets().iter().filter(|target| target.public) {
         let Some(parameters) = target.parameters() else {
             continue;
         };
-        let constructor = match target.owner {
-            Owner::Class(class) => constructor_docstring(checker, class),
-            Owner::Function { .. } => None,
-        };
+        let constructor = target.constructor.as_deref();
         let documented: HashSet<&str> = target
             .docstring
             .fields(FieldKind::Param)
@@ -26,8 +23,7 @@ pub fn rest_missing_param(checker: &Checker) {
             .filter(|name| !is_internal(name, true) && !documented.contains(name))
             .collect();
         // The fields go where the constructor's parameters are documented already, the class docstring otherwise.
-        let into =
-            constructor.as_ref().filter(|docstring| docstring.has(FieldKind::Param)).unwrap_or(&target.docstring);
+        let into = constructor.filter(|docstring| docstring.has(FieldKind::Param)).unwrap_or(&target.docstring);
         let added: Vec<(usize, String)> = missing
             .iter()
             .map(|name| (rank(FieldKind::Param, Some(name), &parameters), format!(":param {name}:")))

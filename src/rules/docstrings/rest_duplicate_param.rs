@@ -2,14 +2,14 @@ use std::collections::HashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rest::{Field, FieldKind, Owner, constructor_docstring, field_deletion};
+use crate::rules::docstrings::rest::{Field, FieldKind, Owner, field_deletion};
 
 pub fn rest_duplicate_param(checker: &Checker) {
     for target in checker.rest_targets() {
         let Owner::Class(class) = target.owner else {
             continue;
         };
-        let Some(constructor) = constructor_docstring(checker, class) else {
+        let Some(constructor) = &target.constructor else {
             continue;
         };
         let documented: HashSet<&str> = target.docstring.fields(FieldKind::Param).filter_map(Field::subject).collect();
@@ -25,7 +25,7 @@ pub fn rest_duplicate_param(checker: &Checker) {
                     "`{text}` repeats the docstring of `{}`, which autodoc shows; document each constructor parameter once",
                     class.name
                 ),
-                field_deletion(checker, &constructor, &[field]),
+                field_deletion(checker, constructor, &[field]),
                 format!("Remove `{text}` from `__init__`"),
             );
         }

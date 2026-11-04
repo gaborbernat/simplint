@@ -1,8 +1,11 @@
+use std::cell::OnceCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::TextRange;
 
+use super::attributes::{Attribute, attributes};
 use super::{Docstring, has_attribute_bases};
 use crate::lint::checker::Checker;
 use crate::rules::{Visibility, docstring, last_segment, module_statements};
@@ -17,11 +20,15 @@ pub(crate) enum Owner<'a> {
 // must document all of its parameters, return value and exceptions; any other docstring must only be accurate.
 pub(crate) struct Target<'a> {
     pub(crate) owner: Owner<'a>,
-    pub(crate) docstring: Docstring<'a>,
+    pub(crate) docstring: Rc<Docstring<'a>>,
     pub(crate) public: bool,
     // Whether the docstring is the `__init__` docstring of a public class, which documents its constructor's
     // parameters as the class docstring may.
     pub(crate) public_constructor: bool,
+    // For a class, the docstring of its `__init__`, where some projects document the constructor's parameters instead.
+    pub(crate) constructor: Option<Rc<Docstring<'a>>>,
+    // For a class, its attributes, found when a rule first asks for them.
+    attributes: OnceCell<Vec<Attribute<'a>>>,
 }
 
 impl<'a> Target<'a> {
@@ -38,6 +45,14 @@ impl<'a> Target<'a> {
         match self.owner {
             Owner::Function { def, class } => Some(parameters(def, class.is_some())),
             Owner::Class(class) => class_parameters(class),
+        }
+    }
+
+    // The attributes of a class, none for a function.
+    pub(crate) fn attributes(&self, checker: &Checker) -> &[Attribute<'a>] {
+        match self.owner {
+            Owner::Class(class) => self.attributes.get_or_init(|| attributes(checker, class)),
+            Owner::Function { .. } => &[],
         }
     }
 
@@ -62,20 +77,40 @@ pub(crate) fn collect_targets<'a>(checker: &Checker<'a>) -> Vec<Target<'a>> {
             module_statements(&class.body).filter_map(Stmt::as_function_def_stmt).map(move |def| (def.range, *class))
         })
         .collect();
-    let functions = checker.function_defs().iter().filter_map(|def| {
-        let docstring = Docstring::parse(checker, docstring(&def.body)?);
-        let class = methods.get(&def.range).copied();
-        let public_constructor =
-            def.name.as_str() == "__init__" && class.is_some_and(|class| api.is_public(class.range));
-        let owner = Owner::Function { def, class };
-        Some(Target { owner, docstring, public: api.is_public(def.range), public_constructor })
-    });
+    let mut targets: Vec<Target> = checker
+        .function_defs()
+        .iter()
+        .filter_map(|def| {
+            let docstring = Rc::new(Docstring::parse(checker, docstring(&def.body)?));
+            let class = methods.get(&def.range).copied();
+            let public_constructor =
+                def.name.as_str() == "__init__" && class.is_some_and(|class| api.is_public(class.range));
+            let owner = Owner::Function { def, class };
+            let public = api.is_public(def.range);
+            Some(Target {
+                owner,
+                docstring,
+                public,
+                public_constructor,
+                constructor: None,
+                attributes: OnceCell::new(),
+            })
+        })
+        .collect();
+    // By the range of the docstring, so the class shares the one its `__init__` target holds.
+    let parsed: HashMap<TextRange, Rc<Docstring>> =
+        targets.iter().map(|target| (target.docstring.range(), Rc::clone(&target.docstring))).collect();
     let classes = checker.class_defs().iter().filter_map(|class| {
-        let docstring = Docstring::parse(checker, docstring(&class.body)?);
+        let constructor = constructor(class)
+            .and_then(|init| docstring(&init.body))
+            .and_then(|literal| parsed.get(&literal.range))
+            .cloned();
+        let docstring = Rc::new(Docstring::parse(checker, docstring(&class.body)?));
         let public = api.is_public(class.range);
-        Some(Target { owner: Owner::Class(class), docstring, public, public_constructor: false })
+        let owner = Owner::Class(class);
+        Some(Target { owner, docstring, public, public_constructor: false, constructor, attributes: OnceCell::new() })
     });
-    let mut targets: Vec<Target> = functions.chain(classes).collect();
+    targets.extend(classes);
     targets.sort_by_key(|target| target.docstring.range().start());
     targets
 }
@@ -167,11 +202,6 @@ fn class_parameters(class: &ast::StmtClassDef) -> Option<Vec<Parameter<'_>>> {
             .map(|(name, annotated)| Parameter { name: name.id.as_str(), annotated })
             .collect(),
     )
-}
-
-// The docstring of a class's `__init__`, where some projects document the constructor's parameters instead.
-pub(crate) fn constructor_docstring<'a>(checker: &Checker, class: &'a ast::StmtClassDef) -> Option<Docstring<'a>> {
-    Some(Docstring::parse(checker, docstring(&constructor(class)?.body)?))
 }
 
 // Whether a parameter or attribute name is internal. A leading underscore marks one, but not a dunder, as `__wrapped__`,

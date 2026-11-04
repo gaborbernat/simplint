@@ -48,3 +48,10 @@ class AttrsCache:
 
     x = attr.ib()
     cache = attr.ib(init=False, factory=dict)
+
+
+def run_once() -> None:
+    """Run once.
+
+    :ivar state: A function has no attributes to check this against.
+    """
