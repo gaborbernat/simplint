@@ -18,6 +18,7 @@ use filetime::FileTime;
 use itertools::Itertools;
 use log::error;
 use rayon::prelude::*;
+use rkyv::util::AlignedVec;
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_linter::warn_user;
 use rustc_hash::FxHashMap;
@@ -139,7 +140,12 @@ impl Cache {
         let mut hasher = CacheKeyHasher::new();
         package_root.cache_key(&mut hasher);
         let path = directory.join(hasher.finish().to_string());
-        let package = match fs::read(&path) {
+        // rkyv reads the archive in place, which needs its bytes aligned.
+        let read = fs::File::open(&path).and_then(|mut file| {
+            let mut bytes = AlignedVec::<16>::new();
+            bytes.extend_from_reader(&mut file).map(|_| bytes)
+        });
+        let package = match read {
             Err(error) if error.kind() == io::ErrorKind::NotFound => None,
             read => read
                 .map_err(anyhow::Error::from)
