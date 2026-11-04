@@ -58,13 +58,21 @@ impl Selector {
         RuleSet::from_selector(&self.text).ok_or_else(|| {
             let Self { text, setting, source } = self;
             let unknown = format!("Unknown rule selector `{text}` in `{setting}` from {source}");
-            if RuleSelector::from_str(text).is_ok() || ruff_linter::registry::Rule::from_name(text).is_ok() {
+            if ruff_selector(text).is_some() {
                 anyhow!("{unknown}; it selects Ruff rules, so select it in Ruff's configuration instead")
             } else {
                 anyhow!(unknown)
             }
         })
     }
+}
+
+// The Ruff rules a selector names, by code, prefix or name; `None` when it names none.
+pub fn ruff_selector(text: &str) -> Option<RuleSelector> {
+    RuleSelector::from_str(text).ok().or_else(|| {
+        let rule = ruff_linter::registry::Rule::from_name(text).ok()?;
+        Some(RuleSelector::Rule { rule, redirected_from: None })
+    })
 }
 
 // Ruff's `ValueSource`: the configuration file or the command line a setting comes from.

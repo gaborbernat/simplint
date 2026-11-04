@@ -9,14 +9,14 @@ use clap::builder::{PossibleValue, PossibleValuesParser, Styles, TypedValueParse
 use clap::error::{ContextKind, ContextValue};
 use clap::{ArgGroup, Args, Parser, Subcommand, ValueEnum};
 use ruff::args::{ConfigArguments, FormatCommand, HelpFormat, LogLevelArgs, SingleConfigArgument};
-use ruff_linter::SuppressionKind;
 use ruff_linter::logging::LogLevel;
 use ruff_linter::settings::types::{OutputFormat, PatternPrefixPair, PythonVersion};
+use ruff_linter::{RuleSelector, SuppressionKind};
 use ruff_options_metadata::{OptionField, OptionSet, OptionsMetadata, Visit};
 use serde::Deserialize;
 
 use crate::lint::registry::Rule;
-use crate::settings::{Configuration, Overrides, SimplintOptions, Source};
+use crate::settings::{Configuration, Overrides, SimplintOptions, Source, ruff_selector};
 
 // Ruff's help colors.
 const STYLES: Styles = Styles::styled()
@@ -547,9 +547,7 @@ impl TypedValueParser for RuleParser {
             .parse_ref(cmd, arg, value);
         without_choices(parsed).map_err(|mut error| {
             let value = value.to_string_lossy();
-            if ruff_linter::registry::Rule::from_code(&value).is_ok()
-                || ruff_linter::registry::Rule::from_name(&value).is_ok()
-            {
+            if let Some(RuleSelector::Rule { .. }) = ruff_selector(&value) {
                 error.remove(ContextKind::SuggestedValue);
                 let tip = format!("`{value}` is a Ruff rule; run `ruff rule {value}`");
                 error.insert(ContextKind::Suggested, ContextValue::StyledStrs(vec![tip.into()]));
