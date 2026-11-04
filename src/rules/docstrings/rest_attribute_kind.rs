@@ -8,7 +8,7 @@ use crate::rules::docstrings::rest::FieldKind;
 pub fn rest_attribute_kind(checker: &Checker) {
     for target in checker.rest_targets() {
         let attributes = target.attributes(checker);
-        for field in target.docstring.fields(FieldKind::Var) {
+        for field in target.docstring.fields(&[FieldKind::Var]) {
             let Some(attribute) =
                 field.subject().and_then(|name| attributes.iter().find(|attribute| attribute.name == name))
             else {

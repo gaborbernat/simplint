@@ -17,7 +17,7 @@ pub fn rest_missing_raises(checker: &Checker) {
         raises.visit_body(&def.body);
         let documented: HashSet<&str> = target
             .docstring
-            .fields(FieldKind::Raises)
+            .fields(&[FieldKind::Raises])
             .filter_map(|field| field.subject())
             .map(|subject| subject.rsplit('.').next().unwrap_or(subject))
             .collect();

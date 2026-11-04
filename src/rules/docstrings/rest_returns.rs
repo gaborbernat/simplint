@@ -31,12 +31,9 @@ pub fn rest_returns(checker: &Checker) {
         if visitor.is_generator {
             if has_returns && !has_yields {
                 // The `returns` of the field's name becomes `yields`, keeping its description.
-                let field = docstring.fields(FieldKind::Returns).next();
-                let fix = field.and_then(|field| field.marker).map(|marker| {
-                    Fix::unsafe_edit(Edit::range_replacement(
-                        "yields".to_owned(),
-                        TextRange::at(marker.start(), TextSize::of(field.map_or("", |field| field.words[0].as_str()))),
-                    ))
+                let fix = docstring.fields(&[FieldKind::Returns]).next().and_then(|field| {
+                    let word = TextRange::at(field.marker?.start(), TextSize::of(field.words[0].as_str()));
+                    Some(Fix::unsafe_edit(Edit::range_replacement("yields".to_owned(), word)))
                 });
                 checker.report_fix(
                     Rule::RestReturns,
@@ -57,11 +54,7 @@ pub fn rest_returns(checker: &Checker) {
             continue;
         }
         if has_yields {
-            let fields: Vec<_> = docstring
-                .fields
-                .iter()
-                .filter(|field| matches!(field.kind, FieldKind::Yields | FieldKind::YieldType))
-                .collect();
+            let fields: Vec<_> = docstring.fields(&[FieldKind::Yields, FieldKind::YieldType]).collect();
             checker.report_fix(
                 Rule::RestReturns,
                 fields[0].marker.unwrap_or_else(|| docstring.range()),
@@ -91,11 +84,7 @@ pub fn rest_returns(checker: &Checker) {
         }
         // Without an annotation, a body that is only a placeholder, as in an abstract method, says nothing of the return.
         if has_returns && !returns_value && (returns_nothing || !is_placeholder(&def.body)) {
-            let fields: Vec<_> = docstring
-                .fields
-                .iter()
-                .filter(|field| matches!(field.kind, FieldKind::Returns | FieldKind::ReturnType))
-                .collect();
+            let fields: Vec<_> = docstring.fields(&[FieldKind::Returns, FieldKind::ReturnType]).collect();
             checker.report_fix(
                 Rule::RestReturns,
                 fields[0].marker.unwrap_or_else(|| docstring.range()),
@@ -125,9 +114,7 @@ fn is_placeholder(body: &[Stmt]) -> bool {
 // author.
 fn returning_function<'a>(checker: &Checker, target: &Target<'a>) -> Option<&'a ast::StmtFunctionDef> {
     let value_fields = || {
-        target.docstring.fields.iter().filter(|field| {
-            matches!(field.kind, FieldKind::Returns | FieldKind::ReturnType | FieldKind::Yields | FieldKind::YieldType)
-        })
+        target.docstring.fields(&[FieldKind::Returns, FieldKind::ReturnType, FieldKind::Yields, FieldKind::YieldType])
     };
     let report = |field: &Field, message: String| {
         checker.report(Rule::RestReturns, field.marker.unwrap_or_else(|| target.docstring.range()), message);

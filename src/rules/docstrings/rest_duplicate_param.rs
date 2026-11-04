@@ -12,9 +12,10 @@ pub fn rest_duplicate_param(checker: &Checker) {
         let Some(constructor) = &target.constructor else {
             continue;
         };
-        let documented: HashSet<&str> = target.docstring.fields(FieldKind::Param).filter_map(Field::subject).collect();
+        let documented: HashSet<&str> =
+            target.docstring.fields(&[FieldKind::Param]).filter_map(Field::subject).collect();
         let repeated = constructor
-            .fields(FieldKind::Param)
+            .fields(&[FieldKind::Param])
             .filter(|field| field.subject().is_some_and(|name| documented.contains(name)));
         for field in repeated {
             let text = field.text();

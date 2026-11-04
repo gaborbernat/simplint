@@ -13,8 +13,7 @@ pub fn rest_missing_attribute(checker: &Checker) {
         let parameters = target.parameters().unwrap_or_default();
         let documented: HashSet<&str> = target
             .docstring
-            .fields(FieldKind::Var)
-            .chain(target.docstring.fields(FieldKind::VarType))
+            .fields(&[FieldKind::Var, FieldKind::VarType])
             .filter_map(|field| field.subject())
             .collect();
         // An attribute the constructor takes is documented by its `:param:` field, which `rest-missing-param` asks for.

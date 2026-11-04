@@ -19,9 +19,7 @@ pub fn rest_unknown_attribute(checker: &Checker) {
         let methods = class.body.iter().filter_map(Stmt::as_function_def_stmt).map(|method| method.name.as_str());
         let known: HashSet<&str> =
             target.attributes(checker).iter().map(|attribute| attribute.name).chain(methods).collect();
-        let fields =
-            target.docstring.fields.iter().filter(|field| matches!(field.kind, FieldKind::Var | FieldKind::VarType));
-        for field in fields {
+        for field in target.docstring.fields(&[FieldKind::Var, FieldKind::VarType]) {
             let Some(subject) = field.subject().filter(|subject| !known.contains(subject)) else {
                 continue;
             };

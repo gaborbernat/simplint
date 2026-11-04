@@ -6,9 +6,7 @@ use crate::rules::docstrings::rest::FieldKind;
 
 pub fn rest_restating_field(checker: &Checker) {
     for target in checker.rest_targets() {
-        let fields =
-            target.docstring.fields.iter().filter(|field| matches!(field.kind, FieldKind::Param | FieldKind::Var));
-        for field in fields {
+        for field in target.docstring.fields(&[FieldKind::Param, FieldKind::Var]) {
             let Some(name) = field.subject().filter(|name| restates(name, &field.description)) else {
                 continue;
             };

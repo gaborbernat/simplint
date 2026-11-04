@@ -12,8 +12,8 @@ pub fn rest_missing_param(checker: &Checker) {
         let constructor = target.constructor.as_deref();
         let documented: HashSet<&str> = target
             .docstring
-            .fields(FieldKind::Param)
-            .chain(constructor.iter().flat_map(|docstring| docstring.fields(FieldKind::Param)))
+            .fields(&[FieldKind::Param])
+            .chain(constructor.iter().flat_map(|docstring| docstring.fields(&[FieldKind::Param])))
             .filter_map(|field| field.subject())
             .collect();
         // A parameter with a leading underscore is internal, a knob the documentation leaves out.
