@@ -10,7 +10,7 @@ pub fn rest_param_order(checker: &Checker) {
         let position = |name: &str| parameters.iter().position(|parameter| parameter.name == name);
         let documented: Vec<(usize, &str, &_)> = target
             .docstring
-            .fields(FieldKind::Param)
+            .fields(&[FieldKind::Param])
             .filter_map(|field| {
                 let subject = field.subject()?;
                 Some((position(subject)?, subject, field))

@@ -123,6 +123,27 @@ fn check_fix_on_read_only_file_is_reported() {
     assert_eq!((stdout.starts_with("module.py:1:1: E902 writing"), stdout.contains("(os error")), (true, true));
 }
 
+#[cfg(unix)]
+#[test]
+fn check_fix_keeps_the_file_mode() {
+    use std::os::unix::fs::PermissionsExt;
+    let root = project(&[("module.py", "# --- helpers ---\nVALUE = 1\n")]);
+    common::set_mode(&root.path().join("module.py"), 0o751);
+    check(root.path(), &["--fix", "--select", "SMP001"]);
+    let mode = std::fs::metadata(root.path().join("module.py")).expect("metadata").permissions().mode();
+    assert_eq!((mode & 0o777, read(root.path(), "module.py")), (0o751, "VALUE = 1\n".to_owned()));
+}
+
+#[cfg(unix)]
+#[test]
+fn check_fix_writes_through_a_symlink() {
+    let root = project(&[("source.txt", "# --- helpers ---\nVALUE = 1\n")]);
+    std::os::unix::fs::symlink("source.txt", root.path().join("module.py")).expect("symlink");
+    check(root.path(), &["--fix", "--select", "SMP001", "module.py"]);
+    let link = std::fs::symlink_metadata(root.path().join("module.py")).expect("metadata");
+    assert_eq!((link.is_symlink(), read(root.path(), "source.txt")), (true, "VALUE = 1\n".to_owned()));
+}
+
 #[test_case(&[], true ; "fixable_by_default")]
 #[test_case(&["--unfixable", "SMP001"], false ; "unfixable")]
 #[test_case(&["--extend-unfixable", "SMP001"], false ; "extend_unfixable")]

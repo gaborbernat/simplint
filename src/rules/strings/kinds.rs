@@ -1,3 +1,7 @@
+use std::cell::{OnceCell, RefCell};
+use std::rc::Rc;
+
+use ruff_python_ast::name::QualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Operator, Pattern, Stmt};
 use ruff_text_size::{Ranged, TextRange};
@@ -5,9 +9,8 @@ use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
 use crate::lint::walker::{Scope, Walker};
-use crate::rules::Visibility;
-use crate::rules::for_each_child_body;
 use crate::semantic::BindingKind;
+use crate::syntax::{Visibility, for_each_child_body, is_classmethod, receiver};
 
 // The few types the code can show for sure, enough to tell what `+` and `*` on them return.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -37,9 +40,26 @@ pub struct Kinds<'w, 'a> {
     // The names whose bindings are being checked, with the scope they resolve in and the kind assumed for a binding
     // that reads the name it binds, as `text = text + "!"` does.
     resolving: Vec<(&'a str, TextRange, Option<Kind>)>,
-    resolved: FxHashMap<(&'a str, TextRange), Option<Kind>>,
-    // The attributes whose values are being checked, by class and name: one that reads itself stays unknown.
-    reading: Vec<(TextRange, &'a str)>,
+    // The attributes whose values are being checked, by class and name, with the length of `resolving` then: one that
+    // reads itself stays unknown.
+    reading: Vec<(TextRange, &'a str, usize)>,
+    // The shortest length of `resolving` the kind being found relies on: a self-read assumed at index `i` relies on
+    // `i + 1` entries, an attribute read while it was being checked on as many as `resolving` held when that started.
+    relies_on: usize,
+}
+
+// What the kinds read off the module, kept for the file since each `+` chain builds a `Kinds` of its own.
+#[derive(Default)]
+pub(crate) struct KindsCache<'a> {
+    // The bindings of a name in the def, class or lambda at a range, the module's an empty one.
+    bindings: RefCell<FxHashMap<(TextRange, &'a str), Rc<Bindings<'a>>>>,
+    // How the class at a range gives an attribute to its instances.
+    members: RefCell<FxHashMap<(TextRange, &'a str), Rc<Members<'a>>>>,
+    // Where the module writes or deletes an attribute of each name.
+    attribute_writes: OnceCell<FxHashMap<&'a str, Vec<TextRange>>>,
+    // The kinds of names, by the scope they resolve in, whose bindings read no assumption made before their own, so
+    // they hold wherever the name is read; caching only those keeps a chain of names that each read themselves linear.
+    resolved: RefCell<FxHashMap<(&'a str, TextRange), Option<Kind>>>,
 }
 
 impl<'w, 'a> Kinds<'w, 'a> {
@@ -47,14 +67,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
         // A default value or decorator sits in the scope around its def.
         let scopes =
             walker.scopes().iter().take_while(|scope| body_range(**scope).contains_range(range)).copied().collect();
-        Self {
-            walker,
-            scopes,
-            at_spot: true,
-            resolving: Vec::new(),
-            resolved: FxHashMap::default(),
-            reading: Vec::new(),
-        }
+        Self { walker, scopes, at_spot: true, resolving: Vec::new(), reading: Vec::new(), relies_on: usize::MAX }
     }
 
     pub fn is_str(&mut self, expr: &'a Expr) -> bool {
@@ -144,26 +157,26 @@ impl<'w, 'a> Kinds<'w, 'a> {
     fn call(&mut self, call: &'a ast::ExprCall, depth: usize) -> Option<Kind> {
         let ast::ExprCall { func, arguments, .. } = call;
         match func.as_ref() {
-            Expr::Name(name) if self.lookup(&name.id, depth).is_none() => match name.id.as_str() {
-                "ascii" | "bin" | "chr" | "format" | "hex" | "input" | "oct" | "repr" | "str" => Some(Kind::Str),
-                "int" | "len" | "ord" => Some(Kind::Int),
-                "frozenset" | "list" | "reversed" | "set" | "sorted" | "tuple" => match arguments.args.as_ref() {
-                    [iterable] if arguments.keywords.is_empty() => self.item(iterable, depth).and_then(items),
+            Expr::Name(name) => match self.lookup(&name.id, depth) {
+                None => match name.id.as_str() {
+                    "ascii" | "bin" | "chr" | "format" | "hex" | "input" | "oct" | "repr" | "str" => Some(Kind::Str),
+                    "int" | "len" | "ord" => Some(Kind::Int),
+                    "frozenset" | "list" | "reversed" | "set" | "sorted" | "tuple" => match arguments.args.as_ref() {
+                        [iterable] if arguments.keywords.is_empty() => self.item(iterable, depth).and_then(items),
+                        _ => None,
+                    },
+                    "range" => Some(Kind::IntItems),
                     _ => None,
                 },
-                "range" => Some(Kind::IntItems),
-                _ => None,
-            },
-            Expr::Name(name) => {
-                let (bindings, _) = self.lookup(&name.id, depth)?;
-                if bindings.imported {
-                    self.library_call(call, depth)
-                } else if let [class] = bindings.classes.as_slice() {
-                    bindings.only_classes().then(|| instance_of(self.walker.checker, class)).flatten()
-                } else {
-                    bindings.only_functions().and_then(|functions| self.returns(functions))
+                Some((bindings, _)) if bindings.imported => self.library_call(call, depth),
+                Some((bindings, _)) => {
+                    if let [class] = bindings.classes.as_slice() {
+                        bindings.only_classes().then(|| instance_of(self.walker.checker, class)).flatten()
+                    } else {
+                        bindings.only_functions().and_then(|functions| self.returns(functions))
+                    }
                 }
-            }
+            },
             Expr::Attribute(ast::ExprAttribute { value, attr, .. }) => {
                 let receiver = self.kind(value, depth);
                 if let Some(kind) = receiver.and_then(|receiver| method(receiver, attr)) {
@@ -178,7 +191,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
                 }
                 let checker = self.walker.checker;
                 if let Some(Kind::Instance(range)) = receiver {
-                    let members = Members::of_class(checker, class_at(checker, range)?, attr);
+                    let members = members_of(checker, class_at(checker, range)?, attr);
                     return members.only_methods().and_then(|methods| self.returns(methods));
                 }
                 if let Some((members, _)) = self.members(value, attr, depth) {
@@ -194,8 +207,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
     fn library_call(&mut self, call: &'a ast::ExprCall, depth: usize) -> Option<Kind> {
         let name = self.qualified(&call.func, depth)?;
         let args = &call.arguments.args;
-        let segments: Vec<&str> = name.iter().map(String::as_str).collect();
-        match segments.as_slice() {
+        match name.segments() {
             ["os", "getcwd"]
             | ["getpass", "getuser"]
             | ["json", "dumps"]
@@ -229,11 +241,9 @@ impl<'w, 'a> Kinds<'w, 'a> {
         }
         if let Expr::Call(ast::ExprCall { func, .. }) = value.as_ref()
             && attr == "hex"
-            && self.qualified(func, depth).is_some_and(|name| {
-                name.len() == 2
-                    && name[0] == "uuid"
-                    && matches!(name[1].as_str(), "uuid1" | "uuid3" | "uuid4" | "uuid5")
-            })
+            && self
+                .qualified(func, depth)
+                .is_some_and(|name| matches!(name.segments(), ["uuid", "uuid1" | "uuid3" | "uuid4" | "uuid5"]))
         {
             return Some(Kind::Str);
         }
@@ -243,7 +253,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
         let receiver = self.kind(value, depth);
         if let Some(Kind::Instance(range)) = receiver {
             let checker = self.walker.checker;
-            let members = Members::of_class(checker, class_at(checker, range)?, attr);
+            let members = members_of(checker, class_at(checker, range)?, attr);
             // What its methods set on the instance comes from scopes this spot does not see.
             if members.opaque || !members.methods.is_empty() {
                 return None;
@@ -260,29 +270,26 @@ impl<'w, 'a> Kinds<'w, 'a> {
                 _ => None,
             };
         }
-        let mut name = self.qualified(value, depth)?;
-        name.push(attr.to_string());
-        let segments: Vec<&str> = name.iter().map(String::as_str).collect();
-        match segments.as_slice() {
-            ["os", "curdir" | "extsep" | "linesep" | "name" | "pardir" | "pathsep" | "sep"]
-            | ["sys", "executable" | "platform" | "version"] => Some(Kind::Str),
-            ["string", constant] if STRING_CONSTANTS.contains(constant) => Some(Kind::Str),
-            ["os", "environ"] => Some(Kind::StrItems),
+        let name = self.qualified(value, depth)?;
+        match (name.segments(), attr.as_str()) {
+            (["os"], "curdir" | "extsep" | "linesep" | "name" | "pardir" | "pathsep" | "sep")
+            | (["sys"], "executable" | "platform" | "version") => Some(Kind::Str),
+            (["string"], constant) if STRING_CONSTANTS.contains(&constant) => Some(Kind::Str),
+            (["os"], "environ") => Some(Kind::StrItems),
             _ => None,
         }
     }
 
     // The qualified name of `expr`, an imported name or an attribute of one, when the module's own import binds the
     // name it starts with.
-    fn qualified(&self, expr: &Expr, depth: usize) -> Option<Vec<String>> {
+    fn qualified(&self, expr: &'a Expr, depth: usize) -> Option<QualifiedName<'w>> {
         let mut head = expr;
         while let Expr::Attribute(ast::ExprAttribute { value, .. }) = head {
             head = value;
         }
         let (bindings, scope) = self.lookup(&head.as_name_expr()?.id, depth)?;
         let semantic = self.walker.checker.semantic();
-        let name = (scope == 0 && bindings.only_imported()).then(|| semantic.qualified_name(expr)).flatten()?;
-        Some(name.segments().iter().map(ToString::to_string).collect())
+        (scope == 0 && bindings.only_imported()).then(|| semantic.qualified_name(expr)).flatten()
     }
 
     fn name(&mut self, name: &'a str, depth: usize) -> Option<Kind> {
@@ -301,33 +308,41 @@ impl<'w, 'a> Kinds<'w, 'a> {
             return None;
         }
         let key = (name, self.scope_key(depth));
-        if let Some((_, _, assumed)) = self.resolving.iter().find(|(other, at, _)| (*other, *at) == key) {
-            return *assumed;
+        if let Some(index) = self.resolving.iter().position(|(other, at, _)| (*other, *at) == key) {
+            self.relies_on = self.relies_on.min(index + 1);
+            return self.resolving[index].2;
         }
+        let checker = self.walker.checker;
+        if let Some(kind) = checker.kinds().resolved.borrow().get(&key) {
+            return *kind;
+        }
+        let floor = self.resolving.len();
+        let outer = std::mem::replace(&mut self.relies_on, usize::MAX);
+        let kind = self.bound(&bindings, key, depth);
+        if self.relies_on > floor {
+            checker.kinds().resolved.borrow_mut().insert(key, kind);
+        }
+        self.relies_on = self.relies_on.min(outer);
+        kind
+    }
+
+    // The kind every binding of a name gives it.
+    fn bound(&mut self, bindings: &Bindings<'a>, key: (&'a str, TextRange), depth: usize) -> Option<Kind> {
         // An annotation holds unless a value the code shows contradicts it, as a loop over numbers would.
         if let Some(declared) = bindings.declared {
             let kinds = self.values(&bindings.values, key, Some(declared), depth);
             return kinds.iter().flatten().all(|kind| *kind == declared).then_some(declared);
         }
-        let top = self.at_spot && self.resolving.is_empty();
-        if top && let Some(kind) = self.resolved.get(&key) {
-            return *kind;
-        }
         // A binding that reads the name it binds has the kind the others give it, so first find that kind with such
         // reads unknown, then check every binding against it.
         let first = self.values(&bindings.values, key, None, depth);
         let guess = shared(first.iter().flatten().copied());
-        let kind = if first.iter().all(Option::is_some) {
-            guess
-        } else {
-            guess.filter(|guess| {
-                self.values(&bindings.values, key, Some(*guess), depth).iter().all(|kind| kind == &Some(*guess))
-            })
-        };
-        if top {
-            self.resolved.insert(key, kind);
+        if first.iter().all(Option::is_some) {
+            return guess;
         }
-        kind
+        guess.filter(|guess| {
+            self.values(&bindings.values, key, Some(*guess), depth).iter().all(|kind| kind == &Some(*guess))
+        })
     }
 
     fn values(
@@ -351,12 +366,12 @@ impl<'w, 'a> Kinds<'w, 'a> {
     }
 
     // What `with` gives the target of a context manager: the name of a temporary directory is a `str`.
-    fn entered(&self, expr: &Expr, depth: usize) -> Option<Kind> {
+    fn entered(&self, expr: &'a Expr, depth: usize) -> Option<Kind> {
         let Expr::Call(ast::ExprCall { func, .. }) = expr else {
             return None;
         };
         self.qualified(func, depth)
-            .is_some_and(|name| name.len() == 2 && name[0] == "tempfile" && name[1] == "TemporaryDirectory")
+            .is_some_and(|name| name.segments() == ["tempfile", "TemporaryDirectory"])
             .then_some(Kind::Str)
     }
 
@@ -381,15 +396,15 @@ impl<'w, 'a> Kinds<'w, 'a> {
 
     // The bindings of `name` in the innermost of the `depth` scopes, then the module, that binds it, with the depth
     // that scope ends. A class body is skipped unless innermost, since its methods do not see it.
-    fn lookup(&self, name: &str, depth: usize) -> Option<(Bindings<'a>, usize)> {
+    fn lookup(&self, name: &'a str, depth: usize) -> Option<(Rc<Bindings<'a>>, usize)> {
         let checker = self.walker.checker;
         self.scopes[..depth]
             .iter()
             .enumerate()
             .rev()
             .filter(|(index, scope)| !matches!(scope, Scope::Class(_)) || index + 1 == depth)
-            .map(|(index, scope)| (Bindings::of_scope(checker, *scope, name), index + 1))
-            .chain(std::iter::once_with(|| (Bindings::of_body(checker, checker.body(), name), 0)))
+            .map(|(index, scope)| (bindings_in(checker, Some(*scope), name), index + 1))
+            .chain(std::iter::once_with(|| (bindings_in(checker, None, name), 0)))
             .find(|(bindings, _)| bindings.binds())
     }
 
@@ -413,7 +428,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
 
     // How the class gives `attr` to the instances its method reads as `receiver`, with the depth of the class's
     // scope.
-    fn members(&self, receiver: &Expr, attr: &str, depth: usize) -> Option<(Members<'a>, Class<'a>)> {
+    fn members(&self, receiver: &'a Expr, attr: &'a str, depth: usize) -> Option<(Rc<Members<'a>>, Class<'a>)> {
         let receiver = receiver.as_name_expr()?;
         let index = self.scopes[..depth].iter().rposition(|scope| matches!(scope, Scope::Function(_)))?;
         let (Scope::Function(method), Some(Scope::Class(class))) =
@@ -423,7 +438,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
         };
         let checker = self.walker.checker;
         // The parameter must be the only binding of the name, so it still holds the instance.
-        if self_parameter(checker, method) != Some(receiver.id.as_str())
+        if self_parameter(method) != Some(receiver.id.as_str())
             || self.lookup(&receiver.id, depth).is_none_or(|(bindings, at)| {
                 at != index + 1
                     || !bindings.values.is_empty()
@@ -434,7 +449,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
         {
             return None;
         }
-        Some((Members::of_class(checker, class, attr), Class { def: class, depth: index - 1 }))
+        Some((members_of(checker, class, attr), Class { def: class, depth: index - 1 }))
     }
 
     // What an attribute holds, from the annotation the class gives it, the property that computes it, or the values
@@ -457,12 +472,15 @@ impl<'w, 'a> Kinds<'w, 'a> {
             || project.is_base_class(&class.name)
             || project.is_attribute_written(attr)
             || Visibility::of(attr) == Visibility::Public && project.is_referenced(&class.name)
-            || written_outside(self.walker.checker.body(), class, attr)
-            || self.reading.contains(&key)
+            || written_outside(self.walker.checker, class, attr)
         {
             return None;
         }
-        self.reading.push(key);
+        if let Some(&(_, _, started)) = self.reading.iter().find(|(range, name, _)| (*range, *name) == key) {
+            self.relies_on = self.relies_on.min(started);
+            return None;
+        }
+        self.reading.push((key.0, key.1, self.resolving.len()));
         let outer_at_spot = std::mem::replace(&mut self.at_spot, false);
         let mut kinds = Vec::new();
         for (value, method) in &members.values {
@@ -477,6 +495,34 @@ impl<'w, 'a> Kinds<'w, 'a> {
         self.reading.pop();
         kinds.into_iter().collect::<Option<Vec<_>>>().and_then(shared)
     }
+}
+
+// The bindings of `name` in `scope`, or in the module for none.
+fn bindings_in<'a>(checker: &Checker<'a>, scope: Option<Scope<'a>>, name: &'a str) -> Rc<Bindings<'a>> {
+    let range = match scope {
+        Some(Scope::Function(function)) => function.range,
+        Some(Scope::Class(class)) => class.range,
+        Some(Scope::Lambda(lambda)) => lambda.range,
+        None => TextRange::default(),
+    };
+    if let Some(bindings) = checker.kinds().bindings.borrow().get(&(range, name)) {
+        return Rc::clone(bindings);
+    }
+    let bindings = Rc::new(match scope {
+        Some(scope) => Bindings::of_scope(checker, scope, name),
+        None => Bindings::of_body(checker, checker.body(), name),
+    });
+    checker.kinds().bindings.borrow_mut().insert((range, name), Rc::clone(&bindings));
+    bindings
+}
+
+fn members_of<'a>(checker: &Checker<'a>, class: &'a ast::StmtClassDef, attr: &'a str) -> Rc<Members<'a>> {
+    if let Some(members) = checker.kinds().members.borrow().get(&(class.range, attr)) {
+        return Rc::clone(members);
+    }
+    let members = Rc::new(Members::of_class(checker, class, attr));
+    checker.kinds().members.borrow_mut().insert((class.range, attr), Rc::clone(&members));
+    members
 }
 
 // A class around the spot, with its index among the scopes.
@@ -611,21 +657,8 @@ fn target_binds(target: &Expr, name: &str) -> bool {
 }
 
 // The name a method calls its instance, unless it is a static or class method.
-fn self_parameter<'a>(checker: &Checker, method: &'a ast::StmtFunctionDef) -> Option<&'a str> {
-    if method
-        .decorator_list
-        .iter()
-        .any(|decorator| is_builtin_call(checker, &decorator.expression, &["staticmethod", "classmethod"]))
-    {
-        return None;
-    }
-    method
-        .parameters
-        .posonlyargs
-        .iter()
-        .chain(&method.parameters.args)
-        .next()
-        .map(|parameter| parameter.name().as_str())
+fn self_parameter(method: &ast::StmtFunctionDef) -> Option<&str> {
+    receiver(method).filter(|_| !is_classmethod(method))
 }
 
 fn is_builtin_call(checker: &Checker, expr: &Expr, names: &[&str]) -> bool {
@@ -1072,8 +1105,8 @@ struct Members<'a> {
 }
 
 impl<'a> Members<'a> {
-    fn of_class(checker: &Checker<'a>, class: &'a ast::StmtClassDef, attr: &str) -> Self {
-        let body = Bindings::of_body(checker, &class.body, attr);
+    fn of_class(checker: &Checker<'a>, class: &'a ast::StmtClassDef, attr: &'a str) -> Self {
+        let body = bindings_in(checker, Some(Scope::Class(class)), attr);
         let (properties, methods) = body
             .functions
             .iter()
@@ -1089,7 +1122,7 @@ impl<'a> Members<'a> {
         let mut members = Self { declared: body.declared, values, properties, methods, opaque };
         for stmt in &class.body {
             if let Stmt::FunctionDef(method) = stmt
-                && let Some(receiver) = self_parameter(checker, method)
+                && let Some(receiver) = self_parameter(method)
             {
                 let mut writes = Writes { checker, receiver, attr, method, members: &mut members, nested: 0 };
                 writes.visit_body(&method.body);
@@ -1105,29 +1138,24 @@ impl<'a> Members<'a> {
 }
 
 // Whether code outside the class writes or deletes an attribute of this name, on any object.
-fn written_outside(body: &[Stmt], class: &ast::StmtClassDef, attr: &str) -> bool {
-    struct Outside<'c> {
-        class: TextRange,
-        attr: &'c str,
-        found: bool,
-    }
-    impl<'a> Visitor<'a> for Outside<'_> {
-        fn visit_stmt(&mut self, stmt: &'a Stmt) {
-            if stmt.range() != self.class {
-                visitor::walk_stmt(self, stmt);
-            }
-        }
-
+fn written_outside(checker: &Checker, class: &ast::StmtClassDef, attr: &str) -> bool {
+    struct Writes<'a>(FxHashMap<&'a str, Vec<TextRange>>);
+    impl<'a> Visitor<'a> for Writes<'a> {
         fn visit_expr(&mut self, expr: &'a Expr) {
-            if let Expr::Attribute(ast::ExprAttribute { ctx, attr, .. }) = expr {
-                self.found |= *ctx != ExprContext::Load && attr == self.attr;
+            if let Expr::Attribute(ast::ExprAttribute { ctx, attr, range, .. }) = expr
+                && *ctx != ExprContext::Load
+            {
+                self.0.entry(attr.as_str()).or_default().push(*range);
             }
             visitor::walk_expr(self, expr);
         }
     }
-    let mut outside = Outside { class: class.range, attr, found: false };
-    outside.visit_body(body);
-    outside.found
+    let writes = checker.kinds().attribute_writes.get_or_init(|| {
+        let mut writes = Writes(FxHashMap::default());
+        writes.visit_body(checker.body());
+        writes.0
+    });
+    writes.get(attr).is_some_and(|ranges| ranges.iter().any(|range| !class.range.contains_range(*range)))
 }
 
 // The writes a method makes to an attribute of its instance.

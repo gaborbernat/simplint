@@ -1,7 +1,5 @@
 use ruff_diagnostics::{Edit, Fix};
-use ruff_python_ast::helpers::{
-    StoredNameFinder, any_over_body, any_over_expr, body_without_leading_docstring, is_dunder,
-};
+use ruff_python_ast::helpers::{StoredNameFinder, any_over_expr, body_without_leading_docstring, is_dunder};
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_python_codegen::Generator;
@@ -12,13 +10,10 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::Visibility;
-use crate::rules::exports::Exports;
 use crate::rules::structure::needs_parentheses;
-use crate::rules::{
-    indentation, is_alone_on_lines, is_class_like, last_segment, lines_with_trailing_blanks, single_assignment,
-};
+use crate::rules::{indentation, is_alone_on_lines, is_class_like, lines_with_trailing_blanks, single_assignment};
 use crate::semantic::{Binding, BindingKind, Evaluation};
+use crate::syntax::{Exports, Visibility, last_segment};
 
 pub fn single_user_constant(checker: &Checker) {
     for stmt in checker.body() {
@@ -193,11 +188,14 @@ fn move_into_function(checker: &Checker, constant: &Constant) -> Option<Fix> {
         value_text.contains("\"\"\"") || value_text.contains("'''") || checker.has_comment_in(constant.value.range());
     if let [reference] = constant.references.as_slice()
         && !spans_lines
-        && !is_repeated(&function.body, *reference)
-        && (simple || !in_fstring(&function.body, *reference))
-        && !(constant.value.is_string_literal_expr() && is_format_receiver(&function.body, *reference))
     {
-        return Some(inline_fix(checker, constant.value, value_text, deletion, *reference));
+        let context = ReferenceContext::of(&function.body, *reference);
+        if !context.repeated
+            && (simple || !context.in_fstring)
+            && (!context.format_receiver || !constant.value.is_string_literal_expr())
+        {
+            return Some(inline_fix(checker, constant.value, value_text, deletion, *reference));
+        }
     }
     local_fix(checker, constant, value_text, deletion)
 }
@@ -287,35 +285,28 @@ fn deletion_keeping_separation(source: &str, range: TextRange) -> TextRange {
     }
 }
 
-fn in_fstring(body: &[Stmt], reference: TextRange) -> bool {
-    any_over_body(body, |expr| {
-        matches!(expr, Expr::FString(_) | Expr::TString(_)) && expr.range().contains_range(reference)
-    })
-}
-
-// A string literal calling `format` is Ruff's f-string (UP032) candidate, which Ruff reports only while no argument
-// spans lines, so whether it does would depend on the layout `ruff format` gives the call.
-fn is_format_receiver(body: &[Stmt], reference: TextRange) -> bool {
-    any_over_body(body, |expr| {
-        expr.as_call_expr()
-            .and_then(|call| call.func.as_attribute_expr())
-            .is_some_and(|attribute| attribute.attr.as_str() == "format" && attribute.value.range() == reference)
-    })
-}
-
-fn is_repeated(body: &[Stmt], reference: TextRange) -> bool {
-    let mut finder = RepeatedContext { reference, depth: 0, repeated: false };
-    finder.visit_body(body);
-    finder.repeated
-}
-
-struct RepeatedContext {
+// Where the one reference to a constant sits, which decides whether the value can replace it.
+struct ReferenceContext {
     reference: TextRange,
+    // How many loops, functions, classes, lambdas and comprehensions the walk is in.
     depth: usize,
+    // Inside one of those, the value would be evaluated again on every pass instead of once.
     repeated: bool,
+    in_fstring: bool,
+    // A string literal calling `format` is Ruff's f-string (UP032) candidate, which Ruff reports only while no argument
+    // spans lines, so whether it does would depend on the layout `ruff format` gives the call.
+    format_receiver: bool,
 }
 
-impl<'a> Visitor<'a> for RepeatedContext {
+impl ReferenceContext {
+    fn of(body: &[Stmt], reference: TextRange) -> Self {
+        let mut context = Self { reference, depth: 0, repeated: false, in_fstring: false, format_receiver: false };
+        context.visit_body(body);
+        context
+    }
+}
+
+impl<'a> Visitor<'a> for ReferenceContext {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         let repeats = matches!(stmt, Stmt::For(_) | Stmt::While(_) | Stmt::FunctionDef(_) | Stmt::ClassDef(_));
         self.depth += usize::from(repeats);
@@ -327,6 +318,12 @@ impl<'a> Visitor<'a> for RepeatedContext {
         if expr.range() == self.reference {
             self.repeated = self.depth > 0;
         }
+        self.in_fstring |=
+            matches!(expr, Expr::FString(_) | Expr::TString(_)) && expr.range().contains_range(self.reference);
+        self.format_receiver |= expr
+            .as_call_expr()
+            .and_then(|call| call.func.as_attribute_expr())
+            .is_some_and(|attribute| attribute.attr.as_str() == "format" && attribute.value.range() == self.reference);
         let repeats = matches!(
             expr,
             Expr::Lambda(_) | Expr::ListComp(_) | Expr::SetComp(_) | Expr::DictComp(_) | Expr::Generator(_)

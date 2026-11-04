@@ -1,15 +1,19 @@
-use std::borrow::Cow;
+use std::cell::OnceCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-use itertools::Itertools;
 use ruff_cache::{CacheKey, CacheKeyHasher};
-use ruff_python_ast::helpers::resolve_imported_module_path;
 use ruff_python_ast::name::UnqualifiedName;
+use ruff_python_ast::token::{TokenKind, Tokens};
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Pattern, Stmt};
+use ruff_python_trivia::CommentRanges;
 use ruff_source_file::LineRanges;
 use ruff_text_size::Ranged;
+
+use super::facts::{FromImport, qualified};
+use crate::lint::noqa;
+use crate::lint::registry::Rule;
 
 // What `dataclass-kw-only` needs to rewrite every positional call of a dataclass it makes keyword-only: the dataclasses
 // a file declares without `kw_only=True`, with the fields their `__init__` takes by position, and how the file uses
@@ -45,12 +49,14 @@ pub(super) enum UseKind {
 impl Constructors {
     pub(super) fn collect(
         source: &str,
+        tokens: &Tokens,
         body: &[Stmt],
         aliases: &HashMap<&str, String>,
-        module_path: Option<&[String]>,
+        from_imports: &[FromImport],
     ) -> Self {
+        let qualify = |expr: &Expr| qualified(UnqualifiedName::from_expr(expr)?.segments(), aliases);
         let mut uses = Uses::new(|expr: &Expr| {
-            let full = qualified(expr, aliases)?;
+            let full = qualify(expr)?;
             let (module, member) = full.rsplit_once('.')?;
             Some((module.to_owned(), member.to_owned(), UnqualifiedName::from_expr(expr)?.segments().join(".")))
         });
@@ -73,16 +79,14 @@ impl Constructors {
                 _ => None,
             })
             .collect();
+        let comments = OnceCell::new();
         let mut grouped: BTreeMap<String, BTreeSet<NameUse>> = BTreeMap::new();
         for ((module, name, written), found) in uses.found {
             let kind = match found {
                 Use::Call(call) => match CallKind::of(call) {
                     CallKind::Keyword => continue,
-                    // A suppression comment on the call can keep its own report from rewriting it.
                     CallKind::Positional
-                        if ["noqa", "simplint: ignore"]
-                            .iter()
-                            .any(|marker| source[source.full_lines_range(call.range())].contains(marker)) =>
+                        if is_suppressed(source, comments.get_or_init(|| comment_ranges(tokens)), call) =>
                     {
                         UseKind::Opaque
                     }
@@ -95,33 +99,24 @@ impl Constructors {
             };
             grouped.entry(module).or_default().insert(NameUse { name, written, kind });
         }
-        let mut imports = Vec::new();
-        crate::rules::for_each_body(body, &mut |statements, _| {
-            imports.extend(statements.iter().filter_map(Stmt::as_import_from_stmt));
-        });
-        for import in imports {
-            let module = import.module.as_ref().map(ast::Identifier::as_str);
-            let Some(module) = resolve_imported_module_path(import.level, module, module_path).map(Cow::into_owned)
-            else {
-                continue;
-            };
-            for alias in &import.names {
+        for FromImport { module, names, .. } in from_imports {
+            for alias in *names {
                 let written = alias.asname.as_ref().unwrap_or(&alias.name).to_string();
                 let name = alias.name.to_string();
                 grouped.entry(module.clone()).or_default().insert(NameUse { name, written, kind: UseKind::Imported });
             }
         }
-        let is_dataclass = |expr: &Expr| qualified(expr, aliases).is_some_and(|name| name == "dataclasses.dataclass");
+        let is_dataclass = |expr: &Expr| qualify(expr).is_some_and(|name| name == "dataclasses.dataclass");
         let mut known: Vec<(&str, Option<Vec<String>>)> = Vec::new();
         let mut dataclasses: Vec<(String, Option<Vec<String>>)> = Vec::new();
         for class in body.iter().filter_map(Stmt::as_class_def_stmt) {
-            let Some(arguments) = dataclass_arguments(class, &is_dataclass) else {
+            let Some(decorator) = dataclass_decorator(class, &is_dataclass) else {
                 continue;
             };
             let base_fields =
                 |name: &str| known.iter().find(|(base, _)| *base == name).and_then(|(_, fields)| fields.clone());
-            let fields = init_fields(class, arguments, &base_fields);
-            if !is_keyword_only(arguments) {
+            let fields = init_fields(class, decorator, &base_fields);
+            if !is_keyword_only(decorator) {
                 dataclasses.push((class.name.to_string(), fields.clone()));
             }
             known.push((class.name.as_str(), fields));
@@ -134,13 +129,16 @@ impl Constructors {
     }
 }
 
-// The dotted name `expr` stands for through the imports that bind its head, such as `pkg.models.Partition` for
-// `models.Partition` after `from pkg import models`.
-fn qualified(expr: &Expr, aliases: &HashMap<&str, String>) -> Option<String> {
-    let name = UnqualifiedName::from_expr(expr)?;
-    let (first, rest) = name.segments().split_first()?;
-    let module = aliases.get(first)?;
-    Some(std::iter::once(module.as_str()).chain(rest.iter().copied()).collect::<Vec<_>>().join("."))
+// A suppression comment on the call keeps its own `dataclass-kw-only` report from rewriting it.
+fn is_suppressed(source: &str, comments: &CommentRanges, call: &ast::ExprCall) -> bool {
+    comments
+        .comments_in_range(source.full_lines_range(call.range()))
+        .iter()
+        .any(|comment| noqa::suppresses(&source[*comment], Rule::DataclassKwOnly.code()))
+}
+
+fn comment_ranges(tokens: &Tokens) -> CommentRanges {
+    CommentRanges::new(tokens.iter().filter(|token| token.kind() == TokenKind::Comment).map(Ranged::range).collect())
 }
 
 // Over the run: how other files use each file's dataclasses, and for each file the fields of the dataclasses it calls
@@ -242,36 +240,29 @@ impl<'a> FileCalls<'a> {
 
 impl CacheKey for FileCalls<'_> {
     fn cache_key(&self, state: &mut CacheKeyHasher) {
-        self.opaque.into_iter().flatten().sorted().for_each(|name| name.cache_key(state));
+        self.opaque.cache_key(state);
         self.star_imported.cache_key(state);
-        for (written, fields) in self.fields.into_iter().flatten().sorted_by(|left, right| left.0.cmp(right.0)) {
-            (written, fields).cache_key(state);
-        }
+        self.fields.cache_key(state);
     }
 }
 
-// The decorator's arguments when `class` is a dataclass, an empty list for a bare `@dataclass`.
-pub(crate) fn dataclass_arguments<'a>(
+// The `@dataclass` decorator of `class`, bare or called.
+pub(crate) fn dataclass_decorator<'a>(
     class: &'a ast::StmtClassDef,
     is_dataclass: &impl Fn(&Expr) -> bool,
-) -> Option<&'a [ast::Keyword]> {
-    class.decorator_list.iter().find_map(|decorator| match &decorator.expression {
-        Expr::Call(ast::ExprCall { func, arguments, .. }) if is_dataclass(func) => Some(&arguments.keywords[..]),
-        other if is_dataclass(other) => Some(&[][..]),
-        _ => None,
-    })
-}
-
-pub(crate) fn is_keyword_only(keywords: &[ast::Keyword]) -> bool {
-    keyword(keywords, "kw_only")
-        .is_some_and(|value| value.as_boolean_literal_expr().is_some_and(|literal| literal.value))
-}
-
-fn keyword<'a>(keywords: &'a [ast::Keyword], name: &str) -> Option<&'a Expr> {
-    keywords
+) -> Option<&'a Expr> {
+    class
+        .decorator_list
         .iter()
-        .find(|keyword| keyword.arg.as_ref().is_some_and(|arg| arg.as_str() == name))
-        .map(|keyword| &keyword.value)
+        .map(|decorator| &decorator.expression)
+        .find(|expr| is_dataclass(expr.as_call_expr().map_or(expr, |call| &call.func)))
+}
+
+fn is_keyword_only(decorator: &Expr) -> bool {
+    decorator
+        .as_call_expr()
+        .and_then(|call| call.arguments.find_keyword("kw_only"))
+        .is_some_and(|keyword| keyword.value.as_boolean_literal_expr().is_some_and(|literal| literal.value))
 }
 
 // The fields the generated `__init__` takes by position, in order; `None` when simplint cannot tell them, as when the
@@ -279,11 +270,13 @@ fn keyword<'a>(keywords: &'a [ast::Keyword], name: &str) -> Option<&'a Expr> {
 // whose fields `base_fields` gives, comes first, as dataclasses order inherited fields.
 pub(crate) fn init_fields(
     class: &ast::StmtClassDef,
-    keywords: &[ast::Keyword],
+    decorator: &Expr,
     base_fields: &impl Fn(&str) -> Option<Vec<String>>,
 ) -> Option<Vec<String>> {
-    if keyword(keywords, "init")
-        .is_some_and(|init| !init.as_boolean_literal_expr().is_some_and(|literal| literal.value))
+    if decorator
+        .as_call_expr()
+        .and_then(|call| call.arguments.find_keyword("init"))
+        .is_some_and(|init| !init.value.as_boolean_literal_expr().is_some_and(|literal| literal.value))
         || class.body.iter().any(|stmt| {
             stmt.as_function_def_stmt().is_some_and(|function| matches!(function.name.as_str(), "__init__" | "__new__"))
         })
@@ -299,7 +292,7 @@ pub(crate) fn init_fields(
             _ => return None,
         }
     }
-    let keyword_only = is_keyword_only(keywords);
+    let keyword_only = is_keyword_only(decorator);
     let mut rest_keyword_only = false;
     let declared = class.body.iter().filter_map(|stmt| {
         let field = stmt.as_ann_assign_stmt()?;
@@ -327,15 +320,15 @@ pub(crate) fn init_fields(
             Expr::Call(ast::ExprCall { func, arguments, .. })
                 if UnqualifiedName::from_expr(func).is_some_and(|func| func.segments().last() == Some(&"field")) =>
             {
-                Some(&arguments.keywords[..])
+                Some(arguments)
             }
             _ => None,
         });
-        let flag = |option: &str, default: bool| match options.and_then(|keywords| keyword(keywords, option)) {
+        let flag = |option: &str, default: bool| match options.and_then(|arguments| arguments.find_keyword(option)) {
             None => Some(default),
-            Some(value) => value.as_boolean_literal_expr().map(|literal| literal.value),
+            Some(keyword) => keyword.value.as_boolean_literal_expr().map(|literal| literal.value),
         };
-        if options.is_some_and(|keywords| keywords.iter().any(|keyword| keyword.arg.is_none())) {
+        if options.is_some_and(|arguments| arguments.keywords.iter().any(|keyword| keyword.arg.is_none())) {
             return None;
         }
         let in_init = flag("init", true)?;

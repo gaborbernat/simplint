@@ -1,3 +1,4 @@
+import builtins
 import collections
 import functools
 import pathlib
@@ -259,6 +260,10 @@ class KindHolder:
     def static(self) -> str:
         return "a" + self.k_prefix
 
+    @builtins.staticmethod
+    def qualified_static(self) -> str:
+        return "a" + self.k_prefix
+
     def reader(this, self: str) -> str:
         return "a" + self.k_prefix + this.k_prefix
 
@@ -381,3 +386,88 @@ def kind_more(
         "a" * [1, 2][:1][0] + "!",
         "a" + (2 * ["x"])[0],
     ]
+
+
+# Each name reads itself, so finding its kind checks the one before twice: a long chain must stay quick.
+def kind_chain() -> str:
+    chain0 = "a"
+    chain0 += chain0
+    chain1 = chain0
+    chain1 += chain1
+    chain2 = chain1
+    chain2 += chain2
+    chain3 = chain2
+    chain3 += chain3
+    chain4 = chain3
+    chain4 += chain4
+    chain5 = chain4
+    chain5 += chain5
+    chain6 = chain5
+    chain6 += chain6
+    chain7 = chain6
+    chain7 += chain7
+    chain8 = chain7
+    chain8 += chain8
+    chain9 = chain8
+    chain9 += chain9
+    chain10 = chain9
+    chain10 += chain10
+    chain11 = chain10
+    chain11 += chain11
+    chain12 = chain11
+    chain12 += chain12
+    chain13 = chain12
+    chain13 += chain13
+    chain14 = chain13
+    chain14 += chain14
+    chain15 = chain14
+    chain15 += chain15
+    chain16 = chain15
+    chain16 += chain16
+    chain17 = chain16
+    chain17 += chain17
+    chain18 = chain17
+    chain18 += chain18
+    chain19 = chain18
+    chain19 += chain19
+    chain20 = chain19
+    chain20 += chain20
+    chain21 = chain20
+    chain21 += chain21
+    chain22 = chain21
+    chain22 += chain22
+    chain23 = chain22
+    chain23 += chain23
+    chain24 = chain23
+    chain24 += chain24
+    chain25 = chain24
+    chain25 += chain25
+    chain26 = chain25
+    chain26 += chain26
+    chain27 = chain26
+    chain27 += chain27
+    chain28 = chain27
+    chain28 += chain28
+    chain29 = chain28
+    chain29 += chain29
+    chain30 = chain29
+    chain30 += chain30
+    chain31 = chain30
+    chain31 += chain31
+    chain32 = chain31
+    chain32 += chain32
+    chain33 = chain32
+    chain33 += chain33
+    chain34 = chain33
+    chain34 += chain34
+    chain35 = chain34
+    chain35 += chain35
+    chain36 = chain35
+    chain36 += chain36
+    chain37 = chain36
+    chain37 += chain37
+    chain38 = chain37
+    chain38 += chain38
+    chain39 = chain38
+    chain39 += chain39
+    return "a" + chain39

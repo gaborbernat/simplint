@@ -18,6 +18,7 @@ use filetime::FileTime;
 use itertools::Itertools;
 use log::error;
 use rayon::prelude::*;
+use rkyv::util::AlignedVec;
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_linter::warn_user;
 use rustc_hash::FxHashMap;
@@ -90,7 +91,8 @@ pub fn directory(ruff_cache_dir: &Path) -> PathBuf {
 
 // Removes the directories other simplint builds wrote that no run has written to for `MAX_LAST_SEEN`. A directory
 // another version still writes to stays, as when pre-commit pins one version and the command line runs another. Its
-// newest file tells its age, since Windows does not move a directory's modification time when a file in it changes.
+// newest file tells its age, since Windows does not move a directory's modification time when a file in it changes; an
+// empty one, as another run creates before it writes its cache, goes by its own.
 fn remove_stale(current: &Path) {
     let Some(Ok(siblings)) = current.parent().map(fs::read_dir) else {
         return;
@@ -104,7 +106,8 @@ fn remove_stale(current: &Path) {
             .into_iter()
             .flatten()
             .filter_map(|entry| entry.ok()?.metadata().ok()?.modified().ok())
-            .max();
+            .max()
+            .or_else(|| sibling.metadata().ok()?.modified().ok());
         let stale = newest.is_none_or(|modified| now.duration_since(modified).is_ok_and(|age| age > MAX_LAST_SEEN));
         // Removal is best effort: a directory it cannot remove, as one another process has open, waits for a later run.
         if stale {
@@ -137,7 +140,12 @@ impl Cache {
         let mut hasher = CacheKeyHasher::new();
         package_root.cache_key(&mut hasher);
         let path = directory.join(hasher.finish().to_string());
-        let package = match fs::read(&path) {
+        // rkyv reads the archive in place, which needs its bytes aligned.
+        let read = fs::File::open(&path).and_then(|mut file| {
+            let mut bytes = AlignedVec::<16>::new();
+            bytes.extend_from_reader(&mut file).map(|_| bytes)
+        });
+        let package = match read {
             Err(error) if error.kind() == io::ErrorKind::NotFound => None,
             read => read
                 .map_err(anyhow::Error::from)
@@ -235,8 +243,10 @@ impl Cache {
                 }
             }
         }
-        let mut temp_file = tempfile_in(self.path.parent().context("cache path has a directory")?)
-            .context("Failed to create temporary file")?;
+        let directory = self.path.parent().context("cache path has a directory")?;
+        // Another simplint build may have removed the directory as stale since this run opened it.
+        fs::create_dir_all(directory).context("Failed to create cache directory")?;
+        let mut temp_file = tempfile_in(directory).context("Failed to create temporary file")?;
         let serialized =
             rkyv::to_bytes::<rkyv::rancor::Error>(&self.package).context("Failed to serialize cache data")?;
         temp_file.write_all(&serialized).context("Failed to write serialized cache to temporary file.")?;

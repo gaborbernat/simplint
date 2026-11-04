@@ -4,3 +4,4 @@ expression: "lint_fixture(rule, fixture, target_version)"
 ---
 5:9 SMP302 Public function `open_thing` has no docstring; document it for its users
 9:9 SMP302 Public function `open_thing` has no docstring; document it for its users
+59:5 SMP302 Public variable `TIMEOUT` is undocumented; add a docstring below it or a `#:` comment above it

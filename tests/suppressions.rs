@@ -20,6 +20,14 @@ fn check_ignore_noqa_reports_suppressed_code() {
     assert_eq!(check(root.path(), &["--select", "SMP010", "--ignore-noqa"]).0, 1);
 }
 
+#[test_case("x = 1  # simplint: ignore[SMP010]\n" ; "ignore")]
+#[test_case("x = 1  # simplint : ignore[SMP010]\n" ; "ignore_space_before_colon")]
+#[test_case("x = 1  # simplint:  ignore[SMP010]\n" ; "ignore_spaces_after_colon")]
+fn simplint_ignore_suppresses_with_any_space_around_its_colon(source: &str) {
+    let root = project(&[("module.py", source)]);
+    assert_eq!(check(root.path(), &["--select", "SMP010"]).0, 0);
+}
+
 #[test]
 fn noqa_after_a_multiline_string_suppresses_its_start() {
     let root = project(&[("module.py", "x = \"\"\"a\nb\"\"\"  # noqa: SMP010\n")]);
@@ -42,6 +50,7 @@ fn noqa_after_a_multiline_string_suppresses_its_start() {
 #[test_case("def solve():\n    # ruff: noqa\n    x = 1\n    return x\n", 0 ; "ruff_noqa_indented")]
 #[test_case("# ruff: file-ignore[SMP010] paper\nx = 1\n", 0 ; "file_ignore")]
 #[test_case("#ruff:file-ignore[SMP101,SMP010]\nx = 1\n", 0 ; "file_ignore_without_spaces")]
+#[test_case("# ruff :  file-ignore[SMP010]\nx = 1\n", 0 ; "file_ignore_spaced_colon")]
 #[test_case("# ruff: file-ignore[SMP101]\nx = 1\n", 1 ; "file_ignore_other_codes")]
 #[test_case("# ruff: file-ignore[SMP010\nx = 1\n", 1 ; "file_ignore_unclosed")]
 #[test_case("def solve():\n    # ruff: file-ignore[SMP010]\n    x = 1\n    return x\n", 1 ; "file_ignore_indented")]

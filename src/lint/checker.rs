@@ -11,7 +11,7 @@ use ruff_python_codegen::Stylist;
 use ruff_python_index::Indexer;
 use ruff_python_parser::Parsed;
 use ruff_python_trivia::{CommentRanges, has_leading_content};
-use ruff_source_file::{LineRanges, SourceFile};
+use ruff_source_file::{LineRanges, OneIndexed, SourceFile};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 use rustc_hash::FxHashMap;
 
@@ -21,11 +21,11 @@ use crate::lint::walker::Walker;
 use crate::project::FileIndex;
 use crate::rules::docstrings::PublicApi;
 use crate::rules::docstrings::rest::{Target, collect_targets};
-use crate::rules::exports::{Exports, dunder_all};
-use crate::rules::for_each_body;
-use crate::rules::naming::string_values;
+use crate::rules::naming::single_letter_name::ReportedNames;
+use crate::rules::strings::kinds::KindsCache;
 use crate::semantic::Semantic;
 use crate::settings::FileSettings;
+use crate::syntax::{Exports, dunder_all, for_each_body, string_values};
 
 pub struct Checker<'a> {
     pub path: &'a Path,
@@ -44,6 +44,8 @@ pub struct Checker<'a> {
     string_values: OnceCell<Vec<(TextRange, Cow<'a, str>)>>,
     public_api: OnceCell<PublicApi<'a>>,
     rest_targets: OnceCell<Vec<Target<'a>>>,
+    kinds: KindsCache<'a>,
+    reported_names: ReportedNames<'a>,
     // Rules report while they read the checker, as in Ruff's own `Checker`.
     diagnostics: RefCell<Vec<(Rule, Diagnostic)>>,
 }
@@ -74,6 +76,8 @@ impl<'a> Checker<'a> {
             string_values: OnceCell::new(),
             public_api: OnceCell::new(),
             rest_targets: OnceCell::new(),
+            kinds: KindsCache::default(),
+            reported_names: ReportedNames::default(),
             diagnostics: RefCell::default(),
         }
     }
@@ -185,6 +189,16 @@ impl<'a> Checker<'a> {
         self.rest_targets.get_or_init(|| collect_targets(self))
     }
 
+    // What `string-concatenation` reads off the module to tell the types of its operands.
+    pub(crate) fn kinds(&self) -> &KindsCache<'a> {
+        &self.kinds
+    }
+
+    // The names `single-letter-name` reported so far.
+    pub(crate) fn reported_names(&self) -> &ReportedNames<'a> {
+        &self.reported_names
+    }
+
     pub fn dunder_all(&self) -> &Exports<'a> {
         self.dunder_all.get_or_init(|| dunder_all(self.body()))
     }
@@ -247,5 +261,10 @@ impl<'a> Checker<'a> {
 
     pub fn is_init_module(&self) -> bool {
         self.file_name() == "__init__.py"
+    }
+
+    // The source file indexes its lines once, for every report that names one and for rendering the diagnostics.
+    pub fn line_number(&self, offset: TextSize) -> OneIndexed {
+        self.file.index().line_index(offset)
     }
 }

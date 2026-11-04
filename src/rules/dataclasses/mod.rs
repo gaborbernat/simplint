@@ -30,7 +30,7 @@ fn require_options(
     checker: &Checker,
     rule: Rule,
     options: &[&'static str],
-    offer: impl Fn(&Checker, &Decorated) -> Option<Offer>,
+    offer: impl Fn(&Decorated) -> Option<Offer>,
 ) {
     // `slots=` and `kw_only=` arrived in Python 3.10; an older target cannot use them.
     if checker.settings.from_ruff.target_version < PythonVersion::PY310 {
@@ -65,7 +65,7 @@ fn require_options(
             let explicit =
                 keywords.iter().any(|keyword| keyword.arg.as_ref().is_some_and(|arg| missing.contains(&arg.as_str())));
             let range = decorator.expression.range();
-            let offered = offer(checker, &Decorated { class, missing: missing.clone(), explicit })
+            let offered = offer(&Decorated { class, missing: missing.clone(), explicit })
                 .filter(|offer| !offer.options.is_empty());
             let title = offered
                 .as_ref()

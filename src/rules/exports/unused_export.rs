@@ -1,12 +1,11 @@
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::exports::{Exports, all_binding, all_literal, is_all_target};
-use crate::rules::module_statements;
 use crate::settings::ProjectKind;
+use crate::syntax::{Exports, all_binding, all_literal, all_mutation, module_statements};
 
 pub fn unused_export(checker: &Checker) {
     let project = checker.project();
@@ -64,12 +63,7 @@ pub fn unused_export(checker: &Checker) {
 }
 
 fn builds_all(stmt: &Stmt) -> bool {
-    all_binding(stmt).is_some()
-        || stmt.as_expr_stmt().is_some_and(|expr| {
-            expr.value.as_call_expr().is_some_and(|call| {
-                call.func.as_attribute_expr().is_some_and(|attribute| is_all_target(&attribute.value))
-            })
-        })
+    all_binding(stmt).is_some() || all_mutation(stmt).is_some()
 }
 
 // Each run of unused names goes with the separator after it, or, at the end of the list, with the separator before it,
@@ -82,8 +76,9 @@ fn removal(checker: &Checker, value: TextRange, elements: &[Expr], unused: &[&st
     let (open, close) = if source[value].starts_with('[') { ("[", "]") } else { ("(", ")") };
     let kept = elements.iter().filter(|element| !is_unused(element)).count();
     if kept == 0 {
-        return (!checker.has_comment_in(value))
-            .then(|| applicability(checker, Fix::safe_edit(Edit::range_replacement(format!("{open}{close}"), value))));
+        return (!checker.has_comment_in(value)).then(|| {
+            Fix::applicable_edit(Edit::range_replacement(format!("{open}{close}"), value), applicability(checker))
+        });
     }
     // A tuple left with one name needs a comma after it.
     let lone = open == "(" && kept == 1;
@@ -123,15 +118,15 @@ fn removal(checker: &Checker, value: TextRange, elements: &[Expr], unused: &[&st
     }
     let mut edits = edits.into_iter();
     let first = edits.next()?;
-    Some(applicability(checker, Fix::safe_edits(first, edits)))
+    Some(Fix::applicable_edits(first, edits, applicability(checker)))
 }
 
 // Code outside the run, such as a library's users, may import a name the run does not; an application has no such code.
-fn applicability(checker: &Checker, fix: Fix) -> Fix {
+fn applicability(checker: &Checker) -> Applicability {
     if checker.settings.project.api.kind == ProjectKind::Application {
-        fix
+        Applicability::Safe
     } else {
-        Fix::unsafe_edits(fix.edits()[0].clone(), fix.edits()[1..].iter().cloned())
+        Applicability::Unsafe
     }
 }
 

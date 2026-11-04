@@ -66,3 +66,21 @@ def fits_without_the_parentheses(resolved: object, root: str) -> bool:
     ):
         return False
     return True
+
+
+def match_case_too_wide(command: str, root: str) -> bool:
+    match command:
+        case "check":
+            resolved = str(command)
+            if resolved != root and not resolved.startswith(root + "ab"):
+                return False
+    return True
+
+
+def match_case_fits(command: str, root: str) -> bool:
+    match command:
+        case "check":
+            resolved = str(command)
+            if resolved != root and not resolved.startswith(root):
+                return False
+    return True

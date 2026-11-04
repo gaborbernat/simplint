@@ -4,8 +4,8 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::exports::all_binding;
 use crate::rules::{is_alone_on_lines, is_main_guard, lines_with_trailing_blanks};
+use crate::syntax::all_binding;
 
 pub fn all_not_last(checker: &Checker) {
     let body = checker.body();

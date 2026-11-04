@@ -10,14 +10,13 @@ pub fn undocumented_public_api(checker: &Checker) {
     if checker.is_test_module() {
         return;
     }
-    let body = checker.body();
     let api = checker.public_api();
     for item in &api.items {
         let documented = match item.stmt {
             Stmt::FunctionDef(ast::StmtFunctionDef { body, .. }) | Stmt::ClassDef(ast::StmtClassDef { body, .. }) => {
                 docstring(body).is_some()
             }
-            _ => is_documented_variable(checker, body, item.stmt),
+            _ => is_documented_variable(checker, item.stmt, item.next),
         };
         if documented {
             continue;

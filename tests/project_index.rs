@@ -237,6 +237,12 @@ const PARTITION: &str =
     "from models import Partition, helper\n\nhelper(1)\nPartition(\"a\", 1)\n", "Partition(topic=\"a\", number=1)" ; "imported"
 )]
 #[test_case("import models\n\nmodels.Partition(\"a\", 1)\n", "models.Partition(topic=\"a\", number=1)" ; "module")]
+#[test_case(
+    "from models import Partition\n\nPartition(\"a\", 1)  # noqa: E501\n", "Partition(topic=\"a\", number=1)  # noqa: E501" ; "other_code_suppressed"
+)]
+#[test_case(
+    "from models import Partition\n\nPartition(\"noqa\", 1)\n", "Partition(topic=\"noqa\", number=1)" ; "noqa_in_string"
+)]
 #[test_case("from models import Partition as P\n\nP(\"a\", 1)\n", "P(topic=\"a\", number=1)" ; "alias")]
 #[test_case(
     "from models import Partition\n\nrow = {\"number\": 1}\nPartition(\"a\", **row)\n", "Partition(topic=\"a\", **row)" ; "keyword_unpacking"
@@ -276,7 +282,12 @@ fn dataclass_kw_only_rewrites_calls_in_other_files(caller: &str, rewritten: &str
     &[("caller.py", "from models import Partition\n\n\ndef run(make):\n    Partition = make\n    Partition(\"a\", 1)\n")]
     ; "shadowed"
 )]
-#[test_case(&[("caller.py", "from models import Partition\n\nPartition(\"a\", 1)  # noqa: E501\n")] ; "suppressed")]
+#[test_case(&[("caller.py", "from models import Partition\n\nPartition(\"a\", 1)  # noqa: SMP114\n")] ; "suppressed")]
+#[test_case(&[("caller.py", "from models import Partition\n\nPartition(\"a\", 1)  # noqa\n")] ; "suppressed_blanket")]
+#[test_case(
+    &[("caller.py", "from models import Partition\n\nPartition(\n    \"a\",  # simplint: ignore[SMP114] paper\n    1,\n)\n")]
+    ; "ignored_inside"
+)]
 #[test_case(
     &[("caller.py", "import importlib\n\nloaded = importlib.import_module(\"models\")\nloaded.Partition(\"a\", 1)\n")]
     ; "loaded_module"

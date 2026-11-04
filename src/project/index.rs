@@ -1,9 +1,9 @@
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hasher;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
-use itertools::Itertools;
 use rayon::prelude::*;
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_db::files::{File, system_path_to_file};
@@ -12,15 +12,15 @@ use ruff_graph::{ModuleDb, ResolverEnvironment, resolve_search_paths};
 use ruff_linter::package::PackageRoot;
 use ruff_python_ast::PythonVersion;
 use ty_module_resolver::{
-    ImportingFile, ModuleName, resolve_module, resolve_module_confident, resolve_real_module,
+    ImportingFile, ModuleName, SearchPaths, resolve_module, resolve_module_confident, resolve_real_module,
     resolve_real_module_confident,
 };
 
 use super::FileFacts;
 use super::constructors::{DataclassCalls, FileCalls, NameUse};
 use super::facts::{ImportBinding, ModuleNames};
-use crate::rules::Visibility;
 use crate::settings::ModuleRole;
+use crate::syntax::Visibility;
 
 // Where imports resolve, as `ruff analyze graph` searches: the configured `src` directories first, then the directory
 // above each package.
@@ -103,21 +103,30 @@ struct Writes {
     unslottable_bases: HashSet<String>,
     stateful_bases: HashSet<String>,
     pickles_low_protocol: bool,
+    // How many entries of `on_class` and `unslottable_bases` each unqualified class name has.
+    namesakes: HashMap<String, usize>,
 }
 
-// What the index reads besides the files' facts: the entry points, where imports resolve, the files whose own
-// `dataclass-kw-only` reports rewrite their positional dataclass calls, and where each file sits in its library's
-// public API.
+// What the index reads besides the files' facts: the entry points, the files whose own `dataclass-kw-only` reports
+// rewrite their positional dataclass calls, and where each file sits in its library's public API.
 pub struct IndexInputs<'a> {
     pub entry_points: &'a [String],
-    pub roots: &'a SearchRoots,
     pub rewrites_calls: &'a HashSet<&'a Path>,
     pub roles: &'a HashMap<&'a Path, ModuleRole>,
 }
 
-impl Project {
-    pub fn index(files: &[(&Path, &FileFacts)], inputs: &IndexInputs) -> Result<Self> {
-        let IndexInputs { entry_points, roots, rewrites_calls, roles } = *inputs;
+// Where each file's module names lead, kept for the whole run so a fix round resolves only the files it rewrote. Fixes
+// change what files say but never add or remove one, and resolving reads only which files and directories exist, so
+// neither the database nor the modules of a file no fix touched go stale.
+pub struct ImportResolver {
+    db: ModuleDb,
+    paths: SearchPaths,
+    python_version: PythonVersion,
+    modules: HashMap<PathBuf, ModuleFacts>,
+}
+
+impl ImportResolver {
+    pub fn new(roots: &SearchRoots) -> Result<Self> {
         let cwd = SystemPathBuf::from_path_buf(std::env::current_dir()?)
             .map_err(|path| anyhow::anyhow!("{} is not a UTF-8 path", path.display()))?;
         let system = OsSystem::new(cwd);
@@ -125,43 +134,69 @@ impl Project {
         let paths = resolve_search_paths(&system, src_roots, None)?;
         let db = ModuleDb::new(system);
         paths.try_register_static_roots(&db);
-        let python_version = roots.python_version;
+        Ok(Self { db, paths, python_version: roots.python_version, modules: HashMap::new() })
+    }
+
+    // Drops what the file's module names resolved to, as a fix rewrote the file.
+    pub fn forget(&mut self, path: &Path) {
+        self.modules.remove(path);
+    }
+
+    // Resolves the files it has not resolved yet.
+    fn resolve(&mut self, files: &[(&Path, &FileFacts)]) {
+        let (python_version, paths) = (self.python_version, &self.paths);
         // The database is not `Sync`, so each worker resolves with its own clone, which shares the cached results.
-        let modules: Vec<ModuleFacts> = files
+        let fresh: Vec<(PathBuf, ModuleFacts)> = files
             .par_iter()
-            .map_with(db.clone(), |db, (path, facts)| {
+            .filter(|(path, _)| !self.modules.contains_key(*path))
+            .map_with(self.db.clone(), |db, (path, facts)| {
                 let environment = ResolverEnvironment::new(db, python_version, paths.clone());
-                ModuleFacts::resolve(db, environment, path, facts, rewrites_calls.contains(path))
+                (path.to_path_buf(), ModuleFacts::resolve(db, environment, path, facts))
             })
             .collect();
+        self.modules.extend(fresh);
+    }
+}
+
+impl Project {
+    pub fn index(files: &[(&Path, &FileFacts)], resolver: &mut ImportResolver, inputs: &IndexInputs) -> Self {
+        let IndexInputs { entry_points, rewrites_calls, roles } = *inputs;
+        resolver.resolve(files);
+        let modules = files.iter().map(|(path, _)| (*path, &resolver.modules[*path]));
         let mut imported: HashMap<PathBuf, HashSet<String>> = HashMap::new();
         let mut referenced: HashMap<PathBuf, HashSet<String>> = HashMap::new();
         let mut stars: Vec<(PathBuf, PathBuf)> = Vec::new();
         let (mut unresolved_stars, mut unreached): (HashSet<&str>, Vec<Unreached>) = (HashSet::new(), Vec::new());
         let mut constructor_uses = Vec::new();
         let mut bindings: Vec<(PathBuf, PathBuf, &ImportBinding)> = Vec::new();
-        for module in modules {
-            constructor_uses.push((module.path.clone(), module.rewrites_calls, module.constructors));
+        for (path, module) in modules {
+            let uses = module.constructors.iter().map(|(file, uses)| (file.clone(), uses.as_slice())).collect();
+            constructor_uses.push((module.path.clone(), rewrites_calls.contains(path), uses));
             bindings
-                .extend(module.bindings.into_iter().map(|(source, binding)| (module.path.clone(), source, binding)));
-            for (file, names) in module.imports {
-                imported.entry(file).or_default().extend(names.iter().cloned());
+                .extend(module.bindings.iter().map(|(source, binding)| (module.path.clone(), source.clone(), binding)));
+            for (file, names) in &module.imports {
+                imported.entry(file.clone()).or_default().extend(names.iter().cloned());
             }
-            for (file, names) in module.references {
-                referenced.entry(file).or_default().extend(names.iter().cloned());
+            for (file, names) in &module.references {
+                referenced.entry(file.clone()).or_default().extend(names.iter().cloned());
             }
-            stars.extend(module.stars.into_iter().map(|source| (module.path.clone(), source)));
-            unresolved_stars.extend(module.unresolved_stars);
-            unreached.extend(module.unreached);
+            stars.extend(module.stars.iter().map(|source| (module.path.clone(), source.clone())));
+            unresolved_stars.extend(module.unresolved_stars.iter().map(String::as_str));
+            unreached.extend(
+                module
+                    .unreached
+                    .iter()
+                    .map(|(package, name, names)| (package.as_path(), name.as_str(), names.as_slice())),
+            );
         }
-        let exports: HashMap<PathBuf, Option<&[String]>> = files
+        let sources: HashMap<PathBuf, &FileFacts> = files
             .iter()
             .filter(|(path, _)| path.extension().is_none_or(|extension| extension != "pyi"))
-            .map(|(path, facts)| (normalized(path), facts.exports.as_deref()))
+            .map(|(path, facts)| (normalized(path), *facts))
             .collect();
-        reach_by_last_name(&mut referenced, &unreached, exports.keys());
-        reexport(&mut imported, &stars, &exports);
-        reexport(&mut referenced, &stars, &exports);
+        reach_by_last_name(&mut referenced, &unreached, sources.keys());
+        reexport(&mut imported, &stars, &sources);
+        reexport(&mut referenced, &stars, &sources);
         let package_star_imported = stars
             .iter()
             .filter(|(importer, source)| source.parent().is_some_and(|parent| *importer == parent.join("__init__.py")))
@@ -171,8 +206,8 @@ impl Project {
         let star_imported = stars
             .iter()
             .map(|(_, source)| source.clone())
-            .chain(unresolved_candidates(exports.keys(), &unresolved_stars))
-            .filter(|file| exports.get(file).is_some_and(Option::is_none))
+            .chain(unresolved_candidates(sources.keys(), &unresolved_stars))
+            .filter(|file| sources.get(file).is_some_and(|facts| facts.exports.is_none()))
             .collect();
         let assigned_attributes: HashSet<String> =
             files.iter().flat_map(|(_, facts)| facts.assigned_attributes.iter().cloned()).collect();
@@ -181,9 +216,9 @@ impl Project {
         let base_classes: HashSet<String> =
             files.iter().flat_map(|(_, facts)| facts.base_classes.iter().cloned()).collect();
         let writes = Writes::collect(files);
-        let environment = ResolverEnvironment::new(&db, python_version, paths);
+        let environment = ResolverEnvironment::new(&resolver.db, resolver.python_version, resolver.paths.clone());
         for (module, attribute) in entry_points.iter().filter_map(|entry_point| entry_point.split_once(':')) {
-            if let Some(file) = resolve(&db, environment, None, module.trim()) {
+            if let Some(file) = resolve(&resolver.db, environment, None, module.trim()) {
                 let name = attribute.split('.').next().unwrap_or_default().trim();
                 imported.entry(file).or_default().insert(name.to_owned());
             }
@@ -193,10 +228,10 @@ impl Project {
             files.iter().flat_map(|(_, facts)| facts.constructors.dynamic.iter().map(String::as_str)).collect();
         let calls = DataclassCalls::index(declared, &constructor_uses, &imported, &dynamic);
         let roles: HashMap<PathBuf, ModuleRole> = roles.iter().map(|(path, role)| (normalized(path), *role)).collect();
-        let user_facing = user_facing(files, &roles, &imported, &bindings, &stars);
+        let user_facing = user_facing(&sources, &roles, &imported, &bindings, &stars);
         let reads_docstrings = files.iter().any(|(_, facts)| facts.reads_docstrings);
         let digest = digest(reads_docstrings, [&assigned_attributes, &module_reads, &base_classes], &writes);
-        Ok(Self {
+        Self {
             imported,
             referenced,
             star_imported,
@@ -211,7 +246,7 @@ impl Project {
             calls,
             reads_docstrings,
             digest,
-        })
+        }
     }
 
     // The attribute, module read and base class names one index has and the other lacks, whose answers differ between
@@ -228,7 +263,7 @@ impl Project {
             .map(|(class, _)| class)
             .chain(writes.unslottable_bases.symmetric_difference(&others.unslottable_bases))
             .chain(writes.stateful_bases.symmetric_difference(&others.stateful_bases))
-            .map(|class| class.rsplit('.').next().unwrap_or(class));
+            .map(|class| unqualified(class));
         let pickling = (writes.pickles_low_protocol != others.pickles_low_protocol).then_some("dataclass");
         self.assigned_attributes
             .symmetric_difference(&other.assigned_attributes)
@@ -267,18 +302,13 @@ fn digest(
 ) -> u64 {
     let mut hasher = CacheKeyHasher::new();
     reads_docstrings.cache_key(&mut hasher);
-    assigned.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
-    0u8.cache_key(&mut hasher);
-    module_reads.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
-    base_classes.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
-    for (class, attributes) in writes.on_class.iter().sorted_by(|left, right| left.0.cmp(right.0)) {
-        class.cache_key(&mut hasher);
-        attributes.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
+    // Each set is hashed behind its length, so a name moving from one set to the next changes the digest.
+    for names in
+        [assigned, module_reads, base_classes, &writes.untyped, &writes.unslottable_bases, &writes.stateful_bases]
+    {
+        names.cache_key(&mut hasher);
     }
-    for names in [&writes.untyped, &writes.unslottable_bases, &writes.stateful_bases] {
-        0u8.cache_key(&mut hasher);
-        names.iter().sorted().for_each(|name: &String| name.cache_key(&mut hasher));
-    }
+    writes.on_class.cache_key(&mut hasher);
     writes.pickles_low_protocol.cache_key(&mut hasher);
     hasher.finish()
 }
@@ -296,8 +326,17 @@ impl Writes {
             writes.stateful_bases.extend(facts.stateful_bases.iter().cloned());
             writes.pickles_low_protocol |= facts.pickles_low_protocol;
         }
+        let mut namesakes: HashMap<String, usize> = HashMap::new();
+        for class in writes.on_class.keys().chain(&writes.unslottable_bases) {
+            *namesakes.entry(unqualified(class).to_owned()).or_default() += 1;
+        }
+        writes.namesakes = namesakes;
         writes
     }
+}
+
+fn unqualified(class: &str) -> &str {
+    class.rsplit('.').next().unwrap_or(class)
 }
 
 // The names a library's users reach. A public module offers what its `__all__` lists, or, without one, every name it
@@ -306,28 +345,26 @@ impl Writes {
 // `__all__`, a redundant alias or `import *`, makes it public where it is defined, through any chain of re-exports.
 // Names only spread, so this settles.
 fn user_facing(
-    files: &[(&Path, &FileFacts)],
+    sources: &HashMap<PathBuf, &FileFacts>,
     roles: &HashMap<PathBuf, ModuleRole>,
     imported: &HashMap<PathBuf, HashSet<String>>,
     bindings: &[(PathBuf, PathBuf, &ImportBinding)],
     stars: &[(PathBuf, PathBuf)],
 ) -> HashMap<PathBuf, HashMap<String, Option<PathBuf>>> {
-    let facts: HashMap<PathBuf, &FileFacts> = files
-        .iter()
-        .filter(|(path, _)| path.extension().is_none_or(|extension| extension != "pyi"))
-        .map(|(path, facts)| (normalized(path), *facts))
-        .collect();
     // What `import *` of a module takes: its `__all__`, or every name it defines without a leading underscore.
-    // What `from module import *` takes from a module without `__all__`.
     let starred = |name: &&str| Visibility::of(name) == Visibility::Public;
-    let star_exports = |path: &Path| -> Vec<&str> {
-        facts.get(path).map_or_else(Vec::new, |facts| match &facts.exports {
-            Some(listed) => listed.iter().map(String::as_str).collect(),
-            None => facts.defined.iter().map(String::as_str).filter(starred).collect(),
+    let star_exports: HashMap<&Path, Vec<&str>> = stars
+        .iter()
+        .map(|(_, source)| {
+            let exported = sources.get(source).map_or_else(Vec::new, |facts| match &facts.exports {
+                Some(listed) => listed.iter().map(String::as_str).collect(),
+                None => facts.defined.iter().map(String::as_str).filter(starred).collect(),
+            });
+            (source.as_path(), exported)
         })
-    };
+        .collect();
     let mut names: HashMap<PathBuf, HashMap<String, Option<PathBuf>>> = HashMap::new();
-    for (path, facts) in &facts {
+    for (path, facts) in sources {
         if !roles.get(path).is_some_and(|role| role.public) {
             continue;
         }
@@ -348,7 +385,7 @@ fn user_facing(
                     .filter(starred)
                     .for_each(&mut add);
                 for (_, source) in stars.iter().filter(|(importer, _)| importer == path) {
-                    star_exports(source).into_iter().for_each(&mut add);
+                    star_exports[source.as_path()].iter().copied().for_each(&mut add);
                 }
             }
         }
@@ -365,12 +402,11 @@ fn user_facing(
             let Some(known) = names.get(importer) else {
                 continue;
             };
-            let exported = star_exports(source);
             reached.extend(
-                exported
-                    .into_iter()
-                    .filter(|name| known.contains_key(*name))
-                    .map(|name| (source.clone(), name.to_owned(), importer.clone())),
+                star_exports[source.as_path()]
+                    .iter()
+                    .filter(|name| known.contains_key(**name))
+                    .map(|name| (source.clone(), (*name).to_owned(), importer.clone())),
             );
         }
         let mut spread = false;
@@ -392,12 +428,12 @@ fn user_facing(
 fn reexport(
     names: &mut HashMap<PathBuf, HashSet<String>>,
     stars: &[(PathBuf, PathBuf)],
-    exports: &HashMap<PathBuf, Option<&[String]>>,
+    sources: &HashMap<PathBuf, &FileFacts>,
 ) {
     loop {
         let mut spread = false;
         for (importer, source) in stars {
-            let listed = exports.get(source).copied().flatten();
+            let listed = sources.get(source).and_then(|facts| facts.exports.as_deref());
             let reached: Vec<String> = names
                 .get(importer)
                 .into_iter()
@@ -516,18 +552,13 @@ impl PartialEq for FileIndex<'_> {
 impl CacheKey for FileIndex<'_> {
     fn cache_key(&self, state: &mut CacheKeyHasher) {
         self.project.digest.cache_key(state);
-        for names in [self.imported, self.referenced] {
-            names.into_iter().flatten().sorted().for_each(|name| name.cache_key(state));
-            0u8.cache_key(state);
-        }
+        self.imported.cache_key(state);
+        self.referenced.cache_key(state);
         self.star_imported.cache_key(state);
         self.package_star_imported.cache_key(state);
         self.star_source.cache_key(state);
         self.role.cache_key(state);
-        for (name, importer) in self.user_facing.into_iter().flatten().sorted() {
-            name.cache_key(state);
-            importer.cache_key(state);
-        }
+        self.user_facing.cache_key(state);
         self.calls.cache_key(state);
     }
 }
@@ -599,13 +630,10 @@ impl<'a> FileIndex<'a> {
     // slotted base breaks: a name that resolves differently than simplint sees, as through a re-export, may still be
     // this class.
     pub fn has_namesake_hazards(&self, class: &str) -> bool {
-        let name = class.rsplit('.').next().unwrap_or(class);
         let writes = &self.project.writes;
-        writes
-            .on_class
-            .keys()
-            .chain(&writes.unslottable_bases)
-            .any(|other| other != class && other.rsplit('.').next() == Some(name))
+        let own =
+            usize::from(writes.on_class.contains_key(class)) + usize::from(writes.unslottable_bases.contains(class));
+        writes.namesakes.get(unqualified(class)).is_some_and(|count| *count > own)
     }
 
     // Whether the run sets or deletes an attribute with this name on an object of unknown class; mocks do not count.
@@ -636,37 +664,40 @@ fn normalized(path: &Path) -> PathBuf {
 
 // A dotted path that resolves to no module, by the directory of the package of the run it starts from and its last
 // name, with the names it uses.
-type Unreached<'f> = (PathBuf, &'f str, &'f [String]);
+type Unreached<'f> = (&'f Path, &'f str, &'f [String]);
 
 // The files a file's names resolve to, with the names it uses from each, and the files it star-imports, or the last
-// name of each star-imported module that resolves to no file.
-struct ModuleFacts<'f> {
+// name of each star-imported module that resolves to no file. It owns its names, as it outlives the facts of a round.
+struct ModuleFacts {
     path: PathBuf,
-    rewrites_calls: bool,
-    constructors: Vec<(PathBuf, &'f [NameUse])>,
-    imports: Vec<(PathBuf, &'f [String])>,
-    bindings: Vec<(PathBuf, &'f ImportBinding)>,
-    references: Vec<(PathBuf, &'f [String])>,
+    constructors: Vec<(PathBuf, Vec<NameUse>)>,
+    imports: Vec<(PathBuf, Vec<String>)>,
+    bindings: Vec<(PathBuf, ImportBinding)>,
+    references: Vec<(PathBuf, Vec<String>)>,
     stars: Vec<PathBuf>,
-    unresolved_stars: Vec<&'f str>,
-    unreached: Vec<Unreached<'f>>,
+    unresolved_stars: Vec<String>,
+    unreached: Vec<(PathBuf, String, Vec<String>)>,
 }
 
-impl<'f> ModuleFacts<'f> {
-    fn resolve(
-        db: &ModuleDb,
-        environment: ResolverEnvironment<'_>,
-        path: &Path,
-        facts: &'f FileFacts,
-        rewrites_calls: bool,
-    ) -> Self {
+impl ModuleFacts {
+    fn resolve<'f>(db: &ModuleDb, environment: ResolverEnvironment<'_>, path: &Path, facts: &'f FileFacts) -> Self {
         let own = normalized(path);
         let importing =
             SystemPathBuf::from_path_buf(own.clone()).ok().and_then(|path| system_path_to_file(db, path).ok());
-        let resolve_all = |modules: &'f [ModuleNames]| -> Vec<(PathBuf, &'f [String])> {
+        // A file names most modules several times: in its imports, its references and its dataclass uses.
+        let cache: RefCell<HashMap<&str, Option<PathBuf>>> = RefCell::new(HashMap::new());
+        let resolved = |module: &'f str| -> Option<PathBuf> {
+            if let Some(file) = cache.borrow().get(module) {
+                return file.clone();
+            }
+            let file = resolve(db, environment, importing, module);
+            cache.borrow_mut().insert(module, file.clone());
+            file
+        };
+        let resolve_all = |modules: &'f [ModuleNames]| -> Vec<(PathBuf, Vec<String>)> {
             modules
                 .iter()
-                .filter_map(|(module, names)| Some((resolve(db, environment, importing, module)?, names.as_slice())))
+                .filter_map(|(module, names)| Some((resolved(module)?, names.clone())))
                 .filter(|(file, _)| *file != own)
                 .collect()
         };
@@ -678,47 +709,37 @@ impl<'f> ModuleFacts<'f> {
             .chain(&facts.references)
             .filter_map(|(module, names)| {
                 let (top, rest) = module.split_once('.')?;
-                let package = resolve(db, environment, importing, top)?;
+                let package = resolved(top)?;
                 let directory = package.parent().filter(|_| package.ends_with("__init__.py"))?.to_path_buf();
                 let last = rest.rsplit('.').next()?;
-                resolve(db, environment, importing, module).is_none().then_some((directory, last, names.as_slice()))
+                resolved(module).is_none().then(|| (directory, last.to_owned(), names.clone()))
             })
             .collect();
         if !facts.declared.is_empty() {
-            imports.push((own.with_extension("py"), &facts.declared));
+            imports.push((own.with_extension("py"), facts.declared.clone()));
         }
         let mut stars = Vec::new();
         let mut unresolved_stars = Vec::new();
         for module in &facts.star_imports {
-            match resolve(db, environment, importing, module) {
+            match resolved(module) {
                 Some(file) => stars.extend((file != own).then_some(file)),
-                None => unresolved_stars.extend(module.rsplit('.').next()),
+                None => unresolved_stars.extend(module.rsplit('.').next().map(str::to_owned)),
             }
         }
         let constructors = facts
             .constructors
             .uses
             .iter()
-            .filter_map(|(module, uses)| Some((resolve(db, environment, importing, module)?, uses.as_slice())))
+            .filter_map(|(module, uses)| Some((resolved(module)?, uses.clone())))
             .filter(|(file, _)| *file != own)
             .collect();
         let bindings = facts
             .bindings
             .iter()
-            .filter_map(|binding| Some((resolve(db, environment, importing, &binding.module)?, binding)))
+            .filter_map(|binding| Some((resolved(&binding.module)?, binding.clone())))
             .filter(|(file, _)| *file != own)
             .collect();
-        Self {
-            path: own,
-            rewrites_calls,
-            constructors,
-            imports,
-            bindings,
-            references,
-            stars,
-            unresolved_stars,
-            unreached,
-        }
+        Self { path: own, constructors, imports, bindings, references, stars, unresolved_stars, unreached }
     }
 }
 

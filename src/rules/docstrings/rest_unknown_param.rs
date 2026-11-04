@@ -11,9 +11,7 @@ pub fn rest_unknown_param(checker: &Checker) {
             continue;
         };
         let names: HashSet<&str> = parameters.iter().map(|parameter| parameter.name).collect();
-        let fields =
-            target.docstring.fields.iter().filter(|field| matches!(field.kind, FieldKind::Param | FieldKind::Type));
-        for field in fields {
+        for field in target.docstring.fields(&[FieldKind::Param, FieldKind::Type]) {
             let Some(subject) = field.subject().filter(|subject| !names.contains(subject)) else {
                 continue;
             };

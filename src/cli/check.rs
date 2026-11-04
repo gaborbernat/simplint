@@ -19,19 +19,21 @@ use ruff_linter::package::PackageRoot;
 use ruff_linter::packaging::detect_package_root;
 use ruff_linter::settings::flags;
 use ruff_linter::{SuppressionKind, warn_user, warn_user_once};
+use ruff_python_ast::PythonVersion;
 use ruff_python_ast::helpers::to_module_path;
 use ruff_workspace::resolver::{PyprojectConfig, Resolver, match_exclusion, project_files_in_path};
 use rustc_hash::FxHashMap;
 
 use crate::cli::args::{CheckCommand, GlobalConfigArgs, suppression_flag};
-use crate::cli::diagnostics::{Diagnostics, Mode, lint_path, lint_stdin};
+use crate::cli::conflicts::{self, Scope};
+use crate::cli::diagnostics::{Diagnostics, Mode, lint_path, lint_stdin, write_source};
 use crate::cli::printer::{Flags, Printer};
 use crate::cli::watch::watch;
 use crate::lint::Linter;
+use crate::lint::registry::RuleSet;
 use crate::project::cache::{self, Cache, Caches, FileKey, Fingerprints};
-use crate::project::{FileFacts, IndexInputs, Project, SearchRoots};
-use crate::settings::conflicts::{self, Scope};
-use crate::settings::{FileSettings, ModuleRole, Settings, SettingsResolver, ShownSettings};
+use crate::project::{FileFacts, ImportResolver, IndexInputs, Project, SearchRoots};
+use crate::settings::{FileSettings, ModuleRole, Settings, SettingsResolver};
 
 // `ruff check`'s flow: resolve both configurations, decide the fix mode, lint every file in parallel, print, and pick
 // the exit status.
@@ -160,10 +162,64 @@ fn show_settings(files: &[PathBuf], resolved: &Resolved, writer: &mut dyn Write)
     if let Some(settings_path) = &settings.path {
         writeln!(writer, "Settings path: {:?}", settings_path.display().to_string())?;
     }
-    let settings = FileSettings::new(&settings, resolver.resolve(path), path);
+    let target_version = FileSettings::new(&settings, resolver.resolve(path), path).from_ruff.target_version;
     let cache_dir = cache::directory(&resolved.pyproject_config.settings.cache_dir);
-    write!(writer, "{}", ShownSettings { settings, cache_dir: &cache_dir })?;
+    write_settings(writer, &settings, target_version, &cache_dir)?;
     Ok(())
+}
+
+// `ruff check --show-settings`'s layout, with simplint's settings and the Python version Ruff gives the file.
+fn write_settings(
+    writer: &mut dyn Write,
+    settings: &Settings,
+    target_version: PythonVersion,
+    cache_dir: &Path,
+) -> std::io::Result<()> {
+    let rules = |set: RuleSet| set.iter().map(|rule| format!("{} ({})", rule.name(), rule.code())).collect_vec();
+    let quoted = |items: &mut dyn Iterator<Item = &String>| items.map(|item| format!("{item:?}")).collect_vec();
+    let Settings { root, metadata, run, keep_names, api, docstring_style, .. } = settings;
+    let [enabled, fixable, forced_safe, forced_unsafe] = settings.rule_sets();
+    writeln!(writer, "\n# General Settings")?;
+    writeln!(writer, "cache_dir = \"{}\"", cache_dir.display())?;
+    writeln!(writer, "fix = {}", run.fix.unwrap_or_default())?;
+    writeln!(writer, "fix_only = {}", run.fix_only.unwrap_or_default())?;
+    writeln!(writer, "output_format = {}", run.output_format.unwrap_or_default())?;
+    writeln!(writer, "show_fixes = {}", run.show_fixes.unwrap_or_default())?;
+    writeln!(writer, "unsafe_fixes = {}", run.unsafe_fixes())?;
+    writeln!(writer, "\n# Linter Settings")?;
+    writeln!(writer, "linter.project_root = \"{}\"", root.display())?;
+    writeln!(writer, "linter.target_version = {target_version}")?;
+    write_list(writer, "linter.rules.enabled", &rules(enabled))?;
+    write_list(writer, "linter.rules.should_fix", &rules(fixable))?;
+    let per_file_ignores = settings.per_file_ignores().map(|(pattern, set)| format!("{pattern:?} = {:?}", rules(set)));
+    write_list(writer, "linter.per_file_ignores", &per_file_ignores.collect_vec())?;
+    write_list(writer, "linter.safety_table.forced_safe", &rules(forced_safe))?;
+    write_list(writer, "linter.safety_table.forced_unsafe", &rules(forced_unsafe))?;
+    write_list(writer, "linter.dependencies", &quoted(&mut metadata.dependencies.iter()))?;
+    write_list(writer, "linter.entry_points", &quoted(&mut metadata.entry_points.iter()))?;
+    write_list(writer, "linter.naming.keep_names", &quoted(&mut keep_names.iter()))?;
+    writeln!(writer, "linter.project_kind = {}", api.kind)?;
+    match &api.packages {
+        Some(packages) => write_list(writer, "linter.api_packages", &quoted(&mut packages.iter()))?,
+        None => writeln!(writer, "linter.api_packages = every module outside docs and tests")?,
+    }
+    let modules = api.modules.iter().map(|module| format!("{:?}", module.join("."))).collect_vec();
+    write_list(writer, "linter.api_modules", &modules)?;
+    match docstring_style {
+        Some(style) => writeln!(writer, "linter.docstring_style = {style}"),
+        None => writeln!(writer, "linter.docstring_style = none"),
+    }
+}
+
+fn write_list(writer: &mut dyn Write, name: &str, items: &[String]) -> std::io::Result<()> {
+    if items.is_empty() {
+        return writeln!(writer, "{name} = []");
+    }
+    writeln!(writer, "{name} = [")?;
+    for item in items {
+        writeln!(writer, "\t{item},")?;
+    }
+    writeln!(writer, "]")
 }
 
 // The files simplint checks, from Ruff's resolver, so the walk, `.gitignore`, the default and configured excludes and
@@ -243,7 +299,7 @@ fn add_suppressions(
         };
         let (count, output) = linter.add_suppressions(path, &source, kind, reason);
         if count > 0
-            && let Err(error) = std::fs::write(path, output)
+            && let Err(error) = write_source(path, &source, &output)
         {
             error!("Failed to add suppression to {}: {error}", path.display());
             return 0;
@@ -260,12 +316,23 @@ struct DiscoveredFile<'a> {
     cache: Option<(&'a Cache, FileKey)>,
 }
 
+// A file the run indexes, with what indexing and linting it take, worked out once: its settings and Ruff's with the
+// configuration file they come from, its package, and the module it imports as from that package. Ruff sees no package
+// around a file of a namespace package, yet Python resolves its relative imports, so such a file is `importable` from
+// a search root instead.
+struct RunFile<'a> {
+    path: &'a Path,
+    settings: FileSettings<'a>,
+    ruff: &'a ruff_workspace::Settings,
+    ruff_config: Option<&'a Path>,
+    package: Option<PackageRoot<'a>>,
+    module_path: Option<Vec<String>>,
+    importable: Option<Vec<String>>,
+}
+
 // Ruff's per-file loop over the discovered files, with the import index of the whole run built first, and the caches
-// in `cache_dir` read before and written after. A fix in one file can change what another learns from the index, as
-// folding `mock.uuid = 7` into the mock's constructor leaves no assignment to stop a dataclass with a `uuid` field from
-// freezing. So with `rewrote` set, the files a round rewrites have their facts collected again, and each file whose
-// answers from the index change is linted again, until a round rewrites nothing; each file's passes come in order.
-// `None` when there is no Python file to check.
+// in `cache_dir` read before and written after. With `rewrote` set, the files a round rewrites are indexed and linted
+// again, as `lint_rounds` tells. `None` when there is no Python file to check.
 fn for_each_file<T: Send>(
     files: &[PathBuf],
     resolved: &Resolved,
@@ -273,9 +340,6 @@ fn for_each_file<T: Send>(
     rewrote: Option<&(dyn Fn(&T) -> bool + Sync)>,
     work: impl Fn(&DiscoveredFile) -> T + Sync,
 ) -> Result<Option<Vec<Vec<T>>>> {
-    // Two files whose fixes keep changing each other's facts would not settle; past this many rounds, the last
-    // reports stand.
-    const ROUNDS: usize = 8;
     let start = Instant::now();
     let Discovered { python, unlinted, resolver } = discover(files, resolved)?;
     debug!("Identified files to lint in: {:?}", start.elapsed());
@@ -283,95 +347,71 @@ fn for_each_file<T: Send>(
         warn_user_once!("No Python files found under the given path(s)");
         return Ok(None);
     }
-    let settings: Vec<(PathBuf, Arc<Settings>)> = python
-        .into_iter()
-        .map(|path| Ok((path.clone(), resolved.settings_resolver.for_file(&path)?)))
-        .collect::<Result<_>>()?;
-    let paths: Vec<&Path> =
-        settings.iter().map(|(path, _)| path.as_path()).chain(unlinted.iter().map(PathBuf::as_path)).collect();
-    let entry_points: Vec<String> = settings
+    let paths: Vec<&Path> = python.iter().chain(&unlinted).map(PathBuf::as_path).collect();
+    let settings: Vec<Arc<Settings>> =
+        paths.iter().map(|path| resolved.settings_resolver.for_file(path)).collect::<Result<_>>()?;
+    let packages = resolver.package_roots(&paths);
+    let roots = SearchRoots::new(&resolved.pyproject_config.settings, packages.values().flatten().copied());
+    let indexed: Vec<RunFile> = paths
         .iter()
-        .map(|(_, settings)| settings)
-        .unique_by(|settings| Arc::as_ptr(settings))
+        .zip(&settings)
+        .map(|(&path, settings)| {
+            let (ruff, ruff_config) = resolver.resolve_with_path(path);
+            let package = path.parent().and_then(|parent| packages.get(parent)).copied().flatten();
+            let module_path = package.and_then(|package| to_module_path(package.path(), path));
+            let importable = if module_path.is_none() { roots.module_path(path) } else { None };
+            let settings = FileSettings::new(settings, ruff, path);
+            RunFile { path, settings, ruff, ruff_config, package, module_path, importable }
+        })
+        .collect();
+    let linted = &indexed[..python.len()];
+    let scopes = linted
+        .iter()
+        .map(|file| Scope {
+            path: file.path,
+            settings: file.settings,
+            ruff: file.ruff,
+            ruff_config: file.ruff_config,
+            package: file.package,
+        })
+        .collect_vec();
+    conflicts::ensure_compatible(&scopes, resolved.names_rules())?;
+    let entry_points: Vec<String> = linted
+        .iter()
+        .map(|file| file.settings.project)
+        .unique_by(|settings| std::ptr::from_ref(*settings))
         .flat_map(|settings| settings.metadata.entry_points.iter().cloned())
         .sorted_unstable()
         .dedup()
         .collect();
-    let packages = resolver.package_roots(&paths);
-    let roots = SearchRoots::new(&resolved.pyproject_config.settings, packages.values().flatten().copied());
-    let package = |path: &Path| path.parent().and_then(|parent| packages.get(parent)).copied().flatten();
-    let module_path = |path: &Path| package(path).and_then(|package| to_module_path(package.path(), path));
-    // Ruff sees no package around a file of a namespace package, yet Python resolves its relative imports.
-    let module_paths = |path: &Path| match module_path(path) {
-        Some(module_path) => (Some(module_path), None),
-        None => (None, roots.module_path(path)),
-    };
-    let scopes = settings
-        .iter()
-        .map(|(path, project)| {
-            let (ruff, ruff_config) = resolver.resolve_with_path(path);
-            Scope { path, project, ruff, ruff_config, package: package(path) }
-        })
-        .collect_vec();
-    conflicts::ensure_compatible(&scopes, resolved.names_rules())?;
     let caches = cache_dir.map(|cache_dir| {
         Caches::open(cache_dir, packages.iter().map(|(parent, package)| package.map_or(*parent, PackageRoot::path)))
     });
     // As in Ruff, a file's cache is its package's, or its directory's outside a package.
     let file_caches: FxHashMap<&Path, (&Cache, FileKey)> = caches.as_ref().map_or_else(FxHashMap::default, |caches| {
-        paths
+        indexed
             .par_iter()
-            .filter_map(|&path| {
-                let root = package(path).map(PackageRoot::path).or_else(|| path.parent())?;
-                Some((path, (caches.get(root)?, FileKey::of(path)?)))
+            .filter_map(|file| {
+                let root = file.package.map(PackageRoot::path).or_else(|| file.path.parent())?;
+                Some((file.path, (caches.get(root)?, FileKey::of(file.path)?)))
             })
             .collect()
     });
-    let cache = |path: &Path| file_caches.get(path).copied();
-    // A file a fix rewrote has a new key.
-    let recache = |path: &Path| Some((file_caches.get(path)?.0, FileKey::of(path)?));
     let start = Instant::now();
-    let mut facts: FxHashMap<&Path, Cow<FileFacts>> =
-        paths.par_iter().filter_map(|&path| Some((path, file_facts(path, module_paths(path), cache(path))?))).collect();
-    let rewrites_calls: HashSet<&Path> = settings
-        .iter()
-        .filter(|(path, settings)| FileSettings::new(settings, resolver.resolve(path), path).rewrites_dataclass_calls())
-        .map(|(path, _)| path.as_path())
+    let mut facts: FxHashMap<&Path, Cow<FileFacts>> = indexed
+        .par_iter()
+        .filter_map(|file| Some((file.path, file_facts(file, file_caches.get(file.path).copied())?)))
         .collect();
-    let roles = module_roles(&paths, resolved, |path| {
-        let (module_path, _) = module_paths(path);
-        module_path.into_iter().chain(roots.module_paths(path)).collect()
-    })?;
-    let inputs =
-        IndexInputs { entry_points: &entry_points, roots: &roots, rewrites_calls: &rewrites_calls, roles: &roles };
-    let mut project = index_project(&facts, &inputs)?;
+    let rewrites_calls: HashSet<&Path> =
+        linted.iter().filter(|file| file.settings.rewrites_dataclass_calls()).map(|file| file.path).collect();
+    let roles = module_roles(&indexed, &roots);
+    let inputs = IndexInputs { entry_points: &entry_points, rewrites_calls: &rewrites_calls, roles: &roles };
+    let mut imports = ImportResolver::new(&roots)?;
+    let project = index_project(&facts, &mut imports, &inputs);
     debug!("Indexed {} files in: {:?}", facts.len(), start.elapsed());
-    let lint = |(path, settings): &(PathBuf, Arc<Settings>), project: &Project, cache| {
-        let linter = file_linter(path, settings, resolver.resolve(path), project, package(path));
-        work(&DiscoveredFile { path, linter, cache })
-    };
     let start = Instant::now();
-    let mut passes: Vec<Vec<T>> = settings.par_iter().map(|file| vec![lint(file, &project, cache(&file.0))]).collect();
-    if let Some(rewrote) = rewrote {
-        let mut rewritten: Vec<usize> = (0..passes.len()).filter(|&at| passes[at].iter().any(rewrote)).collect();
-        for _ in 1..ROUNDS {
-            if rewritten.is_empty() {
-                break;
-            }
-            let changed: Vec<&Path> = rewritten.iter().map(|&at| settings[at].0.as_path()).collect();
-            let collect = |path: &Path| file_facts(path, module_paths(path), recache(path));
-            let (next, dependents) = reindex(&mut facts, &changed, collect, &settings, &project, &inputs)?;
-            project = next;
-            let relinted: Vec<(usize, T)> = dependents
-                .into_par_iter()
-                .map(|at| (at, lint(&settings[at], &project, recache(&settings[at].0))))
-                .collect();
-            rewritten = relinted.iter().filter(|(_, pass)| rewrote(pass)).map(|(at, _)| *at).collect();
-            for (at, pass) in relinted {
-                passes[at].push(pass);
-            }
-        }
-    }
+    let index = Index { facts: &mut facts, resolver: &mut imports, inputs: &inputs };
+    let passes = lint_rounds(linted, index, project, &file_caches, rewrote, work);
     debug!("Checked {:?} files in: {:?}", passes.len(), start.elapsed());
     // The facts borrow from the caches, which writing consumes.
     drop(facts);
@@ -381,93 +421,149 @@ fn for_each_file<T: Send>(
     Ok(Some(passes))
 }
 
+// What a fix round indexes the run from: each file's facts, where their module names lead, and what else the index
+// reads.
+struct Index<'i, 'f> {
+    facts: &'i mut FxHashMap<&'f Path, Cow<'f, FileFacts>>,
+    resolver: &'i mut ImportResolver,
+    inputs: &'i IndexInputs<'i>,
+}
+
+// Each file's passes, in order. A fix in one file can change what another learns from the index, as folding
+// `mock.uuid = 7` into the mock's constructor leaves no assignment to stop a dataclass with a `uuid` field from
+// freezing. So with `rewrote` set, the files a round rewrites have their facts collected again, and each file whose
+// answers from the index change is linted again, until a round rewrites nothing.
+fn lint_rounds<'f, T: Send>(
+    files: &'f [RunFile<'f>],
+    mut index: Index<'_, 'f>,
+    mut project: Project,
+    file_caches: &FxHashMap<&Path, (&'f Cache, FileKey)>,
+    rewrote: Option<&(dyn Fn(&T) -> bool + Sync)>,
+    work: impl Fn(&DiscoveredFile) -> T + Sync,
+) -> Vec<Vec<T>> {
+    // Two files whose fixes keep changing each other's facts would not settle; past this many rounds, the last
+    // reports stand.
+    const ROUNDS: usize = 8;
+    // A file a fix rewrote has a new key.
+    let recache = |path: &Path| Some((file_caches.get(path)?.0, FileKey::of(path)?));
+    let lint = |file: &RunFile, project: &Project, cache| {
+        work(&DiscoveredFile { path: file.path, linter: file_linter(file, project), cache })
+    };
+    let mut passes: Vec<Vec<T>> =
+        files.par_iter().map(|file| vec![lint(file, &project, file_caches.get(file.path).copied())]).collect();
+    let Some(rewrote) = rewrote else {
+        return passes;
+    };
+    let mut rewritten: Vec<usize> = (0..passes.len()).filter(|&at| passes[at].iter().any(rewrote)).collect();
+    // Each file's words, read when a round first needs them and again once a round rewrites the file.
+    let mut words: Vec<Option<HashSet<String>>> = vec![None; files.len()];
+    for _ in 1..ROUNDS {
+        if rewritten.is_empty() {
+            break;
+        }
+        for &at in &rewritten {
+            words[at] = None;
+        }
+        let changed: Vec<&RunFile> = rewritten.iter().map(|&at| &files[at]).collect();
+        let collect = |file: &RunFile| file_facts(file, recache(file.path));
+        let (next, dependents) = reindex(&mut index, &changed, collect, files, &mut words, &project);
+        project = next;
+        let relinted: Vec<(usize, T)> =
+            dependents.into_par_iter().map(|at| (at, lint(&files[at], &project, recache(files[at].path)))).collect();
+        rewritten = relinted.iter().filter(|(_, pass)| rewrote(pass)).map(|(at, _)| *at).collect();
+        for (at, pass) in relinted {
+            passes[at].push(pass);
+        }
+    }
+    passes
+}
+
 // Where each file sits in its library's public API, by the first of the names the file imports as, from its package or
 // from a search root, that an API package holds. Unlinted files count too: an `__init__.py` Ruff's `lint.exclude` leaves
 // out still re-exports public names.
-fn module_roles<'p>(
-    paths: &[&'p Path],
-    resolved: &Resolved,
-    module_paths: impl Fn(&Path) -> Vec<Vec<String>>,
-) -> Result<HashMap<&'p Path, ModuleRole>> {
-    paths
+fn module_roles<'p>(files: &[RunFile<'p>], roots: &SearchRoots) -> HashMap<&'p Path, ModuleRole> {
+    files
         .iter()
-        .map(|&path| {
-            let settings = resolved.settings_resolver.for_file(path)?;
+        .map(|file| {
+            let settings = file.settings.project;
+            let module_paths = file.module_path.iter().cloned().chain(roots.module_paths(file.path)).collect_vec();
             let roles: Vec<ModuleRole> =
-                module_paths(path).iter().map(|module_path| settings.role(path, Some(module_path))).collect();
+                module_paths.iter().map(|module_path| settings.role(file.path, Some(module_path))).collect();
             let role = roles.iter().copied().find(|role| role.public).or_else(|| roles.first().copied());
-            Ok((path, role.unwrap_or_else(|| settings.role(path, None))))
+            (file.path, role.unwrap_or_else(|| settings.role(file.path, None)))
         })
         .collect()
 }
 
 // A file's import facts: those its cache holds while the file is unchanged, and otherwise freshly collected and stored
 // there.
-fn file_facts<'c>(
-    path: &Path,
-    (module_path, importable): (Option<Vec<String>>, Option<Vec<String>>),
-    cache: Option<(&'c Cache, FileKey)>,
-) -> Option<Cow<'c, FileFacts>> {
-    if let Some(facts) = cache.and_then(|(cache, key)| cache.facts(path, key)) {
+fn file_facts<'c>(file: &RunFile, cache: Option<(&'c Cache, FileKey)>) -> Option<Cow<'c, FileFacts>> {
+    if let Some(facts) = cache.and_then(|(cache, key)| cache.facts(file.path, key)) {
         return Some(Cow::Borrowed(facts));
     }
-    let facts = FileFacts::collect(path, module_path.as_deref(), importable.as_deref())?;
+    let facts = FileFacts::collect(file.path, file.module_path.as_deref(), file.importable.as_deref())?;
     if let Some((cache, key)) = cache {
-        cache.set_facts(path, key, facts.clone());
+        cache.set_facts(file.path, key, facts.clone());
     }
     Some(Cow::Owned(facts))
 }
 
-// The index once the `rewritten` files have their facts collected again, and the positions of the files whose answers
-// from it differ from those of `project`.
+// The index once the `rewritten` files have their facts collected and their module names resolved again, and the
+// positions of the files whose answers from it differ from those of `project`. Each file's `words` are read the first
+// time a changed name needs them.
 fn reindex<'f>(
-    facts: &mut FxHashMap<&'f Path, Cow<'f, FileFacts>>,
-    rewritten: &[&'f Path],
-    collect: impl Fn(&Path) -> Option<Cow<'f, FileFacts>> + Sync,
-    files: &[(PathBuf, Arc<Settings>)],
+    index: &mut Index<'_, 'f>,
+    rewritten: &[&RunFile<'f>],
+    collect: impl Fn(&RunFile) -> Option<Cow<'f, FileFacts>> + Sync,
+    files: &[RunFile],
+    words: &mut [Option<HashSet<String>>],
     project: &Project,
-    inputs: &IndexInputs,
-) -> Result<(Project, Vec<usize>)> {
+) -> (Project, Vec<usize>) {
     // A fix never leaves a file that does not parse, so a rewritten file keeps having facts.
     let fresh: Vec<(&Path, FileFacts)> =
-        rewritten.par_iter().filter_map(|&path| Some((path, collect(path)?.into_owned()))).collect();
-    facts.extend(fresh.into_iter().map(|(path, file)| (path, Cow::Owned(file))));
-    let next = index_project(facts, inputs)?;
+        rewritten.par_iter().filter_map(|&file| Some((file.path, collect(file)?.into_owned()))).collect();
+    for file in rewritten {
+        index.resolver.forget(file.path);
+    }
+    index.facts.extend(fresh.into_iter().map(|(path, file)| (path, Cow::Owned(file))));
+    let next = index_project(index.facts, index.resolver, index.inputs);
     let changed = next.changed_names(project);
+    if !changed.is_empty() {
+        words.par_iter_mut().zip(files).filter(|(known, _)| known.is_none()).for_each(|(known, file)| {
+            *known = Some(words_of(file.path));
+        });
+    }
     let dependents = (0..files.len())
         .into_par_iter()
         .filter(|&at| {
-            let path = files[at].0.as_path();
-            next.file(path) != project.file(path) || mentions(path, &changed)
+            let path = files[at].path;
+            let mentions = || words[at].as_ref().is_some_and(|held| changed.iter().any(|name| held.contains(*name)));
+            next.file(path) != project.file(path) || mentions()
         })
         .collect();
-    Ok((next, dependents))
+    (next, dependents)
 }
 
-fn index_project(facts: &FxHashMap<&Path, Cow<FileFacts>>, inputs: &IndexInputs) -> Result<Project> {
+fn index_project(
+    facts: &FxHashMap<&Path, Cow<FileFacts>>,
+    resolver: &mut ImportResolver,
+    inputs: &IndexInputs,
+) -> Project {
     let indexed: Vec<(&Path, &FileFacts)> = facts.iter().map(|(path, facts)| (*path, facts.as_ref())).collect();
-    Project::index(&indexed, inputs)
+    Project::index(&indexed, resolver, inputs)
 }
 
-// Whether a file names any of the attribute or base class names whose answers changed; the rules ask about names the
-// file itself holds, such as its dataclass fields, so a file without one gets the same answers.
-fn mentions(path: &Path, names: &HashSet<&str>) -> bool {
-    !names.is_empty()
-        && std::fs::read_to_string(path).is_ok_and(|source| {
-            source.split(|char: char| !(char.is_alphanumeric() || char == '_')).any(|word| names.contains(word))
-        })
+// The names a file holds, to tell whether it names any of the attribute or base class names whose answers changed; the
+// rules ask about names the file itself holds, such as its dataclass fields, so a file without one gets the same
+// answers.
+fn words_of(path: &Path) -> HashSet<String> {
+    let source = std::fs::read_to_string(path).unwrap_or_default();
+    source.split(|char: char| !(char.is_alphanumeric() || char == '_')).map(str::to_owned).collect()
 }
 
 // A file's linter, from simplint's settings and Ruff's for it and the package it sits in.
-fn file_linter<'a>(
-    path: &Path,
-    settings: &'a Settings,
-    ruff: &'a ruff_workspace::Settings,
-    project: &'a Project,
-    package: Option<PackageRoot<'a>>,
-) -> Linter<'a> {
-    let module_path = package.and_then(|package| to_module_path(package.path(), path));
-    Linter::new(ruff, FileSettings::new(settings, ruff, path), project.file(path), package, module_path)
+fn file_linter<'a>(file: &RunFile<'a>, project: &'a Project) -> Linter<'a> {
+    Linter::new(file.ruff, file.settings, project.file(file.path), file.package, file.module_path.clone())
 }
 
 // Ruff's `check_stdin`: the source comes from standard input, and nothing else is indexed. Otherwise it is linted as
@@ -483,9 +579,10 @@ fn check_stdin(cli: &CheckCommand, resolved: &Resolved, mode: &Mode) -> Result<D
         .parent()
         .and_then(|parent| detect_package_root(parent, &ruff.linter.namespace_packages))
         .map(PackageRoot::root);
+    let file_settings = FileSettings::new(&settings, ruff, &absolute);
     let scope = Scope {
         path: &absolute,
-        project: &settings,
+        settings: file_settings,
         ruff,
         ruff_config: resolved.pyproject_config.path.as_deref(),
         package,
@@ -496,14 +593,11 @@ fn check_stdin(cli: &CheckCommand, resolved: &Resolved, mode: &Mode) -> Result<D
         package.and_then(|package| to_module_path(package.path(), &absolute)).or_else(|| roots.module_path(&absolute));
     let roles = HashMap::from([(absolute.as_path(), settings.role(&absolute, module_path.as_deref()))]);
     let rewrites_calls = HashSet::new();
-    let inputs = IndexInputs {
-        entry_points: &settings.metadata.entry_points,
-        roots: &roots,
-        rewrites_calls: &rewrites_calls,
-        roles: &roles,
-    };
-    let project = Project::index(&[], &inputs)?;
-    let linter = file_linter(&absolute, &settings, ruff, &project, package);
+    let inputs =
+        IndexInputs { entry_points: &settings.metadata.entry_points, rewrites_calls: &rewrites_calls, roles: &roles };
+    let project = Project::index(&[], &mut ImportResolver::new(&roots)?, &inputs);
+    let package_module = package.and_then(|package| to_module_path(package.path(), &absolute));
+    let linter = Linter::new(ruff, file_settings, project.file(&absolute), package, package_module);
     lint_stdin(&path, &source, &linter, mode)
 }
 

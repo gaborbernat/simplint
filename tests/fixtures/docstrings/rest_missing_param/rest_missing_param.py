@@ -45,6 +45,12 @@ class Copier:
     def check(path: str) -> None:
         """Check a path."""
 
+    def spread(*args: str, flag: bool) -> None:
+        """Spread the values.
+
+        :param flag: Whether to spread.
+        """
+
 
 class Bare:
     """Copy files."""

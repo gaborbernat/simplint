@@ -1,3 +1,5 @@
+use std::cell::OnceCell;
+
 use ruff_diagnostics::{Edit, Fix, IsolationLevel};
 use ruff_python_ast::helpers::{is_docstring_stmt, is_dunder};
 use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
@@ -7,14 +9,16 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::{has_version_gate, is_class_like, last_segment, single_assignment};
+use crate::rules::{has_version_gate, is_class_like, isort_key, single_assignment};
 use crate::semantic::{Semantic, future_import};
+use crate::syntax::last_segment;
 
 pub fn missing_final(checker: &Checker) {
     // `typing.Final` arrived in Python 3.8.
     if checker.settings.from_ruff.target_version < PythonVersion::PY38 || has_version_gate(checker.body()) {
         return;
     }
+    let spelling = OnceCell::new();
     for stmt in checker.body() {
         let Some((target, annotation, value)) = single_assignment(stmt) else {
             continue;
@@ -31,7 +35,8 @@ pub fn missing_final(checker: &Checker) {
         {
             continue;
         }
-        let fix = final_fix(checker, target.range, annotation, value);
+        let (qualifier, import) = spelling.get_or_init(|| final_qualifier(checker));
+        let fix = final_fix(checker, qualifier, import.as_ref(), target.range, annotation, value);
         checker.report_fix(
             Rule::MissingFinal,
             target.range,
@@ -109,8 +114,14 @@ fn is_type_alias(value: &Expr) -> bool {
     }
 }
 
-fn final_fix(checker: &Checker, target: TextRange, annotation: Option<&Expr>, value: &Expr) -> Option<Fix> {
-    let (qualifier, import) = final_qualifier(checker);
+fn final_fix(
+    checker: &Checker,
+    qualifier: &str,
+    import: Option<&Edit>,
+    target: TextRange,
+    annotation: Option<&Expr>,
+    value: &Expr,
+) -> Option<Fix> {
     let edit = if let Some(annotation) = annotation {
         Edit::range_replacement(format!("{qualifier}[{}]", checker.text(annotation.range())), annotation.range())
     } else {
@@ -126,7 +137,7 @@ fn final_fix(checker: &Checker, target: TextRange, annotation: Option<&Expr>, va
     };
     Some(match import {
         // One import-adding fix per pass, so the next pass sees the import instead of adding it twice.
-        Some(import) => Fix::unsafe_edits(edit, [import]).isolate(IsolationLevel::Group(1)),
+        Some(import) => Fix::unsafe_edits(edit, [import.clone()]).isolate(IsolationLevel::Group(1)),
         None => Fix::unsafe_edit(edit),
     })
 }
@@ -170,17 +181,6 @@ fn final_qualifier(checker: &Checker) -> (String, Option<Edit>) {
         None => typing_import(checker),
     };
     ("Final".to_owned(), Some(edit))
-}
-
-fn isort_key(name: &str) -> (u8, String) {
-    let rank = if name.len() > 1 && !name.chars().any(char::is_lowercase) {
-        0
-    } else if name.starts_with(char::is_uppercase) {
-        1
-    } else {
-        2
-    };
-    (rank, name.to_ascii_lowercase())
 }
 
 // The import goes where Ruff's isort keeps it: in the standard library section of the leading import block, after the

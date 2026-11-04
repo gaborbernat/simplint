@@ -1,6 +1,7 @@
 pub(crate) mod checker;
 pub(crate) mod noqa;
 pub(crate) mod registry;
+pub(crate) mod ruff;
 pub(crate) mod walker;
 
 use std::path::Path;
@@ -10,18 +11,15 @@ use ruff_db::diagnostic::{Diagnostic, Span};
 use ruff_linter::SuppressionKind;
 use ruff_linter::package::PackageRoot;
 use ruff_linter::settings::flags;
-use ruff_linter::settings::types::UnsafeFixes;
 use ruff_python_ast::PySourceType;
 use ruff_python_codegen::Stylist;
 use ruff_python_index::Indexer;
 use ruff_python_parser::parse_unchecked_source;
 use ruff_source_file::SourceFileBuilder;
 
-use crate::fix::ruff::RuffFile;
-use crate::fix::{Fixer, FixerResult};
 use crate::lint::checker::Checker;
 use crate::lint::noqa::Suppressions;
-use crate::lint::registry::RuleSet;
+use crate::lint::ruff::RuffFile;
 use crate::project::FileIndex;
 use crate::settings::FileSettings;
 
@@ -94,19 +92,5 @@ impl<'a> Linter<'a> {
         let stylist = Stylist::from_tokens(parsed.tokens(), source);
         let diagnostics = Checker::new(path, &file, &parsed, &indexer, &stylist, self).run();
         Ok(then(diagnostics, &Suppressions::new(path, source, &parsed, &indexer, &stylist)))
-    }
-
-    // Fixes run after `ruff check --fix --unsafe-fixes`, so their result must not give it new work: a Ruff finding the
-    // original file did not have gets Ruff's own fix when Ruff has one, and otherwise the fixes of the simplint rule that
-    // caused it are withdrawn, keeping that rule's reports. `ruff format`, which runs last, keeps the syntax tree, so it
-    // cannot undo this.
-    pub fn fix(
-        &self,
-        path: &Path,
-        source: &str,
-        unsafe_fixes: UnsafeFixes,
-        noqa: flags::Noqa,
-    ) -> Result<(FixerResult, RuleSet)> {
-        Fixer::new(self, path, unsafe_fixes, noqa).fix(source)
     }
 }

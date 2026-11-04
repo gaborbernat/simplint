@@ -1,15 +1,14 @@
 use ruff_python_ast::helpers::is_dunder;
-use ruff_python_ast::{self as ast, Expr, Stmt};
+use ruff_python_ast::{self as ast, Expr};
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::Visibility;
-use crate::rules::exports::Exports;
-use crate::rules::is_class_like;
 use crate::rules::naming::{is_ply_name, rename_fix, uses_ply};
+use crate::rules::{is_class_like, single_assignment};
 use crate::semantic::BindingKind;
+use crate::syntax::{Exports, Visibility};
 
 pub fn module_variable_case(checker: &Checker) {
     const MAGIC: &[&str] = &["pytestmark", "pytest_plugins", "collect_ignore", "collect_ignore_glob", "TYPE_CHECKING"];
@@ -102,20 +101,13 @@ fn framework_names<'a>(checker: &Checker<'a>) -> FxHashSet<&'a str> {
     // WSGI and ASGI servers, and the `typer` command, load the application by its module path and the name `app` or
     // `application`.
     for stmt in checker.body() {
-        let (target, value) = match stmt {
-            Stmt::Assign(ast::StmtAssign { targets, value, .. }) => (targets.as_slice(), Some(value)),
-            Stmt::AnnAssign(ast::StmtAnnAssign { target, value, .. }) => {
-                (std::slice::from_ref(target.as_ref()), value.as_ref())
-            }
-            _ => continue,
-        };
-        if let ([Expr::Name(ast::ExprName { id, .. })], Some(value)) = (target, value)
-            && matches!(id.as_str(), "app" | "application")
-            && let Expr::Call(ast::ExprCall { func, .. }) = value.as_ref()
+        if let Some((target, _, value)) = single_assignment(stmt)
+            && matches!(target.id.as_str(), "app" | "application")
+            && let Expr::Call(ast::ExprCall { func, .. }) = value
             && (APPLICATIONS.iter().any(|application| semantic.resolves_to(func, application))
                 || matches!(func.as_ref(), Expr::Attribute(ast::ExprAttribute { attr, .. }) if attr == "make_wsgi_app"))
         {
-            names.insert(id.as_str());
+            names.insert(target.id.as_str());
         }
     }
     names

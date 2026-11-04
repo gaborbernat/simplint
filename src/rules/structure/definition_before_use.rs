@@ -14,9 +14,12 @@ use crate::semantic::{BindingKind, Evaluation, Reference};
 
 pub fn definition_before_use(checker: &Checker) {
     let body = checker.body();
-    reorder(checker, &Suite { body, separator: "\n\n" }, &module_uses(checker, body));
+    let runtime_names: HashMap<TextRange, HashSet<&str>> =
+        checker.class_defs().iter().map(|class| (class.range, class_runtime_names(class))).collect();
+    reorder(checker, &Suite { body, separator: "\n\n" }, &module_uses(checker, body, &runtime_names));
     for class in checker.class_defs() {
-        reorder(checker, &Suite { body: &class.body, separator: "\n" }, &class_uses(checker, class));
+        let uses = class_uses(checker, class, &runtime_names[&class.range]);
+        reorder(checker, &Suite { body: &class.body, separator: "\n" }, &uses);
     }
 }
 
@@ -31,11 +34,11 @@ struct Uses {
     runtime: HashSet<usize>,
 }
 
-fn module_uses(checker: &Checker, body: &[Stmt]) -> Uses {
+fn module_uses(checker: &Checker, body: &[Stmt], runtime_names: &HashMap<TextRange, HashSet<&str>>) -> Uses {
     let semantic = checker.semantic();
     let lazy = semantic.annotations_are_lazy();
     let eager = eager_annotations(checker);
-    let import_time = import_time_functions(body);
+    let import_time = import_time_functions(body, runtime_names);
     // Decorators such as FastAPI routes, pydantic's `validate_call` or `dataclass` read the annotations they decorate
     // while the module loads, even when Python defers them. Without lazy annotations, a `def` evaluates its own
     // signature's annotations when it runs. A name a function only annotates with is not a helper it calls.
@@ -107,32 +110,27 @@ fn eager_annotations(checker: &Checker) -> Vec<TextRange> {
 // The functions and lambdas that may run while the module loads, so what they read must already exist: a lambda in
 // module-level code, as `(lambda: x)()` or a callback handed to a call, and a function a class body calls, as in
 // `tokens = [state(1)]`. A lambda bound straight to a name is a definition like any `def`.
-fn import_time_functions(body: &[Stmt]) -> HashSet<TextRange> {
-    let mut finder = ImportTimeFunctions::default();
+fn import_time_functions(body: &[Stmt], runtime_names: &HashMap<TextRange, HashSet<&str>>) -> HashSet<TextRange> {
+    let mut finder = ImportTimeFunctions { runtime_names, ranges: HashSet::new() };
     finder.visit_body(body);
     finder.ranges
 }
 
-#[derive(Default)]
-struct ImportTimeFunctions {
+struct ImportTimeFunctions<'r> {
+    runtime_names: &'r HashMap<TextRange, HashSet<&'r str>>,
     ranges: HashSet<TextRange>,
 }
 
-impl<'a> Visitor<'a> for ImportTimeFunctions {
+impl<'a> Visitor<'a> for ImportTimeFunctions<'_> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
             Stmt::FunctionDef(function) => {
-                for decorator in &function.decorator_list {
-                    self.visit_expr(&decorator.expression);
-                }
-                for default in
-                    function.parameters.iter_non_variadic_params().filter_map(|parameter| parameter.default.as_deref())
-                {
-                    self.visit_expr(default);
+                for expr in definition_time_exprs(function) {
+                    self.visit_expr(expr);
                 }
             }
             Stmt::ClassDef(class) => {
-                let called = class_runtime_names(class);
+                let called = &self.runtime_names[&class.range];
                 self.ranges.extend(
                     class
                         .body
@@ -164,19 +162,20 @@ fn class_runtime_names(class: &ast::StmtClassDef) -> HashSet<&str> {
     for stmt in &class.body {
         match stmt {
             Stmt::FunctionDef(function) => {
-                for decorator in &function.decorator_list {
-                    runtime_names.visit_expr(&decorator.expression);
-                }
-                for default in
-                    function.parameters.iter_non_variadic_params().filter_map(|parameter| parameter.default.as_deref())
-                {
-                    runtime_names.visit_expr(default);
+                for expr in definition_time_exprs(function) {
+                    runtime_names.visit_expr(expr);
                 }
             }
             other => runtime_names.visit_stmt(other),
         }
     }
     runtime_names.found.into_iter().collect()
+}
+
+// The parts of a `def` that run when it is defined rather than called: its decorators and default values.
+fn definition_time_exprs(function: &ast::StmtFunctionDef) -> impl Iterator<Item = &Expr> {
+    let defaults = function.parameters.iter_non_variadic_params().filter_map(|parameter| parameter.default.as_deref());
+    function.decorator_list.iter().map(|decorator| &decorator.expression).chain(defaults)
 }
 
 fn definition_name(stmt: &Stmt) -> Option<&ast::Identifier> {
@@ -188,13 +187,12 @@ fn definition_name(stmt: &Stmt) -> Option<&ast::Identifier> {
     }
 }
 
-fn class_uses(checker: &Checker, class: &ast::StmtClassDef) -> Uses {
+fn class_uses(checker: &Checker, class: &ast::StmtClassDef, runtime_names: &HashSet<&str>) -> Uses {
     let mut uses = Uses::default();
     let mut counts: HashMap<&str, usize> = HashMap::new();
     for name in class.body.iter().filter_map(definition_name) {
         *counts.entry(name.as_str()).or_default() += 1;
     }
-    let runtime_names = class_runtime_names(class);
     for (index, stmt) in class.body.iter().enumerate() {
         let Some(name) = definition_name(stmt).map(ast::Identifier::as_str) else {
             continue;
@@ -236,10 +234,7 @@ fn reorder(checker: &Checker, suite: &Suite, uses: &Uses) {
         }
         let name = identifier.as_str();
         let owner_name = definition_name(&suite.body[owner]).map_or_else(
-            || {
-                let line = checker.source[..suite.body[owner].start().to_usize()].matches('\n').count() + 1;
-                format!("the statement on line {line}")
-            },
+            || format!("the statement on line {}", checker.line_number(suite.body[owner].start())),
             |owner| format!("`{}`", owner.as_str()),
         );
         let (message, title) = if index < owner {

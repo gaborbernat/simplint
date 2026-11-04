@@ -82,3 +82,14 @@ class Builder:
 
     def collect(self) -> None:
         self.collect.cache_clear()
+
+
+class Probed:
+    """Probe for a backend."""
+
+    try:
+        backend = __import__("fast")
+        """The accelerated backend."""
+    except ImportError:
+        backend = None
+        fallback = True

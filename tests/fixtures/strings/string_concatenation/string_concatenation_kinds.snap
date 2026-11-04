@@ -2,157 +2,160 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-84:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 85:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 86:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 87:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 88:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-89:9 SMP112 Build text with an f-string instead of `+`
+89:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 90:9 SMP112 Build text with an f-string instead of `+`
-91:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+91:9 SMP112 Build text with an f-string instead of `+`
 92:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-93:9 SMP112 Build text with an f-string instead of `+`
+93:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 94:9 SMP112 Build text with an f-string instead of `+`
-95:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-96:9 SMP112 Build text with an f-string instead of `+`
+95:9 SMP112 Build text with an f-string instead of `+`
+96:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 97:9 SMP112 Build text with an f-string instead of `+`
-98:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+98:9 SMP112 Build text with an f-string instead of `+`
 99:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 100:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-110:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+101:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 111:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 112:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-113:9 SMP112 Build text with an f-string instead of `+`
+113:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 114:9 SMP112 Build text with an f-string instead of `+`
 115:9 SMP112 Build text with an f-string instead of `+`
-116:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+116:9 SMP112 Build text with an f-string instead of `+`
 117:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-118:9 SMP112 Build text with an f-string instead of `+`
-119:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-120:9 SMP112 Build text with an f-string instead of `+`
+118:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+119:9 SMP112 Build text with an f-string instead of `+`
+120:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 121:9 SMP112 Build text with an f-string instead of `+`
-122:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+122:9 SMP112 Build text with an f-string instead of `+`
 123:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 124:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-125:9 SMP112 Build text with an f-string instead of `+`
+125:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 126:9 SMP112 Build text with an f-string instead of `+`
 127:9 SMP112 Build text with an f-string instead of `+`
 128:9 SMP112 Build text with an f-string instead of `+`
 129:9 SMP112 Build text with an f-string instead of `+`
-130:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-131:9 SMP112 Build text with an f-string instead of `+`
+130:9 SMP112 Build text with an f-string instead of `+`
+131:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 132:9 SMP112 Build text with an f-string instead of `+`
 133:9 SMP112 Build text with an f-string instead of `+`
-134:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+134:9 SMP112 Build text with an f-string instead of `+`
 135:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-136:9 SMP112 Build text with an f-string instead of `+`
+136:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 137:9 SMP112 Build text with an f-string instead of `+`
 138:9 SMP112 Build text with an f-string instead of `+`
 139:9 SMP112 Build text with an f-string instead of `+`
 140:9 SMP112 Build text with an f-string instead of `+`
 141:9 SMP112 Build text with an f-string instead of `+`
-142:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+142:9 SMP112 Build text with an f-string instead of `+`
 143:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-144:9 SMP112 Build text with an f-string instead of `+`
-156:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+144:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+145:9 SMP112 Build text with an f-string instead of `+`
 157:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 158:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 159:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-160:9 SMP112 Build text with an f-string instead of `+`
-161:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-162:9 SMP112 Build text with an f-string instead of `+`
+160:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+161:9 SMP112 Build text with an f-string instead of `+`
+162:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 163:9 SMP112 Build text with an f-string instead of `+`
-164:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+164:9 SMP112 Build text with an f-string instead of `+`
 165:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-166:9 SMP112 Build text with an f-string instead of `+`
-167:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-168:9 SMP112 Build text with an f-string instead of `+`
-169:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-170:9 SMP112 Build text with an f-string instead of `+`
-171:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-172:9 SMP112 Build text with an f-string instead of `+`
+166:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+167:9 SMP112 Build text with an f-string instead of `+`
+168:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+169:9 SMP112 Build text with an f-string instead of `+`
+170:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+171:9 SMP112 Build text with an f-string instead of `+`
+172:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 173:9 SMP112 Build text with an f-string instead of `+`
-174:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-175:9 SMP112 Build text with an f-string instead of `+`
-176:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+174:9 SMP112 Build text with an f-string instead of `+`
+175:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+176:9 SMP112 Build text with an f-string instead of `+`
 177:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 178:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 179:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-180:9 SMP112 Build text with an f-string instead of `+`
+180:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 181:9 SMP112 Build text with an f-string instead of `+`
 182:9 SMP112 Build text with an f-string instead of `+`
 183:9 SMP112 Build text with an f-string instead of `+`
 184:9 SMP112 Build text with an f-string instead of `+`
-191:12 SMP112 Build text with an f-string instead of `+`
-196:12 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-199:12 SMP112 Build text with an f-string instead of `+`
-206:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+185:9 SMP112 Build text with an f-string instead of `+`
+192:12 SMP112 Build text with an f-string instead of `+`
+197:12 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+200:12 SMP112 Build text with an f-string instead of `+`
 207:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-208:9 SMP112 Build text with an f-string instead of `+`
+208:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 209:9 SMP112 Build text with an f-string instead of `+`
-210:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-211:9 SMP112 Build text with an f-string instead of `+`
+210:9 SMP112 Build text with an f-string instead of `+`
+211:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 212:9 SMP112 Build text with an f-string instead of `+`
-213:10 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-215:10 SMP112 Build text with an f-string instead of `+`
-226:18 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-232:25 SMP112 Build text with an f-string instead of `+`
-244:13 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+213:9 SMP112 Build text with an f-string instead of `+`
+214:10 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+216:10 SMP112 Build text with an f-string instead of `+`
+227:18 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+233:25 SMP112 Build text with an f-string instead of `+`
 245:13 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 246:13 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 247:13 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 248:13 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-249:13 SMP112 Build text with an f-string instead of `+`
-250:13 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+249:13 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+250:13 SMP112 Build text with an f-string instead of `+`
 251:13 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-252:13 SMP112 Build text with an f-string instead of `+`
+252:13 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 253:13 SMP112 Build text with an f-string instead of `+`
 254:13 SMP112 Build text with an f-string instead of `+`
 255:13 SMP112 Build text with an f-string instead of `+`
-260:16 SMP112 Build text with an f-string instead of `+`
-263:16 SMP112 Build text with an f-string instead of `+`
-267:16 SMP112 Build text with an f-string instead of `+`
-274:16 SMP112 Build text with an f-string instead of `+`
-278:16 SMP112 Build text with an f-string instead of `+`
-282:16 SMP112 Build text with an f-string instead of `+`
-287:12 SMP112 Build text with an f-string instead of `+`
-294:16 SMP112 Build text with an f-string instead of `+`
-312:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-313:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-314:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-315:9 SMP112 Build text with an f-string instead of `+`
-316:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-317:9 SMP112 Build text with an f-string instead of `+`
-354:9 SMP112 Build text with an f-string instead of `+`
-355:9 SMP112 Build text with an f-string instead of `+`
-356:9 SMP112 Build text with an f-string instead of `+`
-357:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-358:9 SMP112 Build text with an f-string instead of `+`
+256:13 SMP112 Build text with an f-string instead of `+`
+261:16 SMP112 Build text with an f-string instead of `+`
+265:16 SMP112 Build text with an f-string instead of `+`
+268:16 SMP112 Build text with an f-string instead of `+`
+272:16 SMP112 Build text with an f-string instead of `+`
+279:16 SMP112 Build text with an f-string instead of `+`
+283:16 SMP112 Build text with an f-string instead of `+`
+287:16 SMP112 Build text with an f-string instead of `+`
+292:12 SMP112 Build text with an f-string instead of `+`
+299:16 SMP112 Build text with an f-string instead of `+`
+317:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+318:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+319:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+320:9 SMP112 Build text with an f-string instead of `+`
+321:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+322:9 SMP112 Build text with an f-string instead of `+`
 359:9 SMP112 Build text with an f-string instead of `+`
 360:9 SMP112 Build text with an f-string instead of `+`
 361:9 SMP112 Build text with an f-string instead of `+`
 362:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-363:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+363:9 SMP112 Build text with an f-string instead of `+`
 364:9 SMP112 Build text with an f-string instead of `+`
-365:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-366:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+365:9 SMP112 Build text with an f-string instead of `+`
+366:9 SMP112 Build text with an f-string instead of `+`
 367:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 368:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 369:9 SMP112 Build text with an f-string instead of `+`
-370:9 SMP112 Build text with an f-string instead of `+`
-371:9 SMP112 Build text with an f-string instead of `+`
-372:9 SMP112 Build text with an f-string instead of `+`
+370:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+371:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+372:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 373:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 374:9 SMP112 Build text with an f-string instead of `+`
-375:10 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-376:16 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-377:10 SMP112 Build text with an f-string instead of `+`
-378:10 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+375:9 SMP112 Build text with an f-string instead of `+`
+376:9 SMP112 Build text with an f-string instead of `+`
+377:9 SMP112 Build text with an f-string instead of `+`
+378:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 379:9 SMP112 Build text with an f-string instead of `+`
-380:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
-381:9 SMP112 Build text with an f-string instead of `+`
-382:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
---- fixed (70 applied, 80 remaining) ---
+380:10 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+381:16 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+382:10 SMP112 Build text with an f-string instead of `+`
+383:10 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+384:9 SMP112 Build text with an f-string instead of `+`
+385:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+386:9 SMP112 Build text with an f-string instead of `+`
+387:9 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+473:12 SMP112 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+--- fixed (71 applied, 81 remaining) ---
+import builtins
 import collections
 import functools
 import pathlib
@@ -414,6 +417,10 @@ class KindHolder:
     def static(self) -> str:
         return "a" + self.k_prefix
 
+    @builtins.staticmethod
+    def qualified_static(self) -> str:
+        return "a" + self.k_prefix
+
     def reader(this, self: str) -> str:
         return "a" + self.k_prefix + this.k_prefix
 
@@ -536,3 +543,88 @@ def kind_more(
         "a" * [1, 2][:1][0] + "!",
         f"a{(2 * ["x"])[0]}",
     ]
+
+
+# Each name reads itself, so finding its kind checks the one before twice: a long chain must stay quick.
+def kind_chain() -> str:
+    chain0 = "a"
+    chain0 += chain0
+    chain1 = chain0
+    chain1 += chain1
+    chain2 = chain1
+    chain2 += chain2
+    chain3 = chain2
+    chain3 += chain3
+    chain4 = chain3
+    chain4 += chain4
+    chain5 = chain4
+    chain5 += chain5
+    chain6 = chain5
+    chain6 += chain6
+    chain7 = chain6
+    chain7 += chain7
+    chain8 = chain7
+    chain8 += chain8
+    chain9 = chain8
+    chain9 += chain9
+    chain10 = chain9
+    chain10 += chain10
+    chain11 = chain10
+    chain11 += chain11
+    chain12 = chain11
+    chain12 += chain12
+    chain13 = chain12
+    chain13 += chain13
+    chain14 = chain13
+    chain14 += chain14
+    chain15 = chain14
+    chain15 += chain15
+    chain16 = chain15
+    chain16 += chain16
+    chain17 = chain16
+    chain17 += chain17
+    chain18 = chain17
+    chain18 += chain18
+    chain19 = chain18
+    chain19 += chain19
+    chain20 = chain19
+    chain20 += chain20
+    chain21 = chain20
+    chain21 += chain21
+    chain22 = chain21
+    chain22 += chain22
+    chain23 = chain22
+    chain23 += chain23
+    chain24 = chain23
+    chain24 += chain24
+    chain25 = chain24
+    chain25 += chain25
+    chain26 = chain25
+    chain26 += chain26
+    chain27 = chain26
+    chain27 += chain27
+    chain28 = chain27
+    chain28 += chain28
+    chain29 = chain28
+    chain29 += chain29
+    chain30 = chain29
+    chain30 += chain30
+    chain31 = chain30
+    chain31 += chain31
+    chain32 = chain31
+    chain32 += chain32
+    chain33 = chain32
+    chain33 += chain33
+    chain34 = chain33
+    chain34 += chain34
+    chain35 = chain34
+    chain35 += chain35
+    chain36 = chain35
+    chain36 += chain36
+    chain37 = chain36
+    chain37 += chain37
+    chain38 = chain37
+    chain38 += chain38
+    chain39 = chain38
+    chain39 += chain39
+    return f"a{chain39}"

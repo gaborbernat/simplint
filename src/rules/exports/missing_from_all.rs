@@ -5,11 +5,10 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::Visibility;
 use crate::rules::exports::exploded;
-use crate::rules::exports::{Exports, all_binding, all_literal};
-use crate::rules::{indentation, is_main_guard};
+use crate::rules::{export_key, indentation, is_main_guard};
 use crate::semantic::BindingKind;
+use crate::syntax::{Exports, Visibility, all_binding, all_literal};
 
 pub fn missing_from_all(checker: &Checker) {
     if checker.is_init_module() || checker.is_test_module() {
@@ -131,16 +130,4 @@ fn all_insertion<'a>(checker: &Checker, names: impl Iterator<Item = &'a str>) ->
     let (open, close) = if source[value].starts_with('[') { ("[", "]") } else { ("(", ")") };
     let list = exploded(checker, indentation(source, stmt), &items);
     Some(Fix::safe_edit(Edit::range_replacement(format!("{open}{}{close}", &list[1..list.len() - 1]), value)))
-}
-
-// Ruff's RUF022 sorts `__all__` isort-style: SCREAMING_SNAKE_CASE names first, then CamelCase, then the rest.
-fn export_key(name: &str) -> (u8, String) {
-    let rank = if name.chars().any(char::is_alphabetic) && !name.chars().any(char::is_lowercase) {
-        0
-    } else if name.starts_with(char::is_uppercase) {
-        1
-    } else {
-        2
-    };
-    (rank, name.to_owned())
 }

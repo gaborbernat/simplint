@@ -188,12 +188,12 @@ impl<'a> Docstring<'a> {
         Self { literal, fields, sections, content, commented, indent: body_indent }
     }
 
-    pub(crate) fn fields(&self, kind: FieldKind) -> impl Iterator<Item = &Field> {
-        self.fields.iter().filter(move |field| field.kind == kind)
+    pub(crate) fn fields(&self, kinds: &[FieldKind]) -> impl Iterator<Item = &Field> {
+        self.fields.iter().filter(move |field| kinds.contains(&field.kind))
     }
 
     pub(crate) fn has(&self, kind: FieldKind) -> bool {
-        self.fields(kind).next().is_some()
+        self.fields(&[kind]).next().is_some()
     }
 
     pub(crate) fn range(&self) -> TextRange {
