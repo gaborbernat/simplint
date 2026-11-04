@@ -52,7 +52,7 @@ jobs:
         id: source-date-epoch
         run: echo "value=$(git log -1 --format=%ct)" >>"$GITHUB_OUTPUT"
       - name: 🐍 Set up Python
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         env:
           UV_VENV_SEED: "true"
         with:
@@ -61,7 +61,7 @@ jobs:
           activate-environment: true
           python-version: "3.15"
       - name: 📦 Install locked build tool
-        uses: tox-dev/github-workflows/install-locked-tools@57a765127aae73adf7d0e24a7fe0f067f2d3ea3e # 6.2.1
+        uses: tox-dev/github-workflows/install-locked-tools@534a196a132a52365c464e1227d4c46f30968f29 # 6.4.0
         with:
           groups: release-build
           venv: ${{ runner.temp }}/release-tools
@@ -83,7 +83,6 @@ jobs:
       - name: 🧹 Run pre-commit
         if: ${{ !inputs.release-build }}
         uses: tox-dev/action-pre-commit-uv@ae5b217f46f65d48b20a76b902d7950c745171af # v1.1.1
-        continue-on-error: true
       - name: 🔍 Show changes
         if: ${{ !inputs.release-build }}
         run: git diff HEAD -u
@@ -140,7 +139,7 @@ jobs:
           key: pgo-profile-${{ matrix.platform.pgo }}-${{ needs.bump.outputs.version }}-${{ github.sha }}-rust${{ steps.toolchain.outputs.channel }}-maturin${{ needs.bump.outputs.maturin-version }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'tasks/pgo*') }}
       - name: 🐍 Set up Python
         if: ${{ (inputs.release-build || inputs.pgo) && matrix.platform.pgo }}
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           ignore-empty-workdir: true
           version: latest-known
@@ -251,7 +250,7 @@ jobs:
         with:
           artifact-ids: ${{ needs.bump.outputs.source-artifact-id }}
       - name: 🐍 Set up Python
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         env:
           UV_VENV_SEED: "true"
         with:
@@ -387,7 +386,7 @@ jobs:
           key: pgo-profile-${{ matrix.platform.pgo }}-${{ needs.bump.outputs.version }}-${{ github.sha }}-rust${{ steps.toolchain.outputs.channel }}-maturin${{ needs.bump.outputs.maturin-version }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'tasks/pgo*') }}
       - name: 🐍 Set up Python
         if: ${{ (inputs.release-build || inputs.pgo) && matrix.platform.pgo }}
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           ignore-empty-workdir: true
           version: latest-known
@@ -487,14 +486,14 @@ jobs:
         with:
           artifact-ids: ${{ needs.bump.outputs.source-artifact-id }}
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           ignore-empty-workdir: true
           version: latest-known
           python-version: "3.15"
       - name: 📦 Export locked build constraints
         id: constraints
-        uses: tox-dev/github-workflows/export-build-constraints@57a765127aae73adf7d0e24a7fe0f067f2d3ea3e # 6.2.1
+        uses: tox-dev/github-workflows/export-build-constraints@534a196a132a52365c464e1227d4c46f30968f29 # 6.4.0
       - name: 🏗️ Build sdist
         run: uv build --build-constraints "$BUILD_CONSTRAINTS" --sdist --out-dir dist .
         shell: bash
