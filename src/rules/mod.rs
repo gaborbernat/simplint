@@ -222,6 +222,32 @@ pub fn has_version_gate(body: &[Stmt]) -> bool {
     })
 }
 
+// Ruff ranks names isort-style: constants in SCREAMING_SNAKE_CASE first, then CamelCase classes, then the rest. The two
+// orders differ in the details: RUF022, sorting `__all__`, takes any name with a letter and no lowercase one for a
+// constant and compares case-sensitively, while isort, sorting the names of a `from` import, wants more than one
+// character for a constant and ignores case.
+pub fn export_key(name: &str) -> (u8, String) {
+    let rank = if name.chars().any(char::is_alphabetic) && !name.chars().any(char::is_lowercase) {
+        0
+    } else if name.starts_with(char::is_uppercase) {
+        1
+    } else {
+        2
+    };
+    (rank, name.to_owned())
+}
+
+pub fn isort_key(name: &str) -> (u8, String) {
+    let rank = if name.len() > 1 && !name.chars().any(char::is_lowercase) {
+        0
+    } else if name.starts_with(char::is_uppercase) {
+        1
+    } else {
+        2
+    };
+    (rank, name.to_ascii_lowercase())
+}
+
 // `name = value` or `name: annotation = value`, binding a single plain name.
 pub fn single_assignment(stmt: &Stmt) -> Option<(&ast::ExprName, Option<&Expr>, &Expr)> {
     let (target, annotation, value) = match stmt {

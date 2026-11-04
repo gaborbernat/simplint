@@ -9,7 +9,7 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::{has_version_gate, is_class_like, last_segment, single_assignment};
+use crate::rules::{has_version_gate, is_class_like, isort_key, last_segment, single_assignment};
 use crate::semantic::{Semantic, future_import};
 
 pub fn missing_final(checker: &Checker) {
@@ -180,17 +180,6 @@ fn final_qualifier(checker: &Checker) -> (String, Option<Edit>) {
         None => typing_import(checker),
     };
     ("Final".to_owned(), Some(edit))
-}
-
-fn isort_key(name: &str) -> (u8, String) {
-    let rank = if name.len() > 1 && !name.chars().any(char::is_lowercase) {
-        0
-    } else if name.starts_with(char::is_uppercase) {
-        1
-    } else {
-        2
-    };
-    (rank, name.to_ascii_lowercase())
 }
 
 // The import goes where Ruff's isort keeps it: in the standard library section of the leading import block, after the
