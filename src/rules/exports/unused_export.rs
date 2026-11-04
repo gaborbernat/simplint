@@ -1,4 +1,4 @@
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 
@@ -82,8 +82,9 @@ fn removal(checker: &Checker, value: TextRange, elements: &[Expr], unused: &[&st
     let (open, close) = if source[value].starts_with('[') { ("[", "]") } else { ("(", ")") };
     let kept = elements.iter().filter(|element| !is_unused(element)).count();
     if kept == 0 {
-        return (!checker.has_comment_in(value))
-            .then(|| applicability(checker, Fix::safe_edit(Edit::range_replacement(format!("{open}{close}"), value))));
+        return (!checker.has_comment_in(value)).then(|| {
+            Fix::applicable_edit(Edit::range_replacement(format!("{open}{close}"), value), applicability(checker))
+        });
     }
     // A tuple left with one name needs a comma after it.
     let lone = open == "(" && kept == 1;
@@ -123,15 +124,15 @@ fn removal(checker: &Checker, value: TextRange, elements: &[Expr], unused: &[&st
     }
     let mut edits = edits.into_iter();
     let first = edits.next()?;
-    Some(applicability(checker, Fix::safe_edits(first, edits)))
+    Some(Fix::applicable_edits(first, edits, applicability(checker)))
 }
 
 // Code outside the run, such as a library's users, may import a name the run does not; an application has no such code.
-fn applicability(checker: &Checker, fix: Fix) -> Fix {
+fn applicability(checker: &Checker) -> Applicability {
     if checker.settings.project.api.kind == ProjectKind::Application {
-        fix
+        Applicability::Safe
     } else {
-        Fix::unsafe_edits(fix.edits()[0].clone(), fix.edits()[1..].iter().cloned())
+        Applicability::Unsafe
     }
 }
 
