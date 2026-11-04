@@ -32,7 +32,7 @@ use crate::cli::watch::watch;
 use crate::lint::Linter;
 use crate::lint::registry::RuleSet;
 use crate::project::cache::{self, Cache, Caches, FileKey, Fingerprints};
-use crate::project::{FileFacts, IndexInputs, Project, SearchRoots};
+use crate::project::{FileFacts, ImportResolver, IndexInputs, Project, SearchRoots};
 use crate::settings::{FileSettings, ModuleRole, Settings, SettingsResolver};
 
 // `ruff check`'s flow: resolve both configurations, decide the fix mode, lint every file in parallel, print, and pick
@@ -405,12 +405,13 @@ fn for_each_file<T: Send>(
     let rewrites_calls: HashSet<&Path> =
         linted.iter().filter(|file| file.settings.rewrites_dataclass_calls()).map(|file| file.path).collect();
     let roles = module_roles(&indexed, &roots);
-    let inputs =
-        IndexInputs { entry_points: &entry_points, roots: &roots, rewrites_calls: &rewrites_calls, roles: &roles };
-    let project = index_project(&facts, &inputs)?;
+    let inputs = IndexInputs { entry_points: &entry_points, rewrites_calls: &rewrites_calls, roles: &roles };
+    let mut imports = ImportResolver::new(&roots)?;
+    let project = index_project(&facts, &mut imports, &inputs);
     debug!("Indexed {} files in: {:?}", facts.len(), start.elapsed());
     let start = Instant::now();
-    let passes = lint_rounds(linted, &mut facts, project, &inputs, &file_caches, rewrote, work)?;
+    let index = Index { facts: &mut facts, resolver: &mut imports, inputs: &inputs };
+    let passes = lint_rounds(linted, index, project, &file_caches, rewrote, work);
     debug!("Checked {:?} files in: {:?}", passes.len(), start.elapsed());
     // The facts borrow from the caches, which writing consumes.
     drop(facts);
@@ -420,19 +421,26 @@ fn for_each_file<T: Send>(
     Ok(Some(passes))
 }
 
+// What a fix round indexes the run from: each file's facts, where their module names lead, and what else the index
+// reads.
+struct Index<'i, 'f> {
+    facts: &'i mut FxHashMap<&'f Path, Cow<'f, FileFacts>>,
+    resolver: &'i mut ImportResolver,
+    inputs: &'i IndexInputs<'i>,
+}
+
 // Each file's passes, in order. A fix in one file can change what another learns from the index, as folding
 // `mock.uuid = 7` into the mock's constructor leaves no assignment to stop a dataclass with a `uuid` field from
 // freezing. So with `rewrote` set, the files a round rewrites have their facts collected again, and each file whose
 // answers from the index change is linted again, until a round rewrites nothing.
 fn lint_rounds<'f, T: Send>(
     files: &'f [RunFile<'f>],
-    facts: &mut FxHashMap<&'f Path, Cow<'f, FileFacts>>,
+    mut index: Index<'_, 'f>,
     mut project: Project,
-    inputs: &IndexInputs,
     file_caches: &FxHashMap<&Path, (&'f Cache, FileKey)>,
     rewrote: Option<&(dyn Fn(&T) -> bool + Sync)>,
     work: impl Fn(&DiscoveredFile) -> T + Sync,
-) -> Result<Vec<Vec<T>>> {
+) -> Vec<Vec<T>> {
     // Two files whose fixes keep changing each other's facts would not settle; past this many rounds, the last
     // reports stand.
     const ROUNDS: usize = 8;
@@ -444,7 +452,7 @@ fn lint_rounds<'f, T: Send>(
     let mut passes: Vec<Vec<T>> =
         files.par_iter().map(|file| vec![lint(file, &project, file_caches.get(file.path).copied())]).collect();
     let Some(rewrote) = rewrote else {
-        return Ok(passes);
+        return passes;
     };
     let mut rewritten: Vec<usize> = (0..passes.len()).filter(|&at| passes[at].iter().any(rewrote)).collect();
     // Each file's words, read when a round first needs them and again once a round rewrites the file.
@@ -458,7 +466,7 @@ fn lint_rounds<'f, T: Send>(
         }
         let changed: Vec<&RunFile> = rewritten.iter().map(|&at| &files[at]).collect();
         let collect = |file: &RunFile| file_facts(file, recache(file.path));
-        let (next, dependents) = reindex(facts, &changed, collect, files, &mut words, &project, inputs)?;
+        let (next, dependents) = reindex(&mut index, &changed, collect, files, &mut words, &project);
         project = next;
         let relinted: Vec<(usize, T)> =
             dependents.into_par_iter().map(|at| (at, lint(&files[at], &project, recache(files[at].path)))).collect();
@@ -467,7 +475,7 @@ fn lint_rounds<'f, T: Send>(
             passes[at].push(pass);
         }
     }
-    Ok(passes)
+    passes
 }
 
 // Where each file sits in its library's public API, by the first of the names the file imports as, from its package or
@@ -500,22 +508,25 @@ fn file_facts<'c>(file: &RunFile, cache: Option<(&'c Cache, FileKey)>) -> Option
     Some(Cow::Owned(facts))
 }
 
-// The index once the `rewritten` files have their facts collected again, and the positions of the files whose answers
-// from it differ from those of `project`. Each file's `words` are read the first time a changed name needs them.
+// The index once the `rewritten` files have their facts collected and their module names resolved again, and the
+// positions of the files whose answers from it differ from those of `project`. Each file's `words` are read the first
+// time a changed name needs them.
 fn reindex<'f>(
-    facts: &mut FxHashMap<&'f Path, Cow<'f, FileFacts>>,
+    index: &mut Index<'_, 'f>,
     rewritten: &[&RunFile<'f>],
     collect: impl Fn(&RunFile) -> Option<Cow<'f, FileFacts>> + Sync,
     files: &[RunFile],
     words: &mut [Option<HashSet<String>>],
     project: &Project,
-    inputs: &IndexInputs,
-) -> Result<(Project, Vec<usize>)> {
+) -> (Project, Vec<usize>) {
     // A fix never leaves a file that does not parse, so a rewritten file keeps having facts.
     let fresh: Vec<(&Path, FileFacts)> =
         rewritten.par_iter().filter_map(|&file| Some((file.path, collect(file)?.into_owned()))).collect();
-    facts.extend(fresh.into_iter().map(|(path, file)| (path, Cow::Owned(file))));
-    let next = index_project(facts, inputs)?;
+    for file in rewritten {
+        index.resolver.forget(file.path);
+    }
+    index.facts.extend(fresh.into_iter().map(|(path, file)| (path, Cow::Owned(file))));
+    let next = index_project(index.facts, index.resolver, index.inputs);
     let changed = next.changed_names(project);
     if !changed.is_empty() {
         words.par_iter_mut().zip(files).filter(|(known, _)| known.is_none()).for_each(|(known, file)| {
@@ -530,12 +541,16 @@ fn reindex<'f>(
             next.file(path) != project.file(path) || mentions()
         })
         .collect();
-    Ok((next, dependents))
+    (next, dependents)
 }
 
-fn index_project(facts: &FxHashMap<&Path, Cow<FileFacts>>, inputs: &IndexInputs) -> Result<Project> {
+fn index_project(
+    facts: &FxHashMap<&Path, Cow<FileFacts>>,
+    resolver: &mut ImportResolver,
+    inputs: &IndexInputs,
+) -> Project {
     let indexed: Vec<(&Path, &FileFacts)> = facts.iter().map(|(path, facts)| (*path, facts.as_ref())).collect();
-    Project::index(&indexed, inputs)
+    Project::index(&indexed, resolver, inputs)
 }
 
 // The names a file holds, to tell whether it names any of the attribute or base class names whose answers changed; the
@@ -578,13 +593,9 @@ fn check_stdin(cli: &CheckCommand, resolved: &Resolved, mode: &Mode) -> Result<D
         package.and_then(|package| to_module_path(package.path(), &absolute)).or_else(|| roots.module_path(&absolute));
     let roles = HashMap::from([(absolute.as_path(), settings.role(&absolute, module_path.as_deref()))]);
     let rewrites_calls = HashSet::new();
-    let inputs = IndexInputs {
-        entry_points: &settings.metadata.entry_points,
-        roots: &roots,
-        rewrites_calls: &rewrites_calls,
-        roles: &roles,
-    };
-    let project = Project::index(&[], &inputs)?;
+    let inputs =
+        IndexInputs { entry_points: &settings.metadata.entry_points, rewrites_calls: &rewrites_calls, roles: &roles };
+    let project = Project::index(&[], &mut ImportResolver::new(&roots)?, &inputs);
     let package_module = package.and_then(|package| to_module_path(package.path(), &absolute));
     let linter = Linter::new(ruff, file_settings, project.file(&absolute), package, package_module);
     lint_stdin(&path, &source, &linter, mode)

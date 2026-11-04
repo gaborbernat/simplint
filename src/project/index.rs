@@ -12,7 +12,7 @@ use ruff_graph::{ModuleDb, ResolverEnvironment, resolve_search_paths};
 use ruff_linter::package::PackageRoot;
 use ruff_python_ast::PythonVersion;
 use ty_module_resolver::{
-    ImportingFile, ModuleName, resolve_module, resolve_module_confident, resolve_real_module,
+    ImportingFile, ModuleName, SearchPaths, resolve_module, resolve_module_confident, resolve_real_module,
     resolve_real_module_confident,
 };
 
@@ -107,19 +107,26 @@ struct Writes {
     namesakes: HashMap<String, usize>,
 }
 
-// What the index reads besides the files' facts: the entry points, where imports resolve, the files whose own
-// `dataclass-kw-only` reports rewrite their positional dataclass calls, and where each file sits in its library's
-// public API.
+// What the index reads besides the files' facts: the entry points, the files whose own `dataclass-kw-only` reports
+// rewrite their positional dataclass calls, and where each file sits in its library's public API.
 pub struct IndexInputs<'a> {
     pub entry_points: &'a [String],
-    pub roots: &'a SearchRoots,
     pub rewrites_calls: &'a HashSet<&'a Path>,
     pub roles: &'a HashMap<&'a Path, ModuleRole>,
 }
 
-impl Project {
-    pub fn index(files: &[(&Path, &FileFacts)], inputs: &IndexInputs) -> Result<Self> {
-        let IndexInputs { entry_points, roots, rewrites_calls, roles } = *inputs;
+// Where each file's module names lead, kept for the whole run so a fix round resolves only the files it rewrote. Fixes
+// change what files say but never add or remove one, and resolving reads only which files and directories exist, so
+// neither the database nor the modules of a file no fix touched go stale.
+pub struct ImportResolver {
+    db: ModuleDb,
+    paths: SearchPaths,
+    python_version: PythonVersion,
+    modules: HashMap<PathBuf, ModuleFacts>,
+}
+
+impl ImportResolver {
+    pub fn new(roots: &SearchRoots) -> Result<Self> {
         let cwd = SystemPathBuf::from_path_buf(std::env::current_dir()?)
             .map_err(|path| anyhow::anyhow!("{} is not a UTF-8 path", path.display()))?;
         let system = OsSystem::new(cwd);
@@ -127,34 +134,60 @@ impl Project {
         let paths = resolve_search_paths(&system, src_roots, None)?;
         let db = ModuleDb::new(system);
         paths.try_register_static_roots(&db);
-        let python_version = roots.python_version;
+        Ok(Self { db, paths, python_version: roots.python_version, modules: HashMap::new() })
+    }
+
+    // Drops what the file's module names resolved to, as a fix rewrote the file.
+    pub fn forget(&mut self, path: &Path) {
+        self.modules.remove(path);
+    }
+
+    // Resolves the files it has not resolved yet.
+    fn resolve(&mut self, files: &[(&Path, &FileFacts)]) {
+        let (python_version, paths) = (self.python_version, &self.paths);
         // The database is not `Sync`, so each worker resolves with its own clone, which shares the cached results.
-        let modules: Vec<ModuleFacts> = files
+        let fresh: Vec<(PathBuf, ModuleFacts)> = files
             .par_iter()
-            .map_with(db.clone(), |db, (path, facts)| {
+            .filter(|(path, _)| !self.modules.contains_key(*path))
+            .map_with(self.db.clone(), |db, (path, facts)| {
                 let environment = ResolverEnvironment::new(db, python_version, paths.clone());
-                ModuleFacts::resolve(db, environment, path, facts, rewrites_calls.contains(path))
+                (path.to_path_buf(), ModuleFacts::resolve(db, environment, path, facts))
             })
             .collect();
+        self.modules.extend(fresh);
+    }
+}
+
+impl Project {
+    pub fn index(files: &[(&Path, &FileFacts)], resolver: &mut ImportResolver, inputs: &IndexInputs) -> Self {
+        let IndexInputs { entry_points, rewrites_calls, roles } = *inputs;
+        resolver.resolve(files);
+        let modules = files.iter().map(|(path, _)| (*path, &resolver.modules[*path]));
         let mut imported: HashMap<PathBuf, HashSet<String>> = HashMap::new();
         let mut referenced: HashMap<PathBuf, HashSet<String>> = HashMap::new();
         let mut stars: Vec<(PathBuf, PathBuf)> = Vec::new();
         let (mut unresolved_stars, mut unreached): (HashSet<&str>, Vec<Unreached>) = (HashSet::new(), Vec::new());
         let mut constructor_uses = Vec::new();
         let mut bindings: Vec<(PathBuf, PathBuf, &ImportBinding)> = Vec::new();
-        for module in modules {
-            constructor_uses.push((module.path.clone(), module.rewrites_calls, module.constructors));
+        for (path, module) in modules {
+            let uses = module.constructors.iter().map(|(file, uses)| (file.clone(), uses.as_slice())).collect();
+            constructor_uses.push((module.path.clone(), rewrites_calls.contains(path), uses));
             bindings
-                .extend(module.bindings.into_iter().map(|(source, binding)| (module.path.clone(), source, binding)));
-            for (file, names) in module.imports {
-                imported.entry(file).or_default().extend(names.iter().cloned());
+                .extend(module.bindings.iter().map(|(source, binding)| (module.path.clone(), source.clone(), binding)));
+            for (file, names) in &module.imports {
+                imported.entry(file.clone()).or_default().extend(names.iter().cloned());
             }
-            for (file, names) in module.references {
-                referenced.entry(file).or_default().extend(names.iter().cloned());
+            for (file, names) in &module.references {
+                referenced.entry(file.clone()).or_default().extend(names.iter().cloned());
             }
-            stars.extend(module.stars.into_iter().map(|source| (module.path.clone(), source)));
-            unresolved_stars.extend(module.unresolved_stars);
-            unreached.extend(module.unreached);
+            stars.extend(module.stars.iter().map(|source| (module.path.clone(), source.clone())));
+            unresolved_stars.extend(module.unresolved_stars.iter().map(String::as_str));
+            unreached.extend(
+                module
+                    .unreached
+                    .iter()
+                    .map(|(package, name, names)| (package.as_path(), name.as_str(), names.as_slice())),
+            );
         }
         let sources: HashMap<PathBuf, &FileFacts> = files
             .iter()
@@ -183,9 +216,9 @@ impl Project {
         let base_classes: HashSet<String> =
             files.iter().flat_map(|(_, facts)| facts.base_classes.iter().cloned()).collect();
         let writes = Writes::collect(files);
-        let environment = ResolverEnvironment::new(&db, python_version, paths);
+        let environment = ResolverEnvironment::new(&resolver.db, resolver.python_version, resolver.paths.clone());
         for (module, attribute) in entry_points.iter().filter_map(|entry_point| entry_point.split_once(':')) {
-            if let Some(file) = resolve(&db, environment, None, module.trim()) {
+            if let Some(file) = resolve(&resolver.db, environment, None, module.trim()) {
                 let name = attribute.split('.').next().unwrap_or_default().trim();
                 imported.entry(file).or_default().insert(name.to_owned());
             }
@@ -198,7 +231,7 @@ impl Project {
         let user_facing = user_facing(&sources, &roles, &imported, &bindings, &stars);
         let reads_docstrings = files.iter().any(|(_, facts)| facts.reads_docstrings);
         let digest = digest(reads_docstrings, [&assigned_attributes, &module_reads, &base_classes], &writes);
-        Ok(Self {
+        Self {
             imported,
             referenced,
             star_imported,
@@ -213,7 +246,7 @@ impl Project {
             calls,
             reads_docstrings,
             digest,
-        })
+        }
     }
 
     // The attribute, module read and base class names one index has and the other lacks, whose answers differ between
@@ -631,30 +664,23 @@ fn normalized(path: &Path) -> PathBuf {
 
 // A dotted path that resolves to no module, by the directory of the package of the run it starts from and its last
 // name, with the names it uses.
-type Unreached<'f> = (PathBuf, &'f str, &'f [String]);
+type Unreached<'f> = (&'f Path, &'f str, &'f [String]);
 
 // The files a file's names resolve to, with the names it uses from each, and the files it star-imports, or the last
-// name of each star-imported module that resolves to no file.
-struct ModuleFacts<'f> {
+// name of each star-imported module that resolves to no file. It owns its names, as it outlives the facts of a round.
+struct ModuleFacts {
     path: PathBuf,
-    rewrites_calls: bool,
-    constructors: Vec<(PathBuf, &'f [NameUse])>,
-    imports: Vec<(PathBuf, &'f [String])>,
-    bindings: Vec<(PathBuf, &'f ImportBinding)>,
-    references: Vec<(PathBuf, &'f [String])>,
+    constructors: Vec<(PathBuf, Vec<NameUse>)>,
+    imports: Vec<(PathBuf, Vec<String>)>,
+    bindings: Vec<(PathBuf, ImportBinding)>,
+    references: Vec<(PathBuf, Vec<String>)>,
     stars: Vec<PathBuf>,
-    unresolved_stars: Vec<&'f str>,
-    unreached: Vec<Unreached<'f>>,
+    unresolved_stars: Vec<String>,
+    unreached: Vec<(PathBuf, String, Vec<String>)>,
 }
 
-impl<'f> ModuleFacts<'f> {
-    fn resolve(
-        db: &ModuleDb,
-        environment: ResolverEnvironment<'_>,
-        path: &Path,
-        facts: &'f FileFacts,
-        rewrites_calls: bool,
-    ) -> Self {
+impl ModuleFacts {
+    fn resolve<'f>(db: &ModuleDb, environment: ResolverEnvironment<'_>, path: &Path, facts: &'f FileFacts) -> Self {
         let own = normalized(path);
         let importing =
             SystemPathBuf::from_path_buf(own.clone()).ok().and_then(|path| system_path_to_file(db, path).ok());
@@ -668,10 +694,10 @@ impl<'f> ModuleFacts<'f> {
             cache.borrow_mut().insert(module, file.clone());
             file
         };
-        let resolve_all = |modules: &'f [ModuleNames]| -> Vec<(PathBuf, &'f [String])> {
+        let resolve_all = |modules: &'f [ModuleNames]| -> Vec<(PathBuf, Vec<String>)> {
             modules
                 .iter()
-                .filter_map(|(module, names)| Some((resolved(module)?, names.as_slice())))
+                .filter_map(|(module, names)| Some((resolved(module)?, names.clone())))
                 .filter(|(file, _)| *file != own)
                 .collect()
         };
@@ -686,44 +712,34 @@ impl<'f> ModuleFacts<'f> {
                 let package = resolved(top)?;
                 let directory = package.parent().filter(|_| package.ends_with("__init__.py"))?.to_path_buf();
                 let last = rest.rsplit('.').next()?;
-                resolved(module).is_none().then_some((directory, last, names.as_slice()))
+                resolved(module).is_none().then(|| (directory, last.to_owned(), names.clone()))
             })
             .collect();
         if !facts.declared.is_empty() {
-            imports.push((own.with_extension("py"), &facts.declared));
+            imports.push((own.with_extension("py"), facts.declared.clone()));
         }
         let mut stars = Vec::new();
         let mut unresolved_stars = Vec::new();
         for module in &facts.star_imports {
             match resolved(module) {
                 Some(file) => stars.extend((file != own).then_some(file)),
-                None => unresolved_stars.extend(module.rsplit('.').next()),
+                None => unresolved_stars.extend(module.rsplit('.').next().map(str::to_owned)),
             }
         }
         let constructors = facts
             .constructors
             .uses
             .iter()
-            .filter_map(|(module, uses)| Some((resolved(module)?, uses.as_slice())))
+            .filter_map(|(module, uses)| Some((resolved(module)?, uses.clone())))
             .filter(|(file, _)| *file != own)
             .collect();
         let bindings = facts
             .bindings
             .iter()
-            .filter_map(|binding| Some((resolved(&binding.module)?, binding)))
+            .filter_map(|binding| Some((resolved(&binding.module)?, binding.clone())))
             .filter(|(file, _)| *file != own)
             .collect();
-        Self {
-            path: own,
-            rewrites_calls,
-            constructors,
-            imports,
-            bindings,
-            references,
-            stars,
-            unresolved_stars,
-            unreached,
-        }
+        Self { path: own, constructors, imports, bindings, references, stars, unresolved_stars, unreached }
     }
 }
 
