@@ -1,5 +1,132 @@
 # Changelog
 
+## 0.4.0 (2026-11-04)
+
+<a name="release-0-4-0"></a>
+
+<a name="release-0-4-0-added"></a>
+
+### Added
+
+- `blanket-ignore` (SMP004) flags every suppression comment that names no error code, such as a bare `# noqa`, a
+  `# ruff: noqa`, or a `# type: ignore` or `# ty: ignore` without brackets
+  ([#34](https://github.com/gaborbernat/simplint/pull/34)) by [@gaborbernat](https://github.com/gaborbernat).
+- `simplint rule`, its JSON output and the documentation mark the rules that read other files of the run, whose results
+  another file can change ([#34](https://github.com/gaborbernat/simplint/pull/34)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `dataclass-slots` (SMP702) asks for `slots=True` on a dataclass decorator and its fix adds it, unless checked code
+  breaks the slotted class ([#34](https://github.com/gaborbernat/simplint/pull/34)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- Telling exceptions apart by the text of their message is reported as `error-message-matching` (SMP507)
+  ([#34](https://github.com/gaborbernat/simplint/pull/34)) by [@gaborbernat](https://github.com/gaborbernat).
+- Flags exception classes that no `except` clause names, so a built-in exception could replace them
+  ([#34](https://github.com/gaborbernat/simplint/pull/34)) by [@gaborbernat](https://github.com/gaborbernat).
+- `long-docstring-paragraph` (SMP904) flags a docstring paragraph longer than `max-paragraph-words` words, as
+  `long-paragraph` (SMP002) does for comments ([#34](https://github.com/gaborbernat/simplint/pull/34)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `module-attribute-import` (SMP304) flags `module.Name` access to a module of the project, which an import of `Name`
+  replaces. The new `imports.module-attributes` option leaves the modules it lists alone
+  ([#34](https://github.com/gaborbernat/simplint/pull/34)) by [@gaborbernat](https://github.com/gaborbernat).
+- `module-variable-prefix` (SMP404) flags a module variable whose leading underscore does not match its visibility: a
+  name that no other module imports and `__all__` does not list needs one, and a name `__all__` lists must not have one
+  ([#34](https://github.com/gaborbernat/simplint/pull/34)) by [@gaborbernat](https://github.com/gaborbernat).
+- `long-paragraph` (SMP002) and the new `long-docstring-paragraph` (SMP904) read their limit from the new
+  `max-paragraph-words` option, 100 words by default ([#34](https://github.com/gaborbernat/simplint/pull/34)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `rst-empty-field` (SMP914) reports `:param:`, `:raises:`, `:returns:`, `:yields:` and `:var:` fields with no
+  description, which `rst-field-syntax` reported before. The fixes of the missing-field rules add such fields, so this
+  rule can be turned off on its own ([#34](https://github.com/gaborbernat/simplint/pull/34)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `simplint rules --output-format json` now lists each rule's examples as parsed blocks with their line numbers, and
+  each rule's short group title. A rule page whose examples do not parse reports the error in place of its examples
+  ([#34](https://github.com/gaborbernat/simplint/pull/34)) by [@gaborbernat](https://github.com/gaborbernat).
+- SMP505 flags a private helper with one short call site, which inlining into its caller would keep short
+  ([#34](https://github.com/gaborbernat/simplint/pull/34)) by [@gaborbernat](https://github.com/gaborbernat).
+- SMP504 flags a function local that is assigned once and read once, right below the assignment
+  ([#34](https://github.com/gaborbernat/simplint/pull/34)) by [@gaborbernat](https://github.com/gaborbernat).
+- `sleep-in-test` (SMP808) flags `time.sleep` and `asyncio.sleep` calls in test modules that wait on a fixed time
+  ([#34](https://github.com/gaborbernat/simplint/pull/34)) by [@gaborbernat](https://github.com/gaborbernat).
+- `split-composite-assert` (SMP807) flags consecutive asserts that compare fields of one object one by one, and its
+  unsafe fix joins them into one assert over a tuple ([#34](https://github.com/gaborbernat/simplint/pull/34)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `stdlib-mock` (SMP809) flags `unittest.mock` imports in test modules of projects that depend on pytest-mock
+  ([#34](https://github.com/gaborbernat/simplint/pull/34)) by [@gaborbernat](https://github.com/gaborbernat).
+- Flags module-level functions and classes that only test modules use, so they can move into the tests
+  ([#34](https://github.com/gaborbernat/simplint/pull/34)) by [@gaborbernat](https://github.com/gaborbernat).
+- A parameter default that every call in the run passes explicitly is reported as `unused-default` (SMP506), with an
+  unsafe fix that removes it ([#34](https://github.com/gaborbernat/simplint/pull/34)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-4-0-changes"></a>
+
+### Changes
+
+- missing-final (SMP601) also reports a bare `Final` annotation and fills in its type
+  ([#34](https://github.com/gaborbernat/simplint/pull/34)) by [@gaborbernat](https://github.com/gaborbernat).
+- `dataclass-options` (SMP701) is renamed to `dataclass-frozen` and asks only for `frozen=True`. Its fix no longer adds
+  `slots=True`, which `dataclass-slots` (SMP702) now asks for ([#34](https://github.com/gaborbernat/simplint/pull/34))
+  by [@gaborbernat](https://github.com/gaborbernat).
+- `rst-field-syntax` now reports aliases of field names, such as `:arg:` or `:return:`, and its fix renames them to
+  `:param:`, `:raises:`, `:returns:` or `:yields:`. `:var:`, `:ivar:` and `:cvar:` stay distinct
+  ([#34](https://github.com/gaborbernat/simplint/pull/34)) by [@gaborbernat](https://github.com/gaborbernat).
+- `imprecise-annotation` (SMP602) reports `object` in any annotation and `Any` where Ruff's ANN401 does not: in variable
+  annotations and nested positions such as `dict[str, Any]` ([#34](https://github.com/gaborbernat/simplint/pull/34)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `module-variable-case` (SMP102) checks only the case of module variables, `UPPER_CASE`, and keeps the leading
+  underscore a name has. The underscore is checked by the new `module-variable-prefix` (SMP404)
+  ([#34](https://github.com/gaborbernat/simplint/pull/34)) by [@gaborbernat](https://github.com/gaborbernat).
+- Rule codes now follow their group: the first digit names one of ten groups, so a prefix selects a whole group, such as
+  `SMP4` for Public API. The groups are Comments (`SMP0`), Naming (`SMP1`), Module layout (`SMP2`), Imports and
+  dependencies (`SMP3`), Public API (`SMP4`), Logic (`SMP5`), Typing (`SMP6`), Classes (`SMP7`), Tests (`SMP8`) and
+  Docstrings (`SMP9`) ([#34](https://github.com/gaborbernat/simplint/pull/34)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `rst-field-syntax` no longer reports fields with no description; `rst-empty-field` does
+  ([#34](https://github.com/gaborbernat/simplint/pull/34)) by [@gaborbernat](https://github.com/gaborbernat).
+- The `docstring-style` value and the reStructuredText rule names use `rst`, such as `docstring-style = "rst"` and
+  `rst-field-syntax` ([#34](https://github.com/gaborbernat/simplint/pull/34)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- Rules now group by what they check, one group per topic such as Naming, Public API or Docstrings, instead of four
+  groups by code range. `simplint linter` lists each group with its rule codes
+  ([#34](https://github.com/gaborbernat/simplint/pull/34)) by [@gaborbernat](https://github.com/gaborbernat).
+- `single-letter-name` (SMP101) now reports `for` loop targets such as `i` in `for i in range(3)`, since a loop body can
+  run far from the line that says what the name holds. Names inside comprehensions stay exempt
+  ([#35](https://github.com/gaborbernat/simplint/pull/35)) by [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-4-0-fixed"></a>
+
+### Fixed
+
+- A `cache-dir` in `pyproject.toml` that points outside the project is ignored, and the cache goes to Ruff's default
+  directory inside it. Stale cache removal now touches only directories of other simplint builds, so a `cache-dir` can
+  no longer delete directories outside the project. The command line and `RUFF_CACHE_DIR` still choose any directory
+  ([#34](https://github.com/gaborbernat/simplint/pull/34)) by [@gaborbernat](https://github.com/gaborbernat).
+- Deeply nested expressions, such as a list nested ten thousand levels deep or a `+` chain of that length, no longer
+  crash simplint with a stack overflow ([#34](https://github.com/gaborbernat/simplint/pull/34)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `--fix` and `--diff` give the same result on every run; some fixes used to vary between runs because they followed the
+  iteration order of randomly seeded hash maps ([#34](https://github.com/gaborbernat/simplint/pull/34)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- With `--diff` on several files, the diffs print in the same file order on every run, instead of in the order the files
+  finished linting ([#34](https://github.com/gaborbernat/simplint/pull/34)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- When an `extend`ed configuration file outside the project is not valid, simplint reports its path without its text, so
+  the first line of an arbitrary file no longer appears in the error
+  ([#34](https://github.com/gaborbernat/simplint/pull/34)) by [@gaborbernat](https://github.com/gaborbernat).
+- A fix loop that does not settle stops with a "Failed to converge" error after 100 rounds, as the loop within a round
+  already did, instead of running on ([#34](https://github.com/gaborbernat/simplint/pull/34)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- A symlink to a file outside the paths being checked is skipped with a warning. `--fix` no longer writes through it,
+  and the report no longer shows the text of the file it points at
+  ([#34](https://github.com/gaborbernat/simplint/pull/34)) by [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-4-0-documentation"></a>
+
+### Documentation
+
+- The README and documentation pages are split into short sections, with tables, admonitions and diagrams of how
+  configuration, the cache, the public API and fix rounds resolve
+  ([#34](https://github.com/gaborbernat/simplint/pull/34)) by [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.3.0 (2026-11-04)
 
 <a name="release-0-3-0"></a>
