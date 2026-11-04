@@ -21,6 +21,7 @@ use crate::lint::walker::Walker;
 use crate::project::FileIndex;
 use crate::rules::docstrings::PublicApi;
 use crate::rules::docstrings::rest::{Target, collect_targets};
+use crate::rules::naming::single_letter_name::ReportedNames;
 use crate::rules::strings::kinds::KindsCache;
 use crate::semantic::Semantic;
 use crate::settings::FileSettings;
@@ -44,6 +45,7 @@ pub struct Checker<'a> {
     public_api: OnceCell<PublicApi<'a>>,
     rest_targets: OnceCell<Vec<Target<'a>>>,
     kinds: KindsCache<'a>,
+    reported_names: ReportedNames<'a>,
     // Rules report while they read the checker, as in Ruff's own `Checker`.
     diagnostics: RefCell<Vec<(Rule, Diagnostic)>>,
 }
@@ -75,6 +77,7 @@ impl<'a> Checker<'a> {
             public_api: OnceCell::new(),
             rest_targets: OnceCell::new(),
             kinds: KindsCache::default(),
+            reported_names: ReportedNames::default(),
             diagnostics: RefCell::default(),
         }
     }
@@ -189,6 +192,11 @@ impl<'a> Checker<'a> {
     // What `string-concatenation` reads off the module to tell the types of its operands.
     pub(crate) fn kinds(&self) -> &KindsCache<'a> {
         &self.kinds
+    }
+
+    // The names `single-letter-name` reported so far.
+    pub(crate) fn reported_names(&self) -> &ReportedNames<'a> {
+        &self.reported_names
     }
 
     pub fn dunder_all(&self) -> &Exports<'a> {

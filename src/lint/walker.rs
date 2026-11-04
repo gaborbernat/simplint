@@ -1,6 +1,6 @@
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Pattern, Stmt, TypeParam};
-use rustc_hash::FxHashSet;
+use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::{self, RuleSet};
@@ -10,8 +10,6 @@ use crate::lint::registry::{self, RuleSet};
 pub struct Walker<'c, 'a> {
     pub checker: &'c Checker<'a>,
     rules: RuleSet,
-    // The names reported in each open scope, the module's first: SMP010 reports a name once per scope.
-    reported_names: Vec<FxHashSet<&'a str>>,
     // The expressions holding the current one, outermost first, ending with the current one.
     expressions: Vec<&'a Expr>,
     // The scopes holding the current node, outermost first, the module left out.
@@ -29,12 +27,21 @@ pub enum Scope<'a> {
     Lambda(&'a ast::ExprLambda),
 }
 
+impl Ranged for Scope<'_> {
+    fn range(&self) -> TextRange {
+        match self {
+            Self::Function(function) => function.range,
+            Self::Class(class) => class.range,
+            Self::Lambda(lambda) => lambda.range,
+        }
+    }
+}
+
 impl<'c, 'a> Walker<'c, 'a> {
     pub fn run(checker: &'c Checker<'a>, rules: RuleSet) {
         let mut walker = Self {
             checker,
             rules,
-            reported_names: vec![FxHashSet::default()],
             expressions: Vec::new(),
             scopes: Vec::new(),
             in_fstring: false,
@@ -42,11 +49,6 @@ impl<'c, 'a> Walker<'c, 'a> {
             in_for_target: false,
         };
         walker.visit_body(checker.body());
-    }
-
-    // Whether the current scope has not reported `name` yet; from now on it has.
-    pub fn report_name_once(&mut self, name: &'a str) -> bool {
-        self.reported_names.last_mut().expect("the module scope is never left").insert(name)
     }
 
     pub fn expression_parent(&self) -> Option<&'a Expr> {
@@ -134,11 +136,9 @@ impl<'a> Walker<'_, 'a> {
     // The owner's own handlers have run in the scope around it; the scope's handlers run before any part of it is
     // walked.
     fn in_scope(&mut self, scope: &Scope<'a>, walk: impl FnOnce(&mut Self)) {
-        self.reported_names.push(FxHashSet::default());
         registry::scope(self.rules, self, scope);
         self.scopes.push(*scope);
         walk(self);
         self.scopes.pop();
-        self.reported_names.pop();
     }
 }
