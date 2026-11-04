@@ -20,6 +20,14 @@ fn check_ignore_noqa_reports_suppressed_code() {
     assert_eq!(check(root.path(), &["--select", "SMP010", "--ignore-noqa"]).0, 1);
 }
 
+#[test_case("x = 1  # simplint: ignore[SMP010]\n" ; "ignore")]
+#[test_case("x = 1  # simplint : ignore[SMP010]\n" ; "ignore_space_before_colon")]
+#[test_case("x = 1  # simplint:  ignore[SMP010]\n" ; "ignore_spaces_after_colon")]
+fn simplint_ignore_suppresses_with_any_space_around_its_colon(source: &str) {
+    let root = project(&[("module.py", source)]);
+    assert_eq!(check(root.path(), &["--select", "SMP010"]).0, 0);
+}
+
 #[test]
 fn noqa_after_a_multiline_string_suppresses_its_start() {
     let root = project(&[("module.py", "x = \"\"\"a\nb\"\"\"  # noqa: SMP010\n")]);

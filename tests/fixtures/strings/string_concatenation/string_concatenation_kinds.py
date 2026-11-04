@@ -1,3 +1,4 @@
+import builtins
 import collections
 import functools
 import pathlib
@@ -257,6 +258,10 @@ class KindHolder:
 
     @staticmethod
     def static(self) -> str:
+        return "a" + self.k_prefix
+
+    @builtins.staticmethod
+    def qualified_static(self) -> str:
         return "a" + self.k_prefix
 
     def reader(this, self: str) -> str:

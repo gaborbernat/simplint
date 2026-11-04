@@ -9,13 +9,14 @@ expression: "lint_fixture(rule, fixture, target_version)"
 17:5 SMP312 Docstring of `summary` does not document parameter `source`; add `:param source:` [unsafe fix: Add `:param source:`]
 42:9 SMP312 Docstring of `run` does not document parameter `verbose`; add `:param verbose:` [unsafe fix: Add `:param verbose:`]
 46:9 SMP312 Docstring of `check` does not document parameter `path`; add `:param path:` [unsafe fix: Add `:param path:`]
-50:5 SMP312 Docstring of `Bare` does not document parameter `quiet`; add `:param quiet:` [unsafe fix: Add `:param quiet:`]
-57:5 SMP312 Docstring of `single` does not document parameter `value`; add `:param value:`
-65:5 SMP312 Docstring of `Settings` does not document parameter `retries`; add `:param retries:` [unsafe fix: Add `:param retries:`]
-81:5 SMP312 Docstring of `reordered` does not document parameter `b`; add `:param b:` [unsafe fix: Add `:param b:`]
-90:5 SMP312 Docstring of `indented` does not document parameter `b`; add `:param b:` [unsafe fix: Add `:param b:`]
-114:5 SMP312 Docstring of `positional` does not document parameter `__obj`; add `:param __obj:` [unsafe fix: Add `:param __obj:`]
---- fixed (12 applied, 1 remaining) ---
+49:9 SMP312 Docstring of `spread` does not document parameter `args`; add `:param args:` [unsafe fix: Add `:param args:`]
+56:5 SMP312 Docstring of `Bare` does not document parameter `quiet`; add `:param quiet:` [unsafe fix: Add `:param quiet:`]
+63:5 SMP312 Docstring of `single` does not document parameter `value`; add `:param value:`
+71:5 SMP312 Docstring of `Settings` does not document parameter `retries`; add `:param retries:` [unsafe fix: Add `:param retries:`]
+87:5 SMP312 Docstring of `reordered` does not document parameter `b`; add `:param b:` [unsafe fix: Add `:param b:`]
+96:5 SMP312 Docstring of `indented` does not document parameter `b`; add `:param b:` [unsafe fix: Add `:param b:`]
+120:5 SMP312 Docstring of `positional` does not document parameter `__obj`; add `:param __obj:` [unsafe fix: Add `:param __obj:`]
+--- fixed (13 applied, 1 remaining) ---
 def copy(source: str, target: str, *args: str, **kwargs: str) -> None:
     r"""Copy a file.
 
@@ -74,6 +75,13 @@ class Copier:
         """Check a path.
 
         :param path:
+        """
+
+    def spread(*args: str, flag: bool) -> None:
+        """Spread the values.
+
+        :param args:
+        :param flag: Whether to spread.
         """
 
 
