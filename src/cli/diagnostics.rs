@@ -176,7 +176,7 @@ fn lint_source(path: &Path, source: &str, linter: &Linter, mode: &Mode, settled:
         Fixer::withdraw(&mut linted.diagnostics, withdrawn);
         return Linted { settled, ..linted };
     }
-    let result = linter.fix(path, source, mode.unsafe_fixes, mode.noqa);
+    let result = Fixer::new(linter, path, mode.unsafe_fixes, mode.noqa).fix(source);
     let Ok((FixerResult { diagnostics, transformed, fixed }, withdrawn)) = result else { return unfixed() };
     let settled = (fixed.is_empty() && transformed == source).then_some(withdrawn);
     Linted { diagnostics, transformed: Some(transformed), fixed, settled }

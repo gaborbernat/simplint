@@ -1,27 +1,21 @@
 use std::collections::{HashMap, HashSet};
 use std::ops::Deref;
 use std::path::Path;
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 
-use anyhow::{Result, ensure};
 use ruff_db::diagnostic::Diagnostic;
 use ruff_diagnostics::Applicability;
 use ruff_linter::line_width::LineLength;
-use ruff_linter::linter::{FixTable, ParseSource, lint_only, parse_unchecked_source};
+use ruff_linter::linter::{ParseSource, lint_only, parse_unchecked_source};
 use ruff_linter::package::PackageRoot;
 use ruff_linter::registry::Rule as RuffRule;
 use ruff_linter::settings::LinterSettings;
 use ruff_linter::settings::flags;
 use ruff_linter::source_kind::SourceKind;
-use ruff_python_ast::token::{Token, TokenKind, Tokens};
 use ruff_python_ast::{ModModule, PySourceType, PythonVersion};
 use ruff_python_parser::Parsed;
-use ruff_python_trivia::leading_indentation;
 use ruff_source_file::LineRanges;
-use ruff_text_size::{Ranged, TextRange, TextSize};
 
-use crate::fix::apply::{FixResult, fix_ruff_file};
-use crate::fix::{add_fixes, errors};
 use crate::layout::{Layout, Widths};
 use crate::settings::FromRuff;
 
@@ -89,7 +83,7 @@ impl<'a> RuffFile<'a> {
     }
 
     // The source as Ruff takes it, and its syntax tree.
-    fn parse(source: &str, parser_version: PythonVersion) -> (SourceKind, Parsed<ModModule>) {
+    pub fn parse(source: &str, parser_version: PythonVersion) -> (SourceKind, Parsed<ModModule>) {
         let source_kind = SourceKind::Python { code: source.to_owned(), is_stub: false };
         let parsed = parse_unchecked_source(&source_kind, PySourceType::Python, parser_version);
         (source_kind, parsed)
@@ -130,52 +124,6 @@ impl<'a> RuffFile<'a> {
         .filter(|diagnostic| diagnostic.fix().is_some_and(|fix| fix.applies(Applicability::Unsafe)))
         .map(Diagnostic::name)
         .collect()
-    }
-
-    // Ruff's `lint_fix` loop as `ruff check --fix --unsafe-fixes` runs it, applying only the fixes of the rules simplint's
-    // fixes gave new findings. The other rules still report, as a suppression comment counts as unused when the rule
-    // it silences is off, and its removal would expose what it silenced, such as an import kept for others. Every pass
-    // is a `check`, which the caller remembers, so a pass over a source already checked costs nothing.
-    pub fn cleanup(
-        path: &Path,
-        source: &str,
-        introduced: &HashSet<&'static str>,
-        parser_version: PythonVersion,
-        check: impl Fn(&str) -> Arc<Checked>,
-    ) -> String {
-        // Ruff sorts an import block only when no other statement shares its last line, while `ruff format` puts each
-        // statement after a `;` on a line of its own, so the import lines are split as the formatter would split them.
-        let start = if introduced.contains(RuffRule::UnsortedImports.name().as_str()) {
-            split_import_lines(source, Self::parse(source, parser_version).1.tokens())
-        } else {
-            source.to_owned()
-        };
-        Self::lint_fix(path, &start, introduced, check).unwrap_or(start)
-    }
-
-    // Ruff's `lint_fix` loop, failing as it does when a fix breaks code that parsed.
-    fn lint_fix(
-        path: &Path,
-        start: &str,
-        introduced: &HashSet<&'static str>,
-        check: impl Fn(&str) -> Arc<Checked>,
-    ) -> Result<String> {
-        let mut checked = check(start);
-        let valid = checked.parses && !checked.diagnostics.iter().any(Diagnostic::is_invalid_syntax);
-        let mut transformed = start.to_owned();
-        let mut fixed = FixTable::default();
-        for iterations in 0.. {
-            let offered = checked.diagnostics.iter().filter(|diagnostic| introduced.contains(diagnostic.name()));
-            let converging = || !errors::ruff_failed_to_converge(path, iterations, &transformed, &checked.diagnostics);
-            let Some(FixResult { code, fixes }) = fix_ruff_file(&transformed, offered).filter(|_| converging()) else {
-                break;
-            };
-            add_fixes(&mut fixed, &fixes);
-            transformed = code;
-            checked = check(&transformed);
-            ensure!(!valid || checked.parses, errors::ruff_broken_syntax(path, &transformed, &fixed));
-        }
-        Ok(transformed)
     }
 
     // Ruff offers some fixes, such as collapsing nested `if` statements, only when the first line of their result fits
@@ -233,38 +181,10 @@ fn spells_layout_code(source: &str) -> bool {
     })
 }
 
-// The source with each `;` that ends an import statement replaced by a line break at the statement's indentation.
-fn split_import_lines(source: &str, tokens: &Tokens) -> String {
-    let mut split = String::with_capacity(source.len());
-    let mut copied = TextSize::default();
-    let mut statement = None::<&Token>;
-    let mut tokens = tokens.iter().filter(|token| !token.kind().is_trivia()).peekable();
-    while let Some(token) = tokens.next() {
-        match token.kind() {
-            TokenKind::Semi => {
-                if let (Some(start), Some(next)) = (statement.take(), tokens.peek())
-                    && matches!(start.kind(), TokenKind::Import | TokenKind::From)
-                {
-                    split.push_str(&source[TextRange::new(copied, token.start())]);
-                    split.push('\n');
-                    split.push_str(leading_indentation(source.full_line_str(start.start())));
-                    copied = next.start();
-                }
-            }
-            TokenKind::Newline | TokenKind::Indent | TokenKind::Dedent => statement = None,
-            _ => {
-                statement.get_or_insert(token);
-            }
-        }
-    }
-    split.push_str(&source[copied.to_usize()..]);
-    split
-}
-
 // Ruff's diagnostics for a source, whether it parses, and the findings they make.
 pub struct Checked {
-    diagnostics: Vec<Diagnostic>,
-    parses: bool,
+    pub diagnostics: Vec<Diagnostic>,
+    pub parses: bool,
     pub findings: Findings,
 }
 

@@ -1,6 +1,6 @@
 mod apply;
+mod cleanup;
 mod errors;
-pub(crate) mod ruff;
 
 use std::collections::{BTreeSet, HashSet};
 use std::path::Path;
@@ -15,9 +15,10 @@ use ruff_linter::settings::types::UnsafeFixes;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::fix::apply::{FixResult, fix_file};
-use crate::fix::ruff::{Checked, RuffFile};
+use crate::fix::cleanup::cleanup;
 use crate::lint::Linter;
 use crate::lint::registry::{Rule, RuleSet, rule_of};
+use crate::lint::ruff::Checked;
 
 pub struct FixerResult {
     pub diagnostics: Vec<Diagnostic>,
@@ -57,6 +58,11 @@ impl<'l, 'a> Fixer<'l, 'a> {
         }
     }
 
+    // Fixes run after `ruff check --fix --unsafe-fixes`, so their result must not give it new work: a Ruff finding the
+    // original file did not have gets Ruff's own fix when Ruff has one, and otherwise the fixes of the simplint rule that
+    // caused it are withdrawn, keeping that rule's reports. `ruff format`, which runs last, keeps the syntax tree, so it
+    // cannot undo this.
+    //
     // A run withdraws a rule whose fixes leave Ruff work next to another rule's pending fixes, yet once those apply, a
     // run over the result can offer the withdrawn fixes again. Running until a run changes nothing, or returns to a
     // source seen before, makes a single run final.
@@ -191,7 +197,7 @@ impl<'l, 'a> Fixer<'l, 'a> {
             return known.to_string();
         }
         let parser_version = self.linter.settings.from_ruff.parser_version;
-        let cleaned = RuffFile::cleanup(self.path, source, introduced, parser_version, |source| self.check(source));
+        let cleaned = cleanup(self.path, source, introduced, parser_version, |source| self.check(source));
         self.cleanups.lock().expect("no worker panics while cleaning up").insert(key, self.sources.intern(&cleaned));
         cleaned
     }
