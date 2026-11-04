@@ -1,6 +1,7 @@
 use std::cell::{OnceCell, RefCell};
 use std::rc::Rc;
 
+use ruff_python_ast::name::QualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Operator, Pattern, Stmt};
 use ruff_text_size::{Ranged, TextRange};
@@ -207,8 +208,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
     fn library_call(&mut self, call: &'a ast::ExprCall, depth: usize) -> Option<Kind> {
         let name = self.qualified(&call.func, depth)?;
         let args = &call.arguments.args;
-        let segments: Vec<&str> = name.iter().map(String::as_str).collect();
-        match segments.as_slice() {
+        match name.segments() {
             ["os", "getcwd"]
             | ["getpass", "getuser"]
             | ["json", "dumps"]
@@ -242,11 +242,9 @@ impl<'w, 'a> Kinds<'w, 'a> {
         }
         if let Expr::Call(ast::ExprCall { func, .. }) = value.as_ref()
             && attr == "hex"
-            && self.qualified(func, depth).is_some_and(|name| {
-                name.len() == 2
-                    && name[0] == "uuid"
-                    && matches!(name[1].as_str(), "uuid1" | "uuid3" | "uuid4" | "uuid5")
-            })
+            && self
+                .qualified(func, depth)
+                .is_some_and(|name| matches!(name.segments(), ["uuid", "uuid1" | "uuid3" | "uuid4" | "uuid5"]))
         {
             return Some(Kind::Str);
         }
@@ -273,29 +271,26 @@ impl<'w, 'a> Kinds<'w, 'a> {
                 _ => None,
             };
         }
-        let mut name = self.qualified(value, depth)?;
-        name.push(attr.to_string());
-        let segments: Vec<&str> = name.iter().map(String::as_str).collect();
-        match segments.as_slice() {
-            ["os", "curdir" | "extsep" | "linesep" | "name" | "pardir" | "pathsep" | "sep"]
-            | ["sys", "executable" | "platform" | "version"] => Some(Kind::Str),
-            ["string", constant] if STRING_CONSTANTS.contains(constant) => Some(Kind::Str),
-            ["os", "environ"] => Some(Kind::StrItems),
+        let name = self.qualified(value, depth)?;
+        match (name.segments(), attr.as_str()) {
+            (["os"], "curdir" | "extsep" | "linesep" | "name" | "pardir" | "pathsep" | "sep")
+            | (["sys"], "executable" | "platform" | "version") => Some(Kind::Str),
+            (["string"], constant) if STRING_CONSTANTS.contains(&constant) => Some(Kind::Str),
+            (["os"], "environ") => Some(Kind::StrItems),
             _ => None,
         }
     }
 
     // The qualified name of `expr`, an imported name or an attribute of one, when the module's own import binds the
     // name it starts with.
-    fn qualified(&self, expr: &'a Expr, depth: usize) -> Option<Vec<String>> {
+    fn qualified(&self, expr: &'a Expr, depth: usize) -> Option<QualifiedName<'w>> {
         let mut head = expr;
         while let Expr::Attribute(ast::ExprAttribute { value, .. }) = head {
             head = value;
         }
         let (bindings, scope) = self.lookup(&head.as_name_expr()?.id, depth)?;
         let semantic = self.walker.checker.semantic();
-        let name = (scope == 0 && bindings.only_imported()).then(|| semantic.qualified_name(expr)).flatten()?;
-        Some(name.segments().iter().map(ToString::to_string).collect())
+        (scope == 0 && bindings.only_imported()).then(|| semantic.qualified_name(expr)).flatten()
     }
 
     fn name(&mut self, name: &'a str, depth: usize) -> Option<Kind> {
@@ -377,7 +372,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
             return None;
         };
         self.qualified(func, depth)
-            .is_some_and(|name| name.len() == 2 && name[0] == "tempfile" && name[1] == "TemporaryDirectory")
+            .is_some_and(|name| name.segments() == ["tempfile", "TemporaryDirectory"])
             .then_some(Kind::Str)
     }
 
