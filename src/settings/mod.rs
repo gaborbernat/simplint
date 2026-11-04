@@ -3,7 +3,8 @@ mod file;
 mod metadata;
 mod options;
 
-use std::collections::{BTreeMap, HashMap};
+use rustc_hash::FxHashMap;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -13,6 +14,7 @@ use itertools::Itertools;
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_diagnostics::{Applicability, Fix};
 use ruff_linter::settings::types::GlobPath;
+use ruff_macros::CacheKey;
 use serde::Deserialize;
 
 pub use api::{ApiScope, DocstringStyle, ModuleRole, ProjectKind};
@@ -23,6 +25,34 @@ use crate::lint::registry::{Rule, RuleSet};
 use crate::settings::metadata::{BuildConfiguration, ProjectMetadata};
 use crate::settings::options::{PerFileIgnoreSource, ProjectOptions, Selector, SelectorLayer};
 
+// The scalar and list settings the rules tune themselves with, which a cached result depends on.
+#[derive(CacheKey)]
+pub struct Knobs {
+    pub max_paragraph_words: usize,
+    pub keep_names: Vec<String>,
+    pub module_attributes: Vec<String>,
+    pub max_helper_statements: usize,
+    pub max_caller_statements: usize,
+}
+
+impl Knobs {
+    fn resolve(
+        max_paragraph_words: Option<usize>,
+        keep_names: Option<Vec<String>>,
+        module_attributes: Option<Vec<String>>,
+        max_helper_statements: Option<usize>,
+        max_caller_statements: Option<usize>,
+    ) -> Self {
+        Self {
+            max_paragraph_words: max_paragraph_words.unwrap_or(100),
+            keep_names: keep_names.unwrap_or_default(),
+            module_attributes: module_attributes.unwrap_or_default(),
+            max_helper_statements: max_helper_statements.unwrap_or(3),
+            max_caller_statements: max_caller_statements.unwrap_or(20),
+        }
+    }
+}
+
 // simplint's own options and the project metadata its rules read. The Python version, the files to check and what to
 // exclude come from Ruff's configuration instead, resolved the way `ruff check` resolves them.
 pub struct Settings {
@@ -30,7 +60,7 @@ pub struct Settings {
     pub path: Option<PathBuf>,
     pub metadata: ProjectMetadata,
     pub run: RunOptions,
-    pub keep_names: Vec<String>,
+    pub knobs: Knobs,
     pub api: ApiScope,
     pub docstring_style: Option<DocstringStyle>,
     rules: RuleSet,
@@ -47,8 +77,9 @@ impl Settings {
         let (metadata, build, configuration) = match pyproject {
             Some((path, table)) => {
                 let build = BuildConfiguration::of(&table);
-                let pyproject: Pyproject =
+                let mut pyproject: Pyproject =
                     table.try_into().with_context(|| format!("Failed to parse {}", path.display()))?;
+                pyproject.project.add_groups(&pyproject.dependency_groups);
                 let source = Source::File(Arc::from(path));
                 (pyproject.project, build, Configuration::from_options(pyproject.tool.simplint, root, &source))
             }
@@ -59,8 +90,24 @@ impl Settings {
         let fixable = resolve_rules(configuration.rule_selections.iter().map(|selection| &selection.fixable))?;
         let fix_safety =
             FixSafetyTable::from_selectors(&configuration.extend_safe_fixes, &configuration.extend_unsafe_fixes)?;
-        let ProjectOptions { keep_names, project_kind, api_packages, api_modules, docstring_style } =
-            configuration.project;
+        let ProjectOptions {
+            max_paragraph_words,
+            keep_names,
+            module_attributes,
+            project_kind,
+            api_packages,
+            api_modules,
+            docstring_style,
+            max_helper_statements,
+            max_caller_statements,
+        } = configuration.project;
+        let knobs = Knobs::resolve(
+            max_paragraph_words,
+            keep_names,
+            module_attributes,
+            max_helper_statements,
+            max_caller_statements,
+        );
         let api = ApiScope::resolve(
             root,
             project_kind.unwrap_or_default(),
@@ -75,7 +122,7 @@ impl Settings {
             api,
             docstring_style,
             run: configuration.run,
-            keep_names: keep_names.unwrap_or_default(),
+            knobs,
             rules,
             fixable,
             fix_safety,
@@ -143,11 +190,12 @@ impl CacheKey for Settings {
     fn cache_key(&self, state: &mut CacheKeyHasher) {
         self.root.cache_key(state);
         self.metadata.dependencies.iter().for_each(|dependency| dependency.cache_key(state));
+        self.metadata.declared.iter().for_each(|dependency| dependency.cache_key(state));
         self.metadata.entry_points.cache_key(state);
         self.fixable.cache_key(state);
         self.fix_safety.forced_safe.cache_key(state);
         self.fix_safety.forced_unsafe.cache_key(state);
-        self.keep_names.cache_key(state);
+        self.knobs.cache_key(state);
         self.api.cache_key(state);
         self.docstring_style.map(|style| style.to_string()).cache_key(state);
     }
@@ -324,8 +372,8 @@ impl Discovery {
 // it met, so every one is read and parsed once.
 #[derive(Default)]
 struct Projects {
-    settings: HashMap<PathBuf, Arc<Settings>>,
-    pyprojects: HashMap<PathBuf, PyprojectFile>,
+    settings: FxHashMap<PathBuf, Arc<Settings>>,
+    pyprojects: FxHashMap<PathBuf, PyprojectFile>,
 }
 
 // A `pyproject.toml` met: whether it configures simplint, and its table until the project rooted next to it takes it.
@@ -371,6 +419,8 @@ fn read_table(path: &Path) -> Result<toml::Table> {
 #[serde(default)]
 struct Pyproject {
     project: ProjectMetadata,
+    #[serde(rename = "dependency-groups")]
+    dependency_groups: BTreeMap<String, Vec<toml::Value>>,
     tool: Tool,
 }
 

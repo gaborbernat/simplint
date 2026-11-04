@@ -1,10 +1,4 @@
-## What it does
-
-Checks for `Callable[..., T]`: a subscript whose first argument is `...` and whose name, or the last part of a dotted
-name, is `Callable`. That covers [`typing.Callable`](https://docs.python.org/3/library/typing.html#typing.Callable),
-[`collections.abc.Callable`](https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable) and a bare
-`Callable` imported from either. The check goes by name only, so it also matches type aliases and other expressions
-outside annotations. String annotations are not checked.
+Flags `Callable[..., T]` annotations.
 
 ## Why is this bad?
 
@@ -16,14 +10,20 @@ It can also state keyword names and defaults, which a parameter list such as `Ca
 
 ## Example
 
-```python
+```python report
+from collections.abc import Callable
+
+
 def run(callback: Callable[..., None]) -> None:
     callback("build", retries=3)
 ```
 
 Use instead:
 
-```python
+```python ok
+from typing import Protocol
+
+
 class Callback(Protocol):
     def __call__(self, name: str, *, retries: int) -> None: ...
 
@@ -32,6 +32,51 @@ def run(callback: Callback) -> None:
     callback("build", retries=3)
 ```
 
-## Fix safety
+## What it does
 
 No fix is offered: the real signature has to be written by hand.
+
+### Active on
+
+- **`Callable[..., T]`**: a subscript whose first argument is `...` and whose name, or the last part of a dotted name,
+  is `Callable`. The check goes by name only, so it also matches type aliases and other expressions outside annotations.
+  The matched names are:
+
+  - a bare `Callable` imported from `typing` or `collections.abc`.
+
+    ```python report
+    from collections.abc import Callable
+
+
+    def run(callback: Callable[..., None]) -> None:
+        callback()
+    ```
+
+  - [`typing.Callable`](https://docs.python.org/3/library/typing.html#typing.Callable), a dotted name, here in a type
+    alias.
+
+    ```python report
+    import typing
+
+    Handler = typing.Callable[..., int]
+    ```
+
+  - [`collections.abc.Callable`](https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable), a
+    dotted name in a parameter annotation.
+
+    ```python report
+    import collections.abc
+
+
+    def run(callback: collections.abc.Callable[..., None]) -> None:
+        callback()
+    ```
+
+### Exceptions
+
+- **String annotations**: these are not checked.
+
+  ```python ok
+  def run(callback: "Callable[..., None]") -> None:
+      callback()
+  ```

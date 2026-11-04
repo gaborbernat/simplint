@@ -9,6 +9,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::docstring;
 use crate::rules::testing::is_test_function;
+use crate::syntax::is_name;
 
 pub fn test_class(checker: &Checker) {
     if !checker.is_test_module() {
@@ -82,9 +83,7 @@ fn flatten_class(checker: &Checker, class: &ast::StmtClassDef) -> Option<String>
         }
         let self_parameter =
             function.parameters.args.first().filter(|parameter| parameter.name().as_str() == "self")?;
-        if any_over_body(&function.body, |expr| expr.as_name_expr().is_some_and(|name| name.id.as_str() == "self"))
-            || !function.parameters.posonlyargs.is_empty()
-        {
+        if any_over_body(&function.body, |expr| is_name(expr, "self")) || !function.parameters.posonlyargs.is_empty() {
             return None;
         }
         let block = source.full_lines_range(TextRange::new(

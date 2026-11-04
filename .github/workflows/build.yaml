@@ -17,11 +17,7 @@ on:
       - "rust-toolchain.toml"
       - "pyproject.toml"
       - ".github/workflows/build.yaml"
-      - ".github/workflows/_build.yaml"
   workflow_call:
-    outputs:
-      version:
-        value: ${{ jobs.build.outputs.version }}
   schedule:
     - cron: "0 8 * * *"
 concurrency:
@@ -58,15 +54,188 @@ jobs:
               - 'pyproject.toml'
               - 'tox.toml'
               - '.github/workflows/build.yaml'
-              - '.github/workflows/_build.yaml'
   build:
     name: 🏗️ Build distributions
     needs: changes
-    uses: $/.github/workflows/_build.yaml
+    if: ${{ needs.changes.outputs.run == 'true' }}
+    uses: tox-dev/github-workflows/.github/workflows/build-maturin-wheels.yaml@2c1f5e4ceda37c41eb8367b5cbeaa741aa60a566 # 6.5.2
     with:
-      run: ${{ needs.changes.outputs.run }}
-      release-build: ${{ startsWith(github.ref, 'refs/tags/') }}
-      pgo: ${{ github.event_name == 'workflow_dispatch' && inputs.pgo }}
+      package-name: simplint
+      matrix: >-
+        [ {"os": "ubuntu-26.04", "target": "aarch64", "artifact": "linux-aarch64", "manylinux": "2_28", "args": "--zig"}, {"os": "ubuntu-26.04", "target": "aarch64-unknown-linux-musl", "artifact": "linux-aarch64-musl", "manylinux": "musllinux_1_2", "args": "--zig"}, {"os": "ubuntu-26.04", "target": "riscv64gc-unknown-linux-gnu", "artifact": "linux-riscv64gc", "manylinux": "2_31"}, {"os": "windows-11-arm", "target": "aarch64", "artifact": "windows-aarch64"}, {"os": "macos-26", "target": "x86_64", "artifact": "macos-x86_64"} ]
+      pre-build-command: ${{ !startsWith(github.ref, 'refs/tags/') && 'cargo install cargo-edit --version 0.13.14 --locked && cargo set-version --bump patch' || '' }}
+      release-build: ${{ startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo) }}
     permissions:
       contents: read
       pull-requests: read
+  maturin:
+    name: ⚙️ Read locked maturin version
+    needs: changes
+    if: ${{ needs.changes.outputs.run == 'true' }}
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.maturin.outputs.version }}
+    steps:
+      - name: 📥 Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 🐍 Set up Python
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: latest-known
+          enable-cache: false
+          python-version: "3.15"
+      - name: 📦 Install locked build tool
+        uses: tox-dev/github-workflows/install-locked-tools@2c1f5e4ceda37c41eb8367b5cbeaa741aa60a566 # 6.5.2
+        with:
+          groups: release-build
+          venv: ${{ runner.temp }}/release-tools
+      - name: ⚙️ Read locked maturin version
+        id: maturin
+        shell: bash
+        run: |
+          version=$("$RUNNER_TEMP/release-tools/bin/maturin" --version)
+          printf 'version=v%s\n' "${version#maturin }" >>"$GITHUB_OUTPUT"
+  pgo:
+    name: 🏗️ ${{ matrix.platform.target }} PGO
+    needs: [changes, build, maturin]
+    if: ${{ needs.changes.outputs.run == 'true' }}
+    runs-on: ${{ matrix.platform.runner }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # PGO legs stay here: each needs an instrumented build, a training run, and a profile check in one job.
+        # The shared workflow builds every other leg and the sdist.
+        platform:
+          - {runner: ubuntu-26.04, target: x86_64, manylinux: "2_28", pgo: x86_64-unknown-linux-gnu}
+          - {runner: ubuntu-26.04, target: x86_64-unknown-linux-musl, manylinux: musllinux_1_2, pgo: x86_64-unknown-linux-musl}
+          - {runner: windows-2025, target: x64, pgo: x86_64-pc-windows-msvc}
+          - {runner: macos-26, target: aarch64, pgo: aarch64-apple-darwin}
+    env:
+      PGO_TARGET: ${{ matrix.platform.pgo }}
+    steps:
+      - name: 📥 Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: ⚙️ Read source timestamp
+        shell: bash
+        run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >>"$GITHUB_ENV"
+      - name: 📩 Download source
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: simplint-source
+          path: .
+      - name: 🐍 Set up Python
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        env:
+          UV_VENV_SEED: "true"
+        with:
+          ignore-empty-workdir: true
+          version: latest-known
+          enable-cache: false
+          activate-environment: true
+          python-version: "3.15"
+      - name: ⚙️ Read package version
+        id: version
+        shell: bash
+        run: echo "version=$(python tasks/cargo_version.py Cargo.toml)" >>"$GITHUB_OUTPUT"
+      - name: ⚙️ Read Rust toolchain channel
+        id: toolchain
+        if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo }}
+        shell: bash
+        run: echo "channel=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml)" >>"$GITHUB_OUTPUT"
+      - name: 📦 Restore PGO profile
+        id: profile
+        if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: pgo/simplint.profdata
+          key: pgo-profile-${{ matrix.platform.pgo }}-${{ steps.version.outputs.version }}-${{ github.sha }}-rust${{ steps.toolchain.outputs.channel }}-maturin${{ needs.maturin.outputs.version }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'tasks/pgo*') }}
+      - name: 🦀 Install Rust toolchain
+        if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo }}
+        uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        with:
+          components: llvm-tools-preview
+          cache: false
+      - name: 🏗️ Build instrumented binary
+        if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo && steps.profile.outputs.cache-hit != 'true' }}
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          maturin-version: ${{ needs.maturin.outputs.version }}
+          target: ${{ matrix.platform.target }}
+          args: --locked --release --out target/pgo-wheels --target-dir target/pgo-build
+          manylinux: ${{ matrix.platform.manylinux || 'auto' }}
+          docker-options: --env SOURCE_DATE_EPOCH
+          sccache: false
+        env:
+          RUSTFLAGS: -Cprofile-generate
+      - name: 📦 Restore PGO corpus
+        id: corpus
+        if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo && steps.profile.outputs.cache-hit != 'true' }}
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: pgo-corpus
+          key: pgo-corpus-${{ runner.os }}-${{ hashFiles('tasks/pgo_corpus.toml') }}
+      - name: 🏋️ Collect PGO profile
+        if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo && steps.profile.outputs.cache-hit != 'true' }}
+        shell: bash
+        # The profile lives outside target, which the Linux build container creates as root.
+        run: python tasks/pgo.py train "target/pgo-build/$PGO_TARGET/release/simplint" pgo --cache pgo-corpus
+      - name: 💾 Save PGO corpus
+        if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo && steps.profile.outputs.cache-hit != 'true' && steps.corpus.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: pgo-corpus
+          key: ${{ steps.corpus.outputs.cache-primary-key }}
+      - name: 💾 Save PGO profile
+        if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo && steps.profile.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: pgo/simplint.profdata
+          key: ${{ steps.profile.outputs.cache-primary-key }}
+      - name: ⚙️ Use PGO profile
+        if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo }}
+        shell: bash
+        run: |
+          flags="-Cprofile-use=$GITHUB_WORKSPACE/pgo/simplint.profdata -Cllvm-args=-pgo-warn-missing-function"
+          echo "RUSTFLAGS=$flags" >>"$GITHUB_ENV"
+          echo "PGO_BUILD_LOG=$GITHUB_WORKSPACE/pgo/build.log" >>"$GITHUB_ENV"
+      - name: 🏗️ Build wheels
+        if: ${{ startsWith(matrix.platform.runner, 'ubuntu') || !((startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo) }}
+        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        with:
+          maturin-version: ${{ needs.maturin.outputs.version }}
+          target: ${{ matrix.platform.target }}
+          args: --locked --release --out dist --target-dir target
+          manylinux: ${{ matrix.platform.manylinux || 'auto' }}
+          docker-options: --env SOURCE_DATE_EPOCH --env PGO_BUILD_LOG
+          sccache: ${{ !startsWith(github.ref, 'refs/tags/') && !(github.event_name == 'workflow_dispatch' && inputs.pgo) && !startsWith(matrix.platform.runner, 'windows') }}
+          before-script-linux: |
+            if [[ -n "${PGO_BUILD_LOG:-}" ]]; then
+              maturin() { command maturin "$@" 2>&1 | tee "$PGO_BUILD_LOG"; }
+            fi
+      - name: 🏗️ Build wheels with PGO
+        if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo && !startsWith(matrix.platform.runner, 'ubuntu') }}
+        shell: bash
+        run: |
+          uvx --from "maturin==${MATURIN_VERSION#v}" maturin build --locked --release --out dist --target-dir target \
+            --target "$PGO_TARGET" 2>&1 | tee pgo/build.log
+        env:
+          MATURIN_VERSION: ${{ needs.maturin.outputs.version }}
+      - name: 🔍 Check the PGO profile matched
+        if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo }}
+        shell: bash
+        run: python tasks/pgo.py verify pgo/build.log pgo/simplint.profdata
+      - name: 📤 Upload wheels
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: simplint-wheels-pgo-${{ matrix.platform.target }}
+          path: dist
+          if-no-files-found: error

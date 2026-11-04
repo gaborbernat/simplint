@@ -13,7 +13,7 @@ fn check_watch_reruns_on_changes() {
     watched.wait_for("File change detected...");
     // A write can be seen before it completes, so the check that counts both files may not be the first one.
     let second = watched.wait_for("Found 2 errors.");
-    fs::write(root.path().join("pyproject.toml"), "[tool.simplint]\nper-file-ignores = { \"*.py\" = [\"SMP010\"] }\n")
+    fs::write(root.path().join("pyproject.toml"), "[tool.simplint]\nper-file-ignores = { \"*.py\" = [\"SMP101\"] }\n")
         .expect("write configuration");
     let third = watched.wait_for("Found 0 errors.");
     let (code, stderr) = watched.stop(root.path());
@@ -61,6 +61,6 @@ fn check_watch_quiet_prints_only_diagnostics() {
     let mut watched = Watched::start(root.path(), &["--quiet"]);
     // The screen is cleared before each check, by escape codes or, on Windows without a console, a form feed.
     let clear = if cfg!(windows) { "\u{c}" } else { "\u{1b}[H\u{1b}[2J\u{1b}[3J" };
-    let first = watched.wait_for("SMP010");
+    let first = watched.wait_for("SMP101");
     assert_eq!((first, watched.stop(root.path()).0), (format!("{clear}module.py:1:1: {SINGLE_X}"), Some(2)));
 }

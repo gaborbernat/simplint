@@ -1,0 +1,152 @@
+Flags a constructor parameter documented by a `:param name:` field in both the class docstring and the `__init__`
+docstring. Sphinx shows the class docstring by default, so the two copies drift apart as each is edited on its own.
+
+## Why is this bad?
+
+[autodoc](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#confval-autoclass_content) shows the class
+docstring by default, so the copy in `__init__` is read by those who open the source only, and the two drift apart as
+each is edited on its own.
+
+## Example
+
+```toml config
+[tool.simplint]
+docstring-style = "rst"
+```
+
+```python report
+class Reader:
+    """Read files.
+
+    :param source: Where to read from.
+    """
+
+    def __init__(self, source: str) -> None:
+        """Set up.
+
+        :param source: The path to read.
+        """
+```
+
+Use instead:
+
+```python ok
+class Reader:
+    """Read files.
+
+    :param source: Where to read from.
+    """
+
+    def __init__(self, source: str) -> None:
+        """Set up."""
+```
+
+## Configuration
+
+- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in
+  `[tool.simplint]`: `"rst"` turns the rule on
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python report
+  class Reader:
+      """Read files.
+
+      :param source: Where to read from.
+      """
+
+      def __init__(self, source: str) -> None:
+          """Set up.
+
+          :param source: The path to read.
+          """
+  ```
+
+## What it does
+
+Checks classes, when `docstring-style = "rst"`, for constructor parameters documented twice.
+
+### Active on
+
+- **`:param name:` fields in the `__init__` docstring**: reported when the class docstring also has a `:param name:`
+  field for the same constructor parameter.
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python report
+  class Reader:
+      """Read files.
+
+      :param source: Where to read from.
+      """
+
+      def __init__(self, source: str) -> None:
+          """Set up.
+
+          :param source: The path to read.
+          """
+  ```
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python ok
+  class Reader:
+      """Read files.
+
+      :param source: Where to read from.
+      """
+
+      def __init__(self, source: str, mode: str) -> None:
+          """Set up.
+
+          :param mode: How to open it.
+          """
+  ```
+
+### Fix
+
+The fix deletes the field from the `__init__` docstring, with the lines that continue it.
+
+**Unsafe fix:** code may read the docstring through `__doc__`, and the `__init__` text may hold details the class
+docstring lacks.
+
+```toml config
+[tool.simplint]
+docstring-style = "rst"
+```
+
+```python report
+class Reader:
+    """Read files.
+
+    :param source: Where to read from.
+    """
+
+    def __init__(self, source: str) -> None:
+        """Set up.
+
+        :param source: The path to read.
+        """
+```
+
+```python fixed
+class Reader:
+    """Read files.
+
+    :param source: Where to read from.
+    """
+
+    def __init__(self, source: str) -> None:
+        """Set up."""
+```
+
+No fix is offered when escapes in the docstring make its text differ from the source.

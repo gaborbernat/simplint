@@ -2,4 +2,4 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-3:1 SMP005 Paragraph exceeds 100 words; split it at a change of topic
+3:1 SMP002 Paragraph exceeds 100 words; split it at a change of topic

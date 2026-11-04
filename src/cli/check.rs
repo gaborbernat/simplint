@@ -1,12 +1,13 @@
 // `simplint check`: the files it covers, the import index built over them, and each file's linter.
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
+use std::fs;
 use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use anyhow::{Result, bail};
+use anyhow::{Result, anyhow, bail};
 use colored::Colorize;
 use itertools::Itertools;
 use log::{debug, error, warn};
@@ -22,7 +23,6 @@ use ruff_linter::{SuppressionKind, warn_user, warn_user_once};
 use ruff_python_ast::PythonVersion;
 use ruff_python_ast::helpers::to_module_path;
 use ruff_workspace::resolver::{PyprojectConfig, Resolver, match_exclusion, project_files_in_path};
-use rustc_hash::FxHashMap;
 
 use crate::cli::args::{CheckCommand, GlobalConfigArgs, suppression_flag};
 use crate::cli::conflicts::{self, Scope};
@@ -73,6 +73,7 @@ pub(crate) fn check(cli: &CheckCommand, global_options: &GlobalConfigArgs) -> Re
         },
         unsafe_fixes: run.unsafe_fixes(),
         noqa: if cli.ignore_noqa { flags::Noqa::Disabled } else { flags::Noqa::Enabled },
+        roots: linted_roots(&files),
     };
     if let Some((reason, kind)) = cli.suppression() {
         let flag = suppression_flag(kind);
@@ -116,6 +117,11 @@ pub(crate) fn check(cli: &CheckCommand, global_options: &GlobalConfigArgs) -> Re
     let mut diagnostics =
         if is_stdin { check_stdin(cli, &resolved, &mode)? } else { check_files(&files, &resolved, &mode, use_cache)? };
     diagnostics.inner.sort_by(Diagnostic::ruff_start_ordering);
+    // Files are linted in parallel, so their diffs wait here to print in the order the report sorts files.
+    diagnostics.diffs.sort_by(|left, right| left.0.cmp(&right.0));
+    for (_, diff) in &diagnostics.diffs {
+        write!(std::io::stdout().lock(), "{diff}")?;
+    }
     // With fixed source going to standard output, the report goes to standard error.
     if is_stdin && !mode.fix.is_generate() && cli.output_file.is_none() {
         writer = Box::new(std::io::stderr());
@@ -134,6 +140,7 @@ pub(super) struct Resolved {
     config_arguments: ConfigArguments,
     pub(super) settings_resolver: SettingsResolver,
     pub(super) pyproject_config: PyprojectConfig,
+    pub(super) cache_dir: PathBuf,
 }
 
 impl Resolved {
@@ -141,8 +148,10 @@ impl Resolved {
         let (config_arguments, arguments) = cli.partition(global_options)?;
         let settings_resolver =
             SettingsResolver::new(arguments.config_file.as_deref(), arguments.isolated, arguments.overrides)?;
-        let pyproject_config = ruff::resolve::resolve(&config_arguments, cli.stdin_filename.as_deref())?;
-        Ok(Self { config_arguments, settings_resolver, pyproject_config })
+        let pyproject_config = ruff::resolve::resolve(&config_arguments, cli.stdin_filename.as_deref())
+            .map_err(|error| redact_extended(error, &settings_resolver.root.root))?;
+        let cache_dir = choose_cache_dir(cli, &pyproject_config);
+        Ok(Self { config_arguments, settings_resolver, pyproject_config, cache_dir })
     }
 
     // Ruff's `output-prefer-rule-codes`: in preview, messages name rules unless it is set.
@@ -150,6 +159,58 @@ impl Resolved {
         self.pyproject_config.settings.linter.preview.is_enabled()
             && !self.pyproject_config.settings.output_prefer_rule_codes
     }
+}
+
+// Ruff's cache directory, where simplint keeps its cache. A `cache-dir` in a configuration file comes from the
+// repository being linted, so it must stay inside the project root, the directory of that file; one that leaves it
+// falls back to Ruff's default there. A path from the command line or `RUFF_CACHE_DIR` is the user's choice and stands
+// wherever it points.
+fn choose_cache_dir(cli: &CheckCommand, config: &PyprojectConfig) -> PathBuf {
+    let configured = &config.settings.cache_dir;
+    match config.path.as_deref().and_then(Path::parent) {
+        Some(root) if cli.cache_dir.is_none() && !within(configured, root) => ruff_cache::cache_dir(root),
+        _ => configured.clone(),
+    }
+}
+
+// Whether `path` lies inside `root` once the links in it resolve, so a link in the repository cannot point the cache
+// out of it.
+fn within(path: &Path, root: &Path) -> bool {
+    resolve_links(path).zip(fs::canonicalize(root).ok()).is_some_and(|(resolved, root)| resolved.starts_with(root))
+}
+
+// `path` with the links in its longest existing prefix resolved, as the cache directory may not exist yet.
+fn resolve_links(path: &Path) -> Option<PathBuf> {
+    path.ancestors().find_map(|ancestor| {
+        let existing = fs::canonicalize(ancestor).ok()?;
+        Some(existing.join(path.strip_prefix(ancestor).ok()?))
+    })
+}
+
+// Ruff quotes the text of an `extend`ed file it cannot load. The repository may point `extend` anywhere, so such a file
+// outside the project root is reported by name alone; inside the root it is part of the run, and Ruff's report stays.
+fn redact_extended(error: anyhow::Error, project_root: &Path) -> anyhow::Error {
+    let extended = error.chain().find_map(|cause| {
+        let message = cause.to_string();
+        let path = message.strip_prefix("Failed to load extended configuration `")?.split_once('`')?.0;
+        Some(PathBuf::from(path))
+    });
+    match extended {
+        Some(path) if !path.starts_with(project_root) => anyhow!("`{}` is not valid configuration", path.display()),
+        _ => error,
+    }
+}
+
+// The paths a run lints, canonical, so a file under them is one the run may read and write.
+fn linted_roots(files: &[PathBuf]) -> Vec<PathBuf> {
+    files.iter().filter_map(|file| fs::canonicalize(file).ok()).collect()
+}
+
+// Whether a symlink points at a file outside the paths the run lints, which the run neither reads nor writes.
+fn escapes_roots(path: &Path, roots: &[PathBuf]) -> bool {
+    path.is_symlink()
+        && path.is_file()
+        && fs::canonicalize(path).is_ok_and(|target| !roots.iter().any(|root| target.starts_with(root)))
 }
 
 fn show_settings(files: &[PathBuf], resolved: &Resolved, writer: &mut dyn Write) -> Result<()> {
@@ -163,7 +224,7 @@ fn show_settings(files: &[PathBuf], resolved: &Resolved, writer: &mut dyn Write)
         writeln!(writer, "Settings path: {:?}", settings_path.display().to_string())?;
     }
     let target_version = FileSettings::new(&settings, resolver.resolve(path), path).from_ruff.target_version;
-    let cache_dir = cache::directory(&resolved.pyproject_config.settings.cache_dir);
+    let cache_dir = cache::directory(&resolved.cache_dir);
     write_settings(writer, &settings, target_version, &cache_dir)?;
     Ok(())
 }
@@ -177,7 +238,7 @@ fn write_settings(
 ) -> std::io::Result<()> {
     let rules = |set: RuleSet| set.iter().map(|rule| format!("{} ({})", rule.name(), rule.code())).collect_vec();
     let quoted = |items: &mut dyn Iterator<Item = &String>| items.map(|item| format!("{item:?}")).collect_vec();
-    let Settings { root, metadata, run, keep_names, api, docstring_style, .. } = settings;
+    let Settings { root, metadata, run, knobs, api, docstring_style, .. } = settings;
     let [enabled, fixable, forced_safe, forced_unsafe] = settings.rule_sets();
     writeln!(writer, "\n# General Settings")?;
     writeln!(writer, "cache_dir = \"{}\"", cache_dir.display())?;
@@ -197,7 +258,11 @@ fn write_settings(
     write_list(writer, "linter.safety_table.forced_unsafe", &rules(forced_unsafe))?;
     write_list(writer, "linter.dependencies", &quoted(&mut metadata.dependencies.iter()))?;
     write_list(writer, "linter.entry_points", &quoted(&mut metadata.entry_points.iter()))?;
-    write_list(writer, "linter.naming.keep_names", &quoted(&mut keep_names.iter()))?;
+    writeln!(writer, "linter.max_paragraph_words = {}", knobs.max_paragraph_words)?;
+    write_list(writer, "linter.naming.keep_names", &quoted(&mut knobs.keep_names.iter()))?;
+    write_list(writer, "linter.imports.module_attributes", &quoted(&mut knobs.module_attributes.iter()))?;
+    writeln!(writer, "linter.logic.max_helper_statements = {}", knobs.max_helper_statements)?;
+    writeln!(writer, "linter.logic.max_caller_statements = {}", knobs.max_caller_statements)?;
     writeln!(writer, "linter.project_kind = {}", api.kind)?;
     match &api.packages {
         Some(packages) => write_list(writer, "linter.api_packages", &quoted(&mut packages.iter()))?,
@@ -234,7 +299,9 @@ struct Discovered<'a> {
 
 fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Result<Discovered<'a>> {
     let (found, resolver) =
-        project_files_in_path(files, &configuration.pyproject_config, &configuration.config_arguments)?;
+        project_files_in_path(files, &configuration.pyproject_config, &configuration.config_arguments)
+            .map_err(|error| redact_extended(error, &configuration.settings_resolver.root.root))?;
+    let roots = linted_roots(files);
     let mut python = Vec::new();
     let mut unlinted = Vec::new();
     for file in found {
@@ -246,6 +313,10 @@ fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Result<Discov
             }
         };
         let path = file.path();
+        if escapes_roots(path, &roots) {
+            warn!("{} {}: its target lies outside the linted paths", "Skipped symlink".bold(), path.display());
+            continue;
+        }
         let extension = path.extension().and_then(|extension| extension.to_str());
         if extension == Some("pyi") {
             unlinted.push(path.to_path_buf());
@@ -289,6 +360,7 @@ fn add_suppressions(
     reason: Option<&str>,
 ) -> Result<usize> {
     // A suppression comment changes no file's facts, so one round is final.
+    let roots = linted_roots(files);
     let counts = for_each_file(files, resolved, None, None, |DiscoveredFile { path, linter, .. }| {
         let source = match std::fs::read_to_string(path) {
             Ok(source) => source,
@@ -299,7 +371,7 @@ fn add_suppressions(
         };
         let (count, output) = linter.add_suppressions(path, &source, kind, reason);
         if count > 0
-            && let Err(error) = write_source(path, &source, &output)
+            && let Err(error) = write_source(path, &roots, &source, &output)
         {
             error!("Failed to add suppression to {}: {error}", path.display());
             return 0;
@@ -402,10 +474,17 @@ fn for_each_file<T: Send>(
         .par_iter()
         .filter_map(|file| Some((file.path, file_facts(file, file_caches.get(file.path).copied())?)))
         .collect();
-    let rewrites_calls: HashSet<&Path> =
+    let rewrites_calls: FxHashSet<&Path> =
         linted.iter().filter(|file| file.settings.rewrites_dataclass_calls()).map(|file| file.path).collect();
     let roles = module_roles(&indexed, &roots);
-    let inputs = IndexInputs { entry_points: &entry_points, rewrites_calls: &rewrites_calls, roles: &roles };
+    let test_modules: FxHashSet<&Path> =
+        indexed.iter().filter(|file| file.settings.is_test_module(file.path)).map(|file| file.path).collect();
+    let inputs = IndexInputs {
+        entry_points: &entry_points,
+        rewrites_calls: &rewrites_calls,
+        roles: &roles,
+        test_modules: &test_modules,
+    };
     let mut imports = ImportResolver::new(&roots)?;
     let project = index_project(&facts, &mut imports, &inputs);
     debug!("Indexed {} files in: {:?}", facts.len(), start.elapsed());
@@ -446,6 +525,11 @@ fn lint_rounds<'f, T: Send>(
     const ROUNDS: usize = 8;
     // A file a fix rewrote has a new key.
     let recache = |path: &Path| Some((file_caches.get(path)?.0, FileKey::of(path)?));
+    // Without rewrites nothing indexes again, so the facts and resolved module names go before the files are linted.
+    if rewrote.is_none() {
+        index.facts.clear();
+        index.resolver.release();
+    }
     let lint = |file: &RunFile, project: &Project, cache| {
         work(&DiscoveredFile { path: file.path, linter: file_linter(file, project), cache })
     };
@@ -456,7 +540,7 @@ fn lint_rounds<'f, T: Send>(
     };
     let mut rewritten: Vec<usize> = (0..passes.len()).filter(|&at| passes[at].iter().any(rewrote)).collect();
     // Each file's words, read when a round first needs them and again once a round rewrites the file.
-    let mut words: Vec<Option<HashSet<String>>> = vec![None; files.len()];
+    let mut words: Vec<Option<FxHashSet<String>>> = vec![None; files.len()];
     for _ in 1..ROUNDS {
         if rewritten.is_empty() {
             break;
@@ -481,7 +565,7 @@ fn lint_rounds<'f, T: Send>(
 // Where each file sits in its library's public API, by the first of the names the file imports as, from its package or
 // from a search root, that an API package holds. Unlinted files count too: an `__init__.py` Ruff's `lint.exclude` leaves
 // out still re-exports public names.
-fn module_roles<'p>(files: &[RunFile<'p>], roots: &SearchRoots) -> HashMap<&'p Path, ModuleRole> {
+fn module_roles<'p>(files: &[RunFile<'p>], roots: &SearchRoots) -> FxHashMap<&'p Path, ModuleRole> {
     files
         .iter()
         .map(|file| {
@@ -516,7 +600,7 @@ fn reindex<'f>(
     rewritten: &[&RunFile<'f>],
     collect: impl Fn(&RunFile) -> Option<Cow<'f, FileFacts>> + Sync,
     files: &[RunFile],
-    words: &mut [Option<HashSet<String>>],
+    words: &mut [Option<FxHashSet<String>>],
     project: &Project,
 ) -> (Project, Vec<usize>) {
     // A fix never leaves a file that does not parse, so a rewritten file keeps having facts.
@@ -556,7 +640,7 @@ fn index_project(
 // The names a file holds, to tell whether it names any of the attribute or base class names whose answers changed; the
 // rules ask about names the file itself holds, such as its dataclass fields, so a file without one gets the same
 // answers.
-fn words_of(path: &Path) -> HashSet<String> {
+fn words_of(path: &Path) -> FxHashSet<String> {
     let source = std::fs::read_to_string(path).unwrap_or_default();
     source.split(|char: char| !(char.is_alphanumeric() || char == '_')).map(str::to_owned).collect()
 }
@@ -591,10 +675,15 @@ fn check_stdin(cli: &CheckCommand, resolved: &Resolved, mode: &Mode) -> Result<D
     let roots = SearchRoots::new(ruff, package);
     let module_path =
         package.and_then(|package| to_module_path(package.path(), &absolute)).or_else(|| roots.module_path(&absolute));
-    let roles = HashMap::from([(absolute.as_path(), settings.role(&absolute, module_path.as_deref()))]);
-    let rewrites_calls = HashSet::new();
-    let inputs =
-        IndexInputs { entry_points: &settings.metadata.entry_points, rewrites_calls: &rewrites_calls, roles: &roles };
+    let roles = FxHashMap::from_iter([(absolute.as_path(), settings.role(&absolute, module_path.as_deref()))]);
+    let rewrites_calls = FxHashSet::default();
+    let test_modules = FxHashSet::default();
+    let inputs = IndexInputs {
+        entry_points: &settings.metadata.entry_points,
+        rewrites_calls: &rewrites_calls,
+        roles: &roles,
+        test_modules: &test_modules,
+    };
     let project = Project::index(&[], &mut ImportResolver::new(&roots)?, &inputs);
     let package_module = package.and_then(|package| to_module_path(package.path(), &absolute));
     let linter = Linter::new(ruff, file_settings, project.file(&absolute), package, package_module);
@@ -602,7 +691,7 @@ fn check_stdin(cli: &CheckCommand, resolved: &Resolved, mode: &Mode) -> Result<D
 }
 
 pub(super) fn check_files(files: &[PathBuf], resolved: &Resolved, mode: &Mode, use_cache: bool) -> Result<Diagnostics> {
-    let cache_dir = use_cache.then_some(resolved.pyproject_config.settings.cache_dir.as_path());
+    let cache_dir = use_cache.then_some(resolved.cache_dir.as_path());
     let fingerprints = Fingerprints::default();
     // Only applied fixes reach the disk, where other files' facts come from.
     let rewrote = |diagnostics: &Diagnostics| !diagnostics.fixed.is_empty();

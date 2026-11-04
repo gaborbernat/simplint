@@ -1,0 +1,11 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+3:10 SMP304 Import `DbWriter` from `.findings` instead of reaching it through the module [unsafe fix: Import the names from `.findings`]
+4:9 SMP304 Import `LIMIT` from `.findings` instead of reaching it through the module [unsafe fix: Import the names from `.findings`]
+--- fixed (2 applied, 0 remaining) ---
+from .findings import DbWriter, LIMIT
+
+writer = DbWriter()
+limit = LIMIT

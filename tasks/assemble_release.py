@@ -77,8 +77,7 @@ def release_section(fragments: Sequence[Path], title: str, anchor: str) -> list[
         if not content or "\n\n" in content or content.startswith(("- ", "# ")):
             msg = f"expected one nonempty paragraph in {fragment}"
             raise ValueError(msg)
-        entry = " ".join(line.strip() for line in content.splitlines())
-        sections.setdefault(names[category], []).append(f"- {entry}")
+        sections.setdefault(names[category], []).append(f"- {' '.join(line.strip() for line in content.splitlines())}")
     release = [f"## {title}", "", f'<a name="{anchor}"></a>', ""]
     for category in dict.fromkeys(names.values()):
         if items := sections.get(category):

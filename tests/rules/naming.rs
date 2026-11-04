@@ -21,12 +21,6 @@ use crate::common;
 #[test_case("module-variable-case", "module_variable_case_ply_table.py" ; "module_variable_case_ply_table")]
 #[test_case("module-variable-case", "module_variable_case_dbapi.py" ; "module_variable_case_db_api_globals")]
 #[test_case("module-variable-case", "module_variable_case_typer.py" ; "module_variable_case_typer_app")]
-#[test_case("unexported-public-name", "unexported_public_name.py" ; "unexported_public_name")]
-#[test_case("unexported-public-name", "unexported_public_name_extend.py" ; "unexported_public_name_extended_all")]
-#[test_case("unexported-public-name", "unexported_public_name_remove.py" ; "unexported_public_name_dynamic_all")]
-#[test_case("unexported-public-name", "tests/test_module_docstring.py" ; "unexported_public_name_test_module")]
-#[test_case("unexported-public-name", "multiline_module_docstring_ok.py" ; "unexported_public_name_without_all")]
-#[test_case("unexported-public-name", "unexported_public_name_ply.py" ; "unexported_public_name_ply_grammar")]
 fn rule(rule: &str, fixture: &str) {
     common::assert_rule_snapshot(rule, fixture, "py314");
 }
@@ -34,8 +28,8 @@ fn rule(rule: &str, fixture: &str) {
 #[test_case("docs/conf.py", "All checks passed!\n" ; "sphinx_conf")]
 #[test_case(
     "docs/settings.py",
-    "docs/settings.py:1:1: SMP102 Module-scope variable `project` should be named `_PROJECT`\ndocs/settings.py:2:1: \
-     SMP102 Module-scope variable `extensions` should be named `_EXTENSIONS`\nFound 2 errors.\n2 unsafe fixes \
+    "docs/settings.py:1:1: SMP102 Module-scope variable `project` should be named `PROJECT`\ndocs/settings.py:2:1: \
+     SMP102 Module-scope variable `extensions` should be named `EXTENSIONS`\nFound 2 errors.\n2 unsafe fixes \
      available with `--fix --unsafe-fixes`.\n" ;
     "other_module"
 )]

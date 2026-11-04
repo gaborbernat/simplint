@@ -1,0 +1,60 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+3:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+4:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+5:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+6:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+7:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+8:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+9:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+10:9 SMP503 Build text with an f-string instead of `+`
+11:9 SMP503 Build text with an f-string instead of `+`
+19:13 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+19:29 SMP503 Build text with an f-string instead of `+`
+19:42 SMP503 Build text with an f-string instead of `+`
+23:13 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+23:30 SMP503 Build text with an f-string instead of `+`
+27:5 SMP503 Build text with an f-string instead of `+`
+31:13 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+32:10 SMP503 Build text with an f-string instead of `+`
+33:10 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+34:10 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+37:9 SMP503 Build text with an f-string instead of `+`
+--- fixed (12 applied, 8 remaining) ---
+def greet(name: str, count: int) -> list[str]:
+    return [
+        f"Hello, {name}!",
+        "ab",
+        f"{{braces}} {name}",
+        f"{count} items for {name}",
+        f'single {name}',
+        f"mixed {name} quotes",
+        f"call {count!s}",
+        "dict " + {"a": name}["a"],
+        r"raw " + name,
+    ]
+
+
+DATA = b"a" + b"b"
+
+
+def more(name: str) -> list[str]:
+    return [f"ab{name}", u"c" + name, """d""" + name]
+
+
+def fstrings(name: str) -> list[str]:
+    return [f"ab{name}", rf"c" + name]
+
+name = "world"
+COMMENTED = (
+    "<a>"  # open
+    + name
+    + "</a>"
+)
+CONVERTED = f"a{count!s}b{name!r}"
+CALLED = "a" + describe(count)
+QUOTED = f'say {name} "hi"'
+SPREAD = f"at {format(count)}"
+NAMED = "dot " + name + "\N{BULLET}"

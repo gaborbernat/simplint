@@ -225,7 +225,7 @@ fn with_pragma(checker: &Checker, stmt: &Stmt) -> TextRange {
     stmt.range().cover(pragma.unwrap_or(stmt.range()))
 }
 
-// The docstring's text as `inspect.cleandoc` gives it, without trailing whitespace and without the underlines of reST
+// The docstring's text as `inspect.cleandoc` gives it, without trailing whitespace and without the underlines of rst
 // and numpydoc headings, which as comments would read as section dividers.
 fn cleaned_lines(text: &str) -> Vec<String> {
     let text = text.replace('\t', "        ");

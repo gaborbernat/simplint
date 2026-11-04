@@ -20,7 +20,7 @@ from tasks.pgo import Sdist, download, extract, llvm_profdata, main, pin_sdist, 
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture, MockType
 
-_FILES: Final = "https://files.pythonhosted.org/packages/ab/cd"
+_FILES: Final[str] = "https://files.pythonhosted.org/packages/ab/cd"
 
 
 def test_sdist_is_named_by_its_url() -> None:
@@ -235,10 +235,10 @@ def test_train_stops_when_simplint_fails(tmp_path: Path, mocker: MockerFixture) 
         _train(tmp_path, mocker, status=2)
 
 
-_COMPILING: Final = "   Compiling simplint v0.1.0 (/src)\n"
-_SIMPLINT_FN: Final = "_RNvCs1ORA0Rd0xIe_8simplint4main"
-_COLD_FN: Final = "_RINvNtCsa1_6fs_err4file4openReECs1ORA0Rd0xIe_8simplint"
-_MISSING: Final = "warning: simplint.1-cgu.0: no profile data available for function"
+_COMPILING: Final[str] = "   Compiling simplint v0.1.0 (/src)\n"
+_SIMPLINT_FN: Final[str] = "_RNvCs1ORA0Rd0xIe_8simplint4main"
+_COLD_FN: Final[str] = "_RINvNtCsa1_6fs_err4file4openReECs1ORA0Rd0xIe_8simplint"
+_MISSING: Final[str] = "warning: simplint.1-cgu.0: no profile data available for function"
 
 
 @pytest.fixture

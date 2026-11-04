@@ -10,6 +10,7 @@
   --simplint-bad: #9a3412;
   --simplint-bad-soft: rgba(194, 65, 12, 0.1);
   --simplint-radius: 0.6rem;
+  --simplint-code-light: #f6f8fa;
 }
 
 body[data-theme="dark"] {
@@ -36,7 +37,7 @@ body[data-theme="dark"] {
 
 /* Furo fixes the reading column at 46em; the rule tables and side-by-side examples need more room. */
 .content {
-  width: min(100%, 60em);
+  width: min(100%, 66em);
 }
 
 /* both are flex items, which by default never shrink below their widest child, so one long line in a code block would
@@ -227,14 +228,20 @@ a.badge:hover {
   border-color: currentColor;
 }
 
+.rule-name .badge.cross-file {
+  margin-left: 0.4rem;
+  padding: 0 0.45rem;
+  font-size: 0.7rem;
+}
+
 /* side-by-side examples */
 
-.sd-card.example {
+div.sd-card.example {
   border-radius: var(--simplint-radius);
   height: 100%;
 }
 
-.sd-card.example .sd-card-title {
+div.sd-card.example .sd-card-title {
   margin-bottom: 0.5rem;
   font-weight: 700;
   font-size: 0.78rem;
@@ -242,40 +249,185 @@ a.badge:hover {
   letter-spacing: 0.08em;
 }
 
-.sd-card.example.bad {
+div.sd-card.example.bad {
   border-color: var(--simplint-bad);
-}
-
-.sd-card.example.bad .sd-card-title {
-  color: var(--simplint-bad);
-}
-
-.sd-card.example.bad {
   background: var(--simplint-bad-soft);
 }
 
-.sd-card.example.good {
+div.sd-card.example.bad .sd-card-title {
+  color: var(--simplint-bad);
+}
+
+div.sd-card.example.good {
   border-color: var(--simplint-good);
-}
-
-.sd-card.example.good .sd-card-title {
-  color: var(--simplint-good);
-}
-
-.sd-card.example.good {
   background: var(--simplint-good-soft);
 }
 
-.sd-card.example .sd-card-body {
+div.sd-card.example.good .sd-card-title {
+  color: var(--simplint-good);
+}
+
+div.sd-card.example .sd-card-body {
   padding: 0.8rem;
 }
 
-.sd-card.example .highlight,
-.sd-card.example div[class^="highlight-"] {
+div.sd-card.example .highlight,
+div.sd-card.example div[class^="highlight-"] {
   margin: 0;
 }
 
-.sd-card.example .sd-card-body > :last-child {
+div.sd-card.example .sd-card-body > :last-child {
+  margin-bottom: 0;
+}
+
+/* example toggles: an icon ends the item's first paragraph and shows its example below that paragraph */
+
+/* a badge in look, a button in behavior: it needs the pointer and the theme's font a button lacks */
+.badge.example-switch {
+  margin-left: auto;
+  border: 1px solid var(--simplint-accent);
+  background: var(--simplint-accent-soft);
+  color: var(--simplint-accent);
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.badge.example-switch:hover {
+  background: var(--color-background-hover);
+}
+
+.example-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4em;
+  height: 1.4em;
+  margin-left: 0.3em;
+  padding: 0;
+  border: 0;
+  border-radius: 0.35rem;
+  background: none;
+  color: var(--simplint-accent);
+  font-size: 0.9em;
+  line-height: 1;
+  /* centers the box on the text line instead of hanging it below the baseline */
+  vertical-align: middle;
+  /* keeps the wrench a single-color glyph so the role color reaches it */
+  font-variant-emoji: text;
+  cursor: pointer;
+}
+
+.example-toggle.example-reported {
+  color: var(--simplint-bad);
+}
+
+/* a pair shows both marks, each in its own color */
+.example-toggle.example-pair {
+  width: auto;
+  padding: 0 0.2em;
+  gap: 0.15em;
+}
+
+.example-toggle .mark-reported {
+  color: var(--simplint-bad);
+}
+
+.example-toggle .mark-not-reported {
+  color: var(--simplint-good);
+}
+
+.example-toggle.example-not-reported {
+  color: var(--simplint-good);
+}
+
+.example-toggle:hover {
+  background: var(--color-background-hover);
+  outline: 1px solid currentColor;
+}
+
+.example-toggle[aria-expanded="true"] {
+  background: var(--simplint-accent-soft);
+}
+
+/* the toggle takes the place of the dropdown's title bar; without scripts the bar stays and opens the example */
+details.example-inline > summary.sd-summary-title {
+  display: none;
+}
+
+details.example-inline:not([open]) {
+  display: none;
+}
+
+details.example {
+  margin: 0.5rem 0 0.8rem;
+  border: 1px solid var(--color-background-border);
+  border-radius: var(--simplint-radius);
+  /* the page background, not the secondary one: light code blocks share that gray and would melt into the panel */
+  background: var(--color-background-primary);
+  box-shadow: none;
+}
+
+details.example > .sd-summary-content {
+  padding: 0.5rem 0.6rem;
+}
+
+details.example > .sd-summary-content > :last-child {
+  margin-bottom: 0;
+}
+
+details.example div[class^="highlight-"] {
+  margin: 0 0 0.5rem;
+  border: 1px solid var(--color-background-border);
+  border-radius: var(--simplint-radius);
+}
+
+/* the file name or side above a snippet reads as a small caption, not a paragraph */
+details.example .sd-summary-content p {
+  margin: 0 0 0.2rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-foreground-muted);
+}
+
+details.example .sd-summary-content p code {
+  text-transform: none;
+}
+
+/* a fix shows its before and after side by side, stacking on narrow screens; a config above them spans both */
+details.example-fix > .sd-summary-content,
+details.example-pair > .sd-summary-content {
+  display: grid;
+  /* minmax(0, ...) lets a column shrink below its longest line, which then wraps instead of widening the page */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 0.6rem;
+}
+
+@media (max-width: 40em) {
+  details.example-fix > .sd-summary-content,
+  details.example-pair > .sd-summary-content {
+    grid-template-columns: 1fr;
+  }
+}
+
+details.example-fix > .sd-summary-content > :not(.example-side),
+details.example-pair > .sd-summary-content > :not(.example-side) {
+  grid-column: 1 / -1;
+}
+
+/* set by rules.js when a line would not fit its half: one column, before above after */
+details.example-stacked > .sd-summary-content {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* rules.js measures the unwrapped lines, so it turns wrapping off for that moment */
+details.example-measuring pre {
+  white-space: pre !important;
+  overflow-wrap: normal !important;
+}
+
+details.example .example-side > :last-child {
   margin-bottom: 0;
 }
 
@@ -465,14 +617,6 @@ pre.mermaid .arrowheadPath {
   stroke: var(--color-foreground-secondary) !important;
 }
 
-/* rule entries in the sidebar tree: compact enough that a whole group fits on screen */
-.sidebar-tree .toctree-l3 > .reference {
-  padding-top: 0.2em;
-  padding-bottom: 0.2em;
-  font-size: 0.85em;
-  line-height: 1.35;
-}
-
 /* short pages have no scrollbar; reserving its space keeps the layout from shifting between pages */
 html {
   scrollbar-gutter: stable;
@@ -513,24 +657,46 @@ html {
 }
 
 /* example snippets: soft-wrap long lines and keep line numbers out of copy and selection */
-.sd-card.example pre {
+div.sd-card.example pre,
+details.example pre {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
-.sd-card.example .linenos {
+div.sd-card.example .linenos,
+details.example .linenos {
   user-select: none;
   margin-right: 0.8em;
 }
 
+/* rules.js puts each numbered line in its own block: the number sits in a fixed gutter, and a line too long for the
+   column wraps under its own code with the gutter left empty, so the numbers stay in step with the real lines */
+.example .code-line {
+  display: block;
+  padding-left: 3.2em;
+  text-indent: -3.2em;
+  /* the gutter's divider, drawn on the whole line so it runs on past a wrapped line's later rows */
+  background: linear-gradient(var(--color-foreground-border), var(--color-foreground-border)) 2.4em 0 / 1px 100%
+    no-repeat;
+}
+
+.example .code-line > .linenos {
+  display: inline-block;
+  box-shadow: none;
+  box-sizing: border-box;
+  width: 2.4em;
+  text-indent: 0;
+  text-align: right;
+}
+
 /* xcode highlights on white; a faint gray keeps code blocks distinct from the page without losing contrast */
 body[data-theme="light"] .highlight {
-  background: #f6f8fa;
+  background: var(--simplint-code-light);
 }
 
 @media (prefers-color-scheme: light) {
   body[data-theme="auto"] .highlight {
-    background: #f6f8fa;
+    background: var(--simplint-code-light);
   }
 }
 
@@ -555,36 +721,137 @@ body[data-theme="light"] .highlight {
   border-radius: 0.35rem;
 }
 
-/* icons on the top-level sidebar entries; masks take the text color, so they follow the theme and the current page */
-.sidebar-tree .toctree-l1 > .reference::before {
+/* an entry with an icon lays out as icon and text, so a wrapped title lines up under its text, not the icon */
+.sidebar-tree .reference[data-page] {
+  display: flex;
+  align-items: baseline;
+}
+
+/* an icon on every page entry of the sidebar but the rule pages, which lead with their code; masks take the text
+   color, so they follow the theme and the current page */
+.sidebar-tree .reference[data-page]::before {
   content: "";
   display: inline-block;
   width: 1.05em;
   height: 1.05em;
+  flex: none;
+  align-self: flex-start;
+  margin-top: 0.2em;
   margin-right: 0.55em;
-  vertical-align: -0.17em;
   background-color: currentColor;
   mask: var(--nav-icon) no-repeat center / contain;
 }
 
-.sidebar-tree .toctree-l1 > a[href="#"], .sidebar-tree .toctree-l1 > a[href$="index.html"] {
+.sidebar-tree .reference[data-page="index"] {
   --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 10.5 12 3l9 7.5V21h-6v-6H9v6H3z'/%3E%3C/svg%3E");
 }
 
-.sidebar-tree .toctree-l1 > a[href$="configuration.html"] {
-  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1'/%3E%3Ccircle cx='15' cy='6' r='2'/%3E%3Ccircle cx='9' cy='12' r='2'/%3E%3Ccircle cx='17' cy='18' r='2'/%3E%3C/svg%3E");
+.sidebar-tree .reference[data-page="getting-started"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 21V4h12l-2 4 2 4H5'/%3E%3C/svg%3E");
 }
 
-.sidebar-tree .toctree-l1 > a[href$="cli.html"] {
-  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 17 6-5-6-5M12 19h8'/%3E%3C/svg%3E");
+.sidebar-tree .reference[data-page="how-to"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='m15.5 8.5-2 5-5 2 2-5z'/%3E%3C/svg%3E");
 }
 
-.sidebar-tree .toctree-l1 > a[href$="rules.html"] {
+.sidebar-tree .reference[data-page="select-rules"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 5h18l-7 8v6l-4 2v-8z'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .reference[data-page="suppress-a-report"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 17h11l-2-2v-5a6 6 0 0 0-9.4-4.9M6 10v5l-2 2h5M10 21h4M3 3l18 18'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .reference[data-page="pair-with-ruff"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .reference[data-page="resolve-ruff-conflicts"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .reference[data-page="pre-commit"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='3'/%3E%3Cpath d='M3 12h6M15 12h6'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .reference[data-page="library-api"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M21 8l-9-5-9 5v8l9 5 9-5zM3.3 7.9 12 13l8.7-5.1M12 22V13'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .reference[data-page="rules"] {
   --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3 6 2 2 4-4M3 14l2 2 4-4M13 6h8M13 14h8M13 20h8'/%3E%3C/svg%3E");
 }
 
-.sidebar-tree .toctree-l1 > a[href$="changelog.html"] {
+.sidebar-tree .reference[data-page="configuration"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1'/%3E%3Ccircle cx='15' cy='6' r='2'/%3E%3Ccircle cx='9' cy='12' r='2'/%3E%3Ccircle cx='17' cy='18' r='2'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .reference[data-page="cli"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 17 6-5-6-5M12 19h8'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .reference[data-page="how-it-works"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0 0 12 3z'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .reference[data-page="simplint-and-ruff"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='9' cy='12' r='6'/%3E%3Ccircle cx='15' cy='12' r='6'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .reference[data-page="changelog"] {
   --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .reference[data-page="running"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 5v14l11-7z'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .reference[data-page="rule-settings"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-2.4z'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .reference[data-page="project"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 6h6l2 2h10v11H3z'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .reference[data-page="comments"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 5h16v11H9l-5 4z'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .reference[data-page="naming"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 12V3h9l9 9-9 9zM7.5 7.5h.01'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .reference[data-page="layout"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 3h18v18H3zM3 9h18M9 9v12'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .reference[data-page="imports"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 3v12M7 10l5 5 5-5M4 21h16'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .reference[data-page="api"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 2v6M15 2v6M6 8h12v4a6 6 0 0 1-12 0zM12 18v4'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .reference[data-page="logic"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='6' cy='6' r='2'/%3E%3Ccircle cx='6' cy='18' r='2'/%3E%3Ccircle cx='18' cy='12' r='2'/%3E%3Cpath d='M6 8v8M8 6c5 0 8 2 8 4M8 18c5 0 8-2 8-4'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .reference[data-page="typing"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 5h14M12 5v14M9 19h6'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .reference[data-page="classes"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .reference[data-page="testing"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 3h6M10 3v6L4 19a1.5 1.5 0 0 0 1.3 2h13.4a1.5 1.5 0 0 0 1.3-2L14 9V3'/%3E%3C/svg%3E");
+}
+
+.sidebar-tree .reference[data-page="docstrings"] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 3h9l5 5v13H6zM14 3v6h6M9 13h8M9 17h8'/%3E%3C/svg%3E");
 }
 
 /* browsers draw focus rings in a fixed dark color that disappears on the navy theme; the accent reads on every
@@ -631,4 +898,22 @@ body {
   background: var(--color-background-primary);
   border-color: var(--simplint-accent);
   box-shadow: none;
+}
+
+/* Furo pads the table's scroll wrapper outside the column; keep it inside so a wide table scrolls instead */
+article .table-wrapper {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+/* the rule entries, the third sidebar level, are code and name; a smaller face keeps each on one line in the
+   fixed-width sidebar, and compact rows let a whole group fit on screen */
+.sidebar-tree .toctree-l3 > .reference {
+  padding-top: 0.2em;
+  padding-bottom: 0.2em;
+  padding-left: 0.4rem;
+  padding-right: 0.2rem;
+  font-size: 0.8em;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
 }

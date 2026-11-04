@@ -11,7 +11,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::{has_version_gate, is_class_like, isort_key, single_assignment};
 use crate::semantic::{Semantic, future_import};
-use crate::syntax::last_segment;
+use crate::syntax::{alias_binding, last_segment};
 
 pub fn missing_final(checker: &Checker) {
     // `typing.Final` arrived in Python 3.8.
@@ -24,6 +24,18 @@ pub fn missing_final(checker: &Checker) {
             continue;
         };
         let name = target.id.as_str();
+        // The annotation already declares a constant, so every name qualifies, dunders and class-like names included.
+        if let Some(annotation) = annotation.filter(|annotation| is_bare_final(annotation)) {
+            let fix = bare_final_fix(checker, annotation, value);
+            checker.report_fix(
+                Rule::MissingFinal,
+                target.range,
+                format!("`{name}` is annotated bare `Final`; give it a type, as in `Final[int]`"),
+                fix,
+                format!("Give `{name}` its type inside `Final`"),
+            );
+            continue;
+        }
         if is_dunder(name)
             || is_class_like(name)
             || name == "TYPE_CHECKING"
@@ -45,6 +57,11 @@ pub fn missing_final(checker: &Checker) {
             format!("Annotate `{name}` with `Final`"),
         );
     }
+}
+
+// `Final` with no brackets, spelled `Final`, `typing.Final` or an alias such as `t.Final`.
+fn is_bare_final(annotation: &Expr) -> bool {
+    last_segment(annotation) == Some("Final")
 }
 
 fn is_qualifier(annotation: &Expr) -> bool {
@@ -125,14 +142,7 @@ fn final_fix(
     let edit = if let Some(annotation) = annotation {
         Edit::range_replacement(format!("{qualifier}[{}]", checker.text(annotation.range())), annotation.range())
     } else {
-        let literal_type = match value {
-            Expr::NumberLiteral(ast::ExprNumberLiteral { value: ast::Number::Int(_), .. }) => "int",
-            Expr::NumberLiteral(ast::ExprNumberLiteral { value: ast::Number::Float(_), .. }) => "float",
-            Expr::StringLiteral(_) | Expr::FString(_) => "str",
-            Expr::BytesLiteral(_) => "bytes",
-            Expr::BooleanLiteral(_) => "bool",
-            _ => return None,
-        };
+        let literal_type = literal_type(value)?;
         Edit::insertion(format!(": {qualifier}[{literal_type}]"), target.end())
     };
     Some(match import {
@@ -142,13 +152,33 @@ fn final_fix(
     })
 }
 
+// The type of a literal value, which is what `Final` infers from a bare assignment.
+fn literal_type(value: &Expr) -> Option<&'static str> {
+    Some(match value {
+        Expr::NumberLiteral(ast::ExprNumberLiteral { value: ast::Number::Int(_), .. }) => "int",
+        Expr::NumberLiteral(ast::ExprNumberLiteral { value: ast::Number::Float(_), .. }) => "float",
+        Expr::StringLiteral(_) | Expr::FString(_) => "str",
+        Expr::BytesLiteral(_) => "bytes",
+        Expr::BooleanLiteral(_) => "bool",
+        _ => return None,
+    })
+}
+
+// A type checker infers `Final` on a bare literal as `Literal[1]`, which `Final[int]` widens, so the fix is unsafe.
+fn bare_final_fix(checker: &Checker, annotation: &Expr, value: &Expr) -> Option<Fix> {
+    let literal_type = literal_type(value)?;
+    let edit =
+        Edit::range_replacement(format!("{}[{literal_type}]", checker.text(annotation.range())), annotation.range());
+    Some(Fix::unsafe_edit(edit))
+}
+
 fn final_qualifier(checker: &Checker) -> (String, Option<Edit>) {
     let body = checker.body();
     // A `Final` bound only under `if TYPE_CHECKING:` is missing at runtime, where eager annotations evaluate it.
     let lazy = checker.semantic().annotations_are_lazy();
     let bound_at_top = body.iter().any(|stmt| match stmt {
         Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
-            names.iter().any(|alias| alias.asname.as_ref().unwrap_or(&alias.name).as_str() == "Final")
+            names.iter().any(|alias| alias_binding(alias) == "Final")
         }
         _ => false,
     });

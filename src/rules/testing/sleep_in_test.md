@@ -1,0 +1,90 @@
+Flags `time.sleep` and `await asyncio.sleep` calls in a test module whose argument is not the literal `0`.
+
+## Why is this bad?
+
+A test that sleeps waits a fixed time whether the code is ready or not. The wait is long enough to slow the suite, and
+too short on a loaded machine, where the test then fails for no real reason. Waiting on an event the code sets returns
+as soon as the code is ready and fails at once if it never is.
+
+## Example
+
+```python report file=tests/test_worker.py
+import time
+
+
+def test_worker_finishes():
+    start_worker()
+    time.sleep(1)
+    assert worker_done()
+```
+
+Use instead:
+
+```python ok
+import threading
+
+
+def test_worker_finishes():
+    done = threading.Event()
+    start_worker(on_done=done.set)
+    assert done.wait(timeout=5)
+```
+
+## What it does
+
+### Active on
+
+- **`time.sleep` and `asyncio.sleep` calls**: the call resolves through the module's imports, so
+  `from time import sleep` and `await asyncio.sleep(...)` are reported too. Every call counts, in a test function or in
+  a helper of the module, as the helper runs for the tests too.
+
+  ```python report file=tests/test_sleep.py
+  import asyncio
+  from time import sleep
+
+
+  def test_sleep():
+      sleep(0.5)
+
+
+  async def test_async_sleep():
+      await asyncio.sleep(2)
+  ```
+
+### Exceptions
+
+- **A sleep for the literal `0`**: `sleep(0)` yields to other tasks without waiting, so it does not make a test slow.
+
+  ```python ok file=tests/test_zero.py
+  import time
+
+
+  def test_zero():
+      time.sleep(0)
+  ```
+
+- **Modules that patch `time.sleep`**: a test that replaces the sleep with `mocker.patch`, `monkeypatch.setattr` or
+  `patch` already controls the wait, so the module is not reported. The patch is recognized by its target written as the
+  dotted string `"time.sleep"`, or by `monkeypatch.setattr(time, "sleep", ...)`.
+
+  ```python ok file=tests/test_patched.py
+  import time
+
+
+  def test_patched(mocker):
+      mocker.patch("time.sleep")
+      time.sleep(1)
+  ```
+
+  ```python ok file=tests/test_patched_module.py
+  import time
+
+
+  def test_patched(monkeypatch):
+      monkeypatch.setattr(time, "sleep", lambda seconds: None)
+      time.sleep(1)
+  ```
+
+### Fix
+
+No fix is offered, as the wait has to become an event the code sets, which depends on the code under test.

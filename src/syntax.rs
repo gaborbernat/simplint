@@ -83,6 +83,45 @@ pub fn decorator_names(decorators: &[ast::Decorator]) -> Vec<&str> {
     decorators.iter().filter_map(|decorator| last_segment(&decorator.expression)).collect()
 }
 
+// Whether a decorator's last name is one of `names`, so `typing.overload` and `overload` both match `"overload"`.
+pub fn has_decorator(decorators: &[ast::Decorator], names: &[&str]) -> bool {
+    decorator_names(decorators).iter().any(|name| names.contains(name))
+}
+
+// Whether `expr` is the plain name `name`.
+pub fn is_name(expr: &Expr, name: &str) -> bool {
+    expr.as_name_expr().is_some_and(|found| found.id.as_str() == name)
+}
+
+// The name an `import` alias binds: its `as` name, or the name it imports.
+pub fn alias_binding(alias: &ast::Alias) -> &str {
+    alias.asname.as_ref().unwrap_or(&alias.name).as_str()
+}
+
+// Whether `expr` runs its body once per pass of the iteration around it: a lambda or a comprehension.
+pub fn is_repeating_expr(expr: &Expr) -> bool {
+    matches!(expr, Expr::Lambda(_) | Expr::ListComp(_) | Expr::SetComp(_) | Expr::DictComp(_) | Expr::Generator(_))
+}
+
+// Whether `expr`, a call or a decorator, passes `arg=True`.
+pub fn keyword_is_true(expr: &Expr, arg: &str) -> bool {
+    expr.as_call_expr()
+        .and_then(|call| call.arguments.find_keyword(arg))
+        .is_some_and(|keyword| keyword.value.as_boolean_literal_expr().is_some_and(|literal| literal.value))
+}
+
+// The `@dataclass` decorator of `class`, bare or called, where `is_dataclass` resolves the decorator's function.
+pub fn dataclass_decorator<'a>(
+    class: &'a ast::StmtClassDef,
+    is_dataclass: &impl Fn(&Expr) -> bool,
+) -> Option<&'a Expr> {
+    class
+        .decorator_list
+        .iter()
+        .map(|decorator| &decorator.expression)
+        .find(|expr| is_dataclass(expr.as_call_expr().map_or(expr, |call| &call.func)))
+}
+
 // The parameter a method receives its instance or class in: the first positional one, unless the method is static.
 pub fn receiver(method: &ast::StmtFunctionDef) -> Option<&str> {
     if decorator_names(&method.decorator_list).contains(&"staticmethod") {
@@ -124,6 +163,17 @@ pub enum Exports<'a> {
     Dynamic,
 }
 
+impl Exports<'_> {
+    // Whether `__all__` lists `name`, or may list it because it cannot be read statically.
+    pub fn may_list(&self, name: &str) -> bool {
+        match self {
+            Self::Listed(names) => names.contains(&name),
+            Self::Dynamic => true,
+            Self::Absent => false,
+        }
+    }
+}
+
 pub fn dunder_all(body: &[Stmt]) -> Exports<'_> {
     // An `__all__` bound inside an `if` or `try` depends on how the module runs, so its contents are unknown.
     let mut nested = false;
@@ -136,7 +186,7 @@ pub fn dunder_all(body: &[Stmt]) -> Exports<'_> {
     // `from ._impl import __all__` re-exports a list this module cannot see.
     let imported = body.iter().any(|stmt| match stmt {
         Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
-            names.iter().any(|alias| alias.asname.as_ref().unwrap_or(&alias.name).as_str() == "__all__")
+            names.iter().any(|alias| alias_binding(alias) == "__all__")
         }
         _ => false,
     });
@@ -219,7 +269,7 @@ pub fn all_literal(stmt: &Stmt) -> Option<(TextRange, &[Expr])> {
 }
 
 pub fn is_all_target(target: &Expr) -> bool {
-    target.as_name_expr().is_some_and(|name| name.id.as_str() == "__all__")
+    is_name(target, "__all__")
 }
 
 // The text of every string and bytes literal of the module, and of each literal part of an f-string or t-string, with

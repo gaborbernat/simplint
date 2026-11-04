@@ -1,0 +1,201 @@
+Flags `+` chains that join a string literal or f-string with other values. An f-string shows the final text in one
+piece, where a `+` chain scatters it across quotes and operators.
+
+## Why is this bad?
+
+A chain of `+` scatters the text across quotes and operators, and every non-string operand needs an explicit `str()`. An
+f-string ([PEP 498](https://peps.python.org/pep-0498/)) shows the final text in one piece.
+
+## Example
+
+```python report
+message = "Hello, " + name + "!"
+```
+
+Use instead:
+
+```python ok
+message = f"Hello, {name}!"
+```
+
+## Configuration
+
+- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and
+  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to
+  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);
+  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)
+
+  ```toml config
+  [tool.ruff]
+  target-version = "py311"
+  ```
+
+  ```python report
+  def greet(name: str) -> str:
+      return "Hello, " + name.strip('"') + "!"
+  ```
+
+## What it does
+
+### Active on
+
+- **`+` chains that join a string literal or
+  [f-string](https://docs.python.org/3/reference/lexical_analysis.html#f-strings) with other values**, such as
+  `"Hello, " + name + "!"`: the whole chain is reported once. **Unsafe fix:** always, and offered only when the code
+  shows every operand is a `str`. `+` raises [`TypeError`](https://docs.python.org/3/builtins/exceptions.html#TypeError)
+  for a non-string operand and honors a custom
+  [`__add__`](https://docs.python.org/3/reference/datamodel.html#object.__add__) or `__radd__`, such as
+  `markupsafe.Markup` escaping the other operand, while an f-string formats any value.
+
+  ```python report
+  def greet(name: str) -> str:
+      return "Hello, " + name + "!"
+  ```
+
+  ```python fixed
+  def greet(name: str) -> str:
+      return f"Hello, {name}!"
+  ```
+
+### Exceptions
+
+- **Chains that contain a bytes literal**: Python has no bytes f-string to write them as.
+
+  ```python ok
+  def header(name: bytes) -> bytes:
+      return b"Name: " + name
+  ```
+
+### Deciding on a fix
+
+```mermaid
+flowchart TD
+    chain["+ chain with a string"] --> bytes{"holds a<br/>bytes literal?"}
+    bytes -->|yes| skip["not reported"]
+    bytes -->|no| known{"every operand<br/>known str?"}
+    known -->|no| none["reported, no fix"]
+    known -->|yes| fits{"chain fits<br/>an f-string?"}
+    fits -->|no| none
+    fits -->|yes| fix["reported,<br/>unsafe fix"]
+    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59
+    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59
+    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a
+    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28
+    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606
+    class chain blue
+    class bytes,known,fits yellow
+    class skip green
+    class none orange
+    class fix teal
+```
+
+### Known `str` operands
+
+An operand is known to be a `str` when it is one of these.
+
+Literals and expressions:
+
+- a string literal or f-string, `"..." % values`, or a `str` repeated by an `int`, such as `"-" * width`
+- an index or slice of a `str`, or an item of a list, tuple, set or mapping of them, such as `name.split(".")[0]` or
+  `names[0]` for `names: list[str]`
+- a conditional between `str` values, or `a or "default"` where `a` is a `str` or `None`
+
+Builtins and the standard library:
+
+- a call to the builtin `str`, `repr`, `ascii`, `format`, `chr`, `hex`, `oct` or `bin`
+- a `str` method such as `join`, `format` or `upper` called on a `str`, or `decode` on `bytes`
+- `__name__`, `__qualname__` and `__module__` of anything, and the module's `__name__` and `__file__`
+- standard library values the module imports: `os.sep`, `os.linesep`, `sys.platform`, the `string` constants,
+  `os.getcwd()`, `platform.system()`, `json.dumps(...)`, `textwrap.dedent(...)`, `os.environ[...]`,
+  `os.environ.get(key, "default")`, `os.getenv(key, "default")`, `uuid.uuid4().hex`, `os.path.join(...)` and the other
+  `os.path` functions given a `str`, and the `name`, `stem`, `suffix` and `as_posix()` of a `pathlib.Path`
+
+Code of the module:
+
+- a call to a function or method of the module annotated `-> str`, undecorated or with `functools.cache`
+- an attribute of an instance of a class of the module that annotates it `str`, or a property annotated `-> str`
+- on `self`, also an attribute that the class body and its methods only ever set to such values, when nothing else
+  writes it and no subclass may override it
+- a name every binding of which, in the scope it resolves to, gives such a value: an assignment, a loop over such items,
+  a `with tempfile.TemporaryDirectory() as path`, or an annotation `str` (also `Final[str]`, `Annotated[str, ...]`) that
+  no binding contradicts
+
+A name that an unannotated parameter, an import or a `global` binds is not known, so `value + "!"` for an unannotated
+`value` is reported without a fix. The annotations are trusted: a parameter annotated `str` can still receive a `str`
+subclass with its own `__add__`.
+
+### Fix
+
+The fix copies each non-literal operand into a placeholder as written:
+
+- A call to the builtin `str`, `repr` or `ascii` becomes the matching conversion, as Ruff's
+  [explicit-f-string-type-conversion](https://docs.astral.sh/ruff/rules/explicit-f-string-type-conversion/) asks, so
+  `"n=" + str(n)` becomes `f"n={n!s}"`.
+
+  ```python report
+  def label(n: int) -> str:
+      return "n=" + str(n)
+  ```
+
+  ```python fixed
+  def label(n: int) -> str:
+      return f"n={n!s}"
+  ```
+
+- A chain of plain string literals becomes one plain string.
+
+  ```python report
+  def title() -> str:
+      return "Hello, " + "world"
+  ```
+
+  ```python fixed
+  def title() -> str:
+      return "Hello, world"
+  ```
+
+No fix is offered when:
+
+- a literal is implicitly concatenated, triple-quoted, raw or `u`-prefixed;
+
+  ```python report
+  def greet(name: str) -> str:
+      return "Hello, " + name
+  ```
+
+- the literals use different quote characters;
+
+  ```python report
+  def greet(name: str) -> str:
+      return "Hello, " + name + "!"
+  ```
+
+- a comment sits between the operands, since the f-string has no place for it;
+
+  ```python report
+  def greet(name: str) -> str:
+      return (
+          "Hello, "  # the greeting
+          + name
+      )
+  ```
+
+- a non-literal operand spans several lines or contains a backslash, `#`, `:`, `!`, `{` or `}`;
+
+  ```python report
+  def greet(name: str) -> str:
+      return "Hello, " + name.replace(":", "") + "!"
+  ```
+
+- the target Python version is older than 3.12 and a non-literal operand contains the string's quote character, which
+  f-strings allow only from 3.12 on ([PEP 701](https://peps.python.org/pep-0701/#considerations-of-quote-reuse)).
+
+  ```toml config
+  [tool.ruff]
+  target-version = "py311"
+  ```
+
+  ```python report
+  def greet(name: str) -> str:
+      return "Hello, " + name.strip('"') + "!"
+  ```

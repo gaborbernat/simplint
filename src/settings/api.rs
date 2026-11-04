@@ -38,13 +38,13 @@ impl Display for ProjectKind {
 #[derive(Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum DocstringStyle {
-    Rest,
+    Rst,
 }
 
 impl Display for DocstringStyle {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            Self::Rest => "rest",
+            Self::Rst => "rst",
         })
     }
 }

@@ -12,17 +12,6 @@ with `--fix`, writes the fixed source back to the same file; `--diff` prints the
 the files, makes no network requests, and writes only files in the run. It typically runs as a pre-commit hook or in CI
 against content from pull requests.
 
-```mermaid
-flowchart LR
-    user["User, options, paths<br/>(trusted)"] --> lint["simplint"]
-    files[("Python files and pyproject.toml<br/>(untrusted content)")] -->|read| lint
-    lint -->|"diagnostics to stdout,<br/>fixed text to the same path"| files
-    classDef trusted fill:#cfe4ff,stroke:#1f6feb,color:#0b1f3a;
-    classDef boundary fill:#ffe3a3,stroke:#d29200,color:#3a2c00;
-    class user,lint trusted;
-    class files boundary;
-```
-
 ## Compared with similar tools
 
 We drew the boundary where comparable projects draw theirs. The shared rule, stated by the
@@ -46,20 +35,24 @@ An attacker who controls any of these already has what simplint could give them:
 
 ## Untrusted inputs
 
-| Input                                     | Comes from                         | What simplint guarantees                                                                             |
-| ----------------------------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Contents of each Python file              | Anyone who can open a pull request | Treated as data: parsed and printed, never evaluated or used to choose another path.                 |
-| `[tool.simplint]` and `[tool.ruff]`       | The repository being linted        | Choose rules, exclusions and the target version only; they never select a path to write or run code. |
-| `[project]` dependencies and entry points | The repository being linted        | Read as names only.                                                                                  |
+| Input                                     | Comes from                         | What simplint guarantees                                                                                                                                                                                                                              |
+| ----------------------------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Contents of each Python file              | Anyone who can open a pull request | Treated as data: parsed and printed, never evaluated or used to choose another path.                                                                                                                                                                  |
+| `[tool.simplint]` and `[tool.ruff]`       | The repository being linted        | Choose rules, exclusions, the target version and the cache directory, which must stay inside the project root. They never select a path to write or run code outside the project, and an `extend`ed file outside it is named in an error, not quoted. |
+| `[project]` dependencies and entry points | The repository being linted        | Read as names only.                                                                                                                                                                                                                                   |
 
 ## Threats and controls
 
-| STRIDE                 | Threat                                             | Control                                                                                 |
-| ---------------------- | -------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| Tampering              | A crafted file makes `--fix` write somewhere else. | The output path is the input path; content never selects a path.                        |
-| Tampering              | A fix produces broken code that gets written.      | Every fix is reparsed before writing; a fix that does not parse aborts the file.        |
-| Information disclosure | Linting pulls in another file's content.           | Other files are read only to index imported names, and only inside the run.             |
-| Denial of service      | A short input triggers a hang or a fix loop in CI. | Fixes stop after a fixed number of rounds; a small input that hangs is a vulnerability. |
+| STRIDE                 | Threat                                                                    | Control                                                                                                                                                                                            |
+| ---------------------- | ------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tampering              | A crafted file makes `--fix` write somewhere else.                        | The output path is the input path; content never selects a path.                                                                                                                                   |
+| Tampering              | A symlink in the repository makes `--fix` write outside the run.          | A link whose target lies outside the paths named on the command line is skipped with a warning, and a fix writes only under those paths.                                                           |
+| Tampering              | A `cache-dir` in the configuration writes or deletes outside the project. | A configured cache directory must lie inside the project root, where Ruff's default serves instead; stale-cache removal touches only directories shaped like another build's, holding cache files. |
+| Information disclosure | A symlink or `extend` makes simplint print a file outside the run.        | Links out of the run are skipped; an extended file outside the project is named without its text.                                                                                                  |
+| Tampering              | A fix produces broken code that gets written.                             | Every fix is reparsed before writing; a fix that does not parse aborts the file.                                                                                                                   |
+| Information disclosure | Linting pulls in another file's content.                                  | Other files are read only to index imported names, and only inside the run.                                                                                                                        |
+| Denial of service      | A short input triggers a hang or a fix loop in CI.                        | Fixes stop after a fixed number of rounds; a small input that hangs is a vulnerability.                                                                                                            |
+| Denial of service      | A deeply nested file overflows the stack.                                 | Work runs on threads with a 64 MiB stack; a file that still overflows it is a crash.                                                                                                               |
 
 ## Release chain
 
@@ -71,12 +64,13 @@ Every workflow pins third-party actions to a commit SHA.
 
 ## Vulnerability or bug
 
-| Report                                                | Verdict             | Why                                                  |
-| ----------------------------------------------------- | ------------------- | ---------------------------------------------------- |
-| A crafted `.py` file makes `--fix` write another file | Vulnerability       | Content must never choose an output path.            |
-| A 1 KB file makes the fixer loop forever              | Vulnerability       | Small-input hang in CI.                              |
-| A safe fix changes what the program does              | Bug                 | Changes meaning; fix it in the open.                 |
-| `--unsafe-fixes` breaks callers of a dataclass        | Not a vulnerability | Unsafe fixes may change behavior; the user opted in. |
+| Report                                                | Verdict             | Why                                                            |
+| ----------------------------------------------------- | ------------------- | -------------------------------------------------------------- |
+| A crafted `.py` file makes `--fix` write another file | Vulnerability       | Content must never choose an output path.                      |
+| A 1 KB file makes the fixer loop forever              | Vulnerability       | Small-input hang in CI.                                        |
+| A `cache-dir` in `pyproject.toml` deletes `$HOME/git` | Vulnerability       | The repository's configuration must not reach outside the run. |
+| A safe fix changes what the program does              | Bug                 | Changes meaning; fix it in the open.                           |
+| `--unsafe-fixes` breaks callers of a dataclass        | Not a vulnerability | Unsafe fixes may change behavior; the user opted in.           |
 
 ## Severity
 
@@ -86,7 +80,7 @@ Every workflow pins third-party actions to a commit SHA.
 
 ## Accepted risks
 
-- `--fix` follows a symlink at a path in the run.
+- `--fix` follows a symlink at a path in the run to a target in the run; a link to a target outside the run is skipped.
 - Linting is not a safety review: valid but malicious code is reported on its style, not removed.
 
 ## Keeping this current

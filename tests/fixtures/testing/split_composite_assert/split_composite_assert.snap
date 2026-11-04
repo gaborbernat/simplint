@@ -1,0 +1,62 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:5 SMP807 These asserts check fields of `result` one by one; compare them in one assert, as in `assert (result.name, result.size) == ("x", 3)` [unsafe fix: Compare the fields in one assert]
+7:5 SMP807 These asserts check fields of `data` one by one; compare them in one assert, as in `assert (data["a"], data["b"]) == (1, 2)` [unsafe fix: Compare the fields in one assert]
+12:5 SMP807 These asserts check fields of `result` one by one; compare them in one assert, as in `assert (result.name, result.size, result.color) == ("x", 3, "red")` [unsafe fix: Compare the fields in one assert]
+43:5 SMP807 These asserts check fields of `result` one by one; compare them in one assert, as in `assert (result.some_really_long_attribute_name_here, result.another_really_long_attribute_name) == ("a value that is long enough to exceed", "another value that makes it too long")`
+48:5 SMP807 These asserts check fields of `result` one by one; compare them in one assert, as in `assert (result.name, result.size) == ("x", 3)`
+53:5 SMP807 These asserts check fields of `result` one by one; compare them in one assert, as in `assert (result.text, result.size) == ("""first second""", 3)`
+--- fixed (3 applied, 3 remaining) ---
+def test_attributes(result):
+    assert (result.name, result.size) == ("x", 3)
+
+
+def test_keys(data):
+    assert (data["a"], data["b"]) == (1, 2)
+
+
+def test_three_fields(result):
+    assert (result.name, result.size, result.color) == ("x", 3, "red")
+
+
+def test_message(result):
+    assert result.name == "x", "name"
+    assert result.size == 3
+
+
+def test_other_comparison(result):
+    assert result.name != "x"
+    assert result.size > 3
+
+
+def test_single(result):
+    assert result.name == "x"
+
+
+def test_separated(result):
+    assert result.name == "x"
+    print(result)
+    assert result.size == 3
+
+
+def test_other_objects(result, other):
+    assert result.name == "x"
+    assert other.size == 3
+
+
+def test_long_line(result):
+    assert result.some_really_long_attribute_name_here == "a value that is long enough to exceed"
+    assert result.another_really_long_attribute_name == "another value that makes it too long"
+
+
+def test_comment(result):
+    assert result.name == "x"  # the name
+    assert result.size == 3
+
+
+def test_multiline_string(result):
+    assert result.text == """first
+second"""
+    assert result.size == 3

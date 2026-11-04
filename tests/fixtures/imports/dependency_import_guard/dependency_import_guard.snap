@@ -2,12 +2,12 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-3:1 SMP040 Import guard around a standard library module every supported Python ships; import it directly [unsafe fix: Remove the import guard]
-8:1 SMP040 Import guard around a required dependency; import it directly and let a broken install fail [unsafe fix: Remove the import guard]
-18:1 SMP040 Import guard around a standard library module every supported Python ships; import it directly
-46:1 SMP040 Import guard around a required dependency; import it directly and let a broken install fail [unsafe fix: Remove the import guard]
-61:1 SMP040 Import guard around a standard library module every supported Python ships; import it directly [unsafe fix: Remove the import guard]
-64:1 SMP040 Import guard around a standard library module every supported Python ships; import it directly [unsafe fix: Remove the import guard]
+3:1 SMP303 Import guard around a standard library module every supported Python ships; import it directly [unsafe fix: Remove the import guard]
+8:1 SMP303 Import guard around a required dependency; import it directly and let a broken install fail [unsafe fix: Remove the import guard]
+18:1 SMP303 Import guard around a standard library module every supported Python ships; import it directly
+46:1 SMP303 Import guard around a required dependency; import it directly and let a broken install fail [unsafe fix: Remove the import guard]
+61:1 SMP303 Import guard around a standard library module every supported Python ships; import it directly [unsafe fix: Remove the import guard]
+64:1 SMP303 Import guard around a standard library module every supported Python ships; import it directly [unsafe fix: Remove the import guard]
 --- fixed (5 applied, 1 remaining) ---
 import builtins
 

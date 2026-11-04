@@ -1,4 +1,5 @@
 pub(crate) mod checker;
+pub(crate) mod examples;
 pub(crate) mod noqa;
 pub(crate) mod registry;
 pub(crate) mod ruff;

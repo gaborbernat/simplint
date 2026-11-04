@@ -1,0 +1,53 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:25 SMP911 Role `:class:Path` has no backticks around its target, so it renders as plain text [unsafe fix: Put the target in backticks]
+2:41 SMP911 Role `:py:func:open()` has no backticks around its target, so it renders as plain text [unsafe fix: Put the target in backticks]
+2:63 SMP911 Role `:meth:Reader.read` has no backticks around its target, so it renders as plain text [unsafe fix: Put the target in backticks]
+5:37 SMP911 Inline literal opened with ``` `` ``` is not closed in its paragraph, so the rest renders as code
+21:14 SMP911 Inline literal opened with ``` `` ``` is not closed in its paragraph, so the rest renders as code
+27:9 SMP911 Role `:ref:getting-started` has no backticks around its target, so it renders as plain text [unsafe fix: Put the target in backticks]
+27:36 SMP911 Role `:func:foo(x)` has no backticks around its target, so it renders as plain text [unsafe fix: Put the target in backticks]
+27:58 SMP911 Role `:attr:debug=True` has no backticks around its target, so it renders as plain text
+35:20 SMP911 Role `:func:outside` has no backticks around its target, so it renders as plain text [unsafe fix: Put the target in backticks]
+--- fixed (6 applied, 3 remaining) ---
+def open_file(path: str) -> None:
+    """Open the file at :class:`Path`, as :py:func:`open()` does (:meth:`Reader.read`).
+
+    See https://example.com:8080/path for details, and :term:`file` for the term.
+    A literal ``open`` is fine, and ``this one is not.
+
+    Example::
+
+        call(``unbalanced)
+
+    :param path: Where it is.
+    """
+
+
+def later_paragraph() -> None:
+    """Stop.
+
+    A ``closed`` literal and an ``open one
+    that spans two lines``.
+
+    The last ``one is open."""
+
+
+def roles() -> None:
+    """Roles with targets backticks cannot always fix.
+
+    See :ref:`getting-started`, call :func:`foo(x)`, and set :attr:debug=True.
+
+    .. code-block:: python
+
+        value = ``unclosed and :func:inside
+
+    .. note::
+
+        Prose with :func:`outside` here.
+
+    >>> print(``doctest and :func:skipped)
+    ``doctest and :func:skipped
+    """

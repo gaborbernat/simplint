@@ -9,7 +9,18 @@ use serde::Deserialize;
 pub struct ProjectMetadata {
     pub name: Option<String>,
     pub dependencies: BTreeSet<String>,
+    // Every module the project lists, whatever its marker, in optional dependencies and dependency groups too. A rule
+    // asks whether a tool is declared at all, which an install may leave out.
+    pub declared: BTreeSet<String>,
     pub entry_points: Vec<String>,
+}
+
+impl ProjectMetadata {
+    // `[dependency-groups]` sits outside `[project]`, so the parsed table cannot carry it. Its `include-group` tables
+    // name no requirement and are skipped.
+    pub(super) fn add_groups(&mut self, groups: &BTreeMap<String, Vec<toml::Value>>) {
+        self.declared.extend(groups.values().flatten().filter_map(toml::Value::as_str).flat_map(import_names));
+    }
 }
 
 impl From<ProjectTable> for ProjectMetadata {
@@ -21,6 +32,12 @@ impl From<ProjectTable> for ProjectMetadata {
                 .dependencies
                 .iter()
                 .filter(|spec| !spec.contains(';'))
+                .flat_map(|spec| import_names(spec))
+                .collect(),
+            declared: project
+                .dependencies
+                .iter()
+                .chain(project.optional_dependencies.values().flatten())
                 .flat_map(|spec| import_names(spec))
                 .collect(),
             entry_points: project
@@ -64,6 +81,7 @@ pub(super) fn import_names(requirement: &str) -> Vec<String> {
 struct ProjectTable {
     name: Option<String>,
     dependencies: Vec<String>,
+    optional_dependencies: BTreeMap<String, Vec<String>>,
     scripts: BTreeMap<String, String>,
     gui_scripts: BTreeMap<String, String>,
     entry_points: BTreeMap<String, BTreeMap<String, String>>,

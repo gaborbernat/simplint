@@ -1,0 +1,9 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+8:7 SMP704 No handler catches `_IerrCaught` by name; raise a built-in exception such as `ValueError` instead
+12:7 SMP704 No handler catches `_IerrUnused` by name; raise a built-in exception such as `ValueError` instead
+16:7 SMP704 No handler catches `_IerrDerived` by name; raise a built-in exception such as `ValueError` instead
+20:7 SMP704 No handler catches `_IerrBroad` by name; raise a built-in exception such as `ValueError` instead
+24:7 SMP704 No handler catches `_IerrJson` by name; raise a built-in exception such as `ValueError` instead

@@ -1,0 +1,6 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+13:5 SMP408 `recurse_tonly` is used only by tests; move it into the tests or a test helper module
+25:5 SMP408 `_private_tonly` is used only by tests; move it into the tests or a test helper module

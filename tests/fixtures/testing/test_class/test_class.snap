@@ -2,22 +2,22 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-4:7 SMP200 Test class `TestParser`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `TestParser` into module-level functions]
-16:7 SMP200 Test class `TestStateful`; use module-level test functions with a name prefix
-29:7 SMP200 Test class `TestWithBase`; use module-level test functions with a name prefix
-35:7 SMP200 Test class `TestDecorated`; use module-level test functions with a name prefix
-40:7 SMP200 Test class `TestMultiline`; use module-level test functions with a name prefix
-47:7 SMP200 Test class `TestAttribute`; use module-level test functions with a name prefix
-54:7 SMP200 Test class `Test`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `Test` into module-level functions]
-59:7 SMP200 Test class `TestJoined`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `TestJoined` into module-level functions]
-68:7 SMP200 Test class `TestCollision`; use module-level test functions with a name prefix
-73:7 SMP200 Test class `TestUsesSelf`; use module-level test functions with a name prefix
-78:7 SMP200 Test class `TestMultiWordName`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `TestMultiWordName` into module-level functions]
-83:7 SMP200 Test class `TestHTTPClient`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `TestHTTPClient` into module-level functions]
-88:7 SMP200 Test class `TestMethodDocstring`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `TestMethodDocstring` into module-level functions]
-95:7 SMP200 Test class `TestDocumented`; use module-level test functions with a name prefix
-107:7 SMP200 Test class `TestBase`; use module-level test functions with a name prefix
-112:7 SMP200 Test class `TestDerived`; use module-level test functions with a name prefix
+4:7 SMP801 Test class `TestParser`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `TestParser` into module-level functions]
+16:7 SMP801 Test class `TestStateful`; use module-level test functions with a name prefix
+29:7 SMP801 Test class `TestWithBase`; use module-level test functions with a name prefix
+35:7 SMP801 Test class `TestDecorated`; use module-level test functions with a name prefix
+40:7 SMP801 Test class `TestMultiline`; use module-level test functions with a name prefix
+47:7 SMP801 Test class `TestAttribute`; use module-level test functions with a name prefix
+54:7 SMP801 Test class `Test`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `Test` into module-level functions]
+59:7 SMP801 Test class `TestJoined`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `TestJoined` into module-level functions]
+68:7 SMP801 Test class `TestCollision`; use module-level test functions with a name prefix
+73:7 SMP801 Test class `TestUsesSelf`; use module-level test functions with a name prefix
+78:7 SMP801 Test class `TestMultiWordName`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `TestMultiWordName` into module-level functions]
+83:7 SMP801 Test class `TestHTTPClient`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `TestHTTPClient` into module-level functions]
+88:7 SMP801 Test class `TestMethodDocstring`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `TestMethodDocstring` into module-level functions]
+95:7 SMP801 Test class `TestDocumented`; use module-level test functions with a name prefix
+107:7 SMP801 Test class `TestBase`; use module-level test functions with a name prefix
+112:7 SMP801 Test class `TestDerived`; use module-level test functions with a name prefix
 --- fixed (6 applied, 10 remaining) ---
 import pytest
 

@@ -11,9 +11,9 @@ fn import_through_directory_without_init_counts_as_imported() {
         ("client.py", "from support.marks import needs_network\n"),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP113"]).1,
+        check(root.path(), &["--select", "SMP401"]).1,
         common::native(
-            "support/marks.py:1:5: SMP113 `needs_network` is imported by other modules; list it in `__all__`\nFound 1 \
+            "support/marks.py:1:5: SMP401 `needs_network` is imported by other modules; list it in `__all__`\nFound 1 \
              error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n"
         )
     );
@@ -27,10 +27,10 @@ fn package_outside_the_source_roots_resolves_from_its_parent() {
         ("lib/pkg/use.py", "from pkg.helpers import helper\n"),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP113"]).1.lines().next(),
+        check(root.path(), &["--select", "SMP401"]).1.lines().next(),
         Some(
             common::native(
-                "lib/pkg/helpers.py:1:5: SMP113 `helper` is imported by other modules; list it in `__all__`"
+                "lib/pkg/helpers.py:1:5: SMP401 `helper` is imported by other modules; list it in `__all__`"
             )
             .as_str()
         )
@@ -45,10 +45,55 @@ fn src_layout_imports_resolve() {
         ("tests/test_helpers.py", "from pkg.helpers import helper\n"),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP113"]).1.lines().next(),
+        check(root.path(), &["--select", "SMP401"]).1.lines().next(),
         Some(
             common::native(
-                "src/pkg/helpers.py:1:5: SMP113 `helper` is imported by other modules; list it in `__all__`"
+                "src/pkg/helpers.py:1:5: SMP401 `helper` is imported by other modules; list it in `__all__`"
+            )
+            .as_str()
+        )
+    );
+}
+
+// A local module named after a standard-library one is the module the run imports, not the standard-library one.
+#[test]
+fn local_module_shadowing_the_standard_library_resolves_to_the_run() {
+    let root = project(&[
+        ("colorsys.py", "def helper() -> None:\n    pass\n"),
+        ("client.py", "from colorsys import helper\n"),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP401"]).1.lines().next(),
+        Some(
+            common::native("colorsys.py:1:5: SMP401 `helper` is imported by other modules; list it in `__all__`")
+                .as_str()
+        )
+    );
+}
+
+// A module only a stub declares has no source to read its attributes from, so reaching them through it is left alone.
+#[test]
+fn stub_only_module_attribute_is_not_reported() {
+    let root = project(&[
+        ("writers/__init__.py", ""),
+        ("writers/findings.pyi", "def save() -> None: ...\n"),
+        ("client.py", "from writers import findings\n\n\nfindings.save()\n"),
+    ]);
+    assert_eq!(check(root.path(), &["--select", "SMP304"]).1, "All checks passed!\n");
+}
+
+// A namespace package under `src` has no `__init__.py` at any level, and its modules import by their dotted path.
+#[test]
+fn namespace_package_under_src_resolves_its_modules() {
+    let root = project(&[
+        ("src/outer/inner/helpers.py", "def helper() -> None:\n    pass\n"),
+        ("tests/test_helpers.py", "from outer.inner.helpers import helper\n"),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP401"]).1.lines().next(),
+        Some(
+            common::native(
+                "src/outer/inner/helpers.py:1:5: SMP401 `helper` is imported by other modules; list it in `__all__`"
             )
             .as_str()
         )
@@ -59,9 +104,8 @@ fn src_layout_imports_resolve() {
 #[test_case("backend.pyi", "All checks passed!\n" ; "stub_of_the_module")]
 #[test_case(
     "other.pyi",
-    "backend.py:2:1: SMP102 Module-scope variable `LIMIT` should be named `_LIMIT`\nbackend.py:3:1: SMP102 \
-     Module-scope variable `NAME` should be named `_NAME`\nbackend.py:10:7: SMP103 `Missing` is not in `__all__`; \
-     name it `_Missing`\nFound 3 errors.\n3 unsafe fixes available with `--fix --unsafe-fixes`.\n" ;
+    "backend.py:10:7: SMP403 `Missing` is not in `__all__`; name it `_Missing`\nFound 1 error.\n1 unsafe fix available \
+     with `--fix --unsafe-fixes`.\n" ;
     "stub_of_another_module"
 )]
 fn stub_declarations_are_public_api(stub: &str, stdout: &str) {
@@ -72,7 +116,7 @@ fn stub_declarations_are_public_api(stub: &str, stdout: &str) {
         ),
         (stub, "import os\nLIMIT: int\nNAME = ...\ndef run() -> None: ...\nclass Missing(TypeError): ...\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP102,SMP103"]).1, stdout);
+    assert_eq!(check(root.path(), &["--select", "SMP102,SMP403"]).1, stdout);
 }
 
 // Patching an attribute of the module's own import reaches `os` through `files` without importing it from there, and
@@ -85,13 +129,13 @@ fn module_import_is_not_an_export(reference: &str) {
         ("pkg/files.py", "import os\n\n\ndef cwd() -> str:\n    return os.getcwd()\n"),
         ("test_files.py", &format!("def test_cwd(mocker):\n    {reference}\n")),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP113"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP401"]).1, "All checks passed!\n");
 }
 
 #[test_case("pkg.manager._load", "All checks passed!\n" ; "patched")]
 #[test_case(
     "pkg.manager.run",
-    "pkg/manager.py:1:5: SMP030 `_load` only forwards to `import_module`; call `import_module` at its call sites \
+    "pkg/manager.py:1:5: SMP501 `_load` only forwards to `import_module`; call `import_module` at its call sites \
      instead\nFound 1 error.\n" ;
     "not_patched"
 )]
@@ -104,14 +148,14 @@ fn patched_forwarding_function_is_a_seam(target: &str, stdout: &str) {
         ),
         ("test_manager.py", &format!("def test_run(mocker):\n    mocker.patch(\"{target}\")\n")),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP030"]).1, common::native(stdout));
+    assert_eq!(check(root.path(), &["--select", "SMP501"]).1, common::native(stdout));
 }
 
 // `import *` takes the names `__all__` lists, or without one every public name, so those may be in use unnamed.
 #[test_case("", "All checks passed!\n" ; "every_public_name")]
 #[test_case(
     "__all__ = [\"run\"]\n",
-    "pkg/data.py:2:1: SMP102 Module-scope variable `TAG` should be named `_TAG`\nFound 1 error.\n1 unsafe fix available \
+    "pkg/data.py:2:1: SMP404 `TAG` is not in `__all__`; name it `_TAG`\nFound 1 error.\n1 unsafe fix available \
      with `--fix --unsafe-fixes`.\n" ;
     "listed_names"
 )]
@@ -121,7 +165,7 @@ fn star_import_reaches_public_names(all: &str, stdout: &str) {
         ("pkg/data.py", &format!("{all}TAG = {{\"a\": 1}}\n\n\ndef run() -> None:\n    pass\n")),
         ("pkg/user.py", "from pkg.data import *\n\n\ndef get() -> dict:\n    return TAG\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP102"]).1, common::native(stdout));
+    assert_eq!(check(root.path(), &["--select", "SMP404"]).1, common::native(stdout));
 }
 
 // A name imported from a package counts in the module its `__init__.py` star-imports it from, where an `__all__` would
@@ -135,13 +179,13 @@ fn star_reexport_keeps_names_of_the_package() {
         ("lib/humio/_types.py", types),
         ("app.py", "from lib import humio\nfrom lib.humio import parse\n\n_TYPES = (humio.ResourceType, parse)\n"),
     ]);
-    let (_, stdout, _) = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP102,SMP103,SMP113"]);
+    let (_, stdout, _) = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP102,SMP403,SMP401"]);
     assert_eq!(
         (stdout, common::read(root.path(), "lib/humio/_types.py")),
         (
             common::native(
-                "lib/humio/_types.py:1:7: SMP113 `ResourceType` is imported by other modules; list it in `__all__`\n\
-                 lib/humio/_types.py:5:5: SMP113 `parse` is imported by other modules; list it in `__all__`\nFound 2 \
+                "lib/humio/_types.py:1:7: SMP401 `ResourceType` is imported by other modules; list it in `__all__`\n\
+                 lib/humio/_types.py:5:5: SMP401 `parse` is imported by other modules; list it in `__all__`\nFound 2 \
                  errors.\n"
             ),
             types.to_owned()
@@ -159,25 +203,24 @@ fn unresolved_star_import_keeps_names_of_modules_by_its_name() {
         ("tests/test_oci.py", "from oci_test_init import *\n\n\ndef test_region() -> None:\n    assert region\n"),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP102"]).1,
+        check(root.path(), &["--select", "SMP404"]).1,
         common::native(
-            "support/oci_test_init.py:1:1: SMP102 Module-scope variable `region` should be named `REGION`\n\
-             support/other.py:1:1: SMP102 Module-scope variable `region` should be named `_REGION`\nFound 2 errors.\n1 \
-             unsafe fix available with `--fix --unsafe-fixes`.\n"
+            "support/other.py:1:1: SMP404 `region` is not in `__all__`; name it `_region`\nFound 1 error.\n1 unsafe fix \
+             available with `--fix --unsafe-fixes`.\n"
         )
     );
 }
 
 // Another file's writes count by the class of their receiver: a mock's never, an instance's or an unknown object's
 // always.
-#[test_case("mock = MagicMock()\n    mock.log = log\n", "[*] ", "@dataclass(frozen=True, slots=True)" ; "mock")]
-#[test_case("result = Result(log=\"\")\n    result.log = log\n", "[*] ", "@dataclass(slots=True)" ; "instance")]
-#[test_case("thing = make()\n    thing.log = log\n", "[*] ", "@dataclass(slots=True)" ; "unknown")]
-#[test_case("results: dict[str, Result] = {}\n    results[\"a\"].log = log\n", "[*] ", "@dataclass(slots=True)" ; "subscript")]
+#[test_case("mock = MagicMock()\n    mock.log = log\n", "[*] ", "@dataclass(frozen=True)" ; "mock")]
+#[test_case("result = Result(log=\"\")\n    result.log = log\n", "", "@dataclass" ; "instance")]
+#[test_case("thing = make()\n    thing.log = log\n", "", "@dataclass" ; "unknown")]
+#[test_case("results: dict[str, Result] = {}\n    results[\"a\"].log = log\n", "", "@dataclass" ; "subscript")]
 #[test_case(
     "pass\n\n\nclass Result:\n    def __init__(self) -> None:\n        self.extra = 1\n",
     "",
-    "@dataclass(frozen=True, slots=True)"
+    "@dataclass(frozen=True)"
     ; "namesake"
 )]
 #[test_case(
@@ -185,11 +228,11 @@ fn unresolved_star_import_keeps_names_of_modules_by_its_name() {
 )]
 #[test_case(
     "import pickle\n\n    result = Result(log=\"\")\n    result.log = log\n    pickle.dumps(result, protocol=pickle.HIGHEST_PROTOCOL)\n",
-    "[*] ",
-    "@dataclass(slots=True)"
+    "",
+    "@dataclass"
     ; "highest_protocol_pickle"
 )]
-fn dataclass_options_reads_writes_in_other_files(body: &str, marker: &str, decorator: &str) {
+fn dataclass_frozen_reads_writes_in_other_files(body: &str, marker: &str, decorator: &str) {
     let root = project(&[
         ("models.py", "from dataclasses import dataclass\n\n\n@dataclass\nclass Result:\n    log: str\n"),
         (
@@ -200,7 +243,7 @@ fn dataclass_options_reads_writes_in_other_files(body: &str, marker: &str, decor
             ),
         ),
     ]);
-    let select = ["--no-cache", "--select", "SMP111", "--target-version", "py314"];
+    let select = ["--no-cache", "--select", "SMP701", "--target-version", "py314"];
     let report = check(root.path(), &select).1;
     check(root.path(), &[&select[..], &["--fix", "--unsafe-fixes"]].concat());
     assert_eq!(
@@ -208,7 +251,7 @@ fn dataclass_options_reads_writes_in_other_files(body: &str, marker: &str, decor
         (
             Some(
                 common::native(&format!(
-                    "models.py:4:2: SMP111 {marker}Dataclass is missing frozen, slots; set `frozen=True, slots=True`"
+                    "models.py:4:2: SMP701 {marker}Dataclass is missing frozen; set `frozen=True`"
                 ))
                 .as_str()
             ),
@@ -219,13 +262,13 @@ fn dataclass_options_reads_writes_in_other_files(body: &str, marker: &str, decor
 
 // A package's `__init__.py` defines the package, so a write on an instance of a class it imports from there counts.
 #[test]
-fn dataclass_options_reads_writes_on_package_classes() {
+fn dataclass_frozen_reads_writes_on_package_classes() {
     let root = project(&[
         ("pkg/__init__.py", "from dataclasses import dataclass\n\n\n@dataclass\nclass Context:\n    count: int\n"),
         ("pkg/run.py", "from pkg import Context\n\n\ndef run(context: Context) -> None:\n    context.count = 1\n"),
     ]);
-    check(root.path(), &["--no-cache", "--select", "SMP111", "--target-version", "py314", "--fix", "--unsafe-fixes"]);
-    assert_eq!(common::read(root.path(), "pkg/__init__.py").lines().nth(3), Some("@dataclass(slots=True)"));
+    check(root.path(), &["--no-cache", "--select", "SMP701", "--target-version", "py314", "--fix", "--unsafe-fixes"]);
+    assert_eq!(common::read(root.path(), "pkg/__init__.py").lines().nth(3), Some("@dataclass"));
 }
 
 const PARTITION: &str =
@@ -250,7 +293,7 @@ const PARTITION: &str =
 fn dataclass_kw_only_rewrites_calls_in_other_files(caller: &str, rewritten: &str) {
     let models = format!("{PARTITION}\n\ndef helper(value):\n    return value\n");
     let root = project(&[("models.py", &models), ("caller.py", caller)]);
-    let fix = ["--select", "SMP114", "--fix", "--unsafe-fixes", "--target-version", "py314"];
+    let fix = ["--select", "SMP703", "--fix", "--unsafe-fixes", "--target-version", "py314"];
     let first = check(root.path(), &fix).1;
     let second = check(root.path(), &[&fix[..], &["--diff"]].concat()).0;
     assert_eq!(
@@ -282,10 +325,10 @@ fn dataclass_kw_only_rewrites_calls_in_other_files(caller: &str, rewritten: &str
     &[("caller.py", "from models import Partition\n\n\ndef run(make):\n    Partition = make\n    Partition(\"a\", 1)\n")]
     ; "shadowed"
 )]
-#[test_case(&[("caller.py", "from models import Partition\n\nPartition(\"a\", 1)  # noqa: SMP114\n")] ; "suppressed")]
+#[test_case(&[("caller.py", "from models import Partition\n\nPartition(\"a\", 1)  # noqa: SMP703\n")] ; "suppressed")]
 #[test_case(&[("caller.py", "from models import Partition\n\nPartition(\"a\", 1)  # noqa\n")] ; "suppressed_blanket")]
 #[test_case(
-    &[("caller.py", "from models import Partition\n\nPartition(\n    \"a\",  # simplint: ignore[SMP114] paper\n    1,\n)\n")]
+    &[("caller.py", "from models import Partition\n\nPartition(\n    \"a\",  # simplint: ignore[SMP703] paper\n    1,\n)\n")]
     ; "ignored_inside"
 )]
 #[test_case(
@@ -294,14 +337,14 @@ fn dataclass_kw_only_rewrites_calls_in_other_files(caller: &str, rewritten: &str
 )]
 #[test_case(
     &[
-        ("pyproject.toml", "[tool.simplint]\nper-file-ignores = { \"caller.py\" = [\"SMP114\"] }\n"),
+        ("pyproject.toml", "[tool.simplint]\nper-file-ignores = { \"caller.py\" = [\"SMP703\"] }\n"),
         ("caller.py", "from models import Partition\n\nPartition(\"a\", 1)\n"),
     ]
     ; "ignored_in_caller"
 )]
 fn dataclass_kw_only_withholds_fix_for_unfollowed_uses(callers: &[(&str, &str)]) {
     let root = project(&[&[("models.py", PARTITION)], callers].concat());
-    let fix = ["--no-cache", "--select", "SMP114", "--fix", "--unsafe-fixes", "--target-version", "py314"];
+    let fix = ["--no-cache", "--select", "SMP703", "--fix", "--unsafe-fixes", "--target-version", "py314"];
     check(root.path(), &fix);
     check(root.path(), &fix);
     assert_eq!(common::read(root.path(), "models.py"), PARTITION);
@@ -317,7 +360,7 @@ fn docstring_reader_keeps_docstrings(reader: &str) {
         ("pkg/helpers.py", "def _helper() -> None:\n    \"\"\"Help.\"\"\"\n"),
         ("pkg/reader.py", &format!("from pkg.helpers import _helper\n\n{reader}")),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP300"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP901"]).1, "All checks passed!\n");
 }
 
 #[test]
@@ -328,10 +371,10 @@ fn module_docstring_read_is_no_docstring_reader() {
         ("pkg/reader.py", "print(__doc__)\n"),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP300"]).1.lines().next(),
+        check(root.path(), &["--select", "SMP901"]).1.lines().next(),
         Some(
             common::native(
-                "pkg/helpers.py:2:5: SMP300 Function docstring on internal code; let the name, signature and types \
+                "pkg/helpers.py:2:5: SMP901 Function docstring on internal code; let the name, signature and types \
                  document it"
             )
             .as_str()
@@ -349,9 +392,9 @@ fn relative_import_from_namespace_package_counts_as_imported() {
         ("src/pkg/sansio/app.py", "from ..config import Attribute, Config\n\n_TYPES = (Attribute, Config)\n"),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP103,SMP113"]).1,
+        check(root.path(), &["--select", "SMP403,SMP401"]).1,
         common::native(
-            "src/pkg/config.py:8:7: SMP113 [*] `Attribute` is imported by other modules; list it in `__all__`\nFound \
+            "src/pkg/config.py:8:7: SMP401 [*] `Attribute` is imported by other modules; list it in `__all__`\nFound \
              1 error.\n[*] 1 fixable with `--fix`.\n"
         )
     );
@@ -380,11 +423,10 @@ fn attributes_of_dynamically_loaded_modules_keep_their_names(test: &str) {
         ("tests/test_docs.py", &format!("import importlib\n\n_NAME = \"tutorial\"\n\n\n{test}")),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP102"]).1,
+        check(root.path(), &["--select", "SMP404"]).1,
         common::native(
-            "docs/tutorial.py:1:1: SMP102 Module-scope variable `client` should be named `CLIENT`\n\
-             docs/tutorial.py:2:1: SMP102 Module-scope variable `engine` should be named `_ENGINE`\nFound 2 errors.\n1 \
-             unsafe fix available with `--fix --unsafe-fixes`.\n"
+            "docs/tutorial.py:2:1: SMP404 `engine` is not in `__all__`; name it `_engine`\nFound 1 error.\n1 unsafe fix \
+             available with `--fix --unsafe-fixes`.\n"
         )
     );
 }
@@ -401,9 +443,9 @@ fn name_of_a_module_its_package_star_imports_stays_unlisted() {
         ("pkg/user.py", "from pkg.backends import backends, info\n\n_ALL = (backends, info)\n"),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP113"]).1,
+        check(root.path(), &["--select", "SMP401"]).1,
         common::native(
-            "pkg/backends.py:3:1: SMP113 [*] `info` is imported by other modules; list it in `__all__`\nFound 1 \
+            "pkg/backends.py:3:1: SMP401 [*] `info` is imported by other modules; list it in `__all__`\nFound 1 \
              error.\n[*] 1 fixable with `--fix`.\n"
         )
     );
@@ -422,9 +464,9 @@ fn package_init_excluded_from_linting_still_star_imports() {
         ("other/user.py", "from other.backends import backends\n\n_ALL = (backends,)\n"),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP113"]).1,
+        check(root.path(), &["--select", "SMP401"]).1,
         common::native(
-            "other/backends.py:2:1: SMP113 [*] `backends` is imported by other modules; list it in `__all__`\nFound 1 \
+            "other/backends.py:2:1: SMP401 [*] `backends` is imported by other modules; list it in `__all__`\nFound 1 \
              error.\n[*] 1 fixable with `--fix`.\n"
         )
     );
@@ -443,9 +485,9 @@ fn attribute_path_through_a_reexported_submodule_counts_as_referenced() {
         ("user.py", "import pkg\n\n_BASES = (pkg.views.ViewBase, pkg.missing.ViewBase)\n"),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP103"]).1,
+        check(root.path(), &["--select", "SMP403"]).1,
         common::native(
-            "pkg/sub/other.py:8:7: SMP103 `ViewBase` is not in `__all__`; name it `_ViewBase`\nFound 1 error.\n1 unsafe \
+            "pkg/sub/other.py:8:7: SMP403 `ViewBase` is not in `__all__`; name it `_ViewBase`\nFound 1 error.\n1 unsafe \
              fix available with `--fix --unsafe-fixes`.\n"
         )
     );
@@ -466,8 +508,8 @@ fn application_has_no_public_api() {
         ("tool/__main__.py", "from tool.cli import run\n\nrun()\n"),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP300,SMP302"]).1,
-        "tool/cli.py:2:5: SMP300 Function docstring on internal code; let the name, signature and types document it\n\
+        check(root.path(), &["--select", "SMP901,SMP903"]).1,
+        "tool/cli.py:2:5: SMP901 Function docstring on internal code; let the name, signature and types document it\n\
          Found 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n"
             .replace('/', std::path::MAIN_SEPARATOR_STR)
     );
@@ -482,8 +524,8 @@ fn documentation_is_not_public_api() {
         ("lib.py", "def run() -> None: ...\n"),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP302"]).1,
-        "lib.py:1:5: SMP302 Public function `run` has no docstring; document it for its users\nFound 1 error.\n"
+        check(root.path(), &["--select", "SMP903"]).1,
+        "lib.py:1:5: SMP903 Public function `run` has no docstring; document it for its users\nFound 1 error.\n"
     );
 }
 
@@ -504,7 +546,7 @@ fn reexports_in_top_level_blocks_count() {
         ("pkg/_linux.py", "path = 1\n"),
         ("pkg/_posix.py", "path = 1\n"),
     ]);
-    let reports = check(root.path(), &["--select", "SMP302"]).1;
+    let reports = check(root.path(), &["--select", "SMP903"]).1;
     assert_eq!(reports.lines().count(), 6, "{reports}");
 }
 
@@ -517,8 +559,8 @@ fn excluded_init_module_still_reexports() {
         ("pkg/_core.py", "def run() -> None: ...\n"),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP302"]).1,
-        "pkg/_core.py:1:5: SMP302 Public function `run` has no docstring; document it for its users; \
+        check(root.path(), &["--select", "SMP903"]).1,
+        "pkg/_core.py:1:5: SMP903 Public function `run` has no docstring; document it for its users; \
          `pkg/__init__.py` re-exports it\nFound 1 error.\n"
             .replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
     );
@@ -530,14 +572,14 @@ fn standard_input_reads_its_own_exports() {
     let root = project(&[("pyproject.toml", LIBRARY), ("pkg/__init__.py", "")]);
     let stdout = check_with_stdin(
         root.path(),
-        &["--select", "SMP302", "--stdin-filename", "pkg/mod.py", "-"],
+        &["--select", "SMP903", "--stdin-filename", "pkg/mod.py", "-"],
         "def run() -> None: ...\n\n\ndef helper() -> None: ...\n\n\n__all__ = [\"run\"]\n",
     )
     .1;
     assert_eq!(
         stdout,
         format!(
-            "pkg{}mod.py:1:5: SMP302 Public function `run` has no docstring; document it for its users\nFound 1 error.\n",
+            "pkg{}mod.py:1:5: SMP903 Public function `run` has no docstring; document it for its users\nFound 1 error.\n",
             std::path::MAIN_SEPARATOR_STR
         )
     );
@@ -554,9 +596,9 @@ fn lazy_module_offers_what_it_defines() {
         ),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP302"]).1,
+        check(root.path(), &["--select", "SMP903"]).1,
         format!(
-            "pkg{}__init__.py:5:5: SMP302 Public function `helper` has no docstring; document it for its users\n\
+            "pkg{}__init__.py:5:5: SMP903 Public function `helper` has no docstring; document it for its users\n\
              Found 1 error.\n",
             std::path::MAIN_SEPARATOR_STR
         )
@@ -566,7 +608,7 @@ fn lazy_module_offers_what_it_defines() {
 // `api-modules` names a module users import from directly, so its `__all__` stays as written.
 #[test_case(
     "",
-    "pkg/errors.py:4:12: SMP117 `Oops` is in `__all__`, yet no other module imports it; list only what other modules \
+    "pkg/errors.py:4:12: SMP402 `Oops` is in `__all__`, yet no other module imports it; list only what other modules \
      use\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
     "unused_export_reported"
 )]
@@ -578,7 +620,7 @@ fn api_modules_keep_their_exports(settings: &str, stdout: &str) {
         ("pkg/errors.py", "class Oops(Exception): ...\n\n\n__all__ = [\"Oops\"]\n"),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP117"]).1,
+        check(root.path(), &["--select", "SMP402"]).1,
         stdout.replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
     );
 }
@@ -591,7 +633,7 @@ fn application_drops_unused_exports_safely() {
         ("tool/__init__.py", ""),
         ("tool/cli.py", "def run() -> None: ...\n\n\n__all__ = [\"run\"]\n"),
     ]);
-    check(root.path(), &["--select", "SMP117", "--fix"]);
+    check(root.path(), &["--select", "SMP402", "--fix"]);
     assert_eq!(common::read(root.path(), "tool/cli.py"), "def run() -> None: ...\n\n\n__all__ = []\n");
 }
 
@@ -606,9 +648,9 @@ fn namespace_package_is_public_api(settings: &str) {
         ("src/acme/other.py", "def square() -> int: ...\n"),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP302"]).1,
+        check(root.path(), &["--select", "SMP903"]).1,
         format!(
-            "{}:1:5: SMP302 Public function `circle` has no docstring; document it for its users\nFound 1 error.\n",
+            "{}:1:5: SMP903 Public function `circle` has no docstring; document it for its users\nFound 1 error.\n",
             ["src", "acme", "widgets", "shapes.py"].join(std::path::MAIN_SEPARATOR_STR)
         )
     );
@@ -624,9 +666,9 @@ fn main_module_is_not_public_api() {
         ("pkg/__about__.py", "def helper() -> None: ...\n"),
     ]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP302"]).1,
+        check(root.path(), &["--select", "SMP903"]).1,
         format!(
-            "pkg{}__about__.py:1:5: SMP302 Public function `helper` has no docstring; document it for its users\n\
+            "pkg{}__about__.py:1:5: SMP903 Public function `helper` has no docstring; document it for its users\n\
              Found 1 error.\n",
             std::path::MAIN_SEPARATOR_STR
         )

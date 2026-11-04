@@ -2,6 +2,6 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-8:9 SMP201 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
-9:9 SMP201 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
-36:36 SMP201 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+8:9 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+9:9 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+36:36 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`

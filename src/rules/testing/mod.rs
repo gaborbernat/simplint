@@ -3,12 +3,18 @@ mod constant_assert;
 mod mock_attribute_assignment;
 pub(crate) mod mock_without_spec;
 mod parametrize_without_id;
+mod sleep_in_test;
+mod split_composite_assert;
+mod stdlib_mock;
 mod test_class;
 
 pub(crate) use conditional_in_test::conditional_in_test;
 pub(crate) use constant_assert::constant_assert;
 pub(crate) use mock_attribute_assignment::mock_attribute_assignment;
 pub(crate) use parametrize_without_id::parametrize_without_id;
+pub(crate) use sleep_in_test::sleep_in_test;
+pub(crate) use split_composite_assert::split_composite_assert;
+pub(crate) use stdlib_mock::stdlib_mock;
 pub(crate) use test_class::test_class;
 
 use ruff_python_ast as ast;

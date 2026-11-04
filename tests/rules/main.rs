@@ -1,13 +1,13 @@
 #[path = "../common/mod.rs"]
 mod common;
 
+mod api;
+mod classes;
 mod comments;
-mod dataclasses;
 mod docstrings;
-mod exports;
 mod imports;
+mod layout;
+mod logic;
 mod naming;
-mod strings;
-mod structure;
 mod testing;
 mod typing;

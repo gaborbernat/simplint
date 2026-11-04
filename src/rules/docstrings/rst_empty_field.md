@@ -1,0 +1,100 @@
+Flags `:param:`, `:raises:`, `:returns:`, `:yields:` and `:var:` fields in reStructuredText docstrings that have nothing
+after their name, such as `:param path:` with no description.
+
+## Why is this bad?
+
+A field with no description names what it documents and says nothing about it, which the signature already shows. Sphinx
+renders the entry with a blank description, so the reference lists the parameter without saying what it is for.
+
+## Example
+
+```toml config
+[tool.simplint]
+docstring-style = "rst"
+```
+
+```python report
+def read(path: str) -> str:
+    """Read a file.
+
+    :param path:
+    """
+    return path
+```
+
+Use instead:
+
+```python ok
+def read(path: str) -> str:
+    """Read a file.
+
+    :param path: Where it is.
+    """
+    return path
+```
+
+## Configuration
+
+- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in
+  `[tool.simplint]`: `"rst"` turns the rule on
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python report
+  def read(path: str) -> str:
+      """Read a file.
+
+      :param path:
+      """
+      return path
+  ```
+
+## What it does
+
+Checks the field lists of reStructuredText docstrings, when `docstring-style = "rst"`, for fields with nothing after
+their name. No fix is offered, since only the author knows what the field should say.
+
+The fixes of [rst-missing-param](SMP916.html), [rst-missing-attribute](SMP920.html), [rst-missing-raises](SMP924.html)
+and [rst-returns](SMP923.html) add such fields on purpose: each one has an empty description for you to write. This rule
+reports them until you do, so turn it off if you want to leave them empty.
+
+### Active on
+
+- **Fields with no description**: a `:param:`, `:raises:`, `:returns:`, `:yields:` or `:var:` field with nothing after
+  the name, such as one a fix of a missing-field rule adds.
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python report
+  def read(path: str) -> str:
+      """Read a file.
+
+      :param path:
+      """
+      return path
+  ```
+
+### Exceptions
+
+- **Malformed fields**: a field that [rst-field-syntax](SMP910.html) reports, such as an unnamed `:param:`, is left to
+  it, since the field must be fixed before its description can be judged.
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python ok
+  def read(path: str) -> str:
+      """Read a file.
+
+      :param:
+      """
+      return path
+  ```

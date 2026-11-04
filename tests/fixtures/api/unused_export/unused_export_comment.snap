@@ -1,0 +1,15 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+8:5 SMP402 `spare_comment` is in `__all__`, yet no other module imports it; list only what other modules use [unsafe fix: Remove `spare_comment` from `__all__`]
+--- fixed (1 applied, 0 remaining) ---
+def used_comment() -> None: ...
+
+
+def spare_comment() -> None: ...
+
+
+__all__ = [  # the module's interface
+    "used_comment",
+]

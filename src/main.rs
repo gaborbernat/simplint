@@ -10,11 +10,14 @@ mod syntax;
 
 use std::ffi::OsString;
 use std::io::Write;
+use std::panic::resume_unwind;
 use std::process::ExitCode;
+use std::thread;
 
 use anyhow::Result;
 use clap::{CommandFactory, Parser};
 use colored::Colorize;
+use rayon::ThreadPoolBuilder;
 use ruff::ExitStatus;
 use ruff_linter::logging::LogLevel;
 
@@ -40,11 +43,22 @@ static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    match run(cli) {
+    // Deeply nested source, such as a list nested thousands of levels deep, recurses past the default stack of a thread
+    // in the parser and in every visitor, so the work and rayon's workers get a larger one.
+    let worker = thread::Builder::new().stack_size(STACK_SIZE).spawn(move || {
+        ThreadPoolBuilder::new().stack_size(STACK_SIZE).build_global()?;
+        run(cli)
+    });
+    let status = worker
+        .map_err(anyhow::Error::from)
+        .and_then(|worker| worker.join().unwrap_or_else(|panic| resume_unwind(panic)));
+    match status {
         Ok(status) => status.into(),
         Err(error) => report_error(&error),
     }
 }
+
+const STACK_SIZE: usize = 64 * 1024 * 1024;
 
 // As `ruff` does: a failed run prints its cause chain and exits 2, while a closed pipe ends the run quietly.
 fn report_error(error: &anyhow::Error) -> ExitCode {

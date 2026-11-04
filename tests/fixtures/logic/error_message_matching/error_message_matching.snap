@@ -1,0 +1,11 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+11:12 SMP507 Telling exceptions apart by their message breaks when the text changes; catch a more specific type
+13:12 SMP507 Telling exceptions apart by their message breaks when the text changes; catch a more specific type
+15:12 SMP507 Telling exceptions apart by their message breaks when the text changes; catch a more specific type
+17:12 SMP507 Telling exceptions apart by their message breaks when the text changes; catch a more specific type
+19:15 SMP507 Telling exceptions apart by their message breaks when the text changes; catch a more specific type
+33:12 SMP507 Telling exceptions apart by their message breaks when the text changes; catch a more specific type
+37:12 SMP507 Telling exceptions apart by their message breaks when the text changes; catch a more specific type

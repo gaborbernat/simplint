@@ -2,11 +2,11 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-3:1 SMP102 Module-scope variable `counter` should be named `_COUNTER` [unsafe fix: Rename `counter` to `_COUNTER`]
+3:1 SMP102 Module-scope variable `counter` should be named `COUNTER` [unsafe fix: Rename `counter` to `COUNTER`]
 --- fixed (1 applied, 0 remaining) ---
 import functools
 
-_COUNTER = 1
+COUNTER = 1
 
 
 def decorate(function: object) -> object:
@@ -15,10 +15,10 @@ def decorate(function: object) -> object:
 
 @decorate
 class Holder(dict):
-    doubled = _COUNTER * 2
+    doubled = COUNTER * 2
 
-    def method(self, value: int = _COUNTER) -> int:
-        return value + _COUNTER
+    def method(self, value: int = COUNTER) -> int:
+        return value + COUNTER
 
 
 def nested() -> int:
@@ -26,32 +26,32 @@ def nested() -> int:
 
     def inner() -> int:
         nonlocal total
-        total += _COUNTER
+        total += COUNTER
         return total
 
     return inner()
 
 
 def bump() -> None:
-    global _COUNTER
-    _COUNTER += 1
-    del _COUNTER
+    global COUNTER
+    COUNTER += 1
+    del COUNTER
 
 
 def scopes(items: list[int]) -> list[int]:
-    first = [_COUNTER + item for item in items]
-    third = {key: _COUNTER for key in items}
-    fifth = lambda value=_COUNTER: value + _COUNTER
-    if (named := _COUNTER) > 0:
+    first = [COUNTER + item for item in items]
+    third = {key: COUNTER for key in items}
+    fifth = lambda value=COUNTER: value + COUNTER
+    if (named := COUNTER) > 0:
         pass
     match items:
-        case [head, *tail] if head == _COUNTER:
+        case [head, *tail] if head == COUNTER:
             return [head, *tail, named]
     return [*first, *third.values(), fifth()]
 
 
-functools.reduce(lambda left, right: left + _COUNTER, [_COUNTER])
+functools.reduce(lambda left, right: left + COUNTER, [COUNTER])
 
 
 def generators(items: list[int]) -> list[int]:
-    return [first + _COUNTER for first in items for second in items if second] + [0 for Holder.doubled in items]
+    return [first + COUNTER for first in items for second in items if second] + [0 for Holder.doubled in items]

@@ -1,0 +1,284 @@
+Flags `module.Name` attribute access on a module of this project, where `from module import Name` would bind the same
+object.
+
+## Why is this bad?
+
+Reaching a name through its module makes the reader trace where the module came from at every use, and it repeats the
+module name in each line. Importing the name once states the dependency at the top of the file.
+
+## Example
+
+```python context file=pkg/__init__.py
+
+```
+
+```python context file=pkg/findings.py
+class DbWriter:
+    pass
+```
+
+```python report file=pkg/consumer.py
+from . import findings
+
+writer = findings.DbWriter()
+```
+
+Use instead:
+
+```python context file=pkg/__init__.py
+
+```
+
+```python context file=pkg/findings.py
+class DbWriter:
+    pass
+```
+
+```python ok file=pkg/consumer.py
+from .findings import DbWriter
+
+writer = DbWriter()
+```
+
+## Configuration
+
+- [`module-attributes`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#module-attributes):
+  modules whose attributes the code reaches as `module.Name`, by absolute dotted name, such as a module that tests patch
+  attribute by attribute. The default is `[]`.
+
+  ```toml config
+  [tool.simplint.imports]
+  module-attributes = ["pkg.findings"]
+  ```
+
+  ```python context file=pkg/__init__.py
+  # A package.
+  ```
+
+  ```python context file=pkg/findings.py
+  class DbWriter:
+      pass
+  ```
+
+  ```python ok file=pkg/consumer.py
+  from . import findings
+
+  writer = findings.DbWriter()
+  ```
+
+## What it does
+
+### Active on
+
+- **Attribute access on a module of this project bound by `from . import module` or `from package import module`**: the
+  module must resolve to a file of the run, so the attribute reads a name the file defines.
+
+  ```python context file=pkg/__init__.py
+  # A package.
+  ```
+
+  ```python context file=pkg/findings.py
+  class DbWriter:
+      pass
+  ```
+
+  ```python report file=pkg/consumer.py
+  from . import findings
+
+  writer = findings.DbWriter()
+  ```
+
+- **Attribute access on a module bound by `import package.module as name`**, which binds the module like the form above.
+
+  ```python context file=pkg/__init__.py
+  # A package.
+  ```
+
+  ```python context file=pkg/findings.py
+  class DbWriter:
+      pass
+  ```
+
+  ```python report file=pkg/consumer.py
+  import pkg.findings as findings
+
+  writer = findings.DbWriter()
+  ```
+
+### Exceptions
+
+- **Third-party and standard-library modules**: only modules that resolve to a file of the run count, so `json` stays as
+  it is.
+
+  ```python ok
+  import json as jsonlib
+
+  text = jsonlib.dumps([])
+  ```
+
+- **Modules listed in
+  [`module-attributes`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#module-attributes)**:
+  the listed module is left alone, as in the configuration example above.
+
+  ```toml config
+  [tool.simplint.imports]
+  module-attributes = ["pkg.findings"]
+  ```
+
+  ```python context file=pkg/__init__.py
+  # A package.
+  ```
+
+  ```python context file=pkg/findings.py
+  class DbWriter:
+      pass
+  ```
+
+  ```python ok file=pkg/consumer.py
+  from . import findings
+
+  writer = findings.DbWriter()
+  ```
+
+- **A module used as a value**: passed to a function, assigned or returned, as in `getattr(findings, "DbWriter")` or
+  `importlib.reload(findings)`, the module is an object of its own, so the file keeps it.
+
+  ```python context file=pkg/__init__.py
+  # A package.
+  ```
+
+  ```python context file=pkg/findings.py
+  class DbWriter:
+      pass
+  ```
+
+  ```python ok file=pkg/consumer.py
+  from . import findings
+
+  writer = getattr(findings, "DbWriter")
+  ```
+
+- **Attributes stored or deleted**: `findings.DEBUG = True` and `del findings.OLD` change the module, which an import
+  cannot do.
+
+  ```python context file=pkg/__init__.py
+  # A package.
+  ```
+
+  ```python context file=pkg/findings.py
+  class DbWriter:
+      pass
+  ```
+
+  ```python ok file=pkg/consumer.py
+  from . import findings
+
+  findings.DEBUG = True
+  del findings.OLD
+  ```
+
+- **Names the file binds itself**: when the file already binds the attribute name to something else, importing it would
+  clash with that binding.
+
+  ```python context file=pkg/__init__.py
+  # A package.
+  ```
+
+  ```python context file=pkg/findings.py
+  class DbWriter:
+      pass
+  ```
+
+  ```python ok file=pkg/consumer.py
+  from . import findings
+
+  DbWriter = object
+  writer = findings.DbWriter()
+  ```
+
+- **Module dunders such as `__name__`**: they describe the module they are read from, so importing them would read the
+  wrong module.
+
+  ```python context file=pkg/__init__.py
+  # A package.
+  ```
+
+  ```python context file=pkg/findings.py
+  class DbWriter:
+      pass
+  ```
+
+  ```python ok file=pkg/consumer.py
+  from . import findings
+
+  NAME = findings.__name__
+  ```
+
+- **Modules that tests patch by attribute**: a dotted string such as `mocker.patch("pkg.findings.DbWriter")` names the
+  attribute in the module, so the code keeps reaching it through the module, where the patch takes effect.
+
+  ```python context file=pkg/__init__.py
+  # A package.
+  ```
+
+  ```python context file=pkg/findings.py
+  class DbWriter:
+      pass
+  ```
+
+  ```python ok file=pkg/consumer.py
+  from . import findings
+
+  writer = findings.DbWriter()
+  ```
+
+  ```python context file=tests/test_writer.py
+  def test_writer(mocker):
+      mocker.patch("pkg.findings.DbWriter")
+  ```
+
+### Fix
+
+**Unsafe fix:** the fix rewrites the import to bind the names, so the object is bound when the module loads. A test that
+patches the module attribute later no longer reaches the name. The fix replaces the import and every `findings.Name`
+access in the file, and it is offered only when every use of the module is such an access to a name the module defines.
+
+```python context file=pkg/__init__.py
+# A package.
+```
+
+```python context file=pkg/findings.py
+class DbWriter:
+    pass
+```
+
+```python report file=pkg/consumer.py
+from . import findings
+
+writer = findings.DbWriter()
+```
+
+```python fixed file=pkg/consumer.py
+from .findings import DbWriter
+
+writer = DbWriter()
+```
+
+A use the fix cannot rewrite keeps the report without a fix. Here `findings.DEBUG = True` is a store, so `DbWriter` is
+reported without a fix.
+
+```python context file=pkg/__init__.py
+# A package.
+```
+
+```python context file=pkg/findings.py
+class DbWriter:
+    pass
+```
+
+```python report file=pkg/consumer.py
+from . import findings
+
+writer = findings.DbWriter()
+findings.DEBUG = True
+```

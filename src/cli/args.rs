@@ -245,7 +245,7 @@ pub struct CheckCommand {
     pub no_cache: bool,
     /// Path to Ruff's cache directory, which simplint keeps its cache in.
     #[arg(long, env = "RUFF_CACHE_DIR", help_heading = "Miscellaneous")]
-    cache_dir: Option<PathBuf>,
+    pub cache_dir: Option<PathBuf>,
     /// The name of the file when passing it through stdin.
     #[arg(long, help_heading = "Miscellaneous")]
     pub stdin_filename: Option<PathBuf>,
@@ -403,7 +403,7 @@ impl CheckCommand {
             api_packages: None,
             api_modules: None,
             docstring_style: None,
-            naming: None,
+            ..SimplintOptions::default()
         }
     }
 }
@@ -526,7 +526,7 @@ impl TypedValueParser for ConfigArgumentParser {
     }
 }
 
-// Ruff's `RuleParser`: a rule by code or name, without listing every choice when the value is not one.
+// Ruff's `RuleParser`: a rule's code or name, checked without listing every choice when the value is not one.
 #[derive(Clone)]
 struct RuleParser;
 

@@ -18,21 +18,43 @@
 [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/16281/badge)](https://www.bestpractices.dev/projects/16281)
 
 simplint is a companion linter for [Ruff](https://docs.astral.sh/ruff/), written in [Rust](https://www.rust-lang.org/).
-It adds checks that make Python code easier to read and review, and fixes what it reports when the fix is mechanical.
-The checks cover
-[definitions ordered like a book](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP020.html),
-[explicit exports](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP103.html),
-[flat test modules](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP200.html) and more. The rules are
-opinionated. They reflect the maintainer's preferences while aiming to be as objective as possible.
+It adds checks that make Python code easier to read and review:
 
-Install it with `uv tool install simplint` ([uv](https://docs.astral.sh/uv/)) or `pipx install simplint`
-([pipx](https://pipx.pypa.io/stable/)), then run `simplint check .` from the project root.
+- [definitions ordered like a book](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP201.html)
+- [explicit exports](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP403.html)
+- [Final constants](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP601.html)
+- [flat test modules](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP801.html)
+- and more
 
-- [Documentation](https://simplint.readthedocs.io/en/latest/): installation, quick start and
-  [pre-commit](https://pre-commit.com/) hook
-- [Configuration](https://simplint.readthedocs.io/en/latest/configuration.html)
-- [Rules](https://simplint.readthedocs.io/en/latest/rules.html)
+Most rules rewrite the code for you; fixes that could change behavior run only with `--unsafe-fixes`. An import index
+across every file keeps fixes from renaming or moving a name another module uses. A whole project lints in milliseconds,
+few rules overlap with Ruff's, and both tools read the same `noqa` comments and `pyproject.toml`.
+
+The rules are opinionated. They reflect the maintainer's preferences while aiming to be as objective as possible.
+
+## Install
+
+With [uv](https://docs.astral.sh/uv/) or [pipx](https://pipx.pypa.io/stable/):
+
+```bash
+uv tool install simplint  # or: pipx install simplint
+```
+
+## Quick start
+
+Run it from the project root:
+
+```bash
+simplint check .
+```
+
+## Links
+
+- [Documentation](https://simplint.readthedocs.io/en/latest/): start with the
+  [getting started](https://simplint.readthedocs.io/en/latest/tutorial/getting-started.html) tutorial, then the
+  [how-to guides](https://simplint.readthedocs.io/en/latest/how-to/index.html) for single tasks, and the
+  [reference](https://simplint.readthedocs.io/en/latest/rules.html) for rules, configuration and the command line
 - [PyPI package](https://pypi.org/project/simplint)
-- [Release history](https://github.com/gaborbernat/simplint/blob/main/CHANGELOG.md)
+- [Release history](https://simplint.readthedocs.io/en/latest/changelog.html)
 - [CONTRIBUTING.md](https://github.com/gaborbernat/simplint/blob/main/CONTRIBUTING.md): repository layout and
   development commands

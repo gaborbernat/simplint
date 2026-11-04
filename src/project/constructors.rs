@@ -1,6 +1,6 @@
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::OnceCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::path::{Path, PathBuf};
+use std::collections::{BTreeMap, BTreeSet};
 
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_python_ast::name::UnqualifiedName;
@@ -12,12 +12,15 @@ use ruff_source_file::LineRanges;
 use ruff_text_size::Ranged;
 
 use super::facts::{FromImport, qualified};
+use super::index::FileId;
 use crate::lint::noqa;
 use crate::lint::registry::Rule;
+use crate::syntax::{dataclass_decorator, keyword_is_true};
 
 // What `dataclass-kw-only` needs to rewrite every positional call of a dataclass it makes keyword-only: the dataclasses
 // a file declares without `kw_only=True`, with the fields their `__init__` takes by position, and how the file uses
-// names from other modules.
+// names from other modules. `unused-default` reads the same uses for the calls of a function, and the methods a class
+// defines with the attribute names the module loads.
 #[derive(Clone, Default, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct Constructors {
     pub(super) dataclasses: Vec<(String, Option<Vec<String>>)>,
@@ -25,6 +28,11 @@ pub struct Constructors {
     // The capitalized names called with positional arguments as attributes of something no import binds, such as
     // `module.Ranked(issue, score)` on a module a test loads from its file path; any dataclass so named may be the one.
     pub(super) dynamic: Vec<String>,
+    // The methods of the module's top-level classes.
+    pub(super) methods: Vec<String>,
+    // How many times the module loads each attribute name, wherever it appears, to count the `obj.name` reads of a
+    // method name across the run.
+    pub(super) attribute_loads: BTreeMap<String, u32>,
 }
 
 // A name used from a module, as the file spells it.
@@ -35,10 +43,10 @@ pub(super) struct NameUse {
     pub(super) kind: UseKind,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub(super) enum UseKind {
-    // A call passing this many arguments by position, and no `*args`.
-    Positional(u32),
+    // A call, by the arguments it passes.
+    Call(CallShape),
     // A use no rewrite can follow: a call unpacking `*args`, a class pattern matching by position, or the name passed
     // around as a value.
     Opaque,
@@ -46,12 +54,67 @@ pub(super) enum UseKind {
     Imported,
 }
 
+// The arguments of a call that does not unpack `*args`: how many it passes by position, the names it passes by
+// keyword, and whether it unpacks a mapping with `**`.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+pub(crate) struct CallShape {
+    pub(crate) positional: u32,
+    pub(crate) keywords: Vec<String>,
+    pub(crate) unpacks_mapping: bool,
+}
+
+impl CallShape {
+    pub(crate) fn of(call: &ast::ExprCall) -> Self {
+        let arguments = &call.arguments;
+        Self {
+            positional: u32::try_from(arguments.args.len()).unwrap_or(u32::MAX),
+            keywords: arguments.keywords.iter().filter_map(|keyword| Some(keyword.arg.as_ref()?.to_string())).collect(),
+            unpacks_mapping: arguments.keywords.iter().any(|keyword| keyword.arg.is_none()),
+        }
+    }
+}
+
+impl CacheKey for CallShape {
+    fn cache_key(&self, state: &mut CacheKeyHasher) {
+        self.positional.cache_key(state);
+        self.keywords.cache_key(state);
+        self.unpacks_mapping.cache_key(state);
+    }
+}
+
+// Every call of a function the run makes, and whether some use of it is not a call, which hides the arguments it gets.
+#[derive(Clone, Default, PartialEq)]
+pub(crate) struct CallSites {
+    pub(crate) opaque: bool,
+    pub(crate) shapes: BTreeSet<CallShape>,
+}
+
+impl CallSites {
+    pub(crate) fn add_shape(&mut self, shape: CallShape) {
+        self.shapes.insert(shape);
+    }
+
+    pub(crate) fn add_call(&mut self, call: &ast::ExprCall) {
+        match CallKind::of(call) {
+            CallKind::Unpacked => self.opaque = true,
+            _ => self.add_shape(CallShape::of(call)),
+        }
+    }
+}
+
+impl CacheKey for CallSites {
+    fn cache_key(&self, state: &mut CacheKeyHasher) {
+        self.opaque.cache_key(state);
+        self.shapes.iter().cloned().collect::<Vec<_>>().cache_key(state);
+    }
+}
+
 impl Constructors {
     pub(super) fn collect(
         source: &str,
         tokens: &Tokens,
         body: &[Stmt],
-        aliases: &HashMap<&str, String>,
+        aliases: &FxHashMap<&str, String>,
         from_imports: &[FromImport],
     ) -> Self {
         let qualify = |expr: &Expr| qualified(UnqualifiedName::from_expr(expr)?.segments(), aliases);
@@ -84,16 +147,13 @@ impl Constructors {
         for ((module, name, written), found) in uses.found {
             let kind = match found {
                 Use::Call(call) => match CallKind::of(call) {
-                    CallKind::Keyword => continue,
                     CallKind::Positional
                         if is_suppressed(source, comments.get_or_init(|| comment_ranges(tokens)), call) =>
                     {
                         UseKind::Opaque
                     }
-                    CallKind::Positional => {
-                        UseKind::Positional(u32::try_from(call.arguments.args.len()).unwrap_or(u32::MAX))
-                    }
                     CallKind::Unpacked => UseKind::Opaque,
+                    CallKind::Keyword | CallKind::Positional => UseKind::Call(CallShape::of(call)),
                 },
                 Use::Opaque => UseKind::Opaque,
             };
@@ -116,15 +176,23 @@ impl Constructors {
             let base_fields =
                 |name: &str| known.iter().find(|(base, _)| *base == name).and_then(|(_, fields)| fields.clone());
             let fields = init_fields(class, decorator, &base_fields);
-            if !is_keyword_only(decorator) {
+            if !keyword_is_true(decorator, "kw_only") {
                 dataclasses.push((class.name.to_string(), fields.clone()));
             }
             known.push((class.name.as_str(), fields));
         }
+        let methods = body
+            .iter()
+            .filter_map(Stmt::as_class_def_stmt)
+            .flat_map(|class| class.body.iter().filter_map(Stmt::as_function_def_stmt))
+            .map(|function| function.name.to_string())
+            .collect();
         Self {
             dataclasses,
             uses: grouped.into_iter().map(|(module, uses)| (module, uses.into_iter().collect())).collect(),
             dynamic: dynamic.into_iter().collect(),
+            methods,
+            attribute_loads: attribute_loads(body),
         }
     }
 }
@@ -137,50 +205,86 @@ fn is_suppressed(source: &str, comments: &CommentRanges, call: &ast::ExprCall) -
         .any(|comment| noqa::suppresses(&source[*comment], Rule::DataclassKwOnly.code()))
 }
 
+// The attribute names the body reads, with how often: `obj.name` and `obj.name(...)` alike.
+fn attribute_loads(body: &[Stmt]) -> BTreeMap<String, u32> {
+    let mut reads = crate::rules::ExprCollector::new(|expr: &Expr| {
+        let ast::ExprAttribute { attr, ctx, .. } = expr.as_attribute_expr()?;
+        matches!(ctx, ast::ExprContext::Load).then(|| attr.to_string())
+    });
+    reads.visit_body(body);
+    let mut loads = BTreeMap::new();
+    for name in reads.found {
+        *loads.entry(name).or_default() += 1;
+    }
+    loads
+}
+
 fn comment_ranges(tokens: &Tokens) -> CommentRanges {
     CommentRanges::new(tokens.iter().filter(|token| token.kind() == TokenKind::Comment).map(Ranged::range).collect())
 }
 
 // Over the run: how other files use each file's dataclasses, and for each file the fields of the dataclasses it calls
 // with positional arguments, by how it spells the call.
+// Over the run: how other files use each file's dataclasses, the calls of each file's functions, and for each file the
+// fields of the dataclasses it calls with positional arguments, by how it spells the call.
 #[derive(Default)]
 pub struct DataclassCalls {
     // Per file, its dataclasses another file uses in a way no rewrite follows, which includes importing one from a
     // module that passes it on to others.
-    opaque: HashMap<PathBuf, HashSet<String>>,
-    star_imported: HashSet<PathBuf>,
-    fields: HashMap<PathBuf, HashMap<String, Vec<String>>>,
+    opaque: FxHashMap<FileId, FxHashSet<String>>,
+    star_imported: FxHashSet<FileId>,
+    fields: FxHashMap<FileId, FxHashMap<String, Vec<String>>>,
+    // Per file, the calls of each function it defines, from the other files of the run.
+    functions: FxHashMap<FileId, FxHashMap<String, CallSites>>,
+    // Per file, how many times the run loads each of the file's method names.
+    method_loads: FxHashMap<FileId, FxHashMap<String, u32>>,
 }
 
 type Declared<'f> = &'f [(String, Option<Vec<String>>)];
 
 // A file, whether its own reports rewrite its positional calls, and the files its names resolve to with the names it
 // uses from each.
-pub(super) type FileUses<'f> = (PathBuf, bool, Vec<(PathBuf, &'f [NameUse])>);
+pub(super) type FileUses<'f> = (FileId, bool, Vec<(FileId, &'f [NameUse])>);
 
 impl DataclassCalls {
+    // `defined` holds the names each file binds at its top level, which tell a re-export from a definition. `hidden`
+    // holds the names some file may read off a module under a computed name, so any function so named may be called.
     pub(super) fn index<'f>(
-        declared: impl Iterator<Item = (PathBuf, Declared<'f>)>,
+        declared: impl Iterator<Item = (FileId, Declared<'f>)>,
         uses: &[FileUses],
-        imported: &HashMap<PathBuf, HashSet<String>>,
-        dynamic: &HashSet<&str>,
+        imported: &FxHashMap<FileId, FxHashSet<String>>,
+        dynamic: &FxHashSet<&str>,
+        defined: &FxHashMap<FileId, FxHashSet<&str>>,
+        hidden: &FxHashSet<&str>,
     ) -> Self {
-        let declared: HashMap<PathBuf, Declared<'f>> = declared.filter(|(_, classes)| !classes.is_empty()).collect();
+        let declared: FxHashMap<FileId, Declared<'f>> = declared.filter(|(_, classes)| !classes.is_empty()).collect();
         let mut calls = Self::default();
         for (file, classes) in &declared {
             let called = classes.iter().filter(|(class, _)| dynamic.contains(class.as_str()));
             for (class, _) in called {
-                calls.opaque.entry(file.clone()).or_default().insert(class.clone());
+                calls.opaque.entry(*file).or_default().insert(class.clone());
             }
         }
+        let mut reexported: FxHashSet<String> = FxHashSet::default();
         for (caller, rewrites_calls, modules) in uses {
-            for (file, uses) in modules {
+            for (file, used) in modules {
+                for NameUse { name, kind, .. } in *used {
+                    let sites = calls.functions.entry(*file).or_default().entry(name.clone()).or_default();
+                    match kind {
+                        UseKind::Call(shape) => sites.add_shape(shape.clone()),
+                        UseKind::Opaque => sites.opaque = true,
+                        UseKind::Imported => {}
+                    }
+                    if !defined.get(file).is_some_and(|names| names.contains(name.as_str())) {
+                        reexported.insert(name.clone());
+                    }
+                }
                 let Some(classes) = declared.get(file) else {
                     continue;
                 };
-                for NameUse { name, written, kind } in *uses {
+                for NameUse { name, written, kind } in *used {
                     if *kind == UseKind::Imported && name == "*" {
-                        calls.star_imported.insert(file.clone());
+                        calls.star_imported.insert(*file);
                         continue;
                     }
                     let Some((_, fields)) = classes.iter().find(|(class, _)| class == name) else {
@@ -188,39 +292,61 @@ impl DataclassCalls {
                     };
                     let opaque = match (kind, fields) {
                         (UseKind::Imported, _) => imported.get(caller).is_some_and(|names| names.contains(written)),
-                        (UseKind::Positional(count), Some(fields))
-                            if *rewrites_calls && *count as usize <= fields.len() =>
+                        (UseKind::Call(shape), _) if shape.positional == 0 => false,
+                        (UseKind::Call(shape), Some(fields))
+                            if *rewrites_calls && shape.positional as usize <= fields.len() =>
                         {
-                            calls.fields.entry(caller.clone()).or_default().insert(written.clone(), fields.clone());
+                            calls.fields.entry(*caller).or_default().insert(written.clone(), fields.clone());
                             false
                         }
                         _ => true,
                     };
                     if opaque {
-                        calls.opaque.entry(file.clone()).or_default().insert(name.clone());
+                        calls.opaque.entry(*file).or_default().insert(name.clone());
                     }
                 }
+            }
+        }
+        // A function another module reaches through a name this file does not define, as `pkg.helper` through a
+        // package that re-exports it, may be called under any file's name for it.
+        for (file, names) in defined {
+            for name in names.iter().filter(|name| reexported.contains(**name) || hidden.contains(**name)) {
+                calls.mark_opaque(*file, (*name).to_owned());
             }
         }
         calls
     }
 
-    pub(super) fn file(&self, path: &Path) -> FileCalls<'_> {
+    // Records that some use of a function the file defines hides its arguments, as an entry point or a dotted string
+    // naming it does.
+    pub(super) fn mark_opaque(&mut self, file: FileId, name: String) {
+        self.functions.entry(file).or_default().entry(name).or_default().opaque = true;
+    }
+
+    pub(super) fn set_method_loads(&mut self, file: FileId, loads: FxHashMap<String, u32>) {
+        self.method_loads.insert(file, loads);
+    }
+
+    pub(super) fn file(&self, id: Option<FileId>) -> FileCalls<'_> {
         FileCalls {
-            opaque: self.opaque.get(path),
-            star_imported: self.star_imported.contains(path),
-            fields: self.fields.get(path),
+            opaque: id.and_then(|id| self.opaque.get(&id)),
+            star_imported: id.is_some_and(|id| self.star_imported.contains(&id)),
+            fields: id.and_then(|id| self.fields.get(&id)),
+            functions: id.and_then(|id| self.functions.get(&id)),
+            method_loads: id.and_then(|id| self.method_loads.get(&id)),
         }
     }
 }
 
-// What the index knows of one file's dataclass calls: how other files use its dataclasses, and the dataclasses of
-// other files it calls by position.
+// What the index knows of one file's calls: how other files use its dataclasses and functions, the dataclasses of
+// other files it calls by position, and how often the run loads its method names.
 #[derive(Clone, Copy, PartialEq)]
 pub struct FileCalls<'a> {
-    opaque: Option<&'a HashSet<String>>,
+    opaque: Option<&'a FxHashSet<String>>,
     star_imported: bool,
-    fields: Option<&'a HashMap<String, Vec<String>>>,
+    fields: Option<&'a FxHashMap<String, Vec<String>>>,
+    functions: Option<&'a FxHashMap<String, CallSites>>,
+    method_loads: Option<&'a FxHashMap<String, u32>>,
 }
 
 impl<'a> FileCalls<'a> {
@@ -236,6 +362,16 @@ impl<'a> FileCalls<'a> {
     pub fn calls_any(&self) -> bool {
         self.fields.is_some()
     }
+
+    // The calls the other files make of the function `name` this file defines, or `None` when they make none.
+    pub(crate) fn call_sites(&self, name: &str) -> Option<&'a CallSites> {
+        self.functions?.get(name)
+    }
+
+    // How many times the run loads the attribute `name`, which counts every `obj.name` read of a method of that name.
+    pub(crate) fn attribute_loads(&self, name: &str) -> u32 {
+        self.method_loads.and_then(|loads| loads.get(name)).copied().unwrap_or_default()
+    }
 }
 
 impl CacheKey for FileCalls<'_> {
@@ -243,26 +379,9 @@ impl CacheKey for FileCalls<'_> {
         self.opaque.cache_key(state);
         self.star_imported.cache_key(state);
         self.fields.cache_key(state);
+        self.functions.cache_key(state);
+        self.method_loads.cache_key(state);
     }
-}
-
-// The `@dataclass` decorator of `class`, bare or called.
-pub(crate) fn dataclass_decorator<'a>(
-    class: &'a ast::StmtClassDef,
-    is_dataclass: &impl Fn(&Expr) -> bool,
-) -> Option<&'a Expr> {
-    class
-        .decorator_list
-        .iter()
-        .map(|decorator| &decorator.expression)
-        .find(|expr| is_dataclass(expr.as_call_expr().map_or(expr, |call| &call.func)))
-}
-
-fn is_keyword_only(decorator: &Expr) -> bool {
-    decorator
-        .as_call_expr()
-        .and_then(|call| call.arguments.find_keyword("kw_only"))
-        .is_some_and(|keyword| keyword.value.as_boolean_literal_expr().is_some_and(|literal| literal.value))
 }
 
 // The fields the generated `__init__` takes by position, in order; `None` when simplint cannot tell them, as when the
@@ -292,7 +411,7 @@ pub(crate) fn init_fields(
             _ => return None,
         }
     }
-    let keyword_only = is_keyword_only(decorator);
+    let keyword_only = keyword_is_true(decorator, "kw_only");
     let mut rest_keyword_only = false;
     let declared = class.body.iter().filter_map(|stmt| {
         let field = stmt.as_ann_assign_stmt()?;

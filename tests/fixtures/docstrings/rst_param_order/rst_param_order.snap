@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:6 SMP919 `:param source:` follows `:param target:`; document parameters in the order `move` takes them

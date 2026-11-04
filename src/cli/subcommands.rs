@@ -13,6 +13,7 @@ use ruff_options_metadata::{OptionEntry, OptionSet, OptionsMetadata};
 use serde::Serialize;
 use walkdir::WalkDir;
 
+use crate::lint::examples::{Example, Examples, Fence, Role, parse};
 use crate::lint::registry::{GROUPS, Rule};
 use crate::project::cache;
 use crate::settings::SimplintOptions;
@@ -41,7 +42,11 @@ pub fn config(key: Option<&str>, format: HelpFormat) -> Result<()> {
 }
 
 pub fn linter(format: HelpFormat) -> Result<()> {
-    print(&GROUPS.iter().map(|&(prefix, name)| LinterInfo { prefix, name }).collect::<Vec<_>>(), format)
+    let groups = GROUPS.iter().map(|&(family, name, _)| LinterInfo {
+        name,
+        codes: Rule::ALL.iter().filter(|rule| rule.family() == family).map(|rule| rule.code()).collect(),
+    });
+    print(&groups.collect::<Vec<_>>(), format)
 }
 
 // The documentation rebuilds this command line as an argparse parser for sphinx-argparse-cli, so its reference is
@@ -104,6 +109,8 @@ struct Explanation {
     fix_availability: FixAvailability,
     explanation: &'static str,
     preview: bool,
+    // simplint's own key: whether other files of the run can change what the rule reports.
+    cross_file: bool,
 }
 
 impl Explanation {
@@ -118,6 +125,7 @@ impl Explanation {
             fix_availability,
             explanation: rule.explanation(),
             preview: false,
+            cross_file: rule.reads_other_files(),
         }
     }
 
@@ -129,24 +137,103 @@ impl Explanation {
             output.push_str(&self.fix);
             output.push_str("\n\n");
         }
-        output.push_str(without_diagrams(self.explanation).trim());
+        if self.cross_file {
+            output.push_str("Reads other files of the run.\n\n");
+        }
+        let examples = parse(self.explanation).expect("every rule page parses; tests/examples.rs checks each one");
+        output.push_str(plain_examples(self.explanation, &examples).trim());
         output
     }
 }
 
-fn without_diagrams(explanation: &str) -> String {
-    let mut in_diagram = false;
+// Shows each example as plain Python under a label, leaving the role and attributes out of the fence. A file name
+// becomes a leading comment, and context files, which only the example's other files refer to, get neither a label nor
+// a place in the Example section, which already tells its flagged code from the code to use instead. A terminal cannot
+// draw the documentation's mermaid diagrams, so their source is left out too.
+fn plain_examples(explanation: &str, examples: &[Example]) -> String {
+    let lines: Vec<&str> = explanation.lines().collect();
+    let mut shown = examples.iter().flat_map(shown_fences).peekable();
     let mut kept = String::new();
-    for line in explanation.split_inclusive('\n') {
-        if line.trim_end() == "```mermaid" {
-            in_diagram = true;
-        } else if in_diagram && line.trim_end() == "```" {
-            in_diagram = false;
-        } else if !in_diagram {
+    // A hidden fence and a diagram take the blank lines after them with them.
+    let mut after_hidden = false;
+    let mut index = 0;
+    while index < lines.len() {
+        let line = lines[index];
+        if let Some(fence) = shown.next_if(|fence| fence.fence.line == index + 1) {
+            index = fence.fence.end_line;
+            after_hidden = fence.hidden;
+            if !fence.hidden {
+                push_fence(&mut kept, &lines, &fence);
+            }
+        } else if line.trim_end() == "```mermaid" {
+            index = lines[index..].iter().position(|line| line.trim_end() == "```").expect("a diagram is closed")
+                + index
+                + 1;
+            after_hidden = true;
+        } else if after_hidden && line.trim().is_empty() {
+            index += 1;
+        } else {
+            after_hidden = false;
             kept.push_str(line);
+            kept.push('\n');
+            index += 1;
         }
     }
     kept
+}
+
+// A fence as the plain output shows it. A config the Example section shares from above belongs to the example that
+// opens with it, so only an example's own config is shown.
+struct Shown<'a> {
+    fence: &'a Fence,
+    language: &'static str,
+    label: Option<&'static str>,
+    file: Option<&'a str>,
+    hidden: bool,
+}
+
+fn shown_fences(example: &Example) -> impl Iterator<Item = Shown<'_>> {
+    let in_example = example.section.as_deref() == Some("Example");
+    let config = example.config.as_ref().filter(|config| config.line == example.line).map(|config| Shown {
+        fence: config,
+        language: "toml",
+        label: Some("With this configuration:"),
+        file: None,
+        hidden: false,
+    });
+    let blocks = example.blocks.iter().map(move |block| Shown {
+        fence: &block.fence,
+        language: "python",
+        label: if in_example { None } else { example_label(block.role) },
+        file: block.named.then_some(block.file.as_str()),
+        hidden: in_example && block.role == Role::Context,
+    });
+    config.into_iter().chain(blocks)
+}
+
+fn push_fence(kept: &mut String, lines: &[&str], shown: &Shown) {
+    let header = lines[shown.fence.line - 1];
+    let indent = &header[..header.len() - header.trim_start().len()];
+    if let Some(label) = shown.label {
+        kept.extend([indent, label, "\n"]);
+    }
+    kept.extend([indent, "```", shown.language, "\n"]);
+    if let Some(file) = shown.file {
+        kept.extend([indent, "# ", file, "\n"]);
+    }
+    for &line in &lines[shown.fence.line..shown.fence.end_line - 1] {
+        kept.extend([line, "\n"]);
+    }
+    kept.extend([lines[shown.fence.end_line - 1], "\n"]);
+}
+
+fn example_label(role: Role) -> Option<&'static str> {
+    match role {
+        Role::Report => Some("Reported:"),
+        Role::Ok => Some("Not reported:"),
+        Role::Fixed => Some("After the fix:"),
+        Role::Context => None,
+    }
 }
 
 impl HelpOutput for Explanation {
@@ -175,6 +262,11 @@ struct RuleEntry {
     summary: &'static str,
     fix: FixAvailability,
     explanation: &'static str,
+    examples: Examples,
+    family: &'static str,
+    group: &'static str,
+    short_group: &'static str,
+    cross_file: bool,
 }
 
 impl RuleEntry {
@@ -185,6 +277,11 @@ impl RuleEntry {
             summary: rule.summary(),
             fix: rule.fix_availability(),
             explanation: rule.explanation(),
+            examples: parse(rule.explanation()).into(),
+            family: rule.family(),
+            group: rule.group(),
+            short_group: rule.short_group(),
+            cross_file: rule.reads_other_files(),
         }
     }
 }
@@ -225,16 +322,16 @@ impl HelpOutput for ConfigOutput {
 
 #[derive(Serialize)]
 struct LinterInfo {
-    prefix: &'static str,
     name: &'static str,
+    codes: Vec<&'static str>,
 }
 
 impl HelpOutput for Vec<LinterInfo> {
     const JSON_NEWLINE: bool = true;
 
     fn write_text(&self, writer: &mut dyn Write) -> io::Result<()> {
-        for LinterInfo { prefix, name } in self {
-            writeln!(writer, "{prefix:>4} {name}")?;
+        for LinterInfo { name, codes } in self {
+            writeln!(writer, "{name}: {}", codes.join(", "))?;
         }
         Ok(())
     }

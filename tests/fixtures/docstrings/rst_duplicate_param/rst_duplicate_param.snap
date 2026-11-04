@@ -1,0 +1,40 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+10:10 SMP918 `:param source:` repeats the docstring of `Reader`, which autodoc shows; document each constructor parameter once [unsafe fix: Remove `:param source:` from `__init__`]
+--- fixed (1 applied, 0 remaining) ---
+class Reader:
+    """Read files.
+
+    :param source: Where to read from.
+    """
+
+    def __init__(self, source: str, limit: int) -> None:
+        """Set up.
+
+        :param limit: How much to read.
+        """
+        self.source = source
+        self.limit = limit
+
+
+class Separate:
+    """Hold a value."""
+
+    def __init__(self, value: int) -> None:
+        """Set up.
+
+        :param value: The value.
+        """
+        self.value = value
+
+
+class Undocumented:
+    """Hold nothing.
+
+    :param value: The value.
+    """
+
+    def __init__(self, value: int) -> None:
+        self.value = value

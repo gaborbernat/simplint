@@ -1,0 +1,630 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+85:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+86:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+87:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+88:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+89:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+90:9 SMP503 Build text with an f-string instead of `+`
+91:9 SMP503 Build text with an f-string instead of `+`
+92:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+93:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+94:9 SMP503 Build text with an f-string instead of `+`
+95:9 SMP503 Build text with an f-string instead of `+`
+96:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+97:9 SMP503 Build text with an f-string instead of `+`
+98:9 SMP503 Build text with an f-string instead of `+`
+99:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+100:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+101:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+111:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+112:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+113:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+114:9 SMP503 Build text with an f-string instead of `+`
+115:9 SMP503 Build text with an f-string instead of `+`
+116:9 SMP503 Build text with an f-string instead of `+`
+117:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+118:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+119:9 SMP503 Build text with an f-string instead of `+`
+120:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+121:9 SMP503 Build text with an f-string instead of `+`
+122:9 SMP503 Build text with an f-string instead of `+`
+123:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+124:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+125:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+126:9 SMP503 Build text with an f-string instead of `+`
+127:9 SMP503 Build text with an f-string instead of `+`
+128:9 SMP503 Build text with an f-string instead of `+`
+129:9 SMP503 Build text with an f-string instead of `+`
+130:9 SMP503 Build text with an f-string instead of `+`
+131:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+132:9 SMP503 Build text with an f-string instead of `+`
+133:9 SMP503 Build text with an f-string instead of `+`
+134:9 SMP503 Build text with an f-string instead of `+`
+135:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+136:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+137:9 SMP503 Build text with an f-string instead of `+`
+138:9 SMP503 Build text with an f-string instead of `+`
+139:9 SMP503 Build text with an f-string instead of `+`
+140:9 SMP503 Build text with an f-string instead of `+`
+141:9 SMP503 Build text with an f-string instead of `+`
+142:9 SMP503 Build text with an f-string instead of `+`
+143:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+144:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+145:9 SMP503 Build text with an f-string instead of `+`
+157:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+158:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+159:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+160:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+161:9 SMP503 Build text with an f-string instead of `+`
+162:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+163:9 SMP503 Build text with an f-string instead of `+`
+164:9 SMP503 Build text with an f-string instead of `+`
+165:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+166:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+167:9 SMP503 Build text with an f-string instead of `+`
+168:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+169:9 SMP503 Build text with an f-string instead of `+`
+170:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+171:9 SMP503 Build text with an f-string instead of `+`
+172:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+173:9 SMP503 Build text with an f-string instead of `+`
+174:9 SMP503 Build text with an f-string instead of `+`
+175:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+176:9 SMP503 Build text with an f-string instead of `+`
+177:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+178:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+179:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+180:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+181:9 SMP503 Build text with an f-string instead of `+`
+182:9 SMP503 Build text with an f-string instead of `+`
+183:9 SMP503 Build text with an f-string instead of `+`
+184:9 SMP503 Build text with an f-string instead of `+`
+185:9 SMP503 Build text with an f-string instead of `+`
+192:12 SMP503 Build text with an f-string instead of `+`
+197:12 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+200:12 SMP503 Build text with an f-string instead of `+`
+207:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+208:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+209:9 SMP503 Build text with an f-string instead of `+`
+210:9 SMP503 Build text with an f-string instead of `+`
+211:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+212:9 SMP503 Build text with an f-string instead of `+`
+213:9 SMP503 Build text with an f-string instead of `+`
+214:10 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+216:10 SMP503 Build text with an f-string instead of `+`
+227:18 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+233:25 SMP503 Build text with an f-string instead of `+`
+245:13 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+246:13 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+247:13 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+248:13 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+249:13 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+250:13 SMP503 Build text with an f-string instead of `+`
+251:13 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+252:13 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+253:13 SMP503 Build text with an f-string instead of `+`
+254:13 SMP503 Build text with an f-string instead of `+`
+255:13 SMP503 Build text with an f-string instead of `+`
+256:13 SMP503 Build text with an f-string instead of `+`
+261:16 SMP503 Build text with an f-string instead of `+`
+265:16 SMP503 Build text with an f-string instead of `+`
+268:16 SMP503 Build text with an f-string instead of `+`
+272:16 SMP503 Build text with an f-string instead of `+`
+279:16 SMP503 Build text with an f-string instead of `+`
+283:16 SMP503 Build text with an f-string instead of `+`
+287:16 SMP503 Build text with an f-string instead of `+`
+292:12 SMP503 Build text with an f-string instead of `+`
+299:16 SMP503 Build text with an f-string instead of `+`
+317:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+318:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+319:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+320:9 SMP503 Build text with an f-string instead of `+`
+321:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+322:9 SMP503 Build text with an f-string instead of `+`
+359:9 SMP503 Build text with an f-string instead of `+`
+360:9 SMP503 Build text with an f-string instead of `+`
+361:9 SMP503 Build text with an f-string instead of `+`
+362:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+363:9 SMP503 Build text with an f-string instead of `+`
+364:9 SMP503 Build text with an f-string instead of `+`
+365:9 SMP503 Build text with an f-string instead of `+`
+366:9 SMP503 Build text with an f-string instead of `+`
+367:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+368:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+369:9 SMP503 Build text with an f-string instead of `+`
+370:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+371:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+372:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+373:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+374:9 SMP503 Build text with an f-string instead of `+`
+375:9 SMP503 Build text with an f-string instead of `+`
+376:9 SMP503 Build text with an f-string instead of `+`
+377:9 SMP503 Build text with an f-string instead of `+`
+378:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+379:9 SMP503 Build text with an f-string instead of `+`
+380:10 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+381:16 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+382:10 SMP503 Build text with an f-string instead of `+`
+383:10 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+384:9 SMP503 Build text with an f-string instead of `+`
+385:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+386:9 SMP503 Build text with an f-string instead of `+`
+387:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+473:12 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+--- fixed (71 applied, 81 remaining) ---
+import builtins
+import collections
+import functools
+import pathlib
+import json
+import os
+import os.path
+import platform
+import string
+import sys
+import tempfile
+import uuid
+from collections.abc import Sequence
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Final, Optional
+
+KIND_SEPARATOR: Final = "-"
+KIND_NAMES: list[str] = ["a", "b"]
+KIND_COUNTS = (1, 2)
+KIND_TWICE = 1
+KIND_TWICE = "x"
+
+
+@dataclass
+class KindRecord:
+    label: str
+    count: int
+    extra: object
+
+    @property
+    def title(self) -> str:
+        return self.label.title()
+
+    def shout(self) -> str:
+        return self.label.upper()
+
+    def describe(self):
+        return self.label
+
+
+class KindOdd:
+    def __new__(cls):
+        return "odd"
+
+
+class KindMeta(metaclass=type):
+    pass
+
+
+@functools.total_ordering
+class KindOrdered:
+    label: str
+
+
+@some_decorator
+class KindDecorated:
+    label: str
+
+
+def kind_text() -> str:
+    return "t"
+
+
+async def kind_async() -> str:
+    return "t"
+
+
+@functools.cache
+def kind_cached() -> str:
+    return "t"
+
+
+@some_decorator
+def kind_decorated() -> str:
+    return "t"
+
+
+def kind_untyped():
+    return "t"
+
+
+def kind_literals(data: bytes, count: int, raw: "int", other: "KindRecord") -> list[object]:
+    return [
+        f"{data.decode()}!",
+        f"{"-" * count}!",
+        f"{count * "-"}!",
+        f"{"%s items" % count}!",
+        f"a{"b" if count else "c"}",
+        "a" + (count and "b"),
+        "a" + (text := "b"),
+        f"a{"abc"[0]}",
+        f"a{["x", "y"][0]}",
+        "a" + ["x", "y"][:1],
+        "a" + [1, 2][0],
+        f"a{[][0]}",
+        "a" + ["x", 1][0],
+        "a" + {"x"}.pop(),
+        f"a{count * 2 - 1 // 1 % 3!s}",
+        f"a{chr(raw)}",
+        f"a{other.label}",
+    ]
+
+
+def kind_calls(record: KindRecord, names: Sequence[str], maybe: str | None, alias: Optional[str]) -> list[object]:
+    for name in names:
+        pass
+    for position in range(3):
+        pass
+    return [
+        f"a{name}",
+        f"{"a" * position}!",
+        f"a{sorted(names)[0]}",
+        "a" + list(names, key=len)[0],
+        "a" + list(KIND_COUNTS)[0],
+        "a" + list(record)[0],
+        f"a{len(names)!s}",
+        f"a{kind_text()}",
+        "a" + kind_async(),
+        f"a{kind_cached()}",
+        "a" + kind_decorated(),
+        "a" + kind_untyped(),
+        f"a{KindRecord("x", 1, None).label}",
+        f"a{KindRecord("x", 1, None).title}",
+        f"a{KindRecord("x", 1, None).shout()}",
+        "a" + KindRecord("x", 1, None).describe(),
+        "a" + KindRecord("x", 1, None).extra,
+        "a" + KindRecord("x", 1, None).count,
+        "a" + KindOdd().label,
+        "a" + KindMeta().label,
+        f"a{KindOrdered().label}",
+        "a" + KindDecorated().label,
+        "a" + record.missing,
+        "a" + record.shout,
+        f"a{maybe or "none"}",
+        f"a{alias or "none"}",
+        "a" + (maybe or alias),
+        "a" + {"k": "v"}.get("k"),
+        "a" + {"k": "v"}.get("k", "d"),
+        "a" + {"k": "v"}.get("k", 1),
+        "a" + {"k": "v"}.get(),
+        "a" + {"k": "v"}.keys()[0],
+        f"a{KIND_NAMES[0]}",
+        f"a{KIND_SEPARATOR}",
+        "a" + KIND_TWICE,
+    ]
+
+
+def kind_library(path: Path, raw: bytes) -> list[object]:
+    with tempfile.TemporaryDirectory() as folder, open(path) as handle:
+        pass
+    with tempfile.NamedTemporaryFile() as named:
+        pass
+    with kind_text as called:
+        pass
+    return [
+        f"a{os.getcwd()}",
+        f"a{platform.system()}",
+        f"a{json.dumps([])}",
+        f"a{os.path.join(folder, "x")}",
+        "a" + os.path.join(raw, b"x"),
+        f"a{os.path.splitext("x.py")[0]}",
+        "a" + os.path.splitext(raw)[0],
+        "a" + os.path.splitext()[0],
+        f"a{os.environ["HOME"]}",
+        f"a{os.environ.get("HOME", "/")}",
+        "a" + os.getenv("HOME", 1),
+        f"a{os.getenv("HOME") or "/"}",
+        "a" + os.getenv(),
+        f"a{os.sep}{sys.platform}{string.digits}",
+        "a" + os.missing,
+        f"a{uuid.uuid4().hex}",
+        "a" + uuid.UUID(int=1).hex,
+        "a" + kind_text().hex,
+        f"a{path.name}{path.parent.stem}{path.parent.parent.name}",
+        "a" + path.owner,
+        f"a{Path("x").with_suffix(".y").as_posix()}",
+        f"a{(Path.cwd() / "x").name}",
+        f"a{type(path).__name__}",
+        f"a{__file__}{__name__}",
+        "a" + __doc__,
+        "a" + handle,
+        "a" + named,
+        "a" + called,
+        "a" + (lambda: "x")(),
+    ]
+
+
+def kind_local_import() -> str:
+    import os
+
+    return "a" + os.sep
+
+
+def kind_cycles(items: list[str], counts: list[int]) -> list[object]:
+    text = "a"
+    text = f"{text}!"
+    total = 0
+    total += 1
+    loop = loop + "!"
+    mixed = "a"
+    mixed = 1
+    left, right = "a,b".split(",")
+    pair = ("a", 1)
+    first, second = pair
+    return [
+        f"a{text}",
+        f"{"a" * total}!",
+        "a" + loop,
+        "a" + mixed,
+        f"a{left}{right}",
+        "a" + first,
+        "a" + [item for item in items][0],
+        [f"a{item}" for item in items],
+        ["a" * count for count in counts],
+        ["a" + key for key, _ in items],
+    ]
+
+
+class KindHolder:
+    k_prefix = "p"
+    k_declared: str
+    k_suffix: Final = "s"
+    k_looped = ""
+    for k_looped in "ab":
+        pass
+    k_combined = f"a{k_prefix}"
+
+    def __init__(self, name: str) -> None:
+        self.k_name = name
+        self.k_label: str = name
+        self.k_joined = "a"
+        self.k_joined = self.k_joined + "b"
+        self.k_other = "x"
+
+    @property
+    def k_shown(self) -> str:
+        return self.k_name
+
+    def render(self) -> str:
+        return self.k_prefix
+
+    def build(self) -> list[object]:
+        return [
+            f"a{self.k_prefix}",
+            f"a{self.k_declared}",
+            f"a{self.k_suffix}",
+            f"a{self.k_name}",
+            f"a{self.k_label}",
+            "a" + self.k_joined,
+            f"a{self.k_shown}",
+            f"a{self.render()}",
+            "a" + self.render,
+            "a" + self.k_looped,
+            "a" + self.missing,
+            "a" + self.k_other,
+        ]
+
+    @staticmethod
+    def static(self) -> str:
+        return "a" + self.k_prefix
+
+    @builtins.staticmethod
+    def qualified_static(self) -> str:
+        return "a" + self.k_prefix
+
+    def reader(this, self: str) -> str:
+        return "a" + self.k_prefix + this.k_prefix
+
+    def rebinds(self) -> str:
+        self = KindHolder("x")
+        return "a" + self.k_prefix
+
+    def nested(self) -> str:
+        def inner() -> None:
+            self.k_later = "x"
+
+        self.k_packed, _ = "a", "b"
+        return "a" + self.k_later + self.k_packed
+
+    def deleted(self) -> str:
+        del self.k_gone
+        return "a" + self.k_gone
+
+    def typed(self) -> str:
+        self.k_marked: object = 1
+        return "a" + self.k_marked
+
+
+def kind_outside(holder: KindHolder) -> str:
+    holder.k_other = 1
+    return "a" + holder.k_prefix
+
+
+class KindBase:
+    k_value = "v"
+
+    def show(self) -> str:
+        return "a" + self.k_value
+
+
+class KindChild(KindBase):
+    pass
+
+
+def kind_annotations(
+    count: "int",
+    data: "bytes",
+    ints: list[int],
+    pairs: dict[str, int],
+    tagged: Final[str],
+    unknown: set[object],
+    other: frozenset,
+    shadowed: Sequence,
+) -> list[object]:
+    return [
+        f"{"a" * count}!",
+        f"a{data.hex()}",
+        f"{"a" * ints[0]}!",
+        "a" + pairs["k"],
+        f"a{tagged}",
+        "a" + unknown.pop(),
+    ]
+
+
+@functools.lru_cache(maxsize=1)
+def kind_bounded() -> str:
+    return "t"
+
+
+@dataclass(frozen=True)
+class KindFrozen:
+    label: str
+
+
+class KindAgain:
+    pass
+
+
+class KindAgain:
+    pass
+
+
+def kind_more(
+    data: bytes,
+    count: int,
+    items: list[str],
+    mapping: dict[str, str],
+    kind_type: type[str],
+    ordered: collections.OrderedDict[str, str],
+    chunks: list[bytes],
+    again: KindAgain,
+    location: pathlib.Path,
+) -> list[object]:
+    seen = {item for item in items if item}
+    keyed = {item: item for item in items}
+    twice = "x"
+    return [
+        "a" + data[0],
+        "a" + mapping.get("k"),
+        "a" + mapping.get("k", "d", "e"),
+        f"a{mapping.get("k", "d")}",
+        "a" + {"k": "v"}["k"],
+        "a" + {1: "v"}[1],
+        "a" + {}.get("k", "d"),
+        "a" + {**mapping}["k"],
+        f"a{(["x"] * 2)[0]}",
+        f"{"a" * (count - 1)}!",
+        "a" + (count / 2),
+        f"{"a" * "abc".count("a")}!",
+        f"a{"x".encode().decode()}",
+        f"a{kind_bounded()}",
+        f"a{KindFrozen("x").label}",
+        "a" + kind_type,
+        "a" + ordered["k"],
+        "a" + chunks[0],
+        "a" + again,
+        f"a{location.name}",
+        "a" + seen.pop() + keyed["k"],
+        {f"a{item}" for item in items},
+        {item: f"a{item}" for item in items},
+        ["a" + rest for *rest, last in items],
+        [f"a{item}" for item in items for item.attr in items],
+        "a" + item + item,
+        f"a{twice}{twice}",
+        "a" * [1, 2][:1][0] + "!",
+        f"a{(2 * ["x"])[0]}",
+    ]
+
+
+# Each name reads itself, so finding its kind checks the one before twice: a long chain must stay quick.
+def kind_chain() -> str:
+    chain0 = "a"
+    chain0 += chain0
+    chain1 = chain0
+    chain1 += chain1
+    chain2 = chain1
+    chain2 += chain2
+    chain3 = chain2
+    chain3 += chain3
+    chain4 = chain3
+    chain4 += chain4
+    chain5 = chain4
+    chain5 += chain5
+    chain6 = chain5
+    chain6 += chain6
+    chain7 = chain6
+    chain7 += chain7
+    chain8 = chain7
+    chain8 += chain8
+    chain9 = chain8
+    chain9 += chain9
+    chain10 = chain9
+    chain10 += chain10
+    chain11 = chain10
+    chain11 += chain11
+    chain12 = chain11
+    chain12 += chain12
+    chain13 = chain12
+    chain13 += chain13
+    chain14 = chain13
+    chain14 += chain14
+    chain15 = chain14
+    chain15 += chain15
+    chain16 = chain15
+    chain16 += chain16
+    chain17 = chain16
+    chain17 += chain17
+    chain18 = chain17
+    chain18 += chain18
+    chain19 = chain18
+    chain19 += chain19
+    chain20 = chain19
+    chain20 += chain20
+    chain21 = chain20
+    chain21 += chain21
+    chain22 = chain21
+    chain22 += chain22
+    chain23 = chain22
+    chain23 += chain23
+    chain24 = chain23
+    chain24 += chain24
+    chain25 = chain24
+    chain25 += chain25
+    chain26 = chain25
+    chain26 += chain26
+    chain27 = chain26
+    chain27 += chain27
+    chain28 = chain27
+    chain28 += chain28
+    chain29 = chain28
+    chain29 += chain29
+    chain30 = chain29
+    chain30 += chain30
+    chain31 = chain30
+    chain31 += chain31
+    chain32 = chain31
+    chain32 += chain32
+    chain33 = chain32
+    chain33 += chain33
+    chain34 = chain33
+    chain34 += chain34
+    chain35 = chain34
+    chain35 += chain35
+    chain36 = chain35
+    chain36 += chain36
+    chain37 = chain36
+    chain37 += chain37
+    chain38 = chain37
+    chain38 += chain38
+    chain39 = chain38
+    chain39 += chain39
+    return f"a{chain39}"

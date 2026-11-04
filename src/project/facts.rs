@@ -1,5 +1,6 @@
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::borrow::Cow;
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
 use ruff_python_ast::helpers::{ReturnStatementVisitor, resolve_imported_module_path};
@@ -34,12 +35,20 @@ pub struct FileFacts {
     // The names the module's own top-level statements import from other modules, which `__all__`, a redundant alias
     // such as `from .core import run as run`, or the absence of `__all__` may re-export.
     pub(super) bindings: Vec<ImportBinding>,
+    // The dotted module each name bound at the top level stands for, such as `pkg.findings` for `from . import findings`
+    // in `pkg`, which resolves to a file only when the name is a module.
+    pub(super) module_names: Vec<(String, String)>,
     // The names the module's top-level statements define, which a module without `__all__` exports.
     pub(super) defined: Vec<String>,
     pub(super) attribute_writes: AttributeWrites,
     pub(super) constructors: Constructors,
     // Whether the file reads a docstring off an object, through `__doc__` or a `getdoc` call.
     pub(super) reads_docstrings: bool,
+    // The classes handlers catch, and those `isinstance` checks and class patterns name inside a handler, as
+    // (module, name).
+    pub(super) caught: Vec<(String, String)>,
+    // The module-level classes, each with the classes it lists as bases, as (module, name).
+    pub(super) classes: Vec<ClassBases>,
 }
 
 impl FileFacts {
@@ -50,7 +59,7 @@ impl FileFacts {
         let parsed = parse_module(&source).ok()?;
         let mut imports = Imports {
             module_path: module_path.or(importable),
-            aliases: HashMap::new(),
+            aliases: FxHashMap::default(),
             edges: BTreeMap::new(),
             references: BTreeMap::new(),
             assigned_attributes: Vec::new(),
@@ -59,8 +68,19 @@ impl FileFacts {
             from_statements: Vec::new(),
             top_level: true,
             reads_docstrings: false,
+            module_aliases: Vec::new(),
+            own_module: module_name(module_path.or(importable), path),
+            caught: Vec::new(),
+            handler_depth: 0,
         };
         imports.visit_body(&parsed.syntax().body);
+        let classes = module_statements(&parsed.syntax().body)
+            .filter_map(Stmt::as_class_def_stmt)
+            .map(|class| ClassBases {
+                name: class.name.to_string(),
+                bases: class.bases().iter().filter_map(|base| imports.class_path(base)).collect(),
+            })
+            .collect();
         // A stub publishes what it declares, so its names are the API of the module it describes.
         let declared = if path.extension().is_some_and(|extension| extension == "pyi") {
             parsed.syntax().body.iter().flat_map(declared_names).collect()
@@ -87,6 +107,12 @@ impl FileFacts {
             module_getattr |= stmt.as_function_def_stmt().is_some_and(|def| def.name.as_str() == "__getattr__");
             defined.extend(declared_names(stmt));
         }
+        let bindings = top_level_bindings(&imports.from_statements);
+        let module_names = bindings
+            .iter()
+            .map(|binding| (binding.bound.clone(), format!("{}.{}", binding.module, binding.name)))
+            .chain(imports.module_aliases)
+            .collect();
         Some(Self {
             imports: grouped(imports.edges),
             references: grouped(imports.references),
@@ -97,13 +123,23 @@ impl FileFacts {
             star_imports: imports.stars.into_iter().collect(),
             exports,
             exports_unknown: dynamic_exports || module_getattr,
-            bindings: top_level_bindings(&imports.from_statements),
+            bindings,
+            module_names,
             defined,
             attribute_writes,
             constructors,
             reads_docstrings: imports.reads_docstrings,
+            caught: imports.caught,
+            classes,
         })
     }
+}
+
+// A module-level class and the classes it lists as bases, each as (module, name).
+#[derive(Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+pub struct ClassBases {
+    pub(super) name: String,
+    pub(super) bases: Vec<(String, String)>,
 }
 
 // A module and the names used from it.
@@ -148,7 +184,7 @@ fn grouped(names: BTreeMap<String, BTreeSet<String>>) -> Vec<ModuleNames> {
 
 struct Imports<'a> {
     module_path: Option<&'a [String]>,
-    aliases: HashMap<&'a str, String>,
+    aliases: FxHashMap<&'a str, String>,
     edges: BTreeMap<String, BTreeSet<String>>,
     references: BTreeMap<String, BTreeSet<String>>,
     assigned_attributes: Vec<String>,
@@ -159,6 +195,13 @@ struct Imports<'a> {
     // `try` block.
     top_level: bool,
     reads_docstrings: bool,
+    // `import pkg.module as name` at the top level, as the name and the dotted module.
+    module_aliases: Vec<(String, String)>,
+    // The module the file is, so a bare class name it uses that no import binds names one of its own classes.
+    own_module: String,
+    caught: Vec<(String, String)>,
+    // How many exception handlers the visit is inside.
+    handler_depth: usize,
 }
 
 impl<'a> Visitor<'a> for Imports<'a> {
@@ -186,6 +229,9 @@ impl<'a> Visitor<'a> for Imports<'a> {
                 for alias in names {
                     let full = alias.name.as_str();
                     if let Some(asname) = &alias.asname {
+                        if top_level {
+                            self.module_aliases.push((asname.as_str().to_owned(), full.to_owned()));
+                        }
                         self.aliases.insert(asname.as_str(), full.to_owned())
                     } else {
                         let root = full.split('.').next().unwrap_or_default();
@@ -205,8 +251,34 @@ impl<'a> Visitor<'a> for Imports<'a> {
         self.top_level = top_level;
     }
 
+    fn visit_except_handler(&mut self, handler: &'a ast::ExceptHandler) {
+        let ast::ExceptHandler::ExceptHandler(ast::ExceptHandlerExceptHandler { type_, .. }) = handler;
+        if let Some(type_) = type_ {
+            self.catch(type_);
+        }
+        self.handler_depth += 1;
+        visitor::walk_except_handler(self, handler);
+        self.handler_depth -= 1;
+    }
+
+    fn visit_pattern(&mut self, pattern: &'a ast::Pattern) {
+        if let ast::Pattern::MatchClass(ast::PatternMatchClass { cls, .. }) = pattern
+            && self.handler_depth > 0
+        {
+            self.catch(cls);
+        }
+        visitor::walk_pattern(self, pattern);
+    }
+
     fn visit_expr(&mut self, expr: &'a Expr) {
         self.reads_docstrings |= reads_docstring(expr);
+        if let Expr::Call(ast::ExprCall { func, arguments, .. }) = expr
+            && self.handler_depth > 0
+            && func.as_name_expr().is_some_and(|name| name.id.as_str() == "isinstance")
+            && let Some(classes) = arguments.args.get(1)
+        {
+            self.catch(classes);
+        }
         match expr {
             Expr::Attribute(ast::ExprAttribute { attr, ctx: ExprContext::Store | ExprContext::Del, .. }) => {
                 self.assigned_attributes.push(attr.as_str().to_owned());
@@ -242,7 +314,7 @@ impl<'a> Visitor<'a> for Imports<'a> {
 
 // The dotted name `segments` stand for through the import that binds their head, such as `pkg.models.Partition` for
 // `models.Partition` after `from pkg import models`.
-pub(super) fn qualified(segments: &[&str], aliases: &HashMap<&str, String>) -> Option<String> {
+pub(super) fn qualified(segments: &[&str], aliases: &FxHashMap<&str, String>) -> Option<String> {
     let (first, rest) = segments.split_first()?;
     let module = aliases.get(first)?;
     Some(std::iter::once(module.as_str()).chain(rest.iter().copied()).collect::<Vec<_>>().join("."))
@@ -251,6 +323,31 @@ pub(super) fn qualified(segments: &[&str], aliases: &HashMap<&str, String>) -> O
 impl Imports<'_> {
     fn qualified(&self, expr: &Expr) -> Option<String> {
         qualified(UnqualifiedName::from_expr(expr)?.segments(), &self.aliases)
+    }
+
+    // The module and name a class expression names: the qualified name an import gives, or a bare name no import binds,
+    // which is a class of this module.
+    fn class_path(&self, expr: &Expr) -> Option<(String, String)> {
+        let name = UnqualifiedName::from_expr(expr)?;
+        let segments = name.segments();
+        match qualified(segments, &self.aliases) {
+            Some(path) => path.rsplit_once('.').map(|(module, name)| (module.to_owned(), name.to_owned())),
+            None => match segments {
+                [name] => Some((self.own_module.clone(), (*name).to_owned())),
+                _ => None,
+            },
+        }
+    }
+
+    // Records the classes an `except` clause names, each alternative of a tuple on its own.
+    fn catch(&mut self, expr: &Expr) {
+        if let Expr::Tuple(ast::ExprTuple { elts, .. }) = expr {
+            for elt in elts {
+                self.catch(elt);
+            }
+        } else if let Some(path) = self.class_path(expr) {
+            self.caught.push(path);
+        }
     }
 
     fn record_path(names: &mut BTreeMap<String, BTreeSet<String>>, path: &str) {
@@ -293,7 +390,7 @@ fn module_reads(body: &[Stmt]) -> Vec<String> {
 // everywhere, which can only keep more names.
 #[derive(Default)]
 struct ModuleObjects<'a> {
-    names: HashSet<&'a str>,
+    names: FxHashSet<&'a str>,
 }
 
 impl<'a> Visitor<'a> for ModuleObjects<'a> {
@@ -371,7 +468,7 @@ fn is_module_type(annotation: &Expr) -> bool {
 }
 
 struct ModuleReads<'a, 'm> {
-    modules: &'m HashSet<&'a str>,
+    modules: &'m FxHashSet<&'a str>,
     reads: BTreeSet<String>,
 }
 

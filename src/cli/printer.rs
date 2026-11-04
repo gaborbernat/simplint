@@ -52,6 +52,10 @@ impl ExpandedStatistics<'_> {
     }
 }
 
+// Chunks render in parallel; a window bounds the rendered output held in memory before it is written.
+const FULL_CHUNK: usize = 64;
+const FULL_WINDOW: usize = FULL_CHUNK * 256;
+
 pub struct Printer<'a> {
     pub format: OutputFormat,
     pub log_level: LogLevel,
@@ -109,18 +113,20 @@ impl Printer<'_> {
                 render_diagnostics(&mut rendered, self.format, &config, &context, &diagnostics.inner)?;
             }
             // Ruff's full renderer takes each diagnostic on its own, and the diff of a fix that spans a whole module,
-            // such as a rename, is slow to render, so chunks render in parallel and are written in order.
+            // such as a rename, is slow to render, so chunks render in parallel. A window of chunks at a time bounds
+            // the output held in memory, and each window is written before the next one renders.
             OutputFormat::Full => {
-                let chunks = diagnostics
-                    .inner
-                    .par_chunks(64)
-                    .map(|chunk| {
-                        let mut buffer = Vec::new();
-                        render_diagnostics(&mut buffer, self.format, &config, &context, chunk).map(|()| buffer)
-                    })
-                    .collect::<std::io::Result<Vec<_>>>()?;
-                for chunk in chunks {
-                    writer.write_all(&chunk)?;
+                for window in diagnostics.inner.chunks(FULL_WINDOW) {
+                    let chunks = window
+                        .par_chunks(FULL_CHUNK)
+                        .map(|chunk| {
+                            let mut buffer = Vec::new();
+                            render_diagnostics(&mut buffer, self.format, &config, &context, chunk).map(|()| buffer)
+                        })
+                        .collect::<std::io::Result<Vec<_>>>()?;
+                    for chunk in chunks {
+                        writer.write_all(&chunk)?;
+                    }
                 }
                 return Ok(());
             }

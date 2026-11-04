@@ -262,8 +262,7 @@ def _new_findings(original: Path, fixed: Path, options: list[str]) -> list[tuple
 
 
 def _findings(root: Path, options: list[str]) -> Counter[tuple[str, str]]:
-    command = ["ruff", "check", *options, "--exit-zero", "--output-format", "json", "."]
-    report = json.loads(_run(command, root).stdout)
+    report = json.loads(_run(["ruff", "check", *options, "--exit-zero", "--output-format", "json", "."], root).stdout)
     return Counter(
         (Path(item["filename"]).relative_to(root.resolve()).as_posix(), item["code"] or "invalid-syntax")
         for item in report

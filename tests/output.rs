@@ -20,7 +20,7 @@ use common::{SINGLE_X, check, project, read, simplint, simplint_with};
 #[test_case("sarif" ; "sarif")]
 fn check_renders_every_output_format(format: &str) {
     let root = project(&[("module.py", "# --- helpers ---\nx = 1\n")]);
-    let (code, stdout, _) = simplint(root.path(), &["check", "--output-format", format, "--select", "SMP001,SMP010"]);
+    let (code, stdout, _) = simplint(root.path(), &["check", "--output-format", format, "--select", "SMP001,SMP101"]);
     // SARIF names the simplint version, which each release changes. The root appears as a path, as a JSON string
     // with escaped backslashes, and in SARIF as a file URL, and Windows separates what follows it with backslashes.
     let root_path = root.path().display().to_string();
@@ -39,7 +39,7 @@ fn check_renders_every_output_format(format: &str) {
 fn check_full_keeps_report_order_across_chunks() {
     let names: Vec<String> = (0..200).map(|index| format!("module_{index:03}.py")).collect();
     let root = project(&names.iter().map(|name| (name.as_str(), "x = 1\n")).collect::<Vec<_>>());
-    let stdout = simplint(root.path(), &["check", "--output-format", "full", "--select", "SMP010"]).1;
+    let stdout = simplint(root.path(), &["check", "--output-format", "full", "--select", "SMP101"]).1;
     let reported: Vec<&str> =
         stdout.lines().filter_map(|line| line.trim_start().strip_prefix("--> ")?.strip_suffix(":1:1")).collect();
     assert_eq!(reported, names);
@@ -51,7 +51,7 @@ fn check_full_keeps_report_order_across_chunks() {
 fn check_json_gives_the_row_a_noqa_comment_goes_on(flags: &[&str]) {
     let root = project(&[("module.py", "x = \"\"\"a\nb\"\"\"\n")]);
     let stdout =
-        simplint(root.path(), &[&["check", "--output-format", "json", "--select", "SMP010"], flags].concat()).1;
+        simplint(root.path(), &[&["check", "--output-format", "json", "--select", "SMP101"], flags].concat()).1;
     let diagnostics: Vec<serde_json::Value> = serde_json::from_str(&stdout).expect("json report");
     assert_eq!(diagnostics[0]["noqa_row"], 2);
 }
@@ -59,7 +59,7 @@ fn check_json_gives_the_row_a_noqa_comment_goes_on(flags: &[&str]) {
 #[test]
 fn check_output_file_receives_the_report() {
     let root = project(&[("module.py", "x = 1\n")]);
-    let result = check(root.path(), &["--select", "SMP010", "--output-file", "out/report.txt"]);
+    let result = check(root.path(), &["--select", "SMP101", "--output-file", "out/report.txt"]);
     assert_eq!(
         (result, read(root.path(), "out/report.txt")),
         ((1, String::new(), String::new()), format!("module.py:1:1: {SINGLE_X}\nFound 1 error.\n"))
@@ -69,29 +69,29 @@ fn check_output_file_receives_the_report() {
 #[test]
 fn output_file_is_never_colored() {
     let root = project(&[("module.py", "x = 1\n")]);
-    simplint(root.path(), &["check", "--color", "always", "--select", "SMP010", "--output-file", "report.txt"]);
+    simplint(root.path(), &["check", "--color", "always", "--select", "SMP101", "--output-file", "report.txt"]);
     assert!(!read(root.path(), "report.txt").contains('\u{1b}'));
 }
 
-#[test_case(&["--quiet"], "module.py:1:1: SMP010 Single-letter name `x`; only comprehensions may use one\n" ; "quiet")]
+#[test_case(&["--quiet"], "module.py:1:1: SMP101 Single-letter name `x`; only comprehensions may use one\n" ; "quiet")]
 #[test_case(&["--silent"], "" ; "silent")]
 fn check_log_levels_trim_output(flags: &[&str], stdout: &str) {
     let root = project(&[("module.py", "x = 1\n")]);
-    let mut args = vec!["--select", "SMP010"];
+    let mut args = vec!["--select", "SMP101"];
     args.extend_from_slice(flags);
     assert_eq!(check(root.path(), &args), (1, stdout.to_owned(), String::new()));
 }
 
-#[test_case("concise", "1\tSMP010\tsingle-letter-name\nFound 1 error.\n" ; "text")]
+#[test_case("concise", "1\tSMP101\tsingle-letter-name\nFound 1 error.\n" ; "text")]
 #[test_case(
     "json",
-    "[\n  {\n    \"code\": \"SMP010\",\n    \"name\": \"single-letter-name\",\n    \"count\": 1,\n    \"fixable\": false,\n    \"fixable_count\": 0\n  }\n]\n" ;
+    "[\n  {\n    \"code\": \"SMP101\",\n    \"name\": \"single-letter-name\",\n    \"count\": 1,\n    \"fixable\": false,\n    \"fixable_count\": 0\n  }\n]\n" ;
     "json"
 )]
 fn check_statistics_counts_each_rule(format: &str, stdout: &str) {
     let root = project(&[("module.py", "x = 1\n")]);
     assert_eq!(
-        simplint(root.path(), &["check", "--statistics", "--output-format", format, "--select", "SMP010"]).1,
+        simplint(root.path(), &["check", "--statistics", "--output-format", format, "--select", "SMP101"]).1,
         stdout
     );
 }
@@ -115,7 +115,7 @@ fn check_statistics_marks_partly_fixable_rules() {
 #[test]
 fn check_statistics_of_a_clean_project_prints_nothing() {
     let root = project(&[("module.py", "VALUE = 1\n")]);
-    assert_eq!(check(root.path(), &["--statistics", "--select", "SMP010"]), (0, String::new(), String::new()));
+    assert_eq!(check(root.path(), &["--statistics", "--select", "SMP101"]), (0, String::new(), String::new()));
 }
 
 #[test]
@@ -125,8 +125,8 @@ fn check_statistics_mark_partly_and_not_fixable_rules() {
         "# --- helpers ---\nx = 1\n\n\ndef run() -> None:\n    \"\"\"Run.\"\"\"\n\n\ndef stop() -> None:\n    \"\"\"Stop.\"\"\";  # kept\n    print()\n",
     )]);
     assert_eq!(
-        check(root.path(), &["--statistics", "--unsafe-fixes", "--select", "SMP001,SMP300,SMP010"]).1,
-        "2\tSMP300\t[-] function-docstring\n1\tSMP001\t[*] section-comment\n1\tSMP010\t[ ] single-letter-name\n\
+        check(root.path(), &["--statistics", "--unsafe-fixes", "--select", "SMP001,SMP901,SMP101"]).1,
+        "2\tSMP901\t[-] function-docstring\n1\tSMP001\t[*] section-comment\n1\tSMP101\t[ ] single-letter-name\n\
          Found 4 errors.\n[*] 2 fixable with `--fix`.\n"
     );
 }
@@ -137,7 +137,7 @@ fn check_forced_colors_style_the_output() {
     let output = common::command(root.path())
         .env_remove("NO_COLOR")
         .env("CLICOLOR_FORCE", "1")
-        .args(["check", "--statistics", "--select", "SMP010"])
+        .args(["check", "--statistics", "--select", "SMP101"])
         .output()
         .expect("runs");
     assert!(String::from_utf8(output.stdout).expect("utf-8 stdout").contains('\u{1b}'));
@@ -149,7 +149,7 @@ fn check_forced_colors_style_the_output() {
 #[test_case(&[], &[("FORCE_COLOR", "")], false ; "empty_force_color")]
 fn color_follows_the_flag_then_force_color(flags: &[&str], env: &[(&str, &str)], colored: bool) {
     let root = project(&[("module.py", "x = 1\n")]);
-    let mut args = vec!["check", "--statistics", "--select", "SMP010"];
+    let mut args = vec!["check", "--statistics", "--select", "SMP101"];
     args.extend_from_slice(flags);
     assert_eq!(simplint_with(root.path(), &args, "", env).1.contains('\u{1b}'), colored);
 }

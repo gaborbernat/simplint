@@ -1,7 +1,7 @@
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::ops::{Add, AddAssign};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, ensure};
 use colored::Colorize;
@@ -23,11 +23,13 @@ use crate::fix::{Fixer, FixerResult, add_fixes};
 use crate::lint::Linter;
 use crate::lint::registry::RuleSet;
 
-// What a run reports: the remaining diagnostics and the fixes applied per file, as Ruff's `Diagnostics` holds them.
+// What a run reports: the remaining diagnostics and the fixes applied per file, as Ruff's `Diagnostics` holds them, and
+// the diffs `--diff` prints, each with the path of its file.
 #[derive(Default)]
 pub struct Diagnostics {
     pub inner: Vec<Diagnostic>,
     pub fixed: FixMap,
+    pub diffs: Vec<(String, String)>,
 }
 
 impl Diagnostics {
@@ -40,7 +42,7 @@ impl Diagnostics {
         }
         let file = SourceFileBuilder::new(path.to_string_lossy(), "").finish();
         let diagnostic = IOError { message }.into_diagnostic(TextRange::default(), &file);
-        Self { inner: vec![diagnostic], fixed: FixMap::default() }
+        Self { inner: vec![diagnostic], fixed: FixMap::default(), diffs: Vec::new() }
     }
 }
 
@@ -57,6 +59,7 @@ impl AddAssign for Diagnostics {
     fn add_assign(&mut self, other: Self) {
         self.inner.extend(other.inner);
         self.fixed += other.fixed;
+        self.diffs.extend(other.diffs);
     }
 }
 
@@ -96,12 +99,15 @@ pub struct Mode {
     pub fix: flags::FixMode,
     pub unsafe_fixes: UnsafeFixes,
     pub noqa: flags::Noqa,
+    // The paths named on the command line, canonical, which a fix may write files under.
+    pub roots: Vec<PathBuf>,
 }
 
-// Ruff's `lint_path`: lint a file, and with `--fix` or `--diff` fix it and write the result back or print the diff. A
-// file that cannot be read, or whose fix cannot be written or printed, is reported in place of its diagnostics, as Ruff
-// reports `io-error`. Both `settled` sets name the rules whose fixes the fix loop withdrew from a file it left as it
-// was: the one passed from an earlier run, which spares running the loop, the one returned from this run.
+// Ruff's `lint_path`: lint a file, and with `--fix` or `--diff` fix it and write the result back or keep the diff for
+// the caller to print. Files are linted in parallel, so the diff waits for the caller to print it in file order. A file
+// that cannot be read or written is reported in place of its diagnostics, as Ruff reports `io-error`. Both `settled`
+// sets name the rules whose fixes the fix loop withdrew from a file it left as it was: the one passed from an earlier
+// run, which spares running the loop, the one returned from this run.
 pub fn lint_path(
     path: &Path,
     linter: &Linter,
@@ -120,22 +126,26 @@ fn fix_path(
 ) -> Result<(Diagnostics, Option<RuleSet>)> {
     let source = std::fs::read_to_string(path)?;
     let Linted { diagnostics, transformed, fixed, settled } = lint_source(path, &source, linter, mode, settled);
+    let mut diffs = Vec::new();
     if let Some(transformed) = transformed.filter(|_| !fixed.is_empty()) {
         if mode.fix.is_apply() {
-            write_source(path, &source, &transformed).with_context(|| format!("writing {}", path.display()))?;
+            write_source(path, &mode.roots, &source, &transformed)
+                .with_context(|| format!("writing {}", path.display()))?;
         } else {
-            write!(std::io::stdout().lock(), "{}", SourceKindDiff::from_text(&source, &transformed, Some(path)))?;
+            let diff = SourceKindDiff::from_text(&source, &transformed, Some(path)).to_string();
+            diffs.push((path.to_string_lossy().into_owned(), diff));
         }
     }
-    let diagnostics = Diagnostics { inner: diagnostics, fixed: FixMap::from_iter([(relativize_path(path), fixed)]) };
-    Ok((diagnostics, settled))
+    let fixed = FixMap::from_iter([(relativize_path(path), fixed)]);
+    Ok((Diagnostics { inner: diagnostics, fixed, diffs }, settled))
 }
 
 // Replaces a file read as `original` with `fixed`. Writing a temporary file next to it and renaming that over it never
 // leaves a cut-short source behind, and a file edited since it was read keeps the edit. A symlink keeps pointing at the
-// file it names, which gets the new source with its permissions.
-pub(super) fn write_source(path: &Path, original: &str, fixed: &str) -> Result<()> {
+// file it names, which gets the new source with its permissions, as long as that file lies under a root of the run.
+pub(super) fn write_source(path: &Path, roots: &[PathBuf], original: &str, fixed: &str) -> Result<()> {
     let target = std::fs::canonicalize(path)?;
+    ensure!(roots.iter().any(|root| target.starts_with(root)), "{} lies outside the linted paths", path.display());
     // The rename would replace a file the user cannot write, so opening it for writing checks that first.
     let permissions = OpenOptions::new().write(true).open(&target)?.metadata()?.permissions();
     ensure!(std::fs::read_to_string(&target)? == original, "{} changed while simplint fixed it", path.display());
@@ -156,7 +166,11 @@ pub fn lint_stdin(path: &Path, source: &str, linter: &Linter, mode: &Mode) -> Re
     } else if let Some(transformed) = transformed.filter(|_| !fixed.is_empty()) {
         write!(stdout, "{}", SourceKindDiff::from_text(source, &transformed, Some(path)))?;
     }
-    Ok(Diagnostics { inner: diagnostics, fixed: FixMap::from_iter([(relativize_path(path), fixed)]) })
+    Ok(Diagnostics {
+        inner: diagnostics,
+        fixed: FixMap::from_iter([(relativize_path(path), fixed)]),
+        diffs: Vec::new(),
+    })
 }
 
 // A fix that fails leaves the file as it was, so its diagnostics come from the original source, with nothing fixed. A
@@ -193,6 +207,8 @@ struct Linted {
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::write_source;
 
     #[test]
@@ -200,10 +216,25 @@ mod tests {
         let directory = tempfile::TempDir::new().expect("temporary directory");
         let path = directory.path().join("module.py");
         std::fs::write(&path, "edited = 1\n").expect("write file");
-        let error = write_source(&path, "read = 1\n", "fixed = 1\n").expect_err("the file changed");
+        let roots = [std::fs::canonicalize(directory.path()).expect("canonical directory")];
+        let error = write_source(&path, &roots, "read = 1\n", "fixed = 1\n").expect_err("the file changed");
         assert_eq!(
             (error.to_string(), std::fs::read_to_string(&path).expect("read file")),
             (format!("{} changed while simplint fixed it", path.display()), "edited = 1\n".to_owned())
+        );
+    }
+
+    #[test]
+    fn write_source_refuses_a_file_outside_the_roots() {
+        let root = tempfile::TempDir::new().expect("temporary directory");
+        let outside = tempfile::TempDir::new().expect("temporary directory");
+        let path = outside.path().join("module.py");
+        std::fs::write(&path, "read = 1\n").expect("write file");
+        let roots: Vec<PathBuf> = vec![std::fs::canonicalize(root.path()).expect("canonical directory")];
+        let error = write_source(&path, &roots, "read = 1\n", "fixed = 1\n").expect_err("outside the roots");
+        assert_eq!(
+            (error.to_string(), std::fs::read_to_string(&path).expect("read file")),
+            (format!("{} lies outside the linted paths", path.display()), "read = 1\n".to_owned())
         );
     }
 }

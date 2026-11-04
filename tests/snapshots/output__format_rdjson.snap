@@ -42,8 +42,8 @@ exit code 1
     },
     {
       "code": {
-        "url": "https://simplint.readthedocs.io/en/latest/_generated/rules/SMP010.html",
-        "value": "SMP010"
+        "url": "https://simplint.readthedocs.io/en/latest/_generated/rules/SMP101.html",
+        "value": "SMP101"
       },
       "location": {
         "path": "[ROOT]/module.py",
