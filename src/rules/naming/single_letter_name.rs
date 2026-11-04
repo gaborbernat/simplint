@@ -78,8 +78,7 @@ fn current(walker: &Walker) -> TextRange {
 
 // A comprehension keeps every name it binds next to the iterable it reads, so none needs a long name.
 fn check<'a>(walker: &Walker<'_, 'a>, scope: TextRange, name: &'a str, range: TextRange) {
-    if !walker.in_for_target()
-        && !walker.in_comprehension()
+    if !walker.in_comprehension()
         && name.chars().count() == 1
         && name != "_"
         && walker.checker.reported_names().0.borrow_mut().insert((scope, name))
@@ -87,7 +86,7 @@ fn check<'a>(walker: &Walker<'_, 'a>, scope: TextRange, name: &'a str, range: Te
         walker.checker.report(
             Rule::SingleLetterName,
             range,
-            format!("Single-letter name `{name}`; only loop targets and comprehensions may use one"),
+            format!("Single-letter name `{name}`; only comprehensions may use one"),
         );
     }
 }

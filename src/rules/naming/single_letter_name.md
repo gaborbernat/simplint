@@ -2,14 +2,13 @@
 
 Checks for single-letter names. It reports the names of functions, classes, parameters (including
 [lambda](https://docs.python.org/3/reference/expressions.html#lambda) parameters), assignment and
-[walrus](https://docs.python.org/3/reference/expressions.html#assignment-expressions) targets, `with ... as`,
-`except ... as` and `import ... as` names,
+[walrus](https://docs.python.org/3/reference/expressions.html#assignment-expressions) targets, `for` loop targets such
+as `i` in `for i in range(3)`, `with ... as`, `except ... as` and `import ... as` names,
 [`match`](https://docs.python.org/3/reference/compound_stmts.html#the-match-statement) captures and
 [type parameters](https://docs.python.org/3/reference/compound_stmts.html#type-params) such as `T`.
 
 These pass:
 
-- `for` loop targets, such as `i` in `for i in range(3)`
 - every name inside a list, set or dictionary
   [comprehension](https://docs.python.org/3/tutorial/datastructures.html#list-comprehensions) or a
   [generator expression](https://docs.python.org/3/reference/expressions.html#generator-expressions), including a walrus
@@ -24,8 +23,9 @@ Each name is reported once per scope, at its first binding. Ruff's
 
 ## Why is this bad?
 
-A single letter says nothing about what the name holds, so the reader has to find where it is bound to learn it. Loop
-targets and comprehensions are exempt because the iterable the names come from sits right next to them.
+A single letter says nothing about what the name holds, so the reader has to find where it is bound to learn it.
+Comprehensions are exempt because the whole expression fits in one place, with the iterable right next to every use. A
+`for` loop is not: its body can run on for many lines, far from the `for` line that says what `i` is.
 
 ## Example
 

@@ -58,7 +58,7 @@ exit code 1
           }
         }
       },
-      "message": "Single-letter name `x`; only loop targets and comprehensions may use one"
+      "message": "Single-letter name `x`; only comprehensions may use one"
     }
   ],
   "severity": "WARNING",

@@ -73,7 +73,7 @@ fn output_file_is_never_colored() {
     assert!(!read(root.path(), "report.txt").contains('\u{1b}'));
 }
 
-#[test_case(&["--quiet"], "module.py:1:1: SMP010 Single-letter name `x`; only loop targets and comprehensions may use one\n" ; "quiet")]
+#[test_case(&["--quiet"], "module.py:1:1: SMP010 Single-letter name `x`; only comprehensions may use one\n" ; "quiet")]
 #[test_case(&["--silent"], "" ; "silent")]
 fn check_log_levels_trim_output(flags: &[&str], stdout: &str) {
     let root = project(&[("module.py", "x = 1\n")]);
