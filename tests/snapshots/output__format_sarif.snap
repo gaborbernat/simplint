@@ -72,7 +72,7 @@ exit code 1
             }
           ],
           "message": {
-            "text": "Single-letter name `x`; only loop targets and comprehensions may use one"
+            "text": "Single-letter name `x`; only comprehensions may use one"
           },
           "ruleId": "SMP010"
         }
@@ -111,10 +111,10 @@ exit code 1
                 "level": "error"
               },
               "fullDescription": {
-                "text": "## What it does\n\nChecks for single-letter names. It reports the names of functions, classes, parameters (including\n[lambda](https://docs.python.org/3/reference/expressions.html#lambda) parameters), assignment and\n[walrus](https://docs.python.org/3/reference/expressions.html#assignment-expressions) targets, `with ... as`,\n`except ... as` and `import ... as` names,\n[`match`](https://docs.python.org/3/reference/compound_stmts.html#the-match-statement) captures and\n[type parameters](https://docs.python.org/3/reference/compound_stmts.html#type-params) such as `T`.\n\nThese pass:\n\n- `for` loop targets, such as `i` in `for i in range(3)`\n- every name inside a list, set or dictionary\n  [comprehension](https://docs.python.org/3/tutorial/datastructures.html#list-comprehensions) or a\n  [generator expression](https://docs.python.org/3/reference/expressions.html#generator-expressions), including a walrus\n  target or lambda parameter, so `[x * 2 for x in values]` is fine\n- `_`\n- parameters of a method decorated with [`@override`](https://docs.python.org/3/library/typing.html#typing.override),\n  which must keep the names of the method it replaces\n\nEach name is reported once per scope, at its first binding. Ruff's\n[ambiguous-variable-name (E741)](https://docs.astral.sh/ruff/rules/ambiguous-variable-name/) covers only `l`, `O` and\n`I`.\n\n## Why is this bad?\n\nA single letter says nothing about what the name holds, so the reader has to find where it is bound to learn it. Loop\ntargets and comprehensions are exempt because the iterable the names come from sits right next to them.\n\n## Example\n\n```python\ndef scale(v: float, f: float) -> float:\n    r = v * f\n    return round(r, 2)\n```\n\nUse instead:\n\n```python\ndef scale(value: float, factor: float) -> float:\n    scaled = value * factor\n    return round(scaled, 2)\n```\n\n## Fix safety\n\nNo fix is offered, since a meaningful name cannot be derived from the code.\n"
+                "text": "## What it does\n\nChecks for single-letter names. It reports the names of functions, classes, parameters (including\n[lambda](https://docs.python.org/3/reference/expressions.html#lambda) parameters), assignment and\n[walrus](https://docs.python.org/3/reference/expressions.html#assignment-expressions) targets, `for` loop targets such\nas `i` in `for i in range(3)`, `with ... as`, `except ... as` and `import ... as` names,\n[`match`](https://docs.python.org/3/reference/compound_stmts.html#the-match-statement) captures and\n[type parameters](https://docs.python.org/3/reference/compound_stmts.html#type-params) such as `T`.\n\nThese pass:\n\n- every name inside a list, set or dictionary\n  [comprehension](https://docs.python.org/3/tutorial/datastructures.html#list-comprehensions) or a\n  [generator expression](https://docs.python.org/3/reference/expressions.html#generator-expressions), including a walrus\n  target or lambda parameter, so `[x * 2 for x in values]` is fine\n- `_`\n- parameters of a method decorated with [`@override`](https://docs.python.org/3/library/typing.html#typing.override),\n  which must keep the names of the method it replaces\n\nEach name is reported once per scope, at its first binding. Ruff's\n[ambiguous-variable-name (E741)](https://docs.astral.sh/ruff/rules/ambiguous-variable-name/) covers only `l`, `O` and\n`I`.\n\n## Why is this bad?\n\nA single letter says nothing about what the name holds, so the reader has to find where it is bound to learn it.\nComprehensions are exempt because the whole expression fits in one place, with the iterable right next to every use. A\n`for` loop is not: its body can run on for many lines, far from the `for` line that says what `i` is.\n\n## Example\n\n```python\ndef scale(v: float, f: float) -> float:\n    r = v * f\n    return round(r, 2)\n```\n\nUse instead:\n\n```python\ndef scale(value: float, factor: float) -> float:\n    scaled = value * factor\n    return round(scaled, 2)\n```\n\n## Fix safety\n\nNo fix is offered, since a meaningful name cannot be derived from the code.\n"
               },
               "help": {
-                "text": "Single-letter names outside loop targets and comprehensions"
+                "text": "Single-letter names outside comprehensions"
               },
               "helpUri": "https://simplint.readthedocs.io/en/latest/_generated/rules/SMP010.html",
               "id": "SMP010",
@@ -125,7 +125,7 @@ exit code 1
                 "problem.severity": "error"
               },
               "shortDescription": {
-                "text": "Single-letter names outside loop targets and comprehensions"
+                "text": "Single-letter names outside comprehensions"
               }
             }
           ],

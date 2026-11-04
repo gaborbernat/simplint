@@ -6,6 +6,8 @@ def f(a: int, *, b: int = 1) -> int:
     x = a + b
     for i in range(3):
         x += i
+    for index, w in enumerate(range(3)):
+        x += index * w
     total = [y for y in range(x)]
     pairs = {k: v for k, v in {}.items()}
     try:

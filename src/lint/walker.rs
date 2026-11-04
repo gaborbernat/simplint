@@ -16,7 +16,6 @@ pub struct Walker<'c, 'a> {
     scopes: Vec<Scope<'a>>,
     in_fstring: bool,
     in_comprehension: bool,
-    in_for_target: bool,
 }
 
 // A def, class or lambda opens a scope covering its header, decorators and default values included.
@@ -46,7 +45,6 @@ impl<'c, 'a> Walker<'c, 'a> {
             scopes: Vec::new(),
             in_fstring: false,
             in_comprehension: false,
-            in_for_target: false,
         };
         walker.visit_body(checker.body());
     }
@@ -70,10 +68,6 @@ impl<'c, 'a> Walker<'c, 'a> {
     pub fn in_comprehension(&self) -> bool {
         self.in_comprehension
     }
-
-    pub fn in_for_target(&self) -> bool {
-        self.in_for_target
-    }
 }
 
 impl<'a> Visitor<'a> for Walker<'_, 'a> {
@@ -84,14 +78,6 @@ impl<'a> Visitor<'a> for Walker<'_, 'a> {
                 self.in_scope(&Scope::Function(function), |walker| visitor::walk_stmt(walker, stmt));
             }
             Stmt::ClassDef(class) => self.in_scope(&Scope::Class(class), |walker| visitor::walk_stmt(walker, stmt)),
-            Stmt::For(ast::StmtFor { target, iter, body, orelse, .. }) => {
-                self.visit_expr(iter);
-                let outer = std::mem::replace(&mut self.in_for_target, true);
-                self.visit_expr(target);
-                self.in_for_target = outer;
-                self.visit_body(body);
-                self.visit_body(orelse);
-            }
             _ => visitor::walk_stmt(self, stmt),
         }
     }

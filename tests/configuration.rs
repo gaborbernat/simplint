@@ -208,13 +208,13 @@ fn isolated_rejects_a_config_file() {
 #[test_case(
     "pyproject.toml",
     "[tool.simplint]\nselect = [\"SMP010\"]\n",
-    "module.py:1:1: SMP010 Single-letter name `x`; only loop targets and comprehensions may use one\nFound 1 error.\n" ;
+    "module.py:1:1: SMP010 Single-letter name `x`; only comprehensions may use one\nFound 1 error.\n" ;
     "pyproject"
 )]
 #[test_case(
     "ruff.toml",
     "target-version = \"py310\"\n",
-    "module.py:1:1: SMP010 Single-letter name `x`; only loop targets and comprehensions may use one\nmodule.py:1:1: \
+    "module.py:1:1: SMP010 Single-letter name `x`; only comprehensions may use one\nmodule.py:1:1: \
      SMP101 `x` is never reassigned; annotate it `Final`\nmodule.py:1:1: SMP102 Module-scope variable `x` should be \
      named `_X`\nFound 3 errors.\n2 unsafe fixes available with `--fix --unsafe-fixes`.\n" ;
     "ruff_toml"

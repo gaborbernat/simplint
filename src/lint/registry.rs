@@ -142,7 +142,7 @@ macro_rules! hook {
 rules! {
     SectionComment => ("SMP001", "section-comment", "Comments used as dividers or section headers", Always, comments::section_comment { module }),
     LongParagraph => ("SMP005", "long-paragraph", "Comment paragraphs over 100 words", None, comments::long_paragraph { module }),
-    SingleLetterName => ("SMP010", "single-letter-name", "Single-letter names outside loop targets and comprehensions", None, naming::single_letter_name { statement, expression, scope, except_handler, pattern, type_param }),
+    SingleLetterName => ("SMP010", "single-letter-name", "Single-letter names outside comprehensions", None, naming::single_letter_name { statement, expression, scope, except_handler, pattern, type_param }),
     DefinitionBeforeUse => ("SMP020", "definition-before-use", "Helpers defined above their first caller, or away from it", Sometimes, structure::definition_before_use { module }),
     ForwardingFunction => ("SMP030", "forwarding-function", "Private functions that only forward to another call", None, structure::forwarding_function { module }),
     DependencyImportGuard => ("SMP040", "dependency-import-guard", "`try`/`except ImportError` around a required dependency", Sometimes, imports::dependency_import_guard { module }),
