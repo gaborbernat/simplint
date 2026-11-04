@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hasher;
 use std::path::{Path, PathBuf};
@@ -657,10 +658,20 @@ impl<'f> ModuleFacts<'f> {
         let own = normalized(path);
         let importing =
             SystemPathBuf::from_path_buf(own.clone()).ok().and_then(|path| system_path_to_file(db, path).ok());
+        // A file names most modules several times: in its imports, its references and its dataclass uses.
+        let cache: RefCell<HashMap<&str, Option<PathBuf>>> = RefCell::new(HashMap::new());
+        let resolved = |module: &'f str| -> Option<PathBuf> {
+            if let Some(file) = cache.borrow().get(module) {
+                return file.clone();
+            }
+            let file = resolve(db, environment, importing, module);
+            cache.borrow_mut().insert(module, file.clone());
+            file
+        };
         let resolve_all = |modules: &'f [ModuleNames]| -> Vec<(PathBuf, &'f [String])> {
             modules
                 .iter()
-                .filter_map(|(module, names)| Some((resolve(db, environment, importing, module)?, names.as_slice())))
+                .filter_map(|(module, names)| Some((resolved(module)?, names.as_slice())))
                 .filter(|(file, _)| *file != own)
                 .collect()
         };
@@ -672,10 +683,10 @@ impl<'f> ModuleFacts<'f> {
             .chain(&facts.references)
             .filter_map(|(module, names)| {
                 let (top, rest) = module.split_once('.')?;
-                let package = resolve(db, environment, importing, top)?;
+                let package = resolved(top)?;
                 let directory = package.parent().filter(|_| package.ends_with("__init__.py"))?.to_path_buf();
                 let last = rest.rsplit('.').next()?;
-                resolve(db, environment, importing, module).is_none().then_some((directory, last, names.as_slice()))
+                resolved(module).is_none().then_some((directory, last, names.as_slice()))
             })
             .collect();
         if !facts.declared.is_empty() {
@@ -684,7 +695,7 @@ impl<'f> ModuleFacts<'f> {
         let mut stars = Vec::new();
         let mut unresolved_stars = Vec::new();
         for module in &facts.star_imports {
-            match resolve(db, environment, importing, module) {
+            match resolved(module) {
                 Some(file) => stars.extend((file != own).then_some(file)),
                 None => unresolved_stars.extend(module.rsplit('.').next()),
             }
@@ -693,13 +704,13 @@ impl<'f> ModuleFacts<'f> {
             .constructors
             .uses
             .iter()
-            .filter_map(|(module, uses)| Some((resolve(db, environment, importing, module)?, uses.as_slice())))
+            .filter_map(|(module, uses)| Some((resolved(module)?, uses.as_slice())))
             .filter(|(file, _)| *file != own)
             .collect();
         let bindings = facts
             .bindings
             .iter()
-            .filter_map(|binding| Some((resolve(db, environment, importing, &binding.module)?, binding)))
+            .filter_map(|binding| Some((resolved(&binding.module)?, binding)))
             .filter(|(file, _)| *file != own)
             .collect();
         Self {
