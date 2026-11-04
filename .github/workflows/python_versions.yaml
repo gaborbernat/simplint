@@ -47,7 +47,7 @@ jobs:
     name: 🔀 Open Python versions PR
     needs: bump
     if: needs.bump.outputs.changed == 'true'
-    uses: tox-dev/github-workflows/.github/workflows/open-maintenance-pr.yaml@dd14eca534aa9279d181e454d73094871141fa39 # 6.5.4
+    uses: tox-dev/github-workflows/.github/workflows/open-maintenance-pr.yaml@13381289334b15375958be7f7438f3c3d860e575 # 6.5.5
     with:
       artifact-id: ${{ needs.bump.outputs.artifact-id }}
       allowed-paths: pyproject.toml

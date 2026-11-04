@@ -51,6 +51,6 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: 🚦 Require all needed jobs to pass
-        uses: tox-dev/github-workflows/required-checks@dd14eca534aa9279d181e454d73094871141fa39 # 6.5.4
+        uses: tox-dev/github-workflows/required-checks@13381289334b15375958be7f7438f3c3d860e575 # 6.5.5
         with:
           needs: ${{ toJSON(needs) }}
