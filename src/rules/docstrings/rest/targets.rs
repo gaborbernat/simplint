@@ -5,7 +5,7 @@ use std::rc::Rc;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::TextRange;
 
-use super::attributes::{Attribute, attributes};
+use super::attributes::{Attribute, attributes, is_field_call, skips_init, unsubscripted};
 use super::{Docstring, has_attribute_bases};
 use crate::lint::checker::Checker;
 use crate::rules::{Visibility, docstring, last_segment, module_statements};
@@ -160,36 +160,20 @@ fn class_parameters(class: &ast::StmtClassDef) -> Option<Vec<Parameter<'_>>> {
     let generated = class.decorator_list.iter().any(|decorator| {
         let call = decorator.expression.as_call_expr();
         let name = last_segment(call.map_or(&decorator.expression, |call| &call.func));
-        let writes_init = !call.is_some_and(|call| {
-            call.arguments
-                .find_keyword("init")
-                .is_some_and(|keyword| keyword.value.as_boolean_literal_expr().is_some_and(|literal| !literal.value))
-        });
-        writes_init && matches!(name, Some("dataclass" | "define" | "frozen" | "mutable" | "attrs" | "s"))
+        !call.is_some_and(skips_init)
+            && matches!(name, Some("dataclass" | "define" | "frozen" | "mutable" | "attrs" | "s"))
     }) || class.bases().iter().any(|base| last_segment(base) == Some("NamedTuple"));
     if !generated || has_attribute_bases(class) {
         return None;
     }
-    let skips_init = |value: Option<&Expr>| {
-        value.and_then(Expr::as_call_expr).is_some_and(|call| {
-            call.arguments
-                .find_keyword("init")
-                .is_some_and(|keyword| keyword.value.as_boolean_literal_expr().is_some_and(|literal| !literal.value))
-        })
-    };
     let fields = module_statements(&class.body).filter_map(|stmt| match stmt {
         Stmt::AnnAssign(ast::StmtAnnAssign { target, annotation, value, .. }) => {
-            let annotation = annotation.as_subscript_expr().map_or(annotation.as_ref(), |subscript| &subscript.value);
-            let marker = matches!(last_segment(annotation), Some("ClassVar" | "KW_ONLY"));
-            target.as_name_expr().filter(|_| !marker && !skips_init(value.as_deref())).map(|name| (name, true))
+            let marker = matches!(last_segment(unsubscripted(annotation)), Some("ClassVar" | "KW_ONLY"));
+            let skipped = value.as_deref().and_then(Expr::as_call_expr).is_some_and(skips_init);
+            target.as_name_expr().filter(|_| !marker && !skipped).map(|name| (name, true))
         }
         Stmt::Assign(ast::StmtAssign { targets, value, .. }) => match targets.as_slice() {
-            [Expr::Name(name)]
-                if value
-                    .as_call_expr()
-                    .is_some_and(|call| matches!(last_segment(&call.func), Some("ib" | "attrib" | "field")))
-                    && !skips_init(Some(value)) =>
-            {
+            [Expr::Name(name)] if is_field_call(value) && !value.as_call_expr().is_some_and(skips_init) => {
                 Some((name, false))
             }
             _ => None,
