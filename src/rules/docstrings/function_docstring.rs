@@ -1,3 +1,5 @@
+use std::cell::OnceCell;
+
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::{Expr, Stmt};
@@ -30,6 +32,7 @@ pub fn function_docstring(checker: &Checker) {
                 .filter(|class| !api.covers(class.range))
                 .map(|class| (class.range, class.body.as_slice(), class.decorator_list.as_slice(), "Class")),
         );
+    let levels = OnceCell::new();
     for (owner, owner_body, decorators, kind) in owners {
         let Some(literal) = docstring(owner_body) else {
             continue;
@@ -52,7 +55,8 @@ pub fn function_docstring(checker: &Checker) {
             (removal(checker, stmt, owner_body).map(Fix::unsafe_edit), "Remove the docstring")
         } else {
             (
-                comment_replacement(checker, owner, owner_body, &lines).map(Fix::unsafe_edit),
+                comment_replacement(checker, owner, owner_body, &lines, levels.get_or_init(|| block_levels(checker)))
+                    .map(Fix::unsafe_edit),
                 "Turn the docstring into a comment",
             )
         };
@@ -64,6 +68,21 @@ pub fn function_docstring(checker: &Checker) {
             title,
         );
     }
+}
+
+// The level of the block that starts after each indent or dedent token, by where the token starts, the module's being 1.
+fn block_levels(checker: &Checker) -> Vec<(TextSize, usize)> {
+    let mut level: usize = 1;
+    let mut levels = Vec::new();
+    for token in checker.parsed.tokens() {
+        match token.kind() {
+            TokenKind::Indent => level += 1,
+            TokenKind::Dedent => level = level.saturating_sub(1),
+            _ => continue,
+        }
+        levels.push((token.start(), level));
+    }
+    levels
 }
 
 // Decorators that wrap or register the object without reading its docstring; copying it, as `functools.wraps` or
@@ -111,7 +130,13 @@ fn removal(checker: &Checker, stmt: &Stmt, owner_body: &[Stmt]) -> Option<Edit> 
 
 // The comment goes where the docstring was, on lines of its own as `ruff format` would leave the body, wrapped to the
 // width its lines get once formatted, so the result does not depend on the layout.
-fn comment_replacement(checker: &Checker, owner: TextRange, owner_body: &[Stmt], lines: &[String]) -> Option<Edit> {
+fn comment_replacement(
+    checker: &Checker,
+    owner: TextRange,
+    owner_body: &[Stmt],
+    lines: &[String],
+    levels: &[(TextSize, usize)],
+) -> Option<Edit> {
     let source = checker.source;
     let stmt = &owner_body[0];
     let on_header = has_leading_content(stmt.start(), source);
@@ -121,14 +146,8 @@ fn comment_replacement(checker: &Checker, owner: TextRange, owner_body: &[Stmt],
         indentation(source, stmt).to_owned()
     };
     // The dedents closing the blocks before the owner sit at its start.
-    let level = checker.parsed.tokens().iter().take_while(|token| token.start() <= owner.start()).fold(
-        1,
-        |level: usize, token| match token.kind() {
-            TokenKind::Indent => level + 1,
-            TokenKind::Dedent => level.saturating_sub(1),
-            _ => level,
-        },
-    );
+    let before = &levels[..levels.partition_point(|(at, _)| *at <= owner.start())];
+    let level = before.last().map_or(1, |(_, level)| *level);
     let from_ruff = &checker.settings.from_ruff;
     let room = from_ruff.comment_width.saturating_sub(from_ruff.indent_width * level + 2);
     let comments: Vec<String> = comment_lines(lines, room)
