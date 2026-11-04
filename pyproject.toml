@@ -53,53 +53,53 @@ dev = [
 ]
 test = [
   "covdefaults>=2.3",
-  "pytest>=9.1.1",
+  "pytest>=9.2",
   "pytest-cov>=7.1",
-  "pytest-mock>=3.16",
+  "pytest-mock>=3.17",
   "trove-classifiers>=2026.9.21.13",
 ]
 type = [
-  "mypy==2.4",
-  "tox>=4.65.5",
-  "types-docutils>=0.22",
+  "mypy==2.4.1",
+  "tox>=4.67.4",
+  "types-docutils>=0.23.0.20260923",
   { include-group = "test" },
 ]
 docs = [
   "furo>=2025.12.19; python_version>='3.14'",
-  "myst-parser>=5; python_version>='3.14'",
+  "myst-parser>=5.1; python_version>='3.14'",
   "pypandoc-binary>=1.17; python_version>='3.14'",
   "release-creator>=4.4; python_version>='3.15'",
   "sphinx>=9.1; python_version>='3.14'",
-  "sphinx-argparse-cli>=1.24; python_version>='3.14'",
+  "sphinx-argparse-cli>=1.24.1; python_version>='3.14'",
   "sphinx-copybutton>=0.5.2; python_version>='3.14'",
   "sphinx-design>=0.7; python_version>='3.14'",
   "sphinx-inline-tabs>=2025.12.21.14; python_version>='3.14'",
   "sphinx-llm>=1.1",
-  "sphinxcontrib-mermaid>=1; python_version>='3.14'",
+  "sphinxcontrib-mermaid>=2.1.1; python_version>='3.14'",
 ]
 build = [
-  "cython>=3",
+  "cython>=3.3",
   "maturin>=1.15,<2",
-  "setuptools>=80",
+  "setuptools>=84.2.1",
 ]
 fix = [
-  "pre-commit-uv>=4.4",
+  "pre-commit-uv>=4.4.1",
 ]
 pkg-meta = [
   "check-wheel-contents>=0.6.3",
   "twine>=7",
-  "uv>=0.13.1",
+  "uv>=0.13.6",
 ]
 release-build = [
-  "cython>=3",
+  "cython>=3.3",
   "maturin>=1.15,<2",
-  "setuptools>=80",
+  "setuptools>=84.2.1",
 ]
 release-notes = [
   "release-creator>=4.4",
 ]
 release-prepare = [
-  "prek>=0.3",
+  "prek>=0.5.7",
   "release-creator>=4.4",
 ]
 
