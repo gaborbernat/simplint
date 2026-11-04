@@ -447,13 +447,18 @@ fn lint_rounds<'f, T: Send>(
         return Ok(passes);
     };
     let mut rewritten: Vec<usize> = (0..passes.len()).filter(|&at| passes[at].iter().any(rewrote)).collect();
+    // Each file's words, read when a round first needs them and again once a round rewrites the file.
+    let mut words: Vec<Option<HashSet<String>>> = vec![None; files.len()];
     for _ in 1..ROUNDS {
         if rewritten.is_empty() {
             break;
         }
+        for &at in &rewritten {
+            words[at] = None;
+        }
         let changed: Vec<&RunFile> = rewritten.iter().map(|&at| &files[at]).collect();
         let collect = |file: &RunFile| file_facts(file, recache(file.path));
-        let (next, dependents) = reindex(facts, &changed, collect, files, &project, inputs)?;
+        let (next, dependents) = reindex(facts, &changed, collect, files, &mut words, &project, inputs)?;
         project = next;
         let relinted: Vec<(usize, T)> =
             dependents.into_par_iter().map(|at| (at, lint(&files[at], &project, recache(files[at].path)))).collect();
@@ -496,12 +501,13 @@ fn file_facts<'c>(file: &RunFile, cache: Option<(&'c Cache, FileKey)>) -> Option
 }
 
 // The index once the `rewritten` files have their facts collected again, and the positions of the files whose answers
-// from it differ from those of `project`.
+// from it differ from those of `project`. Each file's `words` are read the first time a changed name needs them.
 fn reindex<'f>(
     facts: &mut FxHashMap<&'f Path, Cow<'f, FileFacts>>,
     rewritten: &[&RunFile<'f>],
     collect: impl Fn(&RunFile) -> Option<Cow<'f, FileFacts>> + Sync,
     files: &[RunFile],
+    words: &mut [Option<HashSet<String>>],
     project: &Project,
     inputs: &IndexInputs,
 ) -> Result<(Project, Vec<usize>)> {
@@ -511,11 +517,17 @@ fn reindex<'f>(
     facts.extend(fresh.into_iter().map(|(path, file)| (path, Cow::Owned(file))));
     let next = index_project(facts, inputs)?;
     let changed = next.changed_names(project);
+    if !changed.is_empty() {
+        words.par_iter_mut().zip(files).filter(|(known, _)| known.is_none()).for_each(|(known, file)| {
+            *known = Some(words_of(file.path));
+        });
+    }
     let dependents = (0..files.len())
         .into_par_iter()
         .filter(|&at| {
             let path = files[at].path;
-            next.file(path) != project.file(path) || mentions(path, &changed)
+            let mentions = || words[at].as_ref().is_some_and(|held| changed.iter().any(|name| held.contains(*name)));
+            next.file(path) != project.file(path) || mentions()
         })
         .collect();
     Ok((next, dependents))
@@ -526,13 +538,12 @@ fn index_project(facts: &FxHashMap<&Path, Cow<FileFacts>>, inputs: &IndexInputs)
     Project::index(&indexed, inputs)
 }
 
-// Whether a file names any of the attribute or base class names whose answers changed; the rules ask about names the
-// file itself holds, such as its dataclass fields, so a file without one gets the same answers.
-fn mentions(path: &Path, names: &HashSet<&str>) -> bool {
-    !names.is_empty()
-        && std::fs::read_to_string(path).is_ok_and(|source| {
-            source.split(|char: char| !(char.is_alphanumeric() || char == '_')).any(|word| names.contains(word))
-        })
+// The names a file holds, to tell whether it names any of the attribute or base class names whose answers changed; the
+// rules ask about names the file itself holds, such as its dataclass fields, so a file without one gets the same
+// answers.
+fn words_of(path: &Path) -> HashSet<String> {
+    let source = std::fs::read_to_string(path).unwrap_or_default();
+    source.split(|char: char| !(char.is_alphanumeric() || char == '_')).map(str::to_owned).collect()
 }
 
 // A file's linter, from simplint's settings and Ruff's for it and the package it sits in.
