@@ -1,5 +1,5 @@
 use ruff_diagnostics::{Applicability, Edit, Fix};
-use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
+use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_source_file::LineRanges;
 use ruff_text_size::Ranged;
 
@@ -8,9 +8,6 @@ use crate::lint::registry::Rule;
 use crate::rules::is_alone_on_lines;
 
 pub fn up_lazy_modules_list(checker: &Checker) {
-    if checker.settings.from_ruff.target_version < PythonVersion::PY315 {
-        return;
-    }
     let body = checker.body();
     let Some((list_stmt, modules)) = body.iter().find_map(|stmt| lazy_modules(stmt).map(|modules| (stmt, modules)))
     else {

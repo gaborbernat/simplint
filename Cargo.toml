@@ -56,6 +56,7 @@ walkdir = "2.5.0"
 assert_cmd = "2.2.2"
 insta = "1.49.0"
 test-case = "3.4.0"
+similar = "3.2.1"
 
 [target.'cfg(all(not(target_os = "windows"), not(target_os = "openbsd"), not(target_os = "aix"), not(target_os = "android"), any(target_arch = "x86_64", target_arch = "aarch64", target_arch = "powerpc64", target_arch = "riscv64")))'.dependencies]
 tikv-jemallocator = { version = "0.6.1", default-features = false, features = ["background_threads_runtime_support"] }

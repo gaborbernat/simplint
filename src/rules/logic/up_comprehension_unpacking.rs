@@ -1,5 +1,5 @@
 use ruff_diagnostics::{Edit, Fix};
-use ruff_python_ast::{self as ast, Comprehension, Expr, PythonVersion};
+use ruff_python_ast::{self as ast, Comprehension, Expr};
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::registry::Rule;
@@ -9,9 +9,6 @@ use crate::syntax::is_name;
 // Python 3.15 unpacks inside a comprehension, so a nested `for` that only unpacks its iterable moves into the element.
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let checker = walker.checker;
-    if checker.settings.from_ruff.target_version < PythonVersion::PY315 {
-        return;
-    }
     let (generators, element) = match expr {
         Expr::ListComp(ast::ExprListComp { elt, generators, .. })
         | Expr::SetComp(ast::ExprSetComp { elt, generators, .. })

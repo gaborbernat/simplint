@@ -1,3 +1,9 @@
+// The lint pipeline and the run over a set of files: what a file's lint reports, how a run finds its files, indexes
+// them and lints them. The command line reads these, and the project cache stores their results.
+mod conflicts;
+mod discover;
+mod rounds;
+
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::ops::{Add, AddAssign};
@@ -6,6 +12,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result, ensure};
 use colored::Colorize;
 use log::warn;
+use ruff::args::ConfigArguments;
 use ruff_db::diagnostic::Diagnostic;
 use ruff_linter::fs::relativize_path;
 use ruff_linter::linter::FixTable;
@@ -15,13 +22,34 @@ use ruff_linter::settings::types::UnsafeFixes;
 use ruff_linter::source_kind::SourceKindDiff;
 use ruff_linter::{IOError, Violation};
 use ruff_source_file::SourceFileBuilder;
-use ruff_text_size::TextRange;
+use ruff_text_size::{TextRange, TextSize};
+use ruff_workspace::resolver::PyprojectConfig;
 use rustc_hash::FxHashMap;
 use tempfile::NamedTempFile;
 
 use crate::fix::{Fixer, FixerResult, add_fixes};
 use crate::lint::Linter;
 use crate::lint::registry::RuleSet;
+use crate::settings::SettingsResolver;
+
+pub(crate) use discover::{Discovered, discover, linted_roots, redact_extended};
+pub(crate) use rounds::{add_suppressions, check_files, check_stdin};
+
+// Ruff's configuration and simplint's, from the same command line, as a run reads them.
+pub(crate) struct Resolved {
+    pub(crate) config_arguments: ConfigArguments,
+    pub(crate) settings_resolver: SettingsResolver,
+    pub(crate) pyproject_config: PyprojectConfig,
+    pub(crate) cache_dir: PathBuf,
+}
+
+impl Resolved {
+    // Ruff's `output-prefer-rule-codes`: in preview, messages name rules unless it is set.
+    pub(crate) fn names_rules(&self) -> bool {
+        self.pyproject_config.settings.linter.preview.is_enabled()
+            && !self.pyproject_config.settings.output_prefer_rule_codes
+    }
+}
 
 // What a run reports: the remaining diagnostics and the fixes applied per file, as Ruff's `Diagnostics` holds them, and
 // the diffs `--diff` prints, each with the path of its file.
@@ -103,29 +131,31 @@ pub struct Mode {
     pub roots: Vec<PathBuf>,
 }
 
+// A file's lint: its diagnostics and fixes, the rules a settled fix loop withdrew, and, without fixes, the line each
+// diagnostic's suppression comment belongs on, which the cache stores with the reports.
+pub struct Linting {
+    pub diagnostics: Diagnostics,
+    pub settled: Option<RuleSet>,
+    pub noqa_rows: Vec<TextSize>,
+}
+
 // Ruff's `lint_path`: lint a file, and with `--fix` or `--diff` fix it and write the result back or keep the diff for
 // the caller to print. Files are linted in parallel, so the diff waits for the caller to print it in file order. A file
 // that cannot be read or written is reported in place of its diagnostics, as Ruff reports `io-error`. Both `settled`
 // sets name the rules whose fixes the fix loop withdrew from a file it left as it was: the one passed from an earlier
 // run, which spares running the loop, the one returned from this run.
-pub fn lint_path(
-    path: &Path,
-    linter: &Linter,
-    mode: &Mode,
-    settled: Option<RuleSet>,
-) -> (Diagnostics, Option<RuleSet>) {
-    fix_path(path, linter, mode, settled)
-        .unwrap_or_else(|error| (Diagnostics::from_error(path, format!("{error:#}"), linter), None))
+pub fn lint_path(path: &Path, linter: &Linter, mode: &Mode, settled: Option<RuleSet>) -> Linting {
+    fix_path(path, linter, mode, settled).unwrap_or_else(|error| Linting {
+        diagnostics: Diagnostics::from_error(path, format!("{error:#}"), linter),
+        settled: None,
+        noqa_rows: Vec::new(),
+    })
 }
 
-fn fix_path(
-    path: &Path,
-    linter: &Linter,
-    mode: &Mode,
-    settled: Option<RuleSet>,
-) -> Result<(Diagnostics, Option<RuleSet>)> {
+fn fix_path(path: &Path, linter: &Linter, mode: &Mode, settled: Option<RuleSet>) -> Result<Linting> {
     let source = std::fs::read_to_string(path)?;
-    let Linted { diagnostics, transformed, fixed, settled } = lint_source(path, &source, linter, mode, settled);
+    let Linted { diagnostics, transformed, fixed, settled, noqa_rows } =
+        lint_source(path, &source, linter, mode, settled);
     let mut diffs = Vec::new();
     if let Some(transformed) = transformed.filter(|_| !fixed.is_empty()) {
         if mode.fix.is_apply() {
@@ -137,13 +167,13 @@ fn fix_path(
         }
     }
     let fixed = FixMap::from_iter([(relativize_path(path), fixed)]);
-    Ok((Diagnostics { inner: diagnostics, fixed, diffs }, settled))
+    Ok(Linting { diagnostics: Diagnostics { inner: diagnostics, fixed, diffs }, settled, noqa_rows })
 }
 
 // Replaces a file read as `original` with `fixed`. Writing a temporary file next to it and renaming that over it never
 // leaves a cut-short source behind, and a file edited since it was read keeps the edit. A symlink keeps pointing at the
 // file it names, which gets the new source with its permissions, as long as that file lies under a root of the run.
-pub(super) fn write_source(path: &Path, roots: &[PathBuf], original: &str, fixed: &str) -> Result<()> {
+pub(crate) fn write_source(path: &Path, roots: &[PathBuf], original: &str, fixed: &str) -> Result<()> {
     let target = std::fs::canonicalize(path)?;
     ensure!(roots.iter().any(|root| target.starts_with(root)), "{} lies outside the linted paths", path.display());
     // The rename would replace a file the user cannot write, so opening it for writing checks that first.
@@ -156,31 +186,46 @@ pub(super) fn write_source(path: &Path, roots: &[PathBuf], original: &str, fixed
     Ok(())
 }
 
+// What a run over standard input reports, and the text for standard output: the source after the fixes with `--fix`,
+// or the diff with `--diff`.
+pub(crate) struct StdinLint {
+    pub(crate) diagnostics: Diagnostics,
+    pub(crate) output: Option<String>,
+}
+
 // Ruff's `lint_stdin`: the source comes from standard input, and with `--fix` the source, fixed or not, goes to
 // standard output.
-pub fn lint_stdin(path: &Path, source: &str, linter: &Linter, mode: &Mode) -> Result<Diagnostics> {
+pub(crate) fn lint_stdin(path: &Path, source: &str, linter: &Linter, mode: &Mode) -> StdinLint {
     let Linted { diagnostics, transformed, fixed, .. } = lint_source(path, source, linter, mode, None);
-    let mut stdout = std::io::stdout().lock();
-    if mode.fix.is_apply() {
-        stdout.write_all(transformed.as_deref().unwrap_or(source).as_bytes())?;
-    } else if let Some(transformed) = transformed.filter(|_| !fixed.is_empty()) {
-        write!(stdout, "{}", SourceKindDiff::from_text(source, &transformed, Some(path)))?;
+    let output = if mode.fix.is_apply() {
+        Some(transformed.unwrap_or_else(|| source.to_owned()))
+    } else {
+        transformed
+            .filter(|_| !fixed.is_empty())
+            .map(|transformed| SourceKindDiff::from_text(source, &transformed, Some(path)).to_string())
+    };
+    StdinLint {
+        diagnostics: Diagnostics {
+            inner: diagnostics,
+            fixed: FixMap::from_iter([(relativize_path(path), fixed)]),
+            diffs: Vec::new(),
+        },
+        output,
     }
-    Ok(Diagnostics {
-        inner: diagnostics,
-        fixed: FixMap::from_iter([(relativize_path(path), fixed)]),
-        diffs: Vec::new(),
-    })
 }
 
 // A fix that fails leaves the file as it was, so its diagnostics come from the original source, with nothing fixed. A
 // source the fix loop already settled, whose withdrawn rules `settled` names, gets the loop's reports from one lint.
 fn lint_source(path: &Path, source: &str, linter: &Linter, mode: &Mode, settled: Option<RuleSet>) -> Linted {
-    let unfixed = || Linted {
-        diagnostics: linter.lint(path, source, mode.noqa),
-        transformed: None,
-        fixed: FixTable::default(),
-        settled: None,
+    let unfixed = || {
+        let lint = linter.lint(path, source, mode.noqa);
+        Linted {
+            diagnostics: lint.diagnostics,
+            transformed: None,
+            fixed: FixTable::default(),
+            settled: None,
+            noqa_rows: lint.noqa_rows,
+        }
     };
     if mode.fix.is_generate() {
         return unfixed();
@@ -193,7 +238,7 @@ fn lint_source(path: &Path, source: &str, linter: &Linter, mode: &Mode, settled:
     let result = Fixer::new(linter, path, mode.unsafe_fixes, mode.noqa).fix(source);
     let Ok((FixerResult { diagnostics, transformed, fixed }, withdrawn)) = result else { return unfixed() };
     let settled = (fixed.is_empty() && transformed == source).then_some(withdrawn);
-    Linted { diagnostics, transformed: Some(transformed), fixed, settled }
+    Linted { diagnostics, transformed: Some(transformed), fixed, settled, noqa_rows: Vec::new() }
 }
 
 // A source's reports, its text after the fixes when they ran, and the fixes applied; `settled` names the rules whose
@@ -203,6 +248,8 @@ struct Linted {
     transformed: Option<String>,
     fixed: FixTable,
     settled: Option<RuleSet>,
+    // Only a lint without fixes keeps these, aligned with `diagnostics`.
+    noqa_rows: Vec<TextSize>,
 }
 
 #[cfg(test)]

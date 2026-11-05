@@ -1,5 +1,5 @@
 use ruff_diagnostics::Fix;
-use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
+use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
@@ -9,9 +9,6 @@ use crate::syntax::{for_each_body, is_name};
 
 // Since Python 3.14 the token `ContextVar.set` returns is a context manager that resets the variable on exit.
 pub fn up_context_var_token_reset(checker: &Checker) {
-    if checker.settings.from_ruff.target_version < PythonVersion::PY314 {
-        return;
-    }
     for_each_body(checker.body(), &mut |body, _| {
         for pair in body.windows(2) {
             if let [Stmt::Assign(assign), Stmt::Try(try_stmt)] = pair {

@@ -3077,6 +3077,7 @@ dependencies = [
  "schemars",
  "serde",
  "serde_json",
+ "similar 3.2.1",
  "tempfile",
  "test-case",
  "tikv-jemallocator",

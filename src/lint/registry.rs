@@ -1,7 +1,7 @@
 use ruff_db::diagnostic::Diagnostic;
 use ruff_linter::FixAvailability;
 use ruff_macros::CacheKey;
-use ruff_python_ast::{self as ast, Expr, Pattern, Stmt, TypeParam};
+use ruff_python_ast::{self as ast, Expr, Pattern, PythonVersion, Stmt, TypeParam};
 
 use crate::lint::checker::Checker;
 use crate::lint::walker::{Scope, Walker};
@@ -12,6 +12,7 @@ use crate::rules;
 macro_rules! rules {
     ($($variant:ident => (
         $code:literal, $name:literal, $summary:literal, $fix:ident, $family:ident::$check:ident { $($hook:ident),+ }
+        $(since $min:ident)?
     ),)*) => {
         #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
         pub enum Rule {
@@ -69,6 +70,13 @@ macro_rules! rules {
             pub fn fix_availability(self) -> FixAvailability {
                 match self {
                     $(Rule::$variant => FixAvailability::$fix,)*
+                }
+            }
+
+            // The Python version a rule needs, which a file's target below it leaves the rule out for.
+            pub fn minimum_version(self) -> Option<PythonVersion> {
+                match self {
+                    $(Rule::$variant => Option::<PythonVersion>::None $(.or(Some(PythonVersion::$min)))?,)*
                 }
             }
 
@@ -155,13 +163,13 @@ rules! {
     ModuleVariableCase => ("SMP102", "module-variable-case", "Module variables not `UPPER_CASE`", Sometimes, naming::module_variable_case { module }),
     DefinitionBeforeUse => ("SMP201", "definition-before-use", "Helpers defined above their first caller, or away from it", Sometimes, layout::definition_before_use { module }),
     SingleUserConstant => ("SMP202", "single-user-constant", "Module constants only one function uses", Sometimes, layout::single_user_constant { module }),
-    FutureAnnotations => ("SMP301", "future-annotations", "`from __future__ import annotations` on Python 3.14+", Sometimes, imports::future_annotations { module }),
+    FutureAnnotations => ("SMP301", "future-annotations", "`from __future__ import annotations` on Python 3.14+", Sometimes, imports::future_annotations { module } since PY314),
     AbsoluteSiblingImport => ("SMP302", "absolute-sibling-import", "Absolute imports from the same package", Always, imports::absolute_sibling_import { module }),
     DependencyImportGuard => ("SMP303", "dependency-import-guard", "`try`/`except ImportError` around a required dependency", Sometimes, imports::dependency_import_guard { module }),
     ModuleAttributeImport => ("SMP304", "module-attribute-import", "Module attributes reached as `module.Name` instead of imported", Sometimes, imports::module_attribute_import { module }),
     BackportImport => ("SMP305", "up-backport-import", "Imports of backports that the standard library replaces", Sometimes, imports::up_backport_import { module }),
-    TypeCheckingLazyImport => ("SMP306", "up-type-checking-lazy-import", "`if TYPE_CHECKING:` imports that can be `lazy` imports", Sometimes, imports::up_type_checking_lazy_import { module }),
-    LazyModulesList => ("SMP307", "up-lazy-modules-list", "`__lazy_modules__` lists that `lazy` imports replace", Sometimes, imports::up_lazy_modules_list { module }),
+    TypeCheckingLazyImport => ("SMP306", "up-type-checking-lazy-import", "`if TYPE_CHECKING:` imports that can be `lazy` imports", Sometimes, imports::up_type_checking_lazy_import { module } since PY315),
+    LazyModulesList => ("SMP307", "up-lazy-modules-list", "`__lazy_modules__` lists that `lazy` imports replace", Sometimes, imports::up_lazy_modules_list { module } since PY315),
     MissingFromAll => ("SMP401", "missing-from-all", "Names other modules import that `__all__` omits", Sometimes, api::missing_from_all { module }),
     UnusedExport => ("SMP402", "unused-export", "`__all__` entries no other module imports", Sometimes, api::unused_export { module }),
     UnexportedPublicName => ("SMP403", "unexported-public-name", "Public functions and classes missing from `__all__`", Sometimes, api::unexported_public_name { module }),
@@ -177,18 +185,18 @@ rules! {
     SingleCallerHelper => ("SMP505", "single-caller-helper", "Private helpers with one short call site, which inlining would keep short", None, logic::single_caller_helper { module }),
     UnusedDefault => ("SMP506", "unused-default", "Parameter defaults that every call passes explicitly", Sometimes, logic::unused_default { module }),
     ErrorMessageMatching => ("SMP507", "error-message-matching", "Exceptions told apart by their message text", None, logic::error_message_matching { except_handler }),
-    ComprehensionUnpacking => ("SMP508", "up-comprehension-unpacking", "Nested `for` clauses that only unpack their iterable into the element", Always, logic::up_comprehension_unpacking { expression }),
-    TracebackExceptionArguments => ("SMP509", "up-traceback-exception-arguments", "`traceback` calls that pass an exception's type and traceback next to it", Always, logic::up_traceback_exception_arguments { expression }),
-    ExcInfoException => ("SMP510", "up-exc-info-exception", "`sys.exc_info()` reads of the exception being handled", Always, logic::up_exc_info_exception { expression }),
-    ObjectSentinel => ("SMP511", "up-object-sentinel", "`object()` placeholders `sentinel` would name", Always, logic::up_object_sentinel { module }),
-    ContextVarTokenReset => ("SMP512", "up-context-var-token-reset", "`ContextVar.set()` tokens reset in a `finally` block", Sometimes, logic::up_context_var_token_reset { module }),
-    ChdirRestore => ("SMP513", "up-chdir-restore", "Working directories restored in a `finally` block", Sometimes, logic::up_chdir_restore { module }),
-    StrptimeDate => ("SMP514", "up-strptime-date", "`datetime.strptime()` results narrowed to a `date` or `time`", Sometimes, logic::up_strptime_date { expression }),
+    ComprehensionUnpacking => ("SMP508", "up-comprehension-unpacking", "Nested `for` clauses that only unpack their iterable into the element", Always, logic::up_comprehension_unpacking { expression } since PY315),
+    TracebackExceptionArguments => ("SMP509", "up-traceback-exception-arguments", "`traceback` calls that pass an exception's type and traceback next to it", Always, logic::up_traceback_exception_arguments { expression } since PY310),
+    ExcInfoException => ("SMP510", "up-exc-info-exception", "`sys.exc_info()` reads of the exception being handled", Always, logic::up_exc_info_exception { expression } since PY311),
+    ObjectSentinel => ("SMP511", "up-object-sentinel", "`object()` placeholders `sentinel` would name", Always, logic::up_object_sentinel { module } since PY315),
+    ContextVarTokenReset => ("SMP512", "up-context-var-token-reset", "`ContextVar.set()` tokens reset in a `finally` block", Sometimes, logic::up_context_var_token_reset { module } since PY314),
+    ChdirRestore => ("SMP513", "up-chdir-restore", "Working directories restored in a `finally` block", Sometimes, logic::up_chdir_restore { module } since PY311),
+    StrptimeDate => ("SMP514", "up-strptime-date", "`datetime.strptime()` results narrowed to a `date` or `time`", Sometimes, logic::up_strptime_date { expression } since PY314),
     EventLoopInCoroutine => ("SMP515", "up-event-loop-in-coroutine", "`asyncio.get_event_loop()` calls in coroutines", Sometimes, logic::up_event_loop_in_coroutine { expression }),
     AsyncioIsCoroutineFunction => ("SMP516", "up-asyncio-iscoroutinefunction", "`asyncio.iscoroutinefunction()` calls", Sometimes, logic::up_asyncio_iscoroutinefunction { expression }),
     CodecsOpen => ("SMP517", "up-codecs-open", "`codecs.open()` calls", Sometimes, logic::up_codecs_open { expression }),
-    ReErrorAlias => ("SMP518", "up-re-error-alias", "`re.error` references", Always, logic::up_re_error_alias { expression }),
-    ArgparseSuggestOnError => ("SMP519", "up-argparse-suggest-on-error", "`suggest_on_error=True` in `ArgumentParser()` calls", Sometimes, logic::up_argparse_suggest_on_error { expression }),
+    ReErrorAlias => ("SMP518", "up-re-error-alias", "`re.error` references", Always, logic::up_re_error_alias { expression } since PY313),
+    ArgparseSuggestOnError => ("SMP519", "up-argparse-suggest-on-error", "`suggest_on_error=True` in `ArgumentParser()` calls", Sometimes, logic::up_argparse_suggest_on_error { expression } since PY315),
     RemovedAstNode => ("SMP520", "up-removed-ast-node", "`ast` node aliases and visitor methods Python 3.14 removed", Sometimes, logic::up_removed_ast_node { expression, statement }),
     MissingFinal => ("SMP601", "missing-final", "Module constants not annotated `Final`", Sometimes, typing::missing_final { module }),
     ImpreciseAnnotation => ("SMP602", "imprecise-annotation", "`object` and `Any` in annotations", None, typing::imprecise_annotation { statement }),
@@ -207,8 +215,8 @@ rules! {
     SplitCompositeAssert => ("SMP807", "split-composite-assert", "Consecutive asserts comparing fields of one object", Sometimes, testing::split_composite_assert { module }),
     SleepInTest => ("SMP808", "sleep-in-test", "`time.sleep` and `asyncio.sleep` calls in tests", None, testing::sleep_in_test { module }),
     StdlibMock => ("SMP809", "stdlib-mock", "`unittest.mock` imports in projects that depend on pytest-mock", None, testing::stdlib_mock { module }),
-    UnittestAssertHelper => ("SMP811", "up-unittest-assert-helper", "`assertTrue` and `assertFalse` on checks that `TestCase` has a helper for", Sometimes, testing::up_unittest_assert_helper { expression }),
-    UnittestEnterContext => ("SMP812", "up-unittest-enter-context", "Patches started and stopped by hand in `TestCase` methods", Sometimes, testing::up_unittest_enter_context { module }),
+    UnittestAssertHelper => ("SMP811", "up-unittest-assert-helper", "`assertTrue` and `assertFalse` on checks that `TestCase` has a helper for", Sometimes, testing::up_unittest_assert_helper { expression } since PY314),
+    UnittestEnterContext => ("SMP812", "up-unittest-enter-context", "Patches started and stopped by hand in `TestCase` methods", Sometimes, testing::up_unittest_enter_context { module } since PY311),
     FunctionDocstring => ("SMP901", "function-docstring", "Docstrings on internal functions and classes", Sometimes, docstrings::function_docstring { module }),
     TestModuleDocstring => ("SMP902", "test-module-docstring", "Docstrings on test modules", Sometimes, docstrings::test_module_docstring { module }),
     UndocumentedPublicApi => ("SMP903", "undocumented-public-api", "Public functions, classes, methods and variables without documentation", None, docstrings::undocumented_public_api { module }),
@@ -269,6 +277,13 @@ impl RuleSet {
 
     pub fn subtract(self, other: Self) -> Self {
         Self(self.0 & !other.0)
+    }
+
+    // The rules left on for a target Python version: the ones whose minimum version the target reaches.
+    pub fn for_target(self, target: PythonVersion) -> Self {
+        let newer =
+            Rule::ALL.iter().copied().filter(|rule| rule.minimum_version().is_some_and(|minimum| minimum > target));
+        self.subtract(Self::from_rules(newer))
     }
 
     pub fn contains(self, rule: Rule) -> bool {

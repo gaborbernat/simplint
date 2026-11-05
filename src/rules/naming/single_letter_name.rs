@@ -82,7 +82,7 @@ fn check<'a>(walker: &Walker<'_, 'a>, scope: TextRange, name: &'a str, range: Te
     if !walker.in_comprehension()
         && name.chars().count() == 1
         && name != "_"
-        && walker.checker.reported_names().0.borrow_mut().insert((scope, name))
+        && walker.checker.state().reported_names().0.borrow_mut().insert((scope, name))
     {
         walker.checker.report(
             Rule::SingleLetterName,

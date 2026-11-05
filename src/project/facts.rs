@@ -56,7 +56,12 @@ pub struct FileFacts {
 impl FileFacts {
     // The module path, such as `["package", "module"]`, is what relative imports resolve against. A file outside any
     // package has none, and resolves them against `importable`, the module path under its search root, if it has one.
-    pub fn collect(path: &Path, module_path: Option<&[String]>, importable: Option<&[String]>) -> Option<Self> {
+    pub fn collect(
+        path: &Path,
+        module_path: Option<&[String]>,
+        importable: Option<&[String]>,
+        suppresses_rewrite: &dyn Fn(&str) -> bool,
+    ) -> Option<Self> {
         let source = std::fs::read_to_string(path).ok()?;
         let parsed = parse_module(&source).ok()?;
         let mut imports = Imports {
@@ -97,6 +102,7 @@ impl FileFacts {
             &parsed.syntax().body,
             &imports.aliases,
             &imports.from_statements,
+            suppresses_rewrite,
         );
         let listed = dunder_all(&parsed.syntax().body);
         let api_reached = match &listed {

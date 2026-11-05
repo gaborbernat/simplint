@@ -4,7 +4,9 @@ use crate::rules::docstrings::rst::{FieldKind, field_deletion, is_internal};
 
 pub fn rst_private_field(checker: &Checker) {
     // A public class's `__init__` docstring documents its constructor as the class docstring may.
-    for target in checker.rst_targets().iter().filter(|target| target.public || target.public_constructor) {
+    for target in
+        checker.state().rst_targets(checker).iter().filter(|target| target.public || target.public_constructor)
+    {
         for field in &target.docstring.fields {
             let parameter = matches!(field.kind, FieldKind::Param | FieldKind::Type);
             if !parameter && !matches!(field.kind, FieldKind::Var | FieldKind::VarType) {

@@ -2,7 +2,7 @@ use ruff_python_ast::{self as ast, Expr, Stmt};
 
 use crate::lint::checker::Checker;
 use crate::rules::docstrings::{is_documented_variable, module_statements_with_next};
-use crate::syntax::{for_each_body, is_classmethod, is_name, last_segment, module_statements, receiver};
+use crate::syntax::{instance_writes, is_classmethod, last_segment};
 
 // An attribute of a class as autodoc documents it: one its body assigns, or one a method sets on `self`.
 pub(crate) struct Attribute<'a> {
@@ -50,63 +50,14 @@ pub(crate) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) ->
             _ => {}
         }
     }
-    for method in module_statements(&class.body).filter_map(Stmt::as_function_def_stmt) {
-        // A static method receives nothing; a class method receives the class, whose attributes are class variables.
-        let Some(receiver) = receiver(method) else {
+    for write in instance_writes(class) {
+        // A `del` leaves the attribute undocumented, as the body does not set it.
+        if matches!(write.stmt, Stmt::Delete(_)) {
             continue;
-        };
-        let on_class = is_classmethod(method);
-        for_each_body(&method.body, &mut |body, _| {
-            for (index, stmt) in body.iter().enumerate() {
-                let documented = || is_documented_variable(checker, stmt, body.get(index + 1));
-                // A frozen dataclass sets its own attributes with `object.__setattr__(self, "name", value)`.
-                if let Some(name) = set_through_object(stmt, receiver) {
-                    add(name, on_class, documented());
-                }
-                let mut targets: Vec<&Expr> = match stmt {
-                    Stmt::Assign(ast::StmtAssign { targets, .. }) => targets.iter().collect(),
-                    Stmt::AnnAssign(ast::StmtAnnAssign { target, .. })
-                    | Stmt::AugAssign(ast::StmtAugAssign { target, .. })
-                    | Stmt::For(ast::StmtFor { target, .. }) => vec![target.as_ref()],
-                    Stmt::With(ast::StmtWith { items, .. }) => {
-                        items.iter().filter_map(|item| item.optional_vars.as_deref()).collect()
-                    }
-                    _ => Vec::new(),
-                };
-                // `self.left, self.right = pair` sets both, in the order written.
-                let mut next = 0;
-                while let Some(&target) = targets.get(next) {
-                    next += 1;
-                    match target {
-                        Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => {
-                            targets.extend(elts);
-                        }
-                        Expr::Starred(ast::ExprStarred { value, .. }) => targets.push(value),
-                        Expr::Attribute(attribute) if is_name(&attribute.value, receiver) => {
-                            add(attribute.attr.as_str(), on_class, documented());
-                        }
-                        _ => {}
-                    }
-                }
-            }
-        });
+        }
+        add(write.attr, is_classmethod(write.method), is_documented_variable(checker, write.stmt, write.next));
     }
     found
-}
-
-// The attribute an `object.__setattr__(receiver, "name", value)` call sets.
-fn set_through_object<'a>(stmt: &'a Stmt, receiver: &str) -> Option<&'a str> {
-    let call = stmt.as_expr_stmt()?.value.as_call_expr()?;
-    let attribute = call.func.as_attribute_expr()?;
-    let is_object = is_name(&attribute.value, "object");
-    match call.arguments.args.as_ref() {
-        [Expr::Name(target), Expr::StringLiteral(name), ..]
-            if is_object && attribute.attr.as_str() == "__setattr__" && target.id.as_str() == receiver =>
-        {
-            Some(name.value.to_str())
-        }
-        _ => None,
-    }
 }
 
 // Whether the class takes attributes from a base that may define them, as a field list cannot tell.

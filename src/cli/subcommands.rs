@@ -1,5 +1,6 @@
 // Ports of the `ruff` crate's informational subcommands, which it keeps private, over simplint's rules and options.
 use std::io::{self, BufWriter, Write};
+use std::path::Path;
 
 use anyhow::Result;
 use clap::ArgAction;
@@ -382,8 +383,9 @@ pub fn clean(level: LogLevel) -> Result<()> {
         .filter_map(Result::ok)
         .filter(|entry| entry.file_type().is_dir())
     {
-        let cache = cache::directory(&entry.path().join(CACHE_DIR_NAME));
-        if cache.is_dir() {
+        let ruff_cache = entry.path().join(CACHE_DIR_NAME);
+        let cache = cache::directory(&ruff_cache);
+        if is_real_dir(&ruff_cache) && is_real_dir(&cache) {
             if level >= LogLevel::Default {
                 writeln!(stderr, "Removing cache at: {}", relativize_path(&cache).bold())?;
             }
@@ -392,4 +394,9 @@ pub fn clean(level: LogLevel) -> Result<()> {
     }
     stderr.flush()?;
     Ok(())
+}
+
+// A link is not a directory to remove: it may point outside the project, and removing through it would delete there.
+fn is_real_dir(path: &Path) -> bool {
+    path.symlink_metadata().is_ok_and(|metadata| metadata.is_dir())
 }

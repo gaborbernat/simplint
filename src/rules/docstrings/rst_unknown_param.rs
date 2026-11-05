@@ -4,7 +4,7 @@ use crate::rules::docstrings::rst::{FieldKind, field_deletion};
 use rustc_hash::FxHashSet;
 
 pub fn rst_unknown_param(checker: &Checker) {
-    for target in checker.rst_targets() {
+    for target in checker.state().rst_targets(checker) {
         // `**kwargs` takes any keyword, which `:keyword name:` or `:param name:` fields document.
         let Some(parameters) = target.parameters().filter(|_| !target.takes_keywords()) else {
             continue;

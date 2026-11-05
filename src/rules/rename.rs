@@ -1,13 +1,12 @@
 // The rename fix module-level naming rules share.
 
 use ruff_diagnostics::{Edit, Fix};
-use ruff_python_ast::{self as ast, Expr, Stmt};
+use ruff_python_ast as ast;
 use ruff_python_stdlib::builtins::is_python_builtin;
 use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
-use crate::rules::{keep_debug_text, source_text_spans};
-use crate::syntax::all_literal;
+use crate::rules::keep_debug_text;
 
 pub fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
     let ranges = checker.semantic().name_ranges(old);
@@ -20,21 +19,21 @@ pub fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
     {
         return None;
     }
-    let exports = all_elements(checker.body());
-    if appears_in_strings(checker, old, &exports) {
+    let exports = checker.state().export_strings(checker);
+    if appears_in_strings(checker, old, exports) {
         return None;
     }
     // A name in a t-string keeps its source text, which a new spelling would change.
-    let source_spans = source_text_spans(checker.body());
+    let source_spans = checker.state().source_text_spans(checker);
     if ranges.iter().any(|range| source_spans.iter().any(|span| span.contains_range(*range))) {
         return None;
     }
     let renamed_exports = exports
-        .into_iter()
+        .iter()
         .filter(|element| element.value.to_str() == old)
         .filter_map(|element| Some(element.value.iter().next()?.content_range()));
     let edits = ranges.into_iter().chain(renamed_exports).map(|range| Edit::range_replacement(new.to_owned(), range));
-    let mut edits = keep_debug_text(checker.source, checker.body(), edits.collect())?.into_iter();
+    let mut edits = keep_debug_text(checker, edits.collect())?.into_iter();
     Some(Fix::unsafe_edits(edits.next()?, edits))
 }
 
@@ -59,12 +58,4 @@ fn contains_word(text: &str, word: &str) -> bool {
 
 fn is_word_char(char: char) -> bool {
     char.is_alphanumeric() || char == '_'
-}
-
-fn all_elements(body: &[Stmt]) -> Vec<&ast::ExprStringLiteral> {
-    body.iter()
-        .filter_map(all_literal)
-        .flat_map(|(_, elements)| elements)
-        .filter_map(Expr::as_string_literal_expr)
-        .collect()
 }

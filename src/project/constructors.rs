@@ -13,8 +13,6 @@ use ruff_text_size::Ranged;
 
 use super::facts::{FromImport, qualified};
 use super::index::FileId;
-use crate::lint::noqa;
-use crate::lint::registry::Rule;
 use crate::syntax::{dataclass_decorator, keyword_is_true};
 
 // What `dataclass-kw-only` needs to rewrite every positional call of a dataclass it makes keyword-only: the dataclasses
@@ -116,6 +114,7 @@ impl Constructors {
         body: &[Stmt],
         aliases: &FxHashMap<&str, String>,
         from_imports: &[FromImport],
+        suppresses_rewrite: &dyn Fn(&str) -> bool,
     ) -> Self {
         let qualify = |expr: &Expr| qualified(UnqualifiedName::from_expr(expr)?.segments(), aliases);
         let mut uses = Uses::new(|expr: &Expr| {
@@ -148,7 +147,12 @@ impl Constructors {
             let kind = match found {
                 Use::Call(call) => match CallKind::of(call) {
                     CallKind::Positional
-                        if is_suppressed(source, comments.get_or_init(|| comment_ranges(tokens)), call) =>
+                        if is_suppressed(
+                            source,
+                            comments.get_or_init(|| comment_ranges(tokens)),
+                            call,
+                            suppresses_rewrite,
+                        ) =>
                     {
                         UseKind::Opaque
                     }
@@ -198,16 +202,21 @@ impl Constructors {
 }
 
 // A suppression comment on the call keeps its own `dataclass-kw-only` report from rewriting it.
-fn is_suppressed(source: &str, comments: &CommentRanges, call: &ast::ExprCall) -> bool {
+fn is_suppressed(
+    source: &str,
+    comments: &CommentRanges,
+    call: &ast::ExprCall,
+    suppresses_rewrite: &dyn Fn(&str) -> bool,
+) -> bool {
     comments
         .comments_in_range(source.full_lines_range(call.range()))
         .iter()
-        .any(|comment| noqa::suppresses(&source[*comment], Rule::DataclassKwOnly.code()))
+        .any(|comment| suppresses_rewrite(&source[*comment]))
 }
 
 // The attribute names the body reads, with how often: `obj.name` and `obj.name(...)` alike.
 fn attribute_loads(body: &[Stmt]) -> BTreeMap<String, u32> {
-    let mut reads = crate::rules::ExprCollector::new(|expr: &Expr| {
+    let mut reads = crate::syntax::ExprCollector::new(|expr: &Expr| {
         let ast::ExprAttribute { attr, ctx, .. } = expr.as_attribute_expr()?;
         matches!(ctx, ast::ExprContext::Load).then(|| attr.to_string())
     });

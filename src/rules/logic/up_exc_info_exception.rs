@@ -1,5 +1,5 @@
 use ruff_diagnostics::{Edit, Fix};
-use ruff_python_ast::{self as ast, Expr, PythonVersion};
+use ruff_python_ast::{self as ast, Expr};
 use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
@@ -10,9 +10,6 @@ use crate::lint::walker::Walker;
 // second slot.
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let checker = walker.checker;
-    if checker.settings.from_ruff.target_version < PythonVersion::PY311 {
-        return;
-    }
     match expr {
         Expr::Subscript(ast::ExprSubscript { value, slice, .. }) if checker.text(slice.as_ref()) == "1" => {
             let Some(module) = exc_info_module(checker, value) else {

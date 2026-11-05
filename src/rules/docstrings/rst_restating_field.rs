@@ -4,7 +4,7 @@ use crate::rules::docstrings::rst::FieldKind;
 use rustc_hash::FxHashSet;
 
 pub fn rst_restating_field(checker: &Checker) {
-    for target in checker.rst_targets() {
+    for target in checker.state().rst_targets(checker) {
         for field in target.docstring.fields(&[FieldKind::Param, FieldKind::Var]) {
             let Some(name) = field.subject().filter(|name| restates(name, &field.description)) else {
                 continue;

@@ -49,7 +49,8 @@ enum MockCall {
 impl MockCall {
     fn of(semantic: &Semantic, func: &Expr) -> Option<Self> {
         match last_segment(func)? {
-            last if MOCK_CLASSES.contains(&last) => Some(Self::Mock),
+            // `create_autospec` takes the spec it builds the mock from, so it is never built without one.
+            last if MOCK_CLASSES.contains(&last) && last != "create_autospec" => Some(Self::Mock),
             _ if is_patch(semantic, func) => Some(Self::Patch),
             "object" if func.as_attribute_expr().is_some_and(|attribute| is_patch(semantic, &attribute.value)) => {
                 Some(Self::PatchObject)
@@ -62,7 +63,7 @@ impl MockCall {
 // `patch` alone is too common a method name (HTTP clients, `requests.patch`) to match on the name; the call must
 // reach it through a mock module or the pytest-mock fixture.
 fn is_patch(semantic: &Semantic, func: &Expr) -> bool {
-    semantic.resolves_to(func, &["unittest", "mock", "patch"])
-        || semantic.resolves_to(func, &["mock", "patch"])
+    let resolved = semantic.qualified_name(func);
+    resolved.is_some_and(|name| matches!(name.segments(), ["unittest", "mock", "patch"] | ["mock", "patch"]))
         || UnqualifiedName::from_expr(func).is_some_and(|name| matches!(name.segments(), [.., "mocker", "patch"]))
 }

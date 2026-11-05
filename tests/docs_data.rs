@@ -3,6 +3,7 @@ mod common;
 use std::fs;
 use std::path::Path;
 
+use similar::TextDiff;
 use test_case::test_case;
 
 use common::{project, simplint};
@@ -18,8 +19,11 @@ fn docs_data_matches_the_binary(args: &[&str], file: &str) {
     let (code, stdout, stderr) = simplint(root.path(), args);
     assert_eq!((code, stderr.as_str()), (0, ""));
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(file);
-    if fs::read_to_string(&path).ok().as_deref() != Some(stdout.as_str()) {
+    let committed = fs::read_to_string(&path).unwrap_or_default();
+    if committed != stdout {
         fs::write(&path, &stdout).expect("write docs data");
-        panic!("{} was stale and is now regenerated; commit it", path.display());
+        let diff =
+            TextDiff::from_lines(&committed, &stdout).unified_diff().header("committed", "regenerated").to_string();
+        panic!("{} was stale and is now regenerated; commit it\n{diff}", path.display());
     }
 }

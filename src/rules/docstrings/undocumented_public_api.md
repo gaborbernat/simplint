@@ -166,7 +166,6 @@ Checks that a library's public API is documented. No fix is offered, since only 
 
           def open_thing() -> int:
               return 1
-
   ```
 
 - **Names a private module defines and a public module re-exports**: the report names the module that re-exports the

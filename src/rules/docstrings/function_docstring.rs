@@ -19,7 +19,7 @@ pub fn function_docstring(checker: &Checker) {
     if checker.project().reads_docstrings() {
         return;
     }
-    let api = checker.public_api();
+    let api = checker.state().public_api(checker);
     let owners = checker
         .function_defs()
         .iter()

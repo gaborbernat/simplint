@@ -1,0 +1,25 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:6 SMP921 `:ivar removed:` documents `removed`, which `Slot` does not have [unsafe fix: Remove `:ivar removed:`]
+--- fixed (1 applied, 0 remaining) ---
+class Slot:
+    """A slot.
+
+    :ivar kept: Still set.
+    :ivar patched: Set through `object.__setattr__`.
+    :ivar nested: Set in a nested function.
+    """
+
+    def __init__(self) -> None:
+        self.kept = 1
+        del self.removed
+
+    def freeze(self) -> None:
+        object.__setattr__(self, "patched", 2)
+
+        def helper() -> None:
+            self.nested = 3
+
+        helper()

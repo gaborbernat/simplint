@@ -8,7 +8,7 @@ use ruff_python_ast::{self as ast, Expr, ExprContext, Keyword, Stmt};
 use crate::lint::checker::Checker;
 use crate::project::receivers::module_name;
 use crate::rules::classes::Decorated;
-use crate::syntax::{is_name, last_segment};
+use crate::syntax::{is_name, last_segment, receiver};
 
 // What freezing or slotting the class would break, and whether the walk met code it cannot judge, which makes the fix
 // unsafe.
@@ -50,7 +50,8 @@ pub(super) fn analyze<'a>(
         })
         .partition(|(_, class_variable)| *class_variable);
     let fields: FxHashSet<&str> = fields.into_iter().map(|(field, _)| field).collect();
-    let mut hazards = Hazards { fields: &fields, frozen: false, slots: false, suspected: false, depth: 0 };
+    let mut hazards =
+        Hazards { fields: &fields, frozen: false, slots: false, suspected: false, depth: 0, receiver: None };
     hazards.visit_body(&class.body);
     for attribute in project.attributes_written_on(&qualified) {
         hazards.written(attribute);
@@ -146,16 +147,18 @@ fn is_true(value: &Expr) -> bool {
 // What breaks once the class is frozen or slotted. A hazard the class shows for certain withholds the option it
 // breaks; one that only might break it, such as a class body writing to something other than `self`, makes the fix
 // unsafe.
-struct Hazards<'f> {
+struct Hazards<'f, 'a> {
     fields: &'f FxHashSet<&'f str>,
     frozen: bool,
     slots: bool,
     suspected: bool,
-    // How many functions deep the walk is, so a write to `self` is known to come from a method.
+    // How many functions deep the walk is, so a write to the receiver is known to come from a method.
     depth: usize,
+    // The receiver of the method being walked, which a nested def keeps: a write through it is an instance write.
+    receiver: Option<&'a str>,
 }
 
-impl Hazards<'_> {
+impl Hazards<'_, '_> {
     const SUSPECTED: [&str; 5] = ["__dict__", "__weakref__", "__setattr__", "__delattr__", "super"];
 
     // A frozen instance rejects every write, and a slotted one has no room for an attribute that is not a field. Writing
@@ -173,17 +176,22 @@ impl Hazards<'_> {
     }
 }
 
-impl<'a> Visitor<'a> for Hazards<'_> {
+impl<'a> Visitor<'a> for Hazards<'_, 'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
             // `frozen=True` refuses to overwrite these, and `slots=True` refuses a class that declares its own slots.
             Stmt::FunctionDef(function) if matches!(function.name.as_str(), "__setattr__" | "__delattr__") => {
                 self.frozen = true;
             }
-            Stmt::FunctionDef(_) => {
+            Stmt::FunctionDef(function) => {
+                let outer = self.receiver;
+                if self.depth == 0 {
+                    self.receiver = receiver(function);
+                }
                 self.depth += 1;
                 visitor::walk_stmt(self, stmt);
                 self.depth -= 1;
+                self.receiver = outer;
                 return;
             }
             _ => {}
@@ -194,7 +202,7 @@ impl<'a> Visitor<'a> for Hazards<'_> {
     fn visit_expr(&mut self, expr: &'a Expr) {
         match expr {
             Expr::Attribute(ast::ExprAttribute { value, attr, ctx: ExprContext::Store | ExprContext::Del, .. }) => {
-                if self.depth > 0 && is_name(value, "self") {
+                if self.depth > 0 && self.receiver.is_some_and(|receiver| is_name(value, receiver)) {
                     self.written(attr.as_str());
                 } else {
                     self.suspected = true;

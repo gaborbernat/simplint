@@ -1,16 +1,14 @@
 use std::cell::OnceCell;
 
 use ruff_diagnostics::{Edit, Fix, IsolationLevel};
-use ruff_python_ast::helpers::{is_docstring_stmt, is_dunder};
+use ruff_python_ast::helpers::is_dunder;
 use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
-use ruff_python_stdlib::sys::is_known_standard_library;
-use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::{has_version_gate, is_class_like, isort_key, single_assignment};
-use crate::semantic::{Semantic, future_import};
+use crate::rules::{ensure_import, has_version_gate, is_class_like, isort_key, single_assignment};
+use crate::semantic::Semantic;
 use crate::syntax::{alias_binding, last_segment};
 
 pub fn missing_final(checker: &Checker) {
@@ -47,8 +45,9 @@ pub fn missing_final(checker: &Checker) {
         {
             continue;
         }
-        let (qualifier, import) = spelling.get_or_init(|| final_qualifier(checker));
-        let fix = final_fix(checker, qualifier, import.as_ref(), target.range, annotation, value);
+        let fix = spelling.get_or_init(|| final_qualifier(checker)).as_ref().and_then(|(qualifier, import)| {
+            final_fix(checker, qualifier, import.as_ref(), target.range, annotation, value)
+        });
         checker.report_fix(
             Rule::MissingFinal,
             target.range,
@@ -172,7 +171,8 @@ fn bare_final_fix(checker: &Checker, annotation: &Expr, value: &Expr) -> Option<
     Some(Fix::unsafe_edit(edit))
 }
 
-fn final_qualifier(checker: &Checker) -> (String, Option<Edit>) {
+// The name a fix annotates with, and the import it adds; `None` when the import cannot be added without shadowing.
+fn final_qualifier(checker: &Checker) -> Option<(String, Option<Edit>)> {
     let body = checker.body();
     // A `Final` bound only under `if TYPE_CHECKING:` is missing at runtime, where eager annotations evaluate it.
     let lazy = checker.semantic().annotations_are_lazy();
@@ -183,7 +183,7 @@ fn final_qualifier(checker: &Checker) -> (String, Option<Edit>) {
         _ => false,
     });
     if checker.semantic().is_bound("Final") && (lazy || bound_at_top) {
-        return ("Final".to_owned(), None);
+        return Some(("Final".to_owned(), None));
     }
     let typing_module = body
         .iter()
@@ -191,7 +191,7 @@ fn final_qualifier(checker: &Checker) -> (String, Option<Edit>) {
         .flat_map(|import| &import.names)
         .find(|alias| alias.name.as_str() == "typing");
     if let Some(alias) = typing_module {
-        return (format!("{}.Final", alias.asname.as_ref().unwrap_or(&alias.name)), None);
+        return Some((format!("{}.Final", alias.asname.as_ref().unwrap_or(&alias.name)), None));
     }
     let existing = body.iter().find_map(|stmt| match stmt {
         Stmt::ImportFrom(ast::StmtImportFrom { module: Some(module), names, level: 0, .. })
@@ -205,46 +205,10 @@ fn final_qualifier(checker: &Checker) -> (String, Option<Edit>) {
         // Ruff's isort orders names by type, constants such as `TYPE_CHECKING` before classes such as `Final`, then
         // alphabetically, so `Final` goes before the first name that sorts after it.
         Some(names) => match names.iter().find(|alias| isort_key(alias.name.as_str()) > isort_key("Final")) {
-            Some(alias) => Edit::insertion("Final, ".to_owned(), alias.start()),
-            None => Edit::insertion(", Final".to_owned(), names.last().expect("an import names something").end()),
+            Some(alias) => Some(Edit::insertion("Final, ".to_owned(), alias.start())),
+            None => Some(Edit::insertion(", Final".to_owned(), names.last().expect("an import names something").end())),
         },
-        None => typing_import(checker),
+        None => ensure_import(checker, "typing", Some("Final"))?.1,
     };
-    ("Final".to_owned(), Some(edit))
-}
-
-// The import goes where Ruff's isort keeps it: in the standard library section of the leading import block, after the
-// plain `import x` lines and in module order among the `from x import y` lines, with a blank line around a new section.
-fn typing_import(checker: &Checker) -> Edit {
-    const IMPORT: &str = "from typing import Final\n";
-    let body = checker.body();
-    let source = checker.source;
-    let preamble = body.iter().take_while(|stmt| future_import(stmt).is_some() || is_docstring_stmt(stmt)).count();
-    let block: Vec<&Stmt> =
-        body[preamble..].iter().take_while(|stmt| matches!(stmt, Stmt::Import(_) | Stmt::ImportFrom(_))).collect();
-    let minor = checker.settings.from_ruff.target_version.minor;
-    let stdlib: Vec<(&Stmt, Option<&str>)> = block
-        .iter()
-        .filter_map(|stmt| match stmt {
-            Stmt::Import(ast::StmtImport { names, .. }) => names
-                .iter()
-                .all(|alias| is_known_standard_library(minor, alias.name.split('.').next().unwrap_or_default()))
-                .then_some((*stmt, None)),
-            Stmt::ImportFrom(ast::StmtImportFrom { module: Some(module), level: 0, .. }) => {
-                is_known_standard_library(minor, module.split('.').next().unwrap_or_default())
-                    .then_some((*stmt, Some(module.as_str())))
-            }
-            _ => None,
-        })
-        .collect();
-    if let Some((next, _)) =
-        stdlib.iter().find(|(_, module)| module.is_some_and(|module| module.to_ascii_lowercase().as_str() > "typing"))
-    {
-        return Edit::insertion(IMPORT.to_owned(), source.line_start(next.start()));
-    }
-    if let Some((last, _)) = stdlib.last() {
-        return Edit::insertion(IMPORT.to_owned(), source.full_line_end(last.end()));
-    }
-    // The variable that needs `Final` follows the preamble, so the body has a statement there.
-    Edit::insertion(format!("{IMPORT}\n"), source.line_start(body[preamble].start()))
+    Some(("Final".to_owned(), edit))
 }

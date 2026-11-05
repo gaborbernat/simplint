@@ -1,6 +1,6 @@
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::token::TokenKind;
-use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
+use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange};
 
@@ -21,9 +21,6 @@ const PATCHERS: &[&[&str]] = &[
 ];
 
 pub fn up_unittest_enter_context(checker: &Checker) {
-    if checker.settings.from_ruff.target_version < PythonVersion::PY311 {
-        return;
-    }
     for class in checker.class_defs().iter().filter(|class| is_test_case(checker, class)) {
         for method in class.body.iter().filter_map(Stmt::as_function_def_stmt) {
             for_each_body(&method.body, &mut |statements, _| {

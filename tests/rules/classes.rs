@@ -4,6 +4,8 @@ use crate::common;
 
 #[test_case("dataclass-frozen", "dataclass_frozen.py", "py314" ; "dataclass_frozen")]
 #[test_case("dataclass-frozen", "dataclass_frozen_receivers.py", "py314" ; "dataclass_frozen_receivers")]
+#[test_case("dataclass-frozen", "dataclass_frozen_receiver_names.py", "py314" ; "dataclass_frozen_receiver_names")]
+#[test_case("dataclass-slots", "dataclass_slots_receiver_names.py", "py314" ; "dataclass_slots_receiver_names")]
 #[test_case("dataclass-frozen", "dataclass_frozen_runtime.py", "py314" ; "dataclass_frozen_runtime")]
 #[test_case("dataclass-slots", "dataclass_slots.py", "py314" ; "dataclass_slots")]
 #[test_case("dataclass-kw-only", "dataclass_kw_only.py", "py314" ; "dataclass_kw_only")]

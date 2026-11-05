@@ -1,5 +1,5 @@
 use ruff_diagnostics::{Edit, Fix};
-use ruff_python_ast::{self as ast, Expr, PythonVersion};
+use ruff_python_ast::{self as ast, Expr};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
@@ -9,21 +9,18 @@ use crate::lint::walker::Walker;
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let checker = walker.checker;
     // Python 3.15 turns `suggest_on_error` on by default, so the keyword set to `True` changes nothing from there.
-    if checker.settings.from_ruff.target_version < PythonVersion::PY315 {
-        return;
-    }
     let Expr::Call(call) = expr else {
         return;
     };
-    if !checker.semantic().resolves_to(&call.func, &["argparse", "ArgumentParser"]) {
-        return;
-    }
     let Some(keyword) = call.arguments.keywords.iter().find(|keyword| {
         keyword.arg.as_ref().is_some_and(|name| name.as_str() == "suggest_on_error")
             && matches!(keyword.value, Expr::BooleanLiteral(ast::ExprBooleanLiteral { value: true, .. }))
     }) else {
         return;
     };
+    if !checker.semantic().resolves_to(&call.func, &["argparse", "ArgumentParser"]) {
+        return;
+    }
     let fix = removal(checker, call, keyword).map(|range| Fix::safe_edit(Edit::range_deletion(range)));
     checker.report_fix(
         Rule::ArgparseSuggestOnError,

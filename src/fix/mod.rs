@@ -12,15 +12,14 @@ use ruff_db::diagnostic::Diagnostic;
 use ruff_linter::linter::FixTable;
 use ruff_linter::settings::flags;
 use ruff_linter::settings::types::UnsafeFixes;
-use ruff_python_ast::{PySourceType, PythonVersion};
-use ruff_python_parser::{ParseOptions, UnsupportedSyntaxError, UnsupportedSyntaxErrorKind, parse_unchecked};
+use ruff_python_parser::{UnsupportedSyntaxError, UnsupportedSyntaxErrorKind};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::fix::apply::{FixResult, fix_file};
 use crate::fix::cleanup::cleanup;
-use crate::lint::Linter;
 use crate::lint::registry::{Rule, RuleSet, rule_of};
 use crate::lint::ruff::Checked;
+use crate::lint::{Lint, Linter};
 
 pub struct FixerResult {
     pub diagnostics: Vec<Diagnostic>,
@@ -39,7 +38,7 @@ pub struct Fixer<'l, 'a> {
     unsafe_fixes: UnsafeFixes,
     noqa: flags::Noqa,
     sources: Sources,
-    lints: Memo<Vec<Diagnostic>>,
+    lints: Memo<Lint>,
     checks: Memo<Arc<Checked>>,
     failing: Memo<Arc<FxHashSet<&'static str>>>,
     cleanups: Mutex<FxHashMap<CleanupKey, Arc<str>>>,
@@ -96,7 +95,7 @@ impl<'l, 'a> Fixer<'l, 'a> {
     }
 
     fn run(&self, source: &str) -> Result<(FixerResult, RuleSet)> {
-        let linted = Linted { source, diagnostics: self.lint(source) };
+        let linted = Linted { source, lint: self.lint(source) };
         let mut unfixable = RuleSet::default();
         let (mut result, mut left) = self.settle(&linted, unfixable)?;
         while left > 0 {
@@ -122,7 +121,7 @@ impl<'l, 'a> Fixer<'l, 'a> {
         if result.transformed == source && !result.fixed.is_empty() {
             unfixable = unfixable.union(RuleSet::from_rules(Self::fixing_rules(&result.fixed)));
             result = FixerResult {
-                diagnostics: linted.diagnostics.clone(),
+                diagnostics: linted.lint.diagnostics.clone(),
                 transformed: source.to_owned(),
                 fixed: FixTable::default(),
             };
@@ -136,7 +135,7 @@ impl<'l, 'a> Fixer<'l, 'a> {
 
     // Whether another run over the fixed source would apply fixes and leave Ruff nothing new.
     fn reapplies(&self, source: &str) -> Result<bool> {
-        let (result, left) = self.settle(&Linted { source, diagnostics: self.lint(source) }, RuleSet::default())?;
+        let (result, left) = self.settle(&Linted { source, lint: self.lint(source) }, RuleSet::default())?;
         Ok(!result.fixed.is_empty() && result.transformed != source && left == 0)
     }
 
@@ -156,12 +155,12 @@ impl<'l, 'a> Fixer<'l, 'a> {
             let Some((transformed, left)) = self.clean_up(linted.source, &round.transformed) else {
                 return Ok((FixerResult { fixed, ..round }, 0));
             };
-            let diagnostics = self.lint(&transformed);
+            let lint = self.lint(&transformed);
             if left > 0 || !seen.insert(transformed.clone()) {
-                return Ok((FixerResult { diagnostics, transformed, fixed }, left));
+                return Ok((FixerResult { diagnostics: lint.diagnostics, transformed, fixed }, left));
             }
-            errors::ensure_converging(self.path, seen.len(), &diagnostics)?;
-            round = self.fix_with(&Linted { source: &transformed, diagnostics }, unfixable)?;
+            errors::ensure_converging(self.path, seen.len(), &lint.diagnostics)?;
+            round = self.fix_with(&Linted { source: &transformed, lint }, unfixable)?;
         }
     }
 
@@ -209,9 +208,8 @@ impl<'l, 'a> Fixer<'l, 'a> {
     // or the passes do not settle. Rules in `unfixable` keep their reports but not their fixes. The rules skip a file
     // that does not parse, so only a file that parses gets fixes, and a syntax error after one is the fix's doing.
     fn fix_with(&self, linted: &Linted, unfixable: RuleSet) -> Result<FixerResult> {
-        let version = self.linter.settings.from_ruff.target_version;
         let mut transformed = linted.source.to_owned();
-        let mut diagnostics = linted.diagnostics.clone();
+        let mut diagnostics = linted.lint.diagnostics.clone();
         let mut fixed = FixTable::default();
         let mut iterations = 0;
         let mut original = None;
@@ -219,18 +217,19 @@ impl<'l, 'a> Fixer<'l, 'a> {
             errors::ensure_converging(self.path, iterations, &diagnostics)?;
             // Counted once a pass applies, from the source before the first one: the target version may reject syntax
             // the source already uses, which the fixes must not be blamed for.
-            let counts = original.get_or_insert_with(|| version_counts(&version_errors(&transformed, version)));
+            let counts = original.get_or_insert_with(|| version_counts(&linted.lint.unsupported));
             add_fixes(&mut fixed, &fixes);
             transformed = code;
             iterations += 1;
-            diagnostics = self.lint(&transformed);
-            let introduced = check_syntax(&diagnostics, &version_errors(&transformed, version), counts);
+            let lint = self.lint(&transformed);
+            let introduced = check_syntax(&lint.diagnostics, &lint.unsupported, counts);
             errors::ensure_syntax(self.path, &transformed, &fixed, introduced)?;
+            diagnostics = lint.diagnostics;
         }
         Ok(FixerResult { diagnostics, transformed, fixed })
     }
 
-    fn lint(&self, source: &str) -> Vec<Diagnostic> {
+    fn lint(&self, source: &str) -> Lint {
         self.lints.get_or(&self.sources, source, || self.linter.lint(self.path, source, self.noqa))
     }
 
@@ -245,12 +244,6 @@ pub fn add_fixes(total: &mut FixTable, fixes: &FixTable) {
     for (id, secondary_code, count) in fixes.iter() {
         *total.entry(id).or_default(secondary_code) += count;
     }
-}
-
-// The errors of the syntax a version rejects, such as an f-string reusing its quote before Python 3.12.
-fn version_errors(source: &str, version: PythonVersion) -> Vec<UnsupportedSyntaxError> {
-    let options = ParseOptions::from(PySourceType::Python).with_target_version(version);
-    parse_unchecked(source, options).unsupported_syntax_errors().to_vec()
 }
 
 type VersionCounts = FxHashMap<UnsupportedSyntaxErrorKind, usize>;
@@ -342,18 +335,24 @@ impl Sources {
 // The source the fixes start from, whose reports are the first pass of every fix loop.
 struct Linted<'s> {
     source: &'s str,
-    diagnostics: Vec<Diagnostic>,
+    lint: Lint,
 }
 
 #[cfg(test)]
 mod tests {
     use ruff_db::diagnostic::{Diagnostic, Span};
-    use ruff_python_ast::PythonVersion;
+    use ruff_python_ast::{PySourceType, PythonVersion};
+    use ruff_python_parser::{ParseOptions, UnsupportedSyntaxError, parse_unchecked};
     use ruff_source_file::SourceFileBuilder;
     use ruff_text_size::TextRange;
     use test_case::test_case;
 
-    use super::{VersionCounts, check_syntax, version_counts, version_errors};
+    use super::{VersionCounts, check_syntax, version_counts};
+
+    fn version_errors(source: &str, version: PythonVersion) -> Vec<UnsupportedSyntaxError> {
+        let options = ParseOptions::from(PySourceType::Python).with_target_version(version);
+        parse_unchecked(source, options).unsupported_syntax_errors().to_vec()
+    }
 
     const NESTED_QUOTE: &str = "print(f\"{x[\"a\"]}\")\n";
 

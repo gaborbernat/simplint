@@ -7,8 +7,8 @@ use notify::{RecursiveMode, Watcher, recommended_watcher};
 use ruff::ExitStatus;
 
 use crate::cli::args::{CheckCommand, GlobalConfigArgs};
-use crate::cli::check::{Resolved, check_files};
 use crate::cli::printer::Printer;
+use crate::run::{Resolved, check_files};
 
 // Ruff's watch mode: check, then check again on every change to a watched Python file, resolving the configuration
 // again when a `.toml` file changes. It runs until watching fails or a check cannot run.

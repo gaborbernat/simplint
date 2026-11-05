@@ -1,5 +1,5 @@
 use ruff_diagnostics::{Edit, Fix};
-use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
+use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextLen, TextRange};
 
 use crate::lint::checker::Checker;
@@ -9,9 +9,6 @@ use crate::syntax::for_each_body;
 
 // Python 3.15 adds the `sentinel` builtin, whose repr and pickle carry the name the placeholder is bound to.
 pub fn up_object_sentinel(checker: &Checker) {
-    if checker.settings.from_ruff.target_version < PythonVersion::PY315 {
-        return;
-    }
     if identifier_uses(checker, TextRange::up_to(checker.source.text_len()), "sentinel") > 0 {
         return;
     }
@@ -38,7 +35,7 @@ fn is_bare_object(checker: &Checker, value: &Expr) -> bool {
     matches!(value, Expr::Call(ast::ExprCall { func, arguments, .. })
         if arguments.args.is_empty()
             && arguments.keywords.is_empty()
-            && checker.semantic().resolves_to(func, &["", "object"]))
+            && checker.semantic().is_builtin(func, "object"))
 }
 
 fn report(checker: &Checker, name: &str, value: &Expr) {

@@ -3,7 +3,7 @@ use crate::lint::registry::Rule;
 use crate::rules::docstrings::rst::FieldKind;
 
 pub fn rst_empty_field(checker: &Checker) {
-    for target in checker.rst_targets() {
+    for target in checker.state().rst_targets(checker) {
         let fields = target.docstring.fields(&[
             FieldKind::Param,
             FieldKind::Raises,

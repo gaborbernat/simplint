@@ -4,6 +4,7 @@ mod layout;
 mod lint;
 mod project;
 mod rules;
+mod run;
 mod semantic;
 mod settings;
 mod syntax;

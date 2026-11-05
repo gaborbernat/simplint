@@ -37,7 +37,18 @@ impl<'a> Semantic<'a> {
     // Whether `expr` names `segments`, resolved as Ruff does through the imports that bind its head, so `mock.patch`
     // after `from unittest import mock` names `unittest.mock.patch`.
     pub fn resolves_to(&self, expr: &Expr, segments: &[&str]) -> bool {
+        // An attribute resolves to a name ending in the attribute itself, so any other last segment rules it out.
+        if let Expr::Attribute(attribute) = expr
+            && segments.last() != Some(&attribute.attr.as_str())
+        {
+            return false;
+        }
         self.model.resolve_qualified_name(expr).is_some_and(|name| name.segments() == segments)
+    }
+
+    // Whether `expr` is the builtin `name`, not something the file binds the name to in the scope it is read in.
+    pub fn is_builtin(&self, expr: &Expr, name: &str) -> bool {
+        self.resolves_to(expr, &["", name])
     }
 
     // What `expr` names, resolved as `resolves_to` does; a builtin's first segment is empty.

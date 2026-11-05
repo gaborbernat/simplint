@@ -1,6 +1,6 @@
 mod dataclass_frozen;
 mod dataclass_hazards;
-mod dataclass_kw_only;
+pub(crate) mod dataclass_kw_only;
 mod dataclass_slots;
 mod indistinct_error_class;
 
@@ -10,7 +10,7 @@ pub(crate) use dataclass_slots::dataclass_slots;
 pub(crate) use indistinct_error_class::indistinct_error_class;
 
 use ruff_diagnostics::{Applicability, Edit, Fix};
-use ruff_python_ast::{self as ast, Expr, PythonVersion};
+use ruff_python_ast::{self as ast, Expr};
 use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
@@ -39,7 +39,7 @@ fn require_options(
 ) {
     // `slots=` and `kw_only=` arrived in Python 3.10; an older target cannot use them. `frozen=` has no such limit.
     if options.iter().any(|option| matches!(*option, "slots" | "kw_only"))
-        && checker.settings.from_ruff.target_version < PythonVersion::PY310
+        && checker.settings.from_ruff.target_version < dataclass_kw_only::SINCE
     {
         return;
     }

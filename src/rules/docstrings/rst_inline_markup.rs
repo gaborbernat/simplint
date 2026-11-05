@@ -15,7 +15,7 @@ const CODE_DIRECTIVES: &[&str] =
     &["code-block", "code", "sourcecode", "doctest", "testcode", "testoutput", "ipython", "jupyter-execute"];
 
 pub fn rst_inline_markup(checker: &Checker) {
-    for target in checker.rst_targets() {
+    for target in checker.state().rst_targets(checker) {
         // Positions in the source hold only for a docstring whose text is its source.
         let Some(content) = target.docstring.content else {
             continue;
