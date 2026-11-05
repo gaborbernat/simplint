@@ -1,0 +1,6 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+9:1 SMP305 `importlib_metadata` backports `importlib.metadata`, which every supported Python version ships; check the calls, as the API may differ
+10:1 SMP305 `importlib_resources` backports `importlib.resources`, which every supported Python version ships; check the calls, as the API may differ

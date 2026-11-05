@@ -1,0 +1,68 @@
+{
+  "output-format": "concise",
+  "fix": true,
+  "fix-only": false,
+  "show-fixes": true,
+  "unsafe-fixes": false,
+  "select": [
+    "SMP1",
+    "SMP201"
+  ],
+  "extend-select": [
+    "SMP304"
+  ],
+  "ignore": [
+    "SMP601"
+  ],
+  "fixable": [
+    "SMP1"
+  ],
+  "unfixable": [
+    "SMP601"
+  ],
+  "extend-fixable": [
+    "SMP201"
+  ],
+  "extend-unfixable": [
+    "SMP202"
+  ],
+  "extend-safe-fixes": [
+    "SMP002"
+  ],
+  "extend-unsafe-fixes": [
+    "SMP003"
+  ],
+  "per-file-ignores": {
+    "tests/**.py": [
+      "SMP8"
+    ]
+  },
+  "extend-per-file-ignores": {
+    "docs/**.py": [
+      "SMP9"
+    ]
+  },
+  "api-packages": [
+    "app"
+  ],
+  "api-modules": [
+    "app.cli"
+  ],
+  "project-kind": "library",
+  "docstring-style": "rst",
+  "max-paragraph-words": 80,
+  "naming": {
+    "keep-names": [
+      "urlpatterns"
+    ]
+  },
+  "imports": {
+    "module-attributes": [
+      "app.settings"
+    ]
+  },
+  "logic": {
+    "max-helper-statements": 2,
+    "max-caller-statements": 30
+  }
+}

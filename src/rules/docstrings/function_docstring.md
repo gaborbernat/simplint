@@ -101,6 +101,7 @@ classes, at any nesting depth. What counts as internal depends on the project.
 
           def _open() -> None:
               """Open the file."""
+
   ```
 
 - **Functions in a private module that other modules import**: a function in a module such as `package/_helpers.py` is

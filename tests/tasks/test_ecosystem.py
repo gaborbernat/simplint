@@ -6,7 +6,7 @@ import json
 import subprocess
 import sys
 import tarfile
-from typing import TYPE_CHECKING, Protocol, TypedDict, Unpack
+from typing import TYPE_CHECKING, Final, Protocol, TypedDict, Unpack, cast
 
 import pytest
 
@@ -14,14 +14,13 @@ from tasks.compile_examples import Interpreter
 from tasks.ecosystem import PACKAGES, Package, check, download, main
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
     from pathlib import Path
 
     from pytest_mock import MockerFixture
 
 # The tools the fake passes through to the real process, which the tests run for real.
-_REAL_RUN = subprocess.run
-_CURRENT = Interpreter(minor=sys.version_info.minor, path=sys.executable)
+_REAL_RUN: Final[_Run] = cast("_Run", subprocess.run)
+_CURRENT: Final[Interpreter] = Interpreter(minor=sys.version_info.minor, path=sys.executable)
 
 
 class _Behavior(Protocol):
@@ -34,6 +33,10 @@ class _RunOptions(TypedDict, total=False):
     text: bool
     check: bool
     input: str
+
+
+class _Run(Protocol):
+    def __call__(self, command: list[str], **options: Unpack[_RunOptions]) -> subprocess.CompletedProcess[str]: ...
 
 
 def test_packages_are_pinned_to_pypi_source_archives() -> None:
@@ -237,7 +240,7 @@ def _sdist(at: Path) -> Path:
     return archive
 
 
-def _tools(behavior: _Behavior) -> Callable[..., subprocess.CompletedProcess[str]]:
+def _tools(behavior: _Behavior) -> _Run:
     # The uv and interpreter calls run for real; the tools that act on a tree are the fake's.
     def run(command: list[str], **options: Unpack[_RunOptions]) -> subprocess.CompletedProcess[str]:
         if command[0] == "uv" or command[1:2] == ["-I"]:

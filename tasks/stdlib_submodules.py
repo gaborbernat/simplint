@@ -24,7 +24,6 @@ _REFS: Final[dict[int, str]] = {
     15: "origin/3.15",
 }
 _LATEST: Final[int] = max(_REFS)
-_EXCLUDED_TREES: Final[frozenset[str]] = frozenset({"test", "tests", "idlelib", "turtledemo"})
 # os.py registers os.path in sys.modules rather than shipping a file of that name, so the file listing never shows it.
 _REGISTERED: Final[frozenset[str]] = frozenset({"os.path"})
 
@@ -65,6 +64,7 @@ def dotted_names(paths: list[str]) -> set[str]:
     #
     # :param paths: the paths under Lib/, relative to the checkout root
     # :returns: the dotted names with at least two parts
+    excluded = frozenset({"test", "tests", "idlelib", "turtledemo"})
     names: set[str] = set()
     for path in paths:
         if not path.endswith(".py"):
@@ -72,7 +72,7 @@ def dotted_names(paths: list[str]) -> set[str]:
         parts = path.removeprefix("Lib/").removesuffix(".py").split("/")
         if parts[-1] == "__init__":
             parts.pop()
-        if len(parts) <= 1 or _EXCLUDED_TREES.intersection(parts) or any(part.startswith("__") for part in parts):
+        if len(parts) <= 1 or excluded.intersection(parts) or any(part.startswith("__") for part in parts):
             continue
         names.add(".".join(parts))
     return names

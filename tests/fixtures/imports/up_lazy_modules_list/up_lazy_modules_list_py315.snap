@@ -1,0 +1,12 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:1 SMP307 `__lazy_modules__` makes the listed imports lazy; spell each one as `lazy import` from Python 3.15 [fix: Use `lazy` on the listed imports and drop the list]
+--- fixed (1 applied, 0 remaining) ---
+
+lazy import json
+lazy import pathlib
+from os import path
+
+print(json.dumps([1]), pathlib.Path("demo").name, path.sep)

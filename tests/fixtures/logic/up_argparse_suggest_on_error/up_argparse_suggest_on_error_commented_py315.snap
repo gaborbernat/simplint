@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:5 SMP519 `suggest_on_error=True` is the default from Python 3.15

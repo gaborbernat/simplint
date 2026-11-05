@@ -1,0 +1,35 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:12 SMP511 `_MISSING` is a bare `object()`, whose repr is an address; `sentinel("_MISSING")` names it [unsafe fix: Create it with `sentinel`]
+14:16 SMP511 `SENTINEL` is a bare `object()`, whose repr is an address; `sentinel("SENTINEL")` names it [unsafe fix: Create it with `sentinel`]
+15:13 SMP511 `value` is a bare `object()`, whose repr is an address; `sentinel("value")` names it [unsafe fix: Create it with `sentinel`]
+--- fixed (3 applied, 0 remaining) ---
+_MISSING = sentinel("_MISSING")
+_SHARED = object()
+_SHARED = 2
+_TARGET = _TARGET_TWO = object()
+_ARGUMENT = object(1)
+_CALLED = dict()
+_ANNOTATED: object = object()
+MAYBE = None
+if MAYBE is None:
+    _IN_IF = object()
+
+
+class Config:
+    SENTINEL = sentinel("SENTINEL")
+    value = sentinel("value")
+
+    def method(self):
+        local = object()
+        return local
+
+
+def run():
+    _LOCAL = object()
+    return _LOCAL
+
+
+_LOCAL_STRING = "object()"

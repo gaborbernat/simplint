@@ -1,0 +1,43 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:8 SMP305 `tomli` backports `tomllib`, which every supported Python version ships; import `tomllib` and drop `tomli` from the dependencies
+2:8 SMP305 `tomli` backports `tomllib`, which every supported Python version ships; import `tomllib` and drop `tomli` from the dependencies [fix: Import `tomllib` instead]
+3:1 SMP305 `tomli` backports `tomllib`, which every supported Python version ships; import `tomllib` and drop `tomli` from the dependencies [fix: Import `tomllib` instead]
+4:1 SMP305 `tomli` backports `tomllib`, which every supported Python version ships; import `tomllib` and drop `tomli` from the dependencies [fix: Import `tomllib` instead]
+5:1 SMP305 `exceptiongroup` names are builtins in every supported Python version; drop the import [fix: Remove the import]
+7:1 SMP305 `async_timeout` backports `asyncio.timeout`, which every supported Python version ships; check the calls, as the API may differ
+8:1 SMP305 `taskgroup` backports `asyncio.TaskGroup`, which every supported Python version ships; check the calls, as the API may differ
+9:1 SMP305 `importlib_metadata` backports `importlib.metadata`, which every supported Python version ships; check the calls, as the API may differ
+10:1 SMP305 `importlib_resources` backports `importlib.resources`, which every supported Python version ships; check the calls, as the API may differ
+22:5 SMP305 `tomli` backports `tomllib`, which every supported Python version ships; import `tomllib` and drop `tomli` from the dependencies [fix: Import `tomllib` instead]
+--- fixed (5 applied, 5 remaining) ---
+import tomli
+import tomllib as toml
+from tomllib import loads
+from tomllib import loads as parse
+from exceptiongroup import catch
+from async_timeout import timeout
+from taskgroup import TaskGroup
+from importlib_metadata import version
+from importlib_resources import files
+from .tomli import loads as relative
+import json
+import exceptiongroup
+
+try:
+    import tomli as fallback
+except ImportError:
+    import tomllib as fallback
+
+
+def run():
+    from tomllib import loads as inner
+
+    return inner
+
+
+print(tomli.loads("a = 1"), toml.loads("b = 2"), loads("c = 3"), parse, relative, json.dumps(1))
+print(ExceptionGroup("x", [ValueError()]), BaseExceptionGroup, catch, timeout, TaskGroup, version, files)
+print(fallback, run)

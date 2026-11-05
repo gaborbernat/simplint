@@ -1,0 +1,59 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+11:9 SMP509 `traceback.print_exception` reads the type and traceback from `error`; pass `error` alone [fix: Drop the type and traceback arguments]
+12:9 SMP509 `traceback.print_exception` reads the type and traceback from `error`; pass `error` alone [fix: Drop the type and traceback arguments]
+13:9 SMP509 `traceback.format_exception` reads the type and traceback from `error`; pass `error` alone [fix: Drop the type and traceback arguments]
+14:9 SMP509 `traceback.format_exception_only` reads the type and traceback from `error`; pass `error` alone [fix: Drop the type and traceback arguments]
+15:9 SMP509 `traceback.format_exception` reads the type and traceback from `error`; pass `error` alone [fix: Drop the type and traceback arguments]
+16:9 SMP509 `traceback.print_exception` reads the type and traceback from `error`; pass `error` alone [fix: Drop the type and traceback arguments]
+17:9 SMP509 `traceback.format_exception` reads the type and traceback from `error`; pass `error` alone [fix: Drop the type and traceback arguments]
+--- fixed (7 applied, 0 remaining) ---
+import sys
+import traceback
+import traceback as tb_module
+from traceback import print_exception
+
+
+def report(run, saved, other):
+    try:
+        run()
+    except Exception as error:
+        traceback.print_exception(error)
+        traceback.print_exception(error, limit=2, chain=False)
+        traceback.format_exception(error)
+        traceback.format_exception_only(error)
+        tb_module.format_exception(error)
+        print_exception(error, file=sys.stderr)
+        traceback.format_exception(error, limit=1)
+        traceback.format_exception(type(error), error, saved)
+        traceback.format_exception(type(error), other, error.__traceback__)
+        traceback.format_exception_only(type(error), other)
+        traceback.format_exception(type(error), error)
+        traceback.format_exception(type(error), error, error.__traceback__, None)
+        traceback.format_exception(type(run()), error, error.__traceback__)
+        traceback.format_exception(type(error.args), error, error.__traceback__)
+        traceback.format_exception(type(error, 1), error, error.__traceback__)
+        traceback.format_exception(type(error), error, error.__traceback__, *other)
+        traceback.format_exception(*other)
+        traceback.format_exception(error)
+        traceback.format_exception(error.a.__class__, error, error.__traceback__)
+        traceback.format_exception(error.__class__, error, error.a.__traceback__)
+        traceback.format_exception(saved.__class__, error, saved.__traceback__)
+        traceback.print_exception(type(error), error)
+        traceback.format_exception_only(type(error), error, error.__traceback__)
+        traceback.format_exception_only(type(error))
+        other_module.format_exception(type(error), error, error.__traceback__)
+        traceback.print_exception(run(), error, error.__traceback__)
+        traceback.format_exception(run)
+        run()
+        print(type(error), error, error.__traceback__)
+
+
+def shadowed(error):
+    type = str
+    try:
+        raise ValueError
+    except ValueError as error:
+        return traceback.format_exception(type(error), error, error.__traceback__)

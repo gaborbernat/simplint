@@ -1,0 +1,166 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+8:5 SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit [fix: Enter the `set` call as a `with` block]
+33:5 SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit [fix: Enter the `set` call as a `with` block]
+41:5 SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit
+50:5 SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit
+--- fixed (2 applied, 2 remaining) ---
+import contextvars
+
+request_id = contextvars.ContextVar("request_id")
+user = contextvars.ContextVar("user")
+
+
+def simple(value):
+    with request_id.set(value):
+        return process()
+
+
+def used_after(value):
+    token = request_id.set(value)
+    try:
+        return process()
+    finally:
+        request_id.reset(token)
+    print(token)
+
+
+def used_in_body(value):
+    token = request_id.set(value)
+    try:
+        print(token)
+    finally:
+        request_id.reset(token)
+
+
+def commented(value):
+    with request_id.set(value):
+        return process()  # keep
+
+
+def comment_before_try(value):
+    token = request_id.set(value)
+    # keep
+    try:
+        return process()
+    finally:
+        request_id.reset(token)
+
+
+def one_line_body(value):
+    token = request_id.set(value)
+    try: process()
+    finally:
+        request_id.reset(token)
+
+
+def with_handler(value):
+    token = request_id.set(value)
+    try:
+        return process()
+    except ValueError:
+        return None
+    finally:
+        request_id.reset(token)
+
+
+def with_else(value):
+    token = request_id.set(value)
+    try:
+        return process()
+    except ValueError:
+        return None
+    else:
+        request_id.reset(token)
+
+
+def extra_finally(value):
+    token = request_id.set(value)
+    try:
+        return process()
+    finally:
+        request_id.reset(token)
+        print("done")
+
+
+def other_variable(value):
+    token = request_id.set(value)
+    try:
+        return process()
+    finally:
+        user.reset(token)
+
+
+def other_argument(value, saved):
+    token = request_id.set(value)
+    try:
+        return process()
+    finally:
+        request_id.reset(saved)
+
+
+def release(value):
+    token = request_id.set(value)
+    try:
+        return process()
+    finally:
+        release(token)
+
+
+def unset(value):
+    token = request_id.set(value)
+    try:
+        return process()
+    finally:
+        request_id.unset(token)
+
+
+def no_argument(value):
+    token = request_id.set()
+    try:
+        return process()
+    finally:
+        request_id.reset(token)
+
+
+def set_other_method(value):
+    token = request_id.make(value)
+    try:
+        return process()
+    finally:
+        request_id.reset(token)
+
+
+def plain_value(value):
+    token = value
+    try:
+        return process()
+    finally:
+        request_id.reset(token)
+
+
+class Holder:
+    def store(self, value):
+        self.token = request_id.set(value)
+        try:
+            return process()
+        finally:
+            request_id.reset(self.token)
+
+
+def no_finally(value):
+    token = request_id.set(value)
+    try:
+        return process()
+    except ValueError:
+        return None
+
+
+def bare_finally(value):
+    token = request_id.set(value)
+    try:
+        return process()
+    finally:
+        token

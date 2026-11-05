@@ -159,6 +159,9 @@ rules! {
     AbsoluteSiblingImport => ("SMP302", "absolute-sibling-import", "Absolute imports from the same package", Always, imports::absolute_sibling_import { module }),
     DependencyImportGuard => ("SMP303", "dependency-import-guard", "`try`/`except ImportError` around a required dependency", Sometimes, imports::dependency_import_guard { module }),
     ModuleAttributeImport => ("SMP304", "module-attribute-import", "Module attributes reached as `module.Name` instead of imported", Sometimes, imports::module_attribute_import { module }),
+    BackportImport => ("SMP305", "up-backport-import", "Imports of backports that the standard library replaces", Sometimes, imports::up_backport_import { module }),
+    TypeCheckingLazyImport => ("SMP306", "up-type-checking-lazy-import", "`if TYPE_CHECKING:` imports that can be `lazy` imports", Sometimes, imports::up_type_checking_lazy_import { module }),
+    LazyModulesList => ("SMP307", "up-lazy-modules-list", "`__lazy_modules__` lists that `lazy` imports replace", Sometimes, imports::up_lazy_modules_list { module }),
     MissingFromAll => ("SMP401", "missing-from-all", "Names other modules import that `__all__` omits", Sometimes, api::missing_from_all { module }),
     UnusedExport => ("SMP402", "unused-export", "`__all__` entries no other module imports", Sometimes, api::unused_export { module }),
     UnexportedPublicName => ("SMP403", "unexported-public-name", "Public functions and classes missing from `__all__`", Sometimes, api::unexported_public_name { module }),
@@ -174,6 +177,19 @@ rules! {
     SingleCallerHelper => ("SMP505", "single-caller-helper", "Private helpers with one short call site, which inlining would keep short", None, logic::single_caller_helper { module }),
     UnusedDefault => ("SMP506", "unused-default", "Parameter defaults that every call passes explicitly", Sometimes, logic::unused_default { module }),
     ErrorMessageMatching => ("SMP507", "error-message-matching", "Exceptions told apart by their message text", None, logic::error_message_matching { except_handler }),
+    ComprehensionUnpacking => ("SMP508", "up-comprehension-unpacking", "Nested `for` clauses that only unpack their iterable into the element", Always, logic::up_comprehension_unpacking { expression }),
+    TracebackExceptionArguments => ("SMP509", "up-traceback-exception-arguments", "`traceback` calls that pass an exception's type and traceback next to it", Always, logic::up_traceback_exception_arguments { expression }),
+    ExcInfoException => ("SMP510", "up-exc-info-exception", "`sys.exc_info()` reads of the exception being handled", Always, logic::up_exc_info_exception { expression }),
+    ObjectSentinel => ("SMP511", "up-object-sentinel", "`object()` placeholders `sentinel` would name", Always, logic::up_object_sentinel { module }),
+    ContextVarTokenReset => ("SMP512", "up-context-var-token-reset", "`ContextVar.set()` tokens reset in a `finally` block", Sometimes, logic::up_context_var_token_reset { module }),
+    ChdirRestore => ("SMP513", "up-chdir-restore", "Working directories restored in a `finally` block", Sometimes, logic::up_chdir_restore { module }),
+    StrptimeDate => ("SMP514", "up-strptime-date", "`datetime.strptime()` results narrowed to a `date` or `time`", Sometimes, logic::up_strptime_date { expression }),
+    EventLoopInCoroutine => ("SMP515", "up-event-loop-in-coroutine", "`asyncio.get_event_loop()` calls in coroutines", Sometimes, logic::up_event_loop_in_coroutine { expression }),
+    AsyncioIsCoroutineFunction => ("SMP516", "up-asyncio-iscoroutinefunction", "`asyncio.iscoroutinefunction()` calls", Sometimes, logic::up_asyncio_iscoroutinefunction { expression }),
+    CodecsOpen => ("SMP517", "up-codecs-open", "`codecs.open()` calls", Sometimes, logic::up_codecs_open { expression }),
+    ReErrorAlias => ("SMP518", "up-re-error-alias", "`re.error` references", Always, logic::up_re_error_alias { expression }),
+    ArgparseSuggestOnError => ("SMP519", "up-argparse-suggest-on-error", "`suggest_on_error=True` in `ArgumentParser()` calls", Sometimes, logic::up_argparse_suggest_on_error { expression }),
+    RemovedAstNode => ("SMP520", "up-removed-ast-node", "`ast` node aliases and visitor methods Python 3.14 removed", Sometimes, logic::up_removed_ast_node { expression, statement }),
     MissingFinal => ("SMP601", "missing-final", "Module constants not annotated `Final`", Sometimes, typing::missing_final { module }),
     ImpreciseAnnotation => ("SMP602", "imprecise-annotation", "`object` and `Any` in annotations", None, typing::imprecise_annotation { statement }),
     CallableEllipsis => ("SMP603", "callable-ellipsis", "`Callable[..., T]`", None, typing::callable_ellipsis { expression }),
@@ -191,6 +207,8 @@ rules! {
     SplitCompositeAssert => ("SMP807", "split-composite-assert", "Consecutive asserts comparing fields of one object", Sometimes, testing::split_composite_assert { module }),
     SleepInTest => ("SMP808", "sleep-in-test", "`time.sleep` and `asyncio.sleep` calls in tests", None, testing::sleep_in_test { module }),
     StdlibMock => ("SMP809", "stdlib-mock", "`unittest.mock` imports in projects that depend on pytest-mock", None, testing::stdlib_mock { module }),
+    UnittestAssertHelper => ("SMP811", "up-unittest-assert-helper", "`assertTrue` and `assertFalse` on checks that `TestCase` has a helper for", Sometimes, testing::up_unittest_assert_helper { expression }),
+    UnittestEnterContext => ("SMP812", "up-unittest-enter-context", "Patches started and stopped by hand in `TestCase` methods", Sometimes, testing::up_unittest_enter_context { module }),
     FunctionDocstring => ("SMP901", "function-docstring", "Docstrings on internal functions and classes", Sometimes, docstrings::function_docstring { module }),
     TestModuleDocstring => ("SMP902", "test-module-docstring", "Docstrings on test modules", Sometimes, docstrings::test_module_docstring { module }),
     UndocumentedPublicApi => ("SMP903", "undocumented-public-api", "Public functions, classes, methods and variables without documentation", None, docstrings::undocumented_public_api { module }),
@@ -219,9 +237,9 @@ pub fn rule_of(diagnostic: &Diagnostic) -> Option<Rule> {
 
 // One bit per rule.
 #[derive(Clone, Copy, Default, CacheKey)]
-pub struct RuleSet(u64);
+pub struct RuleSet(u128);
 
-const _: () = assert!(Rule::ALL.len() <= 64, "RuleSet holds one bit per rule in a u64");
+const _: () = assert!(Rule::ALL.len() <= 128, "RuleSet holds one bit per rule in a u128");
 
 impl RuleSet {
     pub fn all() -> Self {
@@ -229,7 +247,7 @@ impl RuleSet {
     }
 
     pub fn from_rules(rules: impl IntoIterator<Item = Rule>) -> Self {
-        Self(rules.into_iter().fold(0, |bits, rule| bits | 1 << rule as u64))
+        Self(rules.into_iter().fold(0, |bits, rule| bits | 1 << rule as u128))
     }
 
     // A selector's rules and how specific it is, ordered as Ruff's `Specificity`: `ALL`, then code prefixes by length,
@@ -254,7 +272,7 @@ impl RuleSet {
     }
 
     pub fn contains(self, rule: Rule) -> bool {
-        self.0 & 1 << rule as u64 != 0
+        self.0 & 1 << rule as u128 != 0
     }
 
     pub fn iter(self) -> impl Iterator<Item = Rule> {

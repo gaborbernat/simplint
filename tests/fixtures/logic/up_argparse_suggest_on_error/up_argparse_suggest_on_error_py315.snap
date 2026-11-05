@@ -1,0 +1,24 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+4:32 SMP519 `suggest_on_error=True` is the default from Python 3.15 [fix: Drop `suggest_on_error=True`]
+5:49 SMP519 `suggest_on_error=True` is the default from Python 3.15 [fix: Drop `suggest_on_error=True`]
+6:35 SMP519 `suggest_on_error=True` is the default from Python 3.15 [fix: Drop `suggest_on_error=True`]
+7:46 SMP519 `suggest_on_error=True` is the default from Python 3.15 [fix: Drop `suggest_on_error=True`]
+9:5 SMP519 `suggest_on_error=True` is the default from Python 3.15 [fix: Drop `suggest_on_error=True`]
+12:40 SMP519 `suggest_on_error=True` is the default from Python 3.15 [fix: Drop `suggest_on_error=True`]
+--- fixed (6 applied, 0 remaining) ---
+import argparse
+from argparse import ArgumentParser
+
+sole = argparse.ArgumentParser()
+trailing = argparse.ArgumentParser(prog="tool",)
+leading = argparse.ArgumentParser(prog="tool")
+positional = argparse.ArgumentParser("tool")
+multiline = argparse.ArgumentParser(
+    prog="tool",
+)
+imported = ArgumentParser(prog="tool")
+disabled = argparse.ArgumentParser(prog="tool", suggest_on_error=False)
+dynamic = argparse.ArgumentParser(prog="tool", suggest_on_error=flag)

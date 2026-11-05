@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+6:9 SMP812 A patch started and stopped by hand; `self.enterContext` starts it and registers the stop

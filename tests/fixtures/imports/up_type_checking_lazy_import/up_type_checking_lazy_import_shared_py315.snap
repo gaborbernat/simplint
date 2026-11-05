@@ -1,0 +1,16 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+3:4 SMP306 Imports under `if TYPE_CHECKING:` can be lazy imports from Python 3.15; use `lazy` on each one [unsafe fix: Make the imports lazy and remove the `TYPE_CHECKING` guard]
+6:4 SMP306 Imports under `if TYPE_CHECKING:` can be lazy imports from Python 3.15; use `lazy` on each one [unsafe fix: Make the imports lazy and remove the `TYPE_CHECKING` guard]
+--- fixed (2 applied, 0 remaining) ---
+from typing import TYPE_CHECKING
+
+lazy from os import PathLike
+
+lazy from collections.abc import Sequence
+
+
+def first(values: "Sequence[int]", path: "PathLike") -> int:
+    return values[0]

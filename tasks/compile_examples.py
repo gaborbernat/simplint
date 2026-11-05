@@ -70,7 +70,20 @@ def main(arguments: list[str]) -> int:
         help="a CPython minor version to compile under, found with uv; repeat for each",
     )
     options = parser.parse_args(arguments, namespace=_Options())
-    failures = check(rule_blocks(options.simplint), [resolve(minor) for minor in options.versions])
+    listing = subprocess.run(
+        [options.simplint, "rules", "--output-format", "json"], capture_output=True, text=True, check=True
+    ).stdout
+    blocks = [
+        Block(
+            name=f"{rule['code']}:{block['line']}:{block['role']}",
+            source=block["source"],
+            floor=block_floor(group["config"]),
+        )
+        for rule in json.loads(listing)
+        for group in rule["examples"]["parsed"]
+        for block in group["blocks"]
+    ]
+    failures = _check(blocks, [resolve(minor) for minor in options.versions])
     for failure in failures:
         print(failure)
     return int(bool(failures))
@@ -105,26 +118,6 @@ def resolve(minor: int) -> Interpreter:
     return Interpreter(minor=minor, path=found.stdout.strip())
 
 
-def rule_blocks(simplint: str) -> list[Block]:
-    # Collect the example blocks of every rule page, each with the floor its group's config gives it.
-    #
-    # :param simplint: the simplint executable
-    # :returns: the blocks, in rule order
-    listing = subprocess.run(
-        [simplint, "rules", "--output-format", "json"], capture_output=True, text=True, check=True
-    ).stdout
-    return [
-        Block(
-            name=f"{rule['code']}:{block['line']}:{block['role']}",
-            source=block["source"],
-            floor=block_floor(group["config"]),
-        )
-        for rule in json.loads(listing)
-        for group in rule["examples"]["parsed"]
-        for block in group["blocks"]
-    ]
-
-
 def block_floor(config: dict[str, str] | None) -> int:
     # Read the oldest minor release a group supports from its config: the target version, else the lower bound.
     #
@@ -140,7 +133,7 @@ def block_floor(config: dict[str, str] | None) -> int:
     return _DEFAULT_FLOOR
 
 
-def check(blocks: list[Block], interpreters: list[Interpreter]) -> list[str]:
+def _check(blocks: list[Block], interpreters: list[Interpreter]) -> list[str]:
     # Compile each block under the interpreters at or above its floor, one subprocess per interpreter.
     #
     # :param blocks: the example blocks
@@ -169,12 +162,9 @@ if __name__ == "__main__":
 
 
 __all__ = [
-    "Block",
     "Interpreter",
     "block_floor",
-    "check",
     "main",
     "minor_version",
     "resolve",
-    "rule_blocks",
 ]

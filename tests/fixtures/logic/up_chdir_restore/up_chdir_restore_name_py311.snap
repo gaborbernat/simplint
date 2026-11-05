@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+9:5 SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does

@@ -1,0 +1,20 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+8:12 SMP516 `asyncio.iscoroutinefunction()` is deprecated since Python 3.14 and also accepts the legacy coroutine marker [unsafe fix: Call `inspect.iscoroutinefunction()`]
+--- fixed (1 applied, 0 remaining) ---
+import inspect
+
+try:
+    import asyncio
+except ImportError:
+    pass
+
+
+def check(task):
+    return inspect.iscoroutinefunction(task)
+
+
+async def pause():
+    await asyncio.sleep(0)

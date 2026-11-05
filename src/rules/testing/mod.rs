@@ -7,6 +7,8 @@ mod sleep_in_test;
 mod split_composite_assert;
 mod stdlib_mock;
 mod test_class;
+pub(crate) mod up_unittest_assert_helper;
+mod up_unittest_enter_context;
 
 pub(crate) use conditional_in_test::conditional_in_test;
 pub(crate) use constant_assert::constant_assert;
@@ -16,8 +18,12 @@ pub(crate) use sleep_in_test::sleep_in_test;
 pub(crate) use split_composite_assert::split_composite_assert;
 pub(crate) use stdlib_mock::stdlib_mock;
 pub(crate) use test_class::test_class;
+pub(crate) use up_unittest_enter_context::up_unittest_enter_context;
 
 use ruff_python_ast as ast;
+use ruff_text_size::{Ranged, TextRange};
+
+use crate::lint::checker::Checker;
 
 // pytest collects the functions whose name starts with `test`.
 fn is_test_function(function: &ast::StmtFunctionDef) -> bool {
@@ -25,3 +31,15 @@ fn is_test_function(function: &ast::StmtFunctionDef) -> bool {
 }
 
 const MOCK_CLASSES: &[&str] = &["Mock", "MagicMock", "AsyncMock", "NonCallableMock", "NonCallableMagicMock"];
+
+// A class that visibly derives from `unittest.TestCase`; a base under another name may define the assert helpers
+// differently.
+pub(crate) fn is_test_case(checker: &Checker, class: &ast::StmtClassDef) -> bool {
+    class.arguments.as_ref().is_some_and(|arguments| {
+        arguments.args.iter().any(|base| checker.semantic().resolves_to(base, &["unittest", "TestCase"]))
+    })
+}
+
+pub(crate) fn in_test_case(checker: &Checker, range: TextRange) -> bool {
+    checker.class_defs().iter().any(|class| class.range().contains_range(range) && is_test_case(checker, class))
+}

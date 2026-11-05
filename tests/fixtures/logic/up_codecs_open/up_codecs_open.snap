@@ -1,0 +1,63 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:10 SMP517 `codecs.open()` is deprecated since Python 3.14; `open()` takes the same arguments [unsafe fix: Call `open()` with `newline=""`]
+10:10 SMP517 `codecs.open()` is deprecated since Python 3.14; `open()` takes the same arguments [unsafe fix: Call `open()` with `newline=""`]
+15:12 SMP517 `codecs.open()` is deprecated since Python 3.14; `open()` takes the same arguments [unsafe fix: Call `open()` with `newline=""`]
+19:12 SMP517 `codecs.open()` is deprecated since Python 3.14; `open()` takes the same arguments
+23:12 SMP517 `codecs.open()` is deprecated since Python 3.14; `open()` takes the same arguments
+27:12 SMP517 `codecs.open()` is deprecated since Python 3.14; `open()` takes the same arguments
+31:12 SMP517 `codecs.open()` is deprecated since Python 3.14; `open()` takes the same arguments
+35:12 SMP517 `codecs.open()` is deprecated since Python 3.14; `open()` takes the same arguments
+39:12 SMP517 `codecs.open()` is deprecated since Python 3.14; `open()` takes the same arguments
+43:12 SMP517 `codecs.open()` is deprecated since Python 3.14; `open()` takes the same arguments [unsafe fix: Call `open()` with `newline=""`]
+47:12 SMP517 `codecs.open()` is deprecated since Python 3.14; `open()` takes the same arguments [unsafe fix: Call `open()` with `newline=""`]
+--- fixed (5 applied, 6 remaining) ---
+import codecs
+
+
+def read_config(path):
+    with open(path, "r", encoding="utf-8", newline="") as handle:
+        return handle.read()
+
+
+def write_config(path, text):
+    with open(path, "w", buffering=1, encoding="utf-8", errors="replace", newline="") as handle:
+        handle.write(text)
+
+
+def read_default_mode(path):
+    return open(path, encoding="utf-8", newline="").read()
+
+
+def read_without_encoding(path):
+    return codecs.open(path).read()
+
+
+def read_none_encoding(path):
+    return codecs.open(path, "r", None).read()
+
+
+def read_binary(path):
+    return codecs.open(path, "rb", "utf-8").read()
+
+
+def read_dynamic_mode(path, mode):
+    return codecs.open(path, mode, "utf-8").read()
+
+
+def read_unpacked(*args):
+    return codecs.open(*args)
+
+
+def read_keywords(**kwargs):
+    return codecs.open(**kwargs)
+
+
+def read_commented(path):
+    return open(path, "r", encoding="utf-8", newline="").read()  # the old reader
+
+
+def read_positional(path):
+    return open(path, "r", buffering=1, encoding="utf-8", errors="strict", newline="").read()

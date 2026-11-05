@@ -1,0 +1,70 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+6:12 SMP514 Parse the date with `date.strptime`, not `datetime.strptime(...).date()` [fix: Call `date.strptime`]
+10:12 SMP514 Parse the time with `time.strptime`, not `datetime.strptime(...).time()` [fix: Call `time.strptime`]
+14:12 SMP514 Parse the time with `time.strptime`, not `datetime.strptime(...).time()` [unsafe fix: Call `time.strptime`]
+18:12 SMP514 Parse the time with `time.strptime`, not `datetime.strptime(...).time()` [unsafe fix: Call `time.strptime`]
+22:13 SMP514 Parse the date with `date.strptime`, not `datetime.strptime(...).date()` [fix: Call `date.strptime`]
+50:12 SMP514 Parse the date with `date.strptime`, not `datetime.strptime(...).date()` [fix: Call `date.strptime`]
+58:12 SMP514 Parse the date with `date.strptime`, not `datetime.strptime(...).date()` [fix: Call `date.strptime`]
+--- fixed (7 applied, 0 remaining) ---
+import datetime
+from datetime import time, date, datetime as moment
+
+
+def module_form(text):
+    return datetime.date.strptime(text, "%Y-%m-%d")
+
+
+def named_form(text):
+    return time.strptime(text, "%H:%M")
+
+
+def zone_form(text):
+    return time.strptime(text, "%H:%M %z")
+
+
+def variable_format(text, fmt):
+    return time.strptime(text, fmt)
+
+
+def keyword_format(text):
+    return (date.strptime(text, format="%Y"))
+
+
+def with_argument(text):
+    return moment.strptime(text, "%Y").date(1)
+
+
+def other_part(text):
+    return moment.strptime(text, "%Y").timetz()
+
+
+def no_parse(value):
+    return value.date()
+
+
+def not_a_call(value):
+    return value.date
+
+
+def other_strptime(text):
+    return other.strptime(text, "%Y").date()
+
+
+def plain_call(text):
+    return moment(text).date()
+
+
+def unnamed_format(text):
+    return date.strptime(text)
+
+
+def name_only(text):
+    return date_string(text).time()
+
+
+def inherited(text):
+    return date.strptime(text, "%Y"), moment.strptime(text, "%Y")

@@ -1,0 +1,49 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+6:12 SMP515 `asyncio.get_event_loop()` in a coroutine; a loop is always running there [fix: Call `asyncio.get_running_loop()`]
+22:12 SMP515 `asyncio.get_event_loop()` in a coroutine; a loop is always running there
+27:16 SMP515 `asyncio.get_event_loop()` in a coroutine; a loop is always running there [fix: Call `asyncio.get_running_loop()`]
+--- fixed (2 applied, 1 remaining) ---
+import asyncio
+from asyncio import get_event_loop
+
+
+async def run():
+    loop = asyncio.get_running_loop()
+    return loop
+
+
+async def nested_sync():
+    def later():
+        return asyncio.get_event_loop()
+
+    return later
+
+
+async def with_lambda():
+    return lambda: asyncio.get_event_loop()
+
+
+async def named():
+    return get_event_loop()
+
+
+async def in_class_body():
+    class Inner:
+        loop = asyncio.get_running_loop()
+
+    return Inner
+
+
+def plain():
+    return asyncio.get_event_loop()
+
+
+class Holder:
+    loop = asyncio.get_event_loop()
+
+
+async def other_object(client):
+    return client.get_event_loop()

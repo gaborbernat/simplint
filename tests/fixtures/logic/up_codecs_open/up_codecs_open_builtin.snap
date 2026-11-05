@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:12 SMP517 `codecs.open()` is deprecated since Python 3.14; `open()` takes the same arguments

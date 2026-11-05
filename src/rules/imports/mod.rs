@@ -3,8 +3,14 @@ mod dependency_import_guard;
 mod future_annotations;
 mod module_attribute_import;
 mod stdlib_submodules;
+mod up_backport_import;
+mod up_lazy_modules_list;
+mod up_type_checking_lazy_import;
 
 pub(crate) use absolute_sibling_import::absolute_sibling_import;
 pub(crate) use dependency_import_guard::dependency_import_guard;
 pub(crate) use future_annotations::future_annotations;
 pub(crate) use module_attribute_import::module_attribute_import;
+pub(crate) use up_backport_import::up_backport_import;
+pub(crate) use up_lazy_modules_list::up_lazy_modules_list;
+pub(crate) use up_type_checking_lazy_import::up_type_checking_lazy_import;
