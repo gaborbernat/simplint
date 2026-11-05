@@ -1,5 +1,163 @@
 # Changelog
 
+## 0.5.0 (2026-11-05)
+
+<a name="release-0-5-0"></a>
+
+<a name="release-0-5-0-added"></a>
+
+### Added
+
+- simplint publishes a JSON Schema of the `[tool.simplint]` table as `simplint.schema.json`, which editors use to check
+  the table as the user types. `simplint config-schema` prints it
+  ([#46](https://github.com/gaborbernat/simplint/pull/46)) by [@gaborbernat](https://github.com/gaborbernat).
+- Types in a public signature count as public API: a class or alias that an exported name's annotations or bases refer
+  to is no longer reported as unused in `__all__`, and missing-from-all lists it there
+  ([#47](https://github.com/gaborbernat/simplint/pull/47)) by [@gaborbernat](https://github.com/gaborbernat).
+- `up-argparse-suggest-on-error` (SMP519) flags `suggest_on_error=True` in `argparse.ArgumentParser()` calls, which
+  Python 3.15 makes the default, with a safe fix that drops the keyword
+  ([#48](https://github.com/gaborbernat/simplint/pull/48)) by [@gaborbernat](https://github.com/gaborbernat).
+- `up-asyncio-iscoroutinefunction` (SMP516) flags `asyncio.iscoroutinefunction()` calls, which
+  `inspect.iscoroutinefunction()` replaces, with an unsafe fix since the two differ for legacy coroutine markers
+  ([#48](https://github.com/gaborbernat/simplint/pull/48)) by [@gaborbernat](https://github.com/gaborbernat).
+- `up-backport-import` (SMP305) flags imports of backports the standard library replaced, such as `tomli` for `tomllib`
+  on Python 3.11 and later; the `tomli` and `exceptiongroup` imports get a fix
+  ([#48](https://github.com/gaborbernat/simplint/pull/48)) by [@gaborbernat](https://github.com/gaborbernat).
+- `up-chdir-restore` (SMP513) flags a working directory restored in a `finally` clause, which `contextlib.chdir` does on
+  Python 3.11 and later, with a safe fix that adds the `contextlib` import
+  ([#48](https://github.com/gaborbernat/simplint/pull/48)) by [@gaborbernat](https://github.com/gaborbernat).
+- `up-codecs-open` (SMP517) flags `codecs.open()` calls, which the builtin `open()` replaces with `newline=""` and an
+  encoding, with an unsafe fix since line iteration differs for some separators
+  ([#48](https://github.com/gaborbernat/simplint/pull/48)) by [@gaborbernat](https://github.com/gaborbernat).
+- `up-comprehension-unpacking` (SMP508) flags a nested `for` clause that only unpacks its iterable, which Python 3.15
+  lets the element do with `*` or `**`, with a safe fix for lists, sets and generators
+  ([#48](https://github.com/gaborbernat/simplint/pull/48)) by [@gaborbernat](https://github.com/gaborbernat).
+- `up-context-var-token-reset` (SMP512) flags a `ContextVar.set()` token that a `try` block resets in its `finally`
+  clause, which a `with` block does on Python 3.14 and later, with a safe fix
+  ([#48](https://github.com/gaborbernat/simplint/pull/48)) by [@gaborbernat](https://github.com/gaborbernat).
+- `up-event-loop-in-coroutine` (SMP515) flags `asyncio.get_event_loop()` calls in coroutines, which
+  `asyncio.get_running_loop()` replaces on Python 3.10 and later, with a safe fix
+  ([#48](https://github.com/gaborbernat/simplint/pull/48)) by [@gaborbernat](https://github.com/gaborbernat).
+- `up-exc-info-exception` (SMP510) flags `sys.exc_info()` reads of the exception being handled, which `sys.exception()`
+  returns directly on Python 3.11 and later, with a safe fix ([#48](https://github.com/gaborbernat/simplint/pull/48)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `up-lazy-modules-list` (SMP307) flags a `__lazy_modules__` list whose imports Python 3.15 can spell as `lazy import`,
+  and fixes both ([#48](https://github.com/gaborbernat/simplint/pull/48)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `up-object-sentinel` (SMP511) flags module and class constants assigned a bare `object()`, which the Python 3.15
+  `sentinel` builtin names, with an unsafe fix since the repr changes
+  ([#48](https://github.com/gaborbernat/simplint/pull/48)) by [@gaborbernat](https://github.com/gaborbernat).
+- `up-re-error-alias` (SMP518) flags `re.error` references, which `re.PatternError` replaces on Python 3.13 and later,
+  with a safe fix ([#48](https://github.com/gaborbernat/simplint/pull/48)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `up-removed-ast-node` (SMP520) flags `ast.Num`, `ast.Str`, `ast.Bytes`, `ast.NameConstant` and `ast.Ellipsis`
+  references and `visit_` methods that Python 3.14 removed, with safe fixes for the common `isinstance` and constructor
+  forms ([#48](https://github.com/gaborbernat/simplint/pull/48)) by [@gaborbernat](https://github.com/gaborbernat).
+- `up-strptime-date` (SMP514) flags `datetime.strptime(...).date()` and `.time()` calls, which `date.strptime` and
+  `time.strptime` replace on Python 3.14 and later, with a safe fix for dates and for times in literal formats without
+  `%z` ([#48](https://github.com/gaborbernat/simplint/pull/48)) by [@gaborbernat](https://github.com/gaborbernat).
+- `up-traceback-exception-arguments` (SMP509) flags `traceback` calls that pass an exception's type and traceback next
+  to the exception, which Python 3.10 reads from the exception, with a safe fix
+  ([#48](https://github.com/gaborbernat/simplint/pull/48)) by [@gaborbernat](https://github.com/gaborbernat).
+- `up-type-checking-lazy-import` (SMP306) flags `if TYPE_CHECKING:` blocks of imports that Python 3.15 can spell as
+  `lazy` imports, with an unsafe fix ([#48](https://github.com/gaborbernat/simplint/pull/48)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `up-unittest-assert-helper` (SMP811) flags `assertTrue` and `assertFalse` on `startswith`, `endswith`, `hasattr` and
+  `issubclass` checks in `TestCase` methods, which the Python 3.14 `assertStartsWith` family replaces
+  ([#48](https://github.com/gaborbernat/simplint/pull/48)) by [@gaborbernat](https://github.com/gaborbernat).
+- `up-unittest-enter-context` (SMP812) flags a patch that a `TestCase` method starts and stops by hand, which
+  `self.enterContext` replaces on Python 3.11 and later ([#48](https://github.com/gaborbernat/simplint/pull/48)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-5-0-fixed"></a>
+
+### Fixed
+
+- `constant-assert` (SMP804) no longer offers a fix that writes invalid syntax when the tuple holds a walrus or a
+  starred element: a walrus check gets parentheses, and a tuple with a starred element gets no fix
+  ([#47](https://github.com/gaborbernat/simplint/pull/47)) by [@gaborbernat](https://github.com/gaborbernat).
+- `dataclass-kw-only` (SMP703) passes the fields of a call in an f-string `=` debug field by keyword without changing
+  the printed text. The call's source text stays, and its value follows in a plain field
+  ([#47](https://github.com/gaborbernat/simplint/pull/47)) by [@gaborbernat](https://github.com/gaborbernat).
+- `definition-before-use` (SMP201) no longer reads the bound or default of a type parameter, or the value of a `type`
+  statement, as a read at import time. A helper that the same function calls is reported again
+  ([#47](https://github.com/gaborbernat/simplint/pull/47)) by [@gaborbernat](https://github.com/gaborbernat).
+- `dependency-import-guard` (SMP303) counts a submodule of a standard library package, such as `asyncio.taskgroups`, as
+  shipped only from the version that adds it, using a table generated from CPython's `Lib/` trees, so the guard around
+  it is reported on the targets that have it. Its unsafe fix removed an import left unused by the unwrap, such as
+  `import string.templatelib` checked only for existence, and keeps it now with a `noqa` suppression. The guards around
+  `_zstd`, `compression.zstd` and `_curses` stay unreported ([#47](https://github.com/gaborbernat/simplint/pull/47)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `function-docstring` (SMP901) reads the functions in a `match` statement's `case` bodies, at module and class level,
+  as it already reads those in `if` and `try` blocks, so a docstring on an internal one is reported
+  ([#47](https://github.com/gaborbernat/simplint/pull/47)) by [@gaborbernat](https://github.com/gaborbernat).
+- `future-annotations` (SMP301) no longer reports the import when a class annotation reads a name the class body binds,
+  such as a method named `list` in `def list(self) -> list[str]`. Without the import, Python 3.14 and later evaluate
+  that annotation in the class namespace, where `list` is the method
+  ([#47](https://github.com/gaborbernat/simplint/pull/47)) by [@gaborbernat](https://github.com/gaborbernat).
+- `imprecise-annotation` (SMP602) now also reports `object` and `Any` in the value of a `type` statement and in the
+  bounds and defaults of type parameters ([#47](https://github.com/gaborbernat/simplint/pull/47)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `indistinct-error-class` (SMP704) no longer reports an exception class that a handler selects through
+  `ExceptionGroup.split(...)` or `.subgroup(...)` ([#47](https://github.com/gaborbernat/simplint/pull/47)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `init-module-content` (SMP407) accepts `__lazy_modules__` in a public package's `__init__.py`, which Python 3.15 reads
+  from the module globals to make the package's imports lazy ([#47](https://github.com/gaborbernat/simplint/pull/47)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `module-attribute-import` (SMP304) keeps the `lazy` keyword when its fix rewrites a lazy import, so the module still
+  loads on first use of a name. Its fix is no longer offered when a parameter, local, comprehension target, match
+  capture or type parameter of the same name would take the bare name, which made `make[Item]` call a `TypeVar`
+  ([#47](https://github.com/gaborbernat/simplint/pull/47)) by [@gaborbernat](https://github.com/gaborbernat).
+- `module-variable-case` (SMP102) no longer renames a name read in a t-string, where the kept text would change. The
+  name is still reported, without a fix. A name read in an f-string `=` debug field is renamed with the printed text
+  unchanged ([#47](https://github.com/gaborbernat/simplint/pull/47)) by [@gaborbernat](https://github.com/gaborbernat).
+- `module-variable-case` (SMP102) no longer renames a `type` alias. The statement binds a type rather than a value, so
+  `type vector = list[float]` keeps its name ([#47](https://github.com/gaborbernat/simplint/pull/47)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `module-variable-prefix` (SMP404) no longer renames a name read in a t-string, where the kept text would change. The
+  name is still reported, without a fix. A name read in an f-string `=` debug field is renamed with the printed text
+  unchanged ([#47](https://github.com/gaborbernat/simplint/pull/47)) by [@gaborbernat](https://github.com/gaborbernat).
+- `module-variable-prefix` (SMP404) no longer asks for a leading underscore on a `type` alias
+  ([#47](https://github.com/gaborbernat/simplint/pull/47)) by [@gaborbernat](https://github.com/gaborbernat).
+- `rst-returns` (SMP923) reads a quoted return annotation, such as `-> "None"` or `-> 'NoReturn'`, as the unquoted form
+  it spells. Before, a quoted `None` counted as returning a value
+  ([#47](https://github.com/gaborbernat/simplint/pull/47)) by [@gaborbernat](https://github.com/gaborbernat).
+- `rst-unknown-attribute` (SMP921) accepts a `:cvar` field that documents a `type` statement in the class body, and no
+  longer deletes that field ([#47](https://github.com/gaborbernat/simplint/pull/47)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `single-letter-name` (SMP101) now reports a single-letter `**rest` capture in a mapping pattern, as it already does
+  for `*rest` in a sequence pattern ([#47](https://github.com/gaborbernat/simplint/pull/47)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `single-use-variable` (SMP504) no longer inlines a variable where the target Python version rejects the result or the
+  meaning changes: a value with a backslash before Python 3.12, a conditional read, an annotation, a `type` statement,
+  an `except` type, a `match` case, or a decorator before Python 3.9. Before Python 3.12, a value whose strings use the
+  f-string's quote takes the other quote in those strings. A variable read in an f-string `=` debug field is inlined
+  with the printed text unchanged. A value that starts with `{` gets a space inside its field, so the field does not
+  read as an escaped brace ([#47](https://github.com/gaborbernat/simplint/pull/47)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `single-user-constant` (SMP202) no longer offers a fix for a constant read in a t-string, where inlining or renaming
+  would change the kept text. The constant is still reported. A constant read in an f-string `=` debug field is inlined
+  or renamed with the printed text unchanged ([#47](https://github.com/gaborbernat/simplint/pull/47)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `string-concatenation` (SMP503) wraps a generator passed bare to `str`, `repr` or `ascii` in parentheses, so its fix
+  no longer writes a syntax error. A name bound by a PEP 695 type parameter is no longer treated as a `str`, so its
+  chain is reported without a fix ([#47](https://github.com/gaborbernat/simplint/pull/47)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `test-class` (SMP801) offers a fix for a generic class. Each method keeps the class's type parameters that its
+  signature, body or nested `type` statements use, with their bounds and defaults, so `class TestBox[T]` becomes
+  `def test_box_default[T](...)`. Defaults need Python 3.13, so below it a method using a defaulted parameter gets no
+  fix ([#47](https://github.com/gaborbernat/simplint/pull/47)) by [@gaborbernat](https://github.com/gaborbernat).
+- `undocumented-public-api` (SMP903) reports a public `type` statement that has no docstring, as it does for other
+  public variables. It also reads the public definitions in a `match` statement's `case` bodies, at module and class
+  level, as it already reads those in `if` and `try` blocks, so they are no longer skipped
+  ([#47](https://github.com/gaborbernat/simplint/pull/47)) by [@gaborbernat](https://github.com/gaborbernat).
+- `unexported-public-name` (SMP403) no longer renames a name read in a t-string, where the kept text would change. The
+  name is still reported, without a fix. A name read in an f-string `=` debug field is renamed with the printed text
+  unchanged ([#47](https://github.com/gaborbernat/simplint/pull/47)) by [@gaborbernat](https://github.com/gaborbernat).
+- A fix that adds syntax the file's target Python version does not support is reverted, and simplint reports it as a bug
+  in the fix, as it does for a fix that breaks the syntax ([#47](https://github.com/gaborbernat/simplint/pull/47)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.4.0 (2026-11-04)
 
 <a name="release-0-4-0"></a>
