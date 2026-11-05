@@ -27,7 +27,9 @@ pub fn unused_export(checker: &Checker) {
     let Exports::Listed(exported) = checker.dunder_all() else {
         return;
     };
-    let unused: Vec<&str> = exported.iter().copied().filter(|name| !project.is_imported(name)).collect();
+    // A name another exported name's signature reaches is part of the interface the module exports.
+    let unused: Vec<&str> =
+        exported.iter().copied().filter(|name| !project.is_imported(name) && !project.is_api_reached(name)).collect();
     if unused.is_empty() {
         return;
     }

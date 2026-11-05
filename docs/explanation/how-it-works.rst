@@ -49,8 +49,12 @@ A name counts as used when another file reaches it through:
 
 The index also records every attribute name any file assigns and every base class name.
 
-Fixes never rename or move a name another module imports, and :doc:`missing-from-all </_generated/rules/SMP401>` reports such a
-public name when ``__all__`` leaves it out.
+A class or alias that the annotations, bases or bounds of an exported name refer to is public too, though no file
+imports it. Such names count through the same places of every class and alias they reach, so ``__all__`` may list them,
+and :doc:`unused-export </_generated/rules/SMP402>` leaves them alone.
+
+Fixes never rename or move a name another module imports or an exported signature reaches, and
+:doc:`missing-from-all </_generated/rules/SMP401>` reports such a public name when ``__all__`` leaves it out.
 
 .. warning::
 
@@ -136,3 +140,6 @@ A rule reports without a fix when the fix cannot be done safely in text:
 - the statement shares its line with another
 - a string spans several lines
 - the new name would collide with an existing one
+
+After each round of fixes, simplint parses the result for the file's target Python version. A fix that adds syntax that
+version does not accept is reverted and reported as a bug in the fix, the same as a fix that breaks the syntax.

@@ -10,8 +10,8 @@ use rustc_hash::FxHashMap;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::project::constructors::{CallKind, Use, Uses, init_fields};
-use crate::rules::ExprCollector;
 use crate::rules::classes::{Offer, require_options};
+use crate::rules::{ExprCollector, keep_debug_text};
 use crate::semantic::BindingKind;
 use crate::syntax::{dataclass_decorator, is_name};
 
@@ -52,7 +52,7 @@ fn keyword_calls(checker: &Checker, module: &ModuleClasses, class: &ast::StmtCla
         };
         edits.extend(keyword_edits(checker, call, &fields)?);
     }
-    Some(edits)
+    keep_debug_text(checker.source, checker.body(), edits)
 }
 
 // The module-level classes by name in source order, and every use of them in the module, found in one walk.
@@ -160,10 +160,12 @@ fn report_positional_calls(checker: &Checker) {
         if call.arguments.args.is_empty() {
             continue;
         }
-        let fix = keyword_edits(checker, call, fields).map(|mut edits| {
-            let first = edits.remove(0);
-            Fix::safe_edits(first, edits)
-        });
+        let fix = keyword_edits(checker, call, fields)
+            .and_then(|edits| keep_debug_text(checker.source, checker.body(), edits))
+            .map(|mut edits| {
+                let first = edits.remove(0);
+                Fix::safe_edits(first, edits)
+            });
         checker.report_fix(
             Rule::DataclassKwOnly,
             call.range(),

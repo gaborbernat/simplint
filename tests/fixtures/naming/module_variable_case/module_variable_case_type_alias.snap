@@ -1,0 +1,13 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+3:1 SMP102 Module-scope variable `limit` should be named `LIMIT` [unsafe fix: Rename `limit` to `LIMIT`]
+--- fixed (1 applied, 0 remaining) ---
+type vector = list[float]
+type Pair = tuple[int, int]
+LIMIT = 3
+
+
+def norm(values: vector) -> float:
+    return sum(values) * LIMIT

@@ -1,0 +1,35 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:24 SMP301 Annotations are evaluated lazily from Python 3.14; drop `from __future__ import annotations` [fix: Remove the `annotations` future import]
+--- fixed (1 applied, 0 remaining) ---
+
+import dataclasses
+from typing import Any
+
+
+class Forms:
+    import os
+    from pathlib import Path as Route
+
+    tuple_a, (tuple_b, *star_c) = 1, (2, [3])
+    [list_d, list_e] = 4, 5
+    annotated: int
+    alias_d: Any = None
+    counter = 0
+    counter += 1
+    values[0] = 1
+    print("class body")
+
+    def method(self, value: int, /, *args: Any, **kwargs: Any) -> Any:
+        return value
+
+    class Inner:
+        pass
+
+
+@dataclasses.dataclass
+class Point:
+    x: int
+    y: float = 0.0

@@ -149,6 +149,18 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
   Alias = int
   ```
 
+- **Type aliases from a `type` statement**: the statement binds a type, not a value, so the name follows the convention
+  of classes, whatever its case.
+
+  ```toml config
+  [project]
+  requires-python = ">=3.12"
+  ```
+
+  ```python ok
+  type vector = list[float]
+  ```
+
 - **Names also bound by an import, `def` or `class`**: this rule skips them. This covers:
 
   - An import, such as `from json import dumps`: the import keeps the spelling of what it imports.
@@ -306,6 +318,19 @@ LIMIT = 3
 print(LIMIT)
 ```
 
+A name read in an f-string field with a [`=`](https://docs.python.org/3/reference/lexical_analysis.html#f-strings) debug
+specifier keeps its printed text: the field prints the old name, then the value in a plain field.
+
+```python report
+limit = 3
+print(f"{limit=}")
+```
+
+```python fixed
+LIMIT = 3
+print(f"limit={LIMIT!r}")
+```
+
 No fix is offered when:
 
 - another module in the run imports the name or reaches it by a dotted string, such as a `mocker.patch` target
@@ -354,6 +379,19 @@ No fix is offered when:
   ```python report
   limit = 3
   NAME = "limit"
+  ```
+
+- the old name is read in a t-string, which keeps the source text of its expressions
+
+  ```toml config
+  [project]
+  requires-python = ">=3.14"
+  ```
+
+  ```python report
+  limit = 3
+  template = t"{limit}"
+  print(template.interpolations[0].expression)
   ```
 
 - the old name also names something a text rename cannot tell apart: a parameter, a local variable, a class attribute, a

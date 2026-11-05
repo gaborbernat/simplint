@@ -120,9 +120,9 @@ Code of the module:
   a `with tempfile.TemporaryDirectory() as path`, or an annotation `str` (also `Final[str]`, `Annotated[str, ...]`) that
   no binding contradicts
 
-A name that an unannotated parameter, an import or a `global` binds is not known, so `value + "!"` for an unannotated
-`value` is reported without a fix. The annotations are trusted: a parameter annotated `str` can still receive a `str`
-subclass with its own `__add__`.
+A name that an unannotated parameter, an import, a `global` or a type parameter binds is not known, so `value + "!"` for
+an unannotated `value` is reported without a fix. The annotations are trusted: a parameter annotated `str` can still
+receive a `str` subclass with its own `__add__`.
 
 ### Fix
 
@@ -140,6 +140,19 @@ The fix copies each non-literal operand into a placeholder as written:
   ```python fixed
   def label(n: int) -> str:
       return f"n={n!s}"
+  ```
+
+- A generator passed bare to `str`, `repr` or `ascii` gets parentheses of its own, since a replacement field takes only
+  a yield or star expression unparenthesized.
+
+  ```python report
+  def label(values: list[int]) -> str:
+      return "values=" + str(value for value in values)
+  ```
+
+  ```python fixed
+  def label(values: list[int]) -> str:
+      return f"values={(value for value in values)!s}"
   ```
 
 - A chain of plain string literals becomes one plain string.
@@ -185,6 +198,22 @@ No fix is offered when:
   ```python report
   def greet(name: str) -> str:
       return "Hello, " + name.replace(":", "") + "!"
+  ```
+
+- a name is bound by a [PEP 695](https://peps.python.org/pep-0695/) type parameter of the enclosing function or class,
+  as its kind is not known;
+
+  ```toml config
+  [project]
+  requires-python = ">=3.12"
+  ```
+
+  ```python report
+  s = "x"
+
+
+  def f[s]() -> str:
+      return "a" + s
   ```
 
 - the target Python version is older than 3.12 and a non-literal operand contains the string's quote character, which

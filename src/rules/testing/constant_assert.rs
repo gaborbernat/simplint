@@ -25,11 +25,14 @@ fn report_constant_assert(checker: &Checker, stmt: &Stmt, assert: &ast::StmtAsse
     let ast::StmtAssert { test, msg, .. } = assert;
     let fix = match (test.as_ref(), msg) {
         // `assert (check, "message")` meant `assert check, "message"`; deleting it would drop the check.
-        (Expr::Tuple(tuple @ ast::ExprTuple { elts, .. }), None) if elts.len() == 2 => {
-            // Out of the tuple's brackets, an element written over several lines needs parentheses of its own.
+        // A starred element has no meaning outside the tuple, so there is no single-argument form to restore.
+        (Expr::Tuple(tuple @ ast::ExprTuple { elts, .. }), None)
+            if elts.len() == 2 && !elts.iter().any(Expr::is_starred_expr) =>
+        {
+            // Out of the tuple's brackets, a walrus or a multi-line element needs parentheses of its own.
             let [check, message] = [&elts[0], &elts[1]].map(|elt| {
                 let text = checker.parenthesized_text(elt, tuple.into());
-                if text.contains('\n') && text == checker.text(elt.range()) {
+                if (text.contains('\n') || matches!(elt, Expr::Named(_))) && text == checker.text(elt.range()) {
                     format!("({text})")
                 } else {
                     text.to_owned()

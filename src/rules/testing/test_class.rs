@@ -1,14 +1,18 @@
+use std::collections::HashSet;
+
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::helpers::any_over_body;
 use ruff_python_ast::token::TokenKind;
-use ruff_python_ast::{self as ast, Stmt};
+use ruff_python_ast::visitor::{self, Visitor};
+use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt, TypeParam};
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstring;
+use crate::project::names_in;
 use crate::rules::testing::is_test_function;
+use crate::rules::{docstring, expr_mentions};
 use crate::syntax::is_name;
 
 pub fn test_class(checker: &Checker) {
@@ -45,6 +49,7 @@ fn flatten_class(checker: &Checker, class: &ast::StmtClassDef) -> Option<String>
     if class.arguments.as_ref().is_some_and(|arguments| !arguments.is_empty()) || !class.decorator_list.is_empty() {
         return None;
     }
+    let type_params = class.type_params.as_deref().map_or(&[][..], |params| params.type_params.as_slice());
     let source = checker.source;
     // Dedenting the methods would change the text of any string spanning several lines, except a method's docstring,
     // whose indentation tools strip as `inspect.cleandoc` does and `ruff format` rewrites the same way.
@@ -86,6 +91,23 @@ fn flatten_class(checker: &Checker, class: &ast::StmtClassDef) -> Option<String>
         if any_over_body(&function.body, |expr| is_name(expr, "self")) || !function.parameters.posonlyargs.is_empty() {
             return None;
         }
+        // Decorators and defaults are evaluated outside the function, where its type parameters are not bound.
+        let mut evaluated_outside = function
+            .decorator_list
+            .iter()
+            .map(|decorator| &decorator.expression)
+            .chain(function.parameters.iter().filter_map(ast::AnyParameterRef::default));
+        if evaluated_outside.any(|expr| type_params.iter().any(|param| expr_mentions(expr, param.name().as_str()))) {
+            return None;
+        }
+        let used = used_type_params(function, type_params);
+        // A default on a type parameter is 3.13 syntax, which a fix for an older target would leave invalid.
+        if checker.settings.from_ruff.target_version < PythonVersion::PY313
+            && used.iter().any(|param| param.default().is_some())
+        {
+            return None;
+        }
+        let header: Vec<&str> = used.into_iter().map(|param| &source[param.range()]).collect();
         let block = source.full_lines_range(TextRange::new(
             function.decorator_list.first().map_or(function.start(), Ranged::start),
             function.end(),
@@ -102,11 +124,72 @@ fn flatten_class(checker: &Checker, class: &ast::StmtClassDef) -> Option<String>
         let mut text = String::new();
         text.push_str(&source[TextRange::new(block.start(), function.name.start())]);
         text.push_str(&renamed);
+        if !header.is_empty() {
+            text.push('[');
+            text.push_str(&header.join(", "));
+            text.push(']');
+        }
         text.push_str(&source[TextRange::new(function.name.end(), self_parameter.start())]);
         text.push_str(&source[TextRange::new(removal_end, block.end())]);
         functions.push(dedent_block(&text, checker.stylist.indentation().as_str()));
     }
     (!functions.is_empty()).then(|| functions.join("\n\n"))
+}
+
+// The class's type parameters that a method's signature, body or nested type aliases name, plus those that their bounds
+// and defaults name, in declaration order. The `self` parameter is dropped, so its annotation does not count.
+fn used_type_params<'a>(function: &ast::StmtFunctionDef, type_params: &'a [TypeParam]) -> Vec<&'a TypeParam> {
+    let mut uses = NameUses::default();
+    for parameter in function.parameters.iter().skip(1) {
+        if let Some(annotation) = parameter.annotation() {
+            uses.visit_annotation(annotation);
+        }
+    }
+    if let Some(returns) = &function.returns {
+        uses.visit_annotation(returns);
+    }
+    uses.visit_body(&function.body);
+    let mut pending = uses.names;
+    let mut named = HashSet::new();
+    while let Some(name) = pending.pop() {
+        let Some(param) = type_params.iter().find(|param| param.name().as_str() == name) else {
+            continue;
+        };
+        if named.insert(param.name().as_str()) {
+            let bound = match param {
+                TypeParam::TypeVar(ast::TypeParamTypeVar { bound, .. }) => bound.as_deref(),
+                TypeParam::TypeVarTuple(_) | TypeParam::ParamSpec(_) => None,
+            };
+            pending.extend(bound.into_iter().chain(param.default()).flat_map(names_in));
+        }
+    }
+    type_params.iter().filter(|param| named.contains(param.name().as_str())).collect()
+}
+
+// The names a function's annotations and body refer to. A quoted annotation counts as the names it spells.
+#[derive(Default)]
+struct NameUses {
+    names: Vec<String>,
+}
+
+impl<'a> Visitor<'a> for NameUses {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        if let Stmt::TypeAlias(alias) = stmt {
+            self.names.extend(names_in(&alias.value));
+        }
+        visitor::walk_stmt(self, stmt);
+    }
+
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        if let Expr::Name(name) = expr {
+            self.names.push(name.id.to_string());
+        }
+        visitor::walk_expr(self, expr);
+    }
+
+    fn visit_annotation(&mut self, expr: &'a Expr) {
+        self.names.extend(names_in(expr));
+    }
 }
 
 fn dedent_block(text: &str, indent: &str) -> String {

@@ -2,6 +2,7 @@ use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::helpers::ReturnStatementVisitor;
 use ruff_python_ast::visitor::Visitor;
 use ruff_python_ast::{self as ast, Expr, Stmt};
+use ruff_python_parser::parse_expression;
 use ruff_text_size::{TextRange, TextSize};
 
 use crate::lint::checker::Checker;
@@ -63,9 +64,7 @@ pub fn rst_returns(checker: &Checker) {
                 "Remove the yield fields",
             );
         }
-        let returns_nothing = def.returns.as_deref().is_some_and(|annotation| {
-            annotation.is_none_literal_expr() || matches!(last_segment(annotation), Some("NoReturn" | "Never"))
-        });
+        let returns_nothing = def.returns.as_deref().is_some_and(is_nothing_annotation);
         let returns_value = match def.returns.as_deref() {
             Some(_) => !returns_nothing,
             None => visitor
@@ -94,6 +93,14 @@ pub fn rst_returns(checker: &Checker) {
             );
         }
     }
+}
+
+// A quoted annotation, as in `-> "None"`, returns what its unquoted form does.
+fn is_nothing_annotation(annotation: &Expr) -> bool {
+    if let Expr::StringLiteral(literal) = annotation {
+        return parse_expression(literal.value.to_str()).is_ok_and(|parsed| is_nothing_annotation(parsed.expr()));
+    }
+    annotation.is_none_literal_expr() || matches!(last_segment(annotation), Some("NoReturn" | "Never"))
 }
 
 // A body of `...`, `pass` or `raise NotImplementedError`, after the docstring.

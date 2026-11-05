@@ -78,6 +78,11 @@ impl<'a> Semantic<'a> {
         self.index.member_references.get(&class).and_then(|members| members.get(name)).map_or(&[], Vec::as_slice)
     }
 
+    // The ranges of the bindings of `name` in a function, class, comprehension, lambda or type parameter scope.
+    pub fn local_bindings(&self, name: &str) -> &[TextRange] {
+        self.index.local_bindings.get(name).map_or(&[], Vec::as_slice)
+    }
+
     pub fn is_rebound(&self, name: &str) -> bool {
         self.bindings(name).len() > 1
     }
@@ -111,6 +116,7 @@ struct Index<'a> {
     references: FxHashMap<&'a str, Vec<Reference<'a>>>,
     member_references: FxHashMap<TextRange, FxHashMap<&'a str, Vec<TextRange>>>,
     global_declarations: FxHashMap<&'a str, Vec<TextRange>>,
+    local_bindings: FxHashMap<&'a str, Vec<TextRange>>,
 }
 
 impl<'a> Index<'a> {
@@ -120,6 +126,13 @@ impl<'a> Index<'a> {
         for scope in model.scopes.iter() {
             for (name, latest) in scope.bindings() {
                 let chain: Vec<BindingId> = scope.shadowed_bindings(latest).collect();
+                if !scope.kind.is_module() {
+                    let locals = chain
+                        .iter()
+                        .filter(|binding_id| !model.binding(**binding_id).kind.is_global())
+                        .map(|binding_id| binding_range(model, *binding_id));
+                    self.local_bindings.entry(name).or_default().extend(locals);
+                }
                 let declarations: Vec<TextRange> = chain
                     .iter()
                     .map(|binding_id| model.binding(*binding_id))
@@ -184,13 +197,15 @@ impl<'a> Index<'a> {
         if !resolves_to_module(model, module_bindings, name) {
             return;
         }
+        // PEP 695 evaluates type parameter bounds and defaults, and `type` alias values, lazily.
+        let lazy = model.in_deferred_type_definition() || model.in_deferred_type_alias_value();
         self.references.entry(name.id.as_str()).or_default().push(Reference {
             name: name.id.as_str(),
             range: name.range,
             statement: body.partition_point(|stmt| stmt.end() <= name.start()),
             evaluation: if model.in_annotation() {
                 Evaluation::Annotation
-            } else if function.is_some() {
+            } else if function.is_some() || lazy {
                 Evaluation::Deferred
             } else {
                 Evaluation::Runtime
@@ -213,6 +228,7 @@ pub enum BindingKind {
     Import,
     Function,
     Class,
+    TypeAlias,
     Target,
     Other,
 }
@@ -259,11 +275,11 @@ fn binding_kind(model: &SemanticModel, binding_id: BindingId) -> BindingKind {
             BindingKind::Target
         }
         RuffBindingKind::Assignment => match binding.statement(model) {
-            Some(Stmt::Assign(_)) => BindingKind::Assignment,
             Some(Stmt::AnnAssign(_)) => BindingKind::Annotated,
             Some(Stmt::AugAssign(_)) => BindingKind::Augmented,
             Some(Stmt::Match(_)) => BindingKind::Target,
-            _ => BindingKind::Other,
+            Some(Stmt::TypeAlias(_)) => BindingKind::TypeAlias,
+            _ => BindingKind::Assignment,
         },
         _ => BindingKind::Other,
     }

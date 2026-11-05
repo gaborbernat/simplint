@@ -221,6 +221,14 @@ tox run -e ecosystem -- requests click
 Run it after changing a rule or a fix. It does not check that the projects' own test suites still pass; for a fix that
 can change behavior, run the suite of an affected project by hand.
 
+Pass `--target-version 3.10` to check a release other than the running one. simplint then follows that release's rules,
+and each fixed file must compile under a CPython of that version, which `uv python find` locates. The running
+interpreter's parser accepts syntax from newer releases, so it misses a fix that breaks an older target.
+
+```bash
+tox run -e ecosystem -- --target-version 3.10 requests
+```
+
 Refresh the pins in `tasks/ecosystem.py` from [top-pypi-packages](https://hugovk.github.io/top-pypi-packages/) when the
 list drifts.
 

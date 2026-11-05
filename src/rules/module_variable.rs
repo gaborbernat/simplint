@@ -40,9 +40,12 @@ pub fn module_variables<'a>(checker: &Checker<'a>) -> Vec<ModuleVariable<'a>> {
             || MAGIC.contains(&name)
             || read_by_name.contains(name)
             || kept.iter().any(|kept| kept == name)
-            || bindings
-                .iter()
-                .any(|binding| matches!(binding.kind, BindingKind::Import | BindingKind::Function | BindingKind::Class))
+            || bindings.iter().any(|binding| {
+                matches!(
+                    binding.kind,
+                    BindingKind::Import | BindingKind::Function | BindingKind::Class | BindingKind::TypeAlias
+                )
+            })
             || bindings.iter().all(|binding| binding.kind == BindingKind::Target)
         {
             continue;

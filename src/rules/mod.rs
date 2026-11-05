@@ -13,8 +13,9 @@ pub(crate) mod typing;
 
 use ruff_diagnostics::Edit;
 use ruff_python_ast::helpers::any_over_expr;
+use ruff_python_ast::str::Quote;
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, Expr, OperatorPrecedence, Stmt};
+use ruff_python_ast::{self as ast, Expr, OperatorPrecedence, Stmt, StringFlags};
 use ruff_python_trivia::{has_leading_content, has_trailing_content, leading_indentation};
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};
@@ -142,6 +143,133 @@ impl<'a, F: FnMut(&'a Expr) -> Option<T>, T> Visitor<'a> for ExprCollector<F, T>
         }
         visitor::walk_expr(self, expr);
     }
+}
+
+// The spans of the t-strings in `body`, which keep the text of their expressions, so a name changed inside one changes
+// the output.
+pub fn source_text_spans(body: &[Stmt]) -> Vec<TextRange> {
+    let mut finder = SourceTextSpans::default();
+    finder.visit_body(body);
+    finder.spans
+}
+
+#[derive(Default)]
+struct SourceTextSpans {
+    spans: Vec<TextRange>,
+}
+
+impl<'a> Visitor<'a> for SourceTextSpans {
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        if matches!(expr, Expr::TString(_)) {
+            self.spans.push(expr.range());
+        }
+        visitor::walk_expr(self, expr);
+    }
+}
+
+// Rewrites the edits that change a name read in an f-string field with a `=` debug specifier, so the field prints what
+// it printed before. The field prints its source text, `x=`, then the value of the expression, so the rewrite keeps that
+// text as written and moves the edits into a plain field: `{x=}` becomes `x={x!r}`, and a conversion or format spec
+// carries over. `None` when an edit lands where that cannot hold, such as in a t-string field, which keeps its source
+// text in the template, or in a field nested in another one.
+pub fn keep_debug_text(source: &str, body: &[Stmt], edits: Vec<Edit>) -> Option<Vec<Edit>> {
+    let mut finder = DebugFields::default();
+    finder.visit_body(body);
+    let mut groups: Vec<Vec<Edit>> = vec![Vec::new(); finder.fields.len()];
+    let mut rewritten = Vec::new();
+    for edit in edits {
+        if finder.blocked.iter().any(|range| range.contains_range(edit.range())) {
+            return None;
+        }
+        let mut containing =
+            finder.fields.iter().enumerate().filter(|(_, field)| field.range.contains_range(edit.range()));
+        match (containing.next(), containing.next()) {
+            (None, _) => rewritten.push(edit),
+            (Some((index, _)), None) => groups[index].push(edit),
+            (Some(_), Some(_)) => return None,
+        }
+    }
+    for (field, edits) in finder.fields.iter().zip(groups) {
+        if !edits.is_empty() {
+            rewritten.push(Edit::range_replacement(debug_field(source, field, &edits)?, field.range));
+        }
+    }
+    Some(rewritten)
+}
+
+// The text of a `=` debug field with its edits applied: the debug text, escaped to a literal, then a plain field.
+fn debug_field(source: &str, field: &DebugField, edits: &[Edit]) -> Option<String> {
+    let debug = field.debug.as_str();
+    if debug.contains(['\n', '\r', '\\']) {
+        return None;
+    }
+    let start = usize::from(field.range.start()) + 1;
+    let text_end = start + debug.len();
+    let equals = start + debug.rfind('=')?;
+    let end = usize::from(field.range.end()) - 1;
+    let (mut expression_edits, mut remainder_edits): (Vec<&Edit>, Vec<&Edit>) =
+        edits.iter().partition(|edit| usize::from(edit.start()) >= start && usize::from(edit.end()) <= equals);
+    let expression = splice(source, start, equals, &mut expression_edits)?;
+    let expression = expression.trim_end();
+    let remainder = splice(source, text_end, end, &mut remainder_edits)?;
+    let conversion = if remainder.is_empty() { "!r" } else { &remainder };
+    let space = if expression.starts_with('{') { " " } else { "" };
+    let quote = field.quote.as_char();
+    let literal = debug.replace('{', "{{").replace('}', "}}").replace(quote, &format!("\\{quote}"));
+    Some(format!("{literal}{{{space}{expression}{conversion}}}"))
+}
+
+// The source between `from` and `to` with the edits inside it applied. `None` when an edit lies outside the span.
+fn splice(source: &str, from: usize, to: usize, edits: &mut [&Edit]) -> Option<String> {
+    edits.sort_by_key(|edit| usize::from(edit.start()));
+    let mut text = String::new();
+    let mut cursor = from;
+    for edit in edits.iter() {
+        text.push_str(source.get(cursor..usize::from(edit.start()))?);
+        text.push_str(edit.content().unwrap_or_default());
+        cursor = usize::from(edit.end());
+    }
+    text.push_str(source.get(cursor..to)?);
+    Some(text)
+}
+
+// The `=` debug fields of a body, each with its quote and the text of its debug specifier.
+#[derive(Default)]
+struct DebugFields<'a> {
+    fields: Vec<DebugField<'a>>,
+    // The debug fields inside a t-string, which the rewrite cannot change.
+    blocked: Vec<TextRange>,
+}
+
+struct DebugField<'a> {
+    range: TextRange,
+    debug: &'a ast::DebugText,
+    quote: Quote,
+}
+
+impl<'a> Visitor<'a> for DebugFields<'a> {
+    fn visit_f_string(&mut self, f_string: &'a ast::FString) {
+        let quote = f_string.flags.quote_style();
+        self.fields.extend(f_string.elements.iter().filter_map(|element| debug_field_of(element, quote)));
+        visitor::walk_f_string(self, f_string);
+    }
+
+    fn visit_t_string(&mut self, t_string: &'a ast::TString) {
+        self.blocked.extend(t_string.elements.iter().filter_map(|element| match element {
+            ast::InterpolatedStringElement::Interpolation(interpolation) => {
+                interpolation.debug_text.as_ref().map(|_| interpolation.range)
+            }
+            ast::InterpolatedStringElement::Literal(_) => None,
+        }));
+        visitor::walk_t_string(self, t_string);
+    }
+}
+
+fn debug_field_of(element: &ast::InterpolatedStringElement, quote: Quote) -> Option<DebugField<'_>> {
+    let ast::InterpolatedStringElement::Interpolation(interpolation) = element else {
+        return None;
+    };
+    Some(DebugField { range: interpolation.range, debug: interpolation.debug_text.as_ref()?, quote })
 }
 
 // A module-level `if sys.version_info < ...: raise ...` or `sys.exit(...)` exists to run on interpreters older than the

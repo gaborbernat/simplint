@@ -1,0 +1,32 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:5 SMP201 `_helper` is defined before its first use in `make`; move it below `make` [unsafe fix: Move `_helper` below `make`]
+13:7 SMP201 `_Limit` is defined before its first use in `_scale`; move it below `_scale`
+--- fixed (1 applied, 0 remaining) ---
+def make[T: _Base]() -> int:
+    return _helper()
+
+
+class _Base:
+    pass
+
+
+def _helper() -> int:
+    return 1
+
+
+def _scale[T: _Limit = _Limit]() -> int:
+    return 1
+
+
+class _Limit:
+    pass
+
+
+type _Items = list[_Node]
+
+
+class _Node:
+    pass

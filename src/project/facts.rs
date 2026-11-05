@@ -7,12 +7,12 @@ use ruff_python_ast::helpers::{ReturnStatementVisitor, resolve_imported_module_p
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
-use ruff_python_parser::parse_module;
+use ruff_python_parser::{parse_expression, parse_module};
 use ruff_python_stdlib::identifiers::is_identifier;
 
 use super::constructors::Constructors;
 use super::receivers::{AttributeWrites, module_name};
-use crate::syntax::{Exports, dunder_all, module_statements};
+use crate::syntax::{Exports, Visibility, dunder_all, last_segment, module_statements};
 
 // The names a file uses from other modules, before they resolve to files; parsing finds them and the cache keeps them.
 // Names are grouped by module, so each module resolves once per file.
@@ -49,6 +49,8 @@ pub struct FileFacts {
     pub(super) caught: Vec<(String, String)>,
     // The module-level classes, each with the classes it lists as bases, as (module, name).
     pub(super) classes: Vec<ClassBases>,
+    // The module's classes and aliases that another exported name's signature reaches, so they are public API too.
+    pub(super) api_reached: Vec<String>,
 }
 
 impl FileFacts {
@@ -96,7 +98,12 @@ impl FileFacts {
             &imports.aliases,
             &imports.from_statements,
         );
-        let (exports, dynamic_exports) = match dunder_all(&parsed.syntax().body) {
+        let listed = dunder_all(&parsed.syntax().body);
+        let api_reached = match &listed {
+            Exports::Listed(names) => api_reached(&parsed.syntax().body, names),
+            Exports::Absent | Exports::Dynamic => Vec::new(),
+        };
+        let (exports, dynamic_exports) = match listed {
             Exports::Listed(names) => (Some(names.into_iter().map(str::to_owned).collect()), false),
             Exports::Absent => (None, false),
             Exports::Dynamic => (None, true),
@@ -131,6 +138,7 @@ impl FileFacts {
             reads_docstrings: imports.reads_docstrings,
             caught: imports.caught,
             classes,
+            api_reached,
         })
     }
 }
@@ -274,8 +282,7 @@ impl<'a> Visitor<'a> for Imports<'a> {
         self.reads_docstrings |= reads_docstring(expr);
         if let Expr::Call(ast::ExprCall { func, arguments, .. }) = expr
             && self.handler_depth > 0
-            && func.as_name_expr().is_some_and(|name| name.id.as_str() == "isinstance")
-            && let Some(classes) = arguments.args.get(1)
+            && let Some(classes) = class_argument(func, arguments)
         {
             self.catch(classes);
         }
@@ -309,6 +316,19 @@ impl<'a> Visitor<'a> for Imports<'a> {
             _ => {}
         }
         visitor::walk_expr(self, expr);
+    }
+}
+
+// The argument that names the classes a call checks or splits: the second of `isinstance(error, Cls)`, and the first
+// of `group.split(Cls)` or `group.subgroup(Cls)` on an exception group.
+fn class_argument<'a>(func: &Expr, arguments: &'a ast::Arguments) -> Option<&'a Expr> {
+    if func.as_name_expr().is_some_and(|name| name.id.as_str() == "isinstance") {
+        arguments.args.get(1)
+    } else if func.as_attribute_expr().is_some_and(|attribute| matches!(attribute.attr.as_str(), "split" | "subgroup"))
+    {
+        arguments.args.first()
+    } else {
+        None
     }
 }
 
@@ -508,5 +528,157 @@ fn declared_names(stmt: &Stmt) -> Vec<String> {
             target.as_name_expr().map(|name| name.id.to_string()).into_iter().collect()
         }
         _ => Vec::new(),
+    }
+}
+
+// The module-level names a module's public interface reaches: the classes and aliases that the annotations, bases and
+// bounds of an exported name refer to, transitively, through the same places of every class and alias they reach. A
+// name counts only when another exported name reaches it, so a type an exported name uses is public though no file
+// imports it.
+fn api_reached(body: &[Stmt], exported: &[&str]) -> Vec<String> {
+    let mut refs: FxHashMap<&str, Vec<String>> = FxHashMap::default();
+    let mut types: FxHashSet<&str> = FxHashSet::default();
+    for stmt in module_statements(body) {
+        if let Some(definition) = definition(stmt) {
+            refs.entry(definition.name).or_default().extend(definition.refs);
+            if definition.is_type {
+                types.insert(definition.name);
+            }
+        }
+    }
+    let mut reached: FxHashSet<&str> = FxHashSet::default();
+    for root in exported {
+        // The root itself is reached only through a cycle back to it, which no other exported name causes.
+        let mut seen: FxHashSet<&str> = FxHashSet::default();
+        let mut pending: Vec<&str> = refs.get(root).into_iter().flatten().map(String::as_str).collect();
+        while let Some(name) = pending.pop() {
+            if types.contains(name) && seen.insert(name) {
+                pending.extend(refs.get(name).into_iter().flatten().map(String::as_str));
+            }
+        }
+        reached.extend(seen.into_iter().filter(|name| name != root));
+    }
+    reached.into_iter().map(str::to_owned).collect()
+}
+
+// A module-level definition, with the names its interface refers to. Only classes and aliases can be reached, so only
+// they set `is_type`.
+struct Definition<'a> {
+    name: &'a str,
+    is_type: bool,
+    refs: Vec<String>,
+}
+
+fn definition(stmt: &Stmt) -> Option<Definition<'_>> {
+    let (name, is_type, refs) = match stmt {
+        Stmt::FunctionDef(function) => (function.name.as_str(), false, signature_names(function)),
+        Stmt::ClassDef(class) => (class.name.as_str(), true, class_names(class)),
+        Stmt::TypeAlias(ast::StmtTypeAlias { name, type_params, value, .. }) => {
+            let mut refs = type_param_names(type_params.as_deref());
+            refs.extend(names_in(value));
+            (name.as_name_expr()?.id.as_str(), true, refs)
+        }
+        Stmt::AnnAssign(ast::StmtAnnAssign { target, annotation, value: Some(value), .. })
+            if last_segment(annotation) == Some("TypeAlias") =>
+        {
+            (target.as_name_expr()?.id.as_str(), true, names_in(value))
+        }
+        // A plain assignment is an alias when its value has the shape of a type expression, so `Offset = int` counts
+        // while `LIMIT = compute(3)` does not.
+        Stmt::Assign(ast::StmtAssign { targets, value, .. })
+            if matches!(
+                &**value,
+                Expr::Name(_)
+                    | Expr::Attribute(_)
+                    | Expr::Subscript(_)
+                    | Expr::BinOp(ast::ExprBinOp { op: ast::Operator::BitOr, .. })
+            ) =>
+        {
+            let [target] = targets.as_slice() else {
+                return None;
+            };
+            (target.as_name_expr()?.id.as_str(), true, names_in(value))
+        }
+        _ => return None,
+    };
+    Some(Definition { name, is_type, refs })
+}
+
+// The names a class puts in its interface: its type parameters' bounds, its bases, the annotations of its fields, and
+// the signatures of its public methods. Keywords such as `metaclass=` are left out.
+fn class_names(class: &ast::StmtClassDef) -> Vec<String> {
+    let mut refs = type_param_names(class.type_params.as_deref());
+    refs.extend(class.bases().iter().flat_map(names_in));
+    for stmt in &class.body {
+        match stmt {
+            Stmt::AnnAssign(ast::StmtAnnAssign { annotation, .. }) => refs.extend(names_in(annotation)),
+            Stmt::FunctionDef(method) if Visibility::of(method.name.as_str()) == Visibility::Public => {
+                refs.extend(signature_names(method));
+            }
+            _ => {}
+        }
+    }
+    refs
+}
+
+// The names a function's signature puts in its interface: its type parameters' bounds and defaults, its parameter
+// annotations and its return annotation.
+fn signature_names(function: &ast::StmtFunctionDef) -> Vec<String> {
+    let mut refs = type_param_names(function.type_params.as_deref());
+    let parameters = &function.parameters;
+    let annotated = parameters
+        .posonlyargs
+        .iter()
+        .chain(&parameters.args)
+        .chain(&parameters.kwonlyargs)
+        .map(|parameter| &parameter.parameter)
+        .chain(parameters.vararg.as_deref())
+        .chain(parameters.kwarg.as_deref());
+    refs.extend(annotated.filter_map(|parameter| parameter.annotation()).flat_map(names_in));
+    refs.extend(function.returns.as_deref().into_iter().flat_map(names_in));
+    refs
+}
+
+// The bounds and defaults of type parameters.
+fn type_param_names(type_params: Option<&ast::TypeParams>) -> Vec<String> {
+    let Some(type_params) = type_params else {
+        return Vec::new();
+    };
+    type_params
+        .type_params
+        .iter()
+        .flat_map(|param| {
+            let bound = match param {
+                ast::TypeParam::TypeVar(ast::TypeParamTypeVar { bound, .. }) => bound.as_deref(),
+                ast::TypeParam::TypeVarTuple(_) | ast::TypeParam::ParamSpec(_) => None,
+            };
+            bound.into_iter().chain(param.default())
+        })
+        .flat_map(names_in)
+        .collect()
+}
+
+// The names an annotation or bound refers to, through subscripts, unions and string annotations.
+pub(crate) fn names_in(expr: &Expr) -> Vec<String> {
+    let mut names = Vec::new();
+    TypeNames { names: &mut names }.visit_expr(expr);
+    names
+}
+
+struct TypeNames<'n> {
+    names: &'n mut Vec<String>,
+}
+
+impl<'a> Visitor<'a> for TypeNames<'_> {
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        match expr {
+            Expr::Name(name) => self.names.push(name.id.to_string()),
+            Expr::StringLiteral(literal) => {
+                if let Ok(parsed) = parse_expression(literal.value.to_str()) {
+                    TypeNames { names: self.names }.visit_expr(parsed.expr());
+                }
+            }
+            _ => visitor::walk_expr(self, expr),
+        }
     }
 }

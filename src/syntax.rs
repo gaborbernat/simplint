@@ -135,8 +135,8 @@ pub fn is_classmethod(method: &ast::StmtFunctionDef) -> bool {
     decorator_names(&method.decorator_list).contains(&"classmethod")
 }
 
-// The statements that run when the module loads, including those of its top-level `if` and `try` blocks, where
-// modules pick an implementation by version or availability.
+// The statements that run when the module loads, including those of its top-level `if`, `try` and `match` blocks, where
+// modules pick an implementation by version, availability or platform.
 pub fn module_statements(body: &[Stmt]) -> impl Iterator<Item = &Stmt> {
     body.iter().flat_map(|stmt| -> Box<dyn Iterator<Item = &Stmt> + '_> {
         match stmt {
@@ -144,6 +144,9 @@ pub fn module_statements(body: &[Stmt]) -> impl Iterator<Item = &Stmt> {
                 module_statements(body)
                     .chain(elif_else_clauses.iter().flat_map(|clause| module_statements(&clause.body))),
             ),
+            Stmt::Match(ast::StmtMatch { cases, .. }) => {
+                Box::new(cases.iter().flat_map(|case| module_statements(&case.body)))
+            }
             Stmt::Try(ast::StmtTry { body, handlers, orelse, finalbody, .. }) => Box::new(
                 module_statements(body)
                     .chain(handlers.iter().flat_map(|handler| match handler {

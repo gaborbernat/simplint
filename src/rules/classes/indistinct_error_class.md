@@ -96,6 +96,11 @@ def load(path: str) -> None:
 
   - **An `except*` clause**: an exception group handler names a class the same way.
 
+    ```toml config
+    [project]
+    requires-python = ">=3.11"
+    ```
+
     ```python ok file=app/errors.py
     class ConfigError(Exception):
         pass
@@ -110,6 +115,30 @@ def load(path: str) -> None:
             raise ExceptionGroup("errors", [ConfigError()])
         except* ConfigError:
             pass
+    ```
+
+  - **A split or subgroup of an exception group inside a handler**: `split` and `subgroup` take the classes to select as
+    their first argument.
+
+    ```toml config
+    [project]
+    requires-python = ">=3.11"
+    ```
+
+    ```python ok file=app/errors.py
+    class ConfigError(Exception):
+        pass
+    ```
+
+    ```python context file=app/main.py
+    from app.errors import ConfigError
+
+
+    def load() -> None:
+        try:
+            raise ExceptionGroup("errors", [ConfigError()])
+        except ExceptionGroup as group:
+            matched, rest = group.split(ConfigError)
     ```
 
   - **An `isinstance` check inside a handler**: a check on the caught exception names the class.

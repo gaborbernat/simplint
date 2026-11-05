@@ -136,6 +136,38 @@ Checks that a library's public API is documented. No fix is offered, since only 
   """The jobs started per second."""
   ```
 
+- **Type aliases from a `type` statement**: a public alias needs a docstring like any public variable.
+
+  ```toml config
+  [project]
+  requires-python = ">=3.12"
+
+  [tool.simplint]
+  project-kind = "library"
+  ```
+
+  ```python report file=demo/api.py
+  type Pair = tuple[int, int]
+  ```
+
+- **Definitions in the `case` bodies of a `match` at module or class level**: a `match` that picks an implementation by
+  platform or version is read the way an `if` is, so the public definitions in each case are the module's too.
+
+  ```toml config
+  [tool.simplint]
+  project-kind = "library"
+  ```
+
+  ```python report file=demo/api.py
+  import sys
+
+  match sys.platform:
+      case "win32":
+
+          def open_thing() -> int:
+              return 1
+  ```
+
 - **Names a private module defines and a public module re-exports**: the report names the module that re-exports the
   name, so you can see why it counts.
 

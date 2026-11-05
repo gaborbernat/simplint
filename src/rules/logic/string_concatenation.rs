@@ -1,6 +1,5 @@
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::str::Quote;
-use ruff_python_ast::visitor::transformer::{self, Transformer};
 use ruff_python_ast::{self as ast, Expr, Operator, PythonVersion, StringFlags};
 use ruff_python_codegen::Generator;
 use ruff_text_size::{Ranged, TextRange};
@@ -8,6 +7,7 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
+use crate::rules::logic::inline::{literal_text, requoted_text};
 use crate::rules::logic::kinds::Kinds;
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
@@ -162,15 +162,15 @@ fn expression_text(checker: &Checker, expr: &Expr, text: &str, delimiter: Quote,
     if requote && as_written {
         return None;
     }
+    // A replacement field takes only a yield or star expression unparenthesized, so a generator the call took bare
+    // gets the parentheses its own syntax would give it.
+    let bare_generator = matches!(expr, Expr::Generator(ast::ExprGenerator { parenthesized: false, .. }));
     // An expression the layout spreads over lines goes on one, as it would in a line long enough.
     if !requote && !text.contains('\n') {
-        return Some(text.to_owned());
+        return Some(if bare_generator { format!("({text})") } else { text.to_owned() });
     }
-    let mut regenerated = expr.clone();
-    if requote {
-        Requote(delimiter.opposite()).visit_expr(&mut regenerated);
-    }
-    let text = Generator::from(checker.stylist).expr(&regenerated);
+    let text =
+        if requote { requoted_text(checker, expr, delimiter)? } else { Generator::from(checker.stylist).expr(expr) };
     let unfit = text.contains(FORBIDDEN_IN_EXPRESSION) || before_312 && text.contains(delimiter.as_char());
     (!unfit).then_some(text)
 }
@@ -178,24 +178,3 @@ fn expression_text(checker: &Checker, expr: &Expr, text: &str, delimiter: Quote,
 // A comment, a backslash, a format spec or conversion, or nested braces in an expression would not survive the move into
 // a replacement field.
 const FORBIDDEN_IN_EXPRESSION: [char; 6] = ['\\', '#', ':', '!', '{', '}'];
-
-// A named escape such as `\N{BULLET}` keeps single braces in an f-string, where every other brace doubles.
-fn literal_text<'a>(checker: &Checker<'a>, literal: &ast::StringLiteral) -> Option<&'a str> {
-    let flags = literal.flags;
-    let text = checker.text(literal.content_range());
-    (!flags.is_triple_quoted() && !flags.prefix().is_raw() && !flags.prefix().is_unicode() && !text.contains("\\N{"))
-        .then_some(text)
-}
-
-struct Requote(Quote);
-
-impl Transformer for Requote {
-    fn visit_expr(&self, expr: &mut Expr) {
-        if let Expr::StringLiteral(ast::ExprStringLiteral { value, .. }) = expr {
-            for literal in value.iter_mut() {
-                literal.flags = literal.flags.with_quote_style(self.0);
-            }
-        }
-        transformer::walk_expr(self, expr);
-    }
-}

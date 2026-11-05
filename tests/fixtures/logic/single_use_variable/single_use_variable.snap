@@ -15,7 +15,7 @@ expression: "lint_fixture(rule, fixture, target_version)"
 59:5 SMP504 `count` is used once, right below; inline its value [fix: Inline `count`]
 64:5 SMP504 `total` is used once, right below; inline its value [fix: Inline `total`]
 112:5 SMP504 `other` is used once, right below; inline its value [fix: Inline `other`]
-290:9 SMP504 `total` is used once, right below; inline its value [fix: Inline `total`]
+299:9 SMP504 `total` is used once, right below; inline its value [fix: Inline `total`]
 --- fixed (15 applied, 0 remaining) ---
 import os
 from typing import Any
@@ -32,7 +32,7 @@ def inlined_into_return(prices: list[float]) -> str:
 
 
 def inlined_with_parentheses(first: int, second: int, flag: bool) -> None:
-    print((first + second) * 2 if flag else 0)
+    print((first + second) * 2)
 
 
 def inlined_tuple(first: int, second: int) -> None:
@@ -60,12 +60,12 @@ def inlined_after_plain_names(items: list[str], other: int) -> None:
     print(other, len(items))
 
 
-def inlined_with_conditional_before(items: list[str], flag: bool) -> None:
-    print(flag and len(items))
+def inlined_before_conditional(items: list[str], flag: bool) -> None:
+    print(len(items) and flag)
 
 
 def inlined_with_ternary_test(items: list[str], flag: bool) -> None:
-    print(1 if flag else len(items))
+    print(1 if len(items) else 0)
 
 
 def inlined_as_argument(first: int, second: int) -> None:
@@ -285,6 +285,15 @@ def kept_mention_in_value(items: list[str]) -> None:
 def kept_exception_message(items: list[str]) -> None:
     msg = f"{len(items)} items"
     raise ValueError(msg)
+
+
+def kept_type_parameter(items: list[str]) -> None:
+    bound = list[str]
+
+    def first[T: bound](value: T) -> T:
+        return value
+
+    print(first(items))
 
 
 class Box:

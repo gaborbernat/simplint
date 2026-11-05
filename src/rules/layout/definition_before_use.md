@@ -212,6 +212,26 @@ whatever the target version, because many decorators read them while the module 
 
 Moving such a name below its user would leave the decorator with an unresolved forward reference.
 
+### Type parameters and type statements
+
+Python 3.12 evaluates the bound and default of a type parameter ([PEP 695](https://peps.python.org/pep-0695/),
+[PEP 696](https://peps.python.org/pep-0696/)) and the value of a `type` statement lazily, so the names they read need
+not exist yet. They make their statement a user like a function body does:
+
+```toml config
+[project]
+requires-python = ">=3.12"
+```
+
+```python report
+class _Base:
+    pass
+
+
+def make[T: _Base]() -> T:
+    raise NotImplementedError
+```
+
 ### Fix
 
 The fix rewrites the span from the first to the last misplaced statement in the expected order:

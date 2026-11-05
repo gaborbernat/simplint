@@ -16,7 +16,7 @@ def inlined_into_return(prices: list[float]) -> str:
 
 def inlined_with_parentheses(first: int, second: int, flag: bool) -> None:
     total = first + second
-    print(total * 2 if flag else 0)
+    print(total * 2)
 
 
 def inlined_tuple(first: int, second: int) -> None:
@@ -50,14 +50,14 @@ def inlined_after_plain_names(items: list[str], other: int) -> None:
     print(other, count)
 
 
-def inlined_with_conditional_before(items: list[str], flag: bool) -> None:
+def inlined_before_conditional(items: list[str], flag: bool) -> None:
     count = len(items)
-    print(flag and count)
+    print(count and flag)
 
 
 def inlined_with_ternary_test(items: list[str], flag: bool) -> None:
     count = len(items)
-    print(1 if flag else count)
+    print(1 if count else 0)
 
 
 def inlined_as_argument(first: int, second: int) -> None:
@@ -280,6 +280,15 @@ def kept_mention_in_value(items: list[str]) -> None:
 def kept_exception_message(items: list[str]) -> None:
     msg = f"{len(items)} items"
     raise ValueError(msg)
+
+
+def kept_type_parameter(items: list[str]) -> None:
+    bound = list[str]
+
+    def first[T: bound](value: T) -> T:
+        return value
+
+    print(first(items))
 
 
 class Box:

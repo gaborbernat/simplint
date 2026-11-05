@@ -6,12 +6,14 @@ use std::collections::BTreeSet;
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use anyhow::{Result, ensure};
+use anyhow::Result;
 use rayon::prelude::*;
 use ruff_db::diagnostic::Diagnostic;
 use ruff_linter::linter::FixTable;
 use ruff_linter::settings::flags;
 use ruff_linter::settings::types::UnsafeFixes;
+use ruff_python_ast::{PySourceType, PythonVersion};
+use ruff_python_parser::{ParseOptions, UnsupportedSyntaxError, UnsupportedSyntaxErrorKind, parse_unchecked};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::fix::apply::{FixResult, fix_file};
@@ -207,18 +209,23 @@ impl<'l, 'a> Fixer<'l, 'a> {
     // or the passes do not settle. Rules in `unfixable` keep their reports but not their fixes. The rules skip a file
     // that does not parse, so only a file that parses gets fixes, and a syntax error after one is the fix's doing.
     fn fix_with(&self, linted: &Linted, unfixable: RuleSet) -> Result<FixerResult> {
+        let version = self.linter.settings.from_ruff.target_version;
         let mut transformed = linted.source.to_owned();
         let mut diagnostics = linted.diagnostics.clone();
         let mut fixed = FixTable::default();
         let mut iterations = 0;
+        let mut original = None;
         while let Some(FixResult { code, fixes }) = fix_file(&transformed, &diagnostics, self.unsafe_fixes, unfixable) {
             errors::ensure_converging(self.path, iterations, &diagnostics)?;
+            // Counted once a pass applies, from the source before the first one: the target version may reject syntax
+            // the source already uses, which the fixes must not be blamed for.
+            let counts = original.get_or_insert_with(|| version_counts(&version_errors(&transformed, version)));
             add_fixes(&mut fixed, &fixes);
             transformed = code;
             iterations += 1;
             diagnostics = self.lint(&transformed);
-            let parses = !diagnostics.iter().any(Diagnostic::is_invalid_syntax);
-            ensure!(parses, errors::broken_syntax(self.path, &transformed, &fixed));
+            let introduced = check_syntax(&diagnostics, &version_errors(&transformed, version), counts);
+            errors::ensure_syntax(self.path, &transformed, &fixed, introduced)?;
         }
         Ok(FixerResult { diagnostics, transformed, fixed })
     }
@@ -237,6 +244,40 @@ impl<'l, 'a> Fixer<'l, 'a> {
 pub fn add_fixes(total: &mut FixTable, fixes: &FixTable) {
     for (id, secondary_code, count) in fixes.iter() {
         *total.entry(id).or_default(secondary_code) += count;
+    }
+}
+
+// The errors of the syntax a version rejects, such as an f-string reusing its quote before Python 3.12.
+fn version_errors(source: &str, version: PythonVersion) -> Vec<UnsupportedSyntaxError> {
+    let options = ParseOptions::from(PySourceType::Python).with_target_version(version);
+    parse_unchecked(source, options).unsupported_syntax_errors().to_vec()
+}
+
+type VersionCounts = FxHashMap<UnsupportedSyntaxErrorKind, usize>;
+
+fn version_counts(errors: &[UnsupportedSyntaxError]) -> VersionCounts {
+    let mut counts = VersionCounts::default();
+    for error in errors {
+        *counts.entry(error.kind).or_default() += 1;
+    }
+    counts
+}
+
+// The message of the syntax error a fix introduced: a parse error, or a version error of a kind the source had fewer
+// of before the fixes.
+fn check_syntax(
+    diagnostics: &[Diagnostic],
+    errors: &[UnsupportedSyntaxError],
+    original: &VersionCounts,
+) -> Result<(), String> {
+    if let Some(invalid) = diagnostics.iter().find(|diagnostic| diagnostic.is_invalid_syntax()) {
+        return Err(invalid.headline_message().to_owned());
+    }
+    let counts = version_counts(errors);
+    let exceeded = |kind: &UnsupportedSyntaxErrorKind| counts[kind] > original.get(kind).copied().unwrap_or_default();
+    match errors.iter().find(|error| exceeded(&error.kind)) {
+        Some(error) => Err(error.to_string()),
+        None => Ok(()),
     }
 }
 
@@ -302,4 +343,47 @@ impl Sources {
 struct Linted<'s> {
     source: &'s str,
     diagnostics: Vec<Diagnostic>,
+}
+
+#[cfg(test)]
+mod tests {
+    use ruff_db::diagnostic::{Diagnostic, Span};
+    use ruff_python_ast::PythonVersion;
+    use ruff_source_file::SourceFileBuilder;
+    use ruff_text_size::TextRange;
+    use test_case::test_case;
+
+    use super::{VersionCounts, check_syntax, version_counts, version_errors};
+
+    const NESTED_QUOTE: &str = "print(f\"{x[\"a\"]}\")\n";
+
+    #[test_case(
+        "x = 1\n",
+        NESTED_QUOTE,
+        PythonVersion::PY311,
+        Some("Cannot reuse outer quote character in f-strings on Python 3.11 (syntax was added in Python 3.12)") ;
+        "reused_quote_before_3_12"
+    )]
+    #[test_case("x = 1\n", NESTED_QUOTE, PythonVersion::PY312, None ; "reused_quote_on_3_12")]
+    #[test_case(NESTED_QUOTE, NESTED_QUOTE, PythonVersion::PY311, None ; "syntax_already_in_source")]
+    #[test_case(
+        "if x:\n    pass\n",
+        "if (y := x):\n    pass\n",
+        PythonVersion::PY37,
+        Some("Cannot use named assignment expression (`:=`) on Python 3.7 (syntax was added in Python 3.8)") ;
+        "walrus_before_3_8"
+    )]
+    fn check_syntax_version_errors(original: &str, fixed: &str, version: PythonVersion, error: Option<&str>) {
+        let counts: VersionCounts = version_counts(&version_errors(original, version));
+        let result = check_syntax(&[], &version_errors(fixed, version), &counts);
+        assert_eq!(result.err().as_deref(), error);
+    }
+
+    #[test]
+    fn check_syntax_reports_a_parse_error_first() {
+        let file = SourceFileBuilder::new("module.py", "").finish();
+        let diagnostic = Diagnostic::invalid_syntax(Span::from(file), "Expected an expression", TextRange::default());
+        let result = check_syntax(&[diagnostic], &[], &VersionCounts::default());
+        assert_eq!(result.err().as_deref(), Some("Expected an expression"));
+    }
 }

@@ -94,10 +94,25 @@ The fix depends on the constant:
   assert check, "message"
   ```
 
-- Other tuples get no fix.
+  A walrus check gets parentheses, since `:=` cannot stand alone before the comma.
+
+  ```python report
+  assert (ready := True, "message")
+  ```
+
+  ```python fixed
+  assert (ready := True), "message"
+  ```
+
+- Other tuples get no fix, including a tuple with a starred element, which has no meaning outside the brackets.
 
   ```python report
   assert (1, 2, 3)
+  ```
+
+  ```python report
+  values = ["message"]
+  assert (True, *values)
   ```
 
 - For any other constant the fix is safe: it deletes the assertion, which never fails. The block keeps a `pass` only

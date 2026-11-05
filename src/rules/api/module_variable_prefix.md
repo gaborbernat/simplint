@@ -85,11 +85,21 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
   ```
 
 - **Names [module-variable-case](SMP102.html) leaves alone**: the same exceptions apply, since renaming these breaks the
-  program or the tool that reads them by their exact spelling. They include dunder names, class-like names, names also
-  bound by an import, `def` or `class`, names bound only as loop targets, the framework names and `naming.keep-names`.
+  program or the tool that reads them by their exact spelling. They include dunder names, class-like names, type aliases
+  from a `type` statement, names also bound by an import, `def` or `class`, names bound only as loop targets, the
+  framework names and `naming.keep-names`.
 
   ```python ok
   Alias = int
+  ```
+
+  ```toml config
+  [project]
+  requires-python = ">=3.12"
+  ```
+
+  ```python ok
+  type vector = list[float]
   ```
 
   ```python ok

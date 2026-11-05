@@ -90,6 +90,19 @@ classes, at any nesting depth. What counts as internal depends on the project.
       """Run one step of the job."""
   ```
 
+- **Functions in the `case` bodies of a `match` at module or class level**: a `match` that picks an implementation by
+  platform or version is read the way an `if` is, so the functions in each case are checked like the module's others.
+
+  ```python report file=demo/platform.py
+  import sys
+
+  match sys.platform:
+      case "win32":
+
+          def _open() -> None:
+              """Open the file."""
+  ```
+
 - **Functions in a private module that other modules import**: a function in a module such as `package/_helpers.py` is
   still internal when another module imports it, as long as the public modules do not re-export it.
 

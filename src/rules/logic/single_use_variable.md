@@ -29,6 +29,24 @@ def total_price(prices: list[float]) -> str:
   the value is inlined; see
   [Settings shared with Ruff](https://simplint.readthedocs.io/en/latest/configuration/project.html#settings-shared-with-ruff)
 
+- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and
+  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to
+  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python),
+  which decide the f-strings that cannot hold a backslash or their own quote before Python 3.12, and the decorators that
+  must be dotted names before Python 3.9; see
+  [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)
+
+  ```toml config
+  [tool.ruff]
+  target-version = "py312"
+  ```
+
+  ```python report
+  def quote(value: str) -> str:
+      quoted = value.replace("'", "''")
+      return f"'{quoted}'"
+  ```
+
 ## What it does
 
 ### Active on
@@ -54,6 +72,49 @@ def total_price(prices: list[float]) -> str:
 
   def show(items: list[str]) -> None:
       print(len(items))
+  ```
+
+- **A dict or set display inlined right after an f-string field's `{`**: the value gets a space inside the braces,
+  because `{{` would be read as an escaped brace.
+
+  ```python report
+  def show(key: str) -> None:
+      mapping = {key: 2}
+      print(f"{mapping}")
+  ```
+
+  ```python fixed
+  def show(key: str) -> None:
+      print(f"{ {key: 2} }")
+  ```
+
+- **A read in an f-string field with a [`=`](https://docs.python.org/3/reference/lexical_analysis.html#f-strings) debug
+  specifier**, such as `{total=}`: the field prints the text of its expression, so the text stays as written and the
+  value moves into a plain field after it. The printed text does not change.
+
+  ```python report
+  def show(items: list[str]) -> None:
+      total = len(items)
+      print(f"{total=}")
+  ```
+
+  ```python fixed
+  def show(items: list[str]) -> None:
+      print(f"total={len(items)!r}")
+  ```
+
+- **Before Python 3.12, a value whose strings use the f-string's quote**: a string in the value takes the other quote,
+  which the field can hold.
+
+  ```python report
+  def join(items: list[str]) -> str:
+      sep = " ".join(items)
+      return f"[{sep}]"
+  ```
+
+  ```python fixed
+  def join(items: list[str]) -> str:
+      return f"[{' '.join(items)}]"
   ```
 
 ### Exceptions
@@ -112,6 +173,76 @@ def total_price(prices: list[float]) -> str:
       count = len(items)
       if verbose:
           print(count)
+  ```
+
+- **A read after `and` or `or`**, or in a branch of a conditional expression, a later link of a chained comparison, an
+  `assert`, a `case` or the type of an `except` clause: each runs only when the code before it does not decide the
+  outcome, or when an exception or a match reaches it.
+
+  ```python ok
+  def run(items: list[str], flag: bool) -> None:
+      count = len(items)
+      print(flag and count)
+  ```
+
+  ```python ok
+  def run(items: list[str], flag: bool) -> None:
+      count = len(items)
+      print(count if flag else 0)
+  ```
+
+  ```python ok
+  def run(items: list[str], low: int) -> None:
+      count = len(items)
+      print(low < 0 < count)
+  ```
+
+  ```python ok
+  def run(items: list[str]) -> None:
+      count = len(items)
+      assert count, "no items"
+  ```
+
+  ```python ok
+  def run(command: str, items: list[str]) -> None:
+      count = len(items)
+      match command:
+          case "count":
+              print(count)
+  ```
+
+  ```python ok
+  def run(items: list[str]) -> None:
+      error = ValueError
+      try:
+          print(items[0])
+      except error:
+          print("empty")
+  ```
+
+- **A read in an annotation, a `type` statement or a type parameter**: an annotation in a function body is never
+  evaluated, and the others are evaluated lazily, so the value would not run where the name was read.
+
+  ```python ok
+  def run(items: list[str]) -> None:
+      kind = list[str]
+      values: kind = items
+      print(values)
+  ```
+
+- **Before Python 3.12, a value with a backslash, or whose strings hold the other quote**: a replacement field cannot
+  hold a backslash or the f-string's own quote until [PEP 701](https://peps.python.org/pep-0701/), and a string that
+  holds the other quote cannot take it, so the inlined code would not parse.
+
+  ```toml config
+  [tool.ruff]
+  target-version = "py311"
+  ```
+
+  ```python ok
+  def quote(value: str) -> str:
+      quoted = value.replace("'", "''")
+      return f"'{quoted}'"
   ```
 
 - **An assignment with a comment on its line, or between it and the read**: inlining would lose the comment.

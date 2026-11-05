@@ -100,6 +100,26 @@ Checks the docstrings of classes, when `docstring-style = "rst"`, for `:ivar nam
           print()
   ```
 
+- **Type aliases in the class body**: a `type` statement there is a class attribute, so a `:cvar` field may document it.
+
+  ```toml config
+  [project]
+  requires-python = ">=3.12"
+
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python ok
+  class Engine:
+      """Run jobs.
+
+      :cvar Point: The pair of coordinates.
+      """
+
+      type Point = tuple[int, int]
+  ```
+
 ### Exceptions
 
 - **A class with a base class other than `object`, `ABC`, `Protocol`, `Generic`, `NamedTuple` or `TypedDict`**: the base

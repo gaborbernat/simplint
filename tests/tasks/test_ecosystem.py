@@ -4,33 +4,36 @@ import hashlib
 import io
 import json
 import subprocess
+import sys
 import tarfile
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, TypedDict, Unpack
 
 import pytest
 
+from tasks.compile_examples import Interpreter
 from tasks.ecosystem import PACKAGES, Package, check, download, main
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
 
     from pytest_mock import MockerFixture
+
+# The tools the fake passes through to the real process, which the tests run for real.
+_REAL_RUN = subprocess.run
+_CURRENT = Interpreter(minor=sys.version_info.minor, path=sys.executable)
 
 
 class _Behavior(Protocol):
     def __call__(self, command: list[str], cwd: Path) -> tuple[int, str, str]: ...
 
 
-class _Run(Protocol):
-    def __call__(
-        self,
-        command: list[str],
-        *,
-        cwd: Path,
-        capture_output: bool,
-        text: bool,
-        check: bool,
-    ) -> subprocess.CompletedProcess[str]: ...
+class _RunOptions(TypedDict, total=False):
+    cwd: Path
+    capture_output: bool
+    text: bool
+    check: bool
+    input: str
 
 
 def test_packages_are_pinned_to_pypi_source_archives() -> None:
@@ -157,6 +160,45 @@ def test_check_reports_problems(
     assert check(Package(name="demo", version="1.0", sha256=""), _sdist(tmp_path), "simplint") == expected
 
 
+@pytest.mark.parametrize(
+    ("target", "expected"),
+    [
+        pytest.param(None, [], id="parser"),
+        pytest.param(_CURRENT, ["mod.py no longer parses"], id="compiler"),
+    ],
+)
+def test_check_parses_or_compiles_the_fixed_files(
+    tmp_path: Path, mocker: MockerFixture, target: Interpreter | None, expected: list[str]
+) -> None:
+    # A `return` outside a function parses but does not compile, so only the target's compiler rejects it.
+    mocker.patch("subprocess.run", autospec=True, side_effect=_tools(_writes("return 1\n")))
+
+    assert check(Package(name="demo", version="1.0", sha256=""), _sdist(tmp_path), "simplint", target) == expected
+
+
+def test_check_asks_simplint_for_the_target_release(tmp_path: Path, mocker: MockerFixture) -> None:
+    run = mocker.patch("subprocess.run", autospec=True, side_effect=_tools(_clean))
+
+    check(Package(name="demo", version="1.0", sha256=""), _sdist(tmp_path), "simplint", _CURRENT)
+
+    assert any(
+        call.args[0][:4] == ["simplint", "check", "--target-version", f"py3{_CURRENT.minor}"]
+        for call in run.call_args_list
+    )
+
+
+def test_main_accepts_a_target_version(
+    tmp_path: Path, mocker: MockerFixture, capsys: pytest.CaptureFixture[str]
+) -> None:
+    selected = Package(name="demo", version="1.0", sha256=hashlib.sha256(_sdist(tmp_path).read_bytes()).hexdigest())
+    mocker.patch("tasks.ecosystem.PACKAGES", (selected,))
+    mocker.patch("subprocess.run", autospec=True, side_effect=_tools(_clean))
+
+    result = main(["--cache", str(tmp_path), "--target-version", f"3.{_CURRENT.minor}", "demo"])
+
+    assert (result, capsys.readouterr().out) == (0, "demo 1.0: ok\n")
+
+
 def test_main_rejects_unpinned_names(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="not pinned: nope"):
         main(["--cache", str(tmp_path), "nope"])
@@ -195,21 +237,18 @@ def _sdist(at: Path) -> Path:
     return archive
 
 
-def _tools(behavior: _Behavior) -> _Run:
-    conflict_warning = (
-        "warning: The following rule may cause conflicts when used with the formatter: "
-        "`missing-trailing-comma` (`COM812`).\n"
-    )
+def _tools(behavior: _Behavior) -> Callable[..., subprocess.CompletedProcess[str]]:
+    # The uv and interpreter calls run for real; the tools that act on a tree are the fake's.
+    def run(command: list[str], **options: Unpack[_RunOptions]) -> subprocess.CompletedProcess[str]:
+        if command[0] == "uv" or command[1:2] == ["-I"]:
+            return _REAL_RUN(command, **options)
+        return fake(command, options["cwd"])
 
-    def run(
-        command: list[str],
-        *,
-        cwd: Path,
-        capture_output: bool,
-        text: bool,
-        check: bool,
-    ) -> subprocess.CompletedProcess[str]:
-        del capture_output, text, check
+    def fake(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+        conflict_warning = (
+            "warning: The following rule may cause conflicts when used with the formatter: "
+            "`missing-trailing-comma` (`COM812`).\n"
+        )
         if command[:2] == ["ruff", "check"] and "json" in command:
             markers = {"missing": "F821"} if "--ignore-noqa" in command else {"long": "E501", "comma": "COM812"}
             ignored = command[command.index("--ignore") + 1].split(",") if "--ignore" in command else []

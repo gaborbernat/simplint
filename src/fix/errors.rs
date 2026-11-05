@@ -14,14 +14,17 @@ use ruff_python_parser::parse_unchecked_source;
 
 const MAX_ITERATIONS: usize = 100;
 
-pub fn broken_syntax(path: &Path, transformed: &str, fixed: &FixTable) -> Error {
-    report_broken_syntax(path, transformed, fixed, SIMPLINT);
-    anyhow!("Fix introduced a syntax error")
+// Fails with the message of the syntax error a fix introduced, if `introduced` names one.
+pub fn ensure_syntax(path: &Path, transformed: &str, fixed: &FixTable, introduced: Result<(), String>) -> Result<()> {
+    let Err(error) = introduced else { return Ok(()) };
+    report_broken_syntax(path, transformed, fixed, &error, SIMPLINT);
+    bail!("Fix introduced a syntax error")
 }
 
 // Ruff's `lint_fix` reports the same bugs in its own fixes.
 pub fn ruff_broken_syntax(path: &Path, transformed: &str, fixed: &FixTable) -> Error {
-    report_broken_syntax(path, transformed, fixed, RUFF);
+    let parsed = parse_unchecked_source(transformed, PySourceType::Python);
+    report_broken_syntax(path, transformed, fixed, &parsed.errors()[0].to_string(), RUFF);
     anyhow!("Fix introduced a syntax error")
 }
 
@@ -56,9 +59,7 @@ type Tool = (&'static str, &'static str);
 const SIMPLINT: Tool = ("simplint", "gaborbernat/simplint");
 const RUFF: Tool = ("Ruff", "astral-sh/ruff");
 
-fn report_broken_syntax(path: &Path, transformed: &str, fixed: &FixTable, tool: Tool) {
-    let parsed = parse_unchecked_source(transformed, PySourceType::Python);
-    let error = &parsed.errors()[0];
+fn report_broken_syntax(path: &Path, transformed: &str, fixed: &FixTable, error: &str, tool: Tool) {
     let rules = codes(fixed.iter().map(|(id, code, _)| code.map_or_else(|| id.as_str(), |code| code.as_str())));
     if cfg!(debug_assertions) {
         eprintln!(

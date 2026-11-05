@@ -1,5 +1,6 @@
-Flags `object` and `Any` in annotations. Both accept any value, so the code behind them has to narrow the value at
-runtime, and a type checker stops checking every value they touch.
+Flags `object` and `Any` in annotations, type alias values, and type parameter bounds and defaults. Both accept any
+value, so the code behind them has to narrow the value at runtime, and a type checker stops checking every value they
+touch.
 
 ## Why is this bad?
 
@@ -84,6 +85,47 @@ No fix is offered: the precise type depends on what callers pass.
 
     def items() -> list[Any]:
         return []
+    ```
+
+- **`object` and `Any` in type alias values and in type parameter bounds and defaults**: a `type` statement and a type
+  parameter name the type a value or parameter stands for, so the same rules apply to them.
+
+  - `type Payload = object`: a type alias value.
+
+    ```toml config
+    [project]
+    requires-python = ">=3.12"
+    ```
+
+    ```python report
+    type Payload = object
+    ```
+
+  - `def first[T: Any](items: list[T]) -> T`: a type parameter bound.
+
+    ```toml config
+    [project]
+    requires-python = ">=3.12"
+    ```
+
+    ```python report
+    from typing import Any
+
+
+    def first[T: Any](items: list[T]) -> T:
+        return items[0]
+    ```
+
+  - `class Box[T = object]`: a type parameter default, from [PEP 696](https://peps.python.org/pep-0696/).
+
+    ```toml config
+    [project]
+    requires-python = ">=3.13"
+    ```
+
+    ```python report
+    class Box[T = object]:
+        pass
     ```
 
 ### Exceptions

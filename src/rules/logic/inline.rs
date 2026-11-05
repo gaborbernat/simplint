@@ -1,6 +1,10 @@
 // What inlining a value into the statement that uses it takes, shared by `single-use-variable` and `walrus-candidate`:
 // the walk over the scopes a body sits in, the text that replaces the use, and the width the statement then needs.
-use ruff_python_ast::{self as ast, Expr, Stmt, UnaryOp};
+use ruff_python_ast::helpers::any_over_expr;
+use ruff_python_ast::str::Quote;
+use ruff_python_ast::visitor::transformer::{self, Transformer};
+use ruff_python_ast::{self as ast, Expr, Stmt, StringFlags, UnaryOp};
+use ruff_python_codegen::Generator;
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::FxHashSet;
 
@@ -71,4 +75,63 @@ pub(super) fn fits_line(
 ) -> bool {
     let indent = checker.settings.from_ruff.indent_width * depth;
     indent + header - name + value + wrapping <= checker.settings.from_ruff.line_width
+}
+
+// The expression's text with every string in it in the other quote than `delimiter`, for a replacement field before
+// Python 3.12 that cannot hold `delimiter`. `None` when a string cannot change quote, or the text still holds
+// `delimiter` or a backslash.
+pub(super) fn requoted_text(checker: &Checker, expr: &Expr, delimiter: Quote) -> Option<String> {
+    if any_over_expr(expr, &|sub: &Expr| unquotable(checker, sub)) {
+        return None;
+    }
+    let mut regenerated = expr.clone();
+    Requote(delimiter.opposite()).visit_expr(&mut regenerated);
+    let text = Generator::from(checker.stylist).expr(&regenerated);
+    (!text.contains(delimiter.as_char()) && !text.contains('\\')).then_some(text)
+}
+
+// A triple-quoted, raw or `\N{` string keeps its form only in its own quotes, so it cannot change quote.
+fn unquotable(checker: &Checker, expr: &Expr) -> bool {
+    match expr {
+        Expr::StringLiteral(string) => string.value.iter().any(|literal| literal_text(checker, literal).is_none()),
+        Expr::FString(ast::ExprFString { value, .. }) => value.iter().any(|part| match part {
+            ast::FStringPartRef::Literal(literal) => literal_text(checker, literal).is_none(),
+            ast::FStringPartRef::FString(fstring) => {
+                fstring.flags.is_triple_quoted() || fstring.flags.prefix().is_raw()
+            }
+        }),
+        _ => false,
+    }
+}
+
+// A named escape such as `\N{BULLET}` keeps single braces in an f-string, where every other brace doubles.
+pub(super) fn literal_text<'a>(checker: &Checker<'a>, literal: &ast::StringLiteral) -> Option<&'a str> {
+    let flags = literal.flags;
+    let text = checker.text(literal.content_range());
+    (!flags.is_triple_quoted() && !flags.prefix().is_raw() && !flags.prefix().is_unicode() && !text.contains("\\N{"))
+        .then_some(text)
+}
+
+struct Requote(Quote);
+
+impl Transformer for Requote {
+    fn visit_expr(&self, expr: &mut Expr) {
+        match expr {
+            Expr::StringLiteral(ast::ExprStringLiteral { value, .. }) => {
+                for literal in value.iter_mut() {
+                    literal.flags = literal.flags.with_quote_style(self.0);
+                }
+            }
+            Expr::FString(ast::ExprFString { value, .. }) => {
+                for part in value.iter_mut() {
+                    match part {
+                        ast::FStringPartMut::Literal(literal) => literal.flags = literal.flags.with_quote_style(self.0),
+                        ast::FStringPartMut::FString(fstring) => fstring.flags = fstring.flags.with_quote_style(self.0),
+                    }
+                }
+            }
+            _ => {}
+        }
+        transformer::walk_expr(self, expr);
+    }
 }

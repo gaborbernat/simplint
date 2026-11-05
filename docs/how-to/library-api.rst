@@ -5,7 +5,8 @@ The documentation rules treat a library's public API apart from its internal cod
 
 - :doc:`undocumented-public-api </_generated/rules/SMP903>` asks for docstrings on what users import.
 - :doc:`function-docstring </_generated/rules/SMP901>` removes them everywhere else.
-- :doc:`unused-export </_generated/rules/SMP402>` keeps ``__all__`` to the names other modules use.
+- :doc:`unused-export </_generated/rules/SMP402>` keeps ``__all__`` to the names other modules use or that an exported
+  signature reaches, and :doc:`missing-from-all </_generated/rules/SMP401>` lists the types those signatures reach.
 
 An application has no Python API, so all of its code is internal.
 

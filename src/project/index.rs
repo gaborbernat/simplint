@@ -127,6 +127,8 @@ pub struct Project {
     test_only: FxHashMap<FileId, FxHashSet<String>>,
     // The exception classes each file defines that no handler of the run names by name, or through a subclass.
     uncaught_exceptions: FxHashMap<FileId, FxHashSet<String>>,
+    // The classes and aliases each file defines that another exported name's signature reaches.
+    api_reached: FxHashMap<FileId, FxHashSet<String>>,
     assigned_attributes: FxHashSet<String>,
     module_reads: FxHashSet<String>,
     base_classes: FxHashSet<String>,
@@ -341,6 +343,7 @@ impl Project {
             from_others.entry(*file).or_default().insert(name.clone());
         }
         let uncaught_exceptions = uncaught_exceptions(&indexed, resolver, &test_modules, &bindings, &stars);
+        let api_reached = api_reached(&indexed);
         let calls =
             dataclass_calls(&indexed, &sources, &constructor_uses, &imported, &module_reads, entry_names, &referenced);
         let user_facing = user_facing(&sources, &roles, &imported, &bindings, &stars, &resolver.files);
@@ -357,6 +360,7 @@ impl Project {
             user_facing,
             test_only: only_tests(from_tests, &from_others),
             uncaught_exceptions,
+            api_reached,
             assigned_attributes,
             module_reads,
             base_classes,
@@ -412,6 +416,7 @@ impl Project {
             modules: entry(&self.module_uses, id).map_or(&[], Vec::as_slice),
             test_only: entry(&self.test_only, id),
             uncaught_exceptions: entry(&self.uncaught_exceptions, id),
+            api_reached: entry(&self.api_reached, id),
             calls: self.calls.file(id),
         }
     }
@@ -695,6 +700,15 @@ impl Writes {
     }
 }
 
+// The classes and aliases each file defines that another exported name's signature reaches, keyed by that file.
+fn api_reached(indexed: &[(FileId, &FileFacts)]) -> FxHashMap<FileId, FxHashSet<String>> {
+    indexed
+        .iter()
+        .filter(|(_, facts)| !facts.api_reached.is_empty())
+        .map(|(id, facts)| (*id, facts.api_reached.iter().cloned().collect()))
+        .collect()
+}
+
 fn unqualified(class: &str) -> &str {
     class.rsplit('.').next().unwrap_or(class)
 }
@@ -894,6 +908,7 @@ pub struct FileIndex<'a> {
     modules: &'a [ModuleUse],
     test_only: Option<&'a FxHashSet<String>>,
     uncaught_exceptions: Option<&'a FxHashSet<String>>,
+    api_reached: Option<&'a FxHashSet<String>>,
     calls: FileCalls<'a>,
 }
 
@@ -928,7 +943,7 @@ impl PartialEq for FileIndex<'_> {
             other.uncaught_exceptions,
             other.calls,
             other.project.reads_docstrings,
-        )
+        ) && self.api_reached == other.api_reached
     }
 }
 
@@ -946,6 +961,7 @@ impl CacheKey for FileIndex<'_> {
         self.modules.iter().for_each(|module| module.cache_key(state));
         self.test_only.cache_key(state);
         self.uncaught_exceptions.cache_key(state);
+        self.api_reached.cache_key(state);
         self.calls.cache_key(state);
     }
 }
@@ -974,6 +990,12 @@ impl<'a> FileIndex<'a> {
     // Whether the file defines an exception class that no handler of the run catches by name, nor catches a subclass of.
     pub fn is_uncaught_exception(&self, name: &str) -> bool {
         self.uncaught_exceptions.is_some_and(|names| names.contains(name))
+    }
+
+    // Whether another exported name's annotations, bases or bounds reach the module's class or alias `name`, which makes
+    // it public API though no file imports it.
+    pub fn is_api_reached(&self, name: &str) -> bool {
+        self.api_reached.is_some_and(|names| names.contains(name))
     }
 
     pub fn is_used_only_by_tests(&self, name: &str) -> bool {

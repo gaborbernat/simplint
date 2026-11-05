@@ -60,7 +60,8 @@ __all__ = ["LIMIT", "local", "shared"]
 ### Active on
 
 A public module-level name that [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package)
-does not list is reported when another file in the same run imports it in one of these ways:
+does not list is reported when another file in the same run imports it in one of these ways, or when a listed name's
+signature reaches it:
 
 - **`from module import name`**, absolute or relative: the importer names the module and the name directly.
 
@@ -161,6 +162,42 @@ does not list is reported when another file in the same run imports it in one of
   print(sep)
   ```
 
+- **Classes and aliases in the signature of a listed name**: the annotations, bases and bounds of an exported function,
+  or of a public class, that refer to a class or alias make it public API, though no file imports it. Such a name is
+  reached through the same places of every class and alias the signature reaches, and it counts only when its name is
+  public.
+
+  ```python report file=config.py
+  Level = int
+
+
+  def local() -> Level:
+      return 1
+
+
+  __all__ = ["local"]
+  ```
+
+  ```python fixed file=config.py
+  Level = int
+
+
+  def local() -> Level:
+      return 1
+
+
+  __all__ = [
+      "Level",
+      "local",
+  ]
+  ```
+
+  ```python context file=cli.py
+  from config import local
+
+  print(local())
+  ```
+
 ### Exceptions
 
 - **Names starting with `_`**: the underscore already marks them as internal.
@@ -187,6 +224,26 @@ does not list is reported when another file in the same run imports it in one of
   from pkg import LIMIT
 
   print(LIMIT)
+  ```
+
+- **Private names in the signature of an exported name**: a type a listed name's annotations refer to is public API only
+  when its name is public, and the underscore marks a private one as internal.
+
+  ```python ok file=config.py
+  _Level = int
+
+
+  def local() -> _Level:
+      return 1
+
+
+  __all__ = ["local"]
+  ```
+
+  ```python context file=cli.py
+  from config import local
+
+  print(local())
   ```
 
 - **Test modules**, as defined in [test-class](SMP801.html): these are not checked.

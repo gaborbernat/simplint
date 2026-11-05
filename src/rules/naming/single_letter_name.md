@@ -107,6 +107,16 @@ No fix is offered, since a meaningful name cannot be derived from the code.
           print(x)
   ```
 
+- **Mapping rest captures**: `**rest` in a mapping pattern binds the remaining keys, and the case body reads them under
+  that name.
+
+  ```python report
+  value = {"a": 1, "b": 2}
+  match value:
+      case {"a": 1, **r}:
+          print(r)
+  ```
+
 - **[Type parameters](https://docs.python.org/3/reference/compound_stmts.html#type-params)** such as `T`: they appear
   throughout the signature and body of the generic definition.
 

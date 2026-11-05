@@ -5,7 +5,7 @@ use ruff_text_size::Ranged;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::semantic::future_import;
-use crate::syntax::{Exports, alias_binding, all_binding, all_mutation};
+use crate::syntax::{Exports, alias_binding, all_binding, all_mutation, is_name};
 
 pub fn init_module_content(checker: &Checker) {
     if !checker.is_init_module() {
@@ -27,7 +27,8 @@ pub fn init_module_content(checker: &Checker) {
 }
 
 // An import whose every name the package exports, through `__all__`, a redundant alias or `import *`, the `__all__`
-// that lists them, and `from __future__` imports, which change no behavior at run time.
+// that lists them, `from __future__` imports, which change no behavior at run time, and the `__lazy_modules__` that
+// Python 3.15 reads from the package's globals to load the imports after it lazily.
 fn is_reexport(stmt: &Stmt, exports: &Exports) -> bool {
     match stmt {
         Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
@@ -39,6 +40,18 @@ fn is_reexport(stmt: &Stmt, exports: &Exports) -> bool {
                         || matches!(exports, Exports::Listed(names) if names.contains(&bound))
                 })
         }
-        _ => all_binding(stmt).is_some() || all_mutation(stmt).is_some(),
+        _ => all_binding(stmt).is_some() || all_mutation(stmt).is_some() || is_lazy_modules_binding(stmt),
+    }
+}
+
+fn is_lazy_modules_binding(stmt: &Stmt) -> bool {
+    match stmt {
+        Stmt::Assign(ast::StmtAssign { targets, .. }) => {
+            targets.iter().any(|target| is_name(target, "__lazy_modules__"))
+        }
+        Stmt::AnnAssign(ast::StmtAnnAssign { target, .. }) | Stmt::AugAssign(ast::StmtAugAssign { target, .. }) => {
+            is_name(target, "__lazy_modules__")
+        }
+        _ => false,
     }
 }

@@ -1,0 +1,11 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:1 SMP102 Module-scope variable `limit` should be named `LIMIT` [unsafe fix: Rename `limit` to `LIMIT`]
+--- fixed (1 applied, 0 remaining) ---
+LIMIT = 3
+
+
+def show() -> str:
+    return f"limit={LIMIT:>{LIMIT}}|{LIMIT}"

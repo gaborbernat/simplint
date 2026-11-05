@@ -1,0 +1,33 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:5 SMP504 `sep` is used once, right below; inline its value [fix: Inline `sep`]
+12:5 SMP504 `inner` is used once, right below; inline its value [fix: Inline `inner`]
+27:5 SMP504 `inner` is used once, right below; inline its value [fix: Inline `inner`]
+--- fixed (3 applied, 0 remaining) ---
+def join(items: list[str]) -> str:
+    return f"[{' '.join(items)}]"
+
+
+def quote(value: str) -> str:
+    quoted = value.replace("'", "''")
+    return f"'{quoted}'"
+
+
+def nested(value: str) -> str:
+    return f"[{f'<{value}>'}]"
+
+
+def triple(items: list[str]) -> str:
+    sep = """ """.join(items)
+    return f"[{sep}]"
+
+
+def triple_fstring(items: list[str]) -> str:
+    sep = f"""{items[0]}""".join(items)
+    return f"[{sep}]"
+
+
+def concatenated(value: str) -> str:
+    return f"[{f'<{value}>' 'tail'}]"

@@ -41,12 +41,15 @@ pub fn module_attribute_import(checker: &Checker) {
                 convertible = false;
                 continue;
             }
-            convertible &= module.defined.contains(attribute.name);
+            convertible &= module.defined.contains(attribute.name) && !is_shadowed(checker, attribute);
             reports.push(attribute);
         }
         let fix = convertible.then(|| {
             let names: Vec<&str> = reports.iter().map(|attribute| attribute.name).unique().collect();
-            let import = Edit::range_replacement(format!("from {path} import {}", names.join(", ")), statement.range());
+            let import = Edit::range_replacement(
+                format!("{}from {path} import {}", lazy_prefix(statement), names.join(", ")),
+                statement.range(),
+            );
             let accesses =
                 reports.iter().map(|attribute| Edit::range_replacement(attribute.name.to_owned(), attribute.range));
             Fix::unsafe_edits(import, accesses)
@@ -66,6 +69,14 @@ pub fn module_attribute_import(checker: &Checker) {
             }
         }
     }
+}
+
+// Whether a local binding of the attribute's name shares the top-level statement of the use, so the bare name may
+// resolve to it: a parameter, a local, a comprehension target, a match capture or a type parameter.
+fn is_shadowed(checker: &Checker, attribute: &Attribute) -> bool {
+    checker.body().iter().find(|stmt| stmt.range().contains_range(attribute.range)).is_some_and(|stmt| {
+        checker.semantic().local_bindings(attribute.name).iter().any(|binding| stmt.range().contains_range(*binding))
+    })
 }
 
 // The import statement that binds `name` at the top level or in a block of it, and the alias it binds `name` with.
@@ -92,6 +103,15 @@ fn aliases(stmt: &Stmt) -> &[ast::Alias] {
 // The name an alias binds: its `as` name, or else the imported name.
 fn bound_name(alias: &ast::Alias) -> &str {
     alias.asname.as_ref().unwrap_or(&alias.name).as_str()
+}
+
+// The `lazy` keyword of a lazy import, which the rewritten import keeps so the module still loads on first use.
+fn lazy_prefix(stmt: &Stmt) -> &'static str {
+    match stmt {
+        Stmt::Import(ast::StmtImport { is_lazy: true, .. })
+        | Stmt::ImportFrom(ast::StmtImportFrom { is_lazy: true, .. }) => "lazy ",
+        _ => "",
+    }
 }
 
 // The module as the import spells it, relative with its dots, such as `.findings` for `from . import findings`.

@@ -28,10 +28,15 @@ use crate::common;
 #[test_case(
     "definition-before-use", "definition_before_use_import_time.py", "py314" ; "definition_before_use_import_time"
 )]
+#[test_case(
+    "definition-before-use", "definition_before_use_type_params.py", "py314" ; "definition_before_use_type_params"
+)]
 #[test_case("single-user-constant", "single_user_constant.py", "py314" ; "single_user_constant")]
 #[test_case("single-user-constant", "single_user_constant_all.py", "py314" ; "single_user_constant_with_all")]
 #[test_case("single-user-constant", "single_user_constant_dynamic.py", "py314" ; "single_user_constant_dynamic_all")]
 #[test_case("single-user-constant", "single_user_constant_spacing.py", "py314" ; "single_user_constant_spacing")]
+#[test_case("single-user-constant", "single_user_constant_source_text.py", "py314" ; "single_user_constant_source_text")]
+#[test_case("single-user-constant", "single_user_constant_debug.py", "py314" ; "single_user_constant_debug")]
 fn rule(rule: &str, fixture: &str, target_version: &str) {
     common::assert_rule_snapshot(rule, fixture, target_version);
 }

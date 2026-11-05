@@ -33,6 +33,13 @@ def tuples(value: int) -> None:
     assert (value, "value is set", "twice")
 
 
+def walrus_and_star(value: list[int]) -> None:
+    assert (ready := True, "walrus")
+    assert ((ready := True), "parenthesized walrus")
+    assert (*value, "starred test")
+    assert (True, *value)
+
+
 def split_messages(value: int) -> None:
     assert (value, ("value is "
                     "set"))

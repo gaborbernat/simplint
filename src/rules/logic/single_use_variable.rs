@@ -1,15 +1,18 @@
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::helpers::is_dunder;
+use ruff_python_ast::str::Quote;
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, Expr, ExprContext, Pattern, Stmt};
+use ruff_python_ast::{self as ast, Expr, ExprContext, Pattern, PythonVersion, Stmt, StringFlags};
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::layout::joined_width;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::logic::inline::{declared_outer, fits_line, for_each_scoped_body, inlined_text, leading_name};
-use crate::rules::{needs_parentheses, statement_deletion};
+use crate::rules::logic::inline::{
+    declared_outer, fits_line, for_each_scoped_body, inlined_text, leading_name, requoted_text,
+};
+use crate::rules::{keep_debug_text, needs_parentheses, statement_deletion};
 use crate::syntax::{for_each_child_body, is_name, is_repeating_expr};
 
 // Built-ins that read the locals by name, so a variable they read cannot be inlined away.
@@ -83,24 +86,78 @@ fn check_pair<'a>(checker: &Checker<'a>, names: &Names<'a>, assign: &'a ast::Stm
     if value_text.contains(['\n', '\r']) {
         return;
     }
-    // A whole argument, return or assigned value needs no parentheses, though a tuple still does.
-    let parenthesize = needs_parentheses(value) && (!reading.whole || value.is_tuple_expr());
-    let replacement = inlined_text(checker, value, value_range, parenthesize);
-    let wrapping = replacement.chars().count() - value_text.chars().count();
-    if !fits(checker, next, use_range, value_range, wrapping, depth) {
+    // A replacement field cannot hold a backslash before Python 3.12 (PEP 701).
+    if checker.settings.from_ruff.target_version < PythonVersion::PY312
+        && !reading.fstring_quotes.is_empty()
+        && value_text.contains('\\')
+    {
         return;
     }
+    // Before Python 3.9 a decorator is a dotted name, optionally called, so the value must be one.
+    if checker.settings.from_ruff.target_version < PythonVersion::PY39
+        && reading.decorator_head
+        && !is_dotted_name(value)
+    {
+        return;
+    }
+    // A whole argument, return or assigned value needs no parentheses, though a tuple still does.
+    let parenthesize = needs_parentheses(value) && (!reading.whole || value.is_tuple_expr());
+    let Some(mut replacement) = field_value(checker, value, value_range, parenthesize, &reading.fstring_quotes) else {
+        return;
+    };
+    // A value that starts with `{` would make the field's `{` an escaped `{{`, so the value gets a space.
+    if reading.field_start
+        && replacement.starts_with('{')
+        && checker.source[..use_range.start().to_usize()].ends_with('{')
+    {
+        replacement = format!(" {replacement} ");
+    }
     let deletion = Edit::range_deletion(deletion);
-    let replace = Edit::range_replacement(replacement, use_range);
-    let fix =
-        if reading.effects { Fix::unsafe_edits(deletion, [replace]) } else { Fix::safe_edits(deletion, [replace]) };
+    let edits = keep_debug_text(
+        checker.source,
+        std::slice::from_ref(next),
+        vec![Edit::range_replacement(replacement, use_range)],
+    );
+    let fix = match edits {
+        Some(edits) => {
+            // A read in a `=` debug field rewrites the whole field, so the width is measured on the field it becomes.
+            let Some(replace) = edits.first() else { return };
+            let wrapping = replace.content().unwrap_or_default().chars().count() - value_text.chars().count();
+            if !fits(checker, next, replace.range(), value_range, wrapping, depth) {
+                return;
+            }
+            Some(if reading.effects { Fix::unsafe_edits(deletion, edits) } else { Fix::safe_edits(deletion, edits) })
+        }
+        // A debug field that cannot be rewritten keeps the report, as the variable is still used once.
+        None => None,
+    };
     checker.report_fix(
         Rule::SingleUseVariable,
         assign.range,
         format!("`{name}` is used once, right below; inline its value"),
-        Some(fix),
+        fix,
         format!("Inline `{name}`"),
     );
+}
+
+// The value as it goes into the statement. Before Python 3.12 a replacement field cannot hold the quote of the f-string
+// around it, so a value that holds it takes the other quote in its strings, which needs every such f-string to share one
+// quote.
+fn field_value(
+    checker: &Checker,
+    value: &Expr,
+    value_range: TextRange,
+    parenthesize: bool,
+    quotes: &[Quote],
+) -> Option<String> {
+    let before_312 = checker.settings.from_ruff.target_version < PythonVersion::PY312;
+    let value_text = checker.text(value_range);
+    if !(before_312 && quotes.iter().any(|quote| value_text.contains(quote.as_char()))) {
+        return Some(inlined_text(checker, value, value_range, parenthesize));
+    }
+    let quote = quotes.first().filter(|first| quotes.iter().all(|quote| quote == *first))?;
+    let text = requoted_text(checker, value, *quote)?;
+    Some(if parenthesize { format!("({text})") } else { text })
 }
 
 // `return name` and `yield name` are left to Ruff's RET504, which covers the return case.
@@ -130,6 +187,15 @@ fn leads_if_test(next: &Stmt, name: &str) -> bool {
         return false;
     };
     leading_name(test, true).is_some_and(|(found, _)| found.id.as_str() == name)
+}
+
+// The value of a decorator before Python 3.9, which the grammar limits to a dotted name.
+fn is_dotted_name(expr: &Expr) -> bool {
+    match expr {
+        Expr::Name(_) => true,
+        Expr::Attribute(ast::ExprAttribute { value, .. }) => is_dotted_name(value),
+        _ => false,
+    }
 }
 
 // The formatter splits a statement wider than its line width over several lines. The width is judged on the
@@ -240,24 +306,50 @@ fn root_binding(alias: &ast::Alias) -> &str {
 // whether it runs only in some passes or branches: in a nested block, a lambda or a comprehension. A read the walk
 // never reaches stays unset, and is not reported. `effects` is set when something before the read may have side
 // effects, so inlining would reorder them.
+#[expect(clippy::struct_excessive_bools, reason = "each flag marks one place the read sits in")]
 struct Reading {
     reference: TextRange,
     // The statements the walk is in, the next statement counting as one.
     statements: usize,
     // The lambdas and comprehensions the walk is in.
     repeats: usize,
+    // The branches the walk is in, where a part of the code may be skipped or evaluated later.
+    branches: usize,
     // Whether the read is conditional, set once the walk reaches it.
     read: Option<bool>,
     effects: bool,
     // The read is a whole argument, keyword value, return value or assigned value, where no parentheses are needed.
     whole: bool,
+    // The read starts its f-string field, so a value that starts with `{` would follow the field's `{`.
+    field_start: bool,
+    // The read is in the head of a decorator, which before Python 3.9 must be a dotted name.
+    decorator_head: bool,
+    // The quotes of the f-strings that hold the read.
+    fstring_quotes: Vec<Quote>,
 }
 
 impl Reading {
     fn of(next: &Stmt, reference: TextRange) -> Self {
-        let mut reading = Self { reference, statements: 0, repeats: 0, read: None, effects: false, whole: false };
+        let mut reading = Self {
+            reference,
+            statements: 0,
+            repeats: 0,
+            branches: 0,
+            read: None,
+            effects: false,
+            whole: false,
+            field_start: false,
+            decorator_head: false,
+            fstring_quotes: Vec::new(),
+        };
         reading.visit_stmt(next);
         reading
+    }
+
+    fn in_branch(&mut self, visit: impl FnOnce(&mut Self)) {
+        self.branches += 1;
+        visit(self);
+        self.branches -= 1;
     }
 }
 
@@ -279,6 +371,18 @@ impl<'a> Visitor<'a> for Reading {
                 self.visit_expr(&assign.value);
                 assign.targets.iter().for_each(|target| self.visit_expr(target));
             }
+            // `python -O` skips an assertion, and a type alias evaluates its value lazily.
+            Stmt::Assert(_) | Stmt::TypeAlias(_) => self.in_branch(|reading| visitor::walk_stmt(reading, stmt)),
+            // Entering an item runs its `__enter__` before the later items are evaluated.
+            Stmt::With(ast::StmtWith { items, body, .. }) => {
+                for item in items {
+                    self.visit_with_item(item);
+                    if self.read.is_none() {
+                        self.effects = true;
+                    }
+                }
+                self.visit_body(body);
+            }
             _ => visitor::walk_stmt(self, stmt),
         }
         self.statements -= 1;
@@ -291,17 +395,63 @@ impl<'a> Visitor<'a> for Reading {
         self.statements -= 1;
     }
 
+    // A `case` runs only when the cases before it do not match, and its guard and body run only when it matches.
+    fn visit_match_case(&mut self, case: &'a ast::MatchCase) {
+        self.in_branch(|reading| visitor::walk_match_case(reading, case));
+    }
+
+    // A handler's type is evaluated only when an exception reaches it.
+    fn visit_except_handler(&mut self, handler: &'a ast::ExceptHandler) {
+        self.in_branch(|reading| visitor::walk_except_handler(reading, handler));
+    }
+
+    // Annotations are not evaluated in a function body, and are evaluated lazily otherwise.
+    fn visit_annotation(&mut self, expr: &'a Expr) {
+        self.in_branch(|reading| visitor::walk_annotation(reading, expr));
+    }
+
+    // Type parameters are evaluated lazily.
+    fn visit_type_params(&mut self, type_params: &'a ast::TypeParams) {
+        self.in_branch(|reading| visitor::walk_type_params(reading, type_params));
+    }
+
+    fn visit_decorator(&mut self, decorator: &'a ast::Decorator) {
+        if decorator.expression.range().contains_range(self.reference) {
+            self.decorator_head = in_decorator_head(&decorator.expression, self.reference);
+        }
+        visitor::walk_decorator(self, decorator);
+    }
+
+    fn visit_interpolated_string_element(&mut self, element: &'a ast::InterpolatedStringElement) {
+        if let ast::InterpolatedStringElement::Interpolation(interpolation) = element
+            && interpolation.range.contains_range(self.reference)
+        {
+            self.field_start |= interpolation.expression.range().start() == self.reference.start();
+        }
+        visitor::walk_interpolated_string_element(self, element);
+    }
+
     fn visit_expr(&mut self, expr: &'a Expr) {
         if self.read.is_some() {
             return;
         }
         if expr.range() == self.reference {
-            self.read = Some(self.statements > 1 || self.repeats > 0);
+            self.read = Some(self.statements > 1 || self.repeats > 0 || self.branches > 0);
             return;
         }
         if let Expr::Call(ast::ExprCall { arguments, .. }) = expr {
             let arguments = arguments.args.iter().chain(arguments.keywords.iter().map(|keyword| &keyword.value));
             self.whole |= arguments.into_iter().any(|argument| argument.range() == self.reference);
+        }
+        if let Expr::FString(ast::ExprFString { value, .. }) = expr
+            && expr.range().contains_range(self.reference)
+        {
+            self.fstring_quotes.extend(
+                value
+                    .f_strings()
+                    .filter(|fstring| fstring.range.contains_range(self.reference))
+                    .map(|fstring| fstring.flags.quote_style()),
+            );
         }
         // An expression that does not hold the read finishes before it, so its calls and lookups run first.
         if !expr.range().contains_range(self.reference) && is_effect(expr) {
@@ -314,12 +464,42 @@ impl<'a> Visitor<'a> for Reading {
             // The test runs first, then only one of the two branches.
             Expr::If(ast::ExprIf { test, body, orelse, .. }) => {
                 self.visit_expr(test);
-                self.visit_expr(body);
-                self.visit_expr(orelse);
+                self.in_branch(|reading| reading.visit_expr(body));
+                self.in_branch(|reading| reading.visit_expr(orelse));
+            }
+            // Each operand after the first runs only when the operands before it do not decide the result.
+            Expr::BoolOp(ast::ExprBoolOp { values, .. }) => {
+                let (first, rest) = values.split_at(values.len().min(1));
+                for value in first {
+                    self.visit_expr(value);
+                }
+                for value in rest {
+                    self.in_branch(|reading| reading.visit_expr(value));
+                }
+            }
+            // A chain stops at its first false link, so only the first comparator runs for sure.
+            Expr::Compare(ast::ExprCompare { operands, .. }) => {
+                let (first, rest) = operands.split_at(operands.len().min(2));
+                for operand in first {
+                    self.visit_expr(operand);
+                }
+                for operand in rest {
+                    self.in_branch(|reading| reading.visit_expr(operand));
+                }
             }
             _ => visitor::walk_expr(self, expr),
         }
         self.repeats -= usize::from(repeats);
+    }
+}
+
+// Before Python 3.9 a decorator takes a dotted name, optionally called, so only the callee of a call is in its head.
+fn in_decorator_head(expr: &Expr, reference: TextRange) -> bool {
+    match expr {
+        Expr::Call(ast::ExprCall { func, arguments, .. }) => {
+            !arguments.range().contains_range(reference) && in_decorator_head(func, reference)
+        }
+        _ => true,
     }
 }
 

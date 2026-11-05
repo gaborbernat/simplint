@@ -1,0 +1,8 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:12 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+--- fixed (1 applied, 0 remaining) ---
+def label(values: list[int]) -> str:
+    return f"values={(value for value in values)!s}"

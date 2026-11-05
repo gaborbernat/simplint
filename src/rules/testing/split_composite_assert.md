@@ -103,8 +103,12 @@ def test_user(result):
 ### Fix
 
 **Unsafe fix:** the failure message changes, since the tuple reports both sides of the whole comparison instead of the
-first failing field. Every field is also read before the comparison, so a field that raises stops the test even where
-the first assert would have failed earlier.
+first failing field. The outcome can change too:
+
+- A tuple `==` compares items by identity before equality, so a NaN field that fails `x == x` in its own assert passes
+  inside the tuple.
+- The merged assert evaluates every operand, where separate asserts stop at the first failure, so a field that raises
+  stops the test even where an earlier assert would have failed.
 
 The fix replaces the run with one assert that keeps the original order of the fields, as in the example above.
 

@@ -42,6 +42,11 @@ pub(crate) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) ->
                     add(name.id.as_str(), !is_field_call(value), documented);
                 }
             }
+            Stmt::TypeAlias(ast::StmtTypeAlias { name, .. }) => {
+                if let Some(name) = name.as_name_expr() {
+                    add(name.id.as_str(), true, documented);
+                }
+            }
             _ => {}
         }
     }

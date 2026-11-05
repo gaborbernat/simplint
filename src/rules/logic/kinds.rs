@@ -395,14 +395,17 @@ impl<'w, 'a> Kinds<'w, 'a> {
     }
 
     // The bindings of `name` in the innermost of the `depth` scopes, then the module, that binds it, with the depth
-    // that scope ends. A class body is skipped unless innermost, since its methods do not see it.
+    // that scope ends. A class body is skipped unless innermost, since its methods do not see it, but a type parameter
+    // of the class is seen from them.
     fn lookup(&self, name: &'a str, depth: usize) -> Option<(Rc<Bindings<'a>>, usize)> {
         let checker = self.walker.checker;
         self.scopes[..depth]
             .iter()
             .enumerate()
             .rev()
-            .filter(|(index, scope)| !matches!(scope, Scope::Class(_)) || index + 1 == depth)
+            .filter(|(index, scope)| {
+                !matches!(scope, Scope::Class(_)) || index + 1 == depth || type_params_bind(scope, name)
+            })
             .map(|(index, scope)| (bindings_in(checker, Some(*scope), name), index + 1))
             .chain(std::iter::once_with(|| (bindings_in(checker, None, name), 0)))
             .find(|(bindings, _)| bindings.binds())
@@ -495,6 +498,16 @@ impl<'w, 'a> Kinds<'w, 'a> {
         self.reading.pop();
         kinds.into_iter().collect::<Option<Vec<_>>>().and_then(shared)
     }
+}
+
+// A type parameter binds its name in a scope the code here does not follow, so the name is unknown there.
+fn type_params_bind(scope: &Scope, name: &str) -> bool {
+    let type_params = match scope {
+        Scope::Function(function) => function.type_params.as_deref(),
+        Scope::Class(class) => class.type_params.as_deref(),
+        Scope::Lambda(_) => None,
+    };
+    type_params.is_some_and(|type_params| type_params.type_params.iter().any(|param| param.name() == name))
 }
 
 // The bindings of `name` in `scope`, or in the module for none.
@@ -855,7 +868,8 @@ struct Bindings<'a> {
 
 impl<'a> Bindings<'a> {
     fn of_scope(checker: &Checker<'a>, scope: Scope<'a>, name: &str) -> Self {
-        match scope {
+        let type_param = type_params_bind(&scope, name);
+        let mut bindings = match scope {
             Scope::Function(function) => {
                 let mut bindings = Self::of_parameters(checker, &function.parameters, name);
                 bindings.collect(checker, &function.body, name);
@@ -871,7 +885,9 @@ impl<'a> Bindings<'a> {
                 Collector { checker, name, bindings: &mut bindings }.visit_expr(&lambda.body);
                 bindings
             }
-        }
+        };
+        bindings.opaque |= type_param;
+        bindings
     }
 
     fn of_body(checker: &Checker<'a>, body: &'a [Stmt], name: &str) -> Self {

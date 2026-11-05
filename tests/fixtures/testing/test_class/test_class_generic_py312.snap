@@ -1,0 +1,35 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:7 SMP801 Test class `TestBox`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `TestBox` into module-level functions]
+9:7 SMP801 Test class `TestBounded`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `TestBounded` into module-level functions]
+15:7 SMP801 Test class `TestDefault`; use module-level test functions with a name prefix
+20:7 SMP801 Test class `TestDefaulted`; use module-level test functions with a name prefix
+25:7 SMP801 Test class `TestPlain`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `TestPlain` into module-level functions]
+--- fixed (3 applied, 2 remaining) ---
+def test_box_holds_value() -> None:
+    assert Box[int]().get(1) == 1
+
+
+def test_box_default[T](value: T | None = None) -> None:
+    assert value is None
+
+
+def test_bounded_sig[T: int, *Ts, **P](args: tuple[*Ts] | None = None, fn: Callable[P, int] | None = None) -> None:
+    type Alias = list[T]
+    assert Alias.__value__ == list[T]
+
+
+class TestDefault[T]:
+    def test_names_t(self, kind: type = list[T]) -> None:
+        assert kind is list
+
+
+class TestDefaulted[T: int = int]:
+    def test_uses_default(self, value: T | None = None) -> None:
+        assert value is None
+
+
+def test_plain_plain() -> None:
+    assert 1 == 1

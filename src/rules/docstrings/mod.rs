@@ -102,7 +102,8 @@ impl<'a> PublicApi<'a> {
         };
         let dynamic = matches!(exports, Exports::Dynamic);
         let mut api = Self { items: Vec::new(), maybe_public: Vec::new(), optional: Vec::new() };
-        // Definitions in top-level `if` and `try` blocks, as a version switch or an optional accelerator, are the module's too.
+        // Definitions in top-level `if`, `try` and `match` blocks, as a version switch or an optional accelerator, are
+        // the module's too.
         for (stmt, next) in module_statements_with_next(body) {
             match stmt {
                 Stmt::FunctionDef(function) => {
@@ -137,8 +138,9 @@ impl<'a> PublicApi<'a> {
                         }
                     }
                 }
-                Stmt::AnnAssign(ast::StmtAnnAssign { target, .. }) => {
-                    if let Some(target) = target.as_name_expr()
+                Stmt::AnnAssign(ast::StmtAnnAssign { target: name, .. })
+                | Stmt::TypeAlias(ast::StmtTypeAlias { name, .. }) => {
+                    if let Some(target) = name.as_name_expr()
                         && let Some(via) = reach(target.id.as_str())
                     {
                         api.variable(stmt, next, target, via);
@@ -205,8 +207,8 @@ impl<'a> PublicApi<'a> {
     }
 }
 
-// The statements `module_statements` yields, each with the one after it in its own block, which may be inside an `if`
-// or `try`.
+// The statements `module_statements` yields, each with the one after it in its own block, which may be inside an `if`,
+// `try` or `match`.
 fn module_statements_with_next(body: &[Stmt]) -> Vec<(&Stmt, Option<&Stmt>)> {
     fn collect<'a>(body: &'a [Stmt], found: &mut Vec<(&'a Stmt, Option<&'a Stmt>)>) {
         for (index, stmt) in body.iter().enumerate() {
@@ -224,6 +226,11 @@ fn module_statements_with_next(body: &[Stmt]) -> Vec<(&Stmt, Option<&Stmt>)> {
                     }
                     collect(orelse, found);
                     collect(finalbody, found);
+                }
+                Stmt::Match(ast::StmtMatch { cases, .. }) => {
+                    for case in cases {
+                        collect(&case.body, found);
+                    }
                 }
                 _ => found.push((stmt, body.get(index + 1))),
             }
