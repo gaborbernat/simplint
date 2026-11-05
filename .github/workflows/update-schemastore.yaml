@@ -2,20 +2,33 @@ name: 🔀 Update SchemaStore
 on:
   push:
     tags: ["[0-9]+.[0-9]+.[0-9]+"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag whose schema to submit
+        required: true
+        type: string
   pull_request:
     paths:
       - "simplint.schema.json"
+      - "tasks/register_schemastore.py"
+      - "tasks/schemastore_options.json"
       - ".github/workflows/update-schemastore.yaml"
 permissions:
   contents: read
 jobs:
-  validate:
-    name: 🔍 Schema passes SchemaStore's checks
+  stage:
+    # SchemaStore's npm dependencies, formatter and checks run here, in a job that holds no secret, so none of that code
+    # can read the token the pull request needs. The job hands its result to the next one as a patch.
+    name: 🔍 Stage the schema for SchemaStore
     runs-on: ubuntu-26.04
+    outputs:
+      changed: ${{ steps.patch.outputs.changed }}
     steps:
       - name: 📥 Check out code
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.tag }}
           persist-credentials: false
       - name: 🐍 Install uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
@@ -28,8 +41,8 @@ jobs:
       - name: 📦 Install SchemaStore's dependencies
         run: npm ci
         working-directory: ${{ runner.temp }}/schemastore
-      - name: ⚙️ Stage simplint's registration
-        # Writes the same files the first release submits, so this job checks what SchemaStore would get.
+      - name: ⚙️ Register or update simplint's schema
+        # A first run adds the partial and its references; once SchemaStore has them, only the partial changes.
         run: uv run --no-project --python 3.15 python tasks/register_schemastore.py "$SCHEMA" "$STORE" tasks/schemastore_options.json
         env:
           SCHEMA: ${{ github.workspace }}/simplint.schema.json
@@ -42,96 +55,66 @@ jobs:
           node ./cli.js check --schema-name=partial-simplint.json
           node ./cli.js check --schema-name=pyproject.json
         working-directory: ${{ runner.temp }}/schemastore
+      - name: 📝 Write the patch
+        id: patch
+        run: |
+          git add --all
+          git diff --cached --binary > "$RUNNER_TEMP/simplint-schema.patch"
+          if [ -s "$RUNNER_TEMP/simplint-schema.patch" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+        working-directory: ${{ runner.temp }}/schemastore
+      - name: 📤 Upload the patch
+        if: steps.patch.outputs.changed == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: simplint-schema-patch
+          path: ${{ runner.temp }}/simplint-schema.patch
+          retention-days: 1
   update-schemastore:
     name: 🔀 Open SchemaStore PR
-    needs: validate
-    if: github.event_name == 'push'
+    needs: stage
+    if: github.event_name != 'pull_request' && needs.stage.outputs.changed == 'true'
     runs-on: ubuntu-26.04
     environment: schemastore
     env:
-      GH_TOKEN: ${{ secrets.SCHEMASTORE_TOKEN }}
       BRANCH: update-simplint-schema
-      SHA: ${{ github.sha }}
+      TAG: ${{ inputs.tag || github.ref_name }}
     steps:
-      - name: 📥 Check out code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: 📥 Download the patch
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          persist-credentials: false
-      - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
-        with:
-          version: latest-known
-          python-version: "3.15"
-          enable-cache: false
+          name: simplint-schema-patch
+          path: ${{ runner.temp }}
       - name: 📥 Fork and clone SchemaStore
-        run: gh repo fork SchemaStore/schemastore --clone -- "$RUNNER_TEMP/schemastore"
-      - name: ⬆️ Sync fork's master with upstream
-        run: gh repo sync "$(gh api user --jq .login)/schemastore" -b master
-      - name: 🔍 Check the schema is registered upstream
-        id: registered
+        run: |
+          gh repo fork SchemaStore/schemastore --clone=false
+          FORK="$(gh api user --jq .login)/schemastore"
+          gh repo sync "$FORK" -b master
+          gh repo clone "$FORK" "$RUNNER_TEMP/schemastore" -- --depth 1 --branch master
+        env:
+          GH_TOKEN: ${{ secrets.SCHEMASTORE_TOKEN }}
+      - name: ⚙️ Apply the patch
+        id: apply
         run: |
           if [ -f src/schemas/json/partial-simplint.json ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo "registered=true" >> "$GITHUB_OUTPUT"
           else
-            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "registered=false" >> "$GITHUB_OUTPUT"
           fi
+          git switch -C "$BRANCH"
+          git apply --3way --index "$RUNNER_TEMP/simplint-schema.patch"
         working-directory: ${{ runner.temp }}/schemastore
-      - name: ⚙️ Create or reset branch from synced fork
+      - name: ⬆️ Commit and push
         run: |
-          git fetch origin master
-          git switch -C "$BRANCH" origin/master
-        working-directory: ${{ runner.temp }}/schemastore
-      - name: 📦 Install SchemaStore's dependencies
-        # Its formatter and its checks run below, as SchemaStore's own CI runs them on the pull request.
-        run: npm ci
-        working-directory: ${{ runner.temp }}/schemastore
-      - name: ⚙️ Update schema and check for changes
-        if: steps.registered.outputs.present == 'true'
-        id: diff
-        run: |
-          uv run --no-project --python 3.15 python -c "
-          import json, sys
-          with open('${{ github.workspace }}/simplint.schema.json') as f:
-              new = json.load(f)
-          new['\$id'] = 'https://json.schemastore.org/partial-simplint.json'
-          with open('${{ runner.temp }}/schemastore/src/schemas/json/partial-simplint.json') as f:
-              old = json.load(f)
-          if new == old:
-              sys.exit(1)
-          with open('${{ runner.temp }}/schemastore/src/schemas/json/partial-simplint.json', 'w') as f:
-              json.dump(new, f, indent=2)
-              f.write('\n')
-          " && echo "changed=true" >> "$GITHUB_OUTPUT" || echo "changed=false" >> "$GITHUB_OUTPUT"
-      - name: ✨ Format the updated schema like SchemaStore does
-        if: steps.registered.outputs.present == 'true' && steps.diff.outputs.changed == 'true'
-        run: |
-          npx prettier --config .prettierrc.cjs --write src/schemas/json/partial-simplint.json
-          node ./cli.js check --schema-name=partial-simplint.json
-        working-directory: ${{ runner.temp }}/schemastore
-      - name: ⚙️ Register simplint's schema on the first release
-        if: steps.registered.outputs.present == 'false'
-        run: uv run --no-project --python 3.15 python tasks/register_schemastore.py "$SCHEMA" "$STORE" tasks/schemastore_options.json
-        env:
-          SCHEMA: ${{ github.workspace }}/simplint.schema.json
-          STORE: ${{ runner.temp }}/schemastore
-      - name: ✨ Format the registration like SchemaStore does
-        if: steps.registered.outputs.present == 'false'
-        run: npx prettier --config .prettierrc.cjs --write src/schemas/json/partial-simplint.json src/schemas/json/pyproject.json src/schema-validation.jsonc src/test/partial-simplint/options.json
-        working-directory: ${{ runner.temp }}/schemastore
-      - name: 🔍 Run SchemaStore's checks on the registration
-        if: steps.registered.outputs.present == 'false'
-        run: |
-          node ./cli.js check --schema-name=partial-simplint.json
-          node ./cli.js check --schema-name=pyproject.json
-        working-directory: ${{ runner.temp }}/schemastore
-      - name: ⬆️ Commit and push the registration
-        if: steps.registered.outputs.present == 'false'
-        run: |
-          gh auth setup-git
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/schema-validation.jsonc src/schemas/json/partial-simplint.json src/schemas/json/pyproject.json src/test/partial-simplint/options.json
-          git commit --file - <<'EOF'
+          if [ "$REGISTERED" = true ]; then
+            git commit -m "Update simplint JSON Schema to $TAG"
+          else
+            git commit --file - <<'EOF'
           Add simplint partial schema for pyproject.toml
 
           simplint reads its settings from the [tool.simplint] table of
@@ -140,39 +123,29 @@ jobs:
           use SchemaStore check the table without a catalog entry of its own.
           The release workflow updates the partial on later releases.
           EOF
-          git push --force origin "$BRANCH"
-        working-directory: ${{ runner.temp }}/schemastore
-      - name: ⬆️ Commit and push
-        if: steps.registered.outputs.present == 'true' && steps.diff.outputs.changed == 'true'
-        run: |
+          fi
           gh auth setup-git
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/schemas/json/partial-simplint.json
-          git commit -m "Update simplint JSON Schema to ${GITHUB_REF_NAME}"
           git push --force origin "$BRANCH"
         working-directory: ${{ runner.temp }}/schemastore
-      - name: 🔀 Create or update registration pull request
-        if: steps.registered.outputs.present == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.SCHEMASTORE_TOKEN }}
+          REGISTERED: ${{ steps.apply.outputs.registered }}
+      - name: 🔀 Create or update the pull request
         run: |
-          FORK_OWNER=$(gh api user --jq .login)
-          HEAD="$FORK_OWNER:$BRANCH"
-          TITLE="Add simplint schema for [tool.simplint]"
-          BODY="Registers simplint's JSON Schema as \`partial-simplint.json\`, referenced from the \`tool\` table of \`pyproject.json\`, from [${SHA}](https://github.com/gaborbernat/simplint/commit/${SHA}) (release ${GITHUB_REF_NAME}). Later releases update the partial."
-          if ! gh pr view "$HEAD" --repo SchemaStore/schemastore > /dev/null 2>&1; then
-            gh pr create --repo SchemaStore/schemastore --head "$HEAD" --title "$TITLE" --body "$BODY"
+          HEAD="$(gh api user --jq .login):$BRANCH"
+          SOURCE="[$TAG](https://github.com/gaborbernat/simplint/tree/$TAG)"
+          if [ "$REGISTERED" = true ]; then
+            TITLE="Update simplint JSON Schema to $TAG"
+            BODY="Updates simplint's JSON Schema to release $SOURCE."
           else
-            gh pr edit "$HEAD" --repo SchemaStore/schemastore --title "$TITLE" --body "$BODY"
+            TITLE="Add simplint schema for [tool.simplint]"
+            BODY="Registers simplint's JSON Schema as \`partial-simplint.json\`, referenced from the \`tool\` table of \`pyproject.json\`, from release $SOURCE. Later releases update the partial."
           fi
-      - name: 🔀 Create or update pull request
-        if: steps.registered.outputs.present == 'true' && steps.diff.outputs.changed == 'true'
-        run: |
-          FORK_OWNER=$(gh api user --jq .login)
-          HEAD="$FORK_OWNER:$BRANCH"
-          TITLE="Update simplint JSON Schema to ${GITHUB_REF_NAME}"
-          BODY="Updates simplint's JSON Schema to [${SHA}](https://github.com/gaborbernat/simplint/commit/${SHA}) (release ${GITHUB_REF_NAME})."
-          if ! gh pr view "$HEAD" --repo SchemaStore/schemastore > /dev/null 2>&1; then
-            gh pr create --repo SchemaStore/schemastore --head "$HEAD" --title "$TITLE" --body "$BODY"
+          if gh pr view "$HEAD" --repo SchemaStore/schemastore > /dev/null 2>&1; then
+            gh pr edit "$HEAD" --repo SchemaStore/schemastore --title "$TITLE" --body "$BODY"
           else
-            gh pr edit "$HEAD" --repo SchemaStore/schemastore --title "$TITLE" --body "$BODY"
+            gh pr create --repo SchemaStore/schemastore --head "$HEAD" --title "$TITLE" --body "$BODY"
           fi
+        env:
+          GH_TOKEN: ${{ secrets.SCHEMASTORE_TOKEN }}
+          REGISTERED: ${{ steps.apply.outputs.registered }}
