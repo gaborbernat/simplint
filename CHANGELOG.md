@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.6.0 (2026-11-05)
+
+<a name="release-0-6-0"></a>
+
+<a name="release-0-6-0-added"></a>
+
+### Added
+
+- `constructor-after-method` (SMP203) reports a constructor (`__new__`, `__init__`, `__post_init__` or
+  `__init_subclass__`) defined below another method of its class, and moves it above that method.
+  `definition-before-use` (SMP201) no longer moves a constructor below a method that calls it, so the two fixes agree
+  ([#54](https://github.com/gaborbernat/simplint/pull/54)) by [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-6-0-fixed"></a>
+
+### Fixed
+
+- `definition-before-use` (SMP201) reads a method's first parameter as the instance or class whatever its name, so
+  `klass._make()` in a classmethod counts as a use, as do `klass().load()` and a local that a method assigns from
+  `klass()` or `super().__new__(klass)`. A lambda in a class body, as `property(lambda self: self._load())`, reads its
+  first parameter the same way. A `staticmethod` has no such parameter, so `self` or `cls` in one no longer counts as a
+  use ([#54](https://github.com/gaborbernat/simplint/pull/54)) by [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.5.1 (2026-11-05)
 
 <a name="release-0-5-1"></a>
