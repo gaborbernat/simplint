@@ -1,16 +1,15 @@
 use rustc_hash::{FxHashMap, FxHashSet};
-use std::ops::RangeInclusive;
 
-use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::visitor::{Visitor, walk_expr, walk_stmt};
 use ruff_python_ast::{self as ast, Expr, Stmt};
-use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
+use super::constructor_after_method::is_constructor;
+use super::definition_time::{class_runtime_names, definition_time_exprs, signature_annotations};
+use super::reorder::{Suite, reorder_fix};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::semantic::{BindingKind, Evaluation, Reference};
-use crate::syntax::ExprCollector;
 
 pub fn definition_before_use(checker: &Checker) {
     let body = checker.body();
@@ -23,15 +22,11 @@ pub fn definition_before_use(checker: &Checker) {
     }
 }
 
-struct Suite<'a> {
-    body: &'a [Stmt],
-    separator: &'static str,
-}
-
 #[derive(Default)]
 struct Uses {
     deferred: FxHashMap<usize, Vec<(usize, TextSize)>>,
     runtime: FxHashSet<usize>,
+    constructors: FxHashSet<usize>,
 }
 
 fn module_uses(checker: &Checker, body: &[Stmt], runtime_names: &FxHashMap<TextRange, FxHashSet<&str>>) -> Uses {
@@ -88,18 +83,23 @@ fn module_uses(checker: &Checker, body: &[Stmt], runtime_names: &FxHashMap<TextR
     uses
 }
 
+fn definition_name(stmt: &Stmt) -> Option<&ast::Identifier> {
+    match stmt {
+        Stmt::FunctionDef(ast::StmtFunctionDef { name, .. }) | Stmt::ClassDef(ast::StmtClassDef { name, .. }) => {
+            Some(name)
+        }
+        _ => None,
+    }
+}
+
 // The annotations a decorator sees: the signature of a decorated function and the class-level annotations of a
 // decorated class.
 fn eager_annotations(checker: &Checker) -> Vec<TextRange> {
-    let signatures =
-        checker.function_defs().iter().filter(|function| !function.decorator_list.is_empty()).flat_map(|function| {
-            function
-                .parameters
-                .iter()
-                .filter_map(ast::AnyParameterRef::annotation)
-                .chain(function.returns.as_deref())
-                .map(Ranged::range)
-        });
+    let signatures = checker
+        .function_defs()
+        .iter()
+        .filter(|function| !function.decorator_list.is_empty())
+        .flat_map(|function| signature_annotations(function).map(Ranged::range));
     let fields =
         checker.class_defs().iter().filter(|class| !class.decorator_list.is_empty()).flat_map(|class| {
             class.body.iter().filter_map(Stmt::as_ann_assign_stmt).map(|field| field.annotation.range())
@@ -156,37 +156,6 @@ impl<'a> Visitor<'a> for ImportTimeFunctions<'_> {
     }
 }
 
-// The names a class body reads as it runs: outside its methods, or in their decorators and default values.
-fn class_runtime_names(class: &ast::StmtClassDef) -> FxHashSet<&str> {
-    let mut runtime_names = ExprCollector::new(|expr| expr.as_name_expr().map(|name| name.id.as_str()));
-    for stmt in &class.body {
-        match stmt {
-            Stmt::FunctionDef(function) => {
-                for expr in definition_time_exprs(function) {
-                    runtime_names.visit_expr(expr);
-                }
-            }
-            other => runtime_names.visit_stmt(other),
-        }
-    }
-    runtime_names.found.into_iter().collect()
-}
-
-// The parts of a `def` that run when it is defined rather than called: its decorators and default values.
-fn definition_time_exprs(function: &ast::StmtFunctionDef) -> impl Iterator<Item = &Expr> {
-    let defaults = function.parameters.iter_non_variadic_params().filter_map(|parameter| parameter.default.as_deref());
-    function.decorator_list.iter().map(|decorator| &decorator.expression).chain(defaults)
-}
-
-fn definition_name(stmt: &Stmt) -> Option<&ast::Identifier> {
-    match stmt {
-        Stmt::FunctionDef(ast::StmtFunctionDef { name, .. }) | Stmt::ClassDef(ast::StmtClassDef { name, .. }) => {
-            Some(name)
-        }
-        _ => None,
-    }
-}
-
 fn class_uses(checker: &Checker, class: &ast::StmtClassDef, runtime_names: &FxHashSet<&str>) -> Uses {
     let mut uses = Uses::default();
     let mut counts: FxHashMap<&str, usize> = FxHashMap::default();
@@ -197,8 +166,17 @@ fn class_uses(checker: &Checker, class: &ast::StmtClassDef, runtime_names: &FxHa
         let Some(name) = definition_name(stmt).map(ast::Identifier::as_str) else {
             continue;
         };
+        // A constructor stays a root, so no method that calls it pulls it below that method. SMP203 moves constructors
+        // up, which keeps the two rules from undoing each other.
+        let constructor = is_constructor(name);
+        if constructor {
+            uses.constructors.insert(index);
+        }
         if counts[name] > 1 || runtime_names.contains(name) {
             uses.runtime.insert(index);
+            continue;
+        }
+        if constructor {
             continue;
         }
         for reference in checker.semantic().member_references(class.range, name) {
@@ -300,66 +278,21 @@ fn expected_order(length: usize, owners: &[Option<usize>], uses: &Uses) -> Vec<u
     for list in children.values_mut() {
         list.sort_unstable();
     }
+    let roots: Vec<usize> = (0..length).filter(|index| owners[*index].is_none()).collect();
     let mut order = Vec::with_capacity(length);
-    let mut stack: Vec<usize> = (0..length).filter(|index| owners[*index].is_none()).rev().collect();
-    while let Some(index) = stack.pop() {
-        order.push(index);
-        if let Some(list) = children.get(&index) {
-            stack.extend(list.iter().rev().map(|(_, child)| *child));
+    // Constructors that sit together stay together, as SMP203 wants them, and the helpers they call follow the last.
+    for run in roots.chunk_by(|first, second| uses.constructors.contains(first) && uses.constructors.contains(second)) {
+        order.extend(run);
+        for root in run {
+            let mut stack: Vec<usize> =
+                children.get(root).into_iter().flatten().rev().map(|(_, child)| *child).collect();
+            while let Some(index) = stack.pop() {
+                order.push(index);
+                if let Some(list) = children.get(&index) {
+                    stack.extend(list.iter().rev().map(|(_, child)| *child));
+                }
+            }
         }
     }
     order
-}
-
-fn reorder_fix(checker: &Checker, suite: &Suite, expected: &[usize], span: RangeInclusive<usize>) -> Option<Fix> {
-    let source = checker.source;
-    let blocks: Vec<TextRange> = suite.body.iter().map(|stmt| statement_block(source, stmt)).collect();
-    let moved = &blocks[span.clone()];
-    let region = TextRange::new(moved[0].start(), moved[moved.len() - 1].end());
-    if checker
-        .comment_ranges()
-        .comments_in_range(region)
-        .iter()
-        .any(|comment| !moved.iter().any(|block| block.contains(comment.start())))
-        || moved.windows(2).any(|pair| pair[0].end() > pair[1].start())
-    {
-        return None;
-    }
-    let text: Vec<String> = expected[span.clone()]
-        .iter()
-        .map(|index| {
-            let block = &source[blocks[*index]];
-            if block.ends_with('\n') { block.to_owned() } else { format!("{block}\n") }
-        })
-        .collect();
-    let mut replacement = text.join(suite.separator);
-    if !source[region].ends_with('\n') {
-        replacement.pop();
-    }
-    let moved_unsafe = span.filter(|position| expected[*position] != *position).any(|position| {
-        matches!(&suite.body[expected[position]], Stmt::ClassDef(_))
-            || matches!(&suite.body[expected[position]], Stmt::FunctionDef(function) if !function.decorator_list.is_empty())
-    });
-    let edit = Edit::range_replacement(replacement, region);
-    Some(if moved_unsafe { Fix::unsafe_edit(edit) } else { Fix::safe_edit(edit) })
-}
-
-fn statement_block(source: &str, stmt: &Stmt) -> TextRange {
-    let start = match stmt {
-        Stmt::FunctionDef(ast::StmtFunctionDef { decorator_list, .. })
-        | Stmt::ClassDef(ast::StmtClassDef { decorator_list, .. }) => {
-            decorator_list.first().map_or(stmt.start(), Ranged::start)
-        }
-        _ => stmt.start(),
-    };
-    let mut line_start = source.line_start(start);
-    // A byte order mark is not a line to step back into.
-    while line_start > source.bom_start_offset() {
-        let previous = source.line_start(line_start - TextSize::from(1));
-        if !source[TextRange::new(previous, line_start)].trim_start().starts_with('#') {
-            break;
-        }
-        line_start = previous;
-    }
-    TextRange::new(line_start, source.full_line_end(stmt.end()))
 }

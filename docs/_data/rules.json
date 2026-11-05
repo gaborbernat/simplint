@@ -1750,7 +1750,7 @@
     "name": "definition-before-use",
     "summary": "Helpers defined above their first caller, or away from it",
     "fix": "Sometimes",
-    "explanation": "Flags functions and classes that do not sit directly below their first user. With each helper following the code that\ncalls it, the file reads top-down, from the entry point into the details.\n\n## Why is this bad?\n\nThis order lets the reader start with the high-level overview, the entry point or caller, and then drill down into the\ndetails, the helpers, as they read ahead, top to bottom.\n\nCode reads top-down when each function is followed by the helpers it calls. A helper above its caller, or far from it,\nmakes the reader jump around the file.\n\nThe habit of putting helpers first comes from compiled languages such as C, where a function has to be\n[declared before it is used](https://en.cppreference.com/c/language/function_declaration). Python has no such rule: a\nname inside a function body is looked up\n[when the function runs](https://docs.python.org/3/reference/executionmodel.html#resolution-of-names), not when it is\ndefined, so a helper can sit anywhere in the module.\n\nThat leaves the order free to serve the reader. A file that starts with its entry point and then explains each step lets\na reviewer follow the change the way it runs.\n\nThe order is depth first, like reading a book: each helper follows its first caller, and a helper's own helpers come\nbefore the caller's next one. For this call tree the file reads `load`, `_parse`, `_split`, `_validate`:\n\n- `load` calls `_parse` first, then `_validate`\n  - `_parse` calls `_split`\n\n## Example\n\n```python report\ndef _parse(line: str) -> tuple[str, str]:\n    key, _, value = line.partition(\"=\")\n    return key, value\n\n\ndef load(text: str) -> dict[str, str]:\n    return dict(_parse(line) for line in text.splitlines())\n```\n\nUse instead:\n\n```python ok\ndef load(text: str) -> dict[str, str]:\n    return dict(_parse(line) for line in text.splitlines())\n\n\ndef _parse(line: str) -> tuple[str, str]:\n    key, _, value = line.partition(\"=\")\n    return key, value\n```\n\n## What it does\n\n### Active on\n\nA helper that runs only when another definition is called should sit directly below its **first user**, the earliest\nstatement that refers to it. When one user has several helpers, they follow it in the order the user first refers to\nthem. The rule checks the order of functions and classes in two places:\n\n- **At module level**: a user refers to a helper by name.\n\n  ```python report\n  def _clean(line: str) -> str:\n      return line.strip()\n\n\n  def unrelated() -> int:\n      return 1\n\n\n  def load(text: str) -> list[str]:\n      return [_clean(line) for line in text.splitlines()]\n  ```\n\n- **In every class body**: a method refers to another through `self.name`, `cls.name` or `ClassName.name`.\n\n  ```python report\n  class Parser:\n      def _clean(self, line: str) -> str:\n          return line.strip()\n\n      def unrelated(self) -> int:\n          return 1\n\n      def load(self, text: str) -> list[str]:\n          return [self._clean(line) for line in text.splitlines()]\n  ```\n\n### Exceptions\n\nDefinitions that must exist while the module or class body runs stay where they are, since moving them below their user\nwould leave the name unbound when it is read:\n\n- **Anything referenced at import time**: module-level code, decorators, default values and base classes.\n\n  ```python ok\n  def _limit() -> int:\n      return 3\n\n\n  LIMIT = _limit()\n\n\n  def load() -> int:\n      return LIMIT\n  ```\n\n- **Anything read by a function that runs at import time**: the name must already exist when that call runs, so it\n  cannot move below it:\n\n  - a lambda in module-level code or a class body; a lambda bound straight to a name counts as a definition instead:\n\n    - called where it is written, such as `(lambda: options)()`:\n\n      ```python ok\n      def load() -> int:\n          return 1\n\n\n      RESULT = (lambda: load())()\n      ```\n\n    - handed to a call, such as `build(skip=lambda case: is_slow(case))`:\n\n      ```python ok\n      def is_slow(case: str) -> bool:\n          return case == \"slow\"\n\n\n      build(skip=lambda case: is_slow(case))\n      ```\n\n  - a function a class body calls, such as `tokens = [state(1)]`\n\n    ```python ok\n    def state(value: int) -> int:\n        return value\n\n\n    class Machine:\n        tokens = [state(1)]\n    ```\n\n- **Names bound more than once**, such as a [property](https://docs.python.org/3/builtins/functions.html#property) and\n  its setter: each later binding builds on or replaces the earlier one, so their order matters.\n\n  ```python ok\n  class Box:\n      @property\n      def size(self) -> int:\n          return self._size\n\n      @size.setter\n      def size(self, value: int) -> None:\n          self._size = value\n  ```\n\n- **At module level, definitions whose own statement evaluates another module-level name that is not an import**, for\n  example in a decorator or default value: that name has to be bound first.\n\n  ```python ok\n  def load(limit: int = DEFAULT_LIMIT) -> int:\n      return limit\n\n\n  DEFAULT_LIMIT = 3\n  ```\n\n- **Everything these call**: it runs at import time too.\n\n  ```python ok\n  def _base() -> int:\n      return 2\n\n\n  def _scaled() -> int:\n      return _base() * 2\n\n\n  LIMIT = _scaled()\n  ```\n\n- **Mutually recursive helpers**: each is the other's first user, so no order puts both directly below their user.\n\n  ```python ok\n  def _even(n: int) -> bool:\n      return True if n == 0 else _odd(n - 1)\n\n\n  def _odd(n: int) -> bool:\n      return False if n == 0 else _even(n - 1)\n  ```\n\n### Annotations\n\nAnnotations do not make a user when Python evaluates them lazily:\n\n- when the target version is 3.14 or later ([PEP 649](https://peps.python.org/pep-0649/)), read from Ruff's\n  [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) or\n  [`requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python)\n- when the module has [`from __future__ import annotations`](https://docs.python.org/3/library/__future__.html)\n\nOtherwise an annotation in a module-level or class-level `def` signature or variable annotation counts as an import-time\nuse. Annotations inside a function body never make that function a user: a name a function only annotates with is not a\nhelper it calls.\n\nThe signature of a decorated function and the class-level annotations of a decorated class count as an import-time use\nwhatever the target version, because many decorators read them while the module loads:\n\n- a [FastAPI](https://fastapi.tiangolo.com/) route builds its response model from the return annotation\n- pydantic's `validate_call`, typer, click, [`dataclass`](https://docs.python.org/3/library/dataclasses.html), attrs and\n  [`functools.singledispatch`](https://docs.python.org/3/library/functools.html#functools.singledispatch) read them too\n\nMoving such a name below its user would leave the decorator with an unresolved forward reference.\n\n### Type parameters and type statements\n\nPython 3.12 evaluates the bound and default of a type parameter ([PEP 695](https://peps.python.org/pep-0695/),\n[PEP 696](https://peps.python.org/pep-0696/)) and the value of a `type` statement lazily, so the names they read need\nnot exist yet. They make their statement a user like a function body does:\n\n```toml config\n[project]\nrequires-python = \">=3.12\"\n```\n\n```python report\nclass _Base:\n    pass\n\n\ndef make[T: _Base]() -> T:\n    raise NotImplementedError\n```\n\n### Fix\n\nThe fix rewrites the span from the first to the last misplaced statement in the expected order:\n\n- It comes with the first report of each body only, since that one fix moves every definition the body's reports name.\n\n  ```python report\n  def _clean(line: str) -> str:\n      return line.strip()\n\n\n  def unrelated() -> int:\n      return 1\n\n\n  def load(text: str) -> list[str]:\n      return [_clean(line) for line in text.splitlines()]\n  ```\n\n  ```python fixed\n  def unrelated() -> int:\n      return 1\n\n\n  def load(text: str) -> list[str]:\n      return [_clean(line) for line in text.splitlines()]\n\n\n  def _clean(line: str) -> str:\n      return line.strip()\n  ```\n\n- Decorators and the comment lines directly above a definition move with it.\n\n  ```python report\n  # Strips the line.\n  def _clean(line: str) -> str:\n      return line.strip()\n\n\n  def unrelated() -> int:\n      return 1\n\n\n  def load(text: str) -> list[str]:\n      return [_clean(line) for line in text.splitlines()]\n  ```\n\n  ```python fixed\n  def unrelated() -> int:\n      return 1\n\n\n  def load(text: str) -> list[str]:\n      return [_clean(line) for line in text.splitlines()]\n\n\n  # Strips the line.\n  def _clean(line: str) -> str:\n      return line.strip()\n  ```\n\n- Statements are separated by two blank lines at module level and one in a class body.\n\n  ```python report\n  class Parser:\n      def _clean(self, line: str) -> str:\n          return line.strip()\n\n      def unrelated(self) -> int:\n          return 1\n\n      def load(self, text: str) -> list[str]:\n          return [self._clean(line) for line in text.splitlines()]\n  ```\n\nThe fix is safe when every definition in the rewritten span is an undecorated function. **Unsafe fix:** a span holding a\nclass or a decorated function, even when that definition only shifts to make room, because\n[decorators](https://docs.python.org/3/glossary.html#term-decorator),\n[metaclasses](https://docs.python.org/3/reference/datamodel.html#metaclasses) and\n[`__init_subclass__`](https://docs.python.org/3/reference/datamodel.html#object.__init_subclass__) hooks then run in a\ndifferent order.\n\nNo fix is offered when the span holds a comment that is not attached to a definition, or when two statements share a\nline.\n",
+    "explanation": "Flags functions and classes that do not sit directly below their first user. With each helper following the code that\ncalls it, the file reads top-down, from the entry point into the details.\n\n## Why is this bad?\n\nThis order lets the reader start with the high-level overview, the entry point or caller, and then drill down into the\ndetails, the helpers, as they read ahead, top to bottom.\n\nCode reads top-down when each function is followed by the helpers it calls. A helper above its caller, or far from it,\nmakes the reader jump around the file.\n\nThe habit of putting helpers first comes from compiled languages such as C, where a function has to be\n[declared before it is used](https://en.cppreference.com/c/language/function_declaration). Python has no such rule: a\nname inside a function body is looked up\n[when the function runs](https://docs.python.org/3/reference/executionmodel.html#resolution-of-names), not when it is\ndefined, so a helper can sit anywhere in the module.\n\nThat leaves the order free to serve the reader. A file that starts with its entry point and then explains each step lets\na reviewer follow the change the way it runs.\n\nThe order is depth first, like reading a book: each helper follows its first caller, and a helper's own helpers come\nbefore the caller's next one. For this call tree the file reads `load`, `_parse`, `_split`, `_validate`:\n\n- `load` calls `_parse` first, then `_validate`\n  - `_parse` calls `_split`\n\n## Example\n\n```python report\ndef _parse(line: str) -> tuple[str, str]:\n    key, _, value = line.partition(\"=\")\n    return key, value\n\n\ndef load(text: str) -> dict[str, str]:\n    return dict(_parse(line) for line in text.splitlines())\n```\n\nUse instead:\n\n```python ok\ndef load(text: str) -> dict[str, str]:\n    return dict(_parse(line) for line in text.splitlines())\n\n\ndef _parse(line: str) -> tuple[str, str]:\n    key, _, value = line.partition(\"=\")\n    return key, value\n```\n\n## What it does\n\n### Active on\n\nA helper that runs only when another definition is called should sit directly below its **first user**, the earliest\nstatement that refers to it. When one user has several helpers, they follow it in the order the user first refers to\nthem. The rule checks the order of functions and classes in two places:\n\n- **At module level**: a user refers to a helper by name.\n\n  ```python report\n  def _clean(line: str) -> str:\n      return line.strip()\n\n\n  def unrelated() -> int:\n      return 1\n\n\n  def load(text: str) -> list[str]:\n      return [_clean(line) for line in text.splitlines()]\n  ```\n\n- **In every class body**: a method refers to another through its first parameter, such as `self.name` or `cls.name`,\n  through `ClassName.name`, or through an instance the method builds from its first parameter, such as `obj = cls()` or\n  `obj = super().__new__(cls)` followed by `obj.name`. A lambda in the class body, such as\n  `property(lambda self: self.name)`, counts as a method.\n\n  ```python report\n  class Parser:\n      def _clean(self, line: str) -> str:\n          return line.strip()\n\n      def unrelated(self) -> int:\n          return 1\n\n      def load(self, text: str) -> list[str]:\n          return [self._clean(line) for line in text.splitlines()]\n  ```\n\n### Exceptions\n\nDefinitions that must exist while the module or class body runs stay where they are, since moving them below their user\nwould leave the name unbound when it is read:\n\n- **Anything referenced at import time**: module-level code, decorators, default values and base classes.\n\n  ```python ok\n  def _limit() -> int:\n      return 3\n\n\n  LIMIT = _limit()\n\n\n  def load() -> int:\n      return LIMIT\n  ```\n\n- **Anything read by a function that runs at import time**: the name must already exist when that call runs, so it\n  cannot move below it:\n\n  - a lambda in module-level code or a class body; a lambda bound straight to a name counts as a definition instead:\n\n    - called where it is written, such as `(lambda: options)()`:\n\n      ```python ok\n      def load() -> int:\n          return 1\n\n\n      RESULT = (lambda: load())()\n      ```\n\n    - handed to a call, such as `build(skip=lambda case: is_slow(case))`:\n\n      ```python ok\n      def is_slow(case: str) -> bool:\n          return case == \"slow\"\n\n\n      build(skip=lambda case: is_slow(case))\n      ```\n\n  - a function a class body calls, such as `tokens = [state(1)]`\n\n    ```python ok\n    def state(value: int) -> int:\n        return value\n\n\n    class Machine:\n        tokens = [state(1)]\n    ```\n\n- **Names bound more than once**, such as a [property](https://docs.python.org/3/builtins/functions.html#property) and\n  its setter: each later binding builds on or replaces the earlier one, so their order matters.\n\n  ```python ok\n  class Box:\n      @property\n      def size(self) -> int:\n          return self._size\n\n      @size.setter\n      def size(self, value: int) -> None:\n          self._size = value\n  ```\n\n- **At module level, definitions whose own statement evaluates another module-level name that is not an import**, for\n  example in a decorator or default value: that name has to be bound first.\n\n  ```python ok\n  def load(limit: int = DEFAULT_LIMIT) -> int:\n      return limit\n\n\n  DEFAULT_LIMIT = 3\n  ```\n\n- **Everything these call**: it runs at import time too.\n\n  ```python ok\n  def _base() -> int:\n      return 2\n\n\n  def _scaled() -> int:\n      return _base() * 2\n\n\n  LIMIT = _scaled()\n  ```\n\n- **Mutually recursive helpers**: each is the other's first user, so no order puts both directly below their user.\n\n  ```python ok\n  def _even(n: int) -> bool:\n      return True if n == 0 else _odd(n - 1)\n\n\n  def _odd(n: int) -> bool:\n      return False if n == 0 else _even(n - 1)\n  ```\n\n- **Constructors**: `__new__`, `__init__`, `__post_init__` and `__init_subclass__` stay ahead of the methods that call\n  them, since [constructor-after-method](SMP203.html) moves them up.\n\n  ```python ok\n  class Cache:\n      def __init__(self) -> None:\n          self.items = {}\n\n      def reset(self) -> None:\n          self.__init__()\n  ```\n\n### Annotations\n\nAnnotations do not make a user when Python evaluates them lazily:\n\n- when the target version is 3.14 or later ([PEP 649](https://peps.python.org/pep-0649/)), read from Ruff's\n  [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) or\n  [`requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python)\n- when the module has [`from __future__ import annotations`](https://docs.python.org/3/library/__future__.html)\n\nOtherwise an annotation in a module-level or class-level `def` signature or variable annotation counts as an import-time\nuse. Annotations inside a function body never make that function a user: a name a function only annotates with is not a\nhelper it calls.\n\nThe signature of a decorated function and the class-level annotations of a decorated class count as an import-time use\nwhatever the target version, because many decorators read them while the module loads:\n\n- a [FastAPI](https://fastapi.tiangolo.com/) route builds its response model from the return annotation\n- pydantic's `validate_call`, typer, click, [`dataclass`](https://docs.python.org/3/library/dataclasses.html), attrs and\n  [`functools.singledispatch`](https://docs.python.org/3/library/functools.html#functools.singledispatch) read them too\n\nMoving such a name below its user would leave the decorator with an unresolved forward reference.\n\n### Type parameters and type statements\n\nPython 3.12 evaluates the bound and default of a type parameter ([PEP 695](https://peps.python.org/pep-0695/),\n[PEP 696](https://peps.python.org/pep-0696/)) and the value of a `type` statement lazily, so the names they read need\nnot exist yet. They make their statement a user like a function body does:\n\n```toml config\n[project]\nrequires-python = \">=3.12\"\n```\n\n```python report\nclass _Base:\n    pass\n\n\ndef make[T: _Base]() -> T:\n    raise NotImplementedError\n```\n\n### Fix\n\nThe fix rewrites the span from the first to the last misplaced statement in the expected order:\n\n- It comes with the first report of each body only, since that one fix moves every definition the body's reports name.\n\n  ```python report\n  def _clean(line: str) -> str:\n      return line.strip()\n\n\n  def unrelated() -> int:\n      return 1\n\n\n  def load(text: str) -> list[str]:\n      return [_clean(line) for line in text.splitlines()]\n  ```\n\n  ```python fixed\n  def unrelated() -> int:\n      return 1\n\n\n  def load(text: str) -> list[str]:\n      return [_clean(line) for line in text.splitlines()]\n\n\n  def _clean(line: str) -> str:\n      return line.strip()\n  ```\n\n- Decorators and the comment lines directly above a definition move with it.\n\n  ```python report\n  # Strips the line.\n  def _clean(line: str) -> str:\n      return line.strip()\n\n\n  def unrelated() -> int:\n      return 1\n\n\n  def load(text: str) -> list[str]:\n      return [_clean(line) for line in text.splitlines()]\n  ```\n\n  ```python fixed\n  def unrelated() -> int:\n      return 1\n\n\n  def load(text: str) -> list[str]:\n      return [_clean(line) for line in text.splitlines()]\n\n\n  # Strips the line.\n  def _clean(line: str) -> str:\n      return line.strip()\n  ```\n\n- Statements are separated by two blank lines at module level and one in a class body.\n\n  ```python report\n  class Parser:\n      def _clean(self, line: str) -> str:\n          return line.strip()\n\n      def unrelated(self) -> int:\n          return 1\n\n      def load(self, text: str) -> list[str]:\n          return [self._clean(line) for line in text.splitlines()]\n  ```\n\nThe fix is safe when every definition in the rewritten span is an undecorated function. **Unsafe fix:** a span holding a\nclass or a decorated function, even when that definition only shifts to make room, because\n[decorators](https://docs.python.org/3/glossary.html#term-decorator),\n[metaclasses](https://docs.python.org/3/reference/datamodel.html#metaclasses) and\n[`__init_subclass__`](https://docs.python.org/3/reference/datamodel.html#object.__init_subclass__) hooks then run in a\ndifferent order.\n\nNo fix is offered when the span holds a comment that is not attached to a definition, or when two statements share a\nline.\n",
     "examples": {
       "parsed": [
         {
@@ -1803,155 +1803,171 @@
         },
         {
           "section": "What it does",
-          "line": 76,
-          "end_line": 86,
+          "line": 79,
+          "end_line": 89,
           "config": null,
           "blocks": [
             {
               "role": "report",
               "file": "example.py",
               "named": false,
-              "line": 76,
-              "end_line": 86,
+              "line": 79,
+              "end_line": 89,
               "source": "class Parser:\n    def _clean(self, line: str) -> str:\n        return line.strip()\n\n    def unrelated(self) -> int:\n        return 1\n\n    def load(self, text: str) -> list[str]:\n        return [self._clean(line) for line in text.splitlines()]\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 95,
-          "end_line": 105,
+          "line": 98,
+          "end_line": 108,
           "config": null,
           "blocks": [
             {
               "role": "ok",
               "file": "example.py",
               "named": false,
-              "line": 95,
-              "end_line": 105,
+              "line": 98,
+              "end_line": 108,
               "source": "def _limit() -> int:\n    return 3\n\n\nLIMIT = _limit()\n\n\ndef load() -> int:\n    return LIMIT\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 114,
-          "end_line": 120,
+          "line": 117,
+          "end_line": 123,
           "config": null,
           "blocks": [
             {
               "role": "ok",
               "file": "example.py",
               "named": false,
-              "line": 114,
-              "end_line": 120,
+              "line": 117,
+              "end_line": 123,
               "source": "def load() -> int:\n    return 1\n\n\nRESULT = (lambda: load())()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 124,
-          "end_line": 130,
+          "line": 127,
+          "end_line": 133,
           "config": null,
           "blocks": [
             {
               "role": "ok",
               "file": "example.py",
               "named": false,
-              "line": 124,
-              "end_line": 130,
+              "line": 127,
+              "end_line": 133,
               "source": "def is_slow(case: str) -> bool:\n    return case == \"slow\"\n\n\nbuild(skip=lambda case: is_slow(case))\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 134,
-          "end_line": 141,
+          "line": 137,
+          "end_line": 144,
           "config": null,
           "blocks": [
             {
               "role": "ok",
               "file": "example.py",
               "named": false,
-              "line": 134,
-              "end_line": 141,
+              "line": 137,
+              "end_line": 144,
               "source": "def state(value: int) -> int:\n    return value\n\n\nclass Machine:\n    tokens = [state(1)]\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 146,
-          "end_line": 155,
+          "line": 149,
+          "end_line": 158,
           "config": null,
           "blocks": [
             {
               "role": "ok",
               "file": "example.py",
               "named": false,
-              "line": 146,
-              "end_line": 155,
+              "line": 149,
+              "end_line": 158,
               "source": "class Box:\n    @property\n    def size(self) -> int:\n        return self._size\n\n    @size.setter\n    def size(self, value: int) -> None:\n        self._size = value\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 160,
-          "end_line": 166,
+          "line": 163,
+          "end_line": 169,
           "config": null,
           "blocks": [
             {
               "role": "ok",
               "file": "example.py",
               "named": false,
-              "line": 160,
-              "end_line": 166,
+              "line": 163,
+              "end_line": 169,
               "source": "def load(limit: int = DEFAULT_LIMIT) -> int:\n    return limit\n\n\nDEFAULT_LIMIT = 3\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 170,
-          "end_line": 180,
+          "line": 173,
+          "end_line": 183,
           "config": null,
           "blocks": [
             {
               "role": "ok",
               "file": "example.py",
               "named": false,
-              "line": 170,
-              "end_line": 180,
+              "line": 173,
+              "end_line": 183,
               "source": "def _base() -> int:\n    return 2\n\n\ndef _scaled() -> int:\n    return _base() * 2\n\n\nLIMIT = _scaled()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 184,
-          "end_line": 191,
+          "line": 187,
+          "end_line": 194,
           "config": null,
           "blocks": [
             {
               "role": "ok",
               "file": "example.py",
               "named": false,
-              "line": 184,
-              "end_line": 191,
+              "line": 187,
+              "end_line": 194,
               "source": "def _even(n: int) -> bool:\n    return True if n == 0 else _odd(n - 1)\n\n\ndef _odd(n: int) -> bool:\n    return False if n == 0 else _even(n - 1)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 221,
-          "end_line": 233,
+          "line": 199,
+          "end_line": 206,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "file": "example.py",
+              "named": false,
+              "line": 199,
+              "end_line": 206,
+              "source": "class Cache:\n    def __init__(self) -> None:\n        self.items = {}\n\n    def reset(self) -> None:\n        self.__init__()\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 236,
+          "end_line": 248,
           "config": {
-            "line": 221,
-            "end_line": 224,
+            "line": 236,
+            "end_line": 239,
             "source": "[project]\nrequires-python = \">=3.12\"\n"
           },
           "blocks": [
@@ -1959,72 +1975,72 @@
               "role": "report",
               "file": "example.py",
               "named": false,
-              "line": 226,
-              "end_line": 233,
+              "line": 241,
+              "end_line": 248,
               "source": "class _Base:\n    pass\n\n\ndef make[T: _Base]() -> T:\n    raise NotImplementedError\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 241,
-          "end_line": 265,
+          "line": 256,
+          "end_line": 280,
           "config": null,
           "blocks": [
             {
               "role": "report",
               "file": "example.py",
               "named": false,
-              "line": 241,
-              "end_line": 252,
+              "line": 256,
+              "end_line": 267,
               "source": "def _clean(line: str) -> str:\n    return line.strip()\n\n\ndef unrelated() -> int:\n    return 1\n\n\ndef load(text: str) -> list[str]:\n    return [_clean(line) for line in text.splitlines()]\n"
             },
             {
               "role": "fixed",
               "file": "example.py",
               "named": false,
-              "line": 254,
-              "end_line": 265,
+              "line": 269,
+              "end_line": 280,
               "source": "def unrelated() -> int:\n    return 1\n\n\ndef load(text: str) -> list[str]:\n    return [_clean(line) for line in text.splitlines()]\n\n\ndef _clean(line: str) -> str:\n    return line.strip()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 269,
-          "end_line": 295,
+          "line": 284,
+          "end_line": 310,
           "config": null,
           "blocks": [
             {
               "role": "report",
               "file": "example.py",
               "named": false,
-              "line": 269,
-              "end_line": 281,
+              "line": 284,
+              "end_line": 296,
               "source": "# Strips the line.\ndef _clean(line: str) -> str:\n    return line.strip()\n\n\ndef unrelated() -> int:\n    return 1\n\n\ndef load(text: str) -> list[str]:\n    return [_clean(line) for line in text.splitlines()]\n"
             },
             {
               "role": "fixed",
               "file": "example.py",
               "named": false,
-              "line": 283,
-              "end_line": 295,
+              "line": 298,
+              "end_line": 310,
               "source": "def unrelated() -> int:\n    return 1\n\n\ndef load(text: str) -> list[str]:\n    return [_clean(line) for line in text.splitlines()]\n\n\n# Strips the line.\ndef _clean(line: str) -> str:\n    return line.strip()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 299,
-          "end_line": 309,
+          "line": 314,
+          "end_line": 324,
           "config": null,
           "blocks": [
             {
               "role": "report",
               "file": "example.py",
               "named": false,
-              "line": 299,
-              "end_line": 309,
+              "line": 314,
+              "end_line": 324,
               "source": "class Parser:\n    def _clean(self, line: str) -> str:\n        return line.strip()\n\n    def unrelated(self) -> int:\n        return 1\n\n    def load(self, text: str) -> list[str]:\n        return [self._clean(line) for line in text.splitlines()]\n"
             }
           ]
@@ -2502,6 +2518,109 @@
     "group": "Module layout",
     "short_group": "Module layout",
     "cross_file": true
+  },
+  {
+    "code": "SMP203",
+    "name": "constructor-after-method",
+    "summary": "Constructors defined below other methods",
+    "fix": "Sometimes",
+    "explanation": "Flags constructors that a method sits above in a class body. `__new__`, `__init__`, `__post_init__` and\n`__init_subclass__` come first, ahead of the other methods, so the reader starts where the instance is made.\n\n## Why is this bad?\n\nA class is read to learn how its instances come to be and what they hold from the start. A constructor placed after a\ndozen methods sends the reader past all of them to find it, and the methods then read as if the instance already\nexisted. Putting the constructors first follows the order of an object's life: it is created, then used.\n\n## Example\n\n```python report\nclass Parser:\n    def load(self, text: str) -> list[str]:\n        return [line.strip() for line in text.splitlines()]\n\n    def __init__(self, sep: str = \",\") -> None:\n        self.sep = sep\n```\n\nUse instead:\n\n```python ok\nclass Parser:\n    def __init__(self, sep: str = \",\") -> None:\n        self.sep = sep\n\n    def load(self, text: str) -> list[str]:\n        return [line.strip() for line in text.splitlines()]\n```\n\n## What it does\n\nThe rule checks each class body that defines a method. Every constructor defined below the first method that is not a\nconstructor is reported, and its message names that method.\n\n### Exceptions\n\nA constructor that moving would change is still reported, without a fix, when:\n\n- its decorators or default values read a name the body binds between the first method and the constructor, such as a\n  class attribute that a default reads:\n\n  ```python report\n  class Parser:\n      def load(self, text: str) -> list[str]:\n          return text.split(self.SEP)\n\n      SEP = \",\"\n\n      def __init__(self, sep: str = SEP) -> None:\n          self.sep = sep\n  ```\n\n- the constructor's name is bound more than once in the body, such as by an assignment. Its `@overload` variants do not\n  count as bindings of their own.\n\n  ```python report\n  class Parser:\n      def load(self, text: str) -> list[str]:\n          return text.split(\",\")\n\n      def __init__(self) -> None:\n          pass\n\n      __init__ = None\n  ```\n\n- the class body reads the constructor's name as it runs, outside a method.\n\nAnnotations count as reads of a constructor's decorators and defaults when Python evaluates them as the `def` runs: a\ndecorated constructor's annotations always are, and the others' are unless the module has lazy annotations, as\n[`definition-before-use`](SMP201.html) describes.\n\n[`definition-before-use`](SMP201.html) never moves a constructor below a method that calls it, so a method that calls\n`self.__init__()` stays below the constructor and the two rules agree.\n\n### Fix\n\nThe fix moves the constructors above the first method, keeping their order. Each constructor carries its decorators and\nthe comment lines directly above it, as the fix of `definition-before-use` does. Overloads of a constructor move\ntogether: when one variant is an exception, none of them moves.\n\n- Only the first report of a class body carries the fix, since that one fix reorders every constructor it moves.\n\n  ```python report\n  class Parser:\n      def load(self, text: str) -> list[str]:\n          return text.split(self.sep)\n\n      def __init__(self, sep: str = \",\") -> None:\n          self.sep = sep\n  ```\n\n  ```python fixed\n  class Parser:\n      def __init__(self, sep: str = \",\") -> None:\n          self.sep = sep\n\n      def load(self, text: str) -> list[str]:\n          return text.split(self.sep)\n  ```\n\nThe fix is safe when the rewritten span holds no class and no decorated method. **Unsafe fix:** a span that shifts a\nclass or a decorated method, such as an `@overload` variant or a decorated constructor, because\n[decorators](https://docs.python.org/3/glossary.html#term-decorator) and class creation then run in a different order.\n\nNo fix is offered when the span holds a comment that is not attached to a definition, or when two statements share a\nline. A constructor that is an exception keeps its report without a fix, and the other constructors of the body still\nmove.\n",
+    "examples": {
+      "parsed": [
+        {
+          "section": "Example",
+          "line": 12,
+          "end_line": 19,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "file": "example.py",
+              "named": false,
+              "line": 12,
+              "end_line": 19,
+              "source": "class Parser:\n    def load(self, text: str) -> list[str]:\n        return [line.strip() for line in text.splitlines()]\n\n    def __init__(self, sep: str = \",\") -> None:\n        self.sep = sep\n"
+            }
+          ]
+        },
+        {
+          "section": "Example",
+          "line": 23,
+          "end_line": 30,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "file": "example.py",
+              "named": false,
+              "line": 23,
+              "end_line": 30,
+              "source": "class Parser:\n    def __init__(self, sep: str = \",\") -> None:\n        self.sep = sep\n\n    def load(self, text: str) -> list[str]:\n        return [line.strip() for line in text.splitlines()]\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 44,
+          "end_line": 53,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "file": "example.py",
+              "named": false,
+              "line": 44,
+              "end_line": 53,
+              "source": "class Parser:\n    def load(self, text: str) -> list[str]:\n        return text.split(self.SEP)\n\n    SEP = \",\"\n\n    def __init__(self, sep: str = SEP) -> None:\n        self.sep = sep\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 58,
+          "end_line": 67,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "file": "example.py",
+              "named": false,
+              "line": 58,
+              "end_line": 67,
+              "source": "class Parser:\n    def load(self, text: str) -> list[str]:\n        return text.split(\",\")\n\n    def __init__(self) -> None:\n        pass\n\n    __init__ = None\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 86,
+          "end_line": 102,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "file": "example.py",
+              "named": false,
+              "line": 86,
+              "end_line": 93,
+              "source": "class Parser:\n    def load(self, text: str) -> list[str]:\n        return text.split(self.sep)\n\n    def __init__(self, sep: str = \",\") -> None:\n        self.sep = sep\n"
+            },
+            {
+              "role": "fixed",
+              "file": "example.py",
+              "named": false,
+              "line": 95,
+              "end_line": 102,
+              "source": "class Parser:\n    def __init__(self, sep: str = \",\") -> None:\n        self.sep = sep\n\n    def load(self, text: str) -> list[str]:\n        return text.split(self.sep)\n"
+            }
+          ]
+        }
+      ]
+    },
+    "family": "layout",
+    "group": "Module layout",
+    "short_group": "Module layout",
+    "cross_file": false
   },
   {
     "code": "SMP301",

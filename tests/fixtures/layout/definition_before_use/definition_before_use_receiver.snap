@@ -1,0 +1,82 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:9 SMP201 `_reset` is defined before its first use in `reset`; move it below `reset`
+6:9 SMP201 `_make` is defined before its first use in `load`; move it below `load` [unsafe fix: Move `_make` below `load`]
+18:9 SMP201 `_seed` is defined before its first use in `load_local`; move it below `load_local`
+27:9 SMP201 `_restore` should directly follow `load_called`, its first user
+34:9 SMP201 `_prime` is defined before its first use in `__new__`; move it below `__new__`
+68:9 SMP201 `_lazy` is defined before its first use in the statement on line 71; move it below the statement on line 71
+--- fixed (1 applied, 0 remaining) ---
+class ReceiverRegistry:
+    @classmethod
+    def load(klass) -> "ReceiverRegistry":
+        return klass._make()
+
+    @classmethod
+    def _make(cls) -> "ReceiverRegistry":
+        return cls()
+
+    @classmethod
+    def load_called(klass) -> "ReceiverRegistry":
+        return klass()._restore()
+
+    @classmethod
+    def _restore(cls) -> "ReceiverRegistry":
+        return cls()
+
+    @classmethod
+    def load_local(klass) -> "ReceiverRegistry":
+        built = klass()
+        return built._seed()
+
+    @classmethod
+    def _seed(cls) -> "ReceiverRegistry":
+        return cls()
+
+    @classmethod
+    def _audit(cls) -> None:
+        pass
+
+    def __new__(cls) -> "ReceiverRegistry":
+        made = super().__new__(cls)
+        made._prime()
+        return made
+
+    def _prime(self) -> None:
+        pass
+
+    def _unprimed(self) -> None:
+        pass
+
+    @classmethod
+    def blank(cls) -> "ReceiverRegistry":
+        made = super().__new__(object)
+        made._unprimed()
+        return cls()
+
+    @staticmethod
+    def unrelated(klass) -> None:
+        klass._audit()
+
+    def copy(this) -> "ReceiverRegistry":
+        return this._restore()
+
+    def reset(self) -> None:
+        def clear() -> None:
+            self._reset()
+
+        clear()
+
+    def _reset(self) -> None:
+        pass
+
+    @classmethod
+    def create(klass) -> list["ReceiverRegistry"]:
+        return list(klass())
+
+    lazy = property(lambda this: this._lazy())
+
+    def _lazy(self) -> int:
+        return 1

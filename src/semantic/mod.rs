@@ -10,6 +10,8 @@ use ruff_python_semantic::{BindingId, BindingKind as RuffBindingKind, ScopeKind,
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::syntax::{first_positional, is_name, receiver};
+
 pub struct Semantic<'a> {
     model: SemanticModel<'a>,
     annotations_are_lazy: bool,
@@ -84,7 +86,7 @@ impl<'a> Semantic<'a> {
         self.index.references.values().flatten()
     }
 
-    // Where the methods of `class` read `name` off `self`, `cls` or the class.
+    // Where the methods of `class` read `name` off their receiver or the class.
     pub fn member_references(&self, class: TextRange, name: &str) -> &[TextRange] {
         self.index.member_references.get(&class).and_then(|members| members.get(name)).map_or(&[], Vec::as_slice)
     }
@@ -194,13 +196,8 @@ impl<'a> Index<'a> {
         name: &'a ast::ExprName,
     ) {
         let function = model.current_scopes().filter_map(|scope| function_range(scope.kind)).last();
-        if function.is_some()
-            && let Some(class) = model.current_scopes().find_map(|scope| match scope.kind {
-                ScopeKind::Class(class) => Some(class),
-                _ => None,
-            })
-            && (matches!(name.id.as_str(), "self" | "cls") || name.id == class.name.as_str())
-            && let Some(Expr::Attribute(attribute)) = model.current_expression_parent()
+        if let Some((receiver, class)) = enclosing_method(model)
+            && let Some(attribute) = member_read(model, name, receiver, class)
         {
             let members = self.member_references.entry(class.range).or_default();
             members.entry(attribute.attr.as_str()).or_default().push(attribute.attr.range);
@@ -294,6 +291,67 @@ fn binding_kind(model: &SemanticModel, binding_id: BindingId) -> BindingKind {
         },
         _ => BindingKind::Other,
     }
+}
+
+// The receiver of the method a load runs in, and its class. A function nested in the method runs in it too, so the
+// innermost function directly in a class body is the one whose receiver the load reads. A lambda in a class body, as
+// `property(lambda self: ...)`, is a method too.
+fn enclosing_method<'a>(model: &SemanticModel<'a>) -> Option<(Option<&'a str>, &'a ast::StmtClassDef)> {
+    // Ruff's scopes between a method and its class, such as the type parameter and `__class__` cell scopes, do not count.
+    let mut method = None;
+    for scope in model.current_scopes() {
+        match scope.kind {
+            ScopeKind::Function(function) => method = Some(receiver(function)),
+            ScopeKind::Lambda(lambda) => method = Some(lambda.parameters.as_deref().and_then(first_positional)),
+            ScopeKind::Class(class) => {
+                if let Some(receiver) = method.take() {
+                    return Some((receiver, class));
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+// The attribute a load of `name` reads off an instance or the class inside a method of `class` with `receiver`:
+// `name.attr` where `name` is the receiver, the class or a local the method assigns from a call of the receiver, and
+// `name().attr` where `name` is called, as `klass().attr` for the receiver `klass`.
+fn member_read<'a>(
+    model: &SemanticModel<'a>,
+    name: &ast::ExprName,
+    receiver: Option<&str>,
+    class: &ast::StmtClassDef,
+) -> Option<&'a ast::ExprAttribute> {
+    let is_receiver = receiver == Some(name.id.as_str());
+    match model.current_expression_parent()? {
+        Expr::Attribute(attribute)
+            if is_receiver || name.id == class.name.as_str() || is_receiver_instance(model, name, receiver) =>
+        {
+            Some(attribute)
+        }
+        Expr::Call(call) if is_receiver && call.func.range() == name.range => {
+            match model.current_expression_grandparent()? {
+                Expr::Attribute(attribute) => Some(attribute),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+fn is_receiver_instance(model: &SemanticModel, name: &ast::ExprName, receiver: Option<&str>) -> bool {
+    let (Some(receiver), Some(binding)) = (receiver, model.resolve_name(name)) else {
+        return false;
+    };
+    let Some(Stmt::Assign(ast::StmtAssign { value, .. })) = model.binding(binding).statement(model) else {
+        return false;
+    };
+    value.as_call_expr().is_some_and(|call| {
+        is_name(&call.func, receiver)
+            || call.func.as_attribute_expr().is_some_and(|attribute| attribute.attr.as_str() == "__new__")
+                && call.arguments.args.first().is_some_and(|first| is_name(first, receiver))
+    })
 }
 
 fn function_range(kind: ScopeKind) -> Option<TextRange> {

@@ -363,6 +363,42 @@ fn fix_handles_a_byte_order_mark() {
     );
 }
 
+// SMP201 leaves a constructor where it is, and SMP203 moves it above the methods, so the two settle on one order: the
+// constructor first, and the helper it calls below it.
+#[test]
+fn fix_settles_constructors_with_the_methods_that_call_them() {
+    let root = project(&[(
+        "module.py",
+        "class Holder:\n    def helper(self) -> int:\n        return 1\n\n    def __init__(self) -> None:\n        self.value = self.helper()\n\n    def reset(self) -> None:\n        self.__init__()\n",
+    )]);
+    check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP201,SMP203"]);
+    assert_eq!(
+        (read(root.path(), "module.py"), check(root.path(), &["--select", "SMP201,SMP203"])),
+        (
+            "class Holder:\n    def __init__(self) -> None:\n        self.value = self.helper()\n\n    def helper(self) -> int:\n        return 1\n\n    def reset(self) -> None:\n        self.__init__()\n".to_owned(),
+            (0, "All checks passed!\n".to_owned(), String::new())
+        )
+    );
+}
+
+// A helper of the first constructor follows the last one: SMP201 keeps the constructors together, so SMP203 has no
+// constructor to move back above it.
+#[test]
+fn fix_keeps_constructors_together_ahead_of_their_helpers() {
+    let root = project(&[(
+        "module.py",
+        "class Holder:\n    def __init_subclass__(cls) -> None:\n        cls.compile()\n\n    @classmethod\n    def compile(cls) -> None:\n        pass\n\n    def __init__(self) -> None:\n        self.value = 1\n",
+    )]);
+    check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP201,SMP203"]);
+    assert_eq!(
+        (read(root.path(), "module.py"), check(root.path(), &["--select", "SMP201,SMP203"])),
+        (
+            "class Holder:\n    def __init_subclass__(cls) -> None:\n        cls.compile()\n\n    def __init__(self) -> None:\n        self.value = 1\n\n    @classmethod\n    def compile(cls) -> None:\n        pass\n".to_owned(),
+            (0, "All checks passed!\n".to_owned(), String::new())
+        )
+    );
+}
+
 // Ruff's COM819 takes the comma off again: with the comment after the first name, the list looks like one line to it.
 #[test]
 fn fix_that_ruff_undoes_is_not_a_fix() {
