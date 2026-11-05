@@ -255,16 +255,18 @@ rule changes, `cargo test` fails once and rewrites the file; commit it. `tests/t
 documented examples against it, so run `tox run -e tasks`.
 
 On a release tag, `update-schemastore.yaml` copies the file to SchemaStore as `partial-simplint.json`. While SchemaStore
-has no such file, the first tag opens the registration PR: `tasks/register_schemastore.py` writes the partial, adds its
+has no such file, the first tag stages the registration: `tasks/register_schemastore.py` writes the partial, adds its
 `tool.simplint` reference to SchemaStore's `pyproject.json` and lists it in `schema-validation.jsonc`, and
-`tasks/schemastore_options.json` becomes the partial's positive test. Each later tag updates the partial in a PR on the
-same branch. SchemaStore's install, formatter and checks run in a job without secrets, which hands its changes on as a
-patch; only the job that applies it, pushes and opens the PR sees the token, so code from SchemaStore's dependencies
-cannot read it. That job runs in the `schemastore` environment and needs a `SCHEMASTORE_TOKEN` secret there: a token
-that can fork `SchemaStore/schemastore`, push to the fork and open pull requests against upstream, such as a classic
-token with the `public_repo` scope. To submit a release whose tag ran before the token existed, run the workflow by hand
-with that tag. Pull requests run the same staging against a fresh SchemaStore clone, so a schema change that would break
-the submission fails there.
+`tasks/schemastore_options.json` becomes the partial's positive test. Each later tag pushes the updated partial to the
+same branch, which updates the open PR. SchemaStore's install, formatter and checks run in a job without secrets, which
+hands its changes on as a patch; only the job that applies and pushes it sees the token, so code from SchemaStore's
+dependencies cannot read it. That job runs in the `schemastore` environment and needs a `SCHEMASTORE_TOKEN` secret
+there: a fine-grained token limited to the maintainer's existing SchemaStore fork, with read and write access to its
+contents and workflows (syncing the fork copies SchemaStore's workflow changes). Such a token cannot open pull requests
+on SchemaStore, so when none is open for the branch, the run's summary links one with its title and body filled in, for
+the maintainer to open. To submit a release whose tag ran before the token existed, run the workflow by hand with that
+tag. Pull requests run the same staging against a fresh SchemaStore clone, so a schema change that would break the
+submission fails there.
 
 ## Changelog
 
