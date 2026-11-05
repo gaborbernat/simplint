@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
-import subprocess
 from pathlib import Path
 
 import pypandoc
@@ -68,20 +66,18 @@ def link_rules(markdown: str, rules: dict[str, str], *, codes: bool) -> str:
     return re.sub(rf"\b(?P<code>{code_pattern})\b|{named}(?: \((?:{code_pattern})\))?", link, markdown)
 
 
-def rule_names() -> dict[str, str]:
-    # Read the rule names from the installed ``simplint`` binary.
+def rule_names(root: Path) -> dict[str, str]:
+    # Read the rule names from the docs' copy of the binary's rule list.
     #
-    # :returns: rule names keyed by code, empty when the binary is not on the path
-    # :raises subprocess.CalledProcessError: if the binary fails to list its rules
-    # the docs environment installs the binary, whose rule list maps each code to its name
-    if (binary := shutil.which("simplint")) is None:
-        return {}
-    listing = subprocess.run([binary, "rules", "--output-format", "json"], check=True, capture_output=True, text=True)
-    return {rule["code"]: rule["name"] for rule in json.loads(listing.stdout)}
+    # :param root: the project root
+    # :returns: rule names keyed by code
+    rules = json.loads((root / "docs" / "_data" / "rules.json").read_text(encoding="utf-8"))
+    return {rule["code"]: rule["name"] for rule in rules}
 
 
 if __name__ == "__main__":
-    main(Path(__file__).resolve().parents[1], rule_names())
+    _ROOT = Path(__file__).resolve().parents[1]
+    main(_ROOT, rule_names(_ROOT))
 
 
 __all__ = [

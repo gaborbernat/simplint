@@ -2,6 +2,7 @@ name: 📝 Changelog
 on:
   pull_request:
     types: [opened, reopened, synchronize, labeled, unlabeled]
+  merge_group:
 permissions:
   contents: read
 jobs:
@@ -14,15 +15,18 @@ jobs:
       pull-requests: read
     steps:
       # `gh pr create --label` labels the PR right after opening it, which fires `labeled` beside `opened`; the run for
-      # `opened` reads the labels as they are when it checks, so the run for that label has nothing to add.
-      - name: 🧭 Skip labels added at opening
+      # `opened` reads the labels as they are when it checks, so the run for that label has nothing to add. A merge
+      # queue run has no pull request to read, and the pull request passed this check before it was queued.
+      - name: 🧭 Skip labels added at opening and merge queue runs
         id: gate
-        if: github.event.action == 'labeled' || github.event.action == 'unlabeled'
+        if: github.event_name == 'merge_group' || github.event.action == 'labeled' || github.event.action == 'unlabeled'
         env:
           CREATED: ${{ github.event.pull_request.created_at }}
           UPDATED: ${{ github.event.pull_request.updated_at }}
         run: |
-          if (($(date -d "$UPDATED" +%s) - $(date -d "$CREATED" +%s) < 60)); then
+          if [[ "$GITHUB_EVENT_NAME" == merge_group ]]; then
+            echo 'skip=true' >>"$GITHUB_OUTPUT"
+          elif (($(date -d "$UPDATED" +%s) - $(date -d "$CREATED" +%s) < 60)); then
             echo 'skip=true' >>"$GITHUB_OUTPUT"
           fi
       - name: 📥 Check out code

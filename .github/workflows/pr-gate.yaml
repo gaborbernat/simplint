@@ -2,6 +2,8 @@ name: 🚦 PR gate
 on:
   pull_request:
     types: [opened, synchronize, reopened]
+  # The merge queue checks each pull request on top of the ones ahead of it before merging.
+  merge_group:
 permissions: {}
 concurrency:
   group: pr-gate-${{ github.ref }}

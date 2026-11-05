@@ -9,10 +9,12 @@ use itertools::Itertools;
 use ruff_linter::RuleSelector;
 use ruff_linter::settings::types::{OutputFormat, UnsafeFixes};
 use ruff_macros::OptionsMetadata;
+use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::lint::registry::RuleSet;
 use crate::settings::api::{DocstringStyle, ProjectKindOption};
+use crate::settings::schema::RuleSelectorSchema;
 
 // Ruff's `Configuration` for simplint's options: one layer of settings, before it is resolved, so the command line can
 // go on top of a configuration file the way Ruff combines them.
@@ -246,7 +248,7 @@ impl RunOptions {
 
 /// The `[tool.simplint]` table. Like `[tool.ruff]`, it rejects keys it does not know, so a typo fails loudly instead of
 /// being ignored.
-#[derive(Deserialize, Default, Clone, OptionsMetadata)]
+#[derive(Deserialize, Default, Clone, JsonSchema, OptionsMetadata)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct SimplintOptions {
     /// The style in which violation messages should be formatted: `"full"` (default) (shows source), `"concise"`,
@@ -303,6 +305,7 @@ pub struct SimplintOptions {
             select = ["SMP2"]
         "#
     )]
+    #[schemars(with = "Vec<RuleSelectorSchema>")]
     pub select: Option<Vec<String>>,
 
     /// A list of rule codes, prefixes or names to enable, in addition to those specified by [`select`](#select).
@@ -314,6 +317,7 @@ pub struct SimplintOptions {
             extend-select = ["SMP2"]
         "#
     )]
+    #[schemars(with = "Vec<RuleSelectorSchema>")]
     pub extend_select: Option<Vec<String>>,
 
     /// A list of rule codes, prefixes or names to ignore. Prefixes can specify exact rules (like `SMP601`), entire
@@ -326,6 +330,7 @@ pub struct SimplintOptions {
             ignore = ["SMP601"]
         "#
     )]
+    #[schemars(with = "Vec<RuleSelectorSchema>")]
     pub ignore: Option<Vec<String>>,
 
     /// A list of rule codes, prefixes or names to consider fixable. By default, all rules are considered fixable.
@@ -337,6 +342,7 @@ pub struct SimplintOptions {
             fixable = ["SMP2"]
         "#
     )]
+    #[schemars(with = "Vec<RuleSelectorSchema>")]
     pub fixable: Option<Vec<String>>,
 
     /// A list of rule codes, prefixes or names to consider fixable, in addition to those specified by
@@ -349,6 +355,7 @@ pub struct SimplintOptions {
             extend-fixable = ["SMP2"]
         "#
     )]
+    #[schemars(with = "Vec<RuleSelectorSchema>")]
     pub extend_fixable: Option<Vec<String>>,
 
     /// A list of rule codes, prefixes or names to consider non-fixable.
@@ -360,6 +367,7 @@ pub struct SimplintOptions {
             unfixable = ["SMP701", "SMP703"]
         "#
     )]
+    #[schemars(with = "Vec<RuleSelectorSchema>")]
     pub unfixable: Option<Vec<String>>,
 
     /// A list of rule codes, prefixes or names to consider non-fixable, in addition to those specified by
@@ -372,6 +380,7 @@ pub struct SimplintOptions {
             extend-unfixable = ["SMP502"]
         "#
     )]
+    #[schemars(with = "Vec<RuleSelectorSchema>")]
     pub extend_unfixable: Option<Vec<String>>,
 
     /// A list of rule codes, prefixes or names for which unsafe fixes should be considered safe.
@@ -383,6 +392,7 @@ pub struct SimplintOptions {
             extend-safe-fixes = ["SMP601"]
         "#
     )]
+    #[schemars(with = "Vec<RuleSelectorSchema>")]
     pub extend_safe_fixes: Option<Vec<String>>,
 
     /// A list of rule codes, prefixes or names for which safe fixes should be considered unsafe.
@@ -394,6 +404,7 @@ pub struct SimplintOptions {
             extend-unsafe-fixes = ["SMP701"]
         "#
     )]
+    #[schemars(with = "Vec<RuleSelectorSchema>")]
     pub extend_unsafe_fixes: Option<Vec<String>>,
 
     /// A list of mappings from file pattern to rule codes, prefixes or names to exclude, when considering any matching
@@ -414,6 +425,7 @@ pub struct SimplintOptions {
             "!tests/**.py" = ["SMP8"]
         "#
     )]
+    #[schemars(with = "BTreeMap<String, Vec<RuleSelectorSchema>>")]
     pub per_file_ignores: Option<BTreeMap<String, Vec<String>>>,
 
     /// A list of mappings from file pattern to rule codes, prefixes or names to exclude, in addition to any rules
@@ -427,6 +439,7 @@ pub struct SimplintOptions {
             "__init__.py" = ["SMP601"]
         "#
     )]
+    #[schemars(with = "BTreeMap<String, Vec<RuleSelectorSchema>>")]
     pub extend_per_file_ignores: Option<BTreeMap<String, Vec<String>>>,
 
     /// Whether the project is a `"library"`, whose public API other code imports, or an `"application"`, which has no
@@ -502,7 +515,7 @@ pub struct SimplintOptions {
 }
 
 /// The `[tool.simplint.naming]` table.
-#[derive(Deserialize, Default, Clone, OptionsMetadata)]
+#[derive(Deserialize, Default, Clone, JsonSchema, OptionsMetadata)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct NamingOptions {
     /// A list of module-scope names that `module-variable-case` (`SMP102`) and `module-variable-prefix` (`SMP404`) leave
@@ -519,7 +532,7 @@ pub struct NamingOptions {
 }
 
 /// The `[tool.simplint.imports]` table.
-#[derive(Deserialize, Default, Clone, OptionsMetadata)]
+#[derive(Deserialize, Default, Clone, JsonSchema, OptionsMetadata)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct ImportsOptions {
     /// Absolute names of modules whose attributes the code may reach as `module.Name`, such as a module that tests patch
@@ -536,7 +549,7 @@ pub struct ImportsOptions {
 }
 
 /// The `[tool.simplint.logic]` table.
-#[derive(Deserialize, Default, Clone, OptionsMetadata)]
+#[derive(Deserialize, Default, Clone, JsonSchema, OptionsMetadata)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct LogicOptions {
     /// The most statements a private helper may have for `single-caller-helper` (`SMP505`) to suggest inlining it into

@@ -92,6 +92,9 @@ pub enum Command {
     /// Describe the command line as JSON, for the documentation build
     #[command(hide = true)]
     CliSchema,
+    /// Print the JSON Schema of the `[tool.simplint]` table, for editors and `SchemaStore`
+    #[command(hide = true)]
+    ConfigSchema,
 }
 
 // Ruff's `GlobalConfigArgs`, except that `--config` also takes `[tool.simplint]` options.

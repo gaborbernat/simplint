@@ -53,6 +53,7 @@ dev = [
 ]
 test = [
   "covdefaults>=2.3",
+  "jsonschema>=4.26",
   "pytest>=9.2",
   "pytest-cov>=7.1",
   "pytest-mock>=3.17",
@@ -62,6 +63,7 @@ type = [
   "mypy==2.4.1",
   "tox>=4.67.4",
   "types-docutils>=0.23.0.20260923",
+  "types-jsonschema>=4.26.0.20261006",
   { include-group = "test" },
 ]
 docs = [
@@ -139,10 +141,6 @@ lint.ignore = [
   "missing-trailing-comma",                    # conflicts with the formatter
   "multi-line-summary-first-line",             # incompatible with D213
   "single-line-implicit-string-concatenation", # conflicts with the formatter
-]
-lint.per-file-ignores."docs/*.py" = [
-  "subprocess-without-shell-equals-true", # runs the simplint binary built for the docs
-  "suspicious-subprocess-import",         # runs the simplint binary built for the docs
 ]
 lint.per-file-ignores."tasks/**.py" = [
   "implicit-namespace-package",           # tasks are scripts, not a package

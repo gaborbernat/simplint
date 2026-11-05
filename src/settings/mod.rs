@@ -2,6 +2,7 @@ mod api;
 mod file;
 mod metadata;
 mod options;
+mod schema;
 
 use rustc_hash::FxHashMap;
 use std::collections::BTreeMap;
@@ -20,6 +21,7 @@ use serde::Deserialize;
 pub use api::{ApiScope, DocstringStyle, ModuleRole, ProjectKind};
 pub use file::{FileSettings, FromRuff};
 pub use options::{Configuration, Overrides, RunOptions, SimplintOptions, Source, ruff_selector};
+pub use schema::config_schema;
 
 use crate::lint::registry::{Rule, RuleSet};
 use crate::settings::metadata::{BuildConfiguration, ProjectMetadata};

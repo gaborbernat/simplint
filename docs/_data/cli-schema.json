@@ -1,0 +1,876 @@
+{
+  "about": "Ruff companion linter with extra checks that make Python easier to read and review",
+  "arguments": [
+    {
+      "choices": [
+        "true",
+        "false"
+      ],
+      "default": [],
+      "delimiter": null,
+      "flag": true,
+      "help": "Enable verbose logging",
+      "id": "verbose",
+      "long": "verbose",
+      "multiple": false,
+      "short": "v",
+      "value_name": "VERBOSE"
+    },
+    {
+      "choices": [
+        "true",
+        "false"
+      ],
+      "default": [],
+      "delimiter": null,
+      "flag": true,
+      "help": "Print diagnostics, but nothing else",
+      "id": "quiet",
+      "long": "quiet",
+      "multiple": false,
+      "short": "q",
+      "value_name": "QUIET"
+    },
+    {
+      "choices": [
+        "true",
+        "false"
+      ],
+      "default": [],
+      "delimiter": null,
+      "flag": true,
+      "help": "Disable all logging (but still exit with status code \"1\" upon detecting diagnostics)",
+      "id": "silent",
+      "long": "silent",
+      "multiple": false,
+      "short": "s",
+      "value_name": "SILENT"
+    },
+    {
+      "choices": [],
+      "default": [],
+      "delimiter": null,
+      "flag": false,
+      "help": "Either a path to a TOML configuration file (`pyproject.toml` or `ruff.toml`), or a TOML `<KEY> = <VALUE>` pair (such as you might find in a `ruff.toml` configuration file or a `[tool.simplint]` table) overriding a specific configuration option (e.g., `--config \"fix = true\"` or `--config \"line-length = 100\"`). Overrides of individual settings using this option always take precedence over all configuration files, including configuration files that were also specified using `--config`",
+      "id": "config",
+      "long": "config",
+      "multiple": false,
+      "short": null,
+      "value_name": "CONFIG_OPTION"
+    },
+    {
+      "choices": [
+        "true",
+        "false"
+      ],
+      "default": [],
+      "delimiter": null,
+      "flag": true,
+      "help": "Ignore all configuration files",
+      "id": "isolated",
+      "long": "isolated",
+      "multiple": false,
+      "short": null,
+      "value_name": "ISOLATED"
+    },
+    {
+      "choices": [
+        "auto",
+        "always",
+        "never"
+      ],
+      "default": [],
+      "delimiter": null,
+      "flag": false,
+      "help": "Control when colored output is used",
+      "id": "color",
+      "long": "color",
+      "multiple": false,
+      "short": null,
+      "value_name": "WHEN"
+    }
+  ],
+  "name": "simplint",
+  "subcommands": [
+    {
+      "about": "Run simplint on the given files or directories",
+      "arguments": [
+        {
+          "choices": [],
+          "default": [],
+          "delimiter": null,
+          "flag": false,
+          "help": "List of files or directories to check, or `-` to read from stdin [default: .]",
+          "id": "files",
+          "long": null,
+          "multiple": true,
+          "short": null,
+          "value_name": "FILES"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": true,
+          "help": "Apply fixes to resolve lint violations. Use `--no-fix` to disable or `--unsafe-fixes` to include unsafe fixes",
+          "id": "fix",
+          "long": "fix",
+          "multiple": false,
+          "short": null,
+          "value_name": "FIX"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": true,
+          "help": null,
+          "id": "no_fix",
+          "long": "no-fix",
+          "multiple": false,
+          "short": null,
+          "value_name": "NO_FIX"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": true,
+          "help": "Include fixes that may not retain the original intent of the code. Use `--no-unsafe-fixes` to disable",
+          "id": "unsafe_fixes",
+          "long": "unsafe-fixes",
+          "multiple": false,
+          "short": null,
+          "value_name": "UNSAFE_FIXES"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": true,
+          "help": null,
+          "id": "no_unsafe_fixes",
+          "long": "no-unsafe-fixes",
+          "multiple": false,
+          "short": null,
+          "value_name": "NO_UNSAFE_FIXES"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": true,
+          "help": "Show an enumeration of all fixed lint violations. Use `--no-show-fixes` to disable",
+          "id": "show_fixes",
+          "long": "show-fixes",
+          "multiple": false,
+          "short": null,
+          "value_name": "SHOW_FIXES"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": true,
+          "help": null,
+          "id": "no_show_fixes",
+          "long": "no-show-fixes",
+          "multiple": false,
+          "short": null,
+          "value_name": "NO_SHOW_FIXES"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": true,
+          "help": "Avoid writing any fixed files back; instead, output a diff for each changed file to stdout, and exit 0 if there are no diffs. Implies `--fix-only`",
+          "id": "diff",
+          "long": "diff",
+          "multiple": false,
+          "short": null,
+          "value_name": "DIFF"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": true,
+          "help": "Run in watch mode by re-running whenever files change",
+          "id": "watch",
+          "long": "watch",
+          "multiple": false,
+          "short": "w",
+          "value_name": "WATCH"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": true,
+          "help": "Apply fixes to resolve lint violations, but don't report on, or exit non-zero for, leftover violations. Implies `--fix`. Use `--no-fix-only` to disable or `--unsafe-fixes` to include unsafe fixes",
+          "id": "fix_only",
+          "long": "fix-only",
+          "multiple": false,
+          "short": null,
+          "value_name": "FIX_ONLY"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": true,
+          "help": null,
+          "id": "no_fix_only",
+          "long": "no-fix-only",
+          "multiple": false,
+          "short": null,
+          "value_name": "NO_FIX_ONLY"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": true,
+          "help": "Ignore any `# noqa` comments",
+          "id": "ignore_noqa",
+          "long": "ignore-noqa",
+          "multiple": false,
+          "short": null,
+          "value_name": "IGNORE_NOQA"
+        },
+        {
+          "choices": [
+            "concise",
+            "full",
+            "json",
+            "json-lines",
+            "junit",
+            "grouped",
+            "github",
+            "gitlab",
+            "pylint",
+            "rdjson",
+            "azure",
+            "sarif"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": false,
+          "help": "Output serialization format for violations. The default serialization format is \"full\"",
+          "id": "output_format",
+          "long": "output-format",
+          "multiple": false,
+          "short": null,
+          "value_name": "OUTPUT_FORMAT"
+        },
+        {
+          "choices": [],
+          "default": [],
+          "delimiter": null,
+          "flag": false,
+          "help": "Specify file to write the linter output to (default: stdout)",
+          "id": "output_file",
+          "long": "output-file",
+          "multiple": false,
+          "short": "o",
+          "value_name": "OUTPUT_FILE"
+        },
+        {
+          "choices": [
+            "py37",
+            "py38",
+            "py39",
+            "py310",
+            "py311",
+            "py312",
+            "py313",
+            "py314",
+            "py315"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": false,
+          "help": "The minimum Python version that should be supported",
+          "id": "target_version",
+          "long": "target-version",
+          "multiple": false,
+          "short": null,
+          "value_name": "TARGET_VERSION"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": true,
+          "help": "Enable Ruff's preview mode: reports name rules instead of codes, and simplint's fixes are checked against Ruff's preview rules too. simplint has no preview rules of its own. Use `--no-preview` to disable",
+          "id": "preview",
+          "long": "preview",
+          "multiple": false,
+          "short": null,
+          "value_name": "PREVIEW"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": true,
+          "help": null,
+          "id": "no_preview",
+          "long": "no-preview",
+          "multiple": false,
+          "short": null,
+          "value_name": "NO_PREVIEW"
+        },
+        {
+          "choices": [],
+          "default": [],
+          "delimiter": ",",
+          "flag": false,
+          "help": "Comma-separated list of rule codes to enable (or ALL, to enable all rules)",
+          "id": "select",
+          "long": "select",
+          "multiple": false,
+          "short": null,
+          "value_name": "RULE_CODE"
+        },
+        {
+          "choices": [],
+          "default": [],
+          "delimiter": ",",
+          "flag": false,
+          "help": "Comma-separated list of rule codes to disable",
+          "id": "ignore",
+          "long": "ignore",
+          "multiple": false,
+          "short": null,
+          "value_name": "RULE_CODE"
+        },
+        {
+          "choices": [],
+          "default": [],
+          "delimiter": ",",
+          "flag": false,
+          "help": "Like --select, but adds additional rule codes on top of those already specified",
+          "id": "extend_select",
+          "long": "extend-select",
+          "multiple": false,
+          "short": null,
+          "value_name": "RULE_CODE"
+        },
+        {
+          "choices": [],
+          "default": [],
+          "delimiter": ",",
+          "flag": false,
+          "help": "Like --ignore. (Deprecated: You can just use --ignore instead.)",
+          "id": "extend_ignore",
+          "long": "extend-ignore",
+          "multiple": false,
+          "short": null,
+          "value_name": "RULE_CODE"
+        },
+        {
+          "choices": [],
+          "default": [],
+          "delimiter": ",",
+          "flag": false,
+          "help": "List of mappings from file pattern to code to exclude",
+          "id": "per_file_ignores",
+          "long": "per-file-ignores",
+          "multiple": false,
+          "short": null,
+          "value_name": "PER_FILE_IGNORES"
+        },
+        {
+          "choices": [],
+          "default": [],
+          "delimiter": ",",
+          "flag": false,
+          "help": "Like `--per-file-ignores`, but adds additional ignores on top of those already specified",
+          "id": "extend_per_file_ignores",
+          "long": "extend-per-file-ignores",
+          "multiple": false,
+          "short": null,
+          "value_name": "EXTEND_PER_FILE_IGNORES"
+        },
+        {
+          "choices": [],
+          "default": [],
+          "delimiter": ",",
+          "flag": false,
+          "help": "List of paths, used to omit files and/or directories from analysis",
+          "id": "exclude",
+          "long": "exclude",
+          "multiple": false,
+          "short": null,
+          "value_name": "FILE_PATTERN"
+        },
+        {
+          "choices": [],
+          "default": [],
+          "delimiter": ",",
+          "flag": false,
+          "help": "Like --exclude, but adds additional files and directories on top of those already excluded",
+          "id": "extend_exclude",
+          "long": "extend-exclude",
+          "multiple": false,
+          "short": null,
+          "value_name": "FILE_PATTERN"
+        },
+        {
+          "choices": [],
+          "default": [],
+          "delimiter": ",",
+          "flag": false,
+          "help": "List of rule codes to treat as eligible for fix. Only applicable when fix itself is enabled (e.g., via `--fix`)",
+          "id": "fixable",
+          "long": "fixable",
+          "multiple": false,
+          "short": null,
+          "value_name": "RULE_CODE"
+        },
+        {
+          "choices": [],
+          "default": [],
+          "delimiter": ",",
+          "flag": false,
+          "help": "List of rule codes to treat as ineligible for fix. Only applicable when fix itself is enabled (e.g., via `--fix`)",
+          "id": "unfixable",
+          "long": "unfixable",
+          "multiple": false,
+          "short": null,
+          "value_name": "RULE_CODE"
+        },
+        {
+          "choices": [],
+          "default": [],
+          "delimiter": ",",
+          "flag": false,
+          "help": "Like --fixable, but adds additional rule codes on top of those already specified",
+          "id": "extend_fixable",
+          "long": "extend-fixable",
+          "multiple": false,
+          "short": null,
+          "value_name": "RULE_CODE"
+        },
+        {
+          "choices": [],
+          "default": [],
+          "delimiter": ",",
+          "flag": false,
+          "help": "Like --unfixable. (Deprecated: You can just use --unfixable instead.)",
+          "id": "extend_unfixable",
+          "long": "extend-unfixable",
+          "multiple": false,
+          "short": null,
+          "value_name": "RULE_CODE"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": true,
+          "help": "Respect file exclusions via `.gitignore` and other standard ignore files. Use `--no-respect-gitignore` to disable",
+          "id": "respect_gitignore",
+          "long": "respect-gitignore",
+          "multiple": false,
+          "short": null,
+          "value_name": "RESPECT_GITIGNORE"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": true,
+          "help": null,
+          "id": "no_respect_gitignore",
+          "long": "no-respect-gitignore",
+          "multiple": false,
+          "short": null,
+          "value_name": "NO_RESPECT_GITIGNORE"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": true,
+          "help": "Enforce exclusions, even for paths passed to simplint directly on the command-line. Use `--no-force-exclude` to disable",
+          "id": "force_exclude",
+          "long": "force-exclude",
+          "multiple": false,
+          "short": null,
+          "value_name": "FORCE_EXCLUDE"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": true,
+          "help": null,
+          "id": "no_force_exclude",
+          "long": "no-force-exclude",
+          "multiple": false,
+          "short": null,
+          "value_name": "NO_FORCE_EXCLUDE"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": true,
+          "help": "Disable cache reads",
+          "id": "no_cache",
+          "long": "no-cache",
+          "multiple": false,
+          "short": "n",
+          "value_name": "NO_CACHE"
+        },
+        {
+          "choices": [],
+          "default": [],
+          "delimiter": null,
+          "flag": false,
+          "help": "Path to Ruff's cache directory, which simplint keeps its cache in",
+          "id": "cache_dir",
+          "long": "cache-dir",
+          "multiple": false,
+          "short": null,
+          "value_name": "CACHE_DIR"
+        },
+        {
+          "choices": [],
+          "default": [],
+          "delimiter": null,
+          "flag": false,
+          "help": "The name of the file when passing it through stdin",
+          "id": "stdin_filename",
+          "long": "stdin-filename",
+          "multiple": false,
+          "short": null,
+          "value_name": "STDIN_FILENAME"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": true,
+          "help": "Exit with status code \"0\", even upon detecting lint violations",
+          "id": "exit_zero",
+          "long": "exit-zero",
+          "multiple": false,
+          "short": "e",
+          "value_name": "EXIT_ZERO"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": true,
+          "help": "Exit with a non-zero status code if any files were modified via fix, even if no lint violations remain",
+          "id": "exit_non_zero_on_fix",
+          "long": "exit-non-zero-on-fix",
+          "multiple": false,
+          "short": null,
+          "value_name": "EXIT_NON_ZERO_ON_FIX"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": true,
+          "help": "Show counts for every rule with at least one violation",
+          "id": "statistics",
+          "long": "statistics",
+          "multiple": false,
+          "short": null,
+          "value_name": "STATISTICS"
+        },
+        {
+          "choices": [],
+          "default": [],
+          "delimiter": null,
+          "flag": false,
+          "help": "Enable automatic additions of `noqa` directives to failing lines. Optionally provide a reason to append after the codes",
+          "id": "add_noqa",
+          "long": "add-noqa",
+          "multiple": false,
+          "short": null,
+          "value_name": "REASON"
+        },
+        {
+          "choices": [],
+          "default": [],
+          "delimiter": null,
+          "flag": false,
+          "help": "Enable automatic additions of `simplint: ignore` comments to failing lines. Optionally provide a reason to append after the codes",
+          "id": "add_ignore",
+          "long": "add-ignore",
+          "multiple": false,
+          "short": null,
+          "value_name": "REASON"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": true,
+          "help": "See the files simplint will be run against with the current settings",
+          "id": "show_files",
+          "long": "show-files",
+          "multiple": false,
+          "short": null,
+          "value_name": "SHOW_FILES"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": true,
+          "help": "See the settings simplint will use to lint a given Python file",
+          "id": "show_settings",
+          "long": "show-settings",
+          "multiple": false,
+          "short": null,
+          "value_name": "SHOW_SETTINGS"
+        }
+      ],
+      "name": "check",
+      "subcommands": []
+    },
+    {
+      "about": "Explain a rule (or all rules)",
+      "arguments": [
+        {
+          "choices": [],
+          "default": [],
+          "delimiter": null,
+          "flag": false,
+          "help": "Rule to explain",
+          "id": "rule",
+          "long": null,
+          "multiple": false,
+          "short": null,
+          "value_name": "RULE"
+        },
+        {
+          "choices": [
+            "true",
+            "false"
+          ],
+          "default": [],
+          "delimiter": null,
+          "flag": true,
+          "help": "Explain all rules",
+          "id": "all",
+          "long": "all",
+          "multiple": false,
+          "short": null,
+          "value_name": "ALL"
+        },
+        {
+          "choices": [
+            "text",
+            "json"
+          ],
+          "default": [
+            "text"
+          ],
+          "delimiter": null,
+          "flag": false,
+          "help": "Output format",
+          "id": "output_format",
+          "long": "output-format",
+          "multiple": false,
+          "short": null,
+          "value_name": "OUTPUT_FORMAT"
+        }
+      ],
+      "name": "rule",
+      "subcommands": []
+    },
+    {
+      "about": "List every rule with its fix availability",
+      "arguments": [
+        {
+          "choices": [
+            "text",
+            "json"
+          ],
+          "default": [
+            "text"
+          ],
+          "delimiter": null,
+          "flag": false,
+          "help": "Output format",
+          "id": "output_format",
+          "long": "output-format",
+          "multiple": false,
+          "short": null,
+          "value_name": "OUTPUT_FORMAT"
+        }
+      ],
+      "name": "rules",
+      "subcommands": []
+    },
+    {
+      "about": "List or describe the available configuration options",
+      "arguments": [
+        {
+          "choices": [],
+          "default": [],
+          "delimiter": null,
+          "flag": false,
+          "help": "Config key to show",
+          "id": "option",
+          "long": null,
+          "multiple": false,
+          "short": null,
+          "value_name": "OPTION"
+        },
+        {
+          "choices": [
+            "text",
+            "json"
+          ],
+          "default": [
+            "text"
+          ],
+          "delimiter": null,
+          "flag": false,
+          "help": "Output format",
+          "id": "output_format",
+          "long": "output-format",
+          "multiple": false,
+          "short": null,
+          "value_name": "OUTPUT_FORMAT"
+        }
+      ],
+      "name": "config",
+      "subcommands": []
+    },
+    {
+      "about": "List the rule groups",
+      "arguments": [
+        {
+          "choices": [
+            "text",
+            "json"
+          ],
+          "default": [
+            "text"
+          ],
+          "delimiter": null,
+          "flag": false,
+          "help": "Output format",
+          "id": "output_format",
+          "long": "output-format",
+          "multiple": false,
+          "short": null,
+          "value_name": "OUTPUT_FORMAT"
+        }
+      ],
+      "name": "linter",
+      "subcommands": []
+    },
+    {
+      "about": "Clear simplint's caches from the Ruff cache directories in the current directory and any subdirectories",
+      "arguments": [],
+      "name": "clean",
+      "subcommands": []
+    },
+    {
+      "about": "Display simplint's version",
+      "arguments": [
+        {
+          "choices": [
+            "text",
+            "json"
+          ],
+          "default": [
+            "text"
+          ],
+          "delimiter": null,
+          "flag": false,
+          "help": null,
+          "id": "output_format",
+          "long": "output-format",
+          "multiple": false,
+          "short": null,
+          "value_name": "OUTPUT_FORMAT"
+        }
+      ],
+      "name": "version",
+      "subcommands": []
+    }
+  ]
+}

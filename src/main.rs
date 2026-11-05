@@ -97,6 +97,7 @@ fn run(Cli { command, global_options }: Cli) -> Result<ExitStatus> {
         Command::GenerateShellCompletion { shell } => shell.generate(&mut Cli::command(), &mut std::io::stdout()),
         Command::Version { output_format } => subcommands::version(output_format)?,
         Command::CliSchema => subcommands::cli_schema(&Cli::command())?,
+        Command::ConfigSchema => subcommands::config_schema()?,
     }
     Ok(ExitStatus::Success)
 }
