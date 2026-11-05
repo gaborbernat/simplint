@@ -292,6 +292,19 @@ Release preparation folds the fragments into [CHANGELOG.md](CHANGELOG.md), forma
 version, and pushes the tag. The tag starts the build and publish workflow, which creates a GitHub Release after PyPI
 succeeds.
 
+## Generated files
+
+`src/rules/imports/stdlib_submodules.rs` is the table SMP303 reads for the standard library submodules a dependency
+guard can import. `.github/workflows/stdlib_submodules.yaml` rewrites it weekly from CPython's `Lib/` trees and opens a
+PR when it changes. Regenerate it by hand when CPython adds a minor version to `_REFS` in `tasks/stdlib_submodules.py`:
+
+```bash
+git clone --filter=blob:none https://github.com/python/cpython ~/cpython
+uv run tasks/stdlib_submodules.py ~/cpython
+```
+
+The blobless clone keeps every tag and branch, which the script reads through `git ls-tree`, without the sources.
+
 ## Before committing
 
 Run the checks for each changed layer:

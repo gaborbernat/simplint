@@ -4,7 +4,7 @@ use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::ExprCollector;
+use crate::syntax::ExprCollector;
 use crate::syntax::module_statements;
 
 pub fn indistinct_error_class(checker: &Checker) {
@@ -12,7 +12,7 @@ pub fn indistinct_error_class(checker: &Checker) {
         return;
     }
     let project = checker.project();
-    let api = checker.public_api();
+    let api = checker.state().public_api(checker);
     for stmt in module_statements(checker.body()) {
         let Stmt::ClassDef(class) = stmt else {
             continue;

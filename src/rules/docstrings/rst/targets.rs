@@ -70,7 +70,7 @@ pub(crate) fn collect_targets<'a>(checker: &Checker<'a>) -> Vec<Target<'a>> {
     if checker.settings.project.docstring_style != Some(DocstringStyle::Rst) {
         return Vec::new();
     }
-    let api = checker.public_api();
+    let api = checker.state().public_api(checker);
     let methods: FxHashMap<TextRange, &ast::StmtClassDef> = checker
         .class_defs()
         .iter()

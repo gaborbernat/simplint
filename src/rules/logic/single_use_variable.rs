@@ -113,11 +113,7 @@ fn check_pair<'a>(checker: &Checker<'a>, names: &Names<'a>, assign: &'a ast::Stm
         replacement = format!(" {replacement} ");
     }
     let deletion = Edit::range_deletion(deletion);
-    let edits = keep_debug_text(
-        checker.source,
-        std::slice::from_ref(next),
-        vec![Edit::range_replacement(replacement, use_range)],
-    );
+    let edits = keep_debug_text(checker, vec![Edit::range_replacement(replacement, use_range)]);
     let fix = match edits {
         Some(edits) => {
             // A read in a `=` debug field rewrites the whole field, so the width is measured on the field it becomes.

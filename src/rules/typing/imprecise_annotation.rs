@@ -1,12 +1,11 @@
 use ruff_python_ast::helpers::is_dunder;
-use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::Visitor;
 use ruff_python_ast::{self as ast, AnyParameterRef, Expr, Stmt};
 use ruff_text_size::Ranged;
 
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
-use crate::rules::ExprCollector;
+use crate::syntax::ExprCollector;
 use crate::syntax::last_segment;
 
 const OBJECT_MESSAGE: &str = "`object` annotation; use the precise type";
@@ -58,9 +57,7 @@ fn report_type_params(walker: &Walker, type_params: Option<&ast::TypeParams>) {
 fn report_imprecise(walker: &Walker, annotation: &Expr, whole_any_by_ann401: bool) {
     let semantic = walker.checker.semantic();
     let mut finder = ExprCollector::new(|expr: &Expr| {
-        if UnqualifiedName::from_expr(expr)
-            .is_some_and(|name| matches!(name.segments(), ["builtins", "object"] | ["object"]))
-        {
+        if semantic.is_builtin(expr, "object") || semantic.resolves_to(expr, &["builtins", "object"]) {
             return Some((expr.range(), OBJECT_MESSAGE));
         }
         let covered_by_ann401 = whole_any_by_ann401 && expr.range() == annotation.range();

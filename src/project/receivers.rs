@@ -6,7 +6,8 @@ use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Pattern, Stmt};
 
 use super::facts::qualified;
-use crate::syntax::{alias_binding, is_classmethod, is_name, last_segment, receiver};
+use crate::rules::testing::MOCK_CLASSES;
+use crate::syntax::{alias_binding, instance_writes, is_classmethod, last_segment, receiver};
 
 // The attributes code sets or deletes on objects, keyed by the class of the object when parsing tells it: the receiver
 // is `self` in a method, or a name bound by a call to a class or annotated with one. A class goes by its qualified
@@ -48,9 +49,6 @@ enum Receiver {
     Mock,
     Unknown,
 }
-
-const MOCKS: [&str; 7] =
-    ["Mock", "MagicMock", "AsyncMock", "NonCallableMock", "NonCallableMagicMock", "PropertyMock", "create_autospec"];
 
 struct Scope<'a> {
     kind: ScopeKind<'a>,
@@ -396,63 +394,37 @@ impl<'a> Visitor<'a> for Bindings<'a, '_, '_> {
     }
 }
 
-// What the methods of a class assign to `self.{name}`, each a single target.
-struct Members<'a> {
-    members: FxHashMap<&'a str, Receiver>,
-}
-
-impl<'a> Visitor<'a> for Members<'a> {
-    fn visit_stmt(&mut self, stmt: &'a Stmt) {
-        match stmt {
-            Stmt::ClassDef(_) => {}
-            Stmt::Assign(ast::StmtAssign { targets, value, .. }) if let [target] = targets.as_slice() => {
-                self.member(target, assigned(value));
-            }
-            Stmt::AnnAssign(ast::StmtAnnAssign { target, annotation, .. }) => {
-                self.member(target, annotated(annotation));
-            }
-            _ => visitor::walk_stmt(self, stmt),
-        }
-    }
-
-    fn visit_expr(&mut self, expr: &'a Expr) {
-        if let Expr::Attribute(ast::ExprAttribute { value, attr, ctx: ExprContext::Store | ExprContext::Del, .. }) =
-            expr
-            && is_name(value, "self")
-        {
-            self.members.insert(attr.as_str(), Receiver::Unknown);
-        }
-        visitor::walk_expr(self, expr);
-    }
-}
-
-impl<'a> Members<'a> {
-    fn member(&mut self, target: &'a Expr, receiver: Receiver) {
-        if let Expr::Attribute(ast::ExprAttribute { value, attr, .. }) = target
-            && is_name(value, "self")
-        {
-            bind(&mut self.members, attr.as_str(), receiver);
-        } else {
-            self.visit_expr(target);
-        }
-    }
-}
-
-// What the methods of `class` store on `self`, so `self.client.name = value` knows when `client` is a mock. An
-// annotation in the class body, such as `client: Client`, declares what its methods store, whatever they assign.
+// What the methods of a class assign to their instances, each a single target. `object.__setattr__` writes stay out, as
+// the index has never read them.
 fn members(class: &ast::StmtClassDef) -> FxHashMap<&str, Receiver> {
-    let mut scan = Members { members: FxHashMap::default() };
-    scan.visit_body(&class.body);
+    let mut members = FxHashMap::default();
+    for write in
+        instance_writes(class).into_iter().filter(|write| !is_classmethod(write.method) && !write.through_object)
+    {
+        let receiver = match write.stmt {
+            Stmt::Assign(ast::StmtAssign { targets, value, .. })
+                if let [target] = targets.as_slice()
+                    && target.is_attribute_expr() =>
+            {
+                assigned(value)
+            }
+            Stmt::AnnAssign(ast::StmtAnnAssign { target, annotation, .. }) if target.is_attribute_expr() => {
+                annotated(annotation)
+            }
+            _ => Receiver::Unknown,
+        };
+        bind(&mut members, write.attr, receiver);
+    }
     for stmt in &class.body {
         if let Stmt::AnnAssign(ast::StmtAnnAssign { target, annotation, .. }) = stmt
             && let Expr::Name(name) = target.as_ref()
-            && scan.members.contains_key(name.id.as_str())
+            && members.contains_key(name.id.as_str())
             && let declared @ Receiver::Instance(_) = annotated(annotation)
         {
-            scan.members.insert(name.id.as_str(), declared);
+            members.insert(name.id.as_str(), declared);
         }
     }
-    scan.members
+    members
 }
 
 // What a call binds: a mock from a mock class or `mocker.patch`, otherwise an instance of the class it names.
@@ -465,7 +437,11 @@ fn assigned(value: &Expr) -> Receiver {
     };
     let segments = name.segments();
     let last = segments.last().copied().unwrap_or_default();
-    if MOCKS.contains(&last) || segments.starts_with(&["mocker", "patch"]) { Receiver::Mock } else { instance(last) }
+    if MOCK_CLASSES.contains(&last) || segments.starts_with(&["mocker", "patch"]) {
+        Receiver::Mock
+    } else {
+        instance(last)
+    }
 }
 
 // The class an annotation names, seeing through `Optional[...]` and `| None`.
@@ -482,7 +458,7 @@ fn annotated(annotation: &Expr) -> Receiver {
             annotated(slice)
         }
         _ => match last_segment(annotation) {
-            Some(last) if MOCKS.contains(&last) || last == "MockType" => Receiver::Mock,
+            Some(last) if MOCK_CLASSES.contains(&last) || last == "MockType" => Receiver::Mock,
             Some(last) => instance(last),
             None => Receiver::Unknown,
         },

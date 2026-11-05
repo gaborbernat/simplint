@@ -393,3 +393,37 @@ fn link_in_the_cache_directory_is_kept_with_its_target() {
         (true, "kept".to_owned())
     );
 }
+
+// Findings with fixes, help notes, a suppression comment and one without a fix, as a run without fixes reports them.
+const FINDINGS: &str = "import os\n\nVALUE = 1\n\n\ndef f(x):\n    y = 2\n    return x\n\n\ndef g(n):\n    for i in range(n):\n        pass\n    z = 3  # noqa: SMP101\n    return \"a\" + \"b\"\n";
+
+// Reports cached without fixes come back as a run without the cache reports them: with their fixes, help notes and
+// suppression comments applied as they are in a fresh run.
+#[test_case(&[] ; "concise")]
+#[test_case(&["--output-format", "full"] ; "full")]
+#[test_case(&["--output-format", "json"] ; "json")]
+fn cached_findings_report_the_same_as_a_fresh_run(flags: &[&str]) {
+    let root = project(&[("module.py", FINDINGS)]);
+    let args = [&["--select", "SMP003,SMP101,SMP404,SMP503,SMP601"], flags].concat();
+    let fresh = check(root.path(), &[&args[..], &["--no-cache"]].concat());
+    let (first, cached) = (check(root.path(), &args), check(root.path(), &args));
+    assert_eq!((&first, &cached), (&fresh, &fresh));
+}
+
+#[test]
+fn cached_findings_are_checked_again_once_edited() {
+    let root = project(&[("module.py", "VALUE = 1\n")]);
+    let first = check(root.path(), &["--select", "SMP601"]).0;
+    fs::write(root.path().join("module.py"), "from typing import Final\n\nVALUE: Final[int] = 1\n").expect("write");
+    let second = check(root.path(), &["--select", "SMP601"]).0;
+    assert_eq!((first, second), (1, 0));
+}
+
+#[test]
+fn cached_findings_are_reported_again_under_other_settings() {
+    let root = project(&[("module.py", FINDINGS)]);
+    check(root.path(), &["--select", "SMP601"]);
+    let args = ["--select", "SMP101"];
+    let cached = check(root.path(), &args);
+    assert_eq!(cached, check(root.path(), &[&args[..], &["--no-cache"]].concat()));
+}

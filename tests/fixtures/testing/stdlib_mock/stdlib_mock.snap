@@ -1,0 +1,8 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:1 SMP809 The project depends on pytest-mock; use the `mocker` fixture instead of `unittest.mock`
+2:1 SMP809 The project depends on pytest-mock; use the `mocker` fixture instead of `unittest.mock`
+3:1 SMP809 The project depends on pytest-mock; use the `mocker` fixture instead of `unittest.mock`
+11:5 SMP809 The project depends on pytest-mock; use the `mocker` fixture instead of `unittest.mock`

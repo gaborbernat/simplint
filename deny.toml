@@ -1,0 +1,12 @@
+[advisories]
+version = 2
+# Ruff's crates pin these; each entry stays until a Ruff release moves past it.
+ignore = [
+  # zip 8: every advisory is in `ZipArchive::extract`, which ruff_db never calls; it only reads the typeshed archive
+  # built into the binary. Fixed in zip 9.
+  { id = "RUSTSEC-2026-0367", reason = "ruff_db does not extract archives" },
+  { id = "RUSTSEC-2026-0368", reason = "ruff_db does not extract archives" },
+  { id = "RUSTSEC-2026-0369", reason = "ruff_db does not extract archives" },
+  { id = "RUSTSEC-2026-0429", reason = "ruff_db does not extract archives" },
+  { id = "RUSTSEC-2024-0436", reason = "paste is unmaintained, not vulnerable; pulled in by libcst" },
+]

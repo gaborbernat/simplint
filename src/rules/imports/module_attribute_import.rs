@@ -6,7 +6,7 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::syntax::for_each_body;
+use crate::syntax::{alias_binding, for_each_body};
 
 // A module bound by an import of this run's own code is reached through an attribute, which the name itself reaches
 // without the module.
@@ -84,7 +84,7 @@ fn binding_import<'a>(body: &'a [Stmt], name: &str) -> Option<(&'a Stmt, &'a ast
     let mut found = None;
     for_each_body(body, &mut |statements, _| {
         for stmt in statements {
-            if let Some(alias) = aliases(stmt).iter().find(|alias| bound_name(alias) == name) {
+            if let Some(alias) = aliases(stmt).iter().find(|alias| alias_binding(alias) == name) {
                 found = found.or(Some((stmt, alias)));
             }
         }
@@ -98,11 +98,6 @@ fn aliases(stmt: &Stmt) -> &[ast::Alias] {
         Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => names,
         _ => &[],
     }
-}
-
-// The name an alias binds: its `as` name, or else the imported name.
-fn bound_name(alias: &ast::Alias) -> &str {
-    alias.asname.as_ref().unwrap_or(&alias.name).as_str()
 }
 
 // The `lazy` keyword of a lazy import, which the rewritten import keeps so the module still loads on first use.

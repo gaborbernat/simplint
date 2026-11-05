@@ -1,5 +1,5 @@
 use ruff_diagnostics::{Applicability, Edit, Fix};
-use ruff_python_ast::{self as ast, PythonVersion, Stmt};
+use ruff_python_ast::{self as ast, Stmt};
 use ruff_python_trivia::textwrap::dedent;
 use ruff_source_file::LineRanges;
 use ruff_text_size::Ranged;
@@ -9,9 +9,6 @@ use crate::lint::registry::Rule;
 use crate::rules::is_alone_on_lines;
 
 pub fn up_type_checking_lazy_import(checker: &Checker) {
-    if checker.settings.from_ruff.target_version < PythonVersion::PY315 {
-        return;
-    }
     let body = checker.body();
     for stmt in body {
         let Stmt::If(if_stmt) = stmt else {

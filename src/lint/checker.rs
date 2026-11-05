@@ -19,10 +19,7 @@ use crate::lint::Linter;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
 use crate::project::FileIndex;
-use crate::rules::docstrings::PublicApi;
-use crate::rules::docstrings::rst::{Target, collect_targets};
-use crate::rules::logic::KindsCache;
-use crate::rules::naming::ReportedNames;
+use crate::rules::FileState;
 use crate::semantic::Semantic;
 use crate::settings::FileSettings;
 use crate::syntax::{Exports, dunder_all, for_each_body, string_values};
@@ -42,10 +39,7 @@ pub struct Checker<'a> {
     class_defs: OnceCell<Vec<&'a ast::StmtClassDef>>,
     name_tokens: OnceCell<FxHashMap<&'a str, usize>>,
     string_values: OnceCell<Vec<(TextRange, Cow<'a, str>)>>,
-    public_api: OnceCell<PublicApi<'a>>,
-    rst_targets: OnceCell<Vec<Target<'a>>>,
-    kinds: KindsCache<'a>,
-    reported_names: ReportedNames<'a>,
+    state: FileState<'a>,
     // Rules report while they read the checker, as in Ruff's own `Checker`.
     diagnostics: RefCell<Vec<(Rule, Diagnostic)>>,
 }
@@ -74,10 +68,7 @@ impl<'a> Checker<'a> {
             class_defs: OnceCell::new(),
             name_tokens: OnceCell::new(),
             string_values: OnceCell::new(),
-            public_api: OnceCell::new(),
-            rst_targets: OnceCell::new(),
-            kinds: KindsCache::default(),
-            reported_names: ReportedNames::default(),
+            state: FileState::default(),
             diagnostics: RefCell::default(),
         }
     }
@@ -179,24 +170,9 @@ impl<'a> Checker<'a> {
             .filter(|comment| !has_leading_content(comment.start(), self.source))
     }
 
-    // The definitions of this file that belong to the library's public API, which the docstring rules share.
-    pub(crate) fn public_api(&self) -> &PublicApi<'a> {
-        self.public_api.get_or_init(|| PublicApi::of(self))
-    }
-
-    // The parsed docstrings the reStructuredText rules check, empty unless `docstring-style = "rst"`.
-    pub(crate) fn rst_targets(&self) -> &[Target<'a>] {
-        self.rst_targets.get_or_init(|| collect_targets(self))
-    }
-
-    // What `string-concatenation` reads off the module to tell the types of its operands.
-    pub(crate) fn kinds(&self) -> &KindsCache<'a> {
-        &self.kinds
-    }
-
-    // The names `single-letter-name` reported so far.
-    pub(crate) fn reported_names(&self) -> &ReportedNames<'a> {
-        &self.reported_names
+    // What the rules memoize for this file, built by the first rule that reads each part.
+    pub(crate) fn state(&self) -> &FileState<'a> {
+        &self.state
     }
 
     pub fn dunder_all(&self) -> &Exports<'a> {

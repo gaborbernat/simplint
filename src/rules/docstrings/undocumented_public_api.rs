@@ -10,7 +10,7 @@ pub fn undocumented_public_api(checker: &Checker) {
     if checker.is_test_module() {
         return;
     }
-    let api = checker.public_api();
+    let api = checker.state().public_api(checker);
     for item in &api.items {
         let documented = match item.stmt {
             Stmt::FunctionDef(ast::StmtFunctionDef { body, .. }) | Stmt::ClassDef(ast::StmtClassDef { body, .. }) => {

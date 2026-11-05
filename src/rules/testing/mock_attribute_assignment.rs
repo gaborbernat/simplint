@@ -15,7 +15,7 @@ pub fn mock_attribute_assignment(checker: &Checker) {
             let Some((target, _, Expr::Call(call))) = single_assignment(stmt) else {
                 continue;
             };
-            if !last_segment(&call.func).is_some_and(|last| MOCK_CLASSES.contains(&last) || last == "create_autospec") {
+            if !last_segment(&call.func).is_some_and(|last| MOCK_CLASSES.contains(&last)) {
                 continue;
             }
             let assignments = following_assignments(target.id.as_str(), &statements[index + 1..]);

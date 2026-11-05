@@ -131,6 +131,113 @@ pub fn receiver(method: &ast::StmtFunctionDef) -> Option<&str> {
     parameters.posonlyargs.iter().chain(&parameters.args).next().map(|parameter| parameter.name().as_str())
 }
 
+// An attribute a method writes on its instance through its receiver, with the statement that writes it, the one after
+// it in the same body, and whether the write is an `object.__setattr__` call, which a frozen dataclass makes.
+pub struct InstanceWrite<'a> {
+    pub attr: &'a str,
+    pub stmt: &'a Stmt,
+    pub next: Option<&'a Stmt>,
+    pub method: &'a ast::StmtFunctionDef,
+    pub through_object: bool,
+}
+
+// Every write to `receiver.attr` in the methods of `class`, nested defs included, for whatever the receiver is named.
+// A class method's receiver is the class, so callers that want instances skip those.
+pub fn instance_writes(class: &ast::StmtClassDef) -> Vec<InstanceWrite<'_>> {
+    let mut writes = Vec::new();
+    for method in module_statements(&class.body).filter_map(Stmt::as_function_def_stmt) {
+        let Some(receiver) = receiver(method) else {
+            continue;
+        };
+        for_each_body(&method.body, &mut |body, _| {
+            for (index, stmt) in body.iter().enumerate() {
+                let next = body.get(index + 1);
+                if let Some(attr) = set_through_object(stmt, receiver) {
+                    writes.push(InstanceWrite { attr, stmt, next, method, through_object: true });
+                }
+                for target in write_targets(stmt) {
+                    if let Expr::Attribute(ast::ExprAttribute { value, attr, .. }) = target
+                        && is_name(value, receiver)
+                    {
+                        writes.push(InstanceWrite { attr: attr.as_str(), stmt, next, method, through_object: false });
+                    }
+                }
+            }
+        });
+    }
+    writes
+}
+
+// The attribute an `object.__setattr__(receiver, "name", value)` call sets, which a frozen dataclass uses to set its
+// own attributes.
+fn set_through_object<'a>(stmt: &'a Stmt, receiver: &str) -> Option<&'a str> {
+    let call = stmt.as_expr_stmt()?.value.as_call_expr()?;
+    let attribute = call.func.as_attribute_expr()?;
+    let is_object = is_name(&attribute.value, "object");
+    match call.arguments.args.as_ref() {
+        [Expr::Name(target), Expr::StringLiteral(name), ..]
+            if is_object && attribute.attr.as_str() == "__setattr__" && target.id.as_str() == receiver =>
+        {
+            Some(name.value.to_str())
+        }
+        _ => None,
+    }
+}
+
+// The expressions a statement stores into, with tuples, lists and starred targets taken apart, in the order they are
+// written.
+fn write_targets(stmt: &Stmt) -> Vec<&Expr> {
+    let mut pending: Vec<&Expr> = match stmt {
+        Stmt::Assign(ast::StmtAssign { targets, .. }) | Stmt::Delete(ast::StmtDelete { targets, .. }) => {
+            targets.iter().collect()
+        }
+        Stmt::AnnAssign(ast::StmtAnnAssign { target, .. })
+        | Stmt::AugAssign(ast::StmtAugAssign { target, .. })
+        | Stmt::For(ast::StmtFor { target, .. }) => vec![target.as_ref()],
+        Stmt::With(ast::StmtWith { items, .. }) => {
+            items.iter().filter_map(|item| item.optional_vars.as_deref()).collect()
+        }
+        _ => Vec::new(),
+    };
+    let mut targets = Vec::new();
+    let mut next = 0;
+    while let Some(&target) = pending.get(next) {
+        next += 1;
+        match target {
+            Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => {
+                pending.extend(elts);
+            }
+            Expr::Starred(ast::ExprStarred { value, .. }) => pending.push(value),
+            _ => targets.push(target),
+        }
+    }
+    targets
+}
+
+// Each expression `pick` maps to a value, in the order a `Visitor` walks them.
+pub struct ExprCollector<F, T> {
+    pick: F,
+    pub found: Vec<T>,
+}
+
+impl<F, T> ExprCollector<F, T> {
+    pub fn new<'a>(pick: F) -> Self
+    where
+        F: FnMut(&'a Expr) -> Option<T>,
+    {
+        Self { pick, found: Vec::new() }
+    }
+}
+
+impl<'a, F: FnMut(&'a Expr) -> Option<T>, T> Visitor<'a> for ExprCollector<F, T> {
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        if let Some(value) = (self.pick)(expr) {
+            self.found.push(value);
+        }
+        visitor::walk_expr(self, expr);
+    }
+}
+
 pub fn is_classmethod(method: &ast::StmtFunctionDef) -> bool {
     decorator_names(&method.decorator_list).contains(&"classmethod")
 }

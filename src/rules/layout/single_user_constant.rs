@@ -12,7 +12,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::{
     indentation, is_alone_on_lines, is_class_like, keep_debug_text, lines_with_trailing_blanks, needs_parentheses,
-    single_assignment, source_text_spans,
+    single_assignment,
 };
 use crate::semantic::{Binding, BindingKind, Evaluation};
 use crate::syntax::{Exports, Visibility, last_segment};
@@ -170,7 +170,7 @@ fn move_into_function(checker: &Checker, constant: &Constant) -> Option<Fix> {
     let source = checker.source;
     let function = constant.function;
     // A value or a renamed local would change the source text a t-string keeps.
-    let source_spans = source_text_spans(checker.body());
+    let source_spans = checker.state().source_text_spans(checker);
     if constant.references.iter().any(|reference| source_spans.iter().any(|span| span.contains_range(*reference))) {
         return None;
     }
@@ -217,9 +217,7 @@ fn inline_fix(checker: &Checker, value: &Expr, value_text: &str, deletion: Edit,
     // Ruff's code generator writes a tuple without the parentheses its source may have.
     let wrap = !parenthesized && (needs_parentheses(value) || value_text.contains('\n') && value.is_tuple_expr());
     let inlined = if wrap { format!("({text})") } else { text };
-    let mut edits =
-        keep_debug_text(checker.source, checker.body(), vec![deletion, Edit::range_replacement(inlined, reference)])?
-            .into_iter();
+    let mut edits = keep_debug_text(checker, vec![deletion, Edit::range_replacement(inlined, reference)])?.into_iter();
     Some(Fix::unsafe_edits(edits.next()?, edits))
 }
 
@@ -275,7 +273,7 @@ fn local_fix(checker: &Checker, constant: &Constant, value_text: &str, deletion:
     };
     let renames = constant.references.iter().map(|range| Edit::range_replacement(local.clone(), *range));
     let edits = std::iter::once(deletion).chain(placements).chain(renames).collect();
-    let mut edits = keep_debug_text(source, checker.body(), edits)?.into_iter();
+    let mut edits = keep_debug_text(checker, edits)?.into_iter();
     Some(Fix::unsafe_edits(edits.next()?, edits))
 }
 // Deleting a statement leaves the blank lines on both sides of it next to each other; drop the shorter run so the code

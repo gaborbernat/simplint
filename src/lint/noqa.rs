@@ -60,10 +60,6 @@ impl<'a> Suppressions<'a> {
         Self { source, path, parsed, indexer, stylist, lines, file }
     }
 
-    pub fn unsuppressed(&self, diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
-        self.pending(diagnostics).into_iter().map(|(diagnostic, _)| diagnostic).collect()
-    }
-
     // Each diagnostic no comment suppresses, with the line its suppression comment belongs on.
     pub fn pending(&self, mut diagnostics: Vec<Diagnostic>) -> Vec<(Diagnostic, TextSize)> {
         let lines = self.locate(&mut diagnostics);

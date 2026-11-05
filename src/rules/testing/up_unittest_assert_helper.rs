@@ -1,5 +1,5 @@
 use ruff_diagnostics::{Edit, Fix};
-use ruff_python_ast::{self as ast, Arguments, Expr, PythonVersion};
+use ruff_python_ast::{self as ast, Arguments, Expr};
 use ruff_text_size::Ranged;
 
 use crate::lint::registry::Rule;
@@ -10,9 +10,6 @@ pub fn expression(walker: &mut Walker, expr: &Expr) {
     let Expr::Call(call) = expr else {
         return;
     };
-    if walker.checker.settings.from_ruff.target_version < PythonVersion::PY314 {
-        return;
-    }
     let Some(negated) = boolean_assert(&call.func) else {
         return;
     };

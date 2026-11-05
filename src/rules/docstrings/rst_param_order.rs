@@ -3,7 +3,7 @@ use crate::lint::registry::Rule;
 use crate::rules::docstrings::rst::FieldKind;
 
 pub fn rst_param_order(checker: &Checker) {
-    for target in checker.rst_targets() {
+    for target in checker.state().rst_targets(checker) {
         let Some(parameters) = target.parameters() else {
             continue;
         };

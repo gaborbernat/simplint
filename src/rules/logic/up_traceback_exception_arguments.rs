@@ -1,5 +1,5 @@
 use ruff_diagnostics::{Edit, Fix};
-use ruff_python_ast::{self as ast, Expr, PythonVersion};
+use ruff_python_ast::{self as ast, Expr};
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
@@ -10,17 +10,18 @@ use crate::syntax::is_name;
 // Since Python 3.10 the `traceback` functions read the exception's type and traceback from the exception itself.
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let checker = walker.checker;
-    if checker.settings.from_ruff.target_version < PythonVersion::PY310 {
-        return;
-    }
     let Expr::Call(call) = expr else {
         return;
     };
-    let semantic = checker.semantic();
-    let Some(function) = ["print_exception", "format_exception", "format_exception_only"]
-        .into_iter()
-        .find(|function| semantic.resolves_to(&call.func, &["traceback", function]))
-    else {
+    let Some(name) = checker.semantic().qualified_name(&call.func) else {
+        return;
+    };
+    let Some(function) = (match name.segments() {
+        ["traceback", function] => ["print_exception", "format_exception", "format_exception_only"]
+            .into_iter()
+            .find(|candidate| candidate == function),
+        _ => None,
+    }) else {
         return;
     };
     let [exc_type, exc, rest @ ..] = call.arguments.args.as_ref() else {
@@ -51,7 +52,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
 fn exception_name<'e>(checker: &Checker, expr: &'e Expr) -> Option<&'e str> {
     match expr {
         Expr::Call(ast::ExprCall { func, arguments, .. })
-            if checker.semantic().resolves_to(func, &["", "type"])
+            if checker.semantic().is_builtin(func, "type")
                 && arguments.args.len() == 1
                 && arguments.keywords.is_empty() =>
         {

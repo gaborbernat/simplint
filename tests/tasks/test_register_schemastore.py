@@ -63,6 +63,8 @@ _VALIDATION: Final[str] = """\
   }
 }
 """
+
+
 @pytest.fixture
 def store(tmp_path: Path) -> Path:
     root = tmp_path / "schemastore"

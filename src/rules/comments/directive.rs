@@ -18,7 +18,7 @@ const DIRECTIVES: [(&str, Codes, Scope); 12] = [
 ];
 
 // The directives of one comment, and whether the comment says anything beyond them.
-pub(super) struct Comment {
+pub(crate) struct Comment {
     pub(super) directives: Vec<Directive>,
     pub(super) has_reason: bool,
 }
@@ -46,11 +46,15 @@ pub(super) enum Scope {
 }
 
 impl Comment {
-    pub(super) fn parse(comment: &str) -> Self {
+    pub(crate) fn parse(comment: &str) -> Self {
         let mut directives = Vec::new();
         let mut has_reason = false;
         for segment in comment.split('#') {
             let text = segment.trim();
+            if !may_be_directive(text) {
+                has_reason |= !text.is_empty();
+                continue;
+            }
             match parse_directive(text) {
                 Some((directive, reason)) => {
                     has_reason |= !reason.trim().is_empty();
@@ -72,6 +76,12 @@ impl Directive {
             Codes::Bracket | Codes::None => format!("{}[code]", self.name),
         }
     }
+}
+
+// Every directive names a tool followed by a colon, or is `noqa`, so a segment with neither cannot be one. Checking
+// that first keeps the lowercasing of `parse_directive` off the segments most comments are made of.
+fn may_be_directive(text: &str) -> bool {
+    text.contains(':') || text.as_bytes().windows(4).any(|window| window.eq_ignore_ascii_case(b"noqa"))
 }
 
 // The directive at the start of `text`, and the text after its codes. The match ignores case, so the codes are read

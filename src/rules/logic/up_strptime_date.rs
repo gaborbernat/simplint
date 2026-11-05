@@ -1,5 +1,5 @@
 use ruff_diagnostics::{Edit, Fix};
-use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
+use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextLen, TextRange};
 
 use crate::lint::checker::Checker;
@@ -10,9 +10,6 @@ use crate::rules::logic::scoped_block::identifier_uses;
 // Since Python 3.14 `date` and `time` have their own `strptime`, which parse one part without building a datetime.
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let checker = walker.checker;
-    if checker.settings.from_ruff.target_version < PythonVersion::PY314 {
-        return;
-    }
     let Expr::Call(outer) = expr else {
         return;
     };

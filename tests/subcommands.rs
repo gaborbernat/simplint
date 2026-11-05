@@ -1,5 +1,7 @@
 mod common;
 
+use std::fs;
+
 use test_case::test_case;
 
 use common::{project, simplint};
@@ -208,6 +210,33 @@ fn clean_removes_caches(flags: &[&str], stderr: &str) {
     assert_eq!(
         (result, cache.join("simplint").exists(), cache.join("0.17.3/5678").exists()),
         ((0, String::new(), common::native(stderr)), false, true)
+    );
+}
+
+// A link where the cache or its simplint directory should be is not the run's to remove, nor what it points at.
+#[cfg(unix)]
+#[test_case(true ; "ruff_cache_is_a_link")]
+#[test_case(false ; "simplint_is_a_link")]
+fn clean_keeps_links_and_what_they_point_at(ruff_cache_is_link: bool) {
+    let outside = tempfile::TempDir::new().expect("temporary directory");
+    fs::create_dir_all(outside.path().join("simplint/0.1.0")).expect("create");
+    fs::write(outside.path().join("simplint/0.1.0/1234"), "").expect("write");
+    let root = project(&[("module.py", "VALUE = 1\n")]);
+    let (link, target) = if ruff_cache_is_link {
+        (root.path().join(".ruff_cache"), outside.path().to_path_buf())
+    } else {
+        fs::create_dir(root.path().join(".ruff_cache")).expect("create");
+        (root.path().join(".ruff_cache/simplint"), outside.path().join("simplint"))
+    };
+    std::os::unix::fs::symlink(&target, &link).expect("symlink");
+    let (code, _, stderr) = simplint(root.path(), &["clean"]);
+    assert_eq!(
+        (
+            (code, stderr),
+            link.symlink_metadata().is_ok_and(|metadata| metadata.is_symlink()),
+            outside.path().join("simplint/0.1.0/1234").exists(),
+        ),
+        ((0, String::new()), true, true)
     );
 }
 

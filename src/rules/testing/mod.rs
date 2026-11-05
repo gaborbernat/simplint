@@ -30,7 +30,9 @@ fn is_test_function(function: &ast::StmtFunctionDef) -> bool {
     function.name.as_str().starts_with("test")
 }
 
-const MOCK_CLASSES: &[&str] = &["Mock", "MagicMock", "AsyncMock", "NonCallableMock", "NonCallableMagicMock"];
+// The callables that build a mock, which the testing rules and the receiver tracking of the project share.
+pub(crate) const MOCK_CLASSES: &[&str] =
+    &["Mock", "MagicMock", "AsyncMock", "NonCallableMock", "NonCallableMagicMock", "PropertyMock", "create_autospec"];
 
 // A class that visibly derives from `unittest.TestCase`; a base under another name may define the assert helpers
 // differently.

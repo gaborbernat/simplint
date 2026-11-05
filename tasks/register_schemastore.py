@@ -44,7 +44,8 @@ def register(schema: Path, store: Path, options: Path) -> None:
         '{indent}"simplint": {{\n'
         '{indent}  "$ref": "partial-simplint.json",\n'
         '{indent}  "title": "Linter",\n'
-        '{indent}  "description": "Ruff companion linter with extra checks that make Python easier to read and review."\n'
+        '{indent}  "description": "Ruff companion linter with extra checks that make Python easier to read and '
+        'review."\n'
         "{indent}}},\n"
     )
     missing_entry = '{indent}"partial-simplint.json", // pyproject.json[tool.simplint]\n'

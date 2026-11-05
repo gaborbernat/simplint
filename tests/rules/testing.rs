@@ -14,6 +14,9 @@ use crate::common;
 #[test_case("split-composite-assert", "tests/test_split_composite_assert.py" ; "split_composite_assert")]
 #[test_case("sleep-in-test", "tests/test_sleep_in_test.py" ; "sleep_in_test")]
 #[test_case("sleep-in-test", "tests/test_sleep_patched.py" ; "sleep_in_test_patched")]
+#[test_case("stdlib-mock", "tests/test_stdlib_mock.py" ; "stdlib_mock")]
+#[test_case("stdlib-mock", "tests/test_stdlib_mock_mocker.py" ; "stdlib_mock_mocker")]
+#[test_case("stdlib-mock", "stdlib_mock_helper.py" ; "stdlib_mock_helper")]
 fn rule(rule: &str, fixture: &str) {
     common::assert_rule_snapshot(rule, fixture, "py314");
 }

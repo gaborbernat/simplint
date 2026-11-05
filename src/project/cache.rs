@@ -1,16 +1,16 @@
 // Ruff's cache, adapted from the `ruff` crate's `cache.rs`: one file per package, keyed by the package root, remembers
-// per file, by its modification time and permissions, that it had nothing to report, so a later run skips it. simplint
-// also keeps each file's import facts, so the project index does not parse unchanged files, and a clean result counts
-// only while the file's settings and its slice of the project index are what they were. With fixes on, a file the fix
-// loop left as it was keeps the rules whose fixes the loop withdrew, so a later run reproduces its reports from one
-// lint. The files live in a `simplint` directory inside Ruff's cache directory, apart from Ruff's own, under a directory
-// named by `FORMAT`.
+// per file, by its modification time and permissions, that it had nothing to report, so a later run skips it. Without
+// fixes, a file with reports keeps them too. simplint also keeps each file's import facts, so the project index does
+// not parse unchanged files, and a clean result counts only while the file's settings and its slice of the project
+// index are what they were. With fixes on, a file the fix loop left as it was keeps the rules whose fixes the loop
+// withdrew, so a later run reproduces its reports from one lint. The files live in a `simplint` directory inside Ruff's
+// cache directory, apart from Ruff's own, under a directory named by `FORMAT`.
 use std::fs;
 use std::hash::{Hash, Hasher};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, SystemTime};
 
 use anyhow::{Context, Result};
@@ -20,14 +20,19 @@ use log::error;
 use rayon::prelude::*;
 use rkyv::util::AlignedVec;
 use ruff_cache::{CacheKey, CacheKeyHasher};
+use ruff_db::diagnostic::{
+    Annotation, Diagnostic, DiagnosticId, LintName, SecondaryCode, Severity, Span, SubDiagnosticSeverity,
+};
 use ruff_linter::warn_user;
+use ruff_source_file::{SourceFile, SourceFileBuilder};
+use ruff_text_size::{TextRange, TextSize};
 use rustc_hash::FxHashMap;
 use tempfile::NamedTempFile;
 
-use crate::cli::diagnostics::{Diagnostics, Mode};
 use crate::lint::Linter;
 use crate::lint::registry::{Rule, RuleSet};
 use crate::project::FileFacts;
+use crate::run::{Diagnostics, FixMap, Linting, Mode};
 
 // A file's modification time and permissions, hashed as Ruff's `FileCacheKey`.
 #[derive(Clone, Copy)]
@@ -205,28 +210,40 @@ impl Cache {
     }
 
     // A file whose content, settings and slice of the project index, which `fingerprint` stands for, match a cached
-    // clean result is not linted again; a file that lints clean is remembered as such. `lint` gets the rules a cached
-    // settled fix loop withdrew, and returns them when the file settles.
+    // clean result is not linted again; a file that lints clean is remembered as such. Without fixes, a file whose
+    // reports are cached under the same fingerprint gets them back, as they were reported. `lint` gets the rules a
+    // cached settled fix loop withdrew, and returns them when the file settles.
     pub fn lint_or_reuse(
         &self,
         path: &Path,
         key: FileKey,
         fingerprint: Fingerprint,
-        lint: impl FnOnce(Option<RuleSet>) -> (Diagnostics, Option<RuleSet>),
+        lint: impl FnOnce(Option<RuleSet>) -> Linting,
     ) -> Diagnostics {
         let file = self.get(path, key);
         if file.is_some_and(|file| file.clean == Some(fingerprint.clean)) {
             return Diagnostics::default();
         }
+        if fingerprint.settled.is_none() {
+            let findings =
+                file.and_then(|file| file.findings.as_ref()).filter(|found| found.fingerprint == fingerprint.clean);
+            if let Some(diagnostics) = findings.and_then(|found| found.diagnostics(path)) {
+                return diagnostics;
+            }
+        }
         let known = file
             .and_then(|file| file.settled.as_ref())
             .filter(|settled| fingerprint.settled == Some(settled.fingerprint))
             .map(|settled| RuleSet::from_rules(settled.withdrawn.iter().filter_map(|code| Rule::from_code(code))));
-        let (diagnostics, settled) = lint(known);
+        let Linting { diagnostics, settled, noqa_rows } = lint(known);
         if diagnostics.inner.is_empty() && diagnostics.fixed.is_empty() {
             self.update(path, key, ChangeData::Clean(fingerprint.clean));
         } else if let (None, Some(fingerprint), Some(withdrawn)) = (known, fingerprint.settled, settled) {
             self.update(path, key, ChangeData::Settled(fingerprint, withdrawn));
+        } else if fingerprint.settled.is_none()
+            && let Some(reports) = Report::all(&diagnostics.inner, &noqa_rows)
+        {
+            self.update(path, key, ChangeData::Findings(fingerprint.clean, reports));
         }
         diagnostics
     }
@@ -271,7 +288,14 @@ impl Cache {
                 .or_insert_with(|| FileCache::new(key, now));
             match data {
                 ChangeData::Facts(facts) => file.facts = Some(*facts),
-                ChangeData::Clean(fingerprint) => file.clean = Some(fingerprint),
+                ChangeData::Clean(fingerprint) => {
+                    file.clean = Some(fingerprint);
+                    file.findings = None;
+                }
+                ChangeData::Findings(fingerprint, reports) => {
+                    file.findings = Some(Findings { fingerprint, reports });
+                    file.clean = None;
+                }
                 ChangeData::Settled(fingerprint, withdrawn) => {
                     let withdrawn = withdrawn.iter().map(|rule| rule.code().to_owned()).collect();
                     file.settled = Some(Settled { fingerprint, withdrawn });
@@ -331,11 +355,113 @@ struct FileCache {
     // The fingerprint the file last linted clean under.
     clean: Option<u64>,
     settled: Option<Settled>,
+    // The reports the file last had without fixes, under their fingerprint.
+    findings: Option<Findings>,
 }
 
 impl FileCache {
     fn new(key: u64, now: u64) -> Self {
-        Self { key, last_seen: AtomicU64::new(now), facts: None, clean: None, settled: None }
+        Self { key, last_seen: AtomicU64::new(now), facts: None, clean: None, settled: None, findings: None }
+    }
+}
+
+// The reports a file had without fixes, under the fingerprint they were reported under.
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+struct Findings {
+    fingerprint: u64,
+    reports: Vec<Report>,
+}
+
+impl Findings {
+    fn diagnostics(&self, path: &Path) -> Option<Diagnostics> {
+        let source = fs::read_to_string(path).ok()?;
+        let file = SourceFileBuilder::new(path.to_string_lossy(), source.as_str()).finish();
+        let inner = self.reports.iter().map(|report| report.diagnostic(&file)).collect::<Option<_>>()?;
+        Some(Diagnostics { inner, fixed: FixMap::default(), diffs: Vec::new() })
+    }
+}
+
+// The rule of a code, looked up in a map since a warm run looks up every cached report.
+fn rule_by_code(code: &str) -> Option<Rule> {
+    static RULES: OnceLock<FxHashMap<&'static str, Rule>> = OnceLock::new();
+    RULES.get_or_init(|| Rule::ALL.iter().map(|rule| (rule.code(), *rule)).collect()).get(code).copied()
+}
+
+// A diagnostic a rule reported, with the fields the output shows. `Report::of` takes only a diagnostic the checker
+// builds, so `Report::diagnostic` gives back the same one.
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+struct Report {
+    code: String,
+    message: String,
+    start: u32,
+    end: u32,
+    // The line of the suppression comment, as `Suppressions::locate` sets it.
+    noqa_offset: u32,
+    help: Vec<String>,
+    // The fix as serde writes it, which keeps each of its fields.
+    fix: Option<String>,
+}
+
+impl Report {
+    // All of the reports, or `None` when a diagnostic is one `of` cannot store, such as a parse error.
+    fn all(diagnostics: &[Diagnostic], noqa_rows: &[TextSize]) -> Option<Vec<Self>> {
+        let reports: Option<Vec<Self>> =
+            diagnostics.iter().zip(noqa_rows).map(|(diagnostic, row)| Self::of(diagnostic, *row)).collect();
+        reports.filter(|reports| reports.len() == diagnostics.len())
+    }
+
+    // The report of a rule's diagnostic. Only what the checker sets is stored: a diagnostic with more than its one
+    // primary annotation, a parent, a severity other than error, or a sub-diagnostic other than a help note is not.
+    fn of(diagnostic: &Diagnostic, noqa_row: TextSize) -> Option<Self> {
+        let rule = rule_by_code(diagnostic.secondary_code()?.as_str())?;
+        let url = rule.url();
+        let primary = diagnostic.annotations().first()?;
+        let range = primary.get_span().range()?;
+        let help: Vec<String> = diagnostic
+            .sub_diagnostics()
+            .iter()
+            .map(|sub| {
+                let help = sub.severity() == SubDiagnosticSeverity::Help && sub.annotations().is_empty();
+                help.then(|| sub.headline_message().to_owned())
+            })
+            .collect::<Option<_>>()?;
+        let plain = diagnostic.annotations().len() == 1
+            && primary.is_primary()
+            && primary.get_message().is_none()
+            && diagnostic.primary_tags().is_none_or(<[_]>::is_empty)
+            && diagnostic.id() == DiagnosticId::Lint(LintName::of(rule.name()))
+            && diagnostic.severity() == Severity::Error
+            && diagnostic.documentation_url() == Some(url.as_str())
+            && diagnostic.parent().is_none();
+        let fix = diagnostic.fix().map(serde_json::to_string).transpose().ok()?;
+        plain.then(|| Self {
+            code: rule.code().to_owned(),
+            message: diagnostic.headline_message().to_owned(),
+            start: range.start().to_u32(),
+            end: range.end().to_u32(),
+            noqa_offset: noqa_row.to_u32(),
+            help,
+            fix,
+        })
+    }
+
+    // The diagnostic `of` took the report from, given the file it reports on.
+    fn diagnostic(&self, file: &SourceFile) -> Option<Diagnostic> {
+        let rule = rule_by_code(&self.code)?;
+        let range = TextRange::new(TextSize::new(self.start), TextSize::new(self.end));
+        let mut diagnostic =
+            Diagnostic::new(DiagnosticId::Lint(LintName::of(rule.name())), Severity::Error, self.message.as_str());
+        diagnostic.annotate(Annotation::primary(Span::from(file.clone()).with_range(range)));
+        diagnostic.set_secondary_code(SecondaryCode::new(rule.code().to_owned()));
+        diagnostic.set_documentation_url(Some(rule.url()));
+        for help in &self.help {
+            diagnostic.help(help.as_str());
+        }
+        if let Some(fix) = &self.fix {
+            diagnostic.set_fix(serde_json::from_str(fix).ok()?);
+        }
+        diagnostic.set_noqa_offset(TextSize::new(self.noqa_offset));
+        Some(diagnostic)
     }
 }
 
@@ -357,6 +483,7 @@ struct Change {
 enum ChangeData {
     Facts(Box<FileFacts>),
     Clean(u64),
+    Findings(u64, Vec<Report>),
     Settled(u64, RuleSet),
 }
 

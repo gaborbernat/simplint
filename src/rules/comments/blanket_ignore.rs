@@ -1,10 +1,10 @@
-use super::directive::{Comment, Scope};
+use super::directive::Scope;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 
 pub fn blanket_ignore(checker: &Checker) {
-    for range in checker.comment_ranges() {
-        for directive in Comment::parse(checker.text(range)).directives.iter().filter(|d| d.missing_codes) {
+    for (range, comment) in checker.state().comments(checker) {
+        for directive in comment.directives.iter().filter(|d| d.missing_codes) {
             let scope = match directive.scope {
                 Scope::Line => "on the line",
                 Scope::File => "in the file",
@@ -14,7 +14,7 @@ pub fn blanket_ignore(checker: &Checker) {
                 directive.name,
                 directive.example()
             );
-            checker.report(Rule::BlanketIgnore, range, message);
+            checker.report(Rule::BlanketIgnore, *range, message);
         }
     }
 }

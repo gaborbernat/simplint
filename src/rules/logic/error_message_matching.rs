@@ -5,7 +5,7 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
-use crate::rules::ExprCollector;
+use crate::syntax::ExprCollector;
 use crate::syntax::{for_each_body, is_name};
 
 // The `str` methods that read the text of an exception to tell it apart from others.

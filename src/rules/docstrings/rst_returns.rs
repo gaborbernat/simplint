@@ -11,7 +11,7 @@ use crate::rules::docstrings::rst::{Field, FieldKind, Owner, Target, field_delet
 use crate::syntax::{has_decorator, last_segment};
 
 pub fn rst_returns(checker: &Checker) {
-    for target in checker.rst_targets() {
+    for target in checker.state().rst_targets(checker) {
         let Some(def) = returning_function(checker, target) else {
             continue;
         };

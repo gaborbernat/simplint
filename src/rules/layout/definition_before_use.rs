@@ -9,8 +9,8 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::ExprCollector;
 use crate::semantic::{BindingKind, Evaluation, Reference};
+use crate::syntax::ExprCollector;
 
 pub fn definition_before_use(checker: &Checker) {
     let body = checker.body();

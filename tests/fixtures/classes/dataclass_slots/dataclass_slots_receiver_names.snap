@@ -1,0 +1,42 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:2 SMP702 Dataclass is missing slots; set `slots=True` [fix: Pass `slots=True` to `@dataclass`]
+18:2 SMP702 Dataclass is missing slots; set `slots=True`
+29:2 SMP702 Dataclass is missing slots; set `slots=True`
+--- fixed (1 applied, 2 remaining) ---
+from dataclasses import dataclass
+from unittest.mock import MagicMock
+
+
+@dataclass(slots=True)
+class Crate:
+    size: int
+
+
+class Shipper:
+    def setUp(this) -> None:
+        this.client = MagicMock()
+
+    def ship(this) -> None:
+        this.client.size = 2
+
+
+@dataclass
+class Gauge:
+    level: int
+
+    def reset(this) -> None:
+        this.level = 0
+
+    def reset_self(self) -> None:
+        self.level = 0
+
+
+@dataclass
+class Dial:
+    angle: int
+
+    def turn(this) -> None:
+        this.extra = 1

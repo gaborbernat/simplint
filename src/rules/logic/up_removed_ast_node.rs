@@ -13,8 +13,13 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         return;
     };
     let checker = walker.checker;
-    let Some(class) = REMOVED.iter().copied().find(|class| checker.semantic().resolves_to(expr, &["ast", *class]))
-    else {
+    let Some(name) = checker.semantic().qualified_name(expr) else {
+        return;
+    };
+    let Some(class) = (match name.segments() {
+        ["ast", class] => REMOVED.iter().copied().find(|removed| removed == class),
+        _ => None,
+    }) else {
         return;
     };
     checker.report_fix(

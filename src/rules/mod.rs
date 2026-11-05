@@ -11,17 +11,99 @@ mod rename;
 pub(crate) mod testing;
 pub(crate) mod typing;
 
+use std::cell::OnceCell;
+
 use ruff_diagnostics::Edit;
 use ruff_python_ast::helpers::any_over_expr;
+use ruff_python_ast::helpers::is_docstring_stmt;
 use ruff_python_ast::str::Quote;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, OperatorPrecedence, Stmt, StringFlags};
+use ruff_python_stdlib::sys::is_known_standard_library;
 use ruff_python_trivia::{has_leading_content, has_trailing_content, leading_indentation};
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
-use crate::syntax::{is_name, last_segment};
+use crate::rules::comments::Comment;
+use crate::rules::docstrings::PublicApi;
+use crate::rules::docstrings::rst::{Target, collect_targets};
+use crate::rules::logic::KindsCache;
+use crate::rules::naming::ReportedNames;
+use crate::semantic::future_import;
+use crate::syntax::{all_literal, is_name, last_segment};
+
+// What the rules memoize for a file, each part built by the first rule that reads it.
+#[derive(Default)]
+pub(crate) struct FileState<'a> {
+    public_api: OnceCell<PublicApi<'a>>,
+    rst_targets: OnceCell<Vec<Target<'a>>>,
+    kinds: KindsCache<'a>,
+    reported_names: ReportedNames<'a>,
+    // The string literals of the `__all__` assignments, which renames of a name also rewrite.
+    export_strings: OnceCell<Vec<&'a ast::ExprStringLiteral>>,
+    // Every comment of the file with the directives it holds, which the comment rules read.
+    comments: OnceCell<Vec<(TextRange, Comment)>>,
+    source_spans: OnceCell<Vec<TextRange>>,
+    debug_fields: OnceCell<DebugFields<'a>>,
+}
+
+impl<'a> FileState<'a> {
+    // The definitions of this file that belong to the library's public API, which the docstring rules share.
+    pub(crate) fn public_api(&self, checker: &Checker<'a>) -> &PublicApi<'a> {
+        self.public_api.get_or_init(|| PublicApi::of(checker))
+    }
+
+    // The parsed docstrings the reStructuredText rules check, empty unless `docstring-style = "rst"`.
+    pub(crate) fn rst_targets(&self, checker: &Checker<'a>) -> &[Target<'a>] {
+        self.rst_targets.get_or_init(|| collect_targets(checker))
+    }
+
+    // What `string-concatenation` reads off the module to tell the types of its operands.
+    pub(crate) fn kinds(&self) -> &KindsCache<'a> {
+        &self.kinds
+    }
+
+    // The names `single-letter-name` reported so far.
+    pub(crate) fn reported_names(&self) -> &ReportedNames<'a> {
+        &self.reported_names
+    }
+
+    pub(crate) fn export_strings(&self, checker: &Checker<'a>) -> &[&'a ast::ExprStringLiteral] {
+        self.export_strings.get_or_init(|| {
+            checker
+                .body()
+                .iter()
+                .filter_map(all_literal)
+                .flat_map(|(_, elements)| elements)
+                .filter_map(Expr::as_string_literal_expr)
+                .collect()
+        })
+    }
+
+    // The ranges of the t-strings, which keep their source text, so an edit inside one changes what they hold.
+    pub(crate) fn source_text_spans(&self, checker: &Checker<'a>) -> &[TextRange] {
+        self.source_spans.get_or_init(|| {
+            let mut finder = SourceTextSpans::default();
+            finder.visit_body(checker.body());
+            finder.spans
+        })
+    }
+
+    pub(crate) fn comments(&self, checker: &Checker) -> &[(TextRange, Comment)] {
+        self.comments.get_or_init(|| {
+            checker.comment_ranges().into_iter().map(|range| (range, Comment::parse(checker.text(range)))).collect()
+        })
+    }
+
+    fn debug_fields(&self, checker: &Checker<'a>) -> &DebugFields<'a> {
+        self.debug_fields.get_or_init(|| {
+            let mut finder = DebugFields::default();
+            finder.visit_body(checker.body());
+            finder
+        })
+    }
+}
 
 pub fn is_alone_on_lines(source: &str, range: TextRange) -> bool {
     !has_leading_content(range.start(), source) && !has_trailing_content(range.end(), source)
@@ -121,38 +203,8 @@ pub fn expr_mentions(expr: &Expr, name: &str) -> bool {
     any_over_expr(expr, |expr| is_name(expr, name))
 }
 
-// Each expression `pick` maps to a value, in the order a `Visitor` walks them.
-pub struct ExprCollector<F, T> {
-    pick: F,
-    pub found: Vec<T>,
-}
-
-impl<F, T> ExprCollector<F, T> {
-    pub fn new<'a>(pick: F) -> Self
-    where
-        F: FnMut(&'a Expr) -> Option<T>,
-    {
-        Self { pick, found: Vec::new() }
-    }
-}
-
-impl<'a, F: FnMut(&'a Expr) -> Option<T>, T> Visitor<'a> for ExprCollector<F, T> {
-    fn visit_expr(&mut self, expr: &'a Expr) {
-        if let Some(value) = (self.pick)(expr) {
-            self.found.push(value);
-        }
-        visitor::walk_expr(self, expr);
-    }
-}
-
 // The spans of the t-strings in `body`, which keep the text of their expressions, so a name changed inside one changes
 // the output.
-pub fn source_text_spans(body: &[Stmt]) -> Vec<TextRange> {
-    let mut finder = SourceTextSpans::default();
-    finder.visit_body(body);
-    finder.spans
-}
-
 #[derive(Default)]
 struct SourceTextSpans {
     spans: Vec<TextRange>,
@@ -172,9 +224,8 @@ impl<'a> Visitor<'a> for SourceTextSpans {
 // text as written and moves the edits into a plain field: `{x=}` becomes `x={x!r}`, and a conversion or format spec
 // carries over. `None` when an edit lands where that cannot hold, such as in a t-string field, which keeps its source
 // text in the template, or in a field nested in another one.
-pub fn keep_debug_text(source: &str, body: &[Stmt], edits: Vec<Edit>) -> Option<Vec<Edit>> {
-    let mut finder = DebugFields::default();
-    finder.visit_body(body);
+pub fn keep_debug_text(checker: &Checker, edits: Vec<Edit>) -> Option<Vec<Edit>> {
+    let finder = checker.state().debug_fields(checker);
     let mut groups: Vec<Vec<Edit>> = vec![Vec::new(); finder.fields.len()];
     let mut rewritten = Vec::new();
     for edit in edits {
@@ -191,7 +242,7 @@ pub fn keep_debug_text(source: &str, body: &[Stmt], edits: Vec<Edit>) -> Option<
     }
     for (field, edits) in finder.fields.iter().zip(groups) {
         if !edits.is_empty() {
-            rewritten.push(Edit::range_replacement(debug_field(source, field, &edits)?, field.range));
+            rewritten.push(Edit::range_replacement(debug_field(checker.source, field, &edits)?, field.range));
         }
     }
     Some(rewritten)
@@ -233,7 +284,69 @@ fn splice(source: &str, from: usize, to: usize, edits: &mut [&Edit]) -> Option<S
     Some(text)
 }
 
-// The `=` debug fields of a body, each with its quote and the text of its debug specifier.
+// The name a fix uses for `member` of `module`, or for `module` itself, and the edit that adds the import when the file
+// lacks it. `None` when another binding holds the name, which leaves the fix off.
+pub fn ensure_import(checker: &Checker, module: &str, member: Option<&str>) -> Option<(String, Option<Edit>)> {
+    let binding = member.unwrap_or(module);
+    if has_import(checker.body(), module, member) {
+        return Some((binding.to_owned(), None));
+    }
+    if checker.semantic().is_bound(binding) {
+        return None;
+    }
+    Some((binding.to_owned(), Some(import_insertion(checker, module, member))))
+}
+
+// Whether a top-level import already brings the module, or the member, in under its own name.
+fn has_import(body: &[Stmt], module: &str, member: Option<&str>) -> bool {
+    body.iter().any(|stmt| match (stmt, member) {
+        (Stmt::Import(ast::StmtImport { names, .. }), None) => {
+            names.iter().any(|alias| alias.name.as_str() == module && alias.asname.is_none())
+        }
+        (Stmt::ImportFrom(ast::StmtImportFrom { module: Some(from), names, level: 0, .. }), Some(member)) => {
+            from.as_str() == module && names.iter().any(|alias| alias.name.as_str() == member && alias.asname.is_none())
+        }
+        _ => false,
+    })
+}
+
+// The import goes where Ruff's isort keeps it: in the standard library section of the leading import block, plain
+// `import x` lines before `from x import y` lines, each group in module order. A new section gets a blank line after it.
+fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Edit {
+    let body = checker.body();
+    let source = checker.source;
+    let text = match member {
+        Some(member) => format!("from {module} import {member}\n"),
+        None => format!("import {module}\n"),
+    };
+    let key = (member.is_some(), module.to_ascii_lowercase());
+    let preamble = body.iter().take_while(|stmt| future_import(stmt).is_some() || is_docstring_stmt(stmt)).count();
+    let block = body[preamble..].iter().take_while(|stmt| matches!(stmt, Stmt::Import(_) | Stmt::ImportFrom(_)));
+    let minor = checker.settings.from_ruff.target_version.minor;
+    let stdlib: Vec<(&Stmt, (bool, String))> = block
+        .filter_map(|stmt| match stmt {
+            Stmt::Import(ast::StmtImport { names, .. }) => names
+                .iter()
+                .all(|alias| is_known_standard_library(minor, alias.name.split('.').next().unwrap_or_default()))
+                .then(|| (stmt, (false, names[0].name.to_ascii_lowercase()))),
+            Stmt::ImportFrom(ast::StmtImportFrom { module: Some(module), level: 0, .. }) => {
+                is_known_standard_library(minor, module.split('.').next().unwrap_or_default())
+                    .then(|| (stmt, (true, module.to_ascii_lowercase())))
+            }
+            _ => None,
+        })
+        .collect();
+    if let Some((next, _)) = stdlib.iter().find(|(_, sort)| *sort > key) {
+        return Edit::insertion(text, source.line_start(next.start()));
+    }
+    if let Some((last, _)) = stdlib.last() {
+        return Edit::insertion(text, source.full_line_end(last.end()));
+    }
+    // The statement the import goes before follows the preamble, so the body has one there.
+    Edit::insertion(format!("{text}\n"), source.line_start(body[preamble].start()))
+}
+
+// The `=` debug fields of a module, each with its quote and the text of its debug specifier.
 #[derive(Default)]
 struct DebugFields<'a> {
     fields: Vec<DebugField<'a>>,

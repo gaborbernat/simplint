@@ -6,7 +6,7 @@ use crate::lint::registry::Rule;
 use crate::rules::docstrings::rst::{FieldKind, Owner, field_deletion, has_attribute_bases};
 
 pub fn rst_unknown_attribute(checker: &Checker) {
-    for target in checker.rst_targets() {
+    for target in checker.state().rst_targets(checker) {
         // A base class may define the attribute a field documents.
         let Owner::Class(class) = target.owner else {
             continue;

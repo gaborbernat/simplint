@@ -8,12 +8,31 @@ use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
+use crate::lint::noqa;
 use crate::lint::registry::Rule;
 use crate::project::constructors::{CallKind, Use, Uses, init_fields};
 use crate::rules::classes::{Offer, require_options};
-use crate::rules::{ExprCollector, keep_debug_text};
+use crate::rules::keep_debug_text;
 use crate::semantic::BindingKind;
+use crate::settings::FileSettings;
+use crate::syntax::ExprCollector;
 use crate::syntax::{dataclass_decorator, is_name};
+
+// `slots=`, `kw_only=` and the keyword calls the rule writes arrived in Python 3.10.
+pub(crate) const SINCE: PythonVersion = PythonVersion::PY310;
+
+// Whether a comment on a positional call suppresses the rule there, which keeps the call from being rewritten.
+pub(crate) fn suppresses_rewrite(comment: &str) -> bool {
+    noqa::suppresses(comment, Rule::DataclassKwOnly.code())
+}
+
+// Whether the rule reports and fixes this file's positional calls of dataclasses defined elsewhere, which the fix of
+// their decorator relies on.
+pub(crate) fn rewrites_calls(settings: &FileSettings) -> bool {
+    settings.rules.contains(Rule::DataclassKwOnly)
+        && settings.project.is_fixable(Rule::DataclassKwOnly)
+        && settings.from_ruff.target_version >= SINCE
+}
 
 pub fn dataclass_kw_only(checker: &Checker) {
     let module = OnceCell::new();
@@ -22,7 +41,7 @@ pub fn dataclass_kw_only(checker: &Checker) {
         let edits = keyword_calls(checker, module, decorated.class)?;
         Some(Offer { options: decorated.missing.clone(), edits, applicability: Applicability::Unsafe })
     });
-    if checker.settings.from_ruff.target_version >= PythonVersion::PY310 {
+    if checker.settings.from_ruff.target_version >= SINCE {
         report_positional_calls(checker);
     }
 }
@@ -52,7 +71,7 @@ fn keyword_calls(checker: &Checker, module: &ModuleClasses, class: &ast::StmtCla
         };
         edits.extend(keyword_edits(checker, call, &fields)?);
     }
-    keep_debug_text(checker.source, checker.body(), edits)
+    keep_debug_text(checker, edits)
 }
 
 // The module-level classes by name in source order, and every use of them in the module, found in one walk.
@@ -160,9 +179,8 @@ fn report_positional_calls(checker: &Checker) {
         if call.arguments.args.is_empty() {
             continue;
         }
-        let fix = keyword_edits(checker, call, fields)
-            .and_then(|edits| keep_debug_text(checker.source, checker.body(), edits))
-            .map(|mut edits| {
+        let fix =
+            keyword_edits(checker, call, fields).and_then(|edits| keep_debug_text(checker, edits)).map(|mut edits| {
                 let first = edits.remove(0);
                 Fix::safe_edits(first, edits)
             });

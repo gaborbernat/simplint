@@ -40,6 +40,7 @@ use crate::common;
 #[test_case("rst-param-order", "rst_param_order.py" ; "rst_param_order")]
 #[test_case("rst-missing-attribute", "rst_missing_attribute.py" ; "rst_missing_attribute")]
 #[test_case("rst-unknown-attribute", "rst_unknown_attribute.py" ; "rst_unknown_attribute")]
+#[test_case("rst-unknown-attribute", "rst_unknown_attribute_delete.py" ; "rst_unknown_attribute_delete")]
 #[test_case("rst-unknown-attribute", "rst_unknown_attribute_type_alias.py" ; "rst_unknown_attribute_type_alias")]
 #[test_case("rst-attribute-kind", "rst_attribute_kind.py" ; "rst_attribute_kind")]
 #[test_case("rst-returns", "rst_returns.py" ; "rst_returns")]

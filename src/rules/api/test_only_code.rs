@@ -11,7 +11,7 @@ pub fn test_only_code(checker: &Checker) {
     if checker.is_test_module() || project.is_star_import_source() {
         return;
     }
-    let api = checker.public_api();
+    let api = checker.state().public_api(checker);
     let listed = match checker.dunder_all() {
         Exports::Listed(names) => names.as_slice(),
         Exports::Absent | Exports::Dynamic => &[],

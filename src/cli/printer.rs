@@ -23,8 +23,8 @@ use ruff_linter::settings::types::{OutputFormat, UnsafeFixes};
 use rustc_hash::FxHashMap;
 use serde::Serialize;
 
-use crate::cli::diagnostics::{Diagnostics, FixMap, Mode};
 use crate::lint::registry::Rule;
+use crate::run::{Diagnostics, FixMap, Mode};
 
 bitflags! {
     #[derive(Default, Copy, Clone)]

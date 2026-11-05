@@ -1,6 +1,6 @@
 use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, AnyParameterRef, Expr, PythonVersion, Stmt};
+use ruff_python_ast::{self as ast, AnyParameterRef, Expr, Stmt};
 use ruff_text_size::Ranged;
 use rustc_hash::FxHashSet;
 
@@ -11,9 +11,6 @@ use crate::semantic::future_import;
 use crate::syntax::{alias_binding, module_statements};
 
 pub fn future_annotations(checker: &Checker) {
-    if checker.settings.from_ruff.target_version < PythonVersion::PY314 {
-        return;
-    }
     let body = checker.body();
     for stmt in body {
         let Some(import) = future_import(stmt) else {

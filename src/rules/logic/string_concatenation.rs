@@ -104,10 +104,11 @@ fn fstring(checker: &Checker, operands: &[&Expr], nested: bool) -> Option<String
                             && arguments.args.len() == 1
                             && !arguments.args[0].is_starred_expr() =>
                     {
-                        match func.as_name_expr().map(|name| name.id.as_str()) {
-                            Some(builtin @ ("str" | "repr" | "ascii")) if !checker.semantic().is_bound(builtin) => {
-                                (&arguments.args[0], &builtin[..1])
-                            }
+                        match ["str", "repr", "ascii"]
+                            .into_iter()
+                            .find(|builtin| checker.semantic().is_builtin(func, builtin))
+                        {
+                            Some(builtin) => (&arguments.args[0], &builtin[..1]),
                             _ => (*other, ""),
                         }
                     }

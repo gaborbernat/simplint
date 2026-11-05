@@ -133,7 +133,7 @@ fn method_uses<'a>(checker: &Checker, class: &'a ast::StmtClassDef) -> FxHashMap
 fn eligible(checker: &Checker, function: &ast::StmtFunctionDef) -> bool {
     function.decorator_list.is_empty()
         && Visibility::of(function.name.as_str()) != Visibility::Dunder
-        && !checker.public_api().covers(function.range())
+        && !checker.state().public_api(checker).covers(function.range())
 }
 
 fn add_use(sites: &mut CallSites, found: &Use) {
