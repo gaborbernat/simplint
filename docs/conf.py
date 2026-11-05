@@ -6,12 +6,10 @@ import html
 import json
 import os
 import re
-import shutil
-import subprocess
 import sys
 import textwrap
+import tomllib
 from datetime import UTC, datetime
-from importlib.metadata import version as metadata_version
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, NotRequired, TypedDict
 
@@ -23,7 +21,9 @@ if TYPE_CHECKING:
 sys.path.insert(0, str(Path(__file__).parent))
 
 company, name = "gaborbernat", "simplint"
-ver: Final[str] = metadata_version("simplint")
+# the manifest rather than the installed package, so the docs build needs no compiled binary
+with (Path(__file__).parents[1] / "Cargo.toml").open("rb") as manifest:
+    ver: Final[str] = tomllib.load(manifest)["package"]["version"]
 release, version = ver, ".".join(ver.split(".")[:2])
 now: Final[datetime] = datetime.now(tz=UTC)
 project_copyright: Final[str] = f"2026-{now.year}, {company}"
@@ -167,14 +167,11 @@ class _RuleEntry(TypedDict):
 
 
 def _generate(docs: Path) -> dict[str, str]:
-    # The binary embeds each rule's explanation and its help text, so `simplint rule` and these pages cannot drift.
-    if (binary := shutil.which("simplint")) is None:
-        msg = "simplint is not on PATH; build the docs through `tox run -e docs`"
-        raise FileNotFoundError(msg)
+    # `simplint rules --output-format json`, committed and kept equal to the binary's by `tests/docs_data.rs`, so the
+    # pages and `simplint rule` cannot drift
     generated = docs / "_generated"
     (generated / "rules").mkdir(parents=True, exist_ok=True)
-    listing = subprocess.run([binary, "rules", "--output-format", "json"], check=True, capture_output=True, text=True)
-    rules: list[_RuleEntry] = json.loads(listing.stdout)
+    rules: list[_RuleEntry] = json.loads((docs / "_data" / "rules.json").read_text(encoding="utf-8"))
     # each group's title and short title by its family, the directory its rules live in, which names its pages since
     # titles have spaces; the binary lists rules by code, so each group appears where its first rule does
     groups = {rule["family"]: (rule["group"], rule["short_group"]) for rule in rules}

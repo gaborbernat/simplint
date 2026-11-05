@@ -1,0 +1,131 @@
+name: 🔀 Update SchemaStore
+on:
+  push:
+    tags: ["[0-9]+.[0-9]+.[0-9]+"]
+  pull_request:
+    paths:
+      - "simplint.schema.json"
+      - ".github/workflows/update-schemastore.yaml"
+permissions:
+  contents: read
+jobs:
+  validate:
+    name: 🔍 Schema passes SchemaStore's checks
+    runs-on: ubuntu-26.04
+    steps:
+      - name: 📥 Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 🐍 Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: latest-known
+          python-version: "3.15"
+          enable-cache: false
+      - name: 📥 Clone SchemaStore
+        run: git clone --depth 1 https://github.com/SchemaStore/schemastore "$RUNNER_TEMP/schemastore"
+      - name: 📦 Install SchemaStore's dependencies
+        run: npm ci
+        working-directory: ${{ runner.temp }}/schemastore
+      - name: ⚙️ Exempt the unregistered partial from the catalog check
+        # SchemaStore lists each partial that has no catalog entry as missing one; the first registration adds this line.
+        run: |
+          if [ ! -f src/schemas/json/partial-simplint.json ]; then
+            sed -i 's|^  "missingCatalogUrl": \[$|&\n    "partial-simplint.json",|' src/schema-validation.jsonc
+          fi
+        working-directory: ${{ runner.temp }}/schemastore
+      - name: ⚙️ Stage simplint's schema
+        run: |
+          uv run --no-project --python 3.15 python -c "
+          import json
+          with open('${{ github.workspace }}/simplint.schema.json') as f:
+              schema = json.load(f)
+          schema['\$id'] = 'https://json.schemastore.org/partial-simplint.json'
+          with open('${{ runner.temp }}/schemastore/src/schemas/json/partial-simplint.json', 'w') as f:
+              json.dump(schema, f, indent=2)
+              f.write('\n')
+          "
+      - name: 🔍 Run SchemaStore's checks against it
+        run: node ./cli.js check --schema-name=partial-simplint.json
+        working-directory: ${{ runner.temp }}/schemastore
+  update-schemastore:
+    name: 🔀 Open SchemaStore PR
+    needs: validate
+    if: github.event_name == 'push'
+    runs-on: ubuntu-26.04
+    environment: schemastore
+    env:
+      GH_TOKEN: ${{ secrets.SCHEMASTORE_TOKEN }}
+      BRANCH: update-simplint-schema
+      SHA: ${{ github.sha }}
+    steps:
+      - name: 📥 Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 🐍 Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: latest-known
+          python-version: "3.15"
+          enable-cache: false
+      - name: 📥 Fork and clone SchemaStore
+        run: gh repo fork SchemaStore/schemastore --clone -- "$RUNNER_TEMP/schemastore"
+      - name: ⬆️ Sync fork's master with upstream
+        run: gh repo sync "$(gh api user --jq .login)/schemastore" -b master
+      - name: 🔍 Check the schema is registered upstream
+        id: registered
+        run: |
+          if [ -f src/schemas/json/partial-simplint.json ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice title=SchemaStore has no partial-simplint.json::Register it with a manual PR first, which adds the tool.simplint reference to pyproject.json. Until then this job skips."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          fi
+        working-directory: ${{ runner.temp }}/schemastore
+      - name: ⚙️ Create or reset branch from synced fork
+        if: steps.registered.outputs.present == 'true'
+        run: |
+          git fetch origin master
+          git switch -C "$BRANCH" origin/master
+        working-directory: ${{ runner.temp }}/schemastore
+      - name: ⚙️ Update schema and check for changes
+        if: steps.registered.outputs.present == 'true'
+        id: diff
+        run: |
+          uv run --no-project --python 3.15 python -c "
+          import json, sys
+          with open('${{ github.workspace }}/simplint.schema.json') as f:
+              new = json.load(f)
+          new['\$id'] = 'https://json.schemastore.org/partial-simplint.json'
+          with open('${{ runner.temp }}/schemastore/src/schemas/json/partial-simplint.json') as f:
+              old = json.load(f)
+          if new == old:
+              sys.exit(1)
+          with open('${{ runner.temp }}/schemastore/src/schemas/json/partial-simplint.json', 'w') as f:
+              json.dump(new, f, indent=2)
+              f.write('\n')
+          " && echo "changed=true" >> "$GITHUB_OUTPUT" || echo "changed=false" >> "$GITHUB_OUTPUT"
+      - name: ⬆️ Commit and push
+        if: steps.registered.outputs.present == 'true' && steps.diff.outputs.changed == 'true'
+        run: |
+          gh auth setup-git
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/schemas/json/partial-simplint.json
+          git commit -m "Update simplint JSON Schema to ${GITHUB_REF_NAME}"
+          git push --force origin "$BRANCH"
+        working-directory: ${{ runner.temp }}/schemastore
+      - name: 🔀 Create or update pull request
+        if: steps.registered.outputs.present == 'true' && steps.diff.outputs.changed == 'true'
+        run: |
+          FORK_OWNER=$(gh api user --jq .login)
+          HEAD="$FORK_OWNER:$BRANCH"
+          TITLE="Update simplint JSON Schema to ${GITHUB_REF_NAME}"
+          BODY="Updates simplint's JSON Schema to [${SHA}](https://github.com/gaborbernat/simplint/commit/${SHA}) (release ${GITHUB_REF_NAME})."
+          if ! gh pr view "$HEAD" --repo SchemaStore/schemastore > /dev/null 2>&1; then
+            gh pr create --repo SchemaStore/schemastore --head "$HEAD" --title "$TITLE" --body "$BODY"
+          else
+            gh pr edit "$HEAD" --repo SchemaStore/schemastore --title "$TITLE" --body "$BODY"
+          fi

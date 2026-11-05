@@ -4,9 +4,8 @@ from __future__ import annotations
 
 import json
 import re
-import shutil
-import subprocess
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
+from pathlib import Path
 from typing import TYPE_CHECKING, NotRequired, TypedDict
 
 if TYPE_CHECKING:
@@ -35,12 +34,8 @@ class _Command(TypedDict):
 
 
 def build_parser() -> ArgumentParser:
-    if (binary := shutil.which("simplint")) is None:
-        msg = "simplint is not on PATH; build the docs through `tox run -e docs`"
-        raise FileNotFoundError(msg)
-    schema: _Command = json.loads(
-        subprocess.run([binary, "cli-schema"], check=True, capture_output=True, text=True).stdout
-    )
+    # `simplint cli-schema`, committed and kept equal to the binary's by `tests/docs_data.rs`
+    schema: _Command = json.loads((Path(__file__).parent / "_data" / "cli-schema.json").read_text(encoding="utf-8"))
     parser = ArgumentParser(prog="simplint", description=schema["about"], formatter_class=RawDescriptionHelpFormatter)
     _add_arguments(parser, schema)
     return parser

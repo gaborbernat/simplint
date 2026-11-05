@@ -228,11 +228,27 @@ list drifts.
 
 Edit the files under `docs/`. PyPI shows `README.md`, so keep its links absolute.
 
+The rule pages and the command line reference come from `docs/_data/`, the binary's `rules --output-format json` and
+`cli-schema` output, committed so Read the Docs builds without compiling Rust. When a rule, its Markdown page or a flag
+changes, `cargo test` fails once and rewrites those files; commit them.
+
 Build and check links with the documentation environment:
 
 ```bash
 tox run -e docs
 ```
+
+## Configuration schema
+
+`simplint.schema.json` is the JSON Schema of `[tool.simplint]`, printed by the hidden `simplint config-schema`
+subcommand. `schemars` derives it from the option structs in `src/settings/`, so their doc comments become its
+descriptions, and rule selectors take their values from the rule table in `src/lint/registry.rs`. When an option or a
+rule changes, `cargo test` fails once and rewrites the file; commit it. `tests/tasks/test_config_schema.py` checks the
+documented examples against it, so run `tox run -e tasks`.
+
+On a release tag, `update-schemastore.yaml` copies the file to SchemaStore as `partial-simplint.json`. SchemaStore has
+no such file until a manual registration PR adds it, with its `tool.simplint` reference; until it is merged, the update
+job skips with a notice.
 
 ## Changelog
 

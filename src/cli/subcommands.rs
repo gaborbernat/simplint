@@ -58,6 +58,14 @@ pub fn cli_schema(command: &clap::Command) -> Result<()> {
     Ok(())
 }
 
+// The JSON Schema of `[tool.simplint]`, committed as `simplint.schema.json` and checked by `tests/docs_data.rs`.
+pub fn config_schema() -> Result<()> {
+    let mut stdout = BufWriter::new(std::io::stdout().lock());
+    writeln!(stdout, "{}", serde_json::to_string_pretty(&crate::settings::config_schema())?)?;
+    stdout.flush()?;
+    Ok(())
+}
+
 // An informational subcommand's output, which Ruff prints as text or as pretty JSON.
 trait HelpOutput: Serialize {
     // Ruff ends some JSON outputs with a newline and others not.

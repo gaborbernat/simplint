@@ -76,6 +76,14 @@ The rest of the reference is split by topic:
 Choosing rules, suppressing a report and pairing with Ruff are tasks, covered by the :doc:`how-to guides
 </how-to/select-rules>`.
 
+Editor support
+--------------
+
+``simplint.schema.json`` in the repository describes the ``[tool.simplint]`` table, so an editor that checks TOML against
+a JSON Schema flags unknown keys and wrong values as you type. Editors that read SchemaStore, such as VS Code with Even
+Better TOML or Tombi, apply it once SchemaStore lists it. Until then, no editor applies it to ``pyproject.toml`` on its
+own, because the schema describes the table, not the whole file.
+
 .. toctree::
    :hidden:
 

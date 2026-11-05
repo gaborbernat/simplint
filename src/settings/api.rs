@@ -3,13 +3,14 @@ use std::fmt::{Display, Formatter};
 use std::path::Path;
 
 use ruff_cache::{CacheKey, CacheKeyHasher};
+use schemars::JsonSchema;
 use serde::Deserialize;
 
 use crate::settings::metadata::{BuildConfiguration, ProjectMetadata, import_names};
 use crate::syntax::Visibility;
 
 // What `project-kind` asks for; `auto` reads it from how the project builds.
-#[derive(Deserialize, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Deserialize, Clone, Copy, Default, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ProjectKindOption {
     #[default]
@@ -35,7 +36,7 @@ impl Display for ProjectKind {
 }
 
 // The docstring markup the reStructuredText rules check.
-#[derive(Deserialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Deserialize, Clone, Copy, PartialEq, Eq, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum DocstringStyle {
     Rst,

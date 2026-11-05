@@ -136,7 +136,7 @@ sha256 = "9f99786e0d62082a5b121b3437f3167562133711df22128de1e9886f57f0b226"
 [[packages]]
 name = "attrs"
 version = "26.1.0"
-marker = "\"pkg-meta\" in dependency_groups"
+marker = "\"dev\" in dependency_groups or \"pkg-meta\" in dependency_groups or \"test\" in dependency_groups or \"type\" in dependency_groups"
 requires-python = ">=3.9"
 index = "https://pypi.org/simple/"
 
@@ -1003,6 +1003,65 @@ size = 134899
 
 [packages.wheels.hashes]
 sha256 = "85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67"
+
+[[packages]]
+name = "jsonschema"
+version = "4.26.0"
+marker = "\"dev\" in dependency_groups or \"test\" in dependency_groups or \"type\" in dependency_groups"
+requires-python = ">=3.10"
+dependencies = [
+    { name = "attrs" },
+    { name = "jsonschema-specifications" },
+    { name = "referencing" },
+    { name = "rpds-py" },
+]
+index = "https://pypi.org/simple/"
+
+[packages.sdist]
+name = "jsonschema-4.26.0.tar.gz"
+upload-time = 2026-01-07 13:41:07.246891+00:00
+url = "https://files.pythonhosted.org/packages/b3/fc/e067678238fa451312d4c62bf6e6cf5ec56375422aee02f9cb5f909b3047/jsonschema-4.26.0.tar.gz"
+size = 366583
+
+[packages.sdist.hashes]
+sha256 = "0c26707e2efad8aa1bfc5b7ce170f3fccc2e4918ff85989ba9ffa9facb2be326"
+
+[[packages.wheels]]
+name = "jsonschema-4.26.0-py3-none-any.whl"
+upload-time = 2026-01-07 13:41:05.306692+00:00
+url = "https://files.pythonhosted.org/packages/69/90/f63fb5873511e014207a475e2bb4e8b2e570d655b00ac19a9a0ca0a385ee/jsonschema-4.26.0-py3-none-any.whl"
+size = 90630
+
+[packages.wheels.hashes]
+sha256 = "d489f15263b8d200f8387e64b4c3a75f06629559fb73deb8fdfb525f2dab50ce"
+
+[[packages]]
+name = "jsonschema-specifications"
+version = "2025.9.1"
+marker = "\"dev\" in dependency_groups or \"test\" in dependency_groups or \"type\" in dependency_groups"
+requires-python = ">=3.9"
+dependencies = [
+    { name = "referencing" },
+]
+index = "https://pypi.org/simple/"
+
+[packages.sdist]
+name = "jsonschema_specifications-2025.9.1.tar.gz"
+upload-time = 2025-09-08 01:34:59.186960+00:00
+url = "https://files.pythonhosted.org/packages/19/74/a633ee74eb36c44aa6d1095e7cc5569bebf04342ee146178e2d36600708b/jsonschema_specifications-2025.9.1.tar.gz"
+size = 32855
+
+[packages.sdist.hashes]
+sha256 = "b540987f239e745613c7a9176f3edb72b832a4ac465cf02712288397832b5e8d"
+
+[[packages.wheels]]
+name = "jsonschema_specifications-2025.9.1-py3-none-any.whl"
+upload-time = 2025-09-08 01:34:57.871954+00:00
+url = "https://files.pythonhosted.org/packages/41/45/1a4ed80516f02155c51f51e8cedb3c1902296743db0bbc66608a0db2814f/jsonschema_specifications-2025.9.1-py3-none-any.whl"
+size = 18437
+
+[packages.wheels.hashes]
+sha256 = "98802fee3a11ee76ecaca44429fda8a41bff98b00a0f2838151b113f210cc6fe"
 
 [[packages]]
 name = "keyring"
@@ -1928,6 +1987,35 @@ size = 14239
 sha256 = "d0dae1f74bb273b534770cb4cccb6bb78735540afdb03c2146f4e19dcd412560"
 
 [[packages]]
+name = "referencing"
+version = "0.37.0"
+marker = "\"dev\" in dependency_groups or \"test\" in dependency_groups or \"type\" in dependency_groups"
+requires-python = ">=3.10"
+dependencies = [
+    { name = "attrs" },
+    { name = "rpds-py" },
+]
+index = "https://pypi.org/simple/"
+
+[packages.sdist]
+name = "referencing-0.37.0.tar.gz"
+upload-time = 2025-10-13 15:30:48.871335+00:00
+url = "https://files.pythonhosted.org/packages/22/f5/df4e9027acead3ecc63e50fe1e36aca1523e1719559c499951bb4b53188f/referencing-0.37.0.tar.gz"
+size = 78036
+
+[packages.sdist.hashes]
+sha256 = "44aefc3142c5b842538163acb373e24cce6632bd54bdb01b21ad5863489f50d8"
+
+[[packages.wheels]]
+name = "referencing-0.37.0-py3-none-any.whl"
+upload-time = 2025-10-13 15:30:47.625937+00:00
+url = "https://files.pythonhosted.org/packages/2c/58/ca301544e1fa93ed4f80d724bf5b194f6e4b945841c5bfd555878eea9fcb/referencing-0.37.0-py3-none-any.whl"
+size = 26766
+
+[packages.wheels.hashes]
+sha256 = "381329a9f99628c9069361716891d34ad94af76e461dcb0335825aecc7692231"
+
+[[packages]]
 name = "release-creator"
 version = "4.4.0"
 marker = "\"docs\" in dependency_groups or \"release-notes\" in dependency_groups or \"release-prepare\" in dependency_groups"
@@ -2097,6 +2185,31 @@ size = 7676
 
 [packages.wheels.hashes]
 sha256 = "647ba99caddc2cc1e55a51e4360689115551bf4476d90e8162cf8c345fe233c7"
+
+[[packages]]
+name = "rpds-py"
+version = "2026.9.1"
+marker = "\"dev\" in dependency_groups or \"test\" in dependency_groups or \"type\" in dependency_groups"
+requires-python = ">=3.11"
+index = "https://pypi.org/simple/"
+
+[packages.sdist]
+name = "rpds_py-2026.9.1.tar.gz"
+upload-time = 2026-10-04 16:32:36.469775+00:00
+url = "https://files.pythonhosted.org/packages/42/68/3bd46b8a5e01d3c2ebdf9c5e9497912e3fe0cde02bac21a7130ca866e403/rpds_py-2026.9.1.tar.gz"
+size = 63948
+
+[packages.sdist.hashes]
+sha256 = "4793ef7f78268b124b73fa933440f01d258bbae01de9fa53e9080c9ab0425a12"
+
+[[packages.wheels]]
+name = "rpds_py-2026.9.1-cp315-cp315-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+upload-time = 2026-10-04 16:30:58.295504+00:00
+url = "https://files.pythonhosted.org/packages/57/ca/e2e9a0a46a74ed51a0498ba1fe10f4ea6b2d9a155f372a2f91e51f18cf10/rpds_py-2026.9.1-cp315-cp315-manylinux_2_17_x86_64.manylinux2014_x86_64.whl"
+size = 372022
+
+[packages.wheels.hashes]
+sha256 = "2c16ab111bc27c646ba8aa005d0527754edc538ebb636f0b1bf8e244b48d1945"
 
 [[packages]]
 name = "secretstorage"
@@ -2827,6 +2940,34 @@ size = 92174
 sha256 = "62851b429db623e36853a4a189ce15a846e0636fe090c135d6dc5dd4f9108ef5"
 
 [[packages]]
+name = "types-jsonschema"
+version = "4.26.0.20261006"
+marker = "\"dev\" in dependency_groups or \"type\" in dependency_groups"
+requires-python = ">=3.10"
+dependencies = [
+    { name = "referencing" },
+]
+index = "https://pypi.org/simple/"
+
+[packages.sdist]
+name = "types_jsonschema-4.26.0.20261006.tar.gz"
+upload-time = 2026-10-06 08:16:07.318247+00:00
+url = "https://files.pythonhosted.org/packages/29/d2/1f742605f5a6d39f993134885b8de41c98af606871d3ebddaf3e776bd1eb/types_jsonschema-4.26.0.20261006.tar.gz"
+size = 16843
+
+[packages.sdist.hashes]
+sha256 = "3eb7db61b6819d40addfdaac7173e749071a7d4a9a4394f0c844598ec84b2500"
+
+[[packages.wheels]]
+name = "types_jsonschema-4.26.0.20261006-py3-none-any.whl"
+upload-time = 2026-10-06 08:16:06.355041+00:00
+url = "https://files.pythonhosted.org/packages/8b/a0/4f2e3c0dc3d5cad958006f2e0307065cc8fe4fbf0393ff0b69d55ee9bbe5/types_jsonschema-4.26.0.20261006-py3-none-any.whl"
+size = 16113
+
+[packages.wheels.hashes]
+sha256 = "29301f4e65e3928540cdf5e23ad716e38bb0c0b416a48dada213edd3d70206ec"
+
+[[packages]]
 name = "typing-extensions"
 version = "4.16.0"
 marker = "\"dev\" in dependency_groups or \"docs\" in dependency_groups or \"pkg-meta\" in dependency_groups or \"type\" in dependency_groups"
@@ -3029,7 +3170,6 @@ command-line = [
     "--all-groups",
     "--all-extras",
     "--no-cache",
-    "--upgrade",
 ]
 input-path = "pyproject.toml"
 mode = "universal"
