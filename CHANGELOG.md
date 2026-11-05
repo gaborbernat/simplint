@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.5.1 (2026-11-05)
+
+<a name="release-0-5-1"></a>
+
+<a name="release-0-5-1-fixed"></a>
+
+### Fixed
+
+- `dataclass-frozen` (SMP701) and `dataclass-slots` (SMP702) treat whatever a method names its first parameter as the
+  instance, not only `self`, so attributes set through `def m(this)` count
+  ([#50](https://github.com/gaborbernat/simplint/pull/50)) by [@gaborbernat](https://github.com/gaborbernat).
+- `mock-without-spec` (SMP806) flags `PropertyMock` too, matching the mock classes the project index knows
+  ([#50](https://github.com/gaborbernat/simplint/pull/50)) by [@gaborbernat](https://github.com/gaborbernat).
+- `up-asyncio-iscoroutinefunction` (SMP516) adds its `inspect` import in the standard-library section, where isort puts
+  it, as `up-chdir-restore` (SMP513) and `missing-final` (SMP601) do
+  ([#50](https://github.com/gaborbernat/simplint/pull/50)) by [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-5-1-security"></a>
+
+### Security
+
+- `simplint clean` no longer follows a `.ruff_cache` that is a symlink, which could delete a `simplint` directory
+  outside the project ([#50](https://github.com/gaborbernat/simplint/pull/50)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-5-1-performance"></a>
+
+### Performance
+
+- Repeated runs without `--fix` reuse the cached reports of files that did not change, rather than only skipping files
+  that had none, and the project index resolves each imported module once per directory
+  ([#50](https://github.com/gaborbernat/simplint/pull/50)) by [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.5.0 (2026-11-05)
 
 <a name="release-0-5-0"></a>
