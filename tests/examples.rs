@@ -4,10 +4,12 @@ mod examples;
 
 use std::path::Path;
 
+use ruff_python_ast::{PySourceType, PythonVersion};
+use ruff_python_parser::{ParseOptions, parse_unchecked};
 use serde_json::Value;
 
 use common::{project, read, simplint};
-use examples::{Block, Example, Role, parse};
+use examples::{Block, Example, Fence, Role, parse};
 
 // Each rule's examples are checked in one run, so a wrong example is reported along with every other one.
 #[test]
@@ -22,7 +24,7 @@ fn rule_examples_hold() {
         match parse(text(&rule["explanation"])) {
             Ok(examples) => {
                 for (index, example) in examples.iter().enumerate() {
-                    if let Err(reason) = check_example(code, example) {
+                    if let Err(reason) = check_target(example).and_then(|()| check_example(code, example)) {
                         failures.push(format!("{code} example {}: {reason}", index + 1));
                     }
                 }
@@ -31,6 +33,37 @@ fn rule_examples_hold() {
         }
     }
     assert!(failures.is_empty(), "examples that do not hold:\n{}", failures.join("\n"));
+}
+
+// Every block parses without syntax the example's target version lacks, so a reader on that version can run it.
+fn check_target(example: &Example) -> Result<(), String> {
+    let version = target_version(example.config.as_ref())?;
+    let options = ParseOptions::from(PySourceType::Python).with_target_version(version);
+    for block in &example.blocks {
+        let parsed = parse_unchecked(&block.fence.source, options.clone());
+        if let Some(error) = parsed.unsupported_syntax_errors().first() {
+            return Err(format!("{} does not parse for {version}: {error}", block.file));
+        }
+    }
+    Ok(())
+}
+
+// The version an example's config targets: `[tool.ruff] target-version`, else the lower bound of
+// `[project] requires-python`, else Ruff's default.
+fn target_version(config: Option<&Fence>) -> Result<PythonVersion, String> {
+    let Some(config) = config else { return Ok(PythonVersion::PY311) };
+    let table: toml::Table = toml::from_str(&config.source).map_err(|error| format!("config is not TOML: {error}"))?;
+    let target = table.get("tool").and_then(|tool| tool.get("ruff")).and_then(|ruff| ruff.get("target-version"));
+    if let Some(target) = target {
+        let target = target.as_str().ok_or_else(|| format!("target-version {target} is not a string"))?;
+        let minor = target.strip_prefix("py3").ok_or_else(|| format!("target-version {target} is not `py3X`"))?;
+        return format!("3.{minor}").parse().map_err(|error| format!("target-version {target}: {error}"));
+    }
+    let requires = table.get("project").and_then(|project| project.get("requires-python"));
+    let Some(requires) = requires.and_then(toml::Value::as_str) else { return Ok(PythonVersion::PY311) };
+    let lower = requires.strip_prefix(">=").ok_or_else(|| format!("requires-python {requires} has no `>=` bound"))?;
+    let lower = lower.split(',').next().unwrap_or_default();
+    lower.parse().map_err(|error| format!("requires-python {requires}: {error}"))
 }
 
 // Checks the reports, the clean files and the fix of one example, each in a project of its own.

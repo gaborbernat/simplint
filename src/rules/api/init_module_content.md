@@ -213,6 +213,27 @@ it belongs.
     from __future__ import annotations
     ```
 
+  - `__lazy_modules__`, the modules Python 3.15 loads lazily when the package's imports run
+
+    ```toml config
+    [build-system]
+    requires = ["setuptools"]
+    build-backend = "setuptools.build_meta"
+
+    [project]
+    name = "demo"
+    ```
+
+    ```python ok file=demo/__init__.py
+    """HTTP client."""
+
+    __lazy_modules__ = ["demo._core"]
+
+    from ._core import run
+
+    __all__ = ["run"]
+    ```
+
 ### Public packages
 
 A package is **public** when it belongs to one of the library's API packages and no part of its path starts with `_`;

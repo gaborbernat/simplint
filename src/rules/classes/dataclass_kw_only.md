@@ -413,6 +413,35 @@ Since the decorator fix counts on the call reports, no fix is offered while any 
         version: str
     ```
 
+A call in an f-string `=` debug field keeps the printed text: the call's source text stays, and its value follows in a
+plain field, so the output is the same once the call passes its fields by keyword.
+
+```python report
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class Release:
+    name: str
+
+
+def show() -> str:
+    return f"{Release('simplint')=}"
+```
+
+```python fixed
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Release:
+    name: str
+
+
+def show() -> str:
+    return f"Release('simplint')={Release(name='simplint')!r}"
+```
+
 ### Related rules
 
 [dataclass-frozen](SMP701.html) asks for `frozen=True` and [dataclass-slots](SMP702.html) for `slots=True` on the same

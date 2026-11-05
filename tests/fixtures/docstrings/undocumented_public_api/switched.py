@@ -57,3 +57,17 @@ try:
     """Seconds to wait, as given."""
 except IndexError:
     TIMEOUT = 1.0
+
+
+match sys.platform:
+    case "win32":
+
+        def open_match() -> int: ...
+
+        class Platform:
+            def name(self) -> str: ...
+    case _:
+
+        def _private_match() -> int:
+            """Restates the signature."""
+            return 1

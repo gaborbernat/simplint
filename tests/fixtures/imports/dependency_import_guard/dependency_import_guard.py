@@ -64,3 +64,53 @@ except ImportError: import tomli as tomllib
 try: import json; import tomllib  # both required
 except ImportError:
     json = None
+
+try:
+    import asyncio.taskgroups
+except ImportError:
+    asyncio = None
+
+try:
+    import _zstd
+except ImportError:
+    _zstd = None
+
+try:
+    import _curses
+except ImportError:
+    _curses = None
+
+try:
+    import os.path
+except ImportError:
+    os = None
+
+try:
+    import string.templatelib
+except ImportError:
+    pass
+
+try:
+    import compression.zstd
+except ImportError:
+    pass
+
+try:
+    import os.nonexistent
+except ImportError:
+    pass
+
+try: import json; import tomllib
+except ImportError:
+    json = None
+print(json)
+
+try:
+    import zoneinfo as zones
+except ImportError:
+    pass
+
+try:
+    import requests
+except builtins.ModuleNotFoundError:
+    requests = None

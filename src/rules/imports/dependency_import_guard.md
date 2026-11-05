@@ -112,10 +112,12 @@ them alone or in a tuple, also when spelled `builtins.ImportError` or `builtins.
 
 A module is required when its top-level package is one of these:
 
-- **Standard library modules**: in the standard library of every Python version from the target onward, set by Ruff's
+- **Standard library modules**: top-level modules and submodules of standard library packages, in the standard library
+  of every Python version from the target onward, set by Ruff's
   [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) or
   [`requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python). Every
-  supported interpreter ships them, so a module removed later, such as `distutils` in 3.12, does not count.
+  supported interpreter ships them, so a module removed later, such as `distutils` in 3.12, does not count. A submodule
+  counts from the version that adds it, so `asyncio.taskgroups` counts from 3.11 and `string.templatelib` from 3.14.
 
   ```toml config
   [project]
@@ -128,6 +130,19 @@ A module is required when its top-level package is one of these:
       import tomllib
   except ImportError:
       tomllib = None
+  ```
+
+  ```toml config
+  [project]
+  name = "demo"
+  requires-python = ">=3.11"
+  ```
+
+  ```python report
+  try:
+      import asyncio.taskgroups
+  except ImportError:
+      asyncio = None
   ```
 
 - **Required dependencies**: listed in
@@ -165,8 +180,8 @@ A module is required when its top-level package is one of these:
       fcntl = None
   ```
 
-- **Standard library modules that minimal and alternative builds may leave out**, such as `ctypes`, `ssl`, `sqlite3` or
-  `tkinter`: the import can fail on such a build.
+- **Standard library modules that minimal and alternative builds may leave out**, such as `ctypes`, `ssl`, `sqlite3`,
+  `tkinter` or `_zstd`: the import can fail on such a build.
 
   ```toml config
   [project]
@@ -179,6 +194,23 @@ A module is required when its top-level package is one of these:
       import ssl
   except ImportError:
       ssl = None
+  ```
+
+- **Submodules that a version from the target onward lacks**, such as `asyncio.taskgroups` on 3.10, or that a version
+  removes, such as `distutils.core` from 3.12: the import fails on that version. A submodule the rule does not know is
+  not counted either.
+
+  ```toml config
+  [project]
+  name = "demo"
+  requires-python = ">=3.10"
+  ```
+
+  ```python ok
+  try:
+      import asyncio.taskgroups
+  except ImportError:
+      asyncio = None
   ```
 
 - **Imports of the package the file belongs to**: guarding an optional compiled extension of your own package is not
@@ -251,7 +283,7 @@ flowchart TD
     from -->|yes| optional["Not required"]
     from -->|no| own{"From the file's<br/>own package?"}
     own -->|yes| optional
-    own -->|no| stdlib{"Stdlib on every target<br/>version and platform?"}
+    own -->|no| stdlib{"Standard library on every target<br/>version and platform?"}
     stdlib -->|yes| required["Required"]
     stdlib -->|no| deps{"In project.dependencies<br/>without a marker?"}
     deps -->|yes| required
@@ -305,6 +337,26 @@ flowchart TD
 The fix replaces the `try` statement with its dedented body and drops every `except` handler. **Unsafe fix:** always,
 because the fallback code is removed and a failing import now raises.
 
+An import the unwrapped body leaves unused keeps a suppression, `# noqa: F401  # fails when the module is missing`, so
+Ruff's unused-import fix does not delete it. The import is there to fail when the module is missing.
+
+```toml config
+[project]
+name = "demo"
+requires-python = ">=3.11"
+```
+
+```python report
+try:
+    import tomllib
+except ImportError:
+    pass
+```
+
+```python fixed
+import tomllib  # noqa: F401  # fails when the module is missing
+```
+
 ```toml config
 [project]
 name = "demo"
@@ -322,7 +374,7 @@ except ImportError:
 ```
 
 ```python fixed
-import requests
+import requests  # noqa: F401  # fails when the module is missing
 ```
 
 No fix is offered when the statement:
@@ -357,4 +409,20 @@ No fix is offered when the statement:
       import requests
   except ImportError:
       requests = None
+  ```
+
+- holds an unused import on a line shared with another statement, as the suppression would then cover one import only
+
+  ```toml config
+  [project]
+  name = "demo"
+  requires-python = ">=3.11"
+  ```
+
+  ```python report
+  try:
+      import json
+      import tomllib
+  except ImportError:
+      pass
   ```

@@ -86,6 +86,34 @@ commands = [
   ],
 ]
 
+[env.examples]
+runner = "uv-venv-runner"
+description = "compile the rule-page examples under CPython 3.10 to 3.15"
+dependency_groups = []
+deps = [ "uv>=0.13.6" ]
+commands = [
+  [
+    "python",
+    "-m",
+    "tasks.compile_examples",
+    "--simplint",
+    "{env_bin_dir}{/}simplint",
+    "--python",
+    "3.10",
+    "--python",
+    "3.11",
+    "--python",
+    "3.12",
+    "--python",
+    "3.13",
+    "--python",
+    "3.14",
+    "--python",
+    "3.15",
+    { replace = "posargs", extend = true },
+  ],
+]
+
 [env.fix]
 description = "run the repository hooks"
 skip_install = true
@@ -150,6 +178,7 @@ commands = [
 description = "run the maintenance task tests"
 skip_install = true
 dependency_groups = [ "test", "docs" ]
+deps = [ "uv>=0.13.6" ]
 set_env.PYTHONPATH = "{tox_root}{/}tasks"
 commands = [
   [

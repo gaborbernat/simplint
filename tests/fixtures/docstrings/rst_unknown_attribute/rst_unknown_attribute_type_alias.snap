@@ -1,0 +1,15 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+6:6 SMP921 `:cvar Ghost:` documents `Ghost`, which `Shapes` does not have [unsafe fix: Remove `:cvar Ghost:`]
+--- fixed (1 applied, 0 remaining) ---
+class Shapes:
+    """Shapes.
+
+    :cvar Point: A point.
+    :cvar Size: A size.
+    """
+
+    type Point = tuple[int, int]
+    Size = int

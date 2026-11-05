@@ -45,3 +45,10 @@ class Encoder(JSONEncoder):
     @override
     def default(self, o: object) -> object:
         return o
+
+
+def mapping_rest(data: dict[str, int]) -> dict[str, int]:
+    match data:
+        case {"key": _, **r}:
+            return r
+    return {}

@@ -136,7 +136,52 @@ the import from `required-imports` once the project targets Python 3.14, or turn
       pass
   ```
 
+- **Annotations that name the class itself or a later module-level name**: the class body binds neither, so the rule
+  still reports the module.
+
+  ```toml config
+  [project]
+  name = "demo"
+  requires-python = ">=3.14"
+  ```
+
+  ```python report
+  from __future__ import annotations
+
+
+  class Node:
+      def add(self, other: Node) -> Tree:
+          return self
+
+
+  class Tree:
+      pass
+  ```
+
 ### Exceptions
+
+- **Classes whose annotations read a name their body binds**: lazily evaluated annotations see the class namespace, so a
+  method named `list` makes `list[str]` mean the method. The import keeps annotations resolving in the module globals,
+  so the rule reports nothing in the module while any class does this.
+
+  ```toml config
+  [project]
+  name = "demo"
+  requires-python = ">=3.14"
+  ```
+
+  ```python ok
+  from __future__ import annotations
+
+
+  class Repo:
+      def list(self) -> list[str]:
+          return []
+
+
+  class Point:
+      float: float = 0.0
+  ```
 
 - **Files that target a version before Python 3.14**: there the import still defers evaluation, which annotations do not
   do by default.

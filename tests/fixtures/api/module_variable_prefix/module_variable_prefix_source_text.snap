@@ -1,0 +1,10 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:1 SMP404 `limit` is not in `__all__`; name it `_limit`
+2:1 SMP404 `template` is not in `__all__`; name it `_template` [unsafe fix: Rename `template` to `_template`]
+--- fixed (1 applied, 1 remaining) ---
+limit = 3
+_template = t"{limit}"
+print(_template.interpolations[0].expression, f"{limit=}")

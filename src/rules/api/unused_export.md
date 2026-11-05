@@ -288,6 +288,27 @@ __all__ = ["parse"]
       return 1
   ```
 
+- **Types in the signature of another exported name**: a class or alias that an exported function's annotations, or an
+  exported class's bases and fields, refer to is public API, so `__all__` may list it without any file importing it.
+  Types reached this way follow the same rule.
+
+  ```python ok file=parser.py
+  Tokens = list[str]
+
+
+  def parse(text: str) -> Tokens:
+      return text.split()
+
+
+  __all__ = ["Tokens", "parse"]
+  ```
+
+  ```python context file=cli.py
+  from parser import parse
+
+  parse("")
+  ```
+
 - **Test modules**, as defined in [test-class](SMP801.html): these are not checked.
 
   ```python ok file=test_config.py

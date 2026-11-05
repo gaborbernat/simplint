@@ -1,5 +1,5 @@
 import ierr_loop_a
-from ierr_errors import _IerrBase, _IerrChecked, _IerrMatched, _IerrStarred
+from ierr_errors import _IerrBase, _IerrChecked, _IerrGrouped, _IerrMatched, _IerrStarred
 from ierr_reexport import _IerrRelayed
 
 
@@ -35,3 +35,7 @@ def run() -> None:
         raise _IerrStarred()
     except* _IerrStarred:
         pass
+    try:
+        raise ExceptionGroup("errors", [_IerrGrouped()])
+    except ExceptionGroup as group:
+        group.split(_IerrGrouped)

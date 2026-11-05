@@ -23,7 +23,7 @@ pub fn missing_from_all(checker: &Checker) {
     let shadows_module = |name: &str| {
         checker.project().is_package_star_imported() && checker.path.file_stem().is_some_and(|stem| stem == name)
     };
-    let mut missing: Vec<(&str, TextRange)> = checker
+    let mut missing: Vec<(&str, TextRange, bool)> = checker
         .semantic()
         .all_bindings()
         .filter(|(name, bindings)| {
@@ -33,23 +33,25 @@ pub fn missing_from_all(checker: &Checker) {
                 // relying on an export; an import the module never uses is there for its importers, a re-export.
                 && (!bindings.iter().any(|binding| binding.kind == BindingKind::Import)
                     || checker.semantic().references_to(name).is_empty())
-                && checker.project().is_imported(name)
+                && (checker.project().is_imported(name) || checker.project().is_api_reached(name))
                 && !shadows_module(name)
         })
-        .map(|(name, bindings)| (name, bindings[0].range))
+        .map(|(name, bindings)| (name, bindings[0].range, checker.project().is_imported(name)))
         .collect();
     if missing.is_empty() {
         return;
     }
-    missing.sort_by_key(|(_, range)| range.start());
-    let fix = all_insertion(checker, missing.iter().map(|(name, _)| *name));
-    let names: Vec<String> = missing.iter().map(|(name, _)| format!("`{name}`")).collect();
+    missing.sort_by_key(|(_, range, _)| range.start());
+    let fix = all_insertion(checker, missing.iter().map(|(name, _, _)| *name));
+    let names: Vec<String> = missing.iter().map(|(name, _, _)| format!("`{name}`")).collect();
     let title = format!("Add {} to `__all__`", names.join(", "));
-    for (name, range) in missing {
+    for (name, range, imported) in missing {
+        let reason =
+            if imported { "is imported by other modules" } else { "appears in the signature of a name in `__all__`" };
         checker.report_fix(
             Rule::MissingFromAll,
             range,
-            format!("`{name}` is imported by other modules; list it in `__all__`"),
+            format!("`{name}` {reason}; list it in `__all__`"),
             fix.clone(),
             title.clone(),
         );

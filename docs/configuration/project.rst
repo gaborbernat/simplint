@@ -26,7 +26,7 @@ Python version
 `per-file-target-version <https://docs.astral.sh/ruff/settings/#per-file-target-version>`__ set the Python version the
 rules assume for each file, and ``--target-version`` overrides them. Without them, the version comes from
 `requires-python <https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python>`__, and then
-from Ruff's default, Python 3.14.
+from simplint's default, Python 3.11.
 
 Every rule and fix that depends on the language version follows it:
 
@@ -38,14 +38,20 @@ Every rule and fix that depends on the language version follows it:
       - What changes
     * - 3.8
       - :doc:`walrus-candidate </_generated/rules/SMP502>` offers ``:=`` and :doc:`missing-final </_generated/rules/SMP601>` offers ``Final`` only from here.
+    * - 3.9
+      - :doc:`single-use-variable </_generated/rules/SMP504>` inlines a value into a decorator that is not a dotted name only from here.
     * - 3.10
       - :doc:`dataclass-frozen </_generated/rules/SMP701>`, :doc:`dataclass-slots </_generated/rules/SMP702>` and :doc:`dataclass-kw-only </_generated/rules/SMP703>` need it.
+    * - 3.11
+      - ``except*`` clauses exist only from here, and ``ExceptionGroup.split`` or ``subgroup`` in a handler count as catches for :doc:`indistinct-error-class </_generated/rules/SMP704>`.
     * - 3.12
-      - The :doc:`string-concatenation </_generated/rules/SMP503>` fix reuses the string's quotes inside an f-string only from here.
+      - The :doc:`string-concatenation </_generated/rules/SMP503>` fix reuses the string's quotes inside an f-string only from here, and :doc:`single-use-variable </_generated/rules/SMP504>` inlines a value that holds the f-string's quote into a replacement field as written only from here. Before it, the value's strings take the other quote, where they can. Type statements and type parameters are 3.12 syntax: :doc:`module-variable-case </_generated/rules/SMP102>` and :doc:`module-variable-prefix </_generated/rules/SMP404>` skip ``type`` aliases, :doc:`undocumented-public-api </_generated/rules/SMP903>` and :doc:`rst-unknown-attribute </_generated/rules/SMP921>` count them, :doc:`imprecise-annotation </_generated/rules/SMP602>` checks their bounds, defaults and values, :doc:`definition-before-use </_generated/rules/SMP201>` treats them as lazy, and :doc:`test-class </_generated/rules/SMP801>` moves the type parameters a method uses onto its function, and skips a defaulted one until 3.13.
     * - 3.14
-      - :doc:`definition-before-use </_generated/rules/SMP201>` and :doc:`future-annotations </_generated/rules/SMP301>` treat annotations as lazy from here.
+      - :doc:`definition-before-use </_generated/rules/SMP201>` and :doc:`future-annotations </_generated/rules/SMP301>` treat annotations as lazy from here, and future-annotations reports no import when a class body binds a name its annotations read. :doc:`single-user-constant </_generated/rules/SMP202>` and the renames leave names read in t-string interpolations alone.
+    * - 3.15
+      - :doc:`module-attribute-import </_generated/rules/SMP304>` keeps the ``lazy`` keyword when it rewrites a lazy import, and :doc:`init-module-content </_generated/rules/SMP407>` accepts ``__lazy_modules__``.
     * - any
-      - :doc:`dependency-import-guard </_generated/rules/SMP303>` counts a module as standard library only when every version from the target onward ships it.
+      - :doc:`dependency-import-guard </_generated/rules/SMP303>` counts a module as standard library only when every version from the target onward ships it, so a submodule such as ``asyncio.taskgroups`` counts from the version that adds it. :doc:`single-use-variable </_generated/rules/SMP504>` never inlines a conditional read, an annotation, a ``type`` value, or a ``case`` or ``except`` clause. A fix that adds syntax the target version rejects is reverted and reported as a bug.
 
 Files to check
 --------------
@@ -143,7 +149,8 @@ these sources that names any:
 4. When none is found, every module outside ``docs`` and the tests counts.
 
 ``api-modules`` names modules, besides the top-level packages, that users import from directly. Their ``__all__`` is
-the interface you declare, so :doc:`unused-export </_generated/rules/SMP402>` keeps the names no module of the project imports.
+the interface you declare, so :doc:`unused-export </_generated/rules/SMP402>` keeps the names no module of the project
+imports and no exported signature reaches.
 
 A module of an API package is **public unless a part of its path starts with** ``_``, as `PEP 8
 <https://peps.python.org/pep-0008/#public-and-internal-interfaces>`__ describes. So a layout that keeps its code in

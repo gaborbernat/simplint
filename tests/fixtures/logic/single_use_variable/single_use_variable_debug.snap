@@ -1,0 +1,41 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:5 SMP504 `label` is used once, right below; inline its value [fix: Inline `label`]
+7:5 SMP504 `width` is used once, right below; inline its value [fix: Inline `width`]
+12:5 SMP504 `label` is used once, right below; inline its value [fix: Inline `label`]
+17:5 SMP504 `label` is used once, right below; inline its value [fix: Inline `label`]
+22:5 SMP504 `label` is used once, right below; inline its value
+27:5 SMP504 `label` is used once, right below; inline its value
+32:5 SMP504 `label` is used once, right below; inline its value
+--- fixed (4 applied, 3 remaining) ---
+def conversion(value: str) -> str:
+    return f"label={value.title()!s}"
+
+
+def spec(count: int) -> str:
+    return f"width={(count * 2):>5}"
+
+
+def spaces(value: str) -> str:
+    return f"label = {value.title()!r}|"
+
+
+def dict_display(value: str, count: int) -> str:
+    return f" {{label: count}}={ {value.title(): count}!r}"
+
+
+def nested(value: str) -> str:
+    label = value.title()
+    return f"{f'{label=}'=}"
+
+
+def template(value: str) -> object:
+    label = value.title()
+    return t"[{label=}]"
+
+
+def escaped(items: list[str]) -> str:
+    label = items[0]
+    return f"{label + '\n'=}"

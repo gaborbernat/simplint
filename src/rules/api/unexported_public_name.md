@@ -179,6 +179,22 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
     __all__ = []
     ```
 
+- **Classes in the signature of an exported name**: a class that an exported function's annotations, or an exported
+  class's bases and fields, refer to is public API, so renaming it would leave the exported signature naming a private
+  class. Classes reached this way follow the same rule.
+
+  ```python ok
+  class Record:
+      pass
+
+
+  def load() -> Record:
+      return Record()
+
+
+  __all__ = ["load"]
+  ```
+
 - **[pytest hooks](https://docs.pytest.org/en/stable/reference/reference.html#hooks) (`pytest_*`),
   [`load_tests`](https://docs.python.org/3/library/unittest.html#load-tests-protocol), and
   [`setup_module` and `teardown_module`](https://docs.pytest.org/en/stable/how-to/xunit_setup.html#module-level-setup-teardown)**:
@@ -261,7 +277,53 @@ def _helper() -> int:
     return 1
 ```
 
+A name read in an f-string field with a [`=`](https://docs.python.org/3/reference/lexical_analysis.html#f-strings) debug
+specifier keeps its printed text: the field prints the old name, then the value in a plain field.
+
+```python report
+__all__ = ["exported"]
+
+
+def exported() -> str:
+    return f"{helper()=}"
+
+
+def helper() -> int:
+    return 1
+```
+
+```python fixed
+__all__ = ["exported"]
+
+
+def exported() -> str:
+    return f"helper()={_helper()!r}"
+
+
+def _helper() -> int:
+    return 1
+```
+
 No fix is offered when:
+
+- the old name is read in a t-string, which keeps the source text of its expressions
+
+  ```toml config
+  [project]
+  requires-python = ">=3.14"
+  ```
+
+  ```python report
+  __all__ = ["exported"]
+
+
+  def exported() -> str:
+      return t"{helper}".interpolations[0].expression
+
+
+  def helper() -> int:
+      return 1
+  ```
 
 - the new name is already used as a name in the file
 

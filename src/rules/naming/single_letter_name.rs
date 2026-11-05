@@ -61,7 +61,8 @@ pub fn except_handler<'a>(walker: &mut Walker<'_, 'a>, handler: &'a ast::ExceptH
 
 pub fn pattern<'a>(walker: &mut Walker<'_, 'a>, pattern: &'a Pattern) {
     if let Pattern::MatchAs(ast::PatternMatchAs { name: Some(name), .. })
-    | Pattern::MatchStar(ast::PatternMatchStar { name: Some(name), .. }) = pattern
+    | Pattern::MatchStar(ast::PatternMatchStar { name: Some(name), .. })
+    | Pattern::MatchMapping(ast::PatternMatchMapping { rest: Some(name), .. }) = pattern
     {
         check(walker, current(walker), name.as_str(), name.range);
     }

@@ -282,3 +282,58 @@ from . import findings
 writer = findings.DbWriter()
 findings.DEBUG = True
 ```
+
+A use that a local binding of the same name shadows keeps the report without a fix, since the bare name would resolve to
+that binding. Here the type parameter `Item` shadows the module's `Item`.
+
+```toml config
+[project]
+name = "demo"
+requires-python = ">=3.12"
+```
+
+```python context file=pkg/__init__.py
+# A package.
+```
+
+```python context file=pkg/findings.py
+class Item:
+    pass
+```
+
+```python report file=pkg/consumer.py
+from . import findings
+
+
+def make[Item](kind: type[Item]) -> object:
+    return findings.Item()
+```
+
+A `lazy` import stays lazy after the fix, so the module still loads on first use of a name.
+
+```toml config
+[project]
+name = "demo"
+requires-python = ">=3.15"
+```
+
+```python context file=pkg/__init__.py
+# A package.
+```
+
+```python context file=pkg/findings.py
+class DbWriter:
+    pass
+```
+
+```python report file=pkg/consumer.py
+lazy from . import findings
+
+writer = findings.DbWriter()
+```
+
+```python fixed file=pkg/consumer.py
+lazy from .findings import DbWriter
+
+writer = DbWriter()
+```

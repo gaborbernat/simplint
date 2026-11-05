@@ -7,6 +7,7 @@ use crate::common;
 #[test_case("module-variable-case", "module_variable_case_noall.py" ; "module_variable_case_without_all")]
 #[test_case("module-variable-case", "module_variable_case_scopes.py" ; "module_variable_case_shadowed")]
 #[test_case("module-variable-case", "module_variable_case_rename.py" ; "module_variable_case_rename_across_scopes")]
+#[test_case("module-variable-case", "module_variable_case_debug.py" ; "module_variable_case_debug")]
 #[test_case("module-variable-case", "module_variable_case_call.py" ; "module_variable_case_dynamic_all")]
 #[test_case("module-variable-case", "module_variable_case_ann.py" ; "module_variable_case_annotated_all")]
 #[test_case("module-variable-case", "module_variable_case_conflict.py" ; "module_variable_case_conflict")]
@@ -16,11 +17,13 @@ use crate::common;
 #[test_case("module-variable-case", "module_variable_case_gunicorn.py" ; "module_variable_case_gunicorn_named")]
 #[test_case("module-variable-case", "module_variable_case_frameworks.py" ; "module_variable_case_framework_names")]
 #[test_case("module-variable-case", "module_variable_case_lookalikes.py" ; "module_variable_case_framework_lookalikes")]
+#[test_case("module-variable-case", "module_variable_case_source_text.py" ; "module_variable_case_source_text")]
 #[test_case("module-variable-case", "module_variable_case_version.py" ; "module_variable_case_version_file")]
 #[test_case("module-variable-case", "module_variable_case_ply.py" ; "module_variable_case_ply_grammar")]
 #[test_case("module-variable-case", "module_variable_case_ply_table.py" ; "module_variable_case_ply_table")]
 #[test_case("module-variable-case", "module_variable_case_dbapi.py" ; "module_variable_case_db_api_globals")]
 #[test_case("module-variable-case", "module_variable_case_typer.py" ; "module_variable_case_typer_app")]
+#[test_case("module-variable-case", "module_variable_case_type_alias.py" ; "module_variable_case_type_alias")]
 fn rule(rule: &str, fixture: &str) {
     common::assert_rule_snapshot(rule, fixture, "py314");
 }

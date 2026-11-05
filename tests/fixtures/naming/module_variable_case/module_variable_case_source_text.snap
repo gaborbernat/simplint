@@ -1,0 +1,10 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:1 SMP102 Module-scope variable `limit` should be named `LIMIT`
+2:1 SMP102 Module-scope variable `template` should be named `TEMPLATE` [unsafe fix: Rename `template` to `TEMPLATE`]
+--- fixed (1 applied, 1 remaining) ---
+limit = 3
+TEMPLATE = t"{limit}"
+print(TEMPLATE.interpolations[0].expression, f"{limit=}")

@@ -11,7 +11,8 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::{
-    indentation, is_alone_on_lines, is_class_like, lines_with_trailing_blanks, needs_parentheses, single_assignment,
+    indentation, is_alone_on_lines, is_class_like, keep_debug_text, lines_with_trailing_blanks, needs_parentheses,
+    single_assignment, source_text_spans,
 };
 use crate::semantic::{Binding, BindingKind, Evaluation};
 use crate::syntax::{Exports, Visibility, last_segment};
@@ -168,6 +169,11 @@ impl<'a> Visitor<'a> for Mutation<'_> {
 fn move_into_function(checker: &Checker, constant: &Constant) -> Option<Fix> {
     let source = checker.source;
     let function = constant.function;
+    // A value or a renamed local would change the source text a t-string keeps.
+    let source_spans = source_text_spans(checker.body());
+    if constant.references.iter().any(|reference| source_spans.iter().any(|span| span.contains_range(*reference))) {
+        return None;
+    }
     // A parameter or local of the function named `frozenset` would capture the builtin the value calls.
     let mut stores = StoredNameFinder::default();
     stores.visit_body(&function.body);
@@ -195,13 +201,13 @@ fn move_into_function(checker: &Checker, constant: &Constant) -> Option<Fix> {
             && (simple || !context.in_fstring)
             && (!context.format_receiver || !constant.value.is_string_literal_expr())
         {
-            return Some(inline_fix(checker, constant.value, value_text, deletion, *reference));
+            return inline_fix(checker, constant.value, value_text, deletion, *reference);
         }
     }
     local_fix(checker, constant, value_text, deletion)
 }
 
-fn inline_fix(checker: &Checker, value: &Expr, value_text: &str, deletion: Edit, reference: TextRange) -> Fix {
+fn inline_fix(checker: &Checker, value: &Expr, value_text: &str, deletion: Edit, reference: TextRange) -> Option<Fix> {
     // A value the layout spreads over lines goes in on one, so the result does not depend on the layout.
     let (text, parenthesized) = if value_text.contains('\n') {
         (Generator::from(checker.stylist).expr(value), false)
@@ -211,7 +217,10 @@ fn inline_fix(checker: &Checker, value: &Expr, value_text: &str, deletion: Edit,
     // Ruff's code generator writes a tuple without the parentheses its source may have.
     let wrap = !parenthesized && (needs_parentheses(value) || value_text.contains('\n') && value.is_tuple_expr());
     let inlined = if wrap { format!("({text})") } else { text };
-    Fix::unsafe_edits(deletion, [Edit::range_replacement(inlined, reference)])
+    let mut edits =
+        keep_debug_text(checker.source, checker.body(), vec![deletion, Edit::range_replacement(inlined, reference)])?
+            .into_iter();
+    Some(Fix::unsafe_edits(edits.next()?, edits))
 }
 
 fn local_fix(checker: &Checker, constant: &Constant, value_text: &str, deletion: Edit) -> Option<Fix> {
@@ -265,7 +274,9 @@ fn local_fix(checker: &Checker, constant: &Constant, value_text: &str, deletion:
         vec![Edit::insertion(format!("{indent}{declaration}\n"), source.line_start(anchor.start()))]
     };
     let renames = constant.references.iter().map(|range| Edit::range_replacement(local.clone(), *range));
-    Some(Fix::unsafe_edits(deletion, placements.into_iter().chain(renames)))
+    let edits = std::iter::once(deletion).chain(placements).chain(renames).collect();
+    let mut edits = keep_debug_text(source, checker.body(), edits)?.into_iter();
+    Some(Fix::unsafe_edits(edits.next()?, edits))
 }
 // Deleting a statement leaves the blank lines on both sides of it next to each other; drop the shorter run so the code
 // around it keeps the wider separation, and keep everything when the statement directly follows code.

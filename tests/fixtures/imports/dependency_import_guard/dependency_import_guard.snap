@@ -7,13 +7,19 @@ expression: "lint_fixture(rule, fixture, target_version)"
 18:1 SMP303 Import guard around a standard library module every supported Python ships; import it directly
 46:1 SMP303 Import guard around a required dependency; import it directly and let a broken install fail [unsafe fix: Remove the import guard]
 61:1 SMP303 Import guard around a standard library module every supported Python ships; import it directly [unsafe fix: Remove the import guard]
-64:1 SMP303 Import guard around a standard library module every supported Python ships; import it directly [unsafe fix: Remove the import guard]
---- fixed (5 applied, 1 remaining) ---
+64:1 SMP303 Import guard around a standard library module every supported Python ships; import it directly
+68:1 SMP303 Import guard around a standard library module every supported Python ships; import it directly [unsafe fix: Remove the import guard]
+83:1 SMP303 Import guard around a standard library module every supported Python ships; import it directly [unsafe fix: Remove the import guard]
+88:1 SMP303 Import guard around a standard library module every supported Python ships; import it directly [unsafe fix: Remove the import guard]
+103:1 SMP303 Import guard around a standard library module every supported Python ships; import it directly
+108:1 SMP303 Import guard around a standard library module every supported Python ships; import it directly [unsafe fix: Remove the import guard]
+113:1 SMP303 Import guard around a required dependency; import it directly and let a broken install fail [unsafe fix: Remove the import guard]
+--- fixed (9 applied, 3 remaining) ---
 import builtins
 
-import tomllib
+import tomllib  # noqa: F401  # fails when the module is missing
 
-import requests
+import requests  # noqa: F401  # fails when the module is missing
 
 try:
     import optional_extra
@@ -48,7 +54,7 @@ try:
 except ImportError:
     FLAG = False
 
-import requests
+import requests  # noqa: F401  # fails when the module is missing
 
 try:
     from distutils import dist
@@ -60,6 +66,43 @@ try:
 except ImportError:
     ctypes = None
 
-import tomllib
+import tomllib  # noqa: F401  # fails when the module is missing
 
-import json; import tomllib  # both required
+try: import json; import tomllib  # both required
+except ImportError:
+    json = None
+
+import asyncio.taskgroups  # noqa: F401  # fails when the module is missing
+
+try:
+    import _zstd
+except ImportError:
+    _zstd = None
+
+try:
+    import _curses
+except ImportError:
+    _curses = None
+
+import os.path  # noqa: F401  # fails when the module is missing
+
+import string.templatelib  # noqa: F401  # fails when the module is missing
+
+try:
+    import compression.zstd
+except ImportError:
+    pass
+
+try:
+    import os.nonexistent
+except ImportError:
+    pass
+
+try: import json; import tomllib
+except ImportError:
+    json = None
+print(json)
+
+import zoneinfo as zones  # noqa: F401  # fails when the module is missing
+
+import requests  # noqa: F401  # fails when the module is missing

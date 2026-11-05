@@ -173,6 +173,29 @@ Checks the `:returns:` and `:yields:` fields of reStructuredText docstrings, whe
       print(message)
   ```
 
+  A quoted annotation, such as `-> "None"`, counts the same as its unquoted form:
+
+  ```toml config
+  [project]
+  name = "demo"
+
+  [build-system]
+  requires = []
+
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python report
+  def log(message: str) -> "None":
+      """Write the message.
+
+      :param message: The text.
+      :returns: Nothing.
+      """
+      print(message)
+  ```
+
 - **`:returns:` and no `:yields:` on a generator**: the fix renames the field to `:yields:`, keeping its description.
 
   ```toml config

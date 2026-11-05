@@ -17,6 +17,7 @@ use crate::common;
 #[test_case("missing-final", "missing_final_gate.py", "py314" ; "missing_final_version_gate")]
 #[test_case("missing-final", "missing_final_branch.py", "py314" ; "missing_final_version_branch")]
 #[test_case("imprecise-annotation", "imprecise_annotation.py", "py314" ; "imprecise_annotation")]
+#[test_case("imprecise-annotation", "imprecise_annotation_type_params.py", "py314" ; "imprecise_annotation_type_params")]
 #[test_case("callable-ellipsis", "callable_ellipsis.py", "py314" ; "callable_ellipsis")]
 #[test_case("vars-call", "vars_call.py", "py314" ; "vars_call")]
 #[test_case("vars-call", "vars_call_bound.py", "py314" ; "vars_call_shadowed")]

@@ -14,7 +14,13 @@ const ANY_MESSAGE: &str = "`Any` accepts any value and turns off type checking f
 
 pub fn statement(walker: &mut Walker, stmt: &Stmt) {
     match stmt {
+        Stmt::ClassDef(class) => report_type_params(walker, class.type_params.as_deref()),
+        Stmt::TypeAlias(alias) => {
+            report_type_params(walker, alias.type_params.as_deref());
+            report_imprecise(walker, &alias.value, false);
+        }
         Stmt::FunctionDef(function) => {
+            report_type_params(walker, function.type_params.as_deref());
             let is_guard = function.returns.as_deref().is_some_and(|returns| {
                 let Expr::Subscript(ast::ExprSubscript { value, .. }) = returns else {
                     return false;
@@ -32,6 +38,18 @@ pub fn statement(walker: &mut Walker, stmt: &Stmt) {
         }
         Stmt::AnnAssign(ast::StmtAnnAssign { annotation, .. }) => report_imprecise(walker, annotation, false),
         _ => {}
+    }
+}
+
+// Bounds and defaults are not annotations, but they name the type a parameter stands for, so they are checked too.
+fn report_type_params(walker: &Walker, type_params: Option<&ast::TypeParams>) {
+    for type_param in type_params.into_iter().flat_map(|type_params| &type_params.type_params) {
+        if let ast::TypeParam::TypeVar(ast::TypeParamTypeVar { bound: Some(bound), .. }) = type_param {
+            report_imprecise(walker, bound, false);
+        }
+        if let Some(default) = type_param.default() {
+            report_imprecise(walker, default, false);
+        }
     }
 }
 

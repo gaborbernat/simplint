@@ -31,6 +31,7 @@ pub fn unexported_public_name(checker: &Checker) {
             || ply && is_ply_name(name)
             || exported.contains(&name)
             || checker.project().is_referenced(name)
+            || checker.project().is_api_reached(name)
         {
             continue;
         }

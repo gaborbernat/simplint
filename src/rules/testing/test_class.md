@@ -58,6 +58,26 @@ def test_http_client_get() -> None:
     assert get("/") == 200
 ```
 
+A method that uses its class's type parameters gets them on its function, with their bounds, defaults and the other
+parameters they name. A method that names none gets none. Defaults on type parameters need Python 3.13, so below that
+target a method that uses a defaulted parameter gets no fix.
+
+```toml config
+[project]
+requires-python = ">=3.12"
+```
+
+```python report file=tests/test_box.py
+class TestBox[T: int]:
+    def test_default(self, value: T | None = None) -> None:
+        assert value is None
+```
+
+```python fixed file=tests/test_box.py
+def test_box_default[T: int](value: T | None = None) -> None:
+    assert value is None
+```
+
 No fix is offered when:
 
 - the class has bases or decorators, or a docstring, which module-level functions have nowhere to keep;
@@ -66,6 +86,20 @@ No fix is offered when:
   class TestParser(BaseParserTests):
       def test_handles_empty(self) -> None:
           assert parse("") == []
+  ```
+
+- a method's decorators or default values name a type parameter of its class, which is not bound where they are
+  evaluated;
+
+  ```toml config
+  [project]
+  requires-python = ">=3.12"
+  ```
+
+  ```python report file=tests/test_generic.py
+  class TestBox[T]:
+      def test_holds_value(self, kind: type = list[T]) -> None:
+          assert Box[int]().get(1) == 1
   ```
 
 - another class extends it, or the file refers to it by name, so it must stay a class;

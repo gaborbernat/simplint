@@ -487,8 +487,8 @@ fn fix_lints_again_the_dataclasses_whose_class_writes_changed() {
         ("models.py", "from dataclasses import dataclass\n\n\n@dataclass(kw_only=True)\nclass Lit:\n    value: int\n"),
         (
             "other.py",
-            "class Lit:\n    def __init__(self) -> None:\n        self.extra = 1\n\n\ndef run() -> Lit:\n    return \
-             Lit()\n\n\n__all__ = [\n    \"run\",\n]\n",
+            "class Lit:\n    def __init__(self) -> None:\n        self.extra = 1\n\n\ndef run() -> int:\n    return \
+             Lit().extra\n\n\n__all__ = [\n    \"run\",\n]\n",
         ),
     ]);
     let select = ["--select", "SMP403,SMP701,SMP702", "--target-version", "py314"];

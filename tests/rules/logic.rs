@@ -14,10 +14,14 @@ use crate::common::{self, check, read};
 #[test_case("single-caller-helper", "single_caller_helper_dynamic.py", "py314" ; "single_caller_helper_computed_all")]
 #[test_case("single-use-variable", "single_use_variable.py", "py314" ; "single_use_variable")]
 #[test_case("single-use-variable", "single_use_variable_width.py", "py314" ; "single_use_variable_width")]
+#[test_case("single-use-variable", "single_use_variable_debug.py", "py314" ; "single_use_variable_debug")]
+#[test_case("single-use-variable", "single_use_variable_requote.py", "py311" ; "single_use_variable_requote")]
 #[test_case("string-concatenation", "string_concatenation.py", "py314" ; "string_concatenation")]
 #[test_case("string-concatenation", "string_concatenation_old.py", "py310" ; "string_concatenation_py310")]
 #[test_case("string-concatenation", "string_concatenation_types.py", "py314" ; "string_concatenation_types")]
 #[test_case("string-concatenation", "string_concatenation_kinds.py", "py314" ; "string_concatenation_kinds")]
+#[test_case("string-concatenation", "string_concatenation_genexp.py", "py314" ; "string_concatenation_genexp")]
+#[test_case("string-concatenation", "string_concatenation_type_params.py", "py314" ; "string_concatenation_type_params")]
 #[test_case("unused-default", "unused_default.py", "py314" ; "unused_default")]
 #[test_case("error-message-matching", "error_message_matching.py", "py314" ; "error_message_matching")]
 fn rule(rule: &str, fixture: &str, target_version: &str) {
@@ -116,6 +120,66 @@ fn walrus_candidate_lets_ruff_collapse_the_ifs_its_lines_now_fit() {
 fn collapsible_if_project(source: &str) -> TempDir {
     let ruff = "[tool.ruff]\nline-length = 40\n\n[tool.ruff.lint]\nselect = [\"SIM102\"]\n";
     common::project(&[("pyproject.toml", ruff), ("module.py", source)])
+}
+
+// Before Python 3.9 a decorator is a dotted name, optionally called, so a value that is not one stays where it is.
+#[test_case("py38", "registry[0]", "@decorate", None ; "subscript_before_python39")]
+#[test_case("py38", "registry.get", "@decorate", Some("@registry.get") ; "dotted_before_python39")]
+#[test_case("py38", "registry[0]", "@decorate(1)", None ; "called_before_python39")]
+#[test_case("py38", "registry[0]", "@register(decorate)", Some("@register(registry[0])") ; "argument_before_python39")]
+#[test_case("py39", "registry[0]", "@decorate", Some("@registry[0]") ; "subscript_from_python39")]
+fn single_use_decorator(target: &str, value: &str, decorator: &str, inlined: Option<&str>) {
+    let source = format!(
+        "def run(registry):\n    decorate = {value}\n    {decorator}\n    def inner():\n        return 1\n    return inner\n"
+    );
+    let root = single_use_project(target, &source);
+    check(root.path(), &["--no-cache", "--select", "SMP504", "--fix"]);
+    let expected = inlined.map_or(source.clone(), |line| {
+        format!("def run(registry):\n    {line}\n    def inner():\n        return 1\n    return inner\n")
+    });
+    assert_eq!(read(root.path(), "module.py"), expected);
+}
+
+// Before Python 3.12 a replacement field cannot hold a backslash or the f-string's own quote (PEP 701).
+#[test_case(
+    "py311",
+    "def quote(value):\n    quoted = value.replace(\"'\", \"''\")\n    return f\"'{quoted}'\"\n",
+    None
+    ; "quote_before_python312"
+)]
+#[test_case(
+    "py312",
+    "def quote(value):\n    quoted = value.replace(\"'\", \"''\")\n    return f\"'{quoted}'\"\n",
+    Some("def quote(value):\n    return f\"'{value.replace(\"'\", \"''\")}'\"\n")
+    ; "quote_from_python312"
+)]
+#[test_case(
+    "py311",
+    "def join(items):\n    joined = \"\\n\".join(items)\n    return f\"{joined}\"\n",
+    None
+    ; "backslash_before_python312"
+)]
+#[test_case(
+    "py312",
+    "def join(items):\n    joined = \"\\n\".join(items)\n    return f\"{joined}\"\n",
+    Some("def join(items):\n    return f\"{\"\\n\".join(items)}\"\n")
+    ; "backslash_from_python312"
+)]
+#[test_case(
+    "py311",
+    "def size(items):\n    count = len(items)\n    return f\"{count}\"\n",
+    Some("def size(items):\n    return f\"{len(items)}\"\n")
+    ; "other_value_before_python312"
+)]
+fn single_use_fstring_quote(target: &str, source: &str, inlined: Option<&str>) {
+    let root = single_use_project(target, source);
+    check(root.path(), &["--no-cache", "--select", "SMP504", "--fix"]);
+    assert_eq!(read(root.path(), "module.py"), inlined.unwrap_or(source));
+}
+
+fn single_use_project(target: &str, source: &str) -> TempDir {
+    let ruff = format!("[tool.ruff]\ntarget-version = \"{target}\"\n");
+    common::project(&[("pyproject.toml", ruff.as_str()), ("module.py", source)])
 }
 
 // The calls of a function in other files count toward whether each of its defaults is ever left out.

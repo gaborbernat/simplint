@@ -18,6 +18,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Final
 
+from tasks.compile_examples import Interpreter, minor_version, resolve
+
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Package:
@@ -113,17 +115,24 @@ def main(arguments: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cache", type=Path, default=Path(".tox") / "ecosystem", help="keeps the downloads")
     parser.add_argument("--simplint", default="simplint", help="the simplint executable to check")
+    parser.add_argument(
+        "--target-version",
+        type=minor_version,
+        metavar="3.X",
+        help="check the fixed files against this CPython and simplint's rules for that release, not the running one",
+    )
     parser.add_argument("names", nargs="*", help="projects to check, all when none are given")
     options = parser.parse_args(arguments, namespace=_Options())
     names = options.names
     if unknown := set(names) - {package.name for package in PACKAGES}:
         msg = f"not pinned: {', '.join(sorted(unknown))}"
         raise ValueError(msg)
+    target = resolve(options.target_version) if options.target_version is not None else None
     failed = False
     for package in PACKAGES:
         if names and package.name not in names:
             continue
-        problems = check(package, download(package, options.cache), options.simplint)
+        problems = check(package, download(package, options.cache), options.simplint, target)
         failed |= bool(problems)
         print(f"{package.name} {package.version}: {'; '.join(problems) or 'ok'}", flush=True)
     return int(failed)
@@ -132,6 +141,7 @@ def main(arguments: list[str]) -> int:
 class _Options(argparse.Namespace):
     cache: Path
     simplint: str
+    target_version: int | None
     names: list[str]
 
 
@@ -154,7 +164,7 @@ def download(package: Package, cache: Path) -> Path:
     return archive
 
 
-def check(package: Package, archive: Path, simplint: str) -> list[str]:
+def check(package: Package, archive: Path, simplint: str, target: Interpreter | None = None) -> list[str]:
     # Run the documented pipeline on a project and check that one round of it reaches a fixed point.
     #
     # The pipeline is ``ruff check --fix --unsafe-fixes``, ``simplint check --fix --unsafe-fixes`` and ``ruff format``.
@@ -163,6 +173,8 @@ def check(package: Package, archive: Path, simplint: str) -> list[str]:
     # :param package: the project, for its name in messages
     # :param archive: its source distribution
     # :param simplint: the simplint executable
+    # :param target: the CPython the fixed files must compile under, and the release simplint checks for; None checks
+    #     with the running interpreter's parser and the release the project's requires-python gives
     # :returns: one message per problem found, empty when the project passes
     with TemporaryDirectory(prefix=f"{package.name}-") as folder:
         unpacked = Path(folder) / "original"
@@ -182,6 +194,8 @@ def check(package: Package, archive: Path, simplint: str) -> list[str]:
         # simplint refuses to run when the project's Ruff settings work against one of its rules; a user of the
         # project would turn that rule off, as the error says.
         simplint_check = [simplint, "check"]
+        if target is not None:
+            simplint_check += ["--target-version", f"py3{target.minor}"]
         checked = _run([*simplint_check, *report], fixed)
         if refused := re.findall(r"ignore (\S+) in `\[tool\.simplint\]`", checked.stderr):
             simplint_check += ["--ignore", ",".join(refused)]
@@ -202,7 +216,7 @@ def check(package: Package, archive: Path, simplint: str) -> list[str]:
         stranding = {
             path for path, count in _stranded_pragmas(original).items() if count > stranded_before.get(path, 0)
         }
-        problems += [f"{path} no longer parses" for path in _broken(original, fixed)]
+        problems += [f"{path} no longer parses" for path in _broken(original, fixed, target)]
         # The project's own settings give the target version, and so whether annotations are evaluated lazily.
         undefined = ["--select", "F821,F811,F823", "--ignore-noqa", "--config", "lint.per-file-ignores = {}"]
         problems += [f"{path}: new {code}" for path, code in _new_findings(original, fixed, undefined)]
@@ -238,13 +252,55 @@ def _stranded_pragmas(root: Path) -> dict[str, int]:
     }
 
 
-def _broken(original: Path, fixed: Path) -> list[str]:
-    broken = []
-    for path in sorted(original.rglob("*.py")):
-        relative = path.relative_to(original)
-        if _parses(path) and not _parses(fixed / relative):
-            broken.append(relative.as_posix())
-    return broken
+def _broken(original: Path, fixed: Path, target: Interpreter | None) -> list[str]:
+    # Find the files that compile before a fix and not after it.
+    #
+    # :param original: the project before the fix
+    # :param fixed: the project after the fix
+    # :param target: the CPython that decides what compiles, None for the running interpreter's parser
+    # :returns: the relative paths, sorted
+    return sorted(_compiling(original, target) - _compiling(fixed, target))
+
+
+# The running parser knows only this interpreter's grammar, so an older target needs its own compiler; one subprocess
+# per tree runs it over every file.
+_COMPILE_TREE: Final[str] = """\
+import json
+import sys
+import warnings
+
+warnings.simplefilter("ignore")
+compiling = []
+for path in json.load(sys.stdin):
+    with open(path, "rb") as handle:
+        source = handle.read()
+    try:
+        compile(source, path, "exec", dont_inherit=True)
+    except SyntaxError:
+        continue
+    compiling.append(path)
+json.dump(compiling, sys.stdout)
+"""
+
+
+def _compiling(root: Path, target: Interpreter | None) -> set[str]:
+    # List the Python files of a tree that compile.
+    #
+    # :param root: the tree
+    # :param target: the CPython to compile with, None for the running interpreter's parser
+    # :returns: the relative paths
+    paths = {path.relative_to(root).as_posix() for path in root.rglob("*.py")}
+    if target is None:
+        return {path for path in paths if _parses(root / path)}
+    compiling = subprocess.run(
+        [target.path, "-I", "-c", _COMPILE_TREE],
+        cwd=root,
+        input=json.dumps(sorted(paths)),
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    return set(json.loads(compiling))
 
 
 def _parses(path: Path) -> bool:

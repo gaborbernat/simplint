@@ -1,0 +1,9 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+3:10 SMP304 Import `DbWriter` from `.findings` instead of reaching it through the module [unsafe fix: Import the names from `.findings`]
+--- fixed (1 applied, 0 remaining) ---
+lazy from .findings import DbWriter
+
+writer = DbWriter()

@@ -1,0 +1,12 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:1 SMP404 `limit` is not in `__all__`; name it `_limit` [unsafe fix: Rename `limit` to `_limit`]
+--- fixed (1 applied, 0 remaining) ---
+type vector = list[float]
+_limit = 3
+
+
+def scale(values: vector) -> float:
+    return sum(values) * _limit

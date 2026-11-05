@@ -145,6 +145,7 @@ impl<'a> Visitor<'a> for Builder<'a> {
             }
             Stmt::TypeAlias(ast::StmtTypeAlias { name, type_params, value, .. }) => {
                 self.semantic.push_scope(ScopeKind::Type);
+                self.semantic.flags |= SemanticModelFlags::DEFERRED_TYPE_ALIAS;
                 if let Some(type_params) = type_params {
                     self.visit_type_params(type_params);
                 }
@@ -264,7 +265,10 @@ impl<'a> Visitor<'a> for Builder<'a> {
     fn visit_type_param(&mut self, type_param: &'a ast::TypeParam) {
         let name = type_param.name();
         self.add_binding(name, name.range(), BindingKind::TypeParam);
+        let flags = self.semantic.flags;
+        self.semantic.flags |= SemanticModelFlags::TYPE_PARAM_DEFINITION;
         visitor::walk_type_param(self, type_param);
+        self.semantic.flags = flags;
     }
 }
 

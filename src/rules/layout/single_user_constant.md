@@ -290,6 +290,21 @@ The fix moves the value in one of two ways:
         return _TEMPLATE.format(count)
     ```
 
+  - Inside an f-string `=` debug field the field keeps its printed text, so the value moves into a plain field after it.
+
+    ```python report
+    _LIMIT = 30
+
+
+    def show() -> str:
+        return f"{_LIMIT=}"
+    ```
+
+    ```python fixed
+    def show() -> str:
+        return f"_LIMIT={30!r}"
+    ```
+
 - **Local**: otherwise it declares a local before the statement that first uses it and renames the uses. The local takes
   the constant's name in lowercase, without leading underscores, and keeps its annotation, with `Final` taken off.
 
@@ -367,4 +382,19 @@ No fix is offered when:
 
   def has(frozenset: set, key: str) -> bool:
       return key in _KEYS
+  ```
+
+- the constant is read in a t-string, which keeps the source text of its expressions;
+
+  ```toml config
+  [project]
+  requires-python = ">=3.14"
+  ```
+
+  ```python report
+  _LIMIT = 30
+
+
+  def show() -> object:
+      return t"{_LIMIT}"
   ```

@@ -18,3 +18,4 @@ expression: "lint_fixture(rule, fixture, target_version)"
 29:7 SMP101 Single-letter name `C`; only comprehensions may use one
 29:9 SMP101 Single-letter name `T`; only comprehensions may use one
 35:23 SMP101 Single-letter name `r`; only comprehensions may use one
+52:27 SMP101 Single-letter name `r`; only comprehensions may use one

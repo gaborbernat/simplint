@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:6 SMP903 Public variable `Pair` is undocumented; add a docstring below it or a `#:` comment above it

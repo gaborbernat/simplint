@@ -6,6 +6,7 @@ use ruff_python_stdlib::builtins::is_python_builtin;
 use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
+use crate::rules::{keep_debug_text, source_text_spans};
 use crate::syntax::all_literal;
 
 pub fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
@@ -23,12 +24,17 @@ pub fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
     if appears_in_strings(checker, old, &exports) {
         return None;
     }
+    // A name in a t-string keeps its source text, which a new spelling would change.
+    let source_spans = source_text_spans(checker.body());
+    if ranges.iter().any(|range| source_spans.iter().any(|span| span.contains_range(*range))) {
+        return None;
+    }
     let renamed_exports = exports
         .into_iter()
         .filter(|element| element.value.to_str() == old)
         .filter_map(|element| Some(element.value.iter().next()?.content_range()));
-    let mut edits =
-        ranges.into_iter().chain(renamed_exports).map(|range| Edit::range_replacement(new.to_owned(), range));
+    let edits = ranges.into_iter().chain(renamed_exports).map(|range| Edit::range_replacement(new.to_owned(), range));
+    let mut edits = keep_debug_text(checker.source, checker.body(), edits.collect())?.into_iter();
     Some(Fix::unsafe_edits(edits.next()?, edits))
 }
 
