@@ -40,13 +40,17 @@ commands = [
 [env_pkg_base]
 default_base_python = [ "3.15" ]
 
+[env.".pkg_docs"]
+set_env.MATURIN_PEP517_ARGS = "--profile dev"
+set_env.CARGO_PROFILE_DEV_DEBUG = "0"
+
 [env.docs]
 description = "build documentation"
 base_python = [ "3.15" ]
 # The pages only ask the binary for its rules and options, so an unoptimized build without debug info serves and keeps
-# Read the Docs within its time limit.
-set_env.MATURIN_PEP517_ARGS = "--profile dev"
-set_env.CARGO_PROFILE_DEV_DEBUG = "0"
+# Read the Docs within its time limit. The wheel builds in its own environment because an environment's `set_env` never
+# reaches the shared `.pkg` one, which left this build optimized.
+wheel_build_env = ".pkg_docs"
 dependency_groups = [ "docs" ]
 commands = [
   [ "python", "-m", "tasks.generate_changelog" ],
