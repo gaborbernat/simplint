@@ -7,5 +7,4 @@ build:
   commands:
     - curl -LsSf https://astral.sh/uv/install.sh | sh
     - ~/.local/bin/uv tool install tox --with tox-uv -p 3.15 --managed-python
-    # The dummy builder stands in for the link check, which CI runs.
-    - ~/.local/bin/tox run -e docs -- -b dummy
+    - ~/.local/bin/tox run -e docs

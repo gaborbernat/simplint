@@ -240,11 +240,9 @@ The rule pages and the command line reference come from `docs/_data/`, the binar
 `cli-schema` output, committed so Read the Docs builds without compiling Rust. When a rule, its Markdown page or a flag
 changes, `cargo test` fails once and rewrites those files; commit them.
 
-Build and check links with the documentation environment:
-
-```bash
-tox run -e docs
-```
+Build the documentation with `tox run -e docs`, and check its external links with `tox run -e docs_links`. The link
+check reaches other sites, which go down and move pages on their own, so it is not a required check: it runs on pull
+requests that change the docs and every Monday.
 
 ## Configuration schema
 
