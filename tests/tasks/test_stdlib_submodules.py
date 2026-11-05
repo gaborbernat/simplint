@@ -16,12 +16,12 @@ if TYPE_CHECKING:
 @pytest.mark.parametrize(
     "path",
     [
-        "Lib/test/test_os.py",
-        "Lib/asyncio/tests/test_tasks.py",
-        "Lib/idlelib/idle.py",
-        "Lib/turtledemo/clock.py",
-        "Lib/__phello__/ham/eggs.py",
-        "Lib/asyncio/__main__.py",
+        pytest.param("Lib/test/test_os.py", id="test-tree"),
+        pytest.param("Lib/asyncio/tests/test_tasks.py", id="tests-tree"),
+        pytest.param("Lib/idlelib/idle.py", id="idlelib"),
+        pytest.param("Lib/turtledemo/clock.py", id="turtledemo"),
+        pytest.param("Lib/__phello__/ham/eggs.py", id="dunder-package"),
+        pytest.param("Lib/asyncio/__main__.py", id="dunder-module"),
     ],
 )
 def test_dotted_names_skips_test_trees_and_dunder_helpers(path: str) -> None:
@@ -42,19 +42,19 @@ def test_dotted_names_keeps_submodules_and_package_names() -> None:
 
 
 def test_spans_keeps_a_run_that_reaches_the_newest_version() -> None:
-    presence = {minor: ({"asyncio.taskgroups"} if minor >= 11 else set()) for minor in range(10, 16)}
+    presence = {minor: {"asyncio.taskgroups"} for minor in range(11, 16)}
 
     assert stdlib_submodules.spans(presence) == {"asyncio.taskgroups": Span(added=11, removed=None)}
 
 
 def test_spans_records_the_version_that_drops_a_submodule() -> None:
-    presence = {minor: ({"distutils.core"} if minor < 12 else set()) for minor in range(10, 16)}
+    presence = {minor: {"distutils.core"} for minor in range(10, 12)}
 
     assert stdlib_submodules.spans(presence) == {"distutils.core": Span(added=10, removed=12)}
 
 
 def test_spans_starts_at_the_return_after_a_gap() -> None:
-    presence = {minor: ({"pathlib._local"} if minor != 14 else set()) for minor in range(10, 16)}
+    presence = {minor: {"pathlib._local"} for minor in [*range(10, 14), 15]}
 
     assert stdlib_submodules.spans(presence) == {"pathlib._local": Span(added=15, removed=None)}
 
@@ -100,7 +100,7 @@ def test_main_writes_the_table_and_formats_it(tmp_path: Path, mocker: MockerFixt
 
 
 def test_module_run_as_a_script_reads_the_checkout(tmp_path: Path, mocker: MockerFixture) -> None:
-    mocker.patch("subprocess.check_output", side_effect=OSError("offline"))
+    mocker.patch("subprocess.check_output", autospec=True, side_effect=OSError("offline"))
     mocker.patch("sys.argv", ["tasks/stdlib_submodules.py", str(tmp_path)])
 
     with pytest.raises(OSError, match="offline"):

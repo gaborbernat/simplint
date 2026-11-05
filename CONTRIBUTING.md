@@ -254,9 +254,14 @@ descriptions, and rule selectors take their values from the rule table in `src/l
 rule changes, `cargo test` fails once and rewrites the file; commit it. `tests/tasks/test_config_schema.py` checks the
 documented examples against it, so run `tox run -e tasks`.
 
-On a release tag, `update-schemastore.yaml` copies the file to SchemaStore as `partial-simplint.json`. SchemaStore has
-no such file until a manual registration PR adds it, with its `tool.simplint` reference; until it is merged, the update
-job skips with a notice.
+On a release tag, `update-schemastore.yaml` copies the file to SchemaStore as `partial-simplint.json`. While SchemaStore
+has no such file, the first tag opens the registration PR: `tasks/register_schemastore.py` writes the partial, adds its
+`tool.simplint` reference to SchemaStore's `pyproject.json` and lists it in `schema-validation.jsonc`, and
+`tasks/schemastore_options.json` becomes the partial's positive test. Each later tag updates the partial in a PR on the
+same branch. The job runs in the `schemastore` environment and needs a `SCHEMASTORE_TOKEN` secret there: a token that
+can fork `SchemaStore/schemastore`, push to the fork and open pull requests against upstream, such as a classic token
+with the `public_repo` scope. Pull requests run the same registration against a fresh SchemaStore clone, so a schema
+change that would break the first registration fails there.
 
 ## Changelog
 

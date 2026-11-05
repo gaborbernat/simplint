@@ -1,0 +1,16 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:12 SMP517 `codecs.open()` is deprecated since Python 3.14; `open()` takes the same arguments [unsafe fix: Call `open()` with `newline=""`]
+9:12 SMP517 `codecs.open()` is deprecated since Python 3.14; `open()` takes the same arguments
+--- fixed (1 applied, 1 remaining) ---
+from codecs import open as codecs_open
+
+
+def read_config(path):
+    return open(path, "r", encoding="utf-8", newline="").read()
+
+
+def read_binary(path):
+    return codecs_open(path, "rb", "utf-8").read()

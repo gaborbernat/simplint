@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:12 SMP514 Parse the date with `date.strptime`, not `datetime.strptime(...).date()`

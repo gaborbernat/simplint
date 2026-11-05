@@ -1,0 +1,13 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+4:4 SMP306 Imports under `if TYPE_CHECKING:` can be lazy imports from Python 3.15; use `lazy` on each one [unsafe fix: Make the imports lazy and remove the `TYPE_CHECKING` guard]
+--- fixed (1 applied, 0 remaining) ---
+import typing
+
+lazy import collections.abc
+
+
+def first(values: "collections.abc.Sequence[int]") -> int:
+    return values[0]

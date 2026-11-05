@@ -1,0 +1,23 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:12 SMP514 Parse the date with `date.strptime`, not `datetime.strptime(...).date()` [fix: Call `date.strptime`]
+9:12 SMP514 Parse the time with `time.strptime`, not `datetime.strptime(...).time()` [fix: Call `time.strptime`]
+15:12 SMP514 Parse the date with `date.strptime`, not `datetime.strptime(...).date()`
+--- fixed (2 applied, 1 remaining) ---
+import datetime as dt
+
+
+def parse_day(text):
+    return dt.date.strptime(text, "%Y-%m-%d")
+
+
+def parse_time(text):
+    return dt.time.strptime(text, "%H:%M")
+
+
+def from_function(text):
+    from datetime import datetime
+
+    return datetime.strptime(text, "%Y").date()

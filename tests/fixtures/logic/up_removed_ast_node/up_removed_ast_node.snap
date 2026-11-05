@@ -1,0 +1,125 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:29 SMP520 `ast.Str` is removed in Python 3.14; use `ast.Constant` [fix: Use `ast.Constant`]
+9:29 SMP520 `ast.Bytes` is removed in Python 3.14; use `ast.Constant` [fix: Use `ast.Constant`]
+13:25 SMP520 `ast.Str` is removed in Python 3.14; use `ast.Constant` [fix: Use `ast.Constant`]
+15:33 SMP520 `ast.Str` is removed in Python 3.14; use `ast.Constant` [fix: Use `ast.Constant`]
+19:29 SMP520 `ast.Num` is removed in Python 3.14; use `ast.Constant`
+23:33 SMP520 `ast.Str` is removed in Python 3.14; use `ast.Constant`
+27:30 SMP520 `ast.Str` is removed in Python 3.14; use `ast.Constant`
+27:39 SMP520 `ast.Bytes` is removed in Python 3.14; use `ast.Constant`
+31:12 SMP520 `ast.Num` is removed in Python 3.14; use `ast.Constant` [fix: Use `ast.Constant`]
+35:12 SMP520 `ast.Str` is removed in Python 3.14; use `ast.Constant` [fix: Use `ast.Constant`]
+39:12 SMP520 `ast.Bytes` is removed in Python 3.14; use `ast.Constant` [fix: Use `ast.Constant`]
+43:12 SMP520 `ast.NameConstant` is removed in Python 3.14; use `ast.Constant` [fix: Use `ast.Constant`]
+47:12 SMP520 `ast.Num` is removed in Python 3.14; use `ast.Constant`
+51:12 SMP520 `ast.Str` is removed in Python 3.14; use `ast.Constant`
+55:12 SMP520 `ast.Str` is removed in Python 3.14; use `ast.Constant`
+59:12 SMP520 `ast.Num` is removed in Python 3.14; use `ast.Constant`
+65:12 SMP520 `ast.Ellipsis` is removed in Python 3.14; use `ast.Constant`
+69:20 SMP520 `ast.Ellipsis` is removed in Python 3.14; use `ast.Constant`
+77:9 SMP520 `visit_Num` is no longer called in Python 3.14; define `visit_Constant`
+85:9 SMP520 `visit_Str` is no longer called in Python 3.14; define `visit_Constant`
+--- fixed (8 applied, 12 remaining) ---
+import ast
+
+
+def is_text(node):
+    return isinstance(node, ast.Constant) and isinstance(node.value, str)
+
+
+def is_bytes(node):
+    return (isinstance(node, ast.Constant) and isinstance(node.value, bytes)) or node is None
+
+
+def is_test(node):
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return True
+    return not (isinstance(node, ast.Constant) and isinstance(node.value, str))
+
+
+def is_number(node):
+    return isinstance(node, ast.Num)
+
+
+def is_nested(nodes):
+    return isinstance(nodes[0], ast.Str)
+
+
+def is_in_tuple(node):
+    return isinstance(node, (ast.Str, ast.Bytes))
+
+
+def make_number():
+    return ast.Constant(value=1)
+
+
+def make_text():
+    return ast.Constant(value="text")
+
+
+def make_bytes():
+    return ast.Constant(value=b"raw")
+
+
+def make_constant():
+    return ast.Constant(value=None)
+
+
+def make_positional():
+    return ast.Num(1)
+
+
+def make_extra(kind):
+    return ast.Str(s="text", kind=kind)
+
+
+def make_mixed():
+    return ast.Str("text", s="text")
+
+
+def make_commented():
+    return ast.Num(  # the value
+        n=1
+    )
+
+
+def make_ellipsis():
+    return ast.Ellipsis()
+
+
+def ellipsis_node(node):
+    return node is ast.Ellipsis
+
+
+def plain_reference():
+    return ast.Constant
+
+
+class Printer(ast.NodeVisitor):
+    def visit_Num(self, node):
+        self.count += 1
+
+    def visit_Constant(self, node):
+        self.count += 1
+
+
+class Rewriter(ast.NodeTransformer):
+    def visit_Str(self, node):
+        return node
+
+
+class Nested(Printer):
+    def visit_Bytes(self, node):
+        return node
+
+
+class Unrelated:
+    def visit_Num(self, node):
+        return node
+
+
+def visit_Num(node):
+    return node

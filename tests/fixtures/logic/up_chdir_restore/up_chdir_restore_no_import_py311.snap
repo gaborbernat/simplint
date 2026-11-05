@@ -1,0 +1,16 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+7:5 SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does [fix: Enter the directory with `contextlib.chdir`]
+--- fixed (1 applied, 0 remaining) ---
+"""Build helpers."""
+
+
+import contextlib
+
+def build(target):
+    import os
+
+    with contextlib.chdir(target):
+        return compile_project()

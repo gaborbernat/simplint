@@ -29,7 +29,7 @@ select the ones that fit your project.
 
 simplint is written in `Rust <https://rust-lang.org/>`__ on top of Ruff's parser crates, and lints the 264 files of
 :gh:`tox-dev/tox` in about 10 ms. When the fix for a report is mechanical, it can apply it for you. The
-`release history <https://github.com/gaborbernat/simplint/releases>`__ lists the changes in each version.
+:doc:`release history <changelog>` lists the changes in each version.
 
 .. grid:: 1 1 2 2
     :gutter: 3

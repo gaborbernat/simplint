@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+9:29 SMP520 `ast.Str` is removed in Python 3.14; use `ast.Constant`

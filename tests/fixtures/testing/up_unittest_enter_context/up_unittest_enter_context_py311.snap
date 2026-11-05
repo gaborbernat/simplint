@@ -1,0 +1,24 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+7:9 SMP812 A patch started and stopped by hand; `self.enterContext` starts it and registers the stop [fix: Enter the patch with `self.enterContext`]
+13:9 SMP812 A patch started and stopped by hand; `self.enterContext` starts it and registers the stop [fix: Enter the patch with `self.enterContext`]
+19:9 SMP812 A patch started and stopped by hand; `self.enterContext` starts it and registers the stop [fix: Enter the patch with `self.enterContext`]
+--- fixed (3 applied, 0 remaining) ---
+from unittest import TestCase, mock
+from unittest.mock import patch
+
+
+class ConfigTest(TestCase):
+    def test_home(self):
+        home = self.enterContext(mock.patch("os.getcwd"))
+        home.return_value = "/home"
+
+    def test_object(self):
+        debug = self.enterContext(mock.patch.object(Config, "debug", True))
+        debug.return_value = False
+
+    def test_environment(self):
+        environment = self.enterContext(patch.dict("os.environ", {"HOME": "/home"}))
+        environment.clear()
