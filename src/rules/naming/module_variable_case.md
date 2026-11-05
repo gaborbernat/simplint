@@ -249,7 +249,7 @@ lookup:
   ```
 
 - **`version`, `version_tuple` and `commit_id` in a module that also binds `__version__`**: the names of the version
-  file [setuptools-scm](https://setuptools-scm.readthedocs.io/en/latest/usage/#version-files) writes.
+  file [setuptools-scm](https://setuptools-scm.readthedocs.io/latest/usage/#version-files) writes.
 
   ```python ok
   __version__ = "1.0"

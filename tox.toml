@@ -61,7 +61,20 @@ commands = [
     "auto",
     "-W",
   ],
-  # A builder flag replaces the one before it, so the link check is its own run over the same doctree.
+  [
+    "python",
+    "-c",
+    'print(r"documentation available under file://{work_dir}{/}docs_out{/}html{/}index.html")',
+  ],
+]
+
+[env.docs_links]
+description = "check the documentation's external links"
+base_python = [ "3.15" ]
+skip_install = true
+dependency_groups = [ "docs" ]
+commands = [
+  [ "python", "-m", "tasks.generate_changelog" ],
   [
     "sphinx-build",
     "-d",
@@ -69,16 +82,9 @@ commands = [
     "docs",
     "{work_dir}{/}docs_linkcheck",
     "--color",
-    { replace = "posargs", default = [
-      "-b",
-      "linkcheck",
-    ], extend = true },
+    "-b",
+    "linkcheck",
     "-W",
-  ],
-  [
-    "python",
-    "-c",
-    'print(r"documentation available under file://{work_dir}{/}docs_out{/}html{/}index.html")',
   ],
 ]
 

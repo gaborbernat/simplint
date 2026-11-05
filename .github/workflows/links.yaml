@@ -1,0 +1,43 @@
+name: 🔗 links
+# External sites go down and move their pages on their own schedule, so the link check runs outside the required
+# checks: a pull request that edits the docs sees broken links, and the weekly run catches pages that moved since.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "40 4 * * 1"
+  pull_request:
+    paths:
+      - "docs/**"
+      - "src/**/*.md"
+      - "changelog.d/**"
+      - "CHANGELOG.md"
+      - "README.md"
+      - "tox.toml"
+      - ".github/workflows/links.yaml"
+concurrency:
+  group: links-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  linkcheck:
+    name: 🔗 Check documentation links
+    runs-on: ubuntu-26.04
+    steps:
+      - name: 📥 Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: 🐍 Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: latest-known
+          python-version: "3.15"
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: 📦 Install tox
+        run: uv tool install --python-preference only-managed --python 3.15 tox --with tox-uv
+      - name: 🔗 Check links
+        run: tox run -e docs_links
