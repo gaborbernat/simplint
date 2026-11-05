@@ -74,7 +74,9 @@ jobs:
           path: ${{ runner.temp }}/simplint-schema.patch
           retention-days: 1
   update-schemastore:
-    name: 🔀 Open SchemaStore PR
+    # The token reaches only the fork: it can push there but cannot fork SchemaStore or open pull requests on it, so
+    # this job updates the branch and links the pull request for a maintainer to open when none is open.
+    name: 🔀 Push to the SchemaStore fork
     needs: stage
     if: github.event_name != 'pull_request' && needs.stage.outputs.changed == 'true'
     runs-on: ubuntu-26.04
@@ -88,12 +90,13 @@ jobs:
         with:
           name: simplint-schema-patch
           path: ${{ runner.temp }}
-      - name: 📥 Fork and clone SchemaStore
+      - name: 📥 Sync and clone the fork
+        id: fork
         run: |
-          gh repo fork SchemaStore/schemastore --clone=false
-          FORK="$(gh api user --jq .login)/schemastore"
-          gh repo sync "$FORK" -b master
-          gh repo clone "$FORK" "$RUNNER_TEMP/schemastore" -- --depth 1 --branch master
+          OWNER="$(gh api user --jq .login)"
+          echo "owner=$OWNER" >> "$GITHUB_OUTPUT"
+          gh repo sync "$OWNER/schemastore" -b master
+          gh repo clone "$OWNER/schemastore" "$RUNNER_TEMP/schemastore" -- --depth 1 --branch master
         env:
           GH_TOKEN: ${{ secrets.SCHEMASTORE_TOKEN }}
       - name: ⚙️ Apply the patch
@@ -130,9 +133,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.SCHEMASTORE_TOKEN }}
           REGISTERED: ${{ steps.apply.outputs.registered }}
-      - name: 🔀 Create or update the pull request
+      - name: 🔗 Link the pull request
         run: |
-          HEAD="$(gh api user --jq .login):$BRANCH"
+          URL="$(gh pr view "$OWNER:$BRANCH" --repo SchemaStore/schemastore --json url,state --jq 'select(.state == "OPEN") | .url' 2> /dev/null || true)"
+          if [ -n "$URL" ]; then
+            echo "Pushed $TAG to $URL" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
           SOURCE="[$TAG](https://github.com/gaborbernat/simplint/tree/$TAG)"
           if [ "$REGISTERED" = true ]; then
             TITLE="Update simplint JSON Schema to $TAG"
@@ -141,11 +148,11 @@ jobs:
             TITLE="Add simplint schema for [tool.simplint]"
             BODY="Registers simplint's JSON Schema as \`partial-simplint.json\`, referenced from the \`tool\` table of \`pyproject.json\`, from release $SOURCE. Later releases update the partial."
           fi
-          if gh pr view "$HEAD" --repo SchemaStore/schemastore > /dev/null 2>&1; then
-            gh pr edit "$HEAD" --repo SchemaStore/schemastore --title "$TITLE" --body "$BODY"
-          else
-            gh pr create --repo SchemaStore/schemastore --head "$HEAD" --title "$TITLE" --body "$BODY"
-          fi
+          QUERY="$(jq -rn --arg title "$TITLE" --arg body "$BODY" '"title=\($title | @uri)&body=\($body | @uri)"')"
+          LINK="https://github.com/SchemaStore/schemastore/compare/master...$OWNER:schemastore:$BRANCH?expand=1&$QUERY"
+          echo "::warning::No SchemaStore pull request is open for $TAG, open it from the run summary"
+          echo "No SchemaStore pull request is open: [open it]($LINK) for $TAG." >> "$GITHUB_STEP_SUMMARY"
         env:
           GH_TOKEN: ${{ secrets.SCHEMASTORE_TOKEN }}
+          OWNER: ${{ steps.fork.outputs.owner }}
           REGISTERED: ${{ steps.apply.outputs.registered }}
