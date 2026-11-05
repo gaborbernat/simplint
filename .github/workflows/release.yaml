@@ -25,7 +25,7 @@ jobs:
   pypi:
     name: 🚀 Publish to PyPI
     if: github.repository == 'gaborbernat/simplint'
-    needs: build
+    needs: [build, notes]
     runs-on: ubuntu-26.04
     environment:
       name: release
