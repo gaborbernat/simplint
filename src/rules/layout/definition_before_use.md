@@ -71,7 +71,10 @@ them. The rule checks the order of functions and classes in two places:
       return [_clean(line) for line in text.splitlines()]
   ```
 
-- **In every class body**: a method refers to another through `self.name`, `cls.name` or `ClassName.name`.
+- **In every class body**: a method refers to another through its first parameter, such as `self.name` or `cls.name`,
+  through `ClassName.name`, or through an instance the method builds from its first parameter, such as `obj = cls()` or
+  `obj = super().__new__(cls)` followed by `obj.name`. A lambda in the class body, such as
+  `property(lambda self: self.name)`, counts as a method.
 
   ```python report
   class Parser:
@@ -188,6 +191,18 @@ would leave the name unbound when it is read:
 
   def _odd(n: int) -> bool:
       return False if n == 0 else _even(n - 1)
+  ```
+
+- **Constructors**: `__new__`, `__init__`, `__post_init__` and `__init_subclass__` stay ahead of the methods that call
+  them, since [constructor-after-method](SMP203.html) moves them up.
+
+  ```python ok
+  class Cache:
+      def __init__(self) -> None:
+          self.items = {}
+
+      def reset(self) -> None:
+          self.__init__()
   ```
 
 ### Annotations

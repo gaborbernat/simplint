@@ -31,7 +31,19 @@ use crate::common;
 #[test_case(
     "definition-before-use", "definition_before_use_type_params.py", "py314" ; "definition_before_use_type_params"
 )]
+#[test_case(
+    "definition-before-use", "definition_before_use_receiver.py", "py314" ; "definition_before_use_receiver"
+)]
 #[test_case("single-user-constant", "single_user_constant.py", "py314" ; "single_user_constant")]
+#[test_case("constructor-after-method", "constructor_after_method.py", "py314" ; "constructor_after_method")]
+#[test_case(
+    "constructor-after-method", "constructor_after_method_annotations.py", "py314"
+    ; "constructor_after_method_lazy_annotations"
+)]
+#[test_case(
+    "constructor-after-method", "constructor_after_method_annotations.py", "py310"
+    ; "constructor_after_method_eager_annotations"
+)]
 #[test_case("single-user-constant", "single_user_constant_all.py", "py314" ; "single_user_constant_with_all")]
 #[test_case("single-user-constant", "single_user_constant_dynamic.py", "py314" ; "single_user_constant_dynamic_all")]
 #[test_case("single-user-constant", "single_user_constant_spacing.py", "py314" ; "single_user_constant_spacing")]

@@ -1,19 +1,10 @@
 name: 🔗 links
-# External sites go down and move their pages on their own schedule, so the link check runs outside the required
-# checks: a pull request that edits the docs sees broken links, and the weekly run catches pages that moved since.
+# External sites go down and move their pages on their own schedule, so the link check runs once a day outside the
+# required checks, where a broken link is caught within a day without failing anyone's pull request.
 on:
   workflow_dispatch:
   schedule:
-    - cron: "40 4 * * 1"
-  pull_request:
-    paths:
-      - "docs/**"
-      - "src/**/*.md"
-      - "changelog.d/**"
-      - "CHANGELOG.md"
-      - "README.md"
-      - "tox.toml"
-      - ".github/workflows/links.yaml"
+    - cron: "40 4 * * *"
 concurrency:
   group: links-${{ github.ref }}
   cancel-in-progress: true

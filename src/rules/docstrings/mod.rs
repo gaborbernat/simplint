@@ -46,7 +46,7 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::project::Exposure;
-use crate::syntax::{Exports, Visibility, decorator_names, has_decorator, module_statements};
+use crate::syntax::{Exports, Visibility, decorator_names, is_overload, module_statements};
 
 enum ApiKind {
     Function,
@@ -110,7 +110,7 @@ impl<'a> PublicApi<'a> {
                     let name = function.name.as_str();
                     match reach(name) {
                         // An `@overload` variant of a public function may carry a docstring, but needs none.
-                        Some(_) if has_decorator(&function.decorator_list, &["overload"]) => {
+                        Some(_) if is_overload(&function.decorator_list) => {
                             api.optional.push(function.range);
                         }
                         Some(via) => {

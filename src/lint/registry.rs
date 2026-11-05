@@ -163,6 +163,7 @@ rules! {
     ModuleVariableCase => ("SMP102", "module-variable-case", "Module variables not `UPPER_CASE`", Sometimes, naming::module_variable_case { module }),
     DefinitionBeforeUse => ("SMP201", "definition-before-use", "Helpers defined above their first caller, or away from it", Sometimes, layout::definition_before_use { module }),
     SingleUserConstant => ("SMP202", "single-user-constant", "Module constants only one function uses", Sometimes, layout::single_user_constant { module }),
+    ConstructorAfterMethod => ("SMP203", "constructor-after-method", "Constructors defined below other methods", Sometimes, layout::constructor_after_method { module }),
     FutureAnnotations => ("SMP301", "future-annotations", "`from __future__ import annotations` on Python 3.14+", Sometimes, imports::future_annotations { module } since PY314),
     AbsoluteSiblingImport => ("SMP302", "absolute-sibling-import", "Absolute imports from the same package", Always, imports::absolute_sibling_import { module }),
     DependencyImportGuard => ("SMP303", "dependency-import-guard", "`try`/`except ImportError` around a required dependency", Sometimes, imports::dependency_import_guard { module }),

@@ -10,7 +10,7 @@ use super::{Docstring, has_attribute_bases};
 use crate::lint::checker::Checker;
 use crate::rules::docstring;
 use crate::settings::DocstringStyle;
-use crate::syntax::{Visibility, has_decorator, last_segment, module_statements, receiver};
+use crate::syntax::{Visibility, is_overload, last_segment, module_statements, receiver};
 
 pub(crate) enum Owner<'a> {
     Function { def: &'a ast::StmtFunctionDef, class: Option<&'a ast::StmtClassDef> },
@@ -141,7 +141,7 @@ fn parameters(def: &ast::StmtFunctionDef, is_method: bool) -> Vec<Parameter<'_>>
 fn constructor(class: &ast::StmtClassDef) -> Option<&ast::StmtFunctionDef> {
     module_statements(&class.body)
         .filter_map(Stmt::as_function_def_stmt)
-        .filter(|def| def.name.as_str() == "__init__" && !has_decorator(&def.decorator_list, &["overload"]))
+        .filter(|def| def.name.as_str() == "__init__" && !is_overload(&def.decorator_list))
         .last()
 }
 

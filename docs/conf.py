@@ -115,8 +115,14 @@ nitpicky: Final[bool] = True
 nitpick_ignore: Final[list[tuple[str, str]]] = []
 # anchors that resolve in a browser but linkcheck cannot verify: GitHub renders README heading ids with a
 # user-content- prefix added client-side, and pyright's single-page docs route on the part after the hash
-# cppreference answers automated clients with 403 Forbidden while the page loads in a browser
-linkcheck_ignore: Final[list[str]] = [r"https://en\.cppreference\.com/.*"]
+# cppreference answers automated clients with 403 Forbidden while the page loads in a browser; the changelog links each
+# entry's pull request and author profile, which the changelog task builds from real pull requests, and checking several
+# hundred of them makes GitHub answer 504
+linkcheck_ignore: Final[list[str]] = [
+    r"https://en\.cppreference\.com/.*",
+    r"https://github\.com/gaborbernat/simplint/pull/\d+$",
+    r"https://github\.com/[\w-]+$",
+]
 linkcheck_anchors_ignore_for_url: Final[list[str]] = [
     r"https://github\.com/.*",
     r"https://microsoft\.github\.io/pyright/.*",

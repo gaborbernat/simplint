@@ -88,6 +88,11 @@ pub fn has_decorator(decorators: &[ast::Decorator], names: &[&str]) -> bool {
     decorator_names(decorators).iter().any(|name| names.contains(name))
 }
 
+// Whether a function is an `@overload` stub, which the type checker reads in place of the implementation below it.
+pub fn is_overload(decorators: &[ast::Decorator]) -> bool {
+    has_decorator(decorators, &["overload"])
+}
+
 // Whether `expr` is the plain name `name`.
 pub fn is_name(expr: &Expr, name: &str) -> bool {
     expr.as_name_expr().is_some_and(|found| found.id.as_str() == name)
@@ -127,7 +132,10 @@ pub fn receiver(method: &ast::StmtFunctionDef) -> Option<&str> {
     if decorator_names(&method.decorator_list).contains(&"staticmethod") {
         return None;
     }
-    let parameters = &method.parameters;
+    first_positional(&method.parameters)
+}
+
+pub fn first_positional(parameters: &ast::Parameters) -> Option<&str> {
     parameters.posonlyargs.iter().chain(&parameters.args).next().map(|parameter| parameter.name().as_str())
 }
 
