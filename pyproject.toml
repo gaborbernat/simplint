@@ -207,3 +207,6 @@ matrix.platforms = [ "linux_x86_64" ]
 # release-creator 4.4.0 needs a seven-day cutoff exception through 2026-11-09.
 # expires 2026-11-09
 packages.release-creator.uploaded-prior-to = 2026-11-02T21:45:00Z
+# ruff 0.17.4, which the Ruff crates and the pre-commit hook use, needs one through 2026-11-12.
+# expires 2026-11-12
+packages.ruff.uploaded-prior-to = 2026-11-06T00:00:00Z

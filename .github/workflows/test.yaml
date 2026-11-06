@@ -38,6 +38,30 @@ jobs:
               - 'tox.toml'
               - 'codecov.yml'
               - '.github/workflows/test.yaml'
+  hooks:
+    # The release installs the pre-commit hooks with packages published in the last seven days held back, so a hook
+    # bumped to a fresh release passes pre-commit.ci and only fails when a release is prepared; this installs them the
+    # same way.
+    name: 🧹 hooks under the release cooldown
+    runs-on: ubuntu-26.04
+    steps:
+      - name: 📥 Check out code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: 🐍 Install uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: latest-known
+          python-version: "3.15"
+          enable-cache: false
+      - name: 📦 Install prek
+        run: uv tool install prek
+      - name: 🧹 Install the hooks as the release does
+        uses: tox-dev/github-workflows/cooled-prek@13381289334b15375958be7f7438f3c3d860e575 # 6.5.5
+        with:
+          args: install-hooks
   clippy:
     name: 🧹 clippy
     needs: changes
@@ -293,7 +317,7 @@ jobs:
   all-pass:
     name: 🚦 test
     if: always()
-    needs: [changes, clippy, fmt, test, wheel, py, check, examples, ecosystem]
+    needs: [changes, hooks, clippy, fmt, test, wheel, py, check, examples, ecosystem]
     runs-on: ubuntu-26.04
     steps:
       - name: 🚦 Decide whether all jobs passed or were skipped
