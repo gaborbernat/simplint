@@ -63,12 +63,19 @@ fn permissions(metadata: &fs::Metadata) -> u32 {
 pub struct Caches(FxHashMap<PathBuf, Cache>);
 
 impl Caches {
-    pub fn open<'p>(ruff_cache_dir: &Path, roots: impl Iterator<Item = &'p Path>) -> Self {
+    // Makes the cache directory and drops other versions' entries. The documentation key hashes the times of the
+    // directories it walks, and the cache directory sits in a project root by default, so creating it while that walk
+    // runs would change a key that is then stored, and the next run would miss it.
+    pub fn prepare(ruff_cache_dir: &Path) {
         let directory = directory(ruff_cache_dir).join(FORMAT);
         if let Err(error) = init(ruff_cache_dir, &directory) {
             error!("Failed to initialize cache at {}: {error:?}", ruff_cache_dir.display());
         }
         remove_stale(&directory);
+    }
+
+    pub fn open<'p>(ruff_cache_dir: &Path, roots: impl Iterator<Item = &'p Path>) -> Self {
+        let directory = directory(ruff_cache_dir).join(FORMAT);
         let roots: Vec<&Path> = roots.unique().collect();
         Self(roots.into_par_iter().map(|root| (root.to_path_buf(), Cache::open(&directory, root))).collect())
     }
