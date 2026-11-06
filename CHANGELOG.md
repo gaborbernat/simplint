@@ -1,5 +1,77 @@
 # Changelog
 
+## 0.7.1 (2026-11-06)
+
+<a name="release-0-7-1"></a>
+
+<a name="release-0-7-1-changes"></a>
+
+### Changes
+
+- `blanket-ignore` (SMP004) leaves the bare `noqa`, `ruff: noqa` and `flake8: noqa` comments to Ruff's PGH004, and bare
+  `type: ignore` and `pyright: ignore` to PGH003, when the project's Ruff configuration selects those rules. The `ty`,
+  `pyrefly`, `simplint` and `ruff: ignore` forms are still reported here
+  ([#65](https://github.com/gaborbernat/simplint/pull/65)) by [@gaborbernat](https://github.com/gaborbernat).
+- `constant-assert` (SMP804) leaves a tuple test it cannot fix, such as `assert (1, 2, 3)`, to Ruff's F631 when the
+  project's Ruff configuration selects it. A two-element tuple without a message keeps its report and fix
+  ([#65](https://github.com/gaborbernat/simplint/pull/65)) by [@gaborbernat](https://github.com/gaborbernat).
+- `imprecise-annotation` (SMP602) leaves an annotation that is or starts with `Any`, as in `Any | None`, to Ruff's
+  ANN401 only when the project's Ruff configuration selects it; without ANN401 it now reports those annotations too
+  ([#65](https://github.com/gaborbernat/simplint/pull/65)) by [@gaborbernat](https://github.com/gaborbernat).
+- `mock-assertion-typo` (SMP814) leaves the prefix-less assertion names Ruff's PGH005 reports, such as
+  `assert mock.not_called()`, to Ruff when the project's Ruff configuration selects it; with Ruff's preview on, names on
+  a line of their own too. Names under `not` or `and`, in call arguments, and every misspelling are still reported here
+  ([#65](https://github.com/gaborbernat/simplint/pull/65)) by [@gaborbernat](https://github.com/gaborbernat).
+- `module-variable-case` (SMP102) leaves a `mixedCase` module variable it cannot rename to Ruff's N816 when the
+  project's Ruff configuration selects it and does not list the name in `pep8-naming` `ignore-names`. Renameable names
+  and every `lower_case` name are still reported here ([#65](https://github.com/gaborbernat/simplint/pull/65)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `single-letter-name` (SMP101) leaves `l`, `I` and `O` on variables, parameters and except names to Ruff's E741, on
+  classes to E742 and on functions to E743, when the project's Ruff configuration selects them. Other letters, and these
+  letters on imports, `match` captures and type parameters, are still reported here
+  ([#65](https://github.com/gaborbernat/simplint/pull/65)) by [@gaborbernat](https://github.com/gaborbernat).
+- `single-use-variable` (SMP504) leaves a name returned right after its assignment to Ruff's RET504 only when the
+  project's Ruff configuration selects it, and otherwise now reports it; with Ruff's preview on, a `yield from` of the
+  name is left to RUF070 when it is selected and writes the same code
+  ([#65](https://github.com/gaborbernat/simplint/pull/65)) by [@gaborbernat](https://github.com/gaborbernat).
+- `star-import` (SMP309) leaves a star import its fix cannot rewrite to Ruff's F403 when the project's Ruff
+  configuration selects it, and reports only the ones it can expand
+  ([#65](https://github.com/gaborbernat/simplint/pull/65)) by [@gaborbernat](https://github.com/gaborbernat).
+- `undocumented-public-api` (SMP903) leaves the classes, methods and functions of a public module to Ruff's D101, D102,
+  D103 and D106 when the project's Ruff configuration selects them. Public variables, and definitions a private module
+  makes and a public module re-exports, are still reported here ([#65](https://github.com/gaborbernat/simplint/pull/65))
+  by [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-7-1-fixed"></a>
+
+### Fixed
+
+- The run after the one that creates the cache directory reuses the documentation it read instead of sometimes walking
+  the documentation again ([#60](https://github.com/gaborbernat/simplint/pull/60)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-7-1-documentation"></a>
+
+### Documentation
+
+- Each rule page with a related Ruff rule, issue or pull request names it under Other tools, with its state and how the
+  rule differs ([#63](https://github.com/gaborbernat/simplint/pull/63)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- The rules table keeps its rows compact on phones, opens a rule from a click anywhere on its row, marks cross-file
+  rules in a column of their own, and shows every filter option in full
+  ([#57](https://github.com/gaborbernat/simplint/pull/57)) by [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-7-1-performance"></a>
+
+### Performance
+
+- Runs are faster: a run over unchanged files skips building the import index and answers from the cache, reports are
+  written in parallel in every output format, the cache stores fixes and the `full` text of reports ready to use, and
+  the process exits without freeing what it built. On pandas, scipy, SQLAlchemy and CPython, a second run takes half the
+  time or less, a run without a cache 11 to 25% less, and a second run with `--output-format json` a quarter of the
+  time. The cache grows by about the size of the `full` report it keeps
+  ([#62](https://github.com/gaborbernat/simplint/pull/62)) by [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.7.0 (2026-11-06)
 
 <a name="release-0-7-0"></a>
