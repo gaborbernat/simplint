@@ -150,5 +150,6 @@ def parse_version(text):
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#24545](https://github.com/astral-sh/ruff/issues/24545).
 - [flake8-tergeo](https://github.com/SAP/flake8-tergeo) reports the same `re.match` calls as
   [FTP149](https://github.com/SAP/flake8-tergeo/blob/main/docs/checks.md#ftp149), with no fix.

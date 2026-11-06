@@ -119,3 +119,7 @@ entry has a matching import that can take `lazy`, and the list is alone on its l
 An import that names a listed module together with other modules, such as `import json, os`, is reported with no fix:
 `lazy` would make the other modules lazy too. A statement that is not `lazy`-able keeps its entry, so the fix does not
 apply.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#29175](https://github.com/astral-sh/ruff/issues/29175).

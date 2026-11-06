@@ -226,5 +226,7 @@ import of a package's `__init__.py` that Python runs before a submodule.
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#2914](https://github.com/astral-sh/ruff/issues/2914) and
+  [#970](https://github.com/astral-sh/ruff/issues/970).
 - [pylint](https://github.com/pylint-dev/pylint) reports the same cycles as
   [cyclic-import](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/cyclic-import.html), with no fix.

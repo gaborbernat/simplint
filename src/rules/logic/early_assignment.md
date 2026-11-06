@@ -180,6 +180,7 @@ constant has no effect and the statements in between do not read or bind the nam
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#11060](https://github.com/astral-sh/ruff/issues/11060).
 - [Sourcery](https://sourcery.ai) moves an assignment down to its first use through
   [move-assign](https://docs.sourcery.ai/reference/refactorings/python/move-assign/), for any variable. This rule covers
   constants only.

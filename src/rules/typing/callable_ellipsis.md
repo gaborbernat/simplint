@@ -80,3 +80,7 @@ No fix is offered: the real signature has to be written by hand.
   def run(callback: "Callable[..., None]") -> None:
       callback()
   ```
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

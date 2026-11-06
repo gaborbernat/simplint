@@ -191,6 +191,8 @@ Ruff's [ambiguous-variable-name](https://docs.astral.sh/ruff/rules/ambiguous-var
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** released rule
+  [E741](https://docs.astral.sh/ruff/rules/ambiguous-variable-name/).
 - [flake8-variables-names](https://github.com/best-doctor/flake8-variables-names) reports single-letter names as
   [VNE001](https://github.com/best-doctor/flake8-variables-names/blob/master/flake8_variables_names/checker.py), but
   allows `i`, `_` and `T` by default. This rule flags `for i` loop targets and type parameters such as `T`.

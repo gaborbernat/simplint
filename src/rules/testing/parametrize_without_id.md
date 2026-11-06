@@ -104,3 +104,9 @@ No fix is offered: a meaningful id describes what the case tests, which cannot b
   def test_increment(value: int, expected: int) -> None:
       assert value + 1 == expected
   ```
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** open pull request
+  [#22136](https://github.com/astral-sh/ruff/pull/22136), for issue
+  [#14994](https://github.com/astral-sh/ruff/issues/14994).

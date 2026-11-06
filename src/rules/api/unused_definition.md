@@ -334,6 +334,7 @@ remove.
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#872](https://github.com/astral-sh/ruff/issues/872).
 - [vulture](https://github.com/jendrikseipp/vulture) reports unused functions, classes, methods and attributes across
   the files it is given, with a confidence score and no fix.
 - [deadcode](https://github.com/albertas/deadcode) reports the same definitions as

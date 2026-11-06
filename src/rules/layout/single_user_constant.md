@@ -398,3 +398,7 @@ No fix is offered when:
   def show() -> object:
       return t"{_LIMIT}"
   ```
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

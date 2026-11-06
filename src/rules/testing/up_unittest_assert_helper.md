@@ -136,6 +136,7 @@ comment in it is reported without a fix, because the rewrite would drop the comm
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#2417](https://github.com/astral-sh/ruff/issues/2417).
 - [flake8-assertive](https://github.com/jparise/flake8-assertive) reports `assertTrue` and `assertFalse` calls on
   comparisons and `is` checks that have a `TestCase` helper, as [A500](https://github.com/jparise/flake8-assertive),
   [A501](https://github.com/jparise/flake8-assertive) and [A502](https://github.com/jparise/flake8-assertive).

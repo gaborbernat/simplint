@@ -225,5 +225,6 @@ rule cannot see, so the author decides whether to remove it. A plugin installed 
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
 - [pytest-deadfixtures](https://github.com/jllorencetti/pytest-deadfixtures) lists the unused fixtures of a pytest run,
   with no fix.

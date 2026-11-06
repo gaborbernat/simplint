@@ -406,3 +406,7 @@ does not count as bound when annotations are evaluated eagerly, which is before 
 ### Related rules
 
 [module-variable-case](SMP102.html) checks the names of the same variables.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#21584](https://github.com/astral-sh/ruff/issues/21584).

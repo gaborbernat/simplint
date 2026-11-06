@@ -97,3 +97,7 @@ Reports these forms, when the call resolves to `sys.exc_info`, so `import sys as
 
 The fix is safe. It replaces the subscript with `sys.exception()`, or the unpacked argument with it, which gives the
 same value.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

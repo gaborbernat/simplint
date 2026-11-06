@@ -315,6 +315,8 @@ sections, and its fix moves only the helpers.
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#2425](https://github.com/astral-sh/ruff/issues/2425) and
+  [#3845](https://github.com/astral-sh/ruff/issues/3845).
 - [pyorder](https://github.com/Winipedia/pyorder) has the same
   [constructor-first](https://github.com/Winipedia/pyorder#ordering-rules) rule, and sorts abstract, overriding, special
   and class methods first as well.

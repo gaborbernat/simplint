@@ -252,3 +252,7 @@ def main() -> None:
 ### Related rules
 
 [all-format](SMP405.html) checks the shape of `__all__` itself: a list, not a tuple, with a trailing comma.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

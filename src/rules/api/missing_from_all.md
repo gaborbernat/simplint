@@ -580,3 +580,8 @@ print(local())
 ### Related rules
 
 [unused-export](SMP402.html) removes the opposite: names `__all__` lists that no other module imports.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#167](https://github.com/astral-sh/ruff/issues/167),
+  [#3482](https://github.com/astral-sh/ruff/issues/3482) and [#2098](https://github.com/astral-sh/ruff/issues/2098).

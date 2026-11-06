@@ -235,3 +235,7 @@ def build_fixture() -> dict[str, int]:
   ```
 
 The rule has no fix, because moving code into the tests changes the layout of the project, which the author decides.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

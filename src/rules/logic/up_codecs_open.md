@@ -145,3 +145,7 @@ No fix is offered when:
           "utf-8",
       ).read()
   ```
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

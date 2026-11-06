@@ -357,3 +357,8 @@ lazy from .findings import DbWriter
 
 writer = DbWriter()
 ```
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#21025](https://github.com/astral-sh/ruff/issues/21025)
+  and [#14070](https://github.com/astral-sh/ruff/issues/14070).

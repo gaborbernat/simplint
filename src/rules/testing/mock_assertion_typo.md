@@ -116,13 +116,17 @@ def test_save(save: MagicMock) -> None:
     save.assert_called_once_with("out.json")
 ```
 
-## Conflicts with Ruff
+## Ruff overlap
 
-Ruff's PGH005 reports an assertion method used without a call, such as `mock.assert_called_once`. It does not look at
-names that are not assertion methods, so it does not report these.
+Ruff's PGH005 reports an assertion method used without a call, such as `mock.assert_called_once`, and an assertion name
+without its prefix inside an `assert` statement, such as `assert mock.not_called()`. That second form is reported by
+both tools. A prefix-less name outside an `assert`, such as `mock.called_once_with(1)` on a line of its own, and a
+misspelled name such as `asssert_called_once`, are reported by this rule only.
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** released rule
+  [PGH005](https://docs.astral.sh/ruff/rules/invalid-mock-access/).
 - [flake8-mock](https://github.com/zupo/flake8-mock) reports misspelled mock assertions, such as `called_once_with`, as
   [M001](https://github.com/zupo/flake8-mock), with no fix. This rule's fix renames them to the assertion they stand
   for.

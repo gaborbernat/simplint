@@ -77,3 +77,7 @@ async def run() -> asyncio.AbstractEventLoop:
 
       return later
   ```
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

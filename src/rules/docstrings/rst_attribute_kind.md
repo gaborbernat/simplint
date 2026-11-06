@@ -178,3 +178,7 @@ class Engine:
 ```
 
 No fix is offered when escapes in the docstring make its text differ from the source.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

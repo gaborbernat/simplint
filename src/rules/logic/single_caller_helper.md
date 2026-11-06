@@ -255,3 +255,7 @@ helper's must stay within `max-caller-statements` for the helper to be reported.
 
 The rule has no fix: inlining needs the helper's parameters renamed to the caller's arguments, which the rule does not
 attempt.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#10108](https://github.com/astral-sh/ruff/issues/10108).

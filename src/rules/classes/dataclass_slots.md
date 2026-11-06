@@ -460,3 +460,7 @@ the class, is not detected, and breaks once the fix is applied.
 
 [dataclass-frozen](SMP701.html) asks for `frozen=True` and [dataclass-kw-only](SMP703.html) asks for `kw_only=True` on
 the same decorator.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#8981](https://github.com/astral-sh/ruff/issues/8981).

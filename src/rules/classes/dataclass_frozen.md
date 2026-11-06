@@ -412,3 +412,7 @@ the class, is not detected, and breaks once the fix is applied.
 
 [dataclass-slots](SMP702.html) asks for `slots=True` on the same decorator. [dataclass-kw-only](SMP703.html) asks for
 `kw_only=True`.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#8981](https://github.com/astral-sh/ruff/issues/8981).

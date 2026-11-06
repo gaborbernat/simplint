@@ -381,6 +381,10 @@ No fix is offered when escapes in the docstring make its text differ from the so
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
+  [DOC501](https://docs.astral.sh/ruff/rules/docstring-missing-exception/) (preview), which reads Google and NumPy
+  sections only, not reST fields; open issues [#12434](https://github.com/astral-sh/ruff/issues/12434) and
+  [#12520](https://github.com/astral-sh/ruff/issues/12520).
 - [pydoclint](https://github.com/jsh9/pydoclint) reports raised exceptions missing from or extra in the docstring as
   [DOC501](https://jsh9.github.io/pydoclint/violation_codes.html) and
   [DOC502](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.

@@ -178,3 +178,7 @@ with request_id.set("one"):
 
 The fix is safe and reports without a fix when a comment sits in the lines it would remove, which would lose the
 comment.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

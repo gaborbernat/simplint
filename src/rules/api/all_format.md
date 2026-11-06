@@ -237,6 +237,8 @@ The fix keeps the names in their order. The layout depends on how the literal is
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#27983](https://github.com/astral-sh/ruff/issues/27983)
+  and [#22443](https://github.com/astral-sh/ruff/issues/22443).
 - [flake8-dunder-all](https://github.com/python-formate/flake8-dunder-all) reports
   [DALL002](https://github.com/python-formate/flake8-dunder-all) when `__all__` is not a list or tuple of strings. It
   accepts tuples, which this rule reports, and it does not check the trailing comma.

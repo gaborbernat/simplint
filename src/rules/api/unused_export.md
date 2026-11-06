@@ -458,3 +458,7 @@ No fix is offered when:
 [missing-from-all](SMP401.html) is the counterpart, adding the names other modules import: together they keep `__all__`
 to the names the rest of the project uses. Once a name leaves `__all__`, [unexported-public-name](SMP403.html) asks for
 a leading underscore, so what looks public is what other modules use.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#12962](https://github.com/astral-sh/ruff/issues/12962).

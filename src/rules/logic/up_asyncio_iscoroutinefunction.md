@@ -99,3 +99,7 @@ is offered when:
   def check(task):
       return asyncio.iscoroutinefunction(task)
   ```
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

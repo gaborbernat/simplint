@@ -205,3 +205,7 @@ def fetch(url: str, _retries: int) -> bytes:
 ```
 
 No fix is offered when escapes in the docstring make its text differ from the source.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#970](https://github.com/astral-sh/ruff/issues/970).

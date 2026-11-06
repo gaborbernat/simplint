@@ -98,3 +98,10 @@ reports them until you do, so turn it off if you want to leave them empty.
       """
       return path
   ```
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
+  [D417](https://docs.astral.sh/ruff/rules/undocumented-param/), which reads Google and NumPy sections only, not reST
+  fields; open issues [#458](https://github.com/astral-sh/ruff/issues/458) and
+  [#14494](https://github.com/astral-sh/ruff/issues/14494).

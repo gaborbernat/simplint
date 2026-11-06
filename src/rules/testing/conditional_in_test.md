@@ -100,5 +100,6 @@ No fix is offered: splitting a test into cases needs knowledge of what each bran
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#11060](https://github.com/astral-sh/ruff/issues/11060).
 - [Sourcery](https://sourcery.ai) flags conditionals in tests through
   [no-conditionals-in-tests](https://docs.sourcery.ai/reference/refactorings/python/no-conditionals-in-tests/).

@@ -191,6 +191,13 @@ No fix is offered for replacements that need a review.
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules
+  [UP035](https://docs.astral.sh/ruff/rules/deprecated-import/),
+  [UP005](https://docs.astral.sh/ruff/rules/deprecated-unittest-alias/),
+  [UP024](https://docs.astral.sh/ruff/rules/os-error-alias/) and
+  [UP026](https://docs.astral.sh/ruff/rules/deprecated-mock-import/), which cover other deprecated names; open issues
+  [#970](https://github.com/astral-sh/ruff/issues/970), [#1507](https://github.com/astral-sh/ruff/issues/1507),
+  [#7436](https://github.com/astral-sh/ruff/issues/7436) and [#17935](https://github.com/astral-sh/ruff/issues/17935).
 - [pylint](https://github.com/pylint-dev/pylint) reports calls to the same deprecated standard library names as
   [deprecated-method](https://pylint.readthedocs.io/en/latest/user_guide/messages/warning/deprecated-method.html), with
   no fix.

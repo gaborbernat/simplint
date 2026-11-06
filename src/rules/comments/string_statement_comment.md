@@ -103,6 +103,7 @@ Ruff's useless-expression rule (`B018`) skips string literals, so Ruff does not 
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#11292](https://github.com/astral-sh/ruff/issues/11292).
 - [pylint](https://github.com/pylint-dev/pylint) reports string statements that have no effect as
   [pointless-string-statement](https://pylint.readthedocs.io/en/latest/user_guide/messages/warning/pointless-string-statement.html),
   with no fix. Its message suggests disabling the check for strings used as documentation, where this rule's fix turns

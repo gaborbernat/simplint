@@ -241,6 +241,8 @@ see [undocumented-public-api](SMP903.html).
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** released rule
+  [RUF067](https://docs.astral.sh/ruff/rules/non-empty-init-module/) (preview).
 - [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports logic in an `__init__`
   module as
   [WPS412](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/best_practices.html#wemake_python_styleguide.violations.best_practices.InitModuleHasLogicViolation),

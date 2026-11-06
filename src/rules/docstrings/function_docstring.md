@@ -403,3 +403,7 @@ No fix is offered when:
   indentation is not a multiple of the indent width, which Ruff's
   [indentation-with-invalid-multiple-comment](https://docs.astral.sh/ruff/rules/indentation-with-invalid-multiple-comment/)
   reports for comments.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

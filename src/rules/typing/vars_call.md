@@ -79,3 +79,7 @@ No fix is offered: the typed replacement depends on how the result is used.
 
   values = builtins.vars(object())
   ```
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#3845](https://github.com/astral-sh/ruff/issues/3845).

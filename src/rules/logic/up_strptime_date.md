@@ -102,3 +102,7 @@ The fix is safe for `.date()`. For `.time()` it is safe when the format is a str
 otherwise: `time.strptime` keeps the zone that `.time()` drops, so the value changes with `%z`. When the class is
 imported by name, the fix adds `date` or `time` to that `from datetime import` line. It reports without a fix when the
 file already spells `date` or `time` outside an attribute, since the new name would take that binding's place.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

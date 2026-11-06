@@ -279,3 +279,7 @@ def load(path: str) -> None:
   ```
 
 The rule has no fix, because the replacement type depends on what the callers expect, which the author knows.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

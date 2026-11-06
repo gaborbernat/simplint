@@ -110,3 +110,7 @@ fix is offered, since only the author knows what the value means.
       def __init__(self, limit: int) -> None:
           self.limit = limit
   ```
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

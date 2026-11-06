@@ -146,3 +146,7 @@ merged = {**entry for entry in pairs}
 
 The fix is safe for lists, sets and generators. It rewrites the element and removes the inner `for` clause. The fix for
 a dict is unsafe: `**` reads `keys()` and `__getitem__`, not `items()`, so the rewrite needs a real `dict`.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

@@ -119,5 +119,6 @@ import, or a read through the name it binds, takes a name the new module lacks, 
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
 - [flake8-tergeo](https://github.com/SAP/flake8-tergeo) reports the same imports as
   [FTP133](https://github.com/SAP/flake8-tergeo/blob/main/docs/checks.md#ftp133), with no fix.

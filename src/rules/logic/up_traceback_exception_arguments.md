@@ -149,3 +149,7 @@ Reports a call that resolves to `traceback.print_exception`, `traceback.format_e
 
 The fix is safe. It replaces the first arguments with the exception and keeps the keyword arguments, such as `limit=`
 and `chain=`.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

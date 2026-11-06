@@ -443,3 +443,8 @@ No fix is offered when:
 ### Related rules
 
 [module-variable-prefix](SMP404.html) applies the same convention to module variables.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#12962](https://github.com/astral-sh/ruff/issues/12962),
+  [#18380](https://github.com/astral-sh/ruff/issues/18380) and [#167](https://github.com/astral-sh/ruff/issues/167).

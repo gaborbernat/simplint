@@ -180,3 +180,8 @@ No fix is offered:
 - for attribute types
 
 - when escapes in the docstring make its text differ from the source
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#12434](https://github.com/astral-sh/ruff/issues/12434)
+  and [#9070](https://github.com/astral-sh/ruff/issues/9070).

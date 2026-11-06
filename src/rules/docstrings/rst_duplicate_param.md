@@ -153,5 +153,8 @@ No fix is offered when escapes in the docstring make its text differ from the so
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** open pull request
+  [#23081](https://github.com/astral-sh/ruff/pull/23081), for issue
+  [#12434](https://github.com/astral-sh/ruff/issues/12434).
 - [pydoclint](https://github.com/jsh9/pydoclint) reports any `__init__` docstring as
   [DOC301](https://jsh9.github.io/pydoclint/violation_codes.html), not only the parameters documented in both places.

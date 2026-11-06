@@ -156,6 +156,8 @@ No fix is offered, since a meaningful name cannot be derived from the code.
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#970](https://github.com/astral-sh/ruff/issues/970),
+  [#3845](https://github.com/astral-sh/ruff/issues/3845) and [#3463](https://github.com/astral-sh/ruff/issues/3463).
 - [flake8-variables-names](https://github.com/best-doctor/flake8-variables-names) reports placeholder names such as
   `data` as
   [VNE002](https://github.com/best-doctor/flake8-variables-names/blob/master/flake8_variables_names/checker.py). Its

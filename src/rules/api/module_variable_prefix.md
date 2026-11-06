@@ -153,3 +153,7 @@ run or a string that holds the old name.
 
 [module-variable-case](SMP102.html) checks the case of the same variables. [unexported-public-name](SMP403.html) applies
 the underscore convention to functions and classes.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

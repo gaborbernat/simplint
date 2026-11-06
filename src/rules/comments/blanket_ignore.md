@@ -130,3 +130,9 @@ No fix is offered: the comment does not say which codes it should name.
 Ruff's [blanket-type-ignore](https://docs.astral.sh/ruff/rules/blanket-type-ignore/) and
 [blanket-noqa](https://docs.astral.sh/ruff/rules/blanket-noqa/) report the `type: ignore` and `noqa` forms of this rule,
 so a project running both sees two reports for the same comment.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** released rules
+  [PGH003](https://docs.astral.sh/ruff/rules/blanket-type-ignore/) and
+  [PGH004](https://docs.astral.sh/ruff/rules/blanket-noqa/).

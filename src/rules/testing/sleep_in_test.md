@@ -88,3 +88,7 @@ def test_worker_finishes():
 ### Fix
 
 No fix is offered, as the wait has to become an event the code sets, which depends on the code under test.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

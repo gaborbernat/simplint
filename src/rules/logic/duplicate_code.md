@@ -210,6 +210,7 @@ simplint offers no fix: the right shared definition depends on the code around t
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#17724](https://github.com/astral-sh/ruff/issues/17724).
 - [pylint](https://github.com/pylint-dev/pylint) reports similar lines repeated across modules as
   [duplicate-code](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/duplicate-code.html), with no
   fix.

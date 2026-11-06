@@ -263,3 +263,7 @@ The fix removes `annotations` from the import:
 
 After the fix, code that reads `__annotations__` and expects strings gets evaluated objects
 ([annotations best practices](https://docs.python.org/3/howto/annotations.html)).
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#20739](https://github.com/astral-sh/ruff/issues/20739).

@@ -172,3 +172,7 @@ if TYPE_CHECKING:
 
 lazy from os import PathLike
 ```
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#29378](https://github.com/astral-sh/ruff/issues/29378).

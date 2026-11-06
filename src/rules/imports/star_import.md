@@ -186,6 +186,8 @@ then reads nothing the module is known to define.
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** released rule
+  [F403](https://docs.astral.sh/ruff/rules/undefined-local-with-import-star/).
 - [pylint](https://github.com/pylint-dev/pylint) reports every
   [wildcard-import](https://pylint.readthedocs.io/en/latest/user_guide/messages/warning/wildcard-import.html), including
   modules outside the project. This rule reports only modules the project defines, and its fix names the imported names.
