@@ -262,14 +262,6 @@ _FIX_BADGES: Final[dict[str, tuple[str, str]]] = {
 }
 
 
-def _cross_file_badge(root: str) -> str:
-    # links to the page that explains what reading other files means for a rule; `root` leads back to the docs root
-    return (
-        f'<a class="badge cross-file" href="{root}explanation/how-it-works.html#cross-file-rules"'
-        ' title="Other files of the run can change what this rule reports">🔗 Cross-file</a>'
-    )
-
-
 def _rules_index(rules: list[_RuleEntry], groups: dict[str, tuple[str, str]]) -> str:
     options = "".join(
         f'<option value="{family}">{html.escape(group)}</option>' for family, (group, _) in groups.items()
@@ -343,10 +335,17 @@ def _rule_page(rule: _RuleEntry) -> str:
         raise ValueError(msg)
     title = f"{rule['name']} ({rule['code']})"
     badge_class, badge_text = _FIX_BADGES[rule["fix"]]
+    # links to the page that explains what reading other files means for a rule
+    cross_file = (
+        '<a class="badge cross-file" href="../../explanation/how-it-works.html#cross-file-rules"'
+        ' title="Other files of the run can change what this rule reports">🔗 Cross-file</a>'
+        if rule["cross_file"]
+        else ""
+    )
     badges = (
         f'<div class="badges"><span class="badge code">{rule["code"]}</span>'
         f'<span class="badge {badge_class}">{badge_text}</span><span class="badge">{html.escape(rule["group"])}</span>'
-        f"{_cross_file_badge('../../') if rule['cross_file'] else ''}"
+        f"{cross_file}"
         '<a class="badge" href="../../rules.html">All rules</a></div>'
     )
     explanation = re.sub(r"\]\((SMP\d+)\.html\)", r"](\1.md)", rule["explanation"])
