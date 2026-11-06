@@ -39,9 +39,9 @@ jobs:
               - 'codecov.yml'
               - '.github/workflows/test.yaml'
   hooks:
-    # The release installs the pre-commit hooks with packages published in the last seven days held back, so a hook
-    # bumped to a fresh release passes pre-commit.ci and only fails when a release is prepared; this installs them the
-    # same way.
+    # Runs every hook over the tree, so a file a hook would rewrite fails here rather than in the scheduled jobs that
+    # run them before opening a PR. The hooks install as the release installs them, with packages published in the
+    # last seven days held back, so a hook bumped to a fresh release fails here too, not when a release is prepared.
     name: 🧹 hooks under the release cooldown
     runs-on: ubuntu-26.04
     steps:
@@ -58,10 +58,13 @@ jobs:
           enable-cache: false
       - name: 📦 Install prek
         run: uv tool install prek
-      - name: 🧹 Install the hooks as the release does
+      - name: 🧹 Run the hooks as the release installs them
         uses: tox-dev/github-workflows/cooled-prek@13381289334b15375958be7f7438f3c3d860e575 # 6.5.5
+        env:
+          # builds the linter from this checkout, which the lint jobs cover
+          SKIP: simplint
         with:
-          args: install-hooks
+          args: run --all-files --show-diff-on-failure
   clippy:
     name: 🧹 clippy
     needs: changes

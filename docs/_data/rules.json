@@ -23931,7 +23931,7 @@
     "name": "function-docstring",
     "summary": "Docstrings on internal functions and classes",
     "fix": "Sometimes",
-    "explanation": "Flags docstrings on internal functions, methods and classes. Their readers have the source open, where a docstring\nrestates the name and signature and nothing checks that it stays accurate.\n\n## Why is this bad?\n\n[PEP 8](https://peps.python.org/pep-0008/#documentation-strings) asks for docstrings on public modules, functions,\nclasses and methods, and for a comment after the `def` line of the rest; the fix writes that comment. Many projects\ndocument internal code with docstrings anyway, so this rule is a choice of style rather than common practice.\n\nA docstring restates what the name, signature and type annotations already say, and nothing checks that it stays\naccurate when the code changes. When the reason behind a piece of code is not obvious, a short comment next to that code\nexplains it better.\n\nA longer docstring may state a contract the code does not show, such as a tie-break rule, so the fix keeps its text as a\ncomment.\n\n## Example\n\n```python report\ndef load_config(path: Path) -> Config:\n    \"\"\"Load the config file.\"\"\"\n    return Config.from_toml(path.read_text())\n```\n\nUse instead:\n\n```python ok\ndef load_config(path: Path) -> Config:\n    return Config.from_toml(path.read_text())\n```\n\n## Conflicts with Ruff\n\nRuff's pydocstyle rules ask for the docstrings this rule removes:\n\n- [undocumented-public-class](https://docs.astral.sh/ruff/rules/undocumented-public-class/)\n- [undocumented-public-method](https://docs.astral.sh/ruff/rules/undocumented-public-method/)\n- [undocumented-public-function](https://docs.astral.sh/ruff/rules/undocumented-public-function/)\n- [undocumented-magic-method](https://docs.astral.sh/ruff/rules/undocumented-magic-method/)\n- [undocumented-public-nested-class](https://docs.astral.sh/ruff/rules/undocumented-public-nested-class/)\n- [undocumented-public-init](https://docs.astral.sh/ruff/rules/undocumented-public-init/)\n\nsimplint stops with an error before linting while any of them applies to a file this rule checks. Turn them off and let\n[undocumented-public-api](SMP903.html) ask for documentation on the public API, or turn this rule off.\n\nUse [undocumented-public-api](SMP903.html) in place of Ruff's\n[pydocstyle rules](https://docs.astral.sh/ruff/rules/#pydocstyle-d) that ask for docstrings, such as\n[undocumented-public-function](https://docs.astral.sh/ruff/rules/undocumented-public-function/) and\n[undocumented-public-class](https://docs.astral.sh/ruff/rules/undocumented-public-class/): they treat every name without\na leading `_` as public, while [undocumented-public-api](SMP903.html) follows `__all__`.\n\nWhen the comment the fix writes gives a Ruff rule a new report, such as\n[commented-out-code](https://docs.astral.sh/ruff/rules/commented-out-code/) for code in the docstring, simplint\nwithdraws the fix and keeps the report.\n\n## What it does\n\nChecks for [docstrings](https://docs.python.org/3/glossary.html#term-docstring) on internal functions, methods and\nclasses, at any nesting depth. What counts as internal depends on the project.\n\n### Active on\n\n- **All code of an application**: an application has no public API, so every function, method and class in it is\n  internal.\n\n  ```python report\n  def run() -> None:\n      \"\"\"Run the job.\"\"\"\n      print()\n  ```\n\n- **A library's code outside its public API**: whatever [undocumented-public-api](SMP903.html) does not count as public\n  API, at any nesting depth. [undocumented-public-api](SMP903.html) describes how the public API is found.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n  ```\n\n  ```python ok file=demo/api.py\n  def fetch() -> None:\n      \"\"\"Fetch the page.\"\"\"\n  ```\n\n  ```python report file=demo/_core.py\n  def step() -> None:\n      \"\"\"Run one step of the job.\"\"\"\n  ```\n\n- **Functions in the `case` bodies of a `match` at module or class level**: a `match` that picks an implementation by\n  platform or version is read the way an `if` is, so the functions in each case are checked like the module's others.\n\n  ```python report file=demo/platform.py\n  import sys\n\n  match sys.platform:\n      case \"win32\":\n\n          def _open() -> None:\n              \"\"\"Open the file.\"\"\"\n\n  ```\n\n- **Functions in a private module that other modules import**: a function in a module such as `package/_helpers.py` is\n  still internal when another module imports it, as long as the public modules do not re-export it.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n  ```\n\n  ```python report file=demo/_helpers.py\n  def load() -> None:\n      \"\"\"Load the settings.\"\"\"\n  ```\n\n  ```python context file=demo/cli.py\n  from demo._helpers import load\n\n  load()\n  ```\n\n### Exceptions\n\n- **A library's public API**: [undocumented-public-api](SMP903.html) requires it to be documented. That covers what its\n  public modules offer and re-export, and the methods of a public class whose names do not start with `_`.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n  ```\n\n  ```python ok file=demo/api.py\n  def fetch() -> None:\n      \"\"\"Fetch the page.\"\"\"\n  ```\n\n- **Dunder methods, overrides and property setters of a public class**: methods such as `__init__` keep their\n  docstrings, since documentation tools show them.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n  ```\n\n  ```python ok file=demo/api.py\n  class Client:\n      \"\"\"Talk to the service.\"\"\"\n\n      def __init__(self) -> None:\n          \"\"\"Set up the client.\"\"\"\n  ```\n\n- **Names in a module that builds `__all__` dynamically**: every name without a leading `_` is treated as possibly\n  public and skipped, since the module's exports cannot be read.\n\n  ```python ok\n  __all__ = list([\"fetch\"])\n\n\n  def fetch() -> None:\n      \"\"\"Fetch the page.\"\"\"\n  ```\n\n- **Docstrings holding a [doctest](https://docs.python.org/3/library/doctest.html) example**: a line starting with `>>>`\n  is a test that `pytest --doctest-modules` runs, so the docstring is data rather than documentation.\n\n  ```python ok\n  def add(a: int, b: int) -> int:\n      \"\"\"Add two numbers.\n\n      >>> add(1, 2)\n      3\n      \"\"\"\n      return a + b\n  ```\n\n- **Decorated functions and classes**: the decorator receives the docstring and may read `__doc__`, as `click.command`\n  does for help text or `deprecated` does to build its warning. The decorators in the table below are known to leave the\n  docstring unread, so the rule still reports under them.\n\n  ```python ok\n  @register\n  def run() -> None:\n      \"\"\"Run the job.\"\"\"\n  ```\n\n- **Every docstring of a run in which some file reads docstrings off objects**: through `obj.__doc__`,\n  `getattr(obj, \"__doc__\")` or a `getdoc` call such as `inspect.getdoc`. A test asserting a function's `__doc__`, or a\n  framework building a schema from endpoint docstrings, may read any of them. A bare `__doc__`, the module's own\n  docstring, does not count.\n\n  ```python ok file=run.py\n  def run() -> None:\n      \"\"\"Run the job.\"\"\"\n  ```\n\n  ```python context file=show.py\n  import inspect\n\n  from run import run\n\n  print(inspect.getdoc(run))\n  ```\n\n  ```python report\n  def run() -> None:\n      \"\"\"Run the job.\"\"\"\n      print(__doc__)\n  ```\n\nDecorators known to leave the docstring unread still let the rule report:\n\n| Module        | Decorators                                                                         |\n| ------------- | ---------------------------------------------------------------------------------- |\n| builtins      | `staticmethod`, `classmethod`, `property` and its `setter`, `getter` and `deleter` |\n| `abc`         | `abstractmethod`                                                                   |\n| `typing`      | `override`, `overload`, `final`, `no_type_check`                                   |\n| `functools`   | `cache`, `lru_cache`, `cached_property`, `wraps`, `total_ordering`                 |\n| `contextlib`  | `contextmanager`, `asynccontextmanager`                                            |\n| `dataclasses` | `dataclass`                                                                        |\n| `enum`        | `unique`                                                                           |\n| `pytest`      | `fixture` and the `pytest.mark` decorators                                         |\n\n```mermaid\nflowchart TD\n    start[\"docstring on a function,<br/>method or class\"] --> api{\"public API<br/>of a library?\"}\n    api -->|yes| skip[\"skipped\"]\n    api -->|no| doctest{\"holds a doctest?\"}\n    doctest -->|yes| skip\n    doctest -->|no| decorated{\"decorator that<br/>may read it?\"}\n    decorated -->|yes| skip\n    decorated -->|no| reads{\"run reads<br/>docstrings off objects?\"}\n    reads -->|yes| skip\n    reads -->|no| report[\"reported\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class start blue\n    class api,doctest,decorated,reads yellow\n    class skip green\n    class report orange\n```\n\n### Fix\n\n**Unsafe fix:** code that reads `__doc__` sees the change. That includes\n[`help()`](https://docs.python.org/3/builtins/functions.html#help) and code outside the run: a framework the function is\nhanded to as a value, such as a Starlette route, or a pydantic model whose docstring becomes its schema description.\n\nA file with a file-level `ruff: noqa` gets no fix: the docstring's lines may be what its codes silence, and rewriting\nthe docstring would leave them unused.\n\nThe fix depends on the docstring's length:\n\n- A docstring of one line with at most five words, such as `\"\"\"Return the value.\"\"\"` or `\"\"\"Helper class.\"\"\"`, restates\n  the name. The fix **deletes** it with the blank lines after it.\n\n  ```python report\n  def run() -> None:\n      \"\"\"Run the job.\"\"\"\n      print()\n  ```\n\n  ```python fixed\n  def run() -> None:\n      print()\n  ```\n\n- Any longer docstring may state a contract. The fix turns it into a `#` **comment block** in its place.\n\n  ```python report\n  def _pick(items: list[int]) -> int:\n      \"\"\"Return the largest item, or the first one on a tie.\"\"\"\n      return max(items)\n  ```\n\n  ```python fixed\n  def _pick(items: list[int]) -> int:\n      # Return the largest item, or the first one on a tie.\n      return max(items)\n  ```\n\nWhat the fix does with a reported docstring:\n\n- **One line of at most five words**: the fix deletes it.\n- **Anything longer, when the comment is safe to write**: the fix turns it into a `#` comment.\n- **Anything longer, when it is not**: no fix is offered.\n\nThe conditions under which the comment is not safe to write are listed under \"No fix is offered\" below.\n\nThe comment text is built this way:\n\n- The text is the docstring's source between its quotes, escapes such as `\\n` as written, cleaned as\n  [`inspect.cleandoc`](https://docs.python.org/3/library/inspect.html#inspect.cleandoc) gives it: without the quotes,\n  the common indentation, and the blank lines around it, with each line's trailing whitespace dropped.\n\n- Blank lines between paragraphs become a lone `#`.\n\n  ```python report\n  def _fetch(url: str) -> bytes:\n      \"\"\"Download the resource.\n\n      The retry count comes from the settings.\n      \"\"\"\n      return _download(url)\n  ```\n\n  ```python fixed\n  def _fetch(url: str) -> bytes:\n      # Download the resource.\n      #\n      # The retry count comes from the settings.\n      return _download(url)\n  ```\n\n- Lines made only of heading underline characters, such as the `----------` under a numpydoc `Parameters`, are dropped,\n  since as comments they read as section dividers (see [section-comment](SMP001.html)).\n\n- Lines that fit keep their text and relative indentation, so lists and indented blocks keep their shape.\n\n- A longer line wraps at spaces. What wraps over joins the next line when that line goes on with the same sentence: it\n  has the same indentation, starts with a lowercase letter, and does not open with a field such as `name:` or\n  `name (int):`.\n\n- A URL longer than the room gets a line of its own.\n\n- The room is the shorter of Ruff's line length limit and its\n  [`max-doc-length`](https://docs.astral.sh/ruff/settings/#lint_pycodestyle_max-doc-length), at the indentation\n  `ruff format` gives the body, so the result does not depend on how the code is laid out now.\n\nAround the docstring, both fixes do the following:\n\n- When the docstring is the whole body, the fix leaves\n  [`...`](https://docs.python.org/3/builtins/constants.html#Ellipsis) as the body, after the comment when there is one.\n\n  ```python report\n  def _ping() -> None:\n      \"\"\"Send a probe to the server, then wait for the reply.\"\"\"\n  ```\n\n  ```python fixed\n  def _ping() -> None:\n      # Send a probe to the server, then wait for the reply.\n      ...\n  ```\n\n- A pragma comment after the docstring, such as `# noqa: E501`, covered the docstring's line only and goes with it.\n  Another comment stays, after the `...` or at the end of the last comment line.\n\n  ```python report\n  def _run() -> None:\n      \"\"\"Run the job.\"\"\"  # noqa: E501\n      print()\n  ```\n\n  ```python fixed\n  def _run() -> None:\n      print()\n  ```\n\n- Like the deletion, the comment takes the blank lines after the docstring.\n\n- A comment cannot share a line with code before it. The comment for a docstring on the `def` line, or sharing its line\n  with the next statement, goes on lines of its own, and so do the statements after it, as `ruff format` would put them.\n\nNo fix is offered when:\n\n- a comment sits between the docstring and a statement sharing its line;\n\n- a comment line would read as a tool directive, such as one starting with `type:`, `noqa`, `fmt:` or `simplint:`, or\n  holding `# noqa` in its text;\n\n  ```python report\n  def _level() -> int:\n      \"\"\"type: int, the logging level in use.\"\"\"\n      return 1\n  ```\n\n- a word too long for the room, other than a URL ending the line, would leave a comment line Ruff's\n  [line-too-long](https://docs.astral.sh/ruff/rules/line-too-long/) reports, which it skips on a docstring line of a\n  single word;\n\n- `ruff format` leaves the docstring alone, under `# fmt: off`, with `# fmt: skip` or in an excluded file, and its\n  indentation is not a multiple of the indent width, which Ruff's\n  [indentation-with-invalid-multiple-comment](https://docs.astral.sh/ruff/rules/indentation-with-invalid-multiple-comment/)\n  reports for comments.\n",
+    "explanation": "Flags docstrings on internal functions, methods and classes. Their readers have the source open, where a docstring\nrestates the name and signature and nothing checks that it stays accurate.\n\n## Why is this bad?\n\n[PEP 8](https://peps.python.org/pep-0008/#documentation-strings) asks for docstrings on public modules, functions,\nclasses and methods, and for a comment after the `def` line of the rest; the fix writes that comment. Many projects\ndocument internal code with docstrings anyway, so this rule is a choice of style rather than common practice.\n\nA docstring restates what the name, signature and type annotations already say, and nothing checks that it stays\naccurate when the code changes. When the reason behind a piece of code is not obvious, a short comment next to that code\nexplains it better.\n\nA longer docstring may state a contract the code does not show, such as a tie-break rule, so the fix keeps its text as a\ncomment.\n\n## Example\n\n```python report\ndef load_config(path: Path) -> Config:\n    \"\"\"Load the config file.\"\"\"\n    return Config.from_toml(path.read_text())\n```\n\nUse instead:\n\n```python ok\ndef load_config(path: Path) -> Config:\n    return Config.from_toml(path.read_text())\n```\n\n## Conflicts with Ruff\n\nRuff's pydocstyle rules ask for the docstrings this rule removes:\n\n- [undocumented-public-class](https://docs.astral.sh/ruff/rules/undocumented-public-class/)\n- [undocumented-public-method](https://docs.astral.sh/ruff/rules/undocumented-public-method/)\n- [undocumented-public-function](https://docs.astral.sh/ruff/rules/undocumented-public-function/)\n- [undocumented-magic-method](https://docs.astral.sh/ruff/rules/undocumented-magic-method/)\n- [undocumented-public-nested-class](https://docs.astral.sh/ruff/rules/undocumented-public-nested-class/)\n- [undocumented-public-init](https://docs.astral.sh/ruff/rules/undocumented-public-init/)\n\nsimplint stops with an error before linting while any of them applies to a file this rule checks. Turn them off and let\n[undocumented-public-api](SMP903.html) ask for documentation on the public API, or turn this rule off.\n\nUse [undocumented-public-api](SMP903.html) in place of Ruff's\n[pydocstyle rules](https://docs.astral.sh/ruff/rules/#pydocstyle-d) that ask for docstrings, such as\n[undocumented-public-function](https://docs.astral.sh/ruff/rules/undocumented-public-function/) and\n[undocumented-public-class](https://docs.astral.sh/ruff/rules/undocumented-public-class/): they treat every name without\na leading `_` as public, while [undocumented-public-api](SMP903.html) follows `__all__`.\n\nWhen the comment the fix writes gives a Ruff rule a new report, such as\n[commented-out-code](https://docs.astral.sh/ruff/rules/commented-out-code/) for code in the docstring, simplint\nwithdraws the fix and keeps the report.\n\n## What it does\n\nChecks for [docstrings](https://docs.python.org/3/glossary.html#term-docstring) on internal functions, methods and\nclasses, at any nesting depth. What counts as internal depends on the project.\n\n### Active on\n\n- **All code of an application**: an application has no public API, so every function, method and class in it is\n  internal.\n\n  ```python report\n  def run() -> None:\n      \"\"\"Run the job.\"\"\"\n      print()\n  ```\n\n- **A library's code outside its public API**: whatever [undocumented-public-api](SMP903.html) does not count as public\n  API, at any nesting depth. [undocumented-public-api](SMP903.html) describes how the public API is found.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n  ```\n\n  ```python ok file=demo/api.py\n  def fetch() -> None:\n      \"\"\"Fetch the page.\"\"\"\n  ```\n\n  ```python report file=demo/_core.py\n  def step() -> None:\n      \"\"\"Run one step of the job.\"\"\"\n  ```\n\n- **Functions in the `case` bodies of a `match` at module or class level**: a `match` that picks an implementation by\n  platform or version is read the way an `if` is, so the functions in each case are checked like the module's others.\n\n  ```python report file=demo/platform.py\n  import sys\n\n  match sys.platform:\n      case \"win32\":\n\n          def _open() -> None:\n              \"\"\"Open the file.\"\"\"\n\n      case _:\n\n          def _open() -> None:\n              \"\"\"Open the file.\"\"\"\n  ```\n\n- **Functions in a private module that other modules import**: a function in a module such as `package/_helpers.py` is\n  still internal when another module imports it, as long as the public modules do not re-export it.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n  ```\n\n  ```python report file=demo/_helpers.py\n  def load() -> None:\n      \"\"\"Load the settings.\"\"\"\n  ```\n\n  ```python context file=demo/cli.py\n  from demo._helpers import load\n\n  load()\n  ```\n\n### Exceptions\n\n- **A library's public API**: [undocumented-public-api](SMP903.html) requires it to be documented. That covers what its\n  public modules offer and re-export, and the methods of a public class whose names do not start with `_`.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n  ```\n\n  ```python ok file=demo/api.py\n  def fetch() -> None:\n      \"\"\"Fetch the page.\"\"\"\n  ```\n\n- **Dunder methods, overrides and property setters of a public class**: methods such as `__init__` keep their\n  docstrings, since documentation tools show them.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n  ```\n\n  ```python ok file=demo/api.py\n  class Client:\n      \"\"\"Talk to the service.\"\"\"\n\n      def __init__(self) -> None:\n          \"\"\"Set up the client.\"\"\"\n  ```\n\n- **Names in a module that builds `__all__` dynamically**: every name without a leading `_` is treated as possibly\n  public and skipped, since the module's exports cannot be read.\n\n  ```python ok\n  __all__ = list([\"fetch\"])\n\n\n  def fetch() -> None:\n      \"\"\"Fetch the page.\"\"\"\n  ```\n\n- **Docstrings holding a [doctest](https://docs.python.org/3/library/doctest.html) example**: a line starting with `>>>`\n  is a test that `pytest --doctest-modules` runs, so the docstring is data rather than documentation.\n\n  ```python ok\n  def add(a: int, b: int) -> int:\n      \"\"\"Add two numbers.\n\n      >>> add(1, 2)\n      3\n      \"\"\"\n      return a + b\n  ```\n\n- **Decorated functions and classes**: the decorator receives the docstring and may read `__doc__`, as `click.command`\n  does for help text or `deprecated` does to build its warning. The decorators in the table below are known to leave the\n  docstring unread, so the rule still reports under them.\n\n  ```python ok\n  @register\n  def run() -> None:\n      \"\"\"Run the job.\"\"\"\n  ```\n\n- **Every docstring of a run in which some file reads docstrings off objects**: through `obj.__doc__`,\n  `getattr(obj, \"__doc__\")` or a `getdoc` call such as `inspect.getdoc`. A test asserting a function's `__doc__`, or a\n  framework building a schema from endpoint docstrings, may read any of them. A bare `__doc__`, the module's own\n  docstring, does not count.\n\n  ```python ok file=run.py\n  def run() -> None:\n      \"\"\"Run the job.\"\"\"\n  ```\n\n  ```python context file=show.py\n  import inspect\n\n  from run import run\n\n  print(inspect.getdoc(run))\n  ```\n\n  ```python report\n  def run() -> None:\n      \"\"\"Run the job.\"\"\"\n      print(__doc__)\n  ```\n\nDecorators known to leave the docstring unread still let the rule report:\n\n| Module        | Decorators                                                                         |\n| ------------- | ---------------------------------------------------------------------------------- |\n| builtins      | `staticmethod`, `classmethod`, `property` and its `setter`, `getter` and `deleter` |\n| `abc`         | `abstractmethod`                                                                   |\n| `typing`      | `override`, `overload`, `final`, `no_type_check`                                   |\n| `functools`   | `cache`, `lru_cache`, `cached_property`, `wraps`, `total_ordering`                 |\n| `contextlib`  | `contextmanager`, `asynccontextmanager`                                            |\n| `dataclasses` | `dataclass`                                                                        |\n| `enum`        | `unique`                                                                           |\n| `pytest`      | `fixture` and the `pytest.mark` decorators                                         |\n\n```mermaid\nflowchart TD\n    start[\"docstring on a function,<br/>method or class\"] --> api{\"public API<br/>of a library?\"}\n    api -->|yes| skip[\"skipped\"]\n    api -->|no| doctest{\"holds a doctest?\"}\n    doctest -->|yes| skip\n    doctest -->|no| decorated{\"decorator that<br/>may read it?\"}\n    decorated -->|yes| skip\n    decorated -->|no| reads{\"run reads<br/>docstrings off objects?\"}\n    reads -->|yes| skip\n    reads -->|no| report[\"reported\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class start blue\n    class api,doctest,decorated,reads yellow\n    class skip green\n    class report orange\n```\n\n### Fix\n\n**Unsafe fix:** code that reads `__doc__` sees the change. That includes\n[`help()`](https://docs.python.org/3/builtins/functions.html#help) and code outside the run: a framework the function is\nhanded to as a value, such as a Starlette route, or a pydantic model whose docstring becomes its schema description.\n\nA file with a file-level `ruff: noqa` gets no fix: the docstring's lines may be what its codes silence, and rewriting\nthe docstring would leave them unused.\n\nThe fix depends on the docstring's length:\n\n- A docstring of one line with at most five words, such as `\"\"\"Return the value.\"\"\"` or `\"\"\"Helper class.\"\"\"`, restates\n  the name. The fix **deletes** it with the blank lines after it.\n\n  ```python report\n  def run() -> None:\n      \"\"\"Run the job.\"\"\"\n      print()\n  ```\n\n  ```python fixed\n  def run() -> None:\n      print()\n  ```\n\n- Any longer docstring may state a contract. The fix turns it into a `#` **comment block** in its place.\n\n  ```python report\n  def _pick(items: list[int]) -> int:\n      \"\"\"Return the largest item, or the first one on a tie.\"\"\"\n      return max(items)\n  ```\n\n  ```python fixed\n  def _pick(items: list[int]) -> int:\n      # Return the largest item, or the first one on a tie.\n      return max(items)\n  ```\n\nWhat the fix does with a reported docstring:\n\n- **One line of at most five words**: the fix deletes it.\n- **Anything longer, when the comment is safe to write**: the fix turns it into a `#` comment.\n- **Anything longer, when it is not**: no fix is offered.\n\nThe conditions under which the comment is not safe to write are listed under \"No fix is offered\" below.\n\nThe comment text is built this way:\n\n- The text is the docstring's source between its quotes, escapes such as `\\n` as written, cleaned as\n  [`inspect.cleandoc`](https://docs.python.org/3/library/inspect.html#inspect.cleandoc) gives it: without the quotes,\n  the common indentation, and the blank lines around it, with each line's trailing whitespace dropped.\n\n- Blank lines between paragraphs become a lone `#`.\n\n  ```python report\n  def _fetch(url: str) -> bytes:\n      \"\"\"Download the resource.\n\n      The retry count comes from the settings.\n      \"\"\"\n      return _download(url)\n  ```\n\n  ```python fixed\n  def _fetch(url: str) -> bytes:\n      # Download the resource.\n      #\n      # The retry count comes from the settings.\n      return _download(url)\n  ```\n\n- Lines made only of heading underline characters, such as the `----------` under a numpydoc `Parameters`, are dropped,\n  since as comments they read as section dividers (see [section-comment](SMP001.html)).\n\n- Lines that fit keep their text and relative indentation, so lists and indented blocks keep their shape.\n\n- A longer line wraps at spaces. What wraps over joins the next line when that line goes on with the same sentence: it\n  has the same indentation, starts with a lowercase letter, and does not open with a field such as `name:` or\n  `name (int):`.\n\n- A URL longer than the room gets a line of its own.\n\n- The room is the shorter of Ruff's line length limit and its\n  [`max-doc-length`](https://docs.astral.sh/ruff/settings/#lint_pycodestyle_max-doc-length), at the indentation\n  `ruff format` gives the body, so the result does not depend on how the code is laid out now.\n\nAround the docstring, both fixes do the following:\n\n- When the docstring is the whole body, the fix leaves\n  [`...`](https://docs.python.org/3/builtins/constants.html#Ellipsis) as the body, after the comment when there is one.\n\n  ```python report\n  def _ping() -> None:\n      \"\"\"Send a probe to the server, then wait for the reply.\"\"\"\n  ```\n\n  ```python fixed\n  def _ping() -> None:\n      # Send a probe to the server, then wait for the reply.\n      ...\n  ```\n\n- A pragma comment after the docstring, such as `# noqa: E501`, covered the docstring's line only and goes with it.\n  Another comment stays, after the `...` or at the end of the last comment line.\n\n  ```python report\n  def _run() -> None:\n      \"\"\"Run the job.\"\"\"  # noqa: E501\n      print()\n  ```\n\n  ```python fixed\n  def _run() -> None:\n      print()\n  ```\n\n- Like the deletion, the comment takes the blank lines after the docstring.\n\n- A comment cannot share a line with code before it. The comment for a docstring on the `def` line, or sharing its line\n  with the next statement, goes on lines of its own, and so do the statements after it, as `ruff format` would put them.\n\nNo fix is offered when:\n\n- a comment sits between the docstring and a statement sharing its line;\n\n- a comment line would read as a tool directive, such as one starting with `type:`, `noqa`, `fmt:` or `simplint:`, or\n  holding `# noqa` in its text;\n\n  ```python report\n  def _level() -> int:\n      \"\"\"type: int, the logging level in use.\"\"\"\n      return 1\n  ```\n\n- a word too long for the room, other than a URL ending the line, would leave a comment line Ruff's\n  [line-too-long](https://docs.astral.sh/ruff/rules/line-too-long/) reports, which it skips on a docstring line of a\n  single word;\n\n- `ruff format` leaves the docstring alone, under `# fmt: off`, with `# fmt: skip` or in an excluded file, and its\n  indentation is not a multiple of the indent width, which Ruff's\n  [indentation-with-invalid-multiple-comment](https://docs.astral.sh/ruff/rules/indentation-with-invalid-multiple-comment/)\n  reports for comments.\n",
     "examples": {
       "parsed": [
         {
@@ -24018,7 +24018,7 @@
         {
           "section": "What it does",
           "line": 96,
-          "end_line": 105,
+          "end_line": 109,
           "config": null,
           "blocks": [
             {
@@ -24027,18 +24027,18 @@
               "file": "demo/platform.py",
               "named": true,
               "line": 96,
-              "end_line": 105,
-              "source": "import sys\n\nmatch sys.platform:\n    case \"win32\":\n\n        def _open() -> None:\n            \"\"\"Open the file.\"\"\"\n\n"
+              "end_line": 109,
+              "source": "import sys\n\nmatch sys.platform:\n    case \"win32\":\n\n        def _open() -> None:\n            \"\"\"Open the file.\"\"\"\n\n    case _:\n\n        def _open() -> None:\n            \"\"\"Open the file.\"\"\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 110,
-          "end_line": 127,
+          "line": 114,
+          "end_line": 131,
           "config": {
-            "line": 110,
-            "end_line": 116,
+            "line": 114,
+            "end_line": 120,
             "source": "[project]\nname = \"demo\"\n\n[build-system]\nrequires = []\n"
           },
           "blocks": [
@@ -24047,8 +24047,8 @@
               "language": "python",
               "file": "demo/_helpers.py",
               "named": true,
-              "line": 118,
-              "end_line": 121,
+              "line": 122,
+              "end_line": 125,
               "source": "def load() -> None:\n    \"\"\"Load the settings.\"\"\"\n"
             },
             {
@@ -24056,19 +24056,19 @@
               "language": "python",
               "file": "demo/cli.py",
               "named": true,
-              "line": 123,
-              "end_line": 127,
+              "line": 127,
+              "end_line": 131,
               "source": "from demo._helpers import load\n\nload()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 134,
-          "end_line": 145,
+          "line": 138,
+          "end_line": 149,
           "config": {
-            "line": 134,
-            "end_line": 140,
+            "line": 138,
+            "end_line": 144,
             "source": "[project]\nname = \"demo\"\n\n[build-system]\nrequires = []\n"
           },
           "blocks": [
@@ -24077,19 +24077,19 @@
               "language": "python",
               "file": "demo/api.py",
               "named": true,
-              "line": 142,
-              "end_line": 145,
+              "line": 146,
+              "end_line": 149,
               "source": "def fetch() -> None:\n    \"\"\"Fetch the page.\"\"\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 150,
-          "end_line": 164,
+          "line": 154,
+          "end_line": 168,
           "config": {
-            "line": 150,
-            "end_line": 156,
+            "line": 154,
+            "end_line": 160,
             "source": "[project]\nname = \"demo\"\n\n[build-system]\nrequires = []\n"
           },
           "blocks": [
@@ -24098,16 +24098,16 @@
               "language": "python",
               "file": "demo/api.py",
               "named": true,
-              "line": 158,
-              "end_line": 164,
+              "line": 162,
+              "end_line": 168,
               "source": "class Client:\n    \"\"\"Talk to the service.\"\"\"\n\n    def __init__(self) -> None:\n        \"\"\"Set up the client.\"\"\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 169,
-          "end_line": 175,
+          "line": 173,
+          "end_line": 179,
           "config": null,
           "blocks": [
             {
@@ -24115,16 +24115,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 169,
-              "end_line": 175,
+              "line": 173,
+              "end_line": 179,
               "source": "__all__ = list([\"fetch\"])\n\n\ndef fetch() -> None:\n    \"\"\"Fetch the page.\"\"\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 180,
-          "end_line": 188,
+          "line": 184,
+          "end_line": 192,
           "config": null,
           "blocks": [
             {
@@ -24132,16 +24132,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 180,
-              "end_line": 188,
+              "line": 184,
+              "end_line": 192,
               "source": "def add(a: int, b: int) -> int:\n    \"\"\"Add two numbers.\n\n    >>> add(1, 2)\n    3\n    \"\"\"\n    return a + b\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 194,
-          "end_line": 198,
+          "line": 198,
+          "end_line": 202,
           "config": null,
           "blocks": [
             {
@@ -24149,16 +24149,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 194,
-              "end_line": 198,
+              "line": 198,
+              "end_line": 202,
               "source": "@register\ndef run() -> None:\n    \"\"\"Run the job.\"\"\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 205,
-          "end_line": 216,
+          "line": 209,
+          "end_line": 220,
           "config": null,
           "blocks": [
             {
@@ -24166,8 +24166,8 @@
               "language": "python",
               "file": "run.py",
               "named": true,
-              "line": 205,
-              "end_line": 208,
+              "line": 209,
+              "end_line": 212,
               "source": "def run() -> None:\n    \"\"\"Run the job.\"\"\"\n"
             },
             {
@@ -24175,16 +24175,16 @@
               "language": "python",
               "file": "show.py",
               "named": true,
-              "line": 210,
-              "end_line": 216,
+              "line": 214,
+              "end_line": 220,
               "source": "import inspect\n\nfrom run import run\n\nprint(inspect.getdoc(run))\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 218,
-          "end_line": 222,
+          "line": 222,
+          "end_line": 226,
           "config": null,
           "blocks": [
             {
@@ -24192,16 +24192,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 218,
-              "end_line": 222,
+              "line": 222,
+              "end_line": 226,
               "source": "def run() -> None:\n    \"\"\"Run the job.\"\"\"\n    print(__doc__)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 273,
-          "end_line": 282,
+          "line": 277,
+          "end_line": 286,
           "config": null,
           "blocks": [
             {
@@ -24209,8 +24209,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 273,
-              "end_line": 277,
+              "line": 277,
+              "end_line": 281,
               "source": "def run() -> None:\n    \"\"\"Run the job.\"\"\"\n    print()\n"
             },
             {
@@ -24218,16 +24218,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 279,
-              "end_line": 282,
+              "line": 283,
+              "end_line": 286,
               "source": "def run() -> None:\n    print()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 286,
-          "end_line": 296,
+          "line": 290,
+          "end_line": 300,
           "config": null,
           "blocks": [
             {
@@ -24235,8 +24235,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 286,
-              "end_line": 290,
+              "line": 290,
+              "end_line": 294,
               "source": "def _pick(items: list[int]) -> int:\n    \"\"\"Return the largest item, or the first one on a tie.\"\"\"\n    return max(items)\n"
             },
             {
@@ -24244,16 +24244,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 292,
-              "end_line": 296,
+              "line": 296,
+              "end_line": 300,
               "source": "def _pick(items: list[int]) -> int:\n    # Return the largest item, or the first one on a tie.\n    return max(items)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 314,
-          "end_line": 329,
+          "line": 318,
+          "end_line": 333,
           "config": null,
           "blocks": [
             {
@@ -24261,8 +24261,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 314,
-              "end_line": 321,
+              "line": 318,
+              "end_line": 325,
               "source": "def _fetch(url: str) -> bytes:\n    \"\"\"Download the resource.\n\n    The retry count comes from the settings.\n    \"\"\"\n    return _download(url)\n"
             },
             {
@@ -24270,16 +24270,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 323,
-              "end_line": 329,
+              "line": 327,
+              "end_line": 333,
               "source": "def _fetch(url: str) -> bytes:\n    # Download the resource.\n    #\n    # The retry count comes from the settings.\n    return _download(url)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 351,
-          "end_line": 360,
+          "line": 355,
+          "end_line": 364,
           "config": null,
           "blocks": [
             {
@@ -24287,8 +24287,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 351,
-              "end_line": 354,
+              "line": 355,
+              "end_line": 358,
               "source": "def _ping() -> None:\n    \"\"\"Send a probe to the server, then wait for the reply.\"\"\"\n"
             },
             {
@@ -24296,16 +24296,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 356,
-              "end_line": 360,
+              "line": 360,
+              "end_line": 364,
               "source": "def _ping() -> None:\n    # Send a probe to the server, then wait for the reply.\n    ...\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 365,
-          "end_line": 374,
+          "line": 369,
+          "end_line": 378,
           "config": null,
           "blocks": [
             {
@@ -24313,8 +24313,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 365,
-              "end_line": 369,
+              "line": 369,
+              "end_line": 373,
               "source": "def _run() -> None:\n    \"\"\"Run the job.\"\"\"  # noqa: E501\n    print()\n"
             },
             {
@@ -24322,16 +24322,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 371,
-              "end_line": 374,
+              "line": 375,
+              "end_line": 378,
               "source": "def _run() -> None:\n    print()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 388,
-          "end_line": 392,
+          "line": 392,
+          "end_line": 396,
           "config": null,
           "blocks": [
             {
@@ -24339,8 +24339,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 388,
-              "end_line": 392,
+              "line": 392,
+              "end_line": 396,
               "source": "def _level() -> int:\n    \"\"\"type: int, the logging level in use.\"\"\"\n    return 1\n"
             }
           ]
@@ -24527,7 +24527,7 @@
     "name": "undocumented-public-api",
     "summary": "Public functions, classes, methods and variables without documentation",
     "fix": "None",
-    "explanation": "Flags functions, classes, methods and variables of a library's public API that have no documentation. Users read the API\nthrough hover help and the generated reference, where the docstring is all they see.\n\n## Why is this bad?\n\nUsers of a library reach its public API through their editor's hover help and the generated reference, not through the\nsource. A docstring is what they read there: what the function promises, what each parameter means, what it returns and\nwhat it raises. Internal code is the opposite case: its readers have the source open, so\n[function-docstring](SMP901.html) asks for no docstring there.\n\n## Example\n\n```toml config\n[tool.simplint]\nproject-kind = \"library\"\n```\n\n```python context file=package/__init__.py\nfrom ._client import fetch\n\n__all__ = [\"fetch\"]\n```\n\n```python report file=package/_client.py\ndef fetch(url: str) -> bytes:  # package/__init__.py re-exports it\n    return _download(url)\n```\n\nUse instead:\n\n```python context file=package/__init__.py\nfrom ._client import fetch\n\n__all__ = [\"fetch\"]\n```\n\n```python ok file=package/_client.py\ndef fetch(url: str) -> bytes:\n    \"\"\"Download the resource at a URL.\n\n    :param url: Address of the resource.\n    :returns: The response body.\n    \"\"\"\n    return _download(url)\n```\n\n## Configuration\n\n- [`project-kind`](https://simplint.readthedocs.io/en/latest/configuration/project.html#library-or-application) in\n  `[tool.simplint]`: whether the project is a library or an application\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python report\n  def fetch() -> None:\n      print()\n  ```\n\n- [`api-packages`](https://simplint.readthedocs.io/en/latest/configuration/project.html#api-packages-and-modules) in\n  `[tool.simplint]`: the top-level packages whose modules make up the public API\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  api-packages = [\"demo\"]\n  ```\n\n  ```python report file=demo/api.py\n  def fetch() -> None:\n      print()\n  ```\n\n  ```python ok file=tools/build.py\n  def build() -> None:\n      print()\n  ```\n\n## What it does\n\nChecks that a library's public API is documented. No fix is offered, since only the author knows what the API promises.\n\n### Active on\n\n- **Public functions and classes**: each needs a [docstring](https://docs.python.org/3/glossary.html#term-docstring).\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python report\n  def fetch() -> None:\n      print()\n\n\n  class Client:\n      pass\n  ```\n\n- **Methods, properties and nested classes of a public class**: those whose names do not start with `_` need a\n  docstring.\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python report\n  class Client:\n      \"\"\"Talk to the service.\"\"\"\n\n      def get(self) -> None:\n          print()\n  ```\n\n- **Public variables**: each needs a docstring on the line below it, or a `#:` comment on the line above it or at the\n  end of its line, the forms\n  [Sphinx autodoc](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#directive-autoattribute) reads.\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python report file=demo/api.py\n  LIMIT = 10\n  ```\n\n  ```python ok file=demo/limits.py\n  #: The most jobs run at once.\n  LIMIT = 10\n  RATE = 2\n  \"\"\"The jobs started per second.\"\"\"\n  ```\n\n- **Type aliases from a `type` statement**: a public alias needs a docstring like any public variable.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.12\"\n\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python report file=demo/api.py\n  type Pair = tuple[int, int]\n  ```\n\n- **Definitions in the `case` bodies of a `match` at module or class level**: a `match` that picks an implementation by\n  platform or version is read the way an `if` is, so the public definitions in each case are the module's too.\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python report file=demo/api.py\n  import sys\n\n  match sys.platform:\n      case \"win32\":\n\n          def open_thing() -> int:\n              return 1\n  ```\n\n- **Names a private module defines and a public module re-exports**: the report names the module that re-exports the\n  name, so you can see why it counts.\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python report file=demo/_core.py\n  def fetch() -> None:\n      print()\n  ```\n\n  ```python context file=demo/__init__.py\n  from demo._core import fetch\n\n  __all__ = [\"fetch\"]\n  ```\n\n### Exceptions\n\n- **Functions decorated with [`@overload`](https://docs.python.org/3/library/typing.html#typing.overload)**: the\n  implementation carries the docstring; [function-docstring](SMP901.html) leaves their docstrings alone too.\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python ok file=demo/api.py\n  from typing import overload\n\n\n  @overload\n  def load(path: int) -> int: ...\n  ```\n\n- **Dunder methods, such as `__init__`**: the class docstring describes their parameters.\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python ok file=demo/api.py\n  class Client:\n      \"\"\"Talk to the service.\"\"\"\n\n      def __init__(self) -> None: ...\n  ```\n\n- **Methods decorated with [`@override`](https://docs.python.org/3/library/typing.html#typing.override)**: documentation\n  tools show the base method's docstring.\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python ok file=demo/api.py\n  from typing import override\n\n\n  class Client(Base):\n      \"\"\"Talk to the service.\"\"\"\n\n      @override\n      def get(self) -> None: ...\n  ```\n\n- **Property setters and deleters**: they share the property's docstring.\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python ok file=demo/api.py\n  class Client:\n      \"\"\"Talk to the service.\"\"\"\n\n      @name.setter\n      def name(self, value: str) -> None: ...\n  ```\n\n- **Test modules, as defined in [test-class](SMP801.html)**: users never import tests, so nothing in them is public API.\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python ok file=test_api.py\n  def test_fetch() -> None: ...\n  ```\n\n- **Every module of an application**: an application has no Python API.\n\n  ```python ok\n  def fetch() -> None:\n      print()\n  ```\n\n- **Modules that build `__all__` dynamically**: a module that builds `__all__` with code such as `list(...)` is checked\n  only for the names other modules re-export, because its own exports cannot be read.\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python ok file=demo/api.py\n  __all__ = list([\"fetch\"])\n\n\n  def fetch() -> None:\n      print()\n  ```\n\n### The public API\n\nThe public API is what users of the library can import, following the\n[typing spec](https://typing.python.org/en/latest/spec/distributing.html#library-interface-public-and-private-symbols)\nand [PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces):\n\n- a module is public when it belongs to one of the library's API packages and no part of its path starts with `_`, so\n  everything under `package/_internal/` or in `package/_core.py` is internal; a dunder module such as `__about__` is\n  public, but `__main__`, which runs as a script, is not;\n\n- a public module offers the names its\n  [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package) lists, or, without `__all__`,\n  every name it defines without a leading `_`, and the names another module imports from it, which\n  [missing-from-all](SMP401.html) adds to `__all__`;\n\n- a name a public module re-exports, by listing it in `__all__`, importing it as `from ._core import name as name`, or\n  through `from ._core import *`, is public where it is defined, through any chain of re-exports. A plain\n  `from ._core import name` in a module without `__all__` keeps the name internal.\n\n```mermaid\nflowchart TD\n    name[\"name in a module\"] --> mod{\"public module?\"}\n    mod -->|yes| offered{\"offered by<br/>the module?\"}\n    mod -->|no| reexported{\"re-exported by<br/>a public module?\"}\n    offered -->|yes| public[\"public\"]\n    offered -->|no| reexported\n    reexported -->|yes| public\n    reexported -->|no| internal[\"internal\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class name blue\n    class mod,offered,reexported yellow\n    class public orange\n    class internal green\n```\n\n## Other tools\n\n- [pydocstyle](https://www.pydocstyle.org/en/stable/error_codes.html) reports public functions and methods without a\n  docstring as [D103](https://www.pydocstyle.org/en/stable/error_codes.html) and\n  [D102](https://www.pydocstyle.org/en/stable/error_codes.html). It has no check for variables.\n",
+    "explanation": "Flags functions, classes, methods and variables of a library's public API that have no documentation. Users read the API\nthrough hover help and the generated reference, where the docstring is all they see.\n\n## Why is this bad?\n\nUsers of a library reach its public API through their editor's hover help and the generated reference, not through the\nsource. A docstring is what they read there: what the function promises, what each parameter means, what it returns and\nwhat it raises. Internal code is the opposite case: its readers have the source open, so\n[function-docstring](SMP901.html) asks for no docstring there.\n\n## Example\n\n```toml config\n[tool.simplint]\nproject-kind = \"library\"\n```\n\n```python context file=package/__init__.py\nfrom ._client import fetch\n\n__all__ = [\"fetch\"]\n```\n\n```python report file=package/_client.py\ndef fetch(url: str) -> bytes:  # package/__init__.py re-exports it\n    return _download(url)\n```\n\nUse instead:\n\n```python context file=package/__init__.py\nfrom ._client import fetch\n\n__all__ = [\"fetch\"]\n```\n\n```python ok file=package/_client.py\ndef fetch(url: str) -> bytes:\n    \"\"\"Download the resource at a URL.\n\n    :param url: Address of the resource.\n    :returns: The response body.\n    \"\"\"\n    return _download(url)\n```\n\n## Configuration\n\n- [`project-kind`](https://simplint.readthedocs.io/en/latest/configuration/project.html#library-or-application) in\n  `[tool.simplint]`: whether the project is a library or an application\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python report\n  def fetch() -> None:\n      print()\n  ```\n\n- [`api-packages`](https://simplint.readthedocs.io/en/latest/configuration/project.html#api-packages-and-modules) in\n  `[tool.simplint]`: the top-level packages whose modules make up the public API\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  api-packages = [\"demo\"]\n  ```\n\n  ```python report file=demo/api.py\n  def fetch() -> None:\n      print()\n  ```\n\n  ```python ok file=tools/build.py\n  def build() -> None:\n      print()\n  ```\n\n## What it does\n\nChecks that a library's public API is documented. No fix is offered, since only the author knows what the API promises.\n\n### Active on\n\n- **Public functions and classes**: each needs a [docstring](https://docs.python.org/3/glossary.html#term-docstring).\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python report\n  def fetch() -> None:\n      print()\n\n\n  class Client:\n      pass\n  ```\n\n- **Methods, properties and nested classes of a public class**: those whose names do not start with `_` need a\n  docstring.\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python report\n  class Client:\n      \"\"\"Talk to the service.\"\"\"\n\n      def get(self) -> None:\n          print()\n  ```\n\n- **Public variables**: each needs a docstring on the line below it, or a `#:` comment on the line above it or at the\n  end of its line, the forms\n  [Sphinx autodoc](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#directive-autoattribute) reads.\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python report file=demo/api.py\n  LIMIT = 10\n  ```\n\n  ```python ok file=demo/limits.py\n  #: The most jobs run at once.\n  LIMIT = 10\n  RATE = 2\n  \"\"\"The jobs started per second.\"\"\"\n  ```\n\n- **Type aliases from a `type` statement**: a public alias needs a docstring like any public variable.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.12\"\n\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python report file=demo/api.py\n  type Pair = tuple[int, int]\n  ```\n\n- **Definitions in the `case` bodies of a `match` at module or class level**: a `match` that picks an implementation by\n  platform or version is read the way an `if` is, so the public definitions in each case are the module's too.\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python report file=demo/api.py\n  import sys\n\n  match sys.platform:\n      case \"win32\":\n\n          def open_thing() -> int:\n              return 1\n\n      case _:\n\n          def open_thing() -> int:\n              return 2\n  ```\n\n- **Names a private module defines and a public module re-exports**: the report names the module that re-exports the\n  name, so you can see why it counts.\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python report file=demo/_core.py\n  def fetch() -> None:\n      print()\n  ```\n\n  ```python context file=demo/__init__.py\n  from demo._core import fetch\n\n  __all__ = [\"fetch\"]\n  ```\n\n### Exceptions\n\n- **Functions decorated with [`@overload`](https://docs.python.org/3/library/typing.html#typing.overload)**: the\n  implementation carries the docstring; [function-docstring](SMP901.html) leaves their docstrings alone too.\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python ok file=demo/api.py\n  from typing import overload\n\n\n  @overload\n  def load(path: int) -> int: ...\n  ```\n\n- **Dunder methods, such as `__init__`**: the class docstring describes their parameters.\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python ok file=demo/api.py\n  class Client:\n      \"\"\"Talk to the service.\"\"\"\n\n      def __init__(self) -> None: ...\n  ```\n\n- **Methods decorated with [`@override`](https://docs.python.org/3/library/typing.html#typing.override)**: documentation\n  tools show the base method's docstring.\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python ok file=demo/api.py\n  from typing import override\n\n\n  class Client(Base):\n      \"\"\"Talk to the service.\"\"\"\n\n      @override\n      def get(self) -> None: ...\n  ```\n\n- **Property setters and deleters**: they share the property's docstring.\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python ok file=demo/api.py\n  class Client:\n      \"\"\"Talk to the service.\"\"\"\n\n      @name.setter\n      def name(self, value: str) -> None: ...\n  ```\n\n- **Test modules, as defined in [test-class](SMP801.html)**: users never import tests, so nothing in them is public API.\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python ok file=test_api.py\n  def test_fetch() -> None: ...\n  ```\n\n- **Every module of an application**: an application has no Python API.\n\n  ```python ok\n  def fetch() -> None:\n      print()\n  ```\n\n- **Modules that build `__all__` dynamically**: a module that builds `__all__` with code such as `list(...)` is checked\n  only for the names other modules re-export, because its own exports cannot be read.\n\n  ```toml config\n  [tool.simplint]\n  project-kind = \"library\"\n  ```\n\n  ```python ok file=demo/api.py\n  __all__ = list([\"fetch\"])\n\n\n  def fetch() -> None:\n      print()\n  ```\n\n### The public API\n\nThe public API is what users of the library can import, following the\n[typing spec](https://typing.python.org/en/latest/spec/distributing.html#library-interface-public-and-private-symbols)\nand [PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces):\n\n- a module is public when it belongs to one of the library's API packages and no part of its path starts with `_`, so\n  everything under `package/_internal/` or in `package/_core.py` is internal; a dunder module such as `__about__` is\n  public, but `__main__`, which runs as a script, is not;\n\n- a public module offers the names its\n  [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package) lists, or, without `__all__`,\n  every name it defines without a leading `_`, and the names another module imports from it, which\n  [missing-from-all](SMP401.html) adds to `__all__`;\n\n- a name a public module re-exports, by listing it in `__all__`, importing it as `from ._core import name as name`, or\n  through `from ._core import *`, is public where it is defined, through any chain of re-exports. A plain\n  `from ._core import name` in a module without `__all__` keeps the name internal.\n\n```mermaid\nflowchart TD\n    name[\"name in a module\"] --> mod{\"public module?\"}\n    mod -->|yes| offered{\"offered by<br/>the module?\"}\n    mod -->|no| reexported{\"re-exported by<br/>a public module?\"}\n    offered -->|yes| public[\"public\"]\n    offered -->|no| reexported\n    reexported -->|yes| public\n    reexported -->|no| internal[\"internal\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class name blue\n    class mod,offered,reexported yellow\n    class public orange\n    class internal green\n```\n\n## Other tools\n\n- [pydocstyle](https://www.pydocstyle.org/en/stable/error_codes.html) reports public functions and methods without a\n  docstring as [D103](https://www.pydocstyle.org/en/stable/error_codes.html) and\n  [D102](https://www.pydocstyle.org/en/stable/error_codes.html). It has no check for variables.\n",
     "examples": {
       "parsed": [
         {
@@ -24737,7 +24737,7 @@
         {
           "section": "What it does",
           "line": 156,
-          "end_line": 169,
+          "end_line": 174,
           "config": {
             "line": 156,
             "end_line": 159,
@@ -24750,18 +24750,18 @@
               "file": "demo/api.py",
               "named": true,
               "line": 161,
-              "end_line": 169,
-              "source": "import sys\n\nmatch sys.platform:\n    case \"win32\":\n\n        def open_thing() -> int:\n            return 1\n"
+              "end_line": 174,
+              "source": "import sys\n\nmatch sys.platform:\n    case \"win32\":\n\n        def open_thing() -> int:\n            return 1\n\n    case _:\n\n        def open_thing() -> int:\n            return 2\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 174,
-          "end_line": 188,
+          "line": 179,
+          "end_line": 193,
           "config": {
-            "line": 174,
-            "end_line": 177,
+            "line": 179,
+            "end_line": 182,
             "source": "[tool.simplint]\nproject-kind = \"library\"\n"
           },
           "blocks": [
@@ -24770,8 +24770,8 @@
               "language": "python",
               "file": "demo/_core.py",
               "named": true,
-              "line": 179,
-              "end_line": 182,
+              "line": 184,
+              "end_line": 187,
               "source": "def fetch() -> None:\n    print()\n"
             },
             {
@@ -24779,19 +24779,19 @@
               "language": "python",
               "file": "demo/__init__.py",
               "named": true,
-              "line": 184,
-              "end_line": 188,
+              "line": 189,
+              "end_line": 193,
               "source": "from demo._core import fetch\n\n__all__ = [\"fetch\"]\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 195,
-          "end_line": 206,
+          "line": 200,
+          "end_line": 211,
           "config": {
-            "line": 195,
-            "end_line": 198,
+            "line": 200,
+            "end_line": 203,
             "source": "[tool.simplint]\nproject-kind = \"library\"\n"
           },
           "blocks": [
@@ -24800,19 +24800,19 @@
               "language": "python",
               "file": "demo/api.py",
               "named": true,
-              "line": 200,
-              "end_line": 206,
+              "line": 205,
+              "end_line": 211,
               "source": "from typing import overload\n\n\n@overload\ndef load(path: int) -> int: ...\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 210,
-          "end_line": 220,
+          "line": 215,
+          "end_line": 225,
           "config": {
-            "line": 210,
-            "end_line": 213,
+            "line": 215,
+            "end_line": 218,
             "source": "[tool.simplint]\nproject-kind = \"library\"\n"
           },
           "blocks": [
@@ -24821,19 +24821,19 @@
               "language": "python",
               "file": "demo/api.py",
               "named": true,
-              "line": 215,
-              "end_line": 220,
+              "line": 220,
+              "end_line": 225,
               "source": "class Client:\n    \"\"\"Talk to the service.\"\"\"\n\n    def __init__(self) -> None: ...\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 225,
-          "end_line": 239,
+          "line": 230,
+          "end_line": 244,
           "config": {
-            "line": 225,
-            "end_line": 228,
+            "line": 230,
+            "end_line": 233,
             "source": "[tool.simplint]\nproject-kind = \"library\"\n"
           },
           "blocks": [
@@ -24842,19 +24842,19 @@
               "language": "python",
               "file": "demo/api.py",
               "named": true,
-              "line": 230,
-              "end_line": 239,
+              "line": 235,
+              "end_line": 244,
               "source": "from typing import override\n\n\nclass Client(Base):\n    \"\"\"Talk to the service.\"\"\"\n\n    @override\n    def get(self) -> None: ...\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 243,
-          "end_line": 254,
+          "line": 248,
+          "end_line": 259,
           "config": {
-            "line": 243,
-            "end_line": 246,
+            "line": 248,
+            "end_line": 251,
             "source": "[tool.simplint]\nproject-kind = \"library\"\n"
           },
           "blocks": [
@@ -24863,19 +24863,19 @@
               "language": "python",
               "file": "demo/api.py",
               "named": true,
-              "line": 248,
-              "end_line": 254,
+              "line": 253,
+              "end_line": 259,
               "source": "class Client:\n    \"\"\"Talk to the service.\"\"\"\n\n    @name.setter\n    def name(self, value: str) -> None: ...\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 258,
-          "end_line": 265,
+          "line": 263,
+          "end_line": 270,
           "config": {
-            "line": 258,
-            "end_line": 261,
+            "line": 263,
+            "end_line": 266,
             "source": "[tool.simplint]\nproject-kind = \"library\"\n"
           },
           "blocks": [
@@ -24884,16 +24884,16 @@
               "language": "python",
               "file": "test_api.py",
               "named": true,
-              "line": 263,
-              "end_line": 265,
+              "line": 268,
+              "end_line": 270,
               "source": "def test_fetch() -> None: ...\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 269,
-          "end_line": 272,
+          "line": 274,
+          "end_line": 277,
           "config": null,
           "blocks": [
             {
@@ -24901,19 +24901,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 269,
-              "end_line": 272,
+              "line": 274,
+              "end_line": 277,
               "source": "def fetch() -> None:\n    print()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 277,
-          "end_line": 288,
+          "line": 282,
+          "end_line": 293,
           "config": {
-            "line": 277,
-            "end_line": 280,
+            "line": 282,
+            "end_line": 285,
             "source": "[tool.simplint]\nproject-kind = \"library\"\n"
           },
           "blocks": [
@@ -24922,8 +24922,8 @@
               "language": "python",
               "file": "demo/api.py",
               "named": true,
-              "line": 282,
-              "end_line": 288,
+              "line": 287,
+              "end_line": 293,
               "source": "__all__ = list([\"fetch\"])\n\n\ndef fetch() -> None:\n    print()\n"
             }
           ]
