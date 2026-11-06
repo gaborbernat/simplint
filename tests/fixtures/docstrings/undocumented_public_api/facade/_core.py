@@ -7,6 +7,10 @@ class Engine:
 
     def _stop(self) -> None: ...
 
+    @property
+    def ready(self) -> bool:
+        return True
+
     class Settings:
         def load(self) -> None: ...
 

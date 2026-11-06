@@ -12,3 +12,14 @@ expression: "lint_fixture(rule, fixture, target_version)"
 15:17 SMP004 `# simplint: ignore` suppresses every error on the line; name the codes, as in `# simplint: ignore[code]`
 16:19 SMP004 `# noqa` suppresses every error on the line; name the codes, as in `# noqa: CODE`
 17:1 SMP004 `# ruff: file-ignore` suppresses every error in the file; name the codes, as in `# ruff: file-ignore[code]`
+29:21 SMP004 `# noqa` suppresses every error on the line; name the codes, as in `# noqa: CODE`
+30:20 SMP004 `# noqa` suppresses every error on the line; name the codes, as in `# noqa: CODE`
+31:21 SMP004 `# noqa` suppresses every error on the line; name the codes, as in `# noqa: CODE`
+32:20 SMP004 `# type: ignore` suppresses every error on the line; name the codes, as in `# type: ignore[code]`
+33:20 SMP004 `# pyright: ignore` suppresses every error on the line; name the codes, as in `# pyright: ignore[code]`
+34:22 SMP004 `# type: ignore` suppresses every error on the line; name the codes, as in `# type: ignore[code]`
+35:21 SMP004 `# ty: ignore` suppresses every error on the line; name the codes, as in `# ty: ignore[code]`
+35:21 SMP004 `# noqa` suppresses every error on the line; name the codes, as in `# noqa: CODE`
+39:5 SMP004 `# ruff: noqa` suppresses every error in the file; name the codes, as in `# ruff: noqa: CODE`
+40:5 SMP004 `# flake8: noqa` suppresses every error in the file; name the codes, as in `# flake8: noqa: CODE`
+45:17 SMP004 `# type: ignore` suppresses every error on the line; name the codes, as in `# type: ignore[code]`

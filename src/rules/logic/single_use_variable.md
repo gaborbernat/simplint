@@ -148,14 +148,26 @@ def total_price(prices: list[float]) -> str:
   ```
 
 - **A next statement that is `return name` or `yield name`**: Ruff's
-  [unnecessary-assign](https://docs.astral.sh/ruff/rules/unnecessary-assign/) covers the `return` case, and `yield`
-  keeps the same shape.
+  [unnecessary-assign](https://docs.astral.sh/ruff/rules/unnecessary-assign/) covers the `return` case while the
+  project's Ruff configuration selects it, and `yield` keeps the same shape. Ruff's own suppressions of it, through
+  `per-file-ignores` or `noqa`, are respected too.
+
+  ```toml config
+  [tool.ruff.lint]
+  select = ["RET504"]
+  ```
 
   ```python ok
   def run(items: list[str]) -> int:
       count = len(items)
       return count
   ```
+
+- **A next statement that is `yield from name`, while Ruff's preview mode is on**: Ruff's preview rule
+  [unnecessary-assign-before-yield](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/) covers it when
+  the value goes in as written. With preview off, or for a value that Ruff would write differently, such as a tuple, the
+  report stays. The pair is left to Ruff only when the project's Ruff configuration selects the rule. Ruff's own
+  suppressions of it, through `per-file-ignores` or `noqa`, are respected too.
 
 - **A read inside a loop body, a comprehension, a lambda or a nested function**: inlining would compute the value once
   per pass instead of once.

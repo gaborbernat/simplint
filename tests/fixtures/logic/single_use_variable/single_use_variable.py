@@ -305,3 +305,18 @@ def kept_split_value(items: list[str]) -> None:
         len(items),
     ]
     print(count)
+
+
+def kept_yield_tuple(first: int, second: int):
+    pair = first, second
+    yield pair
+
+
+def inlined_yield_from_tuple(first: int, second: int):
+    pair = first, second
+    yield from pair
+
+
+def inlined_yield_from(items: list[str]):
+    names = sorted(items)
+    yield from names

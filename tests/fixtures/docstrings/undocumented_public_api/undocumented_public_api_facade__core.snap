@@ -4,6 +4,7 @@ expression: "lint_fixture(rule, fixture, target_version)"
 ---
 4:7 SMP903 Public class `Engine` has no docstring; document it for its users; `facade/__init__.py` re-exports it
 5:9 SMP903 Public method `Engine.start` has no docstring; document it for its users; `facade/__init__.py` re-exports it
-10:11 SMP903 Public class `Engine.Settings` has no docstring; document it for its users; `facade/__init__.py` re-exports it
-11:13 SMP903 Public method `Engine.Settings.load` has no docstring; document it for its users; `facade/__init__.py` re-exports it
-14:5 SMP903 Public function `run` has no docstring; document it for its users; `facade/__init__.py` re-exports it
+11:9 SMP903 Public property `Engine.ready` has no docstring; document it for its users; `facade/__init__.py` re-exports it
+14:11 SMP903 Public class `Engine.Settings` has no docstring; document it for its users; `facade/__init__.py` re-exports it
+15:13 SMP903 Public method `Engine.Settings.load` has no docstring; document it for its users; `facade/__init__.py` re-exports it
+18:5 SMP903 Public function `run` has no docstring; document it for its users; `facade/__init__.py` re-exports it

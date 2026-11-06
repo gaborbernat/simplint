@@ -451,7 +451,7 @@ fn ensure_compatible(files: &[RunFile], resolved: &Resolved) -> Result<()> {
         .iter()
         .map(|file| Scope {
             path: file.path,
-            settings: file.settings,
+            settings: file.settings.clone(),
             ruff: file.ruff,
             ruff_config: file.ruff_config,
             package: file.package,
@@ -626,7 +626,7 @@ fn words_of(path: &Path) -> FxHashSet<String> {
 fn file_linter<'a>(file: &RunFile<'a>, project: &'a Project) -> Linter<'a> {
     Linter::new(
         file.ruff,
-        file.settings,
+        file.settings.clone(),
         project.file(file.absolute.as_path()),
         file.package,
         file.module_path.clone(),

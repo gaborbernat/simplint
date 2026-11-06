@@ -527,11 +527,13 @@ fn documentation_is_not_public_api() {
     let root = project(&[
         ("pyproject.toml", "[build-system]\nrequires = []\n"),
         ("docs/conf.py", "def setup() -> None: ...\n"),
-        ("lib.py", "def run() -> None: ...\n"),
+        ("lib.py", "from _lib import run as run\n"),
+        ("_lib.py", "def run() -> None: ...\n"),
     ]);
     assert_eq!(
         check(root.path(), &["--select", "SMP903"]).1,
-        "lib.py:1:5: SMP903 Public function `run` has no docstring; document it for its users\nFound 1 error.\n"
+        "_lib.py:1:5: SMP903 Public function `run` has no docstring; document it for its users; `lib.py` re-exports it\n\
+         Found 1 error.\n"
     );
 }
 
@@ -572,41 +574,42 @@ fn excluded_init_module_still_reexports() {
     );
 }
 
-// A module read from standard input has no index, so its own `__all__` tells what it offers.
+// A module read from standard input has no index, so its own `__all__` tells what it offers. Ruff's D103 reports the
+// undocumented `run` of such a module, so SMP903 leaves it to Ruff.
 #[test]
 fn standard_input_reads_its_own_exports() {
-    let root = project(&[("pyproject.toml", LIBRARY), ("pkg/__init__.py", "")]);
+    let root = project(&[
+        ("pyproject.toml", &format!("{LIBRARY}[tool.ruff.lint]\nselect = [\"D103\"]\n")),
+        ("pkg/__init__.py", ""),
+    ]);
     let stdout = check_with_stdin(
         root.path(),
         &["--select", "SMP903", "--stdin-filename", "pkg/mod.py", "-"],
         "def run() -> None: ...\n\n\ndef helper() -> None: ...\n\n\n__all__ = [\"run\"]\n",
     )
     .1;
-    assert_eq!(
-        stdout,
-        format!(
-            "pkg{}mod.py:1:5: SMP903 Public function `run` has no docstring; document it for its users\nFound 1 error.\n",
-            std::path::MAIN_SEPARATOR_STR
-        )
-    );
+    assert_eq!(stdout, "All checks passed!\n");
 }
 
-// A module-level `__getattr__` supplies names the index cannot list, so only what the module defines counts.
+// A module-level `__getattr__` supplies names the index cannot list, so its re-exports do not count, while a plain
+// module's do. The names a module defines itself are Ruff's to report.
 #[test]
 fn lazy_module_offers_what_it_defines() {
     let root = project(&[
         ("pyproject.toml", LIBRARY),
         (
             "pkg/__init__.py",
-            "def __getattr__(name: str) -> int:\n    return len(name)\n\n\ndef helper() -> None: ...\n",
+            "from pkg._core import lazy as lazy\n\n\ndef __getattr__(name: str) -> int:\n    return len(name)\n",
         ),
+        ("pkg/_core.py", "def lazy() -> None: ...\n\n\ndef helper() -> None: ...\n"),
+        ("pkg/plain.py", "from pkg._core import helper as helper\n"),
     ]);
     assert_eq!(
         check(root.path(), &["--select", "SMP903"]).1,
         format!(
-            "pkg{}__init__.py:5:5: SMP903 Public function `helper` has no docstring; document it for its users\n\
-             Found 1 error.\n",
-            std::path::MAIN_SEPARATOR_STR
+            "pkg{sep}_core.py:4:5: SMP903 Public function `helper` has no docstring; document it for its users; \
+             `pkg{sep}plain.py` re-exports it\nFound 1 error.\n",
+            sep = std::path::MAIN_SEPARATOR_STR
         )
     );
 }
@@ -649,15 +652,18 @@ fn application_drops_unused_exports_safely() {
 fn namespace_package_is_public_api(settings: &str) {
     let root = project(&[
         ("pyproject.toml", &format!("[project]\nname = \"acme-widgets\"\n[build-system]\nrequires = []\n{settings}")),
-        ("src/acme/widgets/__init__.py", ""),
-        ("src/acme/widgets/shapes.py", "def circle() -> int: ...\n"),
+        ("src/acme/widgets/__init__.py", "from ._shapes import circle as circle\n"),
+        ("src/acme/widgets/_shapes.py", "def circle() -> int: ...\n"),
         ("src/acme/other.py", "def square() -> int: ...\n"),
     ]);
+    let sep = std::path::MAIN_SEPARATOR_STR;
     assert_eq!(
         check(root.path(), &["--select", "SMP903"]).1,
         format!(
-            "{}:1:5: SMP903 Public function `circle` has no docstring; document it for its users\nFound 1 error.\n",
-            ["src", "acme", "widgets", "shapes.py"].join(std::path::MAIN_SEPARATOR_STR)
+            "{}:1:5: SMP903 Public function `circle` has no docstring; document it for its users; `{}` re-exports it\n\
+             Found 1 error.\n",
+            ["src", "acme", "widgets", "_shapes.py"].join(sep),
+            ["src", "acme", "widgets", "__init__.py"].join(sep)
         )
     );
 }
@@ -668,15 +674,16 @@ fn main_module_is_not_public_api() {
     let root = project(&[
         ("pyproject.toml", LIBRARY),
         ("pkg/__init__.py", ""),
-        ("pkg/__main__.py", "def main() -> None: ...\n"),
-        ("pkg/__about__.py", "def helper() -> None: ...\n"),
+        ("pkg/_core.py", "def main() -> None: ...\n\n\ndef helper() -> None: ...\n"),
+        ("pkg/__main__.py", "from pkg._core import main as main\n"),
+        ("pkg/__about__.py", "from pkg._core import helper as helper\n"),
     ]);
+    let sep = std::path::MAIN_SEPARATOR_STR;
     assert_eq!(
         check(root.path(), &["--select", "SMP903"]).1,
         format!(
-            "pkg{}__about__.py:1:5: SMP903 Public function `helper` has no docstring; document it for its users\n\
-             Found 1 error.\n",
-            std::path::MAIN_SEPARATOR_STR
+            "pkg{sep}_core.py:4:5: SMP903 Public function `helper` has no docstring; document it for its users; \
+             `pkg{sep}__about__.py` re-exports it\nFound 1 error.\n"
         )
     );
 }

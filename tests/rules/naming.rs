@@ -29,6 +29,7 @@ use crate::common;
 #[test_case("module-variable-case", "module_variable_case_dbapi.py" ; "module_variable_case_db_api_globals")]
 #[test_case("module-variable-case", "module_variable_case_typer.py" ; "module_variable_case_typer_app")]
 #[test_case("module-variable-case", "module_variable_case_type_alias.py" ; "module_variable_case_type_alias")]
+#[test_case("module-variable-case", "module_variable_case_ruff.py" ; "module_variable_case_ruff_overlap")]
 fn rule(rule: &str, fixture: &str) {
     common::assert_rule_snapshot(rule, fixture, "py314");
 }
@@ -67,6 +68,29 @@ fn module_variable_rename_checks_strings_of_other_files() {
     assert!(!stdout.contains("SMP102 [*]"));
 }
 
+// Ruff's N816 skips the names its pep8-naming `ignore-names` lists, so SMP102 keeps reporting them: without a fix
+// here, nothing else would. Without N816 selected, SMP102 reports the names N816 would skip.
+#[test_case("[tool.ruff.lint]\nselect = [\"N816\"]\n", false ; "selected_default_names")]
+#[test_case(
+    "[tool.ruff.lint]\nselect = [\"N816\"]\n[tool.ruff.lint.pep8-naming]\nignore-names = [\"myValue\"]\n",
+    true
+    ; "selected_ignore_names"
+)]
+#[test_case(
+    "[tool.ruff.lint]\nselect = [\"N816\"]\n[tool.ruff.lint.pep8-naming]\nextend-ignore-names = [\"my*\"]\n",
+    true
+    ; "selected_extend_ignore_names_glob"
+)]
+#[test_case("[tool.ruff.lint]\nselect = []\n", true ; "unselected")]
+fn module_variable_rename_keeps_names_ruff_ignores(ruff_settings: &str, reported: bool) {
+    let root = common::project(&[
+        ("pyproject.toml", &format!("[project]\nrequires-python = \">=3.12\"\n{ruff_settings}")),
+        ("module.py", "myValue = 1\nMYVALUE = 2\nprint(myValue, MYVALUE)\n"),
+    ]);
+    let stdout = common::check(root.path(), &["--select", "SMP102"]).1;
+    assert_eq!(stdout.contains("SMP102 Module-scope variable `myValue`"), reported, "{stdout}");
+}
+
 // A module named like a standard library module is imported from outside the run, so its names may be read unseen.
 #[test]
 fn module_variable_rename_keeps_names_read_off_a_standard_library_namesake() {
@@ -77,4 +101,21 @@ fn module_variable_rename_keeps_names_read_off_a_standard_library_namesake() {
     let stdout = common::check(root.path(), &["--unsafe-fixes", "--select", "SMP102"]).1;
     assert!(stdout.contains("SMP102 Module-scope variable `_typing_names`"));
     assert!(!stdout.contains("SMP102 [*]"));
+}
+
+// Ruff's E741, E742 and E743 report `l`, `I` and `O` on the variables, classes and functions of their kind. SMP101
+// leaves those letters to the Ruff rule of the binding's kind while it runs.
+#[test_case("l = 1\n", "E741", "Single-letter name `l`" ; "variable")]
+#[test_case("class I:\n    pass\n", "E742", "Single-letter name `I`" ; "class")]
+#[test_case("def l() -> None:\n    pass\n", "E743", "Single-letter name `l`" ; "function")]
+fn single_letter_name_follows_ruff_ambiguous_names(source: &str, code: &str, fragment: &str) {
+    for selected in [false, true] {
+        let select = if selected { format!("\"{code}\"") } else { String::new() };
+        let root = common::project(&[
+            ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [{select}]\n")),
+            ("module.py", source),
+        ]);
+        let stdout = common::check(root.path(), &["--select", "SMP101"]).1;
+        assert_eq!(stdout.contains(fragment), !selected, "{stdout}");
+    }
 }

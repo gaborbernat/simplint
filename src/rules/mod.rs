@@ -20,7 +20,8 @@ use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, OperatorPrecedence, Stmt};
 use ruff_python_trivia::{has_leading_content, has_trailing_content, leading_indentation};
 use ruff_source_file::LineRanges;
-use ruff_text_size::{Ranged, TextRange};
+use ruff_text_size::{Ranged, TextRange, TextSize};
+use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::noqa;
@@ -46,6 +47,8 @@ pub(crate) struct FileState<'a> {
     source_spans: OnceCell<Vec<TextRange>>,
     file_noqa: OnceCell<bool>,
     debug_fields: OnceCell<edits::DebugFields<'a>>,
+    // The `def`s that implement an `@overload` set, which Ruff's ANN401 leaves unchecked.
+    overload_implementations: OnceCell<FxHashSet<TextSize>>,
 }
 
 impl<'a> FileState<'a> {
@@ -104,6 +107,10 @@ impl<'a> FileState<'a> {
         self.comments.get_or_init(|| {
             checker.comment_ranges().into_iter().map(|range| (range, Comment::at(checker.source, range))).collect()
         })
+    }
+
+    pub(crate) fn overload_implementations(&self, checker: &Checker<'a>) -> &FxHashSet<TextSize> {
+        self.overload_implementations.get_or_init(|| typing::imprecise_annotation::overload_implementations(checker))
     }
 
     fn debug_fields(&self, checker: &Checker<'a>) -> &edits::DebugFields<'a> {

@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 
 use ruff_diagnostics::{Edit, Fix};
+use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::helpers::{Truthiness, any_over_expr, contains_effect};
 use ruff_python_ast::{self as ast, BoolOp, CmpOp, Expr, Operator, Stmt, UnaryOp};
 use ruff_text_size::Ranged;
@@ -52,7 +53,13 @@ fn report_constant_assert(checker: &Checker, stmt: &Stmt, assert: &ast::StmtAsse
             let replacement = format!("assert {check}, {message}");
             Some(Fix::unsafe_edit(Edit::range_replacement(replacement, stmt.range())))
         }
-        (Expr::Tuple(_), _) => None,
+        // Ruff's assert-tuple reports every other non-empty tuple while it runs, and this rule has no fix to offer for it.
+        (Expr::Tuple(_), _) => {
+            if checker.settings.from_ruff.ruff_runs(RuffRule::AssertTuple) {
+                return;
+            }
+            None
+        }
         // `assert (x for x in xs)` meant `assert all(x for x in xs)`: the generator is always truthy, and its first
         // iterable is evaluated when it is built, so deleting it could hide an error.
         // An `async for` or an `await` makes it an asynchronous generator, which `all()` cannot iterate, and a

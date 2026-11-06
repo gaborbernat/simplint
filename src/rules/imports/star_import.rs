@@ -1,4 +1,5 @@
 use ruff_diagnostics::{Edit, Fix};
+use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::{self as ast, Stmt};
 use ruff_python_stdlib::builtins::is_python_builtin;
 use ruff_text_size::Ranged;
@@ -44,6 +45,11 @@ pub fn star_import(checker: &Checker) {
         let module =
             format!("{}{}", ".".repeat(import.level as usize), import.module.as_ref().map_or("", |name| name.as_str()));
         let fix = sole.then(|| file.fix(import, site)).flatten();
+        // Ruff's F403 reports every star import, and this rule leaves the ones it cannot fix to it while it runs.
+        let unfixable = checker.settings.project.fix_for(Rule::StarImport, fix.clone()).is_none();
+        if unfixable && checker.settings.from_ruff.ruff_runs(RuffRule::UndefinedLocalWithImportStar) {
+            continue;
+        }
         let title = format!("Import the names this file uses from `{module}`");
         checker.report_fix(
             Rule::StarImport,

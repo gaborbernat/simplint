@@ -190,6 +190,23 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
       pass
   ```
 
+- **`mixedCase` names Ruff reports without a fix**:
+  [Ruff](https://docs.astral.sh/ruff/rules/mixed-case-variable-in-global-scope/) reports a `mixedCase` module name at
+  its binding with no fix, unless its `ignore-names` lists the name. When this rule has no fix either, and the project's
+  Ruff configuration selects N816, the name is left to Ruff. A name this rule can rename stays here.
+
+  ```toml config
+  [tool.ruff.lint]
+  select = ["N816"]
+  ```
+
+  ```python ok
+  myValue = 3
+  MYVALUE = 4
+
+  print(myValue, MYVALUE)
+  ```
+
 - **`TYPE_CHECKING`**: type checkers recognize the guard by that name whatever its value.
 
   ```python ok
@@ -415,7 +432,10 @@ No fix is offered when:
 ## Ruff overlap
 
 Ruff's [mixed-case-variable-in-global-scope](https://docs.astral.sh/ruff/rules/mixed-case-variable-in-global-scope/)
-flags only `mixedCase` names. This rule also flags `lower_case` names.
+flags only `mixedCase` names, and never offers a fix. This rule also flags `lower_case` names, and offers a fix for the
+`mixedCase` names it can rename. Where it offers no fix for a `mixedCase` name, Ruff's report stands, so this rule
+leaves that name out, but only when the project's Ruff configuration selects N816. Ruff's own suppressions of it,
+through `per-file-ignores` or `noqa`, are respected too.
 
 ## Other tools
 

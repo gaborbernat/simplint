@@ -1,0 +1,117 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+9:1 SMP102 Module-scope variable `limitValue` should be named `LIMITVALUE` [unsafe fix: Rename `limitValue` to `LIMITVALUE`]
+16:1 SMP102 Module-scope variable `__dunderValue` should be named `__DUNDERVALUE`
+20:1 SMP102 Module-scope variable `maxDiff` should be named `MAXDIFF`
+24:1 SMP102 Module-scope variable `pointTuple` should be named `POINTTUPLE`
+28:1 SMP102 Module-scope variable `typedTuple` should be named `TYPEDTUPLE`
+37:5 SMP102 Module-scope variable `nestedTuple` should be named `NESTEDTUPLE`
+39:5 SMP102 Module-scope variable `elifTuple` should be named `ELIFTUPLE`
+41:5 SMP102 Module-scope variable `elseTuple` should be named `ELSETUPLE`
+48:5 SMP102 Module-scope variable `forTuple` should be named `FORTUPLE`
+51:5 SMP102 Module-scope variable `whileTuple` should be named `WHILETUPLE`
+55:5 SMP102 Module-scope variable `withTuple` should be named `WITHTUPLE`
+58:5 SMP102 Module-scope variable `tryTuple` should be named `TRYTUPLE`
+60:5 SMP102 Module-scope variable `handlerTuple` should be named `HANDLERTUPLE`
+62:5 SMP102 Module-scope variable `elseTryTuple` should be named `ELSETRYTUPLE`
+64:5 SMP102 Module-scope variable `finallyTuple` should be named `FINALLYTUPLE`
+67:9 SMP102 Module-scope variable `caseTuple` should be named `CASETUPLE`
+69:2 SMP102 Module-scope variable `tupleA` should be named `TUPLEA`
+69:10 SMP102 Module-scope variable `tupleB` should be named `TUPLEB` [unsafe fix: Rename `tupleB` to `TUPLEB`]
+70:2 SMP102 Module-scope variable `listTuple` should be named `LISTTUPLE`
+71:1 SMP102 Module-scope variable `starredTuple` should be named `STARREDTUPLE`
+71:16 SMP102 Module-scope variable `restTuple` should be named `RESTTUPLE` [unsafe fix: Rename `restTuple` to `RESTTUPLE`]
+79:5 SMP102 Module-scope variable `sharedValue` should be named `SHAREDVALUE`
+--- fixed (3 applied, 19 remaining) ---
+import os
+from collections import namedtuple
+from typing import NamedTuple
+
+myValue = 1
+MYVALUE = 2
+print(myValue, MYVALUE)
+
+LIMITVALUE = 3
+print(LIMITVALUE)
+
+_privateValue = 1
+_PRIVATEVALUE = 2
+print(_privateValue, _PRIVATEVALUE)
+
+__dunderValue = 1
+__DUNDERVALUE = 2
+print(__dunderValue, __DUNDERVALUE)
+
+maxDiff = None
+MAXDIFF = 3
+print(maxDiff, MAXDIFF)
+
+pointTuple = namedtuple("pointTuple", "x y")
+POINTTUPLE = 1
+print(pointTuple, POINTTUPLE)
+
+typedTuple = NamedTuple("typedTuple", [("x", int)])
+TYPEDTUPLE = 1
+print(typedTuple, TYPEDTUPLE)
+
+notTuple = (1, 2)
+NOTTUPLE = 1
+print(notTuple, NOTTUPLE)
+
+if os.sep:
+    nestedTuple = namedtuple("nestedTuple", "x y")
+elif os.altsep:
+    elifTuple = namedtuple("elifTuple", "x y")
+else:
+    elseTuple = namedtuple("elseTuple", "x y")
+NESTEDTUPLE = 1
+ELIFTUPLE = 2
+ELSETUPLE = 3
+print(nestedTuple, elifTuple, elseTuple, NESTEDTUPLE, ELIFTUPLE, ELSETUPLE)
+
+for _ in range(1):
+    forTuple = namedtuple("forTuple", "x")
+FORTUPLE = 1
+while os.sep:
+    whileTuple = namedtuple("whileTuple", "x")
+    break
+WHILETUPLE = 1
+with open(os.devnull) as handle:
+    withTuple = namedtuple("withTuple", "x")
+WITHTUPLE = 1
+try:
+    tryTuple = namedtuple("tryTuple", "x")
+except ValueError:
+    handlerTuple = namedtuple("handlerTuple", "x")
+else:
+    elseTryTuple = namedtuple("elseTryTuple", "x")
+finally:
+    finallyTuple = namedtuple("finallyTuple", "x")
+match os.sep:
+    case "/":
+        caseTuple = namedtuple("caseTuple", "x")
+
+(tupleA, TUPLEB) = namedtuple("tupleA", "x y")
+[listTuple] = namedtuple("listTuple", "x")
+starredTuple, *RESTTUPLE = namedtuple("starredTuple", "x y")
+os.namedAttr = namedtuple("namedAttr", "x")
+
+print(handle, FORTUPLE, WHILETUPLE, WITHTUPLE, tupleA, TUPLEB, listTuple, starredTuple, RESTTUPLE, caseTuple)
+
+
+def set_global() -> None:
+    global sharedValue
+    sharedValue = 1
+
+
+SHAREDVALUE = 2
+print(SHAREDVALUE, set_global)
+
+stringName = 1
+print("stringName")
+
+
+def shadow(stringName: int) -> int:
+    return stringName
