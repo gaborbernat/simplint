@@ -410,3 +410,4 @@ does not count as bound when annotations are evaluated eagerly, which is before 
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** open issue [#21584](https://github.com/astral-sh/ruff/issues/21584).
+  Also open issue [#10137](https://github.com/astral-sh/ruff/issues/10137) (uppercase names only).

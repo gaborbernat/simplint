@@ -207,7 +207,7 @@ pub fn fixture_project() -> TempDir {
         root.path().join("pyproject.toml"),
         "[project]\ndependencies = [\"pytest-mock\", \"requests\"]\n\
          scripts = { run = \"missing_from_all_scripts:run\" }\n\n\
-         [tool.simplint]\nproject-kind = \"library\"\ndocstring-style = \"rst\"\n\n[tool.ruff.lint]\nselect = [\"ANN401\", \"N816\"]\n",
+         [tool.simplint]\nproject-kind = \"library\"\ndocstring-style = \"rst\"\n\n[tool.ruff.lint]\nselect = [\"ANN401\", \"COM812\", \"G003\", \"ISC003\", \"N816\", \"PLW0129\"]\n",
     )
     .expect("write pyproject.toml");
     root

@@ -155,14 +155,15 @@ annotations are still checked.
       return isinstance(value, str)
   ```
 
-- **A whole-annotation `Any` on a parameter or return**, such as `def f(value: Any)` or `-> Any`: Ruff's
-  [ANN401](https://docs.astral.sh/ruff/rules/any-type/) reports it, so this rule leaves it alone to avoid a double
-  report, but only when the project's Ruff configuration selects ANN401. Ruff's own suppressions of it, through
-  `per-file-ignores` or `noqa`, are respected too.
+- **An `Any` that ANN401 reports on a parameter or return**, such as `def f(value: Any)`, `-> Optional[Any]` or
+  `def f(value: int | Any)`: Ruff's [ANN401](https://docs.astral.sh/ruff/rules/any-type/) reports it, so this rule
+  leaves it alone to avoid a double report, but only when the project's Ruff configuration selects ANN401. ANN401
+  reports an `Any` that is the annotation, or sits in an `Optional`, a `Union`, a `|` or the first argument of
+  `Annotated`. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are respected too.
 
-This rule does not check ANN401's settings, so with `allow-star-arg-any` enabled, `*args: Any` and `**kwargs: Any` go
-unreported. ANN401 also skips the `self` or `cls` of a method, `@override` signatures and overload implementations, and
-while ANN401 runs this rule leaves a whole-annotation `Any` there alone as well, so no tool reports it.
+ANN401 skips the `self` or `cls` of a method, `@override` signatures, overload implementations and, with
+`allow-star-arg-any`, `*args` and `**kwargs`. This rule still reports the `Any` in those while ANN401 runs, since no
+tool would report it otherwise.
 
 ```toml config
 [tool.ruff.lint]
@@ -186,17 +187,22 @@ def run(value: Any) -> None:
 
 ## Ruff overlap
 
-Ruff's [ANN401](https://docs.astral.sh/ruff/rules/any-type/) rejects `Any` as the whole annotation of a function
-parameter or return value. This rule covers `object` everywhere, and `Any` in variable annotations and nested positions,
-which ANN401 misses.
+Each tool owns a different part of the `Any` reports:
 
-ANN401 reports an annotation from its first character, so an `Any` that starts an annotation, as in `Any | None`, is
-reported once, by ANN401, when the project's Ruff configuration selects it. In `Optional[Any]` the `Any` starts after
-the `Optional`, so ANN401 and this rule both report it, at different columns.
+- **[ANN401](https://docs.astral.sh/ruff/rules/any-type/) owns the `Any` it reports** on a parameter or return value,
+  when the project's Ruff configuration selects it: the whole annotation, or an `Any` inside `Optional`, `Union`, `|` or
+  `Annotated`. It reports each such annotation once, at its first character, so `Any | None` and `Optional[Any]` are one
+  report each, at the start of the annotation, not at the `Any`.
+- **This rule owns everything else**: `object` everywhere, `Any` in variable annotations, and `Any` in other nested
+  positions such as `list[Any]`, which ANN401 does not report. It also keeps the `Any` of the signatures ANN401 skips,
+  such as `self: Any` or an `@override` method.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** released rule [ANN401](https://docs.astral.sh/ruff/rules/any-type/).
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
+  [ANN401](https://docs.astral.sh/ruff/rules/any-type/), which reports a parameter or return annotation that is `Any` or
+  a union with `Any` and which this rule leaves to it; this rule covers `object` and `Any` nested in other types or in
+  variables (open issue [#5871](https://github.com/astral-sh/ruff/issues/5871)).
 - [basedpyright](https://github.com/DetachHead/basedpyright) reports every explicit `Any` as
   [reportExplicitAny](https://docs.basedpyright.com/latest/configuration/config-files/). It does not report `object`,
   which this rule also flags.

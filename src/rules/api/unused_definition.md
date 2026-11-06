@@ -150,6 +150,31 @@ Sphinx page names is used.
   print(Point().x, cast("list[_Entry]", []))
   ```
 
+- **Private protocols and TypedDicts Ruff reports**: when the project's Ruff configuration selects
+  [PYI046](https://docs.astral.sh/ruff/rules/unused-private-protocol/) or
+  [PYI049](https://docs.astral.sh/ruff/rules/unused-private-typed-dict/), Ruff reports a private `Protocol` or
+  `TypedDict` class that nothing in its file reads, so this rule leaves it to Ruff.
+
+  ```toml config
+  [tool.ruff.lint]
+  select = ["PYI046", "PYI049"]
+  ```
+
+  ```python ok
+  from typing import Protocol, TypedDict
+
+
+  class _Runner(Protocol):
+      def run(self) -> None: ...
+
+
+  class _Row(TypedDict):
+      a: int
+
+
+  print("ready")
+  ```
+
 - **Names read off an object**: an `obj.name` read may reach a module, so it keeps every definition named `name`.
 
   ```python ok file=app/sysroot.py
@@ -334,7 +359,11 @@ remove.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#872](https://github.com/astral-sh/ruff/issues/872).
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules
+  [PYI046](https://docs.astral.sh/ruff/rules/unused-private-protocol/) and
+  [PYI049](https://docs.astral.sh/ruff/rules/unused-private-typed-dict/), which report a private `Protocol` or
+  `TypedDict` unused in its own file and which this rule leaves to them; unused definitions across the project are open
+  issue [#872](https://github.com/astral-sh/ruff/issues/872).
 - [vulture](https://github.com/jendrikseipp/vulture) reports unused functions, classes, methods and attributes across
   the files it is given, with a confidence score and no fix.
 - [deadcode](https://github.com/albertas/deadcode) reports the same definitions as

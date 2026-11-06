@@ -142,6 +142,24 @@ Keys and values must be constants or plain names, and must not read the collecti
       return table
   ```
 
+- **A list that Ruff's FURB113 reports**: with Ruff's preview mode on and
+  [FURB113](https://docs.astral.sh/ruff/rules/repeated-append/) selected, Ruff reports two or more appends to a list,
+  even with appends to other lists between them, and this rule leaves that list to Ruff.
+
+  ```toml config
+  [tool.ruff.lint]
+  preview = true
+  select = ["FURB113"]
+  ```
+
+  ```python ok
+  def build() -> list[int]:
+      result = []
+      result.append(1)
+      result.append(2)
+      return result
+  ```
+
 ### Fix
 
 The fix replaces the run with one literal of the same kind and keeps the assignment's name. A tuple used as a key or an
@@ -171,9 +189,9 @@ Ruff's [unnecessary-collection-call](https://docs.astral.sh/ruff/rules/unnecessa
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
-  [FURB113](https://docs.astral.sh/ruff/rules/repeated-append/) (preview), which merges consecutive `append` calls into
-  `extend` rather than writing one literal.
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rule
+  [FURB113](https://docs.astral.sh/ruff/rules/repeated-append/), which merges consecutive `append` calls into `extend`
+  and which this rule leaves to it; this rule covers dicts, sets and single appends right after an empty literal.
 - [flake8-simplify](https://github.com/MartinThoma/flake8-simplify) reports a dictionary filled by the statements after
   it as [SIM904](https://github.com/MartinThoma/flake8-simplify#sim904). It covers dictionaries only, and it does not
   fix them.

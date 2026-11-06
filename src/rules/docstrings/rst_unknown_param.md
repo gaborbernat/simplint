@@ -192,10 +192,9 @@ No fix is offered when escapes in the docstring make its text differ from the so
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
-  [DOC102](https://docs.astral.sh/ruff/rules/docstring-extraneous-parameter/) (preview), which reads Google and NumPy
-  sections only, not reST fields; merged pull request [#20376](https://github.com/astral-sh/ruff/pull/20376) and closed
-  pull request [#13280](https://github.com/astral-sh/ruff/pull/13280).
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rule
+  [DOC102](https://docs.astral.sh/ruff/rules/docstring-extraneous-parameter/), which checks Google and NumPy sections
+  but not reST fields; open pull request [#13286](https://github.com/astral-sh/ruff/pull/13286) would add them.
 - [pydoclint](https://github.com/jsh9/pydoclint) reports a docstring with more parameters than the signature as
   [DOC102](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.
 - [darglint](https://github.com/terrencepreilly/darglint) reports a docstring parameter the signature lacks as

@@ -96,3 +96,5 @@ rewrite of the test.
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+  [UP026](https://docs.astral.sh/ruff/rules/deprecated-mock-import/) moves `mock` imports to `unittest.mock`, which this
+  rule then reports.

@@ -173,4 +173,5 @@ or as `keyword=parameter`. The call target must be a name or a dotted name such 
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#970](https://github.com/astral-sh/ruff/issues/970).
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Released rule
+  [PLW0108](https://docs.astral.sh/ruff/rules/unnecessary-lambda/) reports the same forward written as a lambda.

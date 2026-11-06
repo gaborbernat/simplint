@@ -1,7 +1,9 @@
+use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::helpers::any_over_body;
 use ruff_python_ast::{self as ast, Expr, Stmt};
+use ruff_text_size::Ranged;
 
-use super::class_order::{Arrangement, Section, class_order};
+use super::class_order::{Arrangement, Inversion, Section, class_order};
 use super::reorder::{Suite, moved_span, moves_definition_unsafely, reorder_fix};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
@@ -26,10 +28,24 @@ fn check_class(checker: &Checker, class: &ast::StmtClassDef) {
     let suite = Suite { body: &class.body, separator: "\n" };
     let mut pending =
         moved_span(&expected).and_then(|span| reorder_fix(checker, &suite, &expected, span, shifts_unsafely));
-    for inversion in inversions {
-        // The layout resolves an inversion when it puts the member above its anchor. Otherwise the member is pinned
-        // behind the anchor, and its report has no fix.
-        let resolved = position[inversion.statement] < position[inversion.anchor];
+    // The layout resolves an inversion when it puts the member above its anchor. Otherwise the member is pinned behind
+    // the anchor, and its report has no fix.
+    let resolved = |inversion: &Inversion| position[inversion.statement] < position[inversion.anchor];
+    // Ruff's DJ012 reports a statement of a Django model that is out of the style guide order, without a fix, so the
+    // layout leaves that report to Ruff unless it is the one that carries the class's fix.
+    let dj012 = checker.settings.from_ruff.ruff_runs(RuffRule::DjangoUnorderedBodyContentInModel);
+    let left_to_ruff =
+        |inversion: &Inversion| dj012 && checker.semantic().reported_by_dj012(class.body[inversion.statement].range());
+    let carrier = pending.as_ref().and_then(|_| {
+        let mut candidates = inversions.iter().enumerate().filter(|(_, inversion)| resolved(inversion));
+        let first = candidates.clone().next();
+        candidates.find(|(_, inversion)| !left_to_ruff(inversion)).or(first).map(|(index, _)| index)
+    });
+    for (index, inversion) in inversions.iter().enumerate() {
+        let carries_fix = carrier == Some(index);
+        if left_to_ruff(inversion) && !carries_fix {
+            continue;
+        }
         let message = match inversion.anchor_section {
             Some(Section::Constructor(_)) if matches!(inversion.section, Section::Constructor(_)) => {
                 format!(
@@ -44,7 +60,7 @@ fn check_class(checker: &Checker, class: &ast::StmtClassDef) {
                 inversion.anchor_name
             ),
         };
-        let fix = if resolved { pending.take() } else { None };
+        let fix = if carries_fix { pending.take() } else { None };
         checker.report_fix(
             Rule::ClassMemberOrder,
             inversion.range,

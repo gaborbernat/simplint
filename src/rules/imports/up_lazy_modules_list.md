@@ -122,4 +122,6 @@ apply.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#29175](https://github.com/astral-sh/ruff/issues/29175).
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Open issue
+  [#29175](https://github.com/astral-sh/ruff/issues/29175) asks for the reverse, adding `__lazy_modules__` for Python
+  before 3.15.

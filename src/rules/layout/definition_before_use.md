@@ -342,7 +342,9 @@ line.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#3946](https://github.com/astral-sh/ruff/issues/3946).
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Open issue
+  [#3946](https://github.com/astral-sh/ruff/issues/3946) asks for ssort, which orders the other way, with definitions
+  above their users.
 - [pyorder](https://github.com/Winipedia/pyorder) orders module-level definitions with the same
   [callers-before-callees](https://github.com/Winipedia/pyorder#ordering-rules) rule, and its `--fix` option rewrites
   the file. Ties break by visibility and then alphabetically, which this rule does not check.

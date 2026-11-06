@@ -113,4 +113,7 @@ but a semicolon.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+- **[Ruff](https://github.com/astral-sh/ruff):** conflicts with released rule
+  [D100](https://docs.astral.sh/ruff/rules/undocumented-public-module/), which asks for the docstring this rule removes;
+  open issue [#10645](https://github.com/astral-sh/ruff/issues/10645) asks
+  [D100](https://docs.astral.sh/ruff/rules/undocumented-public-module/) to skip test modules.

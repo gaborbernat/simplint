@@ -172,7 +172,7 @@ impl Names {
     }
 }
 
-const CLASHES: [Clash; 7] = [
+const CLASHES: [Clash; 8] = [
     Clash {
         simplint: Rule::FunctionDocstring,
         ruff: &[
@@ -317,6 +317,23 @@ const CLASHES: [Clash; 7] = [
             format!(
                 "{} asks for the `:raises:` fields of reStructuredText docstrings; {} reads them as a missing section",
                 names.simplint_selector, names.ruff_selectors,
+            )
+        },
+        fix: ignore_in_ruff_or_simplint,
+    },
+    Clash {
+        simplint: Rule::UnittestAssertHelper,
+        ruff: &[RuffRule::PytestUnittestAssertion],
+        probe: "self.assertTrue(True)\n",
+        acts_on: |_, _, _| true,
+        undoes_fixes: false,
+        why: |names| {
+            format!(
+                "{} rewrites `self.assertTrue` and `self.assertFalse` into the `TestCase` helper that reports both \
+                 operands; {} {} a bare `assert` in their place",
+                names.simplint_selector,
+                names.ruff_selectors,
+                names.verb("asks for", "ask for"),
             )
         },
         fix: ignore_in_ruff_or_simplint,

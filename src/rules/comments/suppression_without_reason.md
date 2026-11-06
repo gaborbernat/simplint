@@ -106,5 +106,7 @@ comment on the same line. A comment with neither codes nor a reason is reported 
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** closed issue [#10070](https://github.com/astral-sh/ruff/issues/10070)
-  and merged pull request [#21294](https://github.com/astral-sh/ruff/pull/21294).
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Closed issue
+  [#10070](https://github.com/astral-sh/ruff/issues/10070) (fixed by pull request
+  [#21294](https://github.com/astral-sh/ruff/pull/21294)) only lets `--add-noqa` write a reason; no Ruff rule reports a
+  suppression without one.

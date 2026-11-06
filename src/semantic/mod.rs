@@ -1,4 +1,6 @@
+mod append;
 mod builder;
+mod django;
 
 use std::path::Path;
 
@@ -6,6 +8,8 @@ use ruff_python_ast::identifier::Identifier;
 
 use ruff_python_ast::name::QualifiedName;
 use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
+use ruff_python_semantic::analyze::logging;
+use ruff_python_semantic::analyze::typing::find_binding_value;
 use ruff_python_semantic::{BindingId, BindingKind as RuffBindingKind, ScopeKind, SemanticModel, UnresolvedReference};
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -16,11 +20,15 @@ pub struct Semantic<'a> {
     model: SemanticModel<'a>,
     annotations_are_lazy: bool,
     index: Index<'a>,
+    // The statements of Django models that Ruff's DJ012 reports, which the layout rules leave to it.
+    django_reports: FxHashSet<TextRange>,
+    // The statements that are appends on a list, which Ruff's FURB113 counts in a run of consecutive appends.
+    list_appends: FxHashSet<TextRange>,
 }
 
 impl<'a> Semantic<'a> {
     pub fn new(path: &'a Path, body: &'a [Stmt], target_version: PythonVersion) -> Self {
-        let builder::Model { semantic: mut model, loads, module, annotations_are_lazy } =
+        let builder::Model { semantic: mut model, loads, module, annotations_are_lazy, django_reports, list_appends } =
             builder::build(path, body, target_version);
         let mut index = Index::default();
         let module_bindings = index.collect_bindings(&model);
@@ -33,7 +41,17 @@ impl<'a> Semantic<'a> {
             references.sort_by_key(|reference| reference.range.start());
         }
         model.restore(module);
-        Self { model, annotations_are_lazy, index }
+        Self { model, annotations_are_lazy, index, django_reports, list_appends }
+    }
+
+    // Whether Ruff's DJ012 reports the statement at `range`, a statement of a Django model's body.
+    pub fn reported_by_dj012(&self, range: TextRange) -> bool {
+        self.django_reports.contains(&range)
+    }
+
+    // Whether the statement at `range` is an append on a list, as FURB113 matches it.
+    pub fn is_list_append(&self, range: TextRange) -> bool {
+        self.list_appends.contains(&range)
     }
 
     // Whether `expr` names `segments`, resolved as Ruff does through the imports that bind its head, so `mock.patch`
@@ -61,6 +79,19 @@ impl<'a> Semantic<'a> {
     // Whether `expr` names `typing.{member}`, or its `typing_extensions` backport.
     pub fn match_typing_expr(&self, expr: &Expr, member: &str) -> bool {
         self.model.match_typing_expr(expr, member)
+    }
+
+    // The value a load of `name` reads, when it resolves to the first binding of the name in its scope, as Ruff's rules
+    // that follow a variable to its literal resolve it.
+    pub fn only_binding_value(&self, name: &ast::ExprName) -> Option<&Expr> {
+        let binding = self.model.binding(self.model.only_binding(name)?);
+        find_binding_value(binding, &self.model)
+    }
+
+    // Whether `func` is a method of a logger that Ruff's logging rules check: the `logging` module, a logger it creates,
+    // or one of the `logger-objects`.
+    pub fn is_logger_candidate(&self, func: &Expr, logger_objects: &[String]) -> bool {
+        logging::is_logger_candidate(func, &self.model, logger_objects)
     }
 
     // Whether annotations wait until something reads them: from `from __future__ import annotations` or a target

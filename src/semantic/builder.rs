@@ -17,7 +17,10 @@ use ruff_python_semantic::{
     SemanticModel, SemanticModelFlags, Snapshot, StarImport, SubmoduleImport,
 };
 use ruff_text_size::{Ranged, TextRange};
+use rustc_hash::FxHashSet;
 
+use super::append::is_list_append;
+use super::django::unordered_model_statements;
 use crate::semantic::future_import;
 
 pub struct Model<'a> {
@@ -26,6 +29,8 @@ pub struct Model<'a> {
     // The model at module level once every top-level statement ran.
     pub module: Snapshot,
     pub annotations_are_lazy: bool,
+    pub django_reports: FxHashSet<TextRange>,
+    pub list_appends: FxHashSet<TextRange>,
 }
 
 pub fn build<'a>(path: &'a Path, body: &'a [Stmt], target_version: PythonVersion) -> Model<'a> {
@@ -41,12 +46,21 @@ pub fn build<'a>(path: &'a Path, body: &'a [Stmt], target_version: PythonVersion
         functions: Vec::new(),
         lambdas: Vec::new(),
         loads: Vec::new(),
+        django_reports: FxHashSet::default(),
+        list_appends: FxHashSet::default(),
     };
     builder.visit_body(body);
     let module = builder.semantic.snapshot();
     let annotations_are_lazy = builder.annotations_are_lazy();
     builder.visit_deferred();
-    Model { semantic: builder.semantic, loads: builder.loads, module, annotations_are_lazy }
+    Model {
+        semantic: builder.semantic,
+        loads: builder.loads,
+        module,
+        annotations_are_lazy,
+        django_reports: builder.django_reports,
+        list_appends: builder.list_appends,
+    }
 }
 
 struct Builder<'a> {
@@ -55,11 +69,23 @@ struct Builder<'a> {
     functions: Vec<(&'a ast::StmtFunctionDef, Snapshot)>,
     lambdas: Vec<(&'a ast::ExprLambda, Snapshot)>,
     loads: Vec<(&'a ast::ExprName, Snapshot)>,
+    django_reports: FxHashSet<TextRange>,
+    list_appends: FxHashSet<TextRange>,
+}
+
+impl Builder<'_> {
+    // The appends on a list that Ruff's FURB113 matches, recorded where the scope reads as Ruff reads it.
+    fn note_list_append(&mut self, stmt: &Stmt) {
+        if is_list_append(&self.semantic, stmt) {
+            self.list_appends.insert(stmt.range());
+        }
+    }
 }
 
 impl<'a> Visitor<'a> for Builder<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         self.semantic.push_node(stmt);
+        self.note_list_append(stmt);
         if let Some(import) = future_import(stmt)
             && !import.is_lazy
             && import.names.iter().any(|alias| alias.name.as_str() == "annotations")
@@ -138,6 +164,7 @@ impl<'a> Visitor<'a> for Builder<'a> {
                 }
                 self.semantic.push_scope(ScopeKind::Class(class_def));
                 self.visit_body(&class_def.body);
+                self.django_reports.extend(unordered_model_statements(&self.semantic, class_def));
                 let scope_id = self.semantic.scope_id;
                 self.semantic.pop_scope();
                 self.semantic.pop_scope();

@@ -98,6 +98,8 @@ offered, since moving fields can split the lines that continue them from their t
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#12434](https://github.com/astral-sh/ruff/issues/12434).
+- **[Ruff](https://github.com/astral-sh/ruff):** open pull request
+  [#23047](https://github.com/astral-sh/ruff/pull/23047) (DOC104) checks parameter order in Google and NumPy docstrings;
+  reST fields are open issue [#12434](https://github.com/astral-sh/ruff/issues/12434).
 - [pydoclint](https://github.com/jsh9/pydoclint) reports arguments documented in a different order than the signature as
   [DOC104](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.

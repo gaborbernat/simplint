@@ -181,7 +181,8 @@ reflow are left to Ruff alone.
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** released rules [E501](https://docs.astral.sh/ruff/rules/line-too-long/)
-  and [W505](https://docs.astral.sh/ruff/rules/doc-line-too-long/).
+  and [W505](https://docs.astral.sh/ruff/rules/doc-line-too-long/) report the same lines without a fix; this rule exists
+  for its rewrap fix, which open issue [#7414](https://github.com/astral-sh/ruff/issues/7414) asks Ruff for.
 - [pycodestyle](https://github.com/PyCQA/pycodestyle) reports the same lines as
   [W505](https://pycodestyle.pycqa.org/en/latest/intro.html). The check is off by default and needs `max-doc-length`
   set, and it does not fix the line.

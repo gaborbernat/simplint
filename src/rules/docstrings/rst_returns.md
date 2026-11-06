@@ -371,9 +371,11 @@ No fix is offered when escapes in the docstring make its text differ from the so
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
-  [DOC201](https://docs.astral.sh/ruff/rules/docstring-missing-returns/) (preview), which reads Google and NumPy
-  sections only, not reST fields; open issue [#12434](https://github.com/astral-sh/ruff/issues/12434).
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rules
+  [DOC201](https://docs.astral.sh/ruff/rules/docstring-missing-returns/) and
+  [DOC402](https://docs.astral.sh/ruff/rules/docstring-missing-yields/), which cannot read `:returns:` and `:yields:`
+  fields, so simplint refuses to run with them on reST docstrings; open pull request
+  [#13286](https://github.com/astral-sh/ruff/pull/13286) adds Sphinx support.
 - [pydoclint](https://github.com/jsh9/pydoclint) reports missing or extra return and yield sections as
   [DOC201](https://jsh9.github.io/pydoclint/violation_codes.html),
   [DOC202](https://jsh9.github.io/pydoclint/violation_codes.html),

@@ -148,4 +148,6 @@ No fix is offered when:
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Preview rule
+  [PLW1514](https://docs.astral.sh/ruff/rules/unspecified-encoding/) reports a `codecs.open()` without an encoding,
+  asking for one rather than for `open()`.

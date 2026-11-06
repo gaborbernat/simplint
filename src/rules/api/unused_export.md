@@ -461,4 +461,5 @@ a leading underscore, so what looks public is what other modules use.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#12962](https://github.com/astral-sh/ruff/issues/12962).
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#12962](https://github.com/astral-sh/ruff/issues/12962)
+  (item 2: `__all__` entries nothing uses).

@@ -1,7 +1,7 @@
 use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::helpers::is_dunder;
 use ruff_python_ast::visitor::Visitor;
-use ruff_python_ast::{self as ast, Expr, Stmt};
+use ruff_python_ast::{self as ast, AnyParameterRef, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 use rustc_hash::FxHashSet;
 
@@ -18,7 +18,7 @@ pub fn statement(walker: &mut Walker, stmt: &Stmt) {
         Stmt::ClassDef(class) => report_type_params(walker, class.type_params.as_deref()),
         Stmt::TypeAlias(alias) => {
             report_type_params(walker, alias.type_params.as_deref());
-            report_imprecise(walker, &alias.value, Skip::NONE);
+            report_imprecise(walker, &alias.value, false);
         }
         Stmt::FunctionDef(function) => {
             report_type_params(walker, function.type_params.as_deref());
@@ -28,23 +28,27 @@ pub fn statement(walker: &mut Walker, stmt: &Stmt) {
                 };
                 matches!(last_segment(value), Some("TypeIs" | "TypeGuard"))
             });
-            let ann401 = walker.checker.settings.from_ruff.ruff_runs(RuffRule::AnyType);
-            let checked = ann401 && ann401_checks(walker, function);
-            // ANN401 leaves the `self` or `cls` a method receives unchecked, unless the method is static.
+            let settings = &walker.checker.settings.from_ruff;
+            let checked = settings.ruff_runs(RuffRule::AnyType) && ann401_checks(walker, function);
+            // ANN401 leaves the `self` or `cls` a method receives unchecked, unless the method is static, and the
+            // `*args` and `**kwargs` alone when `allow-star-arg-any` is set.
             let receiver = receiver_name(walker, function);
             if !is_guard && !is_dunder(function.name.as_str()) {
                 for parameter in &function.parameters {
                     if let Some(annotation) = parameter.annotation() {
-                        let by_ann401 = checked && Some(parameter.name().range()) != receiver;
-                        report_imprecise(walker, annotation, Skip { whole_any: ann401, ann401: by_ann401 });
+                        let variadic = matches!(parameter, AnyParameterRef::Variadic(_));
+                        let by_ann401 = checked
+                            && !(variadic && settings.allow_star_arg_any)
+                            && Some(parameter.name().range()) != receiver;
+                        report_imprecise(walker, annotation, by_ann401);
                     }
                 }
             }
             if let Some(returns) = &function.returns {
-                report_imprecise(walker, returns, Skip { whole_any: ann401, ann401: checked });
+                report_imprecise(walker, returns, checked);
             }
         }
-        Stmt::AnnAssign(ast::StmtAnnAssign { annotation, .. }) => report_imprecise(walker, annotation, Skip::NONE),
+        Stmt::AnnAssign(ast::StmtAnnAssign { annotation, .. }) => report_imprecise(walker, annotation, false),
         _ => {}
     }
 }
@@ -53,10 +57,10 @@ pub fn statement(walker: &mut Walker, stmt: &Stmt) {
 fn report_type_params(walker: &Walker, type_params: Option<&ast::TypeParams>) {
     for type_param in type_params.into_iter().flat_map(|type_params| &type_params.type_params) {
         if let ast::TypeParam::TypeVar(ast::TypeParamTypeVar { bound: Some(bound), .. }) = type_param {
-            report_imprecise(walker, bound, Skip::NONE);
+            report_imprecise(walker, bound, false);
         }
         if let Some(default) = type_param.default() {
-            report_imprecise(walker, default, Skip::NONE);
+            report_imprecise(walker, default, false);
         }
     }
 }
@@ -112,27 +116,57 @@ pub(crate) fn overload_implementations(checker: &Checker) -> FxHashSet<TextSize>
     implementations
 }
 
-// Which `Any` reports the rule leaves out while Ruff's ANN401 runs: a whole-annotation `Any`, and an `Any` at the start
-// of an annotation, since ANN401 reports from the first character, as in `Any | None`.
-#[derive(Clone, Copy)]
-struct Skip {
-    whole_any: bool,
-    ann401: bool,
-}
-
-impl Skip {
-    const NONE: Self = Self { whole_any: false, ann401: false };
-}
-
-fn report_imprecise(walker: &Walker, annotation: &Expr, skip: Skip) {
+// The `Any` nodes ANN401 reports in an annotation, which this rule leaves out while ANN401 checks the function. Ruff
+// reports the whole annotation once, when `Any` is the annotation or sits in one of the wrappers it searches: an
+// `Optional`, a `Union` or `|` element, or the first argument of `Annotated`. Its search does not enter other
+// subscripts, such as `list[Any]`, nor a quoted annotation, which this rule does not check either.
+fn ann401_anys(walker: &Walker, expr: &Expr, found: &mut FxHashSet<TextRange>) {
     let semantic = walker.checker.semantic();
+    match expr {
+        Expr::BinOp(ast::ExprBinOp { left, op: ast::Operator::BitOr, right, .. }) => {
+            ann401_anys(walker, left, found);
+            ann401_anys(walker, right, found);
+        }
+        Expr::Subscript(ast::ExprSubscript { value, slice, .. }) => {
+            if semantic.match_typing_expr(value, "Optional") {
+                ann401_anys(walker, slice, found);
+            } else if semantic.match_typing_expr(value, "Union") {
+                for element in slice_elements(slice) {
+                    ann401_anys(walker, element, found);
+                }
+            } else if semantic.match_typing_expr(value, "Annotated")
+                && let Some(first) = slice_elements(slice).first()
+            {
+                ann401_anys(walker, first, found);
+            }
+        }
+        _ if semantic.match_typing_expr(expr, "Any") => {
+            found.insert(expr.range());
+        }
+        _ => {}
+    }
+}
+
+// The elements of a subscript's slice: those of a tuple, or the slice itself.
+fn slice_elements(slice: &Expr) -> &[Expr] {
+    match slice {
+        Expr::Tuple(ast::ExprTuple { elts, .. }) => elts,
+        _ => std::slice::from_ref(slice),
+    }
+}
+
+fn report_imprecise(walker: &Walker, annotation: &Expr, ann401: bool) {
+    let semantic = walker.checker.semantic();
+    let mut left_to_ann401 = FxHashSet::default();
+    if ann401 {
+        ann401_anys(walker, annotation, &mut left_to_ann401);
+    }
     let mut finder = ExprCollector::new(|expr: &Expr| {
         if semantic.is_builtin(expr, "object") || semantic.resolves_to(expr, &["builtins", "object"]) {
             return Some((expr.range(), OBJECT_MESSAGE));
         }
-        let whole = skip.whole_any && expr.range() == annotation.range();
-        let by_ann401 = skip.ann401 && expr.start() == annotation.start();
-        (!(whole || by_ann401) && semantic.match_typing_expr(expr, "Any")).then(|| (expr.range(), ANY_MESSAGE))
+        (semantic.match_typing_expr(expr, "Any") && !left_to_ann401.contains(&expr.range()))
+            .then(|| (expr.range(), ANY_MESSAGE))
     });
     finder.visit_expr(annotation);
     for (range, message) in finder.found {

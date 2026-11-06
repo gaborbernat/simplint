@@ -150,3 +150,5 @@ a dict is unsafe: `**` reads `keys()` and `__getitem__`, not `items()`, so the r
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+  [RUF017](https://docs.astral.sh/ruff/rules/quadratic-list-summation/) writes the same unpacking when fixing
+  `sum(lists, [])`.

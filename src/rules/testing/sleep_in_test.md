@@ -63,6 +63,25 @@ def test_worker_finishes():
       time.sleep(0)
   ```
 
+- **`await asyncio.sleep` as the whole body of a `while`**: Ruff's
+  [async-busy-wait](https://docs.astral.sh/ruff/rules/async-busy-wait/) (ASYNC110) reports a loop that waits on a sleep
+  this way, so this rule leaves that sleep to Ruff while the project's Ruff configuration selects it. Ruff's own
+  suppressions of it, through `per-file-ignores` or `noqa`, are respected too.
+
+  ```toml config
+  [tool.ruff.lint]
+  select = ["ASYNC110"]
+  ```
+
+  ```python ok file=test_busy.py
+  import asyncio
+
+
+  async def test_busy(done):
+      while not done():
+          await asyncio.sleep(1)
+  ```
+
 - **Modules that patch `time.sleep`**: a test that replaces the sleep with `mocker.patch`, `monkeypatch.setattr` or
   `patch` already controls the wait, so the module is not reported. The patch is recognized by its target written as the
   dotted string `"time.sleep"`, or by `monkeypatch.setattr(time, "sleep", ...)`.
@@ -91,4 +110,7 @@ No fix is offered, as the wait has to become an event the code sets, which depen
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
+  [ASYNC110](https://docs.astral.sh/ruff/rules/async-busy-wait/), which reports an `asyncio.sleep` polling loop and
+  which this rule leaves to it. [ASYNC251](https://docs.astral.sh/ruff/rules/blocking-sleep-in-async-function/) reports
+  `time.sleep` in async functions for blocking, a different problem.

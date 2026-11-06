@@ -121,6 +121,25 @@ asserts may check the messages the code raises.
           raise
   ```
 
+- **`assert` statements that name the exception**: Ruff's
+  [pytest-assert-in-except](https://docs.astral.sh/ruff/rules/pytest-assert-in-except/) (PT017) reports an `assert` in
+  an `except` body that names the exception, so this rule leaves the comparison inside it to Ruff while the project's
+  Ruff configuration selects that rule. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are
+  respected too.
+
+  ```toml config
+  [tool.ruff.lint]
+  select = ["PT017"]
+  ```
+
+  ```python ok
+  def run(exc_source):
+      try:
+          exc_source()
+      except OSError as exc:
+          assert "gone" in str(exc)
+  ```
+
 - **Test modules**: tests may assert on the messages the code raises.
 
   ```python ok file=test_errors.py
@@ -144,4 +163,6 @@ asserts may check the messages the code raises.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
+  [PT017](https://docs.astral.sh/ruff/rules/pytest-assert-in-except/), which reports an `assert` on the caught exception
+  and which this rule leaves to it; branching on the message text is not requested yet.

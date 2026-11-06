@@ -246,6 +246,32 @@ Some members stay where they are, and some reports come without a fix:
   attributes. It stays in place when it conflicts with a definition: it binds a name that a definition reads while the
   class is created, or it reads a name that a definition binds. A definition does not move past such a statement.
 
+- **Django model statements Ruff reports**: when the file imports Django and the project selects
+  [DJ012](https://docs.astral.sh/ruff/rules/django-unordered-body-content-in-model/), Ruff reports a statement of a
+  model that the Django Style Guide places earlier, so this rule leaves that statement to Ruff. DJ012 has no fix, so the
+  one report that carries the fix for the class stays here, on a member DJ012 does not check when there is one. Below,
+  `__init__` is reported with the fix and `Meta` is left to Ruff:
+
+  ```toml config
+  [tool.ruff.lint]
+  select = ["DJ012"]
+  ```
+
+  ```python report
+  from django.db import models
+
+
+  class Article(models.Model):
+      def helper(self) -> None:
+          pass
+
+      def __init__(self) -> None:
+          super().__init__()
+
+      class Meta:
+          ordering = ["name"]
+  ```
+
 - **An enum's `_generate_next_value_`** stays where it is. `auto()` reads it from the class namespace rather than by
   name, and `Enum` raises `TypeError` when it is defined after a member that called `auto()`:
 
@@ -315,8 +341,11 @@ sections, and its fix moves only the helpers.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#2425](https://github.com/astral-sh/ruff/issues/2425) and
-  [#3845](https://github.com/astral-sh/ruff/issues/3845).
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
+  [DJ012](https://docs.astral.sh/ruff/rules/django-unordered-body-content-in-model/), which orders Django model bodies
+  and which this rule leaves to it, except the report that carries the fix DJ012 lacks; the general order is open issues
+  [#2425](https://github.com/astral-sh/ruff/issues/2425) and [#3845](https://github.com/astral-sh/ruff/issues/3845)
+  (WPS338).
 - [pyorder](https://github.com/Winipedia/pyorder) has the same
   [constructor-first](https://github.com/Winipedia/pyorder#ordering-rules) rule, and sorts abstract, overriding, special
   and class methods first as well.

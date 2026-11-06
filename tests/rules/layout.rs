@@ -94,3 +94,36 @@ fn python_sources(root: &std::path::Path) -> std::collections::BTreeMap<std::pat
         .map(|entry| (entry.path().to_path_buf(), std::fs::read_to_string(entry.path()).expect("source")))
         .collect()
 }
+
+// DJ012 reports the statement of a Django model that the Django Style Guide places earlier, when the file imports Django
+// and the project selects it. The run leaves that statement to Ruff and keeps the members DJ012 does not check, and the
+// report that carries the class's fix, which DJ012 lacks.
+#[test_case("[tool.ruff.lint]\nselect = [\"DJ012\"]\n", DJANGO_MODEL_SAVE_BEFORE_META, 1 ; "meta_after_save_selected")]
+#[test_case("", DJANGO_MODEL_SAVE_BEFORE_META, 1 ; "meta_after_save_unselected")]
+#[test_case("[tool.ruff.lint]\nselect = [\"DJ012\"]\n", DJANGO_MODEL_PROPERTY_AFTER_METHOD, 1 ; "property_after_method_selected")]
+#[test_case("[tool.ruff.lint]\nselect = [\"DJ012\"]\n", DJANGO_MODEL_WITHOUT_IMPORT, 1 ; "no_django_import")]
+#[test_case("[tool.ruff.lint]\nselect = [\"DJ012\"]\n", DJANGO_MODEL_INIT_AFTER_METHOD, 1 ; "init_after_method_selected")]
+#[test_case("[tool.ruff.lint]\nselect = [\"DJ012\"]\n", DJANGO_MODEL_MANAGER_AFTER_METHOD, 1 ; "manager_after_method_selected")]
+#[test_case("[tool.ruff.lint]\nselect = [\"DJ012\"]\n", DJANGO_MODEL_URL_BEFORE_PROPERTY, 1 ; "url_before_property_selected")]
+#[test_case("[tool.ruff.lint]\nselect = [\"DJ012\"]\n", DJANGO_MODEL_PLAIN_ATTRIBUTE, 1 ; "plain_attribute_selected")]
+#[test_case("[tool.ruff.lint]\nselect = [\"DJ012\"]\n", DJANGO_MODEL_NESTED_CLASS, 1 ; "nested_class_selected")]
+#[test_case("[tool.ruff.lint]\nselect = [\"DJ012\"]\n", DJANGO_MODEL_DOCSTRING_BEFORE_META, 1 ; "docstring_before_meta_selected")]
+#[test_case("[tool.ruff.lint]\nselect = [\"DJ012\"]\n", DJANGO_MODEL_INIT_AND_META_AFTER_METHOD, 1 ; "second_inversion_selected")]
+#[test_case("", DJANGO_MODEL_INIT_AND_META_AFTER_METHOD, 2 ; "second_inversion_unselected")]
+fn class_member_order_leaves_dj012_statements_to_ruff(config: &str, source: &str, reported: usize) {
+    let root = common::project(&[("pyproject.toml", config), ("models.py", source)]);
+    let (_, stdout, _) =
+        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP203", "--output-format", "json"]);
+    assert_eq!(stdout.matches("\"code\": \"SMP203\"").count(), reported, "{stdout}");
+}
+
+const DJANGO_MODEL_SAVE_BEFORE_META: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    name = models.CharField(max_length=10)\n\n    def save(self, *args: object, **kwargs: object) -> None:\n        pass\n\n    class Meta:\n        ordering = [\"name\"]\n";
+const DJANGO_MODEL_PROPERTY_AFTER_METHOD: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    name = models.CharField(max_length=10)\n\n    def helper(self) -> str:\n        return self.name\n\n    @property\n    def full(self) -> str:\n        return self.name\n";
+const DJANGO_MODEL_WITHOUT_IMPORT: &str = "from orm import models\n\n\nclass Article(models.Model):\n    def __str__(self) -> str:\n        return \"\"\n\n    name = models.CharField(max_length=10)\n\n    def helper(self) -> None:\n        pass\n\n    @property\n    def full(self) -> str:\n        return self.name\n";
+const DJANGO_MODEL_INIT_AFTER_METHOD: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    def helper(self) -> None:\n        pass\n\n    def __init__(self) -> None:\n        super().__init__()\n";
+const DJANGO_MODEL_MANAGER_AFTER_METHOD: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    def helper(self) -> None:\n        pass\n\n    objects = models.Manager()\n\n    @property\n    def full(self) -> str:\n        return \"\"\n";
+const DJANGO_MODEL_URL_BEFORE_PROPERTY: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    def get_absolute_url(self) -> str:\n        return \"/\"\n\n    @property\n    def full(self) -> str:\n        return \"\"\n";
+const DJANGO_MODEL_PLAIN_ATTRIBUTE: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    def helper(self) -> None:\n        pass\n\n    LIMIT = 3\n\n    @property\n    def full(self) -> str:\n        return \"\"\n";
+const DJANGO_MODEL_NESTED_CLASS: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    def helper(self) -> None:\n        pass\n\n    class Config:\n        pass\n";
+const DJANGO_MODEL_DOCSTRING_BEFORE_META: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    \"\"\"An article.\"\"\"\n\n    def helper(self) -> None:\n        pass\n\n    class Meta:\n        ordering = [\"name\"]\n";
+const DJANGO_MODEL_INIT_AND_META_AFTER_METHOD: &str = "from django.db import models\n\n\nclass Article(models.Model):\n    def helper(self) -> None:\n        pass\n\n    def __init__(self) -> None:\n        super().__init__()\n\n    class Meta:\n        ordering = [\"name\"]\n";

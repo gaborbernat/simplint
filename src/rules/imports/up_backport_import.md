@@ -183,7 +183,8 @@ The fix leaves `pyproject.toml` alone. The message names the dependency, which c
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
   [UP026](https://docs.astral.sh/ruff/rules/deprecated-mock-import/) and
-  [UP035](https://docs.astral.sh/ruff/rules/deprecated-import/), which rewrite the `mock` backport and some
-  `typing_extensions` names, not the backports this rule covers.
+  [UP035](https://docs.astral.sh/ruff/rules/deprecated-import/) do the same for `mock` and `typing_extensions`;
+  [A004](https://docs.astral.sh/ruff/rules/builtin-import-shadowing/) reports an unaliased `exceptiongroup` import as
+  shadowing a builtin, without dropping it.

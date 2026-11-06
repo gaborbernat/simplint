@@ -1,0 +1,25 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+10:18 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+11:11 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
+--- fixed (2 applied, 0 remaining) ---
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+def greet(name: str, count: int) -> None:
+    logger.info("Hello, " + name)
+    logger.info(msg="Hello, " + name)
+    logging.log(logging.INFO, "Hello, " + name)
+    logger.info((f"Hello, {name}") * 2)
+    print(f"Hello, {name}")
+
+
+def label() -> str:
+    return (
+        "Hello, "
+        + "world"
+    )

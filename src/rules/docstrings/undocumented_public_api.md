@@ -359,15 +359,13 @@ flowchart TD
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** released rules
-  [D100](https://docs.astral.sh/ruff/rules/undocumented-public-module/),
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules
   [D101](https://docs.astral.sh/ruff/rules/undocumented-public-class/),
   [D102](https://docs.astral.sh/ruff/rules/undocumented-public-method/),
-  [D103](https://docs.astral.sh/ruff/rules/undocumented-public-function/),
-  [D104](https://docs.astral.sh/ruff/rules/undocumented-public-package/),
-  [D105](https://docs.astral.sh/ruff/rules/undocumented-magic-method/),
-  [D106](https://docs.astral.sh/ruff/rules/undocumented-public-nested-class/) and
-  [D107](https://docs.astral.sh/ruff/rules/undocumented-public-init/).
+  [D103](https://docs.astral.sh/ruff/rules/undocumented-public-function/) and
+  [D106](https://docs.astral.sh/ruff/rules/undocumented-public-nested-class/), which cover definitions in public modules
+  and which this rule leaves to them; this rule covers public variables and names re-exported from private modules
+  (variables: open issue [#20766](https://github.com/astral-sh/ruff/issues/20766)).
 - [pydocstyle](https://www.pydocstyle.org/en/stable/error_codes.html) reports public functions and methods without a
   docstring as [D103](https://www.pydocstyle.org/en/stable/error_codes.html) and
   [D102](https://www.pydocstyle.org/en/stable/error_codes.html). It has no check for variables.

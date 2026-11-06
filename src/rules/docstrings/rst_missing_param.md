@@ -266,10 +266,10 @@ No fix is offered when escapes in the docstring make its text differ from the so
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open pull request
-  [#21076](https://github.com/astral-sh/ruff/pull/21076), for issues
-  [#12434](https://github.com/astral-sh/ruff/issues/12434), [#458](https://github.com/astral-sh/ruff/issues/458) and
-  [#6606](https://github.com/astral-sh/ruff/issues/6606).
+- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#12434](https://github.com/astral-sh/ruff/issues/12434)
+  (DOC101) and [#6606](https://github.com/astral-sh/ruff/issues/6606) (Sphinx style). Released rule
+  [D417](https://docs.astral.sh/ruff/rules/undocumented-param/) and open pull request
+  [#21076](https://github.com/astral-sh/ruff/pull/21076) check only Google and NumPy sections, not `:param` fields.
 - [pydoclint](https://github.com/jsh9/pydoclint) reports a docstring with fewer parameters than the signature as
   [DOC101](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.
 - [darglint](https://github.com/terrencepreilly/darglint) reports a missing parameter as
