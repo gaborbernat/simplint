@@ -117,13 +117,15 @@ def test_train_records_a_profile(tmp_path: Path, mocker: MockerFixture, capsys: 
 
     work = tmp_path / "work"
     corpus = work / "corpus"
-    check = ["simplint", "check", "--no-cache", "--config"]
-    assert [command[:4] for command in calls[2:4]] == [check, check]
-    assert [command[5:] for command in calls[2:4]] == [
-        [str(corpus)],
-        ["--fix", "--unsafe-fixes", "--diff", str(corpus)],
+    cached = ["--cache-dir", str(work / "cache"), str(corpus)]
+    assert {tuple(command[:3]) for command in calls[2:6]} == {("simplint", "check", "--config")}
+    assert [command[4:] for command in calls[2:6]] == [
+        ["--no-cache", str(corpus)],
+        ["--no-cache", "--fix", "--unsafe-fixes", "--diff", str(corpus)],
+        cached,
+        cached,
     ]
-    assert calls[4][1:] == ["merge", "--output", str(work / "simplint.profdata"), str(work / "profiles")]
+    assert calls[6][1:] == ["merge", "--output", str(work / "simplint.profdata"), str(work / "profiles")]
     assert sorted(path.relative_to(corpus).as_posix() for path in corpus.rglob("*") if path.is_file()) == [
         "demo-1.0/demo-1.0/demo/__init__.py",
         "demo-1.0/demo-1.0/demo/types.pyi",

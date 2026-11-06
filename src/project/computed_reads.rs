@@ -16,30 +16,43 @@ pub(crate) struct ComputedReads {
     prefixes: BTreeSet<String>,
 }
 
+// What a computed read reaches: any name, or the names starting with a prefix.
+pub(crate) enum Reach {
+    Any,
+    Prefix(String),
+}
+
 impl ComputedReads {
     pub(crate) fn of(body: &[Stmt]) -> Self {
-        let mut computed = ExprCollector::new(|expr: &Expr| {
-            if let Some(attribute) = expr.as_attribute_expr() {
-                return (attribute.attr.as_str() == "__dict__").then_some(None);
-            }
-            if let Some((_, name)) = attribute_call(expr, &["getattr"]) {
-                return (!name.is_string_literal_expr()).then(|| literal_prefix(name));
-            }
-            let ast::ExprCall { func, .. } = expr.as_call_expr()?;
-            match func.as_name_expr()?.id.as_str() {
-                "vars" | "dir" => Some(None),
-                _ => None,
-            }
-        });
+        let mut computed = ExprCollector::new(Self::read);
         computed.visit_body(body);
         let mut reads = Self::default();
-        for prefix in computed.found {
-            match prefix {
-                Some(prefix) => _ = reads.prefixes.insert(prefix),
-                None => reads.any = true,
-            }
+        for read in computed.found {
+            reads.insert(read);
         }
         reads
+    }
+
+    // The computed read an expression makes, if it makes one.
+    pub(crate) fn read(expr: &Expr) -> Option<Reach> {
+        if let Some(attribute) = expr.as_attribute_expr() {
+            return (attribute.attr.as_str() == "__dict__").then_some(Reach::Any);
+        }
+        if let Some((_, name)) = attribute_call(expr, &["getattr"]) {
+            return (!name.is_string_literal_expr()).then(|| literal_prefix(name).map_or(Reach::Any, Reach::Prefix));
+        }
+        let ast::ExprCall { func, .. } = expr.as_call_expr()?;
+        match func.as_name_expr()?.id.as_str() {
+            "vars" | "dir" => Some(Reach::Any),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn insert(&mut self, read: Reach) {
+        match read {
+            Reach::Any => self.any = true,
+            Reach::Prefix(prefix) => _ = self.prefixes.insert(prefix),
+        }
     }
 
     pub(crate) fn extend(&mut self, other: &Self) {

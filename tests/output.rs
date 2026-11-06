@@ -45,6 +45,26 @@ fn check_full_keeps_report_order_across_chunks() {
     assert_eq!(reported, names);
 }
 
+// The formats that render chunks in parallel must still write the reports in order, with a JSON array written as one.
+#[test_case("concise" ; "concise")]
+#[test_case("json" ; "json")]
+#[test_case("json-lines" ; "json_lines")]
+#[test_case("github" ; "github")]
+#[test_case("pylint" ; "pylint")]
+#[test_case("azure" ; "azure")]
+fn check_keeps_report_order_across_chunks(format: &str) {
+    let names: Vec<String> = (0..200).map(|index| format!("module_{index:03}.py")).collect();
+    let root = project(&names.iter().map(|name| (name.as_str(), "x = 1\n")).collect::<Vec<_>>());
+    let stdout = simplint(root.path(), &["check", "--output-format", format, "--select", "SMP101"]).1;
+    let positions: Vec<usize> =
+        names.iter().map(|name| stdout.find(name.as_str()).expect("report names its file")).collect();
+    assert!(positions.is_sorted());
+    if format == "json" {
+        let reports: Vec<serde_json::Value> = serde_json::from_str(&stdout).expect("json report");
+        assert_eq!(reports.len(), names.len());
+    }
+}
+
 // A `noqa` comment for a report on the first line of a multi-line string goes on the string's last line.
 #[test_case(&[] ; "suppressions_read")]
 #[test_case(&["--ignore-noqa"] ; "suppressions_ignored")]

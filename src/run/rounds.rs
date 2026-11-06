@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
@@ -7,6 +6,9 @@ use anyhow::Result;
 use itertools::Itertools;
 use log::{debug, error};
 use rayon::prelude::*;
+use std::hash::Hasher;
+
+use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_linter::package::PackageRoot;
 use ruff_linter::packaging::detect_package_root;
 use ruff_linter::{SuppressionKind, warn_user_once};
@@ -16,10 +18,11 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use super::conflicts::{self, Scope};
 use super::discover::{Discovered, discover, linted_roots};
 use super::{Diagnostics, Mode, Resolved, StdinLint, lint_path, lint_stdin, write_source};
+use crate::cli::printer::FullDisplay;
 use crate::lint::Linter;
 use crate::lint::registry::{Rule, RuleSet};
 use crate::project::cache::{Cache, Caches, FileKey, Fingerprints};
-use crate::project::{DocReferences, FileFacts, ImportResolver, IndexInputs, Parts, Project, SearchRoots};
+use crate::project::{DocReferences, Ending, FileFacts, ImportResolver, IndexInputs, Parts, Project, SearchRoots};
 use crate::rules::classes::dataclass_kw_only::suppresses_rewrite;
 use crate::settings::{FileSettings, ModuleRole, Settings};
 
@@ -32,39 +35,56 @@ pub(crate) fn add_suppressions(
 ) -> Result<usize> {
     // A suppression comment changes no file's facts, so one round is final.
     let roots = linted_roots(files);
-    let counts = for_each_file(files, resolved, None, None, |DiscoveredFile { path, linter, .. }| {
-        let source = match std::fs::read_to_string(path) {
-            Ok(source) => source,
-            Err(error) => {
-                error!("Failed to extract source from {}: {error}", path.display());
+    let counts =
+        for_each_file(files, resolved, None, None, None, Ending::Drop, |DiscoveredFile { path, linter, .. }| {
+            let source = match std::fs::read_to_string(path) {
+                Ok(source) => source,
+                Err(error) => {
+                    error!("Failed to extract source from {}: {error}", path.display());
+                    return 0;
+                }
+            };
+            let (count, output) = linter.add_suppressions(path, &source, kind, reason);
+            if count > 0
+                && let Err(error) = write_source(path, &roots, &source, &output)
+            {
+                error!("Failed to add suppression to {}: {error}", path.display());
                 return 0;
             }
-        };
-        let (count, output) = linter.add_suppressions(path, &source, kind, reason);
-        if count > 0
-            && let Err(error) = write_source(path, &roots, &source, &output)
-        {
-            error!("Failed to add suppression to {}: {error}", path.display());
-            return 0;
-        }
-        count
-    })?;
+            count
+        })?;
     Ok(counts.into_iter().flatten().flatten().sum())
 }
 
-// Lints the files of a run, reusing their cached reports when `use_cache` is set.
-pub(crate) fn check_files(files: &[PathBuf], resolved: &Resolved, mode: &Mode, use_cache: bool) -> Result<Diagnostics> {
+// Lints the files of a run, reusing their cached reports when `use_cache` is set. With `full` set, each file's cached
+// reports also keep the text the `full` output shows them as.
+pub(crate) fn check_files(
+    files: &[PathBuf],
+    resolved: &Resolved,
+    mode: &Mode,
+    use_cache: bool,
+    full: Option<&FullDisplay>,
+    ending: Ending,
+) -> Result<Diagnostics> {
     let cache_dir = use_cache.then_some(resolved.cache_dir.as_path());
     let fingerprints = Fingerprints::default();
     // Only applied fixes reach the disk, where other files' facts come from.
     let rewrote = |diagnostics: &Diagnostics| !diagnostics.fixed.is_empty();
-    let results = for_each_file(files, resolved, cache_dir, mode.fix.is_apply().then_some(&rewrote), |file| {
-        let lint = |settled| lint_path(file.path, &file.linter, mode, settled);
-        let Some((cache, key)) = file.cache else {
-            return lint(None).diagnostics;
-        };
-        cache.lint_or_reuse(file.path, key, fingerprints.of(&file.linter, mode), lint)
-    })?;
+    // Without fixes a file's reports need no index once the run's digest matches the one they were stored under.
+    let reuse = |file: &RunFile, cache: &Cache, key: FileKey| {
+        let base = fingerprints.base(&file.settings, &file.ruff.linter, file.module_path.as_ref(), file.sibling_init);
+        cache.reused(file.path, key, base, full)
+    };
+    let reuse =
+        mode.fix.is_generate().then_some(&reuse as &(dyn Fn(&RunFile, &Cache, FileKey) -> Option<Diagnostics> + Sync));
+    let results =
+        for_each_file(files, resolved, cache_dir, mode.fix.is_apply().then_some(&rewrote), reuse, ending, |file| {
+            let lint = |settled| lint_path(file.path, &file.linter, mode, settled);
+            let Some((cache, key)) = file.cache else {
+                return lint(None).diagnostics;
+            };
+            cache.lint_or_reuse(file.path, key, fingerprints.of(&file.linter, mode), full, lint)
+        })?;
     // A later pass over a file replaces its reports, while the fixes of every pass count.
     let file_results = results.into_iter().flatten().filter_map(|passes| {
         passes.into_iter().reduce(|mut earlier, later| {
@@ -90,9 +110,10 @@ pub(crate) fn check_stdin(path: &Path, source: &str, resolved: &Resolved, mode: 
     let files = [RunFile::new(&absolute, &settings, ruff, resolved.pyproject_config.path.as_deref(), package, &roots)];
     ensure_compatible(&files, resolved)?;
     let rules = rules_of(&files);
-    let linted = (1, rules, wanted_parts(rules));
-    let read = (FxHashMap::default(), documentation(&files, rules, None));
-    let mut passes = index_and_lint(&files, linted, &roots, read, &FxHashMap::default(), None, |file| {
+    let index = index_parts(&files, 1, &roots);
+    let read = (vec![None], documentation(&files, rules, None));
+    let linted = (1, wanted_parts(rules), index);
+    let mut passes = index_and_lint(&files, linted, &roots, read, &[None], None, Ending::Drop, |file| {
         lint_stdin(path, source, &file.linter, mode)
     })?;
     Ok(passes.pop().and_then(|mut file| file.pop()).expect("the standard input is linted once"))
@@ -106,6 +127,8 @@ fn for_each_file<T: Send>(
     resolved: &Resolved,
     cache_dir: Option<&Path>,
     rewrote: Option<&(dyn Fn(&T) -> bool + Sync)>,
+    reuse: Option<&Reuse<'_, T>>,
+    ending: Ending,
     work: impl Fn(&DiscoveredFile) -> T + Sync,
 ) -> Result<Option<Vec<Vec<T>>>> {
     let start = Instant::now();
@@ -140,44 +163,169 @@ fn for_each_file<T: Send>(
     std::thread::scope(|scope| {
         let docs = scope.spawn(|| documentation(&indexed[..python.len()], rules, cache_dir));
         let joined = || docs.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic));
-        index_cached(&indexed, (python.len(), rules, parts), (&roots, &packages), cache_dir, joined, rewrote, work)
+        index_cached(
+            &indexed,
+            (python.len(), parts),
+            (&roots, &packages),
+            cache_dir,
+            joined,
+            (rewrote, reuse),
+            ending,
+            work,
+        )
     })
 }
 
-// The caches of the run opened, its files' facts read from them or collected, then the files indexed and linted.
-// `docs` gives what the documentation names once the walk that runs alongside is done.
+// A check of a file's cached reports, given the file, its cache and its key, from which the run skips the index.
+type Reuse<'a, T> = dyn Fn(&RunFile, &Cache, FileKey) -> Option<T> + Sync + 'a;
+
+// Whether a pass rewrote a file, which a later round has to index again.
+type Rewrite<'a, T> = dyn Fn(&T) -> bool + Sync + 'a;
+
+// The caches of the run opened, then either every linted file answered from them under the run's digest, or the facts of
+// the files read from them or collected, and the files indexed and linted. `docs` gives what the documentation names
+// once the walk that runs alongside is done.
+#[expect(clippy::too_many_arguments, reason = "the run's inputs, which each stage passes on")]
 fn index_cached<'f, T: Send>(
     indexed: &'f [RunFile<'f>],
-    linted: (usize, RuleSet, Parts),
+    (linted, parts): (usize, Parts),
     (roots, packages): (&SearchRoots, &FxHashMap<&'f Path, Option<PackageRoot<'f>>>),
     cache_dir: Option<&Path>,
     docs: impl FnOnce() -> DocReferences,
-    rewrote: Option<&(dyn Fn(&T) -> bool + Sync)>,
+    (rewrote, reuse): (Option<&Rewrite<'_, T>>, Option<&Reuse<'_, T>>),
+    ending: Ending,
     work: impl Fn(&DiscoveredFile) -> T + Sync,
 ) -> Result<Option<Vec<Vec<T>>>> {
     let caches = cache_dir.map(|cache_dir| {
         Caches::open(cache_dir, packages.iter().map(|(parent, package)| package.map_or(*parent, PackageRoot::path)))
     });
+    let keys: Vec<Option<FileKey>> = indexed.par_iter().map(|file| FileKey::of(file.path)).collect();
+    let docs = docs();
+    let index = index_parts(indexed, linted, roots);
+    let run = run_digest(indexed, &keys, linted, roots, &index, &docs, parts);
+    let views = caches.as_ref().map(|caches| caches.views(run));
     // As in Ruff, a file's cache is its package's, or its directory's outside a package.
-    let file_caches: FxHashMap<&Path, (&Cache, FileKey)> = caches.as_ref().map_or_else(FxHashMap::default, |caches| {
-        indexed
+    let file_caches: Vec<Option<(&Cache, FileKey)>> = views.as_ref().map_or_else(
+        || vec![None; indexed.len()],
+        |views| {
+            indexed
+                .iter()
+                .zip(&keys)
+                .map(|(file, key)| {
+                    let root = file.package.map(PackageRoot::path).or_else(|| file.path.parent())?;
+                    Some((views.get(root)?, (*key)?))
+                })
+                .collect()
+        },
+    );
+    if let Some(reuse) = reuse {
+        let reused: Option<Vec<Vec<T>>> = indexed[..linted]
             .par_iter()
-            .filter_map(|file| {
-                let root = file.package.map(PackageRoot::path).or_else(|| file.path.parent())?;
-                Some((file.path, (caches.get(root)?, FileKey::of(file.path)?)))
+            .zip(&file_caches[..linted])
+            .map(|(file, cached)| {
+                let (cache, key) = (*cached)?;
+                Some(vec![reuse(file, cache, key)?])
             })
-            .collect()
-    });
-    let parts = linted.2;
-    let facts: FxHashMap<&Path, Cow<FileFacts>> = indexed
-        .par_iter()
-        .filter_map(|file| Some((file.path, file_facts(file, file_caches.get(file.path).copied(), parts)?)))
-        .collect();
-    let passes = index_and_lint(indexed, linted, roots, (facts, docs()), &file_caches, rewrote, work)?;
-    if let Some(caches) = caches {
-        caches.persist()?;
+            .collect();
+        if let Some(passes) = reused {
+            persist_views(views, ending)?;
+            return Ok(Some(passes));
+        }
     }
+    let facts: Vec<Option<FileFacts>> =
+        indexed.par_iter().zip(&file_caches).map(|(file, cached)| file_facts(file, *cached, parts)).collect();
+    let passes =
+        index_and_lint(indexed, (linted, parts, index), roots, (facts, docs), &file_caches, rewrote, ending, work)?;
+    persist_views(views, ending)?;
     Ok(Some(passes))
+}
+
+// Writes the caches the run changed, each package's on its own thread.
+fn persist_views(views: Option<FxHashMap<&Path, Cache>>, ending: Ending) -> Result<()> {
+    let Some(views) = views else {
+        return Ok(());
+    };
+    views.into_values().collect::<Vec<_>>().into_par_iter().try_for_each(|cache| cache.persist(ending))
+}
+
+// The inputs of the import index that the linted files and the run's files determine: the entry points, the files
+// whose calls a fix rewrites, where each file sits in its library's API, the test modules and the duplicate window.
+struct IndexParts<'f> {
+    entry_points: Vec<String>,
+    rewrites_calls: FxHashSet<&'f Path>,
+    roles: FxHashMap<&'f Path, ModuleRole>,
+    test_modules: FxHashSet<&'f Path>,
+    duplicate_statements: Option<usize>,
+}
+
+fn index_parts<'f>(files: &'f [RunFile<'f>], linted: usize, roots: &SearchRoots) -> IndexParts<'f> {
+    let linted_files = &files[..linted];
+    let entry_points: Vec<String> = linted_files
+        .iter()
+        .map(|file| file.settings.project)
+        .unique_by(|settings| std::ptr::from_ref(*settings))
+        .flat_map(|settings| settings.metadata.entry_points.iter().cloned())
+        .sorted_unstable()
+        .dedup()
+        .collect();
+    IndexParts {
+        entry_points,
+        rewrites_calls: linted_files
+            .iter()
+            .filter(|file| file.settings.rewrites_dataclass_calls())
+            .map(|file| file.absolute.as_path())
+            .collect(),
+        roles: module_roles(files, roots),
+        test_modules: files
+            .iter()
+            .filter(|file| file.settings.is_test_module(file.path))
+            .map(|file| file.absolute.as_path())
+            .collect(),
+        duplicate_statements: duplicate_window(linted_files, rules_of(linted_files)),
+    }
+}
+
+// The digest of what an import index of a run is built from: the working directory, the search roots and the layout of
+// the directories its resolver reads, every run file with its key and where it sits, the index's own inputs, the
+// documentation and the facts the rules read. A cache entry stored under the same digest was computed from the same
+// index, which then need not be built.
+fn run_digest(
+    files: &[RunFile],
+    keys: &[Option<FileKey>],
+    linted: usize,
+    roots: &SearchRoots,
+    index: &IndexParts,
+    docs: &DocReferences,
+    parts: Parts,
+) -> u64 {
+    let mut hasher = CacheKeyHasher::new();
+    std::env::current_dir().unwrap_or_default().cache_key(&mut hasher);
+    roots.cache_key(&mut hasher);
+    roots.layout_key(files.iter().map(|file| file.path), &mut hasher);
+    linted.cache_key(&mut hasher);
+    for (file, key) in files.iter().zip(keys) {
+        file.path.cache_key(&mut hasher);
+        key.cache_key(&mut hasher);
+        file.package.map(PackageRoot::path).map(Path::to_path_buf).cache_key(&mut hasher);
+        file.module_path.cache_key(&mut hasher);
+        file.importable.cache_key(&mut hasher);
+    }
+    index.entry_points.cache_key(&mut hasher);
+    index.duplicate_statements.cache_key(&mut hasher);
+    for set in [&index.rewrites_calls, &index.test_modules] {
+        let mut paths: Vec<&Path> = set.iter().copied().collect();
+        paths.sort_unstable();
+        paths.cache_key(&mut hasher);
+    }
+    let mut roles: Vec<(&Path, ModuleRole)> = index.roles.iter().map(|(path, role)| (*path, *role)).collect();
+    roles.sort_unstable_by_key(|(path, _)| *path);
+    for (path, role) in roles {
+        path.cache_key(&mut hasher);
+        role.cache_key(&mut hasher);
+    }
+    docs.cache_key(&mut hasher);
+    parts.cache_key(&mut hasher);
+    hasher.finish()
 }
 
 // A file the run indexes, with what indexing and linting it take, worked out once: its settings and Ruff's with the
@@ -186,6 +334,9 @@ fn index_cached<'f, T: Send>(
 // a search root instead.
 struct RunFile<'a> {
     path: &'a Path,
+    // The path the index keys the file by. The run's paths may be relative to the working directory, so they are made
+    // absolute once here rather than at every lookup.
+    absolute: PathBuf,
     settings: FileSettings<'a>,
     ruff: &'a ruff_workspace::Settings,
     ruff_config: Option<&'a Path>,
@@ -210,7 +361,8 @@ impl<'a> RunFile<'a> {
         // A namespace package has no `__init__.py`, which a fingerprint and a rule read only when a rule asks.
         let sibling_init =
             settings.rules.overlaps(RuleSet::sibling_init()) && path.with_file_name("__init__.py").is_file();
-        Self { path, settings, ruff, ruff_config, package, module_path, importable, sibling_init }
+        let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+        Self { path, absolute, settings, ruff, ruff_config, package, module_path, importable, sibling_init }
     }
 }
 
@@ -218,51 +370,43 @@ impl<'a> RunFile<'a> {
 struct DiscoveredFile<'a> {
     path: &'a Path,
     linter: Linter<'a>,
-    cache: Option<(&'a Cache, FileKey)>,
+    cache: Option<(&'a Cache<'a>, FileKey)>,
 }
 
 // The import index of the run's `files`, built from the facts of each one that has them, and then their first
 // `linted` files linted, each with its passes. `enabled` is the union of the linted files' rules, and `parts` the
 // facts they read; `docs` is what the documentation of the linted files' projects names.
+#[expect(clippy::too_many_arguments, reason = "the run's inputs, which each stage passes on")]
 fn index_and_lint<'f, T: Send>(
     files: &'f [RunFile<'f>],
-    (linted, enabled, parts): (usize, RuleSet, Parts),
+    (linted, parts, index): (usize, Parts, IndexParts<'f>),
     roots: &SearchRoots,
-    (mut facts, docs): (FxHashMap<&'f Path, Cow<'f, FileFacts>>, DocReferences),
-    file_caches: &FxHashMap<&Path, (&'f Cache, FileKey)>,
+    (mut facts, docs): (Vec<Option<FileFacts>>, DocReferences),
+    file_caches: &[Option<(&'f Cache, FileKey)>],
     rewrote: Option<&(dyn Fn(&T) -> bool + Sync)>,
+    ending: Ending,
     work: impl Fn(&DiscoveredFile) -> T + Sync,
 ) -> Result<Vec<Vec<T>>> {
     let start = Instant::now();
     let linted_files = &files[..linted];
-    let entry_points: Vec<String> = linted_files
-        .iter()
-        .map(|file| file.settings.project)
-        .unique_by(|settings| std::ptr::from_ref(*settings))
-        .flat_map(|settings| settings.metadata.entry_points.iter().cloned())
-        .sorted_unstable()
-        .dedup()
-        .collect();
-    let rewrites_calls: FxHashSet<&Path> =
-        linted_files.iter().filter(|file| file.settings.rewrites_dataclass_calls()).map(|file| file.path).collect();
-    let roles = module_roles(files, roots);
-    let test_modules: FxHashSet<&Path> =
-        files.iter().filter(|file| file.settings.is_test_module(file.path)).map(|file| file.path).collect();
     let inputs = IndexInputs {
-        entry_points: &entry_points,
-        rewrites_calls: &rewrites_calls,
-        roles: &roles,
-        test_modules: &test_modules,
+        entry_points: &index.entry_points,
+        rewrites_calls: &index.rewrites_calls,
+        roles: &index.roles,
+        test_modules: &index.test_modules,
         docs: &docs,
-        duplicate_statements: duplicate_window(linted_files, enabled),
+        duplicate_statements: index.duplicate_statements,
     };
     let mut imports = ImportResolver::new(roots)?;
-    let project = index_project(&facts, &mut imports, &inputs);
-    debug!("Indexed {} files in: {:?}", facts.len(), start.elapsed());
+    let paths: Vec<&Path> = files.iter().map(|file| file.absolute.as_path()).collect();
+    let project = index_project(&paths, &facts, &mut imports, &inputs);
+    debug!("Indexed {} files in: {:?}", facts.iter().flatten().count(), start.elapsed());
     let start = Instant::now();
-    let index = Index { facts: &mut facts, resolver: &mut imports, inputs: &inputs, parts };
-    let passes = lint_rounds(linted_files, index, project, file_caches, rewrote, work);
+    let index = Index { facts: &mut facts, paths: &paths, resolver: &mut imports, inputs: &inputs, parts };
+    let passes = lint_rounds(linted_files, index, project, file_caches, rewrote, ending, work);
     debug!("Checked {:?} files in: {:?}", passes.len(), start.elapsed());
+    ending.end(facts);
+    ending.end(imports);
     Ok(passes)
 }
 
@@ -315,7 +459,9 @@ fn ensure_compatible(files: &[RunFile], resolved: &Resolved) -> Result<()> {
 // What a fix round indexes the run from: each file's facts, where their module names lead, and what else the index
 // reads.
 struct Index<'i, 'f> {
-    facts: &'i mut FxHashMap<&'f Path, Cow<'f, FileFacts>>,
+    // Each file's facts by its position in the run, which is also its position in `paths`.
+    facts: &'i mut Vec<Option<FileFacts>>,
+    paths: &'i [&'f Path],
     resolver: &'i mut ImportResolver,
     inputs: &'i IndexInputs<'i>,
     parts: Parts,
@@ -329,26 +475,28 @@ fn lint_rounds<'f, T: Send>(
     files: &'f [RunFile<'f>],
     mut index: Index<'_, 'f>,
     mut project: Project,
-    file_caches: &FxHashMap<&Path, (&'f Cache, FileKey)>,
+    file_caches: &[Option<(&'f Cache, FileKey)>],
     rewrote: Option<&(dyn Fn(&T) -> bool + Sync)>,
+    ending: Ending,
     work: impl Fn(&DiscoveredFile) -> T + Sync,
 ) -> Vec<Vec<T>> {
     // Two files whose fixes keep changing each other's facts would not settle; past this many rounds, the last
     // reports stand.
     const ROUNDS: usize = 8;
     // A file a fix rewrote has a new key.
-    let recache = |path: &Path| Some((file_caches.get(path)?.0, FileKey::of(path)?));
+    let recache = |at: usize| Some((file_caches[at]?.0, FileKey::of(files[at].path)?));
     // Without rewrites nothing indexes again, so the facts and resolved module names go before the files are linted.
     if rewrote.is_none() {
-        index.facts.clear();
-        index.resolver.release();
+        ending.end(std::mem::take(index.facts));
+        index.resolver.release(ending);
     }
     let lint = |file: &RunFile, project: &Project, cache| {
         work(&DiscoveredFile { path: file.path, linter: file_linter(file, project), cache })
     };
     let mut passes: Vec<Vec<T>> =
-        files.par_iter().map(|file| vec![lint(file, &project, file_caches.get(file.path).copied())]).collect();
+        files.par_iter().zip(file_caches).map(|(file, cache)| vec![lint(file, &project, *cache)]).collect();
     let Some(rewrote) = rewrote else {
+        ending.end(project);
         return passes;
     };
     let mut rewritten: Vec<usize> = (0..passes.len()).filter(|&at| passes[at].iter().any(rewrote)).collect();
@@ -362,43 +510,43 @@ fn lint_rounds<'f, T: Send>(
         for &at in &rewritten {
             words[at] = None;
         }
-        let changed: Vec<&RunFile> = rewritten.iter().map(|&at| &files[at]).collect();
-        let collect = |file: &RunFile| file_facts(file, recache(file.path), parts);
-        let (next, dependents) = reindex(&mut index, &changed, collect, files, &mut words, &project);
+        let collect = |at: usize| file_facts(&files[at], recache(at), parts);
+        let (next, dependents) = reindex(&mut index, &rewritten, collect, files, &mut words, &project);
         project = next;
         let relinted: Vec<(usize, T)> =
-            dependents.into_par_iter().map(|at| (at, lint(&files[at], &project, recache(files[at].path)))).collect();
+            dependents.into_par_iter().map(|at| (at, lint(&files[at], &project, recache(at)))).collect();
         rewritten = relinted.iter().filter(|(_, pass)| rewrote(pass)).map(|(at, _)| *at).collect();
         for (at, pass) in relinted {
             passes[at].push(pass);
         }
     }
+    ending.end(project);
     passes
 }
 
 // Where each file sits in its library's public API, by the first of the names the file imports as, from its package or
 // from a search root, that an API package holds. Unlinted files count too: an `__init__.py` Ruff's `lint.exclude` leaves
 // out still re-exports public names.
-fn module_roles<'p>(files: &[RunFile<'p>], roots: &SearchRoots) -> FxHashMap<&'p Path, ModuleRole> {
+fn module_roles<'s>(files: &'s [RunFile<'_>], roots: &SearchRoots) -> FxHashMap<&'s Path, ModuleRole> {
     files
-        .iter()
+        .par_iter()
         .map(|file| {
             let settings = file.settings.project;
             let module_paths = file.module_path.iter().cloned().chain(roots.module_paths(file.path)).collect_vec();
             let roles: Vec<ModuleRole> =
                 module_paths.iter().map(|module_path| settings.role(file.path, Some(module_path))).collect();
             let role = roles.iter().copied().find(|role| role.public).or_else(|| roles.first().copied());
-            (file.path, role.unwrap_or_else(|| settings.role(file.path, None)))
+            (file.absolute.as_path(), role.unwrap_or_else(|| settings.role(file.path, None)))
         })
         .collect()
 }
 
 // A file's import facts: those its cache holds while the file is unchanged, and otherwise freshly collected and stored
 // there. Cached facts without a part the run's rules read are collected again.
-fn file_facts<'c>(file: &RunFile, cache: Option<(&'c Cache, FileKey)>, parts: Parts) -> Option<Cow<'c, FileFacts>> {
+fn file_facts(file: &RunFile, cache: Option<(&Cache<'_>, FileKey)>, parts: Parts) -> Option<FileFacts> {
     let cached = cache.and_then(|(cache, key)| cache.facts(file.path, key));
     if let Some(facts) = cached.filter(|facts| facts.covers(parts)) {
-        return Some(Cow::Borrowed(facts));
+        return Some(facts);
     }
     let facts = FileFacts::collect(
         file.path,
@@ -410,28 +558,29 @@ fn file_facts<'c>(file: &RunFile, cache: Option<(&'c Cache, FileKey)>, parts: Pa
     if let Some((cache, key)) = cache {
         cache.set_facts(file.path, key, facts.clone());
     }
-    Some(Cow::Owned(facts))
+    Some(facts)
 }
 
 // The index once the `rewritten` files have their facts collected and their module names resolved again, and the
 // positions of the files whose answers from it differ from those of `project`. Each file's `words` are read the first
 // time a changed name needs them.
-fn reindex<'f>(
-    index: &mut Index<'_, 'f>,
-    rewritten: &[&RunFile<'f>],
-    collect: impl Fn(&RunFile) -> Option<Cow<'f, FileFacts>> + Sync,
+fn reindex(
+    index: &mut Index<'_, '_>,
+    rewritten: &[usize],
+    collect: impl Fn(usize) -> Option<FileFacts> + Sync,
     files: &[RunFile],
     words: &mut [Option<FxHashSet<String>>],
     project: &Project,
 ) -> (Project, Vec<usize>) {
     // A fix never leaves a file that does not parse, so a rewritten file keeps having facts.
-    let fresh: Vec<(&Path, FileFacts)> =
-        rewritten.par_iter().filter_map(|&file| Some((file.path, collect(file)?.into_owned()))).collect();
-    for file in rewritten {
-        index.resolver.forget(file.path);
+    let fresh: Vec<(usize, FileFacts)> = rewritten.par_iter().filter_map(|&at| Some((at, collect(at)?))).collect();
+    for &at in rewritten {
+        index.resolver.forget(files[at].absolute.as_path());
     }
-    index.facts.extend(fresh.into_iter().map(|(path, file)| (path, Cow::Owned(file))));
-    let next = index_project(index.facts, index.resolver, index.inputs);
+    for (at, facts) in fresh {
+        index.facts[at] = Some(facts);
+    }
+    let next = index_project(index.paths, index.facts, index.resolver, index.inputs);
     let changed = next.changed_names(project);
     if !changed.is_empty() {
         words.par_iter_mut().zip(files).filter(|(known, _)| known.is_none()).for_each(|(known, file)| {
@@ -441,7 +590,7 @@ fn reindex<'f>(
     let dependents = (0..files.len())
         .into_par_iter()
         .filter(|&at| {
-            let path = files[at].path;
+            let path = files[at].absolute.as_path();
             let mentions = || words[at].as_ref().is_some_and(|held| changed.iter().any(|name| held.contains(*name)));
             next.file(path) != project.file(path) || mentions()
         })
@@ -449,12 +598,15 @@ fn reindex<'f>(
     (next, dependents)
 }
 
+// The index of the files that have facts, which are given by absolute path.
 fn index_project(
-    facts: &FxHashMap<&Path, Cow<FileFacts>>,
+    paths: &[&Path],
+    facts: &[Option<FileFacts>],
     resolver: &mut ImportResolver,
     inputs: &IndexInputs,
 ) -> Project {
-    let indexed: Vec<(&Path, &FileFacts)> = facts.iter().map(|(path, facts)| (*path, facts.as_ref())).collect();
+    let indexed: Vec<(&Path, &FileFacts)> =
+        paths.iter().zip(facts).filter_map(|(path, facts)| Some((*path, facts.as_ref()?))).collect();
     Project::index(&indexed, resolver, inputs)
 }
 
@@ -471,7 +623,7 @@ fn file_linter<'a>(file: &RunFile<'a>, project: &'a Project) -> Linter<'a> {
     Linter::new(
         file.ruff,
         file.settings,
-        project.file(file.path),
+        project.file(file.absolute.as_path()),
         file.package,
         file.module_path.clone(),
         file.sibling_init,

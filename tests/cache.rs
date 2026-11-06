@@ -1,11 +1,12 @@
 mod common;
 
 use std::fs;
-use std::time::Duration;
+use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime};
 
 use test_case::test_case;
 
-use common::{check, fix_unsafe, project, quoted, read, simplint_with};
+use common::{check, command, fix_unsafe, project, quoted, read, simplint_with};
 
 #[test]
 fn cache_is_kept_in_ruffs_cache_directory() {
@@ -551,4 +552,240 @@ fn cached_findings_are_reported_again_under_other_settings() {
     let args = ["--select", "SMP101"];
     let cached = check(root.path(), &args);
     assert_eq!(cached, check(root.path(), &[&args[..], &["--no-cache"]].concat()));
+}
+
+const HELPER: &str = "def helper() -> None:\n    pass\n";
+const CLIENT: &str = "from helpers import helper\n";
+
+#[derive(Clone, Copy)]
+enum Change<'a> {
+    Write(&'a str, &'a str),
+    Remove(&'a str),
+}
+
+// The index a warm run reuses its reports from is built from the run's files and settings. Once any of those change,
+// the next warm run must answer as a run without the cache does, so each change to an index input is checked against
+// a fresh run.
+fn warm_run_after_change_matches_a_fresh_run(files: &[(&str, &str)], change: Change, select: &str, targets: &[&str]) {
+    let root = project(files);
+    let args = [&["--select", select], targets].concat();
+    check(root.path(), &args);
+    match change {
+        Change::Write(name, content) => {
+            let path = root.path().join(name);
+            fs::create_dir_all(path.parent().expect("file has a parent")).expect("create parent");
+            fs::write(path, content).expect("write");
+        }
+        Change::Remove(name) => fs::remove_file(root.path().join(name)).expect("remove"),
+    }
+    assert_eq!(check(root.path(), &args), check(root.path(), &[&args[..], &["--no-cache"]].concat()));
+}
+
+// `helpers.py` is reported while nothing imports it, so each change to the importer flips its reports, and a warm run
+// that reused them from the first run would miss the flip.
+#[test_case(&[("helpers.py", HELPER), ("client.py", "VALUE = 1\n")], Change::Write("client.py", CLIENT), "SMP401", &["."] ; "importer_edited")]
+#[test_case(&[("helpers.py", HELPER)], Change::Write("client.py", CLIENT), "SMP401", &["."] ; "importer_added")]
+#[test_case(&[("helpers.py", HELPER), ("client.py", CLIENT)], Change::Remove("client.py"), "SMP401", &["."] ; "importer_removed")]
+#[test_case(
+    &[("pyproject.toml", "[tool.ruff]\nnamespace-packages = [\"pkg\"]\n"), ("pkg/a.py", "from pkg.b import VALUE\n\nprint(VALUE)\n"), ("pkg/b.py", "VALUE = 1\n")],
+    Change::Write("pkg/__init__.py", ""), "SMP302", &["."] ; "namespace_package_gains_an_init_module"
+)]
+#[test_case(
+    &[("lib/helpers.py", HELPER), ("client.py", CLIENT)],
+    Change::Write("pyproject.toml", "[tool.ruff]\nsrc = [\"lib\"]\n"), "SMP401", &["."] ; "source_root_changed"
+)]
+#[test_case(
+    &[("helpers.py", HELPER), ("client.py", CLIENT)],
+    Change::Write("pyproject.toml", "[tool.ruff]\nsrc = [\"missing\"]\n"), "SMP401", &["."] ; "source_root_removed"
+)]
+#[test_case(&[("client.py", CLIENT), ("helpers.py", HELPER)], Change::Remove("client.py"), "SMP401", &["client.py"] ; "linted_file_removed")]
+#[test_case(
+    &[("pyproject.toml", "[tool.ruff]\nsrc = [\"lib\", \".\"]\nextend-exclude = [\"lib\"]\n"), ("lib/notes.txt", ""), ("helpers.py", HELPER), ("client.py", CLIENT)],
+    Change::Write("lib/helpers.py", HELPER), "SMP401", &["."] ; "excluded_module_shadows_an_import"
+)]
+#[test_case(
+    &[
+        ("pyproject.toml", "[project]\nname = \"proj\"\n\n[tool.ruff]\nextend-exclude = [\"scripts-dir/helpers\"]\n"),
+        ("scripts-dir/run.py", "from helpers.util import thing\n\nprint(thing)\n"),
+        ("other/helpers.py", "def thing() -> int:\n    return 1\n"),
+        ("scripts-dir/helpers/util.py", "thing = 1\n"),
+    ],
+    Change::Remove("scripts-dir/helpers/util.py"), "SMP409", &["."] ; "module_below_an_unimportable_directory_removed"
+)]
+fn warm_run_after_index_input_changes_matches_a_fresh_run(
+    files: &[(&str, &str)],
+    change: Change,
+    select: &str,
+    targets: &[&str],
+) {
+    warm_run_after_change_matches_a_fresh_run(files, change, select, targets);
+}
+
+// A file outside the linted paths that the index resolves an import to: adding it changes the index though the run's
+// files stay the same.
+#[test]
+fn warm_run_after_an_unlinted_module_appears_matches_a_fresh_run() {
+    warm_run_after_change_matches_a_fresh_run(
+        &[("src/client.py", CLIENT), ("src/helpers.py", "")],
+        Change::Write("src/helpers.py", HELPER),
+        "SMP401",
+        &["src/client.py"],
+    );
+}
+
+// A directory a link names resolves through the link, so a module removed behind it changes the index as one removed
+// in place does.
+#[cfg(unix)]
+#[test]
+fn warm_run_after_a_module_behind_a_link_is_removed_matches_a_fresh_run() {
+    let root = project(&[
+        ("proj/pyproject.toml", "[project]\nname = \"proj\"\n\n[tool.ruff]\nextend-exclude = [\"vendor\"]\n"),
+        ("proj/app.py", "from vendor.util import thing\n\nprint(thing)\n"),
+        ("proj/other/vendor.py", "def thing() -> int:\n    return 1\n"),
+        ("shared/vendor/util.py", "thing = 1\n"),
+    ]);
+    std::os::unix::fs::symlink(root.path().join("shared/vendor"), root.path().join("proj/vendor")).expect("link");
+    let project_root = root.path().join("proj");
+    let args = ["--select", "SMP409"];
+    check(&project_root, &args);
+    fs::remove_file(root.path().join("shared/vendor/util.py")).expect("remove");
+    assert_eq!(check(&project_root, &args), check(&project_root, &[&args[..], &["--no-cache"]].concat()));
+}
+
+// A run that reuses every file's result skips the index; after an edit, the files reused unchanged are marked with
+// the new index too, so the run after it skips the index again.
+#[test]
+fn warm_run_skips_the_index_again_after_an_edit() {
+    let root = project(&[("helpers.py", HELPER), ("client.py", CLIENT), ("other.py", "VALUE = 1\n")]);
+    let indexed = |root: &std::path::Path| check(root, &["--select", "SMP401", "-v"]).2.contains("Indexed ");
+    let before = [indexed(root.path()), indexed(root.path())];
+    fs::write(root.path().join("other.py"), "VALUE = 2\n").expect("write");
+    let after = [indexed(root.path()), indexed(root.path())];
+    assert_eq!((before, after), ([true, false], [true, false]));
+}
+
+#[test_case(":func:`app.core.helper`\n", ":func:`app.core.other`\n" ; "page_edited")]
+fn warm_run_after_documentation_changes_matches_a_fresh_run(before: &'static str, after: &str) {
+    let root = documented_project(&[("docs/api.rst", before)]);
+    let args = ["--select", "SMP409"];
+    check(root.path(), &args);
+    fs::write(root.path().join("docs/api.rst"), after).expect("write");
+    assert_eq!(check(root.path(), &args), check(root.path(), &[&args[..], &["--no-cache"]].concat()));
+}
+
+// A safe fix and an unsafe one, so the `full` text shows the fix marker and the diff of each.
+const FIXABLE: &str = "# --- helpers ---\ndef run() -> None:\n    \"\"\"Run.\"\"\"\n    print()\n";
+
+fn full_report(root: &Path, flags: &[&str], env: &[(&str, &str)]) -> String {
+    let args = [&["check", "--output-format", "full", "--select", "SMP001,SMP901", "--exit-zero"], flags].concat();
+    simplint_with(root, &args, "", env).1
+}
+
+fn cache_files(root: &Path) -> Vec<PathBuf> {
+    fs::read_dir(root.join(".ruff_cache/simplint").join(concat!(
+        env!("CARGO_PKG_VERSION"),
+        "-",
+        env!("SIMPLINT_CACHE_FORMAT")
+    )))
+    .expect("read")
+    .map(|entry| entry.expect("entry").path())
+    .collect()
+}
+
+// The `full` text is kept beside the package's cache file on the first `full` run after a concise one, and a later run
+// that shows the same text writes no cache file.
+#[test]
+fn full_text_is_stored_once_and_reused() {
+    let root = project(&[("module.py", FIXABLE)]);
+    check(root.path(), &["--select", "SMP001,SMP901"]);
+    let size = |files: &[PathBuf]| files.iter().map(|file| fs::metadata(file).expect("metadata").len()).sum::<u64>();
+    let reports_only = size(&cache_files(root.path()));
+    full_report(root.path(), &[], &[]);
+    let with_text = size(&cache_files(root.path()));
+    let old = SystemTime::UNIX_EPOCH + Duration::from_hours(24);
+    for file in cache_files(root.path()) {
+        fs::File::options().write(true).open(&file).expect("open").set_modified(old).expect("set modified time");
+    }
+    full_report(root.path(), &[], &[]);
+    let modified: Vec<SystemTime> = cache_files(root.path())
+        .iter()
+        .map(|file| fs::metadata(file).expect("metadata").modified().expect("modified time"))
+        .collect();
+    assert_eq!((with_text > reports_only, modified.iter().all(|time| *time == old)), (true, true));
+}
+
+// Each display setting the `full` text depends on invalidates the text a run stored under the setting before.
+#[test_case(&[], &[], &["--preview"], &[] ; "preview")]
+#[test_case(&[], &[], &["--color", "always"], &[] ; "color")]
+#[test_case(
+    &["--color", "always"],
+    &[("FORCE_HYPERLINK", "0")],
+    &["--color", "always"],
+    &[("FORCE_HYPERLINK", "1")] ;
+    "hyperlinks"
+)]
+#[test_case(&[], &[], &["--unsafe-fixes"], &[] ; "unsafe_fixes")]
+fn full_text_follows_the_display_settings(
+    prior: &[&str],
+    prior_env: &[(&str, &str)],
+    flags: &[&str],
+    env: &[(&str, &str)],
+) {
+    let root = project(&[("module.py", FIXABLE)]);
+    let prior_fresh = full_report(root.path(), &[prior, &["--no-cache"]].concat(), prior_env);
+    full_report(root.path(), prior, prior_env);
+    full_report(root.path(), prior, prior_env);
+    let warm = full_report(root.path(), flags, env);
+    let fresh = full_report(root.path(), &[flags, &["--no-cache"]].concat(), env);
+    assert_eq!((warm == fresh, warm != prior_fresh), (true, true));
+}
+
+// The text names the file the way the run named it, so a run that names it another way renders it again.
+#[test]
+fn full_text_follows_the_path_it_names() {
+    let root = project(&[("module.py", FIXABLE)]);
+    full_report(root.path(), &["."], &[]);
+    full_report(root.path(), &["."], &[]);
+    let warm = full_report(root.path(), &["module.py"], &[]);
+    assert_eq!(warm, full_report(root.path(), &["module.py", "--no-cache"], &[]));
+}
+
+// Ruff shows an absolute path relative to the working directory, so one name shows differently from another directory.
+#[test]
+fn full_text_follows_the_working_directory() {
+    let root = project(&[("module.py", FIXABLE), ("sub/keep.txt", "")]);
+    let file = root.path().join("module.py");
+    let file = file.to_str().expect("utf-8 path");
+    let full_in = |dir: &Path, args: &[&str]| {
+        let args = [&["check", "--output-format", "full", "--select", "SMP001,SMP901", "--exit-zero"], args].concat();
+        String::from_utf8(command(dir).args(&args).output().expect("runs").stdout).expect("utf-8 stdout")
+    };
+    full_in(root.path(), &[file]);
+    full_in(root.path(), &[file]);
+    let warm = full_in(&root.path().join("sub"), &[file]);
+    assert_eq!(warm, full_in(&root.path().join("sub"), &[file, "--no-cache"]));
+}
+
+// The broken symlinks have no cache entry, so their text is never stored and their groups are rendered when the output
+// is written, around the file whose stored text is written as it is.
+#[cfg(unix)]
+#[test]
+fn full_text_is_rendered_for_a_file_without_a_cache_entry() {
+    let root = project(&[("module.py", FIXABLE)]);
+    std::os::unix::fs::symlink("missing.py", root.path().join("a_broken.py")).expect("symlink");
+    std::os::unix::fs::symlink("missing.py", root.path().join("z_broken.py")).expect("symlink");
+    full_report(root.path(), &[], &[]);
+    let warm = full_report(root.path(), &[], &[]);
+    assert_eq!(warm, full_report(root.path(), &["--no-cache"], &[]));
+}
+
+// A file that joins a run changes the run's index, so the files already reported are checked again, and those whose
+// reports the fingerprint still matches keep their text.
+#[test]
+fn full_text_is_kept_when_another_file_joins_the_run() {
+    let root = project(&[("module.py", FIXABLE)]);
+    full_report(root.path(), &[], &[]);
+    fs::write(root.path().join("other.py"), "VALUE = 1\n").expect("write");
+    let warm = full_report(root.path(), &[], &[]);
+    assert_eq!(warm, full_report(root.path(), &["--no-cache"], &[]));
 }

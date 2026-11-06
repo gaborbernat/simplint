@@ -227,6 +227,12 @@ fn unresolved_star_import_keeps_names_of_modules_by_its_name() {
     "import pickle\n\n    result = Result(log=\"\")\n    result.log = log\n    pickle.dumps(result, 1)\n", "", "@dataclass" ; "low_protocol_pickle"
 )]
 #[test_case(
+    "from pickle import dumps as write\n\n    result = Result(log=\"\")\n    result.log = log\n    write(result, 1)\n",
+    "",
+    "@dataclass"
+    ; "low_protocol_aliased_pickle"
+)]
+#[test_case(
     "import pickle\n\n    result = Result(log=\"\")\n    result.log = log\n    pickle.dumps(result, protocol=pickle.HIGHEST_PROTOCOL)\n",
     "",
     "@dataclass"

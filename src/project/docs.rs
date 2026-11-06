@@ -219,7 +219,7 @@ fn tree_key(root: &Path, settings: &ruff_workspace::Settings) -> u64 {
 }
 
 // A path with its modification time and size, or with neither when it does not exist.
-fn stat_key(path: &Path, hasher: &mut CacheKeyHasher) {
+pub(crate) fn stat_key(path: &Path, hasher: &mut CacheKeyHasher) {
     path.cache_key(hasher);
     let stat = fs::metadata(path).ok().map(|metadata| {
         let modified = FileTime::from_last_modification_time(&metadata);

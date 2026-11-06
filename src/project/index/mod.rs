@@ -11,6 +11,7 @@ pub use resolve::ImportResolver;
 
 use rayon::prelude::*;
 use rustc_hash::{FxHashMap, FxHashSet};
+use std::fs;
 use std::hash::Hasher;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -19,10 +20,12 @@ use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_graph::ResolverEnvironment;
 use ruff_linter::package::PackageRoot;
 use ruff_python_ast::PythonVersion;
+use ruff_python_stdlib::identifiers::is_identifier;
 use ruff_text_size::TextRange;
 
 use crate::project::computed_reads::ComputedReads;
 use crate::project::constructors::{FileUses, RunCalls};
+use crate::project::docs::stat_key;
 use crate::project::facts::ImportBinding;
 use crate::project::{DocReferences, FileFacts};
 use crate::settings::ModuleRole;
@@ -41,7 +44,56 @@ pub struct SearchRoots {
     pub(super) python_version: PythonVersion,
 }
 
+impl CacheKey for SearchRoots {
+    fn cache_key(&self, state: &mut CacheKeyHasher) {
+        self.roots.cache_key(state);
+        std::hash::Hash::hash(&self.python_version, state);
+    }
+}
+
 impl SearchRoots {
+    // What the resolver sees beyond the run's own files, which a cached run that skips it must not miss. It only asks
+    // which files and directories exist, under each root and under each directory between an importing file and its
+    // root, which ty searches too for a name the roots do not hold. A directory's time changes whenever an entry in it
+    // is added, removed or renamed. Below those it walks only directories an import can name, `name-stubs` providing
+    // `name`, and follows links as the resolver does, each directory once.
+    pub fn layout_key<'a>(&self, files: impl Iterator<Item = &'a Path>, hasher: &mut CacheKeyHasher) {
+        let mut pending: Vec<PathBuf> = self.roots.clone();
+        pending.extend(files.filter_map(Path::parent).flat_map(|directory| {
+            let root = self.roots.iter().find(|root| directory.starts_with(root));
+            directory
+                .ancestors()
+                .take_while(move |ancestor| root.is_some_and(|root| ancestor.starts_with(root)))
+                .map(Path::to_path_buf)
+        }));
+        let mut seen: FxHashSet<PathBuf> = FxHashSet::default();
+        let mut walked: Vec<PathBuf> = Vec::new();
+        while let Some(directory) = pending.pop() {
+            if !seen.insert(fs::canonicalize(&directory).unwrap_or_else(|_| directory.clone())) {
+                continue;
+            }
+            pending.extend(
+                fs::read_dir(&directory)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Result::ok)
+                    .filter(|entry| {
+                        entry
+                            .file_name()
+                            .to_str()
+                            .is_some_and(|name| is_identifier(name.strip_suffix("-stubs").unwrap_or(name)))
+                    })
+                    .map(|entry| entry.path())
+                    .filter(|path| path.is_dir()),
+            );
+            walked.push(directory);
+        }
+        walked.sort_unstable();
+        for directory in walked {
+            stat_key(&directory, hasher);
+        }
+    }
+
     pub fn new<'a>(settings: &ruff_workspace::Settings, packages: impl IntoIterator<Item = PackageRoot<'a>>) -> Self {
         let mut roots: Vec<PathBuf> = settings.linter.src.iter().filter(|path| path.is_dir()).cloned().collect();
         for root in packages.into_iter().filter_map(|package| package.path().parent()) {
@@ -90,9 +142,10 @@ pub struct FileIds {
 }
 
 impl FileIds {
+    // Paths are absolute, as the run hands them over, so a lookup hashes the path as it is.
     // A path that was never interned has no entries in the index.
     fn get(&self, path: &Path) -> Option<FileId> {
-        self.ids.get(&normalized(path)).copied()
+        self.ids.get(path).copied()
     }
 
     fn path(&self, id: FileId) -> &Path {
@@ -101,14 +154,13 @@ impl FileIds {
 
     // Copy on write, so a project that still holds the table keeps its ids; numbering only grows when a path is new.
     fn intern(files: &mut Arc<Self>, path: &Path) -> FileId {
-        let path = normalized(path);
-        if let Some(id) = files.ids.get(&path) {
+        if let Some(id) = files.ids.get(path) {
             return *id;
         }
         let files = Arc::make_mut(files);
         let id = FileId(u32::try_from(files.paths.len()).expect("the run has fewer files than a FileId counts"));
-        files.ids.insert(path.clone(), id);
-        files.paths.push(path);
+        files.ids.insert(path.to_path_buf(), id);
+        files.paths.push(path.to_path_buf());
         id
     }
 }
@@ -194,6 +246,7 @@ pub struct IndexInputs<'a> {
 }
 
 impl Project {
+    #[expect(clippy::too_many_lines, reason = "the stages of the index pipeline share the gathered inputs")]
     pub fn index(files: &[(&Path, &FileFacts)], resolver: &mut ImportResolver, inputs: &IndexInputs) -> Self {
         let IndexInputs { entry_points, docs, duplicate_statements, .. } = *inputs;
         let ids = resolver.resolve(files);
@@ -242,20 +295,50 @@ impl Project {
         let (cycle_reports, duplicate_reports, reads, api_reached) = aside;
         let StarTargets { star_imported, package_star_imported, star_sources } =
             StarTargets::of(&stars, &sources, &unresolved_stars, &resolver.files);
-        let assigned_attributes = every(&indexed, |facts| &facts.assigned_attributes);
-        let module_reads = every(&indexed, |facts| &facts.module_reads);
-        let base_classes = every(&indexed, |facts| &facts.base_classes);
-        let (fixture_requests, computed_reads) = (fixture_requests(&indexed, &test_modules), computed_reads(&indexed));
-        let writes = Writes::collect(&indexed);
+        let RunNames {
+            assigned_attributes,
+            module_reads,
+            base_classes,
+            fixture_requests,
+            computed_reads,
+            writes,
+            digest,
+        } = run_names(&indexed, &test_modules, (&reads, docs), &opaque_names);
         entry_uses(&entry_names, &mut imported, &mut from_others);
-        let uncaught_exceptions = uncaught_exceptions(&indexed, resolver, &test_modules, &bindings, &stars);
-        let mut calls =
-            run_calls(&indexed, &sources, &constructor_uses, &imported, &module_reads, entry_names, &referenced);
+        let ((uncaught_exceptions, module_uses), (mut calls, user_facing)) = rayon::join(
+            || {
+                rayon::join(
+                    || {
+                        uncaught_exceptions(
+                            &indexed,
+                            &resolver.modules,
+                            resolver.python_version,
+                            &test_modules,
+                            &bindings,
+                            &stars,
+                        )
+                    },
+                    || module_uses(module_names, &sources, &referenced),
+                )
+            },
+            || {
+                rayon::join(
+                    || {
+                        run_calls(
+                            &indexed,
+                            &sources,
+                            &constructor_uses,
+                            &imported,
+                            &module_reads,
+                            entry_names,
+                            &referenced,
+                        )
+                    },
+                    || user_facing(&sources, &roles, &imported, &bindings, &stars, &resolver.files),
+                )
+            },
+        );
         calls.set_test_support(test_support);
-        let user_facing = user_facing(&sources, &roles, &imported, &bindings, &stars, &resolver.files);
-        let module_uses = module_uses(module_names, &sources, &referenced);
-        let names = [&assigned_attributes, &module_reads, &base_classes, &fixture_requests, &opaque_names];
-        let digest = digest((&reads, docs), &computed_reads, names, &writes);
         Self {
             imported,
             referenced,
@@ -457,6 +540,44 @@ fn duplicate_reports(
 // The entry of a file's id, if the file has one.
 fn entry<V>(map: &FxHashMap<FileId, V>, id: Option<FileId>) -> Option<&V> {
     map.get(&id?)
+}
+
+// The names the files of the run list, and the writes they make, each gathered in parallel as the files are read in
+// common by every one.
+struct RunNames {
+    assigned_attributes: FxHashSet<String>,
+    module_reads: FxHashSet<String>,
+    base_classes: FxHashSet<String>,
+    fixture_requests: FxHashSet<String>,
+    computed_reads: ComputedReads,
+    writes: Writes,
+    digest: u64,
+}
+
+fn run_names(
+    indexed: &[(FileId, &FileFacts)],
+    test_modules: &FxHashSet<FileId>,
+    reads: (&RunReads, &DocReferences),
+    opaque_names: &FxHashSet<String>,
+) -> RunNames {
+    let ((assigned_attributes, module_reads, base_classes), (fixture_requests, (computed_reads, writes))) = rayon::join(
+        || {
+            (
+                every(indexed, |facts| &facts.assigned_attributes),
+                every(indexed, |facts| &facts.module_reads),
+                every(indexed, |facts| &facts.base_classes),
+            )
+        },
+        || {
+            rayon::join(
+                || fixture_requests(indexed, test_modules),
+                || rayon::join(|| computed_reads(indexed), || Writes::collect(indexed)),
+            )
+        },
+    );
+    let names = [&assigned_attributes, &module_reads, &base_classes, &fixture_requests, opaque_names];
+    let digest = digest(reads, &computed_reads, names, &writes);
+    RunNames { assigned_attributes, module_reads, base_classes, fixture_requests, computed_reads, writes, digest }
 }
 
 // The names any file of the run lists in one of its facts.

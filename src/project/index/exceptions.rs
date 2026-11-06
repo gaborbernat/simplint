@@ -1,5 +1,6 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use ruff_python_ast::PythonVersion;
 use ruff_python_stdlib::builtins::is_exception;
 use ruff_python_stdlib::sys::is_known_standard_library;
 
@@ -7,23 +8,24 @@ use crate::project::FileFacts;
 use crate::project::facts::ImportBinding;
 
 use super::FileId;
-use super::resolve::{ClassBase, ClassKey, ImportResolver};
+use super::resolve::{ClassBase, ClassKey, ModuleFacts};
 
 // The exception classes of the run that no handler catches, by name or through a subclass, which is how a handler of a
 // base class reads. A class is an exception when a base is an exception: a builtin one, a standard-library one, or an
 // exception class of the run. A warning is not reported, since a warning is raised to be seen, not caught.
 pub(super) fn uncaught_exceptions(
     files: &[(FileId, &FileFacts)],
-    resolver: &ImportResolver,
+    modules: &FxHashMap<FileId, ModuleFacts<FileId>>,
+    python_version: PythonVersion,
     test_modules: &FxHashSet<FileId>,
     bindings: &[(FileId, FileId, &ImportBinding)],
     stars: &[(FileId, FileId)],
 ) -> FxHashMap<FileId, FxHashSet<String>> {
-    let minor = resolver.python_version.minor;
+    let minor = python_version.minor;
     let (mut caught, mut classes): (Vec<ClassKey>, FxHashMap<ClassKey, Vec<ClassBase>>) =
         (Vec::new(), FxHashMap::default());
     for (id, _) in files {
-        let module = &resolver.modules[id];
+        let module = &modules[id];
         if !test_modules.contains(id) {
             caught.extend(module.caught.iter().map(|(file, name)| (*file, name.clone())));
         }

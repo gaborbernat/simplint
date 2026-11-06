@@ -40,6 +40,7 @@ pub(crate) struct FileState<'a> {
     reported_names: ReportedNames<'a>,
     // The string literals of the `__all__` assignments, which renames of a name also rewrite.
     export_strings: OnceCell<Vec<&'a ast::ExprStringLiteral>>,
+    string_words: OnceCell<rename::StringWords>,
     // Every comment of the file with the directives it holds, which the comment rules read.
     comments: OnceCell<Vec<(TextRange, Comment)>>,
     source_spans: OnceCell<Vec<TextRange>>,
@@ -84,6 +85,10 @@ impl<'a> FileState<'a> {
                 .filter_map(Expr::as_string_literal_expr)
                 .collect()
         })
+    }
+
+    fn string_words(&self, checker: &Checker<'a>) -> &rename::StringWords {
+        self.string_words.get_or_init(|| rename::StringWords::of(checker.string_values(), self.export_strings(checker)))
     }
 
     // The ranges of the t-strings, which keep their source text, so an edit inside one changes what they hold.

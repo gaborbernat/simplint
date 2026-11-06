@@ -1,3 +1,4 @@
+use memchr::memchr2_iter;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::ops::Deref;
 use std::path::Path;
@@ -161,8 +162,9 @@ fn without_layout(settings: &LinterSettings) -> LinterSettings {
 
 // Ruff reads `noqa` in any case, and as a blanket one unless a colon follows it.
 fn has_blanket_noqa(source: &str) -> bool {
-    source.as_bytes().windows(4).enumerate().any(|(start, window)| {
-        window.eq_ignore_ascii_case(b"noqa")
+    let bytes = source.as_bytes();
+    memchr2_iter(b'n', b'N', bytes).any(|start| {
+        bytes.get(start..start + 4).is_some_and(|word| word.eq_ignore_ascii_case(b"noqa"))
             && !source[start + 4..]
                 .trim_start_matches(|character: char| character.is_whitespace() && !matches!(character, '\n' | '\r'))
                 .starts_with(':')
@@ -173,9 +175,8 @@ fn has_blanket_noqa(source: &str) -> bool {
 // separator, as in `noqa: F401E231`, but not a letter, which would make it part of a longer code or a word.
 fn spells_layout_code(source: &str) -> bool {
     let bytes = source.as_bytes();
-    bytes.iter().enumerate().any(|(start, byte)| {
-        matches!(byte, b'E' | b'W')
-            && !bytes[..start].last().is_some_and(u8::is_ascii_alphabetic)
+    memchr2_iter(b'E', b'W', bytes).any(|start| {
+        !bytes[..start].last().is_some_and(u8::is_ascii_alphabetic)
             && bytes[start + 1..].iter().take_while(|byte| byte.is_ascii_digit()).count() == 3
             && is_layout(&source[start..start + 4])
     })
