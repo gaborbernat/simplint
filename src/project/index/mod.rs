@@ -66,28 +66,30 @@ impl SearchRoots {
                 .take_while(move |ancestor| root.is_some_and(|root| ancestor.starts_with(root)))
                 .map(Path::to_path_buf)
         }));
-        let mut seen: FxHashSet<PathBuf> = FxHashSet::default();
-        let mut walked: Vec<PathBuf> = Vec::new();
+        let mut walked: FxHashSet<PathBuf> = FxHashSet::default();
+        // Only a link can lead back to a directory already walked, so only a link's target is resolved to stop a loop.
+        let mut linked: FxHashSet<PathBuf> = FxHashSet::default();
         while let Some(directory) = pending.pop() {
-            if !seen.insert(fs::canonicalize(&directory).unwrap_or_else(|_| directory.clone())) {
+            if walked.contains(&directory) {
                 continue;
             }
-            pending.extend(
-                fs::read_dir(&directory)
-                    .into_iter()
-                    .flatten()
-                    .filter_map(Result::ok)
-                    .filter(|entry| {
-                        entry
-                            .file_name()
-                            .to_str()
-                            .is_some_and(|name| is_identifier(name.strip_suffix("-stubs").unwrap_or(name)))
-                    })
-                    .map(|entry| entry.path())
-                    .filter(|path| path.is_dir()),
-            );
-            walked.push(directory);
+            for entry in fs::read_dir(&directory).into_iter().flatten().filter_map(Result::ok) {
+                let name = entry.file_name();
+                if !name.to_str().is_some_and(|name| is_identifier(name.strip_suffix("-stubs").unwrap_or(name))) {
+                    continue;
+                }
+                let Ok(kind) = entry.file_type() else { continue };
+                let path = entry.path();
+                let followed = kind.is_symlink()
+                    && path.is_dir()
+                    && fs::canonicalize(&path).is_ok_and(|target| linked.insert(target));
+                if kind.is_dir() || followed {
+                    pending.push(path);
+                }
+            }
+            walked.insert(directory);
         }
+        let mut walked: Vec<PathBuf> = walked.into_iter().collect();
         walked.sort_unstable();
         for directory in walked {
             stat_key(&directory, hasher);

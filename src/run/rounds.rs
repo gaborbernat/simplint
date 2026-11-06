@@ -199,18 +199,22 @@ fn index_cached<'f, T: Send>(
     let caches = cache_dir.map(|cache_dir| {
         Caches::open(cache_dir, packages.iter().map(|(parent, package)| package.map_or(*parent, PackageRoot::path)))
     });
-    let keys: Vec<Option<FileKey>> = indexed.par_iter().map(|file| FileKey::of(file.path)).collect();
     let docs = docs();
     let index = index_parts(indexed, linted, roots);
-    let run = run_digest(indexed, &keys, linted, roots, &index, &docs, parts);
-    let views = caches.as_ref().map(|caches| caches.views(run));
+    // Only the cache reads the digest, which stats every file and walks every directory an import can name, so a run
+    // without one skips it.
+    let opened = caches.as_ref().map(|caches| {
+        let keys: Vec<Option<FileKey>> = indexed.par_iter().map(|file| FileKey::of(file.path)).collect();
+        let run = run_digest(indexed, &keys, linted, roots, &index, &docs, parts);
+        (caches.views(run), keys)
+    });
     // As in Ruff, a file's cache is its package's, or its directory's outside a package.
-    let file_caches: Vec<Option<(&Cache, FileKey)>> = views.as_ref().map_or_else(
+    let file_caches: Vec<Option<(&Cache, FileKey)>> = opened.as_ref().map_or_else(
         || vec![None; indexed.len()],
-        |views| {
+        |(views, keys)| {
             indexed
                 .iter()
-                .zip(&keys)
+                .zip(keys)
                 .map(|(file, key)| {
                     let root = file.package.map(PackageRoot::path).or_else(|| file.path.parent())?;
                     Some((views.get(root)?, (*key)?))
@@ -228,7 +232,7 @@ fn index_cached<'f, T: Send>(
             })
             .collect();
         if let Some(passes) = reused {
-            persist_views(views, ending)?;
+            persist_views(opened.map(|(views, _)| views), ending)?;
             return Ok(Some(passes));
         }
     }
@@ -236,7 +240,7 @@ fn index_cached<'f, T: Send>(
         indexed.par_iter().zip(&file_caches).map(|(file, cached)| file_facts(file, *cached, parts)).collect();
     let passes =
         index_and_lint(indexed, (linted, parts, index), roots, (facts, docs), &file_caches, rewrote, ending, work)?;
-    persist_views(views, ending)?;
+    persist_views(opened.map(|(views, _)| views), ending)?;
     Ok(Some(passes))
 }
 
