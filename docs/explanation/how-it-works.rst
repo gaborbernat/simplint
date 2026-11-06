@@ -9,9 +9,9 @@ and how ``--fix`` keeps going until the code is clean.
 Cross-file rules
 ================
 
-A few rules need to know more than one file. They carry a **🔗 Cross-file** badge: an edit to another file can change
-what they report or fix in this one, and checking a single file on its own gives them less to go on. Before linting,
-simplint:
+A few rules need to know more than one file. Their pages carry a **🔗 Cross-file** badge and the rules table marks them ✓
+under **Cross-file**: an edit to another file can change what they report or fix in this one, and checking a single file
+on its own gives them less to go on. Before linting, simplint:
 
 #. indexes every Python file in the run, and the entry points in ``pyproject.toml``, recording the names each file
    imports, the attributes it assigns and the base classes it names;

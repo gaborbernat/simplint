@@ -27,7 +27,18 @@ function setupRulesTable(table) {
   fix.value = params.get("fix") ?? "";
   scope.value = params.get("scope") ?? "";
 
+  // the build sizes the box for the longest rule name; only text that no longer fits widens it, rather than scrolling
+  // out of view
+  const fit = () => {
+    search.style.removeProperty("width");
+    if (search.scrollWidth > search.clientWidth) {
+      search.style.width = `${search.scrollWidth + search.offsetWidth - search.clientWidth}px`;
+    }
+  };
+  fit();
+
   const apply = () => {
+    fit();
     const words = search.value.toLowerCase().split(/\s+/).filter(Boolean);
     let shown = 0;
     for (const row of rows) {

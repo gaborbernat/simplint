@@ -9,5 +9,5 @@ Each rule below reports a pattern that makes code harder to read or review, and 
 
 .. include:: _generated/rules-table.inc
 
-Rules with a **🔗 Cross-file** badge read other files of the run; :doc:`/explanation/how-it-works` explains how. Which
+Rules marked ✓ under **Cross-file** read other files of the run; :doc:`/explanation/how-it-works` explains how. Which
 fixes count as safe is under :ref:`fix-safety`.

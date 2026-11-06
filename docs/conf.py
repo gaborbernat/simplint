@@ -276,13 +276,14 @@ def _rules_index(rules: list[_RuleEntry], groups: dict[str, tuple[str, str]]) ->
     )
     rows: list[str] = []
     for family, (group, _) in groups.items():
-        rows.append(f'<tr class="group-row" data-group="{family}"><td colspan="4">{html.escape(group)}</td></tr>')
+        rows.append(f'<tr class="group-row" data-group="{family}"><td colspan="5">{html.escape(group)}</td></tr>')
         rows.extend(_rule_row(rule) for rule in rules if rule["family"] == family)
     body = "\n".join(rows)
     markup = (
         '<div class="rule-filter">'
-        '<input id="rule-search" type="search" placeholder="Filter by code, name or description (press /)"'
-        ' aria-label="Filter rules">'
+        # as wide as the longest rule name, the longest text worth typing into it
+        '<input id="rule-search" type="search" placeholder="Filter rules (press /)" aria-label="Filter rules"'
+        f' style="--rule-search-chars: {max(len(rule["name"]) for rule in rules)}">'
         f'<select id="rule-group" aria-label="Group"><option value="">All groups</option>{options}</select>'
         '<select id="rule-fix" aria-label="Fix availability"><option value="">Any fix</option>'
         '<option value="Always">Fix always available</option><option value="Sometimes">Fix sometimes available</option>'
@@ -294,6 +295,8 @@ def _rules_index(rules: list[_RuleEntry], groups: dict[str, tuple[str, str]]) ->
         f'<span id="rule-count" class="rule-count">{len(rules)} rules</span></div>'
         '<table class="rules"><thead><tr><th class="rule-code">Code</th><th class="rule-name">Name</th>'
         '<th class="rule-summary">Checks</th><th class="rule-fix">Fix</th>'
+        '<th class="rule-scope"><a href="explanation/how-it-works.html#cross-file-rules"'
+        ' title="Other files of the run can change what the rule reports">Cross-file</a></th>'
         f"</tr></thead><tbody>\n{body}\n</tbody></table>"
         '<p id="rule-empty" class="rule-empty" hidden>No rule matches these filters.</p>'
     )
@@ -311,7 +314,6 @@ def _rule_row(rule: _RuleEntry) -> str:
         else f'<span class="badge {badge_class}" title="{badge_text}" aria-label="{badge_text}">'
         f"{badge_text.split(' ', 1)[0]}</span>"
     )
-    cross_file = _cross_file_badge("") if rule["cross_file"] else ""
     searchable = html.escape(f"{rule['code']} {rule['name']} {rule['summary']}".lower(), quote=True)
     summary = re.sub(r"`([^`]+)`", r"<code>\1</code>", html.escape(rule["summary"]))
     return (
@@ -320,9 +322,10 @@ def _rule_row(rule: _RuleEntry) -> str:
         f' data-text="{searchable}">'
         f'<td class="rule-code" id="{rule["code"]}">'
         f'<a href="_generated/rules/{rule["code"]}.html">{rule["code"]}</a></td>'
-        f'<td class="rule-name">{rule["name"]}{cross_file}</td>'
+        f'<td class="rule-name">{rule["name"]}</td>'
         f'<td class="rule-summary">{summary}</td>'
-        f'<td class="rule-fix">{fix}</td></tr>'
+        f'<td class="rule-fix">{fix}</td>'
+        f'<td class="rule-scope">{"✓" if rule["cross_file"] else "✗"}</td></tr>'
     )
 
 
