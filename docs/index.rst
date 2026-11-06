@@ -4,7 +4,7 @@ simplint
 .. raw:: html
 
     <section class="hero">
-      <img class="hero-logo" src="_static/logo.png" alt="">
+      <img class="hero-logo" src="_static/logo.webp" alt="" width="256" height="256">
       <p class="hero-title">Python that is <span>easier to read and review</span>.</p>
       <p class="hero-tagline">A fast companion linter for Ruff, written in Rust. It checks for what reviewers keep
       pointing out, and fixes most of what it finds.</p>

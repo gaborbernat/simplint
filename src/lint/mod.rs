@@ -31,6 +31,8 @@ pub struct Linter<'a> {
     // Where the file sits in its package, such as `["package", "module"]`; `None` outside a package.
     pub module_path: Option<Vec<String>>,
     pub ruff: RuffFile<'a>,
+    // Whether the file's directory holds an `__init__.py`, when a rule reads it; the run checks only then.
+    pub sibling_init: bool,
 }
 
 // A file's reports and the syntax errors its target version rejects, both from one parse of its source. With `noqa`
@@ -50,8 +52,9 @@ impl<'a> Linter<'a> {
         project: FileIndex<'a>,
         package: Option<PackageRoot<'a>>,
         module_path: Option<Vec<String>>,
+        sibling_init: bool,
     ) -> Self {
-        Self { settings, project, module_path, ruff: RuffFile::new(&ruff.linter, package) }
+        Self { settings, project, module_path, ruff: RuffFile::new(&ruff.linter, package), sibling_init }
     }
 
     // Like Ruff, a file that does not parse reports its syntax errors; the rules, which need a valid tree, skip it.
@@ -113,4 +116,10 @@ impl<'a> Linter<'a> {
         let diagnostics = Checker::new(path, &file, &parsed, &indexer, &stylist, self).run();
         (unsupported, Ok(then(diagnostics, &Suppressions::new(path, source, &parsed, &indexer, &stylist))))
     }
+}
+
+// A path as reports name it: relative to the working directory when it lies below it.
+pub(crate) fn relative_path(path: &Path) -> String {
+    let relative = std::env::current_dir().ok().and_then(|cwd| path.strip_prefix(cwd).ok());
+    relative.unwrap_or(path).display().to_string()
 }

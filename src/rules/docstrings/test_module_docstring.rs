@@ -3,7 +3,8 @@ use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::{docstring, statement_deletion};
+use crate::rules::docstring;
+use crate::rules::edits::statement_deletion;
 
 pub fn test_module_docstring(checker: &Checker) {
     if !checker.is_test_module() {
@@ -13,7 +14,10 @@ pub fn test_module_docstring(checker: &Checker) {
     let Some(literal) = docstring(body) else {
         return;
     };
-    let fix = statement_deletion(checker, body[0].range(), body.get(1).map(Ranged::range), true)
+    // A file-level `ruff: noqa` may name codes that only the docstring triggers, so the docstring stays.
+    let fix = (!checker.state().has_file_noqa(checker))
+        .then(|| statement_deletion(checker, body[0].range(), body.get(1).map(Ranged::range), true))
+        .flatten()
         .map(|deletion| Fix::unsafe_edit(Edit::range_deletion(deletion)));
     checker.report_fix(
         Rule::TestModuleDocstring,

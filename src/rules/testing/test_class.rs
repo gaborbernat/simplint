@@ -9,11 +9,11 @@ use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
+use crate::lint::noqa::{ruff_ignores, suppresses};
 use crate::lint::registry::Rule;
-use crate::project::names_in;
 use crate::rules::testing::is_test_function;
 use crate::rules::{docstring, expr_mentions};
-use crate::syntax::is_name;
+use crate::syntax::{is_name, names_in};
 
 pub fn test_class(checker: &Checker) {
     if !checker.is_test_module() {
@@ -46,10 +46,36 @@ pub fn test_class(checker: &Checker) {
 }
 
 fn flatten_class(checker: &Checker, class: &ast::StmtClassDef) -> Option<String> {
-    if class.arguments.as_ref().is_some_and(|arguments| !arguments.is_empty()) || !class.decorator_list.is_empty() {
+    if !can_flatten(checker, class) {
         return None;
     }
     let type_params = class.type_params.as_deref().map_or(&[][..], |params| params.type_params.as_slice());
+    let prefix = snake_case(class.name.as_str().strip_prefix("Test").unwrap_or_default());
+    let mut functions = Vec::new();
+    for stmt in &class.body {
+        let Stmt::FunctionDef(function) = stmt else {
+            return None;
+        };
+        functions.push(flatten_method(checker, (function, type_params, &prefix))?);
+    }
+    (!functions.is_empty()).then(|| functions.join("\n\n"))
+}
+
+// Whether the class can become module-level functions without its text changing: it has no bases, decorators or
+// docstring, no line of it is silenced, and no string in it spans lines outside a method's docstring.
+fn can_flatten(checker: &Checker, class: &ast::StmtClassDef) -> bool {
+    if class.arguments.as_ref().is_some_and(|arguments| !arguments.is_empty()) || !class.decorator_list.is_empty() {
+        return false;
+    }
+    // Dedenting shortens the lines, so a `noqa` or `ruff: ignore` that silences E501 on one of them would be left
+    // unused, which Ruff reports as RUF100. The class stays as it is.
+    let silenced = checker.comment_ranges().comments_in_range(class.range()).iter().any(|comment| {
+        let text = checker.text(*comment);
+        suppresses(text, "E501") || ruff_ignores(text, ["E501", "line-too-long"])
+    });
+    if silenced {
+        return false;
+    }
     let source = checker.source;
     // Dedenting the methods would change the text of any string spanning several lines, except a method's docstring,
     // whose indentation tools strip as `inspect.cleandoc` does and `ruff format` rewrites the same way.
@@ -64,76 +90,76 @@ fn flatten_class(checker: &Checker, class: &ast::StmtClassDef) -> Option<String>
             && source.contains_line_break(token.range())
             && !docstrings.iter().any(|docstring| docstring.contains_range(token.range()))
     }) {
-        return None;
+        return false;
     }
     // Module-level functions have nowhere to keep the class docstring, and dropping it would lose its text.
     if docstring(&class.body).is_some() {
+        return false;
+    }
+    true
+}
+
+// Turns a test method of a test class into a module-level function, named for the class, dropping `self`.
+fn flatten_method(
+    checker: &Checker,
+    (function, type_params, prefix): (&ast::StmtFunctionDef, &[ast::TypeParam], &str),
+) -> Option<String> {
+    let source = checker.source;
+    let name = function.name.as_str();
+    let rest = name.strip_prefix("test")?;
+    let renamed = match (prefix.is_empty(), rest.is_empty() || rest.starts_with('_')) {
+        (true, _) => name.to_owned(),
+        (false, true) => format!("test_{prefix}{rest}"),
+        (false, false) => format!("test_{prefix}_{rest}"),
+    };
+    if renamed != name && checker.name_token_count(&renamed) > 0 {
         return None;
     }
-    let prefix = snake_case(class.name.as_str().strip_prefix("Test").unwrap_or_default());
-    let mut functions = Vec::new();
-    for stmt in &class.body {
-        let Stmt::FunctionDef(function) = stmt else {
-            return None;
-        };
-        let name = function.name.as_str();
-        let rest = name.strip_prefix("test")?;
-        let renamed = match (prefix.is_empty(), rest.is_empty() || rest.starts_with('_')) {
-            (true, _) => name.to_owned(),
-            (false, true) => format!("test_{prefix}{rest}"),
-            (false, false) => format!("test_{prefix}_{rest}"),
-        };
-        if renamed != name && checker.name_token_count(&renamed) > 0 {
-            return None;
-        }
-        let self_parameter =
-            function.parameters.args.first().filter(|parameter| parameter.name().as_str() == "self")?;
-        if any_over_body(&function.body, |expr| is_name(expr, "self")) || !function.parameters.posonlyargs.is_empty() {
-            return None;
-        }
-        // Decorators and defaults are evaluated outside the function, where its type parameters are not bound.
-        let mut evaluated_outside = function
-            .decorator_list
-            .iter()
-            .map(|decorator| &decorator.expression)
-            .chain(function.parameters.iter().filter_map(ast::AnyParameterRef::default));
-        if evaluated_outside.any(|expr| type_params.iter().any(|param| expr_mentions(expr, param.name().as_str()))) {
-            return None;
-        }
-        let used = used_type_params(function, type_params);
-        // A default on a type parameter is 3.13 syntax, which a fix for an older target would leave invalid.
-        if checker.settings.from_ruff.target_version < PythonVersion::PY313
-            && used.iter().any(|param| param.default().is_some())
-        {
-            return None;
-        }
-        let header: Vec<&str> = used.into_iter().map(|param| &source[param.range()]).collect();
-        let block = source.full_lines_range(TextRange::new(
-            function.decorator_list.first().map_or(function.start(), Ranged::start),
-            function.end(),
-        ));
-        let following = checker.parsed.tokens().after(self_parameter.end());
-        let removal_end = match following.first() {
-            Some(comma) if comma.kind() == TokenKind::Comma => following
-                .iter()
-                .skip(1)
-                .find(|token| !matches!(token.kind(), TokenKind::NonLogicalNewline))
-                .map_or(comma.end(), Ranged::start),
-            _ => self_parameter.end(),
-        };
-        let mut text = String::new();
-        text.push_str(&source[TextRange::new(block.start(), function.name.start())]);
-        text.push_str(&renamed);
-        if !header.is_empty() {
-            text.push('[');
-            text.push_str(&header.join(", "));
-            text.push(']');
-        }
-        text.push_str(&source[TextRange::new(function.name.end(), self_parameter.start())]);
-        text.push_str(&source[TextRange::new(removal_end, block.end())]);
-        functions.push(dedent_block(&text, checker.stylist.indentation().as_str()));
+    let self_parameter = function.parameters.args.first().filter(|parameter| parameter.name().as_str() == "self")?;
+    if any_over_body(&function.body, |expr| is_name(expr, "self")) || !function.parameters.posonlyargs.is_empty() {
+        return None;
     }
-    (!functions.is_empty()).then(|| functions.join("\n\n"))
+    // Decorators and defaults are evaluated outside the function, where its type parameters are not bound.
+    let mut evaluated_outside = function
+        .decorator_list
+        .iter()
+        .map(|decorator| &decorator.expression)
+        .chain(function.parameters.iter().filter_map(ast::AnyParameterRef::default));
+    if evaluated_outside.any(|expr| type_params.iter().any(|param| expr_mentions(expr, param.name().as_str()))) {
+        return None;
+    }
+    let used = used_type_params(function, type_params);
+    // A default on a type parameter is 3.13 syntax, which a fix for an older target would leave invalid.
+    if checker.settings.from_ruff.target_version < PythonVersion::PY313
+        && used.iter().any(|param| param.default().is_some())
+    {
+        return None;
+    }
+    let header: Vec<&str> = used.into_iter().map(|param| &source[param.range()]).collect();
+    let block = source.full_lines_range(TextRange::new(
+        function.decorator_list.first().map_or(function.start(), Ranged::start),
+        function.end(),
+    ));
+    let following = checker.parsed.tokens().after(self_parameter.end());
+    let removal_end = match following.first() {
+        Some(comma) if comma.kind() == TokenKind::Comma => following
+            .iter()
+            .skip(1)
+            .find(|token| !matches!(token.kind(), TokenKind::NonLogicalNewline))
+            .map_or(comma.end(), Ranged::start),
+        _ => self_parameter.end(),
+    };
+    let mut text = String::new();
+    text.push_str(&source[TextRange::new(block.start(), function.name.start())]);
+    text.push_str(&renamed);
+    if !header.is_empty() {
+        text.push('[');
+        text.push_str(&header.join(", "));
+        text.push(']');
+    }
+    text.push_str(&source[TextRange::new(function.name.end(), self_parameter.start())]);
+    text.push_str(&source[TextRange::new(removal_end, block.end())]);
+    Some(dedent_block(&text, checker.stylist.indentation().as_str()))
 }
 
 // The class's type parameters that a method's signature, body or nested type aliases name, plus those that their bounds
@@ -200,8 +226,8 @@ fn snake_case(name: &str) -> String {
     let chars: Vec<char> = name.chars().collect();
     let mut snake = String::new();
     for (index, char) in chars.iter().enumerate() {
-        // A capital starts a word after a lowercase letter or digit, or ends an acronym when a lowercase letter follows:
-        // `HTTPClient` becomes `http_client`.
+        // A capital starts a word after a lowercase letter or digit, or ends an acronym when a lowercase letter
+        // follows: `HTTPClient` becomes `http_client`.
         let starts_word = index > 0
             && char.is_uppercase()
             && (!chars[index - 1].is_uppercase() || chars.get(index + 1).is_some_and(|next| next.is_lowercase()));

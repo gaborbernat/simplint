@@ -101,6 +101,7 @@ classes, at any nesting depth. What counts as internal depends on the project.
 
           def _open() -> None:
               """Open the file."""
+
   ```
 
 - **Functions in a private module that other modules import**: a function in a module such as `package/_helpers.py` is
@@ -260,6 +261,9 @@ flowchart TD
 **Unsafe fix:** code that reads `__doc__` sees the change. That includes
 [`help()`](https://docs.python.org/3/builtins/functions.html#help) and code outside the run: a framework the function is
 handed to as a value, such as a Starlette route, or a pydantic model whose docstring becomes its schema description.
+
+A file with a file-level `ruff: noqa` gets no fix: the docstring's lines may be what its codes silence, and rewriting
+the docstring would leave them unused.
 
 The fix depends on the docstring's length:
 

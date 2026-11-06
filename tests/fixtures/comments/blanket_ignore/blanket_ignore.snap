@@ -5,7 +5,6 @@ expression: "lint_fixture(rule, fixture, target_version)"
 2:12 SMP004 `# ty: ignore` suppresses every error on the line; name the codes, as in `# ty: ignore[code]`
 3:12 SMP004 `# pyright: ignore` suppresses every error on the line; name the codes, as in `# pyright: ignore[code]`
 4:12 SMP004 `# pyrefly: ignore` suppresses every error on the line; name the codes, as in `# pyrefly: ignore[code]`
-6:12 SMP004 `# ty: ignore` suppresses every error on the line; name the codes, as in `# ty: ignore[code]`
 7:12 SMP004 `# ty: ignore` suppresses every error on the line; name the codes, as in `# ty: ignore[code]`
 10:12 SMP004 `# ty: ignore` suppresses every error on the line; name the codes, as in `# ty: ignore[code]`
 11:13 SMP004 `# pyright: ignore` suppresses every error on the line; name the codes, as in `# pyright: ignore[code]`

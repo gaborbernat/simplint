@@ -4,24 +4,24 @@ expression: "lint_fixture(rule, fixture, target_version)"
 ---
 3:1 SMP102 Module-scope variable `revision` should be named `REVISION` [unsafe fix: Rename `revision` to `REVISION`]
 4:1 SMP102 Module-scope variable `down_revision` should be named `DOWN_REVISION` [unsafe fix: Rename `down_revision` to `DOWN_REVISION`]
-5:1 SMP102 Module-scope variable `timeout` should be named `TIMEOUT` [unsafe fix: Rename `timeout` to `TIMEOUT`]
+5:1 SMP102 Module-scope variable `timeout` should be named `TIMEOUT`
 6:1 SMP102 Module-scope variable `threads` should be named `THREADS` [unsafe fix: Rename `threads` to `THREADS`]
-7:1 SMP102 Module-scope variable `user` should be named `USER` [unsafe fix: Rename `user` to `USER`]
-8:1 SMP102 Module-scope variable `app` should be named `APP` [unsafe fix: Rename `app` to `APP`]
+7:1 SMP102 Module-scope variable `user` should be named `USER`
+8:1 SMP102 Module-scope variable `app` should be named `APP`
 9:1 SMP102 Module-scope variable `application` should be named `APPLICATION` [unsafe fix: Rename `application` to `APPLICATION`]
 10:1 SMP102 Module-scope variable `apilevel` should be named `APILEVEL` [unsafe fix: Rename `apilevel` to `APILEVEL`]
 11:1 SMP102 Module-scope variable `paramstyle` should be named `PARAMSTYLE` [unsafe fix: Rename `paramstyle` to `PARAMSTYLE`]
 12:1 SMP102 Module-scope variable `tokens` should be named `TOKENS` [unsafe fix: Rename `tokens` to `TOKENS`]
 13:1 SMP102 Module-scope variable `t_PLUS` should be named `T_PLUS` [unsafe fix: Rename `t_PLUS` to `T_PLUS`]
---- fixed (11 applied, 0 remaining) ---
+--- fixed (8 applied, 3 remaining) ---
 from app_factory import create_app
 
 REVISION = 3
 DOWN_REVISION = 2
-TIMEOUT = 30
+timeout = 30
 THREADS = 2
-USER = "nobody"
-APP = create_app()
+user = "nobody"
+app = create_app()
 APPLICATION = None
 APILEVEL = "2.0"
 PARAMSTYLE = "qmark"

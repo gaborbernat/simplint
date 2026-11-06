@@ -42,6 +42,10 @@ default_base_python = [ "3.15" ]
 
 [env.docs]
 description = "build documentation"
+# The diagrams are drawn at build time by mermaid-cli, which conf.py runs through npx, so Node.js must be on PATH. Its
+# puppeteer downloads a headless browser on first use; PUPPETEER_SKIP_DOWNLOAD=1 with PUPPETEER_EXECUTABLE_PATH runs an
+# installed one instead.
+pass_env = [ "PUPPETEER_*", "SSL_CERT_FILE" ]
 base_python = [ "3.15" ]
 # The pages read the binary's rules and options from docs/_data, so Read the Docs builds them without compiling Rust.
 skip_install = true
@@ -70,6 +74,10 @@ commands = [
 
 [env.docs_links]
 description = "check the documentation's external links"
+# The diagrams are drawn at build time by mermaid-cli, which conf.py runs through npx, so Node.js must be on PATH. Its
+# puppeteer downloads a headless browser on first use; PUPPETEER_SKIP_DOWNLOAD=1 with PUPPETEER_EXECUTABLE_PATH runs an
+# installed one instead.
+pass_env = [ "PUPPETEER_*", "SSL_CERT_FILE" ]
 base_python = [ "3.15" ]
 skip_install = true
 dependency_groups = [ "docs" ]
@@ -162,7 +170,8 @@ commands = [ [ "python", "tasks{/}check_sdist.py" ] ]
 runner = "uv-venv-runner"
 description = "lint and fix the most downloaded PyPI projects, failing on crashes and on fixes that break code"
 dependency_groups = []
-deps = [ "ruff>=0.17.3" ]
+# The Ruff the crates are built from, so a Ruff release cannot change the outcome on its own.
+deps = [ "ruff==0.17.4" ]
 commands = [
   [
     "python",

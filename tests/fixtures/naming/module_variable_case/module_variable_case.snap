@@ -2,15 +2,15 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-3:1 SMP102 Module-scope variable `limit` should be named `LIMIT` [unsafe fix: Rename `limit` to `LIMIT`]
+3:1 SMP102 Module-scope variable `limit` should be named `LIMIT`
 4:1 SMP102 Module-scope variable `_timeout` should be named `_TIMEOUT` [unsafe fix: Rename `_timeout` to `_TIMEOUT`]
 6:1 SMP102 Module-scope variable `logger` should be named `LOGGER` [unsafe fix: Rename `logger` to `LOGGER`]
 24:5 SMP102 Module-scope variable `walrus_value` should be named `WALRUS_VALUE` [unsafe fix: Rename `walrus_value` to `WALRUS_VALUE`]
 28:1 SMP102 Module-scope variable `zip` should be named `ZIP`
---- fixed (4 applied, 1 remaining) ---
+--- fixed (3 applied, 2 remaining) ---
 import os
 
-LIMIT = 3
+limit = 3
 _TIMEOUT = 1
 PUBLIC_VALUE = 2
 LOGGER = os.getenv("X")
@@ -19,7 +19,7 @@ pytestmark = []
 
 
 def use() -> int:
-    return LIMIT + _TIMEOUT + PUBLIC_VALUE
+    return limit + _TIMEOUT + PUBLIC_VALUE
 
 
 __all__ = ["PUBLIC_VALUE", "LOGGER"]

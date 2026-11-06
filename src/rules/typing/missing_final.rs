@@ -7,7 +7,8 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::{ensure_import, has_version_gate, is_class_like, isort_key, single_assignment};
+use crate::rules::edits::ensure_import;
+use crate::rules::{has_version_gate, is_class_like, isort_key, single_assignment};
 use crate::semantic::Semantic;
 use crate::syntax::{alias_binding, last_segment};
 

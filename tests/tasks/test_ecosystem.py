@@ -3,32 +3,45 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import shutil
 import subprocess
 import sys
 import tarfile
-from typing import TYPE_CHECKING, Final, Protocol, TypedDict, Unpack, cast
+import warnings
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import nullcontext
+from dataclasses import dataclass
+from pathlib import Path
+from subprocess import run as real_run
+from typing import TYPE_CHECKING, Final, Protocol, TypedDict, Unpack
 
 import pytest
 
 from tasks.compile_examples import Interpreter
-from tasks.ecosystem import PACKAGES, Package, check, download, main
+from tasks.ecosystem import PACKAGES, Package, check, main
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from collections.abc import Callable
 
-    from pytest_mock import MockerFixture
+    from pytest_mock import MockerFixture, MockType
 
-# The tools the fake passes through to the real process, which the tests run for real.
-_REAL_RUN: Final[_Run] = cast("_Run", subprocess.run)
 _CURRENT: Final[Interpreter] = Interpreter(minor=sys.version_info.minor, path=sys.executable)
 
 
+@dataclass(frozen=True, slots=True, kw_only=True)
+class _Outcome:
+    code: int = 0
+    stdout: str = ""
+    stderr: str = ""
+
+
 class _Behavior(Protocol):
-    def __call__(self, command: list[str], cwd: Path) -> tuple[int, str, str]: ...
+    def __call__(self, command: list[str], cwd: Path) -> _Outcome: ...
 
 
 class _RunOptions(TypedDict, total=False):
     cwd: Path
+    env: dict[str, str]
     capture_output: bool
     text: bool
     check: bool
@@ -39,97 +52,135 @@ class _Run(Protocol):
     def __call__(self, command: list[str], **options: Unpack[_RunOptions]) -> subprocess.CompletedProcess[str]: ...
 
 
+@pytest.fixture
+def archive(tmp_path: Path) -> Path:
+    return _sdist(tmp_path)
+
+
+def _sdist(at: Path, content: bytes = b"VALUE = 1\n") -> Path:
+    archive = at / "demo-1.0.tar.gz"
+    with tarfile.open(archive, "w:gz") as tar:
+        member = tarfile.TarInfo("demo-1.0/mod.py")
+        member.size = len(content)
+        tar.addfile(member, io.BytesIO(content))
+    return archive
+
+
+@pytest.fixture
+def package(archive: Path) -> Package:
+    return Package(name="demo", version="1.0", sha256=hashlib.sha256(archive.read_bytes()).hexdigest())
+
+
+@pytest.fixture
+def run_tools(mocker: MockerFixture) -> Callable[[_Behavior], MockType]:
+    def patch(behavior: _Behavior) -> MockType:
+        return mocker.patch("subprocess.run", autospec=True, side_effect=_tools(behavior))
+
+    return patch
+
+
+@pytest.fixture
+def pinned(mocker: MockerFixture, package: Package) -> None:
+    mocker.patch("tasks.ecosystem.PACKAGES", (package, Package(name="other", version="2.0", sha256="")))
+
+
+@pytest.fixture
+def in_threads(mocker: MockerFixture) -> None:
+    # Threads share the fake tools the test patches in, where processes would not.
+    mocker.patch("tasks.ecosystem.ProcessPoolExecutor", ThreadPoolExecutor)
+
+
+@pytest.fixture
+def workspace(tmp_path: Path, mocker: MockerFixture) -> Path:
+    folder = tmp_path / "workspace"
+    folder.mkdir()
+    mocker.patch("tasks.ecosystem.TemporaryDirectory", autospec=True, return_value=nullcontext(str(folder)))
+    return folder
+
+
 def test_packages_are_pinned_to_pypi_source_archives() -> None:
     assert (len(PACKAGES), PACKAGES[0].url) == (
-        25,
-        "https://files.pythonhosted.org/packages/source/b/boto3/boto3-1.43.122.tar.gz",
+        124,
+        "https://files.pythonhosted.org/packages/source/b/boto3/boto3-1.43.124.tar.gz",
     )
 
 
-def test_download_fetches_and_verifies(tmp_path: Path, mocker: MockerFixture) -> None:
-    payload = b"archive"
-    urlopen = mocker.patch("urllib.request.urlopen", autospec=True, return_value=io.BytesIO(payload))
-    package = Package(name="demo-pkg", version="1.0", sha256=hashlib.sha256(payload).hexdigest())
-
-    archive = download(package, tmp_path / "cache")
-
-    assert (archive.read_bytes(), archive.name, urlopen.call_args.args) == (
-        payload,
-        "demo_pkg-1.0.tar.gz",
-        ("https://files.pythonhosted.org/packages/source/d/demo-pkg/demo_pkg-1.0.tar.gz",),
-    )
+def test_main_rejects_unpinned_names(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="not pinned: nope"):
+        main(["--cache", str(tmp_path), "nope"])
 
 
-def test_download_reuses_the_cache(tmp_path: Path, mocker: MockerFixture) -> None:
-    urlopen = mocker.patch("urllib.request.urlopen", autospec=True)
-    (tmp_path / "demo-1.0.tar.gz").write_bytes(b"cached")
-
-    download(Package(name="demo", version="1.0", sha256=hashlib.sha256(b"cached").hexdigest()), tmp_path)
-
-    urlopen.assert_not_called()
-
-
-def test_download_rejects_a_hash_mismatch(tmp_path: Path) -> None:
-    archive = tmp_path / "demo-1.0.tar.gz"
-    archive.write_bytes(b"tampered")
-
-    with pytest.raises(ValueError, match="does not match its pinned sha256"):
-        download(Package(name="demo", version="1.0", sha256="0" * 64), tmp_path)
-    assert not archive.exists()
-
-
-def _clean(command: list[str], cwd: Path) -> tuple[int, str, str]:
+def _clean(command: list[str], cwd: Path) -> _Outcome:
     del command, cwd
-    return 0, "", ""
+    return _Outcome()
 
 
 def _fails(stderr: str) -> _Behavior:
-    def behavior(command: list[str], cwd: Path) -> tuple[int, str, str]:
+    def behavior(command: list[str], cwd: Path) -> _Outcome:
         del cwd
-        return (0, "", "") if "--fix-only" in command else (2, "", stderr)
+        return _Outcome() if "--fix-only" in command else _Outcome(code=2, stderr=stderr)
 
     return behavior
 
 
-def _refuses_unless_ignored(command: list[str], cwd: Path) -> tuple[int, str, str]:
+def _refuses_unless_ignored(command: list[str], cwd: Path) -> _Outcome:
     del cwd
     if command[0] == "ruff" or command[2:4] == ["--ignore", "SMP301"]:
-        return 0, "", ""
-    conflict = "  - SMP301 (future-annotations) removes it; ignore SMP301 in `[tool.simplint]`, or drop the import.\n"
-    return 2, "", f"simplint failed\n  Cause: rules work against each other:\n{conflict}"
+        return _Outcome()
+    conflict = (
+        "  - SMP301 (future-annotations) and Ruff's I002 (missing-required-import) undo each other's fixes.\n"
+        "    Why: SMP301 removes the import; I002 adds it back.\n"
+        "    Fix: drop the import from `required-imports`, or ignore SMP301 in `[tool.simplint]`.\n"
+    )
+    return _Outcome(code=2, stderr=f"simplint failed\n  Cause: rules work against each other:\n{conflict}")
 
 
-def _cannot_read(command: list[str], cwd: Path) -> tuple[int, str, str]:
+def _cannot_read(command: list[str], cwd: Path) -> _Outcome:
     del cwd
     if command[0] == "ruff" or {"--fix-only", "--diff"} & set(command):
-        return 0, "", ""
-    return 1, "mod.py:1:1: E902 Permission denied\nFound 1 error.\n", ""
+        return _Outcome()
+    return _Outcome(code=1, stdout="mod.py:1:1: E902 Permission denied\nFound 1 error.\n")
 
 
-def _cannot_read_like_ruff(command: list[str], cwd: Path) -> tuple[int, str, str]:
+def _cannot_read_like_ruff(command: list[str], cwd: Path) -> _Outcome:
     del cwd
-    return (0, "", "") if {"--fix-only", "--diff"} & set(command) else (1, "mod.py:1:1: io-error: unreadable\n", "")
+    if {"--fix-only", "--diff"} & set(command):
+        return _Outcome()
+    return _Outcome(code=1, stdout="mod.py:1:1: io-error: unreadable\n")
 
 
 # The fix leaves `source` in the module; the simulated Ruff reacts to the markers in it.
 def _writes(source: str) -> _Behavior:
-    def behavior(command: list[str], cwd: Path) -> tuple[int, str, str]:
+    def behavior(command: list[str], cwd: Path) -> _Outcome:
         if "--fix-only" in command:
             (cwd / "mod.py").write_text(source)
-        return 0, "", ""
+        return _Outcome()
 
     return behavior
 
 
-def _keeps_fixing(command: list[str], cwd: Path) -> tuple[int, str, str]:
+def _keeps_fixing(command: list[str], cwd: Path) -> _Outcome:
     del cwd
-    return (1, "--- mod.py\n+++ mod.py\n", "") if "--diff" in command else (0, "", "")
+    return _Outcome(code=1, stdout="--- mod.py\n+++ mod.py\n") if "--diff" in command else _Outcome()
 
 
-def _keeps_fixing_where_format_strands_a_pragma(command: list[str], cwd: Path) -> tuple[int, str, str]:
+# Ruff's own fixes in `mod.py` are withdrawn before simplint runs, in both trees, so a second round of either tool is
+# not counted there; simplint's second round still counts in the files Ruff settles.
+def _keeps_fixing_where_ruff_never_settles(fixing: str) -> _Behavior:
+    def behavior(command: list[str], cwd: Path) -> _Outcome:
+        if command[0] == "ruff" and "concise" in command:
+            for tree in (cwd, cwd.parent.parent / "original" / cwd.name):
+                (tree / "mod.py").write_text("VALUE = 'unsettled'\n")
+            return _Outcome()
+        return _Outcome(code=1, stdout=f"--- {fixing}\n+++ {fixing}\n") if "--diff" in command else _Outcome()
+
+    return behavior
+
+
+def _keeps_fixing_where_format_strands_a_pragma(command: list[str], cwd: Path) -> _Outcome:
     if command[:2] == ["ruff", "format"]:
         (cwd / "mod.py").write_text("VALUE = (\n    1\n)  # noqa: F401\n")
-    return (1, "--- mod.py\n+++ mod.py\n", "") if "--diff" in command else (0, "", "")
+    return _keeps_fixing(command, cwd)
 
 
 @pytest.mark.parametrize(
@@ -152,15 +203,25 @@ def _keeps_fixing_where_format_strands_a_pragma(command: list[str], cwd: Path) -
         pytest.param(_writes("def broken(:\n"), ["mod.py no longer parses"], id="syntax"),
         pytest.param(_keeps_fixing, ["a second round of simplint check --fix changed the code"], id="not-idempotent"),
         pytest.param(_keeps_fixing_where_format_strands_a_pragma, [], id="stranded-pragma"),
+        pytest.param(_keeps_fixing_where_ruff_never_settles("mod.py"), [], id="ruff-unsettled-baseline"),
+        pytest.param(
+            _keeps_fixing_where_ruff_never_settles("other.py"),
+            ["a second round of simplint check --fix changed the code"],
+            id="ruff-unsettled-elsewhere",
+        ),
         pytest.param(_writes("VALUE = missing\n"), ["mod.py: new F821"], id="undefined-name"),
     ],
 )
 def test_check_reports_problems(
-    tmp_path: Path, mocker: MockerFixture, behavior: _Behavior, expected: list[str]
+    package: Package,
+    archive: Path,
+    run_tools: Callable[[_Behavior], MockType],
+    behavior: _Behavior,
+    expected: list[str],
 ) -> None:
-    mocker.patch("subprocess.run", autospec=True, side_effect=_tools(behavior))
+    run_tools(behavior)
 
-    assert check(Package(name="demo", version="1.0", sha256=""), _sdist(tmp_path), "simplint") == expected
+    assert check(package, archive, "simplint", None) == expected
 
 
 @pytest.mark.parametrize(
@@ -171,42 +232,42 @@ def test_check_reports_problems(
     ],
 )
 def test_check_parses_or_compiles_the_fixed_files(
-    tmp_path: Path, mocker: MockerFixture, target: Interpreter | None, expected: list[str]
+    package: Package,
+    archive: Path,
+    run_tools: Callable[[_Behavior], MockType],
+    target: Interpreter | None,
+    expected: list[str],
 ) -> None:
     # A `return` outside a function parses but does not compile, so only the target's compiler rejects it.
-    mocker.patch("subprocess.run", autospec=True, side_effect=_tools(_writes("return 1\n")))
+    run_tools(_writes("return 1\n"))
 
-    assert check(Package(name="demo", version="1.0", sha256=""), _sdist(tmp_path), "simplint", target) == expected
-
-
-def test_check_asks_simplint_for_the_target_release(tmp_path: Path, mocker: MockerFixture) -> None:
-    run = mocker.patch("subprocess.run", autospec=True, side_effect=_tools(_clean))
-
-    check(Package(name="demo", version="1.0", sha256=""), _sdist(tmp_path), "simplint", _CURRENT)
-
-    assert any(
-        call.args[0][:4] == ["simplint", "check", "--target-version", f"py3{_CURRENT.minor}"]
-        for call in run.call_args_list
-    )
+    assert check(package, archive, "simplint", target) == expected
 
 
-def test_main_accepts_a_target_version(
-    tmp_path: Path, mocker: MockerFixture, capsys: pytest.CaptureFixture[str]
+def test_check_asks_simplint_for_the_target_release(
+    package: Package, archive: Path, run_tools: Callable[[_Behavior], MockType]
 ) -> None:
-    selected = Package(name="demo", version="1.0", sha256=hashlib.sha256(_sdist(tmp_path).read_bytes()).hexdigest())
-    mocker.patch("tasks.ecosystem.PACKAGES", (selected,))
-    mocker.patch("subprocess.run", autospec=True, side_effect=_tools(_clean))
+    run = run_tools(_clean)
 
-    result = main(["--cache", str(tmp_path), "--target-version", f"3.{_CURRENT.minor}", "demo"])
+    check(package, archive, "simplint", _CURRENT)
 
-    assert (result, capsys.readouterr().out) == (0, "demo 1.0: ok\n")
-
-
-def test_main_rejects_unpinned_names(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="not pinned: nope"):
-        main(["--cache", str(tmp_path), "nope"])
+    assert ["simplint", "check", "--target-version", f"py3{_CURRENT.minor}"] in [
+        call.args[0][:4] for call in run.call_args_list
+    ]
 
 
+@pytest.mark.usefixtures("in_threads", "pinned")
+def test_main_accepts_a_target_version(
+    tmp_path: Path, run_tools: Callable[[_Behavior], MockType], capsys: pytest.CaptureFixture[str]
+) -> None:
+    run_tools(_clean)
+
+    status = main(["--cache", str(tmp_path), "--target-version", f"3.{_CURRENT.minor}", "demo"])
+
+    assert (status, capsys.readouterr().out) == (0, "demo 1.0: ok\n")
+
+
+@pytest.mark.usefixtures("in_threads", "pinned")
 @pytest.mark.parametrize(
     ("behavior", "expected"),
     [
@@ -218,64 +279,144 @@ def test_main_rejects_unpinned_names(tmp_path: Path) -> None:
 )
 def test_main_checks_the_selected_packages(
     tmp_path: Path,
-    mocker: MockerFixture,
+    run_tools: Callable[[_Behavior], MockType],
     capsys: pytest.CaptureFixture[str],
     behavior: _Behavior,
     expected: tuple[int, str],
 ) -> None:
-    selected = Package(name="demo", version="1.0", sha256=hashlib.sha256(_sdist(tmp_path).read_bytes()).hexdigest())
-    mocker.patch("tasks.ecosystem.PACKAGES", (selected, Package(name="other", version="2.0", sha256="")))
-    mocker.patch("subprocess.run", autospec=True, side_effect=_tools(behavior))
+    run_tools(behavior)
 
     assert (main(["--cache", str(tmp_path), "demo"]), capsys.readouterr().out) == expected
 
 
-def _sdist(at: Path) -> Path:
-    archive = at / "demo-1.0.tar.gz"
-    content = b"VALUE = 1\n"
-    with tarfile.open(archive, "w:gz") as tar:
-        info = tarfile.TarInfo("demo-1.0/mod.py")
-        info.size = len(content)
-        tar.addfile(info, io.BytesIO(content))
-    return archive
+@pytest.mark.usefixtures("in_threads")
+def test_main_reports_in_the_pinned_order(
+    archive: Path,
+    mocker: MockerFixture,
+    run_tools: Callable[[_Behavior], MockType],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    shutil.copy(archive, archive.with_name("second-2.0.tar.gz"))
+    digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+    mocker.patch(
+        "tasks.ecosystem.PACKAGES",
+        (Package(name="second", version="2.0", sha256=digest), Package(name="demo", version="1.0", sha256=digest)),
+    )
+    run_tools(_clean)
+
+    assert (main(["--cache", str(archive.parent)]), capsys.readouterr().out) == (0, "second 2.0: ok\ndemo 1.0: ok\n")
+
+
+def test_check_hides_the_user_configuration(
+    package: Package,
+    archive: Path,
+    mocker: MockerFixture,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    user_config = tmp_path / "user"
+    (user_config / "ruff").mkdir(parents=True)
+    (user_config / "ruff" / "ruff.toml").write_text("select = ['ALL']\n")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(user_config))
+    fake = _tools(_clean)
+    listings: list[list[str]] = []
+
+    def run(command: list[str], **options: Unpack[_RunOptions]) -> subprocess.CompletedProcess[str]:
+        listings.append(sorted(path.name for path in Path(options["env"]["XDG_CONFIG_HOME"]).iterdir()))
+        return fake(command, **options)
+
+    mocker.patch("subprocess.run", autospec=True, side_effect=run)
+
+    check(package, archive, "simplint", None)
+
+    assert set(map(tuple, listings)) == {()}
+
+
+def test_check_drops_ruff_environment_overrides(
+    package: Package, archive: Path, monkeypatch: pytest.MonkeyPatch, run_tools: Callable[[_Behavior], MockType]
+) -> None:
+    monkeypatch.setenv("RUFF_LINE_LENGTH", "10")
+    run = run_tools(_clean)
+
+    check(package, archive, "simplint", None)
+
+    environments = [call.kwargs["env"] for call in run.call_args_list]
+    assert {key for environment in environments for key in environment if key.startswith("RUFF_")} == {"RUFF_CACHE_DIR"}
+
+
+def test_check_keeps_ruff_cache_in_the_workspace(
+    package: Package, archive: Path, run_tools: Callable[[_Behavior], MockType], workspace: Path
+) -> None:
+    run = run_tools(_clean)
+
+    check(package, archive, "simplint", None)
+
+    caches = {Path(call.kwargs["env"]["RUFF_CACHE_DIR"]) for call in run.call_args_list}
+    assert caches == {workspace / "cache"}
+
+
+def test_check_does_not_warn_about_invalid_escapes(
+    package: Package, tmp_path: Path, run_tools: Callable[[_Behavior], MockType]
+) -> None:
+    run_tools(_clean)
+    archive = _sdist(tmp_path, b'VALUE = "\\d"\n')
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        problems = check(package, archive, "simplint", None)
+
+    assert (problems, [warning for warning in caught if issubclass(warning.category, SyntaxWarning)]) == ([], [])
 
 
 def _tools(behavior: _Behavior) -> _Run:
-    # The uv and interpreter calls run for real; the tools that act on a tree are the fake's.
+    # The uv and interpreter calls run for real, through the function bound before the tests patch `subprocess.run`;
+    # the tools that act on a tree are the fake's.
     def run(command: list[str], **options: Unpack[_RunOptions]) -> subprocess.CompletedProcess[str]:
         if command[0] == "uv" or command[1:2] == ["-I"]:
-            return _REAL_RUN(command, **options)
-        return fake(command, options["cwd"])
+            return real_run(
+                command,
+                cwd=options.get("cwd"),
+                input=options.get("input"),
+                capture_output=True,
+                text=True,
+                check=options.get("check", False),
+            )
+        return _fake(behavior, command, options["cwd"])
 
-    def fake(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+    return run
+
+
+# The simulated Ruff answers by the markers the fix left in the files; the runs a test varies go to `behavior`.
+def _fake(behavior: _Behavior, command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
+    if command[0] != "ruff" or (command[:2] == ["ruff", "check"] and "concise" in command):
+        outcome = behavior(command, cwd)
+        return subprocess.CompletedProcess(command, outcome.code, outcome.stdout, outcome.stderr)
+    if command[:2] == ["ruff", "check"] and "json" in command:
+        return subprocess.CompletedProcess(command, 0, _ruff_report(command, cwd), "")
+    if command[:2] == ["ruff", "check"] and "--diff" in command:
+        unsettled = _marked(cwd, "unsettled")
+        return subprocess.CompletedProcess(command, int(unsettled), "--- mod.py\n+++ mod.py\n" * unsettled, "")
+    if command[:2] == ["ruff", "format"] and "--check" in command:
         conflict_warning = (
             "warning: The following rule may cause conflicts when used with the formatter: "
             "`missing-trailing-comma` (`COM812`).\n"
         )
-        if command[:2] == ["ruff", "check"] and "json" in command:
-            markers = {"missing": "F821"} if "--ignore-noqa" in command else {"long": "E501", "comma": "COM812"}
-            ignored = command[command.index("--ignore") + 1].split(",") if "--ignore" in command else []
-            stdout = json.dumps([
-                {"filename": str(path.resolve()), "code": rule}
-                for path in cwd.rglob("*.py")
-                for marker, rule in markers.items()
-                if marker in path.read_text() and rule not in ignored
-            ])
-            return subprocess.CompletedProcess(command, 0, stdout, "")
-        if command[:2] == ["ruff", "check"] and "concise" in command:
-            code, stdout, stderr = behavior(command, cwd)
-            return subprocess.CompletedProcess(command, code, stdout, stderr)
-        if command[:2] == ["ruff", "check"] and "--diff" in command:
-            unsettled = any("unsettled" in path.read_text() for path in cwd.rglob("*.py"))
-            return subprocess.CompletedProcess(command, int(unsettled), "", "")
-        if command[:2] == ["ruff", "format"] and "--check" in command:
-            unformatted = any("unformatted" in path.read_text() for path in cwd.rglob("*.py"))
-            return subprocess.CompletedProcess(command, int(unformatted), "", conflict_warning)
-        if command[:2] == ["ruff", "format"]:
-            behavior(command, cwd)
-        if command[0] == "ruff":
-            return subprocess.CompletedProcess(command, 0, "", "")
-        code, stdout, stderr = behavior(command, cwd)
-        return subprocess.CompletedProcess(command, code, stdout, stderr)
+        return subprocess.CompletedProcess(command, int(_marked(cwd, "unformatted")), "", conflict_warning)
+    if command[:2] == ["ruff", "format"]:
+        behavior(command, cwd)
+    return subprocess.CompletedProcess(command, 0, "", "")
 
-    return run
+
+def _ruff_report(command: list[str], cwd: Path) -> str:
+    markers = {"missing": "F821"} if "--ignore-noqa" in command else {"long": "E501", "comma": "COM812"}
+    ignored = command[command.index("--ignore") + 1].split(",") if "--ignore" in command else []
+    return json.dumps([
+        {"filename": str(path.resolve()), "code": rule}
+        for path in cwd.rglob("*.py")
+        for marker, rule in markers.items()
+        if marker in path.read_text() and rule not in ignored
+    ])
+
+
+def _marked(cwd: Path, marker: str) -> bool:
+    return any(marker in path.read_text() for path in cwd.rglob("*.py"))

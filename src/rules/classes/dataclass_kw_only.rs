@@ -12,7 +12,7 @@ use crate::lint::noqa;
 use crate::lint::registry::Rule;
 use crate::project::constructors::{CallKind, Use, Uses, init_fields};
 use crate::rules::classes::{Offer, require_options};
-use crate::rules::keep_debug_text;
+use crate::rules::edits::keep_debug_text;
 use crate::semantic::BindingKind;
 use crate::settings::FileSettings;
 use crate::syntax::ExprCollector;
@@ -55,7 +55,7 @@ fn keyword_calls(checker: &Checker, module: &ModuleClasses, class: &ast::StmtCla
     if !module.is_module_level(class)
         || checker.semantic().is_rebound(name)
         || checker.project().is_base_class(name)
-        || checker.project().dataclass_calls().has_opaque_use(name)
+        || checker.project().calls().has_opaque_use(name)
         || makes_own_instances(class)
     {
         return None;
@@ -153,7 +153,7 @@ fn keyword_edits(checker: &Checker, call: &ast::ExprCall, fields: &[String]) -> 
 // In other files, the positional calls of dataclasses `dataclass-kw-only` asks to make keyword-only: the fix of the
 // decorator relies on each file rewriting its own.
 fn report_positional_calls(checker: &Checker) {
-    let calls = checker.project().dataclass_calls();
+    let calls = checker.project().calls();
     if !calls.calls_any() {
         return;
     }

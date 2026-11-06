@@ -30,3 +30,41 @@ def spread_value(items: list[str]) -> None:
         len(items)
     )
     print(count)
+
+
+def parenthesized_value_fits_bare(flag: bool) -> None:
+    message = ("only the string without its parentheses fits on this one line.")
+    check(flag, match=message)
+
+
+def chained_in_call(session: Session) -> None:
+    removed = (
+        session.query(User)
+        .filter(User.age > 2)
+        .delete(synchronize_session=False)
+    )
+    check(removed, 3)
+
+
+def chained_in_statement(session: Session) -> None:
+    total = (
+        session.first
+        + session.second
+    )
+    print(total)
+    other = (
+        session.first
+        + session.second
+    )
+    result = other * 2
+    print(result)
+
+
+def magic_trailing_comma(flag: bool) -> None:
+    label = "short"
+    check(flag, label,)
+
+
+def numbers(flag: bool) -> None:
+    label = "short"
+    check(flag, label, 1 .real, 2.5)

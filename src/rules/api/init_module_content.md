@@ -238,3 +238,10 @@ it belongs.
 
 A package is **public** when it belongs to one of the library's API packages and no part of its path starts with `_`;
 see [undocumented-public-api](SMP903.html).
+
+## Other tools
+
+- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports logic in an `__init__`
+  module as
+  [WPS412](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/best_practices.html#wemake_python_styleguide.violations.best_practices.InitModuleHasLogicViolation),
+  with no fix.

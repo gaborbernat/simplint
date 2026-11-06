@@ -95,3 +95,8 @@ offered, since moving fields can split the lines that continue them from their t
       :param target: Where to.
       """
   ```
+
+## Other tools
+
+- [pydoclint](https://github.com/jsh9/pydoclint) reports arguments documented in a different order than the signature as
+  [DOC104](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.

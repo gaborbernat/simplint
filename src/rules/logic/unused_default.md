@@ -259,3 +259,9 @@ def pair(first, second):
 
 pair(1, 2)
 ```
+
+## Other tools
+
+- [refurb](https://github.com/dosisod/refurb) reports call arguments that equal the default as
+  [FURB120](https://github.com/dosisod/refurb/blob/master/docs/checks.md#furb120-use-implicit-default). This rule
+  removes the default from the signature instead, when every call passes it.

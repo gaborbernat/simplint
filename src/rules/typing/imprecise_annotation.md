@@ -179,3 +179,9 @@ annotations are still checked.
 Ruff's [any-type](https://docs.astral.sh/ruff/rules/any-type/) rejects `Any` as the whole annotation of a function
 parameter or return value. This rule covers `object` everywhere, and `Any` in variable annotations and nested positions,
 which [any-type](https://docs.astral.sh/ruff/rules/any-type/) misses.
+
+## Other tools
+
+- [basedpyright](https://github.com/DetachHead/basedpyright) reports every explicit `Any` as
+  [reportExplicitAny](https://docs.basedpyright.com/latest/configuration/config-files/). It does not report `object`,
+  which this rule also flags.

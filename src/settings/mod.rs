@@ -25,32 +25,48 @@ pub use schema::config_schema;
 
 use crate::lint::registry::{Rule, RuleSet};
 use crate::settings::metadata::{BuildConfiguration, ProjectMetadata};
-use crate::settings::options::{PerFileIgnoreSource, ProjectOptions, Selector, SelectorLayer};
+use crate::settings::options::{
+    ImportsOptions, LogicOptions, NamingOptions, PerFileIgnoreSource, ProjectOptions, Selector, SelectorLayer,
+};
 
 // The scalar and list settings the rules tune themselves with, which a cached result depends on.
 #[derive(CacheKey)]
 pub struct Knobs {
     pub max_paragraph_words: usize,
     pub keep_names: Vec<String>,
+    pub meaningless_names: Vec<String>,
+    pub catch_all_modules: Vec<String>,
     pub module_attributes: Vec<String>,
     pub max_helper_statements: usize,
     pub max_caller_statements: usize,
+    pub max_tuple_elements: usize,
+    pub max_cognitive_complexity: usize,
+    pub min_duplicate_statements: usize,
 }
 
 impl Knobs {
     fn resolve(
         max_paragraph_words: Option<usize>,
-        keep_names: Option<Vec<String>>,
-        module_attributes: Option<Vec<String>>,
-        max_helper_statements: Option<usize>,
-        max_caller_statements: Option<usize>,
+        naming: NamingOptions,
+        imports: ImportsOptions,
+        logic: LogicOptions,
     ) -> Self {
         Self {
             max_paragraph_words: max_paragraph_words.unwrap_or(100),
-            keep_names: keep_names.unwrap_or_default(),
-            module_attributes: module_attributes.unwrap_or_default(),
-            max_helper_statements: max_helper_statements.unwrap_or(3),
-            max_caller_statements: max_caller_statements.unwrap_or(20),
+            keep_names: naming.keep_names.unwrap_or_default(),
+            meaningless_names: naming
+                .meaningless_names
+                .unwrap_or_else(|| ["foo", "baz", "qux", "quux"].map(str::to_owned).into()),
+            catch_all_modules: naming.catch_all_modules.unwrap_or_else(|| {
+                ["utils", "util", "utilities", "helpers", "helper", "common", "misc"].map(str::to_owned).into()
+            }),
+            module_attributes: imports.module_attributes.unwrap_or_default(),
+            max_helper_statements: logic.max_helper_statements.unwrap_or(3),
+            max_caller_statements: logic.max_caller_statements.unwrap_or(20),
+            max_tuple_elements: logic.max_tuple_elements.unwrap_or(2),
+            max_cognitive_complexity: logic.max_cognitive_complexity.unwrap_or(20),
+            // A window needs one statement to match, so a smaller setting counts as one.
+            min_duplicate_statements: logic.min_duplicate_statements.unwrap_or(6).max(1),
         }
     }
 }
@@ -94,22 +110,15 @@ impl Settings {
             FixSafetyTable::from_selectors(&configuration.extend_safe_fixes, &configuration.extend_unsafe_fixes)?;
         let ProjectOptions {
             max_paragraph_words,
-            keep_names,
-            module_attributes,
+            naming,
+            imports,
+            logic,
             project_kind,
             api_packages,
             api_modules,
             docstring_style,
-            max_helper_statements,
-            max_caller_statements,
         } = configuration.project;
-        let knobs = Knobs::resolve(
-            max_paragraph_words,
-            keep_names,
-            module_attributes,
-            max_helper_statements,
-            max_caller_statements,
-        );
+        let knobs = Knobs::resolve(max_paragraph_words, naming, imports, logic);
         let api = ApiScope::resolve(
             root,
             project_kind.unwrap_or_default(),
@@ -317,7 +326,7 @@ impl SettingsResolver {
                 Some(config).filter(|config| config.file_name().is_some_and(|name| name == "pyproject.toml")),
             ),
             None => {
-                let discovery = Discovery::Hierarchical(Mutex::default());
+                let discovery = Discovery::Hierarchical { run_root: cwd.clone(), projects: Mutex::default() };
                 return Ok(Self { root: discovery.settings(&cwd, &overrides)?, overrides, discovery });
             }
         };
@@ -338,17 +347,19 @@ impl SettingsResolver {
 // read once per project.
 enum Discovery {
     Fixed(Arc<Settings>),
-    Hierarchical(Mutex<Projects>),
+    // `run_root` is the directory the run starts from, which roots a project without a `pyproject.toml`.
+    Hierarchical { run_root: PathBuf, projects: Mutex<Projects> },
 }
 
 impl Discovery {
     // The closest `pyproject.toml` with a `[tool.simplint]` table holds the settings and the project's metadata;
-    // without one, the defaults apply, rooted at the file's directory. Projects are cached by both the directory a
-    // lookup starts from and their root.
+    // without one, the defaults apply, rooted at the run's directory or the nearest ancestor of it holding the file,
+    // as Ruff roots a project without configuration at the working directory. Projects are cached by both the
+    // directory a lookup starts from and their root.
     fn settings(&self, path: &Path, overrides: &Overrides) -> Result<Arc<Settings>> {
-        let projects = match self {
+        let (run_root, projects) = match self {
             Self::Fixed(settings) => return Ok(Arc::clone(settings)),
-            Self::Hierarchical(projects) => projects,
+            Self::Hierarchical { run_root, projects } => (run_root, projects),
         };
         let absolute = std::path::absolute(path)?;
         let start = if absolute.is_dir() { absolute.as_path() } else { absolute.parent().unwrap_or(&absolute) };
@@ -357,7 +368,10 @@ impl Discovery {
             return Ok(Arc::clone(settings));
         }
         let pyproject = projects.find_pyproject(start)?;
-        let root = pyproject.as_deref().and_then(Path::parent).unwrap_or(start);
+        let root = match pyproject.as_deref().and_then(Path::parent) {
+            Some(root) => root,
+            None => run_root.ancestors().find(|dir| start.starts_with(dir)).unwrap_or(start),
+        };
         let settings = if let Some(settings) = projects.settings.get(root) {
             Arc::clone(settings)
         } else {
@@ -430,4 +444,34 @@ struct Pyproject {
 #[serde(default)]
 struct Tool {
     simplint: SimplintOptions,
+}
+
+#[cfg(test)]
+mod tests {
+    use ruff_options_metadata::{OptionEntry, OptionsMetadata};
+
+    use super::*;
+
+    // Each option's documented default parses to the value `Knobs::resolve` gives it with no option set.
+    #[test]
+    fn documented_defaults_are_the_resolved_ones() {
+        let knobs = Knobs::resolve(None, NamingOptions::default(), ImportsOptions::default(), LogicOptions::default());
+        let resolved = [
+            ("max-paragraph-words", serde_json::json!(knobs.max_paragraph_words)),
+            ("naming.keep-names", serde_json::json!(knobs.keep_names)),
+            ("naming.meaningless-names", serde_json::json!(knobs.meaningless_names)),
+            ("naming.catch-all-modules", serde_json::json!(knobs.catch_all_modules)),
+            ("imports.module-attributes", serde_json::json!(knobs.module_attributes)),
+            ("logic.max-helper-statements", serde_json::json!(knobs.max_helper_statements)),
+            ("logic.max-caller-statements", serde_json::json!(knobs.max_caller_statements)),
+            ("logic.max-tuple-elements", serde_json::json!(knobs.max_tuple_elements)),
+            ("logic.max-cognitive-complexity", serde_json::json!(knobs.max_cognitive_complexity)),
+            ("logic.min-duplicate-statements", serde_json::json!(knobs.min_duplicate_statements)),
+        ];
+        for (name, value) in resolved {
+            let field = SimplintOptions::metadata().find(name).and_then(OptionEntry::into_field);
+            let documented = field.expect("every knob is documented").default;
+            assert_eq!(serde_json::from_str::<serde_json::Value>(documented).expect("a JSON default"), value, "{name}");
+        }
+    }
 }

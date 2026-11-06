@@ -25,19 +25,12 @@ No fix is offered: the comment does not say which codes it should name.
 
 ### Active on
 
-- **`noqa` without codes**: a comment with no code after `noqa`, in one of these forms:
+- **`noqa` without codes**: a bare `# noqa`, with or without text after it:
 
-  - A bare `# noqa`:
-
-    ```python report
-    import os  # noqa
-    ```
-
-  - A colon with no code after it, such as `# noqa: because it is re-exported`:
-
-    ```python report
-    import sys  # noqa: because plugins import it
-    ```
+  ```python report
+  import os  # noqa
+  import sys  # noqa because plugins import it
+  ```
 
 - **File-level `noqa` without codes**: each of these forms hides every error in the file:
 
@@ -96,6 +89,20 @@ No fix is offered: the comment does not say which codes it should name.
 
   SEVENTH = 7  # ty:ignore[unresolved-import]
   EIGHTH = 8  # pyright: ignore[reportAttributeAccessIssue]
+  ```
+
+- **`noqa` comments Ruff rejects**: Ruff warns about a `noqa` whose colon names no code, or whose code runs into other
+  text, and applies none of it, so the comment hides nothing.
+
+  ```python ok
+  import sys  # noqa: because plugins import it
+  ```
+
+- **File-level directives out of place**: Ruff applies `# ruff: noqa` only on a line of its own and
+  `# ruff: file-ignore` only at module scope; anywhere else it warns and applies none of it.
+
+  ```python ok
+  import os  # ruff: noqa
   ```
 
 - **Directives that take no codes**: coverage.py's pragmas name no error, so they are not blanket suppressions.

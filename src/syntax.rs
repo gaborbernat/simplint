@@ -6,6 +6,7 @@ use ruff_python_ast::helpers::is_dunder;
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
+use ruff_python_parser::parse_expression;
 use ruff_text_size::{Ranged, TextRange};
 
 pub fn for_each_body<'a>(body: &'a [Stmt], visit: &mut impl FnMut(&'a [Stmt], Option<&'a Stmt>)) {
@@ -96,6 +97,16 @@ pub fn is_overload(decorators: &[ast::Decorator]) -> bool {
 // Whether `expr` is the plain name `name`.
 pub fn is_name(expr: &Expr, name: &str) -> bool {
     expr.as_name_expr().is_some_and(|found| found.id.as_str() == name)
+}
+
+// The object and the name argument of a call to one of `builtins` with two positional arguments, such as `getattr`,
+// which reads the attribute named by the second.
+pub fn attribute_call<'a>(expr: &'a Expr, builtins: &[&str]) -> Option<(&'a Expr, &'a Expr)> {
+    let ast::ExprCall { func, arguments, .. } = expr.as_call_expr()?;
+    let [object, attribute, ..] = &*arguments.args else {
+        return None;
+    };
+    builtins.contains(&func.as_name_expr()?.id.as_str()).then_some((object, attribute))
 }
 
 // The name an `import` alias binds: its `as` name, or the name it imports.
@@ -390,6 +401,18 @@ pub fn is_all_target(target: &Expr) -> bool {
     is_name(target, "__all__")
 }
 
+// The names an assignment target binds, through tuple and list unpacking and starred targets.
+pub fn target_names(target: &Expr) -> Vec<&str> {
+    match target {
+        Expr::Name(ast::ExprName { id, .. }) => vec![id.as_str()],
+        Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => {
+            elts.iter().flat_map(target_names).collect()
+        }
+        Expr::Starred(ast::ExprStarred { value, .. }) => target_names(value),
+        _ => Vec::new(),
+    }
+}
+
 // The text of every string and bytes literal of the module, and of each literal part of an f-string or t-string, with
 // its range.
 pub(crate) fn string_values(body: &[Stmt]) -> Vec<(TextRange, Cow<'_, str>)> {
@@ -414,5 +437,79 @@ impl<'a> Visitor<'a> for StringValues<'a> {
             self.0.push((literal.range, Cow::Borrowed(&literal.value)));
         }
         visitor::walk_interpolated_string_element(self, element);
+    }
+}
+
+// Ruff's own return visitor stopped reporting generators, so a function's `return` statements and whether it yields
+// are collected here, skipping nested scopes.
+#[derive(Default)]
+pub struct ReturnVisitor<'a> {
+    pub returns: Vec<&'a ast::StmtReturn>,
+    pub is_generator: bool,
+}
+
+impl<'a> Visitor<'a> for ReturnVisitor<'a> {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        match stmt {
+            Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {}
+            Stmt::Return(stmt) => self.returns.push(stmt),
+            _ => visitor::walk_stmt(self, stmt),
+        }
+    }
+
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        if let Expr::Yield(_) | Expr::YieldFrom(_) = expr {
+            self.is_generator = true;
+        } else {
+            visitor::walk_expr(self, expr);
+        }
+    }
+}
+
+pub fn is_main_guard(stmt: &Stmt) -> bool {
+    stmt.as_if_stmt().is_some_and(|stmt| is_main_test(&stmt.test))
+}
+
+// Whether a test is `__name__ == "__main__"`, either way round.
+pub fn is_main_test(test: &Expr) -> bool {
+    let Expr::Compare(ast::ExprCompare { ops, operands, .. }) = test else {
+        return false;
+    };
+    let is_main =
+        |expr: &Expr| expr.as_string_literal_expr().is_some_and(|literal| literal.value.to_str() == "__main__");
+    match (&**ops, &**operands) {
+        ([ast::CmpOp::Eq], [left, right]) => {
+            (is_name(left, "__name__") && is_main(right)) || (is_main(left) && is_name(right, "__name__"))
+        }
+        _ => false,
+    }
+}
+
+// The callables that build a mock, which the testing rules and the receiver tracking of the project share.
+pub(crate) const MOCK_CLASSES: &[&str] =
+    &["Mock", "MagicMock", "AsyncMock", "NonCallableMock", "NonCallableMagicMock", "PropertyMock", "create_autospec"];
+
+// The names an annotation or bound refers to, through subscripts, unions and string annotations.
+pub(crate) fn names_in(expr: &Expr) -> Vec<String> {
+    let mut names = Vec::new();
+    TypeNames { names: &mut names }.visit_expr(expr);
+    names
+}
+
+struct TypeNames<'n> {
+    names: &'n mut Vec<String>,
+}
+
+impl<'a> Visitor<'a> for TypeNames<'_> {
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        match expr {
+            Expr::Name(name) => self.names.push(name.id.to_string()),
+            Expr::StringLiteral(literal) => {
+                if let Ok(parsed) = parse_expression(literal.value.to_str()) {
+                    TypeNames { names: self.names }.visit_expr(parsed.expr());
+                }
+            }
+            _ => visitor::walk_expr(self, expr),
+        }
     }
 }

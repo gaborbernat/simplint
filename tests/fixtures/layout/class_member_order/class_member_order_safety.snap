@@ -1,0 +1,69 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+17:9 SMP203 `__str__` belongs with the dunder methods, above `_generate_next_value_`
+27:9 SMP203 `__repr__` belongs with the dunder methods, above `method` [unsafe fix: Move `__repr__` above `method`]
+35:9 SMP203 `__repr__` belongs with the dunder methods, above `method` [unsafe fix: Move `__repr__` above `method`]
+45:9 SMP203 `__repr__` belongs with the dunder methods, above `method` [fix: Move `__repr__` above `method`]
+58:9 SMP203 `__init__` belongs with the constructors, above `method`
+--- fixed (3 applied, 2 remaining) ---
+import itertools
+from enum import Enum, auto
+
+counter = itertools.count()
+
+
+class AutoName(Enum):
+    @staticmethod
+    def _generate_next_value_(name: str, start: int, count: int, last_values: list[str]) -> str:
+        return name
+
+    NORTH = auto()
+
+    def describe(self) -> str:
+        return self.value
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class Counted:
+    first = next(counter)
+
+    def __repr__(self) -> str:
+        return "Counted"
+
+    def method(self) -> int:
+        return 1
+
+
+class Defaulted:
+    def __repr__(self) -> str:
+        return "Defaulted"
+
+    def method(self, token: int = next(counter)) -> int:
+        return token
+
+
+class Plain:
+    LIMIT = 3
+
+    def __repr__(self) -> str:
+        return "Plain"
+
+    def method(self) -> int:
+        return 1
+
+
+class Deleted:
+    def method(self) -> int:
+        return 1
+
+    def _scratch(self) -> int:
+        return 2
+
+    del _scratch
+
+    def __init__(self) -> None:
+        self.value = 0

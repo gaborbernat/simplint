@@ -14,7 +14,7 @@ pub fn absolute_sibling_import(checker: &Checker) {
     };
     // Ruff's `namespace-packages` makes a directory without `__init__.py` a package, yet pytest imports a test module
     // there as a top-level module, where a relative import fails.
-    if !checker.path.with_file_name("__init__.py").is_file() {
+    if !checker.has_sibling_init() {
         return;
     }
     // A module that expects some other `__name__` than its dotted path runs outside its package: as a script under

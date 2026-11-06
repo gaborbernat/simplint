@@ -195,7 +195,7 @@ fn plain_examples(explanation: &str, examples: &[Example]) -> String {
 // opens with it, so only an example's own config is shown.
 struct Shown<'a> {
     fence: &'a Fence,
-    language: &'static str,
+    language: &'a str,
     label: Option<&'static str>,
     file: Option<&'a str>,
     hidden: bool,
@@ -212,7 +212,7 @@ fn shown_fences(example: &Example) -> impl Iterator<Item = Shown<'_>> {
     });
     let blocks = example.blocks.iter().map(move |block| Shown {
         fence: &block.fence,
-        language: "python",
+        language: block.language.as_str(),
         label: if in_example { None } else { example_label(block.role) },
         file: block.named.then_some(block.file.as_str()),
         hidden: in_example && block.role == Role::Context,

@@ -368,3 +368,14 @@ Checks the `:returns:` and `:yields:` fields of reStructuredText docstrings, whe
 **Unsafe fix:** each fix changes the docstring, and code may read it through `__doc__`.
 
 No fix is offered when escapes in the docstring make its text differ from the source.
+
+## Other tools
+
+- [pydoclint](https://github.com/jsh9/pydoclint) reports missing or extra return and yield sections as
+  [DOC201](https://jsh9.github.io/pydoclint/violation_codes.html),
+  [DOC202](https://jsh9.github.io/pydoclint/violation_codes.html),
+  [DOC402](https://jsh9.github.io/pydoclint/violation_codes.html) and
+  [DOC403](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.
+- [darglint](https://github.com/terrencepreilly/darglint) reports the same return sections as
+  [DAR201](https://github.com/terrencepreilly/darglint) and [DAR202](https://github.com/terrencepreilly/darglint), with
+  no fix.

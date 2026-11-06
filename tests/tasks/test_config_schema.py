@@ -60,3 +60,9 @@ def test_documented_example_is_valid(table: Table) -> None:
 def test_invalid_table_is_rejected(table: Table) -> None:
     with pytest.raises(jsonschema.ValidationError):
         _VALIDATOR.validate(table)
+
+
+def test_tox_pins_the_ecosystem_ruff_to_the_crates_version() -> None:
+    crates = tomllib.loads((_ROOT / "Cargo.toml").read_text(encoding="utf-8"))["dependencies"]["ruff"]
+    tox = tomllib.loads((_ROOT / "tox.toml").read_text(encoding="utf-8"))
+    assert tox["env"]["ecosystem"]["deps"] == [f"ruff=={crates.removeprefix('=')}"]

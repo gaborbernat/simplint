@@ -1,13 +1,18 @@
+use std::collections::BTreeSet;
+
 use ruff_diagnostics::{Edit, Fix};
+use ruff_python_ast::Expr;
 use ruff_python_trivia::leading_indentation;
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
+use crate::lint::noqa::is_noqa_for_only;
 use crate::lint::registry::Rule;
 use crate::rules::api::exploded;
-use crate::rules::{export_key, indentation, is_main_guard};
+use crate::rules::{export_key, indentation};
 use crate::semantic::BindingKind;
+use crate::syntax::is_main_guard;
 use crate::syntax::{Exports, Visibility, all_binding, all_literal};
 
 pub fn missing_from_all(checker: &Checker) {
@@ -42,7 +47,8 @@ pub fn missing_from_all(checker: &Checker) {
         return;
     }
     missing.sort_by_key(|(_, range, _)| range.start());
-    let fix = all_insertion(checker, missing.iter().map(|(name, _, _)| *name));
+    let fix = all_insertion(checker, missing.iter().map(|(name, _, _)| *name))
+        .and_then(|fix| with_unused_noqas_removed(checker, fix, &missing));
     let names: Vec<String> = missing.iter().map(|(name, _, _)| format!("`{name}`")).collect();
     let title = format!("Add {} to `__all__`", names.join(", "));
     for (name, range, imported) in missing {
@@ -58,78 +64,112 @@ pub fn missing_from_all(checker: &Checker) {
     }
 }
 
+// Listing a name silences Ruff's F401 for its import, so a `noqa` that named only F401 there is left unused, which Ruff
+// reports as RUF100. The fix drops those comments with the listing.
+fn with_unused_noqas_removed(checker: &Checker, fix: Fix, missing: &[(&str, TextRange, bool)]) -> Option<Fix> {
+    let applicability = fix.applicability();
+    // Names on one line share its comment, which is removed once: two deletions of it would overlap.
+    let comments: BTreeSet<(TextSize, TextSize)> = missing
+        .iter()
+        .filter_map(|(_, range, _)| checker.trailing_comment(*range))
+        .filter(|comment| is_noqa_for_only(checker.text(*comment), "F401"))
+        .map(|comment| (comment.start(), comment.end()))
+        .collect();
+    let unused = comments.into_iter().filter_map(|(start, end)| {
+        let comment = TextRange::new(start, end);
+        let before = checker.text(TextRange::new(checker.source.line_start(comment.start()), comment.start()));
+        let code_end = comment.start() - TextSize::try_from(before.len() - before.trim_end().len()).ok()?;
+        Some(Edit::range_deletion(TextRange::new(code_end, comment.end())))
+    });
+    let mut edits: Vec<Edit> = fix.into_edits().into_iter().chain(unused).collect();
+    edits.sort_by_key(Ranged::start);
+    let mut sorted = edits.into_iter();
+    let first = sorted.next()?;
+    Some(Fix::applicable_edits(first, sorted, applicability))
+}
+
 fn all_insertion<'a>(checker: &Checker, names: impl Iterator<Item = &'a str>) -> Option<Fix> {
-    let quote = checker.stylist.quote().as_char();
     let mut names: Vec<&str> = names.collect();
     names.sort_by_key(|name| export_key(name));
-    let quoted = |name: &str| format!("{quote}{name}{quote}");
-    let body = checker.body();
-    let source = checker.source;
-    let Some(stmt) = body.iter().rev().find(|stmt| all_binding(stmt).is_some()) else {
-        // An `import *` of this module takes every public name, which a new `__all__` would narrow to the listed ones.
-        if checker.project().is_star_imported() {
-            return None;
-        }
-        let items: Vec<String> = names.iter().map(|name| quoted(name)).collect();
-        let declaration = format!("__all__ = {}\n", exploded(checker, "", &items));
-        // A module without `__all__` exports every public name to `from module import *`; adding one narrows that.
-        // It goes last, but above a closing `if __name__ == "__main__":` block, as SMP406 asks.
-        let edit = if let Some(guard) = body.last().filter(|stmt| is_main_guard(stmt)) {
-            Edit::insertion(format!("{declaration}\n\n"), source.line_start(guard.start()))
-        } else {
-            let separator = if source.ends_with('\n') { "\n\n" } else { "\n\n\n" };
-            Edit::insertion(format!("{separator}{declaration}"), TextSize::try_from(source.len()).ok()?)
-        };
-        return Some(Fix::unsafe_edit(edit));
+    let Some(stmt) = checker.body().iter().rev().find(|stmt| all_binding(stmt).is_some()) else {
+        return new_all(checker, &names);
     };
     let (value, elts) = all_literal(stmt)?;
-    // Each name goes before the first listed name Ruff's RUF022 sorts after it, so a sorted `__all__` stays sorted.
-    let position = |name: &str| {
-        elts.iter()
-            .position(|elt| {
-                elt.as_string_literal_expr()
-                    .is_some_and(|literal| export_key(literal.value.to_str()) > export_key(name))
-            })
-            .unwrap_or(elts.len())
-    };
+    let source = checker.source;
     let one_per_line =
         elts.iter().all(|elt| source[TextRange::new(source.line_start(elt.start()), elt.start())].trim().is_empty());
     let has_comment = checker.has_comment_in(value);
     if source.contains_line_break(value) && !elts.is_empty() && (one_per_line || has_comment) {
-        let indent = if one_per_line {
-            indentation(source, &elts[0])
-        } else {
-            leading_indentation(source.full_line_str(elts[elts.len() - 1].start()))
-        };
-        // Without one name per line, a comment pins the layout, so the names go after the last one.
-        let position = |name: &str| if one_per_line { position(name) } else { elts.len() };
-        // Names sort in the same order as their positions, so the ones sharing a position form one insertion.
-        let mut groups: Vec<(usize, Vec<String>)> = Vec::new();
-        for name in &names {
-            let at = position(name);
-            match groups.last_mut() {
-                Some((last, group)) if *last == at => group.push(quoted(name)),
-                _ => groups.push((at, vec![quoted(name)])),
-            }
-        }
-        let mut edits = groups.into_iter().map(|(at, group)| match elts.get(at) {
-            Some(next) => Edit::insertion(
-                group.iter().fold(String::new(), |text, name| text + name + ",\n" + indent),
-                next.start(),
-            ),
-            None => Edit::insertion(
-                group.iter().fold(String::new(), |text, name| text + ",\n" + indent + name),
-                elts[elts.len() - 1].end(),
-            ),
-        });
-        let first = edits.next()?;
-        return Some(Fix::safe_edits(first, edits));
+        return lines_insertion(checker, (elts, one_per_line), &names);
     }
     let mut items: Vec<String> = elts.iter().map(|elt| checker.text(elt.range()).to_owned()).collect();
     for name in names.iter().rev() {
-        items.insert(position(name), quoted(name));
+        items.insert(position(elts, name), quoted(checker, name));
     }
     let (open, close) = if source[value].starts_with('[') { ("[", "]") } else { ("(", ")") };
     let list = exploded(checker, indentation(source, stmt), &items);
     Some(Fix::safe_edit(Edit::range_replacement(format!("{open}{}{close}", &list[1..list.len() - 1]), value)))
+}
+
+// The `__all__` a module without one gets, last but above a closing `if __name__ == "__main__":` block, as SMP406 asks.
+fn new_all(checker: &Checker, names: &[&str]) -> Option<Fix> {
+    let source = checker.source;
+    // An `import *` of this module takes every public name, which a new `__all__` would narrow to the listed ones.
+    if checker.project().is_star_imported() {
+        return None;
+    }
+    let items: Vec<String> = names.iter().map(|name| quoted(checker, name)).collect();
+    let declaration = format!("__all__ = {}\n", exploded(checker, "", &items));
+    // A module without `__all__` exports every public name to `from module import *`; adding one narrows that.
+    let edit = if let Some(guard) = checker.body().last().filter(|stmt| is_main_guard(stmt)) {
+        Edit::insertion(format!("{declaration}\n\n"), source.line_start(guard.start()))
+    } else {
+        let separator = if source.ends_with('\n') { "\n\n" } else { "\n\n\n" };
+        Edit::insertion(format!("{separator}{declaration}"), TextSize::try_from(source.len()).ok()?)
+    };
+    Some(Fix::unsafe_edit(edit))
+}
+
+// Names one to a line, or after the last one when a comment pins the layout, as the `__all__` already lays them out.
+fn lines_insertion(checker: &Checker, (elts, one_per_line): (&[Expr], bool), names: &[&str]) -> Option<Fix> {
+    let source = checker.source;
+    let indent = if one_per_line {
+        indentation(source, &elts[0])
+    } else {
+        leading_indentation(source.full_line_str(elts[elts.len() - 1].start()))
+    };
+    // Names sort in the same order as their positions, so the ones sharing a position form one insertion.
+    let mut groups: Vec<(usize, Vec<String>)> = Vec::new();
+    for name in names {
+        let at = if one_per_line { position(elts, name) } else { elts.len() };
+        match groups.last_mut() {
+            Some((last, group)) if *last == at => group.push(quoted(checker, name)),
+            _ => groups.push((at, vec![quoted(checker, name)])),
+        }
+    }
+    let mut edits = groups.into_iter().map(|(at, group)| match elts.get(at) {
+        Some(next) => {
+            Edit::insertion(group.iter().fold(String::new(), |text, name| text + name + ",\n" + indent), next.start())
+        }
+        None => Edit::insertion(
+            group.iter().fold(String::new(), |text, name| text + ",\n" + indent + name),
+            elts[elts.len() - 1].end(),
+        ),
+    });
+    let first = edits.next()?;
+    Some(Fix::safe_edits(first, edits))
+}
+
+fn quoted(checker: &Checker, name: &str) -> String {
+    let quote = checker.stylist.quote().as_char();
+    format!("{quote}{name}{quote}")
+}
+
+// Each name goes before the first listed name Ruff's RUF022 sorts after it, so a sorted `__all__` stays sorted.
+fn position(elts: &[Expr], name: &str) -> usize {
+    elts.iter()
+        .position(|elt| {
+            elt.as_string_literal_expr().is_some_and(|literal| export_key(literal.value.to_str()) > export_key(name))
+        })
+        .unwrap_or(elts.len())
 }

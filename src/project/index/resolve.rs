@@ -9,6 +9,7 @@ use ruff_db::files::{File, system_path_to_file};
 use ruff_db::system::{OsSystem, SystemPathBuf};
 use ruff_graph::{ModuleDb, ResolverEnvironment, resolve_search_paths};
 use ruff_python_ast::PythonVersion;
+use ruff_text_size::TextRange;
 use ty_module_resolver::{
     ImportingFile, ModuleName, SearchPaths, resolve_module, resolve_module_confident, resolve_real_module,
     resolve_real_module_confident,
@@ -16,7 +17,7 @@ use ty_module_resolver::{
 
 use crate::project::FileFacts;
 use crate::project::constructors::NameUse;
-use crate::project::facts::{ImportBinding, ModuleNames};
+use crate::project::facts::{ImportBinding, ImportSite, ModuleNames};
 
 use super::{FileId, FileIds, SearchRoots};
 
@@ -87,6 +88,8 @@ impl ImportResolver {
         }
         let groups: Vec<&[usize]> = directories.values().flat_map(|group| group.chunks(GROUP)).collect();
         let (python_version, paths, names) = (self.python_version, &self.paths, &self.names);
+        let run_paths: FxHashSet<PathBuf> = files.iter().map(|(path, _)| normalized(path)).collect();
+        let run = RunFiles { names, paths: &run_paths };
         // The database is not `Sync`, so each worker resolves with its own clone, which shares the cached results.
         let fresh: Vec<Vec<(FileId, ModuleFacts<PathBuf>)>> = groups
             .par_iter()
@@ -97,7 +100,8 @@ impl ImportResolver {
                     .iter()
                     .map(|&index| {
                         let (path, facts) = files[index];
-                        (ids[index], ModuleFacts::resolve(db, environment, path, facts, names, &cache))
+                        let facts = ModuleFacts::resolve(db, environment, python_version, path, facts, run, &cache);
+                        (ids[index], facts)
                     })
                     .collect()
             })
@@ -128,6 +132,13 @@ pub(super) type ClassKey = (FileId, String);
 // A base class as the file it resolves to, if any, with the module and name the class imports it by.
 pub(super) type ClassBase<F = FileId> = (Option<F>, String, String);
 
+// The files of the run, by the names they are called by and by their paths, which resolution checks a module against.
+#[derive(Clone, Copy)]
+pub(super) struct RunFiles<'a> {
+    names: &'a FxHashSet<String>,
+    paths: &'a FxHashSet<PathBuf>,
+}
+
 // The files a file's names resolve to, with the names it uses from each, and the files it star-imports, or the last
 // name of each star-imported module that resolves to no file. It owns its names, as it outlives the facts of a round.
 // `F` is the path of a file, as resolution yields it, or its id once the id table knows it.
@@ -139,10 +150,17 @@ pub(super) struct ModuleFacts<F> {
     pub(super) stars: Vec<F>,
     pub(super) unresolved_stars: Vec<String>,
     pub(super) unreached: Vec<(PathBuf, String, Vec<String>)>,
+    // The names the file imports or reads from modules that resolve to no file of the run, which may be definitions of
+    // the run under a name simplint cannot resolve, as CPython's frozen `_frozen_importlib_external` is.
+    pub(super) unresolved_names: Vec<String>,
     // The name each module binds, the absolute dotted module it stands for, and the file that module resolves to.
     pub(super) modules: Vec<(String, String, F)>,
     pub(super) caught: Vec<(F, String)>,
     pub(super) classes: Vec<(String, Vec<ClassBase<F>>)>,
+    // The files the import statements that run when the module loads import, and the range of each statement.
+    pub(super) runtime: Vec<(F, TextRange)>,
+    // The files each `import *` statement of the module imports, and the range of each statement.
+    pub(super) star_sites: Vec<(F, TextRange)>,
 }
 
 impl<F> ModuleFacts<F> {
@@ -156,6 +174,7 @@ impl<F> ModuleFacts<F> {
             stars: self.stars.into_iter().map(&mut to).collect(),
             unresolved_stars: self.unresolved_stars,
             unreached: self.unreached,
+            unresolved_names: self.unresolved_names,
             modules: self.modules.into_iter().map(|(bound, module, file)| (bound, module, to(file))).collect(),
             caught: self.caught.into_iter().map(|(file, name)| (to(file), name)).collect(),
             classes: self
@@ -166,6 +185,8 @@ impl<F> ModuleFacts<F> {
                     (name, bases.collect())
                 })
                 .collect(),
+            runtime: self.runtime.into_iter().map(|(file, range)| (to(file), range)).collect(),
+            star_sites: self.star_sites.into_iter().map(|(file, range)| (to(file), range)).collect(),
         }
     }
 }
@@ -174,9 +195,10 @@ impl ModuleFacts<PathBuf> {
     fn resolve<'f>(
         db: &ModuleDb,
         environment: ResolverEnvironment<'_>,
+        python_version: PythonVersion,
         path: &Path,
         facts: &'f FileFacts,
-        names: &FxHashSet<String>,
+        run: RunFiles,
         cache: &RefCell<FxHashMap<&'f str, Option<PathBuf>>>,
     ) -> Self {
         let own = normalized(path);
@@ -195,7 +217,7 @@ impl ModuleFacts<PathBuf> {
         // asked. A star import is the exception: it needs to tell an unresolved module from one outside the run.
         let resolved = |module: &'f str| -> Option<PathBuf> {
             let top = module.split_once('.').map_or(module, |(top, _)| top);
-            if !names.contains(top) {
+            if !run.names.contains(top) {
                 return None;
             }
             resolve_cached(module)
@@ -209,18 +231,14 @@ impl ModuleFacts<PathBuf> {
         };
         let mut imports = resolve_all(&facts.imports);
         let references = resolve_all(&facts.references);
-        let unreached = facts
+        let unresolved_names = facts
             .imports
             .iter()
             .chain(&facts.references)
-            .filter_map(|(module, names)| {
-                let (top, rest) = module.split_once('.')?;
-                let package = resolved(top)?;
-                let directory = package.parent().filter(|_| package.ends_with("__init__.py"))?.to_path_buf();
-                let last = rest.rsplit('.').next()?;
-                resolved(module).is_none().then(|| (directory, last.to_owned(), names.clone()))
-            })
+            .filter(|(module, _)| resolved(module).is_none())
+            .flat_map(|(_, names)| names.iter().cloned())
             .collect();
+        let unreached = unreached_names(facts, &resolved, run);
         if !facts.declared.is_empty() {
             imports.push((own.with_extension("py"), facts.declared.clone()));
         }
@@ -252,6 +270,13 @@ impl ModuleFacts<PathBuf> {
             .filter(|(_, _, file)| *file != own)
             .collect();
         let caught = facts.caught.iter().filter_map(|(module, name)| Some((resolved(module)?, name.clone()))).collect();
+        let runtime = runtime_targets(&facts.runtime_imports, python_version, &resolved, &own);
+        let star_sites = facts
+            .star_sites
+            .iter()
+            .filter_map(|site| Some((resolved(&site.module)?, site.range())))
+            .filter(|(file, _)| *file != own)
+            .collect();
         let classes = facts
             .classes
             .iter()
@@ -268,9 +293,12 @@ impl ModuleFacts<PathBuf> {
             stars,
             unresolved_stars,
             unreached,
+            unresolved_names,
             modules,
             caught,
             classes,
+            runtime,
+            star_sites,
         }
     }
 }
@@ -292,4 +320,62 @@ pub(super) fn resolve<'db>(
     }?;
     let path = module.file(db)?.path(db).as_system_path()?.as_std_path().to_path_buf();
     Some(normalized(&path.with_extension("py")))
+}
+
+// The names a module reaches through a package of the run whose submodule no file of the run is.
+fn unreached_names<'f>(
+    facts: &'f FileFacts,
+    resolved: &impl Fn(&'f str) -> Option<PathBuf>,
+    run: RunFiles,
+) -> Vec<(PathBuf, String, Vec<String>)> {
+    facts
+        .imports
+        .iter()
+        .chain(&facts.references)
+        .filter_map(|(module, names)| {
+            // A module named like a file of the run that resolves outside the run, such as the standard library's
+            // `typing_extensions` for a `typing_extensions.py` of the run, may be that file, imported from anywhere.
+            let Some((top, rest)) = module.split_once('.') else {
+                let shadows = run.names.contains(module.as_str())
+                    && !resolved(module).is_some_and(|file| run.paths.contains(&file));
+                return shadows.then(|| (PathBuf::new(), module.clone(), names.clone()));
+            };
+            let package = resolved(top)?;
+            let directory = package.parent().filter(|_| package.ends_with("__init__.py"))?.to_path_buf();
+            let last = rest.rsplit('.').next()?;
+            resolved(module).is_none().then(|| (directory, last.to_owned(), names.clone()))
+        })
+        .collect()
+}
+
+// The files each runtime import statement runs, with the statement's range. A `from` import reads each name as a
+// submodule when one exists, and from the module otherwise, as Python does. An import a version check keeps to Pythons
+// older than the project's target never runs.
+fn runtime_targets<'f>(
+    sites: &'f [ImportSite],
+    python_version: PythonVersion,
+    resolved: &impl Fn(&'f str) -> Option<PathBuf>,
+    own: &Path,
+) -> Vec<(PathBuf, TextRange)> {
+    let version = (python_version.major, python_version.minor);
+    let mut runtime = Vec::new();
+    for site in sites.iter().filter(|site| site.below.is_none_or(|below| version < below)) {
+        let mut targets = Vec::new();
+        if site.submodules.is_empty() {
+            targets.extend(resolved(&site.module));
+        } else {
+            let mut reads_module = false;
+            for submodule in &site.submodules {
+                match resolved(submodule) {
+                    Some(file) => targets.push(file),
+                    None => reads_module = true,
+                }
+            }
+            if reads_module {
+                targets.extend(resolved(&site.module));
+            }
+        }
+        runtime.extend(targets.into_iter().filter(|file| file != own).map(|file| (file, site.range())));
+    }
+    runtime
 }

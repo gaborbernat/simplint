@@ -5,7 +5,7 @@ use crate::syntax::Visibility;
 use rustc_hash::FxHashSet;
 
 pub fn rst_missing_attribute(checker: &Checker) {
-    for target in checker.state().rst_targets(checker).iter().filter(|target| target.public) {
+    for target in checker.state().rst_targets(checker).iter().filter(|target| target.public(checker)) {
         let Owner::Class(_) = target.owner else {
             continue;
         };

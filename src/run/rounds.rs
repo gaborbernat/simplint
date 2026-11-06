@@ -17,8 +17,9 @@ use super::conflicts::{self, Scope};
 use super::discover::{Discovered, discover, linted_roots};
 use super::{Diagnostics, Mode, Resolved, StdinLint, lint_path, lint_stdin, write_source};
 use crate::lint::Linter;
+use crate::lint::registry::{Rule, RuleSet};
 use crate::project::cache::{Cache, Caches, FileKey, Fingerprints};
-use crate::project::{FileFacts, ImportResolver, IndexInputs, Project, SearchRoots};
+use crate::project::{DocReferences, FileFacts, ImportResolver, IndexInputs, Parts, Project, SearchRoots};
 use crate::rules::classes::dataclass_kw_only::suppresses_rewrite;
 use crate::settings::{FileSettings, ModuleRole, Settings};
 
@@ -88,7 +89,10 @@ pub(crate) fn check_stdin(path: &Path, source: &str, resolved: &Resolved, mode: 
     let roots = SearchRoots::new(ruff, package);
     let files = [RunFile::new(&absolute, &settings, ruff, resolved.pyproject_config.path.as_deref(), package, &roots)];
     ensure_compatible(&files, resolved)?;
-    let mut passes = index_and_lint(&files, 1, &roots, FxHashMap::default(), &FxHashMap::default(), None, |file| {
+    let rules = rules_of(&files);
+    let linted = (1, rules, wanted_parts(rules));
+    let read = (FxHashMap::default(), documentation(&files, rules, None));
+    let mut passes = index_and_lint(&files, linted, &roots, read, &FxHashMap::default(), None, |file| {
         lint_stdin(path, source, &file.linter, mode)
     })?;
     Ok(passes.pop().and_then(|mut file| file.pop()).expect("the standard input is linted once"))
@@ -126,6 +130,28 @@ fn for_each_file<T: Send>(
         })
         .collect();
     ensure_compatible(&indexed[..python.len()], resolved)?;
+    let rules = rules_of(&indexed[..python.len()]);
+    let parts = wanted_parts(rules);
+    // The documentation walk reads files of its own, so it runs while the caches open and the facts are collected,
+    // which on a warm run is most of what comes before the index.
+    std::thread::scope(|scope| {
+        let docs = scope.spawn(|| documentation(&indexed[..python.len()], rules, cache_dir));
+        let joined = || docs.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic));
+        index_cached(&indexed, (python.len(), rules, parts), (&roots, &packages), cache_dir, joined, rewrote, work)
+    })
+}
+
+// The caches of the run opened, its files' facts read from them or collected, then the files indexed and linted.
+// `docs` gives what the documentation names once the walk that runs alongside is done.
+fn index_cached<'f, T: Send>(
+    indexed: &'f [RunFile<'f>],
+    linted: (usize, RuleSet, Parts),
+    (roots, packages): (&SearchRoots, &FxHashMap<&'f Path, Option<PackageRoot<'f>>>),
+    cache_dir: Option<&Path>,
+    docs: impl FnOnce() -> DocReferences,
+    rewrote: Option<&(dyn Fn(&T) -> bool + Sync)>,
+    work: impl Fn(&DiscoveredFile) -> T + Sync,
+) -> Result<Option<Vec<Vec<T>>>> {
     let caches = cache_dir.map(|cache_dir| {
         Caches::open(cache_dir, packages.iter().map(|(parent, package)| package.map_or(*parent, PackageRoot::path)))
     });
@@ -139,11 +165,12 @@ fn for_each_file<T: Send>(
             })
             .collect()
     });
+    let parts = linted.2;
     let facts: FxHashMap<&Path, Cow<FileFacts>> = indexed
         .par_iter()
-        .filter_map(|file| Some((file.path, file_facts(file, file_caches.get(file.path).copied())?)))
+        .filter_map(|file| Some((file.path, file_facts(file, file_caches.get(file.path).copied(), parts)?)))
         .collect();
-    let passes = index_and_lint(&indexed, python.len(), &roots, facts, &file_caches, rewrote, work)?;
+    let passes = index_and_lint(indexed, linted, roots, (facts, docs()), &file_caches, rewrote, work)?;
     if let Some(caches) = caches {
         caches.persist()?;
     }
@@ -162,6 +189,7 @@ struct RunFile<'a> {
     package: Option<PackageRoot<'a>>,
     module_path: Option<Vec<String>>,
     importable: Option<Vec<String>>,
+    sibling_init: bool,
 }
 
 impl<'a> RunFile<'a> {
@@ -176,7 +204,10 @@ impl<'a> RunFile<'a> {
         let module_path = package.and_then(|package| to_module_path(package.path(), path));
         let importable = if module_path.is_none() { roots.module_path(path) } else { None };
         let settings = FileSettings::new(settings, ruff, path);
-        Self { path, settings, ruff, ruff_config, package, module_path, importable }
+        // A namespace package has no `__init__.py`, which a fingerprint and a rule read only when a rule asks.
+        let sibling_init =
+            settings.rules.overlaps(RuleSet::sibling_init()) && path.with_file_name("__init__.py").is_file();
+        Self { path, settings, ruff, ruff_config, package, module_path, importable, sibling_init }
     }
 }
 
@@ -188,12 +219,13 @@ struct DiscoveredFile<'a> {
 }
 
 // The import index of the run's `files`, built from the facts of each one that has them, and then their first
-// `linted` files linted, each with its passes.
+// `linted` files linted, each with its passes. `enabled` is the union of the linted files' rules, and `parts` the
+// facts they read; `docs` is what the documentation of the linted files' projects names.
 fn index_and_lint<'f, T: Send>(
     files: &'f [RunFile<'f>],
-    linted: usize,
+    (linted, enabled, parts): (usize, RuleSet, Parts),
     roots: &SearchRoots,
-    mut facts: FxHashMap<&'f Path, Cow<'f, FileFacts>>,
+    (mut facts, docs): (FxHashMap<&'f Path, Cow<'f, FileFacts>>, DocReferences),
     file_caches: &FxHashMap<&Path, (&'f Cache, FileKey)>,
     rewrote: Option<&(dyn Fn(&T) -> bool + Sync)>,
     work: impl Fn(&DiscoveredFile) -> T + Sync,
@@ -218,15 +250,49 @@ fn index_and_lint<'f, T: Send>(
         rewrites_calls: &rewrites_calls,
         roles: &roles,
         test_modules: &test_modules,
+        docs: &docs,
+        duplicate_statements: duplicate_window(linted_files, enabled),
     };
     let mut imports = ImportResolver::new(roots)?;
     let project = index_project(&facts, &mut imports, &inputs);
     debug!("Indexed {} files in: {:?}", facts.len(), start.elapsed());
     let start = Instant::now();
-    let index = Index { facts: &mut facts, resolver: &mut imports, inputs: &inputs };
+    let index = Index { facts: &mut facts, resolver: &mut imports, inputs: &inputs, parts };
     let passes = lint_rounds(linted_files, index, project, file_caches, rewrote, work);
     debug!("Checked {:?} files in: {:?}", passes.len(), start.elapsed());
     Ok(passes)
+}
+
+// The rules the run's files turn on, one union for every per-run check.
+fn rules_of(files: &[RunFile]) -> RuleSet {
+    files.iter().fold(RuleSet::default(), |rules, file| rules.union(file.settings.rules))
+}
+
+// The facts the run's rules read, which only those rules' runs need collected.
+fn wanted_parts(rules: RuleSet) -> Parts {
+    rules.iter().fold(Parts::default(), |parts, rule| parts.with(rule.fact_parts()))
+}
+
+// The fewest statements a duplicate block spans: each file reports the blocks its own setting allows, so the index finds
+// the shortest any file asks for. `None` when no file checks for duplicate code, whose statements the facts then lack.
+fn duplicate_window(files: &[RunFile], rules: RuleSet) -> Option<usize> {
+    if !rules.contains(Rule::DuplicateCode) {
+        return None;
+    }
+    files.iter().map(|file| file.settings.project.knobs.min_duplicate_statements).min()
+}
+
+// What the documentation of each project with a `pyproject.toml` names, read only when a rule that asks is on.
+fn documentation(files: &[RunFile], rules: RuleSet, cache_dir: Option<&Path>) -> DocReferences {
+    if !rules.overlaps(RuleSet::documentation()) {
+        return DocReferences::default();
+    }
+    let roots = files
+        .iter()
+        .filter(|file| file.settings.project.path.is_some())
+        .map(|file| (file.settings.project.root.as_path(), file.ruff))
+        .unique_by(|(root, _)| *root);
+    DocReferences::collect(roots, cache_dir)
 }
 
 fn ensure_compatible(files: &[RunFile], resolved: &Resolved) -> Result<()> {
@@ -249,6 +315,7 @@ struct Index<'i, 'f> {
     facts: &'i mut FxHashMap<&'f Path, Cow<'f, FileFacts>>,
     resolver: &'i mut ImportResolver,
     inputs: &'i IndexInputs<'i>,
+    parts: Parts,
 }
 
 // Each file's passes, in order. A fix in one file can change what another learns from the index, as folding
@@ -284,6 +351,7 @@ fn lint_rounds<'f, T: Send>(
     let mut rewritten: Vec<usize> = (0..passes.len()).filter(|&at| passes[at].iter().any(rewrote)).collect();
     // Each file's words, read when a round first needs them and again once a round rewrites the file.
     let mut words: Vec<Option<FxHashSet<String>>> = vec![None; files.len()];
+    let parts = index.parts;
     for _ in 1..ROUNDS {
         if rewritten.is_empty() {
             break;
@@ -292,7 +360,7 @@ fn lint_rounds<'f, T: Send>(
             words[at] = None;
         }
         let changed: Vec<&RunFile> = rewritten.iter().map(|&at| &files[at]).collect();
-        let collect = |file: &RunFile| file_facts(file, recache(file.path));
+        let collect = |file: &RunFile| file_facts(file, recache(file.path), parts);
         let (next, dependents) = reindex(&mut index, &changed, collect, files, &mut words, &project);
         project = next;
         let relinted: Vec<(usize, T)> =
@@ -323,13 +391,19 @@ fn module_roles<'p>(files: &[RunFile<'p>], roots: &SearchRoots) -> FxHashMap<&'p
 }
 
 // A file's import facts: those its cache holds while the file is unchanged, and otherwise freshly collected and stored
-// there.
-fn file_facts<'c>(file: &RunFile, cache: Option<(&'c Cache, FileKey)>) -> Option<Cow<'c, FileFacts>> {
-    if let Some(facts) = cache.and_then(|(cache, key)| cache.facts(file.path, key)) {
+// there. Cached facts without a part the run's rules read are collected again.
+fn file_facts<'c>(file: &RunFile, cache: Option<(&'c Cache, FileKey)>, parts: Parts) -> Option<Cow<'c, FileFacts>> {
+    let cached = cache.and_then(|(cache, key)| cache.facts(file.path, key));
+    if let Some(facts) = cached.filter(|facts| facts.covers(parts)) {
         return Some(Cow::Borrowed(facts));
     }
-    let facts =
-        FileFacts::collect(file.path, file.module_path.as_deref(), file.importable.as_deref(), &suppresses_rewrite)?;
+    let facts = FileFacts::collect(
+        file.path,
+        file.module_path.as_deref(),
+        file.importable.as_deref(),
+        &suppresses_rewrite,
+        parts,
+    )?;
     if let Some((cache, key)) = cache {
         cache.set_facts(file.path, key, facts.clone());
     }
@@ -391,5 +465,12 @@ fn words_of(path: &Path) -> FxHashSet<String> {
 
 // A file's linter, from simplint's settings and Ruff's for it and the package it sits in.
 fn file_linter<'a>(file: &RunFile<'a>, project: &'a Project) -> Linter<'a> {
-    Linter::new(file.ruff, file.settings, project.file(file.path), file.package, file.module_path.clone())
+    Linter::new(
+        file.ruff,
+        file.settings,
+        project.file(file.path),
+        file.package,
+        file.module_path.clone(),
+        file.sibling_init,
+    )
 }

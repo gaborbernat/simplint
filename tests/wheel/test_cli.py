@@ -18,7 +18,7 @@ def simplint() -> str:
 def test_check_reports_and_fails(simplint: str, tmp_path: Path) -> None:
     (tmp_path / "module.py").write_text("x = 1\n")
 
-    result = subprocess.run(
+    completed = subprocess.run(
         [simplint, "check", "--isolated", "--select", "SMP101", "--output-format", "concise", "module.py"],
         cwd=tmp_path,
         capture_output=True,
@@ -26,7 +26,7 @@ def test_check_reports_and_fails(simplint: str, tmp_path: Path) -> None:
         check=False,
     )
 
-    assert (result.returncode, result.stdout.splitlines()) == (
+    assert (completed.returncode, completed.stdout.splitlines()) == (
         1,
         [
             "module.py:1:1: SMP101 Single-letter name `x`; only comprehensions may use one",
@@ -47,6 +47,6 @@ def test_check_fix_rewrites_the_file(simplint: str, tmp_path: Path) -> None:
 
 
 def test_rule_prints_its_documentation(simplint: str) -> None:
-    result = subprocess.run([simplint, "rule", "SMP703"], capture_output=True, text=True, check=True)
+    completed = subprocess.run([simplint, "rule", "SMP703"], capture_output=True, text=True, check=True)
 
-    assert result.stdout.splitlines()[0] == "# dataclass-kw-only (SMP703)"
+    assert completed.stdout.splitlines()[0] == "# dataclass-kw-only (SMP703)"

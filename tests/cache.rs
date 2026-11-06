@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use test_case::test_case;
 
-use common::{check, project, quoted, read, simplint_with};
+use common::{check, fix_unsafe, project, quoted, read, simplint_with};
 
 #[test]
 fn cache_is_kept_in_ruffs_cache_directory() {
@@ -145,23 +145,148 @@ fn cached_clean_file_is_checked_again_under_other_settings() {
     assert_eq!((first, check(root.path(), &["--select", "SMP101"]).0), (0, 1));
 }
 
-#[test]
-fn cached_clean_file_is_checked_again_once_keep_names_change() {
-    let root = project(&[
-        ("pyproject.toml", "[tool.simplint.naming]\nkeep-names = [\"limit\"]\n"),
-        ("module.py", "limit = 3\n"),
-    ]);
-    let first = check(root.path(), &["--select", "SMP102"]).0;
-    fs::write(root.path().join("pyproject.toml"), "[tool.simplint]\n").expect("write");
-    assert_eq!((first, check(root.path(), &["--select", "SMP102"]).0), (0, 1));
+// A function whose statements another file repeats, so `duplicate-code` reports both.
+const REPEATED: &str = "def run(items):\n    total = 0\n    for item in items:\n        total += item\n    count = len(items)\n    \
+                        log(total)\n    log(count)\n    return total\n";
+
+// Each case checks the file once, edits the file named, and checks again: the cache must check it again, so the second
+// run reports what the first could not.
+#[test_case(
+    &[("pyproject.toml", "[tool.simplint.naming]\nkeep-names = [\"limit\"]\n"), ("module.py", "limit = 3\n")],
+    "SMP102", "pyproject.toml", "[tool.simplint]\n" ; "keep_names_setting_removed"
+)]
+#[test_case(
+    &[("pkg/a.py", "from pkg.b import VALUE\n\nprint(VALUE)\n"), ("pkg/b.py", "VALUE = 1\n")],
+    "SMP302", "pkg/__init__.py", "" ; "directory_becomes_a_package"
+)]
+// With the directory a namespace package, a file's package root stays the same when `__init__.py` appears beside it, so
+// the cache must still notice: `absolute-sibling-import` reads that file.
+#[test_case(
+    &[
+        ("pyproject.toml", "[tool.ruff]\nnamespace-packages = [\"pkg\"]\n"),
+        ("pkg/a.py", "from pkg.b import VALUE\n\nprint(VALUE)\n"),
+        ("pkg/b.py", "VALUE = 1\n"),
+    ],
+    "SMP302", "pkg/__init__.py", "" ; "namespace_package_gains_an_init_module"
+)]
+#[test_case(
+    &[("cycle_a.py", "import cycle_b\n"), ("cycle_b.py", "import cycle_c\n"), ("cycle_c.py", "VALUE = 1\n")],
+    "SMP308", "cycle_c.py", "import cycle_a\n" ; "import_closes_a_cycle_elsewhere"
+)]
+#[test_case(
+    &[("first.py", REPEATED), ("second.py", "def run(items):\n    return items\n")],
+    "SMP530", "second.py", REPEATED ; "another_file_repeats_its_statements"
+)]
+fn cached_clean_file_is_checked_again_after_an_edit(files: &[(&str, &str)], select: &str, edited: &str, content: &str) {
+    let root = project(files);
+    let first = check(root.path(), &["--select", select]).0;
+    fs::write(root.path().join(edited), content).expect("write");
+    assert_eq!((first, check(root.path(), &["--select", select]).0), (0, 1));
+}
+
+// Only a rule that reads other files of the run keys a file's result by the whole run, so an edit to another file keeps
+// the result of a file checked by per-file rules alone, and invalidates one checked by a cross-file rule.
+#[test_case("SMP101", 0 ; "per_file_rule_keeps_the_cached_result")]
+#[test_case("SMP401", 1 ; "cross_file_rule_checks_the_file_again")]
+fn other_file_edit_invalidates_only_cross_file_selections(select: &str, expected: i32) {
+    let root = project(&[("module.py", "VALUE = 1\n"), ("other.py", "OTHER = 1\n")]);
+    let path = root.path().join("module.py");
+    let modified = fs::metadata(&path).expect("metadata").modified().expect("modified time");
+    assert_eq!(check(root.path(), &["--select", select]).0, 0);
+    fs::write(root.path().join("other.py"), "from module import VALUE\n").expect("write");
+    fs::write(&path, "VALUE = 1\nx = 1\n").expect("write");
+    fs::File::options().write(true).open(&path).expect("open").set_modified(modified).expect("set modified time");
+    assert_eq!(check(root.path(), &["--select", select]).0, expected);
 }
 
 #[test]
-fn cached_clean_file_is_checked_again_once_its_directory_becomes_a_package() {
-    let root = project(&[("pkg/a.py", "from pkg.b import VALUE\n\nprint(VALUE)\n"), ("pkg/b.py", "VALUE = 1\n")]);
-    let first = check(root.path(), &["--select", "SMP302"]).0;
-    fs::write(root.path().join("pkg/__init__.py"), "").expect("write");
-    assert_eq!((first, check(root.path(), &["--select", "SMP302"]).0), (0, 1));
+fn cached_star_import_report_is_reused() {
+    let root = project(&[("module.py", "from other import *\n\nprint(VALUE)\n"), ("other.py", "VALUE = 1\n")]);
+    let first = check(root.path(), &["--select", "SMP309"]).0;
+    assert_eq!((first, check(root.path(), &["--select", "SMP309"]).0), (1, 1));
+}
+
+// A run without `duplicate-code` caches the facts without the statements it compares, so a later run that selects it
+// collects them again.
+#[test]
+fn facts_cached_without_duplicate_code_are_collected_again_for_it() {
+    let root = project(&[("first.py", REPEATED), ("second.py", REPEATED)]);
+    let first = check(root.path(), &["--select", "SMP101"]).0;
+    assert_eq!((first, check(root.path(), &["--select", "SMP530"]).0), (0, 1));
+}
+
+// The fixture requests are a part of the facts only `unused-fixture` reads, so a run without it caches facts that lack
+// them, and a later run that selects it collects them again rather than report a requested fixture.
+#[test]
+fn facts_cached_without_fixture_requests_are_collected_again_for_unused_fixture() {
+    let root = project(&[
+        ("conftest.py", "import pytest\n\n\n@pytest.fixture\ndef database():\n    return 1\n"),
+        ("test_app.py", "def test_app(database):\n    assert database\n"),
+    ]);
+    let first = check(root.path(), &["--select", "SMP101"]).0;
+    let cached = check(root.path(), &["--select", "SMP815"]).0;
+    assert_eq!((first, cached, check(root.path(), &["--select", "SMP815", "--no-cache"]).0), (0, 0, 0));
+}
+
+// A project whose `helper` only its documentation names, which `unused-definition` reads.
+fn documented_project(pages: &[(&'static str, &'static str)]) -> tempfile::TempDir {
+    let mut files = vec![
+        ("pyproject.toml", "[project]\nname = \"app\"\n"),
+        ("app/__init__.py", ""),
+        ("app/core.py", "def helper() -> None:\n    pass\n"),
+    ];
+    files.extend_from_slice(pages);
+    project(&files)
+}
+
+// Like the files' facts, the documentation is read once and kept while its pages keep their modification times and
+// sizes: an edit that keeps both goes unseen, which shows the run did not read the page again.
+#[test]
+fn documentation_is_reused_while_its_pages_are_unchanged() {
+    let root = documented_project(&[("docs/api.rst", ":func:`app.core.helper`\n")]);
+    let page = root.path().join("docs/api.rst");
+    let modified = fs::metadata(&page).expect("metadata").modified().expect("modified time");
+    let first = check(root.path(), &["--select", "SMP409"]).0;
+    fs::write(&page, ":func:`app.core.helpex`\n").expect("write");
+    fs::File::options().write(true).open(&page).expect("open").set_modified(modified).expect("set modified time");
+    let cached = check(root.path(), &["--select", "SMP409"]).0;
+    assert_eq!((first, cached, check(root.path(), &["--select", "SMP409", "--no-cache"]).0), (0, 0, 1));
+}
+
+#[test_case(&[("docs/api.rst", ":func:`app.core.helper`\n")], Some(":func:`app.core.other`\n"), (0, 1) ; "edited")]
+#[test_case(&[("docs/api.rst", ":func:`app.core.helper`\n")], None, (0, 1) ; "removed")]
+#[test_case(&[("docs/other.rst", "Nothing here.\n")], Some(":func:`app.core.helper`\n"), (1, 0) ; "added")]
+fn documentation_is_read_again_once_a_page_changes(
+    pages: &[(&'static str, &'static str)],
+    api: Option<&str>,
+    expected: (i32, i32),
+) {
+    let root = documented_project(pages);
+    let first = check(root.path(), &["--select", "SMP409"]).0;
+    let page = root.path().join("docs/api.rst");
+    match api {
+        Some(text) => fs::write(&page, text).expect("write"),
+        None => fs::remove_file(&page).expect("remove"),
+    }
+    assert_eq!((first, check(root.path(), &["--select", "SMP409"]).0), expected);
+}
+
+// An ignore file that comes to hide the documentation changes what the walk reads, though no page changed.
+#[test]
+fn documentation_is_read_again_once_an_ignore_file_hides_it() {
+    let root =
+        documented_project(&[(".git/HEAD", "ref: refs/heads/main\n"), ("docs/api.rst", ":func:`app.core.helper`\n")]);
+    let first = check(root.path(), &["--select", "SMP409"]).0;
+    fs::write(root.path().join(".gitignore"), "docs/\n").expect("write");
+    assert_eq!((first, check(root.path(), &["--select", "SMP409"]).0), (0, 1));
+}
+
+// Keeping the documentation is best effort, so a cache it cannot write is reported and the run goes on.
+#[test]
+fn documentation_cache_that_cannot_be_written_is_reported() {
+    let root = documented_project(&[("docs/api.rst", ":func:`app.core.helper`\n"), ("blocked", "")]);
+    let (_, _, stderr) = check(root.path(), &["--select", "SMP409", "--cache-dir", "blocked"]);
+    assert!(stderr.contains("Failed to write the documentation cache"), "{stderr}");
 }
 
 #[test]
@@ -228,10 +353,10 @@ fn settled_file_reuses_the_withdrawn_fixes() {
     let root = project(&[RUFF_PLR2004, ("module.py", COMPARED)]);
     let path = root.path().join("module.py");
     let modified = fs::metadata(&path).expect("metadata").modified().expect("modified time");
-    check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP202"]);
+    fix_unsafe(root.path(), "SMP202");
     fs::write(&path, ADDED).expect("write");
     fs::File::options().write(true).open(&path).expect("open").set_modified(modified).expect("set modified time");
-    let cached = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP202"]).0;
+    let cached = fix_unsafe(root.path(), "SMP202").0;
     let unchanged = read(root.path(), "module.py");
     let fresh = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP202", "--no-cache"]).0;
     assert_eq!((cached, unchanged, fresh), (1, ADDED.to_owned(), 0));
@@ -255,9 +380,9 @@ fn settled_file_is_fixed_again(files: &[(&str, &str)], first: &[&str], pyproject
 #[test]
 fn settled_file_is_fixed_again_once_no_other_file_imports_the_name() {
     let root = project(&[("helpers.py", "limit = 3\n"), ("client.py", "from helpers import limit\n\nprint(limit)\n")]);
-    let first = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP102"]).0;
+    let first = fix_unsafe(root.path(), "SMP102").0;
     fs::write(root.path().join("client.py"), "print(1)\n").expect("write");
-    check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP102"]);
+    fix_unsafe(root.path(), "SMP102");
     assert_eq!((first, read(root.path(), "helpers.py")), (1, "LIMIT = 3\n".to_owned()));
 }
 

@@ -1,5 +1,0 @@
----
-source: tests/common/mod.rs
-expression: "lint_fixture(rule, fixture, target_version)"
----
-7:9 SMP203 `__init__` is defined after `load`; constructors come before the other methods

@@ -175,3 +175,8 @@ Checks reStructuredText docstrings, when `docstring-style = "rst"`, for inline m
   def open_file(path: str) -> None:
       """Open the file at \x3aclass:Path."""
   ```
+
+## Other tools
+
+- [flake8-rst-docstrings](https://github.com/peterjc/flake8-rst-docstrings) reports an inline literal with no closing
+  backticks as [RST214](https://github.com/peterjc/flake8-rst-docstrings), with no fix.

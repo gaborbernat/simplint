@@ -89,14 +89,14 @@ def spans(presence: dict[int, set[str]]) -> dict[str, Span]:
     for minor in sorted(presence):
         for name in presence[minor]:
             minors.setdefault(name, []).append(minor)
-    result: dict[str, Span] = {}
+    found: dict[str, Span] = {}
     for name, present in minors.items():
         start = present[-1]
         while start - 1 in present:
             start -= 1
         last = present[-1]
-        result[name] = Span(added=start, removed=None if last == _LATEST else last + 1)
-    return result
+        found[name] = Span(added=start, removed=None if last == _LATEST else last + 1)
+    return found
 
 
 def render(table: dict[str, Span]) -> str:

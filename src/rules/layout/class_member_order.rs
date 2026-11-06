@@ -1,0 +1,62 @@
+use ruff_python_ast::helpers::any_over_body;
+use ruff_python_ast::{self as ast, Expr, Stmt};
+
+use super::class_order::{Arrangement, Section, class_order};
+use super::reorder::{Suite, moved_span, moves_definition_unsafely, reorder_fix};
+use crate::lint::checker::Checker;
+use crate::lint::registry::Rule;
+
+pub fn class_member_order(checker: &Checker) {
+    for class in checker.class_defs() {
+        check_class(checker, class);
+    }
+}
+
+fn check_class(checker: &Checker, class: &ast::StmtClassDef) {
+    let order = class_order(checker, class);
+    let inversions = order.inversions();
+    if inversions.is_empty() {
+        return;
+    }
+    let expected = order.expected(Arrangement::Sections);
+    let mut position = vec![0; expected.len()];
+    for (place, &index) in expected.iter().enumerate() {
+        position[index] = place;
+    }
+    let suite = Suite { body: &class.body, separator: "\n" };
+    let mut pending =
+        moved_span(&expected).and_then(|span| reorder_fix(checker, &suite, &expected, span, shifts_unsafely));
+    for inversion in inversions {
+        // The layout resolves an inversion when it puts the member above its anchor. Otherwise the member is pinned
+        // behind the anchor, and its report has no fix.
+        let resolved = position[inversion.statement] < position[inversion.anchor];
+        let message = match inversion.anchor_section {
+            Some(Section::Constructor(_)) if matches!(inversion.section, Section::Constructor(_)) => {
+                format!(
+                    "`{}` belongs above `{}`, in the order Python runs the constructors",
+                    inversion.name, inversion.anchor_name
+                )
+            }
+            _ => format!(
+                "`{}` belongs with {}, above `{}`",
+                inversion.name,
+                inversion.section.noun(),
+                inversion.anchor_name
+            ),
+        };
+        let fix = if resolved { pending.take() } else { None };
+        checker.report_fix(
+            Rule::ClassMemberOrder,
+            inversion.range,
+            message,
+            fix,
+            format!("Move `{}` above `{}`", inversion.name, inversion.anchor_name),
+        );
+    }
+}
+
+// A statement that is not a definition moves safely when it calls nothing: a call can observe the order, as `next()` on
+// a shared counter or `locals()` does.
+fn shifts_unsafely(stmt: &Stmt) -> bool {
+    moves_definition_unsafely(stmt).unwrap_or_else(|| any_over_body(std::slice::from_ref(stmt), Expr::is_call_expr))
+}

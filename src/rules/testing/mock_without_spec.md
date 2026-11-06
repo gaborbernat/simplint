@@ -102,3 +102,12 @@ These are not reported either:
   client.patch("/users")
   requests.patch("https://example.com")
   ```
+
+## Other tools
+
+- [flake8-mock-spec](https://github.com/jdkandersson/flake8-mock-spec) reports a `Mock` built without a spec as
+  [TMS010](https://github.com/jdkandersson/flake8-mock-spec), and a `patch` call without one as
+  [TMS020](https://github.com/jdkandersson/flake8-mock-spec).
+- [hacking](https://github.com/openstack/hacking) reports `mock.patch` calls without `autospec` as
+  [H210](https://github.com/openstack/hacking/blob/master/hacking/checks/mock_checks.py). It accepts only `autospec`,
+  where this rule also accepts `spec`, `spec_set` and `wraps`.

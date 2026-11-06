@@ -325,3 +325,9 @@ flowchart TD
     class public orange
     class internal green
 ```
+
+## Other tools
+
+- [pydocstyle](https://www.pydocstyle.org/en/stable/error_codes.html) reports public functions and methods without a
+  docstring as [D103](https://www.pydocstyle.org/en/stable/error_codes.html) and
+  [D102](https://www.pydocstyle.org/en/stable/error_codes.html). It has no check for variables.

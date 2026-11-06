@@ -1,0 +1,8 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+6:5 SMP409 `_private_unused` is never used in the run; remove it or give it a caller
+14:5 SMP409 `_shape_all` is never used in the run; remove it or give it a caller
+30:7 SMP409 `_PrivateRecord` is never used in the run; remove it or give it a user
+41:9 SMP409 `_Shaper._udef_unused_method` is never called or read in the run; remove it or give it a caller

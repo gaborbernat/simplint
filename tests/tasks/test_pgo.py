@@ -1,30 +1,23 @@
 from __future__ import annotations
 
 import hashlib
-import http.client
 import io
 import json
 import subprocess
 import tarfile
-import time
 import urllib.error
 from pathlib import Path
-from types import SimpleNamespace
 from typing import TYPE_CHECKING, Final
 
 import pytest
 
-from tasks import pgo
-from tasks.pgo import Sdist, download, extract, llvm_profdata, main, pin_sdist, read_manifest, write_manifest
+from tasks.download import Pinned
+from tasks.pgo import extract, llvm_profdata, main, pin_sdist, read_manifest, write_manifest
 
 if TYPE_CHECKING:
-    from pytest_mock import MockerFixture, MockType
+    from pytest_mock import MockerFixture
 
 _FILES: Final[str] = "https://files.pythonhosted.org/packages/ab/cd"
-
-
-def test_sdist_is_named_by_its_url() -> None:
-    assert Sdist(url=f"{_FILES}/PyDemo-1.0.tar.gz", sha256="").filename == "PyDemo-1.0.tar.gz"
 
 
 def test_pin_sdist_takes_the_tar_gz_sdist(mocker: MockerFixture) -> None:
@@ -33,7 +26,7 @@ def test_pin_sdist_takes_the_tar_gz_sdist(mocker: MockerFixture) -> None:
     )
     urlopen = mocker.patch("urllib.request.urlopen", autospec=True, return_value=release)
 
-    assert pin_sdist("demo") == Sdist(url=f"{_FILES}/demo-1.0.tar.gz", sha256="demo-1.0.tar.gz-digest")
+    assert pin_sdist("demo") == Pinned(url=f"{_FILES}/demo-1.0.tar.gz", sha256="demo-1.0.tar.gz-digest")
     assert urlopen.call_args.args == ("https://pypi.org/pypi/demo/json",)
 
 
@@ -52,20 +45,12 @@ def test_pin_sdist_rejects_a_wheel_only_release(mocker: MockerFixture) -> None:
         pin_sdist("demo")
 
 
-@pytest.fixture
-def sleep(mocker: MockerFixture) -> MockType:
-    # The module's own clock, so the patch does not reach other threads that call the shared `time.sleep`.
-    sleep = mocker.create_autospec(time.sleep)
-    mocker.patch.object(pgo, "time", SimpleNamespace(sleep=sleep, monotonic=time.monotonic))
-    return sleep
-
-
 @pytest.mark.usefixtures("sleep")
 def test_pin_sdist_retries_a_transient_failure(mocker: MockerFixture, capsys: pytest.CaptureFixture[str]) -> None:
     release = _release(("demo-1.0.tar.gz", "sdist"))
     mocker.patch("urllib.request.urlopen", autospec=True, side_effect=[urllib.error.URLError("reset"), release])
 
-    assert pin_sdist("demo") == Sdist(url=f"{_FILES}/demo-1.0.tar.gz", sha256="demo-1.0.tar.gz-digest")
+    assert pin_sdist("demo") == Pinned(url=f"{_FILES}/demo-1.0.tar.gz", sha256="demo-1.0.tar.gz-digest")
     assert capsys.readouterr().err == "https://pypi.org/pypi/demo/json: <urlopen error reset>, retrying\n"
 
 
@@ -81,63 +66,9 @@ def test_main_pins_the_latest_sdists(tmp_path: Path, mocker: MockerFixture) -> N
     main(["manifest", "--manifest", str(manifest)])
 
     assert read_manifest(manifest) == [
-        Sdist(url=f"{_FILES}/b-1.0.tar.gz", sha256="b-1.0.tar.gz-digest"),
-        Sdist(url=f"{_FILES}/A-1.0.tar.gz", sha256="A-1.0.tar.gz-digest"),
+        Pinned(url=f"{_FILES}/b-1.0.tar.gz", sha256="b-1.0.tar.gz-digest"),
+        Pinned(url=f"{_FILES}/A-1.0.tar.gz", sha256="A-1.0.tar.gz-digest"),
     ]
-
-
-def test_download_fetches_and_verifies(tmp_path: Path, mocker: MockerFixture) -> None:
-    mocker.patch("urllib.request.urlopen", autospec=True, return_value=io.BytesIO(b"archive"))
-    sdist = Sdist(url=f"{_FILES}/demo-1.0.tar.gz", sha256=hashlib.sha256(b"archive").hexdigest())
-
-    archive = download(sdist, tmp_path / "cache")
-
-    assert (archive.read_bytes(), [path.name for path in archive.parent.iterdir()]) == (b"archive", ["demo-1.0.tar.gz"])
-
-
-def test_download_replaces_a_stale_file(tmp_path: Path, mocker: MockerFixture) -> None:
-    (tmp_path / "demo-1.0.tar.gz").write_bytes(b"stale")
-    mocker.patch("urllib.request.urlopen", autospec=True, return_value=io.BytesIO(b"archive"))
-
-    download(Sdist(url=f"{_FILES}/demo-1.0.tar.gz", sha256=hashlib.sha256(b"archive").hexdigest()), tmp_path)
-
-    assert (tmp_path / "demo-1.0.tar.gz").read_bytes() == b"archive"
-
-
-def test_download_reuses_a_verified_file(tmp_path: Path, mocker: MockerFixture) -> None:
-    urlopen = mocker.patch("urllib.request.urlopen", autospec=True)
-    (tmp_path / "demo-1.0.tar.gz").write_bytes(b"cached")
-
-    download(Sdist(url=f"{_FILES}/demo-1.0.tar.gz", sha256=hashlib.sha256(b"cached").hexdigest()), tmp_path)
-
-    urlopen.assert_not_called()
-
-
-@pytest.mark.usefixtures("sleep")
-def test_download_retries_a_truncated_transfer(tmp_path: Path, mocker: MockerFixture) -> None:
-    responses = [http.client.IncompleteRead(b"arch"), io.BytesIO(b"archive")]
-    mocker.patch("urllib.request.urlopen", autospec=True, side_effect=responses)
-
-    archive = download(Sdist(url=f"{_FILES}/demo.tar.gz", sha256=hashlib.sha256(b"archive").hexdigest()), tmp_path)
-
-    assert archive.read_bytes() == b"archive"
-
-
-def test_download_gives_up_after_the_last_attempt(tmp_path: Path, mocker: MockerFixture, sleep: MockType) -> None:
-    error = urllib.error.HTTPError(_FILES, 503, "Unavailable", None, None)  # type: ignore[arg-type] # no headers
-    mocker.patch("urllib.request.urlopen", autospec=True, side_effect=error)
-
-    with pytest.raises(urllib.error.HTTPError, match="Unavailable"):
-        download(Sdist(url=f"{_FILES}/demo-1.0.tar.gz", sha256="0" * 64), tmp_path)
-    assert [call.args for call in sleep.call_args_list] == [(2,), (4,), (8,)]
-
-
-def test_download_rejects_a_digest_mismatch(tmp_path: Path, mocker: MockerFixture) -> None:
-    mocker.patch("urllib.request.urlopen", autospec=True, return_value=io.BytesIO(b"tampered"))
-
-    with pytest.raises(ValueError, match=r"demo-1\.0\.tar\.gz: sha256 [0-9a-f]{64}, pinned 0{64}"):
-        download(Sdist(url=f"{_FILES}/demo-1.0.tar.gz", sha256="0" * 64), tmp_path)
-    assert list(tmp_path.iterdir()) == []
 
 
 def test_extract_keeps_only_python_files(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -207,7 +138,7 @@ def test_train_records_a_profile(tmp_path: Path, mocker: MockerFixture, capsys: 
 def _train(tmp_path: Path, mocker: MockerFixture, status: int) -> list[list[str]]:
     payload = _tar_gz("demo-1.0/demo/__init__.py", "demo-1.0/demo/types.pyi", "demo-1.0/README.md", "../escape.py")
     manifest = tmp_path / "pgo_corpus.toml"
-    write_manifest(manifest, [Sdist(url=f"{_FILES}/demo-1.0.tar.gz", sha256=hashlib.sha256(payload).hexdigest())])
+    write_manifest(manifest, [Pinned(url=f"{_FILES}/demo-1.0.tar.gz", sha256=hashlib.sha256(payload).hexdigest())])
     mocker.patch("urllib.request.urlopen", autospec=True, return_value=io.BytesIO(payload))
     tool = tmp_path / "sysroot" / "lib" / "rustlib" / "x86_64-unknown-linux-gnu" / "bin" / "llvm-profdata"
     tool.parent.mkdir(parents=True)

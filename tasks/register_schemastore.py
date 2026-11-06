@@ -39,36 +39,35 @@ def register(schema: Path, store: Path, options: Path) -> None:
     # :param store: the root of the SchemaStore checkout
     # :param options: the sample options the checkout's tests validate against the partial
     # :raises ValueError: if a file lacks the line the registration goes next to
+    pyproject = store / "src" / "schemas" / "json" / "pyproject.json"
+    pyproject_text = pyproject.read_text(encoding="utf-8")
     partial_name = "partial-simplint.json"
-    tool_entry = (
-        '{indent}"simplint": {{\n'
-        '{indent}  "$ref": "partial-simplint.json",\n'
-        '{indent}  "title": "Linter",\n'
-        '{indent}  "description": "Ruff companion linter with extra checks that make Python easier to read and '
-        'review."\n'
-        "{indent}}},\n"
-    )
-    missing_entry = '{indent}"partial-simplint.json", // pyproject.json[tool.simplint]\n'
-    external_entry = '{indent}"partial-simplint.json",\n'
+    if partial_name not in pyproject_text:
+        tool_entry = (
+            '{indent}"simplint": {{\n'
+            '{indent}  "$ref": "partial-simplint.json",\n'
+            '{indent}  "title": "Linter",\n'
+            '{indent}  "description": "Ruff companion linter with extra checks that make Python easier to read and '
+            'review."\n'
+            "{indent}}},\n"
+        )
+        pyproject_text = _insert_before(pyproject_text, _TOOL_ANCHOR, tool_entry, pyproject.name)
+    validation = store / "src" / "schema-validation.jsonc"
+    validation_text = validation.read_text(encoding="utf-8")
+    if partial_name not in validation_text:
+        missing_entry = '{indent}"partial-simplint.json", // pyproject.json[tool.simplint]\n'
+        validation_text = _insert_before(validation_text, _MISSING_ANCHOR, missing_entry, validation.name)
+        external_entry = '{indent}"partial-simplint.json",\n'
+        validation_text = _insert_before(validation_text, _EXTERNAL_ANCHOR, external_entry, validation.name)
 
     definition = json.loads(schema.read_text(encoding="utf-8"))
     definition["$id"] = f"https://json.schemastore.org/{partial_name}"
-    partial = store / "src" / "schemas" / "json" / partial_name
-    pyproject = store / "src" / "schemas" / "json" / "pyproject.json"
-    validation = store / "src" / "schema-validation.jsonc"
-    test_options = store / "src" / "test" / "partial-simplint" / "options.json"
-
-    pyproject_text = pyproject.read_text(encoding="utf-8")
-    if partial_name not in pyproject_text:
-        pyproject_text = _insert_before(pyproject_text, _TOOL_ANCHOR, tool_entry, pyproject.name)
-    validation_text = validation.read_text(encoding="utf-8")
-    if partial_name not in validation_text:
-        validation_text = _insert_before(validation_text, _MISSING_ANCHOR, missing_entry, validation.name)
-        validation_text = _insert_before(validation_text, _EXTERNAL_ANCHOR, external_entry, validation.name)
-
-    partial.write_text(f"{json.dumps(definition, indent=2)}\n", encoding="utf-8")
+    (store / "src" / "schemas" / "json" / partial_name).write_text(
+        f"{json.dumps(definition, indent=2)}\n", encoding="utf-8"
+    )
     pyproject.write_text(pyproject_text, encoding="utf-8")
     validation.write_text(validation_text, encoding="utf-8")
+    test_options = store / "src" / "test" / "partial-simplint" / "options.json"
     test_options.parent.mkdir(exist_ok=True)
     test_options.write_text(options.read_text(encoding="utf-8"), encoding="utf-8")
 

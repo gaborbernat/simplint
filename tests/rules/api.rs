@@ -74,8 +74,48 @@ use crate::common;
 #[test_case("test-only-code", "tonly_builders.py" ; "test_only_code")]
 #[test_case("test-only-code", "tonly_app.py" ; "test_only_code_used_outside_tests")]
 #[test_case("test-only-code", "test_tonly_builders.py" ; "test_only_code_test_module")]
+#[test_case("unused-definition", "_unused_definition.py" ; "unused_definition")]
+#[test_case("unused-definition", "_unused_definition_used.py" ; "unused_definition_imported")]
+#[test_case("unused-definition", "tests/test_udef_helpers.py" ; "unused_definition_test_module")]
+#[test_case("test-only-parameter", "_test_only_parameter.py" ; "test_only_parameter")]
+#[test_case("unused-return-value", "_unused_return_value.py" ; "unused_return_value")]
+#[test_case("unused-return-value", "_unused_return_value_listed.py" ; "unused_return_value_listed")]
+#[test_case("unused-definition", "_unused_definition_frozen_core.py" ; "unused_definition_unresolved_import")]
+#[test_case("unused-definition", "_unused_definition_doctest.py" ; "unused_definition_doctest")]
 fn rule(rule: &str, fixture: &str) {
     common::assert_rule_snapshot(rule, fixture, "py314");
+}
+
+// Listing a name drops the `noqa` that named only F401 for its import, wherever the import is split, and keeps the
+// comments that name other codes.
+#[test]
+fn missing_from_all_drops_the_noqa_it_leaves_unused() {
+    let enc = "from os.path import join  # noqa: F401\nfrom os.path import (\n    sep,  # noqa: F401\n    exists,  # noqa: \
+               E501\n)\nfrom os.path import isdir  # noqa\nfrom os.path import isabs  # type: ignore\n\n\ndef run() -> \
+               int:\n    return 1\n";
+    let root = common::project(&[
+        ("enc.py", enc),
+        ("use.py", "from enc import join, sep, exists, isdir, isabs\n\nprint(join, sep, exists, isdir, isabs)\n"),
+    ]);
+    common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP401"]);
+    assert_eq!(
+        common::read(root.path(), "enc.py"),
+        "from os.path import join\nfrom os.path import (\n    sep,\n    exists,  # noqa: E501\n)\nfrom os.path import \
+         isdir\nfrom os.path import isabs  # type: ignore\n\n\ndef run() -> int:\n    return 1\n\n\n__all__ = [\n    \
+         \"exists\",\n    \"isabs\",\n    \"isdir\",\n    \"join\",\n    \"sep\",\n]\n"
+    );
+}
+
+// Two names imported from one line share its `noqa`. The fix removes it once and in order, so the full report of the
+// unapplied unsafe fix renders instead of panicking.
+#[test]
+fn missing_from_all_drops_a_noqa_shared_by_names_on_one_line() {
+    let root = common::project(&[
+        ("enc.py", "from os.path import join, sep  # noqa: F401\n\n\ndef run() -> int:\n    return 1\n"),
+        ("use.py", "from enc import join, sep\n\nprint(join, sep)\n"),
+    ]);
+    let (code, _, stderr) = common::simplint(root.path(), &["check", "--select", "SMP401"]);
+    assert_eq!((code, stderr.as_str()), (1, ""));
 }
 
 #[test]
@@ -93,4 +133,261 @@ fn all_format_follows_skip_magic_trailing_comma() {
             "def load() -> None: ...\n\n\ndef save() -> None: ...\n\n\n__all__ = [\"load\", \"save\"]\n".to_owned()
         )
     );
+}
+
+// A public name the run never reads is reported, unless a computed read may fetch it, which keeps every public name.
+#[test]
+fn unused_definition_reports_public_names_nothing_reads() {
+    let reported = unused_definitions("return None");
+    assert!(reported.contains("`helper` is never used"), "{reported}");
+    assert!(reported.contains("`Client.send` is never called"), "{reported}");
+    assert!(reported.contains("`Client.LIMIT` is never read"), "{reported}");
+}
+
+#[test_case("getattr(obj, name)" ; "computed_getattr")]
+#[test_case("vars(obj)" ; "vars")]
+#[test_case("dir(obj)" ; "dir")]
+#[test_case("obj.__dict__" ; "dict")]
+fn unused_definition_keeps_public_names_under_computed_reads(read: &str) {
+    let reported = unused_definitions(&format!("return {read}"));
+    assert!(!reported.contains("SMP409"), "{read} may read any public name: {reported}");
+}
+
+#[test]
+fn unused_definition_keeps_only_the_member_a_literal_getattr_names() {
+    let reported = unused_definitions("return getattr(obj, \"send\")");
+    assert!(!reported.contains("`Client.send`"), "{reported}");
+    assert!(reported.contains("`helper` is never used"), "{reported}");
+    assert!(reported.contains("`Client.LIMIT` is never read"), "{reported}");
+}
+
+// The diagnostics of a project whose `read` returns `body`, with `main` reading the class and calling `read`, so
+// only the definitions of `core` can be unused.
+fn unused_definitions(body: &str) -> String {
+    let core = "class Client:\n    LIMIT = 3\n\n    def send(self) -> None:\n        pass\n\n\ndef helper() -> None:\n    pass\n";
+    let reader = format!("def read(obj: object, name: str = \"send\") -> object:\n    {body}\n");
+    let main = "from app.core import Client\nfrom app.reader import read\n\nprint(read(Client()))\n";
+    let root = common::project(&[("app/core.py", core), ("app/reader.py", reader.as_str()), ("app/main.py", main)]);
+    let (_, stdout, _) =
+        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
+    stdout
+}
+
+// A private method is judged by its own file, so a computed read there keeps it. A read in another file keeps it only
+// when the name it computes starts with a literal prefix of the method's, as a dispatch table's does.
+#[test_case("'_' + kind", true, false ; "same_file")]
+#[test_case("'_' + kind", false, true ; "other_file_underscore_prefix")]
+#[test_case("kind", false, true ; "other_file_no_prefix")]
+#[test_case("'_handle_' + kind", false, false ; "other_file_matching_prefix")]
+#[test_case("f'_handle_{kind}'", false, false ; "other_file_matching_fstring_prefix")]
+#[test_case("f'{kind}_handle'", false, true ; "other_file_fstring_without_prefix")]
+#[test_case("'_visit_' + kind", false, true ; "other_file_other_prefix")]
+fn unused_definition_judges_a_private_method_by_its_own_file(name: &str, same_file: bool, reported: bool) {
+    let dispatch = format!("def dispatch(obj: object, kind: str) -> object:\n    return getattr(obj, {name})\n");
+    let handler = "class _Handler:\n    def _handle_text(self) -> None:\n        pass\n";
+    let core = if same_file { format!("{handler}\n\n{dispatch}") } else { handler.to_owned() };
+    let reader = if same_file { String::new() } else { dispatch };
+    let root = common::project(&[
+        ("app/core.py", core.as_str()),
+        ("app/other.py", reader.as_str()),
+        ("app/main.py", "from app.core import _Handler\n\nprint(_Handler)\n"),
+    ]);
+    let (_, stdout, _) =
+        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
+    assert_eq!(stdout.contains("`_Handler._handle_text`"), reported, "{stdout}");
+}
+
+// A method a version switch defines inside an `if` in the class body is the class's method, so its calls count.
+#[test]
+fn unused_definition_counts_calls_of_a_method_under_an_if_block() {
+    let root = common::project(&[
+        (
+            "app/core.py",
+            "class Client:\n    if True:\n        def _send(self) -> None:\n            pass\n\n    def run(self) -> None:\n        self._send()\n",
+        ),
+        ("app/main.py", "from app.core import Client\n\nprint(Client().run())\n"),
+    ]);
+    let (_, stdout, _) =
+        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
+    assert!(!stdout.contains("`Client._send`"), "{stdout}");
+}
+
+#[test]
+fn unused_definition_keeps_framework_hooks_called_by_name() {
+    let root = common::project(&[(
+        "app/hooks.py",
+        "def setup(app: object) -> None:\n    print(app)\n\n\ndef pytest_configure(config: object) -> None:\n    print(config)\n",
+    )]);
+    let (_, stdout, _) =
+        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
+    assert_eq!(stdout, "All checks passed!\n");
+}
+
+// A definition a page of the project's documentation names is used: by a Sphinx role, an autodoc directive, or the
+// options of a directive that renders a module's parser. Hidden and excluded directories, and files that are neither
+// reStructuredText nor Markdown, are not read.
+#[test_case("docs/index.rst", ":func:`app.core.helper`", false, true ; "role")]
+#[test_case("docs/index.rst", ":py:func:`~app.core.helper`", false, true ; "domain_role_short")]
+#[test_case("docs/index.rst", "See :meth:`sending <app.core.Client.send>`.", true, false ; "role_with_title")]
+#[test_case("docs/index.rst", ".. currentmodule:: app.core\n\nCall :func:`helper`.", false, true ; "current_module")]
+#[test_case("docs/index.rst", ".. autofunction:: app.core.helper", false, true ; "autofunction")]
+#[test_case("docs/index.rst", ".. module:: app.core\n.. autofunction:: helper\n", false, true ; "directive_after_directive")]
+#[test_case("docs/index.rst", ".. autoclass:: app.core.Client\n   :members:\n", true, false ; "autoclass_members")]
+#[test_case("docs/index.rst", ".. automodule:: app.core\n   :members:\n", false, false ; "automodule_members")]
+#[test_case("docs/index.rst", ".. automodule:: app.core\n   :members: helper\n", false, true ; "automodule_listed")]
+#[test_case("docs/index.rst", ".. automodule:: app.core\n", true, true ; "automodule_alone")]
+#[test_case("docs/cli.rst", ".. sphinx_argparse_cli::\n   :module: app.core\n   :func: helper\n", false, true ; "argparse_cli")]
+#[test_case("docs/cli.rst", ".. argparse::\n   :ref: app.core.helper\n   :prog: app\n", false, true ; "argparse_ref")]
+#[test_case("docs/api.md", "Call {py:meth}`app.core.Client.send`.", true, false ; "myst_role")]
+#[test_case("docs/api.md", "```{autofunction} app.core.helper\n```\n", false, true ; "myst_directive")]
+#[test_case("docs/api.md", ":::{autoclass} app.core.Client\n:members: send\n:::\n", true, false ; "myst_colon_directive")]
+#[test_case("docs/index.rst", ":func:`app.core.other`", true, true ; "other_name")]
+#[test_case("docs/index.rst", "``helper`` and :unknown:`app.core.helper`", true, true ; "not_a_python_role")]
+#[test_case(".venv/lib/page.rst", ":func:`app.core.helper`", true, true ; "excluded_directory")]
+#[test_case(".docs/index.rst", ":func:`app.core.helper`", true, true ; "hidden_directory")]
+#[test_case("docs/notes.txt", ":func:`app.core.helper`", true, true ; "plain_text")]
+fn unused_definition_reads_the_documentation(page: &str, text: &str, helper: bool, send: bool) {
+    let core = "def helper() -> None:\n    pass\n\n\nclass Client:\n    def send(self) -> None:\n        pass\n";
+    let root = common::project(&[
+        ("pyproject.toml", "[project]\nname = \"app\"\n"),
+        ("app/__init__.py", ""),
+        ("app/core.py", core),
+        ("app/main.py", "from app.core import Client\n\nprint(Client())\n"),
+        (page, text),
+    ]);
+    let (_, stdout, _) =
+        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
+    assert_eq!(
+        (stdout.contains("`helper` is never used"), stdout.contains("`Client.send` is never called")),
+        (helper, send),
+        "{stdout}"
+    );
+}
+
+#[test_case(".gitignore", "build/", "build/api.rst" ; "gitignore")]
+#[test_case(".ignore", "private/", "private/api.rst" ; "ignore_file")]
+fn unused_definition_skips_documentation_an_ignore_file_hides(ignore_file: &str, pattern: &str, page: &str) {
+    let root = common::project(&[
+        (".git/HEAD", "ref: refs/heads/main\n"),
+        ("pyproject.toml", "[project]\nname = \"app\"\n"),
+        ("app/__init__.py", ""),
+        ("app/core.py", "def helper() -> None:\n    pass\n"),
+        (ignore_file, &format!("{pattern}\n")),
+        (page, ":func:`app.core.helper`\n"),
+    ]);
+    let (_, stdout, _) =
+        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
+    assert!(stdout.contains("`helper` is never used"), "{stdout}");
+}
+
+// Only a project with a `pyproject.toml` has documentation to read, and only a run with `unused-definition` on reads it.
+#[test]
+fn unused_definition_reads_no_documentation_without_a_project() {
+    let root = common::project(&[
+        ("app/core.py", "def helper() -> None:\n    pass\n"),
+        ("docs/index.rst", ":func:`app.core.helper`\n"),
+    ]);
+    let (_, stdout, _) =
+        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
+    assert!(stdout.contains("`helper` is never used"), "{stdout}");
+}
+
+// The documentation is part of what each file's cached result depends on, so a page that starts naming a definition
+// clears its report on the next run.
+#[test]
+fn unused_definition_cache_follows_the_documentation() {
+    let root = common::project(&[
+        ("pyproject.toml", "[project]\nname = \"app\"\n"),
+        ("app/__init__.py", ""),
+        ("app/core.py", "def helper() -> None:\n    pass\n"),
+        ("docs/index.rst", "Nothing yet.\n"),
+    ]);
+    let check = ["check", "--select", "SMP409", "--output-format", "concise"];
+    let (_, before, _) = common::simplint(root.path(), &check);
+    std::fs::write(root.path().join("docs/index.rst"), ".. autofunction:: app.core.helper\n").expect("write page");
+    let (_, after, _) = common::simplint(root.path(), &check);
+    assert_eq!((before.contains("`helper`"), after.contains("`helper`")), (true, false), "{before}\n{after}");
+}
+
+// A class read by its name, as `type(self).__name__` reads it, must keep the name it has.
+#[test_case("type(self).__name__" ; "through_type")]
+#[test_case("self.__class__.__qualname__" ; "through_class_attribute")]
+fn unexported_public_name_keeps_a_class_read_by_its_name(read: &str) {
+    let source = format!("__all__ = []\n\n\nclass Item:\n    def label(self) -> str:\n        return {read}\n");
+    let root = common::project(&[("mod.py", &source)]);
+    let stdout = common::check(root.path(), &["--unsafe-fixes", "--select", "SMP403"]).1;
+    assert!(stdout.contains("SMP403 `Item` is not in `__all__`"));
+    assert!(!stdout.contains("SMP403 [*]"));
+}
+
+// Code that reads a function's or class's name off an object, in its own module or elsewhere, keeps the name it has.
+#[test_case("mod.py", "def helper() -> str:\n    return helper.__name__\n" ; "own_module")]
+#[test_case("mod.py", "def helper() -> str:\n    return helper.__qualname__\n" ; "own_qualname")]
+#[test_case("consumer.py", "def use(obj: object) -> str:\n    return obj.helper.__name__\n" ; "attribute_elsewhere")]
+fn unexported_public_name_keeps_a_function_read_by_its_name(reader: &str, source: &str) {
+    let module = if reader == "mod.py" {
+        format!("__all__ = []\n\n\n{source}")
+    } else {
+        "__all__ = []\n\n\ndef helper() -> None:\n    pass\n".to_owned()
+    };
+    let root =
+        common::project(&[("mod.py", &module), ("consumer.py", if reader == "consumer.py" { source } else { "" })]);
+    let stdout = common::check(root.path(), &["--unsafe-fixes", "--select", "SMP403"]).1;
+    assert!(stdout.contains("SMP403 `helper` is not in `__all__`"));
+    assert!(!stdout.contains("SMP403 [*]"));
+}
+
+// A classmethod reads its class's name off `cls`, so the class keeps its name.
+#[test]
+fn unexported_public_name_keeps_a_class_its_classmethod_reads() {
+    let root = common::project(&[(
+        "mod.py",
+        "__all__ = []\n\n\nclass Item:\n    @classmethod\n    def label(cls) -> str:\n        return cls.__name__\n",
+    )]);
+    let stdout = common::check(root.path(), &["--unsafe-fixes", "--select", "SMP403"]).1;
+    assert!(stdout.contains("SMP403 `Item` is not in `__all__`"));
+    assert!(!stdout.contains("SMP403 [*]"));
+}
+
+// A name read off a value that is neither a variable, an attribute nor a call names no class or function.
+#[test]
+fn unexported_public_name_renames_a_class_read_off_a_subscript() {
+    let root = common::project(&[(
+        "mod.py",
+        "__all__ = []\n\n\nclass Item:\n    def label(self) -> str:\n        return self.items[0].__name__\n",
+    )]);
+    let stdout = common::check(root.path(), &["--unsafe-fixes", "--select", "SMP403"]).1;
+    assert!(stdout.contains("SMP403 [*]"));
+}
+
+// A class read through an attribute of an object elsewhere keeps its name too.
+#[test]
+fn unexported_public_name_keeps_a_class_read_through_an_attribute() {
+    let root = common::project(&[
+        ("mod.py", "__all__ = []\n\n\nclass Item:\n    pass\n"),
+        ("consumer.py", "def use(module: object) -> str:\n    return module.Item.__qualname__\n"),
+    ]);
+    let stdout = common::check(root.path(), &["--unsafe-fixes", "--select", "SMP403"]).1;
+    assert!(stdout.contains("SMP403 `Item` is not in `__all__`"));
+    assert!(!stdout.contains("SMP403 [*]"));
+}
+
+// A function nobody reads by name is still renamed, so the withheld fixes above are the reflective reads alone.
+#[test]
+fn unexported_public_name_renames_a_function_nobody_reads_by_name() {
+    let root = common::project(&[("mod.py", "__all__ = []\n\n\ndef helper() -> None:\n    pass\n")]);
+    let stdout = common::check(root.path(), &["--unsafe-fixes", "--select", "SMP403"]).1;
+    assert!(stdout.contains("SMP403 [*]"));
+}
+
+// The name a script's `main` is looked up by in a test is a string of another file, which keeps `main` in place.
+#[test]
+fn unexported_public_name_checks_strings_of_other_files() {
+    let root = common::project(&[
+        ("tools.py", "__all__ = []\n\n\ndef main() -> None:\n    pass\n"),
+        ("tests/test_tools.py", "ENTRY = \"main\"\n"),
+    ]);
+    let stdout = common::check(root.path(), &["--unsafe-fixes", "--select", "SMP403"]).1;
+    assert!(stdout.contains("SMP403 `main` is not in `__all__`"));
+    assert!(!stdout.contains("SMP403 [*]"));
 }

@@ -251,7 +251,8 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
 ### Fix
 
 The fix renames the name to `_name` everywhere in the file. **Unsafe fix:** always, as importers outside the run keep
-the old name. If the name is meant to be public, add it to `__all__` instead.
+the old name, and a renamed class changes its `repr` and the name pickle stores. If the name is meant to be public, add
+it to `__all__` instead.
 
 ```python report
 __all__ = ["exported"]
@@ -359,7 +360,8 @@ No fix is offered when:
       return 2
   ```
 
-- the old name appears in a string, other than an entry of an `__all__` list assigned with `=` or `+=`
+- the old name appears in a string of any file in the run, other than an entry of an `__all__` list assigned with `=` or
+  `+=`
 
   ```python report
   __all__ = ["exported"]
@@ -389,6 +391,26 @@ No fix is offered when:
 
 
   LABEL = "helper"
+  ```
+
+- the name is a function or class whose `__name__` or `__qualname__` a file of the run reads, as `helper.__name__` or
+  `type(self).__name__` does, which would return the new name
+
+  ```python report
+  __all__ = []
+
+
+  def helper() -> str:
+      return helper.__name__
+  ```
+
+  ```python report
+  __all__ = []
+
+
+  class Item:
+      def label(self) -> str:
+          return type(self).__name__
   ```
 
 - the old name also names something a text rename cannot tell apart: a parameter, a local variable, a class attribute, a

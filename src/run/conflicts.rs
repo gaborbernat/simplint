@@ -12,7 +12,7 @@ use ruff_linter::settings::LinterSettings;
 use ruff_linter::settings::flags;
 use ruff_linter::settings::rule_table::RuleTable;
 use ruff_linter::source_kind::SourceKind;
-use ruff_python_ast::PySourceType;
+use ruff_python_ast::{PySourceType, PythonVersion};
 use ruff_python_semantic::NameImport;
 
 use crate::lint::registry::Rule;
@@ -33,6 +33,17 @@ pub struct Scope<'a> {
 // clean. Per-file ignores can turn either side off for some files, so every file counts, but files that share both
 // settings conflict the same way, and the search for each pair of settings stops at its first conflicting file.
 pub fn ensure_compatible(scopes: &[Scope], by_name: bool) -> Result<()> {
+    let found = find_conflicts(scopes);
+    if found.is_empty() {
+        return Ok(());
+    }
+    bail!(
+        "simplint and Ruff rules work against each other, so fixing never leaves the code clean:{}",
+        describe(found, by_name)
+    )
+}
+
+fn find_conflicts<'a>(scopes: &'a [Scope]) -> BTreeMap<Conflict<'a>, &'a Path> {
     // Directories without a `pyproject.toml` get settings of their own that name no file, so groups go in file order
     // for the report to name the same first file every run.
     let groups = scopes
@@ -63,43 +74,61 @@ pub fn ensure_compatible(scopes: &[Scope], by_name: bool) -> Result<()> {
             found.entry(conflict).or_insert(scope.path);
         }
     }
-    if found.is_empty() {
-        return Ok(());
-    }
-    let shown = |name: &str, code: &str| if by_name { format!("{name} ({code})") } else { format!("{code} ({name})") };
-    let pick = |name: &str, code: &str| if by_name { name.to_owned() } else { code.to_owned() };
+    found
+}
+
+fn describe(found: BTreeMap<Conflict, &Path>, by_name: bool) -> String {
     let place = |config: Option<&Path>| {
         config.map_or_else(|| "no configuration file".to_owned(), |path| path.display().to_string())
     };
-    let conflicts = found.into_iter().map(|(Conflict { clash: index, simplint_config, ruff_config, rules }, path)| {
-        let clash = &CLASHES[index];
-        let rules = rules.into_iter().map(|position| clash.ruff[position]).collect_vec();
-        let ruff_codes =
-            rules.iter().map(|rule| rule.noqa_code().map(|code| code.to_string()).unwrap_or_default()).collect_vec();
-        let names = Names {
-            simplint: shown(clash.simplint.name(), clash.simplint.code()),
-            simplint_selector: pick(clash.simplint.name(), clash.simplint.code()),
-            ruff: rules.iter().zip(&ruff_codes).map(|(rule, code)| shown(rule.name().as_str(), code)).join(", "),
-            ruff_selectors: rules
-                .iter()
-                .zip(&ruff_codes)
-                .map(|(rule, code)| pick(rule.name().as_str(), code))
-                .join(", "),
-            many: rules.len() > 1,
-            public_api: shown(Rule::UndocumentedPublicApi.name(), Rule::UndocumentedPublicApi.code()),
-        };
-        format!(
-            "\n  - {}.\n    simplint settings: {}; Ruff settings: {}; first file: {}",
-            (clash.explain)(&names),
-            place(simplint_config),
-            place(ruff_config),
-            relativize_path(path),
-        )
-    });
-    bail!(
-        "simplint and Ruff rules work against each other, so fixing never leaves the code clean:{}",
-        conflicts.format("")
-    )
+    found
+        .into_iter()
+        .map(|(Conflict { clash: index, simplint_config, ruff_config, rules }, path)| {
+            let clash = &CLASHES[index];
+            let rules = rules.into_iter().map(|position| clash.ruff[position]).collect_vec();
+            let ruff_codes =
+                rules.iter().map(|rule| rule.noqa_code().map(|code| code.to_string()).unwrap_or_default()).collect_vec();
+            let names = Names {
+                by_name,
+                simplint: shown(by_name, clash.simplint.name(), clash.simplint.code()),
+                simplint_selector: pick(by_name, clash.simplint.name(), clash.simplint.code()),
+                ruff: rules
+                    .iter()
+                    .zip(&ruff_codes)
+                    .map(|(rule, code)| shown(by_name, rule.name().as_str(), code))
+                    .join(", "),
+                ruff_selectors: rules
+                    .iter()
+                    .zip(&ruff_codes)
+                    .map(|(rule, code)| pick(by_name, rule.name().as_str(), code))
+                    .join(", "),
+                many: rules.len() > 1,
+            };
+            format!(
+                "\n  - {} and Ruff's {} {}.\n    Why: {}.\n    Fix: {}.\n    simplint settings: {}; Ruff settings: {}; first \
+                 file: {}",
+                names.simplint,
+                names.ruff,
+                if clash.undoes_fixes { "undo each other's fixes" } else { "work against each other" },
+                (clash.why)(&names),
+                (clash.fix)(&names),
+                place(simplint_config),
+                place(ruff_config),
+                relativize_path(path),
+            )
+        })
+        .format("")
+        .to_string()
+}
+
+// How a rule is shown in the message: by its name with its code, or by its code with its name.
+fn shown(by_name: bool, name: &str, code: &str) -> String {
+    if by_name { format!("{name} ({code})") } else { format!("{code} ({name})") }
+}
+
+// The selector a rule is turned off by: its name or its code.
+fn pick(by_name: bool, name: &str, code: &str) -> String {
+    if by_name { name.to_owned() } else { code.to_owned() }
 }
 
 // A clash found for some files: which one, where each side's settings come from, and where its Ruff rules that
@@ -113,26 +142,37 @@ struct Conflict<'a> {
 }
 
 // A simplint rule, the Ruff rules on the other side, and code on which those report whenever they apply to a file, so
-// a Ruff run over it tells whether Ruff's settings turn them on for that file.
+// a Ruff run over it tells whether Ruff's settings turn them on for that file. `undoes_fixes` tells a Ruff fix that
+// reverts simplint's from a Ruff report that only asks for what simplint removes. `fix` names the recommended way out
+// first.
 struct Clash {
     simplint: Rule,
     ruff: &'static [RuffRule],
     probe: &'static str,
     acts_on: fn(&FileSettings, &Path, &LinterSettings) -> bool,
-    explain: fn(&Names) -> String,
+    undoes_fixes: bool,
+    why: fn(&Names) -> String,
+    fix: fn(&Names) -> String,
 }
 
 // The rules as the message shows them, and as the selectors that turn them off.
 struct Names {
+    by_name: bool,
     simplint: String,
     simplint_selector: String,
     ruff: String,
     ruff_selectors: String,
     many: bool,
-    public_api: String,
 }
 
-const CLASHES: [Clash; 6] = [
+impl Names {
+    // The verb for the Ruff rules: `one` when a single rule works against simplint's, `many` when several do.
+    fn verb(&self, one: &'static str, many: &'static str) -> &'static str {
+        if self.many { many } else { one }
+    }
+}
+
+const CLASHES: [Clash; 7] = [
     Clash {
         simplint: Rule::FunctionDocstring,
         ruff: &[
@@ -146,16 +186,21 @@ const CLASHES: [Clash; 6] = [
         probe: "class Class:\n    class Nested:\n        pass\n\n    def __init__(self):\n        pass\n\n    def __eq__(self, \
                 other):\n        pass\n\n    def method(self):\n        pass\n\n\ndef function():\n    pass\n",
         acts_on: |_, _, _| true,
-        explain: |names| {
+        undoes_fixes: false,
+        why: |names| {
             format!(
-                "{} removes the docstrings of internal functions, classes and methods, which Ruff's {} {} for; ignore {} \
-                 in Ruff's `lint.ignore` and let {} ask for documentation of the public API, or ignore {} in \
-                 `[tool.simplint]`",
-                names.simplint,
-                names.ruff,
-                if names.many { "ask" } else { "asks" },
+                "{} removes the docstrings of internal functions, classes and methods; {} {} for them",
+                names.simplint_selector,
                 names.ruff_selectors,
-                names.public_api,
+                names.verb("asks", "ask"),
+            )
+        },
+        fix: |names| {
+            format!(
+                "ignore {} in Ruff's `lint.ignore` and let {} ask for documentation of the public API, or ignore {} in \
+                 `[tool.simplint]`",
+                names.ruff_selectors,
+                shown(names.by_name, Rule::UndocumentedPublicApi.name(), Rule::UndocumentedPublicApi.code()),
                 names.simplint_selector,
             )
         },
@@ -165,15 +210,19 @@ const CLASHES: [Clash; 6] = [
         ruff: &[RuffRule::UndocumentedPublicModule, RuffRule::UndocumentedPublicPackage],
         probe: "x = 1\n",
         acts_on: |settings, path, _| settings.is_test_module(path),
-        explain: |names| {
+        undoes_fixes: false,
+        why: |names| {
             format!(
-                "{} removes the docstrings of test modules, which Ruff's {} {} for; ignore {} for test files in Ruff's \
-                 `lint.per-file-ignores`, or ignore {} in `[tool.simplint]`",
-                names.simplint,
-                names.ruff,
-                if names.many { "ask" } else { "asks" },
-                names.ruff_selectors,
+                "{} removes the docstrings of test modules; {} {} for them",
                 names.simplint_selector,
+                names.ruff_selectors,
+                names.verb("asks", "ask"),
+            )
+        },
+        fix: |names| {
+            format!(
+                "ignore {} for test files in Ruff's `lint.per-file-ignores`, or ignore {} in `[tool.simplint]`",
+                names.ruff_selectors, names.simplint_selector,
             )
         },
     },
@@ -190,26 +239,52 @@ const CLASHES: [Clash; 6] = [
                     NameImport::Import(_) => false,
                 })
         },
-        explain: |names| {
+        undoes_fixes: true,
+        why: |names| {
             format!(
-                "{} removes `from __future__ import annotations` on Python 3.14 and newer, which Ruff's {} adds back \
-                 because `lint.isort.required-imports` lists it; ignore {} in `[tool.simplint]`, or drop the import \
-                 from `required-imports`",
-                names.simplint, names.ruff, names.simplint_selector,
+                "{} removes `from __future__ import annotations` on Python 3.14+; {} adds it back because \
+                 `lint.isort.required-imports` lists it",
+                names.simplint_selector, names.ruff_selectors,
             )
         },
+        fix: |names| {
+            format!(
+                "drop the import from `required-imports`, or ignore {} in `[tool.simplint]`",
+                names.simplint_selector
+            )
+        },
+    },
+    Clash {
+        simplint: Rule::Utf8EncodingDefault,
+        ruff: &[RuffRule::UnspecifiedEncoding],
+        probe: "open(\"file\")\n",
+        acts_on: |settings, _, _| settings.from_ruff.target_version >= PythonVersion::PY315,
+        undoes_fixes: true,
+        why: |names| {
+            format!(
+                "{} removes `encoding=\"utf-8\"` on Python 3.15+, where UTF-8 is the default; {} adds it back",
+                names.simplint_selector, names.ruff_selectors,
+            )
+        },
+        fix: ignore_in_ruff_or_simplint,
     },
     Clash {
         simplint: Rule::AbsoluteSiblingImport,
         ruff: &[RuffRule::RelativeImports],
         probe: "from . import sibling\n",
         acts_on: |_, _, _| true,
-        explain: |names| {
+        undoes_fixes: true,
+        why: |names| {
             format!(
-                "{} makes imports from the file's own package relative, which Ruff's {} turns back into absolute ones \
-                 because `lint.flake8-tidy-imports.ban-relative-imports` is `\"all\"`; ignore {} in `[tool.simplint]`, \
-                 or set `ban-relative-imports` to `\"parents\"`",
-                names.simplint, names.ruff, names.simplint_selector,
+                "{} makes imports from the file's own package relative; {} turns them back into absolute ones because \
+                 `lint.flake8-tidy-imports.ban-relative-imports` is `\"all\"`",
+                names.simplint_selector, names.ruff_selectors,
+            )
+        },
+        fix: |names| {
+            format!(
+                "set `ban-relative-imports` to `\"parents\"`, or ignore {} in `[tool.simplint]`",
+                names.simplint_selector
             )
         },
     },
@@ -219,17 +294,17 @@ const CLASHES: [Clash; 6] = [
         probe: "def function(value):\n    \"\"\"Return the value.\n\n    :returns: The value.\n    \"\"\"\n    return value\n\n\n\
                 def generator():\n    \"\"\"Count.\n\n    :yields: The numbers.\n    \"\"\"\n    yield 1\n",
         acts_on: |settings, _, _| settings.project.docstring_style == Some(DocstringStyle::Rst),
-        explain: |names| {
+        undoes_fixes: false,
+        why: |names| {
             format!(
-                "{} asks for the `:returns:` and `:yields:` fields of reStructuredText docstrings, which Ruff's {} {} as \
-                 missing sections; ignore {} in Ruff's `lint.ignore`, or ignore {} in `[tool.simplint]`",
-                names.simplint,
-                names.ruff,
-                if names.many { "read" } else { "reads" },
-                names.ruff_selectors,
+                "{} asks for the `:returns:` and `:yields:` fields of reStructuredText docstrings; {} {} them as \
+                 missing sections",
                 names.simplint_selector,
+                names.ruff_selectors,
+                names.verb("reads", "read"),
             )
         },
+        fix: ignore_in_ruff_or_simplint,
     },
     Clash {
         simplint: Rule::RstMissingRaises,
@@ -237,15 +312,24 @@ const CLASHES: [Clash; 6] = [
         probe: "def function(value):\n    \"\"\"Check the value.\n\n    :raises ValueError: When it is empty.\n    \"\"\"\n    \
                 if not value:\n        raise ValueError\n",
         acts_on: |settings, _, _| settings.project.docstring_style == Some(DocstringStyle::Rst),
-        explain: |names| {
+        undoes_fixes: false,
+        why: |names| {
             format!(
-                "{} asks for the `:raises:` fields of reStructuredText docstrings, which Ruff's {} reads as a missing \
-                 section; ignore {} in Ruff's `lint.ignore`, or ignore {} in `[tool.simplint]`",
-                names.simplint, names.ruff, names.ruff_selectors, names.simplint_selector,
+                "{} asks for the `:raises:` fields of reStructuredText docstrings; {} reads them as a missing section",
+                names.simplint_selector, names.ruff_selectors,
             )
         },
+        fix: ignore_in_ruff_or_simplint,
     },
 ];
+
+// The way out of a clash that a Ruff rule's ignore and simplint's own ignore both offer.
+fn ignore_in_ruff_or_simplint(names: &Names) -> String {
+    format!(
+        "ignore {} in Ruff's `lint.ignore`, or ignore {} in `[tool.simplint]`",
+        names.ruff_selectors, names.simplint_selector,
+    )
+}
 
 impl Clash {
     // Ruff's settings with only this clash's rules on, so the probe runs nothing else; `None` when none is on.

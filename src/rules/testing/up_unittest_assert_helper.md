@@ -133,3 +133,11 @@ class ConfigTest(TestCase):
 
 The fix is safe: it rewrites the call with the same operands and the `msg` argument, given as `msg=`. A call with a
 comment in it is reported without a fix, because the rewrite would drop the comment.
+
+## Other tools
+
+- [flake8-assertive](https://github.com/jparise/flake8-assertive) reports `assertTrue` and `assertFalse` calls on
+  comparisons and `is` checks that have a `TestCase` helper, as [A500](https://github.com/jparise/flake8-assertive),
+  [A501](https://github.com/jparise/flake8-assertive) and [A502](https://github.com/jparise/flake8-assertive).
+- [teyit](https://github.com/isidentical/teyit) rewrites the same kind of call, such as `assertTrue(name in names)`, to
+  `assertIn`.

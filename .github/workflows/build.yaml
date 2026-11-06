@@ -187,7 +187,7 @@ jobs:
         if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo && steps.profile.outputs.cache-hit != 'true' }}
         shell: bash
         # The profile lives outside target, which the Linux build container creates as root.
-        run: python tasks/pgo.py train "target/pgo-build/$PGO_TARGET/release/simplint" pgo --cache pgo-corpus
+        run: python -m tasks.pgo train "target/pgo-build/$PGO_TARGET/release/simplint" pgo --cache pgo-corpus
       - name: 💾 Save PGO corpus
         if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo && steps.profile.outputs.cache-hit != 'true' && steps.corpus.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -232,7 +232,7 @@ jobs:
       - name: 🔍 Check the PGO profile matched
         if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo }}
         shell: bash
-        run: python tasks/pgo.py verify pgo/build.log pgo/simplint.profdata
+        run: python -m tasks.pgo verify pgo/build.log pgo/simplint.profdata
       - name: 📤 Upload wheels
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

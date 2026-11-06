@@ -31,6 +31,26 @@ for source in json.load(sys.stdin):
         errors.append(None)
 json.dump(errors, sys.stdout)
 """
+#: Compiles the files of a tree, named by a JSON list of relative paths on stdin, and prints the ones that compile. The
+#: running parser knows only this interpreter's grammar, so an older target needs its own compiler; one subprocess per
+#: tree runs it over every file.
+COMPILE_TREE: Final[str] = """\
+import json
+import sys
+import warnings
+
+warnings.simplefilter("ignore")
+compiling = []
+for path in json.load(sys.stdin):
+    with open(path, "rb") as handle:
+        source = handle.read()
+    try:
+        compile(source, path, "exec", dont_inherit=True)
+    except SyntaxError:
+        continue
+    compiling.append(path)
+json.dump(compiling, sys.stdout)
+"""
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -82,6 +102,8 @@ def main(arguments: list[str]) -> int:
         for rule in json.loads(listing)
         for group in rule["examples"]["parsed"]
         for block in group["blocks"]
+        # a page shows documentation files, such as a reStructuredText page a rule reads, next to its Python
+        if block["language"] == "python"
     ]
     failures = _check(blocks, [resolve(minor) for minor in options.versions])
     for failure in failures:
@@ -162,6 +184,7 @@ if __name__ == "__main__":
 
 
 __all__ = [
+    "COMPILE_TREE",
     "Interpreter",
     "block_floor",
     "main",

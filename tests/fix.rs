@@ -4,7 +4,7 @@ use std::fmt::Write as _;
 
 use test_case::test_case;
 
-use common::{check, project, read};
+use common::{check, fix_unsafe, project, read};
 
 #[test]
 fn check_fix_writes_file() {
@@ -200,7 +200,7 @@ fn fix_lets_ruff_clean_up_what_it_disturbed() {
         ("pyproject.toml", "[tool.ruff.lint]\nselect = [\"F401\", \"E501\"]\n"),
         ("module.py", "from typing import Final\n\n_LIMIT: Final = 3\n\n\ndef limit() -> int:\n    return _LIMIT\n"),
     ]);
-    check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP202"]);
+    fix_unsafe(root.path(), "SMP202");
     assert_eq!(read(root.path(), "module.py"), "\n\ndef limit() -> int:\n    return 3\n");
 }
 
@@ -216,7 +216,7 @@ fn fix_lets_ruff_clean_up_over_several_passes() {
              return _LIMIT + _STEP\n",
         ),
     ]);
-    check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP202"]);
+    fix_unsafe(root.path(), "SMP202");
     assert_eq!(read(root.path(), "module.py"), "\n\ndef limit() -> int:\n    return 3 + 1\n");
 }
 
@@ -228,7 +228,7 @@ const SINGLE_USER: &str = "SMP202 `_LIMIT` is used by one function only; define 
 #[test]
 fn fix_is_withdrawn_when_ruff_would_report_the_result() {
     let root = project(&[RUFF_PLR2004, ("module.py", COMPARED)]);
-    let stdout = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP202"]).1;
+    let stdout = fix_unsafe(root.path(), "SMP202").1;
     assert_eq!(
         (stdout, read(root.path(), "module.py")),
         (format!("module.py:1:1: {SINGLE_USER}\nFound 1 error.\n"), COMPARED.to_owned())
@@ -239,7 +239,7 @@ fn fix_is_withdrawn_when_ruff_would_report_the_result() {
 fn fix_withdraws_only_the_rule_whose_result_ruff_would_report() {
     let source = COMPARED.replace("def", "# --- helpers ---\ndef");
     let root = project(&[RUFF_PLR2004, ("module.py", &source)]);
-    let stdout = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP001,SMP202"]).1;
+    let stdout = fix_unsafe(root.path(), "SMP001,SMP202").1;
     assert_eq!(
         (stdout, read(root.path(), "module.py")),
         (format!("module.py:1:1: {SINGLE_USER}\nFound 2 errors (1 fixed, 1 remaining).\n"), COMPARED.to_owned())
@@ -260,7 +260,7 @@ fn ruff_violations_already_present_are_not_fixed_by_simplint() {
 fn fix_is_withdrawn_when_ruff_already_reports_the_same_rule_elsewhere() {
     let source = format!("def first(value: int) -> bool:\n    return value > 7\n\n\n{COMPARED}");
     let root = project(&[RUFF_PLR2004, ("module.py", &source)]);
-    let stdout = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP202"]).1;
+    let stdout = fix_unsafe(root.path(), "SMP202").1;
     assert_eq!(
         (stdout, read(root.path(), "module.py")),
         (format!("module.py:5:1: {SINGLE_USER}\nFound 1 error.\n"), source)
@@ -274,7 +274,7 @@ fn fix_renames_more_names_than_fix_passes() {
         format!("{} = 1\n\n\ndef total() -> int:\n    return {}\n", names.join(" = 1\n"), names.join(" + "))
     };
     let root = project(&[("module.py", &source(&names))]);
-    check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP102"]);
+    fix_unsafe(root.path(), "SMP102");
     let renamed: Vec<String> = names.iter().map(|name| name.to_ascii_uppercase()).collect();
     assert_eq!(read(root.path(), "module.py"), source(&renamed));
 }
@@ -288,7 +288,7 @@ fn fix_lets_ruff_apply_a_fix_it_made_possible() {
             "def label(count: int):\n    if count:\n        return None\n    return \"count \" + str(count)\n",
         ),
     ]);
-    check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP503"]);
+    fix_unsafe(root.path(), "SMP503");
     assert_eq!(
         read(root.path(), "module.py"),
         "def label(count: int) -> str | None:\n    if count:\n        return None\n    return f\"count {count!s}\"\n"
@@ -305,7 +305,7 @@ fn fix_lets_ruff_clean_up_after_its_own_fixes() {
              sys, uuid, LIMIT)\n",
         ),
     ]);
-    check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP303"]);
+    fix_unsafe(root.path(), "SMP303");
     assert_eq!(
         read(root.path(), "module.py"),
         "import os\nimport sys\nimport uuid\n\nLIMIT = 3\n\n\nprint(os, sys, uuid, LIMIT)\n"
@@ -322,7 +322,7 @@ fn fix_takes_the_work_ruff_cleanup_leaves_for_the_rules() {
              -> bool:\n    return isinstance(value, basestring)\n",
         ),
     ]);
-    check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP202,SMP502,SMP102"]);
+    fix_unsafe(root.path(), "SMP202,SMP502,SMP102");
     assert_eq!(
         read(root.path(), "module.py"),
         "import sys\n\n\nBASESTRING = str\n\n\ndef is_text(value: object) -> bool:\n    return isinstance(value, BASESTRING)\n"
@@ -340,7 +340,7 @@ fn fix_keeps_suppressions_of_rules_the_cleanup_does_not_fix() {
         ("b.py", "shown = 1\n_hidden = 2\n"),
         ("c.py", "from a import shown\n\nprint(shown)\n"),
     ]);
-    check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP401"]);
+    fix_unsafe(root.path(), "SMP401");
     assert_eq!(
         read(root.path(), "a.py"),
         "from b import (\n    _hidden,  # ruff: ignore[unused-import]\n    shown,\n)\n\n\n__all__ = [\n    \"shown\",\n]\n"
@@ -353,7 +353,7 @@ fn fix_handles_a_byte_order_mark() {
         ("ordered.py", "\u{feff}def helper() -> None: ...\n\n\ndef main() -> None:\n    helper()\n"),
         ("constant.py", "\u{feff}_LIMIT = 3\n\n\ndef limit() -> int:\n    return _LIMIT\n"),
     ]);
-    check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP201,SMP202"]);
+    fix_unsafe(root.path(), "SMP201,SMP202");
     assert_eq!(
         (read(root.path(), "ordered.py"), read(root.path(), "constant.py")),
         (
@@ -371,7 +371,7 @@ fn fix_settles_constructors_with_the_methods_that_call_them() {
         "module.py",
         "class Holder:\n    def helper(self) -> int:\n        return 1\n\n    def __init__(self) -> None:\n        self.value = self.helper()\n\n    def reset(self) -> None:\n        self.__init__()\n",
     )]);
-    check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP201,SMP203"]);
+    fix_unsafe(root.path(), "SMP201,SMP203");
     assert_eq!(
         (read(root.path(), "module.py"), check(root.path(), &["--select", "SMP201,SMP203"])),
         (
@@ -381,19 +381,19 @@ fn fix_settles_constructors_with_the_methods_that_call_them() {
     );
 }
 
-// A helper of the first constructor follows the last one: SMP201 keeps the constructors together, so SMP203 has no
-// constructor to move back above it.
+// A helper follows the first constructor that calls it, as SMP201 places it, and SMP203 moves that constructor above the
+// methods. Both rules settle on one order, and a second fix changes nothing.
 #[test]
-fn fix_keeps_constructors_together_ahead_of_their_helpers() {
+fn fix_places_a_helper_after_the_constructor_that_calls_it() {
     let root = project(&[(
         "module.py",
-        "class Holder:\n    def __init_subclass__(cls) -> None:\n        cls.compile()\n\n    @classmethod\n    def compile(cls) -> None:\n        pass\n\n    def __init__(self) -> None:\n        self.value = 1\n",
+        "class Holder:\n    def run(self) -> int:\n        return 1\n\n    @classmethod\n    def compile(cls) -> None:\n        pass\n\n    def __init_subclass__(cls) -> None:\n        cls.compile()\n",
     )]);
-    check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP201,SMP203"]);
+    fix_unsafe(root.path(), "SMP201,SMP203");
     assert_eq!(
         (read(root.path(), "module.py"), check(root.path(), &["--select", "SMP201,SMP203"])),
         (
-            "class Holder:\n    def __init_subclass__(cls) -> None:\n        cls.compile()\n\n    def __init__(self) -> None:\n        self.value = 1\n\n    @classmethod\n    def compile(cls) -> None:\n        pass\n".to_owned(),
+            "class Holder:\n    def __init_subclass__(cls) -> None:\n        cls.compile()\n\n    @classmethod\n    def compile(cls) -> None:\n        pass\n\n    def run(self) -> int:\n        return 1\n".to_owned(),
             (0, "All checks passed!\n".to_owned(), String::new())
         )
     );
@@ -422,7 +422,7 @@ fn fix_runs_again_on_what_ruff_cleaned_up() {
              indent\n",
         ),
     ]);
-    check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP202,SMP503"]);
+    fix_unsafe(root.path(), "SMP202,SMP503");
     assert_eq!(
         read(root.path(), "module.py"),
         "def describe(doc: str, indent: str) -> str:\n    return f\"{doc}\\n{indent}Frozen.\"\n"
@@ -442,7 +442,7 @@ fn fix_keeps_a_line_length_noqa_when_ruff_removes_unused_ones() {
         ("b.py", "shown = 1\n"),
         ("c.py", "from a import shown\n\nprint(shown)\n"),
     ]);
-    check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP401"]);
+    fix_unsafe(root.path(), "SMP401");
     assert_eq!(read(root.path(), "a.py"), format!("from b import shown\n\n{long}\n\n__all__ = [\n    \"shown\",\n]\n"));
 }
 
@@ -466,7 +466,7 @@ fn fix_leaves_findings_ruff_would_fix_at_its_line_length_to_ruff() {
         ("pyproject.toml", "[tool.ruff.lint]\nselect = [\"E711\"]\n"),
         ("module.py", "setting = None\nprint(setting == None)\n"),
     ]);
-    check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP102"]);
+    fix_unsafe(root.path(), "SMP102");
     assert_eq!(read(root.path(), "module.py"), "SETTING = None\nprint(SETTING == None)\n");
 }
 
@@ -483,7 +483,7 @@ fn fix_lets_ruff_drop_a_layout_suppression_the_fix_leaves_unused(suppression: &s
             &format!("def helper() -> int:\n    return 1\ndef main() -> int:  {suppression}\n    return helper()\n"),
         ),
     ]);
-    check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP201"]);
+    fix_unsafe(root.path(), "SMP201");
     assert_eq!(
         read(root.path(), "module.py"),
         "def main() -> int:\n    return helper()\n\n\ndef helper() -> int:\n    return 1\n"
@@ -536,4 +536,142 @@ fn fix_lints_again_the_dataclasses_whose_class_writes_changed() {
             Some("@dataclass(kw_only=True, frozen=True, slots=True)".to_owned())
         )
     );
+}
+
+// Ruff's C419 would turn a comprehension passed to `all` into a generator once it is inlined there, so a comprehension
+// whose elements call something stays a list, and the calls all run. One of names only has no call to run.
+#[test_case(
+    "[convert(domain) for domain in domains]",
+    "    results = [convert(domain) for domain in domains]\n    return all(results)\n" ;
+    "calls_stay"
+)]
+#[test_case("[domain for domain in domains]", "    return all(domain for domain in domains)\n" ; "names_inline")]
+fn single_use_variable_inlines_a_comprehension_into_all(comprehension: &str, body: &str) {
+    let source = format!("def check(domains):\n    results = {comprehension}\n    return all(results)\n");
+    let root = project(&[("module.py", &source)]);
+    let (code, _, _) = fix_unsafe(root.path(), "SMP504");
+    assert_eq!((code, read(root.path(), "module.py")), (0, format!("def check(domains):\n{body}")));
+}
+
+// The statement that uses the constant shares its line with the one before it, so the fix splits that line, as the
+// formatter would, and a second run finds nothing to move.
+#[test]
+fn early_assignment_splits_a_shared_line() {
+    let source = "def build(ffi):\n    name = \"struct ab\"\n    ffi2 = ffi.FFI(); ffi2.cdef(name)\n    return ffi2\n";
+    let root = project(&[("module.py", source)]);
+    let (code, _, _) = fix_unsafe(root.path(), "SMP526");
+    let fixed =
+        "def build(ffi):\n    ffi2 = ffi.FFI()\n    name = \"struct ab\"\n    ffi2.cdef(name)\n    return ffi2\n";
+    let (again, _, _) = check(root.path(), &["--select", "SMP526"]);
+    assert_eq!((code, again, read(root.path(), "module.py")), (0, 0, fixed.to_owned()));
+}
+
+// A fix that rewrites the file's comment or docstring leaves it alone when a `noqa` silences a line the rewrite would
+// change, so the directive stays used and the file keeps its text.
+#[test_case(
+    "tests/test_module.py",
+    "SMP902",
+    "\"\"\"Tests for a module whose long docstring line is silenced by the file-level noqa directive below.\"\"\"\n# ruff: noqa: E501\n\n\ndef test_a() -> None:\n    pass\n",
+    1 ; "test_module_docstring_under_file_noqa"
+)]
+#[test_case(
+    "module.py",
+    "SMP901",
+    "# ruff: noqa: E501\n\n\nclass Box:\n    \"\"\"Holds one value, with a tie-break rule the code does not show.\"\"\"\n\n    value: int = 0\n",
+    1 ; "function_docstring_under_file_noqa"
+)]
+#[test_case(
+    "tests/test_box.py",
+    "SMP801",
+    "class TestBox:\n    def test_value(self) -> None:\n        value = 1  # noqa: E501\n        assert value\n",
+    1 ; "test_class_with_noqa_on_a_long_line"
+)]
+#[test_case(
+    "tests/test_box.py",
+    "SMP801",
+    "class TestBox:\n    def test_value(self) -> None:\n        value = 1  # ruff: ignore[E501]\n        assert value\n",
+    1 ; "test_class_with_ruff_ignore_on_a_long_line"
+)]
+#[test_case(
+    "module.py",
+    "SMP007",
+    "def run() -> None:\n    \"\"\"Run the job, which keeps every step of a long procedure in one docstring that is wider than the limit.\"\"\"  # noqa: E501\n    print()\n",
+    0 ; "docstring_with_noqa"
+)]
+#[test_case(
+    "module.py",
+    "SMP007",
+    "def run() -> None:\n    \"\"\"Run the job, which keeps every step of a long procedure in one docstring that is wider than the limit.\"\"\"  # ruff: ignore[line-too-long]\n    print()\n",
+    0 ; "docstring_with_ruff_ignore"
+)]
+#[test_case(
+    "module.py",
+    "SMP007",
+    "# ruff: noqa: E501\n\n\ndef run() -> None:\n    \"\"\"``{v}`` satisfies ``t`` iff ``v in t``; trichotomy collapses on singletons, and the values it covers are every version in the pool.\"\"\"\n    print()\n",
+    0 ; "docstring_under_file_noqa"
+)]
+#[test_case(
+    "module.py",
+    "SMP007",
+    "# ruff: file-ignore[E501]\n\n\ndef run() -> None:\n    \"\"\"``{v}`` satisfies ``t`` iff ``v in t``; trichotomy collapses on singletons, and the values it covers are every version in the pool.\"\"\"\n    print()\n",
+    0 ; "docstring_under_file_ignore"
+)]
+fn fix_leaves_a_file_its_noqa_directive_depends_on(path: &str, select: &str, source: &str, code: i32) {
+    let root = project(&[(path, source)]);
+    let (actual, _, _) = fix_unsafe(root.path(), select);
+    assert_eq!((actual, read(root.path(), path)), (code, source.to_owned()));
+}
+
+// A file indented by two spaces gets four from `ruff format`, so a comment that fits at its two-space indentation is
+// too long once formatted, and the fix reflows it.
+#[test]
+fn long_comment_line_judges_the_formatted_indentation() {
+    let text = "word ".repeat(15) + "end";
+    let source =
+        format!("class Box:\n  def run(self):\n    if self:\n      if self:\n        # {text}\n        return 1\n");
+    let root = project(&[("module.py", &source)]);
+    let (code, stdout, _) = fix_unsafe(root.path(), "SMP007");
+    assert_eq!((code, stdout.contains("1 fixed")), (0, true));
+}
+
+// The statement that uses the constant shares its line with one after it, which the fix splits off as well.
+#[test]
+fn early_assignment_splits_a_line_the_use_shares_with_a_later_statement() {
+    let source = "def build(ffi):\n    name = \"struct ab\"\n    ffi.reset()\n    ffi.cdef(name); ffi.verify(name)\n";
+    let root = project(&[("module.py", source)]);
+    let (code, _, _) = fix_unsafe(root.path(), "SMP526");
+    let fixed =
+        "def build(ffi):\n    ffi.reset()\n    name = \"struct ab\"\n    ffi.cdef(name)\n    ffi.verify(name)\n";
+    assert_eq!((code, read(root.path(), "module.py")), (0, fixed.to_owned()));
+}
+
+// A file indented by tabs gets spaces from `ruff format`, four to a level, so the comment is too long once formatted.
+#[test]
+fn long_comment_line_judges_tab_indentation_as_formatted() {
+    let text = "word ".repeat(15) + "end";
+    let source =
+        format!("class Box:\n\tdef run(self):\n\t\tif self:\n\t\t\tif self:\n\t\t\t\t# {text}\n\t\t\t\treturn 1\n");
+    let root = project(&[("module.py", &source)]);
+    let (code, stdout, _) = fix_unsafe(root.path(), "SMP007");
+    assert_eq!((code, stdout.contains("1 fixed")), (0, true));
+}
+
+// The words of a statement that spans lines count whole, since `ruff format` joins such a statement onto one line.
+#[test]
+fn restating_comment_counts_a_statement_across_its_lines() {
+    let source = "def build(base):\n    # recursive selector\n    selector = make(\n        base, recursive=True\n    )\n    return selector\n";
+    let root = project(&[("module.py", source)]);
+    let (code, _, _) = fix_unsafe(root.path(), "SMP005");
+    let fixed = "def build(base):\n    selector = make(\n        base, recursive=True\n    )\n    return selector\n";
+    assert_eq!((code, read(root.path(), "module.py")), (0, fixed.to_owned()));
+}
+
+// The index holds the import that closes the cycle as a range of the source it read. The fix shortens the file, so the
+// lint of the fixed source in the fix loop must not report that range, which now runs past its end.
+#[test]
+fn import_cycle_survives_a_fix_before_the_import() {
+    let source = "def run():\n    value = \"a value long enough to move the import well back\"\n    print(value)\n\n\nimport b\n";
+    let root = project(&[("a.py", source), ("b.py", "import a\n")]);
+    let (code, stdout, _) = check(root.path(), &["--fix", "--select", "SMP308,SMP504"]);
+    assert_eq!((code, stdout.contains("a.py:5:1: SMP308")), (1, true));
 }

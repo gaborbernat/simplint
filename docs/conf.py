@@ -5,17 +5,28 @@ from __future__ import annotations
 import html
 import json
 import os
+import posixpath
 import re
+import shlex
+import shutil
+import subprocess  # ruff: ignore[suspicious-subprocess-import] # runs the pinned mermaid-cli
 import sys
 import textwrap
 import tomllib
 from datetime import UTC, datetime
+from functools import partial
+from hashlib import sha1, sha256
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING, Final, NotRequired, TypedDict
 
+from docutils import nodes
+from sphinx_design.dropdown import dropdown_main
+from sphinxcontrib.mermaid import mermaid
+
 if TYPE_CHECKING:
-    from docutils import nodes
     from sphinx.application import Sphinx
+    from sphinx.builders import Builder
 
 # sphinx-argparse-cli imports the parser builder that sits next to this file
 sys.path.insert(0, str(Path(__file__).parent))
@@ -46,8 +57,8 @@ html_theme_options: Final[dict[str, str | bool | dict[str, str]]] = {
     "source_repository": "https://github.com/gaborbernat/simplint",
     "source_branch": "main",
     "source_directory": "docs/",
-    "light_logo": "wordmark-light.png",
-    "dark_logo": "wordmark-dark.png",
+    "light_logo": "wordmark-light.webp",
+    "dark_logo": "wordmark-dark.webp",
     "sidebar_hide_name": True,
     "light_css_variables": {
         "color-brand-primary": "#2b6599",
@@ -93,14 +104,40 @@ extensions: Final[list[str]] = [
     "sphinx_design",
     "sphinxcontrib.mermaid",
 ]
-# each diagram colors its nodes from the brand palette, which reads on both Furo themes, so both start from neutral
-mermaid_light_theme: Final[str] = "base"
-mermaid_dark_theme: Final[str] = "base"
-mermaid_height: Final[str] = "auto"
-mermaid_init_config: Final[dict[str, bool | dict[str, str]]] = {
-    "startOnLoad": False,
-    "themeVariables": {"fontSize": "18px"},
+# Diagrams are drawn once, at build time, by mermaid-cli, which npx fetches at this version, so pages carry finished
+# SVGs and load no script. Its headless browser comes from puppeteer, which downloads one when npx installs it, or
+# runs the one PUPPETEER_EXECUTABLE_PATH names when PUPPETEER_SKIP_DOWNLOAD is set.
+if shutil.which("npx") is None:
+    msg = "the docs draw their diagrams with mermaid-cli, run through npx: install Node.js and put npx on PATH"
+    raise RuntimeError(msg)
+_DIAGRAMS: Final[Path] = Path(__file__).parent / "_generated" / "mermaid"
+# the labels use a face every viewer has, or one with its widths, so the text fits the boxes drawn around it
+_DIAGRAM_FONT: Final[dict[str, str]] = {
+    "fontFamily": "Arial, 'Liberation Sans', Helvetica, sans-serif",
+    "fontSize": "18px",
 }
+# each diagram colors its nodes from the brand palette, which reads on both Furo themes, so it starts from neutral;
+# mermaid sizes each box to its label in the plain weight, so a bold label would wrap
+_DIAGRAM_CONFIG: Final[str] = json.dumps({
+    "theme": "base",
+    "fontFamily": _DIAGRAM_FONT["fontFamily"],
+    "themeVariables": _DIAGRAM_FONT,
+    "themeCSS": ".edgeLabel { font-size: 0.85em; }",
+})
+mermaid_output_format: Final[str] = "svg"
+mermaid_cmd: Final[str] = "npx --yes --package=@mermaid-js/mermaid-cli@12.2.0 mmdc"
+# The extension passes this file as the mermaid configuration and names each drawing after its path, and reuses a
+# drawing it finds under that name; a path that holds the content's hash redraws every diagram when the configuration
+# changes.
+mermaid_sequence_config: Final[str] = str(
+    _DIAGRAMS / f"config-{sha256(_DIAGRAM_CONFIG.encode()).hexdigest()[:12]}.json"
+)
+mermaid_params: Final[list[str]] = [
+    "--backgroundColor",
+    "transparent",
+    "--puppeteerConfigFile",
+    str(_DIAGRAMS / "puppeteer.json"),
+]
 
 # copying a snippet takes the code alone, not the line numbers or console prompts and output
 copybutton_exclude: Final[str] = ".linenos, .gp, .go"
@@ -116,8 +153,8 @@ nitpick_ignore: Final[list[tuple[str, str]]] = []
 # anchors that resolve in a browser but linkcheck cannot verify: GitHub renders README heading ids with a
 # user-content- prefix added client-side, and pyright's single-page docs route on the part after the hash
 # cppreference answers automated clients with 403 Forbidden while the page loads in a browser; the changelog links each
-# entry's pull request and author profile, which the changelog task builds from real pull requests, and checking several
-# hundred of them makes GitHub answer 504
+# entry's pull request and author profile, which the changelog task builds from real pull requests and GitHub answers
+# with 504 from CI runners
 linkcheck_ignore: Final[list[str]] = [
     r"https://en\.cppreference\.com/.*",
     r"https://github\.com/gaborbernat/simplint/pull/\d+$",
@@ -127,6 +164,8 @@ linkcheck_anchors_ignore_for_url: Final[list[str]] = [
     r"https://github\.com/.*",
     r"https://microsoft\.github\.io/pyright/.*",
 ]
+# documentation hosts such as docs.astral.sh sometimes take longer than the default 30 seconds to answer
+linkcheck_timeout: Final[int] = 60
 
 markdown_http_base: Final[str] = os.environ.get("READTHEDOCS_CANONICAL_URL", "")
 # sphinx-markdown-builder cannot translate sphinx-inline-tabs labels, sphinx-design card titles or mermaid diagrams,
@@ -142,6 +181,7 @@ class _Fence(TypedDict):
 
 class _Block(_Fence):
     role: str
+    language: str
     file: str
     named: bool
 
@@ -177,6 +217,13 @@ def _generate(docs: Path) -> dict[str, str]:
     # pages and `simplint rule` cannot drift
     generated = docs / "_generated"
     (generated / "rules").mkdir(parents=True, exist_ok=True)
+    _DIAGRAMS.mkdir(exist_ok=True)
+    _write(Path(mermaid_sequence_config), _DIAGRAM_CONFIG)
+    # The browser renders only the diagrams of these pages, so it needs no sandbox, which containers often cannot give
+    # it. Read the Docs builds in a small container: its /dev/shm is too small for Chrome, and a slow start there can
+    # outlast puppeteer's default 30 s wait.
+    puppeteer = {"args": ["--no-sandbox", "--disable-dev-shm-usage"], "timeout": 180_000}
+    _write(_DIAGRAMS / "puppeteer.json", json.dumps(puppeteer))
     rules: list[_RuleEntry] = json.loads((docs / "_data" / "rules.json").read_text(encoding="utf-8"))
     # each group's title and short title by its family, the directory its rules live in, which names its pages since
     # titles have spaces; the binary lists rules by code, so each group appears where its first rule does
@@ -187,18 +234,25 @@ def _generate(docs: Path) -> dict[str, str]:
         _write(generated / "groups" / f"{family}.rst", _group_page(title, rules))
     for rule in rules:
         _write(generated / "rules" / f"{rule['code']}.md", _rule_page(rule))
-    for folder, current in (
-        ("rules", {f"{rule['code']}.md" for rule in rules}),
-        ("groups", {f"{family}.rst" for family in groups}),
-    ):
-        for stale in (page for page in (generated / folder).iterdir() if page.name not in current):
-            stale.unlink()
+    _remove_stale(generated / "rules", {f"{rule['code']}.md" for rule in rules})
+    _remove_stale(generated / "groups", {f"{family}.rst" for family in groups})
+    _remove_stale(_DIAGRAMS, {Path(mermaid_sequence_config).name, "puppeteer.json"})
     # each explanation sits next to its rule, in the directory of the rule's family
     root = docs.parent
-    return {
-        rule["code"]: next(root.glob(f"src/rules/*/{rule['name'].replace('-', '_')}.md")).relative_to(root).as_posix()
-        for rule in rules
-    }
+    explanations: dict[str, str] = {}
+    for rule in rules:
+        pattern = f"src/rules/*/{rule['name'].replace('-', '_')}.md"
+        if (found := next(root.glob(pattern), None)) is None:
+            msg = f"no explanation for {rule['code']}: expected a file matching {pattern}"
+            raise FileNotFoundError(msg)
+        explanations[rule["code"]] = found.relative_to(root).as_posix()
+    return explanations
+
+
+def _remove_stale(folder: Path, current: set[str]) -> None:
+    # a page whose rule or group is gone would still build, under a name that no longer exists
+    for stale in (page for page in folder.iterdir() if page.name not in current):
+        stale.unlink()
 
 
 _FIX_BADGES: Final[dict[str, tuple[str, str]]] = {
@@ -223,25 +277,7 @@ def _rules_index(rules: list[_RuleEntry], groups: dict[str, tuple[str, str]]) ->
     rows: list[str] = []
     for family, (group, _) in groups.items():
         rows.append(f'<tr class="group-row" data-group="{family}"><td colspan="4">{html.escape(group)}</td></tr>')
-        for rule in (entry for entry in rules if entry["family"] == family):
-            badge_class, badge_text = _FIX_BADGES[rule["fix"]]
-            fix = (
-                ""
-                if rule["fix"] == "None"
-                else f'<span class="badge {badge_class}" title="{badge_text}" aria-label="{badge_text}">'
-                f"{badge_text.split(' ', 1)[0]}</span>"
-            )
-            cross_file = _cross_file_badge("") if rule["cross_file"] else ""
-            searchable = html.escape(f"{rule['code']} {rule['name']} {rule['summary']}".lower(), quote=True)
-            rows.append(
-                f'<tr class="rule-row" id="{rule["name"]}" data-group="{family}" data-fix="{rule["fix"]}"'
-                f' data-text="{searchable}">'
-                f'<td class="rule-code" id="{rule["code"]}">'
-                f'<a href="_generated/rules/{rule["code"]}.html">{rule["code"]}</a></td>'
-                f'<td class="rule-name">{rule["name"]}{cross_file}</td>'
-                f'<td class="rule-summary">{_inline_code(rule["summary"])}</td>'
-                f'<td class="rule-fix">{fix}</td></tr>'
-            )
+        rows.extend(_rule_row(rule) for rule in rules if rule["family"] == family)
     body = "\n".join(rows)
     markup = (
         '<div class="rule-filter">'
@@ -251,8 +287,13 @@ def _rules_index(rules: list[_RuleEntry], groups: dict[str, tuple[str, str]]) ->
         '<select id="rule-fix" aria-label="Fix availability"><option value="">Any fix</option>'
         '<option value="Always">Fix always available</option><option value="Sometimes">Fix sometimes available</option>'
         '<option value="None">No fix</option></select>'
-        '<span id="rule-count" class="rule-count"></span></div>'
-        '<table class="rules"><thead><tr><th>Code</th><th class="rule-name">Name</th><th>Checks</th><th>Fix</th>'
+        '<select id="rule-scope" aria-label="Files read"><option value="">All rules</option>'
+        '<option value="cross-file">Cross-file only</option>'
+        '<option value="single-file">Single-file only</option></select>'
+        # the count, like the rows, is final in the markup, so a page without filters needs no script to settle
+        f'<span id="rule-count" class="rule-count">{len(rules)} rules</span></div>'
+        '<table class="rules"><thead><tr><th class="rule-code">Code</th><th class="rule-name">Name</th>'
+        '<th class="rule-summary">Checks</th><th class="rule-fix">Fix</th>'
         f"</tr></thead><tbody>\n{body}\n</tbody></table>"
         '<p id="rule-empty" class="rule-empty" hidden>No rule matches these filters.</p>'
     )
@@ -262,15 +303,34 @@ def _rules_index(rules: list[_RuleEntry], groups: dict[str, tuple[str, str]]) ->
     return f".. raw:: html\n\n{textwrap.indent(markup, '   ')}\n\n.. toctree::\n   :hidden:\n\n{groups_tree}\n"
 
 
+def _rule_row(rule: _RuleEntry) -> str:
+    badge_class, badge_text = _FIX_BADGES[rule["fix"]]
+    fix = (
+        ""
+        if rule["fix"] == "None"
+        else f'<span class="badge {badge_class}" title="{badge_text}" aria-label="{badge_text}">'
+        f"{badge_text.split(' ', 1)[0]}</span>"
+    )
+    cross_file = _cross_file_badge("") if rule["cross_file"] else ""
+    searchable = html.escape(f"{rule['code']} {rule['name']} {rule['summary']}".lower(), quote=True)
+    summary = re.sub(r"`([^`]+)`", r"<code>\1</code>", html.escape(rule["summary"]))
+    return (
+        f'<tr class="rule-row" id="{rule["name"]}" data-group="{rule["family"]}" data-fix="{rule["fix"]}"'
+        f' data-scope="{"cross-file" if rule["cross_file"] else "single-file"}"'
+        f' data-text="{searchable}">'
+        f'<td class="rule-code" id="{rule["code"]}">'
+        f'<a href="_generated/rules/{rule["code"]}.html">{rule["code"]}</a></td>'
+        f'<td class="rule-name">{rule["name"]}{cross_file}</td>'
+        f'<td class="rule-summary">{summary}</td>'
+        f'<td class="rule-fix">{fix}</td></tr>'
+    )
+
+
 def _group_page(group: str, rules: list[_RuleEntry]) -> str:
     entries = "\n".join(
         f"   {rule['code']} · {rule['name']} <../rules/{rule['code']}>" for rule in rules if rule["group"] == group
     )
     return f"{group}\n{'=' * len(group)}\n\n.. toctree::\n   :titlesonly:\n\n{entries}\n"
-
-
-def _inline_code(text: str) -> str:
-    return re.sub(r"`([^`]+)`", r"<code>\1</code>", html.escape(text))
 
 
 def _rule_page(rule: _RuleEntry) -> str:
@@ -349,8 +409,8 @@ def _examples(lines: list[str], start: int, stop: int, by_line: dict[int, _Examp
     # one. Only the Active on cases pair a reported example with its accepted one.
     out: list[str] = []
     run: list[_Example] = []
-    active = False
     index = start
+    active = False
     while index < stop:
         if (example := by_line.get(index + 1)) is not None:
             run.append(example)
@@ -420,7 +480,7 @@ def _pair(reported: _Example, accepted: _Example, lines: list[str]) -> list[str]
         out.extend([f"{indent}:::{{container}} example-side", ""])
         for block in example["blocks"]:
             label = f"`{block['file']}`" if block["role"] == "context" else _caption(block, side)
-            out.extend(_code_block(indent, "python", label, _body(lines, block)))
+            out.extend(_code_block(indent, block["language"], label, _body(lines, block)))
         out.extend([f"{indent}:::", ""])
     return [*out, f"{indent}::::", ""]
 
@@ -452,11 +512,11 @@ def _dropdown(example: _Example, lines: list[str], *, settings: bool) -> list[st
         # a lone example.py needs no name; a fix shows its before and after side by side
         file = f"`{block['file']}`" if block["named"] else ""
         if "fixed" not in roles:
-            out.extend(_code_block(indent, "python", file, body))
+            out.extend(_code_block(indent, block["language"], file, body))
             continue
         side = "after" if block["role"] == "fixed" else "before"
         out.append(f"{indent}:::{{container}} example-side")
-        out.extend(["", *_code_block(indent, "python", _caption(block, side), body)])
+        out.extend(["", *_code_block(indent, block["language"], _caption(block, side), body)])
         out.extend([f"{indent}:::", ""])
     return [*out, f"{indent}::::", ""]
 
@@ -495,7 +555,9 @@ def _cards(lines: list[str], example: _Example, *, skip_blank: bool) -> tuple[li
         previous = block["end_line"]
         skip_blank = block["role"] == "context"
         if not skip_blank:
-            out.extend(_fence_lines("", "python", f"`{block['file']}`" if block["named"] else "", _body(lines, block)))
+            out.extend(
+                _fence_lines("", block["language"], f"`{block['file']}`" if block["named"] else "", _body(lines, block))
+            )
     return out, skip_blank
 
 
@@ -518,22 +580,154 @@ def _write(path: Path, content: str) -> None:
 
 
 class _PageContext(TypedDict):
-    # The keys this handler reads or writes; Sphinx's context holds many more.
+    # The keys these handlers read or write; Sphinx's context holds many more.
     rule_sources: dict[str, str]
+    body: str
+    furo_navigation_tree: str
     theme_source_edit_link: NotRequired[str]
     theme_source_view_link: NotRequired[str]
 
 
 def setup(app: Sphinx) -> None:
-    app.connect("html-page-context", _point_generated_pages_at_their_source)
+    app.connect("write-started", _draw_diagrams)
+    app.connect("doctree-resolved", _add_controls)
+    # after Furo's own handler, which builds the navigation tree this one marks
+    app.connect("html-page-context", _settle_page, priority=600)
+    # after Furo's own handler, which writes the dark highlighting styles into pygments.css when the build finishes
+    app.connect("build-finished", _inline_assets, priority=900)
 
 
-def _point_generated_pages_at_their_source(
+def _draw_diagrams(app: Sphinx, builder: Builder) -> None:
+    # The extension starts a browser for each diagram as it writes the page, and with parallel writers several start at
+    # once, more than a small container can launch in time. One mermaid-cli run draws every diagram the pages hold
+    # before they are written, under the name the extension looks for, so it reuses them and starts no browser; a
+    # rebuild draws only diagrams that changed.
+    if builder.format != "html":
+        return
+    images = Path(builder.outdir) / builder.imagedir
+    pending: dict[Path, str] = {}
+    for docname in sorted(app.env.found_docs):
+        for node in app.env.get_doctree(docname).findall(mermaid):
+            key = f"{node['code']}{node['options']}{app.config.mermaid_sequence_config}".encode()
+            if not (target := images / f"mermaid-{sha1(key, usedforsecurity=False).hexdigest()}.svg").exists():
+                pending[target] = node["code"]
+    if not pending:
+        return
+    images.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory() as folder:
+        work = Path(folder)
+        (work / "diagrams.md").write_text(
+            "".join(f"```mermaid\n{code}\n```\n\n" for code in pending.values()), encoding="utf-8"
+        )
+        command = [*shlex.split(mermaid_cmd), *mermaid_params, "--configFile", mermaid_sequence_config]
+        command += ["--input", str(work / "diagrams.md"), "--output", str(work / "drawn.md")]
+        run = subprocess.run(command, capture_output=True, text=True, check=False)  # ruff: ignore[subprocess-without-shell-equals-true] # the pinned command above
+        if run.returncode:
+            msg = f"mermaid-cli could not draw the diagrams:\n{run.stderr}{run.stdout}"
+            raise RuntimeError(msg)
+        # mermaid-cli numbers the drawings of a Markdown file in the order of its diagrams
+        for index, target in enumerate(pending, start=1):
+            shutil.move(work / f"drawn-{index}.svg", target)
+
+
+def _add_controls(app: Sphinx, doctree: nodes.document, docname: str) -> None:
+    # Pages are built in their final shape, so no script moves them once they show: rules.js only wires up the
+    # controls. They are HTML alone, so the Markdown copies of the pages leave them out.
+    del docname
+    if app.builder.format != "html":
+        return
+    raws = list(doctree.findall(nodes.raw))
+    # filters from the URL apply before anything below the table exists, so nothing below moves once it shows
+    if (table := next((node for node in raws if 'id="rule-empty"' in node.astext()), None)) is not None:
+        script = '<script>setupRulesTable(document.querySelector("table.rules"))</script>'
+        table.replace_self(nodes.raw("", f"{table.astext()}{script}", format="html"))
+    examples = list(doctree.findall(dropdown_main))
+    # one pill in the badge row opens every example, or closes them all once each is open; rules.js keeps its label
+    badges = next((node for node in raws if '<div class="badges">' in node.astext()), None)
+    if examples and badges is not None:
+        switch = '<button type="button" class="badge example-switch" aria-expanded="false">Expand all examples</button>'
+        badges.replace_self(nodes.raw("", badges.astext().replace("</div>", f"{switch}</div>"), format="html"))
+    count = 0
+    for example in examples:
+        classes = example["classes"]
+        if "example-fix" in classes or "example-pair" in classes:
+            _add_measures(example)
+        kind = next((name for name in _EXAMPLE_TOGGLES if name in classes), None)
+        item = next((parent for parent in _ancestors(example) if isinstance(parent, nodes.list_item)), None)
+        paragraph = (
+            None
+            if item is None
+            else next((child for child in item.children if isinstance(child, nodes.paragraph)), None)
+        )
+        if kind is None or paragraph is None:
+            continue
+        if not example["ids"]:
+            count += 1
+            example["ids"].append(f"rule-example-{count}")
+        icon, label = _EXAMPLE_TOGGLES[kind]
+        # a pair's icon is both marks, colored apart by the stylesheet
+        marks = "".join(
+            f'<span class="mark-{"reported" if mark == "✗" else "not-reported"}">{mark}</span>'
+            if kind == "example-pair"
+            else f"<span>{mark}</span>"
+            for mark in icon
+        )
+        button = (
+            f'<button type="button" class="example-toggle {kind}" title="{label}" aria-label="{label}"'
+            f' aria-controls="{example["ids"][0]}" aria-expanded="{str(bool(example.get("opened"))).lower()}">'
+            f"{marks}</button>"
+        )
+        paragraph.append(nodes.raw("", button, format="html"))
+        classes.append("example-inline")
+
+
+def _add_measures(example: nodes.Element) -> None:
+    # Before and after sit side by side only while every line fits its half. Each side holds an invisible copy of the
+    # longest line of both, built like the snippets around it, so the browser sizes both sides alike and wraps the
+    # second below the first once that line no longer fits; no script measures the page.
+    sides = [node for node in example.findall(nodes.container) if "example-side" in node["classes"]]
+    lines = [
+        line for side in sides for block in side.findall(nodes.literal_block) for line in block.astext().splitlines()
+    ]
+    longest = html.escape(max(lines, key=len, default=""))
+    measure = (
+        '<div class="highlight-text example-measure" aria-hidden="true"><div class="highlight"><pre>'
+        f'<span class="linenos">0</span>{longest}</pre></div></div>'
+    )
+    for side in sides:
+        side.insert(0, nodes.raw("", measure, format="html"))
+    # an odd side out keeps to half the width beside an empty one, as the sides above it do
+    if len(sides) % 2 and (parent := sides[-1].parent) is not None:
+        filler = f'<div class="example-side" aria-hidden="true">{measure}</div>'
+        parent.insert(parent.index(sides[-1]) + 1, nodes.raw("", filler, format="html"))
+
+
+def _ancestors(node: nodes.Element) -> list[nodes.Element]:
+    found: list[nodes.Element] = []
+    while (node := node.parent) is not None:
+        found.append(node)
+    return found
+
+
+def _settle_page(
     app: Sphinx, pagename: str, templatename: str, context: _PageContext, doctree: nodes.document | None
 ) -> None:
+    del templatename, doctree
+    _point_generated_pages_at_their_source(pagename, context)
+    if "furo_navigation_tree" in context:
+        context["furo_navigation_tree"] = _SIDEBAR_LINK.sub(
+            partial(_mark_sidebar_link, pagename), context["furo_navigation_tree"]
+        )
+    if "body" in context:
+        diagrams = Path(app.outdir) / app.builder.imagedir
+        context["body"] = _DIAGRAM.sub(
+            partial(_inline_diagram, diagrams), _NUMBERED_CODE.sub(_split_code_lines, context["body"])
+        )
+
+
+def _point_generated_pages_at_their_source(pagename: str, context: _PageContext) -> None:
     # Generated pages have no file under docs/, so the theme's view and edit icons would point nowhere: a rule page
     # comes from its explanation in the crate, the group pages from this configuration.
-    del app, templatename, doctree
     if pagename.startswith("_generated/rules/"):
         source = context["rule_sources"][pagename.rsplit("/", 1)[1]]
     elif pagename.startswith("_generated/"):
@@ -542,6 +736,94 @@ def _point_generated_pages_at_their_source(
         return
     context["theme_source_edit_link"] = f"https://github.com/gaborbernat/simplint/edit/main/{source}"
     context["theme_source_view_link"] = f"https://github.com/gaborbernat/simplint/blob/main/{source}"
+
+
+def _mark_sidebar_link(pagename: str, match: re.Match[str]) -> str:
+    # The stylesheet gives each sidebar entry the icon of the page it names. Rule pages lead with their code and take
+    # none; Furo links the current page as `#`.
+    classes, href = match[1].split(), match[2]
+    if "internal" not in classes:
+        return match[0]
+    path = href.split("#", 1)[0]
+    target = pagename if not path else posixpath.normpath(posixpath.join(posixpath.dirname(pagename), path))
+    if target.startswith("_generated/rules/"):
+        return match[0]
+    # a folder's own index page is named after the folder, so it does not take the home page's icon
+    *folders, page = target.removesuffix(".html").split("/")
+    return f'{match[0]} data-page="{folders[-1] if page == "index" and folders else page}"'
+
+
+def _inline_diagram(diagrams: Path, match: re.Match[str]) -> str:
+    # In the page, rather than behind an object element, a diagram takes its size from its viewBox as the page lays out,
+    # and the stylesheet colors its edges and labels for the theme. Each keeps ids of its own, as a page may hold two.
+    svg = (diagrams / match["name"]).read_text(encoding="utf-8").replace("my-svg", match["name"].removesuffix(".svg"))
+    return f'<div class="mermaid">{svg}</div>'
+
+
+def _split_code_lines(match: re.Match[str]) -> str:
+    # The highlighter writes a numbered snippet as one run of text with the numbers inline, so a wrapped line would
+    # continue under the numbers. One block per line lets the stylesheet hang each continuation under its code; each
+    # keeps its newline, so copied code keeps its lines.
+    if '<span class="linenos">' not in (code := match[2]):
+        return match[0]
+    lines = code.splitlines(keepends=True)
+    # Pygments closes every token at the end of its line, so each line is whole markup on its own
+    if unbalanced := [line for line in lines if line.count("<span") != line.count("</span>")]:
+        msg = f"a highlighted line leaves a token open: {unbalanced[0]!r}"
+        raise ValueError(msg)
+    return match[1] + "".join(f'<span class="code-line">{line}</span>' for line in lines) + match[3]
+
+
+def _inline_assets(app: Sphinx, exception: Exception | None) -> None:
+    # Read the Docs answers every request after a round trip of 200 ms or more, so each stylesheet and script a page
+    # waits on would add one; each page carries its own instead, and arrives ready to render in a single response.
+    if exception is not None or app.builder.format != "html":
+        return
+    # Furo writes the dark highlighting into pygments.css as the build finishes; inlined before that, every snippet
+    # would stay light in the dark theme
+    highlighting = (Path(app.outdir) / "_static" / "pygments.css").read_text(encoding="utf-8")
+    if 'body[data-theme="dark"] .highlight' not in highlighting:
+        msg = "pygments.css has no dark theme yet, so the pages would inline light code blocks for the dark theme"
+        raise RuntimeError(msg)
+    for page in Path(app.outdir).rglob("*.html"):
+        text = page.read_text(encoding="utf-8")
+
+        def inline(match: re.Match[str], page: Path = page) -> str:
+            asset = (page.parent / (match["css"] or match["js"])).resolve()
+            content = _SOURCE_MAP.sub("", asset.read_text(encoding="utf-8"))
+            return f"<style>{content}</style>" if match["css"] else f"<script>{content}</script>"
+
+        page.write_text(_ASSET.sub(inline, text), encoding="utf-8")
+
+
+# Each example dropdown of a rule page gets an icon at the end of its list item's first paragraph, which toggles it.
+_EXAMPLE_TOGGLES: Final[dict[str, tuple[str, str]]] = {
+    "example-reported": ("✗", "Show an example it reports"),
+    "example-not-reported": ("✓", "Show an example it accepts"),
+    "example-pair": ("✗✓", "Show an example it reports beside one it accepts"),
+    "example-fix": ("🔧", "Show the fix"),
+    "example-configuration": ("⚙", "Show the configuration"),
+}
+
+
+_SIDEBAR_LINK: Final[re.Pattern[str]] = re.compile(r'<a class="([^"]*)" href="([^"]*)"')
+
+
+_NUMBERED_CODE: Final[re.Pattern[str]] = re.compile(r'(<div class="highlight"><pre>)(.*?)(</pre>)', re.DOTALL)
+
+
+_DIAGRAM: Final[re.Pattern[str]] = re.compile(
+    r'<object data="[^"]*?(?P<name>mermaid-[0-9a-f]+\.svg)" type="image/svg\+xml">.*?</object>', re.DOTALL
+)
+
+
+_ASSET: Final[re.Pattern[str]] = re.compile(
+    r'<link rel="stylesheet" type="text/css" href="(?P<css>[^"?]*_static/[^"?]+)(?:\?[^"]*)?" />'
+    r'|<script src="(?P<js>[^"?]*_static/[^"?]+)(?:\?[^"]*)?"></script>'
+)
+
+
+_SOURCE_MAP: Final[re.Pattern[str]] = re.compile(r"^\s*(?://|/\*)# sourceMappingURL=.*$", re.MULTILINE)
 
 
 # every page's template context, where the edit and view links of a rule page find the file it comes from

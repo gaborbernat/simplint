@@ -119,7 +119,8 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
 
 The fix adds the leading underscore, or removes every leading underscore, and keeps the rest of the name as written. It
 renames every use in the file, including the `__all__` entry. **Unsafe fix:** always, as importers outside the run keep
-the old name, and so do string references in unchecked files.
+the old name, and so do string references in unchecked files, and code that loads a module under a name no file of the
+run defines, such as a test that copies a file's text into a module.
 
 Removing every underscore, rather than one, keeps `__x` from becoming `_x`, which the rule would report again.
 

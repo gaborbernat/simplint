@@ -4,9 +4,9 @@ use ruff_python_ast::visitor::{Visitor, walk_expr, walk_stmt};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
-use super::constructor_after_method::is_constructor;
-use super::definition_time::{class_runtime_names, definition_time_exprs, signature_annotations};
-use super::reorder::{Suite, reorder_fix};
+use super::class_order::{Arrangement, class_order};
+use super::definition_time::{class_runtime_names, definition_name, definition_time_exprs, signature_annotations};
+use super::reorder::{Suite, moved_span, moves_definition_unsafely, reorder_fix};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::semantic::{BindingKind, Evaluation, Reference};
@@ -15,10 +15,14 @@ pub fn definition_before_use(checker: &Checker) {
     let body = checker.body();
     let runtime_names: FxHashMap<TextRange, FxHashSet<&str>> =
         checker.class_defs().iter().map(|class| (class.range, class_runtime_names(class))).collect();
-    reorder(checker, &Suite { body, separator: "\n\n" }, &module_uses(checker, body, &runtime_names));
+    let uses = module_uses(checker, body, &runtime_names);
+    let owners = owners(body.len(), &uses);
+    let expected = expected_order(body.len(), &owners, &uses);
+    report_misplaced(checker, &Suite { body, separator: "\n\n" }, &expected, &owners);
     for class in checker.class_defs() {
-        let uses = class_uses(checker, class, &runtime_names[&class.range]);
-        reorder(checker, &Suite { body: &class.body, separator: "\n" }, &uses);
+        let order = class_order(checker, class);
+        let expected = order.expected(Arrangement::Helpers);
+        report_misplaced(checker, &Suite { body: &class.body, separator: "\n" }, &expected, &order.helper_owners());
     }
 }
 
@@ -26,7 +30,6 @@ pub fn definition_before_use(checker: &Checker) {
 struct Uses {
     deferred: FxHashMap<usize, Vec<(usize, TextSize)>>,
     runtime: FxHashSet<usize>,
-    constructors: FxHashSet<usize>,
 }
 
 fn module_uses(checker: &Checker, body: &[Stmt], runtime_names: &FxHashMap<TextRange, FxHashSet<&str>>) -> Uses {
@@ -81,15 +84,6 @@ fn module_uses(checker: &Checker, body: &[Stmt], runtime_names: &FxHashMap<TextR
         }
     }
     uses
-}
-
-fn definition_name(stmt: &Stmt) -> Option<&ast::Identifier> {
-    match stmt {
-        Stmt::FunctionDef(ast::StmtFunctionDef { name, .. }) | Stmt::ClassDef(ast::StmtClassDef { name, .. }) => {
-            Some(name)
-        }
-        _ => None,
-    }
 }
 
 // The annotations a decorator sees: the signature of a decorated function and the class-level annotations of a
@@ -156,49 +150,13 @@ impl<'a> Visitor<'a> for ImportTimeFunctions<'_> {
     }
 }
 
-fn class_uses(checker: &Checker, class: &ast::StmtClassDef, runtime_names: &FxHashSet<&str>) -> Uses {
-    let mut uses = Uses::default();
-    let mut counts: FxHashMap<&str, usize> = FxHashMap::default();
-    for name in class.body.iter().filter_map(definition_name) {
-        *counts.entry(name.as_str()).or_default() += 1;
-    }
-    for (index, stmt) in class.body.iter().enumerate() {
-        let Some(name) = definition_name(stmt).map(ast::Identifier::as_str) else {
-            continue;
-        };
-        // A constructor stays a root, so no method that calls it pulls it below that method. SMP203 moves constructors
-        // up, which keeps the two rules from undoing each other.
-        let constructor = is_constructor(name);
-        if constructor {
-            uses.constructors.insert(index);
-        }
-        if counts[name] > 1 || runtime_names.contains(name) {
-            uses.runtime.insert(index);
-            continue;
-        }
-        if constructor {
-            continue;
-        }
-        for reference in checker.semantic().member_references(class.range, name) {
-            let reader = class.body.partition_point(|candidate| candidate.end() <= reference.start());
-            if class.body.get(reader).is_some_and(|candidate| candidate.range().contains_range(*reference))
-                && reader != index
-            {
-                uses.deferred.entry(index).or_default().push((reader, reference.start()));
-            }
-        }
-    }
-    uses
-}
-
-fn reorder(checker: &Checker, suite: &Suite, uses: &Uses) {
+// Reports each helper that sits away from its place in `expected`. The first report carries the fix that moves every
+// misplaced statement of the body.
+fn report_misplaced(checker: &Checker, suite: &Suite, expected: &[usize], owners: &[Option<usize>]) {
     let length = suite.body.len();
-    let owners = owners(length, uses);
-    let expected = expected_order(length, &owners, uses);
-    let Some(low) = (0..length).find(|&position| expected[position] != position) else {
+    let Some(span) = moved_span(expected) else {
         return;
     };
-    let high = (0..length).rfind(|&position| expected[position] != position).unwrap_or(low);
     // One fix reorders the whole block, so only the block's first report carries it: Ruff renders a report's fix in full,
     // and repeating a block-sized edit on every report made output slow on files with many misplaced definitions.
     let mut offered = false;
@@ -226,10 +184,16 @@ fn reorder(checker: &Checker, suite: &Suite, uses: &Uses) {
                 format!("Move `{name}` right after {owner_name}"),
             )
         };
-        let fix = if offered { None } else { reorder_fix(checker, suite, &expected, low..=high) };
+        let fix = if offered { None } else { reorder_fix(checker, suite, expected, span.clone(), shifts_unsafely) };
         offered = true;
         checker.report_fix(Rule::DefinitionBeforeUse, identifier.range(), message, fix, title);
     }
+}
+
+// A `def` that moves past a decorator or a default changes when Python evaluates it, so a definition whose move is
+// unsafe makes the fix unsafe; the statements it moves past run in the order they had.
+fn shifts_unsafely(stmt: &Stmt) -> bool {
+    moves_definition_unsafely(stmt).unwrap_or(false)
 }
 
 fn owners(length: usize, uses: &Uses) -> Vec<Option<usize>> {
@@ -278,19 +242,14 @@ fn expected_order(length: usize, owners: &[Option<usize>], uses: &Uses) -> Vec<u
     for list in children.values_mut() {
         list.sort_unstable();
     }
-    let roots: Vec<usize> = (0..length).filter(|index| owners[*index].is_none()).collect();
     let mut order = Vec::with_capacity(length);
-    // Constructors that sit together stay together, as SMP203 wants them, and the helpers they call follow the last.
-    for run in roots.chunk_by(|first, second| uses.constructors.contains(first) && uses.constructors.contains(second)) {
-        order.extend(run);
-        for root in run {
-            let mut stack: Vec<usize> =
-                children.get(root).into_iter().flatten().rev().map(|(_, child)| *child).collect();
-            while let Some(index) = stack.pop() {
-                order.push(index);
-                if let Some(list) = children.get(&index) {
-                    stack.extend(list.iter().rev().map(|(_, child)| *child));
-                }
+    for root in (0..length).filter(|index| owners[*index].is_none()) {
+        order.push(root);
+        let mut stack: Vec<usize> = children.get(&root).into_iter().flatten().rev().map(|(_, child)| *child).collect();
+        while let Some(index) = stack.pop() {
+            order.push(index);
+            if let Some(list) = children.get(&index) {
+                stack.extend(list.iter().rev().map(|(_, child)| *child));
             }
         }
     }

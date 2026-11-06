@@ -8,7 +8,7 @@ use crate::rules::docstrings::rst::{FieldKind, Owner, rank, report_missing};
 use crate::syntax::last_segment;
 
 pub fn rst_missing_raises(checker: &Checker) {
-    for target in checker.state().rst_targets(checker).iter().filter(|target| target.public) {
+    for target in checker.state().rst_targets(checker).iter().filter(|target| target.public(checker)) {
         let Owner::Function { def, .. } = target.owner else {
             continue;
         };

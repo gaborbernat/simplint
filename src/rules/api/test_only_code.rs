@@ -1,8 +1,9 @@
 use ruff_python_ast::Stmt;
-use ruff_text_size::{Ranged, TextRange};
+use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::api::references_outside;
 use crate::syntax::{Exports, Visibility, module_statements};
 
 pub fn test_only_code(checker: &Checker) {
@@ -40,9 +41,4 @@ pub fn test_only_code(checker: &Checker) {
             format!("`{name}` is used only by tests; move it into the tests or a test helper module"),
         );
     }
-}
-
-// The module uses the name outside its own definition, so the module needs it whatever the tests do.
-fn references_outside(checker: &Checker, name: &str, definition: TextRange) -> bool {
-    checker.semantic().references_to(name).iter().any(|reference| !definition.contains_range(reference.range))
 }

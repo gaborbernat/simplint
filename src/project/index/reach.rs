@@ -1,11 +1,15 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::path::{Path, PathBuf};
 
+use ruff_cache::{CacheKey, CacheKeyHasher};
+use ruff_text_size::TextRange;
+
 use crate::project::FileFacts;
 use crate::project::facts::ImportBinding;
 use crate::settings::ModuleRole;
 use crate::syntax::Visibility;
 
+use super::range_key;
 use super::resolve::Unreached;
 use super::{FileId, FileIds};
 
@@ -217,4 +221,75 @@ pub(super) fn reach_by_last_name(
 fn last_name(file: &Path) -> Option<&str> {
     let stem = file.file_stem().and_then(|stem| stem.to_str());
     if stem == Some("__init__") { file.parent().and_then(Path::file_name).and_then(|name| name.to_str()) } else { stem }
+}
+
+// What an `import *` of a module of the run takes: the names its static `__all__` lists, or, without one, the names it
+// defines, and whether its exports cannot be read statically, as for a dynamic `__all__` or a module `__getattr__`.
+#[derive(Clone, PartialEq)]
+pub struct StarExports {
+    pub(super) listed: Option<FxHashSet<String>>,
+    pub(super) defined: FxHashSet<String>,
+    pub(super) unknown: bool,
+}
+
+impl StarExports {
+    pub fn listed(&self) -> Option<&FxHashSet<String>> {
+        self.listed.as_ref()
+    }
+
+    pub fn defined(&self) -> &FxHashSet<String> {
+        &self.defined
+    }
+
+    pub fn unknown(&self) -> bool {
+        self.unknown
+    }
+}
+
+// An `import *` statement of a file, at `range`, and what it takes from the module it imports.
+#[derive(Clone, PartialEq)]
+pub struct StarSite {
+    pub(super) range: TextRange,
+    pub(super) exports: StarExports,
+}
+
+impl StarSite {
+    pub fn range(&self) -> TextRange {
+        self.range
+    }
+
+    pub fn exports(&self) -> &StarExports {
+        &self.exports
+    }
+}
+
+impl CacheKey for StarSite {
+    fn cache_key(&self, state: &mut CacheKeyHasher) {
+        range_key(self.range(), state);
+        self.exports().listed().cache_key(state);
+        self.exports().defined().cache_key(state);
+        self.exports().unknown().cache_key(state);
+    }
+}
+
+pub(super) fn star_exports(facts: &FileFacts) -> StarExports {
+    StarExports {
+        listed: facts.exports.as_ref().map(|names| names.iter().cloned().collect()),
+        defined: facts.defined.iter().cloned().collect(),
+        unknown: facts.exports_unknown,
+    }
+}
+
+// The `import *` statements of each file, with what each takes from the module it imports.
+pub(super) fn star_site_map(
+    pairs: Vec<(FileId, TextRange, FileId)>,
+    sources: &FxHashMap<FileId, &FileFacts>,
+) -> FxHashMap<FileId, Vec<StarSite>> {
+    let mut sites: FxHashMap<FileId, Vec<StarSite>> = FxHashMap::default();
+    for (importer, range, target) in pairs {
+        if let Some(facts) = sources.get(&target) {
+            sites.entry(importer).or_default().push(StarSite { range, exports: star_exports(facts) });
+        }
+    }
+    sites
 }

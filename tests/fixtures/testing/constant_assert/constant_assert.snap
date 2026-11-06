@@ -27,7 +27,40 @@ expression: "lint_fixture(rule, fixture, target_version)"
 57:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
 58:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
 59:5 SMP804 Assertion on a constant always passes; assert on the result under test
---- fixed (20 applied, 5 remaining) ---
+71:5 SMP804 Assertion on a constant always passes; assert on the result under test [unsafe fix: Check every item with `all()`]
+72:5 SMP804 Assertion on a constant always passes; assert on the result under test [unsafe fix: Check every item with `all()`]
+73:5 SMP804 Assertion on a constant always passes; assert on the result under test [unsafe fix: Check every item with `all()`]
+77:5 SMP804 Assertion on a constant always passes; assert on the result under test
+78:5 SMP804 Assertion on a constant always passes; assert on the result under test
+82:5 SMP804 Assertion on a constant always passes; assert on the result under test [unsafe fix: Remove the assertion]
+83:5 SMP804 Assertion on a constant always passes; assert on the result under test [unsafe fix: Remove the assertion]
+84:5 SMP804 Assertion on a constant always passes; assert on the result under test [unsafe fix: Remove the assertion]
+85:5 SMP804 Assertion on a constant always passes; assert on the result under test [unsafe fix: Remove the assertion]
+86:5 SMP804 Assertion on a constant always passes; assert on the result under test [unsafe fix: Remove the assertion]
+87:5 SMP804 Assertion on a constant always passes; assert on the result under test [unsafe fix: Remove the assertion]
+88:5 SMP804 Assertion on a constant always passes; assert on the result under test [unsafe fix: Remove the assertion]
+89:5 SMP804 Assertion on a constant always passes; assert on the result under test
+94:5 SMP804 Assertion on a constant always passes; assert on the result under test [unsafe fix: Remove the assertion]
+99:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+100:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+101:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+102:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+103:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+104:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+105:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+106:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+107:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+108:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+109:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+110:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+111:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+112:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+113:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+114:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+115:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+116:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+117:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
+--- fixed (50 applied, 8 remaining) ---
 def check(value: int) -> None:
     assert value
     assert False, "unreachable"
@@ -82,3 +115,54 @@ def containers(value: list[int]) -> None:
 
 def compute() -> int:
     return 1
+
+
+def generators(values: list[int]) -> None:
+    assert all(value for value in values)
+    assert all(value for value in values), "message"
+    assert all(compute() for value in values)
+
+
+async def async_generators(values: list[int], stream: AsyncIterator[int]) -> None:
+    assert (value async for value in stream)
+    assert (await wait(value) for value in values)
+
+
+def templates(value: str) -> None:
+    assert "value {}".format(compute())
+    assert "{}".format(value)
+    assert "{value}".format(value=value)
+    assert "%s" % value
+    assert "%(name)s" % {"name": value}
+    assert f"{value}"
+
+
+def computations(value: int) -> None:
+    pass
+
+
+def not_constant(value: int) -> None:
+    assert 0 == 1
+    assert "a" * 0
+    assert 2 ** 3
+    assert 1 / 2
+    assert value + 1 == 2
+    assert 9223372036854775807 + 1
+    assert "a" * 5000
+    assert "a" * 4096 + "b"
+    assert 1 < "a"
+    assert None < None
+    assert None is None
+    assert 1 in [1]
+    assert "a" == 1
+    assert 2 - 2
+    assert not 1
+    assert True and False
+    assert value.format(1)
+    assert 2 % value
+    assert +1
+    assert "%(key" % {}
+    assert "x%" % ()
+    assert "x{".format()
+    assert "x}".format()
+    assert "x%y" % ()

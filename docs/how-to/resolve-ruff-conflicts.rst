@@ -10,16 +10,19 @@ leaves that file clean.
 simplint checks every file's settings before it lints any, and **exits with status 2** when it finds such a pair. The
 error names:
 
-- both rules
+- both rules, and whether their fixes undo each other or one only reports what the other removes
+- why they clash
+- how to resolve it, the recommended way first
 - the configuration files their settings come from
 - the first file they meet in
-- how to resolve it
 
 .. code-block:: text
 
     simplint failed
       Cause: simplint and Ruff rules work against each other, so fixing never leaves the code clean:
-      - SMP301 (future-annotations) removes `from __future__ import annotations` on Python 3.14 and newer, which Ruff's I002 (missing-required-import) adds back because `lint.isort.required-imports` lists it; ignore SMP301 in `[tool.simplint]`, or drop the import from `required-imports`.
+      - SMP301 (future-annotations) and Ruff's I002 (missing-required-import) undo each other's fixes.
+        Why: SMP301 removes `from __future__ import annotations` on Python 3.14+; I002 adds it back because `lint.isort.required-imports` lists it.
+        Fix: drop the import from `required-imports`, or ignore SMP301 in `[tool.simplint]`.
         simplint settings: /project/pyproject.toml; Ruff settings: /project/pyproject.toml; first file: src/app.py
 
 The pairs are:
@@ -43,6 +46,10 @@ The pairs are:
       - `missing-required-import <https://docs.astral.sh/ruff/rules/missing-required-import/>`__
       - :doc:`future-annotations </_generated/rules/SMP301>` removes ``from __future__ import annotations`` on Python 3.14 and newer, which `missing-required-import <https://docs.astral.sh/ruff/rules/missing-required-import/>`__ adds back when
         ``lint.isort.required-imports`` lists it. Drop it from the list once the project targets Python 3.14.
+    * - :doc:`up-utf8-encoding-default </_generated/rules/SMP521>`
+      - `unspecified-encoding <https://docs.astral.sh/ruff/rules/unspecified-encoding/>`__
+      - :doc:`up-utf8-encoding-default </_generated/rules/SMP521>` removes ``encoding="utf-8"`` on Python 3.15 and newer, which `unspecified-encoding <https://docs.astral.sh/ruff/rules/unspecified-encoding/>`__ adds back.
+        Ignore one of the two.
     * - :doc:`absolute-sibling-import </_generated/rules/SMP302>`
       - `relative-imports <https://docs.astral.sh/ruff/rules/relative-imports/>`__
       - :doc:`absolute-sibling-import </_generated/rules/SMP302>` makes imports from the file's own package relative, which `relative-imports <https://docs.astral.sh/ruff/rules/relative-imports/>`__ turns back when

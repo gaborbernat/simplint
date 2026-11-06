@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::cell::{OnceCell, RefCell};
+use std::cell::{Cell, OnceCell, RefCell};
 use std::path::Path;
 
 use ruff_db::diagnostic::{Annotation, Diagnostic, DiagnosticId, LintName, SecondaryCode, Severity, Span};
@@ -39,9 +39,12 @@ pub struct Checker<'a> {
     class_defs: OnceCell<Vec<&'a ast::StmtClassDef>>,
     name_tokens: OnceCell<FxHashMap<&'a str, usize>>,
     string_values: OnceCell<Vec<(TextRange, Cow<'a, str>)>>,
+    project: OnceCell<FileIndex<'a>>,
     state: FileState<'a>,
     // Rules report while they read the checker, as in Ruff's own `Checker`.
     diagnostics: RefCell<Vec<(Rule, Diagnostic)>>,
+    // The rule whose code runs now, so a read of the other files of the run can be checked against its flag.
+    rule: Cell<Option<Rule>>,
 }
 
 impl<'a> Checker<'a> {
@@ -68,16 +71,20 @@ impl<'a> Checker<'a> {
             class_defs: OnceCell::new(),
             name_tokens: OnceCell::new(),
             string_values: OnceCell::new(),
+            project: OnceCell::new(),
             state: FileState::default(),
             diagnostics: RefCell::default(),
+            rule: Cell::new(None),
         }
     }
 
     pub fn run(self) -> Vec<Diagnostic> {
         let rules = self.settings.rules;
         for rule in rules.iter() {
+            self.enter(rule);
             rule.check_module(&self);
         }
+        self.rule.set(None);
         if rules.iter().any(Rule::walks) {
             Walker::run(&self, rules);
         }
@@ -102,6 +109,9 @@ impl<'a> Checker<'a> {
         title: impl Into<String>,
     ) {
         let mut diagnostic = self.diagnostic(rule, range, message);
+        // Applying a fix and rendering its diff both walk its edits in order, which unsorted or overlapping
+        // edits break.
+        debug_assert!(fix.as_ref().is_none_or(disjoint_edits), "{} built a fix with overlapping edits", rule.name());
         if fix.is_some() {
             diagnostic.help(title.into());
             diagnostic.set_optional_fix(self.settings.project.fix_for(rule, fix));
@@ -226,13 +236,37 @@ impl<'a> Checker<'a> {
         self.path.file_name().and_then(|name| name.to_str()).unwrap_or_default()
     }
 
+    // The rule whose code runs next, which `assert_flagged_cross_file` checks the reads of. Only debug builds check, so
+    // a release build skips the bookkeeping.
+    pub(super) fn enter(&self, rule: Rule) {
+        if cfg!(debug_assertions) {
+            self.rule.set(Some(rule));
+        }
+    }
+
+    // Whether the rule that runs reads what other files of the run contribute: the index of what they use from this
+    // file and the attribute and base class names of the whole run, or the public API built from them. The cache keys a
+    // file's result by that index only for rules `Rule::reads_other_files` flags, so an unflagged rule must not read it.
+    // Nor may code outside a rule, whose result no flag covers.
+    pub(crate) fn assert_flagged_cross_file(&self) {
+        let rule = self.rule.get();
+        let code = rule.map(Rule::code);
+        debug_assert!(rule.is_some_and(Rule::reads_other_files), "{code:?} reads other files without being flagged");
+    }
+
     // What other files use from this one, and the attribute and base class names of the whole run.
     pub fn project(&self) -> FileIndex<'a> {
-        self.linter.project
+        self.assert_flagged_cross_file();
+        *self.project.get_or_init(|| self.linter.project.at(self.source))
     }
 
     pub fn module_path(&self) -> Option<&'a [String]> {
         self.linter.module_path.as_deref()
+    }
+
+    // Whether the file's directory holds an `__init__.py`, which a package-relative rule checks.
+    pub fn has_sibling_init(&self) -> bool {
+        self.linter.sibling_init
     }
 
     pub fn is_init_module(&self) -> bool {
@@ -243,4 +277,10 @@ impl<'a> Checker<'a> {
     pub fn line_number(&self, offset: TextSize) -> OneIndexed {
         self.file.index().line_index(offset)
     }
+}
+
+// Whether the edits of a fix are sorted and do not overlap, as `Fix` requires. Touching edits, such as an insertion at
+// the end of a deletion, do not overlap.
+fn disjoint_edits(fix: &Fix) -> bool {
+    fix.edits().windows(2).all(|pair| pair[1].start() >= pair[0].end())
 }

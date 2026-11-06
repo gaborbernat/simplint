@@ -1,0 +1,9 @@
+{% extends "!sidebar/brand.html" %}
+{#- the wordmarks carry their size, so the sidebar keeps their room before they load; the theme hides one, which lazy
+    loading then never fetches #}
+{% block brand_content %}
+<div class="sidebar-logo-container">
+  <img class="sidebar-logo only-light" src="{{ pathto('_static/' + theme_light_logo, 1) }}" alt="Light Logo" width="576" height="162" loading="lazy"/>
+  <img class="sidebar-logo only-dark" src="{{ pathto('_static/' + theme_dark_logo, 1) }}" alt="Dark Logo" width="576" height="162" loading="lazy"/>
+</div>
+{% endblock brand_content %}

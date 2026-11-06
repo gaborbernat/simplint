@@ -1,0 +1,41 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+7:13 SMP522 `re.match` is soft deprecated from Python 3.15; `re.prefixmatch` names the same function [fix: Use `re.prefixmatch`]
+12:12 SMP522 `re.match` is soft deprecated from Python 3.15; `re.prefixmatch` names the same function [fix: Use `re.prefixmatch`]
+--- fixed (2 applied, 0 remaining) ---
+import re
+import re as regex
+from re import match
+
+
+def first_version(text):
+    found = re.prefixmatch(r"\d+\.\d+", text)
+    return found.group(0) if found else None
+
+
+def aliased(text):
+    return regex.prefixmatch(r"\d+", text)
+
+
+def pattern_method(text):
+    parser = re.compile(r"\d+")
+    return parser.match(text)
+
+
+def imported(text):
+    return match(r"\d+", text)
+
+
+def searched(text):
+    return re.search(r"\d+", text)
+
+
+def method_on_other(client, text):
+    return client.match(text)
+
+
+def patched(replacement):
+    re.match = replacement
+    del re.match

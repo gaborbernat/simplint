@@ -77,7 +77,8 @@ Checks for a module docstring in a test module.
 ### Fix
 
 The fix deletes the docstring and the blank lines after it. A docstring that shares its line with the next statement
-goes up to that statement.
+goes up to that statement. A file with a file-level `ruff: noqa` keeps its docstring: the codes it names may be silenced
+by the docstring's own text, and removing the docstring would leave them unused.
 
 **Unsafe fix:** code may read the docstring through `__doc__`: a package under `tests` built as a fixture can use its
 docstring as its description.

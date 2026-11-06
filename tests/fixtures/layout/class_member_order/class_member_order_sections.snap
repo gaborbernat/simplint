@@ -1,0 +1,179 @@
+---
+source: tests/common/mod.rs
+assertion_line: 125
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+15:9 SMP203 `size` belongs with the properties, above `run` [unsafe fix: Move `size` above `run`]
+18:9 SMP203 `__eq__` belongs with the dunder methods, above `run`
+22:9 SMP203 `from_json` belongs with the alternative constructors, above `run`
+27:9 SMP203 `__repr__` belongs with the dunder methods, above `run`
+31:9 SMP203 `size` belongs with the properties, above `run`
+34:9 SMP203 `__init__` belongs with the constructors, above `run`
+37:11 SMP203 `Meta` belongs with the nested classes, above `run`
+43:9 SMP203 `__init_subclass__` belongs with the constructors, above `run`
+46:9 SMP203 `__post_init__` belongs with the constructors, above `run`
+49:9 SMP203 `__new__` belongs with the constructors, above `run`
+59:9 SMP203 `build` belongs with the alternative constructors, above `unit` [fix: Move `build` above `unit`]
+74:9 SMP203 `area` belongs with the properties, above `unit`
+77:9 SMP203 `__str__` belongs with the dunder methods, above `unit`
+80:9 SMP203 `__init__` belongs with the constructors, above `unit`
+92:9 SMP203 `__init__` belongs with the constructors, above `run` [unsafe fix: Move `__init__` above `run`]
+105:9 SMP203 `__init__` belongs with the constructors, above `load`
+115:9 SMP203 `__init__` belongs with the constructors, above `load`
+132:9 SMP203 `__init__` belongs with the constructors, above `load` [fix: Move `__init__` above `load`]
+143:9 SMP203 `__init__` belongs with the constructors, above `even` [fix: Move `__init__` above `even`]
+151:9 SMP203 `__new__` belongs above `__init__`, in the order Python runs the constructors [fix: Move `__new__` above `__init__`]
+--- fixed (6 applied, 2 remaining) ---
+from functools import cached_property
+from typing import ClassVar, overload
+
+
+class Layout:
+    """Docstring."""
+
+    class Meta:
+        pass
+
+    LIMIT: ClassVar[int] = 3
+
+    __slots__ = ("a",)
+
+    def __init_subclass__(cls) -> None:
+        pass
+
+    def __new__(cls) -> "Layout":
+        return super().__new__(cls)
+
+    def __init__(self) -> None:
+        self.a = 1
+
+    def __post_init__(self) -> None:
+        pass
+
+    @classmethod
+    def from_json(cls, raw: str) -> "Layout":
+        if raw:
+            return cls()
+        return cls
+
+    def __eq__(self, other: object) -> bool:
+        return True
+
+    def __repr__(self) -> str:
+        return "Layout"
+
+    @property
+    def size(self) -> int:
+        return 1
+
+    @size.setter
+    def size(self, value: int) -> None:
+        pass
+
+    def run(self) -> int:
+        return self._step()
+
+    def _step(self) -> int:
+        return 1
+
+
+class Shapes:
+    def __init__(self) -> None:
+        self.ready = True
+
+    @classmethod
+    def build(cls) -> "Shapes":
+        def helper() -> int:
+            return 1
+
+        return cls()
+
+    def __str__(self) -> str:
+        return "shape"
+
+    @cached_property
+    def area(self) -> int:
+        return 2
+
+    @staticmethod
+    def unit() -> int:
+        return 1
+
+    @classmethod
+    def nothing(cls) -> None:
+        pass
+
+    @classmethod
+    def bare() -> int:
+        return 1
+
+
+class Totals:
+    def __init__(self) -> None:
+        self.value = 0
+
+    def run(self) -> int:
+        return self._total()
+
+    @cache
+    def _total(self) -> int:
+        return 1
+
+
+class Pinned:
+    def load(self) -> int:
+        return self.make()
+
+    def make(self) -> int:
+        return 1
+
+    FACTORY = make
+
+    def __init__(self) -> None:
+        self.value = 0
+
+
+class Tied:
+    def load(self) -> int:
+        return 1
+
+    SCALE = 2
+
+    def __init__(self, scale: int = SCALE) -> None:
+        self.scale = scale
+
+
+class Overloaded:
+    def __init__(self) -> None:
+        self.value = 0
+
+    def load(self, value: int | str) -> int:
+        return 1
+
+    @overload
+    def read(self, value: int) -> int: ...
+
+    @overload
+    def read(self, value: str) -> str: ...
+
+    def read(self, value: int | str) -> int | str:
+        return value
+
+
+class Recursive:
+    def __init__(self) -> None:
+        self.value = 0
+
+    def even(self, n: int) -> bool:
+        return True if n == 0 else self._odd(n - 1)
+
+    def _odd(self, n: int) -> bool:
+        return False if n == 0 else self.even(n - 1)
+
+
+class ConstructedTwice:
+    def __new__(cls) -> "ConstructedTwice":
+        return super().__new__(cls)
+
+    def __init__(self) -> None:
+        self.value = 0

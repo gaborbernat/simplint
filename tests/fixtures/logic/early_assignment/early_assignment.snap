@@ -1,0 +1,62 @@
+---
+source: tests/common/mod.rs
+assertion_line: 125
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+11:5 SMP526 `count` is assigned above the statements that do not use it; assign it just before its first use [fix: Move the assignment down]
+17:5 SMP526 `value` is assigned above the statements that do not use it; assign it just before its first use [fix: Move the assignment down]
+24:5 SMP526 `names` is assigned above the statements that do not use it; assign it just before its first use [fix: Move the assignment down]
+31:5 SMP526 `limit` is assigned above the statements that do not use it; assign it just before its first use [fix: Move the assignment down]
+39:5 SMP526 `seen` is assigned above the statements that do not use it; assign it just before its first use [fix: Move the assignment down]
+47:5 SMP526 `out` is assigned above the statements that do not use it; assign it just before its first use [fix: Move the assignment down]
+--- fixed (6 applied, 0 remaining) ---
+def total(items: list[int]) -> int:
+    count = 0
+    items.sort()
+    print("sorted")
+    for item in items:
+        count += item
+    return count
+
+
+def read_later(items: list[int]) -> int:
+    items.sort()
+    count = 0
+    return count + len(items)
+
+
+def first(flag: bool) -> int:
+    if flag:
+        return 0
+    value = 1
+    return value
+
+
+def chained(items: list[int]) -> list[int]:
+    items.sort()
+    names = []
+    names.append("x")
+    return names
+
+
+def inner_only(items: list[int]) -> int:
+    size = len(items)
+    limit = 3
+    return size + limit
+
+
+def literals(items: list[int]) -> int:
+    ready = not False
+    offset = -1
+    table = {[1]: 2}
+    items.sort()
+    seen = {1, 2}
+    print(ready, offset, seen, table)
+    return len(items)
+
+
+def text_not_a_name(items: list[int]) -> list[int]:
+    items.sort()
+    print("output")
+    out = []
+    return out

@@ -182,22 +182,35 @@ pub fn suppresses(comment: &str, code: &str) -> bool {
         || parse_ignore(comment).is_some_and(|(_, codes)| codes.iter().any(|candidate| candidate == code))
 }
 
+// Whether the file has a file-level `ruff: noqa`, `flake8: noqa` or `ruff: file-ignore`, the directives `Suppressions`
+// applies to every line. A fix that rewrites a docstring can shorten the lines or drop the words such a directive
+// silences, which leaves its codes unused, and Ruff reports them as RUF100.
+pub fn has_file_noqa(source: &str, comments: &CommentRanges) -> bool {
+    comments.iter().any(|range| {
+        Directive::parse_file_level(&source[*range], indentation_at_offset(range.start(), source)).is_some()
+    })
+}
+
+// Whether a comment's `ruff: ignore` directive names one of `rule`, a rule's code and name, as Ruff takes either.
+pub fn ruff_ignores(comment: &str, rule: [&str; 2]) -> bool {
+    parse_bracket(comment, "ruff", "ignore[")
+        .is_some_and(|(_, codes)| codes.iter().any(|code| rule.contains(&code.as_str())))
+}
+
 // A `noqa` directive; one without codes suppresses every rule.
 struct Directive {
     codes: Vec<String>,
 }
 
 impl Directive {
-    // The directive and the offset of its `#` in the comment.
+    // The directive and the offset of its `#` in the comment. Ruff reads the first `# noqa` only, and when its codes do
+    // not lex it applies none, rather than looking further along the comment.
     fn parse(comment: &str) -> Option<(TextSize, Self)> {
-        let lower = comment.to_ascii_lowercase();
-        let (hash, start) = lower.match_indices('#').find_map(|(index, _)| {
-            let rest = lower[index + 1..].trim_start();
-            rest.starts_with("noqa").then(|| (index, comment.len() - rest.len() + "noqa".len()))
-        })?;
-        let codes = comment[start..].trim_start().strip_prefix(':').unwrap_or_default();
-        let codes = code_list(codes).take_while(|part| is_code(part)).map(str::to_owned).collect();
-        Some((TextSize::try_from(hash).expect("a comment fits a text size"), Self { codes }))
+        let (index, after) = comment
+            .match_indices('#')
+            .find_map(|(index, _)| Some((index, strip_noqa(comment[index + 1..].trim_start())?)))?;
+        let (codes, _) = noqa_codes(after)?;
+        Some((TextSize::try_from(index).expect("a comment fits a text size"), Self { codes: owned(codes) }))
     }
 
     // Ruff's file-level exemptions: `# ruff: noqa` (or `# flake8: noqa`) on its own line, blanket or with codes, and
@@ -211,17 +224,9 @@ impl Directive {
         let rest = comment.match_indices('#').find_map(|(index, _)| {
             let rest = comment[index + 1..].trim_start();
             let rest = after_tool(rest, "ruff").or_else(|| after_tool(rest, "flake8"))?;
-            rest.get(..4).filter(|noqa| noqa.eq_ignore_ascii_case("noqa")).map(|_| &rest[4..])
+            strip_noqa(rest)
         })?;
-        let codes = match rest.trim_start().strip_prefix(':') {
-            Some(codes) => codes,
-            None if rest.is_empty() || rest.starts_with(|char: char| char == '#' || char.is_whitespace()) => {
-                return Some(Self { codes: Vec::new() });
-            }
-            None => return None,
-        };
-        let codes: Vec<String> = code_list(codes).take_while(|part| is_code(part)).map(str::to_owned).collect();
-        (!codes.is_empty()).then_some(Self { codes })
+        Some(Self { codes: owned(noqa_codes(rest)?.0) })
     }
 
     fn is_blanket(&self) -> bool {
@@ -236,6 +241,69 @@ impl Directive {
             self.codes.iter().any(|candidate| candidate == code)
         }
     }
+}
+
+// Whether a comment is a `noqa` that names no code, or only `code`, so that once `code` is not reported the comment
+// silences nothing and Ruff reports it as unused.
+pub fn is_noqa_for_only(comment: &str, code: &str) -> bool {
+    let rest = comment.trim().trim_start_matches('#').trim_start();
+    let Some((codes, _)) = strip_noqa(rest).and_then(noqa_codes) else {
+        return false;
+    };
+    codes.into_iter().all(|candidate| candidate == code)
+}
+
+// The text after a `noqa` keyword, which Ruff matches in any case.
+fn strip_noqa(text: &str) -> Option<&str> {
+    strip_ignore_case(text, "noqa")
+}
+
+// The codes a `noqa` directive names after its keyword and the text after them, as Ruff's `NoqaLexer` reads them; no
+// codes is a blanket directive. `None` where Ruff rejects the whole directive: a character other than a space, `#` or
+// `:` follows the keyword, a colon names no code, or a code runs into a character no code holds.
+pub fn noqa_codes(after: &str) -> Option<(Vec<&str>, &str)> {
+    let mut rest = match after.chars().next() {
+        None | Some('#') => return Some((Vec::new(), after)),
+        Some(':') => &after[1..],
+        Some(char) if char.is_whitespace() => match after.trim_start().strip_prefix(':') {
+            Some(list) => list,
+            None => return Some((Vec::new(), after)),
+        },
+        Some(_) => return None,
+    };
+    let mut codes = Vec::new();
+    // Ruff splits codes written together, as in `F401F841`, but then rejects a word after them that is no code.
+    let mut joined = false;
+    loop {
+        rest = rest.trim_start();
+        if let Some(after_comma) = rest.strip_prefix(',') {
+            rest = after_comma;
+            continue;
+        }
+        let letters = rest.find(|char: char| !char.is_ascii_uppercase()).unwrap_or(rest.len());
+        let digits = rest[letters..].find(|char: char| !char.is_ascii_digit()).unwrap_or(rest.len() - letters);
+        if letters == 0 || digits == 0 {
+            // The first word that is no code ends the list, as in `# noqa: F401 kept for its side effect`.
+            return (!joined && !codes.is_empty()).then_some((codes, rest));
+        }
+        let (code, tail) = rest.split_at(letters + digits);
+        codes.push(code);
+        rest = tail;
+        joined = match tail.chars().next() {
+            None | Some(',' | '#') => false,
+            Some(char) if char.is_whitespace() => false,
+            Some(char) if char.is_ascii_uppercase() => true,
+            Some(_) => return None,
+        };
+    }
+}
+
+fn owned(codes: Vec<&str>) -> Vec<String> {
+    codes.into_iter().map(str::to_owned).collect()
+}
+
+fn strip_ignore_case<'t>(text: &'t str, prefix: &str) -> Option<&'t str> {
+    text.get(..prefix.len()).filter(|head| head.eq_ignore_ascii_case(prefix)).map(|_| &text[prefix.len()..])
 }
 
 fn code_list(codes: &str) -> impl Iterator<Item = &str> {
@@ -258,12 +326,8 @@ fn parse_bracket(comment: &str, tool: &str, action: &str) -> Option<(TextSize, V
     })
 }
 
-// What follows `tool:` at the start of a directive, with any space around the colon, as Ruff reads `# ruff : noqa`.
+// What follows `tool:` at the start of a directive, with any space around the colon, as Ruff reads `# ruff : noqa`. The
+// tool name is matched in lowercase only, as Ruff does.
 pub fn after_tool<'t>(text: &'t str, tool: &str) -> Option<&'t str> {
     Some(text.strip_prefix(tool)?.trim_start().strip_prefix(':')?.trim_start())
-}
-
-pub fn is_code(part: &str) -> bool {
-    let letters = part.chars().take_while(char::is_ascii_uppercase).count();
-    letters > 0 && part.len() > letters && part[letters..].chars().all(|char| char.is_ascii_digit())
 }

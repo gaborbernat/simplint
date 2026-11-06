@@ -179,7 +179,7 @@ exclude = [ "^tests/fixtures/" ]
 # tasks/ and tests/ are directories of scripts; name their modules from the repository root
 explicit_package_bases = true
 strict = true
-overrides = [ { module = [ "pypandoc" ], follow_untyped_imports = true } ]
+overrides = [ { module = [ "pypandoc", "sphinxcontrib.mermaid" ], follow_untyped_imports = true } ]
 show_error_codes = true
 
 [tool.coverage]

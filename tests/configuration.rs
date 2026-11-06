@@ -416,6 +416,19 @@ fn absolute_sibling_import_needs_an_init_module(files: &[(&str, &str)], code: i3
     assert_eq!(check(root.path(), &["--select", "SMP302"]).0, code);
 }
 
+// Without a `pyproject.toml` the settings root is the directory the run starts from, so a module under a `test` or
+// `tests` package counts as test code, whatever directory of the package it sits in.
+#[test_case("test_module.py", true ; "test_prefix")]
+#[test_case("test/support/__init__.py", true ; "support_package")]
+#[test_case("test/test_import/data/module.py", true ; "data_under_test_package")]
+#[test_case("tests/helpers.py", true ; "tests_package")]
+#[test_case("support/module.py", false ; "not_a_test_module")]
+fn test_module_without_pyproject(name: &str, reported: bool) {
+    let root = project(&[(name, "\"\"\"Support module.\"\"\"\n")]);
+    let (code, stdout, _) = check(root.path(), &["--select", "SMP902"]);
+    assert_eq!((code, stdout.contains("SMP902")), (i32::from(reported), reported));
+}
+
 const LAZY_ANNOTATIONS: &str = "module.py:1:24: SMP301 [*] Annotations are evaluated lazily from Python 3.14; drop `from \
                                  __future__ import annotations`\nFound 1 error.\n[*] 1 fixable with `--fix`.\n";
 const PASSED: &str = "All checks passed!\n";
@@ -479,7 +492,7 @@ fn show_settings_describes_the_first_file() {
     let root = project(&[
         (
             "pyproject.toml",
-            "[project]\nrequires-python = \">=3.12\"\ndependencies = [\"requests\"]\nscripts = { tool = \"cli:main\" }\n[tool.simplint]\nselect = [\"SMP001\"]\nper-file-ignores = { \"!b.py\" = [\"SMP001\"] }\nextend-safe-fixes = [\"SMP001\"]\nproject-kind = \"library\"\napi-packages = [\"src/app\"]\napi-modules = [\"app.errors\"]\ndocstring-style = \"rst\"\n[tool.simplint.naming]\nkeep-names = [\"app_name\"]\n[tool.simplint.imports]\nmodule-attributes = [\"app.settings\"]\n",
+            "[project]\nrequires-python = \">=3.12\"\ndependencies = [\"requests\"]\nscripts = { tool = \"cli:main\" }\n[dependency-groups]\ndev = [\"pytest-mock>=3\"]\n[tool.simplint]\nselect = [\"SMP001\"]\nper-file-ignores = { \"!b.py\" = [\"SMP001\"] }\nextend-safe-fixes = [\"SMP001\"]\nproject-kind = \"library\"\napi-packages = [\"src/app\"]\napi-modules = [\"app.errors\"]\ndocstring-style = \"rst\"\n[tool.simplint.naming]\nkeep-names = [\"app_name\"]\n[tool.simplint.imports]\nmodule-attributes = [\"app.settings\"]\n[tool.simplint.logic]\nmax-tuple-elements = 3\nmax-cognitive-complexity = 15\n",
         ),
         ("b.py", ""),
         ("a.py", ""),
@@ -502,9 +515,10 @@ fn show_settings_describes_the_first_file() {
                  linter.target_version = 3.12\nlinter.rules.enabled = [\n\tsection-comment (SMP001),\n]\n\
                  linter.rules.should_fix = []\nlinter.per_file_ignores = [\n\t{ignored} = [\"section-comment (SMP001)\"],\n]\n\
                  linter.safety_table.forced_safe = [\n\tsection-comment (SMP001),\n]\nlinter.safety_table.forced_unsafe = []\n\
-                 linter.dependencies = [\n\t\"requests\",\n]\nlinter.entry_points = [\n\t\"cli:main\",\n]\n\
-                 linter.max_paragraph_words = 100\nlinter.naming.keep_names = [\n\t\"app_name\",\n]\nlinter.imports.module_attributes = [\n\t\"app.settings\",\n]\n\
-                 linter.logic.max_helper_statements = 3\nlinter.logic.max_caller_statements = 20\nlinter.project_kind = library\n\
+                 linter.dependencies = [\n\t\"requests\",\n]\nlinter.declared_dependencies = [\n\t\"pytest_mock\",\n\t\"requests\",\n]\nlinter.entry_points = [\n\t\"cli:main\",\n]\n\
+                 linter.max_paragraph_words = 100\nlinter.naming.keep_names = [\n\t\"app_name\",\n]\nlinter.naming.meaningless_names = [\n\t\"foo\",\n\t\"baz\",\n\t\"qux\",\n\t\"quux\",\n]\nlinter.naming.catch_all_modules = [\n\t\"utils\",\n\t\"util\",\n\t\"utilities\",\n\t\"helpers\",\n\t\"helper\",\n\t\"common\",\n\t\"misc\",\n]\nlinter.imports.module_attributes = [\n\t\"app.settings\",\n]\n\
+                 linter.logic.max_helper_statements = 3\nlinter.logic.max_caller_statements = 20\nlinter.logic.max_tuple_elements = 3\n\
+                 linter.logic.max_cognitive_complexity = 15\nlinter.logic.min_duplicate_statements = 6\nlinter.project_kind = library\n\
                  linter.api_packages = [\n\t\"app\",\n]\nlinter.api_modules = [\n\t\"app.errors\",\n]\n\
                  linter.docstring_style = rst\n"
             )

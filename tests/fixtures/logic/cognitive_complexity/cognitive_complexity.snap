@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+72:5 SMP529 `tangled` has cognitive complexity 21, over the limit of 20; split it into named helpers

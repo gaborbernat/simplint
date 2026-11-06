@@ -1,0 +1,47 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:8 SMP523 `gzip` is available as `compression.gzip` from Python 3.14 [unsafe fix: Import `compression.gzip`]
+2:8 SMP523 `bz2` is available as `compression.bz2` from Python 3.14 [unsafe fix: Import `compression.bz2`]
+3:12 SMP523 `lzma` is available as `compression.lzma` from Python 3.14
+4:6 SMP523 `zlib` is available as `compression.zlib` from Python 3.14 [unsafe fix: Import `compression.zlib`]
+5:6 SMP523 `gzip` is available as `compression.gzip` from Python 3.14 [unsafe fix: Import `compression.gzip`]
+19:12 SMP523 `lzma` is available as `compression.lzma` from Python 3.14 [unsafe fix: Import `compression.lzma`]
+30:12 SMP523 `zlib` is available as `compression.zlib` from Python 3.14
+31:10 SMP523 `gzip` is available as `compression.gzip` from Python 3.14
+32:10 SMP523 `bz2` is available as `compression.bz2` from Python 3.14 [unsafe fix: Import `compression.bz2`]
+--- fixed (6 applied, 3 remaining) ---
+from compression import gzip
+from compression import bz2 as bzip
+import os, lzma
+from compression.zlib import compress
+from compression.gzip import GzipFile
+from compression.lzma import LZMAFile
+from . import gzip as local_gzip
+from .bz2 import BZ2File
+import json
+
+
+def pack(path, data):
+    with gzip.open(path, "wb") as handle:
+        handle.write(data)
+    return bzip.BZ2File(path), GzipFile, LZMAFile, compress, os, json, local_gzip, BZ2File
+
+
+def in_function():
+    from compression import lzma
+    return lzma
+
+
+try:
+    import zlib
+except ImportError:
+    zlib = None
+
+
+def internals():
+    import zlib as private_zlib
+    from gzip import READ
+    from compression.bz2 import *
+    return private_zlib._ZlibDecompressor, READ, BZ2File

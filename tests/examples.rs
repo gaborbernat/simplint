@@ -8,7 +8,7 @@ use ruff_python_ast::{PySourceType, PythonVersion};
 use ruff_python_parser::{ParseOptions, parse_unchecked};
 use serde_json::Value;
 
-use common::{project, read, simplint};
+use common::{project, read, simplint, text};
 use examples::{Block, Example, Fence, Role, parse};
 
 // Each rule's examples are checked in one run, so a wrong example is reported along with every other one.
@@ -39,7 +39,7 @@ fn rule_examples_hold() {
 fn check_target(example: &Example) -> Result<(), String> {
     let version = target_version(example.config.as_ref())?;
     let options = ParseOptions::from(PySourceType::Python).with_target_version(version);
-    for block in &example.blocks {
+    for block in example.blocks.iter().filter(|block| block.language == "python") {
         let parsed = parse_unchecked(&block.fence.source, options.clone());
         if let Some(error) = parsed.unsupported_syntax_errors().first() {
             return Err(format!("{} does not parse for {version}: {error}", block.file));
@@ -116,8 +116,4 @@ fn diagnostics(root: &Path, code: &str, isolated: &[&str]) -> Result<Vec<Value>,
     let check = ["check", "--no-cache", "--select", code, "--output-format", "json"];
     let (_, stdout, stderr) = simplint(root, &[&check[..], isolated].concat());
     serde_json::from_str(&stdout).map_err(|_| format!("simplint did not report: {stderr}"))
-}
-
-fn text(value: &Value) -> &str {
-    value.as_str().expect("a string")
 }

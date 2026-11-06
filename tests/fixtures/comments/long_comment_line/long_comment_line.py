@@ -1,0 +1,108 @@
+"""Module docstring with a summary line that goes on past the comment width of one hundred and twenty characters, ok.
+
+A second paragraph that is short.
+"""
+
+# The cache keeps one entry per manifest, keyed by path and modification time, because parsing a manifest dominates the start-up time of large projects and their configuration files are many, so it is kept.
+VALUE = 1
+
+# This comment line fills most of the width, so the long line below continues the same paragraph as this one
+# and this one runs on well past the width of one hundred and twenty characters, so the paragraph gets rewrapped.
+# Short.
+OTHER = 2
+
+# - This list item goes past the width of one hundred and twenty characters and is reported without a fix, sadly.
+THIRD = 3
+
+# https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.relative_to/with/a/very/long/path/that/keeps/going
+FOURTH = 4
+
+# averyveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryveryverylongword.
+FIFTH = 5
+
+# noqa: E501 long directive comment that is much longer than the width of one hundred and twenty characters ok
+SIXTH = 6
+
+# test %p
+# The label above ends early on purpose, so it stays its own line when this long line below it is wrapped at the width.
+LABELLED = 10
+
+# type                      format                  shape           calc itemsize and more columns past the width here
+TABLE = 11
+
+VALUE_TRAILING = 7  # This trailing comment is far too long for the width of one hundred and twenty characters, yes.
+
+#  indented comment that is far too long for the width of one hundred and twenty characters, so it is reported.
+SEVENTH = 8
+
+
+def function() -> None:
+    """Summary line, which is short.
+
+    A paragraph of a docstring that goes on past the width of one hundred and twenty characters, so it is reflowed.
+    Its second line is short and joins the first.
+
+    A short line on its own.
+    A second line in that paragraph which goes on and on, past the width of one hundred and twenty characters, ok.
+    """
+
+
+def listed() -> None:
+    """Summary.
+
+    - A list item inside a docstring that goes past the width of one hundred and twenty characters, and is kept.
+    """
+
+
+def doctest() -> None:
+    """Summary.
+
+    >>> sorted(["--condition=foo", "--testing", "--output-file"])
+    ['--condition=foo', '--output-file', '--testing', 'and', 'more', 'words', 'past', 'the', 'width']
+    """
+
+
+def escaped() -> None:
+    """A docstring with \\n escapes that goes on past the width of one hundred and twenty characters, so no fix here."""
+
+
+def urls() -> None:
+    """See https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.relative_to/with/a/very/long/path/x."""
+
+
+# The next line holds a URL that no wrapping can shorten, so this paragraph keeps its long line and gets no fix.
+# see https://example.com/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+THIRD_LINE = 9
+
+
+def implicit() -> None:
+    ("""Implicit concatenation of docstrings that goes on past the width of one hundred and twenty characters, so no."""
+     """It is not reflowed.""")
+
+
+def single_quoted() -> None:
+    "A single-quoted docstring cannot wrap, so the long line stays and gets no fix, which is what the fixture pins."
+
+
+def closing_quotes_join() -> None:
+    """The closing quotes join this one line of text, which takes it past the width now.
+    """
+
+
+def dedented_lines() -> None:
+    """Summary.
+
+These lines sit left of the docstring, and the formatter moves them right, past it all.
+    """
+
+
+ROWS = [(
+    1,
+    # The formatter indents this comment two levels, below the brackets, past the width.
+)]
+
+
+def escaped_line_break() -> None:
+    """Summary with an escaped \
+line break, which the formatter leaves as it is, so its lines keep the columns they have now.
+    """

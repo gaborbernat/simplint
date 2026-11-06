@@ -266,3 +266,8 @@ class Engine:
 ```
 
 No fix is offered when escapes in the docstring make its text differ from the source.
+
+## Other tools
+
+- [pydoclint](https://github.com/jsh9/pydoclint) reports a class docstring that lists fewer attributes than the class
+  has as [DOC601](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.

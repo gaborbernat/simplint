@@ -3,6 +3,19 @@ use test_case::test_case;
 
 use crate::common::{self, check, read};
 
+#[test_case("duplicate-code", "duplicate_code.py", "py314" ; "duplicate_code")]
+#[test_case("duplicate-code", "duplicate_code_copy.py", "py314" ; "duplicate_code_copy")]
+#[test_case("duplicate-code", "duplicate_code_many.py", "py314" ; "duplicate_code_many")]
+#[test_case("duplicate-code", "duplicate_code_renamed.py", "py314" ; "duplicate_code_renamed")]
+#[test_case("duplicate-code", "duplicate_code_twice.py", "py314" ; "duplicate_code_twice")]
+#[test_case("duplicate-code", "duplicate_code_short.py", "py314" ; "duplicate_code_short")]
+#[test_case("duplicate-code", "duplicate_code_nested.py", "py314" ; "duplicate_code_nested")]
+#[test_case("duplicate-code", "duplicate_code_import.py", "py314" ; "duplicate_code_import")]
+#[test_case("duplicate-code", "duplicate_code_nested_copy.py", "py314" ; "duplicate_code_nested_copy")]
+#[test_case("duplicate-code", "duplicate_code_short_copy.py", "py314" ; "duplicate_code_short_copy")]
+#[test_case("duplicate-code", "duplicate_code_import_copy.py", "py314" ; "duplicate_code_import_copy")]
+#[test_case("duplicate-code", "duplicate_code_block.py", "py314" ; "duplicate_code_block")]
+#[test_case("duplicate-code", "test_duplicate_code_module.py", "py314" ; "duplicate_code_test_module")]
 #[test_case("forwarding-function", "forwarding_function.py", "py314" ; "forwarding_function")]
 #[test_case("walrus-candidate", "walrus_candidate.py", "py314" ; "walrus_candidate")]
 #[test_case("walrus-candidate", "walrus_candidate.py", "py37" ; "walrus_candidate_before_python38")]
@@ -64,6 +77,26 @@ use crate::common::{self, check, read};
 #[test_case("up-argparse-suggest-on-error", "up_argparse_suggest_on_error_commented.py", "py315" ; "argparse_suggest_on_error_commented")]
 #[test_case("up-removed-ast-node", "up_removed_ast_node.py", "py314" ; "removed_ast_node")]
 #[test_case("up-removed-ast-node", "up_removed_ast_node_shadowed.py", "py314" ; "removed_ast_node_shadowed")]
+#[test_case("early-assignment", "early_assignment.py", "py314" ; "early_assignment")]
+#[test_case("early-assignment", "early_assignment_blocked.py", "py314" ; "early_assignment_blocked")]
+#[test_case("super-forwarding-method", "super_forwarding_method.py", "py314" ; "super_forwarding_method")]
+#[test_case("super-forwarding-method", "super_forwarding_method_decorated.py", "py314" ; "super_forwarding_method_decorated")]
+#[test_case("long-tuple-return", "long_tuple_return.py", "py314" ; "long_tuple_return")]
+#[test_case("cognitive-complexity", "cognitive_complexity.py", "py314" ; "cognitive_complexity")]
+#[test_case("collection-built-by-statements", "collection_built_by_statements.py", "py314" ; "collection_built_by_statements")]
+#[test_case("collection-built-by-statements", "collection_built_by_statements_names.py", "py314" ; "collection_built_by_statements_names")]
+#[test_case("up-utf8-encoding-default", "up_utf8_encoding_default.py", "py315" ; "utf8_encoding_default")]
+#[test_case("up-utf8-encoding-default", "up_utf8_encoding_default.py", "py314" ; "utf8_encoding_default_before_python315")]
+#[test_case("up-utf8-encoding-default", "up_utf8_encoding_default_shadowed.py", "py315" ; "utf8_encoding_default_shadowed_open")]
+#[test_case("up-re-prefixmatch", "up_re_prefixmatch.py", "py315" ; "re_prefixmatch")]
+#[test_case("up-re-prefixmatch", "up_re_prefixmatch.py", "py314" ; "re_prefixmatch_before_python315")]
+#[test_case("up-compression-modules", "up_compression_modules.py", "py314" ; "compression_modules")]
+#[test_case("up-compression-modules", "up_compression_modules.py", "py313" ; "compression_modules_before_python314")]
+#[test_case("up-compression-modules", "compression/up_compression_modules_shim.py", "py314" ; "compression_modules_in_compression_package")]
+#[test_case("up-warnings-deprecated", "up_warnings_deprecated.py", "py313" ; "warnings_deprecated")]
+#[test_case("up-warnings-deprecated", "up_warnings_deprecated.py", "py312" ; "warnings_deprecated_before_python313")]
+#[test_case("up-deprecated-stdlib-alias", "up_deprecated_stdlib_alias.py", "py312" ; "deprecated_stdlib_alias")]
+#[test_case("up-deprecated-stdlib-alias", "up_deprecated_stdlib_alias.py", "py310" ; "deprecated_stdlib_alias_python310")]
 fn rule(rule: &str, fixture: &str, target_version: &str) {
     common::assert_rule_snapshot(rule, fixture, target_version);
 }
@@ -205,16 +238,88 @@ fn single_use_decorator(target: &str, value: &str, decorator: &str, inlined: Opt
     Some("def join(items):\n    return f\"{\"\\n\".join(items)}\"\n")
     ; "backslash_from_python312"
 )]
+// A replacement field before Python 3.12 cannot hold a line break, so a value the source spreads over lines goes in on
+// one line, as the formatter joins it, and its string takes the other quote.
+#[test_case(
+    "py311",
+    "def join(items):\n    joined = (\n        \", \".join(items)\n    )\n    return f\"Items({joined})\"\n\n\ndef size(items):\n    count = len(items)\n    return f\"{count}\"\n",
+    Some("def join(items):\n    return f\"Items({', '.join(items)})\"\n\n\ndef size(items):\n    return f\"{len(items)}\"\n")
+    ; "line_break_before_python312"
+)]
 #[test_case(
     "py311",
     "def size(items):\n    count = len(items)\n    return f\"{count}\"\n",
     Some("def size(items):\n    return f\"{len(items)}\"\n")
     ; "other_value_before_python312"
 )]
+// A field of an f-string that holds a string cannot take the other quote before Python 3.12, so the value stays, and
+// the fixes it does not block still apply.
+#[test_case(
+    "py311",
+    "def render(items):\n    prepr = f\"[{','.join(items)}]\"\n    return f\"Items({prepr})\"\n\n\ndef size(items):\n    count = len(items)\n    return f\"{count}\"\n",
+    Some("def render(items):\n    prepr = f\"[{','.join(items)}]\"\n    return f\"Items({prepr})\"\n\n\ndef size(items):\n    return f\"{len(items)}\"\n")
+    ; "nested_string_before_python312"
+)]
+#[test_case(
+    "py312",
+    "def render(items):\n    prepr = f\"[{','.join(items)}]\"\n    return f\"Items({prepr})\"\n",
+    Some("def render(items):\n    return f\"Items({f\"[{','.join(items)}]\"})\"\n")
+    ; "nested_string_from_python312"
+)]
 fn single_use_fstring_quote(target: &str, source: &str, inlined: Option<&str>) {
     let root = single_use_project(target, source);
     check(root.path(), &["--no-cache", "--select", "SMP504", "--fix"]);
     assert_eq!(read(root.path(), "module.py"), inlined.unwrap_or(source));
+}
+
+// `ruff format` closes the gap a removed statement leaves, but a `# fmt: off` file keeps it, so the fix takes one of the
+// two blank lines with it.
+#[test]
+fn single_use_variable_keeps_one_blank_line_under_fmt_off() {
+    let source = "# fmt: off\ndef make(flags, kwargs):\n    configure(kwargs)\n\n    cli_kwargs = to_args(kwargs)\n\n    return flags + cli_kwargs\n";
+    let root = single_use_project("py314", source);
+    check(root.path(), &["--no-cache", "--select", "SMP504", "--fix"]);
+    assert_eq!(
+        read(root.path(), "module.py"),
+        "# fmt: off\ndef make(flags, kwargs):\n    configure(kwargs)\n\n    return flags + to_args(kwargs)\n"
+    );
+}
+
+// The layout a value has in the source does not decide whether it is inlined: `ruff format` joins it, so a second run
+// would inline it, and the fix does the same on the first.
+#[test]
+fn single_use_variable_judges_a_split_value_by_its_formatted_width() {
+    let source = "def f(conn):\n    request = (\n        b\"POST / HTTP/1.1\\r\\n\"\n        b\"Host: example.com\\r\\n\"\n    )\n    conn.receive_data(request)\n";
+    let root = single_use_project("py314", source);
+    check(root.path(), &["--no-cache", "--select", "SMP504", "--fix", "--unsafe-fixes"]);
+    assert_eq!(
+        read(root.path(), "module.py"),
+        "def f(conn):\n    conn.receive_data(b\"POST / HTTP/1.1\\r\\n\"\n        b\"Host: example.com\\r\\n\")\n"
+    );
+}
+
+// A name a string annotation or a `ForwardRef` reads is read there too, so inlining its value would leave the string
+// naming an undefined name.
+#[test_case("class Box(Generic[T]):\n        item: \"list[T]\"" ; "string_annotation")]
+#[test_case("box = Generic[T]\n    ref = ForwardRef(\"list[T]\")\n    return box, ref" ; "forward_ref")]
+fn single_use_string_annotation_is_a_read(body: &str) {
+    let source = format!(
+        "from typing import ForwardRef, Generic, TypeVar\n\n\ndef build() -> type:\n    T = TypeVar(\"T\")\n\n    {body}\n"
+    );
+    let root = single_use_project("py314", &source);
+    check(root.path(), &["--no-cache", "--select", "SMP504", "--fix"]);
+    assert!(read(root.path(), "module.py").contains("    T = TypeVar(\"T\")\n"));
+}
+
+// A string annotation that does not parse spells no name, so the name it cannot read is inlined as usual.
+#[test]
+fn single_use_unparsable_string_annotation_reads_nothing() {
+    let root = single_use_project(
+        "py314",
+        "from typing import Generic, TypeVar\n\n\ndef build() -> type:\n    T = TypeVar(\"T\")\n\n    class Box(Generic[T]):\n        item: \"list[\"\n\n    return Box\n",
+    );
+    check(root.path(), &["--no-cache", "--select", "SMP504", "--fix"]);
+    assert!(read(root.path(), "module.py").contains("class Box(Generic[TypeVar(\"T\")]):"));
 }
 
 fn single_use_project(target: &str, source: &str) -> TempDir {
@@ -272,4 +377,55 @@ fn error_message_matching_leaves_test_modules_alone() {
     )]);
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
     assert_eq!((code, stdout.as_str()), (0, "All checks passed!\n"));
+}
+
+// The tuple length and the complexity a project allows before the rules report, read from `[tool.simplint.logic]`.
+#[test_case("", 2 ; "default_limit_reports_triples")]
+#[test_case("[tool.simplint.logic]\nmax-tuple-elements = 3\n", 1 ; "limit_three_reports_quadruples")]
+#[test_case("[tool.simplint.logic]\nmax-tuple-elements = 4\n", 0 ; "limit_four_reports_nothing")]
+fn long_tuple_return_limit(settings: &str, reports: usize) {
+    let source = "def triple() -> tuple[int, int, int]:\n    return 1, 2, 3\n\n\ndef quad() -> tuple[int, int, int, int]:\n    return 1, 2, 3, 4\n";
+    let root = common::project(&[("pyproject.toml", settings), ("module.py", source)]);
+    let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP528"]);
+    assert_eq!(stdout.matches("SMP528").count(), reports);
+}
+
+// A function scoring 18 is reported above a limit of 17 and left alone at 18, since the limit is the highest score kept.
+#[test_case("", 1 ; "default_limit_of_twenty_reports_twenty_one")]
+#[test_case("[tool.simplint.logic]\nmax-cognitive-complexity = 17\n", 2 ; "limit_seventeen_reports_eighteen")]
+#[test_case("[tool.simplint.logic]\nmax-cognitive-complexity = 18\n", 1 ; "limit_eighteen_keeps_eighteen")]
+fn cognitive_complexity_limit(settings: &str, reports: usize) {
+    let source = fixture_source("cognitive_complexity/cognitive_complexity.py");
+    let root = common::project(&[("pyproject.toml", settings), ("module.py", &source)]);
+    let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP529"]);
+    assert_eq!(stdout.matches("SMP529").count(), reports);
+}
+
+// Each function in the fixture ends its name with the score SonarSource gives it, which a limit of zero reports.
+#[test]
+fn cognitive_complexity_scores() {
+    let source = fixture_source("cognitive_complexity/cognitive_complexity_scores.py");
+    let settings = "[tool.simplint.logic]\nmax-cognitive-complexity = 0\n";
+    let root = common::project(&[("pyproject.toml", settings), ("module.py", &source)]);
+    let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP529"]);
+    let scores: Vec<(&str, &str)> = stdout
+        .lines()
+        .filter_map(|line| {
+            let name = line.split('`').nth(1)?;
+            let score = line.split("complexity ").nth(1)?.split(',').next()?;
+            Some((name.rsplit('_').next()?, score))
+        })
+        .collect();
+    let expected: Vec<(&str, &str)> = source
+        .lines()
+        .filter_map(|line| line.trim_start().strip_prefix("def ")?.split('(').next()?.rsplit('_').next())
+        .filter(|score| *score != "0")
+        .map(|score| (score, score))
+        .collect();
+    assert_eq!(scores, expected);
+}
+
+fn fixture_source(path: &str) -> String {
+    std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/logic").join(path))
+        .expect("fixture")
 }

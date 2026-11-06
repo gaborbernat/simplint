@@ -1,9 +1,11 @@
 pub(crate) mod cache;
+pub(crate) mod computed_reads;
 pub(crate) mod constructors;
+mod docs;
 mod facts;
 mod index;
 pub(crate) mod receivers;
 
-pub use facts::FileFacts;
-pub(crate) use facts::names_in;
-pub use index::{Exposure, FileIndex, ImportResolver, IndexInputs, Project, SearchRoots};
+pub use docs::DocReferences;
+pub use facts::{FileFacts, Parts};
+pub use index::{Exposure, FileIndex, ImportResolver, IndexInputs, Project, SearchRoots, StarSite};

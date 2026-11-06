@@ -6,8 +6,9 @@ use ruff_text_size::{Ranged, TextLen, TextRange};
 use crate::layout::joined_width;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::edits::statement_deletion;
 use crate::rules::logic::inline::{declared_outer, fits_line, for_each_scoped_body, inlined_text, leading_name};
-use crate::rules::{expr_mentions, has_version_gate, needs_parentheses, statement_deletion};
+use crate::rules::{expr_mentions, has_version_gate, needs_parentheses};
 
 pub fn walrus_candidate(checker: &Checker) {
     // `:=` arrived in Python 3.8.

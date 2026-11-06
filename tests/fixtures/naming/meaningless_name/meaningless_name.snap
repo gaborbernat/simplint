@@ -1,0 +1,20 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+3:1 SMP103 Meaningless name `foo`; name what it holds
+4:5 SMP103 Meaningless name `baz`; name what it holds
+7:22 SMP103 Meaningless name `qux`; name what it holds
+10:5 SMP103 Meaningless name `quux`; name what it holds
+14:26 SMP103 Meaningless name `quux`; name what it holds
+18:19 SMP103 Meaningless name `foo`; name what it holds
+21:12 SMP103 Meaningless name `foo`; name what it holds
+29:23 SMP103 Meaningless name `qux`; name what it holds
+35:25 SMP103 Meaningless name `baz`; name what it holds
+37:14 SMP103 Meaningless name `quux`; name what it holds
+43:9 SMP103 Meaningless name `foo`; name what it holds
+50:9 SMP103 Meaningless name `foo`; name what it holds
+53:16 SMP103 Meaningless name `foo`; name what it holds
+64:19 SMP103 Meaningless name `quux`; name what it holds
+76:5 SMP103 Meaningless name `FOO`; name what it holds
+77:5 SMP103 Meaningless name `_baz`; name what it holds

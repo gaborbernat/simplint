@@ -112,6 +112,7 @@ impl Configuration {
                 .collect_vec()
         };
         let logic = options.logic.unwrap_or_default();
+        let naming = options.naming.unwrap_or_default();
         Self {
             rule_selections: vec![RuleSelection {
                 enabled: SelectorLayer {
@@ -138,10 +139,9 @@ impl Configuration {
             extend_unsafe_fixes: tag("extend-unsafe-fixes", options.extend_unsafe_fixes.unwrap_or_default()),
             project: ProjectOptions {
                 max_paragraph_words: options.max_paragraph_words,
-                keep_names: options.naming.and_then(|naming| naming.keep_names),
-                module_attributes: options.imports.and_then(|imports| imports.module_attributes),
-                max_helper_statements: logic.max_helper_statements,
-                max_caller_statements: logic.max_caller_statements,
+                naming,
+                imports: options.imports.unwrap_or_default(),
+                logic,
                 project_kind: options.project_kind,
                 api_packages: options.api_packages,
                 api_modules: options.api_modules,
@@ -194,28 +194,26 @@ impl Overrides {
 #[derive(Clone, Default)]
 pub(super) struct ProjectOptions {
     pub(super) max_paragraph_words: Option<usize>,
-    pub(super) keep_names: Option<Vec<String>>,
-    pub(super) module_attributes: Option<Vec<String>>,
+    pub(super) naming: NamingOptions,
+    pub(super) imports: ImportsOptions,
+    pub(super) logic: LogicOptions,
     pub(super) project_kind: Option<ProjectKindOption>,
     pub(super) api_packages: Option<Vec<String>>,
     pub(super) api_modules: Option<Vec<String>>,
     pub(super) docstring_style: Option<DocstringStyle>,
-    pub(super) max_helper_statements: Option<usize>,
-    pub(super) max_caller_statements: Option<usize>,
 }
 
 impl ProjectOptions {
     fn combine(self, other: Self) -> Self {
         Self {
             max_paragraph_words: self.max_paragraph_words.or(other.max_paragraph_words),
-            keep_names: self.keep_names.or(other.keep_names),
-            module_attributes: self.module_attributes.or(other.module_attributes),
+            naming: self.naming.combine(other.naming),
+            imports: self.imports.combine(other.imports),
+            logic: self.logic.combine(other.logic),
             project_kind: self.project_kind.or(other.project_kind),
             api_packages: self.api_packages.or(other.api_packages),
             api_modules: self.api_modules.or(other.api_modules),
             docstring_style: self.docstring_style.or(other.docstring_style),
-            max_helper_statements: self.max_helper_statements.or(other.max_helper_statements),
-            max_caller_statements: self.max_caller_statements.or(other.max_caller_statements),
         }
     }
 }
@@ -529,6 +527,40 @@ pub struct NamingOptions {
         "#
     )]
     pub keep_names: Option<Vec<String>>,
+
+    /// Words that name a variable, parameter or attribute without saying what it holds, which `meaningless-name`
+    /// (`SMP103`) reports. A word matches in lower or upper case, with or without leading or trailing underscores.
+    #[option(
+        default = r#"["foo", "baz", "qux", "quux"]"#,
+        value_type = "list[str]",
+        example = r#"
+            # A team that also bans its own placeholder words.
+            meaningless-names = ["foo", "baz", "tmp", "stuff"]
+        "#
+    )]
+    pub meaningless_names: Option<Vec<String>>,
+
+    /// Names of modules and packages that `catch-all-module` (`SMP104`) reports, since they hold whatever does not fit
+    /// elsewhere. A package is reported through its `__init__.py`.
+    #[option(
+        default = r#"["utils", "util", "utilities", "helpers", "helper", "common", "misc"]"#,
+        value_type = "list[str]",
+        example = r#"
+            # A project whose `types` module holds its type aliases only.
+            catch-all-modules = ["utils", "helpers", "misc"]
+        "#
+    )]
+    pub catch_all_modules: Option<Vec<String>>,
+}
+
+impl NamingOptions {
+    fn combine(self, other: Self) -> Self {
+        Self {
+            keep_names: self.keep_names.or(other.keep_names),
+            meaningless_names: self.meaningless_names.or(other.meaningless_names),
+            catch_all_modules: self.catch_all_modules.or(other.catch_all_modules),
+        }
+    }
 }
 
 /// The `[tool.simplint.imports]` table.
@@ -548,8 +580,14 @@ pub struct ImportsOptions {
     pub module_attributes: Option<Vec<String>>,
 }
 
+impl ImportsOptions {
+    fn combine(self, other: Self) -> Self {
+        Self { module_attributes: self.module_attributes.or(other.module_attributes) }
+    }
+}
+
 /// The `[tool.simplint.logic]` table.
-#[derive(Deserialize, Default, Clone, JsonSchema, OptionsMetadata)]
+#[derive(Deserialize, Default, Clone, Copy, JsonSchema, OptionsMetadata)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct LogicOptions {
     /// The most statements a private helper may have for `single-caller-helper` (`SMP505`) to suggest inlining it into
@@ -573,4 +611,50 @@ pub struct LogicOptions {
         "#
     )]
     pub max_caller_statements: Option<usize>,
+
+    /// The most elements a tuple returned from a function may hold before `long-tuple-return` (`SMP528`) reports it. A
+    /// longer tuple is a record whose fields are known only by position; a dataclass or a named tuple names them.
+    #[option(
+        default = "2",
+        value_type = "int",
+        example = r#"
+            # Three-element tuples are records too.
+            max-tuple-elements = 2
+        "#
+    )]
+    pub max_tuple_elements: Option<usize>,
+
+    /// The highest cognitive complexity a function may have before `cognitive-complexity` (`SMP529`) reports it. The
+    /// score counts each branch, loop and handler more the deeper it is nested, as `SonarSource` defines it.
+    #[option(
+        default = "20",
+        value_type = "int",
+        example = r#"
+            max-cognitive-complexity = 30
+        "#
+    )]
+    pub max_cognitive_complexity: Option<usize>,
+    /// The fewest statements in a row another module must repeat for `duplicate-code` (`SMP530`) to report them.
+    /// Statements count as those of one body, each nested block counting as one.
+    #[option(
+        default = "6",
+        value_type = "int",
+        example = r#"
+            # Only report longer copies.
+            min-duplicate-statements = 10
+        "#
+    )]
+    pub min_duplicate_statements: Option<usize>,
+}
+
+impl LogicOptions {
+    fn combine(self, other: Self) -> Self {
+        Self {
+            max_helper_statements: self.max_helper_statements.or(other.max_helper_statements),
+            max_caller_statements: self.max_caller_statements.or(other.max_caller_statements),
+            max_tuple_elements: self.max_tuple_elements.or(other.max_tuple_elements),
+            max_cognitive_complexity: self.max_cognitive_complexity.or(other.max_cognitive_complexity),
+            min_duplicate_statements: self.min_duplicate_statements.or(other.min_duplicate_statements),
+        }
+    }
 }

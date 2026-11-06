@@ -228,3 +228,13 @@ No fix is offered when:
   def greet(name: str) -> str:
       return "Hello, " + name.strip('"') + "!"
   ```
+
+## Other tools
+
+- [Sourcery](https://sourcery.ai) rewrites the same `+` chains as an f-string through its
+  [use-fstring-for-concatenation](https://docs.sourcery.ai/reference/refactorings/python/use-fstring-for-concatenation/)
+  refactoring.
+- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports explicit string
+  concatenation as
+  [WPS336](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/consistency.html#wemake_python_styleguide.violations.consistency.ExplicitStringConcatViolation)
+  and prefers `str.format`, where this rule prefers an f-string.

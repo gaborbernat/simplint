@@ -1,0 +1,15 @@
+---
+source: tests/common/mod.rs
+assertion_line: 125
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+7:9 SMP203 `__init__` belongs with the constructors, above `load` [fix: Move `__init__` above `load`]
+--- fixed (1 applied, 0 remaining) ---
+class CtorEager:
+    Limit = int
+
+    def __init__(self, limit: Limit) -> None:
+        self.limit = limit
+
+    def load(self) -> int:
+        return 1

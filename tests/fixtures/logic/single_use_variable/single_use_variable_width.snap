@@ -4,7 +4,14 @@ expression: "lint_fixture(rule, fixture, target_version)"
 ---
 2:5 SMP504 `count` is used once, right below; inline its value [fix: Inline `count`]
 12:5 SMP504 `total` is used once, right below; inline its value [fix: Inline `total`]
---- fixed (2 applied, 0 remaining) ---
+29:5 SMP504 `count` is used once, right below; inline its value [fix: Inline `count`]
+36:5 SMP504 `message` is used once, right below; inline its value [fix: Inline `message`]
+41:5 SMP504 `removed` is used once, right below; inline its value [fix: Inline `removed`]
+50:5 SMP504 `total` is used once, right below; inline its value [fix: Inline `total`]
+55:5 SMP504 `other` is used once, right below; inline its value [fix: Inline `other`]
+59:5 SMP504 `result` is used once, right below; inline its value [fix: Inline `result`]
+69:5 SMP504 `label` is used once, right below; inline its value [fix: Inline `label`]
+--- fixed (9 applied, 0 remaining) ---
 def fits_once_inlined(items: list[str]) -> None:
     print(len(items))
 
@@ -31,7 +38,32 @@ def block_header(items: list[str]) -> None:
 
 
 def spread_value(items: list[str]) -> None:
-    count = (
-        len(items)
-    )
-    print(count)
+    print(len(items))
+
+
+def parenthesized_value_fits_bare(flag: bool) -> None:
+    check(flag, match="only the string without its parentheses fits on this one line.")
+
+
+def chained_in_call(session: Session) -> None:
+    check(session.query(User)
+        .filter(User.age > 2)
+        .delete(synchronize_session=False), 3)
+
+
+def chained_in_statement(session: Session) -> None:
+    print(session.first
+        + session.second)
+    print((
+        session.first
+        + session.second
+    ) * 2)
+
+
+def magic_trailing_comma(flag: bool) -> None:
+    label = "short"
+    check(flag, label,)
+
+
+def numbers(flag: bool) -> None:
+    check(flag, "short", 1 .real, 2.5)

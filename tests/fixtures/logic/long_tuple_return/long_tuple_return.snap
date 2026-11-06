@@ -1,0 +1,12 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+9:12 SMP528 `triple` returns a tuple of 3 elements; a dataclass or a named tuple names its fields
+14:16 SMP528 `parenthesized` returns a tuple of 3 elements; a dataclass or a named tuple names its fields
+15:12 SMP528 `parenthesized` returns a tuple of 3 elements; a dataclass or a named tuple names its fields
+24:16 SMP528 `inner` returns a tuple of 3 elements; a dataclass or a named tuple names its fields
+37:16 SMP528 `values` returns a tuple of 4 elements; a dataclass or a named tuple names its fields
+58:12 SMP528 `fixed` returns a tuple of 3 elements; a dataclass or a named tuple names its fields
+62:12 SMP528 `unannotated` returns a tuple of 3 elements; a dataclass or a named tuple names its fields
+66:12 SMP528 `generic` returns a tuple of 3 elements; a dataclass or a named tuple names its fields

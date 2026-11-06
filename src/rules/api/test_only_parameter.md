@@ -1,0 +1,284 @@
+Flags a parameter with a default that only test calls pass, while production calls leave it at the default.
+
+## Why is this bad?
+
+A parameter that only tests set is a seam for the test suite in production code. Callers see an option the program never
+uses, and the variation it offers lives where no reader expects it. Keeping the variation in the tests, through a helper
+or a fixture, leaves the production signature to what the program does.
+
+## Example
+
+```python context file=app/service.py
+from app.mail import send
+
+
+def notify(address: str) -> None:
+    send(address)
+```
+
+```python report file=app/mail.py
+def send(address: str, urgent: bool = False) -> None:
+    print(address, urgent)
+```
+
+```python context file=tests/test_mail.py
+from app.mail import send
+
+
+def test_send() -> None:
+    send("a@b.c", urgent=True)
+```
+
+Use instead:
+
+```python ok file=app/mail.py
+def send(address: str) -> None:
+    print(address, False)
+```
+
+```python context file=tests/test_mail.py
+from app.mail import send
+
+
+def test_send() -> None:
+    send("a@b.c")
+```
+
+## What it does
+
+For each module-level function, the rule compares the calls that production code makes with the calls tests make. A
+production call that passes an argument by position or by keyword counts for that parameter, and so does one that
+unpacks `**kwargs`, which may pass any keyword.
+
+### Active on
+
+- **Defaulted parameters that no production call passes**, when at least one test call passes them and production code
+  calls the function at least once. A required parameter is always passed, so it is never reported.
+
+  ```python context file=app/service.py
+  from app.mail import send
+
+
+  def notify(address: str) -> None:
+      send(address)
+  ```
+
+  ```python report file=app/mail.py
+  def send(address: str, urgent: bool = False) -> None:
+      print(address, urgent)
+  ```
+
+  ```python context file=tests/test_mail.py
+  from app.mail import send
+
+
+  def test_send() -> None:
+      send("a@b.c", urgent=True)
+  ```
+
+- **Keyword-only parameters**, which a call passes only by keyword.
+
+  ```python context file=app/service.py
+  from app.mail import send
+
+
+  def notify(address: str) -> None:
+      send(address)
+  ```
+
+  ```python report file=app/mail.py
+  def send(address: str, *, urgent: bool = False) -> None:
+      print(address, urgent)
+  ```
+
+  ```python context file=tests/test_mail.py
+  from app.mail import send
+
+
+  def test_send() -> None:
+      send("a@b.c", urgent=True)
+  ```
+
+### Exceptions
+
+- **Parameters production code passes**: a single production call that passes the parameter keeps it.
+
+  ```python context file=app/service.py
+  from app.mail import send
+
+
+  def notify(address: str) -> None:
+      send(address, urgent=True)
+  ```
+
+  ```python ok file=app/mail.py
+  def send(address: str, urgent: bool = False) -> None:
+      print(address, urgent)
+  ```
+
+  ```python context file=tests/test_mail.py
+  from app.mail import send
+
+
+  def test_send() -> None:
+      send("a@b.c", urgent=True)
+  ```
+
+- **Functions with no production call**: a function only tests call is test support, which `test-only-code` reports
+  instead.
+
+  ```python ok file=app/mail.py
+  def send(address: str, urgent: bool = False) -> None:
+      print(address, urgent)
+  ```
+
+  ```python context file=tests/test_mail.py
+  from app.mail import send
+
+
+  def test_send() -> None:
+      send("a@b.c", urgent=True)
+  ```
+
+- **Functions used other than as a call**: passed as a value, or named by a dotted string or an entry point, where the
+  calls that reach them are not all visible.
+
+  ```python ok file=app/mail.py
+  def send(address: str, urgent: bool = False) -> None:
+      print(address, urgent)
+
+
+  HANDLERS = [send]
+  ```
+
+  ```python context file=tests/test_mail.py
+  from app.mail import send
+
+
+  def test_send() -> None:
+      send("a@b.c", urgent=True)
+  ```
+
+- **Decorated functions**: a decorator may register or wrap the function, so its calls may not be the ones written.
+
+  ```python ok
+  from functools import cache
+
+
+  @cache
+  def send(address: str, urgent: bool = False) -> None:
+      print(address, urgent)
+
+
+  send("a@b.c")
+  ```
+
+- **Public functions of a library**: code outside the project may call them without the argument.
+
+  ```toml config
+  [build-system]
+  requires = ["setuptools"]
+
+  [project]
+  name = "mylib"
+  ```
+
+  ```python ok file=mylib/api.py
+  def send(address: str, urgent: bool = False) -> None:
+      print(address, urgent)
+  ```
+
+  ```python context file=tests/test_api.py
+  from mylib.api import send
+
+
+  def test_send() -> None:
+      send("a@b.c", urgent=True)
+  ```
+
+- **A program's entry**: a call from an `if __name__ == "__main__":` block or a `__main__.py` runs the module as a
+  program, whose arguments come from the command line, so `main(argv=None)` leaves `argv` out on purpose.
+
+  ```python ok file=app/cli.py
+  def main(argv: list[str] | None = None) -> int:
+      return len(argv or [])
+
+
+  if __name__ == "__main__":
+      main()
+  ```
+
+  ```python context file=tests/test_cli.py
+  from app.cli import main
+
+
+  def test_main() -> None:
+      assert main(["a"]) == 1
+  ```
+
+  ```python ok file=app/run.py
+  def main(argv: list[str] | None = None) -> int:
+      return len(argv or [])
+  ```
+
+  ```python context file=app/__main__.py
+  from app.run import main
+
+  main()
+  ```
+
+  ```python context file=tests/test_run.py
+  from app.run import main
+
+
+  def test_main() -> None:
+      assert main(["a"]) == 1
+  ```
+
+- **Modules only tests import**: a helper module outside the test directories, such as `testing/fixtures.py`, that only
+  test modules import, directly or through other such modules, serves the tests, so its calls are test code.
+
+  ```python ok file=testing/fixtures.py
+  def make_config(rev: str = "main") -> str:
+      return rev
+
+
+  def default_config() -> str:
+      return make_config()
+  ```
+
+  ```python context file=tests/test_config.py
+  from testing.fixtures import default_config, make_config
+
+
+  def test_config() -> None:
+      assert make_config(rev="v1") != default_config()
+  ```
+
+- **Calls that unpack `*args` or `**kwargs`**: the unpacked values may pass the parameter.
+
+  ```python context file=app/service.py
+  from app.mail import send
+
+
+  def notify(address: str, options: dict[str, bool]) -> None:
+      send(address, **options)
+  ```
+
+  ```python ok file=app/mail.py
+  def send(address: str, urgent: bool = False) -> None:
+      print(address, urgent)
+  ```
+
+  ```python context file=tests/test_mail.py
+  from app.mail import send
+
+
+  def test_send() -> None:
+      send("a@b.c", urgent=True)
+  ```
+
+### Fix
+
+The rule has no fix. Removing the parameter changes the signature every caller sees, and the tests that pass it would
+need the variation moved elsewhere first. The author decides where the variation belongs.

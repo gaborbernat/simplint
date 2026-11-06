@@ -1,0 +1,25 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+10:5 SMP813 Loop with assertions in a test; parameterize the cases instead
+15:5 SMP813 Loop with assertions in a test; parameterize the cases instead
+21:5 SMP813 Loop with assertions in a test; parameterize the cases instead
+27:5 SMP813 Loop with assertions in a test; parameterize the cases instead
+32:5 SMP813 Loop with assertions in a test; parameterize the cases instead
+37:5 SMP813 Loop with assertions in a test; parameterize the cases instead
+42:5 SMP813 Loop with assertions in a test; parameterize the cases instead
+47:5 SMP813 Loop with assertions in a test; parameterize the cases instead
+52:5 SMP813 Loop with assertions in a test; parameterize the cases instead
+57:5 SMP813 Loop with assertions in a test; parameterize the cases instead
+62:5 SMP813 Loop with assertions in a test; parameterize the cases instead
+67:5 SMP813 Loop with assertions in a test; parameterize the cases instead
+72:5 SMP813 Loop with assertions in a test; parameterize the cases instead
+78:5 SMP813 Loop with assertions in a test; parameterize the cases instead
+84:5 SMP813 Loop with assertions in a test; parameterize the cases instead
+90:5 SMP813 Loop with assertions in a test; parameterize the cases instead
+97:9 SMP813 Loop with assertions in a test; parameterize the cases instead
+225:5 SMP813 Loop with assertions in a test; parameterize the cases instead
+269:9 SMP813 Loop with assertions in a test; parameterize the cases instead
+273:9 SMP813 Loop with assertions in a test; parameterize the cases instead
+287:9 SMP813 Loop with assertions in a test; parameterize the cases instead

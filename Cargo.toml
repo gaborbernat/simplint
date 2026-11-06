@@ -18,6 +18,7 @@ colored = "3.1.1"
 fern = "0.7.1"
 filetime = "0.2.29"
 globset = "0.4.21"
+ignore = "0.4.34"
 itertools = "0.15.0"
 # Ruff's `notify_user!` macro, used in watch mode, expands to calls into jiff.
 jiff = "0.2.38"
@@ -25,31 +26,33 @@ log = "0.4.34"
 notify = { version = "8.2.1", default-features = false, features = ["macos_fsevent"] }
 rayon = "1.12.0"
 rkyv = { version = "0.8.18", features = ["bytecheck", "std"] }
-ruff = "=0.17.3"
-ruff_cache = "=0.0.20"
-ruff_db = { version = "=0.0.20", features = ["serde", "junit", "os"] }
-ruff_diagnostics = "=0.0.20"
-ruff_graph = "=0.0.20"
-ruff_linter = { version = "=0.17.3", features = ["schemars"] }
-ruff_macros = "=0.0.20"
-ruff_options_metadata = { version = "=0.0.20", features = ["serde"] }
-ruff_python_ast = "=0.0.20"
-ruff_python_codegen = "=0.0.20"
-ruff_python_index = "=0.0.20"
-ruff_python_parser = "=0.0.20"
-ruff_python_semantic = "=0.0.20"
-ruff_python_stdlib = "=0.0.20"
-ruff_python_trivia = "=0.0.20"
-ruff_source_file = "=0.0.20"
-ruff_text_size = "=0.0.20"
-ruff_workspace = "=0.0.20"
+ruff = "=0.17.4"
+ruff_cache = "=0.0.21"
+ruff_db = { version = "=0.0.21", features = ["serde", "junit", "os"] }
+ruff_diagnostics = "=0.0.21"
+ruff_formatter = "=0.0.21"
+ruff_graph = "=0.0.21"
+ruff_linter = { version = "=0.17.4", features = ["schemars"] }
+ruff_macros = "=0.0.21"
+ruff_options_metadata = { version = "=0.0.21", features = ["serde"] }
+ruff_python_ast = "=0.0.21"
+ruff_python_codegen = "=0.0.21"
+ruff_python_formatter = "=0.0.21"
+ruff_python_index = "=0.0.21"
+ruff_python_parser = "=0.0.21"
+ruff_python_semantic = "=0.0.21"
+ruff_python_stdlib = "=0.0.21"
+ruff_python_trivia = "=0.0.21"
+ruff_source_file = "=0.0.21"
+ruff_text_size = "=0.0.21"
+ruff_workspace = "=0.0.21"
 rustc-hash = "2.1.3"
 schemars = { version = "1.2.3", features = ["derive"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 tempfile = "3.27.0"
 toml = "1.1.8"
-ty_module_resolver = "=0.0.20"
+ty_module_resolver = "=0.0.21"
 walkdir = "2.5.0"
 
 [dev-dependencies]
