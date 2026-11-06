@@ -1,5 +1,194 @@
 # Changelog
 
+## 0.7.0 (2026-11-06)
+
+<a name="release-0-7-0"></a>
+
+<a name="release-0-7-0-added"></a>
+
+### Added
+
+- `catch-all-module` (SMP104) reports modules and packages named `utils`, `helpers` and other grab-bag names, from the
+  `naming.catch-all-modules` list ([#55](https://github.com/gaborbernat/simplint/pull/55)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `cognitive-complexity` (SMP529) reports a function whose cognitive complexity, as SonarSource defines it, is over the
+  limit. The score counts each branch, loop and handler more the deeper it is nested, so the rule reads the nesting that
+  Ruff's cyclomatic complexity check ignores. The limit is 20 by default and is set with `max-cognitive-complexity`
+  under `[tool.simplint.logic]` ([#55](https://github.com/gaborbernat/simplint/pull/55)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `collection-built-by-statements` (SMP531) reports an empty dict, list or set that the statements right after it only
+  fill with entries, and writes those entries in the literal. The fix is safe when every key and value is a constant,
+  and unsafe when one is a name, since a name that is not defined would leave the collection partly filled
+  ([#55](https://github.com/gaborbernat/simplint/pull/55)) by [@gaborbernat](https://github.com/gaborbernat).
+- `duplicate-code` (SMP530) reports six or more statements in a row that another module repeats, comparing their tokens,
+  so comments, layout, imports and docstrings do not count. Test modules and stubs are left out, and
+  `logic.min-duplicate-statements` sets how many statements a copy needs. It offers no fix
+  ([#55](https://github.com/gaborbernat/simplint/pull/55)) by [@gaborbernat](https://github.com/gaborbernat).
+- `early-assignment` (SMP526) reports a local assigned a constant, such as a number, string or a list of them, above the
+  statements that do not use it, when its first use comes further down the same block. Moving the assignment down to
+  that use keeps the value beside the code that reads it. It stays put in a function that reads names by their text,
+  such as with `exec`, `eval`, `locals` or `six.exec_`, and when a string between the assignment and the use spells the
+  name ([#55](https://github.com/gaborbernat/simplint/pull/55)) by [@gaborbernat](https://github.com/gaborbernat).
+- `import-cycle` (SMP308) reports a runtime import that closes a cycle of modules importing each other when they load.
+  The report names the cycle and sits on the import that closes it. Imports in a function, under `if TYPE_CHECKING:`, a
+  `__main__` guard, a false constant or a version check the project's target never passes, and `except ImportError:`
+  fallbacks stay out of it, as do test modules ([#55](https://github.com/gaborbernat/simplint/pull/55)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `long-comment-line` (SMP007) rewraps comment and docstring paragraphs with a line past the comment width, the lines
+  Ruff's `E501` and `W505` report but cannot fix ([#55](https://github.com/gaborbernat/simplint/pull/55)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `long-tuple-return` (SMP528) reports a function that returns a tuple of more elements than the limit, which is two by
+  default, since a tuple of three or more values is a record whose fields a dataclass or a named tuple would name. The
+  limit is set with `max-tuple-elements` under `[tool.simplint.logic]`
+  ([#55](https://github.com/gaborbernat/simplint/pull/55)) by [@gaborbernat](https://github.com/gaborbernat).
+- `loop-in-test` (SMP813) reports a `for` loop in a test function that runs the code under test once per case from a
+  table the file lists, such as a literal or a module constant, and asserts on each result, since the first failure
+  hides the rest. Parameterize the cases instead. Loops over values the test computes, `range` sweeps, `while` loops,
+  loops that only compare items with one result, and assertions inside `self.subTest(...)` or pytest's
+  `subtests.test(...)` are left alone ([#55](https://github.com/gaborbernat/simplint/pull/55)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `meaningless-name` (SMP103) reports variables, parameters and attributes named with a placeholder word such as `foo`,
+  from the `naming.meaningless-names` list ([#55](https://github.com/gaborbernat/simplint/pull/55)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `mock-assertion-typo` (SMP814) reports mock assertion methods written without their `assert_` prefix, such as
+  `called_once_with`, or misspelled, such as `assert_called_ones_with`, and renames each to the assertion it stands for.
+  The fix is unsafe: a call that checked nothing becomes a check, which may now fail. The unprefixed names return a
+  child mock and pass silently on Python 3.11 and older, and so do the unprefixed `awaited` names on every version
+  ([#55](https://github.com/gaborbernat/simplint/pull/55)) by [@gaborbernat](https://github.com/gaborbernat).
+- `restating-comment` (SMP005) reports and removes own-line comments that only repeat the code below them
+  ([#55](https://github.com/gaborbernat/simplint/pull/55)) by [@gaborbernat](https://github.com/gaborbernat).
+- `star-import` (SMP309) reports `from module import *` when the project defines `module` and the file uses its names,
+  and replaces the `*` with the names the file reads from it. The fix is safe when the module lists its exports in
+  `__all__`, and unsafe otherwise ([#55](https://github.com/gaborbernat/simplint/pull/55)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `string-statement-comment` (SMP006) reports triple-quoted strings used as comments and writes them as `#` comments
+  ([#55](https://github.com/gaborbernat/simplint/pull/55)) by [@gaborbernat](https://github.com/gaborbernat).
+- `super-forwarding-method` (SMP527) reports a method whose only statement returns the same method of `super()` called
+  with its own arguments, such as `return super().load(name)`, when the module defines the parent's method with the same
+  parameters. Deleting the method lets the subclass inherit the parent's method. The fix is not offered for an annotated
+  method, since its annotations are the types the subclass declares
+  ([#55](https://github.com/gaborbernat/simplint/pull/55)) by [@gaborbernat](https://github.com/gaborbernat).
+- `test-only-parameter` (SMP410) reports defaulted parameters that only test calls pass, while production calls leave
+  them at their default ([#55](https://github.com/gaborbernat/simplint/pull/55)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `unused-definition` (SMP409) reports functions, classes, methods and class attributes that nothing in the run uses.
+  Public names of a library and names other code may read are left alone, and so are the names the project's Sphinx
+  documentation gives through roles, autodoc directives or sphinx-argparse options
+  ([#55](https://github.com/gaborbernat/simplint/pull/55)) by [@gaborbernat](https://github.com/gaborbernat).
+- `unused-fixture` (SMP815) reports pytest fixtures that no test or fixture requests, by parameter, by a string such as
+  a `usefixtures` or `getfixturevalue` argument, or through the fixture function
+  ([#55](https://github.com/gaborbernat/simplint/pull/55)) by [@gaborbernat](https://github.com/gaborbernat).
+- `unused-return-value` (SMP411) reports functions that production code calls without reading the value they return
+  ([#55](https://github.com/gaborbernat/simplint/pull/55)) by [@gaborbernat](https://github.com/gaborbernat).
+- `up-compression-modules` (SMP523) reports imports of `gzip`, `bz2`, `lzma` and `zlib` from Python 3.14, where the
+  `compression` package names them. The fix is unsafe: `compression` re-exports the modules, so patches of the old
+  module names do not reach the new ones ([#55](https://github.com/gaborbernat/simplint/pull/55)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `up-deprecated-stdlib-alias` (SMP525) reports deprecated or removed standard library names that have a replacement,
+  such as `threading.currentThread`, `calendar.January` and `configparser.SafeConfigParser`, from the Python version
+  that deprecates or removes them. Renames are fixed; names that need a review are only reported
+  ([#55](https://github.com/gaborbernat/simplint/pull/55)) by [@gaborbernat](https://github.com/gaborbernat).
+- `up-re-prefixmatch` (SMP522) reports `re.match()` from Python 3.15, where `re.prefixmatch()` is the same function
+  under a clearer name. The fix renames the call ([#55](https://github.com/gaborbernat/simplint/pull/55)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `up-utf8-encoding-default` (SMP521) reports `encoding="utf-8"` on `open()`, `io.open()`, `Path` text methods and
+  similar calls from Python 3.15, where UTF-8 is the default encoding. Its fix is unsafe: UTF-8 mode can be turned off
+  with `PYTHONUTF8=0` or `-X utf8=0` ([#55](https://github.com/gaborbernat/simplint/pull/55)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `up-warnings-deprecated` (SMP524) reports functions and classes that start with a `DeprecationWarning` warning from
+  Python 3.13, where `@warnings.deprecated` marks them for type checkers. The fix is unsafe: a class then warns when
+  instantiated, not when defined ([#55](https://github.com/gaborbernat/simplint/pull/55)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-7-0-changes"></a>
+
+### Changes
+
+- `constructor-after-method` (SMP203) is renamed `class-member-order`, and it now orders the whole class body rather
+  than only its constructors. A class body reads in sections: nested classes, class attributes, constructors in the
+  order Python runs them, alternative constructors, other dunder methods, properties, then methods. A member that sits
+  above a member of an earlier section is reported, with the section it belongs with, and one fix moves the members into
+  place. A helper still follows its first caller, whatever its section, and `definition-before-use` (SMP201) and this
+  rule compute the same order, so one `--fix` settles a class body. Both count moving a method whose decorators are all
+  pure, such as `@property` or `@classmethod`, as a safe fix ([#55](https://github.com/gaborbernat/simplint/pull/55)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `constant-assert` (SMP804) also reports a `format` call or `%` expression on a string literal whose text lies outside
+  its fields, and a computation on literals that is truthy, such as `1 + 1 == 2`. An assertion on a generator
+  expression, which is always truthy, now gets an unsafe fix that wraps it in `all()`, unless the generator is
+  asynchronous ([#55](https://github.com/gaborbernat/simplint/pull/55)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-7-0-fixed"></a>
+
+### Fixed
+
+- `absolute-sibling-import` (SMP302) no longer reports a stale cached result when an `__init__.py` is added to or
+  removed from a directory listed in `namespace-packages`, where the file's package stays the same
+  ([#55](https://github.com/gaborbernat/simplint/pull/55)) by [@gaborbernat](https://github.com/gaborbernat).
+- A fix that removes a statement between two blank lines leaves one of them, as `ruff format` would, so files that
+  `ruff format` does not run on, such as `# fmt: off` ones, gain no new E303
+  ([#55](https://github.com/gaborbernat/simplint/pull/55)) by [@gaborbernat](https://github.com/gaborbernat).
+- Docstring fixes (SMP901, SMP902) no longer rewrite a file with a file-level `ruff: noqa`, `flake8: noqa` or
+  `ruff: file-ignore`. Removing or reflowing the docstring could leave the codes of that directive unused, which Ruff
+  then reports as RUF100 ([#55](https://github.com/gaborbernat/simplint/pull/55)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `missing-from-all` (SMP401) removes the `# noqa: F401` it makes unused when it lists the name in `__all__`, so Ruff's
+  RUF100 no longer reports it. Names imported from one line share that `noqa`, which is removed once; before, an
+  unapplied fix for them crashed simplint while it rendered the report
+  ([#55](https://github.com/gaborbernat/simplint/pull/55)) by [@gaborbernat](https://github.com/gaborbernat).
+- `module-attribute-import` (SMP304) no longer moves a name that a function rebinds through `global`, or that a file of
+  the run stores on the module, into an import. The import would keep the value the module had when it loaded, so the
+  rebinding would not reach the importer ([#55](https://github.com/gaborbernat/simplint/pull/55)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `module-variable-case` (SMP102) and `module-variable-prefix` (SMP404) keep the names of a file named after a standard
+  library module, such as `typing_extensions.py`, when another file of the run reads them off that module. The import
+  resolves to the standard library, so the run cannot tell which file its reads reach
+  ([#55](https://github.com/gaborbernat/simplint/pull/55)) by [@gaborbernat](https://github.com/gaborbernat).
+- `module-variable-case` (SMP102), `module-variable-prefix` (SMP404) and `unexported-public-name` (SMP403) no longer
+  rename a name that a string of any file in the run spells, such as the `_compat.repr_context` a generated code
+  template reads or the `"main"` a test looks up with `runpy`. The check used to cover only the file being fixed, so an
+  unsafe fix could break a test in another file ([#55](https://github.com/gaborbernat/simplint/pull/55)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `blanket-ignore` (SMP004) and `suppression-without-reason` (SMP003) read `noqa` comments as Ruff does. A `# noqa:`
+  whose colon names no code, a code that runs into other text, a `# ruff: noqa` after code on its line and a
+  `# ruff: file-ignore` below module scope suppress nothing in Ruff, so they are no longer reported. A `noqa` comment
+  silences simplint's errors by the same reading ([#55](https://github.com/gaborbernat/simplint/pull/55)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `test-class` (SMP801) no longer flattens a test class with an E501 `noqa` or `ruff: ignore` in it: dedenting its
+  methods shortens the line the directive covers, which Ruff then reported as RUF100
+  ([#55](https://github.com/gaborbernat/simplint/pull/55)) by [@gaborbernat](https://github.com/gaborbernat).
+- `single-use-variable` (SMP504) no longer inlines a list comprehension whose elements call something into a call to
+  `all` or `any`. Ruff's C419 then wrote it as a generator, which stops at the first false element, so the later calls
+  never ran ([#55](https://github.com/gaborbernat/simplint/pull/55)) by [@gaborbernat](https://github.com/gaborbernat).
+- `single-use-variable` (SMP504) decides on the layout a value takes once `ruff format` has run, so a second run after
+  `ruff format` no longer inlines more. A value the source spreads over lines is inlined when the formatter would join
+  it, into an f-string before Python 3.12 too, a value in parentheses the formatter drops is measured without them, and
+  a value assigned before a semicolon is inlined into the statement after it
+  ([#55](https://github.com/gaborbernat/simplint/pull/55)) by [@gaborbernat](https://github.com/gaborbernat).
+- `single-use-variable` (SMP504) no longer offers a fix before Python 3.12 that puts an f-string with a string in its
+  replacement field into another f-string. Such a fix broke the file's syntax, and simplint reverted every fix in it
+  ([#55](https://github.com/gaborbernat/simplint/pull/55)) by [@gaborbernat](https://github.com/gaborbernat).
+- `single-use-variable` (SMP504) counts a name that a string annotation or `ForwardRef` reads, so it no longer inlines a
+  `TypeVar` read only in `"list[T]"`, which left the annotation naming an undefined name
+  ([#55](https://github.com/gaborbernat/simplint/pull/55)) by [@gaborbernat](https://github.com/gaborbernat).
+- Without a `pyproject.toml`, a module under a `test` or `tests` package now counts as a test module wherever it sits in
+  that package, so helpers and data files there get the test-only rules, such as `test-module-docstring` (SMP902), and
+  their uses count as test uses for rules such as `test-only-code` (SMP408). The settings root is the directory the run
+  starts from, as Ruff roots a project without configuration at the working directory, instead of each file's directory
+  ([#55](https://github.com/gaborbernat/simplint/pull/55)) by [@gaborbernat](https://github.com/gaborbernat).
+- `unexported-public-name` (SMP403) no longer renames a function or class whose `__name__` or `__qualname__` the run
+  reads, as `helper.__name__` or `type(self).__name__` does, since the rename changes what the read returns
+  ([#55](https://github.com/gaborbernat/simplint/pull/55)) by [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-7-0-performance"></a>
+
+### Performance
+
+- The cache keys a file's result by the other files of the run only when an enabled rule reads them, so an edit to one
+  file no longer re-lints files checked by per-file rules alone. The reStructuredText rules that need no public API data
+  no longer count as reading other files ([#55](https://github.com/gaborbernat/simplint/pull/55)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.6.0 (2026-11-05)
 
 <a name="release-0-6-0"></a>
