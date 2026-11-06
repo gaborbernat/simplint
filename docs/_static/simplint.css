@@ -230,12 +230,6 @@ a.badge:hover {
   border-color: currentColor;
 }
 
-.rule-name .badge.cross-file {
-  margin-left: 0.4rem;
-  padding: 0 0.45rem;
-  font-size: 0.7rem;
-}
-
 /* side-by-side examples */
 
 div.sd-card.example {
@@ -467,9 +461,11 @@ details.example .example-side > :last-child {
   position: sticky;
   top: 0;
   z-index: 2;
-  display: grid;
-  /* shares of the row rather than the width of each list's options, which may still be arriving */
-  grid-template-columns: minmax(12rem, 2fr) repeat(3, minmax(0, 1fr));
+  /* one row that wraps where it runs out of room; each control keeps the width the build writes into the markup, so
+     none clips */
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 0.6rem;
   align-items: center;
   margin: 1rem 0;
@@ -490,8 +486,19 @@ details.example .example-side > :last-child {
   color: var(--color-foreground-primary);
 }
 
+.rule-filter input,
+.rule-filter select {
+  max-width: 100%;
+}
+
+.rule-filter input {
+  box-sizing: border-box;
+  /* the padding and border of the rule above, so the cap at the bar's width holds for the whole box */
+  width: calc(var(--rule-search-chars) * 1ch + 1.4rem + 2px);
+}
+
 .rule-count {
-  grid-column: 1 / -1;
+  flex-basis: 100%;
   font-size: 0.85rem;
   color: var(--color-foreground-muted);
 }
@@ -532,6 +539,25 @@ table.rules th.rule-fix {
   width: 4em;
 }
 
+table.rules th.rule-scope {
+  width: 6.5em;
+  text-align: center;
+}
+
+table.rules th.rule-scope a {
+  color: inherit;
+}
+
+table.rules td.rule-scope {
+  text-align: center;
+  color: var(--color-foreground-muted);
+}
+
+table.rules tr[data-scope="cross-file"] td.rule-scope {
+  font-weight: 700;
+  color: var(--simplint-accent);
+}
+
 table.rules td {
   padding: 0.65rem 0.6rem;
   vertical-align: top;
@@ -540,6 +566,17 @@ table.rules td {
 
 table.rules tr:hover td {
   background: var(--color-background-hover);
+}
+
+/* the code's link covers its row, so a click anywhere on it opens the rule */
+table.rules tr.rule-row {
+  position: relative;
+}
+
+table.rules td.rule-code a::after {
+  content: "";
+  position: absolute;
+  inset: 0;
 }
 
 table.rules td.rule-code a {
@@ -570,43 +607,27 @@ table.rules tr.group-row td {
   color: var(--color-foreground-muted);
 }
 
-.rule-filter > * {
-  min-width: 0;
-}
-
-@media (max-width: 63em) {
-  .rule-filter {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  .rule-filter input {
-    grid-column: 1 / -1;
-  }
-}
-
-/* a phone has room for two lists side by side; the third takes a row of its own */
-@media (max-width: 30em) {
-  .rule-filter {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .rule-filter #rule-scope {
-    grid-column: 1 / -1;
-  }
-}
-
 @media (max-width: 46em) {
   .rule-filter {
     position: static;
   }
 
-  /* the column stays, as the group rows span all four, but takes no room */
+  /* the column stays, as the group rows span all five, but its text takes no room: at zero width alone it would wrap a
+     letter per line and stretch every row */
   table.rules td.rule-name,
   table.rules th.rule-name {
     width: 0;
     padding: 0;
+    font-size: 0;
+    line-height: 0;
     overflow: hidden;
-    visibility: hidden;
+  }
+
+  /* the header breaks at its hyphen, so the column needs only the room of its mark */
+  table.rules th.rule-scope {
+    width: 3.6em;
+    padding-left: 0;
+    padding-right: 0;
   }
 
   .hero {
