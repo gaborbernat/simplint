@@ -182,12 +182,18 @@ fn write_settings(
     write_list(writer, "linter.safety_table.forced_safe", &rules(forced_safe))?;
     write_list(writer, "linter.safety_table.forced_unsafe", &rules(forced_unsafe))?;
     write_list(writer, "linter.dependencies", &quoted(&mut metadata.dependencies.iter()))?;
+    write_list(writer, "linter.declared_dependencies", &quoted(&mut metadata.declared.iter()))?;
     write_list(writer, "linter.entry_points", &quoted(&mut metadata.entry_points.iter()))?;
     writeln!(writer, "linter.max_paragraph_words = {}", knobs.max_paragraph_words)?;
     write_list(writer, "linter.naming.keep_names", &quoted(&mut knobs.keep_names.iter()))?;
+    write_list(writer, "linter.naming.meaningless_names", &quoted(&mut knobs.meaningless_names.iter()))?;
+    write_list(writer, "linter.naming.catch_all_modules", &quoted(&mut knobs.catch_all_modules.iter()))?;
     write_list(writer, "linter.imports.module_attributes", &quoted(&mut knobs.module_attributes.iter()))?;
     writeln!(writer, "linter.logic.max_helper_statements = {}", knobs.max_helper_statements)?;
     writeln!(writer, "linter.logic.max_caller_statements = {}", knobs.max_caller_statements)?;
+    writeln!(writer, "linter.logic.max_tuple_elements = {}", knobs.max_tuple_elements)?;
+    writeln!(writer, "linter.logic.max_cognitive_complexity = {}", knobs.max_cognitive_complexity)?;
+    writeln!(writer, "linter.logic.min_duplicate_statements = {}", knobs.min_duplicate_statements)?;
     writeln!(writer, "linter.project_kind = {}", api.kind)?;
     match &api.packages {
         Some(packages) => write_list(writer, "linter.api_packages", &quoted(&mut packages.iter()))?,

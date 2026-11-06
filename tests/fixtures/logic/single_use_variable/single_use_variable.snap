@@ -15,8 +15,10 @@ expression: "lint_fixture(rule, fixture, target_version)"
 59:5 SMP504 `count` is used once, right below; inline its value [fix: Inline `count`]
 64:5 SMP504 `total` is used once, right below; inline its value [fix: Inline `total`]
 112:5 SMP504 `other` is used once, right below; inline its value [fix: Inline `other`]
+131:5 SMP504 `count` is used once, right below; inline its value [fix: Inline `count`]
+268:5 SMP504 `count` is used once, right below; inline its value [fix: Inline `count`]
 299:9 SMP504 `total` is used once, right below; inline its value [fix: Inline `total`]
---- fixed (15 applied, 0 remaining) ---
+--- fixed (17 applied, 0 remaining) ---
 import os
 from typing import Any
 
@@ -132,8 +134,8 @@ def kept_read_in_elif(items: list[str], verbose: bool) -> None:
         print("many")
 
 
-def kept_shared_line(items: list[str]) -> None:
-    count = len(items); print(count)
+def shared_line(items: list[str]) -> None:
+    print(len(items))
 
 
 def kept_read_in_loop_body(items: list[str]) -> None:
@@ -269,11 +271,8 @@ def kept_tuple_target(items: list[str]) -> None:
     print(first, second)
 
 
-def kept_multiline_value(items: list[str]) -> None:
-    count = (
-        len(items)
-    )
-    print(count)
+def joined_multiline_value(items: list[str]) -> None:
+    print(len(items))
 
 
 def kept_mention_in_value(items: list[str]) -> None:
@@ -302,3 +301,10 @@ class Box:
 
     def method(self, items: list[str]) -> None:
         print(len(items))
+
+
+def kept_split_value(items: list[str]) -> None:
+    count = [
+        len(items),
+    ]
+    print(count)

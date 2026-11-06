@@ -1,0 +1,7 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:5 SMP411 No production call reads the value `ret_dropped` returns; return nothing, or let a caller use it
+26:9 SMP411 No production call reads the value `RetWriter.ret_write_rows` returns; return nothing, or let a caller use it
+37:5 SMP411 No production call reads the value `ret_tests_read` returns; return nothing, or let a caller use it

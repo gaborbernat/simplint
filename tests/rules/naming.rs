@@ -3,6 +3,11 @@ use test_case::test_case;
 use crate::common;
 
 #[test_case("single-letter-name", "single_letter_name.py" ; "single_letter_name")]
+#[test_case("meaningless-name", "meaningless_name.py" ; "meaningless_name")]
+#[test_case("catch-all-module", "utils/__init__.py" ; "catch_all_module_package")]
+#[test_case("catch-all-module", "utils/slugs.py" ; "catch_all_module_package_module")]
+#[test_case("catch-all-module", "helpers.py" ; "catch_all_module_module")]
+#[test_case("catch-all-module", "models.py" ; "catch_all_module_outside_default_list")]
 #[test_case("module-variable-case", "module_variable_case.py" ; "module_variable_case")]
 #[test_case("module-variable-case", "module_variable_case_noall.py" ; "module_variable_case_without_all")]
 #[test_case("module-variable-case", "module_variable_case_scopes.py" ; "module_variable_case_shadowed")]
@@ -48,4 +53,28 @@ fn module_variable_rename_checks_whole_words_in_strings(text: &str, fixable: boo
     let root = common::project(&[("module.py", &format!("spelled = 1\nprint(\"{text}\")\n"))]);
     let stdout = common::check(root.path(), &["--unsafe-fixes", "--select", "SMP102"]).1;
     assert_eq!(stdout.contains("SMP102 [*]"), fixable);
+}
+
+// A string of another file may spell the name, as a test that looks a module variable up by its spelling does.
+#[test]
+fn module_variable_rename_checks_strings_of_other_files() {
+    let root = common::project(&[
+        ("config.py", "limit = 3\nprint(limit)\n"),
+        ("tests/test_config.py", "LOOKUP = \"limit\"\n"),
+    ]);
+    let stdout = common::check(root.path(), &["--unsafe-fixes", "--select", "SMP102"]).1;
+    assert!(stdout.contains("SMP102 Module-scope variable `limit`"));
+    assert!(!stdout.contains("SMP102 [*]"));
+}
+
+// A module named like a standard library module is imported from outside the run, so its names may be read unseen.
+#[test]
+fn module_variable_rename_keeps_names_read_off_a_standard_library_namesake() {
+    let root = common::project(&[
+        ("typing_extensions.py", "_typing_names = [\"Any\"]\n"),
+        ("test_typing.py", "import typing_extensions\n\nNAMES = typing_extensions._typing_names\n"),
+    ]);
+    let stdout = common::check(root.path(), &["--unsafe-fixes", "--select", "SMP102"]).1;
+    assert!(stdout.contains("SMP102 Module-scope variable `_typing_names`"));
+    assert!(!stdout.contains("SMP102 [*]"));
 }

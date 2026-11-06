@@ -2,11 +2,4 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-6:1 SMP102 Module-scope variable `port` should be named `PORT` [unsafe fix: Rename `port` to `PORT`]
---- fixed (1 applied, 0 remaining) ---
-import multiprocessing
-
-bind = "0.0.0.0:8000"
-workers = multiprocessing.cpu_count() * 2 + 1
-accesslog = "-"
-PORT = 8000
+6:1 SMP102 Module-scope variable `port` should be named `PORT`

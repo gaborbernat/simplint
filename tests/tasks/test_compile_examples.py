@@ -19,6 +19,7 @@ _VERSION: Final[str] = f"3.{_MINOR}"
 
 class _Block(TypedDict):
     role: str
+    language: str
     file: str
     line: int
     source: str
@@ -60,7 +61,8 @@ def _group(*blocks: tuple[int, str, str], config: str | None = None) -> _Group:
     return {
         "config": None if config is None else {"source": config},
         "blocks": [
-            {"role": role, "file": "example.py", "line": line, "source": source} for line, role, source in blocks
+            {"role": role, "language": "python", "file": "example.py", "line": line, "source": source}
+            for line, role, source in blocks
         ],
     }
 
@@ -71,6 +73,19 @@ def test_lists_only_the_blocks_that_fail(tmp_path: Path, capsys: pytest.CaptureF
     failures = main(["--simplint", simplint, "--python", _VERSION]), capsys.readouterr().out.splitlines()
 
     assert (failures[0], [line.startswith(f"DEMO:5:report py3.{_MINOR}: ") for line in failures[1]]) == (1, [True])
+
+
+def test_skips_documentation_blocks(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    page: _Block = {
+        "role": "context",
+        "language": "rst",
+        "file": "docs/cli.rst",
+        "line": 7,
+        "source": ".. autofunction:: f\n",
+    }
+    simplint = _simplint(tmp_path, [_rule("DEMO", {"config": None, "blocks": [page]})])
+
+    assert (main(["--simplint", simplint, "--python", _VERSION]), capsys.readouterr().out) == (0, "")
 
 
 def test_ignores_a_failing_block_below_its_floor(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

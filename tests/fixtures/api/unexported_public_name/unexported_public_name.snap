@@ -3,8 +3,8 @@ source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
 5:5 SMP403 `helper` is not in `__all__`; name it `_helper` [unsafe fix: Rename `helper` to `_helper`]
-9:7 SMP403 `Internal` is not in `__all__`; name it `_Internal` [unsafe fix: Rename `Internal` to `_Internal`]
---- fixed (2 applied, 0 remaining) ---
+9:7 SMP403 `Internal` is not in `__all__`; name it `_Internal`
+--- fixed (1 applied, 1 remaining) ---
 def exported() -> int:
     return _helper()
 
@@ -13,7 +13,7 @@ def _helper() -> int:
     return 1
 
 
-class _Internal:
+class Internal:
     pass
 
 

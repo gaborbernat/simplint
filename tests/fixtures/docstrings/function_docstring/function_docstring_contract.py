@@ -46,6 +46,16 @@ def _directive() -> None:
     print("v")
 
 
+def _type_comment() -> None:
+    """type: int is what the stub declares, so the checker trusts the value."""
+    print("v")
+
+
+def _nosec() -> None:
+    """nosec since the input never leaves the process and needs no escaping."""
+    print("v")
+
+
 def _fields(name: str, count: int) -> None:
     """Store the entry under a name, keeping the first one stored when two entries share it.
 

@@ -138,7 +138,7 @@ pub(super) fn path_class(checker: &Checker, expr: &Expr) -> Option<Kind> {
 }
 
 // The class the module defines once under `name`, at its top level.
-pub(super) fn class_named<'a>(checker: &Checker<'a>, name: &str) -> Option<&'a ast::StmtClassDef> {
+pub(in crate::rules::logic) fn class_named<'a>(checker: &Checker<'a>, name: &str) -> Option<&'a ast::StmtClassDef> {
     let [binding] = checker.semantic().bindings(name) else {
         return None;
     };

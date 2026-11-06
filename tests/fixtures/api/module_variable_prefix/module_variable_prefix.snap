@@ -2,14 +2,14 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-3:1 SMP404 `limit` is not in `__all__`; name it `_limit` [unsafe fix: Rename `limit` to `_limit`]
+3:1 SMP404 `limit` is not in `__all__`; name it `_limit`
 6:1 SMP404 `_LOGGER` is in `__all__`; name it `LOGGER` [unsafe fix: Rename `_LOGGER` to `LOGGER`]
 7:1 SMP404 `_listed` is in `__all__`; name it `listed` [unsafe fix: Rename `_listed` to `listed`]
 8:1 SMP404 `__hidden` is in `__all__`; name it `hidden` [unsafe fix: Rename `__hidden` to `hidden`]
---- fixed (4 applied, 0 remaining) ---
+--- fixed (3 applied, 1 remaining) ---
 import os
 
-_limit = 3
+limit = 3
 _timeout = 1
 PUBLIC = 2
 LOGGER = os.getenv("X")
@@ -20,7 +20,7 @@ pytestmark = []
 
 
 def use() -> int:
-    return _limit + _timeout + PUBLIC + listed + hidden
+    return limit + _timeout + PUBLIC + listed + hidden
 
 
 __all__ = ["listed", "LOGGER", "PUBLIC", "hidden"]

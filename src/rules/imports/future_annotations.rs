@@ -6,9 +6,10 @@ use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::{delete_statement, is_alone_on_lines};
+use crate::rules::edits::delete_statement;
+use crate::rules::is_alone_on_lines;
 use crate::semantic::future_import;
-use crate::syntax::{alias_binding, module_statements};
+use crate::syntax::{alias_binding, module_statements, target_names};
 
 pub fn future_annotations(checker: &Checker) {
     let body = checker.body();
@@ -88,17 +89,6 @@ fn bound_names(stmt: &Stmt) -> Vec<&str> {
         Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
             names.iter().map(alias_binding).collect()
         }
-        _ => Vec::new(),
-    }
-}
-
-fn target_names(target: &Expr) -> Vec<&str> {
-    match target {
-        Expr::Name(ast::ExprName { id, .. }) => vec![id.as_str()],
-        Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => {
-            elts.iter().flat_map(target_names).collect()
-        }
-        Expr::Starred(ast::ExprStarred { value, .. }) => target_names(value),
         _ => Vec::new(),
     }
 }

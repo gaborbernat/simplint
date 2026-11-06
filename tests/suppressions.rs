@@ -28,6 +28,24 @@ fn simplint_ignore_suppresses_with_any_space_around_its_colon(source: &str) {
     assert_eq!(check(root.path(), &["--select", "SMP101"]).0, 0);
 }
 
+#[test_case("x = 1  # NoQA: SMP101\n", 0 ; "keyword_in_any_case")]
+#[test_case("x = 1  # noqa : SMP101\n", 0 ; "space_before_colon")]
+#[test_case("x = 1  # noqa:SMP601,SMP101\n", 0 ; "codes_after_a_comma")]
+#[test_case("x = 1  # noqa: SMP601 SMP101 kept for plugins\n", 0 ; "codes_then_reason")]
+#[test_case("x = 1  # noqa: SMP601 kept for SMP101\n", 1 ; "code_after_reason")]
+#[test_case("x = 1  # noqa:SMP601SMP101\n", 0 ; "joined_codes")]
+#[test_case("x = 1  # noqa:SMP101# why\n", 0 ; "code_then_comment")]
+#[test_case("x = 1  # noqa: SMP101x\n", 1 ; "code_running_into_a_letter")]
+#[test_case("x = 1  # noqa: SMP601SMPx\n", 1 ; "joined_code_without_digits")]
+#[test_case("x = 1  # noqa:\n", 1 ; "colon_without_codes")]
+#[test_case("x = 1  # noqa # noqa: SMP601\n", 0 ; "first_directive_blanket")]
+#[test_case("x = 1  # noqax # noqa: SMP101\n", 1 ; "first_directive_rejected")]
+#[test_case("x = 1  # why # noqa: SMP101\n", 0 ; "after_another_comment")]
+fn noqa_reads_codes_as_ruff_does(source: &str, errors: i32) {
+    let root = project(&[("module.py", source)]);
+    assert_eq!(check(root.path(), &["--select", "SMP101"]).0, errors);
+}
+
 #[test]
 fn noqa_after_a_multiline_string_suppresses_its_start() {
     let root = project(&[("module.py", "x = \"\"\"a\nb\"\"\"  # noqa: SMP101\n")]);
@@ -59,6 +77,12 @@ fn file_level_suppression(source: &str, reports: usize) {
     let root = project(&[("module.py", source)]);
     let stdout = check(root.path(), &["--select", "SMP101"]).1;
     assert_eq!(stdout.matches(" SMP101 ").count(), reports);
+}
+
+#[test]
+fn file_level_noqa_with_space_before_colon_silences_long_comment() {
+    let root = project(&[("module.py", &format!("# ruff : noqa: E501\n# {}\nx = 1\n", "word ".repeat(40)))]);
+    assert_eq!(check(root.path(), &["--select", "SMP007"]).0, 0);
 }
 
 #[test]

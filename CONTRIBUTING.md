@@ -163,7 +163,7 @@ Choose an installed Python version if 3.15 is unavailable. Tox skips missing int
 
 1. Add a line to the `rules!` table in `src/lint/registry.rs`: variant, code, kebab-case name, one-line summary, fix
    availability, the rule's module, and its hooks: `module` for a rule that reads the whole module, or the node kinds it
-   reacts to, such as `statement` and `expression`. A `RuleSet` holds at most 64 rules, which a compile-time assertion
+   reacts to, such as `statement` and `expression`. A `RuleSet` holds at most 128 rules, which a compile-time assertion
    checks.
 1. Write the rule in its own file in the family's `src/rules/<family>/` directory, named after the rule:
    - A `module` rule is a function of that name, re-exported from the family's `mod.rs`.
@@ -205,8 +205,8 @@ cargo llvm-cov --ignore-filename-regex 'fix/errors\.rs' --fail-uncovered-lines 0
 ### Real-world projects
 
 Snapshots cover the cases a rule's author thought of; real code finds the rest. The `ecosystem` environment downloads
-pinned source distributions of the 25 most downloaded PyPI projects into a cache under `.tox`, then lints and fixes each
-one. It fails when:
+pinned source distributions of the 100 most downloaded PyPI projects and the maintainer's own projects into a cache
+under `.tox`, then lints and fixes each one. It fails when:
 
 - simplint reports an error
 - a fix leaves a file that no longer parses
@@ -218,8 +218,9 @@ tox run -e ecosystem
 tox run -e ecosystem -- requests click
 ```
 
-Run it after changing a rule or a fix. It does not check that the projects' own test suites still pass; for a fix that
-can change behavior, run the suite of an affected project by hand.
+CI runs it on every pull request that changes code, from a cache of the pinned archives; run it locally after changing a
+rule or a fix. It does not check that the projects' own test suites still pass; for a fix that can change behavior, run
+the suite of an affected project by hand.
 
 Pass `--target-version 3.10` to check a release other than the running one. simplint then follows that release's rules,
 and each fixed file must compile under a CPython of that version, which `uv python find` locates. The running

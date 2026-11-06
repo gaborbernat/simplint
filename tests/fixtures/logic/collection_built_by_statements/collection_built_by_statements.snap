@@ -1,0 +1,127 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:5 SMP531 `values` is filled by 2 statements right after its literal; write its entries in the literal [fix: Write the entries in the literal]
+9:5 SMP531 `names` is filled by 2 statements right after its literal; write its entries in the literal [unsafe fix: Write the entries in the literal]
+16:5 SMP531 `seen` is filled by 2 statements right after its literal; write its entries in the literal [fix: Write the entries in the literal]
+23:5 SMP531 `result` is filled by 1 statement right after its literal; write its entries in the literal [unsafe fix: Write the entries in the literal]
+29:5 SMP531 `grid` is filled by 1 statement right after its literal; write its entries in the literal [fix: Write the entries in the literal]
+77:5 SMP531 `out` is filled by 1 statement right after its literal; write its entries in the literal [fix: Write the entries in the literal]
+--- fixed (6 applied, 0 remaining) ---
+def mapping(a: str, b: int) -> dict[str, int]:
+    values = {"x": 1, "y": 2}
+    return values
+
+
+def items(a: str, b: int) -> list[str]:
+    names = [a, b]
+    return names
+
+
+def unique() -> set[int]:
+    seen = {1, 2}
+    return seen
+
+
+def keyed(name: str, value: int) -> dict[str, int]:
+    result = {name: value}
+    return result
+
+
+def tuple_key() -> dict[tuple[int, int], tuple[int, int]]:
+    grid = {(1, 2): (3, 4)}
+    return grid
+
+
+def duplicate() -> dict[str, int]:
+    table = {}
+    table["k"] = 1
+    table["k"] = 2
+    return table
+
+
+def hashes_alike() -> dict[int, str]:
+    table = {}
+    table[1] = "a"
+    table[True] = "b"
+    return table
+
+
+def repeated_name(key: str) -> dict[str, int]:
+    table = {}
+    table[key] = 1
+    table[key] = 2
+    return table
+
+
+def repeated_element() -> set[float]:
+    seen = set()
+    seen.add(0)
+    seen.add(0.0)
+    return seen
+
+
+def calls() -> dict[str, int]:
+    table = {}
+    table["k"] = compute()
+    table["j"] = 1
+    return table
+
+
+def reads_itself(name: str) -> dict[str, object]:
+    table = {}
+    table["self"] = table
+    table[name] = 1
+    return table
+
+
+def single() -> list[int]:
+    out = [1]
+    return out
+
+
+def other_target(a: str) -> tuple[dict[str, int], int]:
+    table = {}
+    count = 1
+    return table, count
+
+
+def other_key(a: str) -> dict[str, int]:
+    table = {}
+    a["x"] = 1
+    return table
+
+
+def not_a_call(a: str) -> list[str]:
+    names = []
+    a
+    return names
+
+
+def not_a_method(a: str) -> list[str]:
+    names = []
+    print(a)
+    return names
+
+
+def wrong_method(a: str, b: str) -> list[str]:
+    names = []
+    names.extend([a, b])
+    return names
+
+
+def wrong_receiver(a: str, b: str) -> list[str]:
+    names = []
+    b.append(a)
+    return names
+
+
+def too_many(a: str, b: str) -> list[str]:
+    names = []
+    names.append(a, b)
+    return names
+
+
+def compute() -> int:
+    return 1

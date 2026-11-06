@@ -29,6 +29,18 @@ pub fn check(root: &Path, args: &[&str]) -> (i32, String, String) {
     check_with_stdin(root, args, "")
 }
 
+// Fixes the file under `root` with every unsafe fix of `select` applied, the way most fix tests run it.
+pub fn fix_unsafe(root: &Path, select: &str) -> (i32, String, String) {
+    check(root, &["--fix", "--unsafe-fixes", "--select", select])
+}
+
+// Fixes the single file `name` of a project with `pyproject`, and returns the exit code, the report and the new source.
+pub fn fixed_file(pyproject: &str, name: &str, source: &str, select: &str) -> (i32, String, String) {
+    let root = project(&[("pyproject.toml", pyproject), (name, source)]);
+    let (code, stdout, _) = fix_unsafe(root.path(), select);
+    (code, stdout, read(root.path(), name))
+}
+
 pub fn check_with_stdin(root: &Path, args: &[&str], stdin: &str) -> (i32, String, String) {
     simplint_with_stdin(root, &[&["check", "--output-format", "concise"], args].concat(), stdin)
 }
@@ -175,7 +187,7 @@ fn rule_folder(rule_name: &str) -> PathBuf {
 // entry point, and no Ruff rule, so the fixes show simplint's own work.
 // The rule folders merge into one project root, so each fixture keeps its module name and can import the fixtures of
 // other rules, as `consumer/use.py` does.
-fn fixture_project() -> TempDir {
+pub fn fixture_project() -> TempDir {
     let root = TempDir::new().expect("temporary directory");
     let fixtures = fixtures();
     // The first two levels are `<family>/<rule_name>`.
@@ -200,7 +212,7 @@ fn fixture_project() -> TempDir {
     root
 }
 
-fn text(value: &Value) -> &str {
+pub fn text(value: &Value) -> &str {
     value.as_str().expect("a string")
 }
 

@@ -36,7 +36,11 @@ pub fn unexported_public_name(checker: &Checker) {
             continue;
         }
         let private = format!("_{name}");
-        let fix = rename_fix(checker, name, &private);
+        // Code that reads the name of a class or function, as `type(self).__name__` or `helper.__name__`, sees the new
+        // name once renamed.
+        let class = matches!(stmt, Stmt::ClassDef(_));
+        let reflected = checker.project().reads_name_of(name) || class && checker.project().reads_class_names();
+        let fix = (!reflected).then(|| rename_fix(checker, name, &private)).flatten();
         checker.report_fix(
             Rule::UnexportedPublicName,
             identifier.range(),

@@ -89,6 +89,26 @@ const FORMAT: &str = concat!(env!("CARGO_PKG_VERSION"), "-", env!("SIMPLINT_CACH
 // How long a cached file, or the directory of another simplint build, stays without a run that uses it, as in Ruff.
 const MAX_LAST_SEEN: Duration = Duration::from_hours(720);
 
+// The file that keeps what the documentation under a project root names, among the package caches of this build and
+// named as they are, by a key in decimal.
+pub fn documentation_file(ruff_cache_dir: &Path, project_root: &Path) -> PathBuf {
+    let mut hasher = CacheKeyHasher::new();
+    "documentation".cache_key(&mut hasher);
+    project_root.cache_key(&mut hasher);
+    directory(ruff_cache_dir).join(FORMAT).join(hasher.finish().to_string())
+}
+
+// Writes a cache file through a temporary file next to it, so a reader never sees it cut short. The directory is made
+// first, as the run may write before it has opened the package caches.
+pub fn write_atomically(path: &Path, bytes: &[u8]) -> Result<()> {
+    let directory = path.parent().context("a cache file sits in a directory")?;
+    fs::create_dir_all(directory)?;
+    let mut temporary = tempfile_in(directory)?;
+    temporary.write_all(bytes)?;
+    temporary.persist(path)?;
+    Ok(())
+}
+
 // simplint's directory in Ruff's cache directory.
 pub fn directory(ruff_cache_dir: &Path) -> PathBuf {
     ruff_cache_dir.join("simplint")
@@ -189,7 +209,7 @@ impl Cache {
             Err(error) if error.kind() == io::ErrorKind::NotFound => None,
             read => read
                 .map_err(anyhow::Error::from)
-                .and_then(|bytes| Ok(rkyv::from_bytes::<PackageCache, rkyv::rancor::Error>(&bytes)?))
+                .and_then(|bytes| PackageCache::read(&bytes))
                 .inspect_err(|error| warn_user!("Failed to read cache file `{}`: {error}", path.display()))
                 .ok(),
         };
@@ -343,6 +363,22 @@ struct PackageCache {
     // Keyed by the path relative to the package root.
     #[rkyv(with = rkyv::with::MapKV<rkyv::with::AsString, rkyv::with::Identity>)]
     files: FxHashMap<PathBuf, FileCache>,
+}
+
+impl PackageCache {
+    // The archive checked as a whole, then its files read back on all threads: a project's top package holds most of
+    // its files, and reading them one after another would leave the run waiting on that one cache.
+    fn read(bytes: &[u8]) -> Result<Self> {
+        let archived = rkyv::access::<ArchivedPackageCache, rkyv::rancor::Error>(bytes)?;
+        let entries: Vec<_> = archived.files.iter().collect();
+        let files = entries
+            .into_par_iter()
+            .map(|(path, file)| {
+                Ok((PathBuf::from(path.as_str()), rkyv::deserialize::<FileCache, rkyv::rancor::Error>(file)?))
+            })
+            .collect::<Result<_>>()?;
+        Ok(Self { package_root: PathBuf::from(archived.package_root.as_str()), files })
+    }
 }
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
@@ -508,11 +544,20 @@ impl Fingerprints {
             });
         let mut hasher = CacheKeyHasher::new();
         shared.cache_key(&mut hasher);
-        linter.settings.rules.cache_key(&mut hasher);
+        let rules = linter.settings.rules;
+        rules.cache_key(&mut hasher);
         linter.settings.from_ruff.cache_key(&mut hasher);
-        // An `__init__.py` added or removed next to the file moves its package root, which keeps the cache file.
+        // An `__init__.py` added or removed next to the file moves its package root, which keeps the cache file. In a
+        // namespace package that root stays, so the rules that read the file's `__init__.py` itself key it too.
         linter.module_path.cache_key(&mut hasher);
-        linter.project.cache_key(&mut hasher);
+        if rules.overlaps(RuleSet::sibling_init()) {
+            linter.sibling_init.cache_key(&mut hasher);
+        }
+        // Only a rule that reads other files depends on the index of the run, so the others keep their results when
+        // another file changes.
+        if rules.overlaps(RuleSet::cross_file()) {
+            linter.project.cache_key(&mut hasher);
+        }
         let clean = hasher.finish();
         // Which fixes apply decides what the fix loop withdraws, and whether it changes the file at all.
         let settled = (!mode.fix.is_generate()).then(|| {

@@ -7,7 +7,7 @@ pub fn blanket_ignore(checker: &Checker) {
         for directive in comment.directives.iter().filter(|d| d.missing_codes) {
             let scope = match directive.scope {
                 Scope::Line => "on the line",
-                Scope::File => "in the file",
+                Scope::File | Scope::Module => "in the file",
             };
             let message = format!(
                 "`# {}` suppresses every error {scope}; name the codes, as in `# {}`",

@@ -349,3 +349,9 @@ The fix is safe. It deletes the assignment, then:
 
 The search for other reads looks only at names in code. It misses importers outside the run and references held in
 strings, such as an `__all__` entry.
+
+## Other tools
+
+- [pylint](https://github.com/pylint-dev/pylint) reports the same assignment and `if` pairs as
+  [consider-using-assignment-expr](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/consider-using-assignment-expr.html),
+  for targets that allow `:=`, with no fix.

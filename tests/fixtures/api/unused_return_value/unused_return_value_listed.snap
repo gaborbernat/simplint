@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+8:5 SMP411 No production call reads the value `ret_plain` returns; return nothing, or let a caller use it

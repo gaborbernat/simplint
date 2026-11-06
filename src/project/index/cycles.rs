@@ -1,0 +1,158 @@
+use std::collections::VecDeque;
+use std::path::PathBuf;
+
+use ruff_cache::{CacheKey, CacheKeyHasher};
+use ruff_text_size::TextRange;
+use rustc_hash::{FxHashMap, FxHashSet};
+
+use super::range_key;
+use super::{FileId, FileIds};
+
+// The statement that closes a cycle of runtime imports, and the files the cycle runs through, starting and ending at
+// the file the statement sits in.
+#[derive(Clone, PartialEq)]
+pub struct Cycle {
+    pub(super) range: TextRange,
+    pub(super) chain: Vec<PathBuf>,
+}
+
+impl Cycle {
+    pub fn range(&self) -> TextRange {
+        self.range
+    }
+
+    pub fn chain(&self) -> &[PathBuf] {
+        &self.chain
+    }
+}
+
+impl CacheKey for Cycle {
+    fn cache_key(&self, state: &mut CacheKeyHasher) {
+        range_key(self.range(), state);
+        self.chain().cache_key(state);
+    }
+}
+
+// Each file's runtime imports, as the file each names and where the statement sits, in source order.
+pub(super) type RuntimeGraph = FxHashMap<FileId, Vec<(FileId, TextRange)>>;
+
+// The cycles of the runtime import graph: a file in a strongly connected component of two or more files reports its
+// first import into that component, with the shortest cycle through it. Each file reports once, so a cycle of n files
+// gives n reports, one per file, each on the import that closes the cycle from that file.
+pub(super) fn cycles(mut graph: RuntimeGraph, files: &FileIds) -> FxHashMap<FileId, Cycle> {
+    for imports in graph.values_mut() {
+        imports.sort_by_key(|(_, range)| range.start());
+    }
+    let component = components(&graph);
+    let mut sizes: FxHashMap<usize, usize> = FxHashMap::default();
+    for component in component.values() {
+        *sizes.entry(*component).or_default() += 1;
+    }
+    let mut cycles = FxHashMap::default();
+    for (&file, imports) in &graph {
+        // Every file with imports is in a component, and one in a component of two or more files imports into it.
+        let home = component[&file];
+        if sizes[&home] < 2 {
+            continue;
+        }
+        let &(first, range) = imports
+            .iter()
+            .find(|(target, _)| component.get(target) == Some(&home))
+            .expect("a file in a cycle imports a file of its component");
+        let mut chain = vec![file];
+        chain.extend(shortest_path(&graph, &component, home, first, file));
+        let chain = chain.into_iter().map(|id| files.path(id).to_path_buf()).collect();
+        cycles.insert(file, Cycle { range, chain });
+    }
+    cycles
+}
+
+// The files on the shortest path from `from` to `to` that stays inside the component, both included.
+fn shortest_path(
+    graph: &RuntimeGraph,
+    component: &FxHashMap<FileId, usize>,
+    home: usize,
+    from: FileId,
+    to: FileId,
+) -> Vec<FileId> {
+    let mut previous: FxHashMap<FileId, FileId> = FxHashMap::default();
+    let mut seen: FxHashSet<FileId> = FxHashSet::from_iter([from]);
+    let mut queue = VecDeque::from([from]);
+    while let Some(file) = queue.pop_front() {
+        if file == to {
+            break;
+        }
+        for (next, _) in graph.get(&file).into_iter().flatten() {
+            if component.get(next) == Some(&home) && seen.insert(*next) {
+                previous.insert(*next, file);
+                queue.push_back(*next);
+            }
+        }
+    }
+    let mut path = vec![to];
+    while let Some(file) = previous.get(path.last().expect("the path holds `to`")) {
+        path.push(*file);
+    }
+    path.reverse();
+    path
+}
+
+// The strongly connected component each file of the graph belongs to, numbered in the order Tarjan's algorithm closes
+// them. Iterative, so a long chain of imports does not exhaust the stack.
+fn components(graph: &RuntimeGraph) -> FxHashMap<FileId, usize> {
+    let mut order: FxHashMap<FileId, usize> = FxHashMap::default();
+    let mut low: FxHashMap<FileId, usize> = FxHashMap::default();
+    let mut on_stack: FxHashSet<FileId> = FxHashSet::default();
+    let mut stack: Vec<FileId> = Vec::new();
+    let mut component: FxHashMap<FileId, usize> = FxHashMap::default();
+    let mut components = 0;
+    for &root in graph.keys() {
+        if order.contains_key(&root) {
+            continue;
+        }
+        // Each frame is a file and how many of its imports the walk has followed.
+        let mut frames: Vec<(FileId, usize)> = vec![(root, 0)];
+        order.insert(root, order.len());
+        low.insert(root, order[&root]);
+        stack.push(root);
+        on_stack.insert(root);
+        while let Some((file, next)) = frames.last_mut() {
+            let file = *file;
+            let targets = graph.get(&file).map_or(&[][..], Vec::as_slice);
+            if let Some((target, _)) = targets.get(*next) {
+                let target = *target;
+                *next += 1;
+                if let Some(&reached) = order.get(&target) {
+                    if on_stack.contains(&target) {
+                        let lowest = low.get_mut(&file).expect("a visited file has a low link");
+                        *lowest = (*lowest).min(reached);
+                    }
+                } else {
+                    order.insert(target, order.len());
+                    low.insert(target, order[&target]);
+                    stack.push(target);
+                    on_stack.insert(target);
+                    frames.push((target, 0));
+                }
+                continue;
+            }
+            frames.pop();
+            if low[&file] == order[&file] {
+                while let Some(member) = stack.pop() {
+                    on_stack.remove(&member);
+                    component.insert(member, components);
+                    if member == file {
+                        break;
+                    }
+                }
+                components += 1;
+            }
+            if let Some((parent, _)) = frames.last() {
+                let lowest = low[&file];
+                let parent_low = low.get_mut(parent).expect("a visited file has a low link");
+                *parent_low = (*parent_low).min(lowest);
+            }
+        }
+    }
+    component
+}

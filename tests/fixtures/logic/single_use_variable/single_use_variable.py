@@ -127,7 +127,7 @@ def kept_read_in_elif(items: list[str], verbose: bool) -> None:
         print("many")
 
 
-def kept_shared_line(items: list[str]) -> None:
+def shared_line(items: list[str]) -> None:
     count = len(items); print(count)
 
 
@@ -264,7 +264,7 @@ def kept_tuple_target(items: list[str]) -> None:
     print(first, second)
 
 
-def kept_multiline_value(items: list[str]) -> None:
+def joined_multiline_value(items: list[str]) -> None:
     count = (
         len(items)
     )
@@ -298,3 +298,10 @@ class Box:
     def method(self, items: list[str]) -> None:
         total = len(items)
         print(total)
+
+
+def kept_split_value(items: list[str]) -> None:
+    count = [
+        len(items),
+    ]
+    print(count)

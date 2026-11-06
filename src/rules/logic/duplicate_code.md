@@ -1,0 +1,215 @@
+Flags six or more statements in a row that another module repeats.
+
+## Why is this bad?
+
+Copied code drifts. A fix or a change lands in one copy and not the other, and nothing says the two were ever the same.
+One definition that both modules call keeps a single place to change.
+
+In the example below, `reader.py` and `writer.py` each define the same six statements.
+
+## Example
+
+```python report file=reader.py
+def parse_lines(text):
+    lines = text.splitlines()
+    values = {}
+    for line in lines:
+        key, _, value = line.partition("=")
+        values[key] = value
+    count = len(values)
+    if count == 0:
+        raise ValueError("no values")
+    return values, count
+```
+
+```python report file=writer.py
+def parse_lines(text):
+    lines = text.splitlines()
+    values = {}
+    for line in lines:
+        key, _, value = line.partition("=")
+        values[key] = value
+    count = len(values)
+    if count == 0:
+        raise ValueError("no values")
+    return values, count
+```
+
+Move the parser into one module that both import:
+
+```python context file=parsing.py
+def parse_lines(text):
+    lines = text.splitlines()
+    values = {}
+    for line in lines:
+        key, _, value = line.partition("=")
+        values[key] = value
+    count = len(values)
+    if count == 0:
+        raise ValueError("no values")
+    return values, count
+```
+
+```python ok file=reader.py
+from parsing import parse_lines
+```
+
+## Configuration
+
+- [`logic.min-duplicate-statements`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#logic)
+  in `[tool.simplint]`: the fewest statements in a row another module must repeat, 6 by default, such as
+  `min-duplicate-statements = 4` under `[tool.simplint.logic]`
+
+  ```toml config
+  [tool.simplint.logic]
+  min-duplicate-statements = 4
+  ```
+
+  ```python context file=first.py
+  def run(items):
+      total = sum(items)
+      count = len(items)
+      log(total)
+      return total, count
+  ```
+
+  ```python report file=second.py
+  def run(items):
+      total = sum(items)
+      count = len(items)
+      log(total)
+      return total, count
+  ```
+
+  Six is where the copies on CPython's standard library turn from boilerplate to code worth sharing: at four and five
+  statements most reports are the generated codec classes of `encodings`, and at eight the copied file classes of `bz2`
+  and `lzma` go unreported.
+
+## Conflicts with Ruff
+
+Ruff has no rule for repeated code, so the two do not overlap.
+
+## What it does
+
+simplint compares the statements of every body of every module of the run, and reports a run of
+`min-duplicate-statements` statements or more that another module holds too. Overlapping copies make one block, reported
+once in each module on its first statement, and a block inside another one, as the body of a function the outer block
+holds, is left to the outer one. The report names the other modules where their copy starts: up to three, then a count
+of the rest.
+
+Statements match when their tokens match. Comments, layout, imports and docstrings do not count. Identifiers and
+literals must match exactly, so a copy with a renamed variable does not match. Statements are compared by a hash of
+their tokens first and by the tokens themselves before a report, so two different statements whose hashes collide never
+match.
+
+### Active on
+
+- **Six consecutive statements of one body** that another module repeats, at any depth, such as the body of a function,
+  a method or an `if` block. A nested block, such as a `for` loop, counts as one statement.
+
+  ```python context file=first.py
+  def run(items):
+      total = 0
+      for item in items:
+          total += item
+      count = len(items)
+      log(total)
+      log(count)
+      return total
+  ```
+
+  ```python report file=second.py
+  def run(items):
+      total = 0
+      for item in items:
+          total += item
+      count = len(items)
+      log(total)
+      log(count)
+      return total
+  ```
+
+### Exceptions
+
+- **Repeats inside one module**, which pylint's duplicate check does not compare either.
+
+  ```python ok file=twice.py
+  def first(items):
+      total = 0
+      for item in items:
+          total += item
+      count = len(items)
+      log(total)
+      log(count)
+      return total
+
+
+  def second(items):
+      total = 0
+      for item in items:
+          total += item
+      count = len(items)
+      log(total)
+      log(count)
+      return total
+  ```
+
+- **Test modules**, which the run tells by their names and the `tests` and `test` directories of the project. Tests
+  repeat their setup and checks so each test reads on its own, and copy the code they test to compare against it. Stub
+  files are not compared either, since stubs repeat each other's signatures by design.
+
+  ```python context file=tests/test_first.py
+  def test_run():
+      total = 0
+      for item in ITEMS:
+          total += item
+      count = len(ITEMS)
+      log(total)
+      log(count)
+      assert total
+  ```
+
+  ```python ok file=tests/test_second.py
+  def test_run():
+      total = 0
+      for item in ITEMS:
+          total += item
+      count = len(ITEMS)
+      log(total)
+      log(count)
+      assert total
+  ```
+
+- **Runs shorter than `min-duplicate-statements`**, which are too short to report.
+
+  ```python context file=short_first.py
+  def run(items):
+      total = 0
+      for item in items:
+          total += item
+      count = len(items)
+      return total, count
+  ```
+
+  ```python ok file=short_second.py
+  def run(items):
+      total = 0
+      for item in items:
+          total += item
+      count = len(items)
+      return total, count
+  ```
+
+### Undetected cases
+
+Code repeated with renamed identifiers, changed literals or reordered statements does not match.
+
+### Fix
+
+simplint offers no fix: the right shared definition depends on the code around the copies.
+
+## Other tools
+
+- [pylint](https://github.com/pylint-dev/pylint) reports similar lines repeated across modules as
+  [duplicate-code](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/duplicate-code.html), with no
+  fix.

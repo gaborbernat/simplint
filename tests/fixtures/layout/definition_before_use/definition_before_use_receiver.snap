@@ -3,7 +3,7 @@ source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
 2:9 SMP201 `_reset` is defined before its first use in `reset`; move it below `reset`
-6:9 SMP201 `_make` is defined before its first use in `load`; move it below `load` [unsafe fix: Move `_make` below `load`]
+6:9 SMP201 `_make` is defined before its first use in `load`; move it below `load` [fix: Move `_make` below `load`]
 18:9 SMP201 `_seed` is defined before its first use in `load_local`; move it below `load_local`
 27:9 SMP201 `_restore` should directly follow `load_called`, its first user
 34:9 SMP201 `_prime` is defined before its first use in `__new__`; move it below `__new__`

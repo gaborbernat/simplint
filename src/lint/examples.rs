@@ -35,6 +35,8 @@ pub struct Fence {
 #[derive(Debug, PartialEq, Eq, Serialize)]
 pub struct Block {
     pub role: Role,
+    // `python`, or the markup of a page the project's documentation holds, such as `rst`, which only gives context.
+    pub language: String,
     // `example.py` unless the block says `file=`.
     pub file: String,
     pub named: bool,
@@ -120,8 +122,11 @@ pub fn parse(explanation: &str) -> Result<Vec<Example>, String> {
                 });
                 open = Some(examples.len() - 1);
             }
-            ["python", role, attributes @ ..] => {
+            [language @ ("python" | "rst" | "markdown"), role, attributes @ ..] => {
                 let role = Role::parse(role).ok_or_else(|| format!("line {}: unknown role `{role}`", number + 1))?;
+                if *language != "python" && (role != Role::Context || attributes.is_empty()) {
+                    return Err(format!("line {}: a `{language}` block is a `context` block with a file", number + 1));
+                }
                 let file = match attributes {
                     [] => None,
                     [attribute] => Some(
@@ -131,7 +136,13 @@ pub fn parse(explanation: &str) -> Result<Vec<Example>, String> {
                     ),
                     _ => return Err(format!("line {}: more than one attribute", number + 1)),
                 };
-                let block = Block { role, file: file.unwrap_or("example.py").to_owned(), named: file.is_some(), fence };
+                let block = Block {
+                    role,
+                    language: (*language).to_owned(),
+                    file: file.unwrap_or("example.py").to_owned(),
+                    named: file.is_some(),
+                    fence,
+                };
                 let index = push(&mut examples, open, block, section)
                     .map_err(|reason| format!("line {}: {reason}", number + 1))?;
                 examples[index].end_line = end_line;
@@ -200,6 +211,8 @@ mod tests {
         "fixed_of_other_file"
     )]
     #[test_case("```toml config\n[tool]\n```\n", "example 1: a config block has no python block after it" ; "config_alone")]
+    #[test_case("```rst ok file=a.rst\nA\n```\n", "line 1: a `rst` block is a `context` block with a file" ; "markup_not_context")]
+    #[test_case("```rst context\nA\n```\n", "line 1: a `rst` block is a `context` block with a file" ; "markup_without_file")]
     fn parse_rejects_malformed_examples(explanation: &str, reason: &str) {
         assert_eq!(parse(explanation), Err(reason.to_owned()));
     }

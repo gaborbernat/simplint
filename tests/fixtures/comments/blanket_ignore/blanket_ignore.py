@@ -15,3 +15,11 @@ THIRTEENTH = "# ty: ignore"
 FIFTEENTH = 15  # simplint: ignore
 SEVENTEENTH = 17  # noqa
 # ruff: file-ignore
+EIGHTEENTH = 18  # noqa:
+NINETEENTH = 19  # noqa:E501F401
+TWENTIETH = 20  # ruff: noqa
+
+
+def twenty_first() -> None:
+    # ruff: file-ignore
+    pass

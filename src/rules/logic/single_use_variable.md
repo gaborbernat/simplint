@@ -104,7 +104,8 @@ def total_price(prices: list[float]) -> str:
   ```
 
 - **Before Python 3.12, a value whose strings use the f-string's quote**: a string in the value takes the other quote,
-  which the field can hold.
+  which the field can hold. A value spread over lines goes in on one line, as `ruff format` joins it, since the field
+  cannot hold a line break either.
 
   ```python report
   def join(items: list[str]) -> str:
@@ -348,3 +349,9 @@ def run(items: list[str], log: Log) -> None:
 ```
 
 Here `log.write` is looked up before `len(items)` runs, which differs only when that lookup has side effects.
+
+## Other tools
+
+- [Sourcery](https://sourcery.ai) inlines a variable that is used once anywhere in its block through
+  [inline-variable](https://docs.sourcery.ai/reference/refactorings/python/inline-variable/). This rule only inlines a
+  value read on the line right below its assignment.

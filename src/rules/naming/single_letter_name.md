@@ -188,3 +188,12 @@ Each name is reported once per scope, at its first binding.
 
 Ruff's [ambiguous-variable-name](https://docs.astral.sh/ruff/rules/ambiguous-variable-name/) covers only `l`, `O` and
 `I`.
+
+## Other tools
+
+- [flake8-variables-names](https://github.com/best-doctor/flake8-variables-names) reports single-letter names as
+  [VNE001](https://github.com/best-doctor/flake8-variables-names/blob/master/flake8_variables_names/checker.py), but
+  allows `i`, `_` and `T` by default. This rule flags `for i` loop targets and type parameters such as `T`.
+- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports short names as
+  [WPS111](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/naming.html#wemake_python_styleguide.violations.naming.TooShortNameViolation),
+  with a configurable minimum length. It also checks module and attribute names, which this rule does not list.

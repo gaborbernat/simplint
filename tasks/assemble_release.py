@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import argparse
+import re
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Final
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
+
+#: The changelog's title, which the release history and the docs page both start from.
+TITLE: Final[str] = "# Changelog"
+#: The anchor line release_section writes above each release and category; generate_changelog reads them back.
+ANCHOR: Final[re.Pattern[str]] = re.compile(r'<a name="(?P<name>[^"]+)"></a>')
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -29,13 +35,13 @@ def assemble(root: Path, version: str, date: str) -> None:
     # :param version: the version being released
     # :param date: the release date in ISO format
     # :raises ValueError: if the changelog lacks its heading or a fragment is invalid
-    fragments = sorted((root / "changelog.d").glob("*.md"))
     changelog = root / "CHANGELOG.md"
-    heading = "# Changelog\n"
     history = changelog.read_text(encoding="utf-8")
+    heading = f"{TITLE}\n"
     if not history.startswith(heading):
         msg = f"{changelog} must start with {heading!r}"
         raise ValueError(msg)
+    fragments = sorted((root / "changelog.d").glob("*.md"))
     entry = "\n".join(release_section(fragments, f"{version} ({date})", f"release-{version.replace('.', '-')}"))
     changelog.write_text(f"{heading}\n{entry}{history.removeprefix(heading)}", encoding="utf-8")
     for fragment in fragments:
@@ -50,6 +56,7 @@ def release_section(fragments: Sequence[Path], title: str, anchor: str) -> list[
     # :param anchor: the HTML anchor of the release, also the prefix of each category anchor
     # :returns: the lines of the release section
     # :raises ValueError: if a fragment has an invalid name or is not one nonempty paragraph
+    sections: dict[str, list[str]] = {}
     names = {
         "feature": "Added",
         "change": "Changes",
@@ -62,7 +69,6 @@ def release_section(fragments: Sequence[Path], title: str, anchor: str) -> list[
         "removal": "Removed",
         "packaging": "Packaging",
     }
-    sections: dict[str, list[str]] = {}
     for fragment in fragments:
         stem, separator, category = fragment.stem.rpartition(".")
         if (
@@ -78,11 +84,11 @@ def release_section(fragments: Sequence[Path], title: str, anchor: str) -> list[
             msg = f"expected one nonempty paragraph in {fragment}"
             raise ValueError(msg)
         sections.setdefault(names[category], []).append(f"- {' '.join(line.strip() for line in content.splitlines())}")
-    release = [f"## {title}", "", f'<a name="{anchor}"></a>', ""]
+    release = [f"## {title}", "", _anchor_line(anchor), ""]
     for category in dict.fromkeys(names.values()):
         if items := sections.get(category):
             release.extend((
-                f'<a name="{anchor}-{category.lower().replace(" ", "-")}"></a>',
+                _anchor_line(f"{anchor}-{category.lower().replace(' ', '-')}"),
                 "",
                 f"### {category}",
                 "",
@@ -92,11 +98,18 @@ def release_section(fragments: Sequence[Path], title: str, anchor: str) -> list[
     return release
 
 
+# The line ANCHOR reads back.
+def _anchor_line(name: str) -> str:
+    return f'<a name="{name}"></a>'
+
+
 if __name__ == "__main__":
     main()
 
 
 __all__ = [
+    "ANCHOR",
+    "TITLE",
     "assemble",
     "main",
     "release_section",

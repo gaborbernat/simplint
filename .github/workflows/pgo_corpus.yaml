@@ -25,7 +25,7 @@ jobs:
           python-version: "3.15"
       # The release builds cache the downloads under the manifest's hash, so a merged bump starts a new cache.
       - name: ⚙️ Pin the newest sdists
-        run: uv run tasks/pgo.py manifest
+        run: uv run --no-project --python 3.15 python -m tasks.pgo manifest
       - name: 🧹 Run prek
         run: uvx prek run --all-files
       # A run with nothing new opens no PR; the shared workflow rejects an empty patch.

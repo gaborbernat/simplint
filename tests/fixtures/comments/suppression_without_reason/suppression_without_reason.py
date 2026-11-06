@@ -16,12 +16,18 @@ RUFF_BARE = 9  # ruff:ignore[unused-import]
 RUFF_REASON = 10  # ruff:ignore[unused-import] # re-exported for plugins
 RUFF_SPACED = 11  # ruff: ignore[unused-import]
 RUFF_FILE = 12  # ruff:file-ignore[unused-import]
+# ruff:file-ignore[unused-import]
 RUFF_BLANKET = 13  # ruff:ignore
 PYREFLY = 14  # pyrefly: ignore[bad-assignment]
 TIGHT = 15  # type:ignore[misc]
 SIMPLINT_BARE = 16  # simplint: ignore[SMP101]
 SIMPLINT_REASON = 17  # simplint:ignore[SMP101] names the paper's variable
 RUFF_WIDE = 18  # ruff:  ignore[unused-import]
-SPACED_COLON = 19  # ruff : noqa: F401
+SPACED_COLON = 19
+# ruff : noqa: F401
 IGNORE_CASE = 20  # NoQA: E501
 # flake8: noqa
+TRAILING_FILE = 21  # ruff: noqa: F401
+EMPTY_CODES = 22  # noqa:
+REJECTED_CODES = 23  # noqa: E501x
+SHOUTED_PRAGMA = 24  # PRAGMA: NO COVER

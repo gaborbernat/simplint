@@ -1,0 +1,6 @@
+---
+source: tests/common/mod.rs
+assertion_line: 125
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+3:1 SMP309 `from star_conditional_source import *` hides which names this file takes from `star_conditional_source`; import them by name

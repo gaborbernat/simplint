@@ -6,7 +6,7 @@ use ruff_python_stdlib::builtins::is_python_builtin;
 use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
-use crate::rules::keep_debug_text;
+use crate::rules::edits::keep_debug_text;
 
 pub fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
     let ranges = checker.semantic().name_ranges(old);
@@ -39,12 +39,19 @@ pub fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
 
 // The text a string holds, not its source: `ruff format` rewrites escapes, as `\N{latin small letter x}` into
 // `\N{LATIN SMALL LETTER X}`, so a word in the source can come or go while the value stays.
+// The strings of other files count too, as a test or a generated template may look the name up by its spelling. A
+// file's own export list names the name without reaching it, so only its other strings and the strings of other files
+// block the rename.
 fn appears_in_strings(checker: &Checker, name: &str, exports: &[&ast::ExprStringLiteral]) -> bool {
+    let (mut own, mut own_text) = (false, false);
+    for (range, text) in checker.string_values() {
+        if contains_word(text, name) {
+            own = true;
+            own_text |= !exports.iter().any(|export| export.range().contains_range(*range));
+        }
+    }
     // A word is a run of letters, digits and underscores, so a name with any other character is never one.
-    name.chars().all(is_word_char)
-        && checker.string_values().iter().any(|(range, text)| {
-            !exports.iter().any(|export| export.range().contains_range(*range)) && contains_word(text, name)
-        })
+    name.chars().all(is_word_char) && (own_text || checker.project().string_word_count(name) > u32::from(own))
 }
 
 // Searching for the word and checking the characters around each match is far cheaper than splitting the text into

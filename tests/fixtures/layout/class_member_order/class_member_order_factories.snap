@@ -1,0 +1,134 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+17:9 SMP203 `now` belongs with the alternative constructors, above `describe` [fix: Move `now` above `describe`]
+41:9 SMP203 `parse` belongs with the alternative constructors, above `describe`
+45:9 SMP203 `load` belongs with the alternative constructors, above `describe`
+49:9 SMP203 `quoted` belongs with the alternative constructors, above `describe`
+53:9 SMP203 `named` belongs with the alternative constructors, above `describe`
+78:9 SMP203 `copied` belongs with the alternative constructors, above `describe` [fix: Move `copied` above `describe`]
+111:9 SMP203 `fromstamp` belongs with the alternative constructors, above `describe` [fix: Move `fromstamp` above `describe`]
+--- fixed (3 applied, 0 remaining) ---
+import typing
+from typing import Self
+
+
+class Date:
+    registry: typing.ClassVar[dict[str, "Date"]] = {}
+
+    def __init__(self, ordinal: int) -> None:
+        self.ordinal = ordinal
+
+    @classmethod
+    def now(cls):
+        return cls.today()
+
+    @classmethod
+    def today(cls):
+        return cls.fromordinal(1)
+
+    @classmethod
+    def fromordinal(cls, ordinal: int):
+        return cls(ordinal)
+
+    @classmethod
+    def parse(cls, text: str) -> Self:
+        return cls.registry[text]
+
+    @classmethod
+    def load(cls, text: str) -> typing.Self:
+        return cls.registry[text]
+
+    @classmethod
+    def quoted(cls, text: str) -> "Date":
+        return cls.registry[text]
+
+    @classmethod
+    def named(cls, text: str) -> Date:
+        return cls.registry[text]
+
+    def describe(self) -> str:
+        return str(self.ordinal)
+
+    @classmethod
+    def ping(cls):
+        return cls.pong()
+
+    @classmethod
+    def pong(cls):
+        return cls.ping()
+
+    @classmethod
+    def count(cls):
+        return cls.total()
+
+    @classmethod
+    def total(cls) -> int:
+        return 1
+
+
+class Stamp:
+    def __init__(self, value: int) -> None:
+        self.value = value
+
+    @classmethod
+    def copied(cls, value: int):
+        stamp = cls.at(value)
+        return stamp
+
+    @classmethod
+    def at(cls, value: int):
+        return cls._build(value)
+
+    @classmethod
+    def _build(cls, value: int):
+        result = cls(value)
+        if value < 0:
+            return result
+        return result
+
+    def describe(self) -> str:
+        return str(self.value)
+
+    @classmethod
+    def rebound(cls, value: int):
+        result = cls(value)
+        result = str(result)
+        return result
+
+    @classmethod
+    def conditional(cls, value: int):
+        if value:
+            result = cls(value)
+            return result
+        return None
+
+
+class Moment:
+    def __init__(self, value: int) -> None:
+        self.value = value
+
+    @classmethod
+    def fromstamp(cls, value: int):
+        return cls._fromstamp(value, False)
+
+    @classmethod
+    def _fromstamp(cls, value: int, shift: bool):
+        result = cls(value)
+        if shift:
+            result = result.shifted()
+        return result
+
+    def shifted(self) -> "Moment":
+        return self
+
+    def describe(self) -> str:
+        return str(self.value)
+
+    @classmethod
+    def fallback(cls, value: int):
+        result = None
+        if value:
+            result = cls(value)
+        return result

@@ -17,15 +17,11 @@ pub(crate) enum Owner<'a> {
     Class(&'a ast::StmtClassDef),
 }
 
-// A docstring the reStructuredText rules check, with what it documents and whether that is part of a library's public API, which
-// must document all of its parameters, return value and exceptions; any other docstring must only be accurate.
+// A docstring the reStructuredText rules check, with what it documents. A library's public API must document all of its
+// parameters, return value and exceptions; any other docstring must only be accurate.
 pub(crate) struct Target<'a> {
     pub(crate) owner: Owner<'a>,
     pub(crate) docstring: Rc<Docstring<'a>>,
-    pub(crate) public: bool,
-    // Whether the docstring is the `__init__` docstring of a public class, which documents its constructor's
-    // parameters as the class docstring may.
-    pub(crate) public_constructor: bool,
     // For a class, the docstring of its `__init__`, where some projects document the constructor's parameters instead.
     pub(crate) constructor: Option<Rc<Docstring<'a>>>,
     // For a class, its attributes, found when a rule first asks for them.
@@ -46,6 +42,30 @@ impl<'a> Target<'a> {
         match self.owner {
             Owner::Function { def, class } => Some(parameters(def, class.is_some())),
             Owner::Class(class) => class_parameters(class),
+        }
+    }
+
+    // Whether the definition is part of the library's public API. Only the rules that ask for it pay for the public API,
+    // which reads the index of the whole run.
+    pub(crate) fn public(&self, checker: &Checker) -> bool {
+        checker.state().public_api(checker).is_public(self.definition())
+    }
+
+    // Whether the docstring is the `__init__` docstring of a public class, which documents its constructor's parameters
+    // as the class docstring may.
+    pub(crate) fn public_constructor(&self, checker: &Checker) -> bool {
+        match self.owner {
+            Owner::Function { def, class: Some(class) } => {
+                def.name.as_str() == "__init__" && checker.state().public_api(checker).is_public(class.range)
+            }
+            Owner::Function { class: None, .. } | Owner::Class(_) => false,
+        }
+    }
+
+    fn definition(&self) -> TextRange {
+        match self.owner {
+            Owner::Function { def, .. } => def.range,
+            Owner::Class(class) => class.range,
         }
     }
 
@@ -70,7 +90,6 @@ pub(crate) fn collect_targets<'a>(checker: &Checker<'a>) -> Vec<Target<'a>> {
     if checker.settings.project.docstring_style != Some(DocstringStyle::Rst) {
         return Vec::new();
     }
-    let api = checker.state().public_api(checker);
     let methods: FxHashMap<TextRange, &ast::StmtClassDef> = checker
         .class_defs()
         .iter()
@@ -84,18 +103,8 @@ pub(crate) fn collect_targets<'a>(checker: &Checker<'a>) -> Vec<Target<'a>> {
         .filter_map(|def| {
             let docstring = Rc::new(Docstring::parse(checker, docstring(&def.body)?));
             let class = methods.get(&def.range).copied();
-            let public_constructor =
-                def.name.as_str() == "__init__" && class.is_some_and(|class| api.is_public(class.range));
             let owner = Owner::Function { def, class };
-            let public = api.is_public(def.range);
-            Some(Target {
-                owner,
-                docstring,
-                public,
-                public_constructor,
-                constructor: None,
-                attributes: OnceCell::new(),
-            })
+            Some(Target { owner, docstring, constructor: None, attributes: OnceCell::new() })
         })
         .collect();
     // By the range of the docstring, so the class shares the one its `__init__` target holds.
@@ -107,9 +116,8 @@ pub(crate) fn collect_targets<'a>(checker: &Checker<'a>) -> Vec<Target<'a>> {
             .and_then(|literal| parsed.get(&literal.range))
             .cloned();
         let docstring = Rc::new(Docstring::parse(checker, docstring(&class.body)?));
-        let public = api.is_public(class.range);
         let owner = Owner::Class(class);
-        Some(Target { owner, docstring, public, public_constructor: false, constructor, attributes: OnceCell::new() })
+        Some(Target { owner, docstring, constructor, attributes: OnceCell::new() })
     });
     targets.extend(classes);
     targets.sort_by_key(|target| target.docstring.range().start());

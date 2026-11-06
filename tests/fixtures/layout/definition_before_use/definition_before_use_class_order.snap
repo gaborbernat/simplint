@@ -1,0 +1,50 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:9 SMP201 `_step` is defined before its first use in `__repr__`; move it below `__repr__`
+8:9 SMP201 `_load` is defined before its first use in `__init__`; move it below `__init__`
+11:9 SMP201 `_check` should directly follow `run`, its first user [fix: Move `_check` right after `run`]
+30:9 SMP201 `_inner` is defined before its first use in `_outer`; move it below `_outer`
+39:9 SMP201 `_outer` should directly follow `alpha`, its first user [fix: Move `_outer` right after `alpha`]
+--- fixed (2 applied, 0 remaining) ---
+class Session:
+    def run(self) -> int:
+        return self._check() + self._step()
+
+    def _check(self) -> int:
+        return 3
+
+    def __init__(self) -> None:
+        self.value = self._load()
+
+    def _load(self) -> int:
+        return 2
+
+    @classmethod
+    def open(cls) -> "Session":
+        session = cls()
+        return session._prepare()
+
+    def _prepare(self) -> "Session":
+        return self
+
+    def __repr__(self) -> str:
+        return str(self._step())
+
+    def _step(self) -> int:
+        return 1
+
+
+class Chain:
+    def alpha(self) -> int:
+        return self._outer()
+
+    def _outer(self) -> int:
+        return self._inner()
+
+    def _inner(self) -> int:
+        return 1
+
+    def beta(self) -> int:
+        return self._inner()

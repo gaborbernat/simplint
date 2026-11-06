@@ -6,7 +6,7 @@ use ruff_python_ast::identifier::Identifier;
 
 use ruff_python_ast::name::QualifiedName;
 use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
-use ruff_python_semantic::{BindingId, BindingKind as RuffBindingKind, ScopeKind, SemanticModel};
+use ruff_python_semantic::{BindingId, BindingKind as RuffBindingKind, ScopeKind, SemanticModel, UnresolvedReference};
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -69,6 +69,12 @@ impl<'a> Semantic<'a> {
         self.annotations_are_lazy
     }
 
+    // The ranges of the names the module reads that no binding in the file or builtin defines, which a `from module
+    // import *` may define.
+    pub fn unresolved_references(&self) -> impl Iterator<Item = TextRange> + '_ {
+        self.model.unresolved_references().map(UnresolvedReference::range)
+    }
+
     pub fn bindings(&self, name: &str) -> &[Binding] {
         self.index.bindings.get(name).map_or(&[], Vec::as_slice)
     }
@@ -118,8 +124,10 @@ impl<'a> Semantic<'a> {
     }
 }
 
+// A `from __future__ import` statement; a relative import of a `__future__` module of the package is not one.
 pub fn future_import(stmt: &Stmt) -> Option<&ast::StmtImportFrom> {
-    stmt.as_import_from_stmt().filter(|import| import.module.as_ref().is_some_and(|module| module == "__future__"))
+    stmt.as_import_from_stmt()
+        .filter(|import| import.level == 0 && import.module.as_ref().is_some_and(|module| module == "__future__"))
 }
 
 // The module-level names of `Semantic`, by name, so rules look them up instead of scanning.

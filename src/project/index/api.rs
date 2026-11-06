@@ -3,16 +3,23 @@ use std::path::{Path, PathBuf};
 
 use ruff_cache::{CacheKey, CacheKeyHasher};
 
+use ruff_text_size::TextRange;
+
 use crate::project::FileFacts;
+use crate::project::computed_reads::ComputedReads;
 use crate::project::constructors::FileCalls;
+use crate::project::facts::source_digest;
 use crate::settings::ModuleRole;
 use crate::syntax::Visibility;
 
-use super::reach::unqualified;
+use super::cycles::Cycle;
+use super::duplicates::DuplicateRun;
+use super::reach::{StarSite, unqualified};
 use super::{FileId, Project};
 
 // A module a file binds at its top level, as `from pkg import module` and `import pkg.module as module` do, and the
 // file it resolves to.
+#[derive(PartialEq)]
 pub struct ModuleUse {
     pub bound: String,
     // The absolute dotted name of the module, such as `pkg.module`.
@@ -21,13 +28,8 @@ pub struct ModuleUse {
     pub patched: bool,
     // The names the module's top-level statements define, which `from module import name` can import.
     pub defined: FxHashSet<String>,
-}
-
-impl PartialEq for ModuleUse {
-    fn eq(&self, other: &Self) -> bool {
-        (&self.bound, &self.module, self.patched, &self.defined)
-            == (&other.bound, &other.module, other.patched, &other.defined)
-    }
+    // The names the module's functions rebind through `global`, whose value an import would keep from load time.
+    pub rebound: FxHashSet<String>,
 }
 
 impl CacheKey for ModuleUse {
@@ -36,6 +38,7 @@ impl CacheKey for ModuleUse {
         self.module.cache_key(state);
         self.patched.cache_key(state);
         self.defined.cache_key(state);
+        self.rebound.cache_key(state);
     }
 }
 
@@ -71,45 +74,44 @@ pub struct FileIndex<'a> {
     pub(super) test_only: Option<&'a FxHashSet<String>>,
     pub(super) uncaught_exceptions: Option<&'a FxHashSet<String>>,
     pub(super) api_reached: Option<&'a FxHashSet<String>>,
+    pub(super) cycle: Option<&'a Cycle>,
+    pub(super) star_sites: &'a [StarSite],
+    pub(super) duplicates: &'a [DuplicateRun],
+    pub(super) source: Option<u64>,
     pub(super) calls: FileCalls<'a>,
 }
 
-// Two indexes give a file the same answers when the names other files use from it, its dataclass calls and whether the
-// run reads docstrings match; the attribute and base class names of the whole run are compared apart, by
-// `Project::changed_names`.
+// Two indexes give a file the same answers when their `answers` match; the attribute and base class names of the whole
+// run are compared apart, by `Project::changed_names`.
 impl PartialEq for FileIndex<'_> {
     fn eq(&self, other: &Self) -> bool {
-        (
-            self.imported,
-            self.referenced,
-            self.star_imported,
-            self.package_star_imported,
-            self.star_source,
-            self.role,
-            self.user_facing,
-            self.modules,
-            self.test_only,
-            self.uncaught_exceptions,
-            self.calls,
-            self.project.reads_docstrings,
-        ) == (
-            other.imported,
-            other.referenced,
-            other.star_imported,
-            other.package_star_imported,
-            other.star_source,
-            other.role,
-            other.user_facing,
-            other.modules,
-            other.test_only,
-            other.uncaught_exceptions,
-            other.calls,
-            other.project.reads_docstrings,
-        ) && self.api_reached == other.api_reached
+        self.answers() == other.answers()
     }
 }
 
-// The index slice a file's diagnostics depend on; a cached result stays valid while this is unchanged.
+impl FileIndex<'_> {
+    // The answers the index gives its file, which `PartialEq` compares. `reads` and `computed_reads` belong to
+    // the run, and reach a file's answers through `project.digest` as well.
+    fn answers(&self) -> impl PartialEq + '_ {
+        (
+            (
+                self.imported,
+                self.referenced,
+                self.star_imported,
+                self.package_star_imported,
+                self.star_source,
+                self.role,
+                self.user_facing,
+                self.modules,
+            ),
+            (self.test_only, self.uncaught_exceptions, self.calls, (&self.project.reads, &self.project.computed_reads)),
+            (self.api_reached, self.cycle, self.star_sites, self.duplicates),
+        )
+    }
+}
+
+// The index slice a file's diagnostics depend on; a cached result stays valid while this is unchanged. The run's
+// `reads` and `computed_reads` are not hashed here: `project.digest` covers them.
 impl CacheKey for FileIndex<'_> {
     fn cache_key(&self, state: &mut CacheKeyHasher) {
         self.project.digest.cache_key(state);
@@ -124,6 +126,9 @@ impl CacheKey for FileIndex<'_> {
         self.test_only.cache_key(state);
         self.uncaught_exceptions.cache_key(state);
         self.api_reached.cache_key(state);
+        self.cycle.cache_key(state);
+        self.star_sites.cache_key(state);
+        self.duplicates.cache_key(state);
         self.calls.cache_key(state);
     }
 }
@@ -131,6 +136,11 @@ impl CacheKey for FileIndex<'_> {
 impl<'a> FileIndex<'a> {
     pub fn is_imported(&self, name: &str) -> bool {
         self.imported.is_some_and(|names| names.contains(name))
+    }
+
+    // How many files of the run hold `word` as a whole word of a string literal, the file being checked among them.
+    pub fn string_word_count(&self, word: &str) -> u32 {
+        self.project.reads.string_words.get(word).copied().unwrap_or_default()
     }
 
     // Whether a library's users reach the name, and how.
@@ -147,8 +157,6 @@ impl<'a> FileIndex<'a> {
         self.modules
     }
 
-    // Whether every use of the name in the run comes from a test module. An `import *` that may read a public name, or
-    // a computed module read, may use it from anywhere, so those names count as used outside the tests.
     // Whether the file defines an exception class that no handler of the run catches by name, nor catches a subclass of.
     pub fn is_uncaught_exception(&self, name: &str) -> bool {
         self.uncaught_exceptions.is_some_and(|names| names.contains(name))
@@ -160,6 +168,8 @@ impl<'a> FileIndex<'a> {
         self.api_reached.is_some_and(|names| names.contains(name))
     }
 
+    // Whether every use of the name in the run comes from a test module. An `import *` that may read a public name, or
+    // a computed module read, may use it from anywhere, so those names count as used outside the tests.
     pub fn is_used_only_by_tests(&self, name: &str) -> bool {
         self.test_only.is_some_and(|names| names.contains(name))
             && !(self.star_imported && Visibility::of(name) == Visibility::Public)
@@ -169,6 +179,32 @@ impl<'a> FileIndex<'a> {
     // Whether some file star-imports the module, so the names its `__all__` lists land there.
     pub fn is_star_import_source(&self) -> bool {
         self.star_source
+    }
+
+    // The index as it holds for `source`. The cycle, `import *` and repeated statements it keeps for the file are ranges
+    // of the source it read, so a source that fixes have changed since, which the fix loop lints, has none of them;
+    // the next round indexes the fixed file again.
+    pub fn at(self, source: &str) -> Self {
+        if self.source == Some(source_digest(source)) {
+            self
+        } else {
+            Self { cycle: None, star_sites: &[], duplicates: &[], ..self }
+        }
+    }
+
+    // The statement that closes a cycle of runtime imports this file takes part in, if it is the file that reports it.
+    pub fn import_cycle(&self) -> Option<&'a Cycle> {
+        self.cycle
+    }
+
+    // The `import *` statement of this file at `range`, with the names it takes from the module it imports.
+    pub fn star_site(&self, range: TextRange) -> Option<&'a StarSite> {
+        self.star_sites.iter().find(|site| site.range() == range)
+    }
+
+    // The runs of statements of this file that another file repeats.
+    pub fn duplicate_runs(&self) -> &'a [DuplicateRun] {
+        self.duplicates
     }
 
     // A public name of a module some `import *` reads may be used under that import, though no file names it, and any
@@ -199,13 +235,51 @@ impl<'a> FileIndex<'a> {
         self.project.base_classes.contains(name)
     }
 
+    // The attributes the run reads under computed names.
+    pub fn computed_reads(&self) -> &'a ComputedReads {
+        &self.project.computed_reads
+    }
+
+    // Whether code the index cannot follow reads the name: a module that resolves to no file of the run imports it, or
+    // a doctest example uses it, so the name may be a definition of the run.
+    pub fn is_read_opaquely(&self, name: &str) -> bool {
+        self.project.opaque_names.contains(name)
+    }
+
+    // Whether the project's documentation names the definition with the dotted name `qualified`.
+    pub fn is_documented(&self, qualified: &str, anchored: bool) -> bool {
+        self.project.docs.covers(qualified, anchored)
+    }
+
+    // Whether a test module requests the fixture by parameter, `usefixtures` or `getfixturevalue`.
+    pub fn is_fixture_requested(&self, name: &str) -> bool {
+        self.project.fixture_requests.contains(name)
+    }
+
+    // Whether a test module sets `pytest_plugins`, whose fixtures may request a fixture of the run that overrides one of
+    // theirs.
+    pub fn loads_pytest_plugins(&self) -> bool {
+        self.project.fixture_requests.contains("pytest_plugins")
+    }
+
     pub fn reads_docstrings(&self) -> bool {
-        self.project.reads_docstrings
+        self.project.reads.docstrings
+    }
+
+    // Whether some file of the run reads the `__name__` or `__qualname__` of an object named `name`, so renaming the
+    // function or class changes what it returns.
+    pub fn reads_name_of(&self, name: &str) -> bool {
+        self.project.reads.reflected.contains(name)
+    }
+
+    // Whether a file of the run reads a class's name off an object, so a class renamed here may be read by that name.
+    pub fn reads_class_names(&self) -> bool {
+        self.project.reads.class_names
     }
 
     // How other files of the run use this file's dataclass `name`, and the positional fields of the dataclass a call
     // spelled `written` constructs in this file.
-    pub fn dataclass_calls(&self) -> FileCalls<'a> {
+    pub fn calls(&self) -> FileCalls<'a> {
         self.calls
     }
 
@@ -260,7 +334,9 @@ pub(super) fn module_uses(
             continue;
         };
         let patched = referenced.get(&target).is_some_and(|names| !names.is_empty());
-        let module = ModuleUse { bound, module, patched, defined: facts.defined.iter().cloned().collect() };
+        let rebound = facts.global_names.iter().cloned().collect();
+        let defined = facts.defined.iter().cloned().collect();
+        let module = ModuleUse { bound, module, patched, defined, rebound };
         uses.entry(importer).or_default().push(module);
     }
     uses

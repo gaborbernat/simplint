@@ -378,3 +378,12 @@ def parse(text: str) -> int:
 ```
 
 No fix is offered when escapes in the docstring make its text differ from the source.
+
+## Other tools
+
+- [pydoclint](https://github.com/jsh9/pydoclint) reports raised exceptions missing from or extra in the docstring as
+  [DOC501](https://jsh9.github.io/pydoclint/violation_codes.html) and
+  [DOC502](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.
+- [darglint](https://github.com/terrencepreilly/darglint) reports the same exceptions as
+  [DAR401](https://github.com/terrencepreilly/darglint) and [DAR402](https://github.com/terrencepreilly/darglint), with
+  no fix.

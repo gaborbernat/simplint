@@ -10,10 +10,8 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::{
-    indentation, is_alone_on_lines, is_class_like, keep_debug_text, lines_with_trailing_blanks, needs_parentheses,
-    single_assignment,
-};
+use crate::rules::edits::{keep_debug_text, lines_with_trailing_blanks};
+use crate::rules::{indentation, is_alone_on_lines, is_class_like, needs_parentheses, single_assignment};
 use crate::semantic::{Binding, BindingKind, Evaluation};
 use crate::syntax::{Exports, Visibility, last_segment};
 

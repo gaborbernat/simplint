@@ -189,3 +189,10 @@ def load(path: str) -> str:
 ```
 
 No fix is offered when escapes in the docstring make its text differ from the source.
+
+## Other tools
+
+- [pydoclint](https://github.com/jsh9/pydoclint) reports a docstring with more parameters than the signature as
+  [DOC102](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.
+- [darglint](https://github.com/terrencepreilly/darglint) reports a docstring parameter the signature lacks as
+  [DAR102](https://github.com/terrencepreilly/darglint), with no fix.

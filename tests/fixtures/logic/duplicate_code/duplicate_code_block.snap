@@ -1,0 +1,6 @@
+---
+source: tests/common/mod.rs
+assertion_line: 125
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:1 SMP530 These statements repeat in `duplicate_code_block_copy.py:1`; move them into one definition the modules share

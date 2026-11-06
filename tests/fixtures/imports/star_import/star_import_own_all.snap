@@ -1,0 +1,10 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:1 SMP309 `from star_listed_source import *` hides which names this file takes from `star_listed_source`; import them by name [fix: Import the names this file uses from `star_listed_source`]
+--- fixed (1 applied, 0 remaining) ---
+from star_listed_source import listed_area
+
+__all__ = ["listed_area"]
+print(listed_area(2))

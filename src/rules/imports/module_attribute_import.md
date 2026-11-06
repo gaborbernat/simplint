@@ -159,7 +159,27 @@ writer = DbWriter()
   ```
 
 - **Attributes stored or deleted**: `findings.DEBUG = True` and `del findings.OLD` change the module, which an import
-  cannot do.
+  cannot do. A store in any file of the run counts, and so does a name a function of the module rebinds through
+  `global`, which changes it after the import has bound the value it had at load.
+
+  ```python context file=pkg/__init__.py
+  # A package.
+  ```
+
+  ```python context file=pkg/findings.py
+  DEBUG = False
+
+
+  def enable() -> None:
+      global DEBUG
+      DEBUG = True
+  ```
+
+  ```python ok file=pkg/consumer.py
+  from . import findings
+
+  print(findings.DEBUG)
+  ```
 
   ```python context file=pkg/__init__.py
   # A package.

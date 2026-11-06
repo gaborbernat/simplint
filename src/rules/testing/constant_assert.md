@@ -68,6 +68,40 @@ Truthiness is judged the way Ruff judges it. These are truthy constants:
   assert [value]
   ```
 
+- **A generator expression**: a generator object is truthy even when it yields nothing, so the assertion can never fail.
+  Ruff does not implement bugbear's B044, which flags it.
+
+  ```python report
+  values = [1, 2]
+  assert (value for value in values)
+  ```
+
+- **A `format` call or a `%` expression on a string literal whose text has characters outside its fields**: the literal
+  text is in every result, so the result is never empty.
+
+  ```python report
+  state = "ready"
+  assert "state: {}".format(state)
+  ```
+
+  ```python report
+  state = "ready"
+  assert "state: %s" % state
+  ```
+
+- **A computation on literals**: arithmetic, string concatenation and repetition, comparisons, `not`, and `and` and `or`
+  over numbers, strings, booleans and `None`, when the result is truthy. The rule computes the value the way Python
+  does, so `1 + 1 == 2` and `"a" * 3` are constant, while a computation on integers past 64 bits, or a repetition or
+  concatenation that builds a string longer than 4096 bytes, is left alone.
+
+  ```python report
+  assert 1 + 1 == 2
+  ```
+
+  ```python report
+  assert "a" * 3
+  ```
+
 ### Exceptions
 
 - **A container holding only starred elements**, such as `[*values]`: it may be empty.
@@ -75,6 +109,40 @@ Truthiness is judged the way Ruff judges it. These are truthy constants:
   ```python ok
   values = []
   assert [*values]
+  ```
+
+- **A malformed template**, such as `"x{"` or `"x%y"`: Python raises on it rather than passing.
+
+  ```python ok
+  assert "x{".format()
+  ```
+
+- **A format or `%` template with text only inside its fields**, such as `"{}"` or `"%s"`: the field may hold an empty
+  string, so the result may be empty too.
+
+  ```python ok
+  value = ""
+  assert "{}".format(value)
+  ```
+
+  ```python ok
+  value = ""
+  assert "%s" % value
+  ```
+
+- **An f-string made only of fields**, such as `f"{value}"`: it is empty when `value` is.
+
+  ```python ok
+  value = ""
+  assert f"{value}"
+  ```
+
+- **A computation that reads a name or calls a function**, such as `assert value + 1 == 2`: the value can change, so the
+  rule evaluates only literals.
+
+  ```python ok
+  value = 1
+  assert value + 1 == 2
   ```
 
 ### Fix
@@ -104,6 +172,33 @@ The fix depends on the constant:
   assert (ready := True), "message"
   ```
 
+- A generator becomes `all(...)` around the same expression. **Unsafe fix:** the restored check may now fail. Its first
+  iterable is evaluated when the generator is built, so deleting the assertion would also drop that evaluation and any
+  error it raises.
+
+  ```python report
+  values = [1, 2]
+  assert (value for value in values)
+  ```
+
+  ```python fixed
+  values = [1, 2]
+  assert all(value for value in values)
+  ```
+
+  No fix is offered for an asynchronous generator, one with `async for` or `await`, since `all()` cannot iterate it, nor
+  where the file binds `all` to something other than the builtin.
+
+  ```python report
+  async def check(values: AsyncIterator[int]) -> None:
+      assert (value async for value in values)
+  ```
+
+  ```python fixed
+  async def check(values: AsyncIterator[int]) -> None:
+      assert (value async for value in values)
+  ```
+
 - Other tuples get no fix, including a tuple with a starred element, which has no meaning outside the brackets.
 
   ```python report
@@ -115,8 +210,9 @@ The fix depends on the constant:
   assert (True, *values)
   ```
 
-- For any other constant the fix is safe: it deletes the assertion, which never fails. The block keeps a `pass` only
-  when the assertion was its only statement:
+- For a `format` or `%` template the fix deletes the assertion **unsafely**: its fields may not fit its arguments, and
+  the deletion would hide the error that raises. Any other constant is deleted safely, since its assertion never fails.
+  The block keeps a `pass` only when the assertion was its only statement:
 
   - An assertion with other statements in its block: the fix deletes it.
 
@@ -147,7 +243,8 @@ For a constant that is not a tuple, no fix is offered when:
 
 - the assertion shares a line with another statement;
 
-- its test calls something, as in `assert [compute()]`, since deleting it would skip that call.
+- its test calls something, as in `assert [compute()]` or `assert "value {}".format(compute())`, since deleting it would
+  skip that call.
 
   ```python report
   def compute() -> int:
@@ -157,23 +254,46 @@ For a constant that is not a tuple, no fix is offered when:
   assert [compute()]
   ```
 
+  ```python report
+  def compute() -> int:
+      return 1
+
+
+  assert "value {}".format(compute())
+  ```
+
 ```mermaid
 flowchart TD
     assertion["assert on a<br/>truthy constant"] --> tuple{"a tuple?"}
     tuple -->|yes| pair{"two elements,<br/>no message?"}
     pair -->|yes| unwrap["unsafe: assert check, message"]
     pair -->|no| none["no fix"]
-    tuple -->|no| blocked{"shares a line or<br/>calls something?"}
+    tuple -->|no| generator{"a generator?"}
+    generator -->|yes| asynchronous{"asynchronous, or<br/>all rebound?"}
+    asynchronous -->|yes| none
+    asynchronous -->|no| wrap["unsafe: assert all(...)"]
+    generator -->|no| blocked{"shares a line or<br/>calls something?"}
     blocked -->|yes| none
-    blocked -->|no| delete["safe: delete it"]
+    blocked -->|no| template{"a format or<br/>% template?"}
+    template -->|yes| unsafe["unsafe: delete it"]
+    template -->|no| delete["safe: delete it"]
     classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59
     classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59
     classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a
     classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28
     classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606
     class assertion blue
-    class blocked,tuple,pair yellow
+    class blocked,tuple,pair,generator,asynchronous,template yellow
     class delete green
-    class unwrap teal
+    class unsafe orange
+    class unwrap,wrap teal
     class none orange
 ```
+
+## Other tools
+
+- [flake8-useless-assert](https://github.com/decorator-factory/flake8-useless-assert) reports an assert with a truthy
+  literal, such as `assert True`, as [ULA001](https://github.com/decorator-factory/flake8-useless-assert), with no fix.
+- [Sourcery](https://sourcery.ai) removes `assert True` statements through
+  [remove-assert-true](https://docs.sourcery.ai/reference/refactorings/python/remove-assert-true/). It covers
+  `assert True` only, where this rule also covers other truthy constants.

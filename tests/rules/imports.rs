@@ -8,6 +8,36 @@ use crate::common;
 #[test_case("future-annotations", "future_annotations_joined.py", "py314" ; "future_annotations_joined_statement")]
 #[test_case("future-annotations", "future_annotations_class_bindings.py", "py314" ; "future_annotations_class_bindings")]
 #[test_case("future-annotations", "future_annotations_class_shadow.py", "py314" ; "future_annotations_class_shadow")]
+#[test_case("import-cycle", "import_cycle.py", "py314" ; "import_cycle")]
+#[test_case("import-cycle", "import_cycle_partner.py", "py314" ; "import_cycle_partner")]
+#[test_case("import-cycle", "import_cycle_ring_a.py", "py314" ; "import_cycle_ring")]
+#[test_case("import-cycle", "import_cycle_exceptions.py", "py314" ; "import_cycle_exceptions")]
+#[test_case("import-cycle", "import_cycle_lazy.py", "py315" ; "import_cycle_lazy")]
+#[test_case("import-cycle", "import_cycle_pkg/core.py", "py314" ; "import_cycle_package")]
+#[test_case("import-cycle", "import_cycle_dead.py", "py314" ; "import_cycle_dead")]
+#[test_case("import-cycle", "import_cycle_platform.py", "py314" ; "import_cycle_platform")]
+#[test_case("import-cycle", "import_cycle_platform_partner.py", "py314" ; "import_cycle_platform_partner")]
+#[test_case("import-cycle", "test_import_cycle_fixture.py", "py314" ; "import_cycle_test_module")]
+#[test_case("star-import", "star_import_listed.py", "py314" ; "star_import_listed")]
+#[test_case("star-import", "star_import_unlisted.py", "py314" ; "star_import_unlisted")]
+#[test_case("star-import", "star_import_unlisted_import.py", "py314" ; "star_import_unlisted_import")]
+#[test_case("star-import", "star_import_own_all.py", "py314" ; "star_import_own_all")]
+#[test_case("star-import", "star_import_multiple.py", "py314" ; "star_import_multiple")]
+#[test_case("star-import", "star_import_dynamic.py", "py314" ; "star_import_dynamic")]
+#[test_case("star-import", "star_import_unread.py", "py314" ; "star_import_unread")]
+#[test_case("star-import", "star_import_external.py", "py314" ; "star_import_external")]
+#[test_case("star-import", "star_pkg/consumer.py", "py314" ; "star_import_package")]
+#[test_case("star-import", "star_import_reexport.py", "py314" ; "star_import_reexport")]
+#[test_case("star-import", "star_import_reexporter.py", "py314" ; "star_import_reexporter")]
+#[test_case("star-import", "star_import_builtin.py", "py314" ; "star_import_builtin")]
+#[test_case("star-import", "star_import_undefined.py", "py314" ; "star_import_undefined")]
+#[test_case("star-import", "star_import_conditional.py", "py314" ; "star_import_conditional")]
+#[test_case("star-import", "star_import_dynamic_all.py", "py314" ; "star_import_dynamic_all")]
+#[test_case("star-import", "star_import_fallback.py", "py314" ; "star_import_fallback")]
+#[test_case("star-import", "star_import_comment.py", "py314" ; "star_import_comment")]
+#[test_case("star-import", "star_reexport_pkg/__init__.py", "py314" ; "star_import_init")]
+#[test_case("star-import", "star_import_hidden.py", "py314" ; "star_import_hidden")]
+#[test_case("star-import", "star_import_partial.py", "py314" ; "star_import_partial")]
 #[test_case("absolute-sibling-import", "package/sub/module.py", "py314" ; "absolute_sibling_import")]
 #[test_case("absolute-sibling-import", "package/__init__.py", "py314" ; "absolute_sibling_import_init")]
 #[test_case("absolute-sibling-import", "package/sub/script.py", "py314" ; "absolute_sibling_import_script")]
@@ -58,4 +88,17 @@ use crate::common;
 #[test_case("up-lazy-modules-list", "up_lazy_modules_list_set.py", "py315" ; "lazy_modules_list_set")]
 fn rule(rule: &str, fixture: &str, target_version: &str) {
     common::assert_rule_snapshot(rule, fixture, target_version);
+}
+
+// A function that rebinds a module variable through `global` changes it after an import would have bound it.
+#[test]
+fn module_attribute_import_keeps_names_a_function_rebinds_through_global() {
+    let root = common::project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/config.py", "_run = True\n\n\ndef set_run(run: bool) -> None:\n    global _run\n    _run = run\n"),
+        ("pkg/setters.py", "from . import config\n\n\ndef check() -> bool:\n    return config._run\n"),
+    ]);
+    let stdout = common::check(root.path(), &["--unsafe-fixes", "--select", "SMP304"]).1;
+    assert!(stdout.contains("SMP304 Import `_run`"));
+    assert!(!stdout.contains("SMP304 [*]"));
 }

@@ -97,3 +97,8 @@ No fix is offered: splitting a test into cases needs knowledge of what each bran
   def test_filtered(items: list[int]) -> None:
       assert [item for item in items if item] == [1, 2]
   ```
+
+## Other tools
+
+- [Sourcery](https://sourcery.ai) flags conditionals in tests through
+  [no-conditionals-in-tests](https://docs.sourcery.ai/reference/refactorings/python/no-conditionals-in-tests/).

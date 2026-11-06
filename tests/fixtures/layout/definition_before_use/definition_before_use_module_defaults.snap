@@ -1,0 +1,30 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+4:5 SMP201 `_pick` is defined before its first use in `run`; move it below `run` [unsafe fix: Move `_pick` below `run`]
+15:5 SMP201 `_plain` is defined before its first use in `walk`; move it below `walk`
+--- fixed (1 applied, 0 remaining) ---
+import random
+
+
+random.seed(1)
+
+
+def run() -> float:
+    return _pick()
+
+
+def _pick(value: float = random.random()) -> float:
+    return value
+
+
+SCALE = 1
+
+
+def walk() -> float:
+    return _plain()
+
+
+def _plain(value: float = 0.5) -> float:
+    return value

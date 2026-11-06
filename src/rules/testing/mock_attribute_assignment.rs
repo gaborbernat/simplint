@@ -5,8 +5,8 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::testing::MOCK_CLASSES;
 use crate::rules::{expr_mentions, is_alone_on_lines, single_assignment};
+use crate::syntax::MOCK_CLASSES;
 use crate::syntax::{for_each_body, last_segment};
 
 pub fn mock_attribute_assignment(checker: &Checker) {

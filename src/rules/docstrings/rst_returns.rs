@@ -1,5 +1,4 @@
 use ruff_diagnostics::{Edit, Fix};
-use ruff_python_ast::helpers::ReturnStatementVisitor;
 use ruff_python_ast::visitor::Visitor;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_python_parser::parse_expression;
@@ -8,7 +7,7 @@ use ruff_text_size::{TextRange, TextSize};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::docstrings::rst::{Field, FieldKind, Owner, Target, field_deletion, field_insertion, rank};
-use crate::syntax::{has_decorator, last_segment};
+use crate::syntax::{ReturnVisitor, has_decorator, last_segment};
 
 pub fn rst_returns(checker: &Checker) {
     for target in checker.state().rst_targets(checker) {
@@ -19,80 +18,93 @@ pub fn rst_returns(checker: &Checker) {
         if def.name.as_str() == "__init__" {
             continue;
         }
-        let mut visitor = ReturnStatementVisitor::default();
+        let mut visitor = ReturnVisitor::default();
         visitor.visit_body(&def.body);
-        let docstring = &target.docstring;
-        let name = def.name.as_str();
-        let (has_returns, has_yields) = (docstring.has(FieldKind::Returns), docstring.has(FieldKind::Yields));
-        let parameters = target.parameters().unwrap_or_default();
-        let insertion = |text: &str| {
-            let added = [(rank(FieldKind::Returns, None, &parameters), text.to_owned())];
-            field_insertion(checker, docstring, &parameters, &added)
-        };
         if visitor.is_generator {
-            if has_returns && !has_yields {
-                // The `returns` of the field's name becomes `yields`, keeping its description.
-                let fix = docstring.fields(&[FieldKind::Returns]).next().and_then(|field| {
-                    let word = TextRange::at(field.marker?.start(), TextSize::of(field.words[0].as_str()));
-                    Some(Fix::unsafe_edit(Edit::range_replacement("yields".to_owned(), word)))
-                });
-                checker.report_fix(
-                    Rule::RstReturns,
-                    docstring.range(),
-                    format!("`{name}` is a generator; document what it yields with `:yields:` instead of `:returns:`"),
-                    fix,
-                    "Rename the field to `:yields:`",
-                );
-            } else if target.public && !has_yields {
-                checker.report_fix(
-                    Rule::RstReturns,
-                    docstring.range(),
-                    format!("`{name}` yields values, yet its docstring has no `:yields:` field"),
-                    insertion(":yields:"),
-                    "Add `:yields:`",
-                );
-            }
-            continue;
-        }
-        if has_yields {
-            let fields: Vec<_> = docstring.fields(&[FieldKind::Yields, FieldKind::YieldType]).collect();
-            checker.report_fix(
-                Rule::RstReturns,
-                fields[0].range_in(docstring),
-                format!("`{name}` is not a generator, yet its docstring has a `:yields:` field"),
-                field_deletion(checker, docstring, &fields),
-                "Remove the yield fields",
-            );
-        }
-        let returns_nothing = def.returns.as_deref().is_some_and(is_nothing_annotation);
-        let returns_value = match def.returns.as_deref() {
-            Some(_) => !returns_nothing,
-            None => visitor
-                .returns
-                .iter()
-                .any(|stmt| stmt.value.as_deref().is_some_and(|value| !value.is_none_literal_expr())),
-        };
-        if target.public && returns_value && !has_returns {
-            checker.report_fix(
-                Rule::RstReturns,
-                docstring.range(),
-                format!("`{name}` returns a value, yet its docstring has no `:returns:` field"),
-                insertion(":returns:"),
-                "Add `:returns:`",
-            );
-        }
-        // Without an annotation, a body that is only a placeholder, as in an abstract method, says nothing of the return.
-        if has_returns && !returns_value && (returns_nothing || !is_placeholder(&def.body)) {
-            let fields: Vec<_> = docstring.fields(&[FieldKind::Returns, FieldKind::ReturnType]).collect();
-            checker.report_fix(
-                Rule::RstReturns,
-                fields[0].range_in(docstring),
-                format!("`{name}` returns nothing, yet its docstring has a `:returns:` field"),
-                field_deletion(checker, docstring, &fields),
-                "Remove the return fields",
-            );
+            generator_fields(checker, target, def.name.as_str());
+        } else {
+            return_fields(checker, target, def, &visitor);
         }
     }
+}
+
+// A generator documents what it yields, so its `:returns:` field is `:yields:` and the field is missing when absent.
+fn generator_fields(checker: &Checker, target: &Target, name: &str) {
+    let docstring = &target.docstring;
+    let (has_returns, has_yields) = (docstring.has(FieldKind::Returns), docstring.has(FieldKind::Yields));
+    if has_returns && !has_yields {
+        // The `returns` of the field's name becomes `yields`, keeping its description.
+        let fix = docstring.fields(&[FieldKind::Returns]).next().and_then(|field| {
+            let word = TextRange::at(field.marker?.start(), TextSize::of(field.words[0].as_str()));
+            Some(Fix::unsafe_edit(Edit::range_replacement("yields".to_owned(), word)))
+        });
+        checker.report_fix(
+            Rule::RstReturns,
+            docstring.range(),
+            format!("`{name}` is a generator; document what it yields with `:yields:` instead of `:returns:`"),
+            fix,
+            "Rename the field to `:yields:`",
+        );
+    } else if target.public(checker) && !has_yields {
+        checker.report_fix(
+            Rule::RstReturns,
+            docstring.range(),
+            format!("`{name}` yields values, yet its docstring has no `:yields:` field"),
+            field_insertion_of(checker, target, ":yields:"),
+            "Add `:yields:`",
+        );
+    }
+}
+
+// A function that is not a generator documents its return value and not its yields.
+fn return_fields(checker: &Checker, target: &Target, def: &ast::StmtFunctionDef, visitor: &ReturnVisitor) {
+    let docstring = &target.docstring;
+    let name = def.name.as_str();
+    let (has_returns, has_yields) = (docstring.has(FieldKind::Returns), docstring.has(FieldKind::Yields));
+    if has_yields {
+        let fields: Vec<_> = docstring.fields(&[FieldKind::Yields, FieldKind::YieldType]).collect();
+        checker.report_fix(
+            Rule::RstReturns,
+            fields[0].range_in(docstring),
+            format!("`{name}` is not a generator, yet its docstring has a `:yields:` field"),
+            field_deletion(checker, docstring, &fields),
+            "Remove the yield fields",
+        );
+    }
+    let returns_nothing = def.returns.as_deref().is_some_and(is_nothing_annotation);
+    let returns_value = match def.returns.as_deref() {
+        Some(_) => !returns_nothing,
+        None => {
+            visitor.returns.iter().any(|stmt| stmt.value.as_deref().is_some_and(|value| !value.is_none_literal_expr()))
+        }
+    };
+    if target.public(checker) && returns_value && !has_returns {
+        checker.report_fix(
+            Rule::RstReturns,
+            docstring.range(),
+            format!("`{name}` returns a value, yet its docstring has no `:returns:` field"),
+            field_insertion_of(checker, target, ":returns:"),
+            "Add `:returns:`",
+        );
+    }
+    // Without an annotation, a body that is only a placeholder, as in an abstract method, says nothing of the return.
+    if has_returns && !returns_value && (returns_nothing || !is_placeholder(&def.body)) {
+        let fields: Vec<_> = docstring.fields(&[FieldKind::Returns, FieldKind::ReturnType]).collect();
+        checker.report_fix(
+            Rule::RstReturns,
+            fields[0].range_in(docstring),
+            format!("`{name}` returns nothing, yet its docstring has a `:returns:` field"),
+            field_deletion(checker, docstring, &fields),
+            "Remove the return fields",
+        );
+    }
+}
+
+// The insertion of a field the docstring lacks, ranked among the fields it has.
+fn field_insertion_of(checker: &Checker, target: &Target, text: &str) -> Option<Fix> {
+    let parameters = target.parameters().unwrap_or_default();
+    let added = [(rank(FieldKind::Returns, None, &parameters), text.to_owned())];
+    field_insertion(checker, &target.docstring, &parameters, &added)
 }
 
 // A quoted annotation, as in `-> "None"`, returns what its unquoted form does.

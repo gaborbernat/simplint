@@ -1,0 +1,121 @@
+---
+source: tests/common/mod.rs
+assertion_line: 125
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+8:9 SMP203 `__init__` belongs with the constructors, above `load` [fix: Move `__init__` above `load`]
+17:9 SMP203 `__init__` belongs with the constructors, above `load` [fix: Move `__init__` above `load`]
+20:9 SMP203 `__init__` belongs with the constructors, above `load`
+22:9 SMP203 `__init__` belongs with the constructors, above `load`
+43:9 SMP203 `__post_init__` belongs with the constructors, above `load` [fix: Move `__post_init__` above `load`]
+46:9 SMP203 `__init_subclass__` belongs with the constructors, above `load`
+55:9 SMP203 `__init__` belongs with the constructors, above `load` [fix: Move `__init__` above `load`]
+65:9 SMP203 `__init__` belongs with the constructors, above `load`
+73:9 SMP203 `__init__` belongs with the constructors, above `load` [fix: Move `__init__` above `load`]
+83:9 SMP203 `__init__` belongs with the constructors, above `load`
+96:9 SMP203 `__init__` belongs with the constructors, above `load`
+99:9 SMP203 `__init__` belongs with the constructors, above `load`
+101:9 SMP203 `__init__` belongs with the constructors, above `load`
+--- fixed (5 applied, 5 remaining) ---
+from typing import overload
+
+
+class CtorPlain:
+    def __init__(self) -> None:
+        self.value = 1
+
+    def load(self) -> int:
+        return 1
+
+
+class CtorOverloaded:
+    @overload
+    def __init__(self, value: int) -> None: ...
+
+    @overload
+    def __init__(self, value: str) -> None: ...
+
+    def __init__(self, value: int | str) -> None:
+        self.value = value
+
+    def load(self) -> int:
+        return 1
+
+
+class CtorOrdered:
+    SIZE = 3
+
+    def __init__(self) -> None:
+        self.size = self.SIZE
+
+    def load(self) -> int:
+        return self.size
+
+
+class CtorNested:
+    class Config:
+        pass
+
+    def __init_subclass__(cls) -> None:
+        pass
+
+    def __post_init__(self) -> None:
+        self.ready = True
+
+    def load(self) -> int:
+        return 1
+
+
+class CtorCommented:
+    # Reads the separator the caller gives.
+    def __init__(self, sep: str = ",") -> None:
+        self.sep = sep
+
+    def load(self) -> int:
+        return 1
+
+
+class CtorDefaults:
+    def load(self) -> int:
+        return 1
+
+    LIMIT = 3
+
+    def __init__(self, limit: int = LIMIT) -> None:
+        self.limit = limit
+
+
+class CtorRebound:
+    def __init__(self) -> None:
+        self.ready = True
+
+    def load(self) -> int:
+        return 1
+
+    __init__ = None
+
+
+class CtorAliased:
+    def load(self) -> int:
+        return 1
+
+    def __init__(self) -> None:
+        self.ready = True
+
+    ALIAS = __init__
+
+
+class CtorOverloadStuck:
+    def load(self) -> int:
+        return 1
+
+    Value = int
+
+    @overload
+    def __init__(self, value: Value) -> None: ...
+
+    @overload
+    def __init__(self, value: str) -> None: ...
+
+    def __init__(self, value: int | str) -> None:
+        self.value = value

@@ -306,7 +306,9 @@ lookup:
 
 The fix renames every use in the file, including the `__all__` entry, and keeps the leading underscore of the name.
 **Unsafe fix:** always, as importers outside the run keep the old name, and so do string references in unchecked files,
-such as [`mocker.patch`](https://pytest-mock.readthedocs.io/en/latest/usage.html) targets.
+such as [`mocker.patch`](https://pytest-mock.readthedocs.io/en/latest/usage.html) targets. Code that loads a module
+under a name no file of the run defines, such as a test that copies a file's text into a module and reads its names off
+the copy, keeps the old name too.
 
 ```python report
 limit = 3
@@ -373,8 +375,8 @@ No fix is offered when:
   zip = zip
   ```
 
-- the old name appears in the text of a string, as written or through an escape such as `\N{LATIN SMALL LETTER X}`,
-  other than an entry of an `__all__` list assigned with `=` or `+=`
+- the old name appears in the text of a string of any file in the run, as written or through an escape such as
+  `\N{LATIN SMALL LETTER X}`, other than an entry of an `__all__` list assigned with `=` or `+=`
 
   ```python report
   limit = 3
@@ -414,3 +416,9 @@ No fix is offered when:
 
 Ruff's [mixed-case-variable-in-global-scope](https://docs.astral.sh/ruff/rules/mixed-case-variable-in-global-scope/)
 flags only `mixedCase` names. This rule also flags `lower_case` names.
+
+## Other tools
+
+- [pylint](https://github.com/pylint-dev/pylint) reports module-level assignments that do not match `const-naming-style`
+  as [invalid-name](https://pylint.readthedocs.io/en/latest/user_guide/messages/convention/invalid-name.html). It
+  defaults to `UPPER_CASE` and only reports, where this rule renames the uses in the file.

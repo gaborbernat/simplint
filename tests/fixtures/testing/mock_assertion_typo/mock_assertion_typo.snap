@@ -1,0 +1,55 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+8:10 SMP814 `called_once_with` is not a mock assertion; it is `assert_called_once_with` [unsafe fix: Rename to `assert_called_once_with`]
+9:10 SMP814 `called_with` is not a mock assertion; it is `assert_called_with` [unsafe fix: Rename to `assert_called_with`]
+10:10 SMP814 `called_once` is not a mock assertion; it is `assert_called_once` [unsafe fix: Rename to `assert_called_once`]
+11:10 SMP814 `not_called` is not a mock assertion; it is `assert_not_called` [unsafe fix: Rename to `assert_not_called`]
+12:10 SMP814 `has_calls` is not a mock assertion; it is `assert_has_calls` [unsafe fix: Rename to `assert_has_calls`]
+13:10 SMP814 `any_call` is not a mock assertion; it is `assert_any_call` [unsafe fix: Rename to `assert_any_call`]
+14:10 SMP814 `awaited_once` is not a mock assertion; it is `assert_awaited_once` [unsafe fix: Rename to `assert_awaited_once`]
+20:10 SMP814 `asssert_called_once` is not a mock assertion; it is `assert_called_once` [unsafe fix: Rename to `assert_called_once`]
+21:10 SMP814 `assetr_called_with` is not a mock assertion; it is `assert_called_with` [unsafe fix: Rename to `assert_called_with`]
+22:10 SMP814 `awaited_once_with` is not a mock assertion; it is `assert_awaited_once_with` [unsafe fix: Rename to `assert_awaited_once_with`]
+39:14 SMP814 `called_with` is not a mock assertion; it is `assert_called_with` [unsafe fix: Rename to `assert_called_with`]
+--- fixed (11 applied, 0 remaining) ---
+import unittest
+from unittest.mock import MagicMock, call
+
+import pytest
+
+
+def check(mock: MagicMock, numbers: list[int]) -> None:
+    mock.assert_called_once_with(1)
+    mock.assert_called_with(1)
+    mock.assert_called_once()
+    mock.assert_not_called()
+    mock.assert_has_calls([call(1)])
+    mock.assert_any_call(1)
+    mock.assert_awaited_once()
+    mock.assert_called_ones_with(1)
+    mock.asert_called_with(1)
+    mock.assrt_called_once()
+    mock.assert_calls(1)
+    mock.assert_failed()
+    mock.assert_called_once()
+    mock.assert_called_with(1)
+    mock.assert_awaited_once_with(1)
+    mock.assess_values(1)
+    mock.assert_called_onth(1)
+    mock.called_wiht(1)
+    mock.assert_called_once_with(1)
+    mock.assert_called_with(1)
+    assert mock.called
+    assert mock.call_count == 1
+    numbers.assert_equal(1)
+
+
+def expects_failure(mock: MagicMock, case: unittest.TestCase) -> None:
+    with pytest.raises(AttributeError):
+        mock.called_once()
+    with case.assertRaisesRegex(AttributeError, "called_once"):
+        mock.called_once_with()
+    with open("handle") as handle:
+        mock.assert_called_with(handle)

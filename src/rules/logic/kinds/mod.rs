@@ -15,6 +15,7 @@ use rustc_hash::FxHashMap;
 use crate::lint::walker::{Scope, Walker};
 
 use self::bindings::Bindings;
+pub(in crate::rules::logic) use self::declared::class_named;
 use self::members::Members;
 
 // The few types the code can show for sure, enough to tell what `+` and `*` on them return.

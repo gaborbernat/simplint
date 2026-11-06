@@ -11,7 +11,9 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::{docstring, indentation, lines_with_trailing_blanks, statement_deletion};
+use crate::rules::comments::is_tool_directive;
+use crate::rules::edits::{lines_with_trailing_blanks, statement_deletion};
+use crate::rules::{docstring, indentation};
 
 pub fn function_docstring(checker: &Checker) {
     // Code that reads docstrings off objects, such as a test asserting `func.__doc__` or a framework turning them into
@@ -33,6 +35,7 @@ pub fn function_docstring(checker: &Checker) {
                 .map(|class| (class.range, class.body.as_slice(), class.decorator_list.as_slice(), "Class")),
         );
     let levels = OnceCell::new();
+    let file_noqa = checker.state().has_file_noqa(checker);
     for (owner, owner_body, decorators, kind) in owners {
         let Some(literal) = docstring(owner_body) else {
             continue;
@@ -51,7 +54,10 @@ pub fn function_docstring(checker: &Checker) {
         // One short line rarely says more than the name; anything longer may state a contract the code does not show,
         // such as a tie-break rule, so its text stays as a comment.
         let restates = lines.len() <= 1 && lines.iter().all(|line| line.split_whitespace().count() <= 5);
-        let (fix, title) = if restates {
+        // Rewriting the docstring can leave a file-level `noqa` code unused, as with the lines it shortened.
+        let (fix, title) = if file_noqa {
+            (None, "Remove the docstring")
+        } else if restates {
             (removal(checker, stmt, owner_body).map(Fix::unsafe_edit), "Remove the docstring")
         } else {
             (
@@ -159,7 +165,7 @@ fn comment_replacement(
     // unless it ends in a URL. Where `ruff format` leaves the code alone, an indentation Ruff's E114 rejects for
     // comments stays.
     if comments.iter().any(|comment| {
-        comment.match_indices('#').any(|(start, _)| is_directive(&comment[start..]))
+        comment.match_indices('#').any(|(start, _)| is_tool_directive(&comment[start..]))
             || comment.chars().count() > room + 2
                 && !comment.split_whitespace().last().is_some_and(|word| word.contains("://"))
     }) || indent.chars().count() % from_ruff.indent_width.max(1) != 0 && is_left_alone(checker, stmt)
@@ -193,11 +199,6 @@ fn comment_replacement(
         }
     };
     Some(Edit::range_replacement(format!("{prefix}{block}{suffix}"), TextRange::new(start, end)))
-}
-
-fn is_directive(comment: &str) -> bool {
-    let text = comment.trim_start_matches('#').trim_start();
-    is_pragma_comment(comment) || text.starts_with("fmt:") || text.starts_with("simplint:")
 }
 
 // Whether `ruff format` leaves the statement as it is: its settings exclude the file, the statement ends in

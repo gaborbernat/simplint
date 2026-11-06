@@ -41,7 +41,11 @@ pub fn module_attribute_import(checker: &Checker) {
                 convertible = false;
                 continue;
             }
-            convertible &= module.defined.contains(attribute.name) && !is_shadowed(checker, attribute);
+            // A function that rebinds the name through `global`, or a store to it anywhere in the run, changes the
+            // attribute after the import would have bound it.
+            let rebound =
+                module.rebound.contains(attribute.name) || checker.project().is_attribute_assigned(attribute.name);
+            convertible &= module.defined.contains(attribute.name) && !is_shadowed(checker, attribute) && !rebound;
             reports.push(attribute);
         }
         let fix = convertible.then(|| {

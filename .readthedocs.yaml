@@ -1,9 +1,25 @@
 version: 2
 build:
   os: ubuntu-lts-latest
-  # Read the Docs needs one tool listed; uv brings the Python 3.15 the docs environment runs on.
+  # uv brings the Python 3.15 the docs environment runs on; Node.js runs mermaid-cli, which draws the diagrams.
   tools:
     python: "latest"
+    nodejs: "24"
+  # The headless browser that mermaid-cli's puppeteer downloads needs these libraries, and Liberation Sans gives the
+  # diagram labels the widths of the Arial readers see them in.
+  apt_packages:
+    - fonts-liberation
+    - libasound2t64
+    - libatk-bridge2.0-0t64
+    - libatk1.0-0t64
+    - libcups2t64
+    - libgbm1
+    - libnss3
+    - libpango-1.0-0
+    - libxcomposite1
+    - libxdamage1
+    - libxkbcommon0
+    - libxrandr2
   commands:
     - curl -LsSf https://astral.sh/uv/install.sh | sh
     - ~/.local/bin/uv tool install tox --with tox-uv -p 3.15 --managed-python

@@ -1,0 +1,121 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+7:5 SMP524 `DeprecationWarning` is raised on each call of the function; `@warnings.deprecated` marks it for type checkers too [unsafe fix: Mark it with `@warnings.deprecated`]
+13:5 SMP524 `DeprecationWarning` is raised on each call of the function; `@warnings.deprecated` marks it for type checkers too [unsafe fix: Mark it with `@warnings.deprecated`]
+20:5 SMP524 `DeprecationWarning` is raised when the class is defined; `@warnings.deprecated` raises it when the class is instantiated or subclassed [unsafe fix: Mark it with `@warnings.deprecated`]
+27:5 SMP524 `DeprecationWarning` is raised on each call of the function; `@warnings.deprecated` marks it for type checkers too [unsafe fix: Mark it with `@warnings.deprecated`]
+31:5 SMP524 `DeprecationWarning` is raised on each call of the function; `@warnings.deprecated` marks it for type checkers too
+66:5 SMP524 `DeprecationWarning` is raised on each call of the function; `@warnings.deprecated` marks it for type checkers too
+73:5 SMP524 `DeprecationWarning` is raised on each call of the function; `@warnings.deprecated` marks it for type checkers too
+82:5 SMP524 `DeprecationWarning` is raised on each call of the function; `@warnings.deprecated` marks it for type checkers too
+89:9 SMP524 `DeprecationWarning` is raised on each call of the function; `@warnings.deprecated` marks it for type checkers too [unsafe fix: Mark it with `@warnings.deprecated`]
+94:9 SMP524 `DeprecationWarning` is raised on each call of the function; `@warnings.deprecated` marks it for type checkers too
+98:9 SMP524 `DeprecationWarning` is raised on each call of the function; `@warnings.deprecated` marks it for type checkers too [unsafe fix: Mark it with `@warnings.deprecated`]
+102:5 SMP524 `DeprecationWarning` is raised on each call of the function; `@warnings.deprecated` marks it for type checkers too [unsafe fix: Mark it with `@warnings.deprecated`]
+--- fixed (7 applied, 5 remaining) ---
+import warnings
+from warnings import warn
+import warnings as w
+
+
+@warnings.deprecated("connect() is deprecated, use open()")
+def connect(host):
+    return host
+
+
+@warnings.deprecated("documented() is deprecated")
+def documented(host):
+    """Connect to a host."""
+    return host
+
+
+@warnings.deprecated("Client is deprecated")
+class Client:
+    """A client for the old protocol."""
+
+    async def send(self, data):
+        return data
+
+
+@warnings.deprecated("gone")
+def only_warning():
+    pass
+
+
+def imported_name(host):
+    warn("imported_name() is deprecated", DeprecationWarning)
+    return host
+
+
+def late_warning(host):
+    host = host.strip()
+    warnings.warn("late_warning() is deprecated", DeprecationWarning)
+    return host
+
+
+def other_category(host):
+    warnings.warn("other_category() changes", FutureWarning)
+    return host
+
+
+def no_category(host):
+    warnings.warn("no_category() is deprecated")
+    return host
+
+
+def no_message():
+    warnings.warn(category=DeprecationWarning)
+
+
+def not_a_warning(host):
+    print("not_a_warning()", DeprecationWarning)
+    return host
+
+
+def assigned_result(host):
+    result = warnings.warn("assigned_result()", DeprecationWarning)
+    return result
+
+
+def commented(host):
+    warnings.warn(  # keep the old name
+        "commented() is deprecated", DeprecationWarning
+    )
+    return host
+
+
+def multiline(host):
+    warnings.warn(
+        "multiline() is deprecated, "
+        "use another name",
+        DeprecationWarning,
+    )
+    return host
+
+
+def shared_line(host):
+    warnings.warn("shared_line() is deprecated", DeprecationWarning); host = host.strip()
+    return host
+
+
+class Settings:
+    @property
+    @warnings.deprecated("timeout is deprecated")
+    def timeout(self):
+        return 1
+
+    @classmethod
+    def create(cls):
+        warnings.warn(f"{cls.__name__}.create() is deprecated", DeprecationWarning)
+        return cls()
+
+    @warnings.deprecated("fetch() is deprecated")
+    async def fetch(self):
+        pass
+
+
+@w.deprecated("aliased_module() is deprecated")
+def aliased_module(host):
+    return host

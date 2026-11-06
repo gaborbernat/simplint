@@ -4,7 +4,8 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::{delete_statement, is_alone_on_lines};
+use crate::rules::edits::delete_statement;
+use crate::rules::is_alone_on_lines;
 use crate::syntax::for_each_body;
 
 enum Replacement {

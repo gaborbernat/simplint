@@ -4,7 +4,7 @@ use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::ensure_import;
+use crate::rules::edits::ensure_import;
 use crate::rules::logic::scoped_block::{finally_call, identifier_uses, scope_of, sole_argument, wrap_edits};
 use crate::syntax::for_each_body;
 

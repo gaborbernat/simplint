@@ -1,0 +1,30 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+7:9 SMP201 `_token` is defined before its first use in `run`; move it below `run` [unsafe fix: Move `_token` below `run`]
+17:9 SMP201 `_token` is defined before its first use in `run`; move it below `run` [fix: Move `_token` below `run`]
+--- fixed (2 applied, 0 remaining) ---
+import itertools
+
+counter = itertools.count()
+
+
+class Counted:
+    first = next(counter)
+
+    def run(self) -> int:
+        return self._token()
+
+    def _token(self, token: int = next(counter)) -> int:
+        return token
+
+
+class Plain:
+    first = 1
+
+    def run(self) -> int:
+        return self._token()
+
+    def _token(self, token: int = 0) -> int:
+        return token

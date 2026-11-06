@@ -76,6 +76,10 @@ them. The rule checks the order of functions and classes in two places:
   `obj = super().__new__(cls)` followed by `obj.name`. A lambda in the class body, such as
   `property(lambda self: self.name)`, counts as a method.
 
+  The first user is the one the class layout puts first, as [class-member-order](SMP203.html) orders the members: a
+  constructor, an alternative constructor or a dunder method comes before the methods, so a helper that both a method
+  and a constructor call follows the constructor.
+
   ```python report
   class Parser:
       def _clean(self, line: str) -> str:
@@ -193,8 +197,9 @@ would leave the name unbound when it is read:
       return False if n == 0 else _even(n - 1)
   ```
 
-- **Constructors**: `__new__`, `__init__`, `__post_init__` and `__init_subclass__` stay ahead of the methods that call
-  them, since [constructor-after-method](SMP203.html) moves them up.
+- **Constructors**: `__new__`, `__init__`, `__post_init__` and `__init_subclass__` are entry points, never helpers, so a
+  method that calls one does not pull it below that method. [class-member-order](SMP203.html) keeps each constructor in
+  its section, above the methods.
 
   ```python ok
   class Cache:
@@ -252,6 +257,8 @@ def make[T: _Base]() -> T:
 The fix rewrites the span from the first to the last misplaced statement in the expected order:
 
 - It comes with the first report of each body only, since that one fix moves every definition the body's reports name.
+  In a class body the fix leaves the sections alone; [class-member-order](SMP203.html) sorts them, with the same helper
+  placement.
 
   ```python report
   def _clean(line: str) -> str:
@@ -332,3 +339,11 @@ different order.
 
 No fix is offered when the span holds a comment that is not attached to a definition, or when two statements share a
 line.
+
+## Other tools
+
+- [pyorder](https://github.com/Winipedia/pyorder) orders module-level definitions with the same
+  [callers-before-callees](https://github.com/Winipedia/pyorder#ordering-rules) rule, and its `--fix` option rewrites
+  the file. Ties break by visibility and then alphabetically, which this rule does not check.
+- [flake8-stepdown](https://github.com/didmar/flake8-stepdown) reports functions defined in the wrong order as
+  [TDP001](https://github.com/didmar/flake8-stepdown#violation-codes), and its `stepdown fix` command rewrites them.

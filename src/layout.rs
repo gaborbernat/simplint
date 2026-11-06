@@ -284,7 +284,7 @@ fn overlong(source: &str, placed: &[Placed], index: usize, widths: Widths) -> bo
 }
 
 // Whether `text`, ending a line `total` wide, ends in a URL that starts within the limit, a line Ruff's E501 skips.
-fn ends_in_url(text: &str, total: usize, limit: usize) -> bool {
+pub(crate) fn ends_in_url(text: &str, total: usize, limit: usize) -> bool {
     let last_chunk = text.rsplit(char::is_whitespace).next().unwrap_or_default();
     last_chunk.contains("://") && total - last_chunk.chars().count() <= limit
 }

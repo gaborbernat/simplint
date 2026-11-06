@@ -4,7 +4,7 @@ use crate::rules::docstrings::rst::{FieldKind, is_internal, rank, report_missing
 use rustc_hash::FxHashSet;
 
 pub fn rst_missing_param(checker: &Checker) {
-    for target in checker.state().rst_targets(checker).iter().filter(|target| target.public) {
+    for target in checker.state().rst_targets(checker).iter().filter(|target| target.public(checker)) {
         let Some(parameters) = target.parameters() else {
             continue;
         };

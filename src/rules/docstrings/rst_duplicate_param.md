@@ -150,3 +150,8 @@ class Reader:
 ```
 
 No fix is offered when escapes in the docstring make its text differ from the source.
+
+## Other tools
+
+- [pydoclint](https://github.com/jsh9/pydoclint) reports any `__init__` docstring as
+  [DOC301](https://jsh9.github.io/pydoclint/violation_codes.html), not only the parameters documented in both places.

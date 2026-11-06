@@ -33,6 +33,18 @@ the names Sphinx, Alembic, gunicorn and WSGI or ASGI servers read. List any othe
 ``--config "naming.keep-names = ['urlpatterns']"`` replaces the list, and ``--show-settings`` prints it as
 ``linter.naming.keep_names``.
 
+``naming.meaningless-names`` holds the words that :doc:`meaningless-name </_generated/rules/SMP103>` reports, such as
+``foo`` and ``baz``. ``naming.catch-all-modules`` holds the module and package names that
+:doc:`catch-all-module </_generated/rules/SMP104>` reports, such as ``utils`` and ``helpers``. Both lists replace their
+defaults when set, and ``--show-settings`` prints them as ``linter.naming.meaningless_names`` and
+``linter.naming.catch_all_modules``.
+
+.. code-block:: toml
+
+    [tool.simplint.naming]
+    meaningless-names = ["foo", "baz", "tmp"]  # the default holds 4 words
+    catch-all-modules = ["utils", "helpers"]  # the default holds 7 names
+
 .. _module-attributes:
 
 Module attributes
@@ -56,17 +68,25 @@ Logic
 =====
 
 :doc:`single-caller-helper </_generated/rules/SMP505>` suggests inlining a private helper that one function calls, when the helper is short and its caller stays
-short. Two limits set how short. Statements count as the top-level statements of a body, each nested block counting as
-one, and a docstring does not count:
+short. Two limits set how short. :doc:`duplicate-code </_generated/rules/SMP530>` reports statements another module
+repeats, once the copy is long enough. Statements count as the top-level statements of a body, each nested block
+counting as one, and a docstring does not count. :doc:`long-tuple-return </_generated/rules/SMP528>` reports a returned
+tuple with more elements than its limit, and :doc:`cognitive-complexity </_generated/rules/SMP529>` a function whose
+score is over its limit:
 
 .. code-block:: toml
 
     [tool.simplint.logic]
-    max-helper-statements = 3   # the default is 3
-    max-caller-statements = 20  # the default is 20
+    max-helper-statements = 3      # the default is 3
+    max-caller-statements = 20     # the default is 20
+    min-duplicate-statements = 6   # the default is 6
+    max-tuple-elements = 2         # the default is 2
+    max-cognitive-complexity = 20  # the default is 20
 
 ``--config "logic.max-caller-statements = 30"`` replaces a value, and ``--show-settings`` prints them as
-``linter.logic.max_helper_statements`` and ``linter.logic.max_caller_statements``.
+``linter.logic.max_helper_statements``, ``linter.logic.max_caller_statements``,
+``linter.logic.min_duplicate_statements``, ``linter.logic.max_tuple_elements`` and
+``linter.logic.max_cognitive_complexity``.
 
 .. _docstring-markup:
 

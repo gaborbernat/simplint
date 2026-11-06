@@ -1,17 +1,9 @@
-use std::cell::RefCell;
-
 use ruff_python_ast::{self as ast, Expr, ExprContext, Pattern, Stmt, TypeParam};
-use ruff_text_size::{Ranged, TextRange};
-use rustc_hash::FxHashSet;
+use ruff_text_size::TextRange;
 
 use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
-use crate::syntax::last_segment;
-
-// The names reported in each def, class or lambda, by its range, the module's an empty one: the rule reports a name
-// once per scope.
-#[derive(Default)]
-pub(crate) struct ReportedNames<'a>(RefCell<FxHashSet<(TextRange, &'a str)>>);
+use crate::rules::naming::{current, except_name, parameters, pattern_name};
 
 pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     match stmt {
@@ -34,38 +26,15 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
 }
 
 pub fn scope<'a>(walker: &mut Walker<'_, 'a>, scope: &Scope<'a>) {
-    let parameters = match scope {
-        // An override must keep the parameter names of the method it replaces.
-        Scope::Function(function)
-            if !function
-                .decorator_list
-                .iter()
-                .any(|decorator| last_segment(&decorator.expression) == Some("override")) =>
-        {
-            &*function.parameters
-        }
-        Scope::Lambda(ast::ExprLambda { parameters: Some(parameters), .. }) => parameters,
-        _ => return,
-    };
-    for parameter in parameters {
-        check(walker, scope.range(), parameter.name().as_str(), parameter.name().range);
-    }
+    parameters(walker, scope, |_| false, check);
 }
 
 pub fn except_handler<'a>(walker: &mut Walker<'_, 'a>, handler: &'a ast::ExceptHandler) {
-    let ast::ExceptHandler::ExceptHandler(ast::ExceptHandlerExceptHandler { name: Some(name), .. }) = handler else {
-        return;
-    };
-    check(walker, current(walker), name.as_str(), name.range);
+    except_name(walker, handler, check);
 }
 
 pub fn pattern<'a>(walker: &mut Walker<'_, 'a>, pattern: &'a Pattern) {
-    if let Pattern::MatchAs(ast::PatternMatchAs { name: Some(name), .. })
-    | Pattern::MatchStar(ast::PatternMatchStar { name: Some(name), .. })
-    | Pattern::MatchMapping(ast::PatternMatchMapping { rest: Some(name), .. }) = pattern
-    {
-        check(walker, current(walker), name.as_str(), name.range);
-    }
+    pattern_name(walker, pattern, check);
 }
 
 pub fn type_param<'a>(walker: &mut Walker<'_, 'a>, type_param: &'a TypeParam) {
@@ -73,16 +42,12 @@ pub fn type_param<'a>(walker: &mut Walker<'_, 'a>, type_param: &'a TypeParam) {
     check(walker, current(walker), name.as_str(), name.range);
 }
 
-fn current(walker: &Walker) -> TextRange {
-    walker.scopes().last().map_or_else(TextRange::default, Ranged::range)
-}
-
 // A comprehension keeps every name it binds next to the iterable it reads, so none needs a long name.
 fn check<'a>(walker: &Walker<'_, 'a>, scope: TextRange, name: &'a str, range: TextRange) {
     if !walker.in_comprehension()
         && name.chars().count() == 1
         && name != "_"
-        && walker.checker.state().reported_names().0.borrow_mut().insert((scope, name))
+        && walker.checker.state().reported_names().first_in_scope(scope, name)
     {
         walker.checker.report(
             Rule::SingleLetterName,

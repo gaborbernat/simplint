@@ -3,4 +3,19 @@
 <link rel="apple-touch-icon" href="{{ pathto('_static/apple-touch-icon.png', 1) }}">
 <link rel="manifest" href="{{ pathto('_static/site.webmanifest', 1) }}">
 <meta name="theme-color" content="#3776AB">
+{#- a page without contents gives their column's room to the text, known before the body arrives #}
+{%- if furo_hide_toc %}
+<style>:root { --simplint-toc-width: 0px; }</style>
+{%- endif %}
+{#- Furo loads scripts at the end of the body; rules.js runs in the head so the page paints in its final layout #}
+{%- for js in script_files if js.filename == "_static/rules.js" %}
+{{ js_tag(js) }}
+{%- endfor %}
+{% endblock %}
+{#- Furo prefetches both wordmarks, though a page shows one #}
+{% block logo_prefetch_links %}{% endblock %}
+{% block regular_scripts %}
+{%- for js in script_files if js.filename != "_static/rules.js" %}
+{{ js_tag(js) }}
+{%- endfor %}
 {% endblock %}

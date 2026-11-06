@@ -1,3 +1,4 @@
+use ruff_python_ast::helpers::any_over_expr;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, AnyParameterRef, Expr, ExprContext, Stmt};
 use rustc_hash::FxHashSet;
@@ -26,8 +27,24 @@ pub(super) fn definition_time_exprs(function: &ast::StmtFunctionDef) -> impl Ite
     function.decorator_list.iter().map(|decorator| &decorator.expression).chain(defaults)
 }
 
-// The names a statement binds in the scope it sits in: the names it stores, and the functions, classes and imports it
-// defines, but not the bodies of those functions and classes.
+// Whether a `def` calls anything as it runs, in a decorator or a default value: a call can observe the order of the
+// class body, as `next()` on a shared counter does.
+pub(super) fn calls_at_definition(function: &ast::StmtFunctionDef) -> bool {
+    definition_time_exprs(function).any(|expr| any_over_expr(expr, &Expr::is_call_expr))
+}
+
+// The name a `def` or `class` statement binds.
+pub(super) fn definition_name(stmt: &Stmt) -> Option<&ast::Identifier> {
+    match stmt {
+        Stmt::FunctionDef(ast::StmtFunctionDef { name, .. }) | Stmt::ClassDef(ast::StmtClassDef { name, .. }) => {
+            Some(name)
+        }
+        _ => None,
+    }
+}
+
+// The names a statement binds in the scope it sits in: the names it stores or deletes, and the functions, classes and
+// imports it defines, but not the bodies of those functions and classes.
 pub(super) fn bound_names(stmt: &Stmt) -> Vec<&str> {
     let mut bound = BoundNames::default();
     bound.visit_stmt(stmt);
@@ -53,7 +70,7 @@ impl<'a> Visitor<'a> for BoundNames<'a> {
     }
 
     fn visit_expr(&mut self, expr: &'a Expr) {
-        if let Expr::Name(ast::ExprName { id, ctx: ExprContext::Store, .. }) = expr {
+        if let Expr::Name(ast::ExprName { id, ctx: ExprContext::Store | ExprContext::Del, .. }) = expr {
             self.names.push(id.as_str());
         }
         visitor::walk_expr(self, expr);

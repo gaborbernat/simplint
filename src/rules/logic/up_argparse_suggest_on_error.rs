@@ -1,10 +1,10 @@
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::{self as ast, Expr};
-use ruff_text_size::{Ranged, TextRange, TextSize};
+use ruff_text_size::Ranged;
 
-use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
+use crate::rules::edits::keyword_removal;
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let checker = walker.checker;
@@ -12,16 +12,17 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let Expr::Call(call) = expr else {
         return;
     };
-    let Some(keyword) = call.arguments.keywords.iter().find(|keyword| {
-        keyword.arg.as_ref().is_some_and(|name| name.as_str() == "suggest_on_error")
-            && matches!(keyword.value, Expr::BooleanLiteral(ast::ExprBooleanLiteral { value: true, .. }))
-    }) else {
+    let Some(keyword) = call
+        .arguments
+        .find_keyword("suggest_on_error")
+        .filter(|keyword| matches!(keyword.value, Expr::BooleanLiteral(ast::ExprBooleanLiteral { value: true, .. })))
+    else {
         return;
     };
     if !checker.semantic().resolves_to(&call.func, &["argparse", "ArgumentParser"]) {
         return;
     }
-    let fix = removal(checker, call, keyword).map(|range| Fix::safe_edit(Edit::range_deletion(range)));
+    let fix = keyword_removal(checker, call, keyword).map(|range| Fix::safe_edit(Edit::range_deletion(range)));
     checker.report_fix(
         Rule::ArgparseSuggestOnError,
         keyword.range(),
@@ -29,28 +30,4 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         fix,
         "Drop `suggest_on_error=True`",
     );
-}
-
-// The keyword with the comma that separates it from a neighbor, so the rest of the call keeps its layout. A sole
-// argument goes with its trailing comma, up to the closing parenthesis.
-fn removal(checker: &Checker, call: &ast::ExprCall, keyword: &ast::Keyword) -> Option<TextRange> {
-    if checker.has_comment_in(call.range()) {
-        return None;
-    }
-    let mut arguments: Vec<TextRange> = call
-        .arguments
-        .args
-        .iter()
-        .map(Ranged::range)
-        .chain(call.arguments.keywords.iter().map(Ranged::range))
-        .collect();
-    arguments.sort_by_key(Ranged::start);
-    let index = arguments.iter().position(|range| *range == keyword.range())?;
-    let range = keyword.range();
-    let previous = index.checked_sub(1).map(|previous| arguments[previous]);
-    Some(match (previous, arguments.get(index + 1)) {
-        (_, Some(next)) => TextRange::new(range.start(), next.start()),
-        (Some(previous), None) => TextRange::new(previous.end(), range.end()),
-        (None, None) => TextRange::new(range.start(), call.range().end() - TextSize::from(1)),
-    })
 }

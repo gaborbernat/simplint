@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pypandoc
 
-from tasks.assemble_release import release_section
+from tasks.assemble_release import ANCHOR, TITLE, release_section
 
 
 def main(root: Path, rules: dict[str, str]) -> None:
@@ -17,35 +17,44 @@ def main(root: Path, rules: dict[str, str]) -> None:
     # :param root: the project root
     # :param rules: rule names keyed by code, used to link rule mentions
     # :raises ValueError: if an anchor has no heading to attach to
-    history = (root / "CHANGELOG.md").read_text(encoding="utf-8").removeprefix("# Changelog\n").strip()
+    history = (root / "CHANGELOG.md").read_text(encoding="utf-8").removeprefix(f"{TITLE}\n").strip()
     pending = sorted((root / "changelog.d").glob("*.md"))
     draft = "\n".join(release_section(pending, "Draft", "release-draft")) if pending else ""
     # Released history keeps its codes as plain text: a code there meant the rule it had before the renumbering.
     parts = (link_rules(draft, rules, codes=True), link_rules(history, rules, codes=False))
-    lines = "\n\n".join(part for part in ("# Changelog", *parts) if part).splitlines()
-    anchors: dict[int, str] = {}
-    for index, line in enumerate(lines):
-        if not line.startswith('<a name="'):
-            continue
-        # A category anchor leads its `###` heading; a release anchor trails the version heading above it, even when the
-        # release lists nothing and the next version's heading follows.
-        following = next((position for position in range(index + 1, len(lines)) if lines[position].strip()), None)
-        heading = (
-            following
-            if following is not None and lines[following].startswith("### ")
-            else next((position for position in range(index - 1, -1, -1) if lines[position].startswith("#")), None)
-        )
-        if heading is None or heading in anchors:
-            msg = f"cannot attach changelog anchor {line} to a heading"
-            raise ValueError(msg)
-        anchors[heading] = line.removeprefix('<a name="').removesuffix('"></a>')
+    lines = "\n\n".join(part for part in (TITLE, *parts) if part).splitlines()
+    # Each anchor line becomes an attribute of the heading it names, and the anchor lines themselves go.
+    anchors = _anchors(lines)
     marked = "\n".join(
         f"{line} {{#{anchors[index]}}}" if index in anchors else line
         for index, line in enumerate(lines)
-        if not line.startswith('<a name="')
+        if not ANCHOR.fullmatch(line)
     )
     converted = pypandoc.convert_text(marked, "rst", format="markdown+header_attributes", extra_args=["--columns=120"])
     (root / "docs" / "changelog.rst").write_text(converted, encoding="utf-8")
+
+
+# The anchor names keyed by the index of the heading line each attaches to.
+def _anchors(lines: list[str]) -> dict[int, str]:
+    anchors: dict[int, str] = {}
+    for index, line in enumerate(lines):
+        if not (match := ANCHOR.fullmatch(line)):
+            continue
+        heading = _anchor_heading(lines, index)
+        if heading is None or heading in anchors:
+            msg = f"cannot attach changelog anchor {line} to a heading"
+            raise ValueError(msg)
+        anchors[heading] = match["name"]
+    return anchors
+
+
+# A category anchor leads its `###` heading; a release anchor trails the version heading above it, even when the release
+# lists nothing and the next version's heading follows.
+def _anchor_heading(lines: list[str], index: int) -> int | None:
+    following = next((position for position in range(index + 1, len(lines)) if lines[position].strip()), None)
+    if following is not None and lines[following].startswith("### "):
+        return following
+    return next((position for position in range(index - 1, -1, -1) if lines[position].startswith("#")), None)
 
 
 def link_rules(markdown: str, rules: dict[str, str], *, codes: bool) -> str:

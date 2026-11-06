@@ -1,0 +1,174 @@
+use std::cell::LazyCell;
+
+use ruff_python_ast::helpers::any_over_body;
+use ruff_python_ast::{self as ast, Expr, Stmt};
+use ruff_text_size::{Ranged, TextRange};
+use rustc_hash::FxHashMap;
+
+use crate::lint::checker::Checker;
+use crate::lint::registry::Rule;
+use crate::project::computed_reads::ComputedReads;
+use crate::rules::api::{listed_exports, references_outside};
+use crate::syntax::{Visibility, module_statements};
+
+pub fn unused_definition(checker: &Checker) {
+    let project = checker.project();
+    // An `import *` of this module hands its names to code the index cannot follow, as `unused-export` assumes too.
+    if checker.is_test_module() || project.is_star_import_source() {
+        return;
+    }
+    let api = checker.state().public_api(checker);
+    let listed = listed_exports(checker);
+    let local_reads = ComputedReads::of(checker.body());
+    // Most definitions are ruled out before their name is looked up in the strings, so the words are split only then.
+    let strings = LazyCell::new(|| string_words(checker));
+    for stmt in module_statements(checker.body()) {
+        let (name, range, decorated, caller) = match stmt {
+            Stmt::FunctionDef(function) => {
+                (function.name.as_str(), function.name.range(), !function.decorator_list.is_empty(), "caller")
+            }
+            Stmt::ClassDef(class) => {
+                (class.name.as_str(), class.name.range(), !class.decorator_list.is_empty(), "user")
+            }
+            _ => continue,
+        };
+        // A decorator may register the definition with something outside the run, so decorated ones are kept, and so are
+        // public names a computed read may fetch.
+        // An `obj.name` read may reach the definition through its module, imported under a name the index does not
+        // follow, as `module = importlib.import_module(...)` binds one.
+        let unused = !decorated
+            && !is_protocol_name(name)
+            && !computed_read_hides(checker, name, &local_reads)
+            && !api.covers(stmt.range())
+            && !listed.contains(&name)
+            && !is_framework_hook(name)
+            && !project.is_api_reached(name)
+            && !is_read_by_name(checker, name)
+            && !project.is_base_class(name)
+            && project.calls().attribute_loads(name) == 0
+            && !references_outside(checker, name, stmt.range())
+            && !is_in_strings(&strings, name, stmt.range())
+            && !is_documented(checker, &[name]);
+        if unused {
+            checker.report(
+                Rule::UnusedDefinition,
+                range,
+                format!("`{name}` is never used in the run; remove it or give it a {caller}"),
+            );
+        } else if let Stmt::ClassDef(class) = stmt
+            && class.bases().is_empty()
+            && class.keywords().is_empty()
+            && class.decorator_list.is_empty()
+        {
+            // The members of an unused class are reported with it, so only the members of a used class are judged.
+            members(checker, class, &local_reads, &strings);
+        }
+    }
+}
+
+// The methods and plain attributes of a class with no base or decorator. A base class may supply the method a call
+// reaches, and a decorator may register the class with something outside the run.
+fn members(checker: &Checker, class: &ast::StmtClassDef, local_reads: &ComputedReads, strings: &StringWords) {
+    let project = checker.project();
+    let api = checker.state().public_api(checker);
+    let calls = project.calls();
+    let class_name = class.name.as_str();
+    for member in module_statements(&class.body) {
+        let (name, range, is_method, decorated) = match member {
+            Stmt::FunctionDef(method) => {
+                (method.name.as_str(), method.name.range(), true, !method.decorator_list.is_empty())
+            }
+            Stmt::Assign(ast::StmtAssign { targets, .. }) => match targets.as_slice() {
+                [Expr::Name(target)] => (target.id.as_str(), target.range(), false, false),
+                _ => continue,
+            },
+            _ => continue,
+        };
+        // An attribute store may be read through an object the run does not type, so an assigned name is kept.
+        let unused = !decorated
+            && !is_protocol_name(name)
+            && !api.covers(member.range())
+            && calls.attribute_loads(name) == 0
+            && !computed_read_hides(checker, name, local_reads)
+            && !project.is_attribute_assigned(name)
+            && !is_read_by_name(checker, name)
+            && !references_outside(checker, name, member.range())
+            && !is_read_in_class(class, name, member.range())
+            && !is_in_strings(strings, name, member.range())
+            && !is_documented(checker, &[class_name, name]);
+        if unused {
+            let (verb, caller) = if is_method { ("called or read", "caller") } else { ("read", "reader") };
+            checker.report(
+                Rule::UnusedDefinition,
+                range,
+                format!("`{class_name}.{name}` is never {verb} in the run; remove it or give it a {caller}"),
+            );
+        }
+    }
+}
+
+// Whether the project's documentation names the definition, by its dotted name under the module's package, or from
+// the module's own name when the run cannot tell its package.
+fn is_documented(checker: &Checker, names: &[&str]) -> bool {
+    let stem = checker.file_name().strip_suffix(".py").unwrap_or(checker.file_name());
+    let (module, anchored) = match checker.module_path() {
+        Some(path) => (path.iter().map(String::as_str).collect(), true),
+        None => (vec![stem], false),
+    };
+    let qualified = module.into_iter().chain(names.iter().copied()).collect::<Vec<_>>().join(".");
+    checker.project().is_documented(&qualified, anchored)
+}
+
+// Whether the run reads the name by an import or a dotted string, or code the index cannot follow reads it.
+fn is_read_by_name(checker: &Checker, name: &str) -> bool {
+    checker.project().is_referenced(name) || checker.project().is_read_opaquely(name)
+}
+
+// A computed read may fetch any name of the module it sits in, and any public name of the run, so a private name is
+// judged by its own file, and a public one by the run. A read under a literal prefix reaches only the names that start
+// with it, wherever they are defined.
+fn computed_read_hides(checker: &Checker, name: &str, local_reads: &ComputedReads) -> bool {
+    let run = checker.project().computed_reads();
+    local_reads.reaches(name) || run.reaches_by_prefix(name) || (Visibility::of(name) == Visibility::Public && run.any)
+}
+
+// The class body names the member, as `x = property(_get_x)` or a dispatch table of its methods does.
+fn is_read_in_class(class: &ast::StmtClassDef, name: &str, definition: TextRange) -> bool {
+    any_over_body(&class.body, |expr| {
+        expr.as_name_expr().is_some_and(|read| {
+            read.id.as_str() == name && read.ctx.is_load() && !definition.contains_range(read.range)
+        })
+    })
+}
+
+// The identifiers each string of the module spells, with the ranges of the strings: a string annotation such as
+// `cast("list[_Entry]", data)` names a definition the module's references do not show.
+type StringWords<'a> = FxHashMap<&'a str, Vec<TextRange>>;
+
+fn string_words<'c>(checker: &'c Checker) -> StringWords<'c> {
+    let mut words: StringWords = FxHashMap::default();
+    for (range, text) in checker.string_values() {
+        for word in text.split(|char: char| !(char.is_alphanumeric() || char == '_')).filter(|word| !word.is_empty()) {
+            words.entry(word).or_default().push(*range);
+        }
+    }
+    words
+}
+
+// A string outside the definition names it.
+fn is_in_strings(strings: &StringWords, name: &str, definition: TextRange) -> bool {
+    strings.get(name).is_some_and(|ranges| ranges.iter().any(|range| !definition.contains_range(*range)))
+}
+
+// Python calls a dunder such as `__repr__` itself, and a library calls a sunder such as Jupyter's `_repr_html_` or enum's
+// `_missing_` by name, so neither needs a caller in the run.
+fn is_protocol_name(name: &str) -> bool {
+    Visibility::of(name) == Visibility::Dunder
+        || (name.len() > 2 && name.starts_with('_') && name.ends_with('_') && !name.starts_with("__"))
+}
+
+// A framework calls these by name: Sphinx calls an extension's `setup`, and pytest calls its hooks and xunit-style
+// `setup`/`teardown` functions.
+fn is_framework_hook(name: &str) -> bool {
+    matches!(name, "setup" | "teardown" | "setup_module" | "teardown_module") || name.starts_with("pytest_")
+}

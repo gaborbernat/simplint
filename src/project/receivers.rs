@@ -6,7 +6,7 @@ use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Pattern, Stmt};
 
 use super::facts::qualified;
-use crate::rules::testing::MOCK_CLASSES;
+use crate::syntax::MOCK_CLASSES;
 use crate::syntax::{alias_binding, instance_writes, is_classmethod, last_segment, receiver};
 
 // The attributes code sets or deletes on objects, keyed by the class of the object when parsing tells it: the receiver

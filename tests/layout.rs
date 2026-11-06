@@ -2,7 +2,7 @@ mod common;
 
 use test_case::test_case;
 
-use common::{check, project, read};
+use common::fixed_file;
 
 // What a fix leaves of `module.py` under a line length limit with E501 on: a fix that makes a line too long for any
 // layout `ruff format` can give it is withdrawn, one that only seems to is kept.
@@ -13,12 +13,6 @@ fn fixed(line_length: usize, source: &str, select: &str) -> (i32, String, String
 
 fn fixed_with(pyproject: &str, source: &str, select: &str) -> (i32, String, String) {
     fixed_file(pyproject, "module.py", source, select)
-}
-
-fn fixed_file(pyproject: &str, name: &str, source: &str, select: &str) -> (i32, String, String) {
-    let root = project(&[("pyproject.toml", pyproject), (name, source)]);
-    let (code, stdout, _) = check(root.path(), &["--fix", "--unsafe-fixes", "--select", select]);
-    (code, stdout, read(root.path(), name))
 }
 
 #[test_case(

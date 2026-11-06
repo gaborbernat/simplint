@@ -112,6 +112,8 @@ div[class^="highlight-"] pre {
 .hero-logo {
   float: right;
   width: clamp(4.5rem, 14vw, 8.5rem);
+  /* the markup gives its size, so its box has the final height before the image loads */
+  height: auto;
   margin: 0 0 0.5rem 1.2rem;
 }
 
@@ -349,12 +351,18 @@ div.sd-card.example .sd-card-body > :last-child {
   background: var(--simplint-accent-soft);
 }
 
-/* the toggle takes the place of the dropdown's title bar; without scripts the bar stays and opens the example */
-details.example-inline > summary.sd-summary-title {
+/* the toggle takes the place of the dropdown's title bar; without scripts the bar stays and opens the example, and the
+   toggles and the switch, which need a script, stay out of the way */
+html:not(.no-js) details.example-inline > summary.sd-summary-title {
   display: none;
 }
 
-details.example-inline:not([open]) {
+html:not(.no-js) details.example-inline:not([open]) {
+  display: none;
+}
+
+.no-js .example-toggle,
+.no-js .example-switch {
   display: none;
 }
 
@@ -395,36 +403,58 @@ details.example .sd-summary-content p code {
   text-transform: none;
 }
 
-/* a fix shows its before and after side by side, stacking on narrow screens; a config above them spans both */
+/* A fix shows its before and after side by side, and a reported example the accepted one, while every line fits its
+   half; otherwise they stack, before above after, and only lines too long even then wrap. A config above them spans
+   both. Each side starts at the width of the longest line of both, which the build copies into it, so both sides
+   share a row only when that line fits each half. */
 details.example-fix > .sd-summary-content,
 details.example-pair > .sd-summary-content {
-  display: grid;
-  /* minmax(0, ...) lets a column shrink below its longest line, which then wraps instead of widening the page */
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   column-gap: 0.6rem;
 }
 
+/* a min-width of 0 lets a side shrink below its longest line, which then wraps instead of widening the page */
+details.example-fix > .sd-summary-content > *,
+details.example-pair > .sd-summary-content > * {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+
+/* two sides to a row at most, however short their lines */
+details.example-fix > .sd-summary-content > .example-side,
+details.example-pair > .sd-summary-content > .example-side {
+  flex: 1 1 auto;
+  width: max-content;
+  min-width: calc(50% - 0.3rem);
+}
+
 @media (max-width: 40em) {
-  details.example-fix > .sd-summary-content,
-  details.example-pair > .sd-summary-content {
-    grid-template-columns: 1fr;
+  details.example-fix > .sd-summary-content > .example-side,
+  details.example-pair > .sd-summary-content > .example-side {
+    flex-basis: 100%;
   }
 }
 
-details.example-fix > .sd-summary-content > :not(.example-side),
-details.example-pair > .sd-summary-content > :not(.example-side) {
-  grid-column: 1 / -1;
+/* the snippets leave the width of a side to the copied line, which may run into the right padding of its snippet as a
+   line of code may */
+details.example .example-side > div[class^="highlight-"]:not(.example-measure) {
+  contain: inline-size;
 }
 
-/* set by rules.js when a line would not fit its half: one column, before above after */
-details.example-stacked > .sd-summary-content {
-  grid-template-columns: minmax(0, 1fr);
+details.example .example-measure pre {
+  padding-right: 0;
 }
 
-/* rules.js measures the unwrapped lines, so it turns wrapping off for that moment */
-details.example-measuring pre {
-  white-space: pre !important;
-  overflow-wrap: normal !important;
+/* the copied line gives its side the width that line needs, and takes no room of its own */
+details.example div.example-measure {
+  height: 0;
+  /* a line may run a pixel past its box, as text widths fall between whole pixels */
+  margin: 0 -1px 0 0;
+  border-top-width: 0;
+  border-bottom-width: 0;
+  overflow: hidden;
+  visibility: hidden;
 }
 
 details.example .example-side > :last-child {
@@ -438,7 +468,8 @@ details.example .example-side > :last-child {
   top: 0;
   z-index: 2;
   display: grid;
-  grid-template-columns: minmax(12rem, 1fr) auto auto;
+  /* shares of the row rather than the width of each list's options, which may still be arriving */
+  grid-template-columns: minmax(12rem, 2fr) repeat(3, minmax(0, 1fr));
   gap: 0.6rem;
   align-items: center;
   margin: 1rem 0;
@@ -465,7 +496,14 @@ details.example .example-side > :last-child {
   color: var(--color-foreground-muted);
 }
 
+/* set by rules.js while filters from the URL wait for the whole table */
+.rules-filtering table.rules tbody {
+  display: none;
+}
+
+/* the widths come from the header, not the rows, so they hold while the rows stream in */
 table.rules {
+  table-layout: fixed;
   width: 100%;
   border-collapse: separate;
   border-spacing: 0;
@@ -480,6 +518,18 @@ table.rules th {
   color: var(--color-foreground-muted);
   padding: 0.5rem 0.6rem;
   border-bottom: 1px solid var(--color-background-border);
+}
+
+table.rules th.rule-code {
+  width: 5em;
+}
+
+table.rules th.rule-name {
+  width: 27%;
+}
+
+table.rules th.rule-fix {
+  width: 4em;
 }
 
 table.rules td {
@@ -526,10 +576,21 @@ table.rules tr.group-row td {
 
 @media (max-width: 63em) {
   .rule-filter {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(3, 1fr);
   }
 
   .rule-filter input {
+    grid-column: 1 / -1;
+  }
+}
+
+/* a phone has room for two lists side by side; the third takes a row of its own */
+@media (max-width: 30em) {
+  .rule-filter {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .rule-filter #rule-scope {
     grid-column: 1 / -1;
   }
 }
@@ -539,9 +600,13 @@ table.rules tr.group-row td {
     position: static;
   }
 
+  /* the column stays, as the group rows span all four, but takes no room */
   table.rules td.rule-name,
   table.rules th.rule-name {
-    display: none;
+    width: 0;
+    padding: 0;
+    overflow: hidden;
+    visibility: hidden;
   }
 
   .hero {
@@ -555,64 +620,59 @@ table.rules tr.group-row td {
   }
 }
 
-/* diagrams: mermaid scopes its own styles to each SVG, so these overrides need to win over them */
+/* diagrams: the build inlines each SVG, whose own styles mermaid scopes to it, so these overrides need to win over
+   them; they set only colors, which the build cannot know, as the label text was measured with the SVG's own fonts */
 
-/* mermaid sizes the block to the full width, so its padding and border must fit inside that width */
-pre.mermaid {
+/* the box spans the column, so its padding and border must fit inside that width */
+div.mermaid {
   box-sizing: border-box;
   margin: 1.2rem 0;
   padding: 1rem;
   border-radius: var(--simplint-radius);
   border: 1px solid var(--color-background-border);
   background: var(--color-background-secondary);
-  text-align: center;
 }
 
-/* diagrams scale with the column; cap them so a wide screen does not blow them up past reading size */
-pre.mermaid > svg {
+/* diagrams scale with the column; cap them so a wide screen does not blow them up past reading size, and the viewBox
+   gives their height as the page lays out */
+div.mermaid > svg {
   display: block;
+  width: 100%;
+  height: auto;
   margin: 0 auto;
   max-width: min(100%, 44rem) !important;
   max-height: 28rem;
 }
 
-pre.mermaid .node rect,
-pre.mermaid .node polygon {
+div.mermaid .node rect,
+div.mermaid .node polygon {
   stroke-width: 2px !important;
   filter: drop-shadow(0 4px 10px rgba(6, 45, 89, 0.18));
 }
 
-pre.mermaid .node rect {
+div.mermaid .node rect {
   rx: 10px;
   ry: 10px;
 }
 
-pre.mermaid .nodeLabel,
-pre.mermaid .label {
-  font-family: var(--font-stack) !important;
-  font-weight: 600;
-}
-
-pre.mermaid .edgeLabel {
+div.mermaid .edgeLabel {
   color: var(--color-foreground-primary) !important;
-  font-family: var(--font-stack) !important;
-  font-size: 0.85em;
 }
 
-pre.mermaid .edgeLabel,
-pre.mermaid .edgeLabel p,
-pre.mermaid .labelBkg {
+div.mermaid .edgeLabel,
+div.mermaid .edgeLabel p,
+div.mermaid .labelBkg {
   background-color: var(--color-background-secondary) !important;
 }
 
-pre.mermaid .flowchart-link,
-pre.mermaid .edgePath path {
+div.mermaid .flowchart-link,
+div.mermaid .edgePath path {
   stroke: var(--color-foreground-secondary) !important;
   stroke-width: 2px !important;
 }
 
-pre.mermaid marker path,
-pre.mermaid .arrowheadPath {
+div.mermaid marker path,
+div.mermaid .arrowheadPath {
   fill: var(--color-foreground-secondary) !important;
   stroke: var(--color-foreground-secondary) !important;
 }
@@ -641,18 +701,18 @@ html {
     max-width: calc(1600px - 18em);
   }
 
+  /* The contents column comes after the page in the markup, so it arrives last; the page keeps its room from the
+     start, as the template says whether the page has one, so the text does not rewrap when it arrives. */
   .content {
-    flex: 1 1 auto;
-    width: auto;
+    box-sizing: border-box;
+    flex: 0 0 auto;
+    width: calc(100% - var(--simplint-toc-width, 15em));
     max-width: none;
   }
 
-  /* the contents column takes only the width its entries need, up to furo's 15em, and gives the rest to the page */
   .toc-drawer {
     flex: 0 0 auto;
-    width: max-content;
-    min-width: 9em;
-    max-width: 15em;
+    width: var(--simplint-toc-width, 15em);
   }
 }
 
@@ -669,7 +729,7 @@ details.example .linenos {
   margin-right: 0.8em;
 }
 
-/* rules.js puts each numbered line in its own block: the number sits in a fixed gutter, and a line too long for the
+/* the build puts each numbered line in its own block: the number sits in a fixed gutter, and a line too long for the
    column wraps under its own code with the gutter left empty, so the numbers stay in step with the real lines */
 .example .code-line {
   display: block;
@@ -721,6 +781,11 @@ body[data-theme="light"] .highlight {
   border-radius: 0.35rem;
 }
 
+/* the wordmark carries its size in the markup, so its box has the final height before the image loads */
+.sidebar-logo {
+  height: auto;
+}
+
 /* an entry with an icon lays out as icon and text, so a wrapped title lines up under its text, not the icon */
 .sidebar-tree .reference[data-page] {
   display: flex;
@@ -740,6 +805,11 @@ body[data-theme="light"] .highlight {
   margin-right: 0.55em;
   background-color: currentColor;
   mask: var(--nav-icon) no-repeat center / contain;
+}
+
+/* a page without an icon of its own shows a plain page, not the solid box an empty mask leaves */
+.sidebar-tree .reference[data-page] {
+  --nav-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 3h8l4 4v14H6z'/%3E%3Cpath d='M14 3v4h4'/%3E%3C/svg%3E");
 }
 
 .sidebar-tree .reference[data-page="index"] {
@@ -882,22 +952,6 @@ body {
 ::placeholder {
   color: var(--color-foreground-muted);
   opacity: 1;
-}
-
-/* the diagram's fullscreen button ships a fixed gray at half opacity; follow the page's colors instead */
-.mermaid-container > button.mermaid-fullscreen-btn {
-  opacity: 1 !important;
-  color: var(--color-foreground-secondary);
-  background: var(--color-background-primary);
-  border-color: var(--color-foreground-border);
-  box-shadow: none;
-}
-
-.mermaid-container > button.mermaid-fullscreen-btn:hover {
-  color: var(--simplint-accent);
-  background: var(--color-background-primary);
-  border-color: var(--simplint-accent);
-  box-shadow: none;
 }
 
 /* Furo pads the table's scroll wrapper outside the column; keep it inside so a wide table scrolls instead */
