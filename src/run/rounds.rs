@@ -132,6 +132,9 @@ fn for_each_file<T: Send>(
     ensure_compatible(&indexed[..python.len()], resolved)?;
     let rules = rules_of(&indexed[..python.len()]);
     let parts = wanted_parts(rules);
+    if let Some(cache_dir) = cache_dir {
+        Caches::prepare(cache_dir);
+    }
     // The documentation walk reads files of its own, so it runs while the caches open and the facts are collected,
     // which on a warm run is most of what comes before the index.
     std::thread::scope(|scope| {
