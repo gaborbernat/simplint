@@ -1,9 +1,12 @@
 // The rename fix module-level naming rules share.
 
+use std::borrow::Cow;
+
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast as ast;
 use ruff_python_stdlib::builtins::is_python_builtin;
-use ruff_text_size::Ranged;
+use ruff_text_size::{Ranged, TextRange};
+use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::rules::edits::keep_debug_text;
@@ -20,7 +23,7 @@ pub fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
         return None;
     }
     let exports = checker.state().export_strings(checker);
-    if appears_in_strings(checker, old, exports) {
+    if appears_in_strings(checker, old) {
         return None;
     }
     // A name in a t-string keeps its source text, which a new spelling would change.
@@ -42,25 +45,38 @@ pub fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
 // The strings of other files count too, as a test or a generated template may look the name up by its spelling. A
 // file's own export list names the name without reaching it, so only its other strings and the strings of other files
 // block the rename.
-fn appears_in_strings(checker: &Checker, name: &str, exports: &[&ast::ExprStringLiteral]) -> bool {
-    let (mut own, mut own_text) = (false, false);
-    for (range, text) in checker.string_values() {
-        if contains_word(text, name) {
-            own = true;
-            own_text |= !exports.iter().any(|export| export.range().contains_range(*range));
-        }
-    }
+fn appears_in_strings(checker: &Checker, name: &str) -> bool {
+    let words = checker.state().string_words(checker);
     // A word is a run of letters, digits and underscores, so a name with any other character is never one.
-    name.chars().all(is_word_char) && (own_text || checker.project().string_word_count(name) > u32::from(own))
+    name.chars().all(is_word_char)
+        && (words.outside_exports.contains(name)
+            || checker.project().string_word_count(name) > u32::from(words.all.contains(name)))
 }
 
-// Searching for the word and checking the characters around each match is far cheaper than splitting the text into
-// words, and a match inside a longer word cannot hide a whole one, which starts after a separator.
-fn contains_word(text: &str, word: &str) -> bool {
-    text.match_indices(word).any(|(start, _)| {
-        !text[..start].chars().next_back().is_some_and(is_word_char)
-            && !text[start + word.len()..].chars().next().is_some_and(is_word_char)
-    })
+// The words of a file's strings, as runs of letters, digits and underscores, which is how a name appears in a string
+// that spells it. `outside_exports` holds those of the strings outside the export lists, which block a rename alone.
+#[derive(Default)]
+pub(super) struct StringWords {
+    all: FxHashSet<String>,
+    outside_exports: FxHashSet<String>,
+}
+
+impl StringWords {
+    pub(super) fn of(values: &[(TextRange, Cow<'_, str>)], exports: &[&ast::ExprStringLiteral]) -> Self {
+        let mut words = Self::default();
+        for (range, text) in values {
+            let outside = !exports.iter().any(|export| export.range().contains_range(*range));
+            for word in text.split(|char| !is_word_char(char)).filter(|word| !word.is_empty()) {
+                if outside && !words.outside_exports.contains(word) {
+                    words.outside_exports.insert(word.to_owned());
+                }
+                if !words.all.contains(word) {
+                    words.all.insert(word.to_owned());
+                }
+            }
+        }
+        words
+    }
 }
 
 fn is_word_char(char: char) -> bool {

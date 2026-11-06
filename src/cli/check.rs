@@ -16,7 +16,7 @@ use crate::cli::args::{CheckCommand, GlobalConfigArgs, suppression_flag};
 use crate::cli::printer::{Flags, Printer};
 use crate::cli::watch::watch;
 use crate::lint::registry::RuleSet;
-use crate::project::cache;
+use crate::project::{Ending, cache};
 use crate::run::{
     Diagnostics, Discovered, Mode, Resolved, add_suppressions, check_files, check_stdin, discover, linted_roots,
 };
@@ -101,10 +101,12 @@ pub(crate) fn check(cli: &CheckCommand, global_options: &GlobalConfigArgs) -> Re
     if cli.watch {
         return watch(cli, global_options, &files, resolved, use_cache, &printer, writer);
     }
+    // Only generated fixes keep their reports in the cache, so only then can the `full` text be kept with them.
+    let full = (use_cache && mode.fix.is_generate()).then(|| printer.full_display()).flatten();
     let mut diagnostics = if is_stdin {
         check_standard_input(cli, &resolved, &mode)?
     } else {
-        check_files(&files, &resolved, &mode, use_cache)?
+        check_files(&files, &resolved, &mode, use_cache, full.as_ref(), Ending::Exit)?
     };
     diagnostics.inner.sort_by(Diagnostic::ruff_start_ordering);
     // Files are linted in parallel, so their diffs wait here to print in the order the report sorts files.
@@ -122,7 +124,10 @@ pub(crate) fn check(cli: &CheckCommand, global_options: &GlobalConfigArgs) -> Re
         printer.write_once(&diagnostics, &mut writer)?;
     }
     writer.flush()?;
-    Ok(exit_status(cli, &diagnostics, fix_only))
+    let status = exit_status(cli, &diagnostics, fix_only);
+    // The output is out, so the run's results go to the exit rather than being freed one by one.
+    Ending::Exit.end(diagnostics);
+    Ok(status)
 }
 
 // The source comes from standard input, which is linted as the file it stands for, and whatever the fixes or the diff

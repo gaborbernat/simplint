@@ -14,7 +14,7 @@ use ruff_text_size::{Ranged, TextRange};
 use super::computed_reads::ComputedReads;
 use super::facts::{FromImport, qualified};
 use super::index::FileId;
-use crate::syntax::{attribute_call, is_main_guard};
+use crate::syntax::is_main_guard;
 use crate::syntax::{dataclass_decorator, keyword_is_true, module_statements};
 
 // What `dataclass-kw-only` needs to rewrite every positional call of a dataclass it makes keyword-only: the dataclasses
@@ -246,7 +246,7 @@ impl Constructors {
             methods,
             attributes,
             definitions,
-            attribute_loads: attribute_loads(body),
+            attribute_loads: BTreeMap::new(),
             computed_reads: ComputedReads::default(),
         }
     }
@@ -262,7 +262,11 @@ pub(crate) struct CallContexts {
 
 impl CallContexts {
     pub(crate) fn of(body: &[Stmt], is_main: bool) -> Self {
-        Self { discarded: discarded_calls(body), entry: entry_blocks(body, is_main) }
+        Self::new(discarded_calls(body), body, is_main)
+    }
+
+    pub(crate) fn new(discarded: FxHashSet<TextRange>, body: &[Stmt], is_main: bool) -> Self {
+        Self { discarded, entry: entry_blocks(body, is_main) }
     }
 
     // Whether the call's value is dropped, and whether the call sits in code that runs the module as a program.
@@ -341,24 +345,6 @@ fn is_suppressed(
         .comments_in_range(source.full_lines_range(call.range()))
         .iter()
         .any(|comment| suppresses_rewrite(&source[*comment]))
-}
-
-// The attribute names the body reads, with how often: `obj.name`, `obj.name(...)` and `getattr(obj, "name")` alike.
-fn attribute_loads(body: &[Stmt]) -> BTreeMap<String, u32> {
-    let mut reads = crate::syntax::ExprCollector::new(|expr: &Expr| {
-        if let Some(ast::ExprAttribute { attr, ctx, .. }) = expr.as_attribute_expr() {
-            return matches!(ctx, ast::ExprContext::Load).then(|| attr.to_string());
-        }
-        // Unlike `ModuleReads`, `hasattr` is no load: it only probes for the name.
-        let (_, name) = attribute_call(expr, &["getattr"])?;
-        Some(name.as_string_literal_expr()?.value.to_str().to_owned())
-    });
-    reads.visit_body(body);
-    let mut loads = BTreeMap::new();
-    for name in reads.found {
-        *loads.entry(name).or_default() += 1;
-    }
-    loads
 }
 
 fn comment_ranges(tokens: &Tokens) -> CommentRanges {

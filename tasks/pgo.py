@@ -136,8 +136,8 @@ def read_manifest(path: Path) -> list[Pinned]:
 
 
 def _train(binary: Path, work: Path, cache: Path, manifest: Path) -> None:
-    # Record a profile: run the instrumented simplint in check and fix mode over the sdists, then merge the raw
-    # profiles.
+    # Record a profile: run the instrumented simplint over the sdists in check and fix mode without a cache, then twice
+    # with one, and merge the raw profiles.
     #
     # The merge uses the active Rust toolchain's llvm-profdata (component llvm-tools-preview), whose LLVM must match the
     # compiler that reads the profile. The corpus and profiles directories must not exist yet, so a stale run cannot
@@ -155,8 +155,10 @@ def _train(binary: Path, work: Path, cache: Path, manifest: Path) -> None:
     for sdist in read_manifest(manifest):
         extract(download(sdist, cache), corpus)
     environment = {**os.environ, "LLVM_PROFILE_FILE": str(profiles / "simplint-%m-%p.profraw")}
-    check = [str(binary), "check", "--no-cache", "--config", str(_ROOT / "tasks" / "pgo.toml")]
-    for flags in ([], ["--fix", "--unsafe-fixes", "--diff"]):
+    check = [str(binary), "check", "--config", str(_ROOT / "tasks" / "pgo.toml")]
+    cached = ["--cache-dir", str(work / "cache")]
+    # The first cached run fills the cache and the second trains the warm path, which reads every result back from it.
+    for flags in (["--no-cache"], ["--no-cache", "--fix", "--unsafe-fixes", "--diff"], cached, cached):
         command = [*check, *flags, str(corpus)]
         with _step(" ".join(["simplint check", *flags])):
             status = subprocess.run(command, stdout=subprocess.DEVNULL, env=environment, check=False).returncode

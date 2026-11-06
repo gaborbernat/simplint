@@ -171,6 +171,15 @@ impl<'a> Collector<'a, '_> {
         let Some(written) = UnqualifiedName::from_expr(&call.func) else {
             return false;
         };
+        // Qualifying keeps the last segment, except for a bare name bound by an import, as `from pickle import dumps as
+        // write` makes `write` mean `pickle.dumps`. Other calls cannot be a pickle function, so they skip qualifying.
+        let last = match written.segments() {
+            [name] => self.aliases.get(name).map_or(*name, |module| module.rsplit('.').next().unwrap_or_default()),
+            segments => segments.last().copied().unwrap_or_default(),
+        };
+        if !matches!(last, "dumps" | "dump" | "Pickler") {
+            return false;
+        }
         let position = match self.qualified(&written.segments().join(".")).as_str() {
             "pickle.dumps" | "pickle.Pickler" => 1,
             "pickle.dump" => 2,

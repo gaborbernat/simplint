@@ -58,6 +58,9 @@ pub struct Diagnostics {
     pub inner: Vec<Diagnostic>,
     pub fixed: FixMap,
     pub diffs: Vec<(String, String)>,
+    // The `full` text of some files' diagnostics, by the name the output shows each file by, when the cache held or
+    // rendered it.
+    pub rendered: FxHashMap<String, Vec<u8>>,
 }
 
 impl Diagnostics {
@@ -70,7 +73,7 @@ impl Diagnostics {
         }
         let file = SourceFileBuilder::new(path.to_string_lossy(), "").finish();
         let diagnostic = IOError { message }.into_diagnostic(TextRange::default(), &file);
-        Self { inner: vec![diagnostic], fixed: FixMap::default(), diffs: Vec::new() }
+        Self { inner: vec![diagnostic], ..Self::default() }
     }
 }
 
@@ -88,6 +91,7 @@ impl AddAssign for Diagnostics {
         self.inner.extend(other.inner);
         self.fixed += other.fixed;
         self.diffs.extend(other.diffs);
+        self.rendered.extend(other.rendered);
     }
 }
 
@@ -167,7 +171,11 @@ fn fix_path(path: &Path, linter: &Linter, mode: &Mode, settled: Option<RuleSet>)
         }
     }
     let fixed = FixMap::from_iter([(relativize_path(path), fixed)]);
-    Ok(Linting { diagnostics: Diagnostics { inner: diagnostics, fixed, diffs }, settled, noqa_rows })
+    Ok(Linting {
+        diagnostics: Diagnostics { inner: diagnostics, fixed, diffs, ..Diagnostics::default() },
+        settled,
+        noqa_rows,
+    })
 }
 
 // Replaces a file read as `original` with `fixed`. Writing a temporary file next to it and renaming that over it never
@@ -209,6 +217,7 @@ pub(crate) fn lint_stdin(path: &Path, source: &str, linter: &Linter, mode: &Mode
             inner: diagnostics,
             fixed: FixMap::from_iter([(relativize_path(path), fixed)]),
             diffs: Vec::new(),
+            rendered: FxHashMap::default(),
         },
         output,
     }

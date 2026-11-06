@@ -1,6 +1,7 @@
 // A port of Ruff's `printer.rs`, which the `ruff` crate keeps private, so the summary lines, statistics and fix summary
 // read the same as `ruff check`'s.
 use std::cmp::Reverse;
+use std::hash::Hasher;
 use std::io::Write;
 
 use anyhow::{Result, bail};
@@ -8,6 +9,7 @@ use bitflags::bitflags;
 use colored::Colorize;
 use itertools::{Itertools, iterate};
 use rayon::prelude::*;
+use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_db::diagnostic::render::{Renderer, SarifRenderer};
 use ruff_db::diagnostic::{
     Diagnostic, DiagnosticStylesheet, DisplayDiagnosticConfig, LintName, RuleMetadata, SecondaryCode, Severity,
@@ -22,6 +24,7 @@ use ruff_linter::settings::flags;
 use ruff_linter::settings::types::{OutputFormat, UnsafeFixes};
 use rustc_hash::FxHashMap;
 use serde::Serialize;
+use supports_hyperlinks::supports_hyperlinks;
 
 use crate::lint::registry::Rule;
 use crate::run::{Diagnostics, FixMap, Mode};
@@ -52,7 +55,7 @@ impl ExpandedStatistics<'_> {
     }
 }
 
-// Chunks render in parallel; a window bounds the rendered output held in memory before it is written.
+// Diagnostics are rendered in chunks of this many, in parallel.
 const FULL_CHUNK: usize = 64;
 const FULL_WINDOW: usize = FULL_CHUNK * 256;
 
@@ -89,45 +92,85 @@ impl Printer<'_> {
         Ok(())
     }
 
+    fn display_config(&self, show_fix_status: bool) -> DisplayDiagnosticConfig {
+        DisplayDiagnosticConfig::new("simplint")
+            .preview(self.preview)
+            .prefer_rule_codes(self.prefer_rule_codes)
+            .hide_severity(true)
+            .color(colored::control::SHOULD_COLORIZE.should_colorize())
+            .with_show_fix_status(show_fix_status)
+            .with_fix_applicability(self.mode.unsafe_fixes.required_applicability())
+    }
+
+    // The text of a file's diagnostics in `full` output, for the cache to keep, when the output is `full` and the run
+    // generates fixes only. `None` when the working directory cannot be read, which leaves the text to the printer.
+    pub fn full_display(&self) -> Option<FullDisplay> {
+        if self.format != OutputFormat::Full {
+            return None;
+        }
+        let cwd = std::env::current_dir().ok()?;
+        let color = colored::control::SHOULD_COLORIZE.should_colorize();
+        let required = self.mode.unsafe_fixes.required_applicability();
+        let mut hasher = CacheKeyHasher::new();
+        self.preview.cache_key(&mut hasher);
+        self.prefer_rule_codes.cache_key(&mut hasher);
+        color.cache_key(&mut hasher);
+        // Ruff picks hyperlinks from the terminal only when it colors the output.
+        (color && supports_hyperlinks()).cache_key(&mut hasher);
+        format!("{required:?}").cache_key(&mut hasher);
+        cwd.to_string_lossy().cache_key(&mut hasher);
+        Some(FullDisplay { config: self.display_config(false), base: hasher.finish() })
+    }
+
     fn render(
         &self,
         diagnostics: &Diagnostics,
         fixables: Option<&FixableStatistics>,
         writer: &mut dyn Write,
     ) -> Result<()> {
-        let config = DisplayDiagnosticConfig::new("simplint")
-            .preview(self.preview)
-            .prefer_rule_codes(self.prefer_rule_codes)
-            .hide_severity(true)
-            .color(colored::control::SHOULD_COLORIZE.should_colorize())
-            .with_show_fix_status(show_fix_status(self.mode.fix, fixables))
-            .with_fix_applicability(self.mode.unsafe_fixes.required_applicability());
+        let config = self.display_config(show_fix_status(self.mode.fix, fixables));
         let notebooks = FxHashMap::default();
         let context = RenderContext::new(&notebooks);
         let mut rendered = Vec::new();
         match self.format {
+            // Files whose `full` text the cache held are written as they stand, the rest render as they did.
+            OutputFormat::Full if !diagnostics.rendered.is_empty() => {
+                write_full(&config, &context, &diagnostics.inner, &diagnostics.rendered, writer)?;
+                return Ok(());
+            }
             // Ruff's SARIF output describes Ruff's rules; simplint's own rules take their place.
             OutputFormat::Sarif => SarifRenderer::new(&context, &config, rule_metadata(), env!("CARGO_PKG_VERSION"))
                 .write(&mut rendered, &diagnostics.inner)?,
             OutputFormat::Rdjson => {
                 render_diagnostics(&mut rendered, self.format, &config, &context, &diagnostics.inner)?;
             }
-            // Ruff's full renderer takes each diagnostic on its own, and the diff of a fix that spans a whole module,
-            // such as a rename, is slow to render, so chunks render in parallel. A window of chunks at a time bounds
-            // the output held in memory, and each window is written before the next one renders.
-            OutputFormat::Full => {
-                for window in diagnostics.inner.chunks(FULL_WINDOW) {
-                    let chunks = window
-                        .par_chunks(FULL_CHUNK)
-                        .map(|chunk| {
-                            let mut buffer = Vec::new();
-                            render_diagnostics(&mut buffer, self.format, &config, &context, chunk).map(|()| buffer)
-                        })
-                        .collect::<std::io::Result<Vec<_>>>()?;
-                    for chunk in chunks {
-                        writer.write_all(&chunk)?;
-                    }
+            // Renderers that take each diagnostic on its own write their chunks in order. The JSON array is the one
+            // format whose chunks need brackets and commas around them.
+            OutputFormat::Full
+            | OutputFormat::Concise
+            | OutputFormat::JsonLines
+            | OutputFormat::Github
+            | OutputFormat::Pylint
+            | OutputFormat::Azure => {
+                for chunk in render_chunks(self.format, &config, &context, &diagnostics.inner) {
+                    writer.write_all(&chunk?)?;
                 }
+                return Ok(());
+            }
+            OutputFormat::Json if !diagnostics.inner.is_empty() => {
+                writer.write_all(b"[\n")?;
+                for (at, chunk) in render_chunks(self.format, &config, &context, &diagnostics.inner).enumerate() {
+                    let chunk = chunk?;
+                    let elements = chunk
+                        .strip_prefix(b"[\n")
+                        .and_then(|rest| rest.strip_suffix(b"\n]"))
+                        .expect("ruff renders each chunk of a JSON report as an array");
+                    if at > 0 {
+                        writer.write_all(b",\n")?;
+                    }
+                    writer.write_all(elements)?;
+                }
+                writer.write_all(b"\n]")?;
                 return Ok(());
             }
             _ => {
@@ -269,6 +312,95 @@ impl Printer<'_> {
         writer.flush()?;
         Ok(())
     }
+}
+
+// Diagnostics render in parallel chunks, which come back in order, a window of them at a time: a window bounds the
+// rendered output held in memory, and each window is written before the next one renders.
+fn render_chunks<'a>(
+    format: OutputFormat,
+    config: &'a DisplayDiagnosticConfig,
+    context: &'a RenderContext<'a>,
+    diagnostics: &'a [Diagnostic],
+) -> impl Iterator<Item = std::io::Result<Vec<u8>>> + 'a {
+    diagnostics.chunks(FULL_WINDOW).flat_map(move |window| {
+        window
+            .par_chunks(FULL_CHUNK)
+            .map(|chunk| {
+                let mut buffer = Vec::new();
+                render_diagnostics(&mut buffer, format, config, context, chunk).map(|()| buffer)
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+    })
+}
+
+// The `full` settings a file's text is valid under: the display config and a digest of what else the text depends on.
+// A file's text needs no run-wide state: the fix marker shows only on a diagnostic whose fix applies, and the run has
+// such a fix only when one of its files does.
+pub struct FullDisplay {
+    config: DisplayDiagnosticConfig,
+    base: u64,
+}
+
+impl FullDisplay {
+    // The key a file's text is stored under, given the name the output shows the file by.
+    pub fn key(&self, name: &str) -> u64 {
+        let mut hasher = CacheKeyHasher::new();
+        self.base.cache_key(&mut hasher);
+        name.cache_key(&mut hasher);
+        hasher.finish()
+    }
+
+    // The `full` text of one file's diagnostics, in the order the report sorts them.
+    pub fn render(&self, diagnostics: &[Diagnostic]) -> Vec<u8> {
+        let mut sorted = diagnostics.to_vec();
+        sorted.sort_by(Diagnostic::ruff_start_ordering);
+        let fixable = sorted.iter().any(|diagnostic| diagnostic.has_applicable_fix(self.config.fix_applicability()));
+        let config = self.config.clone().with_show_fix_status(fixable);
+        let notebooks = FxHashMap::default();
+        let context = RenderContext::new(&notebooks);
+        let mut buffer = Vec::new();
+        render_diagnostics(&mut buffer, OutputFormat::Full, &config, &context, &sorted)
+            .expect("writing to a vector cannot fail");
+        buffer
+    }
+}
+
+// Writes the diagnostics in order. A file whose text is known is written as it is, the others render in parallel
+// chunks, as they do when no text is known.
+fn write_full(
+    config: &DisplayDiagnosticConfig,
+    context: &RenderContext,
+    diagnostics: &[Diagnostic],
+    rendered: &FxHashMap<String, Vec<u8>>,
+    writer: &mut dyn Write,
+) -> Result<()> {
+    let mut pending = 0;
+    let mut start = 0;
+    for file in diagnostics.chunk_by(|left, right| file_name(left) == file_name(right)) {
+        let end = start + file.len();
+        if let Some(text) = rendered.get(file_name(&file[0])) {
+            for chunk in render_chunks(OutputFormat::Full, config, context, &diagnostics[pending..start]) {
+                writer.write_all(&chunk?)?;
+            }
+            writer.write_all(text)?;
+            pending = end;
+        }
+        start = end;
+    }
+    for chunk in render_chunks(OutputFormat::Full, config, context, &diagnostics[pending..]) {
+        writer.write_all(&chunk?)?;
+    }
+    Ok(())
+}
+
+// The name a diagnostic's file is shown by, which the diagnostics of one file share.
+fn file_name(diagnostic: &Diagnostic) -> &str {
+    diagnostic
+        .primary_annotation()
+        .and_then(|annotation| annotation.get_span().as_ruff_file())
+        .expect("simplint reports a diagnostic on a Ruff source file")
+        .name()
 }
 
 fn plural(count: usize, suffix: &str) -> &str {

@@ -2,10 +2,12 @@ mod api_reached;
 mod module_reads;
 mod names;
 mod runtime;
+mod scan;
 mod statements;
 mod visitor;
 
 use std::hash::Hasher;
+use std::mem::take;
 use std::path::Path;
 
 use ruff_cache::{CacheKey, CacheKeyHasher};
@@ -16,13 +18,13 @@ use ruff_text_size::{TextRange, TextSize};
 
 use self::api_reached::api_reached;
 use self::module_reads::module_reads;
-use self::names::{global_names, string_words};
+use self::names::string_words;
 use self::runtime::{Runs, falsy_constants};
+use self::scan::Scan;
 use self::statements::statements;
 pub(crate) use self::statements::{Statement, statement_texts};
 use self::visitor::{FactVisitor, grouped, top_level_bindings};
 pub(crate) use self::visitor::{FromImport, ImportBinding, qualified};
-use super::computed_reads::ComputedReads;
 use super::constructors::{CallContexts, Constructors};
 use super::receivers::{AttributeWrites, module_name};
 use crate::syntax::{Exports, dunder_all, module_statements};
@@ -155,7 +157,8 @@ impl FileFacts {
         };
         let attribute_writes =
             AttributeWrites::collect(&parsed.syntax().body, &imports.aliases, &module_name(module_path, path));
-        let constructors = constructors(path, (&source, &parsed), &imports, suppresses_rewrite, parts);
+        let mut scan = Scan::of(&parsed.syntax().body, parts);
+        let constructors = constructors(path, (&source, &parsed), &imports, suppresses_rewrite, parts, &mut scan);
         let listed = dunder_all(&parsed.syntax().body);
         let api_reached = match &listed {
             Exports::Listed(names) => api_reached(&parsed.syntax().body, names),
@@ -183,7 +186,7 @@ impl FileFacts {
             references: grouped(imports.references),
             declared,
             assigned_attributes: imports.assigned_attributes,
-            module_reads: module_reads(&parsed.syntax().body),
+            module_reads: module_reads(&parsed.syntax().body, &scan.modules),
             base_classes: imports.base_classes,
             star_imports: imports.stars.into_iter().collect(),
             exports,
@@ -206,12 +209,8 @@ impl FileFacts {
             star_sites: imports.star_sites,
             statements: if parts.has(Parts::STATEMENTS) { statements(&parsed, &source) } else { Vec::new() },
             parts,
-            string_words: if parts.has(Parts::STRING_WORDS) {
-                string_words(&parsed.syntax().body)
-            } else {
-                String::new()
-            },
-            global_names: if parts.has(Parts::GLOBAL_NAMES) { global_names(&parsed.syntax().body) } else { Vec::new() },
+            string_words: string_words(scan.words),
+            global_names: scan.global_names.into_iter().collect(),
             source_digest: source_digest(&source),
         })
     }
@@ -240,6 +239,12 @@ fn declared_names(stmt: &Stmt) -> Vec<String> {
 // a walk of the file or allocations for every name. Facts cached without a part a later run reads are collected again.
 #[derive(Clone, Copy, Default, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct Parts(u16);
+
+impl CacheKey for Parts {
+    fn cache_key(&self, state: &mut CacheKeyHasher) {
+        self.0.cache_key(state);
+    }
+}
 
 impl Parts {
     // The statements `duplicate-code` compares.
@@ -291,10 +296,11 @@ fn constructors(
     imports: &FactVisitor,
     suppresses_rewrite: &dyn Fn(&str) -> bool,
     parts: Parts,
+    scan: &mut Scan<'_>,
 ) -> Constructors {
     let body = &parsed.syntax().body;
     let contexts = if parts.has(Parts::CALL_CONTEXTS) {
-        CallContexts::of(body, path.file_name().is_some_and(|name| name == "__main__.py"))
+        CallContexts::new(take(&mut scan.discarded), body, path.file_name().is_some_and(|name| name == "__main__.py"))
     } else {
         CallContexts::default()
     };
@@ -307,9 +313,8 @@ fn constructors(
         suppresses_rewrite,
         &contexts,
     );
-    if parts.has(Parts::COMPUTED_READS) {
-        constructors.computed_reads = ComputedReads::of(body);
-    }
+    constructors.attribute_loads = take(&mut scan.attribute_loads);
+    constructors.computed_reads = take(&mut scan.computed_reads);
     constructors
 }
 

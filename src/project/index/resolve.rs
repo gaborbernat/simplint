@@ -15,9 +15,9 @@ use ty_module_resolver::{
     resolve_real_module_confident,
 };
 
-use crate::project::FileFacts;
 use crate::project::constructors::NameUse;
 use crate::project::facts::{ImportBinding, ImportSite, ModuleNames};
+use crate::project::{Ending, FileFacts};
 
 use super::{FileId, FileIds, SearchRoots};
 
@@ -53,7 +53,7 @@ impl ImportResolver {
         })
     }
 
-    // Drops what the file's module names resolved to, as a fix rewrote the file.
+    // Drops what the file's module names resolved to, as a fix rewrote the file. The path is absolute.
     pub fn forget(&mut self, path: &Path) {
         if let Some(id) = self.files.get(path) {
             self.modules.remove(&id);
@@ -61,16 +61,16 @@ impl ImportResolver {
     }
 
     // Drops every file's resolved module names, for a run that indexes no more files after this.
-    pub fn release(&mut self) {
-        self.modules = FxHashMap::default();
+    pub fn release(&mut self, ending: Ending) {
+        ending.end(std::mem::take(&mut self.modules));
     }
 
-    // Resolves the files it has not resolved yet, and returns the id of each file.
+    // Resolves the files it has not resolved yet, and returns the id of each file. The paths are absolute.
     pub(super) fn resolve(&mut self, files: &[(&Path, &FileFacts)]) -> Vec<FileId> {
         const GROUP: usize = 64;
         // A `name-stubs` package provides the module `name`, so its stripped name counts too.
         for (path, _) in files {
-            for part in &normalized(path) {
+            for part in *path {
                 let name = Path::new(part).file_stem().and_then(|stem| stem.to_str());
                 self.names.extend(name.map(|name| name.strip_suffix("-stubs").unwrap_or(name).to_owned()));
             }
@@ -79,16 +79,16 @@ impl ImportResolver {
         // The files of one directory share the resolution of each module name: a name the search paths do not hold
         // resolves from the directories above the importing file, which files of one directory have in common. Large
         // directories are split, so one of them does not run as a single job.
-        let mut directories: FxHashMap<PathBuf, Vec<usize>> = FxHashMap::default();
+        let mut directories: FxHashMap<&Path, Vec<usize>> = FxHashMap::default();
         for (index, (path, _)) in files.iter().enumerate() {
             if !self.modules.contains_key(&ids[index]) {
-                let directory = normalized(path).parent().unwrap_or(Path::new("")).to_path_buf();
+                let directory = path.parent().unwrap_or(Path::new(""));
                 directories.entry(directory).or_default().push(index);
             }
         }
         let groups: Vec<&[usize]> = directories.values().flat_map(|group| group.chunks(GROUP)).collect();
         let (python_version, paths, names) = (self.python_version, &self.paths, &self.names);
-        let run_paths: FxHashSet<PathBuf> = files.iter().map(|(path, _)| normalized(path)).collect();
+        let run_paths: FxHashSet<PathBuf> = files.iter().map(|(path, _)| path.to_path_buf()).collect();
         let run = RunFiles { names, paths: &run_paths };
         // The database is not `Sync`, so each worker resolves with its own clone, which shares the cached results.
         let fresh: Vec<Vec<(FileId, ModuleFacts<PathBuf>)>> = groups
@@ -201,7 +201,7 @@ impl ModuleFacts<PathBuf> {
         run: RunFiles,
         cache: &RefCell<FxHashMap<&'f str, Option<PathBuf>>>,
     ) -> Self {
-        let own = normalized(path);
+        let own = path.to_path_buf();
         let importing =
             SystemPathBuf::from_path_buf(own.clone()).ok().and_then(|path| system_path_to_file(db, path).ok());
         // The files of a directory name most modules several times, in imports, references and dataclass uses.
