@@ -8,20 +8,27 @@ on:
         type: choice
         options: [auto, major, minor, patch]
         default: auto
+  workflow_call:
+    inputs:
+      dry-run:
+        description: Assemble the release without pushing, for the pull request gate
+        type: boolean
+        required: true
 permissions: {}
 concurrency:
-  group: prepare-release
+  group: prepare-release${{ inputs.dry-run && format('-dry-run-{0}', github.ref) || '' }}
   cancel-in-progress: false
 jobs:
   prepare:
     name: 🏷️ Prepare release
     if: github.repository == 'gaborbernat/simplint'
-    uses: tox-dev/github-workflows/.github/workflows/prepare-release-creator.yaml@13381289334b15375958be7f7438f3c3d860e575 # 6.5.5
+    uses: tox-dev/github-workflows/.github/workflows/prepare-release-creator.yaml@2a3b863f4563ce9891d2cee1ed381b6f82654836 # 6.6.0
     permissions:
       contents: read
       pull-requests: read
     with:
-      bump: ${{ inputs.bump }}
+      bump: ${{ inputs.bump || 'auto' }}
+      dry-run: ${{ inputs.dry-run == true }}
       tag-format: "{version}"
       annotated: true
       cargo-set-version: true
