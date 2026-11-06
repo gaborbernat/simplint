@@ -86,11 +86,14 @@ fn file_level_noqa_with_space_before_colon_silences_long_comment() {
 }
 
 #[test]
-fn blanket_file_level_noqa_keeps_its_own_report() {
-    let root = project(&[("module.py", "# ruff: noqa\nx = 1\n")]);
+fn blanket_file_level_noqa_keeps_its_reason_report() {
+    let root = project(&[
+        ("pyproject.toml", "[tool.ruff.lint]\nselect = [\"PGH004\"]\n"),
+        ("module.py", "# ruff: noqa\nx = 1\n"),
+    ]);
     assert_eq!(
         check(root.path(), &["--select", "SMP101,SMP003,SMP004"]).1,
-        "module.py:1:1: SMP003 Suppression comment gives no reason; add one after the codes\nmodule.py:1:1: SMP004 `# ruff: noqa` suppresses every error in the file; name the codes, as in `# ruff: noqa: CODE`\nFound 2 errors.\n"
+        "module.py:1:1: SMP003 Suppression comment gives no reason; add one after the codes\nFound 1 error.\n"
     );
 }
 

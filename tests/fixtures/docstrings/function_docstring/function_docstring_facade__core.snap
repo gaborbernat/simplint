@@ -2,7 +2,7 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-19:5 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+23:5 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
 --- fixed (1 applied, 0 remaining) ---
 from ._helpers import helper
 
@@ -12,6 +12,10 @@ class Engine:
         helper()
 
     def _stop(self) -> None: ...
+
+    @property
+    def ready(self) -> bool:
+        return True
 
     class Settings:
         def load(self) -> None: ...

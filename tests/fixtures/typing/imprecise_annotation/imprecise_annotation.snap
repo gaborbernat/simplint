@@ -12,3 +12,4 @@ expression: "lint_fixture(rule, fixture, target_version)"
 66:10 SMP602 `Any` accepts any value and turns off type checking for it; use a precise type
 67:12 SMP602 `Any` accepts any value and turns off type checking for it; use a precise type
 71:16 SMP602 `object` annotation; use the precise type
+104:30 SMP602 `Any` accepts any value and turns off type checking for it; use a precise type

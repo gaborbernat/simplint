@@ -18,6 +18,8 @@ use crate::common;
 #[test_case("undocumented-public-api", "undocumented_public_api.py" ; "undocumented_public_api")]
 #[test_case("undocumented-public-api", "undocumented_public_api_imported.py" ; "undocumented_public_api_imported")]
 #[test_case("undocumented-public-api", "undocumented_public_api_type_alias.py" ; "undocumented_public_api_type_alias")]
+#[test_case("undocumented-public-api", "undocumented_public_api_ruff_overlap.py" ; "undocumented_public_api_ruff_overlap")]
+#[test_case("undocumented-public-api", "undocumented_public_api_all_forms.py" ; "undocumented_public_api_all_forms")]
 #[test_case("undocumented-public-api", "function_docstring_dynamic.py" ; "undocumented_public_api_dynamic_all")]
 #[test_case("undocumented-public-api", "tests/test_module_docstring.py" ; "undocumented_public_api_test_module")]
 #[test_case("undocumented-public-api", "facade/_core.py" ; "undocumented_public_api_reexported_through_all")]
@@ -169,4 +171,25 @@ fn alias_fix_composes(source: &str, fixed: &str) {
     ]);
     common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP910,SMP917,SMP923"]);
     assert_eq!(common::read(root.path(), "demo.py"), fixed);
+}
+
+// Ruff's D101, D102, D103 and D106 report the undocumented public definitions of their kind, which SMP903 leaves to them
+// while the project's Ruff configuration runs that code.
+#[test_case("def f() -> None:\n    pass\n", "D103", "Public function `f`" ; "function")]
+#[test_case("class C:\n    pass\n", "D101", "Public class `C`" ; "class")]
+#[test_case("class C:\n    class N:\n        pass\n", "D106", "Public class `C.N`" ; "nested_class")]
+#[test_case("class C:\n    def m(self) -> None:\n        pass\n", "D102", "Public method `C.m`" ; "method")]
+fn undocumented_public_api_follows_ruff_pydocstyle(source: &str, code: &str, fragment: &str) {
+    for selected in [false, true] {
+        let select = if selected { format!("\"{code}\"") } else { String::new() };
+        let root = common::project(&[
+            (
+                "pyproject.toml",
+                &format!("[tool.simplint]\nproject-kind = \"library\"\n[tool.ruff.lint]\nselect = [{select}]\n"),
+            ),
+            ("module.py", source),
+        ]);
+        let stdout = common::check(root.path(), &["--select", "SMP903"]).1;
+        assert_eq!(stdout.contains(fragment), !selected, "{stdout}");
+    }
 }

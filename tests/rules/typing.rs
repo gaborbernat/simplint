@@ -24,3 +24,20 @@ use crate::common;
 fn rule(rule: &str, fixture: &str, target_version: &str) {
     common::assert_rule_snapshot(rule, fixture, target_version);
 }
+
+// Ruff's ANN401 reports an `Any` that is a whole annotation, or starts one as in `Any | None`, which SMP602 leaves to it
+// while the project's Ruff configuration runs it.
+#[test_case("def f(value: Any | None) -> None:\n    print(value)\n", "ANN401", "`Any` accepts any value" ; "parameter")]
+#[test_case("def f(value: Any) -> None:\n    print(value)\n", "ANN401", "`Any` accepts any value" ; "whole_parameter")]
+#[test_case("def f() -> Any:\n    return 1\n", "ANN401", "`Any` accepts any value" ; "whole_return")]
+fn imprecise_annotation_follows_ruff_any_type(source: &str, code: &str, fragment: &str) {
+    for selected in [false, true] {
+        let select = if selected { format!("\"{code}\"") } else { String::new() };
+        let root = common::project(&[
+            ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [{select}]\n")),
+            ("module.py", &format!("from typing import Any\n\n{source}")),
+        ]);
+        let stdout = common::check(root.path(), &["--select", "SMP602"]).1;
+        assert_eq!(stdout.contains(fragment), !selected, "{stdout}");
+    }
+}

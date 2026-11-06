@@ -4,8 +4,10 @@ makes a test look like it verifies more than it does.
 ## Why is this bad?
 
 An assertion on a truthy constant can never fail, so it checks nothing and makes a test look like it verifies more than
-it does. A parenthesized `assert (check, "message")` is a non-empty tuple and falls in the same trap; Ruff reports that
-case as [assert-tuple](https://docs.astral.sh/ruff/rules/assert-tuple/).
+it does. A parenthesized `assert (check, "message")` is a non-empty tuple and falls in the same trap. Ruff reports every
+non-empty tuple as [assert-tuple](https://docs.astral.sh/ruff/rules/assert-tuple/); this rule reports only the
+two-element tuple without a message that it can rewrite, and leaves the others to Ruff when the project's Ruff
+configuration selects assert-tuple.
 
 ## Example
 
@@ -137,6 +139,20 @@ Truthiness is judged the way Ruff judges it. These are truthy constants:
   assert f"{value}"
   ```
 
+- **A tuple test that is not a two-element tuple without a message**, such as `(1, 2, 3)` or `(True, *values)`: Ruff's
+  [assert-tuple](https://docs.astral.sh/ruff/rules/assert-tuple/) reports every non-empty tuple, and this rule has no
+  fix for the others. It leaves them to Ruff only when the project's Ruff configuration selects assert-tuple. Ruff's own
+  suppressions of it, through `per-file-ignores` or `noqa`, are respected too.
+
+  ```toml config
+  [tool.ruff.lint]
+  select = ["F631"]
+  ```
+
+  ```python ok
+  assert (1, 2, 3)
+  ```
+
 - **A computation that reads a name or calls a function**, such as `assert value + 1 == 2`: the value can change, so the
   rule evaluates only literals.
 
@@ -199,16 +215,7 @@ The fix depends on the constant:
       assert (value async for value in values)
   ```
 
-- Other tuples get no fix, including a tuple with a starred element, which has no meaning outside the brackets.
-
-  ```python report
-  assert (1, 2, 3)
-  ```
-
-  ```python report
-  values = ["message"]
-  assert (True, *values)
-  ```
+- Other tuples get no fix, so they are left to Ruff's assert-tuple when it runs; see the exceptions above.
 
 - For a `format` or `%` template the fix deletes the assertion **unsafely**: its fields may not fit its arguments, and
   the deletion would hide the error that raises. Any other constant is deleted safely, since its assertion never fails.
@@ -267,7 +274,9 @@ flowchart TD
     assertion["assert on a<br/>truthy constant"] --> tuple{"a tuple?"}
     tuple -->|yes| pair{"two elements,<br/>no message?"}
     pair -->|yes| unwrap["unsafe: assert check, message"]
-    pair -->|no| none["no fix"]
+    pair -->|no| runs{"assert-tuple<br/>selected?"}
+    runs -->|yes| left["left to Ruff"]
+    runs -->|no| none
     tuple -->|no| generator{"a generator?"}
     generator -->|yes| asynchronous{"asynchronous, or<br/>all rebound?"}
     asynchronous -->|yes| none
@@ -287,7 +296,7 @@ flowchart TD
     class delete green
     class unsafe orange
     class unwrap,wrap teal
-    class none orange
+    class none,left orange
 ```
 
 ## Other tools

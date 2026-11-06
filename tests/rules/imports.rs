@@ -102,3 +102,20 @@ fn module_attribute_import_keeps_names_a_function_rebinds_through_global() {
     assert!(stdout.contains("SMP304 Import `_run`"));
     assert!(!stdout.contains("SMP304 [*]"));
 }
+
+// Ruff's F403 reports every star import, so SMP309 leaves the ones it cannot fix to it while the project's Ruff
+// configuration runs F403. A file with two star imports fixes neither.
+#[test_case("F403", "`from star_a import *` hides" ; "unfixable")]
+fn star_import_follows_ruff_f403(code: &str, fragment: &str) {
+    for selected in [false, true] {
+        let select = if selected { format!("\"{code}\"") } else { String::new() };
+        let root = common::project(&[
+            ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [{select}]\n")),
+            ("star_a.py", "def area(size: int) -> int:\n    return size\n"),
+            ("star_b.py", "def double(size: int) -> int:\n    return 2 * size\n"),
+            ("module.py", "from star_a import *\nfrom star_b import *\nprint(area(2), double(2))\n"),
+        ]);
+        let stdout = common::check(root.path(), &["--select", "SMP309"]).1;
+        assert_eq!(stdout.contains(fragment), !selected, "{stdout}");
+    }
+}

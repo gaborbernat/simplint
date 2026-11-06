@@ -99,6 +99,23 @@ Reports an attribute, read or called, whose name is one of these:
           mock.called_once()
   ```
 
+- **Names that Ruff's PGH005 reports**: [PGH005](https://docs.astral.sh/ruff/rules/invalid-mock-access/) reports these
+  names, so this rule leaves them to Ruff only when the project's Ruff configuration selects PGH005. With Ruff's preview
+  mode off, the test of an `assert` is the only place, bare or called. With preview on, a name on a line of its own is
+  one too. The set follows the project's preview setting. The operand of a `not` or `and`, or a comparison, is not
+  checked by Ruff, so this rule still reports a name there.
+
+  ```toml config
+  [tool.ruff.lint]
+  select = ["PGH005"]
+  ```
+
+  ```python ok
+  def test_save(save: MagicMock) -> None:
+      run_save()
+      assert save.not_called()
+  ```
+
 ### Fix
 
 The fix renames the attribute to the assertion it stands for. **Unsafe fix:** the call becomes a check, so a test that
@@ -118,10 +135,12 @@ def test_save(save: MagicMock) -> None:
 
 ## Ruff overlap
 
-Ruff's PGH005 reports an assertion method used without a call, such as `mock.assert_called_once`, and an assertion name
-without its prefix inside an `assert` statement, such as `assert mock.not_called()`. That second form is reported by
-both tools. A prefix-less name outside an `assert`, such as `mock.called_once_with(1)` on a line of its own, and a
-misspelled name such as `asssert_called_once`, are reported by this rule only.
+There is no overlap. Ruff's [invalid-mock-access](https://docs.astral.sh/ruff/rules/invalid-mock-access/) (PGH005)
+reports the prefix-less assertion names in the test of an `assert`, bare or called, such as `assert mock.not_called()`,
+and with Ruff's preview mode on, also those names on a line of their own. This rule follows the same preview setting: it
+leaves those names to Ruff only when the project's Ruff configuration selects PGH005, and reports the rest, which are
+operands of `not` and `and`, comparisons, names in call arguments, and every misspelling, since Ruff does not report
+those. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are respected too.
 
 ## Other tools
 
@@ -130,3 +149,6 @@ misspelled name such as `asssert_called_once`, are reported by this rule only.
 - [flake8-mock](https://github.com/zupo/flake8-mock) reports misspelled mock assertions, such as `called_once_with`, as
   [M001](https://github.com/zupo/flake8-mock), with no fix. This rule's fix renames them to the assertion they stand
   for.
+- [Ruff](https://docs.astral.sh/ruff/rules/invalid-mock-access/) reports the names in the test of an `assert`, such as
+  `assert mock.not_called()`, as [PGH005](https://docs.astral.sh/ruff/rules/invalid-mock-access/), with no fix. This
+  rule leaves those to it; see Ruff overlap.

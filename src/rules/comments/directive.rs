@@ -1,3 +1,4 @@
+use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_trivia::{indentation_at_offset, is_pragma_comment};
 use ruff_text_size::TextRange;
 
@@ -45,6 +46,8 @@ pub(super) struct Directive {
     pub(super) codes: Codes,
     pub(super) scope: Scope,
     pub(super) missing_codes: bool,
+    // The Ruff rule, PGH003 or PGH004, that reports this blanket directive, which SMP004 leaves to Ruff when it runs.
+    pub(super) ruff_rule: Option<RuffRule>,
 }
 
 #[derive(Clone, Copy)]
@@ -77,16 +80,29 @@ impl Comment {
     }
 
     fn parse(comment: &str) -> Self {
+        let segments: Vec<&str> = comment.split('#').map(str::trim).collect();
+        // Ruff reads only the first `noqa` and the first file-level `noqa` of a comment, even one it then rejects.
+        let first_noqa = segments.iter().position(|text| starts_with_noqa(text));
+        let first_file_noqa = segments.iter().position(|text| is_file_noqa(text));
         let mut directives = Vec::new();
         let mut has_reason = false;
-        for segment in comment.split('#') {
-            let text = segment.trim();
+        for (index, &text) in segments.iter().enumerate() {
             if !may_be_directive(text) {
                 has_reason |= !text.is_empty();
                 continue;
             }
             match parse_directive(text) {
-                Some((directive, reason)) => {
+                Some((mut directive, reason)) => {
+                    directive.ruff_rule = match directive.name {
+                        "noqa" => (first_noqa == Some(index)).then_some(RuffRule::BlanketNOQA),
+                        "ruff: noqa" | "flake8: noqa" => {
+                            (first_file_noqa == Some(index)).then_some(RuffRule::BlanketNOQA)
+                        }
+                        "type: ignore" | "pyright: ignore" => {
+                            is_ruff_blanket_type_ignore(text).then_some(RuffRule::BlanketTypeIgnore)
+                        }
+                        _ => None,
+                    };
                     has_reason |= !reason.trim().is_empty();
                     directives.push(directive);
                 }
@@ -135,8 +151,28 @@ fn parse_directive(text: &str) -> Option<(Directive, &str)> {
         }
         let (named, reason) = codes.split(&text[text.len() - rest.len()..])?;
         let missing_codes = !named && !matches!(codes, Codes::None);
-        Some((Directive { name, codes, scope, missing_codes }, reason))
+        Some((Directive { name, codes, scope, missing_codes, ruff_rule: None }, reason))
     })
+}
+
+// Ruff's `NoqaLexer` matches `noqa` in any case, so the start of a segment decides it.
+fn starts_with_noqa(text: &str) -> bool {
+    text.get(..4).is_some_and(|head| head.eq_ignore_ascii_case("noqa"))
+}
+
+// Whether a segment is a file-level `ruff: noqa` or `flake8: noqa`, whose tool name Ruff matches in lowercase only.
+fn is_file_noqa(text: &str) -> bool {
+    ["ruff", "flake8"].into_iter().any(|tool| after_tool(text, tool).is_some_and(starts_with_noqa))
+}
+
+// Whether PGH003 reads a segment as a blanket `type: ignore` or `pyright: ignore`: the colon follows the tool name
+// directly, and nothing but whitespace follows `ignore`, so a reason after it leaves the directive to SMP004.
+fn is_ruff_blanket_type_ignore(text: &str) -> bool {
+    text.strip_prefix("type")
+        .or_else(|| text.strip_prefix("pyright"))
+        .and_then(|rest| rest.strip_prefix(':'))
+        .and_then(|rest| rest.trim_start().strip_prefix("ignore"))
+        .is_some_and(|rest| rest.trim().is_empty())
 }
 
 impl Codes {

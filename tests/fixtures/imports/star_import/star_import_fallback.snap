@@ -1,6 +1,5 @@
 ---
 source: tests/common/mod.rs
-assertion_line: 125
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
 14:5 SMP309 `from star_unlisted_source import *` hides which names this file takes from `star_unlisted_source`; import them by name

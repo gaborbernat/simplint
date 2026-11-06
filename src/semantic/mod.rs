@@ -182,6 +182,7 @@ impl<'a> Index<'a> {
                     .map(|binding_id| Binding {
                         range: binding_range(model, *binding_id),
                         kind: binding_kind(model, *binding_id),
+                        module_scope: model.binding(*binding_id).scope.is_global(),
                     })
                     .collect();
                 module_bindings.extend(chain);
@@ -234,6 +235,8 @@ impl<'a> Index<'a> {
 pub struct Binding {
     pub range: TextRange,
     pub kind: BindingKind,
+    // Whether the binding is made in the module scope, rather than in a function's `global` assignment.
+    pub module_scope: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

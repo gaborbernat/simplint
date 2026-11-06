@@ -184,7 +184,8 @@ fn rule_folder(rule_name: &str) -> PathBuf {
 
 // Every fixture, so rules that look across modules see the same project each time, with the configuration the rule
 // fixtures assume: a library whose docstrings are reStructuredText, `requests` and `pytest-mock` as dependencies, an
-// entry point, and no Ruff rule, so the fixes show simplint's own work.
+// entry point, and the Ruff rules whose overlap fixtures need to run selected, so their cases are left to Ruff. No
+// other Ruff rule runs, so the fixes show simplint's own work.
 // The rule folders merge into one project root, so each fixture keeps its module name and can import the fixtures of
 // other rules, as `consumer/use.py` does.
 pub fn fixture_project() -> TempDir {
@@ -206,7 +207,7 @@ pub fn fixture_project() -> TempDir {
         root.path().join("pyproject.toml"),
         "[project]\ndependencies = [\"pytest-mock\", \"requests\"]\n\
          scripts = { run = \"missing_from_all_scripts:run\" }\n\n\
-         [tool.simplint]\nproject-kind = \"library\"\ndocstring-style = \"rst\"\n\n[tool.ruff.lint]\nselect = []\n",
+         [tool.simplint]\nproject-kind = \"library\"\ndocstring-style = \"rst\"\n\n[tool.ruff.lint]\nselect = [\"ANN401\", \"N816\"]\n",
     )
     .expect("write pyproject.toml");
     root

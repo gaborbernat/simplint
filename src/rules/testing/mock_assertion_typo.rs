@@ -1,7 +1,9 @@
 use ruff_diagnostics::{Edit, Fix};
+use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
-use ruff_text_size::Ranged;
+use ruff_text_size::{Ranged, TextRange};
+use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
@@ -28,12 +30,35 @@ const ASSERTIONS: &[&str] = &[
 // The prefixes `unittest.mock` rejects on a mock without `unsafe=True`, from Python 3.10.
 const GUARDED_PREFIXES: &[&str] = &["assert", "assret", "asert", "aseert", "assrt"];
 
+// The names Ruff's PGH005 reports as non-existent mock methods, bare or called.
+const RUFF_NON_EXISTENT_NAMES: &[&str] = &[
+    "any_call",
+    "called_once",
+    "called_once_with",
+    "called_with",
+    "has_calls",
+    "not_called",
+    "any_await",
+    "awaited",
+    "awaited_once",
+    "awaited_once_with",
+    "awaited_with",
+    "has_awaits",
+    "not_awaited",
+];
+
 // Two edits cover a dropped or swapped letter in a prefix and a missing or extra letter; more would match
 // unrelated names.
 const MAX_DISTANCE: usize = 2;
 
 pub fn mock_assertion_typo(checker: &Checker) {
-    let mut finder = Typos { found: Vec::new() };
+    let ruff_pgh005 = checker.settings.from_ruff.ruff_runs(RuffRule::InvalidMockAccess);
+    let mut finder = Typos {
+        found: Vec::new(),
+        ruff_reported: FxHashSet::default(),
+        ruff_pgh005,
+        preview: checker.settings.from_ruff.preview,
+    };
     finder.visit_body(checker.body());
     for (attr, intended) in finder.found {
         // A name the file or the project defines is an attribute of some class, not a mock method.
@@ -56,6 +81,11 @@ pub fn mock_assertion_typo(checker: &Checker) {
 
 struct Typos<'a> {
     found: Vec<(&'a ast::Identifier, &'static str)>,
+    // The names Ruff's PGH005 reports, by their range, so this rule leaves them to it when PGH005 runs.
+    ruff_reported: FxHashSet<TextRange>,
+    ruff_pgh005: bool,
+    // Whether Ruff's preview mode is on, which makes PGH005 report the names of statements on their own too.
+    preview: bool,
 }
 
 impl<'a> Visitor<'a> for Typos<'a> {
@@ -63,6 +93,14 @@ impl<'a> Visitor<'a> for Typos<'a> {
         match stmt {
             // Code under `assertRaises` or `pytest.raises` expects the call to fail, so the misspelling is the point.
             Stmt::With(ast::StmtWith { items, .. }) if items.iter().any(|item| expects_error(&item.context_expr)) => {}
+            Stmt::Assert(ast::StmtAssert { test, .. }) if self.ruff_pgh005 => {
+                self.ruff_reported.extend(ruff_reported_name(test).map(Ranged::range));
+                visitor::walk_stmt(self, stmt);
+            }
+            Stmt::Expr(ast::StmtExpr { value, .. }) if self.ruff_pgh005 && self.preview => {
+                self.ruff_reported.extend(ruff_reported_name(value).map(Ranged::range));
+                visitor::walk_stmt(self, stmt);
+            }
             _ => visitor::walk_stmt(self, stmt),
         }
     }
@@ -70,12 +108,28 @@ impl<'a> Visitor<'a> for Typos<'a> {
     fn visit_expr(&mut self, expr: &'a Expr) {
         if let Expr::Attribute(attribute) = expr
             && attribute.ctx.is_load()
+            && !self.ruff_reported.contains(&attribute.attr.range())
             && let Some(intended) = intended_assertion(attribute.attr.as_str())
         {
             self.found.push((&attribute.attr, intended));
         }
         visitor::walk_expr(self, expr);
     }
+}
+
+// The name of the attribute that Ruff's PGH005 reports in the test of an `assert`, or in a statement with preview on: the
+// expression itself or the callee of a call. The operand of a `not` or `and`, or a comparison, is not checked by Ruff,
+// so it stays with this rule.
+fn ruff_reported_name(expr: &Expr) -> Option<&ast::Identifier> {
+    let attribute = match expr {
+        Expr::Attribute(attribute) => attribute,
+        Expr::Call(ast::ExprCall { func, .. }) => match func.as_ref() {
+            Expr::Attribute(attribute) => attribute,
+            _ => return None,
+        },
+        _ => return None,
+    };
+    RUFF_NON_EXISTENT_NAMES.contains(&attribute.attr.as_str()).then_some(&attribute.attr)
 }
 
 fn expects_error(expr: &Expr) -> bool {

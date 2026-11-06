@@ -156,16 +156,26 @@ annotations are still checked.
   ```
 
 - **A whole-annotation `Any` on a parameter or return**, such as `def f(value: Any)` or `-> Any`: Ruff's
-  [any-type](https://docs.astral.sh/ruff/rules/any-type/) reports it, so this rule leaves it alone to avoid a double
-  report.
+  [ANN401](https://docs.astral.sh/ruff/rules/any-type/) reports it, so this rule leaves it alone to avoid a double
+  report, but only when the project's Ruff configuration selects ANN401. Ruff's own suppressions of it, through
+  `per-file-ignores` or `noqa`, are respected too.
 
-  ```python ok
-  from typing import Any
+This rule does not check ANN401's settings, so with `allow-star-arg-any` enabled, `*args: Any` and `**kwargs: Any` go
+unreported. ANN401 also skips the `self` or `cls` of a method, `@override` signatures and overload implementations, and
+while ANN401 runs this rule leaves a whole-annotation `Any` there alone as well, so no tool reports it.
+
+```toml config
+[tool.ruff.lint]
+select = ["ANN401"]
+```
+
+```python ok
+from typing import Any
 
 
-  def run(value: Any) -> None:
-      print(value)
-  ```
+def run(value: Any) -> None:
+    print(value)
+```
 
 - **String annotations**: these are not checked.
 
@@ -176,9 +186,13 @@ annotations are still checked.
 
 ## Ruff overlap
 
-Ruff's [any-type](https://docs.astral.sh/ruff/rules/any-type/) rejects `Any` as the whole annotation of a function
+Ruff's [ANN401](https://docs.astral.sh/ruff/rules/any-type/) rejects `Any` as the whole annotation of a function
 parameter or return value. This rule covers `object` everywhere, and `Any` in variable annotations and nested positions,
-which [any-type](https://docs.astral.sh/ruff/rules/any-type/) misses.
+which ANN401 misses.
+
+ANN401 reports an annotation from its first character, so an `Any` that starts an annotation, as in `Any | None`, is
+reported once, by ANN401, when the project's Ruff configuration selects it. In `Optional[Any]` the `Any` starts after
+the `Optional`, so ANN401 and this rule both report it, at different columns.
 
 ## Other tools
 

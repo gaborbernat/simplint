@@ -54,7 +54,11 @@ def fetch(url: str) -> bytes:
   project-kind = "library"
   ```
 
-  ```python report
+  ```python context file=demo/__init__.py
+  from demo._core import fetch as fetch
+  ```
+
+  ```python report file=demo/_core.py
   def fetch() -> None:
       print()
   ```
@@ -68,7 +72,11 @@ def fetch(url: str) -> bytes:
   api-packages = ["demo"]
   ```
 
-  ```python report file=demo/api.py
+  ```python context file=demo/__init__.py
+  from demo._api import fetch as fetch
+  ```
+
+  ```python report file=demo/_api.py
   def fetch() -> None:
       print()
   ```
@@ -83,38 +91,6 @@ def fetch(url: str) -> bytes:
 Checks that a library's public API is documented. No fix is offered, since only the author knows what the API promises.
 
 ### Active on
-
-- **Public functions and classes**: each needs a [docstring](https://docs.python.org/3/glossary.html#term-docstring).
-
-  ```toml config
-  [tool.simplint]
-  project-kind = "library"
-  ```
-
-  ```python report
-  def fetch() -> None:
-      print()
-
-
-  class Client:
-      pass
-  ```
-
-- **Methods, properties and nested classes of a public class**: those whose names do not start with `_` need a
-  docstring.
-
-  ```toml config
-  [tool.simplint]
-  project-kind = "library"
-  ```
-
-  ```python report
-  class Client:
-      """Talk to the service."""
-
-      def get(self) -> None:
-          print()
-  ```
 
 - **Public variables**: each needs a docstring on the line below it, or a `#:` comment on the line above it or at the
   end of its line, the forms
@@ -151,14 +127,19 @@ Checks that a library's public API is documented. No fix is offered, since only 
   ```
 
 - **Definitions in the `case` bodies of a `match` at module or class level**: a `match` that picks an implementation by
-  platform or version is read the way an `if` is, so the public definitions in each case are the module's too.
+  platform or version is read the way an `if` is, so the definitions in each case of a re-exported private module are
+  the module's too.
 
   ```toml config
   [tool.simplint]
   project-kind = "library"
   ```
 
-  ```python report file=demo/api.py
+  ```python context file=demo/__init__.py
+  from demo._platform import open_thing as open_thing
+  ```
+
+  ```python report file=demo/_platform.py
   import sys
 
   match sys.platform:
@@ -173,8 +154,9 @@ Checks that a library's public API is documented. No fix is offered, since only 
               return 2
   ```
 
-- **Names a private module defines and a public module re-exports**: the report names the module that re-exports the
-  name, so you can see why it counts.
+- **Names a private module defines and a public module re-exports**: the functions, classes and class members of the
+  private module that the public one exports. The report names the module that re-exports the name, so you can see why
+  it counts.
 
   ```toml config
   [tool.simplint]
@@ -192,7 +174,51 @@ Checks that a library's public API is documented. No fix is offered, since only 
   __all__ = ["fetch"]
   ```
 
+  A re-exported class and its methods are reported the same way:
+
+  ```toml config
+  [tool.simplint]
+  project-kind = "library"
+  ```
+
+  ```python report file=demo/_client.py
+  class Client:
+      """Talk to the service."""
+
+      def get(self) -> None:
+          print()
+  ```
+
+  ```python context file=demo/__init__.py
+  from demo._client import Client
+
+  __all__ = ["Client"]
+  ```
+
 ### Exceptions
+
+- **Functions, classes and methods a public module defines**: each needs a
+  [docstring](https://docs.python.org/3/glossary.html#term-docstring), which Ruff's pydocstyle rules
+  [D101 to D103 and D106](https://www.pydocstyle.org/en/stable/error_codes.html) report. This rule leaves them to Ruff
+  only when the project's Ruff configuration selects the rule for the definition's kind. Ruff's own suppressions of it,
+  through `per-file-ignores` or `noqa`, are respected too.
+
+  ```toml config
+  [tool.simplint]
+  project-kind = "library"
+
+  [tool.ruff.lint]
+  select = ["D101", "D102", "D103", "D106"]
+  ```
+
+  ```python ok file=demo/api.py
+  def fetch() -> None:
+      print()
+
+
+  class Client:
+      pass
+  ```
 
 - **Functions decorated with [`@overload`](https://docs.python.org/3/library/typing.html#typing.overload)**: the
   implementation carries the docstring; [function-docstring](SMP901.html) leaves their docstrings alone too.

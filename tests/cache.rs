@@ -146,6 +146,15 @@ fn cached_clean_file_is_checked_again_under_other_settings() {
     assert_eq!((first, check(root.path(), &["--select", "SMP101"]).0), (0, 1));
 }
 
+// Selecting a Ruff rule that SMP004 defers to changes what the file reports, so the cached report is not reused. The
+// selection comes from Ruff's configuration on the command line, which leaves simplint's own settings unchanged.
+#[test]
+fn cached_report_is_checked_again_when_ruff_starts_running_the_rule() {
+    let root = project(&[("module.py", "import os  # noqa\n")]);
+    assert_eq!(check(root.path(), &["--select", "SMP004"]).0, 1);
+    assert_eq!(check(root.path(), &["--select", "SMP004", "--config", "lint.select = [\"PGH004\"]"]).0, 0);
+}
+
 // A function whose statements another file repeats, so `duplicate-code` reports both.
 const REPEATED: &str = "def run(items):\n    total = 0\n    for item in items:\n        total += item\n    count = len(items)\n    \
                         log(total)\n    log(count)\n    return total\n";

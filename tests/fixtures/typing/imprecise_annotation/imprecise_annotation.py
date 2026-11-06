@@ -1,6 +1,6 @@
 import builtins
 import typing
-from typing import Any, TypeIs
+from typing import Any, Optional, TypeIs, override, overload
 from typing import Any as Anything
 
 
@@ -69,4 +69,37 @@ TEXT: "Any" = 4
 
 
 def raw(value: builtins.object) -> None:
+    pass
+
+
+class Base:
+    def receive(self: Any) -> None:
+        pass
+
+    @classmethod
+    def build(cls: Any) -> None:
+        pass
+
+    @override
+    def run(self, value: Any) -> Any:
+        return value
+
+    @staticmethod
+    def helper(value: Any) -> None:
+        pass
+
+
+@overload
+def convert(value: int) -> int: ...
+@overload
+def convert(value: str) -> str: ...
+def convert(value: Any) -> Any:
+    return value
+
+
+def maybe(value: Any | None) -> None:
+    pass
+
+
+def nullable(value: Optional[Any]) -> None:
     pass

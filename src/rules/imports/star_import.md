@@ -1,4 +1,5 @@
-Flags `from module import *` when the project defines `module`, and fixes it to import the names the file uses.
+Flags `from module import *` when the project defines `module` and the fix can name the names the file uses, and fixes
+it to import them.
 
 ## Why is this bad?
 
@@ -36,10 +37,12 @@ print(area(2))
 
 ## Conflicts with Ruff
 
-Ruff's [F403](https://docs.astral.sh/ruff/rules/undefined-local-with-import-star/) reports the star import and
+Ruff's [F403](https://docs.astral.sh/ruff/rules/undefined-local-with-import-star/) reports every star import, and
 [F405](https://docs.astral.sh/ruff/rules/undefined-local-with-import-star-usage/) reports each name it cannot place,
-both without a fix. Neither rule contradicts this one, so both may stay on; F405 goes quiet once the import names the
-file's names.
+both without a fix. This rule reports a star import only when it can fix it, so F403 and this rule both report that
+import, and the fix is what this rule adds. Where the fix declines, only F403 reports the import, and only when the
+project's Ruff configuration selects it; otherwise this rule reports the import without a fix. Both may stay on; F405
+goes quiet once the import names the file's names.
 
 ## What it does
 
@@ -61,6 +64,34 @@ simplint looks the module up in the index of the run, so a star import of a modu
   ```
 
 ### Exceptions
+
+- **Star imports the fix declines**: the rule reports nothing without a fix while the project's Ruff configuration
+  selects [F403](https://docs.astral.sh/ruff/rules/undefined-local-with-import-star/), which reports them instead. Here
+  the file reads `perimeter`, which the module does not list. Ruff's own suppressions of it, through `per-file-ignores`
+  or `noqa`, are respected too.
+
+  ```toml config
+  [tool.ruff.lint]
+  select = ["F403"]
+  ```
+
+  ```python context file=geometry.py
+  __all__ = ["area"]
+
+
+  def area(side):
+      return side * side
+
+
+  def perimeter(side):
+      return 4 * side
+  ```
+
+  ```python ok file=app.py
+  from geometry import *
+
+  print(area(2), perimeter(2))
+  ```
 
 - **Star imports of modules outside the project**, such as the standard library, which the index does not know.
 
@@ -110,6 +141,11 @@ names it imports, so the fix is unsafe. Either way it declines when the file rea
 define, as that name may come from one of the module's imports, or from an `__all__.append()` inside an `if` block that
 simplint cannot read:
 
+```toml config
+[tool.ruff.lint]
+select = ["F403"]
+```
+
 ```python context file=geometry.py
 import sys
 
@@ -128,7 +164,7 @@ if sys.platform == "win32":
     __all__.append("native_area")
 ```
 
-```python report file=app.py
+```python ok file=app.py
 import sys
 
 from geometry import *
@@ -158,7 +194,13 @@ print(double(2))
 The fix stays off when the module's exports cannot be read statically, as for a dynamic `__all__` or a module-level
 `__getattr__`, and when a comment sits on the import or on the line above it, since the comment may say why the star
 import is there. It also stays off in an `__init__.py` without a static `__all__` of its own: there the star import
-makes up the package's names, which its users may reach as `package.name`.
+makes up the package's names, which its users may reach as `package.name`. Without a fix the rule does not report the
+import while F403 is selected, and F403 does.
+
+```toml config
+[tool.ruff.lint]
+select = ["F403"]
+```
 
 ```python context file=geometry.py
 __all__ = ["area", "perimeter"]
@@ -172,7 +214,7 @@ def perimeter(side):
     return 4 * side
 ```
 
-```python report file=shapes/__init__.py
+```python ok file=shapes/__init__.py
 from geometry import *
 
 UNIT = area(1)
