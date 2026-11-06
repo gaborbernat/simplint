@@ -92,3 +92,7 @@ def test_client(mocker: MockerFixture) -> None:
 
 No fix is offered: a test that moves to `mocker` changes its fixtures and its calls to the patched objects, which is a
 rewrite of the test.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

@@ -91,6 +91,7 @@ file.close()
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
 - [flake8-comments](https://github.com/orsinium-labs/flake8-comments) reports the same comments as
   [CM001](https://github.com/orsinium-labs/flake8-comments/blob/master/flake8_comments/_checker.py), such as
   `# create user` above `user.create()`. It only reports them, where this rule's fix deletes the comment.

@@ -162,3 +162,7 @@ No fix is offered when:
 - the constructor takes positional arguments or more than one keyword, or the keyword is not the value's name;
 
 - the call has a comment, which the rewrite would drop.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

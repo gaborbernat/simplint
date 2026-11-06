@@ -110,3 +110,7 @@ but a semicolon.
 # fmt: off
 """Tests for the empty file.""";
 ```
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

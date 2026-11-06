@@ -419,6 +419,8 @@ flags only `mixedCase` names. This rule also flags `lower_case` names.
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** released rule
+  [N816](https://docs.astral.sh/ruff/rules/mixed-case-variable-in-global-scope/).
 - [pylint](https://github.com/pylint-dev/pylint) reports module-level assignments that do not match `const-naming-style`
   as [invalid-name](https://pylint.readthedocs.io/en/latest/user_guide/messages/convention/invalid-name.html). It
   defaults to `UPPER_CASE` and only reports, where this rule renames the uses in the file.

@@ -92,3 +92,9 @@ No fix is offered, since where to split a paragraph depends on its meaning.
 ### Report range
 
 The report spans from the paragraph's first line to the line where it passes `max-paragraph-words` words.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
+  [W505](https://docs.astral.sh/ruff/rules/doc-line-too-long/), which limits characters per line rather than words per
+  paragraph; merged pull request [#1804](https://github.com/astral-sh/ruff/pull/1804).

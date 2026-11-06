@@ -145,6 +145,9 @@ nesting that McCabe's score ignores.
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
+  [C901](https://docs.astral.sh/ruff/rules/complex-structure/), which measures McCabe complexity rather than cognitive
+  complexity; open issue [#2418](https://github.com/astral-sh/ruff/issues/2418).
 - [flake8-cognitive-complexity](https://github.com/Melevir/flake8-cognitive-complexity) reports functions over a
   cognitive complexity limit as [CCR001](https://github.com/Melevir/flake8-cognitive-complexity), with no fix.
 - [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports the same score as

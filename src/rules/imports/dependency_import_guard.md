@@ -426,3 +426,7 @@ No fix is offered when the statement:
   except ImportError:
       pass
   ```
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

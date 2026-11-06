@@ -104,3 +104,7 @@ No fix is offered, since where to split a paragraph depends on its meaning.
 ### Report range
 
 The report spans from the paragraph's first line to the line where it passes `max-paragraph-words` words.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

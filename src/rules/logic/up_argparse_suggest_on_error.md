@@ -114,3 +114,7 @@ parser = argparse.ArgumentParser(
     suggest_on_error=True,
 )
 ```
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

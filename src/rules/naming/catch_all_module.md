@@ -80,6 +80,7 @@ No fix is offered. A rename changes every import of the module, and a split need
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#3845](https://github.com/astral-sh/ruff/issues/3845).
 - [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports modules named for a
   blacklisted word, such as `utils`, as
   [WPS100](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/naming.html#wemake_python_styleguide.violations.naming.WrongModuleNameViolation).

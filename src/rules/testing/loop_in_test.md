@@ -208,6 +208,7 @@ and that hand each case to the code under test. Three things must hold:
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#11060](https://github.com/astral-sh/ruff/issues/11060).
 - [Sourcery](https://sourcery.ai) flags any loop in a test through
   [no-loop-in-tests](https://docs.sourcery.ai/reference/refactorings/python/no-loop-in-tests/). This rule flags only
   loops that assert over a table of cases.

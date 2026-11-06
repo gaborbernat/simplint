@@ -293,6 +293,8 @@ up the deleted method's name in the same class order that `super()` follows, so 
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#970](https://github.com/astral-sh/ruff/issues/970) and
+  [#3845](https://github.com/astral-sh/ruff/issues/3845).
 - [pylint](https://github.com/pylint-dev/pylint) reports the same forwarding overrides as
   [useless-parent-delegation](https://pylint.readthedocs.io/en/latest/user_guide/messages/warning/useless-parent-delegation.html),
   with no fix. This rule's fix deletes the method when it has no annotations.

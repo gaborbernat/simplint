@@ -446,3 +446,7 @@ def show() -> str:
 
 [dataclass-frozen](SMP701.html) asks for `frozen=True` and [dataclass-slots](SMP702.html) for `slots=True` on the same
 decorator.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#28777](https://github.com/astral-sh/ruff/issues/28777).

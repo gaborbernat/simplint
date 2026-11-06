@@ -133,6 +133,8 @@ Ruff has no rule for the length of a returned tuple.
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#3845](https://github.com/astral-sh/ruff/issues/3845) and
+  [#8022](https://github.com/astral-sh/ruff/issues/8022).
 - [flake8-too-many](https://github.com/queensferryme/flake8-too-many) counts return values as
   [TMN002](https://github.com/queensferryme/flake8-too-many) against `max-function-return-values`, which defaults to 3.
   This rule's limit defaults to 2.

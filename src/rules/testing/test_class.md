@@ -118,3 +118,7 @@ No fix is offered when:
   ```
 
 - a new name is already used in the file.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

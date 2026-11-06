@@ -180,3 +180,10 @@ print(loads("name = 'demo'"))
   ```
 
 The fix leaves `pyproject.toml` alone. The message names the dependency, which can go once nothing imports the backport.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules
+  [UP026](https://docs.astral.sh/ruff/rules/deprecated-mock-import/) and
+  [UP035](https://docs.astral.sh/ruff/rules/deprecated-import/), which rewrite the `mock` backport and some
+  `typing_extensions` names, not the backports this rule covers.

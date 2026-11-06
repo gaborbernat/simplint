@@ -180,3 +180,10 @@ turn one of the two rules off.
 
 A build script that a tool runs by path without a `__name__` check, or a module that only another file sends as source,
 is not detected; turn the rule off for that file.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
+  [TID252](https://docs.astral.sh/ruff/rules/relative-imports/), which bans relative imports, the opposite direction;
+  open pull request [#16772](https://github.com/astral-sh/ruff/pull/16772); open issue
+  [#1014](https://github.com/astral-sh/ruff/issues/1014).

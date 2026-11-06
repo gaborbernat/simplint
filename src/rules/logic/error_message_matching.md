@@ -141,3 +141,7 @@ asserts may check the messages the code raises.
       with pytest.raises(OSError, match="gone"):
           load()
   ```
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

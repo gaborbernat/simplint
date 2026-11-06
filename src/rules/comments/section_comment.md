@@ -142,3 +142,7 @@ longer.
 Ruff's
 [multiple-leading-hashes-for-block-comment](https://docs.astral.sh/ruff/rules/multiple-leading-hashes-for-block-comment/)
 also reports the `## Setup` form.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

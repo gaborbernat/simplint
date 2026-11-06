@@ -292,6 +292,7 @@ flowchart TD
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** released rule [F631](https://docs.astral.sh/ruff/rules/assert-tuple/).
 - [flake8-useless-assert](https://github.com/decorator-factory/flake8-useless-assert) reports an assert with a truthy
   literal, such as `assert True`, as [ULA001](https://github.com/decorator-factory/flake8-useless-assert), with no fix.
 - [Sourcery](https://sourcery.ai) removes `assert True` statements through

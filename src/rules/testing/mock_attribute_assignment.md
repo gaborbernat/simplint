@@ -149,3 +149,7 @@ No fix is offered when:
   client = MagicMock()
   client.timeout = 5  # seconds
   ```
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

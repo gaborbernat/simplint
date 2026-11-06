@@ -311,3 +311,9 @@ Sphinx renders `var`, `ivar` and `cvar` alike, yet they say different things: `i
 `cvar` a class variable, which [rst-attribute-kind](SMP922.html) checks. So none of them counts as an alias of another.
 
 `yields`, its alias `yield` and `ytype` are not Sphinx's own: documentation tools accept them for generators.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** open pull request
+  [#13286](https://github.com/astral-sh/ruff/pull/13286), for issue
+  [#458](https://github.com/astral-sh/ruff/issues/458).

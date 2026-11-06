@@ -282,3 +282,7 @@ unpacks `**kwargs`, which may pass any keyword.
 
 The rule has no fix. Removing the parameter changes the signature every caller sees, and the tests that pass it would
 need the variation moved elsewhere first. The author decides where the variation belongs.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

@@ -352,6 +352,8 @@ strings, such as an `__all__` entry.
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#970](https://github.com/astral-sh/ruff/issues/970),
+  [#11060](https://github.com/astral-sh/ruff/issues/11060) and [#10108](https://github.com/astral-sh/ruff/issues/10108).
 - [pylint](https://github.com/pylint-dev/pylint) reports the same assignment and `if` pairs as
   [consider-using-assignment-expr](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/consider-using-assignment-expr.html),
   for targets that allow `:=`, with no fix.

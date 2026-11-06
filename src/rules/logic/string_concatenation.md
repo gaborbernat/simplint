@@ -231,6 +231,9 @@ No fix is offered when:
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
+  [ISC003](https://docs.astral.sh/ruff/rules/explicit-string-concatenation/), which joins literals by implicit
+  concatenation rather than an f-string.
 - [Sourcery](https://sourcery.ai) rewrites the same `+` chains as an f-string through its
   [use-fstring-for-concatenation](https://docs.sourcery.ai/reference/refactorings/python/use-fstring-for-concatenation/)
   refactoring.

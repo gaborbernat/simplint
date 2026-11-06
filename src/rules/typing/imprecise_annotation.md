@@ -182,6 +182,7 @@ which [any-type](https://docs.astral.sh/ruff/rules/any-type/) misses.
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** released rule [ANN401](https://docs.astral.sh/ruff/rules/any-type/).
 - [basedpyright](https://github.com/DetachHead/basedpyright) reports every explicit `Any` as
   [reportExplicitAny](https://docs.basedpyright.com/latest/configuration/config-files/). It does not report `object`,
   which this rule also flags.

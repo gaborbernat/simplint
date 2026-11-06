@@ -170,3 +170,7 @@ or as `keyword=parameter`. The call target must be a name or a dotted name such 
   def _apply(fn: Callable[[str], str], text: str) -> str:
       return fn(text)
   ```
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#970](https://github.com/astral-sh/ruff/issues/970).

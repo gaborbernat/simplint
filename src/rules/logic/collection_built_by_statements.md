@@ -171,6 +171,9 @@ Ruff's [unnecessary-collection-call](https://docs.astral.sh/ruff/rules/unnecessa
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
+  [FURB113](https://docs.astral.sh/ruff/rules/repeated-append/) (preview), which merges consecutive `append` calls into
+  `extend` rather than writing one literal.
 - [flake8-simplify](https://github.com/MartinThoma/flake8-simplify) reports a dictionary filled by the statements after
   it as [SIM904](https://github.com/MartinThoma/flake8-simplify#sim904). It covers dictionaries only, and it does not
   fix them.

@@ -162,5 +162,8 @@ No fix is offered when the call has a comment inside it, which the rewrite would
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
+  [PLW1514](https://docs.astral.sh/ruff/rules/unspecified-encoding/) (preview), which asks for an explicit encoding, the
+  opposite; open issue [#29326](https://github.com/astral-sh/ruff/issues/29326).
 - [flake8-tergeo](https://github.com/SAP/flake8-tergeo) reports the same `encoding="UTF-8"` arguments as
   [FTP140](https://github.com/SAP/flake8-tergeo/blob/main/docs/checks.md#ftp140), with no fix.

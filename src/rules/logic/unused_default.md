@@ -262,6 +262,7 @@ pair(1, 2)
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#1512](https://github.com/astral-sh/ruff/issues/1512).
 - [refurb](https://github.com/dosisod/refurb) reports call arguments that equal the default as
   [FURB120](https://github.com/dosisod/refurb/blob/master/docs/checks.md#furb120-use-implicit-default). This rule
   removes the default from the signature instead, when every call passes it.

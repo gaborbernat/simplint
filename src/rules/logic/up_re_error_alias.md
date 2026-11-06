@@ -114,3 +114,7 @@ def compile_pattern(text):
       except re.error:
           return None
   ```
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

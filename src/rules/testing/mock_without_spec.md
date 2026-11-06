@@ -105,6 +105,7 @@ These are not reported either:
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#5734](https://github.com/astral-sh/ruff/issues/5734).
 - [flake8-mock-spec](https://github.com/jdkandersson/flake8-mock-spec) reports a `Mock` built without a spec as
   [TMS010](https://github.com/jdkandersson/flake8-mock-spec), and a `patch` call without one as
   [TMS020](https://github.com/jdkandersson/flake8-mock-spec).

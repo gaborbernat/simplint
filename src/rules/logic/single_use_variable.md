@@ -352,6 +352,9 @@ Here `log.write` is looked up before `len(items)` runs, which differs only when 
 
 ## Other tools
 
+- **[Ruff](https://github.com/astral-sh/ruff):** released rules
+  [RET504](https://docs.astral.sh/ruff/rules/unnecessary-assign/) and
+  [RUF070](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/) (preview).
 - [Sourcery](https://sourcery.ai) inlines a variable that is used once anywhere in its block through
   [inline-variable](https://docs.sourcery.ai/reference/refactorings/python/inline-variable/). This rule only inlines a
   value read on the line right below its assignment.

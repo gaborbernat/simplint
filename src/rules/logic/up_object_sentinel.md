@@ -115,3 +115,7 @@ class Config:
 The fix is unsafe. The repr changes from an address to the name, which a program can read, and a pickled `sentinel`
 loads only when the module has an attribute of the same name, so the name must match the module attribute the value is
 stored under.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

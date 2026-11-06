@@ -114,3 +114,7 @@ class ConfigTest(TestCase):
 The fix is safe when the patcher name appears only in the three statements. It rewrites them as one assignment of
 `self.enterContext(...)` to the value's name, and keeps the indentation. A patcher name that other code in the file
 uses, a sequence with a comment in it, or statements that share a line with other code are reported without a fix.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

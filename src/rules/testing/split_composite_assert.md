@@ -129,3 +129,7 @@ No fix is offered when:
       assert result.name == "x"  # the name
       assert result.size == 3
   ```
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

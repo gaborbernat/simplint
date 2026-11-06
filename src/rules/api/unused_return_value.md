@@ -276,3 +276,7 @@ code calls it and no production call reads the value, whether or not tests read 
 
 The rule has no fix. Dropping the `return` changes the signature that tests and outside callers of a library may read,
 and the value may be the only thing a caller keeps. The author decides whether the caller or the function should change.
+
+## Other tools
+
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
