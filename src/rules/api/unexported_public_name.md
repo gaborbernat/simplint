@@ -446,5 +446,6 @@ No fix is offered when:
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#12962](https://github.com/astral-sh/ruff/issues/12962),
-  [#18380](https://github.com/astral-sh/ruff/issues/18380) and [#167](https://github.com/astral-sh/ruff/issues/167).
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#12962](https://github.com/astral-sh/ruff/issues/12962)
+  (item 1). Issue [#18380](https://github.com/astral-sh/ruff/issues/18380) asks instead for a leading underscore on
+  names no other module imports.

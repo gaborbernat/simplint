@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+12:48 SMP602 `Any` accepts any value and turns off type checking for it; use a precise type

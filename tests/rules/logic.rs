@@ -35,6 +35,7 @@ use crate::common::{self, check, read};
 #[test_case("string-concatenation", "string_concatenation_kinds.py", "py314" ; "string_concatenation_kinds")]
 #[test_case("string-concatenation", "string_concatenation_genexp.py", "py314" ; "string_concatenation_genexp")]
 #[test_case("string-concatenation", "string_concatenation_type_params.py", "py314" ; "string_concatenation_type_params")]
+#[test_case("string-concatenation", "string_concatenation_ruff_overlap.py", "py314" ; "string_concatenation_ruff_overlap")]
 #[test_case("unused-default", "unused_default.py", "py314" ; "unused_default")]
 #[test_case("error-message-matching", "error_message_matching.py", "py314" ; "error_message_matching")]
 #[test_case("up-comprehension-unpacking", "up_comprehension_unpacking.py", "py315" ; "comprehension_unpacking")]
@@ -399,6 +400,19 @@ fn error_message_matching_leaves_test_modules_alone() {
     assert_eq!((code, stdout.as_str()), (0, "All checks passed!\n"));
 }
 
+// Ruff's PT017 reports an `assert` naming the exception, which SMP507 leaves to it while the project's Ruff
+// configuration selects it.
+#[test_case("assert \"gone\" in str(exc)", "PT017", 0 ; "assert_left_to_ruff")]
+#[test_case("assert \"gone\" in str(exc)", "E501", 1 ; "assert_reported_without_pt017")]
+#[test_case("if \"gone\" in str(exc):\n            pass", "PT017", 1 ; "if_reported_with_pt017")]
+fn error_message_matching_leaves_asserts_to_pt017(body: &str, code: &str, reports: usize) {
+    let source = format!("def run(f):\n    try:\n        f()\n    except OSError as exc:\n        {body}\n");
+    let settings = format!("[tool.ruff.lint]\nselect = [\"{code}\"]\n");
+    let root = common::project(&[("pyproject.toml", &settings), ("module.py", &source)]);
+    let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
+    assert_eq!(stdout.matches("SMP507").count(), reports, "{stdout}");
+}
+
 // The tuple length and the complexity a project allows before the rules report, read from `[tool.simplint.logic]`.
 #[test_case("", 2 ; "default_limit_reports_triples")]
 #[test_case("[tool.simplint.logic]\nmax-tuple-elements = 3\n", 1 ; "limit_three_reports_quadruples")]
@@ -465,4 +479,94 @@ fn single_use_variable_follows_ruff_returns_and_yield_froms(source: &str, code: 
         let stdout = common::check(root.path(), &["--select", "SMP504"]).1;
         assert_eq!(stdout.contains(fragment), !selected, "{stdout}");
     }
+}
+
+// Ruff's G003 reports a `+` that is a logging call's message, and its ISC003 a concatenation of two literals across
+// lines, so SMP503 leaves those to Ruff while the project's Ruff configuration selects them.
+#[test_case("G003", "", "import logging\n\n\ndef f(name: str) -> None:\n    logging.info(\"Hello, \" + name)\n", false ; "logging_message")]
+#[test_case("G003", "", "import logging\n\n\ndef f(name: str) -> None:\n    logging.info(msg=\"Hello, \" + name)\n", false ; "logging_keyword_message")]
+#[test_case("G003", "", "import logging\n\n\ndef f(name: str) -> None:\n    logging.log(1, \"Hello, \" + name)\n", false ; "logging_log_message")]
+#[test_case("G003", "", "import logging\n\n\ndef f(name: str) -> None:\n    logging.info(\"Hello, \" + name + \"!\")\n", false ; "logging_chain_message")]
+#[test_case("G003", "", "import logging\n\n\ndef f(name: str) -> None:\n    logging.log(\"Hello, \" + name)\n", true ; "logging_log_without_message")]
+#[test_case("G003", "", "import logging\n\n\ndef f(name: str) -> None:\n    logging.info(\"a\", \"Hello, \" + name)\n", true ; "logging_second_argument")]
+#[test_case("G003", "", "import logging\n\n\ndef f(name: str) -> None:\n    logging.info((\"Hello, \" + name) * 2)\n", true ; "logging_repeated_message")]
+#[test_case("G003", "", "def f(name: str) -> None:\n    foo.info(\"Hello, \" + name)\n", true ; "not_a_logger")]
+#[test_case("G003", "", "def f(name: str) -> None:\n    logger.info(\"Hello, \" + name)\n", false ; "logger_named_variable")]
+#[test_case("G003", "logger-objects = [\"mypkg.logger\"]\n", "from mypkg import logger\n\n\ndef f(name: str) -> None:\n    logger.info(\"Hello, \" + name)\n", false ; "logger_object")]
+#[test_case("ISC003", "", "x = (\n    \"Hello, \"\n    + \"world\"\n)\n", false ; "literal_pair_across_lines")]
+#[test_case("ISC003", "", "x = \"Hello, \" + \"world\"\n", true ; "literal_pair_on_one_line")]
+#[test_case("ISC003", "", "x = (\n    \"Hello, \"\n    + \"world\"\n    + name\n)\n", false ; "pair_at_start_of_chain")]
+#[test_case("ISC003", "", "x = (\n    \"Hello, \"\n    + name\n)\n", true ; "name_in_pair")]
+#[test_case("ISC003", "[tool.ruff.lint.flake8-implicit-str-concat]\nallow-multiline = false\n", "x = (\n    \"Hello, \"\n    + \"world\"\n)\n", true ; "multiline_not_allowed")]
+fn string_concatenation_follows_ruff(code: &str, extra: &str, source: &str, reported_when_selected: bool) {
+    for selected in [false, true] {
+        let select = if selected { format!("\"{code}\"") } else { String::new() };
+        let root = common::project(&[
+            ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [{select}]\n{extra}")),
+            ("module.py", source),
+        ]);
+        let stdout = common::check(root.path(), &["--select", "SMP503"]).1;
+        assert_eq!(stdout.contains("Build text with an f-string"), !selected || reported_when_selected, "{stdout}");
+    }
+}
+
+// FURB113 reports two or more appends to a list, with appends to other lists between them, when preview mode is on and
+// the project selects it. The run leaves a list that Ruff reports to Ruff, and keeps the rest.
+#[test_case("preview = true\nselect = [\"FURB113\"]\n", "xs = []\nxs.append(1)\nxs.append(2)\n", 0 ; "preview_selected")]
+#[test_case("select = [\"FURB113\"]\n", "xs = []\nxs.append(1)\nxs.append(2)\n", 1 ; "preview_off")]
+#[test_case("preview = true\nselect = [\"FURB113\"]\n", "xs = []\nxs.append(1)\n", 1 ; "single_append_kept")]
+#[test_case("preview = true\nselect = [\"FURB113\"]\n", "ys = []\nxs = []\nxs.append(1)\nys.append(2)\nxs.append(3)\n", 0 ; "append_to_other_list_between")]
+#[test_case("preview = true\nselect = [\"FURB113\"]\n", "xs = []\nxs.append(1)\nxs.append(2)\nxs = []\nxs.append(3)\nxs.append(4)\n", 1 ; "rebound_second_run_kept")]
+#[test_case("preview = true\nselect = [\"FURB113\"]\n", "def build() -> list[int]:\n    xs = []\n    xs.append(1)\n    xs.append(2)\n    return xs\n", 0 ; "function_scope")]
+#[test_case("preview = true\nselect = [\"FURB113\"]\n", "def build(xs: list[int]) -> None:\n    xs = []\n    xs.append(1)\n    xs.append(2)\n", 1 ; "parameter_rebound_kept")]
+fn collection_built_by_statements_leaves_repeated_appends_to_ruff(config: &str, source: &str, reported: usize) {
+    let ruff = format!("[tool.ruff.lint]\n{config}");
+    let root = common::project(&[("pyproject.toml", ruff.as_str()), ("module.py", source)]);
+    let (_, stdout, _) =
+        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP531", "--output-format", "json"]);
+    assert_eq!(stdout.matches("\"code\": \"SMP531\"").count(), reported, "{stdout}");
+}
+
+// RUF055 rewrites a `re.match` call with a plain-text pattern that is only tested for truth into `str.startswith`, when
+// preview mode is on and the project selects it. SMP522 leaves those calls to Ruff and keeps the rest.
+#[test_case("preview = true\n", "if re.match(\"ab\", text):\n        pass", 0 ; "if_test")]
+#[test_case("", "if re.match(\"ab\", text):\n        pass", 1 ; "preview_off")]
+#[test_case("preview = true\n", "while re.match(\"ab\", text):\n        break", 0 ; "while_test")]
+#[test_case("preview = true\n", "if text:\n        pass\n    elif re.match(\"ab\", text):\n        pass", 0 ; "elif_test")]
+#[test_case("preview = true\n", "assert re.match(\"ab\", text)", 0 ; "assert_test")]
+#[test_case("preview = true\n", "assert text, re.match(\"ab\", text)", 1 ; "assert_message")]
+#[test_case("preview = true\n", "return re.match(\"ab\", text)", 1 ; "value_used")]
+#[test_case("preview = true\n", "return not re.match(\"ab\", text)", 0 ; "not_operand")]
+#[test_case("preview = true\n", "return bool(re.match(\"ab\", text))", 0 ; "bool_argument")]
+#[test_case("preview = true\n", "return str(re.match(\"ab\", text))", 1 ; "str_argument")]
+#[test_case("preview = true\n", "return not (re.match(\"ab\", text) or text)", 0 ; "or_under_not")]
+#[test_case("preview = true\n", "return re.match(\"ab\", text) or text", 1 ; "or_value_used")]
+#[test_case("preview = true\n", "return 1 if re.match(\"ab\", text) else 2", 0 ; "ternary_test")]
+#[test_case("preview = true\n", "return re.match(\"ab\", text) if text else 2", 1 ; "ternary_body")]
+#[test_case("preview = true\n", "return [t for t in text if re.match(\"ab\", t)]", 0 ; "list_condition")]
+#[test_case("preview = true\n", "return {t: 1 for t in text if re.match(\"ab\", t)}", 0 ; "dict_condition")]
+#[test_case("preview = true\n", "return {t for t in text if re.match(\"ab\", t)}", 0 ; "set_condition")]
+#[test_case("preview = true\n", "return any(True for t in text if re.match(\"ab\", t))", 0 ; "generator_condition")]
+#[test_case("preview = true\n", "return [re.match(\"ab\", t) for t in text]", 1 ; "comprehension_element")]
+#[test_case("preview = true\n", "return re.match", 1 ; "reference")]
+#[test_case("preview = true\n", "match text:\n        case str() if re.match(\"ab\", text):\n            pass", 0 ; "match_guard")]
+#[test_case("preview = true\n", "return re.match(\"ab\", text) is None", 0 ; "compared_to_none")]
+#[test_case("preview = true\n", "return re.match(\"ab\", text) == None", 1 ; "equal_to_none")]
+#[test_case("preview = true\n", "return re.match(\"a.\", text) is None", 1 ; "metacharacter")]
+#[test_case("preview = true\n", "return re.match(b\"ab\", text) is None", 0 ; "bytes_pattern")]
+#[test_case("preview = true\n", "return re.match(b\"a.\", text) is None", 1 ; "bytes_metacharacter")]
+#[test_case("preview = true\n", "return re.match(PLAIN, text) is None", 0 ; "name_bound_once")]
+#[test_case("preview = true\n", "return re.match(REBOUND, text) is None", 1 ; "name_bound_twice")]
+#[test_case("preview = true\n", "return re.match(\"ab\", text, 0) is None", 1 ; "flags_argument")]
+#[test_case("preview = true\n", "return re.match(\"ab\", *text) is None", 1 ; "starred_string")]
+#[test_case("preview = true\n", "if (found := re.match(\"ab\", text)):\n        pass", 1 ; "walrus")]
+fn up_re_prefixmatch_leaves_truth_tests_to_ruf055(preview: &str, body: &str, reported: usize) {
+    let settings =
+        format!("[project]\nrequires-python = \">=3.15\"\n\n[tool.ruff.lint]\n{preview}select = [\"RUF055\"]\n");
+    let source =
+        format!("import re\n\nPLAIN = \"ab\"\nREBOUND = \"ab\"\nREBOUND = \"cd\"\n\n\ndef check(text):\n    {body}\n");
+    let root = common::project(&[("pyproject.toml", &settings), ("module.py", &source)]);
+    let (_, stdout, _) =
+        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP522", "--output-format", "json"]);
+    assert_eq!(stdout.matches("\"code\": \"SMP522\"").count(), reported, "{stdout}");
 }

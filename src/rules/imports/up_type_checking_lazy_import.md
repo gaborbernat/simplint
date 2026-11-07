@@ -176,3 +176,5 @@ lazy from os import PathLike
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** open issue [#29378](https://github.com/astral-sh/ruff/issues/29378).
+  [TID254](https://docs.astral.sh/ruff/rules/lazy-import-mismatch/), with `require-lazy` set, adds `lazy` to the imports
+  in the block but keeps the `if TYPE_CHECKING:` guard this rule removes.

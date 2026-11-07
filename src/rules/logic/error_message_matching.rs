@@ -1,4 +1,5 @@
-use ruff_python_ast::visitor::Visitor;
+use ruff_linter::registry::Rule as RuffRule;
+use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 
@@ -22,7 +23,13 @@ pub(crate) fn except_handler<'a>(walker: &mut Walker<'_, 'a>, handler: &'a ast::
         return;
     }
     let exc = name.as_str();
-    let mut tests = ExprCollector::new(|expr: &Expr| by_text(checker, exc, expr));
+    let mut asserts = Asserts::default();
+    asserts.visit_body(body);
+    // Ruff's PT017 reports each `assert` that names the exception, so a comparison inside one is left to it.
+    let left_to_ruff = checker.settings.from_ruff.ruff_runs(RuffRule::PytestAssertInExcept);
+    let mut tests = ExprCollector::new(|expr: &Expr| {
+        by_text(checker, exc, expr).filter(|range| !(left_to_ruff && asserts.contains(*range)))
+    });
     tests.visit_body(body);
     for_each_body(body, &mut |statements, _| {
         for stmt in statements {
@@ -39,6 +46,25 @@ pub(crate) fn except_handler<'a>(walker: &mut Walker<'_, 'a>, handler: &'a ast::
             range,
             "Telling exceptions apart by their message breaks when the text changes; catch a more specific type",
         );
+    }
+}
+
+// The `assert` statements of a handler body, at any depth, as Ruff's PT017 walks them.
+#[derive(Default)]
+struct Asserts(Vec<TextRange>);
+
+impl Asserts {
+    fn contains(&self, range: TextRange) -> bool {
+        self.0.iter().any(|assert| assert.contains_range(range))
+    }
+}
+
+impl<'a> Visitor<'a> for Asserts {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        if let Stmt::Assert(_) = stmt {
+            self.0.push(stmt.range());
+        }
+        visitor::walk_stmt(self, stmt);
     }
 }
 

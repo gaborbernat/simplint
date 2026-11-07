@@ -148,8 +148,33 @@ def parse_version(text):
       return match(r"\d+\.\d+", text)
   ```
 
+- **Truth tests with a plain-text pattern Ruff rewrites**: when Ruff's preview mode is on and the project selects
+  [RUF055](https://docs.astral.sh/ruff/rules/unnecessary-regular-expression/), Ruff rewrites a `re.match` call whose
+  pattern has no regular expression metacharacter, and whose result is only tested for truth or compared to `None`, to
+  `str.startswith`, so this rule leaves that call to Ruff.
+
+  ```toml config
+  [project]
+  requires-python = ">=3.15"
+
+  [tool.ruff.lint]
+  preview = true
+  select = ["RUF055"]
+  ```
+
+  ```python ok
+  import re
+
+
+  def is_version(text):
+      return bool(re.match("v", text))
+  ```
+
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#24545](https://github.com/astral-sh/ruff/issues/24545).
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rule
+  [RUF055](https://docs.astral.sh/ruff/rules/unnecessary-regular-expression/), which rewrites `re.match` with a
+  plain-string pattern to `str.startswith` and which this rule leaves to it; the rename for other patterns is open issue
+  [#24545](https://github.com/astral-sh/ruff/issues/24545).
 - [flake8-tergeo](https://github.com/SAP/flake8-tergeo) reports the same `re.match` calls as
   [FTP149](https://github.com/SAP/flake8-tergeo/blob/main/docs/checks.md#ftp149), with no fix.

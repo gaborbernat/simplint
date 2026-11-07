@@ -156,4 +156,5 @@ the underscore convention to functions and classes.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#18380](https://github.com/astral-sh/ruff/issues/18380),
+  which asks for a leading underscore on top-level names no other file imports, functions and classes included.

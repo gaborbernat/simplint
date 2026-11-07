@@ -1,7 +1,10 @@
 use ruff_diagnostics::{Edit, Fix};
+use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::str::Quote;
 use ruff_python_ast::{self as ast, Expr, Operator, PythonVersion, StringFlags};
 use ruff_python_codegen::Generator;
+use ruff_python_stdlib::logging::LoggingLevel;
+use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
@@ -25,6 +28,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     flatten(expr, &mut operands);
     if !operands.iter().any(|operand| matches!(operand, Expr::StringLiteral(_) | Expr::FString(_)))
         || operands.iter().any(|operand| operand.is_bytes_literal_expr())
+        || left_to_ruff(walker, expr)
     {
         return;
     }
@@ -45,6 +49,80 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         fix,
         "Replace the concatenation with an f-string",
     );
+}
+
+// Ruff's G003 reports the `+` that is a logging call's message, and its ISC003 a concatenation of two literals across
+// lines, so this rule leaves those to Ruff while it runs.
+fn left_to_ruff(walker: &Walker, expr: &Expr) -> bool {
+    let settings = &walker.checker.settings.from_ruff;
+    (settings.ruff_runs(RuffRule::LoggingStringConcat) && is_logging_message(walker, expr))
+        || (settings.allow_multiline
+            && settings.ruff_runs(RuffRule::ExplicitStringConcatenation)
+            && starts_with_literal_pair_across_lines(walker.checker, expr))
+}
+
+// Whether `expr` is the message argument of a logging call, as G003 finds it: the `msg` keyword or the argument at
+// the message's position, which `log` moves after the level.
+fn is_logging_message(walker: &Walker, expr: &Expr) -> bool {
+    let Some(Expr::Call(call)) = walker.expression_parent() else {
+        return false;
+    };
+    let semantic = walker.checker.semantic();
+    let logger_objects = &walker.checker.settings.from_ruff.logger_objects;
+    let position = match call.func.as_ref() {
+        Expr::Attribute(ast::ExprAttribute { attr, .. })
+            if semantic.is_logger_candidate(&call.func, logger_objects) =>
+        {
+            message_position(attr.as_str())
+        }
+        func @ Expr::Name(_) => semantic.qualified_name(func).and_then(|name| match name.segments() {
+            ["logging", attribute] => message_position(attribute),
+            _ => None,
+        }),
+        _ => None,
+    };
+    position.is_some_and(|position| {
+        call.arguments.find_argument_value("msg", position).is_some_and(|message| std::ptr::eq(message, expr))
+    })
+}
+
+fn message_position(attribute: &str) -> Option<usize> {
+    match attribute {
+        "log" => Some(1),
+        _ => LoggingLevel::from_attribute(attribute).map(|_| 0),
+    }
+}
+
+// Whether ISC003 reports a `+` that starts where `expr` starts, on the way down its first operands: the two operands
+// of such a `+` are the same kind of literal and a line break separates them. Its report and this rule's would land on
+// one location only then.
+fn starts_with_literal_pair_across_lines(checker: &Checker, expr: &Expr) -> bool {
+    let mut current = expr;
+    loop {
+        current = match current {
+            Expr::BinOp(ast::ExprBinOp { left, op, right, .. }) => {
+                let same_literals = matches!(
+                    (left.as_ref(), right.as_ref()),
+                    (Expr::StringLiteral(_) | Expr::FString(_), Expr::StringLiteral(_) | Expr::FString(_))
+                        | (Expr::BytesLiteral(_), Expr::BytesLiteral(_))
+                        | (Expr::TString(_), Expr::TString(_))
+                );
+                if matches!(op, Operator::Add)
+                    && same_literals
+                    && current.start() == expr.start()
+                    && checker.source.contains_line_break(TextRange::new(left.end(), right.start()))
+                {
+                    return true;
+                }
+                left
+            }
+            Expr::Attribute(ast::ExprAttribute { value, .. }) | Expr::Subscript(ast::ExprSubscript { value, .. }) => {
+                value
+            }
+            Expr::Call(ast::ExprCall { func, .. }) => func,
+            _ => return false,
+        };
+    }
 }
 
 fn flatten<'a>(expr: &'a Expr, operands: &mut Vec<&'a Expr>) {

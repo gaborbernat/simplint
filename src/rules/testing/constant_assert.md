@@ -7,7 +7,9 @@ An assertion on a truthy constant can never fail, so it checks nothing and makes
 it does. A parenthesized `assert (check, "message")` is a non-empty tuple and falls in the same trap. Ruff reports every
 non-empty tuple as [assert-tuple](https://docs.astral.sh/ruff/rules/assert-tuple/); this rule reports only the
 two-element tuple without a message that it can rewrite, and leaves the others to Ruff when the project's Ruff
-configuration selects assert-tuple.
+configuration selects assert-tuple. Ruff's
+[assert-on-string-literal](https://docs.astral.sh/ruff/rules/assert-on-string-literal/) reports a string, bytes or
+f-string literal without a fix, so while it runs this rule keeps only the ones it can delete.
 
 ## Example
 
@@ -105,6 +107,24 @@ Truthiness is judged the way Ruff judges it. These are truthy constants:
   ```
 
 ### Exceptions
+
+- **A string, bytes or f-string literal this rule cannot delete**, such as one whose f-string calls a function: Ruff's
+  [assert-on-string-literal](https://docs.astral.sh/ruff/rules/assert-on-string-literal/) reports it while the project's
+  Ruff configuration selects it, so this rule leaves it to Ruff. One it can delete stays here for the fix, which Ruff
+  does not offer. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are respected too.
+
+  ```toml config
+  [tool.ruff.lint]
+  select = ["PLW0129"]
+  ```
+
+  ```python ok
+  def compute() -> str:
+      return ""
+
+
+  assert f"ready {compute()}"
+  ```
 
 - **A container holding only starred elements**, such as `[*values]`: it may be empty.
 
@@ -301,7 +321,11 @@ flowchart TD
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** released rule [F631](https://docs.astral.sh/ruff/rules/assert-tuple/).
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules
+  [F631](https://docs.astral.sh/ruff/rules/assert-tuple/) and
+  [PLW0129](https://docs.astral.sh/ruff/rules/assert-on-string-literal/), which cover tuples and string literals; this
+  rule leaves them to Ruff, but keeps the two-element tuple and the string literals it can delete for the fix Ruff
+  lacks, and covers other truthy constants.
 - [flake8-useless-assert](https://github.com/decorator-factory/flake8-useless-assert) reports an assert with a truthy
   literal, such as `assert True`, as [ULA001](https://github.com/decorator-factory/flake8-useless-assert), with no fix.
 - [Sourcery](https://sourcery.ai) removes `assert True` statements through

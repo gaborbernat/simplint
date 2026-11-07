@@ -258,4 +258,4 @@ attempt.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#10108](https://github.com/astral-sh/ruff/issues/10108).
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

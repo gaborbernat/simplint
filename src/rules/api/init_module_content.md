@@ -234,6 +234,23 @@ it belongs.
     __all__ = ["run"]
     ```
 
+- **Statements Ruff reports**: with Ruff's preview mode on and
+  [RUF067](https://docs.astral.sh/ruff/rules/non-empty-init-module/) selected, Ruff reports the statements of an
+  `__init__.py` that it does not allow, so this rule leaves them to Ruff. Ruff allows imports, dunder assignments and
+  `if TYPE_CHECKING` blocks, unless `strictly-empty-init-modules` is set.
+
+  ```toml config
+  [tool.ruff.lint]
+  preview = true
+  select = ["RUF067"]
+  ```
+
+  ```python ok file=pkg/__init__.py
+  """HTTP client."""
+
+  VERSION = "1.0"
+  ```
+
 ### Public packages
 
 A package is **public** when it belongs to one of the library's API packages and no part of its path starts with `_`;
@@ -241,8 +258,10 @@ see [undocumented-public-api](SMP903.html).
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** released rule
-  [RUF067](https://docs.astral.sh/ruff/rules/non-empty-init-module/) (preview).
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rule
+  [RUF067](https://docs.astral.sh/ruff/rules/non-empty-init-module/), which reports code in `__init__.py` except imports
+  and dunder assignments (all of it with `strictly-empty-init-modules`) and which this rule leaves to it; this rule also
+  reports the imports a library's public package does not re-export.
 - [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports logic in an `__init__`
   module as
   [WPS412](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/best_practices.html#wemake_python_styleguide.violations.best_practices.InitModuleHasLogicViolation),

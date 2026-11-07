@@ -145,4 +145,7 @@ also reports the `## Setup` form.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Preview rules
+  [E265](https://docs.astral.sh/ruff/rules/no-space-after-block-comment/) and
+  [E266](https://docs.astral.sh/ruff/rules/multiple-leading-hashes-for-block-comment/) reformat some of the same
+  comments, such as `## Setup` or `#---`, but keep them.

@@ -14,6 +14,8 @@ pub struct Walker<'c, 'a> {
     expressions: Vec<&'a Expr>,
     // The scopes holding the current node, outermost first, the module left out.
     scopes: Vec<Scope<'a>>,
+    // The statements holding the current node, outermost first.
+    statements: Vec<&'a Stmt>,
     in_fstring: bool,
     in_comprehension: bool,
 }
@@ -43,6 +45,7 @@ impl<'c, 'a> Walker<'c, 'a> {
             rules,
             expressions: Vec::new(),
             scopes: Vec::new(),
+            statements: Vec::new(),
             in_fstring: false,
             in_comprehension: false,
         };
@@ -61,6 +64,11 @@ impl<'c, 'a> Walker<'c, 'a> {
         &self.scopes
     }
 
+    // The innermost statement holding the current node.
+    pub fn statement(&self) -> Option<&'a Stmt> {
+        self.statements.last().copied()
+    }
+
     pub fn in_fstring(&self) -> bool {
         self.in_fstring
     }
@@ -72,6 +80,7 @@ impl<'c, 'a> Walker<'c, 'a> {
 
 impl<'a> Visitor<'a> for Walker<'_, 'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        self.statements.push(stmt);
         registry::statement(self.rules, self, stmt);
         match stmt {
             Stmt::FunctionDef(function) => {
@@ -80,6 +89,7 @@ impl<'a> Visitor<'a> for Walker<'_, 'a> {
             Stmt::ClassDef(class) => self.in_scope(&Scope::Class(class), |walker| visitor::walk_stmt(walker, stmt)),
             _ => visitor::walk_stmt(self, stmt),
         }
+        self.statements.pop();
     }
 
     fn visit_expr(&mut self, expr: &'a Expr) {

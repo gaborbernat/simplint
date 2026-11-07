@@ -583,5 +583,6 @@ print(local())
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#167](https://github.com/astral-sh/ruff/issues/167),
-  [#3482](https://github.com/astral-sh/ruff/issues/3482) and [#2098](https://github.com/astral-sh/ruff/issues/2098).
+- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#167](https://github.com/astral-sh/ruff/issues/167)
+  (report importers of names `__all__` omits), [#2098](https://github.com/astral-sh/ruff/issues/2098) and
+  [#3482](https://github.com/astral-sh/ruff/issues/3482) (modules with no `__all__`).

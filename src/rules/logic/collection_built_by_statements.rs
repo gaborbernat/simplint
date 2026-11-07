@@ -1,4 +1,5 @@
 use ruff_diagnostics::{Edit, Fix};
+use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::comparable::HashableExpr;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
@@ -101,6 +102,9 @@ fn is_name_expr(expr: &Expr) -> bool {
 
 // The run of statements right after the literal that each add an entry, which the literal can hold instead.
 fn check_run(checker: &Checker, assign: &Stmt, name: &str, kind: Kind, rest: &[Stmt]) {
+    if kind == Kind::List && ruff_repeats_append(checker, name, rest) {
+        return;
+    }
     let entries: Vec<Entry> = rest.iter().map_while(|stmt| entry(stmt, name, kind)).collect();
     let Some(last) = entries.last() else {
         return;
@@ -128,6 +132,28 @@ fn check_run(checker: &Checker, assign: &Stmt, name: &str, kind: Kind, rest: &[S
         Some(fix),
         "Write the entries in the literal",
     );
+}
+
+// Ruff's FURB113 reports two or more appends to a list in a run of consecutive appends, when preview mode is on and the
+// project selects it. The run counts every append to the list in the appends that follow the literal, not only the
+// ones that enter it here.
+fn ruff_repeats_append(checker: &Checker, name: &str, rest: &[Stmt]) -> bool {
+    let from_ruff = &checker.settings.from_ruff;
+    from_ruff.preview
+        && from_ruff.ruff_runs(RuffRule::RepeatedAppend)
+        && rest
+            .iter()
+            .take_while(|stmt| checker.semantic().is_list_append(stmt.range()))
+            .filter(|stmt| appends_to(stmt, name))
+            .count()
+            >= 2
+}
+
+fn appends_to(stmt: &Stmt, name: &str) -> bool {
+    stmt.as_expr_stmt()
+        .and_then(|expr| expr.value.as_call_expr())
+        .and_then(|call| call.func.as_attribute_expr())
+        .is_some_and(|attribute| is_name(&attribute.value, name))
 }
 
 // Two keys of a dict, or two elements of a set, that hash alike as Python hashes them, such as `1` and `True`, are one

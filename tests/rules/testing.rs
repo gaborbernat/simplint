@@ -10,6 +10,7 @@ use crate::common;
 #[test_case("conditional-in-test", "multiline_module_docstring_ok.py" ; "conditional_in_test_regular_module")]
 #[test_case("constant-assert", "constant_assert.py" ; "constant_assert")]
 #[test_case("constant-assert", "constant_assert_all_rebound.py" ; "constant_assert_all_rebound")]
+#[test_case("constant-assert", "constant_assert_ruff_overlap.py" ; "constant_assert_ruff_overlap")]
 #[test_case("loop-in-test", "tests/test_loop_in_test.py" ; "loop_in_test")]
 #[test_case("mock-assertion-typo", "mock_assertion_typo.py" ; "mock_assertion_typo")]
 #[test_case("mock-assertion-typo", "mock_assertion_typo_defined.py" ; "mock_assertion_typo_defined")]
@@ -114,4 +115,44 @@ fn constant_assert_follows_ruff_assert_tuple(source: &str, code: &str, fragment:
         let stdout = common::check(root.path(), &["--select", "SMP804"]).1;
         assert_eq!(stdout.contains(fragment), !selected, "{stdout}");
     }
+}
+
+// Ruff's PLW0129 reports an assert on a string, bytes or f-string literal without a fix, which SMP804 leaves to it while
+// the project's Ruff configuration selects it, unless SMP804 can delete the assertion. A concatenation is not a literal,
+// so SMP804 keeps it.
+#[test_case("PLW0129", "assert \"ready\"", true ; "deletable_string")]
+#[test_case("PLW0129", "check(); assert \"ready\"", false ; "string_sharing_its_line")]
+#[test_case("PLW0129", "check(); assert \"ready\", \"message\"", false ; "string_with_message")]
+#[test_case("PLW0129", "check(); assert \"ready\" \"set\"", false ; "implicit_concatenation")]
+#[test_case("PLW0129", "check(); assert b\"ready\"", false ; "bytes")]
+#[test_case("PLW0129", "assert f\"ready {check()}\"", false ; "fstring_with_effect")]
+#[test_case("PLW0129", "assert \"a\" + \"b\"", true ; "concatenation")]
+#[test_case("PLW0129", "assert True", true ; "boolean")]
+fn constant_assert_follows_ruff_assert_on_string_literal(code: &str, statement: &str, reported_when_selected: bool) {
+    for selected in [false, true] {
+        let select = if selected { format!("\"{code}\"") } else { String::new() };
+        let root = common::project(&[
+            ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [{select}]\n")),
+            ("module.py", &format!("def check() -> None:\n    {statement}\n")),
+        ]);
+        let stdout = common::check(root.path(), &["--select", "SMP804"]).1;
+        assert_eq!(
+            stdout.contains("Assertion on a constant always passes"),
+            !selected || reported_when_selected,
+            "{stdout}"
+        );
+    }
+}
+
+// Ruff's ASYNC110 reports a `while` whose whole body awaits `asyncio.sleep`, which SMP808 leaves to it while the
+// project's Ruff configuration selects it.
+#[test_case("while not done():\n        await asyncio.sleep(1)", "ASYNC110", 0 ; "sole_await_left_to_ruff")]
+#[test_case("while not done():\n        await asyncio.sleep(1)", "E501", 1 ; "sole_await_reported_without_async110")]
+#[test_case("while not done():\n        await asyncio.sleep(1)\n        done()", "ASYNC110", 1 ; "await_with_another_statement")]
+fn sleep_in_test_leaves_busy_waits_to_async110(body: &str, code: &str, reports: usize) {
+    let source = format!("import asyncio\n\n\nasync def test_busy(done):\n    {body}\n");
+    let settings = format!("[tool.ruff.lint]\nselect = [\"{code}\"]\n");
+    let root = common::project(&[("pyproject.toml", &settings), ("test_busy.py", &source)]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP808"]);
+    assert_eq!(stdout.matches("SMP808").count(), reports, "{stdout}");
 }

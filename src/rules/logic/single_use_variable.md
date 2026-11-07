@@ -166,8 +166,9 @@ def total_price(prices: list[float]) -> str:
 - **A next statement that is `yield from name`, while Ruff's preview mode is on**: Ruff's preview rule
   [unnecessary-assign-before-yield](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/) covers it when
   the value goes in as written. With preview off, or for a value that Ruff would write differently, such as a tuple, the
-  report stays. The pair is left to Ruff only when the project's Ruff configuration selects the rule. Ruff's own
-  suppressions of it, through `per-file-ignores` or `noqa`, are respected too.
+  report stays: Ruff's fix writes `yield from a, b`, a syntax error, so this rule keeps the tuple for its own fix. The
+  pair is left to Ruff only when the project's Ruff configuration selects the rule. Ruff's own suppressions of it,
+  through `per-file-ignores` or `noqa`, are respected too.
 
 - **A read inside a loop body, a comprehension, a lambda or a nested function**: inlining would compute the value once
   per pass instead of once.
@@ -364,9 +365,12 @@ Here `log.write` is looked up before `len(items)` runs, which differs only when 
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** released rules
-  [RET504](https://docs.astral.sh/ruff/rules/unnecessary-assign/) and
-  [RUF070](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/) (preview).
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules
+  [RET504](https://docs.astral.sh/ruff/rules/unnecessary-assign/) and preview
+  [RUF070](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/), which cover a value returned or yielded
+  on the next line and which this rule leaves to them, except the `yield from` of a tuple, which it keeps because
+  RUF070's fix breaks it; every other single read is open issue
+  [#10108](https://github.com/astral-sh/ruff/issues/10108).
 - [Sourcery](https://sourcery.ai) inlines a variable that is used once anywhere in its block through
   [inline-variable](https://docs.sourcery.ai/reference/refactorings/python/inline-variable/). This rule only inlines a
   value read on the line right below its assignment.

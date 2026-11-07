@@ -314,6 +314,7 @@ Sphinx renders `var`, `ivar` and `cvar` alike, yet they say different things: `i
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open pull request
-  [#13286](https://github.com/astral-sh/ruff/pull/13286), for issue
-  [#458](https://github.com/astral-sh/ruff/issues/458).
+- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#458](https://github.com/astral-sh/ruff/issues/458)
+  (darglint DAR001, docstrings that do not parse). Open pull request
+  [#13286](https://github.com/astral-sh/ruff/pull/13286) teaches the DOC rules to read Sphinx fields but does not check
+  their syntax.

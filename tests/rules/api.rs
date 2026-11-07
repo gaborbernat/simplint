@@ -52,6 +52,7 @@ use crate::common;
 #[test_case("all-format", "all_format.py" ; "all_format")]
 #[test_case("all-format", "all_format_tuple.py" ; "all_format_tuple")]
 #[test_case("all-format", "all_format_bare.py" ; "all_format_bare_tuple")]
+#[test_case("all-format", "all_format_ruff_overlap.py" ; "all_format_ruff_overlap")]
 #[test_case("all-not-last", "all_not_last.py" ; "all_not_last")]
 #[test_case("all-not-last", "all_not_last_eof.py" ; "all_not_last_at_eof")]
 #[test_case("all-not-last", "all_not_last_reversed.py" ; "all_not_last_reversed_main_guard")]
@@ -195,6 +196,55 @@ fn unused_definition_judges_a_private_method_by_its_own_file(name: &str, same_fi
     let (_, stdout, _) =
         common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
     assert_eq!(stdout.contains("`_Handler._handle_text`"), reported, "{stdout}");
+}
+
+const RUF067_PREVIEW: &str = "[tool.ruff.lint]\npreview = true\nselect = [\"RUF067\"]\n";
+const RUF067_STRICT: &str = "[tool.ruff.lint]\npreview = true\nselect = [\"RUF067\"]\n[tool.ruff.lint.ruff]\nstrictly-empty-init-modules = true\n";
+// RUF067 reports the statements of an `__init__.py` only in preview mode, and then the statements it does not allow, so
+// the run leaves those to Ruff. The default allows imports, dunder assignments and `if TYPE_CHECKING` blocks, and a
+// project that bans all code leaves nothing to the run but attribute docstrings.
+#[test_case(RUF067_PREVIEW, "VALUE = 1\n", 0 ; "preview_assignment")]
+#[test_case(RUF067_PREVIEW, "import os\n", 1 ; "preview_import_allowed")]
+#[test_case(RUF067_PREVIEW, "__version__ = \"1\"\n", 1 ; "preview_dunder_allowed")]
+#[test_case(RUF067_PREVIEW, "if TYPE_CHECKING:\n    pass\n", 1 ; "preview_type_checking_allowed")]
+#[test_case(RUF067_PREVIEW, "def helper() -> None:\n    pass\n", 0 ; "preview_function")]
+#[test_case(RUF067_PREVIEW, "X = 1\n\"\"\"Doc of X.\"\"\"\n", 1 ; "preview_attribute_docstring")]
+#[test_case(RUF067_PREVIEW, "def helper() -> None:\n    pass\n\n\"stray\"\n", 0 ; "preview_stray_string")]
+#[test_case(RUF067_STRICT, "import os\n", 0 ; "preview_strict_import")]
+#[test_case(RUF067_STRICT, "X = 1\n\"\"\"Doc of X.\"\"\"\n", 1 ; "preview_strict_attribute_docstring")]
+#[test_case("[tool.ruff.lint]\nselect = [\"RUF067\"]\n", "VALUE = 1\n", 1 ; "preview_off_leaves_it_to_the_run")]
+#[test_case(RUF067_PREVIEW, "__all__: list[str] = []\n", 1 ; "preview_dunder_annotated_allowed")]
+#[test_case(RUF067_PREVIEW, "__all__ += [\"x\"]\n", 1 ; "preview_dunder_augmented_allowed")]
+#[test_case(RUF067_PREVIEW, "counter += 1\n", 0 ; "preview_augmented_reported")]
+#[test_case(RUF067_PREVIEW, "import typing\n\nif typing.TYPE_CHECKING:\n    pass\n", 2 ; "preview_attribute_type_checking_allowed")]
+#[test_case(RUF067_PREVIEW, "if callable(print):\n    pass\n", 0 ; "preview_other_if_reported")]
+#[test_case(RUF067_STRICT, "X: int = 1\n\"\"\"Doc of X.\"\"\"\n", 1 ; "preview_strict_annotated_attribute_docstring")]
+fn init_module_content_leaves_ruf067_to_ruff(config: &str, source: &str, reported: usize) {
+    let root = common::project(&[("pyproject.toml", config), ("pkg/__init__.py", source)]);
+    let (_, stdout, _) =
+        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP407", "--output-format", "json"]);
+    assert_eq!(stdout.matches("\"code\": \"SMP407\"").count(), reported, "{stdout}");
+}
+
+// PYI046 and PYI049 report a private protocol or TypedDict that its file never reads, so the run leaves those to Ruff
+// when the project selects the rule. A class Ruff reads, or one that is not its last binding, stays with the run.
+#[test_case("from typing import Protocol\n\n\nclass _Proto(Protocol):\n    def run(self) -> None: ...\n", "\"PYI046\"", 0 ; "protocol_selected")]
+#[test_case("from typing import Protocol\n\n\nclass _Proto(Protocol):\n    def run(self) -> None: ...\n", "\"PYI049\"", 1 ; "protocol_other_rule")]
+#[test_case("from typing import Protocol\n\n\nclass _Proto(Protocol):\n    def run(self) -> None: ...\n", "", 1 ; "protocol_unselected")]
+#[test_case("import typing_extensions\n\n\nclass _Proto(typing_extensions.Protocol[int]):\n    pass\n", "\"PYI046\"", 0 ; "protocol_typing_extensions_subscript")]
+#[test_case("from mylib import Protocol\n\n\nclass _Proto(Protocol):\n    pass\n", "\"PYI046\"", 1 ; "protocol_foreign")]
+#[test_case("from typing import TypedDict\n\n\nclass _Row(TypedDict):\n    a: int\n", "\"PYI049\"", 0 ; "typed_dict_selected")]
+#[test_case("from typing import TypedDict\n\n\nclass _Row(TypedDict):\n    a: int\n", "\"PYI046\"", 1 ; "typed_dict_other_rule")]
+#[test_case("from typing import Protocol\n\n\nclass _P(Protocol):\n    pass\n\n\nclass _P(Protocol):\n    pass\n", "\"PYI046\"", 1 ; "protocol_rebound")]
+#[test_case("from __future__ import annotations\n\nfrom typing import Protocol\n\n\nclass _P(Protocol):\n    def run(self) -> _P: ...\n", "\"PYI046\"", 1 ; "protocol_read_by_own_annotation")]
+#[test_case("from typing import Protocol\n\n\nclass _P(Protocol):\n    def run(self) -> '_P': ...\n", "\"PYI046\"", 1 ; "protocol_string_annotation")]
+#[test_case("from typing import Protocol\n\n\nclass _P(Protocol):\n    \"\"\"Protocol of _P.\"\"\"\n", "\"PYI046\"", 0 ; "protocol_docstring_mention")]
+fn unused_definition_leaves_private_protocols_and_typed_dicts_to_ruff(source: &str, select: &str, reported: usize) {
+    let ruff = format!("[tool.ruff.lint]\nselect = [{select}]\n");
+    let root = common::project(&[("pyproject.toml", ruff.as_str()), ("module.py", source)]);
+    let (_, stdout, _) =
+        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
+    assert_eq!(stdout.matches("SMP409").count(), reported, "{stdout}");
 }
 
 // A method a version switch defines inside an `if` in the class body is the class's method, so its calls count.
@@ -390,4 +440,32 @@ fn unexported_public_name_checks_strings_of_other_files() {
     let stdout = common::check(root.path(), &["--unsafe-fixes", "--select", "SMP403"]).1;
     assert!(stdout.contains("SMP403 `main` is not in `__all__`"));
     assert!(!stdout.contains("SMP403 [*]"));
+}
+
+// Ruff's COM812 reports a list whose closing bracket follows a line break with no trailing comma, which SMP405 leaves to
+// it while the project's Ruff configuration selects it. A list that closes on its last element's line is not COM812's.
+#[test_case("__all__ = [\n    \"a\",\n    \"b\"\n]\n", false ; "closing_bracket_on_own_line")]
+#[test_case("__all__ = [\n    \"a\"  # note\n]\n", false ; "comment_before_closing_bracket")]
+#[test_case("__all__ = [\n    (\"a\")\n]\n", false ; "parenthesized_last_element")]
+#[test_case("__all__ = [\n    \"a\",\n    \"b\"]\n", true ; "closing_bracket_after_last_element")]
+#[test_case("__all__ = [\"a\", \"b\"]\n", true ; "single_line")]
+#[test_case("__all__ = [\n    \"a\" \\\n]\n", true ; "line_continuation")]
+fn all_format_follows_ruff_com812(source: &str, reported_when_selected: bool) {
+    for selected in [false, true] {
+        let select = if selected { "\"COM812\"" } else { "" };
+        let root = common::project(&[
+            ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [{select}]\n")),
+            ("module.py", source),
+        ]);
+        let stdout = common::check(root.path(), &["--select", "SMP405"]).1;
+        assert_eq!(stdout.contains("has no trailing comma"), !selected || reported_when_selected, "{stdout}");
+    }
+}
+
+// A parenthesized last element keeps the comma after it, so the list has one and SMP405 has nothing to add.
+#[test]
+fn all_format_keeps_parenthesized_trailing_comma() {
+    let root = common::project(&[("module.py", "__all__ = [\n    (\"a\"),\n]\n")]);
+    let stdout = common::check(root.path(), &["--select", "SMP405"]).1;
+    assert!(!stdout.contains("has no trailing comma"), "{stdout}");
 }

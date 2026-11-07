@@ -178,6 +178,7 @@ Checks reStructuredText docstrings, when `docstring-style = "rst"`, for inline m
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#283](https://github.com/astral-sh/ruff/issues/283).
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Open issue
+  [#283](https://github.com/astral-sh/ruff/issues/283) names flake8-rst-docstrings only as a plugin candidate.
 - [flake8-rst-docstrings](https://github.com/peterjc/flake8-rst-docstrings) reports an inline literal with no closing
   backticks as [RST214](https://github.com/peterjc/flake8-rst-docstrings), with no fix.

@@ -439,8 +439,10 @@ through `per-file-ignores` or `noqa`, are respected too.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** released rule
-  [N816](https://docs.astral.sh/ruff/rules/mixed-case-variable-in-global-scope/).
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
+  [N816](https://docs.astral.sh/ruff/rules/mixed-case-variable-in-global-scope/), which reports only `mixedCase` names,
+  without a fix; this rule leaves unfixable ones to it, keeps those it can rename for the fix, and also reports
+  `lower_case` names and renames them to `UPPER_CASE`.
 - [pylint](https://github.com/pylint-dev/pylint) reports module-level assignments that do not match `const-naming-style`
   as [invalid-name](https://pylint.readthedocs.io/en/latest/user_guide/messages/convention/invalid-name.html). It
   defaults to `UPPER_CASE` and only reports, where this rule renames the uses in the file.

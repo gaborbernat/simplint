@@ -144,11 +144,9 @@ those. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are 
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** released rule
-  [PGH005](https://docs.astral.sh/ruff/rules/invalid-mock-access/).
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
+  [PGH005](https://docs.astral.sh/ruff/rules/invalid-mock-access/), which reports an assertion name missing its
+  `assert_` prefix and which this rule leaves to it; this rule covers misspellings and the rest.
 - [flake8-mock](https://github.com/zupo/flake8-mock) reports misspelled mock assertions, such as `called_once_with`, as
   [M001](https://github.com/zupo/flake8-mock), with no fix. This rule's fix renames them to the assertion they stand
   for.
-- [Ruff](https://docs.astral.sh/ruff/rules/invalid-mock-access/) reports the names in the test of an `assert`, such as
-  `assert mock.not_called()`, as [PGH005](https://docs.astral.sh/ruff/rules/invalid-mock-access/), with no fix. This
-  rule leaves those to it; see Ruff overlap.

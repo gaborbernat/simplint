@@ -66,6 +66,44 @@ message = f"Hello, {name}!"
       return b"Name: " + name
   ```
 
+- **The message of a logging call**, such as `logger.info("Hello, " + name)`: Ruff's
+  [logging-string-concat](https://docs.astral.sh/ruff/rules/logging-string-concat/) reports it while the project's Ruff
+  configuration selects it, so this rule leaves it to Ruff.
+
+  ```toml config
+  [tool.ruff.lint]
+  select = ["G003"]
+  ```
+
+  ```python ok
+  import logging
+
+  logger = logging.getLogger(__name__)
+
+
+  def greet(name: str) -> None:
+      logger.info("Hello, " + name)
+  ```
+
+- **Two literals joined by `+` across lines**, such as `("Hello, "` followed by `+ "world")`: Ruff's
+  [explicit-string-concatenation](https://docs.astral.sh/ruff/rules/explicit-string-concatenation/) reports it while the
+  project's Ruff configuration selects it and `allow-multiline` is on, so this rule leaves it to Ruff. A longer chain
+  that starts with such a pair is left to Ruff as well, since both would report the same spot.
+
+  ```toml config
+  [tool.ruff.lint]
+  select = ["ISC003"]
+  ```
+
+  ```python ok
+  # fmt: off
+  title = (
+      "Hello, "
+      + "world"
+  )
+  # fmt: on
+  ```
+
 ### Deciding on a fix
 
 ```mermaid
@@ -231,9 +269,11 @@ No fix is offered when:
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
-  [ISC003](https://docs.astral.sh/ruff/rules/explicit-string-concatenation/), which joins literals by implicit
-  concatenation rather than an f-string.
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules
+  [G003](https://docs.astral.sh/ruff/rules/logging-string-concat/) and
+  [ISC003](https://docs.astral.sh/ruff/rules/explicit-string-concatenation/), which report `+` in logging calls and
+  between two literals split across lines and which this rule leaves to them; open issue
+  [#11060](https://github.com/astral-sh/ruff/issues/11060) lists Sourcery's use-fstring-for-concatenation.
 - [Sourcery](https://sourcery.ai) rewrites the same `+` chains as an f-string through its
   [use-fstring-for-concatenation](https://docs.sourcery.ai/reference/refactorings/python/use-fstring-for-concatenation/)
   refactoring.

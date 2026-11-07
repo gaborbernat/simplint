@@ -166,7 +166,9 @@ a comment, or when `warn` is imported by name, since the decorator needs the `wa
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Released rule
+  [B028](https://docs.astral.sh/ruff/rules/no-explicit-stacklevel/) reports the same call when it lacks `stacklevel` and
+  adds one; this rule replaces the call with the decorator.
 - [flake8-tergeo](https://github.com/SAP/flake8-tergeo) reports functions that call `warnings.warn` where
   `warnings.deprecated` fits, as [FTP118](https://github.com/SAP/flake8-tergeo/blob/main/docs/checks.md#ftp118), with no
   fix.

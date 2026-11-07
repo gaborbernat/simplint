@@ -211,8 +211,12 @@ and type parameters.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** released rule
-  [E741](https://docs.astral.sh/ruff/rules/ambiguous-variable-name/).
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules
+  [E741](https://docs.astral.sh/ruff/rules/ambiguous-variable-name/),
+  [E742](https://docs.astral.sh/ruff/rules/ambiguous-class-name/) and
+  [E743](https://docs.astral.sh/ruff/rules/ambiguous-function-name/), which report `l`, `I` and `O` and which this rule
+  leaves to them; issue [#4866](https://github.com/astral-sh/ruff/issues/4866) asking for all single letters was closed
+  as not planned.
 - [flake8-variables-names](https://github.com/best-doctor/flake8-variables-names) reports single-letter names as
   [VNE001](https://github.com/best-doctor/flake8-variables-names/blob/master/flake8_variables_names/checker.py), but
   allows `i`, `_` and `T` by default. This rule flags `for i` loop targets and type parameters such as `T`.

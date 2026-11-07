@@ -60,6 +60,14 @@ fn report_constant_assert(checker: &Checker, stmt: &Stmt, assert: &ast::StmtAsse
             }
             None
         }
+        // Ruff's PLW0129 reports a string, bytes or f-string test whatever its text, but without a fix, so this rule
+        // keeps the assertions it can delete.
+        (Expr::StringLiteral(_) | Expr::BytesLiteral(_) | Expr::FString(_), _)
+            if checker.settings.from_ruff.ruff_runs(RuffRule::AssertOnStringLiteral)
+                && !is_deletable(checker, stmt, test) =>
+        {
+            return;
+        }
         // `assert (x for x in xs)` meant `assert all(x for x in xs)`: the generator is always truthy, and its first
         // iterable is evaluated when it is built, so deleting it could hide an error.
         // An `async for` or an `await` makes it an asynchronous generator, which `all()` cannot iterate, and a
@@ -73,7 +81,7 @@ fn report_constant_assert(checker: &Checker, stmt: &Stmt, assert: &ast::StmtAsse
             let test = test.as_ref();
             Fix::unsafe_edit(Edit::range_replacement(format!("all{}", checker.text(test)), test.range()))
         }),
-        _ => (is_alone_on_lines(checker.source, stmt.range()) && !has_effect(checker, test)).then(|| {
+        _ => is_deletable(checker, stmt, test).then(|| {
             let edit = delete_statement(checker.source, stmt, statements);
             // A template raises when its fields do not fit its arguments, and deleting it would hide that error.
             if formats_to_text(test) { Fix::unsafe_edit(edit) } else { Fix::safe_edit(edit) }
@@ -91,6 +99,10 @@ fn report_constant_assert(checker: &Checker, stmt: &Stmt, assert: &ast::StmtAsse
         fix,
         title,
     );
+}
+
+fn is_deletable(checker: &Checker, stmt: &Stmt, test: &Expr) -> bool {
+    is_alone_on_lines(checker.source, stmt.range()) && !has_effect(checker, test)
 }
 
 // A computed value and a format or `%` template read only literals, so only the arguments of such a template can

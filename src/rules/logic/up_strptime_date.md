@@ -105,4 +105,7 @@ file already spells `date` or `time` outside an attribute, since the new name wo
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Released rule
+  [DTZ007](https://docs.astral.sh/ruff/rules/call-datetime-strptime-without-zone/) reports the same call for its missing
+  timezone, which open issue [#13359](https://github.com/astral-sh/ruff/issues/13359) calls a false positive before
+  `.date()`; this rule's fix clears both.

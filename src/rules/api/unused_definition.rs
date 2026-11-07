@@ -1,6 +1,8 @@
 use std::cell::LazyCell;
 
-use ruff_python_ast::helpers::any_over_body;
+use ruff_linter::registry::Rule as RuffRule;
+use ruff_python_ast::helpers::{any_over_body, map_subscript};
+use ruff_python_ast::visitor::{Visitor, walk_stmt};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::FxHashMap;
@@ -9,6 +11,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::project::computed_reads::ComputedReads;
 use crate::rules::api::{listed_exports, references_outside};
+use crate::semantic::Evaluation;
 use crate::syntax::{Visibility, module_statements};
 
 pub fn unused_definition(checker: &Checker) {
@@ -50,11 +53,13 @@ pub fn unused_definition(checker: &Checker) {
             && !is_in_strings(&strings, name, stmt.range())
             && !is_documented(checker, &[name]);
         if unused {
-            checker.report(
-                Rule::UnusedDefinition,
-                range,
-                format!("`{name}` is never used in the run; remove it or give it a {caller}"),
-            );
+            if !matches!(stmt, Stmt::ClassDef(class) if left_to_ruff(checker, class, &strings)) {
+                checker.report(
+                    Rule::UnusedDefinition,
+                    range,
+                    format!("`{name}` is never used in the run; remove it or give it a {caller}"),
+                );
+            }
         } else if let Stmt::ClassDef(class) = stmt
             && class.bases().is_empty()
             && class.keywords().is_empty()
@@ -64,6 +69,50 @@ pub fn unused_definition(checker: &Checker) {
             members(checker, class, &local_reads, &strings);
         }
     }
+}
+
+// PYI046 and PYI049 report a private protocol or TypedDict class that Ruff finds unused in its file, so a class Ruff
+// reads is kept. Ruff reads a load in a function or a deferred annotation, a string annotation, and the last binding of
+// a name only, so a string outside the class's own docstrings and bare strings keeps the class here.
+fn left_to_ruff(checker: &Checker, class: &ast::StmtClassDef, strings: &StringWords) -> bool {
+    let name = class.name.as_str();
+    let from_ruff = &checker.settings.from_ruff;
+    let semantic = checker.semantic();
+    let protocol = from_ruff.ruff_runs(RuffRule::UnusedPrivateProtocol)
+        && class.bases().iter().any(|base| semantic.match_typing_expr(map_subscript(base), "Protocol"));
+    let typed_dict = from_ruff.ruff_runs(RuffRule::UnusedPrivateTypedDict)
+        && class.bases().iter().any(|base| semantic.match_typing_expr(base, "TypedDict"));
+    let lazy = semantic.annotations_are_lazy();
+    (protocol || typed_dict)
+        && name.starts_with('_')
+        && semantic.bindings(name).last().is_some_and(|binding| binding.range == class.name.range())
+        && strings.get(name).is_none_or(|ranges| {
+            let bare = bare_strings(class);
+            ranges.iter().all(|range| bare.iter().any(|statement| statement.contains_range(*range)))
+        })
+        && !semantic.references_to(name).iter().any(|reference| {
+            reference.evaluation == Evaluation::Deferred || (reference.evaluation == Evaluation::Annotation && lazy)
+        })
+}
+
+// The strings a class's body and its functions state on their own, such as docstrings, which Ruff does not read.
+fn bare_strings(class: &ast::StmtClassDef) -> Vec<TextRange> {
+    struct Bare(Vec<TextRange>);
+    impl<'a> Visitor<'a> for Bare {
+        fn visit_stmt(&mut self, stmt: &'a Stmt) {
+            if let Stmt::Expr(ast::StmtExpr { value, .. }) = stmt
+                && matches!(value.as_ref(), Expr::StringLiteral(_) | Expr::FString(_))
+            {
+                self.0.push(value.range());
+            }
+            walk_stmt(self, stmt);
+        }
+    }
+    let mut bare = Bare(Vec::new());
+    for stmt in &class.body {
+        bare.visit_stmt(stmt);
+    }
+    bare.0
 }
 
 // The methods and plain attributes of a class with no base or decorator. A base class may supply the method a call
