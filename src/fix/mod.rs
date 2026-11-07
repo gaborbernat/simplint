@@ -13,6 +13,7 @@ use ruff_linter::linter::FixTable;
 use ruff_linter::settings::flags;
 use ruff_linter::settings::types::UnsafeFixes;
 use ruff_python_parser::{UnsupportedSyntaxError, UnsupportedSyntaxErrorKind};
+use ruff_text_size::TextRange;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::fix::apply::{FixResult, fix_file};
@@ -60,73 +61,127 @@ impl<'l, 'a> Fixer<'l, 'a> {
     }
 
     // Fixes run after `ruff check --fix --unsafe-fixes`, so their result must not give it new work: a Ruff finding the
-    // original file did not have gets Ruff's own fix when Ruff has one, and otherwise the fixes of the simplint rule that
-    // caused it are withdrawn, keeping that rule's reports. `ruff format`, which runs last, keeps the syntax tree, so it
-    // cannot undo this.
+    // original file did not have gets Ruff's own fix when Ruff has one, and otherwise the fixes that caused it are
+    // withdrawn, one report at a time, keeping the other fixes of their rule and the reports. `ruff format`, which runs
+    // last, keeps the syntax tree, so it cannot undo this.
     //
-    // A run withdraws a rule whose fixes leave Ruff work next to another rule's pending fixes, yet once those apply, a
-    // run over the result can offer the withdrawn fixes again. Running until a run changes nothing, or returns to a
-    // source seen before, makes a single run final.
-    pub fn fix(&self, source: &str) -> Result<(FixerResult, RuleSet)> {
+    // A run can withdraw a fix that is only bad next to another rule's pending fixes, yet once those apply, a run over
+    // the result can offer the withdrawn fixes again. The single fixes withdrawn carry over to the later runs, which then
+    // do not try them again; whole rules do not, as a rule may cover reports that only appear once other fixes apply.
+    // Running until a run changes nothing, or returns to a source seen before, makes a single run final.
+    pub fn fix(&self, source: &str) -> Result<(FixerResult, Withdrawn)> {
         let mut fixed = FixTable::default();
         let mut seen = FxHashSet::from_iter([source.to_owned()]);
         let mut current = source.to_owned();
-        let (mut result, unfixable) = loop {
-            let (result, unfixable) = self.run(&current)?;
+        let mut withdrawn = Withdrawn::default();
+        let mut result = loop {
+            let (result, run_withdrawn) = self.run(&current, std::mem::take(&mut withdrawn.fixes))?;
+            withdrawn = run_withdrawn;
             add_fixes(&mut fixed, &result.fixed);
             if result.fixed.is_empty() || !seen.insert(result.transformed.clone()) {
-                break (result, unfixable);
+                break result;
             }
             errors::ensure_converging(self.path, seen.len(), &result.diagnostics)?;
             current.clone_from(&result.transformed);
         };
         result.fixed = fixed;
-        Self::withdraw(&mut result.diagnostics, unfixable);
-        Ok((result, unfixable))
+        Self::withdraw(&result.transformed, &mut result.diagnostics, &withdrawn);
+        Ok((result, withdrawn))
     }
 
     // A withdrawn fix is no longer offered, so the summary does not count it as fixable.
-    pub fn withdraw(diagnostics: &mut [Diagnostic], rules: RuleSet) {
-        for diagnostic in diagnostics {
-            if rule_of(diagnostic).is_some_and(|rule| rules.contains(rule)) {
+    pub fn withdraw(source: &str, diagnostics: &mut [Diagnostic], withdrawn: &Withdrawn) {
+        let held = withdrawn.held_back(source, diagnostics);
+        for (diagnostic, held) in diagnostics.iter_mut().zip(held) {
+            if held {
                 diagnostic.remove_fix();
             }
         }
     }
 
-    fn run(&self, source: &str) -> Result<(FixerResult, RuleSet)> {
+    fn run(&self, source: &str, fixes: FxHashSet<FixKey>) -> Result<(FixerResult, Withdrawn)> {
+        let mut withdrawn = Withdrawn { rules: RuleSet::default(), fixes };
         let linted = Linted { source, lint: self.lint(source) };
-        let mut unfixable = RuleSet::default();
-        let (mut result, mut left) = self.settle(&linted, unfixable)?;
-        while left > 0 {
+        let mut settled = self.settle(&linted, &withdrawn)?;
+        while settled.left > 0 {
             // Rules are tried in code order, so the same file always yields the same fixes. Among withdrawals that leave
             // as little for Ruff, one whose result a second run leaves alone wins, so a single run is final. The
             // candidates run in parallel and are compared in that order, which keeps the choice the same.
-            let applied: BTreeSet<Rule> = Self::fixing_rules(&result.fixed).collect();
+            let applied: BTreeSet<Rule> = Self::fixing_rules(&settled.result.fixed).collect();
             let fewest = applied
                 .par_iter()
                 .map(|&rule| {
-                    let unfixable = unfixable.union(RuleSet::from_rules([rule]));
-                    let (result, left) = self.settle(&linted, unfixable)?;
-                    let reapplies = left == 0 && self.reapplies(&result.transformed)?;
-                    Ok(Candidate { unfixable, left, reapplies, result })
+                    let batch = withdrawn.with_rule(rule);
+                    let settled = self.settle(&linted, &batch)?;
+                    let reapplies = settled.left == 0 && self.reapplies(&settled.result.transformed)?;
+                    Ok(Candidate { rule, withdrawn: batch, reapplies, settled })
                 })
                 .reduce_with(earlier_unless_beaten)
                 .transpose()?;
             // Every fix comes from a simplint rule, so a fix that left Ruff work has a rule to withdraw.
-            Candidate { unfixable, left, result, .. } = fewest.expect("an applied fix names its rule");
+            let Candidate { rule, withdrawn: batch, settled: batch_settled, .. } =
+                fewest.expect("an applied fix names its rule");
+            // Withdrawing a rule's batch that leaves less Ruff work points at its fixes, so they are judged one by one.
+            let split =
+                if batch_settled.left < settled.left { self.withdraw_fixes(&linted, &withdrawn, rule)? } else { None };
+            (withdrawn, settled) = match split {
+                Some(split) => split,
+                None => (batch, batch_settled),
+            };
         }
         // Fixes Ruff's cleanup undoes, such as a relative import the project bans, leave the source as it was, and a
         // fix that changes nothing is not offered.
-        if result.transformed == source && !result.fixed.is_empty() {
-            unfixable = unfixable.union(RuleSet::from_rules(Self::fixing_rules(&result.fixed)));
-            result = FixerResult {
+        if settled.result.transformed == source && !settled.result.fixed.is_empty() {
+            withdrawn.rules = withdrawn.rules.union(RuleSet::from_rules(Self::fixing_rules(&settled.result.fixed)));
+            let result = FixerResult {
                 diagnostics: linted.lint.diagnostics.clone(),
                 transformed: source.to_owned(),
                 fixed: FixTable::default(),
             };
+            return Ok((result, withdrawn));
         }
-        Ok((result, unfixable))
+        Ok((settled.result, settled.held))
+    }
+
+    // Withdraws the fixes of `rule` that `linted` reports, keeping each group of them whose result leaves no more Ruff
+    // work than the result without it. `None` when none is withdrawn, as when the rule's fixes come from a later pass,
+    // so the caller withdraws the whole rule instead.
+    fn withdraw_fixes(
+        &self,
+        linted: &Linted,
+        withdrawn: &Withdrawn,
+        rule: Rule,
+    ) -> Result<Option<(Withdrawn, Settled)>> {
+        let keys: Vec<FixKey> = fix_keys(linted.source, &linted.lint.diagnostics)
+            .into_iter()
+            .map(|(_, key)| key)
+            .filter(|key| key.0 == rule && !withdrawn.fixes.contains(key))
+            .collect();
+        let mut withheld = withdrawn.clone();
+        withheld.fixes.extend(keys.iter().cloned());
+        let settled = self.settle(linted, &withheld)?;
+        let mut admission = Admission { withheld, settled };
+        self.admit(linted, &keys, &mut admission)?;
+        let Admission { withheld, settled } = admission;
+        Ok((withheld.fixes.len() > withdrawn.fixes.len()).then_some((withheld, settled)))
+    }
+
+    // Enables `keys` together when that adds no Ruff work to the admission. Otherwise it halves them, so each bad fix
+    // costs about log N settles rather than one per fix, and a single fix that adds work stays withheld.
+    fn admit(&self, linted: &Linted, keys: &[FixKey], admission: &mut Admission) -> Result<()> {
+        let mut enabled = admission.withheld.clone();
+        for key in keys {
+            enabled.fixes.remove(key);
+        }
+        let settled = self.settle(linted, &enabled)?;
+        if settled.left <= admission.settled.left {
+            *admission = Admission { withheld: enabled, settled };
+        } else if let [_, _, ..] = keys {
+            let (first, second) = keys.split_at(keys.len() / 2);
+            self.admit(linted, first, admission)?;
+            self.admit(linted, second, admission)?;
+        }
+        Ok(())
     }
 
     fn fixing_rules(fixes: &FixTable) -> impl Iterator<Item = Rule> {
@@ -135,32 +190,34 @@ impl<'l, 'a> Fixer<'l, 'a> {
 
     // Whether another run over the fixed source would apply fixes and leave Ruff nothing new.
     fn reapplies(&self, source: &str) -> Result<bool> {
-        let (result, left) = self.settle(&Linted { source, lint: self.lint(source) }, RuleSet::default())?;
-        Ok(!result.fixed.is_empty() && result.transformed != source && left == 0)
+        let settled = self.settle(&Linted { source, lint: self.lint(source) }, &Withdrawn::default())?;
+        Ok(!settled.result.fixed.is_empty() && settled.result.transformed != source && settled.left == 0)
     }
 
     // The fixed result and how many Ruff rules still find more in it than in the original. Ruff's cleanup can give the
     // rules new work, as dropping a branch the target version always takes can leave a constant one function reads, so
     // fixes and cleanups alternate until the fixes bring Ruff nothing new, or the cleanup returns to code it already
     // gave, as when it undoes a fix.
-    fn settle(&self, linted: &Linted, unfixable: RuleSet) -> Result<(FixerResult, usize)> {
+    fn settle(&self, linted: &Linted, withdrawn: &Withdrawn) -> Result<Settled> {
         let mut seen = FxHashSet::from_iter([linted.source.to_owned()]);
         let mut fixed = FixTable::default();
-        let mut round = self.fix_with(linted, unfixable)?;
+        let mut held = withdrawn.clone();
+        let mut round = self.fix_with(linted, &mut held)?;
         loop {
             if round.fixed.is_empty() {
-                return Ok((FixerResult { fixed, ..round }, 0));
+                return Ok(Settled { result: FixerResult { fixed, ..round }, left: 0, held });
             }
             add_fixes(&mut fixed, &round.fixed);
             let Some((transformed, left)) = self.clean_up(linted.source, &round.transformed) else {
-                return Ok((FixerResult { fixed, ..round }, 0));
+                return Ok(Settled { result: FixerResult { fixed, ..round }, left: 0, held });
             };
             let lint = self.lint(&transformed);
             if left > 0 || !seen.insert(transformed.clone()) {
-                return Ok((FixerResult { diagnostics: lint.diagnostics, transformed, fixed }, left));
+                let result = FixerResult { diagnostics: lint.diagnostics, transformed, fixed };
+                return Ok(Settled { result, left, held });
             }
             errors::ensure_converging(self.path, seen.len(), &lint.diagnostics)?;
-            round = self.fix_with(&Linted { source: &transformed, lint }, unfixable)?;
+            round = self.fix_with(&Linted { source: &transformed, lint }, &mut held)?;
         }
     }
 
@@ -205,20 +262,30 @@ impl<'l, 'a> Fixer<'l, 'a> {
     }
 
     // Ruff's `lint_fix` loop: apply fixes and lint again until nothing applies, giving up when a fix breaks the syntax
-    // or the passes do not settle. Rules in `unfixable` keep their reports but not their fixes. The rules skip a file
-    // that does not parse, so only a file that parses gets fixes, and a syntax error after one is the fix's doing.
-    fn fix_with(&self, linted: &Linted, unfixable: RuleSet) -> Result<FixerResult> {
+    // or the passes do not settle. Withdrawn fixes keep their reports but not their fixes. The rules skip a file that
+    // does not parse, so only a file that parses gets fixes, and a syntax error after one is the fix's doing.
+    fn fix_with(&self, linted: &Linted, withdrawn: &mut Withdrawn) -> Result<FixerResult> {
         let mut transformed = linted.source.to_owned();
         let mut diagnostics = linted.lint.diagnostics.clone();
         let mut fixed = FixTable::default();
         let mut iterations = 0;
         let mut original = None;
-        while let Some(FixResult { code, fixes }) = fix_file(&transformed, &diagnostics, self.unsafe_fixes, unfixable) {
+        while let Some((FixResult { code, fixes }, applied)) =
+            fix_file(&transformed, &diagnostics, self.unsafe_fixes, withdrawn)
+        {
             errors::ensure_converging(self.path, iterations, &diagnostics)?;
             // Counted once a pass applies, from the source before the first one: the target version may reject syntax
             // the source already uses, which the fixes must not be blamed for.
             let counts = original.get_or_insert_with(|| version_counts(&linted.lint.unsupported));
             add_fixes(&mut fixed, &fixes);
+            if !withdrawn.fixes.is_empty() {
+                let applied_keys: Vec<FixKey> = fix_keys(&transformed, &diagnostics)
+                    .into_iter()
+                    .filter(|(index, _)| applied.contains(index))
+                    .map(|(_, key)| key)
+                    .collect();
+                withdrawn.follow(&applied_keys);
+            }
             transformed = code;
             iterations += 1;
             let lint = self.lint(&transformed);
@@ -279,16 +346,105 @@ fn check_syntax(
 // sequential loop picks, dropping each loser as soon as it is beaten.
 fn earlier_unless_beaten(earlier: Result<Candidate>, later: Result<Candidate>) -> Result<Candidate> {
     let (earlier, later) = (earlier?, later?);
-    Ok(if (later.left, later.reapplies) < (earlier.left, earlier.reapplies) { later } else { earlier })
+    Ok(if (later.settled.left, later.reapplies) < (earlier.settled.left, earlier.reapplies) { later } else { earlier })
 }
 
-// A withdrawal: the rules without fixes, how many Ruff rules it leaves work for, whether a second run over its result
-// would fix more, and its result.
+// A rule withdrawn whole: the fixes it withdrew, how many Ruff rules it leaves work for, whether a second run over its
+// result would fix more, and its result.
 struct Candidate {
-    unfixable: RuleSet,
-    left: usize,
+    rule: Rule,
+    withdrawn: Withdrawn,
     reapplies: bool,
+    settled: Settled,
+}
+
+// The fixes the loop withdrew: whole rules, and single fixes by their key. A key is the rule, the message and the text
+// under the report, which a fix keeps through the passes that reparse the file, where its range moves.
+#[derive(Clone, Default)]
+pub struct Withdrawn {
+    pub rules: RuleSet,
+    pub fixes: FxHashSet<FixKey>,
+}
+
+pub type FixKey = (Rule, String, String, usize);
+
+impl Withdrawn {
+    fn with_rule(&self, rule: Rule) -> Self {
+        Self { rules: self.rules.union(RuleSet::from_rules([rule])), fixes: self.fixes.clone() }
+    }
+
+    // Applying a report takes it out of the source, so a held report of the same rule, message and text after it moves
+    // up one occurrence. Moving the held keys with it keeps each withheld report held through a settle's passes.
+    fn follow(&mut self, applied: &[FixKey]) {
+        let mut taken = FxHashMap::<(Rule, &str, &str), Vec<usize>>::default();
+        for (rule, message, text, occurrence) in applied {
+            taken.entry((*rule, message, text)).or_default().push(*occurrence);
+        }
+        self.fixes = self
+            .fixes
+            .drain()
+            .map(|(rule, message, text, occurrence)| {
+                let before = taken
+                    .get(&(rule, message.as_str(), text.as_str()))
+                    .map_or(0, |occurrences| occurrences.iter().filter(|&&taken_at| taken_at < occurrence).count());
+                (rule, message, text, occurrence - before)
+            })
+            .collect();
+    }
+
+    // Whether each report is held back, by its rule or by its fix's key.
+    pub fn held_back(&self, source: &str, diagnostics: &[Diagnostic]) -> Vec<bool> {
+        let mut held: Vec<bool> = diagnostics
+            .iter()
+            .map(|diagnostic| rule_of(diagnostic).is_some_and(|rule| self.rules.contains(rule)))
+            .collect();
+        if !self.fixes.is_empty() {
+            for (index, key) in fix_keys(source, diagnostics) {
+                held[index] |= self.fixes.contains(&key);
+            }
+        }
+        held
+    }
+}
+
+// The index and key of each fixable simplint report, in source order. Reports with the same rule, message and text
+// are told apart by their order, so a fix withdrawn for one of them does not withhold an identical one that is valid.
+fn fix_keys(source: &str, diagnostics: &[Diagnostic]) -> Vec<(usize, FixKey)> {
+    let mut reports: Vec<(usize, Rule)> = diagnostics
+        .iter()
+        .enumerate()
+        .filter(|(_, diagnostic)| diagnostic.fix().is_some())
+        .filter_map(|(index, diagnostic)| Some((index, rule_of(diagnostic)?)))
+        .collect();
+    reports.sort_by_key(|&(index, _)| diagnostics[index].range().map(TextRange::start));
+    let mut occurrences = FxHashMap::<(Rule, String, String), usize>::default();
+    reports
+        .into_iter()
+        .map(|(index, rule)| {
+            let diagnostic = &diagnostics[index];
+            let range = diagnostic.range().expect("a simplint report has a range");
+            let message = diagnostic.headline_message().to_owned();
+            let text = source[range].to_owned();
+            let seen = occurrences.entry((rule, message.clone(), text.clone())).or_default();
+            let key = (rule, message, text, *seen);
+            *seen += 1;
+            (index, key)
+        })
+        .collect()
+}
+
+// A withdrawal's state: the fixes still withheld, and the settled source they leave.
+struct Admission {
+    withheld: Withdrawn,
+    settled: Settled,
+}
+
+// A source settled with some fixes withheld: its result, how many Ruff rules still find more in it, and the withheld
+// fixes moved to follow the reports of that result, so a later run can take them over.
+struct Settled {
     result: FixerResult,
+    left: usize,
+    held: Withdrawn,
 }
 
 // Results keyed by the source they were computed from. The lock is not held while computing, so parallel candidates
@@ -347,7 +503,8 @@ mod tests {
     use ruff_text_size::TextRange;
     use test_case::test_case;
 
-    use super::{VersionCounts, check_syntax, version_counts};
+    use super::{FixKey, VersionCounts, Withdrawn, check_syntax, version_counts};
+    use crate::lint::registry::{Rule, RuleSet};
 
     fn version_errors(source: &str, version: PythonVersion) -> Vec<UnsupportedSyntaxError> {
         let options = ParseOptions::from(PySourceType::Python).with_target_version(version);
@@ -384,5 +541,21 @@ mod tests {
         let diagnostic = Diagnostic::invalid_syntax(Span::from(file), "Expected an expression", TextRange::default());
         let result = check_syntax(&[diagnostic], &[], &VersionCounts::default());
         assert_eq!(result.err().as_deref(), Some("Expected an expression"));
+    }
+
+    fn key(occurrence: usize) -> FixKey {
+        (Rule::SingleUseVariable, "message".to_owned(), "lock = build()".to_owned(), occurrence)
+    }
+
+    #[test_case(&[3], &[1], &[2] ; "held_moves_up_past_an_applied_identical_report")]
+    #[test_case(&[3], &[0, 2], &[1] ; "held_moves_up_past_each_applied_identical_report_before_it")]
+    #[test_case(&[1], &[3], &[1] ; "applied_identical_report_after_it_leaves_it")]
+    fn follow_moves_held_keys_past_applied_identical_reports(held: &[usize], applied: &[usize], moved: &[usize]) {
+        let mut withdrawn =
+            Withdrawn { rules: RuleSet::default(), fixes: held.iter().map(|&occurrence| key(occurrence)).collect() };
+        withdrawn.follow(&applied.iter().map(|&occurrence| key(occurrence)).collect::<Vec<_>>());
+        let mut occurrences: Vec<usize> = withdrawn.fixes.iter().map(|fix| fix.3).collect();
+        occurrences.sort_unstable();
+        assert_eq!(occurrences, moved);
     }
 }

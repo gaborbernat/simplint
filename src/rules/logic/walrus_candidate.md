@@ -347,6 +347,19 @@ The fix is safe. It deletes the assignment, then:
       return ""
   ```
 
+When the assignment and the `if` it leads to are the only statements of an `if` whose header holds a comment, and that
+`if` has no `else` or `elif` branch, Ruff would merge the two `if` statements only past the comment. The fix would leave
+that work behind, so the finding is reported without a fix.
+
+```python report
+def run(text: str, flag: bool) -> str:
+    if flag:  # keep
+        size = len(text)
+        if size > 3:
+            return text
+    return ""
+```
+
 The search for other reads looks only at names in code. It misses importers outside the run and references held in
 strings, such as an `__all__` entry.
 

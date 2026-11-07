@@ -6,6 +6,10 @@ mod scan;
 mod statements;
 mod visitor;
 
+pub(crate) use visitor::doctest_code;
+
+use crate::project::computed_reads::ComputedReads;
+use std::collections::BTreeSet;
 use std::hash::Hasher;
 use std::mem::take;
 use std::path::Path;
@@ -16,7 +20,8 @@ use ruff_python_ast::{self as ast, Expr, ModModule, Stmt};
 use ruff_python_parser::{Parsed, parse_module};
 use ruff_text_size::{TextRange, TextSize};
 
-use self::api_reached::api_reached;
+use self::api_reached::interface;
+pub(crate) use self::api_reached::{Closure, Definition};
 use self::module_reads::module_reads;
 use self::names::string_words;
 use self::runtime::{Runs, falsy_constants};
@@ -29,14 +34,27 @@ use super::constructors::{CallContexts, Constructors};
 use super::receivers::{AttributeWrites, module_name};
 use crate::syntax::{Exports, dunder_all, module_statements};
 
+// Why the names a module provides may not all be known: `__all__` is built in a way parsing cannot follow, or a
+// module-level `__getattr__` supplies names lazily, on top of the names the module defines.
+#[derive(Clone, Copy, PartialEq, Eq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+pub(super) enum ExportsUnknown {
+    No,
+    Dynamic,
+    Lazy,
+}
+
 // The names a file uses from other modules, before they resolve to files; parsing finds them and the cache keeps them.
 // Names are grouped by module, so each module resolves once per file.
 #[derive(Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct FileFacts {
     pub(super) imports: Vec<ModuleNames>,
     pub(super) references: Vec<ModuleNames>,
+    // The modules and names a docstring's examples read, which a call-site rule must see but which patch nothing.
+    pub(super) doctest_references: Vec<ModuleNames>,
     pub(super) declared: Vec<String>,
     pub(super) assigned_attributes: Vec<String>,
+    // The names a `<receiver>.setattr` call sets on each module, as `monkeypatch.setattr(module, "NAME", value)`.
+    pub(super) module_writes: Vec<ModuleNames>,
     // The attributes read off module objects whose module parsing cannot tell, any of which may be a name of this run.
     pub(super) module_reads: Vec<String>,
     pub(super) base_classes: Vec<String>,
@@ -44,9 +62,8 @@ pub struct FileFacts {
     pub(super) star_imports: Vec<String>,
     // The names a static `__all__` lists, which are all `import *` takes; without one it takes every public name.
     pub(super) exports: Option<Vec<String>>,
-    // Whether `__all__` is built in a way parsing cannot follow, or a module-level `__getattr__` supplies names lazily,
-    // so the module's exports are unknown.
-    pub(super) exports_unknown: bool,
+    // Whether the names the module provides are known, and why not.
+    pub(super) exports_unknown: ExportsUnknown,
     // The names the module's own top-level statements import from other modules, which `__all__`, a redundant alias
     // such as `from .core import run as run`, or the absence of `__all__` may re-export.
     pub(super) bindings: Vec<ImportBinding>,
@@ -56,6 +73,9 @@ pub struct FileFacts {
     // The names the module's top-level statements define, which a module without `__all__` exports.
     pub(super) defined: Vec<String>,
     pub(super) attribute_writes: AttributeWrites,
+    // The modules a write under a computed name reaches, as `pkg.report` for `setattr(report, name, value)` or
+    // `mock.patch(f"pkg.report.{name}")`, whose names any of them may be.
+    pub(super) computed_writes: Vec<String>,
     pub(super) constructors: Constructors,
     // Whether the file reads a docstring off an object, through `__doc__` or a `getdoc` call.
     pub(super) reads_docstrings: bool,
@@ -79,8 +99,13 @@ pub struct FileFacts {
     pub(super) doctest_names: Vec<String>,
     // The module-level classes, each with the classes it lists as bases, as (module, name).
     pub(super) classes: Vec<ClassBases>,
-    // The module's classes and aliases that another exported name's signature reaches, so they are public API too.
-    pub(super) api_reached: Vec<String>,
+    // The names of the module-level functions, which an import of the run may bind as a function rather than a class.
+    pub(super) functions: Vec<String>,
+    // The modules the top-level `import pkg.module` statements bind by their root name, which a module's attributes reach.
+    pub(super) plain_modules: Vec<(String, String)>,
+    // The module's top-level definitions with the names their interfaces refer to, which the index follows from the names
+    // the module exposes to find the classes and aliases a signature reaches.
+    pub(super) interface: Vec<Definition>,
     // The import statements that run when the module loads, each with the module it imports.
     pub(super) runtime_imports: Vec<ImportSite>,
     // The `import *` statements of the module, each with the module it imports.
@@ -128,25 +153,33 @@ impl FileFacts {
     // package has none, and resolves them against `importable`, the module path under its search root, if it has one.
     pub fn collect(
         path: &Path,
+        source: &str,
         module_path: Option<&[String]>,
         importable: Option<&[String]>,
         suppresses_rewrite: &dyn Fn(&str) -> bool,
         parts: Parts,
     ) -> Option<Self> {
-        let source = std::fs::read_to_string(path).ok()?;
-        let parsed = parse_module(&source).ok()?;
+        let parsed = parse_module(source).ok()?;
         let mut imports = FactVisitor::new(
+            path,
             module_path.or(importable),
             module_name(module_path.or(importable), path),
             parts,
             falsy_constants(&parsed.syntax().body),
         );
         imports.visit_body(&parsed.syntax().body);
+        let functions = module_functions(&parsed.syntax().body);
         let classes = module_statements(&parsed.syntax().body)
             .filter_map(Stmt::as_class_def_stmt)
             .map(|class| ClassBases {
                 name: class.name.to_string(),
                 bases: class.bases().iter().filter_map(|base| imports.class_path(base)).collect(),
+                methods: class
+                    .body
+                    .iter()
+                    .filter_map(Stmt::as_function_def_stmt)
+                    .map(|function| function.name.to_string())
+                    .collect(),
             })
             .collect();
         // A stub publishes what it declares, so its names are the API of the module it describes.
@@ -158,12 +191,18 @@ impl FileFacts {
         let attribute_writes =
             AttributeWrites::collect(&parsed.syntax().body, &imports.aliases, &module_name(module_path, path));
         let mut scan = Scan::of(&parsed.syntax().body, parts);
-        let constructors = constructors(path, (&source, &parsed), &imports, suppresses_rewrite, parts, &mut scan);
+        let constructors = constructors(path, (source, &parsed), &imports, suppresses_rewrite, parts, &mut scan);
+        // A module whose spec no static path resolves reads names of any module, as a computed import does.
+        let mut modules = scan.modules;
+        modules.extend(imports.unknown_modules.iter().cloned());
+        let reads = module_reads(&parsed.syntax().body, &modules)
+            .into_iter()
+            .chain(imports.unresolved_globals.iter().cloned())
+            .collect::<BTreeSet<String>>()
+            .into_iter()
+            .collect();
         let listed = dunder_all(&parsed.syntax().body);
-        let api_reached = match &listed {
-            Exports::Listed(names) => api_reached(&parsed.syntax().body, names),
-            Exports::Absent | Exports::Dynamic => Vec::new(),
-        };
+        let interface = interface(&parsed.syntax().body);
         let (exports, dynamic_exports) = match listed {
             Exports::Listed(names) => (Some(names.into_iter().map(str::to_owned).collect()), false),
             Exports::Absent => (None, false),
@@ -184,34 +223,43 @@ impl FileFacts {
         Some(Self {
             imports: grouped(imports.edges),
             references: grouped(imports.references),
+            doctest_references: grouped(imports.doctest_references),
             declared,
             assigned_attributes: imports.assigned_attributes,
-            module_reads: module_reads(&parsed.syntax().body, &scan.modules),
+            module_writes: grouped(imports.module_writes),
+            module_reads: reads,
             base_classes: imports.base_classes,
             star_imports: imports.stars.into_iter().collect(),
             exports,
-            exports_unknown: dynamic_exports || module_getattr,
+            exports_unknown: match (dynamic_exports, module_getattr) {
+                (true, _) => ExportsUnknown::Dynamic,
+                (false, true) => ExportsUnknown::Lazy,
+                (false, false) => ExportsUnknown::No,
+            },
             bindings,
             module_names,
             defined,
             attribute_writes,
+            computed_writes: imports.computed_writes.into_iter().collect(),
             constructors,
             reads_docstrings: imports.reads_docstrings,
             reads_class_names: imports.reads_class_names,
             reflected_names: imports.reflected_names.into_iter().collect(),
             caught: imports.caught,
             classes,
-            api_reached,
+            functions,
+            plain_modules: imports.plain_modules,
+            interface,
             fixture_requests: imports.fixture_requests.into_iter().collect(),
             pytest_requests: imports.pytest_requests.into_iter().collect(),
             doctest_names: imports.doctest_names.into_iter().collect(),
             runtime_imports: imports.runtime_sites,
             star_sites: imports.star_sites,
-            statements: if parts.has(Parts::STATEMENTS) { statements(&parsed, &source) } else { Vec::new() },
+            statements: if parts.has(Parts::STATEMENTS) { statements(&parsed, source) } else { Vec::new() },
             parts,
             string_words: string_words(scan.words),
             global_names: scan.global_names.into_iter().collect(),
-            source_digest: source_digest(&source),
+            source_digest: source_digest(source),
         })
     }
 
@@ -221,6 +269,10 @@ impl FileFacts {
     }
 }
 
+fn module_functions(body: &[Stmt]) -> Vec<String> {
+    module_statements(body).filter_map(Stmt::as_function_def_stmt).map(|function| function.name.to_string()).collect()
+}
+
 fn declared_names(stmt: &Stmt) -> Vec<String> {
     match stmt {
         Stmt::FunctionDef(function) => vec![function.name.to_string()],
@@ -228,7 +280,8 @@ fn declared_names(stmt: &Stmt) -> Vec<String> {
         Stmt::Assign(ast::StmtAssign { targets, .. }) => {
             targets.iter().filter_map(Expr::as_name_expr).map(|name| name.id.to_string()).collect()
         }
-        Stmt::AnnAssign(ast::StmtAnnAssign { target, .. }) => {
+        Stmt::AnnAssign(ast::StmtAnnAssign { target, .. })
+        | Stmt::TypeAlias(ast::StmtTypeAlias { name: target, .. }) => {
             target.as_name_expr().map(|name| name.id.to_string()).into_iter().collect()
         }
         _ => Vec::new(),
@@ -271,6 +324,8 @@ impl Parts {
     // The names whose `__name__` or `__qualname__` the file reads, and whether it reads a class's name off an object,
     // which renaming a function or class changes.
     pub const REFLECTED_NAMES: Self = Self(1 << 10);
+    // The modules a write under a computed name may set any name of, which a rename or move of their variables breaks.
+    pub const COMPUTED_WRITES: Self = Self(1 << 11);
 
     #[must_use]
     pub fn with(self, part: Self) -> Self {
@@ -318,12 +373,46 @@ fn constructors(
     constructors
 }
 
-// A module-level class and the classes it lists as bases, each as (module, name).
+// A module-level class, the classes it lists as bases, each as (module, name), and the names of the methods it defines.
 #[derive(Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct ClassBases {
     pub(super) name: String,
     pub(super) bases: Vec<(String, String)>,
+    pub(super) methods: Vec<String>,
 }
 
 // A module and the names used from it.
 pub(super) type ModuleNames = (String, Vec<String>);
+
+impl FileFacts {
+    // The names the file imports from modules or reads off them, attributes of objects included, which a project outside
+    // the file's own may use.
+    pub fn imported_names(&self) -> impl Iterator<Item = &str> {
+        self.imports.iter().flat_map(|(_, names)| names.iter().map(String::as_str))
+    }
+
+    // The attributes the file stores to or deletes, which a project outside the file's own may store to as well.
+    pub fn assigned_names(&self) -> impl Iterator<Item = &str> {
+        self.assigned_attributes.iter().map(String::as_str)
+    }
+
+    // The names doctest examples of the file use.
+    pub fn doctests(&self) -> impl Iterator<Item = &str> {
+        self.doctest_names.iter().map(String::as_str)
+    }
+
+    // The attributes the file reads under computed names.
+    pub(crate) fn computed_reads(&self) -> &ComputedReads {
+        &self.constructors.computed_reads
+    }
+
+    pub fn read_names(&self) -> impl Iterator<Item = &str> {
+        self.imports
+            .iter()
+            .chain(&self.references)
+            .chain(&self.doctest_references)
+            .flat_map(|(_, names)| names.iter().map(String::as_str))
+            .chain(self.module_reads.iter().map(String::as_str))
+            .chain(self.constructors.attribute_loads.keys().map(String::as_str))
+    }
+}

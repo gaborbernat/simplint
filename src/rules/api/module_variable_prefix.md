@@ -72,7 +72,8 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
 ### Exceptions
 
 - **Names another module in the run imports**: the importer already depends on the name, so its underscore stays as it
-  is.
+  is. A name read off the result of a string-named import call, such as `pytest.importorskip("config")`, counts as
+  imported too.
 
   ```python ok file=config.py
   limit = 3
@@ -86,8 +87,9 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
 
 - **Names [module-variable-case](SMP102.html) leaves alone**: the same exceptions apply, since renaming these breaks the
   program or the tool that reads them by their exact spelling. They include dunder names, class-like names, type aliases
-  from a `type` statement, names also bound by an import, `def` or `class`, names bound only as loop targets, the
-  framework names and `naming.keep-names`.
+  from a `type` statement, names also bound by an import, `def` or `class`, aliases of a function the module defines,
+  names bound only as loop targets, annotations alone under `if TYPE_CHECKING:`, the framework names and
+  `naming.keep-names`.
 
   ```python ok
   Alias = int
@@ -109,10 +111,31 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
       pass
   ```
 
+  ```python ok
+  import typing
+
+  if typing.TYPE_CHECKING:
+      verbosity: int
+  else:
+
+      def __getattr__(name: str) -> object: ...
+  ```
+
   ```python ok file=tests/test_api.py
   import pytest
 
   pytestmark = pytest.mark.slow
+  ```
+
+- **Names bound and read only inside one module-level `if`, `try` or `with` block**: a block such as a version check
+  binds a name for its own use, and nothing outside the block reads it. A name that another file reads stays here.
+
+  ```python ok
+  import sys
+
+  if sys.version_info < (3, 10):
+      msg = "requires Python 3.10"
+      raise RuntimeError(msg)
   ```
 
 ### Fix
@@ -121,6 +144,10 @@ The fix adds the leading underscore, or removes every leading underscore, and ke
 renames every use in the file, including the `__all__` entry. **Unsafe fix:** always, as importers outside the run keep
 the old name, and so do string references in unchecked files, and code that loads a module under a name no file of the
 run defines, such as a test that copies a file's text into a module.
+
+In a public module of a library, a variable whose name the module offers gets no fix, whether `__all__` lists it or not:
+its name is the API users import, so the report asks for the variable in `__all__` or a rename by hand, and for a listed
+variable only the rename by hand.
 
 Removing every underscore, rather than one, keeps `__x` from becoming `_x`, which the rule would report again.
 
@@ -147,7 +174,7 @@ print(_limit)
 ```
 
 No fix is offered in the cases [module-variable-case](SMP102.html) lists under its fix, such as an importer outside the
-run or a string that holds the old name.
+run, a string that holds the old name, or another module that assigns the variable as an attribute of its module.
 
 ### Related rules
 

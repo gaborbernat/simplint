@@ -9,7 +9,7 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 use crate::lint::checker::Checker;
 use crate::lint::noqa::is_noqa_for_only;
 use crate::lint::registry::Rule;
-use crate::rules::api::exploded;
+use crate::rules::api::{exploded, is_type_checking};
 use crate::rules::{export_key, indentation};
 use crate::semantic::BindingKind;
 use crate::syntax::is_main_guard;
@@ -28,27 +28,41 @@ pub fn missing_from_all(checker: &Checker) {
     let shadows_module = |name: &str| {
         checker.project().is_package_star_imported() && checker.path.file_stem().is_some_and(|stem| stem == name)
     };
+    // A name bound only under `if TYPE_CHECKING:` does not exist at run time, so `import *` would fail on listing it.
+    let type_checking: Vec<TextRange> = checker
+        .body()
+        .iter()
+        .filter_map(|stmt| stmt.as_if_stmt().filter(|stmt| is_type_checking(&stmt.test, checker)))
+        .filter_map(|stmt| Some(TextRange::new(stmt.body.first()?.start(), stmt.body.last()?.end())))
+        .collect();
     let mut missing: Vec<(&str, TextRange, bool)> = checker
         .semantic()
         .all_bindings()
         .filter(|(name, bindings)| {
             Visibility::of(name) == Visibility::Public
                 && !exported.contains(name)
+                && !bindings.iter().all(|binding| type_checking.iter().any(|block| block.contains_range(binding.range)))
                 // Another module reaching a name this one imports and uses, as `app.sys`, borrows it rather than
                 // relying on an export; an import the module never uses is there for its importers, a re-export.
                 && (!bindings.iter().any(|binding| binding.kind == BindingKind::Import)
                     || checker.semantic().references_to(name).is_empty())
-                && (checker.project().is_imported(name) || checker.project().is_api_reached(name))
+                && (checker.project().is_imported_by_others(name) || checker.project().is_api_reached(name))
                 && !shadows_module(name)
         })
-        .map(|(name, bindings)| (name, bindings[0].range, checker.project().is_imported(name)))
+        .map(|(name, bindings)| (name, bindings[0].range, checker.project().is_imported_by_others(name)))
         .collect();
     if missing.is_empty() {
         return;
     }
     missing.sort_by_key(|(_, range, _)| range.start());
-    let fix = all_insertion(checker, missing.iter().map(|(name, _, _)| *name))
-        .and_then(|fix| with_unused_noqas_removed(checker, fix, &missing));
+    // Listing a name in a public module of a library widens its API and what `import *` binds, so the report stays and
+    // the author decides.
+    let fix = if checker.project().role().public {
+        None
+    } else {
+        all_insertion(checker, missing.iter().map(|(name, _, _)| *name))
+            .and_then(|fix| with_unused_noqas_removed(checker, fix, &missing))
+    };
     let names: Vec<String> = missing.iter().map(|(name, _, _)| format!("`{name}`")).collect();
     let title = format!("Add {} to `__all__`", names.join(", "));
     for (name, range, imported) in missing {

@@ -12,3 +12,7 @@ def nested(prefix: str, width: int) -> str:
 
 def nested_sum(label: str) -> str:
     return "a" + ("b" + label)
+
+
+def triple_quoted_operand_keeps_its_quote(name: str) -> str:
+    return "<" + name.replace("""a""", 'b') + ">"

@@ -1,0 +1,6 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+7:5 SMP920 Docstring of `Project` does not document attribute `counter`; add `:ivar counter:`
+7:5 SMP920 Docstring of `Project` does not document attribute `patched`; add `:ivar patched:`

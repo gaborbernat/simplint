@@ -1,0 +1,6 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+7:5 SMP404 `limit` is not in `__all__`; list it there, or rename it to `_limit` by hand
+15:1 SMP404 `VERBOSITY` is not in `__all__`; list it there, or rename it to `_VERBOSITY` by hand

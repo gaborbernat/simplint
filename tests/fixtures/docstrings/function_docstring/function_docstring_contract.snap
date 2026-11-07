@@ -41,10 +41,6 @@ def _handler(error: Exception) -> None:
 
 class _Registry:
     # Keep plugins in registration order.
-    #
-    # Parameters
-    # names
-    #     the plugin names, in the order they were loaded
     def lookup(self) -> None:  # the docstring shares no line with the header
         # Look up a plugin by name, falling back to the default plugin when none
         # matches.
@@ -91,10 +87,6 @@ def _fields(name: str, count: int) -> None:
     # Store the entry under a name, keeping the first one stored when two entries share
     # it.
     #
-    # Args:
-    #     name: the key the entry is stored under, compared case-insensitively against
-    #     the others
-    #     count (int): how many copies to keep
     # See
     # https://example.com/a/very/long/path/that/no/wrapping/can/split/across/two/lines/at/all/index.html
     print(name, count)

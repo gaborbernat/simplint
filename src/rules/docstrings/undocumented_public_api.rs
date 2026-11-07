@@ -15,7 +15,7 @@ pub fn undocumented_public_api(checker: &Checker) {
     }
     let api = checker.state().public_api(checker);
     let ruff = RuffPublic::of(checker);
-    for item in &api.items {
+    for item in api.items.iter().filter(|item| item.docs) {
         let documented = match item.stmt {
             Stmt::FunctionDef(ast::StmtFunctionDef { body, .. }) | Stmt::ClassDef(ast::StmtClassDef { body, .. }) => {
                 docstring(body).is_some()

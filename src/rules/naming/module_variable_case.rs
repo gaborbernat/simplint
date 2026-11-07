@@ -7,12 +7,12 @@ use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::module_variable::{ModuleVariable, module_variables};
+use crate::rules::module_variable::ModuleVariable;
 use crate::rules::rename::rename_fix;
 
 pub fn module_variable_case(checker: &Checker) {
     let named_tuples = OnceCell::new();
-    for variable in module_variables(checker) {
+    for variable in checker.state().module_variables(checker) {
         let stem = variable.name.trim_start_matches('_');
         let prefix = &variable.name[..variable.name.len() - stem.len()];
         let expected = format!("{prefix}{}", stem.to_ascii_uppercase());
@@ -22,7 +22,7 @@ pub fn module_variable_case(checker: &Checker) {
         let fix = rename_fix(checker, variable.name, &expected);
         if fix.is_none()
             && checker.settings.from_ruff.ruff_runs(RuffRule::MixedCaseVariableInGlobalScope)
-            && ruff_reports(checker, &variable, &named_tuples)
+            && ruff_reports(checker, variable, &named_tuples)
         {
             continue;
         }

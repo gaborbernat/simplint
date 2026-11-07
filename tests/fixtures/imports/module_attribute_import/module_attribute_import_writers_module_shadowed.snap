@@ -1,0 +1,29 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+23:12 SMP304 Import `DbWriter` from `.findings` instead of reaching it through the module [unsafe fix: Import the names from `.findings`]
+--- fixed (1 applied, 0 remaining) ---
+from .findings import DbWriter
+
+
+def write(findings: object) -> object:
+    return findings.DbWriter()
+
+
+def count(items: list[int]) -> int:
+    findings = len(items)
+    return findings.bit_length()
+
+
+def each(batches: list[object]) -> None:
+    for findings in batches:
+        print(findings.DbWriter)
+
+
+def lengths(words: list[str]) -> list[int]:
+    return [findings.count("a") for findings in words]
+
+
+def writer() -> object:
+    return DbWriter()

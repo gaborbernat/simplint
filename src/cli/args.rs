@@ -404,7 +404,6 @@ impl CheckCommand {
             extend_per_file_ignores: self.extend_per_file_ignores.as_deref().map(collect_per_file_ignores),
             project_kind: None,
             api_packages: None,
-            api_modules: None,
             docstring_style: None,
             ..SimplintOptions::default()
         }

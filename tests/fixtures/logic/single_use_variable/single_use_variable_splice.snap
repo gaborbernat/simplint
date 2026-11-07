@@ -1,0 +1,48 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:5 SMP504 `attrs_str` is used once, right below; inline its value [fix: Inline `attrs_str`]
+7:5 SMP504 `sep` is used once, right below; inline its value [fix: Inline `sep`]
+12:5 SMP504 `inner` is used once, right below; inline its value [fix: Inline `inner`]
+17:5 SMP504 `inner` is used once, right below; inline its value [fix: Inline `inner`]
+22:5 SMP504 `inner` is used once, right below; inline its value [fix: Inline `inner`]
+27:5 SMP504 `inner` is used once, right below; inline its value [fix: Inline `inner`]
+32:5 SMP504 `inner` is used once, right below; inline its value [fix: Inline `inner`]
+37:5 SMP504 `inner` is used once, right below; inline its value [fix: Inline `inner`]
+42:5 SMP504 `inner` is used once, right below; inline its value [fix: Inline `inner`]
+--- fixed (9 applied, 0 remaining) ---
+def render(markup: str, text: str, attrs: str) -> str:
+    return f"{markup} {text} {attrs}"
+
+
+def separated(name: str, other: str) -> str:
+    return f"{name}, {other}"
+
+
+def braces(value: str) -> str:
+    return f"<{{value}}>"
+
+
+def concatenated(value: str) -> str:
+    return f"[<{value}>tail]"
+
+
+def quote_kept(value: str) -> str:
+    return f'[{f"it's {value}"}]'
+
+
+def raw_kept(value: str) -> str:
+    return f"[{rf"\d{value}"}]"
+
+
+def outer_raw_kept(value: str) -> str:
+    return rf"\n{f"a\t{value}"}"
+
+
+def conversion_kept(value: str) -> str:
+    return f"[{f"<{value}>"!r}]"
+
+
+def concatenated_conversion(value: str) -> str:
+    return f"[{f"<{value}>" "tail"!r}]"

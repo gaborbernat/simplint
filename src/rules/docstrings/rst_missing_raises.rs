@@ -4,7 +4,7 @@ use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rst::{FieldKind, Owner, rank, report_missing};
+use crate::rules::docstrings::rst::{FieldKind, Owner};
 use crate::syntax::last_segment;
 
 pub fn rst_missing_raises(checker: &Checker) {
@@ -28,19 +28,14 @@ pub fn rst_missing_raises(checker: &Checker) {
                 missing.push(name);
             }
         }
-        let missing = missing
-            .into_iter()
-            .map(|name| {
-                let message = format!(
-                    "`{}` raises `{name}`, which its docstring does not document; add `:raises {name}:`",
-                    def.name
-                );
-                (rank(FieldKind::Raises, Some(name), &[]), format!(":raises {name}:"), message)
-            })
-            .collect();
-        let parameters = target.parameters().unwrap_or_default();
-        let range = target.docstring.range();
-        report_missing(checker, Rule::RstMissingRaises, range, &target.docstring, &parameters, missing);
+        // The description of a raised exception is for a person to write, so the report carries no fix.
+        for name in missing {
+            checker.report(
+                Rule::RstMissingRaises,
+                target.docstring.range(),
+                format!("`{}` raises `{name}`, which its docstring does not document; add `:raises {name}:`", def.name),
+            );
+        }
     }
 }
 

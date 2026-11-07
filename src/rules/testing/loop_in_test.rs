@@ -5,16 +5,13 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::testing::is_test_function;
+use crate::rules::testing::is_test_module_function;
 use crate::syntax::{for_each_body, is_name, last_segment, target_names};
 
 pub fn loop_in_test(checker: &Checker) {
-    if !checker.is_test_module() {
-        return;
-    }
     let mut found = Vec::new();
     for function in checker.function_defs() {
-        if is_test_function(function) {
+        if is_test_module_function(checker, function) {
             Loops { cases: Cases { checker, function }, found: &mut found }.visit_body(&function.body);
         }
     }

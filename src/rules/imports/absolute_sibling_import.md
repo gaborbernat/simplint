@@ -61,7 +61,7 @@ Ruff's [relative-imports](https://docs.astral.sh/ruff/rules/relative-imports/) w
 [`ban-relative-imports`](https://docs.astral.sh/ruff/settings/#lint_flake8-tidy-imports_ban-relative-imports) set to
 `"all"` contradicts it: it asks for the absolute import this rule replaces, and its fix turns the relative import back.
 simplint stops with an error before linting while both apply to a file; set `ban-relative-imports` to `"parents"`, or
-turn one of the two rules off.
+turn one of the two rules off. A project that runs flake8-lazy has no such conflict, since this rule stays off there.
 
 ## What it does
 
@@ -174,6 +174,35 @@ turn one of the two rules off.
 
 
   execnet.remote_exec(remote)
+  ```
+
+- **Every file of a project that runs [flake8-lazy](https://github.com/henryiii/flake8-lazy)**: flake8-lazy rewrites
+  each module's `__lazy_modules__` list from its absolute imports. In pipx, a relative import made it write a list that
+  `ty` rejects (99 errors), and flake8-lazy and this fix then keep rewriting each other's output, so the rule stays off.
+  An explicit `--select absolute-sibling-import` does not turn it back on for such a project. The project runs
+  flake8-lazy when one of its `pyproject.toml` files, the one with `[project]` or the one with `[tool.simplint]`, has a
+  `[tool.flake8-lazy]` table, or when the nearest `.pre-commit-config.yaml`, `.pre-commit-config.yml` or `prek.toml`
+  from the project upwards, stopping at the repository root, has a hook with id `flake8-lazy`. A `flake8-lazy` entry in
+  another hook's `additional_dependencies` does not count, since it only installs the plugin into flake8.
+
+  ```toml config
+  [tool.flake8-lazy]
+  ```
+
+  ```python context file=package/__init__.py
+  # A package.
+  ```
+
+  ```python context file=package/sub/__init__.py
+  # A subpackage.
+  ```
+
+  ```python context file=package/sub/sibling.py
+  VALUE = 1
+  ```
+
+  ```python ok file=package/sub/module.py
+  from package.sub import sibling
   ```
 
 ### Undetected cases

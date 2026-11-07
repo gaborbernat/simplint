@@ -5,3 +5,4 @@ expression: "lint_fixture(rule, fixture, target_version)"
 5:5 SMP803 Branching inside a test; parameterize instead
 7:13 SMP803 Branching inside a test; parameterize instead
 8:5 SMP803 Branching inside a test; parameterize instead
+39:22 SMP803 Branching inside a test; parameterize instead

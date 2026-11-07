@@ -21,7 +21,7 @@ use rayon::prelude::*;
 use rkyv::util::AlignedVec;
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_db::diagnostic::{
-    Annotation, Diagnostic, DiagnosticId, LintName, SecondaryCode, Severity, Span, SubDiagnosticSeverity,
+    Annotation, Diagnostic, DiagnosticId, LintName, SecondaryCode, Severity, Span, SubDiagnosticSeverity, UnifiedFile,
 };
 use ruff_diagnostics::{Applicability, Edit, Fix, IsolationLevel};
 use ruff_linter::warn_user;
@@ -33,7 +33,9 @@ use tempfile::NamedTempFile;
 use ruff_linter::settings::LinterSettings;
 
 use crate::cli::printer::FullDisplay;
+use crate::fix::Withdrawn;
 use crate::lint::Linter;
+use crate::lint::checker::source_file_at;
 use crate::lint::registry::{Rule, RuleSet};
 use crate::project::{Ending, FileFacts};
 use crate::run::{Diagnostics, Linting, Mode};
@@ -313,7 +315,7 @@ impl<'a> Cache<'a> {
         key: FileKey,
         fingerprint: Fingerprint,
         full: Option<&FullDisplay>,
-        lint: impl FnOnce(Option<RuleSet>) -> Linting,
+        lint: impl FnOnce(Option<Withdrawn>) -> Linting,
     ) -> Diagnostics {
         let file = self.get(path, key);
         let index = IndexKey { run: self.run, base: fingerprint.base };
@@ -349,9 +351,8 @@ impl<'a> Cache<'a> {
         let known = file
             .and_then(|file| file.settled.as_ref())
             .filter(|settled| fingerprint.settled == Some(settled.fingerprint.to_native()))
-            .map(|settled| {
-                RuleSet::from_rules(settled.withdrawn.iter().filter_map(|code| Rule::from_code(code.as_str())))
-            });
+            .map(withdrawn);
+        let fresh = known.is_none();
         let Linting { mut diagnostics, settled, noqa_rows } = lint(known);
         // Text is kept only for a file the cache already held reports for, so a first run that has nothing to reuse
         // renders the output as it did before, and the next run reuses the text.
@@ -361,7 +362,7 @@ impl<'a> Cache<'a> {
             .map(|full| text(full, &path.to_string_lossy(), &mut diagnostics, key.0, fingerprint.clean));
         if diagnostics.inner.is_empty() && diagnostics.fixed.is_empty() {
             self.update(path, key, ChangeData::Clean(fingerprint.clean, index));
-        } else if let (None, Some(fingerprint), Some(withdrawn)) = (known, fingerprint.settled, settled) {
+        } else if let (true, Some(fingerprint), Some(withdrawn)) = (fresh, fingerprint.settled, settled) {
             self.update(path, key, ChangeData::Settled(fingerprint, withdrawn));
         } else if fingerprint.settled.is_none()
             && let Some(reports) = Report::all(&diagnostics.inner, &noqa_rows)
@@ -499,8 +500,7 @@ impl<'a> Cache<'a> {
                     file.index = Some(index);
                 }
                 ChangeData::Settled(fingerprint, withdrawn) => {
-                    let withdrawn = withdrawn.iter().map(|rule| rule.code().to_owned()).collect();
-                    file.settled = Some(Settled { fingerprint, withdrawn });
+                    file.settled = Some(Settled::new(fingerprint, &withdrawn));
                 }
                 ChangeData::Index(index) => file.index = Some(index),
             }
@@ -669,6 +669,37 @@ struct Report {
     noqa_offset: u32,
     help: Vec<String>,
     fix: Option<StoredFix>,
+    // The other locations the report points at, in the order the checker gave them.
+    related: Vec<StoredRelated>,
+}
+
+// A location a report points at besides its primary one, as the file it is in, its byte range and its message.
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+struct StoredRelated {
+    path: String,
+    start: u32,
+    end: u32,
+    message: String,
+}
+
+impl StoredRelated {
+    // The location a secondary annotation names, or `None` when it is not one the checker set: a file its source
+    // cannot be read back from, or one without a message.
+    fn of(annotation: &Annotation) -> Option<Self> {
+        let span = annotation.get_span();
+        let UnifiedFile::Ruff(file) = span.file() else { return None };
+        let range = span.range()?;
+        Some(Self {
+            path: file.name().to_owned(),
+            start: range.start().to_u32(),
+            end: range.end().to_u32(),
+            message: annotation.get_message()?.to_owned(),
+        })
+    }
+
+    fn range(&self) -> TextRange {
+        TextRange::new(TextSize::new(self.start), TextSize::new(self.end))
+    }
 }
 
 impl Report {
@@ -686,6 +717,8 @@ impl Report {
         let url = rule.url();
         let primary = diagnostic.annotations().first()?;
         let range = primary.get_span().range()?;
+        let related: Vec<StoredRelated> =
+            diagnostic.secondary_annotations().map(StoredRelated::of).collect::<Option<_>>()?;
         let help: Vec<String> = diagnostic
             .sub_diagnostics()
             .iter()
@@ -694,7 +727,7 @@ impl Report {
                 help.then(|| sub.headline_message().to_owned())
             })
             .collect::<Option<_>>()?;
-        let plain = diagnostic.annotations().len() == 1
+        let plain = diagnostic.annotations().iter().filter(|annotation| annotation.is_primary()).count() == 1
             && primary.is_primary()
             && primary.get_message().is_none()
             && diagnostic.primary_tags().is_none_or(<[_]>::is_empty)
@@ -711,6 +744,7 @@ impl Report {
             noqa_offset: noqa_row.to_u32(),
             help,
             fix,
+            related,
         })
     }
 
@@ -721,6 +755,11 @@ impl Report {
         let mut diagnostic =
             Diagnostic::new(DiagnosticId::Lint(LintName::of(rule.name())), Severity::Error, self.message.as_str());
         diagnostic.annotate(Annotation::primary(Span::from(file.clone()).with_range(range)));
+        for related in &self.related {
+            let file = source_file_at(Path::new(&related.path))?;
+            let span = Span::from(file).with_range(related.range());
+            diagnostic.annotate(Annotation::secondary(span).message(related.message.as_str()));
+        }
         diagnostic.set_secondary_code(SecondaryCode::new(rule.code().to_owned()));
         diagnostic.set_documentation_url(Some(rule.url()));
         for help in &self.help {
@@ -815,13 +854,59 @@ impl StoredEdit {
     }
 }
 
-// The fix loop's last run over an unchanged file: the fingerprint it ran under and the codes of the rules whose fixes
-// it withdrew. Codes, unlike a rule's position in the rule set, stay put while development builds of a version add
-// rules.
+// The fix loop's last run over an unchanged file: the fingerprint it ran under and the fixes it withdrew, rules by code
+// and single fixes by rule code, message and text. Codes, unlike a rule's position in the rule set, stay put while
+// development builds of a version add rules.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 struct Settled {
     fingerprint: u64,
-    withdrawn: Vec<String>,
+    rules: Vec<String>,
+    fixes: Vec<WithdrawnFix>,
+}
+
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+struct WithdrawnFix {
+    rule: String,
+    message: String,
+    text: String,
+    ordinal: usize,
+}
+
+impl Settled {
+    fn new(fingerprint: u64, withdrawn: &Withdrawn) -> Self {
+        Self {
+            fingerprint,
+            rules: withdrawn.rules.iter().map(|rule| rule.code().to_owned()).collect(),
+            fixes: withdrawn
+                .fixes
+                .iter()
+                .map(|(rule, message, text, ordinal)| WithdrawnFix {
+                    rule: rule.code().to_owned(),
+                    message: message.clone(),
+                    text: text.clone(),
+                    ordinal: *ordinal,
+                })
+                .collect(),
+        }
+    }
+}
+
+fn withdrawn(settled: &ArchivedSettled) -> Withdrawn {
+    Withdrawn {
+        rules: RuleSet::from_rules(settled.rules.iter().filter_map(|code| Rule::from_code(code.as_str()))),
+        fixes: settled
+            .fixes
+            .iter()
+            .filter_map(|fix| {
+                Some((
+                    Rule::from_code(fix.rule.as_str())?,
+                    fix.message.as_str().to_owned(),
+                    fix.text.as_str().to_owned(),
+                    fix.ordinal.to_native() as usize,
+                ))
+            })
+            .collect(),
+    }
 }
 
 struct Change {
@@ -834,7 +919,7 @@ enum ChangeData {
     Facts(Box<FileFacts>),
     Clean(u64, IndexKey),
     Findings(u64, Vec<Report>, IndexKey),
-    Settled(u64, RuleSet),
+    Settled(u64, Withdrawn),
     Index(IndexKey),
 }
 

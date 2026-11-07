@@ -18,6 +18,10 @@ use crate::syntax::{alias_binding, instance_writes, is_classmethod, last_segment
 pub struct AttributeWrites {
     pub(super) typed: Vec<(String, String)>,
     pub(super) untyped: Vec<String>,
+    // The qualified classes whose instances get a `__dict__` store, `x.__dict__ = ...` or `del x.__dict__`, or a
+    // `setattr` or `delattr` of it, which a frozen instance rejects. Reading `__dict__` is in `typed` and `untyped`
+    // alone.
+    pub(super) dict_stores: Vec<String>,
     // The qualified bases of classes a slotted base breaks: one using `functools.cached_property`, which stores into an
     // instance `__dict__`, or one with several bases, as a slotted base's layout conflicts with another's.
     pub(super) unslottable_bases: Vec<String>,
@@ -120,6 +124,9 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
         match expr {
             Expr::Attribute(ast::ExprAttribute { value, attr, ctx: ExprContext::Store | ExprContext::Del, .. }) => {
                 self.record(value, attr.as_str());
+                if attr.as_str() == "__dict__" {
+                    self.record_dict_store(value);
+                }
             }
             Expr::Attribute(ast::ExprAttribute { value, attr, .. }) if attr.as_str() == "__dict__" => {
                 self.record(value, "__dict__");
@@ -128,7 +135,11 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
                 let builtin = func.as_name_expr().map(|name| name.id.as_str());
                 match (&*arguments.args, builtin) {
                     ([target, Expr::StringLiteral(attribute), ..], Some("setattr" | "delattr")) => {
-                        self.record(target, attribute.value.to_str());
+                        let name = attribute.value.to_str();
+                        self.record(target, name);
+                        if name == "__dict__" {
+                            self.record_dict_store(target);
+                        }
                     }
                     ([target], Some("vars")) => self.record(target, "__dict__"),
                     _ => {}
@@ -163,6 +174,15 @@ impl<'a> Collector<'a, '_> {
             Receiver::Mock => {}
             Receiver::Unknown => self.writes.untyped.push(attribute.to_owned()),
         }
+    }
+
+    fn record_dict_store(&mut self, receiver: &Expr) {
+        let class = match self.receiver(receiver) {
+            Receiver::Instance(class) => self.qualified(&class),
+            Receiver::Own(class) => class,
+            Receiver::Mock | Receiver::Unknown => return,
+        };
+        self.writes.dict_stores.push(class);
     }
 
     // `pickle.dumps(obj, protocol)`, `pickle.dump(obj, file, protocol)` or `pickle.Pickler(file, protocol)` with a
@@ -503,14 +523,19 @@ impl<'a> Visitor<'a> for Mentions<'_> {
     }
 }
 
+// The parts of the module a file defines. A package's `__init__.py` defines the package itself, which imports name
+// without `__init__`.
+pub(crate) fn module_parts<S: AsRef<str>>(module_path: &[S]) -> &[S] {
+    match module_path {
+        [package @ .., last] if last.as_ref() == "__init__" => package,
+        _ => module_path,
+    }
+}
+
 // The dotted name of the module a file defines, or its file name outside a package.
-// A package's `__init__.py` defines the package itself, which imports name without `__init__`.
 pub(crate) fn module_name(module_path: Option<&[String]>, path: &Path) -> String {
     module_path.map_or_else(
         || path.file_stem().and_then(|stem| stem.to_str()).unwrap_or_default().to_owned(),
-        |module_path| match module_path {
-            [package @ .., last] if last == "__init__" && !package.is_empty() => package.join("."),
-            _ => module_path.join("."),
-        },
+        |module_path| module_parts(module_path).join("."),
     )
 }

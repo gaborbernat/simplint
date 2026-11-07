@@ -112,7 +112,7 @@ The fix loop applies non-overlapping fixes, reparses, and repeats until no fix a
 before and after:
 
 - Ruff fixes what the fixes gave it to do.
-- A rule whose fixes leave Ruff work it cannot fix is withdrawn, keeping its reports.
+- A fix whose result leaves Ruff work it cannot fix is withdrawn, keeping its report. The other fixes of its rule stay.
 
 simplint gets Ruff's findings by running Ruff's linter, and line lengths from a token model, since `ruff format` runs
 after simplint. A fix that does not parse, or a loop that does not settle, leaves the file unchanged and reports an
@@ -125,7 +125,7 @@ flowchart TD
     parse -->|yes| more{"Another fix applies?"}
     more -->|yes| apply
     more -->|no| ruff{"Leaves Ruff work<br/>it cannot fix?"}
-    ruff -->|yes| withdraw["Withdraw the rule,<br/>keep its reports"]
+    ruff -->|yes| withdraw["Withdraw the fix,<br/>keep its report"]
     ruff -->|no| done["Keep the fixes"]
     classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59
     classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59

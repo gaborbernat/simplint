@@ -149,7 +149,7 @@ struct Clash {
     simplint: Rule,
     ruff: &'static [RuffRule],
     probe: &'static str,
-    acts_on: fn(&FileSettings, &Path, &LinterSettings) -> bool,
+    acts_on: fn(&FileSettings, &LinterSettings) -> bool,
     undoes_fixes: bool,
     why: fn(&Names) -> String,
     fix: fn(&Names) -> String,
@@ -185,7 +185,7 @@ const CLASHES: [Clash; 8] = [
         ],
         probe: "class Class:\n    class Nested:\n        pass\n\n    def __init__(self):\n        pass\n\n    def __eq__(self, \
                 other):\n        pass\n\n    def method(self):\n        pass\n\n\ndef function():\n    pass\n",
-        acts_on: |_, _, _| true,
+        acts_on: |_, _| true,
         undoes_fixes: false,
         why: |names| {
             format!(
@@ -209,7 +209,7 @@ const CLASHES: [Clash; 8] = [
         simplint: Rule::TestModuleDocstring,
         ruff: &[RuffRule::UndocumentedPublicModule, RuffRule::UndocumentedPublicPackage],
         probe: "x = 1\n",
-        acts_on: |settings, path, _| settings.is_test_module(path),
+        acts_on: |settings, _| settings.is_test,
         undoes_fixes: false,
         why: |names| {
             format!(
@@ -230,7 +230,7 @@ const CLASHES: [Clash; 8] = [
         simplint: Rule::FutureAnnotations,
         ruff: &[RuffRule::MissingRequiredImport],
         probe: "x = 1\n",
-        acts_on: |settings, _, ruff| {
+        acts_on: |settings, ruff| {
             settings.from_ruff.target_version.defers_annotations()
                 && ruff.isort.required_imports.iter().any(|import| match import {
                     NameImport::ImportFrom(member) => {
@@ -258,7 +258,7 @@ const CLASHES: [Clash; 8] = [
         simplint: Rule::Utf8EncodingDefault,
         ruff: &[RuffRule::UnspecifiedEncoding],
         probe: "open(\"file\")\n",
-        acts_on: |settings, _, _| settings.from_ruff.target_version >= PythonVersion::PY315,
+        acts_on: |settings, _| settings.from_ruff.target_version >= PythonVersion::PY315,
         undoes_fixes: true,
         why: |names| {
             format!(
@@ -272,7 +272,7 @@ const CLASHES: [Clash; 8] = [
         simplint: Rule::AbsoluteSiblingImport,
         ruff: &[RuffRule::RelativeImports],
         probe: "from . import sibling\n",
-        acts_on: |_, _, _| true,
+        acts_on: |_, _| true,
         undoes_fixes: true,
         why: |names| {
             format!(
@@ -293,7 +293,7 @@ const CLASHES: [Clash; 8] = [
         ruff: &[RuffRule::DocstringMissingReturns, RuffRule::DocstringMissingYields],
         probe: "def function(value):\n    \"\"\"Return the value.\n\n    :returns: The value.\n    \"\"\"\n    return value\n\n\n\
                 def generator():\n    \"\"\"Count.\n\n    :yields: The numbers.\n    \"\"\"\n    yield 1\n",
-        acts_on: |settings, _, _| settings.project.docstring_style == Some(DocstringStyle::Rst),
+        acts_on: |settings, _| settings.project.docstring_style == Some(DocstringStyle::Rst),
         undoes_fixes: false,
         why: |names| {
             format!(
@@ -311,7 +311,7 @@ const CLASHES: [Clash; 8] = [
         ruff: &[RuffRule::DocstringMissingException],
         probe: "def function(value):\n    \"\"\"Check the value.\n\n    :raises ValueError: When it is empty.\n    \"\"\"\n    \
                 if not value:\n        raise ValueError\n",
-        acts_on: |settings, _, _| settings.project.docstring_style == Some(DocstringStyle::Rst),
+        acts_on: |settings, _| settings.project.docstring_style == Some(DocstringStyle::Rst),
         undoes_fixes: false,
         why: |names| {
             format!(
@@ -325,7 +325,7 @@ const CLASHES: [Clash; 8] = [
         simplint: Rule::UnittestAssertHelper,
         ruff: &[RuffRule::PytestUnittestAssertion],
         probe: "self.assertTrue(True)\n",
-        acts_on: |_, _, _| true,
+        acts_on: |_, _| true,
         undoes_fixes: false,
         why: |names| {
             format!(
@@ -366,7 +366,7 @@ impl Clash {
     // Where the Ruff rules that work against the simplint rule in the file sit in `ruff`; `None` when either side is off
     // there.
     fn reported(&self, scope: &Scope, narrowed: &LinterSettings) -> Option<Vec<usize>> {
-        if !scope.settings.rules.contains(self.simplint) || !(self.acts_on)(&scope.settings, scope.path, narrowed) {
+        if !scope.settings.rules.contains(self.simplint) || !(self.acts_on)(&scope.settings, narrowed) {
             return None;
         }
         let diagnostics = lint_only(

@@ -4,6 +4,8 @@
 // instead of deferred.
 use std::path::Path;
 
+use ruff_linter::rules::flake8_type_checking::settings::RuntimeSemantics;
+use ruff_linter::settings::LinterSettings;
 use ruff_python_ast::helpers::collect_import_from_member;
 use ruff_python_ast::identifier::Identifier;
 use ruff_python_ast::name::QualifiedName;
@@ -12,6 +14,7 @@ use ruff_python_ast::{
     self as ast, AnyParameterRef, Comprehension, ExceptHandler, Expr, ExprContext, Parameters, Pattern, PySourceType,
     PythonVersion, Stmt,
 };
+use ruff_python_semantic::analyze::typing::is_type_checking_block;
 use ruff_python_semantic::{
     BindingFlags, BindingKind, FromImport, GeneratorKind, Import, Module, ModuleKind, ModuleSource, ScopeId, ScopeKind,
     SemanticModel, SemanticModelFlags, Snapshot, StarImport, SubmoduleImport,
@@ -21,6 +24,7 @@ use rustc_hash::FxHashSet;
 
 use super::append::is_list_append;
 use super::django::unordered_model_statements;
+use super::runtime::Runtime;
 use crate::semantic::future_import;
 
 pub struct Model<'a> {
@@ -31,9 +35,15 @@ pub struct Model<'a> {
     pub annotations_are_lazy: bool,
     pub django_reports: FxHashSet<TextRange>,
     pub list_appends: FxHashSet<TextRange>,
+    pub type_checking_stubs: FxHashSet<TextRange>,
 }
 
-pub fn build<'a>(path: &'a Path, body: &'a [Stmt], target_version: PythonVersion) -> Model<'a> {
+pub fn build<'a>(
+    path: &'a Path,
+    body: &'a [Stmt],
+    target_version: PythonVersion,
+    settings: &LinterSettings,
+) -> Model<'a> {
     let module = Module {
         kind: if path.ends_with("__init__.py") { ModuleKind::Package } else { ModuleKind::Module },
         source: ModuleSource::File(path),
@@ -43,11 +53,13 @@ pub fn build<'a>(path: &'a Path, body: &'a [Stmt], target_version: PythonVersion
     let mut builder = Builder {
         semantic: SemanticModel::new(&[], &[], target_version, PySourceType::Python, path, module),
         target_version,
+        runtime: Runtime::new(settings),
         functions: Vec::new(),
         lambdas: Vec::new(),
         loads: Vec::new(),
         django_reports: FxHashSet::default(),
         list_appends: FxHashSet::default(),
+        type_checking_stubs: FxHashSet::default(),
     };
     builder.visit_body(body);
     let module = builder.semantic.snapshot();
@@ -60,17 +72,20 @@ pub fn build<'a>(path: &'a Path, body: &'a [Stmt], target_version: PythonVersion
         annotations_are_lazy,
         django_reports: builder.django_reports,
         list_appends: builder.list_appends,
+        type_checking_stubs: builder.type_checking_stubs,
     }
 }
 
 struct Builder<'a> {
     semantic: SemanticModel<'a>,
     target_version: PythonVersion,
+    runtime: Runtime,
     functions: Vec<(&'a ast::StmtFunctionDef, Snapshot)>,
     lambdas: Vec<(&'a ast::ExprLambda, Snapshot)>,
     loads: Vec<(&'a ast::ExprName, Snapshot)>,
     django_reports: FxHashSet<TextRange>,
     list_appends: FxHashSet<TextRange>,
+    type_checking_stubs: FxHashSet<TextRange>,
 }
 
 impl Builder<'_> {
@@ -170,15 +185,9 @@ impl<'a> Visitor<'a> for Builder<'a> {
                 self.semantic.pop_scope();
                 self.add_binding(&class_def.name, stmt.identifier(), BindingKind::ClassDefinition(scope_id));
             }
-            Stmt::TypeAlias(ast::StmtTypeAlias { name, type_params, value, .. }) => {
-                self.semantic.push_scope(ScopeKind::Type);
-                self.semantic.flags |= SemanticModelFlags::DEFERRED_TYPE_ALIAS;
-                if let Some(type_params) = type_params {
-                    self.visit_type_params(type_params);
-                }
-                self.visit_expr(value);
-                self.semantic.pop_scope();
-                self.visit_expr(name);
+            Stmt::TypeAlias(type_alias) => self.visit_type_alias(type_alias),
+            Stmt::If(stmt_if) if is_type_checking_block(stmt_if, &self.semantic) => {
+                self.visit_type_checking_if(stmt_if);
             }
             _ => visitor::walk_stmt(self, stmt),
         }
@@ -187,16 +196,11 @@ impl<'a> Visitor<'a> for Builder<'a> {
     }
 
     fn visit_annotation(&mut self, expr: &'a Expr) {
-        let flags = self.semantic.flags;
-        // Python evaluates an annotation when it runs the statement, except inside a function body or when annotations
-        // are lazy.
-        self.semantic.flags |= if self.annotations_are_lazy() || self.semantic.current_scope().kind.is_function() {
-            SemanticModelFlags::TYPING_ONLY_ANNOTATION
-        } else {
-            SemanticModelFlags::RUNTIME_EVALUATED_ANNOTATION
+        let runtime = match self.semantic.current_scope().kind {
+            ScopeKind::Class(class_def) => self.runtime.class(class_def, &self.semantic),
+            _ => RuntimeSemantics::Default,
         };
-        self.visit_expr(expr);
-        self.semantic.flags = flags;
+        self.visit_annotation_as(expr, runtime);
     }
 
     fn visit_expr(&mut self, expr: &'a Expr) {
@@ -300,6 +304,50 @@ impl<'a> Visitor<'a> for Builder<'a> {
 }
 
 impl<'a> Builder<'a> {
+    fn visit_type_alias(&mut self, type_alias: &'a ast::StmtTypeAlias) {
+        let ast::StmtTypeAlias { name, type_params, value, .. } = type_alias;
+        self.semantic.push_scope(ScopeKind::Type);
+        self.semantic.flags |= SemanticModelFlags::DEFERRED_TYPE_ALIAS;
+        if let Some(type_params) = type_params {
+            self.visit_type_params(type_params);
+        }
+        let flags = self.semantic.flags;
+        self.semantic.flags |= SemanticModelFlags::TYPE_PARAM_DEFINITION;
+        self.visit_expr(value);
+        self.semantic.flags = flags;
+        self.semantic.pop_scope();
+        self.visit_expr(name);
+    }
+
+    fn visit_type_checking_if(&mut self, stmt_if: &'a ast::StmtIf) {
+        self.visit_expr(&stmt_if.test);
+        let flags = self.semantic.flags;
+        self.semantic.flags |= SemanticModelFlags::TYPE_CHECKING_BLOCK;
+        self.visit_body(&stmt_if.body);
+        self.semantic.flags = flags;
+        for clause in &stmt_if.elif_else_clauses {
+            self.visit_elif_else_clause(clause);
+        }
+    }
+
+    // Python evaluates an annotation when it runs the statement, except inside a function body or when annotations are
+    // lazy. A class or decorator that Ruff's settings list as runtime-required or ambiguous makes it so regardless.
+    fn visit_annotation_as(&mut self, expr: &'a Expr, runtime: RuntimeSemantics) {
+        let flags = self.semantic.flags;
+        self.semantic.flags |= match runtime {
+            RuntimeSemantics::Required => SemanticModelFlags::RUNTIME_REQUIRED_ANNOTATION,
+            RuntimeSemantics::Ambiguous => SemanticModelFlags::RUNTIME_AMBIGUOUS_ANNOTATION,
+            RuntimeSemantics::Default
+                if self.annotations_are_lazy() || self.semantic.current_scope().kind.is_function() =>
+            {
+                SemanticModelFlags::TYPING_ONLY_ANNOTATION
+            }
+            RuntimeSemantics::Default => SemanticModelFlags::RUNTIME_EVALUATED_ANNOTATION,
+        };
+        self.visit_expr(expr);
+        self.semantic.flags = flags;
+    }
+
     fn annotations_are_lazy(&self) -> bool {
         self.semantic.future_annotations_or_stub() || self.target_version.defers_annotations()
     }
@@ -321,8 +369,9 @@ impl<'a> Builder<'a> {
         if let Some(type_params) = type_params {
             self.visit_type_params(type_params);
         }
+        let runtime = self.runtime.function(function_def, &self.semantic);
         for annotation in parameters.iter().filter_map(AnyParameterRef::annotation).chain(returns.as_deref()) {
-            self.visit_annotation(annotation);
+            self.visit_annotation_as(annotation, runtime);
         }
         self.semantic.push_scope(ScopeKind::Function(function_def));
         self.functions.push((function_def, self.semantic.snapshot()));
@@ -425,6 +474,11 @@ impl<'a> Builder<'a> {
         } else {
             BindingKind::Assignment
         };
+        if matches!(kind, BindingKind::Annotation)
+            && self.semantic.flags.contains(SemanticModelFlags::TYPE_CHECKING_BLOCK)
+        {
+            self.type_checking_stubs.insert(name.range);
+        }
         self.add_binding(&name.id, name.range, kind);
     }
 

@@ -196,12 +196,13 @@ parameter by position counts for it, and so does one that passes it by keyword.
   Client(5)
   ```
 
-- **Public functions of a library**: outside code may call them without the argument.
+- **Public API of a library**: outside code may call the functions the public module's `__all__` lists, or, without
+  `__all__`, its public functions, without the argument. A public function `__all__` leaves out is judged like a private
+  one.
 
   ```toml config
   [tool.simplint]
   project-kind = "library"
-  api-modules = ["lib.core"]
   ```
 
   ```python ok file=lib/core.py

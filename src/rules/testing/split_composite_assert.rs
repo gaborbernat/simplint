@@ -5,17 +5,14 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::layout::joined_width;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::testing::is_test_function;
+use crate::rules::testing::is_test_module_function;
 use crate::rules::{indentation, is_alone_on_lines};
 use crate::syntax::for_each_body;
 
 pub fn split_composite_assert(checker: &Checker) {
-    if !checker.is_test_module() {
-        return;
-    }
     let mut runs: Vec<&[Stmt]> = Vec::new();
     for function in checker.function_defs() {
-        if is_test_function(function) {
+        if is_test_module_function(checker, function) {
             for_each_body(&function.body, &mut |statements, _| collect_runs(checker, statements, &mut runs));
         }
     }

@@ -2,15 +2,14 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-2:5 SMP504 `sep` is used once, right below; inline its value [fix: Inline `sep`]
 12:5 SMP504 `inner` is used once, right below; inline its value [fix: Inline `inner`]
 27:5 SMP504 `inner` is used once, right below; inline its value [fix: Inline `inner`]
 32:5 SMP504 `total` is used once, right below; inline its value [fix: Inline `total`]
-39:5 SMP504 `total` is used once, right below; inline its value [fix: Inline `total`]
 53:5 SMP504 `total` is used once, right below; inline its value [fix: Inline `total`]
---- fixed (6 applied, 0 remaining) ---
+--- fixed (4 applied, 0 remaining) ---
 def join(items: list[str]) -> str:
-    return f"[{' '.join(items)}]"
+    sep = " ".join(items)
+    return f"[{sep}]"
 
 
 def quote(value: str) -> str:
@@ -19,7 +18,7 @@ def quote(value: str) -> str:
 
 
 def nested(value: str) -> str:
-    return f"[{f'<{value}>'}]"
+    return f"[<{value}>]"
 
 
 def triple(items: list[str]) -> str:
@@ -33,7 +32,7 @@ def triple_fstring(items: list[str]) -> str:
 
 
 def concatenated(value: str) -> str:
-    return f"[{f'<{value}>' 'tail'}]"
+    return f"[<{value}>tail]"
 
 
 def joined_in_field(items: list[str]) -> str:
@@ -41,7 +40,10 @@ def joined_in_field(items: list[str]) -> str:
 
 
 def joined_and_requoted(items: list[str]) -> str:
-    return f"{sum(1 for item in items if item.startswith('a'))} items"
+    total = sum(
+        1 for item in items if item.startswith("a")
+    )
+    return f"{total} items"
 
 
 def kept_split_in_field(items: list[str]) -> str:

@@ -3,8 +3,9 @@ use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::api::references_outside;
-use crate::syntax::{Exports, Visibility, module_statements};
+use crate::rules::api::{listed_exports, references_outside};
+use crate::rules::docstrings::Need;
+use crate::syntax::{Visibility, module_statements};
 
 pub fn test_only_code(checker: &Checker) {
     let project = checker.project();
@@ -13,10 +14,7 @@ pub fn test_only_code(checker: &Checker) {
         return;
     }
     let api = checker.state().public_api(checker);
-    let listed = match checker.dunder_all() {
-        Exports::Listed(names) => names.as_slice(),
-        Exports::Absent | Exports::Dynamic => &[],
-    };
+    let listed = listed_exports(checker);
     for stmt in module_statements(checker.body()) {
         // A decorator may register the definition with something outside the run, such as a framework or a plugin list.
         let (name, range, decorated) = match stmt {
@@ -28,7 +26,7 @@ pub fn test_only_code(checker: &Checker) {
         };
         if decorated
             || Visibility::of(name) == Visibility::Dunder
-            || api.is_public(stmt.range())
+            || api.is_public(stmt.range(), Need::Any)
             || listed.contains(&name)
             || !project.is_used_only_by_tests(name)
             || references_outside(checker, name, stmt.range())

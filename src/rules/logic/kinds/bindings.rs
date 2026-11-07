@@ -49,6 +49,8 @@ pub(super) struct Bindings<'a> {
     pub(super) functions: Vec<&'a ast::StmtFunctionDef>,
     pub(super) classes: Vec<&'a ast::StmtClassDef>,
     pub(super) imported: bool,
+    // The name a `from` import binds the name as, which is the class or function it names in its module.
+    pub(super) original: Option<&'a str>,
     pub(super) opaque: bool,
 }
 
@@ -204,10 +206,14 @@ impl<'a> Visitor<'a> for Collector<'_, 'a, '_> {
                 self.bindings.opaque |= names.iter().any(|declared| declared.as_str() == name);
             }
             Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
+                let from = matches!(stmt, Stmt::ImportFrom(_));
                 for alias in names {
                     let bound = alias_binding(alias);
                     self.bindings.opaque |= bound == "*";
                     self.bindings.imported |= bound.split('.').next() == Some(name);
+                    if from && bound == name {
+                        self.bindings.original = Some(alias.name.as_str());
+                    }
                 }
             }
             _ => visitor::walk_stmt(self, stmt),

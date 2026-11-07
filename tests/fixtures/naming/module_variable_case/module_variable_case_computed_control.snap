@@ -1,0 +1,11 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:1 SMP102 Module-scope variable `quota` should be named `QUOTA` [unsafe fix: Rename `quota` to `QUOTA`]
+--- fixed (1 applied, 0 remaining) ---
+QUOTA = 3
+
+
+def show() -> None:
+    print(QUOTA)

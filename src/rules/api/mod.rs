@@ -12,7 +12,7 @@ mod unused_return_value;
 
 pub(crate) use all_format::all_format;
 pub(crate) use all_not_last::all_not_last;
-pub(crate) use init_module_content::init_module_content;
+pub(crate) use init_module_content::{init_module_content, is_type_checking};
 pub(crate) use missing_from_all::missing_from_all;
 pub(crate) use module_variable_prefix::module_variable_prefix;
 pub(crate) use test_only_code::test_only_code;
@@ -69,8 +69,6 @@ impl<'a> OwnCalls<'a> {
     // calls this module makes, which are production code.
     pub(super) fn function(&self, checker: &Checker, name: &str) -> CallSites {
         let mut sites = checker.project().calls().call_sites(name).cloned().unwrap_or_default();
-        // A module the run cannot resolve may call the function from anywhere, so none of its calls is known.
-        sites.opaque |= checker.project().is_read_opaquely(name);
         self.add(&mut sites, self.uses.get(name).map_or(&[][..], Vec::as_slice));
         sites
     }

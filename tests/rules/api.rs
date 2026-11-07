@@ -2,41 +2,42 @@ use test_case::test_case;
 
 use crate::common;
 
-#[test_case("missing-from-all", "missing_from_all.py" ; "missing_from_all")]
-#[test_case("missing-from-all", "missing_from_all_multiline.py" ; "missing_from_all_multiline")]
-#[test_case("missing-from-all", "missing_from_all_noall.py" ; "missing_from_all_creates_all")]
-#[test_case("missing-from-all", "missing_from_all_guard.py" ; "missing_from_all_above_main_guard")]
-#[test_case("missing-from-all", "missing_from_all_bare.py" ; "missing_from_all_bare_tuple")]
-#[test_case("missing-from-all", "missing_from_all_sorted.py" ; "missing_from_all_sorted_insertion")]
-#[test_case("missing-from-all", "missing_from_all_reexport.py" ; "missing_from_all_reexported_all")]
-#[test_case("missing-from-all", "missing_from_all_hanging.py" ; "missing_from_all_hanging_indent")]
-#[test_case("missing-from-all", "missing_from_all_hanging_comment.py" ; "missing_from_all_hanging_indent_comment")]
-#[test_case("missing-from-all", "missing_from_all_aug.py" ; "missing_from_all_augmented")]
-#[test_case("missing-from-all", "missing_from_all_call.py" ; "missing_from_all_dynamic")]
-#[test_case("missing-from-all", "missing_from_all_nested.py" ; "missing_from_all_nested_all")]
-#[test_case("missing-from-all", "missing_from_all_empty.py" ; "missing_from_all_empty")]
-#[test_case("missing-from-all", "missing_from_all_imported.py" ; "missing_from_all_imported_name")]
-#[test_case("missing-from-all", "missing_from_all_reached.py" ; "missing_from_all_reached_types")]
+#[test_case("missing-from-all", "_missing_from_all.py" ; "missing_from_all")]
+#[test_case("missing-from-all", "_missing_from_all_multiline.py" ; "missing_from_all_multiline")]
+#[test_case("missing-from-all", "_missing_from_all_noall.py" ; "missing_from_all_creates_all")]
+#[test_case("missing-from-all", "_missing_from_all_guard.py" ; "missing_from_all_above_main_guard")]
+#[test_case("missing-from-all", "_missing_from_all_bare.py" ; "missing_from_all_bare_tuple")]
+#[test_case("missing-from-all", "_missing_from_all_sorted.py" ; "missing_from_all_sorted_insertion")]
+#[test_case("missing-from-all", "_missing_from_all_reexport.py" ; "missing_from_all_reexported_all")]
+#[test_case("missing-from-all", "_missing_from_all_hanging.py" ; "missing_from_all_hanging_indent")]
+#[test_case("missing-from-all", "_missing_from_all_hanging_comment.py" ; "missing_from_all_hanging_indent_comment")]
+#[test_case("missing-from-all", "_missing_from_all_aug.py" ; "missing_from_all_augmented")]
+#[test_case("missing-from-all", "_missing_from_all_call.py" ; "missing_from_all_dynamic")]
+#[test_case("missing-from-all", "_missing_from_all_nested.py" ; "missing_from_all_nested_all")]
+#[test_case("missing-from-all", "_missing_from_all_empty.py" ; "missing_from_all_empty")]
+#[test_case("missing-from-all", "_missing_from_all_imported.py" ; "missing_from_all_imported_name")]
+#[test_case("missing-from-all", "_missing_from_all_reached.py" ; "missing_from_all_reached_types")]
 #[test_case("missing-from-all", "missing_from_all_scripts.py" ; "missing_from_all_entry_point")]
 #[test_case("missing-from-all", "tests/test_module_docstring.py" ; "missing_from_all_test_module")]
 #[test_case("missing-from-all", "package/__init__.py" ; "missing_from_all_init_module")]
-#[test_case("unused-export", "exporting/unused_export.py" ; "unused_export")]
-#[test_case("unused-export", "exporting/unused_export_inline.py" ; "unused_export_inline")]
-#[test_case("unused-export", "exporting/unused_export_tuple.py" ; "unused_export_tuple")]
-#[test_case("unused-export", "exporting/unused_export_all.py" ; "unused_export_all_unused")]
-#[test_case("unused-export", "exporting/unused_export_comment.py" ; "unused_export_comment")]
-#[test_case("unused-export", "exporting/unused_export_extend.py" ; "unused_export_extended")]
-#[test_case("unused-export", "exporting/unused_export_call.py" ; "unused_export_extend_call")]
-#[test_case("unused-export", "exporting/sub/__init__.py" ; "unused_export_init_module")]
-#[test_case("unused-export", "exporting/unused_export_double.py" ; "unused_export_double_import")]
-#[test_case("unused-export", "exporting/unused_export_comment_all.py" ; "unused_export_comment_all")]
-#[test_case("unused-export", "exporting/unused_export_lazy.py" ; "unused_export_lazy_module")]
-#[test_case("unused-export", "exporting/unused_export_packed.py" ; "unused_export_packed")]
-#[test_case("unused-export", "exporting/unused_export_tuple_end.py" ; "unused_export_tuple_end")]
-#[test_case("unused-export", "exporting/unused_export_noted.py" ; "unused_export_noted")]
-#[test_case("unused-export", "exporting/unused_export_star.py" ; "unused_export_star_imported")]
+#[test_case("unused-export", "_exporting/unused_export.py" ; "unused_export")]
+#[test_case("unused-export", "_exporting/unused_export_inline.py" ; "unused_export_inline")]
+#[test_case("unused-export", "_exporting/unused_export_tuple.py" ; "unused_export_tuple")]
+#[test_case("unused-export", "_exporting/unused_export_all.py" ; "unused_export_all_unused")]
+#[test_case("unused-export", "_exporting/unused_export_comment.py" ; "unused_export_comment")]
+#[test_case("unused-export", "_exporting/unused_export_extend.py" ; "unused_export_extended")]
+#[test_case("unused-export", "_exporting/unused_export_call.py" ; "unused_export_extend_call")]
+#[test_case("unused-export", "_exporting/sub/__init__.py" ; "unused_export_init_module")]
+#[test_case("unused-export", "_exporting/unused_export_double.py" ; "unused_export_double_import")]
+#[test_case("unused-export", "_exporting/unused_export_comment_all.py" ; "unused_export_comment_all")]
+#[test_case("unused-export", "_exporting/unused_export_lazy.py" ; "unused_export_lazy_module")]
+#[test_case("unused-export", "_exporting/unused_export_packed.py" ; "unused_export_packed")]
+#[test_case("unused-export", "_exporting/unused_export_tuple_end.py" ; "unused_export_tuple_end")]
+#[test_case("unused-export", "_exporting/unused_export_noted.py" ; "unused_export_noted")]
+#[test_case("unused-export", "_exporting/unused_export_star.py" ; "unused_export_star_imported")]
 #[test_case("unused-export", "unused_export_root.py" ; "unused_export_api_root")]
-#[test_case("unused-export", "exporting/unused_export_reached.py" ; "unused_export_reached_types")]
+#[test_case("unused-export", "unused_export_public_module.py" ; "unused_export_public_module")]
+#[test_case("unused-export", "_exporting/unused_export_reached.py" ; "unused_export_reached_types")]
 #[test_case("unused-export", "tests/test_module_docstring.py" ; "unused_export_test_module")]
 #[test_case("unexported-public-name", "unexported_public_name.py" ; "unexported_public_name")]
 #[test_case("unexported-public-name", "unexported_public_name_extend.py" ; "unexported_public_name_extended_all")]
@@ -45,9 +46,13 @@ use crate::common;
 #[test_case("unexported-public-name", "multiline_module_docstring_ok.py" ; "unexported_public_name_without_all")]
 #[test_case("unexported-public-name", "unexported_public_name_ply.py" ; "unexported_public_name_ply_grammar")]
 #[test_case("unexported-public-name", "missing_from_all_reached.py" ; "unexported_public_name_reached_types")]
-#[test_case("module-variable-prefix", "module_variable_prefix.py" ; "module_variable_prefix")]
+#[test_case("module-variable-prefix", "_module_variable_prefix.py" ; "module_variable_prefix")]
 #[test_case("module-variable-prefix", "module_variable_prefix_source_text.py" ; "module_variable_prefix_source_text")]
 #[test_case("module-variable-prefix", "module_variable_prefix_type_alias.py" ; "module_variable_prefix_type_alias")]
+#[test_case("module-variable-prefix", "module_variable_prefix_function_alias.py" ; "module_variable_prefix_function_alias")]
+#[test_case("module-variable-prefix", "_module_variable_prefix_block_local.py" ; "module_variable_prefix_block_local")]
+#[test_case("module-variable-prefix", "_module_variable_prefix_computed_setattr.py" ; "module_variable_prefix_computed_setattr")]
+#[test_case("module-variable-prefix", "module_variable_prefix_type_checking_stubs.py" ; "module_variable_prefix_type_checking_stubs")]
 #[test_case("unexported-public-name", "unexported_public_name_source_text.py" ; "unexported_public_name_source_text")]
 #[test_case("all-format", "all_format.py" ; "all_format")]
 #[test_case("all-format", "all_format_tuple.py" ; "all_format_tuple")]
@@ -117,6 +122,22 @@ fn missing_from_all_drops_a_noqa_shared_by_names_on_one_line() {
     ]);
     let (code, _, stderr) = common::simplint(root.path(), &["check", "--select", "SMP401"]);
     assert_eq!((code, stderr.as_str()), (1, ""));
+}
+
+// A name bound only under `if TYPE_CHECKING:` exists for type checkers alone, so listing it would make `import *` fail,
+// while a name the module also binds at run time is still reported.
+#[test]
+fn missing_from_all_leaves_out_names_bound_only_for_type_checkers() {
+    let root = common::project(&[
+        (
+            "mod.py",
+            "from typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    class Locked(dict): ...\n\n\nclass Both: ...\n\n\nif TYPE_CHECKING:\n    Both = int\n\n\ndef use(x: \"Locked\") -> None: ...\n\n\n__all__ = [\"use\"]\n",
+        ),
+        ("use.py", "from mod import Locked, Both, use\n\nprint(Locked, Both, use)\n"),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--select", "SMP401"]);
+    assert!(stdout.contains("`Both` is imported by other modules"), "{stdout}");
+    assert!(!stdout.contains("`Locked`"), "{stdout}");
 }
 
 #[test]
@@ -468,4 +489,184 @@ fn all_format_keeps_parenthesized_trailing_comma() {
     let root = common::project(&[("module.py", "__all__ = [\n    (\"a\"),\n]\n")]);
     let stdout = common::check(root.path(), &["--select", "SMP405"]).1;
     assert!(!stdout.contains("has no trailing comma"), "{stdout}");
+}
+
+// The `__all__` of a public module of a library is the interface its author declares, so no importer in the run is
+// needed. A private module and an application keep reporting the names nothing imports.
+#[test_case("project-kind = \"library\"", "core.py", 0 ; "public_module_of_library")]
+#[test_case("project-kind = \"library\"", "_core.py", 1 ; "private_module_of_library")]
+#[test_case("project-kind = \"application\"", "core.py", 1 ; "public_module_of_application")]
+fn unused_export_keeps_the_declared_api_of_libraries(settings: &str, module: &str, reports: usize) {
+    let root = common::project(&[
+        ("pyproject.toml", &format!("[tool.simplint]\n{settings}\n")),
+        (module, "def run() -> None: ...\n\n\n__all__ = [\"run\"]\n"),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP402"]);
+    assert_eq!(stdout.matches("SMP402").count(), reports, "{stdout}");
+}
+
+// A public module's names are the API its users import, so the rename to private stays with the author, though the
+// report stays. A private module and an application keep the rename.
+#[test_case("unexported-public-name", "def helper() -> None: ...\n\n\n__all__ = []\n", "def _helper() -> None: ...\n\n\n__all__ = []\n", "library", "core.py", false ; "function_public_module_of_library")]
+#[test_case("unexported-public-name", "def helper() -> None: ...\n\n\n__all__ = []\n", "def _helper() -> None: ...\n\n\n__all__ = []\n", "library", "_core.py", true ; "function_private_module_of_library")]
+#[test_case("unexported-public-name", "def helper() -> None: ...\n\n\n__all__ = []\n", "def _helper() -> None: ...\n\n\n__all__ = []\n", "application", "core.py", true ; "function_public_module_of_application")]
+#[test_case("module-variable-prefix", "limit = 3\n\n\n__all__ = []\n", "_limit = 3\n\n\n__all__ = []\n", "library", "core.py", false ; "variable_public_module_of_library")]
+#[test_case("module-variable-prefix", "limit = 3\n\n\n__all__ = []\n", "_limit = 3\n\n\n__all__ = []\n", "library", "_core.py", true ; "variable_private_module_of_library")]
+#[test_case("module-variable-prefix", "limit = 3\n\n\n__all__ = []\n", "_limit = 3\n\n\n__all__ = []\n", "application", "core.py", true ; "variable_public_module_of_application")]
+fn private_rename_follows_the_module_role(
+    rule: &str,
+    source: &str,
+    private: &str,
+    kind: &str,
+    module: &str,
+    renamed: bool,
+) {
+    let root = common::project(&[
+        ("pyproject.toml", &format!("[tool.simplint]\nproject-kind = \"{kind}\"\n")),
+        (module, source),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", rule, "--fix", "--unsafe-fixes"]);
+    let expected = if renamed { private } else { source };
+    assert_eq!(common::read(root.path(), module), expected, "{rule}: {stdout}");
+}
+
+// Listing a name in a public module of a library widens its API and what `import *` binds, so the report stays without a
+// fix. A private module keeps the safe fix.
+#[test_case("core.py", "def run() -> None: ...\n" ; "public_module_of_library_no_fix")]
+#[test_case("_core.py", "def run() -> None: ...\n\n\n__all__ = [\n    \"run\",\n]\n" ; "private_module_of_library_fixed")]
+fn missing_from_all_offers_no_fix_in_public_library_modules(module: &str, expected: &str) {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.simplint]\nproject-kind = \"library\"\n"),
+        (module, "def run() -> None: ...\n"),
+        ("use.py", &format!("from {} import run\n\nrun()\n", module.trim_end_matches(".py"))),
+    ]);
+    common::check(root.path(), &["--no-cache", "--select", "SMP401", "--fix", "--unsafe-fixes"]);
+    assert_eq!(common::read(root.path(), module), expected);
+}
+
+// A name a doctest imports is read by code the index cannot follow, so `unused-export` keeps it in `__all__`, and its
+// fix leaves the import the doctest needs.
+#[test]
+fn unused_export_keeps_a_name_a_doctest_imports() {
+    let source = "from app.impl import helper\n\n__all__ = [\"helper\"]\n";
+    let root = common::project(&[
+        ("app/__init__.py", ""),
+        ("app/impl.py", "def helper() -> int:\n    return 1\n"),
+        ("app/mod.py", source),
+        (
+            "app/cli.py",
+            "\"\"\"Command line.\n\n    >>> from app.mod import helper\n    >>> helper()\n    1\n    \"\"\"\n",
+        ),
+    ]);
+    common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP402"]);
+    assert_eq!(common::read(root.path(), "app/mod.py"), source);
+}
+
+// A public module of a library keeps the names it offers, and so does a name `__all__` lists there, so their renames
+// stay with the author. The rules still report them.
+#[test]
+fn public_module_names_are_not_renamed_by_fixes() {
+    let source =
+        "__all__ = [\"_limit\", \"level\"]\n\n_limit = 3\n\"\"\"Limit.\"\"\"\n\nlevel = 4\n\"\"\"Level.\"\"\"\n";
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.simplint]\nproject-kind = \"library\"\n"),
+        ("lib/__init__.py", ""),
+        ("lib/api.py", source),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP404,SMP102"]);
+    assert_eq!(common::read(root.path(), "lib/api.py"), source);
+    assert!(stdout.contains("SMP102") && stdout.contains("SMP404"), "{stdout}");
+}
+
+// An import of a name the run cannot resolve, such as a stdlib one, says nothing about the names of the project, so a
+// block-local name of another module stays block-local and a module variable of the project stays reported.
+#[test]
+fn unresolved_import_does_not_change_the_module_variables_of_other_modules() {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.simplint]\nproject-kind = \"application\"\n"),
+        ("app/__init__.py", ""),
+        (
+            "app/mod.py",
+            "import sys\n\nwith open(__file__) as handle:\n    count = len(handle.read())\n    print(count)\n",
+        ),
+        ("app/other.py", "from itertools import count\n\nprint(count)\n"),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--select", "SMP102,SMP404"]);
+    assert_eq!(stdout, "All checks passed!\n");
+}
+
+// A name an unresolved import may read keeps its report, and only the rename is withheld.
+#[test]
+fn unresolved_import_keeps_the_report_but_withholds_the_rename() {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.simplint]\nproject-kind = \"application\"\n"),
+        ("app/__init__.py", ""),
+        ("app/mod.py", "def loads() -> int:\n    return 1\n\n\n__all__ = []\n"),
+        ("app/other.py", "from json import loads\n\nprint(loads)\n"),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--select", "SMP403"]);
+    assert!(stdout.contains("`loads` is not in `__all__`"), "{stdout}");
+    assert!(!stdout.contains("[fix"), "{stdout}");
+}
+
+// A doctest that imports a name from its module reads it, so the name is neither reported as private nor as unused.
+#[test]
+fn doctest_import_counts_as_a_read_of_the_name() {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.simplint]\nproject-kind = \"application\"\n"),
+        ("app/__init__.py", ""),
+        ("app/mod.py", "LIMIT = 3\n\n\ndef helper() -> int:\n    return LIMIT\n\n\n__all__ = []\n"),
+        (
+            "app/cli.py",
+            "def run() -> None:\n    \"\"\"Run.\n\n    >>> from app.mod import LIMIT, helper\n    >>> helper() == LIMIT\n    True\n    \"\"\"\n",
+        ),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--select", "SMP404,SMP409"]);
+    assert!(!stdout.contains("`LIMIT`"), "{stdout}");
+    assert!(!stdout.contains("`helper`"), "{stdout}");
+}
+
+// A documented function is public to SMP408 too, so a test module that calls it does not make it test-only code.
+#[test]
+fn documented_function_is_not_test_only_code() {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.simplint]\nproject-kind = \"application\"\n"),
+        ("app/__init__.py", ""),
+        ("app/mod.py", "def helper(value: int = 1) -> int:\n    return value\n"),
+        ("docs/conf.py", ""),
+        ("docs/index.rst", "API\n===\n\n.. autofunction:: app.mod.helper\n"),
+        (
+            "tests/test_mod.py",
+            "from app.mod import helper\n\n\ndef test_helper() -> None:\n    assert helper(2) == 2\n",
+        ),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--select", "SMP408"]);
+    assert_eq!(stdout, "All checks passed!\n");
+}
+
+// A listed name with a leading underscore keeps its name in a public module of a library, so its report asks for the
+// rename by hand rather than offering it.
+#[test]
+fn listed_private_name_is_renamed_by_hand_in_public_library_modules() {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.simplint]\nproject-kind = \"library\"\n"),
+        ("lib/__init__.py", ""),
+        ("lib/api.py", "__all__ = [\"_LIMIT\"]\n\n_LIMIT = 3\n"),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--select", "SMP404"]);
+    assert!(stdout.contains("`_LIMIT` is in `__all__`; rename it to `LIMIT` by hand"), "{stdout}");
+    assert!(!stdout.contains("[fix"), "{stdout}");
+}
+
+// A doctest's relative import reads the name as a relative import of the code does, so the name stays used.
+#[test]
+fn doctest_relative_import_counts_as_a_read_of_the_name() {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.simplint]\nproject-kind = \"application\"\n"),
+        ("app/__init__.py", ""),
+        ("app/mod.py", "LIMIT = 3\n\n\n__all__ = []\n"),
+        ("app/cli.py", "def run() -> None:\n    \"\"\"Run.\n\n    >>> from .mod import LIMIT\n    \"\"\"\n"),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--select", "SMP404"]);
+    assert_eq!(stdout, "All checks passed!\n");
 }

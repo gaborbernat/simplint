@@ -1,0 +1,25 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+13:5 SMP404 `shared` is not in `__all__`; name it `_shared` [unsafe fix: Rename `shared` to `_shared`]
+17:5 SMP404 `leaked` is not in `__all__`; name it `_leaked` [unsafe fix: Rename `leaked` to `_leaked`]
+--- fixed (2 applied, 0 remaining) ---
+import sys
+
+if sys.version_info < (3, 10):
+    msg = "requires Python 3.10"
+    raise RuntimeError(msg)
+
+with open(__file__) as handle:
+    text = handle.read()
+    count = len(text)
+    print(count)
+
+if sys.platform == "linux":
+    _shared = 1
+print(_shared)
+
+if sys.platform == "darwin":
+    _leaked = 2
+print(_leaked)

@@ -145,7 +145,7 @@ impl File<'_, '_> {
         for name in provided {
             if self.read.contains(name) || self.listed_here.contains(name) {
                 names.push(name);
-            } else if project.is_referenced(name) || project.user_facing(name).is_some() {
+            } else if project.is_referenced(name) || project.is_library_api(name) {
                 return None;
             }
         }

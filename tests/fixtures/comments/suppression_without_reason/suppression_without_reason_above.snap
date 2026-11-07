@@ -1,0 +1,10 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+8:1 SMP003 Suppression comment gives no reason; add one after the codes
+9:12 SMP003 Suppression comment gives no reason; add one after the codes
+11:13 SMP003 Suppression comment gives no reason; add one after the codes
+15:12 SMP003 Suppression comment gives no reason; add one after the codes
+18:14 SMP003 Suppression comment gives no reason; add one after the codes
+20:1 SMP003 Suppression comment gives no reason; add one after the codes

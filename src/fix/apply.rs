@@ -10,7 +10,7 @@ use ruff_linter::settings::types::UnsafeFixes;
 use ruff_text_size::{Ranged, TextRange, TextSize};
 use rustc_hash::FxHashSet;
 
-use crate::lint::registry::{RuleSet, rule_of};
+use super::Withdrawn;
 
 pub(super) struct FixResult {
     pub(super) code: String,
@@ -25,15 +25,17 @@ pub(super) fn fix_file(
     source: &str,
     diagnostics: &[Diagnostic],
     unsafe_fixes: UnsafeFixes,
-    unfixable: RuleSet,
-) -> Option<FixResult> {
+    withdrawn: &Withdrawn,
+) -> Option<(FixResult, FxHashSet<usize>)> {
     let required = unsafe_fixes.required_applicability();
     let candidates = diagnostics
         .iter()
-        .filter(|diagnostic| rule_of(diagnostic).is_some_and(|rule| !unfixable.contains(rule)))
-        .filter_map(|diagnostic| diagnostic.fix().map(|fix| (diagnostic, fix)))
-        .filter(|(_, fix)| fix.applies(required))
-        .sorted_by_key(|(_, fix)| fix.min_start())
+        .enumerate()
+        .zip(withdrawn.held_back(source, diagnostics))
+        .filter(|(_, held)| !held)
+        .filter_map(|((index, diagnostic), _)| diagnostic.fix().map(|fix| (index, diagnostic, fix)))
+        .filter(|(_, _, fix)| fix.applies(required))
+        .sorted_by_key(|(_, _, fix)| fix.min_start())
         .collect::<Vec<_>>();
     if candidates.is_empty() {
         return None;
@@ -43,7 +45,8 @@ pub(super) fn fix_file(
     let mut accepted: BTreeMap<(TextSize, TextSize), &Edit> = BTreeMap::new();
     let mut isolated: FxHashSet<u32> = FxHashSet::default();
     let mut fixed = FixTable::default();
-    for (diagnostic, fix) in candidates {
+    let mut applied = FxHashSet::default();
+    for (index, diagnostic, fix) in candidates {
         let edits: Vec<&Edit> =
             fix.edits().iter().filter(|edit| accepted.get(&(edit.start(), edit.end())) != Some(edit)).collect();
         if edits.iter().any(|edit| {
@@ -62,6 +65,7 @@ pub(super) fn fix_file(
         }
         accepted.extend(edits.into_iter().map(|edit| ((edit.start(), edit.end()), edit)));
         *fixed.entry(diagnostic.id()).or_default(diagnostic.secondary_code()) += 1;
+        applied.insert(index);
     }
     let mut output = String::with_capacity(source.len());
     let mut last = TextSize::default();
@@ -71,7 +75,7 @@ pub(super) fn fix_file(
         last = edit.end();
     }
     output.push_str(&source[usize::from(last)..]);
-    Some(FixResult { code: output, fixes: fixed })
+    Some((FixResult { code: output, fixes: fixed }, applied))
 }
 
 // Ruff's own `fix_file` and `apply_fixes` for `ruff check --fix --unsafe-fixes`, unchanged: unlike simplint's, a fix

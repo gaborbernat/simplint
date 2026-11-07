@@ -81,6 +81,9 @@ an error before linting while it applies to a file this rule checks; turn it off
 Checks the docstrings of a library's public API (see [undocumented-public-api](SMP903.html)), when
 `docstring-style = "rst"`, for exceptions the function raises itself without a `:raises Error:` field.
 
+No fix is offered: the description is for the author to write, and [rst-empty-field](SMP914.html) reports the empty
+field until they do.
+
 ### Active on
 
 - **`raise` statements that name an exception class**: each exception the function raises by name and lets escape needs
@@ -333,51 +336,6 @@ Checks the docstrings of a library's public API (see [undocumented-public-api](S
   ```
 
 The bases of built-in exceptions are known; those of a project's own exceptions are not.
-
-### Fix
-
-The fix adds a `:raises Error:` field for each exception, at the end of the field list, with an empty description for
-you to write, which [rst-empty-field](SMP914.html) reports until you do.
-
-**Unsafe fix:** code may read the docstring through `__doc__`.
-
-```toml config
-[project]
-name = "demo"
-
-[build-system]
-requires = []
-
-[tool.simplint]
-docstring-style = "rst"
-```
-
-```python report
-def parse(text: str) -> int:
-    """Parse a number.
-
-    :param text: The text.
-    :returns: The number.
-    """
-    if not text:
-        raise ValueError("empty")
-    return int(text)
-```
-
-```python fixed
-def parse(text: str) -> int:
-    """Parse a number.
-
-    :param text: The text.
-    :returns: The number.
-    :raises ValueError:
-    """
-    if not text:
-        raise ValueError("empty")
-    return int(text)
-```
-
-No fix is offered when escapes in the docstring make its text differ from the source.
 
 ## Other tools
 

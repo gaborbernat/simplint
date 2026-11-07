@@ -330,12 +330,21 @@ and [PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces):
 
 - a public module offers the names its
   [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package) lists, or, without `__all__`,
-  every name it defines without a leading `_`, and the names another module imports from it, which
-  [missing-from-all](SMP401.html) adds to `__all__`;
+  every name it defines without a leading `_`, and the names another module imports from it. A name another module
+  imports but `__all__` leaves out is not offered; [missing-from-all](SMP401.html) adds such a name to `__all__`;
 
 - a name a public module re-exports, by listing it in `__all__`, importing it as `from ._core import name as name`, or
   through `from ._core import *`, is public where it is defined, through any chain of re-exports. A plain
   `from ._core import name` in a module without `__all__` keeps the name internal.
+
+- a class or alias that a listed name's signature refers to, such as a base class of a listed class or an annotation, is
+  public where it is defined, though `__all__` does not list it. This rule requires no docstring for it, while the
+  methods a listed class inherits from it need one, and [function-docstring](SMP901.html) keeps the docstring it has,
+  since the signature makes it library API.
+
+- a module that a `[project.entry-points]` value names without `:attribute`, such as a pytest plugin, is loaded whole by
+  its host, which finds its names by convention, so every name it defines or imports without a leading `_` is public
+  wherever the module is and whatever its `__all__` lists. A package it names is its `__init__.py`.
 
 ```mermaid
 flowchart TD

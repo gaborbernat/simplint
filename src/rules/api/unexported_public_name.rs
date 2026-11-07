@@ -4,7 +4,7 @@ use ruff_text_size::Ranged;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::module_variable::{is_ply_name, uses_ply};
-use crate::rules::rename::rename_fix;
+use crate::rules::rename::{kept_message, rename_fix};
 use crate::syntax::{Exports, Visibility};
 
 pub fn unexported_public_name(checker: &Checker) {
@@ -30,12 +30,17 @@ pub fn unexported_public_name(checker: &Checker) {
             || is_discovered_by_name(name)
             || ply && is_ply_name(name)
             || exported.contains(&name)
-            || checker.project().is_referenced(name)
-            || checker.project().is_api_reached(name)
+            || checker.project().is_used_elsewhere(name)
         {
             continue;
         }
         let private = format!("_{name}");
+        // The names of a public module are the API its users import, so a rename breaks them: the author lists the name
+        // or renames it by hand.
+        if checker.project().role().public {
+            checker.report(Rule::UnexportedPublicName, identifier.range(), kept_message(name, &private, false));
+            continue;
+        }
         // Code that reads the name of a class or function, as `type(self).__name__` or `helper.__name__`, sees the new
         // name once renamed.
         let class = matches!(stmt, Stmt::ClassDef(_));

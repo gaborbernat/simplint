@@ -1,43 +1,59 @@
 use itertools::Itertools;
 use ruff_diagnostics::{Edit, Fix};
+use ruff_linter::registry::Rule as RuffRule;
+use ruff_python_ast::helpers::is_dunder;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 use ruff_text_size::{Ranged, TextRange};
+use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::syntax::{alias_binding, for_each_body};
+use crate::syntax::for_each_body;
 
 // A module bound by an import of this run's own code is reached through an attribute, which the name itself reaches
 // without the module.
 pub fn module_attribute_import(checker: &Checker) {
     let semantic = checker.semantic();
     for module in checker.project().modules() {
-        // Patched by attribute, used as a value or bound twice: its attributes cannot move into the importer.
-        if module.patched
-            || checker.settings.project.knobs.module_attributes.contains(&module.module)
-            || semantic.is_rebound(&module.bound)
-        {
+        if checker.settings.project.knobs.module_attributes.contains(&module.module) {
             continue;
         }
-        let Some((statement, alias)) = binding_import(checker.body(), &module.bound) else {
+        // Bound twice: its attributes cannot move into the importer.
+        let [binding] = semantic.bindings(&module.bound) else {
             continue;
         };
-        let mut uses = Uses { name: &module.bound, attributes: Vec::new(), value: false };
+        let (statement, alias) =
+            binding_import(checker.body(), binding.range).expect("a module binding is created by an import statement");
+        // A package read through its own alias, as `pd.NaT` for `import pandas as pd`, is how the package is meant to
+        // be used, so only the reads of its submodules are reported.
+        if module.top_level_package && alias.asname.as_ref().is_some_and(|asname| asname.as_str() != module.module) {
+            continue;
+        }
+        let loads = semantic.references_to(&module.bound).iter().map(|reference| reference.range).collect();
+        let mut uses = Uses { loads, attributes: Vec::new(), value: false };
         uses.visit_body(checker.body());
         if uses.value {
             continue;
         }
         let path = module_path(statement, alias);
         // The fix replaces the import, so it is offered only when every use of the module is convertible: a single
-        // import, no stores, and each name importable from the module.
-        let mut convertible = aliases(statement).len() == 1;
+        // import, no stores, no computed write the import would miss, and each name importable from the module.
+        let mut convertible = aliases(statement).len() == 1 && !module.computed_written;
+        // Ruff's import-private-name reports the import the fix would write, so Ruff keeps those names while it runs.
+        let left_to_ruff = if checker.settings.from_ruff.ruff_runs(RuffRule::ImportPrivateName) {
+            ruff_private_names(checker, &module.bound, &path, &uses.attributes)
+        } else {
+            FxHashSet::default()
+        };
         let mut reports = Vec::new();
         for attribute in &uses.attributes {
             let reportable = attribute.load
-                && !(attribute.name.starts_with("__") && attribute.name.ends_with("__"))
-                && !semantic.is_bound(attribute.name);
-            if !reportable {
+                && !is_dunder(attribute.name)
+                && !semantic.is_bound(attribute.name)
+                && !left_to_ruff.contains(attribute.name);
+            // Only a name another file patches or stores stays on the module; its other attributes still move.
+            if !reportable || module.patched.contains(attribute.name) {
                 convertible = false;
                 continue;
             }
@@ -75,6 +91,39 @@ pub fn module_attribute_import(checker: &Checker) {
     }
 }
 
+// The names the module reads outside a typing context, whose import Ruff's import-private-name flags. A name read only
+// in typing contexts stays reported, as Ruff exempts it.
+fn ruff_private_names<'a>(
+    checker: &Checker,
+    bound: &str,
+    path: &str,
+    attributes: &[Attribute<'a>],
+) -> FxHashSet<&'a str> {
+    let typing: FxHashSet<TextRange> = checker
+        .semantic()
+        .references_to(bound)
+        .iter()
+        .filter(|reference| reference.typing)
+        .map(|reference| reference.range)
+        .collect();
+    attributes
+        .iter()
+        .filter(|attribute| !typing.contains(&attribute.value))
+        .map(|attribute| attribute.name)
+        .filter(|name| flagged_by_ruff(checker, path, name))
+        .collect()
+}
+
+// Whether Ruff's import-private-name flags `from path import name`: the import is absolute and not a dunder, comes from
+// outside the importer's package, and has a private name among its module or the name itself.
+fn flagged_by_ruff(checker: &Checker, path: &str, name: &str) -> bool {
+    let root = path.split_once('.').map_or(path, |(root, _)| root);
+    !path.starts_with('.')
+        && !is_dunder(root)
+        && !checker.package_path().is_some_and(|package| package.ends_with(root))
+        && path.split('.').chain([name]).any(|part| part.starts_with('_') && !is_dunder(part))
+}
+
 // Whether a local binding of the attribute's name shares the top-level statement of the use, so the bare name may
 // resolve to it: a parameter, a local, a comprehension target, a match capture or a type parameter.
 fn is_shadowed(checker: &Checker, attribute: &Attribute) -> bool {
@@ -83,13 +132,14 @@ fn is_shadowed(checker: &Checker, attribute: &Attribute) -> bool {
     })
 }
 
-// The import statement that binds `name` at the top level or in a block of it, and the alias it binds `name` with.
-fn binding_import<'a>(body: &'a [Stmt], name: &str) -> Option<(&'a Stmt, &'a ast::Alias)> {
+// The import statement and alias that create the module-level binding at `binding`, so a same-named import in a function
+// stays out of it.
+fn binding_import(body: &[Stmt], binding: TextRange) -> Option<(&Stmt, &ast::Alias)> {
     let mut found = None;
     for_each_body(body, &mut |statements, _| {
         for stmt in statements {
-            if let Some(alias) = aliases(stmt).iter().find(|alias| alias_binding(alias) == name) {
-                found = found.or(Some((stmt, alias)));
+            if let Some(alias) = aliases(stmt).iter().find(|alias| alias.range.contains_range(binding)) {
+                found = Some((stmt, alias));
             }
         }
     });
@@ -124,15 +174,17 @@ fn module_path(stmt: &Stmt, alias: &ast::Alias) -> String {
     }
 }
 
-// Where a module binding is used in a file: its attribute accesses, and whether it is used as a value.
+// Where a module binding is used in a file: its attribute accesses, and whether it is used as a value. Only the loads
+// the semantic model resolves to the module count, so a parameter or local of the same name is not a use of it.
 struct Uses<'a> {
-    name: &'a str,
+    loads: FxHashSet<TextRange>,
     attributes: Vec<Attribute<'a>>,
     value: bool,
 }
 
 struct Attribute<'a> {
     range: TextRange,
+    value: TextRange,
     name: &'a str,
     // Whether the access reads the attribute, rather than storing or deleting it.
     load: bool,
@@ -142,16 +194,17 @@ impl<'a> Visitor<'a> for Uses<'a> {
     fn visit_expr(&mut self, expr: &'a Expr) {
         match expr {
             Expr::Attribute(ast::ExprAttribute { value, attr, ctx, range, .. })
-                if value.as_name_expr().is_some_and(|name| name.id.as_str() == self.name) =>
+                if value.as_name_expr().is_some_and(|name| self.loads.contains(&name.range)) =>
             {
                 self.attributes.push(Attribute {
                     range: *range,
+                    value: value.range(),
                     name: attr.as_str(),
                     load: matches!(ctx, ExprContext::Load),
                 });
                 return;
             }
-            Expr::Name(name) if name.id.as_str() == self.name => self.value = true,
+            Expr::Name(name) if self.loads.contains(&name.range) => self.value = true,
             _ => {}
         }
         visitor::walk_expr(self, expr);

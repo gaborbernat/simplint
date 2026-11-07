@@ -74,7 +74,12 @@ def load(text: str) -> dict[str, str]:
 
 Statements are counted as the top-level statements of a body, each nested block counting as one, and a docstring does
 not count. A helper of `max-helper-statements` or more statements is not reported. The caller's statements plus the
-helper's must stay within `max-caller-statements` for the helper to be reported.
+helper's must stay within `max-caller-statements` for the helper to be reported. The caller's cognitive complexity must
+also stay within `max-cognitive-complexity` once the helper's body is scored at the depth of its call site, so that
+[cognitive-complexity](SMP529.html) does not ask to split the caller again. The caller must also stay within the limits
+of the Ruff rules that run, which count the inlined statements: `lint.mccabe.max-complexity` for C901, and
+`lint.pylint.max-branches`, `lint.pylint.max-statements` and `lint.pylint.max-returns` for PLR0912, PLR0915 and PLR0911.
+These counts are conservative estimates, so a caller they might report is left as it is.
 
 ### Active on
 
@@ -226,6 +231,72 @@ helper's must stay within `max-caller-statements` for the helper to be reported.
       return first.strip()
   ```
 
+- **A caller that the inlined helper would push over the cognitive-complexity limit**: a call deep inside the caller
+  scores the helper's branches deeper, so the caller would be reported by cognitive-complexity right after inlining.
+
+  ```toml config
+  [tool.simplint.logic]
+  max-cognitive-complexity = 5
+  ```
+
+  ```python ok
+  def load(text: str) -> str:
+      if text:
+          return _first(text)
+      return ""
+
+
+  def _first(text: str) -> str:
+      for line in text.splitlines():
+          if line:
+              return line.strip()
+      return ""
+  ```
+
+- **Branching helpers called from a test**: [conditional-in-test](SMP803.html) reports the branches of a test function,
+  so inlining a helper with an `if`, `match` or conditional expression would move that branch into the test. A
+  conditional that only forms a comprehension's item does not count, since conditional-in-test exempts it.
+
+  ```python ok file=tests/test_header.py
+  def test_kind() -> None:
+      assert _expected("a") == 1
+
+
+  def _expected(kind: str) -> int:
+      if kind == "a":
+          return 1
+      return 2
+  ```
+
+- **A caller that the inlined helper might push over a limit of a Ruff rule**: Ruff's complexity and size rules count
+  the inlined statements too, so a caller one of them might report stays as it is. Each limit counts only while its rule
+  is selected in Ruff: `lint.mccabe.max-complexity` for C901 `complex-structure`, `lint.pylint.max-branches` for PLR0912
+  `too-many-branches`, `lint.pylint.max-statements` for PLR0915 `too-many-statements`, and `lint.pylint.max-returns` for
+  PLR0911 `too-many-return-statements`.
+
+  While any of those four rules runs, a call in a conditional expression or in a later `and`/`or` operand is left alone,
+  since inlining it would need a new `if`. A helper that is a lone `return` is reported anyway, as it inlines as an
+  expression.
+
+  ```toml config
+  [tool.ruff.lint]
+  select = ["C901"]
+
+  [tool.ruff.lint.mccabe]
+  max-complexity = 1
+  ```
+
+  ```python ok
+  def load(text: str) -> str:
+      return _first(text)
+
+
+  def _first(text: str) -> str:
+      if text:
+          return text.strip()
+      return ""
+  ```
+
 - **Coroutines**: an `async def` helper returns an awaitable, so its caller would await the result of the inlined code
   instead.
 
@@ -249,6 +320,24 @@ helper's must stay within `max-caller-statements` for the helper to be reported.
   def _lines(text: str):
       for line in text.splitlines():
           yield line.strip()
+  ```
+
+- **Type guards**: a helper returning `TypeGuard[...]` or `TypeIs[...]`, from `typing` or `typing_extensions` under any
+  alias, narrows the caller's type where it is called, and the bare expression inlined in its place would not, so the
+  caller would fail type checking.
+
+  ```python ok
+  from typing import TypeGuard
+
+
+  def load(value: object) -> str:
+      if _is_text(value):
+          return value
+      return ""
+
+
+  def _is_text(value: object) -> TypeGuard[str]:
+      return isinstance(value, str)
   ```
 
 ### Fix

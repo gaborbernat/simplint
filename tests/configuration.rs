@@ -82,6 +82,7 @@ fn pyproject_unknown_simplint_key_fails() {
 }
 
 #[test_case("[tool.simplint]\nselect = 1\n" ; "wrong_type")]
+#[test_case("[project]\nname = 3\n" ; "project_wrong_type")]
 #[test_case("[project\n" ; "not_toml")]
 #[test_case("[tool.simplint]\ndocstring-style = \"numpy\"\n" ; "unknown_docstring_style")]
 fn pyproject_invalid_fails(content: &str) {
@@ -153,6 +154,30 @@ fn pyproject_without_simplint_table_still_gives_project_metadata() {
         ("sub/module.py", "try:\n    import yaml\nexcept ImportError:\n    yaml = None\n"),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP303"]).0, 1);
+}
+
+// A workspace root can configure simplint without describing the project, so each member's own `[project]` and
+// `[build-system]` decide whether it is a library, and a member without either inherits the root's.
+#[test_case(
+    "[project]\nname = \"ws\"\n[tool.simplint]\n", "[build-system]\nrequires = []\n[project]\nname = \"demo\"\n", 0 ;
+    "member_library_under_unbuilt_root"
+)]
+#[test_case(
+    "[build-system]\nrequires = []\n[project]\nname = \"ws\"\n[tool.simplint]\n", "[project]\nname = \"demo\"\n", 1 ;
+    "member_application_under_built_root"
+)]
+#[test_case(
+    "[build-system]\nrequires = []\n[project]\nname = \"ws\"\n[tool.simplint]\n", "[tool.ruff]\n", 0 ;
+    "member_without_project_inherits_root"
+)]
+fn member_metadata_comes_from_its_own_pyproject(root_pyproject: &str, member_pyproject: &str, exit: i32) {
+    let root = project(&[
+        ("pyproject.toml", root_pyproject),
+        ("sub/pyproject.toml", member_pyproject),
+        ("sub/demo/__init__.py", "from ._app import run\n\n__all__ = [\"run\"]\n"),
+        ("sub/demo/_app.py", "def run() -> None:\n    \"\"\"Run.\"\"\"\n"),
+    ]);
+    assert_eq!(check(root.path(), &["--select", "SMP407"]).0, exit);
 }
 
 #[cfg(unix)]
@@ -348,6 +373,173 @@ fn logic_limits_decide_single_caller_helpers(files: &[(&str, &str)], flags: &[&s
     assert_eq!(check(root.path(), &[&["--select", "SMP505"], flags].concat()).1, expected);
 }
 
+const COMPLEX_HELPER: &str = r##"def load(text):
+    header = _parse_header(text)
+    return {"header": header}
+
+
+def _parse_header(text):
+    try:
+        for line in text.splitlines():
+            if line.startswith("#"):
+                continue
+            elif line:
+                break
+        else:
+            line = ""
+        while len(line) > 1:
+            line = line[1:]
+        else:
+            line = line.strip()
+        with open(line) as handle:
+            line = handle.read()
+        match line:
+            case "a" | "b":
+                value = 1
+            case str() if line:
+                value = 2
+            case _:
+                value = 3
+        class Marker:
+            pass
+        def marker():
+            return 1
+    except OSError:
+        value = 4
+    except ValueError:
+        value = 5
+    else:
+        value = 6
+    finally:
+        value = 7
+    return value
+"##;
+const ASSIGNED_RETURNS: &str = r#"def load(text):
+    if not text:
+        return ""
+    header = _parse_header(text)
+    return header
+
+
+def _parse_header(text):
+    if text:
+        return text.strip()
+    return ""
+"#;
+const RETURNED_CALL: &str = r#"def load(text):
+    if not text:
+        return ""
+    return _parse_header(text)
+
+
+def _parse_header(text):
+    if text:
+        return text.strip()
+    return ""
+"#;
+const ELIF_CALL: &str = r#"def load(text):
+    if text is None:
+        return ""
+    elif _parse_header(text):
+        return "set"
+    return "unset"
+
+
+def _parse_header(text):
+    if text:
+        return text.strip()
+    return ""
+"#;
+const TERNARY_CALL: &str = r"def load(text, a, b):
+    return a if b else _parse_header(text)
+
+
+def _parse_header(text):
+    assert text
+    return text.strip()
+";
+const AND_CALL: &str = r"def load(text, a):
+    return a and _parse_header(text)
+
+
+def _parse_header(text):
+    assert text
+    return text.strip()
+";
+const ELIF_WITH_RETURN: &str = r#"def load(text):
+    if text is None:
+        return ""
+    elif _parse_header(text):
+        return "set"
+    return "unset"
+
+
+def _parse_header(text):
+    with open(text) as handle:
+        return handle.read()
+"#;
+const TERNARY_LONE_RETURN: &str = r"def load(text, a, b):
+    return a if b else _parse_header(text)
+
+
+def _parse_header(text):
+    return text.strip()
+";
+const ELIF_ONE_RETURN: &str = r#"def load(text):
+    if text is None:
+        return ""
+    elif _parse_header(text):
+        return "set"
+    return "unset"
+
+
+def _parse_header(text):
+    assert text
+    return text.strip()
+"#;
+const TRY_HELPER: &str = r#"def load(text):
+    header = _parse_header(text)
+    return {"header": header}
+
+
+def _parse_header(text):
+    try:
+        return text.strip()
+    except ValueError:
+        return ""
+"#;
+
+#[test_case("", COMPLEX_HELPER, true ; "default_reports")]
+#[test_case("[tool.ruff.lint]\nselect = [\"C901\"]\n\n[tool.ruff.lint.mccabe]\nmax-complexity = 10\n", COMPLEX_HELPER, false ; "complexity_limit_crossed")]
+#[test_case("[tool.ruff.lint]\nselect = [\"C901\"]\n\n[tool.ruff.lint.mccabe]\nmax-complexity = 11\n", COMPLEX_HELPER, true ; "complexity_limit_at_the_count")]
+#[test_case("[tool.ruff.lint]\nselect = [\"PLR0912\"]\n\n[tool.ruff.lint.pylint]\nmax-branches = 12\n", COMPLEX_HELPER, false ; "branches_limit_crossed")]
+#[test_case("[tool.ruff.lint]\nselect = [\"PLR0912\"]\n\n[tool.ruff.lint.pylint]\nmax-branches = 13\n", COMPLEX_HELPER, true ; "branches_limit_at_the_count")]
+#[test_case("[tool.ruff.lint]\nselect = [\"PLR0912\"]\n\n[tool.ruff.lint.pylint]\nmax-branches = 4\n", ELIF_CALL, false ; "elif_branches_limit_crossed")]
+#[test_case("[tool.ruff.lint]\nselect = [\"PLR0912\"]\n\n[tool.ruff.lint.pylint]\nmax-branches = 5\n", ELIF_CALL, true ; "elif_branches_limit_at_the_count")]
+#[test_case("[tool.ruff.lint]\nselect = [\"PLR0915\"]\n\n[tool.ruff.lint.pylint]\nmax-statements = 31\n", COMPLEX_HELPER, false ; "statements_limit_crossed")]
+#[test_case("[tool.ruff.lint]\nselect = [\"PLR0915\"]\n\n[tool.ruff.lint.pylint]\nmax-statements = 32\n", COMPLEX_HELPER, true ; "statements_limit_at_the_count")]
+#[test_case("[tool.ruff.lint]\nselect = [\"PLR0915\"]\n\n[tool.ruff.lint.pylint]\nmax-statements = 5\n", TRY_HELPER, false ; "try_returns_statements_limit_crossed")]
+#[test_case("[tool.ruff.lint]\nselect = [\"PLR0915\"]\n\n[tool.ruff.lint.pylint]\nmax-statements = 6\n", TRY_HELPER, true ; "try_returns_statements_at_the_count")]
+#[test_case("[tool.ruff.lint]\nselect = [\"PLR0915\"]\n\n[tool.ruff.lint.pylint]\nmax-statements = 6\n", ELIF_CALL, false ; "elif_statements_limit_crossed")]
+#[test_case("[tool.ruff.lint]\nselect = [\"PLR0915\"]\n\n[tool.ruff.lint.pylint]\nmax-statements = 7\n", ELIF_CALL, true ; "elif_statements_at_the_count")]
+#[test_case("[tool.ruff.lint]\nselect = [\"C901\"]\n\n[tool.ruff.lint.mccabe]\nmax-complexity = 1\n", TERNARY_CALL, false ; "ternary_operand_complexity_skipped")]
+#[test_case("[tool.ruff.lint]\nselect = [\"PLR0911\"]\n\n[tool.ruff.lint.pylint]\nmax-returns = 1\n", TERNARY_CALL, false ; "ternary_operand_returns_skipped")]
+#[test_case("", TERNARY_CALL, true ; "ternary_operand_default_reports")]
+#[test_case("[tool.ruff.lint]\nselect = [\"C901\"]\n\n[tool.ruff.lint.mccabe]\nmax-complexity = 1\n", AND_CALL, false ; "later_boolean_operand_skipped")]
+#[test_case("[tool.ruff.lint]\nselect = [\"PLR0912\"]\n\n[tool.ruff.lint.pylint]\nmax-branches = 2\n", ELIF_ONE_RETURN, false ; "elif_single_return_branches_limit_crossed")]
+#[test_case("[tool.ruff.lint]\nselect = [\"PLR0912\"]\n\n[tool.ruff.lint.pylint]\nmax-branches = 3\n", ELIF_ONE_RETURN, true ; "elif_single_return_branches_at_the_count")]
+#[test_case("[tool.ruff.lint]\nselect = [\"PLR0912\"]\n\n[tool.ruff.lint.pylint]\nmax-branches = 2\n", ELIF_WITH_RETURN, false ; "elif_with_return_branches_limit_crossed")]
+#[test_case("[tool.ruff.lint]\nselect = [\"PLR0912\"]\n\n[tool.ruff.lint.pylint]\nmax-branches = 3\n", ELIF_WITH_RETURN, true ; "elif_with_return_branches_at_the_count")]
+#[test_case("[tool.ruff.lint]\nselect = [\"C901\"]\n\n[tool.ruff.lint.mccabe]\nmax-complexity = 1\n", TERNARY_LONE_RETURN, true ; "ternary_lone_return_complexity_reported")]
+#[test_case("", ASSIGNED_RETURNS, true ; "returns_default_reports")]
+#[test_case("[tool.ruff.lint]\nselect = [\"PLR0911\"]\n\n[tool.ruff.lint.pylint]\nmax-returns = 2\n", ASSIGNED_RETURNS, true ; "assigned_call_returns_at_the_count")]
+#[test_case("[tool.ruff.lint]\nselect = [\"PLR0911\"]\n\n[tool.ruff.lint.pylint]\nmax-returns = 2\n", RETURNED_CALL, false ; "returned_call_limit_crossed")]
+#[test_case("[tool.ruff.lint]\nselect = [\"PLR0911\"]\n\n[tool.ruff.lint.pylint]\nmax-returns = 3\n", RETURNED_CALL, true ; "returned_call_limit_at_the_count")]
+fn ruff_limits_decide_single_caller_helpers(pyproject: &str, source: &str, reported: bool) {
+    let root = project(&[("pyproject.toml", pyproject), ("module.py", source)]);
+    assert_eq!(check(root.path(), &["--select", "SMP505"]).1.contains("SMP505"), reported);
+}
+
 #[test]
 fn inline_config_reports_simplint_table_errors() {
     let root = project(&[("module.py", "x = 1\n")]);
@@ -492,7 +684,7 @@ fn show_settings_describes_the_first_file() {
     let root = project(&[
         (
             "pyproject.toml",
-            "[project]\nrequires-python = \">=3.12\"\ndependencies = [\"requests\"]\nscripts = { tool = \"cli:main\" }\n[dependency-groups]\ndev = [\"pytest-mock>=3\"]\n[tool.simplint]\nselect = [\"SMP001\"]\nper-file-ignores = { \"!b.py\" = [\"SMP001\"] }\nextend-safe-fixes = [\"SMP001\"]\nproject-kind = \"library\"\napi-packages = [\"src/app\"]\napi-modules = [\"app.errors\"]\ndocstring-style = \"rst\"\n[tool.simplint.naming]\nkeep-names = [\"app_name\"]\n[tool.simplint.imports]\nmodule-attributes = [\"app.settings\"]\n[tool.simplint.logic]\nmax-tuple-elements = 3\nmax-cognitive-complexity = 15\n",
+            "[project]\nrequires-python = \">=3.12\"\ndependencies = [\"requests\"]\nscripts = { tool = \"cli:main\" }\n[dependency-groups]\ndev = [\"pytest-mock>=3\"]\n[tool.simplint]\nselect = [\"SMP001\"]\nper-file-ignores = { \"!b.py\" = [\"SMP001\"] }\nextend-safe-fixes = [\"SMP001\"]\nproject-kind = \"library\"\napi-packages = [\"src/app\"]\ndocstring-style = \"rst\"\n[tool.simplint.naming]\nkeep-names = [\"app_name\"]\n[tool.simplint.imports]\nmodule-attributes = [\"app.settings\"]\n[tool.simplint.logic]\nmax-tuple-elements = 3\nmax-cognitive-complexity = 15\n",
         ),
         ("b.py", ""),
         ("a.py", ""),
@@ -519,7 +711,7 @@ fn show_settings_describes_the_first_file() {
                  linter.max_paragraph_words = 100\nlinter.naming.keep_names = [\n\t\"app_name\",\n]\nlinter.naming.meaningless_names = [\n\t\"foo\",\n\t\"baz\",\n\t\"qux\",\n\t\"quux\",\n]\nlinter.naming.catch_all_modules = [\n\t\"utils\",\n\t\"util\",\n\t\"utilities\",\n\t\"helpers\",\n\t\"helper\",\n\t\"common\",\n\t\"misc\",\n]\nlinter.imports.module_attributes = [\n\t\"app.settings\",\n]\n\
                  linter.logic.max_helper_statements = 3\nlinter.logic.max_caller_statements = 20\nlinter.logic.max_tuple_elements = 3\n\
                  linter.logic.max_cognitive_complexity = 15\nlinter.logic.min_duplicate_statements = 6\nlinter.project_kind = library\n\
-                 linter.api_packages = [\n\t\"app\",\n]\nlinter.api_modules = [\n\t\"app.errors\",\n]\n\
+                 linter.api_packages = [\n\t\"app\",\n]\n\
                  linter.docstring_style = rst\n"
             )
         )
@@ -584,7 +776,7 @@ fn project_kind_follows_how_the_project_installs(pyproject: &str, files: &[(&str
 fn api_packages_come_from_the_build_configuration(pyproject: &str, files: &[(&str, &str)], packages: &str) {
     let root = project(&[&[("pyproject.toml", pyproject), ("module.py", "")], files].concat());
     let stdout = check(root.path(), &["--show-settings"]).1;
-    let shown = shown(&stdout, "linter.api_packages", "\nlinter.api_modules");
+    let shown = shown(&stdout, "linter.api_packages", "\nlinter.docstring_style");
     assert_eq!(shown, format!("linter.api_packages = {packages}"));
 }
 
@@ -599,14 +791,12 @@ fn inline_config_sets_options_ruff_does_not_know() {
         "--config",
         "api-packages = [\"module\"]",
         "--config",
-        "api-modules = [\"module.errors\"]",
-        "--config",
         "docstring-style = \"rst\"",
     ];
     let stdout = check(root.path(), &args).1;
     assert_eq!(
         shown(&stdout, "linter.project_kind", "\nlinter.docstring_style = rst\n"),
-        "linter.project_kind = library\nlinter.api_packages = [\n\t\"module\",\n]\nlinter.api_modules = [\n\t\"module.errors\",\n]"
+        "linter.project_kind = library\nlinter.api_packages = [\n\t\"module\",\n]"
     );
 }
 
@@ -645,4 +835,16 @@ fn extend_inside_the_project_keeps_ruffs_report() {
     ]);
     let (code, _, stderr) = check(root.path(), &["--select", "SMP101"]);
     assert_eq!((code, stderr.contains("Failed to load extended configuration")), (2, true));
+}
+
+// `--isolated` reads no `pyproject.toml`, so an invalid one beside a nested test project does not fail the run.
+#[test]
+fn isolated_run_reads_no_nested_pyproject() {
+    let root = project(&[
+        ("tests/roots/test-a/conf.py", ""),
+        ("tests/roots/test-a/pyproject.toml", "this is = = not toml\n"),
+        ("tests/roots/test-a/mod.py", "X = 1\n"),
+    ]);
+    let (code, stdout, _) = check(root.path(), &["--isolated", "--select", "SMP101"]);
+    assert_eq!((code, stdout.contains("SMP101")), (1, true));
 }

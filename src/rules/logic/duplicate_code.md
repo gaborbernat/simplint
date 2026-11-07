@@ -180,6 +180,41 @@ match.
       assert total
   ```
 
+- **Nested test projects**, which are directories named `test*`, or inside one, that hold a project of their own with a
+  `conf.py`, `pyproject.toml`, `setup.py` or `setup.cfg`, such as each `roots/test-*` project of Sphinx's test suite. A
+  nested project repeats code by design, so its modules are compared with each other only, never with another nested
+  project or the rest of the run. Repeats within one nested project are still reported.
+
+  ```python context file=roots/test-first/conf.py
+  project = "first"
+  ```
+
+  ```python context file=roots/test-first/parser.py
+  def run(items):
+      total = 0
+      for item in items:
+          total += item
+      count = len(items)
+      log(total)
+      log(count)
+      return total
+  ```
+
+  ```python context file=roots/test-second/conf.py
+  project = "second"
+  ```
+
+  ```python ok file=roots/test-second/parser.py
+  def run(items):
+      total = 0
+      for item in items:
+          total += item
+      count = len(items)
+      log(total)
+      log(count)
+      return total
+  ```
+
 - **Runs shorter than `min-duplicate-statements`**, which are too short to report.
 
   ```python context file=short_first.py

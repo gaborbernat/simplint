@@ -11,6 +11,8 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::project::computed_reads::ComputedReads;
 use crate::rules::api::{listed_exports, references_outside};
+use crate::rules::docstrings::Need;
+use crate::rules::is_named_by_doctest;
 use crate::semantic::Evaluation;
 use crate::syntax::{Visibility, module_statements};
 
@@ -42,16 +44,16 @@ pub fn unused_definition(checker: &Checker) {
         let unused = !decorated
             && !is_protocol_name(name)
             && !computed_read_hides(checker, name, &local_reads)
-            && !api.covers(stmt.range())
+            && !api.covers(stmt.range(), Need::Any)
             && !listed.contains(&name)
             && !is_framework_hook(name)
-            && !project.is_api_reached(name)
-            && !is_read_by_name(checker, name)
+            && !project.is_used_elsewhere(name)
             && !project.is_base_class(name)
             && project.calls().attribute_loads(name) == 0
             && !references_outside(checker, name, stmt.range())
             && !is_in_strings(&strings, name, stmt.range())
-            && !is_documented(checker, &[name]);
+            && !is_named_by_doctest(checker, name)
+            && !matches!(stmt, Stmt::ClassDef(class) if is_hatch_hook(checker, class));
         if unused {
             if !matches!(stmt, Stmt::ClassDef(class) if left_to_ruff(checker, class, &strings)) {
                 checker.report(
@@ -95,6 +97,13 @@ fn left_to_ruff(checker: &Checker, class: &ast::StmtClassDef, strings: &StringWo
         })
 }
 
+// hatchling loads the class that subclasses its hook interface from a configured custom hook file, which no import
+// reaches. The index follows the bases of the class through the run's classes.
+fn is_hatch_hook(checker: &Checker, class: &ast::StmtClassDef) -> bool {
+    checker.settings.project.hatch_hooks.iter().any(|hook| hook.as_path() == checker.path)
+        && checker.project().is_hatch_hook_class(class.name.as_str())
+}
+
 // The strings a class's body and its functions state on their own, such as docstrings, which Ruff does not read.
 fn bare_strings(class: &ast::StmtClassDef) -> Vec<TextRange> {
     struct Bare(Vec<TextRange>);
@@ -136,15 +145,14 @@ fn members(checker: &Checker, class: &ast::StmtClassDef, local_reads: &ComputedR
         // An attribute store may be read through an object the run does not type, so an assigned name is kept.
         let unused = !decorated
             && !is_protocol_name(name)
-            && !api.covers(member.range())
+            && !api.covers(member.range(), Need::Any)
             && calls.attribute_loads(name) == 0
             && !computed_read_hides(checker, name, local_reads)
             && !project.is_attribute_assigned(name)
-            && !is_read_by_name(checker, name)
+            && !project.is_referenced(name)
             && !references_outside(checker, name, member.range())
             && !is_read_in_class(class, name, member.range())
-            && !is_in_strings(strings, name, member.range())
-            && !is_documented(checker, &[class_name, name]);
+            && !is_in_strings(strings, name, member.range());
         if unused {
             let (verb, caller) = if is_method { ("called or read", "caller") } else { ("read", "reader") };
             checker.report(
@@ -154,23 +162,6 @@ fn members(checker: &Checker, class: &ast::StmtClassDef, local_reads: &ComputedR
             );
         }
     }
-}
-
-// Whether the project's documentation names the definition, by its dotted name under the module's package, or from
-// the module's own name when the run cannot tell its package.
-fn is_documented(checker: &Checker, names: &[&str]) -> bool {
-    let stem = checker.file_name().strip_suffix(".py").unwrap_or(checker.file_name());
-    let (module, anchored) = match checker.module_path() {
-        Some(path) => (path.iter().map(String::as_str).collect(), true),
-        None => (vec![stem], false),
-    };
-    let qualified = module.into_iter().chain(names.iter().copied()).collect::<Vec<_>>().join(".");
-    checker.project().is_documented(&qualified, anchored)
-}
-
-// Whether the run reads the name by an import or a dotted string, or code the index cannot follow reads it.
-fn is_read_by_name(checker: &Checker, name: &str) -> bool {
-    checker.project().is_referenced(name) || checker.project().is_read_opaquely(name)
 }
 
 // A computed read may fetch any name of the module it sits in, and any public name of the run, so a private name is

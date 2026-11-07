@@ -2,8 +2,6 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-15:9 SMP503 Build text with an f-string instead of `+`
-16:9 SMP503 Build text with an f-string instead of `+`
 17:9 SMP503 Build text with an f-string instead of `+`
 18:9 SMP503 Build text with an f-string instead of `+`
 19:9 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
@@ -44,7 +42,7 @@ expression: "lint_fixture(rule, fixture, target_version)"
 126:13 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 130:12 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 130:19 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
---- fixed (20 applied, 22 remaining) ---
+--- fixed (20 applied, 20 remaining) ---
 from os import pathsep
 from pathlib import Path
 from typing import Annotated, Final

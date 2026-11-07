@@ -172,7 +172,7 @@ fn rule_needs_a_rule_or_all() {
 #[test_case(&["config"], "output-format\nfix\n" ; "list")]
 #[test_case(&["config", "fix"], "Enable fix behavior by-default" ; "text")]
 #[test_case(&["config", "fix", "--output-format", "json"], "{\n  \"doc\": \"Enable fix behavior" ; "json")]
-#[test_case(&["config", "--output-format", "json"], "{\n  \"api-modules\": {" ; "list_json")]
+#[test_case(&["config", "--output-format", "json"], "{\n  \"api-packages\": {" ; "list_json")]
 #[test_case(&["config", "naming.keep-names"], "A list of module-scope names" ; "nested")]
 fn config_describes_options(args: &[&str], start: &str) {
     let root = project(&[]);
@@ -280,4 +280,16 @@ fn rule_says_whether_other_files_matter(selector: &str, cross_file: bool) {
         (text.contains("\nReads other files of the run.\n"), json.contains(&format!(r#""cross_file": {cross_file}"#))),
         (cross_file, true)
     );
+}
+
+// The reStructuredText rules that leave a description for the author to write build no fix, so their listing says so.
+#[test_case("SMP916" ; "missing_param")]
+#[test_case("SMP920" ; "missing_attribute")]
+#[test_case("SMP924" ; "missing_raises")]
+fn rules_that_offer_no_fix_say_so(code: &str) {
+    let root = project(&[]);
+    let (_, stdout, _) = simplint(root.path(), &["rules", "--output-format", "json"]);
+    let rules: Vec<serde_json::Value> = serde_json::from_str(&stdout).expect("json");
+    let rule = rules.iter().find(|rule| rule["code"] == code).expect("the rule is listed");
+    assert_eq!(rule["fix"], "None");
 }

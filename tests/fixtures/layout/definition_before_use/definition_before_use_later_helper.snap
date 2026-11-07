@@ -1,0 +1,40 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+10:5 SMP201 `_config_of` should directly follow `_written_as`, not `_cli_args`, its first user
+14:5 SMP201 `_written_as` should directly follow `_cli_args`, its first user [fix: Move `_written_as` right after `_cli_args`]
+22:5 SMP201 `_second` should directly follow `_first_nested`, not `outer`, its first user
+26:5 SMP201 `_first` should directly follow `outer`, its first user
+--- fixed (1 applied, 0 remaining) ---
+def run() -> list[int]:
+    return _cli_args(2)
+
+
+def _cli_args(count: int) -> list[int]:
+    kinds = _written_as(count)
+    return [_config_of(index) for index in range(kinds)]
+
+
+def _written_as(value: int) -> int:
+    return value
+
+
+def _config_of(index: int) -> int:
+    return index
+
+
+def outer() -> int:
+    return _first() + _second()
+
+
+def _first() -> int:
+    return _first_nested()
+
+
+def _first_nested() -> int:
+    return 1
+
+
+def _second() -> int:
+    return 2

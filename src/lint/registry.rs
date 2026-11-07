@@ -17,8 +17,9 @@ macro_rules! rules {
         $code:literal, $name:literal, $summary:literal, $fix:ident, $family:ident::$check:ident { $($hook:ident),+ }
         $(since $min:ident)?
         $(reads [$($read:ident), *])?
+        $(skips [$($skip:ident), *])?
     ),)*) => {
-        #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+        #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
         pub enum Rule {
             $($variant,)*
         }
@@ -97,13 +98,22 @@ macro_rules! rules {
                 }
             }
 
+            // The conditions under which the rule does not run at all.
+            pub(crate) const fn skips(self) -> &'static [Skip] {
+                match self {
+                    $(Rule::$variant => &[$($(skip!($skip)),*)?],)*
+                }
+            }
+
             pub(crate) fn reads_other_files(self) -> bool {
                 self.reads().contains(&Read::CrossFile)
             }
 
+            // A cross-file rule reads the imports the run's doctests make, which the index resolves as imports.
             pub(crate) fn fact_parts(self) -> Parts {
                 self.reads().iter().fold(Parts::default(), |parts, read| match read {
                     Read::Part(part) => parts.with(*part),
+                    Read::CrossFile => parts.with(Parts::DOCTESTS),
                     _ => parts,
                 })
             }
@@ -149,6 +159,18 @@ pub(crate) enum Read {
     SiblingInit,
     Documentation,
     Part(Parts),
+}
+
+// A condition that turns a rule off for a file, which the rule's tag names.
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum Skip {
+    Nested,
+}
+
+macro_rules! skip {
+    (nested) => {
+        Skip::Nested
+    };
 }
 
 macro_rules! read {
@@ -228,39 +250,39 @@ rules! {
     StringStatementComment => ("SMP006", "string-statement-comment", "Bare strings used as comments instead of `#` comments", Sometimes, comments::string_statement_comment { module }),
     LongCommentLine => ("SMP007", "long-comment-line", "Comment and docstring lines over the line length", Always, comments::long_comment_line { module }),
     SingleLetterName => ("SMP101", "single-letter-name", "Single-letter names outside comprehensions", None, naming::single_letter_name { statement, expression, scope, except_handler, pattern, type_param }),
-    ModuleVariableCase => ("SMP102", "module-variable-case", "Module variables not `UPPER_CASE`", Sometimes, naming::module_variable_case { module } reads [cross_file, STRING_WORDS]),
+    ModuleVariableCase => ("SMP102", "module-variable-case", "Module variables not `UPPER_CASE`", Sometimes, naming::module_variable_case { module } reads [cross_file, STRING_WORDS, COMPUTED_WRITES, DOCTESTS] skips [nested]),
     MeaninglessName => ("SMP103", "meaningless-name", "Variables, parameters and attributes named with a word that says nothing", None, naming::meaningless_name { expression, scope, except_handler, pattern }),
     CatchAllModule => ("SMP104", "catch-all-module", "Modules and packages named for a grab bag of code", None, naming::catch_all_module { module }),
     DefinitionBeforeUse => ("SMP201", "definition-before-use", "Helpers defined above their first caller, or away from it", Sometimes, layout::definition_before_use { module }),
-    SingleUserConstant => ("SMP202", "single-user-constant", "Module constants only one function uses", Sometimes, layout::single_user_constant { module } reads [cross_file]),
+    SingleUserConstant => ("SMP202", "single-user-constant", "Module constants only one function uses", Sometimes, layout::single_user_constant { module } reads [cross_file, STRING_WORDS, COMPUTED_WRITES]),
     ClassMemberOrder => ("SMP203", "class-member-order", "Class members defined out of section order, such as a constructor below a method", Sometimes, layout::class_member_order { module }),
     FutureAnnotations => ("SMP301", "future-annotations", "`from __future__ import annotations` on Python 3.14+", Sometimes, imports::future_annotations { module } since PY314),
     AbsoluteSiblingImport => ("SMP302", "absolute-sibling-import", "Absolute imports from the same package", Always, imports::absolute_sibling_import { module } reads [sibling_init]),
     DependencyImportGuard => ("SMP303", "dependency-import-guard", "`try`/`except ImportError` around a required dependency", Sometimes, imports::dependency_import_guard { module }),
-    ModuleAttributeImport => ("SMP304", "module-attribute-import", "Module attributes reached as `module.Name` instead of imported", Sometimes, imports::module_attribute_import { module } reads [cross_file, GLOBAL_NAMES]),
+    ModuleAttributeImport => ("SMP304", "module-attribute-import", "Module attributes reached as `module.Name` instead of imported", Sometimes, imports::module_attribute_import { module } reads [cross_file, GLOBAL_NAMES, COMPUTED_WRITES]),
     BackportImport => ("SMP305", "up-backport-import", "Imports of backports that the standard library replaces", Sometimes, imports::up_backport_import { module }),
     TypeCheckingLazyImport => ("SMP306", "up-type-checking-lazy-import", "`if TYPE_CHECKING:` imports that can be `lazy` imports", Sometimes, imports::up_type_checking_lazy_import { module } since PY315),
     LazyModulesList => ("SMP307", "up-lazy-modules-list", "`__lazy_modules__` lists that `lazy` imports replace", Sometimes, imports::up_lazy_modules_list { module } since PY315),
     ImportCycle => ("SMP308", "import-cycle", "Runtime imports that close a cycle between modules", None, imports::import_cycle { module } reads [cross_file, RUNTIME_IMPORTS]),
     StarImport => ("SMP309", "star-import", "`import *` of a module the project defines, which names can be imported one by one", Sometimes, imports::star_import { module } reads [cross_file, STAR_SITES]),
-    MissingFromAll => ("SMP401", "missing-from-all", "Names other modules import that `__all__` omits", Sometimes, api::missing_from_all { module } reads [cross_file]),
-    UnusedExport => ("SMP402", "unused-export", "`__all__` entries no other module imports", Sometimes, api::unused_export { module } reads [cross_file]),
-    UnexportedPublicName => ("SMP403", "unexported-public-name", "Public functions and classes missing from `__all__`", Sometimes, api::unexported_public_name { module } reads [cross_file, STRING_WORDS, REFLECTED_NAMES]),
-    ModuleVariablePrefix => ("SMP404", "module-variable-prefix", "Module variables whose leading `_` does not match their visibility", Sometimes, api::module_variable_prefix { module } reads [cross_file, STRING_WORDS]),
+    MissingFromAll => ("SMP401", "missing-from-all", "Names other modules import that `__all__` omits", Sometimes, api::missing_from_all { module } reads [cross_file] skips [nested]),
+    UnusedExport => ("SMP402", "unused-export", "`__all__` entries no other module imports", Sometimes, api::unused_export { module } reads [cross_file, DOCTESTS] skips [nested]),
+    UnexportedPublicName => ("SMP403", "unexported-public-name", "Public functions and classes missing from `__all__`", Sometimes, api::unexported_public_name { module } reads [cross_file, STRING_WORDS, REFLECTED_NAMES, COMPUTED_WRITES, DOCTESTS] skips [nested]),
+    ModuleVariablePrefix => ("SMP404", "module-variable-prefix", "Module variables whose leading `_` does not match their visibility", Sometimes, api::module_variable_prefix { module } reads [cross_file, STRING_WORDS, COMPUTED_WRITES, DOCTESTS] skips [nested]),
     AllFormat => ("SMP405", "all-format", "`__all__` not a list with a trailing comma", Always, api::all_format { module }),
     AllNotLast => ("SMP406", "all-not-last", "`__all__` not at the end of the module", Sometimes, api::all_not_last { module }),
     InitModuleContent => ("SMP407", "init-module-content", "`__init__.py` holding more than a docstring", None, api::init_module_content { module } reads [cross_file]),
-    TestOnlyCode => ("SMP408", "test-only-code", "Module-level functions and classes only test modules use", None, api::test_only_code { module } reads [cross_file]),
+    TestOnlyCode => ("SMP408", "test-only-code", "Module-level functions and classes only test modules use", None, api::test_only_code { module } reads [cross_file, docs]),
     UnusedDefinition => ("SMP409", "unused-definition", "Functions, classes, methods and class attributes nothing in the run uses", None, api::unused_definition { module } reads [cross_file, COMPUTED_READS, DOCTESTS, docs]),
-    TestOnlyParameter => ("SMP410", "test-only-parameter", "Parameters only test calls pass, which production calls leave at their default", None, api::test_only_parameter { module } reads [cross_file, CALL_CONTEXTS, DOCTESTS]),
-    UnusedReturnValue => ("SMP411", "unused-return-value", "Return values no production call reads", None, api::unused_return_value { module } reads [cross_file, CALL_CONTEXTS, DOCTESTS]),
+    TestOnlyParameter => ("SMP410", "test-only-parameter", "Parameters only test calls pass, which production calls leave at their default", None, api::test_only_parameter { module } reads [cross_file, CALL_CONTEXTS, DOCTESTS, docs]),
+    UnusedReturnValue => ("SMP411", "unused-return-value", "Return values no production call reads", None, api::unused_return_value { module } reads [cross_file, CALL_CONTEXTS, DOCTESTS, docs]),
     ForwardingFunction => ("SMP501", "forwarding-function", "Private functions that only forward to another call", None, logic::forwarding_function { module } reads [cross_file]),
     WalrusCandidate => ("SMP502", "walrus-candidate", "An assignment the next `if` test could absorb with `:=`", Always, logic::walrus_candidate { module } reads [cross_file]),
     StringConcatenation => ("SMP503", "string-concatenation", "`+` between strings", Sometimes, logic::string_concatenation { expression } reads [cross_file]),
     SingleUseVariable => ("SMP504", "single-use-variable", "Variables read once, right below their assignment", Always, logic::single_use_variable { module }),
     SingleCallerHelper => ("SMP505", "single-caller-helper", "Private helpers with one short call site, which inlining would keep short", None, logic::single_caller_helper { module } reads [cross_file]),
-    UnusedDefault => ("SMP506", "unused-default", "Parameter defaults that every call passes explicitly", Sometimes, logic::unused_default { module } reads [cross_file]),
-    ErrorMessageMatching => ("SMP507", "error-message-matching", "Exceptions told apart by their message text", None, logic::error_message_matching { except_handler }),
+    UnusedDefault => ("SMP506", "unused-default", "Parameter defaults that every call passes explicitly", Sometimes, logic::unused_default { module } reads [cross_file, docs]),
+    ErrorMessageMatching => ("SMP507", "error-message-matching", "Exceptions told apart by their message text", None, logic::error_message_matching { except_handler } reads [cross_file]),
     ComprehensionUnpacking => ("SMP508", "up-comprehension-unpacking", "Nested `for` clauses that only unpack their iterable into the element", Always, logic::up_comprehension_unpacking { expression } since PY315),
     TracebackExceptionArguments => ("SMP509", "up-traceback-exception-arguments", "`traceback` calls that pass an exception's type and traceback next to it", Always, logic::up_traceback_exception_arguments { expression } since PY310),
     ExcInfoException => ("SMP510", "up-exc-info-exception", "`sys.exc_info()` reads of the exception being handled", Always, logic::up_exc_info_exception { expression } since PY311),
@@ -285,14 +307,16 @@ rules! {
     CognitiveComplexity => ("SMP529", "cognitive-complexity", "Functions whose cognitive complexity is over the limit", None, logic::cognitive_complexity { module }),
     DuplicateCode => ("SMP530", "duplicate-code", "Statements that another module repeats", None, logic::duplicate_code { module } reads [cross_file, STATEMENTS]),
     CollectionBuiltByStatements => ("SMP531", "collection-built-by-statements", "Empty collections filled by the statements right after them", Sometimes, logic::collection_built_by_statements { module }),
-    MissingFinal => ("SMP601", "missing-final", "Module constants not annotated `Final`", Sometimes, typing::missing_final { module } reads [cross_file]),
+    UnnamedRegexGroup => ("SMP532", "unnamed-regex-group", "Regular expressions with unnamed capture groups", Sometimes, logic::unnamed_regex_group { module }),
+    UnexplainedRegex => ("SMP533", "unexplained-regex", "Regular expressions with four or more parts and no comments", None, logic::unexplained_regex { module }),
+    MissingFinal => ("SMP601", "missing-final", "Module constants not annotated `Final`", Sometimes, typing::missing_final { module } reads [cross_file, COMPUTED_WRITES]),
     ImpreciseAnnotation => ("SMP602", "imprecise-annotation", "`object` and `Any` in annotations", None, typing::imprecise_annotation { statement }),
     CallableEllipsis => ("SMP603", "callable-ellipsis", "`Callable[..., T]`", None, typing::callable_ellipsis { expression }),
     VarsCall => ("SMP604", "vars-call", "`vars()` calls", None, typing::vars_call { expression }),
     DataclassFrozen => ("SMP701", "dataclass-frozen", "Dataclasses without `frozen`", Always, classes::dataclass_frozen { module } reads [cross_file]),
     DataclassSlots => ("SMP702", "dataclass-slots", "Dataclasses without `slots`", Always, classes::dataclass_slots { module } reads [cross_file]),
     DataclassKwOnly => ("SMP703", "dataclass-kw-only", "Dataclasses without `kw_only`", Always, classes::dataclass_kw_only { module } reads [cross_file]),
-    IndistinctErrorClass => ("SMP704", "indistinct-error-class", "Exception classes no handler catches by name", None, classes::indistinct_error_class { module } reads [cross_file, CAUGHT]),
+    IndistinctErrorClass => ("SMP704", "indistinct-error-class", "Exception classes no handler catches by name", None, classes::indistinct_error_class { module } reads [cross_file, CAUGHT, docs]),
     TestClass => ("SMP801", "test-class", "Test classes", Sometimes, testing::test_class { module } reads [cross_file]),
     ParametrizeWithoutId => ("SMP802", "parametrize-without-id", "`parametrize` rows without `pytest.param(..., id=...)`", None, testing::parametrize_without_id { module }),
     ConditionalInTest => ("SMP803", "conditional-in-test", "`if`, `match` and conditional expressions in tests", None, testing::conditional_in_test { module }),
@@ -307,25 +331,25 @@ rules! {
     LoopInTest => ("SMP813", "loop-in-test", "Loops in tests that assert over a table of cases", None, testing::loop_in_test { module }),
     MockAssertionTypo => ("SMP814", "mock-assertion-typo", "Mock assertion methods misspelled or missing their `assert_` prefix", Always, testing::mock_assertion_typo { module } reads [cross_file]),
     UnusedFixture => ("SMP815", "unused-fixture", "Pytest fixtures no test or fixture requests", None, testing::unused_fixture { module } reads [cross_file, FIXTURES]),
-    FunctionDocstring => ("SMP901", "function-docstring", "Docstrings on internal functions and classes", Sometimes, docstrings::function_docstring { module } reads [cross_file]),
-    TestModuleDocstring => ("SMP902", "test-module-docstring", "Docstrings on test modules", Sometimes, docstrings::test_module_docstring { module }),
-    UndocumentedPublicApi => ("SMP903", "undocumented-public-api", "Public functions, classes, methods and variables without documentation", None, docstrings::undocumented_public_api { module } reads [cross_file]),
-    LongDocstringParagraph => ("SMP904", "long-docstring-paragraph", "Docstring paragraphs over the word limit", None, docstrings::long_docstring_paragraph { module }),
-    RstFieldSyntax => ("SMP910", "rst-field-syntax", "Malformed or misplaced reStructuredText docstring fields", Sometimes, docstrings::rst_field_syntax { module }),
-    RstInlineMarkup => ("SMP911", "rst-inline-markup", "Roles without backticks and unclosed inline literals", Sometimes, docstrings::rst_inline_markup { module }),
-    RstTypeField => ("SMP912", "rst-type-field", "Types in docstrings, which belong in annotations", Sometimes, docstrings::rst_type_field { module }),
-    RstRestatingField => ("SMP913", "rst-restating-field", "Field descriptions that only repeat the name", None, docstrings::rst_restating_field { module }),
-    RstEmptyField => ("SMP914", "rst-empty-field", "Fields with no description", None, docstrings::rst_empty_field { module }),
-    RstPrivateField => ("SMP915", "rst-private-field", "Public docstrings documenting internal names", Sometimes, docstrings::rst_private_field { module } reads [cross_file]),
-    RstMissingParam => ("SMP916", "rst-missing-param", "Public API docstrings that leave a parameter undocumented", Sometimes, docstrings::rst_missing_param { module } reads [cross_file]),
-    RstUnknownParam => ("SMP917", "rst-unknown-param", "`:param:` and `:type:` fields for parameters the signature lacks", Sometimes, docstrings::rst_unknown_param { module }),
-    RstDuplicateParam => ("SMP918", "rst-duplicate-param", "Constructor parameters documented in both the class and `__init__` docstrings", Sometimes, docstrings::rst_duplicate_param { module }),
-    RstParamOrder => ("SMP919", "rst-param-order", "`:param:` fields out of the signature's order", None, docstrings::rst_param_order { module }),
-    RstMissingAttribute => ("SMP920", "rst-missing-attribute", "Public classes whose docstring leaves an attribute undocumented", Sometimes, docstrings::rst_missing_attribute { module } reads [cross_file]),
-    RstUnknownAttribute => ("SMP921", "rst-unknown-attribute", "`:ivar:`, `:cvar:` and `:var:` fields for attributes the class lacks", Sometimes, docstrings::rst_unknown_attribute { module }),
-    RstAttributeKind => ("SMP922", "rst-attribute-kind", "`:ivar:` on class variables and `:cvar:` on instance attributes", Sometimes, docstrings::rst_attribute_kind { module }),
-    RstReturns => ("SMP923", "rst-returns", "Missing, extraneous or misused `:returns:` and `:yields:` fields", Sometimes, docstrings::rst_returns { module } reads [cross_file]),
-    RstMissingRaises => ("SMP924", "rst-missing-raises", "Public API docstrings that leave a raised exception undocumented", Sometimes, docstrings::rst_missing_raises { module } reads [cross_file]),
+    FunctionDocstring => ("SMP901", "function-docstring", "Docstrings on internal functions and classes", Sometimes, docstrings::function_docstring { module } reads [cross_file, docs] skips [nested]),
+    TestModuleDocstring => ("SMP902", "test-module-docstring", "Docstrings on test modules", Sometimes, docstrings::test_module_docstring { module } skips [nested]),
+    UndocumentedPublicApi => ("SMP903", "undocumented-public-api", "Public functions, classes, methods and variables without documentation", None, docstrings::undocumented_public_api { module } reads [cross_file] skips [nested]),
+    LongDocstringParagraph => ("SMP904", "long-docstring-paragraph", "Docstring paragraphs over the word limit", None, docstrings::long_docstring_paragraph { module } skips [nested]),
+    RstFieldSyntax => ("SMP910", "rst-field-syntax", "Malformed or misplaced reStructuredText docstring fields", Sometimes, docstrings::rst_field_syntax { module } reads [docs] skips [nested]),
+    RstInlineMarkup => ("SMP911", "rst-inline-markup", "Roles without backticks and unclosed inline literals", Sometimes, docstrings::rst_inline_markup { module } reads [docs] skips [nested]),
+    RstTypeField => ("SMP912", "rst-type-field", "Types in docstrings, which belong in annotations", Sometimes, docstrings::rst_type_field { module } reads [docs] skips [nested]),
+    RstRestatingField => ("SMP913", "rst-restating-field", "Field descriptions that only repeat the name", None, docstrings::rst_restating_field { module } reads [docs] skips [nested]),
+    RstEmptyField => ("SMP914", "rst-empty-field", "Fields with no description", None, docstrings::rst_empty_field { module } reads [docs] skips [nested]),
+    RstPrivateField => ("SMP915", "rst-private-field", "Public docstrings documenting internal names", Sometimes, docstrings::rst_private_field { module } reads [cross_file, docs] skips [nested]),
+    RstMissingParam => ("SMP916", "rst-missing-param", "Public API docstrings that leave a parameter undocumented", None, docstrings::rst_missing_param { module } reads [cross_file, docs] skips [nested]),
+    RstUnknownParam => ("SMP917", "rst-unknown-param", "`:param:` and `:type:` fields for parameters the signature lacks", Sometimes, docstrings::rst_unknown_param { module } reads [docs] skips [nested]),
+    RstDuplicateParam => ("SMP918", "rst-duplicate-param", "Constructor parameters documented in both the class and `__init__` docstrings", Sometimes, docstrings::rst_duplicate_param { module } reads [docs] skips [nested]),
+    RstParamOrder => ("SMP919", "rst-param-order", "`:param:` fields out of the signature's order", None, docstrings::rst_param_order { module } reads [docs] skips [nested]),
+    RstMissingAttribute => ("SMP920", "rst-missing-attribute", "Public classes whose docstring leaves an attribute undocumented", None, docstrings::rst_missing_attribute { module } reads [cross_file, docs] skips [nested]),
+    RstUnknownAttribute => ("SMP921", "rst-unknown-attribute", "`:ivar:`, `:cvar:` and `:var:` fields for attributes the class lacks", Sometimes, docstrings::rst_unknown_attribute { module } reads [docs] skips [nested]),
+    RstAttributeKind => ("SMP922", "rst-attribute-kind", "`:ivar:` on class variables and `:cvar:` on instance attributes", Sometimes, docstrings::rst_attribute_kind { module } reads [docs] skips [nested]),
+    RstReturns => ("SMP923", "rst-returns", "Missing, extraneous or misused `:returns:` and `:yields:` fields", Sometimes, docstrings::rst_returns { module } reads [cross_file, docs] skips [nested]),
+    RstMissingRaises => ("SMP924", "rst-missing-raises", "Public API docstrings that leave a raised exception undocumented", None, docstrings::rst_missing_raises { module } reads [cross_file, docs] skips [nested]),
 }
 
 // The simplint rule behind a diagnostic; `None` for Ruff's own diagnostics, such as a syntax error.
@@ -399,6 +423,14 @@ impl RuleSet {
     pub fn sibling_init() -> Self {
         static SIBLING_INIT: LazyLock<RuleSet> = LazyLock::new(|| RuleSet::reading(Read::SiblingInit));
         *SIBLING_INIT
+    }
+
+    // The rules a nested project leaves out: its files are test input, whose docstrings and name visibility are not judged.
+    pub fn skipped_in_nested() -> Self {
+        static SKIPPED_IN_NESTED: LazyLock<RuleSet> = LazyLock::new(|| {
+            RuleSet::from_rules(Rule::ALL.iter().copied().filter(|rule| rule.skips().contains(&Skip::Nested)))
+        });
+        *SKIPPED_IN_NESTED
     }
 
     // The rules that read the documentation the run names.

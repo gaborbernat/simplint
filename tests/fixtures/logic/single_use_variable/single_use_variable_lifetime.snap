@@ -1,0 +1,48 @@
+---
+source: tests/common/mod.rs
+assertion_line: 137
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+11:5 SMP504 `first` is used once, right below; inline its value [fix: Inline `first`]
+17:5 SMP504 `first` is used once, right below; inline its value [fix: Inline `first`]
+23:5 SMP504 `reply` is used once, right below; inline its value [fix: Inline `reply`]
+40:5 SMP504 `stream` is used once, right below; inline its value [fix: Inline `stream`]
+41:5 SMP504 `items` is used once, right below; inline its value [fix: Inline `items`]
+--- fixed (5 applied, 0 remaining) ---
+def produce(rows: list[int]):
+    try:
+        yield rows[0]
+        yield rows[1]
+    finally:
+        print("closed")
+
+
+def first_from_next(rows: list[int]) -> None:
+    stream = produce(rows)
+    print(next(stream))
+
+
+def first_from_default(rows: list[int]) -> None:
+    stream = produce(rows)
+    print(next(stream, None))
+
+
+def reply_from_send(rows: list[int]) -> None:
+    stream = produce(rows)
+    print(stream.send(None))
+
+
+def stop_from_close(rows: list[int]) -> None:
+    stream = produce(rows)
+    stream.close()
+    print(rows)
+
+
+async def first_from_anext(source: AsyncSource) -> None:
+    stream = source.items()
+    first = await anext(stream)
+    print(first)
+
+
+def collected(rows: list[int]) -> None:
+    print(list(produce(rows)))

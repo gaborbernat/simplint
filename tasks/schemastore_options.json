@@ -45,9 +45,6 @@
   "api-packages": [
     "app"
   ],
-  "api-modules": [
-    "app.cli"
-  ],
   "project-kind": "library",
   "docstring-style": "rst",
   "max-paragraph-words": 80,

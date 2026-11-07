@@ -13,7 +13,7 @@ mod unused_fixture;
 pub(crate) mod up_unittest_assert_helper;
 mod up_unittest_enter_context;
 
-pub(crate) use conditional_in_test::conditional_in_test;
+pub(crate) use conditional_in_test::{conditional_in_test, conditionals};
 pub(crate) use constant_assert::constant_assert;
 pub(crate) use loop_in_test::loop_in_test;
 pub(crate) use mock_assertion_typo::mock_assertion_typo;
@@ -34,6 +34,10 @@ use crate::lint::checker::Checker;
 // pytest collects the functions whose name starts with `test`.
 fn is_test_function(function: &ast::StmtFunctionDef) -> bool {
     function.name.as_str().starts_with("test")
+}
+
+pub(crate) fn is_test_module_function(checker: &Checker, function: &ast::StmtFunctionDef) -> bool {
+    checker.is_test_module() && is_test_function(function)
 }
 
 // A class that visibly derives from `unittest.TestCase`; a base under another name may define the assert helpers

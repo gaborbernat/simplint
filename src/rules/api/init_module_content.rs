@@ -71,7 +71,7 @@ fn is_dunder_name(target: &Expr) -> bool {
 }
 
 // Ruff's test: a name `TYPE_CHECKING` by its own spelling or through `typing`, or any `.TYPE_CHECKING` attribute.
-fn is_type_checking(test: &Expr, checker: &Checker) -> bool {
+pub(crate) fn is_type_checking(test: &Expr, checker: &Checker) -> bool {
     match test {
         Expr::Name(name) => {
             name.id.as_str() == "TYPE_CHECKING" || checker.semantic().match_typing_expr(test, "TYPE_CHECKING")

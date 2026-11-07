@@ -6,7 +6,6 @@ expression: "lint_fixture(rule, fixture, target_version)"
 3:17 SMP003 Suppression comment gives no reason; add one after the codes
 5:12 SMP003 Suppression comment gives no reason; add one after the codes
 7:12 SMP003 Suppression comment gives no reason; add one after the codes
-11:13 SMP003 Suppression comment gives no reason; add one after the codes
 13:12 SMP003 Suppression comment gives no reason; add one after the codes
 15:16 SMP003 Suppression comment gives no reason; add one after the codes
 17:19 SMP003 Suppression comment gives no reason; add one after the codes

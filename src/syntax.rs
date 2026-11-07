@@ -20,6 +20,14 @@ fn walk_bodies<'a>(body: &'a [Stmt], owner: Option<&'a Stmt>, visit: &mut impl F
     }
 }
 
+// A class defined in a method has its own `self`, so its body is left out of the method's bodies.
+fn for_each_body_outside_classes<'a>(body: &'a [Stmt], visit: &mut impl FnMut(&'a [Stmt])) {
+    visit(body);
+    for stmt in body.iter().filter(|stmt| !matches!(stmt, Stmt::ClassDef(_))) {
+        for_each_child_body(stmt, &mut |child| for_each_body_outside_classes(child, visit));
+    }
+}
+
 pub fn for_each_child_body<'a>(stmt: &'a Stmt, visit: &mut impl FnMut(&'a [Stmt])) {
     match stmt {
         Stmt::FunctionDef(ast::StmtFunctionDef { body, .. })
@@ -119,11 +127,16 @@ pub fn is_repeating_expr(expr: &Expr) -> bool {
     matches!(expr, Expr::Lambda(_) | Expr::ListComp(_) | Expr::SetComp(_) | Expr::DictComp(_) | Expr::Generator(_))
 }
 
+// Whether `expr` is the literal `True`.
+pub fn is_true_literal(expr: &Expr) -> bool {
+    expr.as_boolean_literal_expr().is_some_and(|literal| literal.value)
+}
+
 // Whether `expr`, a call or a decorator, passes `arg=True`.
 pub fn keyword_is_true(expr: &Expr, arg: &str) -> bool {
     expr.as_call_expr()
         .and_then(|call| call.arguments.find_keyword(arg))
-        .is_some_and(|keyword| keyword.value.as_boolean_literal_expr().is_some_and(|literal| literal.value))
+        .is_some_and(|keyword| is_true_literal(&keyword.value))
 }
 
 // The `@dataclass` decorator of `class`, bare or called, where `is_dataclass` resolves the decorator's function.
@@ -160,7 +173,8 @@ pub struct InstanceWrite<'a> {
     pub through_object: bool,
 }
 
-// Every write to `receiver.attr` in the methods of `class`, nested defs included, for whatever the receiver is named.
+// Every write to `receiver.attr` in the methods of `class`, nested defs included but not nested classes, for whatever
+// the receiver is named.
 // A class method's receiver is the class, so callers that want instances skip those.
 pub fn instance_writes(class: &ast::StmtClassDef) -> Vec<InstanceWrite<'_>> {
     let mut writes = Vec::new();
@@ -168,7 +182,7 @@ pub fn instance_writes(class: &ast::StmtClassDef) -> Vec<InstanceWrite<'_>> {
         let Some(receiver) = receiver(method) else {
             continue;
         };
-        for_each_body(&method.body, &mut |body, _| {
+        for_each_body_outside_classes(&method.body, &mut |body| {
             for (index, stmt) in body.iter().enumerate() {
                 let next = body.get(index + 1);
                 if let Some(attr) = set_through_object(stmt, receiver) {
@@ -416,25 +430,48 @@ pub fn target_names(target: &Expr) -> Vec<&str> {
 // The text of every string and bytes literal of the module, and of each literal part of an f-string or t-string, with
 // its range.
 pub(crate) fn string_values(body: &[Stmt]) -> Vec<(TextRange, Cow<'_, str>)> {
-    let mut values = StringValues(Vec::new());
+    let mut values = StringValues { values: Vec::new(), with_prose: true };
     values.visit_body(body);
-    values.0
+    values.values
 }
 
-struct StringValues<'a>(Vec<(TextRange, Cow<'a, str>)>);
+// The strings a name may be spelled in to patch or look it up, which leaves out the prose of the statements that hold a
+// string alone, such as docstrings.
+pub(crate) fn code_string_values(body: &[Stmt]) -> Vec<(TextRange, Cow<'_, str>)> {
+    let mut values = StringValues { values: Vec::new(), with_prose: false };
+    values.visit_body(body);
+    values.values
+}
+
+// A string a statement holds alone is prose, unless it is a doctest, whose examples read the names of the module.
+pub(crate) fn is_prose_statement(stmt: &Stmt) -> bool {
+    matches!(stmt, Stmt::Expr(ast::StmtExpr { value, .. })
+        if value.as_string_literal_expr().is_some_and(|literal| !literal.value.to_str().contains(">>>")))
+}
+
+struct StringValues<'a> {
+    values: Vec<(TextRange, Cow<'a, str>)>,
+    with_prose: bool,
+}
 
 impl<'a> Visitor<'a> for StringValues<'a> {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        if self.with_prose || !is_prose_statement(stmt) {
+            visitor::walk_stmt(self, stmt);
+        }
+    }
+
     fn visit_string_literal(&mut self, string_literal: &'a ast::StringLiteral) {
-        self.0.push((string_literal.range, Cow::Borrowed(&string_literal.value)));
+        self.values.push((string_literal.range, Cow::Borrowed(&string_literal.value)));
     }
 
     fn visit_bytes_literal(&mut self, bytes_literal: &'a ast::BytesLiteral) {
-        self.0.push((bytes_literal.range, String::from_utf8_lossy(&bytes_literal.value)));
+        self.values.push((bytes_literal.range, String::from_utf8_lossy(&bytes_literal.value)));
     }
 
     fn visit_interpolated_string_element(&mut self, element: &'a ast::InterpolatedStringElement) {
         if let ast::InterpolatedStringElement::Literal(literal) = element {
-            self.0.push((literal.range, Cow::Borrowed(&literal.value)));
+            self.values.push((literal.range, Cow::Borrowed(&literal.value)));
         }
         visitor::walk_interpolated_string_element(self, element);
     }

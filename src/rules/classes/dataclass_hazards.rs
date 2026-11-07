@@ -3,18 +3,23 @@ use std::cell::OnceCell;
 
 use ruff_diagnostics::Applicability;
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, Expr, ExprContext, Keyword, Stmt};
+use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 
 use crate::lint::checker::Checker;
 use crate::project::receivers::module_name;
 use crate::rules::classes::Decorated;
-use crate::syntax::{is_name, last_segment, receiver};
+use crate::syntax::{is_name, is_true_literal, last_segment, receiver};
 
 // What freezing or slotting the class would break, and whether the walk met code it cannot judge, which makes the fix
 // unsafe.
+#[expect(clippy::struct_excessive_bools, reason = "each flag is one finding of the walk")]
 pub(super) struct Analysis {
     pub(super) frozen_breaks: bool,
     pub(super) slots_breaks: bool,
+    // Whether the walk found an instance written after construction, which `frozen` breaks for certain.
+    pub(super) mutated: bool,
+    // The fields the plain class's `__init__` would take, `InitVar`s included.
+    pub(super) parameters: usize,
     suspected: bool,
 }
 
@@ -49,12 +54,39 @@ pub(super) fn analyze<'a>(
             Some((stmt.target.as_name_expr()?.id.as_str(), is_class_variable(&stmt.annotation)))
         })
         .partition(|(_, class_variable)| *class_variable);
+    let parameters = class
+        .body
+        .iter()
+        .filter_map(|stmt| stmt.as_ann_assign_stmt().filter(|stmt| stmt.target.is_name_expr()))
+        .filter(|stmt| {
+            !annotated_as(&stmt.annotation, &["ClassVar", "KW_ONLY"])
+                && field_keyword(stmt.value.as_deref(), "init")
+                    .and_then(Expr::as_boolean_literal_expr)
+                    .is_none_or(|init| init.value)
+        })
+        .count();
     let fields: FxHashSet<&str> = fields.into_iter().map(|(field, _)| field).collect();
-    let mut hazards =
-        Hazards { fields: &fields, frozen: false, slots: false, suspected: false, depth: 0, receiver: None };
+    let mut hazards = Hazards {
+        fields: &fields,
+        frozen: false,
+        slots: false,
+        mutated: false,
+        suspected: false,
+        depth: 0,
+        receiver: None,
+    };
     hazards.visit_body(&class.body);
     for attribute in project.attributes_written_on(&qualified) {
-        hazards.written(attribute);
+        // The index records `__dict__` for reads too, as `vars(obj)` or `obj.__dict__.update(...)`, which freezing does
+        // not stop; a store to it is recorded apart.
+        if attribute == "__dict__" {
+            hazards.slots = true;
+        } else {
+            hazards.written(attribute);
+        }
+    }
+    if project.dict_stored_on(&qualified) {
+        hazards.written("__dict__");
     }
     // A write through a receiver simplint cannot type, such as `envs[name].active = True`, may target this class. A
     // base's methods may write to the instance, and a frozen dataclass can neither inherit from nor be inherited by
@@ -71,13 +103,18 @@ pub(super) fn analyze<'a>(
     // Only a frozen slotted dataclass gets a `__getstate__`: without one, pickle protocols 0 and 1 refuse a slotted
     // instance, and with one, a pickled subclass instance keeps only the fields. The fixes of both options apply
     // together, so the state is the one after freezing, whichever fix goes first.
-    let frozen = sets_true(decorated.keywords, "frozen") || !hazards.frozen;
+    let frozen = decorated.option("frozen").is_some_and(is_true_literal) || !hazards.frozen;
     hazards.slots |= if frozen { project.has_stateful_subclass(&qualified) } else { project.pickles_low_protocol() };
-    let explicit = decorated.keywords.iter().any(|keyword| {
-        keyword.arg.as_ref().is_some_and(|arg| matches!(arg.as_str(), "frozen" | "slots")) && !is_true(&keyword.value)
-    });
+    let explicit =
+        ["frozen", "slots"].iter().any(|option| decorated.option(option).is_some_and(|value| !is_true_literal(value)));
     hazards.suspected |= explicit || !class.bases().is_empty() || project.has_namesake_hazards(&qualified);
-    Some(Analysis { frozen_breaks: hazards.frozen, slots_breaks: hazards.slots, suspected: hazards.suspected })
+    Some(Analysis {
+        frozen_breaks: hazards.frozen,
+        slots_breaks: hazards.slots,
+        mutated: hazards.mutated,
+        parameters,
+        suspected: hazards.suspected,
+    })
 }
 
 // The names the module calls inside `pytest.raises(...)` or `self.assertRaises(...)`: a test creating an instance there
@@ -121,12 +158,26 @@ impl<'a> Visitor<'a> for Raises<'a> {
 
 // `ClassVar[...]` and `InitVar[...]` annotations declare no instance field, and so no slot.
 fn is_class_variable(annotation: &Expr) -> bool {
+    annotated_as(annotation, &["ClassVar", "InitVar"])
+}
+
+// The value of `arg` in the `field(...)` call a field's default is, the call `dataclasses.field` makes for its options.
+pub(super) fn field_keyword<'a>(value: Option<&'a Expr>, arg: &str) -> Option<&'a Expr> {
+    let call = value?.as_call_expr()?;
+    if last_segment(&call.func) != Some("field") {
+        return None;
+    }
+    call.arguments.find_keyword(arg).map(|keyword| &keyword.value)
+}
+
+// Whether the annotation names one of `names`, subscripted or quoted, such as `ClassVar[int]`.
+fn annotated_as(annotation: &Expr, names: &[&str]) -> bool {
     if let Some(text) = annotation.as_string_literal_expr() {
         let text = text.value.to_str();
-        return text.contains("ClassVar") || text.contains("InitVar");
+        return names.iter().any(|name| text.contains(name));
     }
     let annotation = annotation.as_subscript_expr().map_or(annotation, |subscript| &subscript.value);
-    last_segment(annotation).is_some_and(|name| matches!(name, "ClassVar" | "InitVar"))
+    last_segment(annotation).is_some_and(|name| names.contains(&name))
 }
 
 fn is_generic(base: &Expr) -> bool {
@@ -134,23 +185,15 @@ fn is_generic(base: &Expr) -> bool {
     last_segment(base) == Some("Generic")
 }
 
-fn sets_true(keywords: &[Keyword], option: &str) -> bool {
-    keywords
-        .iter()
-        .any(|keyword| keyword.arg.as_ref().is_some_and(|arg| arg.as_str() == option) && is_true(&keyword.value))
-}
-
-fn is_true(value: &Expr) -> bool {
-    value.as_boolean_literal_expr().is_some_and(|literal| literal.value)
-}
-
 // What breaks once the class is frozen or slotted. A hazard the class shows for certain withholds the option it
 // breaks; one that only might break it, such as a class body writing to something other than `self`, makes the fix
 // unsafe.
+#[expect(clippy::struct_excessive_bools, reason = "each flag is one finding of the walk")]
 struct Hazards<'f, 'a> {
     fields: &'f FxHashSet<&'f str>,
     frozen: bool,
     slots: bool,
+    mutated: bool,
     suspected: bool,
     // How many functions deep the walk is, so a write to the receiver is known to come from a method.
     depth: usize,
@@ -161,10 +204,11 @@ struct Hazards<'f, 'a> {
 impl Hazards<'_, '_> {
     const SUSPECTED: [&str; 5] = ["__dict__", "__weakref__", "__setattr__", "__delattr__", "super"];
 
-    // A frozen instance rejects every write, and a slotted one has no room for an attribute that is not a field. Writing
-    // into `__dict__` gets past `frozen=True`, but a slotted instance has none.
+    // A frozen instance rejects every write, `__dict__` included, and a slotted one has no room for an attribute that is
+    // not a field.
     fn written(&mut self, attribute: &str) {
-        self.frozen |= attribute != "__dict__";
+        self.mutated = true;
+        self.frozen = true;
         self.slots |= !self.fields.contains(attribute);
     }
 
