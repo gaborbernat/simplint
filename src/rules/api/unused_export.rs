@@ -8,16 +8,19 @@ use crate::settings::ProjectKind;
 use crate::syntax::{Exports, alias_binding, all_binding, all_literal, all_mutation, module_statements};
 
 pub fn unused_export(checker: &Checker) {
+    if checker.in_nested_project() {
+        return;
+    }
     let project = checker.project();
-    // The `__all__` of a library's top-level package, or of a module `api-modules` names, declares what users outside the
-    // run import; an `import *` of the module hands every listed name to the importing module, which may use it there. A
-    // package's `__init__.py` lists what it re-exports, and Ruff, which counts its imports as re-exports, puts any it
-    // leaves out back into `__all__`.
+    // The `__all__` of a public module of a library declares what users outside the run import, so no name in it needs
+    // an importer in the run. An `import *` of the module hands every listed name to the importing module, which may use
+    // it there. A package's `__init__.py` lists what it re-exports, and Ruff, which counts its imports as re-exports,
+    // puts any it leaves out back into `__all__`.
     // A module-level `__getattr__` serves names `__all__` lists without the module binding them, as a deprecation shim or
     // a lazy loader does, so whether anything imports them shows only outside the run.
     if checker.is_test_module()
         || checker.is_init_module()
-        || project.role().entry
+        || project.role().public
         || project.is_star_import_source()
         || module_statements(checker.body())
             .any(|stmt| stmt.as_function_def_stmt().is_some_and(|def| def.name.as_str() == "__getattr__"))
@@ -27,9 +30,13 @@ pub fn unused_export(checker: &Checker) {
     let Exports::Listed(exported) = checker.dunder_all() else {
         return;
     };
-    // A name another exported name's signature reaches is part of the interface the module exports.
-    let unused: Vec<&str> =
-        exported.iter().copied().filter(|name| !project.is_imported(name) && !project.is_api_reached(name)).collect();
+    // A name another exported name's signature reaches is part of the interface the module exports. A dotted path that
+    // names it, as a `mock.patch("pkg.mod.name")` target does, uses it as an import does.
+    let unused: Vec<&str> = exported
+        .iter()
+        .copied()
+        .filter(|name| !project.is_imported(name) && !project.is_named_by_path(name) && !project.is_api_reached(name))
+        .collect();
     if unused.is_empty() {
         return;
     }

@@ -1,0 +1,6 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+13:5 SMP404 `shared` is not in `__all__`; list it there, or rename it to `_shared` by hand
+17:5 SMP404 `leaked` is not in `__all__`; list it there, or rename it to `_leaked` by hand

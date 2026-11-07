@@ -3,9 +3,9 @@ source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
 4:5 SMP201 `helper_used_by_main` is defined before its first use in `main`; move it below `main` [fix: Move `helper_used_by_main` below `main`]
-20:5 SMP201 `first_called` should directly follow `main`, its first user
+20:5 SMP201 `first_called` should directly follow `second_helper`, not `main`, its first user
 32:9 SMP201 `_private` is defined before its first use in `run`; move it below `run` [fix: Move `_private` below `run`]
-38:9 SMP201 `other` should directly follow `run`, its first user
+38:9 SMP201 `other` should directly follow `_private`, not `run`, its first user
 100:9 SMP201 `_check` is defined before its first use in `apply`; move it below `apply` [fix: Move `_check` below `apply`]
 116:5 SMP201 `commented_helper` should directly follow `outer_user`, its first user
 120:5 SMP201 `lambda_helper` is defined before its first use in the statement on line 124; move it below the statement on line 124

@@ -30,6 +30,12 @@ use crate::common;
 #[test_case("module-variable-case", "module_variable_case_typer.py" ; "module_variable_case_typer_app")]
 #[test_case("module-variable-case", "module_variable_case_type_alias.py" ; "module_variable_case_type_alias")]
 #[test_case("module-variable-case", "module_variable_case_ruff.py" ; "module_variable_case_ruff_overlap")]
+#[test_case("module-variable-case", "module_variable_case_function_alias.py" ; "module_variable_case_function_alias")]
+#[test_case("module-variable-case", "module_variable_case_block_local.py" ; "module_variable_case_block_local")]
+#[test_case("module-variable-case", "module_variable_case_computed_setattr.py" ; "module_variable_case_computed_setattr")]
+#[test_case("module-variable-case", "module_variable_case_computed_fstring.py" ; "module_variable_case_computed_fstring")]
+#[test_case("module-variable-case", "module_variable_case_computed_patch_object.py" ; "module_variable_case_computed_patch_object")]
+#[test_case("module-variable-case", "module_variable_case_computed_control.py" ; "module_variable_case_computed_other_module")]
 fn rule(rule: &str, fixture: &str) {
     common::assert_rule_snapshot(rule, fixture, "py314");
 }

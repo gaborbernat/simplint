@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -25,8 +26,13 @@ use super::{FileId, FileIds, SearchRoots};
 // change what files say but never add or remove one, and resolving reads only which files and directories exist, so
 // neither the database nor the modules of a file no fix touched go stale.
 pub struct ImportResolver {
+    // The roots the modules of the run are named from, as `SearchRoots::module_paths` names them.
+    pub(super) search: SearchRoots,
     pub(super) db: ModuleDb,
     pub(super) paths: SearchPaths,
+    // The search paths each entry point's project resolves its modules with, keyed by the project's directory. A flat
+    // layout keeps its modules in that directory, which is not a source root unless `src` names it.
+    pub(super) entry_paths: FxHashMap<PathBuf, SearchPaths>,
     pub(super) python_version: PythonVersion,
     // The names the files of the run can be imported as, from the components of each file's path.
     pub(super) names: FxHashSet<String>,
@@ -35,17 +41,33 @@ pub struct ImportResolver {
 }
 
 impl ImportResolver {
-    pub fn new(roots: &SearchRoots) -> Result<Self> {
+    pub fn new<'a>(roots: &SearchRoots, entry_roots: impl IntoIterator<Item = &'a Path>) -> Result<Self> {
         let cwd = SystemPathBuf::from_path_buf(std::env::current_dir()?)
             .map_err(|path| anyhow::anyhow!("{} is not a UTF-8 path", path.display()))?;
         let system = OsSystem::new(cwd);
-        let src_roots = roots.roots.iter().filter_map(|root| SystemPathBuf::from_path_buf(root.clone()).ok()).collect();
-        let paths = resolve_search_paths(&system, src_roots, None)?;
+        let src_roots: Vec<SystemPathBuf> =
+            roots.roots.iter().filter_map(|root| SystemPathBuf::from_path_buf(root.clone()).ok()).collect();
+        let paths = resolve_search_paths(&system, src_roots.clone(), None)?;
+        // Like the source roots, a non-UTF-8 directory is no search path, so its entry points stay unresolved.
+        let entry_paths = entry_roots
+            .into_iter()
+            .unique()
+            .filter_map(|root| Some((root, SystemPathBuf::from_path_buf(root.to_path_buf()).ok()?)))
+            .map(|(root, system_root)| {
+                let search_roots = src_roots.iter().cloned().chain([system_root]).collect();
+                Ok((root.to_path_buf(), resolve_search_paths(&system, search_roots, None)?))
+            })
+            .collect::<Result<FxHashMap<_, _>>>()?;
         let db = ModuleDb::new(system);
         paths.try_register_static_roots(&db);
+        for paths in entry_paths.values() {
+            paths.try_register_static_roots(&db);
+        }
         Ok(Self {
+            search: roots.clone(),
             db,
             paths,
+            entry_paths,
             python_version: roots.python_version,
             names: FxHashSet::default(),
             files: Arc::default(),
@@ -156,11 +178,14 @@ pub(super) struct ModuleFacts<F> {
     // The name each module binds, the absolute dotted module it stands for, and the file that module resolves to.
     pub(super) modules: Vec<(String, String, F)>,
     pub(super) caught: Vec<(F, String)>,
-    pub(super) classes: Vec<(String, Vec<ClassBase<F>>)>,
+    // Each class with the bases it lists and the names of the methods it defines.
+    pub(super) classes: Vec<(String, Vec<ClassBase<F>>, Vec<String>)>,
     // The files the import statements that run when the module loads import, and the range of each statement.
     pub(super) runtime: Vec<(F, TextRange)>,
     // The files each `import *` statement of the module imports, and the range of each statement.
     pub(super) star_sites: Vec<(F, TextRange)>,
+    // The files a write under a computed name reaches, whose names any of them may be set by it.
+    pub(super) computed_writes: Vec<F>,
 }
 
 impl<F> ModuleFacts<F> {
@@ -180,13 +205,14 @@ impl<F> ModuleFacts<F> {
             classes: self
                 .classes
                 .into_iter()
-                .map(|(name, bases)| {
+                .map(|(name, bases, methods)| {
                     let bases = bases.into_iter().map(|(file, module, base)| (file.map(&mut to), module, base));
-                    (name, bases.collect())
+                    (name, bases.collect(), methods)
                 })
                 .collect(),
             runtime: self.runtime.into_iter().map(|(file, range)| (to(file), range)).collect(),
             star_sites: self.star_sites.into_iter().map(|(file, range)| (to(file), range)).collect(),
+            computed_writes: self.computed_writes.into_iter().map(&mut to).collect(),
         }
     }
 }
@@ -277,12 +303,14 @@ impl ModuleFacts<PathBuf> {
             .filter_map(|site| Some((resolved(&site.module)?, site.range())))
             .filter(|(file, _)| *file != own)
             .collect();
+        // A module may write its own names under a computed name too, so its own file stays.
+        let computed_writes = facts.computed_writes.iter().filter_map(|module| resolved(module)).collect();
         let classes = facts
             .classes
             .iter()
             .map(|class| {
                 let bases = class.bases.iter().map(|(module, name)| (resolved(module), module.clone(), name.clone()));
-                (class.name.clone(), bases.collect())
+                (class.name.clone(), bases.collect(), class.methods.clone())
             })
             .collect();
         Self {
@@ -299,6 +327,7 @@ impl ModuleFacts<PathBuf> {
             classes,
             runtime,
             star_sites,
+            computed_writes,
         }
     }
 }

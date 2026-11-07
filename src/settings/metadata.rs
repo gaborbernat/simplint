@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 
+use anyhow::{Context, Result};
 use serde::Deserialize;
 
 // The `[project]` table of a `pyproject.toml`, reduced to what simplint's rules read: the project's name, the modules
@@ -88,13 +90,16 @@ struct ProjectTable {
 }
 
 // How a `pyproject.toml` builds the project: whether a `[build-system]` declares a backend, the packages the backend's
-// own settings ship, and the settings that make a build install no Python package.
+// own settings ship, the settings that make a build install no Python package, and the backend a build frontend loads.
 #[derive(Default)]
 pub struct BuildConfiguration {
     pub has_build_system: bool,
     pub packages: Vec<String>,
     pub uv_package: Option<bool>,
     pub maturin_bindings: Option<String>,
+    // The `build-backend` as written, `module` or `module:object`, and the `backend-path` directories it loads from.
+    pub backend: Option<String>,
+    pub backend_path: Vec<String>,
 }
 
 impl BuildConfiguration {
@@ -109,6 +114,8 @@ impl BuildConfiguration {
                 _ => Vec::new(),
             }
         };
+        let system = pyproject.get("build-system").and_then(toml::Value::as_table);
+        let system_value = |key: &str| system.and_then(|table| table.get(key));
         // Each backend names the importable packages it ships its own way; a `find` table discovers them instead.
         let packages = [
             &["hatch", "build", "targets", "wheel", "packages"][..],
@@ -127,6 +134,49 @@ impl BuildConfiguration {
             packages,
             uv_package: lookup(&["uv", "package"]).and_then(toml::Value::as_bool),
             maturin_bindings: lookup(&["maturin", "bindings"]).and_then(toml::Value::as_str).map(str::to_owned),
+            backend: system_value("build-backend").and_then(toml::Value::as_str).map(str::to_owned),
+            backend_path: strings(system_value("backend-path")),
         }
     }
+}
+
+// The file and names of the build backend, each name paired with the file that defines it. A backend written as
+// `module:object` is the object the frontend calls the hooks on, so only the object's name counts.
+pub(super) fn build_hooks(root: &Path, build: &BuildConfiguration) -> Result<Vec<(PathBuf, String)>> {
+    let Some(backend) = build.backend.as_deref() else {
+        return Ok(Vec::new());
+    };
+    let (module, object) = backend.split_once(':').map_or((backend, None), |(module, object)| (module, Some(object)));
+    let relative = module.trim().replace('.', "/");
+    // Without a `backend-path`, the backend is looked for in the project's directory.
+    let directories: Vec<PathBuf> = if build.backend_path.is_empty() {
+        vec![root.to_path_buf()]
+    } else {
+        build.backend_path.iter().map(|directory| root.join(directory)).collect()
+    };
+    let Some(file) = directories
+        .iter()
+        .flat_map(|directory| [directory.join(format!("{relative}.py")), directory.join(&relative).join("__init__.py")])
+        .find(|path| path.is_file())
+    else {
+        return Ok(Vec::new());
+    };
+    let file = std::path::absolute(&file).with_context(|| format!("Failed to resolve {}", file.display()))?;
+    // The PEP 517 and PEP 660 hooks a build frontend calls by name, which no import of the project reaches.
+    let names: Vec<String> = match object {
+        Some(object) => vec![object.split('.').next().unwrap_or_default().trim().to_owned()],
+        None => [
+            "build_wheel",
+            "build_sdist",
+            "get_requires_for_build_wheel",
+            "get_requires_for_build_sdist",
+            "prepare_metadata_for_build_wheel",
+            "build_editable",
+            "get_requires_for_build_editable",
+            "prepare_metadata_for_build_editable",
+        ]
+        .map(str::to_owned)
+        .into(),
+    };
+    Ok(names.into_iter().map(|name| (file.clone(), name)).collect())
 }

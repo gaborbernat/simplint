@@ -57,14 +57,10 @@ def read(path: str) -> str:
 Checks the field lists of reStructuredText docstrings, when `docstring-style = "rst"`, for fields with nothing after
 their name. No fix is offered, since only the author knows what the field should say.
 
-The fixes of [rst-missing-param](SMP916.html), [rst-missing-attribute](SMP920.html), [rst-missing-raises](SMP924.html)
-and [rst-returns](SMP923.html) add such fields on purpose: each one has an empty description for you to write. This rule
-reports them until you do, so turn it off if you want to leave them empty.
-
 ### Active on
 
 - **Fields with no description**: a `:param:`, `:raises:`, `:returns:`, `:yields:` or `:var:` field with nothing after
-  the name, such as one a fix of a missing-field rule adds.
+  the name.
 
   ```toml config
   [tool.simplint]

@@ -8,6 +8,9 @@ use crate::rules::rename::rename_fix;
 use crate::syntax::{Exports, Visibility};
 
 pub fn unexported_public_name(checker: &Checker) {
+    if checker.in_nested_project() {
+        return;
+    }
     if checker.is_test_module() {
         return;
     }
@@ -36,6 +39,16 @@ pub fn unexported_public_name(checker: &Checker) {
             continue;
         }
         let private = format!("_{name}");
+        // The names of a public module are the API its users import, so a rename breaks them: the author lists the name
+        // or renames it by hand.
+        if checker.project().role().public {
+            checker.report(
+                Rule::UnexportedPublicName,
+                identifier.range(),
+                format!("`{name}` is not in `__all__`; list it there, or rename it to `{private}` by hand"),
+            );
+            continue;
+        }
         // Code that reads the name of a class or function, as `type(self).__name__` or `helper.__name__`, sees the new
         // name once renamed.
         let class = matches!(stmt, Stmt::ClassDef(_));

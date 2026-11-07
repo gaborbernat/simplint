@@ -39,7 +39,8 @@ PUBLIC = 5
 
 
 def connect() -> int:
-    return 30
+    timeout: int = 30
+    return timeout
 
 
 def retry() -> int:

@@ -159,8 +159,9 @@ writer = DbWriter()
   ```
 
 - **Attributes stored or deleted**: `findings.DEBUG = True` and `del findings.OLD` change the module, which an import
-  cannot do. A store in any file of the run counts, and so does a name a function of the module rebinds through
-  `global`, which changes it after the import has bound the value it had at load.
+  cannot do. A store in any file of the run patches the module the way `setattr` over a literal does, so the module is
+  left alone. A name a function of the module rebinds through `global` changes it after the import has bound the value
+  it had at load, so that name is not converted either.
 
   ```python context file=pkg/__init__.py
   # A package.
@@ -261,7 +262,8 @@ writer = DbWriter()
 
 **Unsafe fix:** the fix rewrites the import to bind the names, so the object is bound when the module loads. A test that
 patches the module attribute later no longer reaches the name. The fix replaces the import and every `findings.Name`
-access in the file, and it is offered only when every use of the module is such an access to a name the module defines.
+access in the file, and it is offered only when every use of the module is such an access to a name the module defines
+and no computed write, such as `setattr(module, name, value)`, may set a name of the module.
 
 ```python context file=pkg/__init__.py
 # A package.
@@ -284,8 +286,8 @@ from .findings import DbWriter
 writer = DbWriter()
 ```
 
-A use the fix cannot rewrite keeps the report without a fix. Here `findings.DEBUG = True` is a store, so `DbWriter` is
-reported without a fix.
+A use the fix cannot rewrite keeps the report without a fix. Here `findings.__name__` is a module dunder, so `DbWriter`
+is reported without a fix.
 
 ```python context file=pkg/__init__.py
 # A package.
@@ -300,7 +302,7 @@ class DbWriter:
 from . import findings
 
 writer = findings.DbWriter()
-findings.DEBUG = True
+label = findings.__name__
 ```
 
 A use that a local binding of the same name shadows keeps the report without a fix, since the bare name would resolve to

@@ -1,5 +1,5 @@
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{Expr, Stmt};
+use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
@@ -47,7 +47,37 @@ impl<'a> Visitor<'a> for Conditionals {
                 self.found.push(expr.range());
                 visitor::walk_expr(self, expr);
             }
+            Expr::ListComp(ast::ExprListComp { elt, generators, .. })
+            | Expr::SetComp(ast::ExprSetComp { elt, generators, .. })
+            | Expr::Generator(ast::ExprGenerator { elt, generators, .. }) => {
+                self.visit_element(elt);
+                for generator in generators {
+                    self.visit_comprehension(generator);
+                }
+            }
+            Expr::DictComp(ast::ExprDictComp { key, value, generators, .. }) => {
+                if let Some(key) = key {
+                    self.visit_element(key);
+                }
+                self.visit_element(value);
+                for generator in generators {
+                    self.visit_comprehension(generator);
+                }
+            }
             _ => visitor::walk_expr(self, expr),
+        }
+    }
+}
+
+impl<'a> Conditionals {
+    // Like an `if` filter, a conditional that is a comprehension's item shapes data, so only its parts are visited.
+    fn visit_element(&mut self, element: &'a Expr) {
+        if let Expr::If(ast::ExprIf { test, body, orelse, .. }) = element {
+            self.visit_expr(test);
+            self.visit_expr(body);
+            self.visit_expr(orelse);
+        } else {
+            self.visit_expr(element);
         }
     }
 }

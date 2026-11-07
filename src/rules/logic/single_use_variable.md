@@ -42,9 +42,9 @@ def total_price(prices: list[float]) -> str:
   ```
 
   ```python report
-  def quote(value: str) -> str:
-      quoted = value.replace("'", "''")
-      return f"'{quoted}'"
+  def lines(rows: list[bytes]) -> str:
+      joined = b"\n".join(rows)
+      return f"{joined}"
   ```
 
 ## What it does
@@ -103,19 +103,22 @@ def total_price(prices: list[float]) -> str:
       print(f"total={len(items)!r}")
   ```
 
+- **A string or f-string value inlined into a bare field of an f-string**: its text joins the enclosing f-string, so
+  `f"[{inner}]"` with `inner = f"<{value}>"` becomes `f"[<{value}>]"` rather than a nested f-string.
+
 - **Before Python 3.12, a value whose strings use the f-string's quote**: a string in the value takes the other quote,
   which the field can hold. A value spread over lines goes in on one line, as `ruff format` joins it, since the field
   cannot hold a line break either.
 
   ```python report
-  def join(items: list[str]) -> str:
-      sep = " ".join(items)
-      return f"[{sep}]"
+  def wrap(value: str) -> str:
+      inner = f"<{value}>"
+      return f"[{inner!r}]"
   ```
 
   ```python fixed
-  def join(items: list[str]) -> str:
-      return f"[{' '.join(items)}]"
+  def wrap(value: str) -> str:
+      return f"[{f'<{value}>'!r}]"
   ```
 
 ### Exceptions
@@ -145,6 +148,18 @@ def total_price(prices: list[float]) -> str:
   async def run(source: Source) -> None:
       data = await source.read()
       print(data)
+  ```
+
+- **A read as the argument of [`next`](https://docs.python.org/3/library/functions.html#next) or
+  [`anext`](https://docs.python.org/3/library/functions.html#anext), or as the receiver of `send`, `throw`, `close` or
+  `__next__`**: the call steps or closes the object the name holds. Without the name, the call would be the only holder
+  of the object, so the object would be released as soon as the call returns, which runs a generator's `finally` early.
+  Keeping the name is the only way to leave the object alone, so the variable is not reported.
+
+  ```python ok
+  def run(rows: list[int]) -> None:
+      stream = produce(rows)
+      print(next(stream))
   ```
 
 - **A next statement that is `return name` or `yield name`**: Ruff's
@@ -242,6 +257,16 @@ def total_price(prices: list[float]) -> str:
       kind = list[str]
       values: kind = items
       print(values)
+  ```
+
+- **A conditional expression, or a value with a string literal in it, read inside an f-string field**: the field would
+  hold the conditional or the literal inside its braces, which reads worse than the two statements. A value that is a
+  string or an f-string on its own is still inlined.
+
+  ```python ok
+  def run(items: list[str], flag: bool) -> str:
+      sep = " " if flag else ""
+      return f"[{sep}{items[0]}]"
   ```
 
 - **Before Python 3.12, a value with a backslash, or whose strings hold the other quote**: a replacement field cannot

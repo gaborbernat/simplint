@@ -3,6 +3,9 @@ use crate::lint::registry::Rule;
 use crate::rules::docstrings::rst::{FieldKind, field_deletion, is_internal};
 
 pub fn rst_private_field(checker: &Checker) {
+    if checker.in_nested_project() {
+        return;
+    }
     // A public class's `__init__` docstring documents its constructor as the class docstring may.
     for target in checker
         .state()

@@ -1,55 +1,80 @@
 use std::cell::OnceCell;
 
-use ruff_diagnostics::{Applicability, Edit, Fix};
-use ruff_python_ast::name::UnqualifiedName;
+use ruff_diagnostics::{Applicability, Edit};
 use ruff_python_ast::visitor::Visitor;
 use ruff_python_ast::{self as ast, Expr, PythonVersion};
-use ruff_text_size::{Ranged, TextRange};
+use ruff_text_size::{Ranged, TextRange, TextSize};
 use rustc_hash::FxHashMap;
 
-use crate::lint::checker::Checker;
+use crate::lint::checker::{Checker, Related};
 use crate::lint::noqa;
 use crate::lint::registry::Rule;
 use crate::project::constructors::{CallKind, Use, Uses, init_fields};
-use crate::rules::classes::{Offer, require_options};
+use crate::rules::classes::{Offer, library_api, require_options, splatted_options};
 use crate::rules::edits::keep_debug_text;
-use crate::semantic::BindingKind;
-use crate::settings::FileSettings;
 use crate::syntax::ExprCollector;
 use crate::syntax::{dataclass_decorator, is_name};
 
 // `slots=`, `kw_only=` and the keyword calls the rule writes arrived in Python 3.10.
 pub(crate) const SINCE: PythonVersion = PythonVersion::PY310;
 
-// Whether a comment on a positional call suppresses the rule there, which keeps the call from being rewritten.
+// Whether a comment on a positional call withholds the class's fix, since the rewrite would pass that call by keyword
+// anyway, against the comment's wish.
 pub(crate) fn suppresses_rewrite(comment: &str) -> bool {
     noqa::suppresses(comment, Rule::DataclassKwOnly.code())
 }
 
-// Whether the rule reports and fixes this file's positional calls of dataclasses defined elsewhere, which the fix of
-// their decorator relies on.
-pub(crate) fn rewrites_calls(settings: &FileSettings) -> bool {
-    settings.rules.contains(Rule::DataclassKwOnly)
-        && settings.project.is_fixable(Rule::DataclassKwOnly)
-        && settings.from_ruff.target_version >= SINCE
-}
-
 pub fn dataclass_kw_only(checker: &Checker) {
     let module = OnceCell::new();
-    require_options(checker, Rule::DataclassKwOnly, &["kw_only"], |decorated| {
+    // Users of a library's public dataclass call it by position, which keyword-only fields would break.
+    require_options(checker, Rule::DataclassKwOnly, &["kw_only"], library_api(checker), |decorated| {
         let module = module.get_or_init(|| ModuleClasses::of(checker));
-        let edits = keyword_calls(checker, module, decorated.class)?;
-        Some(Offer { options: decorated.missing.clone(), edits, applicability: Applicability::Unsafe })
+        let class = decorated.class;
+        let name = class.name.as_str();
+        // The report names every positional call of the class, here and in other files; the fix needs all of them in
+        // this file, since a rewrite does not reach another file.
+        let mut related: Vec<Related> = positional_calls(module, class)
+            .into_iter()
+            .map(|range| Related { path: checker.path.to_path_buf(), range, message: CALL_MESSAGE.to_owned() })
+            .collect();
+        let others = checker.project().calls().positional_calls(name);
+        related.extend(others.iter().map(|site| Related {
+            path: site.caller.clone(),
+            range: TextRange::new(TextSize::new(site.start), TextSize::new(site.end)),
+            message: CALL_MESSAGE.to_owned(),
+        }));
+        let note = match others.len() {
+            0 => String::new(),
+            1 => "; 1 positional call in another file needs keyword arguments by hand".to_owned(),
+            count => format!("; {count} positional calls in other files need keyword arguments by hand"),
+        };
+        let edits = if others.is_empty() { keyword_calls(checker, module, class) } else { None };
+        let options = if edits.is_some() { decorated.missing.clone() } else { Vec::new() };
+        Some(Offer { options, edits: edits.unwrap_or_default(), applicability: Applicability::Unsafe, related, note })
     });
-    if checker.settings.from_ruff.target_version >= SINCE {
-        report_positional_calls(checker);
-    }
+}
+
+// The message of each positional call a dataclass report points at.
+const CALL_MESSAGE: &str = "positional arguments pass the fields by position";
+
+// The calls in this module that pass the class fields by position: the class's own calls, and `cls(...)` in its methods.
+fn positional_calls(module: &ModuleClasses, class: &ast::StmtClassDef) -> Vec<TextRange> {
+    let mut methods = Uses::new(|expr: &Expr| is_name(expr, "cls").then_some(()));
+    methods.visit_body(&class.body);
+    let module_uses = module.uses.get(class.name.as_str()).map_or(&[][..], Vec::as_slice);
+    module_uses
+        .iter()
+        .chain(methods.found.iter().map(|((), found)| found))
+        .filter_map(|found| match found {
+            Use::Call(call) if !call.arguments.args.is_empty() => Some(call.range()),
+            _ => None,
+        })
+        .collect()
 }
 
 // The edits that pass every positional call of `class` in this module by keyword, or `None` when some use of the class
-// could still pass fields by position once it is keyword-only: a call unpacking `*args`, the class handed
-// around as a value, a subclass, or a positional call in another file that file's own report cannot rewrite. The other
-// files' reports rewrite their calls in the same run.
+// could still pass fields by position once it is keyword-only: a call unpacking `*args`, the class handed around as a
+// value, or a subclass.
 fn keyword_calls(checker: &Checker, module: &ModuleClasses, class: &ast::StmtClassDef) -> Option<Vec<Edit>> {
     let name = class.name.as_str();
     if !module.is_module_level(class)
@@ -137,6 +162,15 @@ fn keyword_edits(checker: &Checker, call: &ast::ExprCall, fields: &[String]) -> 
         _ if call.arguments.args.len() > fields.len() => return None,
         _ => {}
     }
+    // A `**` splat that passes one of the fields the call now names would repeat it, and one whose keys are unknown
+    // may pass any.
+    let named = &fields[..call.arguments.args.len()];
+    if !named.is_empty()
+        && splatted_options(checker, &call.arguments.keywords)
+            .is_none_or(|passed| passed.iter().any(|(name, _)| named.iter().any(|field| field == *name)))
+    {
+        return None;
+    }
     let mut edits = Vec::new();
     for (argument, field) in call.arguments.args.iter().zip(fields) {
         let range = checker.parenthesized_range(argument, (&call.arguments).into());
@@ -148,48 +182,4 @@ fn keyword_edits(checker: &Checker, call: &ast::ExprCall, fields: &[String]) -> 
         }
     }
     Some(edits)
-}
-
-// In other files, the positional calls of dataclasses `dataclass-kw-only` asks to make keyword-only: the fix of the
-// decorator relies on each file rewriting its own.
-fn report_positional_calls(checker: &Checker) {
-    let calls = checker.project().calls();
-    if !calls.calls_any() {
-        return;
-    }
-    let semantic = checker.semantic();
-    let mut uses = Uses::new(|expr: &Expr| {
-        let name = UnqualifiedName::from_expr(expr)?;
-        let written = name.segments().join(".");
-        let fields = calls.fields(&written)?;
-        let mut head = expr;
-        while let Expr::Attribute(attribute) = head {
-            head = &attribute.value;
-        }
-        let head = head.as_name_expr()?;
-        let imported = semantic.references_to(head.id.as_str()).iter().any(|reference| reference.range == head.range)
-            && semantic.bindings(head.id.as_str()).iter().all(|binding| binding.kind == BindingKind::Import);
-        imported.then_some((written, fields))
-    });
-    uses.visit_body(checker.body());
-    for ((written, fields), found) in uses.found {
-        let Use::Call(call) = found else {
-            continue;
-        };
-        if call.arguments.args.is_empty() {
-            continue;
-        }
-        let fix =
-            keyword_edits(checker, call, fields).and_then(|edits| keep_debug_text(checker, edits)).map(|mut edits| {
-                let first = edits.remove(0);
-                Fix::safe_edits(first, edits)
-            });
-        checker.report_fix(
-            Rule::DataclassKwOnly,
-            call.range(),
-            format!("Dataclass `{written}` is called with positional arguments; pass its fields by keyword"),
-            fix,
-            format!("Pass the fields of `{written}` by keyword"),
-        );
-    }
 }

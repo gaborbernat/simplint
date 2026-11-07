@@ -170,3 +170,31 @@ def long_caller(text: str) -> str:
 def _long_helper(text: str) -> str:
     first = text.splitlines()[0]
     return first.strip()
+
+
+def nested_caller(rows: list[list[int]], limit: int, strict: bool) -> int:
+    if rows:
+        if strict:
+            if limit:
+                return _widest(rows, limit)
+    return 0
+
+
+def _widest(rows: list[list[int]], limit: int) -> int:
+    for row in rows:
+        for value in row:
+            if value > limit:
+                return value
+    return 0
+
+
+def with_default(value: int) -> int:
+    def inner(scale: int = _scale(value)) -> int:
+        return scale
+
+    return inner()
+
+
+def _scale(value: int) -> int:
+    first = value + 1
+    return first * 2

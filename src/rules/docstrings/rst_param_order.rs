@@ -3,6 +3,9 @@ use crate::lint::registry::Rule;
 use crate::rules::docstrings::rst::FieldKind;
 
 pub fn rst_param_order(checker: &Checker) {
+    if checker.in_nested_project() {
+        return;
+    }
     for target in checker.state().rst_targets(checker) {
         let Some(parameters) = target.parameters() else {
             continue;

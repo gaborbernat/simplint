@@ -16,6 +16,9 @@ use crate::syntax::is_main_guard;
 use crate::syntax::{Exports, Visibility, all_binding, all_literal};
 
 pub fn missing_from_all(checker: &Checker) {
+    if checker.in_nested_project() {
+        return;
+    }
     if checker.is_init_module() || checker.is_test_module() {
         return;
     }
@@ -47,8 +50,14 @@ pub fn missing_from_all(checker: &Checker) {
         return;
     }
     missing.sort_by_key(|(_, range, _)| range.start());
-    let fix = all_insertion(checker, missing.iter().map(|(name, _, _)| *name))
-        .and_then(|fix| with_unused_noqas_removed(checker, fix, &missing));
+    // Listing a name in a public module of a library widens its API and what `import *` binds, so the report stays and
+    // the author decides.
+    let fix = if checker.project().role().public {
+        None
+    } else {
+        all_insertion(checker, missing.iter().map(|(name, _, _)| *name))
+            .and_then(|fix| with_unused_noqas_removed(checker, fix, &missing))
+    };
     let names: Vec<String> = missing.iter().map(|(name, _, _)| format!("`{name}`")).collect();
     let title = format!("Add {} to `__all__`", names.join(", "));
     for (name, range, imported) in missing {

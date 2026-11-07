@@ -1,0 +1,73 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:5 SMP504 `is_percent` is used once, right below; inline its value [fix: Inline `is_percent`]
+7:5 SMP504 `either` is used once, right below; inline its value [fix: Inline `either`]
+12:5 SMP504 `negated` is used once, right below; inline its value [fix: Inline `negated`]
+17:5 SMP504 `empty` is used once, right below; inline its value [fix: Inline `empty`]
+22:5 SMP504 `total` is used once, right below; inline its value [fix: Inline `total`]
+27:5 SMP504 `chosen` is used once, right below; inline its value [fix: Inline `chosen`]
+32:5 SMP504 `either` is used once, right below; inline its value [fix: Inline `either`]
+37:5 SMP504 `part` is used once, right below; inline its value [fix: Inline `part`]
+42:5 SMP504 `part` is used once, right below; inline its value [fix: Inline `part`]
+47:5 SMP504 `part` is used once, right below; inline its value [fix: Inline `part`]
+52:5 SMP504 `part` is used once, right below; inline its value [fix: Inline `part`]
+57:5 SMP504 `part` is used once, right below; inline its value [fix: Inline `part`]
+62:5 SMP504 `same` is used once, right below; inline its value [fix: Inline `same`]
+67:5 SMP504 `total` is used once, right below; inline its value [fix: Inline `total`]
+--- fixed (14 applied, 0 remaining) ---
+def delims(markup: str) -> tuple[str, str]:
+    return ("{{%", "%}}") if markup == "{{%" else ("{{<", ">}}")
+
+
+def either_in_and(flag: bool, first: bool, second: bool) -> bool:
+    return (first or second) and flag
+
+
+def negated_in_and(flag: bool, other: bool) -> bool:
+    return not other and flag
+
+
+def comparison_in_and(items: list[str], flag: bool) -> bool:
+    return len(items) == 0 and flag
+
+
+def sum_in_product(first: int, second: int) -> int:
+    return (first + second) * 2
+
+
+def conditional_in_sum(flag: bool, first: int, second: int) -> int:
+    return (first if flag else second) + 1
+
+
+def either_in_or(flag: bool, first: bool, second: bool) -> bool:
+    return (first or second) or flag
+
+
+def bitwise_or(first: int, second: int) -> int:
+    return first ^ second | second
+
+
+def bitwise_xor(first: int, second: int) -> int:
+    return (first | second) ^ second
+
+
+def bitwise_and(first: int, second: int) -> int:
+    return (first | second) & second
+
+
+def shifted(first: int, second: int) -> int:
+    return first + second << second
+
+
+def powered(first: int, second: int) -> int:
+    return (first + second) ** second
+
+
+def inverted(first: int, second: int) -> bool:
+    return not first == second
+
+
+def negated_sum(first: int, second: int) -> int:
+    return -(first + second)

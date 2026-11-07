@@ -172,6 +172,28 @@ def build_fixture() -> dict[str, int]:
       main()
   ```
 
+- **Modules a `.pth` file loads at startup**: the interpreter runs the `import` lines of a `.pth` file in a source
+  directory when it starts, so a name those lines read is kept. A path line runs nothing.
+
+  ```python ok file=app/hook.py
+  def _run() -> None:
+      print("hook")
+  ```
+
+  ```python context file=app.pth
+  # fmt: off
+  import app.hook; app.hook._run()
+  # fmt: on
+  ```
+
+  ```python context file=tests/test_hook.py
+  from app.hook import _run
+
+
+  def test_run() -> None:
+      _run()
+  ```
+
 - **Decorated definitions**: a decorator may register the definition with something outside the run, such as a plugin
   list or a framework, so any decorated function or class is kept.
 

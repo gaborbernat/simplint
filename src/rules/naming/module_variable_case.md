@@ -161,6 +161,17 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
   type vector = list[float]
   ```
 
+- **Names bound and read only inside one module-level `if`, `try` or `with` block**: a block such as a version check
+  binds a name for its own use, and nothing outside the block reads it. A name that another file reads stays here.
+
+  ```python ok
+  import sys
+
+  if sys.version_info < (3, 10):
+      msg = "requires Python 3.10"
+      raise RuntimeError(msg)
+  ```
+
 - **Names also bound by an import, `def` or `class`**: this rule skips them. This covers:
 
   - An import, such as `from json import dumps`: the import keeps the spelling of what it imports.
@@ -181,6 +192,17 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
 
     limit = limit()
     ```
+
+- **Aliases of a function the module defines**: an alias reads as the function, so it keeps the function's name, as a
+  class alias does. An alias of an imported name is not covered, as the rule cannot tell what an import binds.
+
+  ```python ok
+  def build_cli() -> str:
+      return "cli"
+
+
+  _build_cli = build_cli
+  ```
 
 - **Names bound only as `for`, `with`, `except` or `match` targets**: these hold whatever the statement produces, not a
   value the module defines.
@@ -352,7 +374,9 @@ print(f"limit={LIMIT!r}")
 
 No fix is offered when:
 
-- another module in the run imports the name or reaches it by a dotted string, such as a `mocker.patch` target
+- another module in the run imports the name, reaches it by a dotted string, such as a `mocker.patch` target, or assigns
+  it as an attribute of its module, as `module.NAME = value` or `setattr(module, "NAME", value)` does, since the rename
+  would leave that write pointing at the old name
 
   ```python report file=config.py
   limit = 3
@@ -362,6 +386,18 @@ No fix is offered when:
   from config import limit
 
   print(limit)
+  ```
+
+- another module in the run assigns the name as an attribute of its module
+
+  ```python report file=config.py
+  limit = 3
+  ```
+
+  ```python context file=consumer.py
+  import config
+
+  config.limit = 5
   ```
 
 - a file of the run reads an attribute by that name off a module it loads by a computed name: the result of
@@ -377,6 +413,9 @@ No fix is offered when:
 
   value = importlib.import_module("loader").limit
   ```
+
+- a file of the run sets an attribute of the module under a computed name, as `setattr(module, name, value)` or
+  `mock.patch(f"module.{name}")` does
 
 - the new name is already used as a name in the file
 

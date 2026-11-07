@@ -72,29 +72,6 @@ __all__ = ["parse"]
   __all__ = ["run"]
   ```
 
-- [`api-modules`](https://simplint.readthedocs.io/en/latest/configuration/project.html#api-packages-and-modules) in
-  `[tool.simplint]`: modules whose `__all__` stays as written
-
-  ```toml config
-  [build-system]
-  requires = ["setuptools"]
-  build-backend = "setuptools.build_meta"
-
-  [project]
-  name = "demo"
-
-  [tool.simplint]
-  api-modules = ["demo.core"]
-  ```
-
-  ```python ok file=demo/core.py
-  def run() -> int:
-      return 1
-
-
-  __all__ = ["run"]
-  ```
-
 ## What it does
 
 ### Active on
@@ -121,7 +98,9 @@ __all__ = ["parse"]
     print(LIMIT)
     ```
 
-  - in a library (`project-kind` is `library`), the fix is **unsafe**: code outside the run may import it
+  - in a library (`project-kind` is `library`), the fix is **unsafe**: code outside the run may import it. The `__all__`
+    of a public module is the interface users import, so the rule leaves it alone; it checks the private modules of the
+    library
 
     ```toml config
     [build-system]
@@ -132,7 +111,15 @@ __all__ = ["parse"]
     name = "demo"
     ```
 
-    ```python report file=demo/core.py
+    ```python report file=demo/_core.py
+    def run() -> int:
+        return 1
+
+
+    __all__ = ["run"]
+    ```
+
+    ```python ok file=demo/core.py
     def run() -> int:
         return 1
 
@@ -168,6 +155,54 @@ __all__ = ["parse"]
     print(config.LIMIT)
     ```
 
+  - `module.name` read off a module loaded from a file path with `importlib.util.spec_from_file_location` and
+    `module_from_spec`, when the path names a project module
+
+    ```python ok file=config.py
+    LIMIT = 3
+    __all__ = ["LIMIT"]
+    ```
+
+    ```python context file=cli.py
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location("config", Path(__file__).parent / "config.py")
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    print(module.LIMIT)
+    ```
+
+  - a string key read off the globals `runpy.run_module` returns, or `runpy.run_path` of a path that names a project
+    module
+
+    ```python ok file=config.py
+    LIMIT = 3
+    __all__ = ["LIMIT"]
+    ```
+
+    ```python context file=cli.py
+    import runpy
+
+    print(runpy.run_module("config")["LIMIT"])
+    ```
+
+  - a dotted path a test patches, as `mock.patch("config.LIMIT")`
+
+    ```python ok file=config.py
+    LIMIT = 3
+    __all__ = ["LIMIT"]
+    ```
+
+    ```python context file=test_cli.py
+    from unittest import mock
+
+
+    def test_limit() -> None:
+        with mock.patch("config.LIMIT", 5):
+            pass
+    ```
+
   - the entry points `pyproject.toml` declares
 
     ```toml config
@@ -199,49 +234,25 @@ __all__ = ["parse"]
 
 ### Exceptions
 
-- **The top-level package or module of a library, and the modules the `api-modules` setting names**: their `__all__`
-  declares the interface users outside the project import.
+- **Public modules of a library**: their `__all__` declares the interface users outside the project import, so no name
+  in it needs an importer in the run.
 
-  - the top-level package or module of a library:
+  ```toml config
+  [build-system]
+  requires = ["setuptools"]
+  build-backend = "setuptools.build_meta"
 
-    ```toml config
-    [build-system]
-    requires = ["setuptools"]
-    build-backend = "setuptools.build_meta"
+  [project]
+  name = "demo"
+  ```
 
-    [project]
-    name = "demo"
-    ```
-
-    ```python ok file=demo.py
-    def run() -> int:
-        return 1
+  ```python ok file=demo/core.py
+  def run() -> int:
+      return 1
 
 
-    __all__ = ["run"]
-    ```
-
-  - the modules the `api-modules` setting names:
-
-    ```toml config
-    [build-system]
-    requires = ["setuptools"]
-    build-backend = "setuptools.build_meta"
-
-    [project]
-    name = "demo"
-
-    [tool.simplint]
-    api-modules = ["demo.core"]
-    ```
-
-    ```python ok file=demo/core.py
-    def run() -> int:
-        return 1
-
-
-    __all__ = ["run"]
-    ```
+  __all__ = ["run"]
+  ```
 
 - **Modules another file star-imports**: `import *` hands every listed name to the importing module, which may use it
   there.

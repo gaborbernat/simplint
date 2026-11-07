@@ -8,13 +8,17 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::ensure_import;
-use crate::rules::{has_version_gate, is_class_like, isort_key, single_assignment};
+use crate::rules::{has_version_gate, is_class_like, is_sphinx_conf, isort_key, single_assignment};
 use crate::semantic::Semantic;
 use crate::syntax::{alias_binding, last_segment};
 
 pub fn missing_final(checker: &Checker) {
     // `typing.Final` arrived in Python 3.8.
-    if checker.settings.from_ruff.target_version < PythonVersion::PY38 || has_version_gate(checker.body()) {
+    // Sphinx reads the module variables of `conf.py` by name, so a `Final` there would change nothing.
+    if checker.settings.from_ruff.target_version < PythonVersion::PY38
+        || has_version_gate(checker.body())
+        || is_sphinx_conf(checker)
+    {
         return;
     }
     let spelling = OnceCell::new();

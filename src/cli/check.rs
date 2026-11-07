@@ -204,8 +204,6 @@ fn write_settings(
         Some(packages) => write_list(writer, "linter.api_packages", &quoted(&mut packages.iter()))?,
         None => writeln!(writer, "linter.api_packages = every module outside docs and tests")?,
     }
-    let modules = api.modules.iter().map(|module| format!("{:?}", module.join("."))).collect_vec();
-    write_list(writer, "linter.api_modules", &modules)?;
     match docstring_style {
         Some(style) => writeln!(writer, "linter.docstring_style = {style}"),
         None => writeln!(writer, "linter.docstring_style = none"),

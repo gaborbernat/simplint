@@ -28,8 +28,8 @@ No fix is offered: only the author knows why the error was suppressed.
 ### Active on
 
 Each of these suppression comments is reported when it has no **reason**: any text after the error codes, or another `#`
-comment on the same line. A comment with neither codes nor a reason is reported here for the missing reason, and by
-[blanket-ignore](SMP004.html) for the missing codes.
+comment on the same line, or a comment on the line above. A comment with neither codes nor a reason is reported here for
+the missing reason, and by [blanket-ignore](SMP004.html) for the missing codes.
 
 - **Ruff**: [error suppression](https://docs.astral.sh/ruff/linter/#error-suppression) comments, in these forms:
 
@@ -95,6 +95,15 @@ comment on the same line. A comment with neither codes nor a reason is reported 
   import os  # noqa: F401  # re-exported for plugins
 
   VALUE = os.sep  # type: ignore[attr-defined]  # stub omits sep on this platform
+  ```
+
+- **A reason on the line above**: a comment on the line directly above a trailing suppression counts, as do the comment
+  lines in a run that ends there. The reason may take several lines, but a blank line or a line of code ends the run,
+  and a suppression on a line of its own takes no reason from above.
+
+  ```python ok
+  # the plugin under test expects a str, so the wrong type is deliberate
+  value = 123  # ty: ignore[invalid-argument-type]
   ```
 
 - **Words that only start with a directive**: a directive must be a whole word, so one followed by a letter, digit, `-`

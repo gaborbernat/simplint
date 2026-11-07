@@ -62,8 +62,9 @@ Release(name="simplint", version="1.0.0")
 
 - **[Dataclass](https://docs.python.org/3/library/dataclasses.html#dataclasses.dataclass) decorators**: a decorator
   spelled `@dataclass` or `@dataclasses.dataclass` without `kw_only=True`. Any value other than a literal `True`, such
-  as `kw_only=False`, is reported too, since only a literal `True` shows that every field is keyword-only. Its fix sets
-  `kw_only=True` and passes every positional argument of the calls in the same module by keyword. The forms are:
+  as `kw_only=False`, is reported too, since only a literal `True` shows that every field is keyword-only. The report
+  points at each call in the run that passes the fields by position. Its fix sets `kw_only=True` and passes those
+  arguments by keyword, but only when every such call is in the same module. The forms are:
 
   - `@dataclass(frozen=True, slots=True)`: no `kw_only` option, so it is reported.
 
@@ -76,6 +77,10 @@ Release(name="simplint", version="1.0.0")
         name: str
         version: str
     ```
+
+  - `@dataclass(**DC_KW)`: a `**` splat of a module-level dict literal, or of a `dict(...)` call with keyword arguments,
+    counts the options its keys set. A splat simplint cannot read leaves the class unreported, as for the other
+    dataclass rules.
 
   - `@dataclass(frozen=True, slots=True, kw_only=False)`: a value other than a literal `True`.
 
@@ -101,14 +106,13 @@ Release(name="simplint", version="1.0.0")
         version: str
     ```
 
-  **Unsafe fix:** two kinds of caller can still call the class by position:
+  **Unsafe fix:** code outside the checked files, such as the users of a published library, can still call the class by
+  position. A library's public dataclasses are not reported at all, as the exceptions below describe.
 
-  - a caller whose fix simplint withdraws because it gives Ruff work it cannot fix
-  - code outside the checked files, such as the users of a published library
-
-- **Positional calls in other files**: in the other files simplint checks, each call that passes such a dataclass's
-  fields by position gets its own report, so the fix can rewrite it to pass the arguments by keyword. That fix is safe,
-  as the call does the same before and after.
+- **Positional calls in other files**: each call in another file that passes the fields by position is a related
+  location of the class's report, and the report gets no fix, since a rewrite does not reach another file. The message
+  counts the calls that need converting by hand. A call gets no report of its own, so a suppression comment on the class
+  silences the report with its related locations.
 
   ```python report file=app/models.py
   from dataclasses import dataclass
@@ -120,17 +124,7 @@ Release(name="simplint", version="1.0.0")
       version: str
   ```
 
-  ```python fixed file=app/models.py
-  from dataclasses import dataclass
-
-
-  @dataclass(frozen=True, slots=True, kw_only=True)
-  class Release:
-      name: str
-      version: str
-  ```
-
-  ```python report file=app/use.py
+  ```python ok file=app/use.py
   from app.models import Release
 
 
@@ -138,15 +132,48 @@ Release(name="simplint", version="1.0.0")
       return Release("simplint", "1.0.0")
   ```
 
-  ```python fixed file=app/use.py
-  from app.models import Release
+  The full output lists the call as a related location of the class report:
 
+  ```text
+  SMP703 Dataclass is missing kw_only; set `kw_only=True`; 1 positional call in another file needs keyword arguments by hand
+   --> app/models.py:4:2
+    |
+  4 | @dataclass(frozen=True, slots=True)
+    |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  5 | class Release:
+  6 |     name: str
+    |
+   ::: app/use.py:5:12
+    |
+  4 | def build() -> Release:
+  5 |     return Release("simplint", "1.0.0")
+    |            ---------------------------- positional arguments pass the fields by position
 
-  def build() -> Release:
-      return Release(name="simplint", version="1.0.0")
+  Found 1 error.
   ```
 
 ### Exceptions
+
+- **Public API of a library**: a dataclass defined in, or re-exported from, a public module of a library project, where
+  its `__all__` lists it or, without one, its name is public. Users of the library call it by position, so neither the
+  class nor its positional calls in other files are reported. A module that only imports the class from a sibling module
+  leaves it internal, so the class is still reported.
+
+  ```toml config
+  [build-system]
+  requires = []
+  ```
+
+  ```python ok
+  from dataclasses import dataclass
+
+  __all__ = ["Release"]
+
+
+  @dataclass(frozen=True, slots=True)
+  class Release:
+      name: str
+  ```
 
 - **Target versions before 3.10**: the `kw_only` option needs Python 3.10 or later, so nothing is reported when the
   target version is older.
@@ -167,8 +194,12 @@ Release(name="simplint", version="1.0.0")
 
 ### Fix
 
-The two fixes are applied in the same `--fix` run. The decorator fix also rewrites calls through `cls(...)` in the
-class's own methods. A call that unpacks `**kwargs` passes those fields by keyword, so it keeps working.
+The fix sets `kw_only=True` and rewrites the positional calls of the class in its own module, including `cls(...)` in
+its methods. A call that unpacks `**kwargs` passes those fields by keyword, so it keeps working.
+
+A call that has positional arguments and a `**` splat is rewritten only when the splat is one simplint can read and it
+does not pass one of the fields the rewrite names, since the keyword would repeat it. The class gets no fix when one of
+its calls is not rewritten, so its other calls keep their positional arguments.
 
 ```python report
 from dataclasses import dataclass
@@ -257,7 +288,7 @@ The keywords follow the field order of the generated `__init__`:
   Release("simplint", "secret")
   ```
 
-Since the decorator fix counts on the call reports, no fix is offered while any use could still pass fields by position:
+No fix is offered while any use could still pass fields by position, or while a positional call is in another file:
 
 - a call that unpacks `*args`, or passes more arguments than the class has positional fields;
 
@@ -341,8 +372,7 @@ Since the decorator fix counts on the call reports, no fix is offered while any 
       return Release("simplint", "1.0.0")
   ```
 
-- a positional call in a file whose own report cannot rewrite it: one that ignores `dataclass-kw-only`, does not have it
-  in `fixable`, targets a Python version before 3.10, or has a suppression comment on the call;
+- a positional call with a suppression comment for SMP703 on the call, which the fix would rewrite regardless;
 
   ```python report
   from dataclasses import dataclass

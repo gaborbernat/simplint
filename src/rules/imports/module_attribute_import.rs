@@ -30,8 +30,8 @@ pub fn module_attribute_import(checker: &Checker) {
         }
         let path = module_path(statement, alias);
         // The fix replaces the import, so it is offered only when every use of the module is convertible: a single
-        // import, no stores, and each name importable from the module.
-        let mut convertible = aliases(statement).len() == 1;
+        // import, no stores, no computed write the import would miss, and each name importable from the module.
+        let mut convertible = aliases(statement).len() == 1 && !module.computed_written;
         let mut reports = Vec::new();
         for attribute in &uses.attributes {
             let reportable = attribute.load

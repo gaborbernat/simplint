@@ -7,6 +7,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::project::constructors::{CallShape, CallSites, Use};
 use crate::rules::call_sites::{add_use, method_candidate, method_uses, module_candidate, module_uses};
+use crate::syntax::Visibility;
 
 pub(crate) fn unused_default(checker: &Checker) {
     let project = checker.project();
@@ -15,13 +16,19 @@ pub(crate) fn unused_default(checker: &Checker) {
         return;
     }
     let functions = module_uses(checker);
+    // Code outside the run calls the public functions and classes of a library's public module, and may leave out a
+    // default the run's calls all pass.
+    let outside = |name: &str| project.role().public && Visibility::of(name) == Visibility::Public;
     for stmt in checker.body() {
         match stmt {
-            Stmt::FunctionDef(function) => module_function(checker, function, &functions),
+            Stmt::FunctionDef(function) if !outside(function.name.as_str()) => {
+                module_function(checker, function, &functions);
+            }
             Stmt::ClassDef(class)
                 if class.bases().is_empty()
                     && class.keywords().is_empty()
-                    && !project.is_base_class(class.name.as_str()) =>
+                    && !project.is_base_class(class.name.as_str())
+                    && !outside(class.name.as_str()) =>
             {
                 let methods = method_uses(checker, class);
                 for method in class.body.iter().filter_map(Stmt::as_function_def_stmt) {

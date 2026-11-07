@@ -1,0 +1,22 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+10:17 SMP506 Every call to `_sync` passes `value`; drop its default `1` [unsafe fix: Remove the default of `value`]
+--- fixed (1 applied, 0 remaining) ---
+def connect(host, timeout=30):
+    return host, timeout
+
+
+class Client:
+    def send(self, data, flush=False):
+        return data, flush
+
+
+def _sync(value):
+    return value
+
+
+connect("a", 5)
+Client().send("b", True)
+_sync(2)

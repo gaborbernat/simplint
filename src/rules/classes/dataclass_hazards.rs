@@ -3,7 +3,7 @@ use std::cell::OnceCell;
 
 use ruff_diagnostics::Applicability;
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, Expr, ExprContext, Keyword, Stmt};
+use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 
 use crate::lint::checker::Checker;
 use crate::project::receivers::module_name;
@@ -71,7 +71,7 @@ pub(super) fn analyze<'a>(
     // Only a frozen slotted dataclass gets a `__getstate__`: without one, pickle protocols 0 and 1 refuse a slotted
     // instance, and with one, a pickled subclass instance keeps only the fields. The fixes of both options apply
     // together, so the state is the one after freezing, whichever fix goes first.
-    let frozen = sets_true(decorated.keywords, "frozen") || !hazards.frozen;
+    let frozen = sets_true(decorated, "frozen") || !hazards.frozen;
     hazards.slots |= if frozen { project.has_stateful_subclass(&qualified) } else { project.pickles_low_protocol() };
     let explicit = decorated.keywords.iter().any(|keyword| {
         keyword.arg.as_ref().is_some_and(|arg| matches!(arg.as_str(), "frozen" | "slots")) && !is_true(&keyword.value)
@@ -134,10 +134,12 @@ fn is_generic(base: &Expr) -> bool {
     last_segment(base) == Some("Generic")
 }
 
-fn sets_true(keywords: &[Keyword], option: &str) -> bool {
-    keywords
+fn sets_true(decorated: &Decorated, option: &str) -> bool {
+    decorated
+        .keywords
         .iter()
         .any(|keyword| keyword.arg.as_ref().is_some_and(|arg| arg.as_str() == option) && is_true(&keyword.value))
+        || decorated.splat.iter().any(|(name, value)| *name == option && is_true(value))
 }
 
 fn is_true(value: &Expr) -> bool {

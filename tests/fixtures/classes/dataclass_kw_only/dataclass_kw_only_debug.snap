@@ -2,8 +2,10 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-4:2 SMP703 Dataclass is missing kw_only; set `kw_only=True` [unsafe fix: Pass `kw_only=True` to `@dataclass`]
+6:2 SMP703 Dataclass is missing kw_only; set `kw_only=True` [unsafe fix: Pass `kw_only=True` to `@dataclass`]
 --- fixed (1 applied, 0 remaining) ---
+__all__ = []
+
 from dataclasses import dataclass
 
 

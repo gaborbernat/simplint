@@ -1,5 +1,6 @@
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Component, Path, PathBuf};
 
 use ruff_python_ast::ExprContext;
 use ruff_python_ast::helpers::resolve_imported_module_path;
@@ -57,6 +58,8 @@ pub(super) struct FactVisitor<'a> {
     pub(super) edges: BTreeMap<String, BTreeSet<String>>,
     pub(super) references: BTreeMap<String, BTreeSet<String>>,
     pub(super) assigned_attributes: Vec<String>,
+    // The modules a write under a computed name may reach, as `pkg.report` for `setattr(report, name, value)`.
+    pub(super) computed_writes: BTreeSet<String>,
     pub(super) base_classes: Vec<String>,
     pub(super) stars: BTreeSet<String>,
     pub(super) from_statements: Vec<FromImport<'a>>,
@@ -86,6 +89,28 @@ pub(super) struct FactVisitor<'a> {
     // whose test is false at run time, such as `if TYPE_CHECKING:` or a `__main__` guard, or an `except ImportError:`
     // fallback, which runs only when the import it stands in for fails.
     pub(super) runtime: Runs,
+    // The names bound to a module a string-named import call loads, mapped to that module, so `mod.name` reads a name of
+    // it. A name bound to anything else too maps to `None`.
+    pub(super) loaded_modules: FxHashMap<&'a str, Option<String>>,
+    // The names bound to a spec, as `spec_from_file_location(name, path)` builds, mapped to the module its path names,
+    // which `module_from_spec` loads.
+    specs: FxHashMap<&'a str, Option<String>>,
+    // The names bound to a module no static path resolves to a project module, which read names of any module as a
+    // computed import does.
+    pub(super) unknown_modules: FxHashSet<String>,
+    // The names bound to the globals `runpy` returns, which a string key reads a name of.
+    globals: FxHashMap<&'a str, Globals>,
+    // The string keys read off globals no static path names, which may be names of any module.
+    pub(super) unresolved_globals: BTreeSet<String>,
+    // The names bound to a tuple, list or set of string literals, as rows of strings, one per item; a name bound to
+    // anything else too maps to `None`.
+    string_rows: FxHashMap<&'a str, Option<Vec<Vec<String>>>>,
+    // The names a `for` over string literals binds, with the strings each takes in turn.
+    loop_strings: FxHashMap<&'a str, Vec<String>>,
+    // The file being visited and the directory its module path is relative to, both normalized, which the paths a
+    // spec loads resolve against.
+    file: PathBuf,
+    root: Option<PathBuf>,
     // The module-level names bound once to a false constant, as `_false = 0`, whose `if` bodies never run.
     pub(super) falsy_constants: FxHashSet<&'a str>,
     pub(super) runtime_sites: Vec<ImportSite>,
@@ -96,17 +121,21 @@ pub(super) struct FactVisitor<'a> {
 
 impl<'a> FactVisitor<'a> {
     pub(super) fn new(
+        file: &Path,
         module_path: Option<&'a [String]>,
         own_module: String,
         parts: Parts,
         falsy_constants: FxHashSet<&'a str>,
     ) -> Self {
+        let file = normalized(file);
+        let root = module_path.and_then(|module_path| file.ancestors().nth(module_path.len())).map(normalized);
         Self {
             module_path,
             aliases: FxHashMap::default(),
             edges: BTreeMap::new(),
             references: BTreeMap::new(),
             assigned_attributes: Vec::new(),
+            computed_writes: BTreeSet::new(),
             base_classes: Vec::new(),
             stars: BTreeSet::new(),
             from_statements: Vec::new(),
@@ -124,6 +153,15 @@ impl<'a> FactVisitor<'a> {
             handler_depth: 0,
             runtime: Runs::Always,
             falsy_constants,
+            loaded_modules: FxHashMap::default(),
+            specs: FxHashMap::default(),
+            unknown_modules: FxHashSet::default(),
+            globals: FxHashMap::default(),
+            unresolved_globals: BTreeSet::new(),
+            string_rows: FxHashMap::default(),
+            loop_strings: FxHashMap::default(),
+            file,
+            root,
             parts,
             runtime_sites: Vec::new(),
             star_sites: Vec::new(),
@@ -168,8 +206,303 @@ impl<'a> FactVisitor<'a> {
     }
 }
 
+impl<'a> FactVisitor<'a> {
+    // Binds each name a plain assignment sets to the module its value loads, or unbinds it when another value sets it.
+    // A spec a `spec_from_file_location` call builds is bound the same way, to the module its path names.
+    fn bind_loaded_module(&mut self, targets: &'a [Expr], value: &'a Expr) {
+        let module = self.loaded_module_of(value);
+        let spec = self.spec_module(value);
+        let unknown = module.is_none() && self.is_unknown_module(value);
+        for name in targets.iter().filter_map(Expr::as_name_expr) {
+            let bound = name.id.as_str();
+            self.specs.insert(bound, spec.clone());
+            if unknown {
+                self.unknown_modules.insert(bound.to_owned());
+            }
+            let slot = self.loaded_modules.entry(bound).or_insert_with(|| module.clone());
+            if *slot != module {
+                *slot = None;
+            }
+        }
+    }
+
+    // The project module an expression loads or names: a string-named import call, a module built from a spec, or a
+    // variable bound to one.
+    fn loaded_module_of(&self, expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Name(name) => self.loaded_modules.get(name.id.as_str()).cloned().flatten(),
+            _ => loaded_module(expr).map(str::to_owned).or_else(|| self.module_from_spec(expr)),
+        }
+    }
+
+    // Binds each name a plain assignment sets to the globals its value returns, or unbinds it to unknown when another
+    // value sets it.
+    fn bind_globals(&mut self, targets: &'a [Expr], value: &'a Expr) {
+        let globals = self.globals_of(value);
+        for name in targets.iter().filter_map(Expr::as_name_expr) {
+            let bound = name.id.as_str();
+            match &globals {
+                Some(globals) => {
+                    let slot = self.globals.entry(bound).or_insert_with(|| globals.clone());
+                    if *slot != *globals {
+                        *slot = Globals::Unknown;
+                    }
+                }
+                None => {
+                    if let Some(slot) = self.globals.get_mut(bound) {
+                        *slot = Globals::Unknown;
+                    }
+                }
+            }
+        }
+    }
+
+    // The globals a `runpy` call returns, as a dict of the module's names: `run_module("pkg.mod")` runs the module its
+    // literal names, and `run_path(path)` the file its path names, which is unknown when no static path names a project
+    // module. `None` for any other value, or for a name bound to none of these.
+    fn globals_of(&self, expr: &Expr) -> Option<Globals> {
+        match expr {
+            Expr::Name(name) => self.globals.get(name.id.as_str()).cloned(),
+            Expr::Call(ast::ExprCall { func, arguments, .. }) => {
+                let target = arguments.args.first()?;
+                match self.qualified(func)?.as_str() {
+                    "runpy.run_module" => Some(
+                        target
+                            .as_string_literal_expr()
+                            .map_or(Globals::Unknown, |module| Globals::Module(module.value.to_str().to_owned())),
+                    ),
+                    "runpy.run_path" => Some(self.file_module(target).map_or(Globals::Unknown, Globals::Module)),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    // Binds each name a plain assignment sets to the string rows its value holds, or unbinds it when another value sets it.
+    fn bind_string_rows(&mut self, targets: &'a [Expr], value: &'a Expr) {
+        let rows = self.string_rows(value);
+        for name in targets.iter().filter_map(Expr::as_name_expr) {
+            let slot = self.string_rows.entry(name.id.as_str()).or_insert_with(|| rows.clone());
+            if *slot != rows {
+                *slot = None;
+            }
+        }
+    }
+
+    // The rows of a tuple, list or set of string literals, or of the rows a name bound to one holds.
+    fn string_rows(&self, expr: &Expr) -> Option<Vec<Vec<String>>> {
+        match expr {
+            Expr::Name(name) => self.string_rows.get(name.id.as_str()).cloned().flatten(),
+            Expr::Tuple(ast::ExprTuple { elts, .. })
+            | Expr::List(ast::ExprList { elts, .. })
+            | Expr::Set(ast::ExprSet { elts, .. }) => elts.iter().map(string_row).collect(),
+            _ => None,
+        }
+    }
+
+    // The names a `for` over string rows binds, each with the strings it takes: `name` for `for name in ("a", "b")`,
+    // and `name` at its position for `for name, _ in (("a", 1), ...)`. A loop over anything else binds none.
+    fn loop_bindings(&self, target: &'a Expr, iter: &Expr) -> Vec<(&'a str, Vec<String>)> {
+        let Some(rows) = self.string_rows(iter) else {
+            return Vec::new();
+        };
+        match target {
+            Expr::Name(name) if rows.iter().all(|row| row.len() == 1) => {
+                vec![(name.id.as_str(), rows.into_iter().flatten().collect())]
+            }
+            Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. })
+                if rows.iter().all(|row| row.len() == elts.len()) =>
+            {
+                elts.iter()
+                    .enumerate()
+                    .filter_map(|(index, elt)| {
+                        let name = elt.as_name_expr()?;
+                        Some((name.id.as_str(), rows.iter().map(|row| row[index].clone()).collect()))
+                    })
+                    .collect()
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    // Records a string key read off globals, which imports the name from the module the globals run, or may read any
+    // module's name when no static path names it.
+    fn read_globals(&mut self, value: &Expr, key: &str) {
+        match self.globals_of(value) {
+            Some(Globals::Module(module)) => _ = self.edges.entry(module).or_default().insert(key.to_owned()),
+            Some(Globals::Unknown) => _ = self.unresolved_globals.insert(key.to_owned()),
+            None => {}
+        }
+    }
+
+    fn module_from_spec(&self, expr: &Expr) -> Option<String> {
+        self.spec_module(module_from_spec_arg(expr)?)
+    }
+
+    // The project module a spec loads: the module its `spec_from_file_location` call's path names, or a variable bound
+    // to such a spec. A path outside the search root, or one that is not static, names none.
+    fn spec_module(&self, expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Name(name) => self.specs.get(name.id.as_str()).cloned().flatten(),
+            Expr::Call(ast::ExprCall { func, arguments, .. })
+                if last_segment(func) == Some("spec_from_file_location") =>
+            {
+                self.file_module(arguments.args.get(1)?)
+            }
+            _ => None,
+        }
+    }
+
+    // Whether an expression loads a module no static path resolves, as `module_from_spec` of an unresolved spec does,
+    // or names a variable bound to one.
+    fn is_unknown_module(&self, expr: &Expr) -> bool {
+        match expr {
+            Expr::Name(name) => self.unknown_modules.contains(name.id.as_str()),
+            _ => module_from_spec_arg(expr).is_some(),
+        }
+    }
+
+    fn file_module(&self, expr: &Expr) -> Option<String> {
+        let root = self.root.as_deref()?;
+        let path = normalized(&root.join(self.static_path(expr)?));
+        module_of(path.strip_prefix(root).ok()?)
+    }
+
+    // The path an expression spells out: `__file__`, a string literal, `Path(...)` or `os.path.join(...)` of such, with
+    // `/`, `.parent`, `.parents[n]` and `os.path.dirname`. A relative path is relative to the search root.
+    fn static_path(&self, expr: &Expr) -> Option<PathBuf> {
+        match expr {
+            Expr::Name(name) if name.id.as_str() == "__file__" => Some(self.file.clone()),
+            Expr::StringLiteral(literal) => Some(PathBuf::from(literal.value.to_str())),
+            Expr::BinOp(ast::ExprBinOp { left, op: ast::Operator::Div, right, .. }) => {
+                Some(self.static_path(left)?.join(self.static_path(right)?))
+            }
+            Expr::Attribute(ast::ExprAttribute { value, attr, .. }) if attr.as_str() == "parent" => {
+                self.static_path(value)?.parent().map(Path::to_path_buf)
+            }
+            Expr::Subscript(ast::ExprSubscript { value, slice, .. }) => match value.as_ref() {
+                Expr::Attribute(ast::ExprAttribute { value: base, attr, .. }) if attr.as_str() == "parents" => {
+                    let index = slice.as_number_literal_expr()?.value.as_int()?.as_usize()?;
+                    self.static_path(base)?.ancestors().nth(index.checked_add(1)?).map(Path::to_path_buf)
+                }
+                _ => None,
+            },
+            Expr::Call(ast::ExprCall { func, arguments, .. }) => {
+                match (self.qualified(func)?.as_str(), &*arguments.args) {
+                    ("pathlib.Path" | "os.path.join", args) => {
+                        args.iter().try_fold(PathBuf::new(), |path, arg| Some(path.join(self.static_path(arg)?)))
+                    }
+                    ("os.path.dirname", [arg]) => self.static_path(arg)?.parent().map(Path::to_path_buf),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+}
+
+// The strings of a tuple, list or set item of string literals: the item itself, or the elements of a tuple or list.
+fn string_row(expr: &Expr) -> Option<Vec<String>> {
+    match expr {
+        Expr::StringLiteral(literal) => Some(vec![literal.value.to_str().to_owned()]),
+        Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => elts
+            .iter()
+            .map(|elt| elt.as_string_literal_expr().map(|literal| literal.value.to_str().to_owned()))
+            .collect(),
+        _ => None,
+    }
+}
+
+// The module a `mock.patch` target f-string names before its first interpolated name, `pkg.report` for
+// `f"pkg.report.{name}"`. A target that starts with the interpolation names no module the run can find.
+fn computed_patch_module(target: &Expr) -> Option<&str> {
+    let Expr::FString(fstring) = target else {
+        return None;
+    };
+    let mut elements = fstring.value.elements();
+    let Some(ast::InterpolatedStringElement::Literal(literal)) = elements.next() else {
+        return None;
+    };
+    if !matches!(elements.next(), Some(ast::InterpolatedStringElement::Interpolation(_))) {
+        return None;
+    }
+    literal.value.rsplit_once('.').map(|(module, _)| module)
+}
+
+// Whether a call takes the object an attribute belongs to first and the attribute's name second, as `setattr`,
+// `monkeypatch.delattr` or `patch.object` does.
+fn named_attribute_call(func: &Expr) -> bool {
+    match last_segment(func) {
+        Some("setattr" | "delattr") => true,
+        Some("object") => {
+            matches!(func, Expr::Attribute(ast::ExprAttribute { value, .. }) if last_segment(value) == Some("patch"))
+        }
+        _ => false,
+    }
+}
+
+// The globals a `runpy` call returns: those of the module it runs, or of an unknown one no static path names.
+#[derive(Clone, PartialEq)]
+enum Globals {
+    Module(String),
+    Unknown,
+}
+
+// The module a call loads by a string literal, as `importlib.import_module("pkg.mod")`, `__import__("pkg.mod")` or
+// `pytest.importorskip("pkg.mod")` does, whose attributes are the names the call's result reads.
+fn loaded_module(expr: &Expr) -> Option<&str> {
+    let Expr::Call(ast::ExprCall { func, arguments, .. }) = expr else {
+        return None;
+    };
+    if !matches!(last_segment(func), Some("import_module" | "__import__" | "importorskip")) {
+        return None;
+    }
+    arguments.args.first().and_then(|module| module.as_string_literal_expr()).map(|module| module.value.to_str())
+}
+
+// The spec a `module_from_spec(spec)` call loads a module from.
+fn module_from_spec_arg(expr: &Expr) -> Option<&Expr> {
+    let Expr::Call(ast::ExprCall { func, arguments, .. }) = expr else {
+        return None;
+    };
+    if last_segment(func) != Some("module_from_spec") {
+        return None;
+    }
+    arguments.args.first()
+}
+
+// The path with its `.` and `..` parts resolved without touching the file system, so that a path under the root has
+// the root as its prefix.
+fn normalized(path: &Path) -> PathBuf {
+    let mut normal = PathBuf::new();
+    for component in path.components().filter(|component| *component != Component::CurDir) {
+        match component {
+            Component::ParentDir if normal.file_name().is_some() => _ = normal.pop(),
+            _ => normal.push(component),
+        }
+    }
+    normal
+}
+
+// The dotted module a path under the search root names, as `pkg/mod.py` names `pkg.mod` and `pkg/__init__.py` names
+// `pkg`.
+fn module_of(relative: &Path) -> Option<String> {
+    let mut parts = relative.iter().map(|part| part.to_str()).collect::<Option<Vec<&str>>>()?;
+    let file = parts.pop()?.strip_suffix(".py")?;
+    if file != "__init__" {
+        parts.push(file);
+    }
+    (!parts.is_empty() && parts.iter().all(|part| is_identifier(part))).then(|| parts.join("."))
+}
+
 impl<'a> Visitor<'a> for FactVisitor<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        if let Stmt::Assign(ast::StmtAssign { targets, value, .. }) = stmt {
+            self.bind_loaded_module(targets, value);
+            self.bind_globals(targets, value);
+            self.bind_string_rows(targets, value);
+        }
         let top_level = self.top_level;
         let runtime = self.runtime;
         self.top_level &= matches!(stmt, Stmt::If(_) | Stmt::Try(_));
@@ -248,6 +581,19 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
                 self.visit_body(orelse);
                 self.visit_body(finalbody);
             }
+            Stmt::For(ast::StmtFor { target, iter, .. }) => {
+                let bound = self.loop_bindings(target, iter);
+                let previous: Vec<(&'a str, Option<Vec<String>>)> =
+                    bound.iter().map(|(name, _)| (*name, self.loop_strings.get(name).cloned())).collect();
+                self.loop_strings.extend(bound);
+                visitor::walk_stmt(self, stmt);
+                for (name, strings) in previous {
+                    match strings {
+                        Some(strings) => _ = self.loop_strings.insert(name, strings),
+                        None => _ = self.loop_strings.remove(name),
+                    }
+                }
+            }
             _ => visitor::walk_stmt(self, stmt),
         }
         self.runtime = runtime;
@@ -288,10 +634,19 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
             self.catch(classes);
         }
         match expr {
-            Expr::Attribute(ast::ExprAttribute { attr, ctx: ExprContext::Store | ExprContext::Del, .. }) => {
+            Expr::Attribute(ast::ExprAttribute { value, attr, ctx: ExprContext::Store | ExprContext::Del, .. }) => {
                 self.assigned_attributes.push(attr.as_str().to_owned());
+                // A store on a module object reaches the module's name as `setattr` does, so the module's own name
+                // stays a module attribute and is not localized or renamed as one nothing reads.
+                if let Some(module) = self.qualified(value) {
+                    self.references.entry(module).or_default().insert(attr.as_str().to_owned());
+                }
             }
             Expr::Attribute(ast::ExprAttribute { value, attr, .. }) => {
+                // A read off a loaded module is an import of the name, as `module.name` after `import module` is.
+                if let Some(module) = self.loaded_module_of(value) {
+                    self.edges.entry(module).or_default().insert(attr.as_str().to_owned());
+                }
                 // `lazy_fixture(db.__name__)` and `usefixtures(db.__name__)` request a fixture by its function's name.
                 if attr.as_str() == "__name__"
                     && let Some(name) = value.as_name_expr()
@@ -321,6 +676,11 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
                     Self::record_path(&mut self.references, text);
                 }
             }
+            Expr::Subscript(ast::ExprSubscript { value, slice, ctx: ExprContext::Load, .. }) => {
+                if let Some(key) = slice.as_string_literal_expr() {
+                    self.read_globals(value, key.value.to_str());
+                }
+            }
             Expr::Call(ast::ExprCall { func, arguments, .. }) => {
                 // The name `@pytest.fixture(name="db")` gives is the fixture's own, not a request of it.
                 if self.parts.has(Parts::FIXTURES)
@@ -337,6 +697,25 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
                     if let Some(module) = self.qualified(target) {
                         self.references.entry(module).or_default().insert(attribute.to_owned());
                     }
+                }
+                // A name a loop over string literals binds names each of their attributes, as `setattr(module, name)`
+                // does for each string.
+                if let [target, Expr::Name(name), ..] = &*arguments.args
+                    && named_attribute_call(func)
+                    && let Some(names) = self.loop_strings.get(name.id.as_str())
+                    && let Some(module) = self.qualified(target)
+                {
+                    self.references.entry(module).or_default().extend(names.iter().cloned());
+                }
+                if self.parts.has(Parts::COMPUTED_WRITES) {
+                    self.computed_write(func, arguments);
+                }
+                // `runpy.run_path(path)["name"]` and `.get("name")` read a name of the module the globals run.
+                if let Expr::Attribute(ast::ExprAttribute { value, attr, .. }) = func.as_ref()
+                    && attr.as_str() == "get"
+                    && let Some(Expr::StringLiteral(key)) = arguments.args.first()
+                {
+                    self.read_globals(value, key.value.to_str());
                 }
             }
             _ => {}
@@ -440,6 +819,23 @@ impl FactVisitor<'_> {
         } else if let Some(path) = self.class_path(expr) {
             self.caught.push(path);
         }
+    }
+
+    // Records the module a write under a name the run cannot know reaches: `setattr(module, name, value)` with a name
+    // that is neither a literal nor a loop over string literals, or a `mock.patch` target f-string spelling the module.
+    fn computed_write(&mut self, func: &Expr, arguments: &ast::Arguments) {
+        let module = match &*arguments.args {
+            [target, name, ..]
+                if named_attribute_call(func)
+                    && !name.is_string_literal_expr()
+                    && !name.as_name_expr().is_some_and(|name| self.loop_strings.contains_key(name.id.as_str())) =>
+            {
+                self.qualified(target)
+            }
+            [target, ..] if last_segment(func) == Some("patch") => computed_patch_module(target).map(str::to_owned),
+            _ => None,
+        };
+        self.computed_writes.extend(module);
     }
 
     fn record_path(names: &mut BTreeMap<String, BTreeSet<String>>, path: &str) {

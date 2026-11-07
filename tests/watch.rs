@@ -3,6 +3,7 @@ mod common;
 use std::fs;
 
 use common::{SINGLE_X, Watched, project};
+use test_case::test_case;
 
 #[test]
 fn check_watch_reruns_on_changes() {
@@ -38,6 +39,26 @@ fn check_watch_reruns_on_stub_changes() {
     fs::write(root.path().join("module.pyi"), "x: int\n").expect("write stub");
     let rerun = watched.wait_for("Found");
     assert_eq!((rerun.contains("Found 1 error."), watched.stop(root.path()).0), (true, Some(2)));
+}
+
+// A hook configuration that turns the rule off changes the settings, so the run resolves them again.
+#[test_case(".pre-commit-config.yaml", "repos:\n  - repo: x\n    hooks:\n      - id: flake8-lazy\n" ; "yaml")]
+#[test_case(".pre-commit-config.yml", "repos:\n  - repo: x\n    hooks:\n      - id: flake8-lazy\n" ; "yml")]
+#[test_case("prek.toml", "[[repos]]\nrepo = \"x\"\nhooks = [{ id = \"flake8-lazy\" }]\n" ; "prek")]
+fn check_watch_reruns_when_a_hook_configuration_turns_the_rule_off(name: &str, content: &str) {
+    let root = project(&[
+        ("package/__init__.py", ""),
+        ("package/sub/__init__.py", ""),
+        ("package/sub/sibling.py", "VALUE = 1\n"),
+        ("package/sub/module.py", "from package.sub import sibling\n"),
+    ]);
+    let mut watched = Watched::start(root.path(), &["--select", "absolute-sibling-import"]);
+    let first = watched.wait_for("Found 1 error.");
+    fs::write(root.path().join(name), content).expect("write hook configuration");
+    watched.wait_for("File change detected...");
+    let second = watched.wait_for("Found 0 errors.");
+    let (code, _) = watched.stop(root.path());
+    assert_eq!((first.contains("Found 1 error."), second.contains("Found 0 errors."), code), (true, true, Some(2)));
 }
 
 // Opening a module, the reads and cache writes of each check, and files that are neither Python nor TOML start no

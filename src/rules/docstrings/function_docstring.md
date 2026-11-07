@@ -132,6 +132,9 @@ classes, at any nesting depth. What counts as internal depends on the project.
 
 ### Exceptions
 
+- **A function an autodoc directive documents**: an `.. automodule::` with `:members:` or an `.. autofunction::` renders
+  its docstring for its users, so the function is public API whatever the project is, and its docstring stays.
+
 - **A library's public API**: [undocumented-public-api](SMP903.html) requires it to be documented. That covers what its
   public modules offer and re-export, and the methods of a public class whose names do not start with `_`.
 
@@ -146,6 +149,23 @@ classes, at any nesting depth. What counts as internal depends on the project.
   ```python ok file=demo/api.py
   def fetch() -> None:
       """Fetch the page."""
+  ```
+
+- **Public names of a module that an entry point names without an attribute**: a pytest plugin's hooks and fixtures are
+  found by convention, so they are public API and need no docstring.
+
+  ```toml config
+  [project]
+  name = "demo"
+  entry-points.pytest11.demo = "demo.plugin"
+
+  [build-system]
+  requires = []
+  ```
+
+  ```python ok file=demo/plugin.py
+  def pytest_addoption(parser: object) -> None:
+      """Register the flag."""
   ```
 
 - **Dunder methods, overrides and property setters of a public class**: methods such as `__init__` keep their
@@ -334,6 +354,27 @@ The comment text is built this way:
 
 - Lines made only of heading underline characters, such as the `----------` under a numpydoc `Parameters`, are dropped,
   since as comments they read as section dividers (see [section-comment](SMP001.html)).
+
+- Field lists and sections documenting the parameters and results, such as reST `:param name:` and `:return:` fields or
+  the `Args:` and `Returns:` of Google style, the `Parameters` of numpydoc, are left out with their bodies, since the
+  signature documents them. A docstring with nothing else left is deleted, as a one-line one is.
+
+  ```python report
+  def _run(args: list[str] | None = None) -> int:
+      """
+      Run the formatter.
+
+      :param args: command line arguments, by default use sys.argv[1:]
+      :return: exit code - 0 means already formatted correctly, otherwise 1
+      """
+      return 0
+  ```
+
+  ```python fixed
+  def _run(args: list[str] | None = None) -> int:
+      # Run the formatter.
+      return 0
+  ```
 
 - Lines that fit keep their text and relative indentation, so lists and indented blocks keep their shape.
 

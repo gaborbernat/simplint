@@ -10,6 +10,9 @@ use crate::rules::docstrings::{ApiItem, ApiKind, is_documented_variable};
 use crate::syntax::{alias_binding, for_each_child_body, is_name};
 
 pub fn undocumented_public_api(checker: &Checker) {
+    if checker.in_nested_project() {
+        return;
+    }
     if checker.is_test_module() {
         return;
     }

@@ -1,4 +1,4 @@
-from . import findings
+from . import stored
 
-writer = findings.DbWriter()
-findings.DEBUG = True
+writer = stored.Writer()
+stored.DEBUG = True

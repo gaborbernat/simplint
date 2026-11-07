@@ -10,6 +10,7 @@ use crate::cli::args::{CheckCommand, GlobalConfigArgs};
 use crate::cli::printer::Printer;
 use crate::project::Ending;
 use crate::run::{Resolved, check_files};
+use crate::settings::HOOK_CONFIGS;
 
 // Ruff's watch mode: check, then check again on every change to a watched Python file, resolving the configuration
 // again when a `.toml` file changes. It runs until watching fails or a check cannot run.
@@ -52,8 +53,8 @@ enum ChangeKind {
     SourceFile,
 }
 
-// A change to a `.toml` file can change the configuration; one to a Python file only needs another check. Reads and
-// other events need nothing.
+// A change to a `.toml` file or a hook configuration can change the configuration; one to a Python file only needs
+// another check. Reads and other events need nothing.
 fn change_detected(event: &notify::Event) -> Option<ChangeKind> {
     // notify flags a rescan only on an event it reports as other, so the rescan branch Ruff keeps after this check
     // never runs.
@@ -61,8 +62,11 @@ fn change_detected(event: &notify::Event) -> Option<ChangeKind> {
         return None;
     }
     let mut source_file = false;
-    for extension in event.paths.iter().filter_map(|path| path.extension()) {
-        match extension.to_str() {
+    for path in &event.paths {
+        if path.file_name().and_then(|name| name.to_str()).is_some_and(|name| HOOK_CONFIGS.contains(&name)) {
+            return Some(ChangeKind::Configuration);
+        }
+        match path.extension().and_then(|extension| extension.to_str()) {
             Some("toml") => return Some(ChangeKind::Configuration),
             Some("py" | "pyi" | "pyw" | "ipynb") => source_file = true,
             _ => {}

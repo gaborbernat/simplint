@@ -201,7 +201,6 @@ parameter by position counts for it, and so does one that passes it by keyword.
   ```toml config
   [tool.simplint]
   project-kind = "library"
-  api-modules = ["lib.core"]
   ```
 
   ```python ok file=lib/core.py

@@ -2,21 +2,23 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-8:2 SMP703 Dataclass is missing kw_only; set `kw_only=True` [unsafe fix: Pass `kw_only=True` to `@dataclass`]
-19:2 SMP703 Dataclass is missing kw_only; set `kw_only=True` [unsafe fix: Pass `kw_only=True` to `@dataclass`]
-31:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
-36:2 SMP703 Dataclass is missing kw_only; set `kw_only=True` [unsafe fix: Pass `kw_only=True` to `@dataclass`]
-43:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
-49:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
-54:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
-60:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
-68:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
-76:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
-81:2 SMP703 Dataclass is missing kw_only; set `kw_only=True` [unsafe fix: Pass `kw_only=True` to `@dataclass`]
-106:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
-111:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
-116:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
+10:2 SMP703 Dataclass is missing kw_only; set `kw_only=True` [unsafe fix: Pass `kw_only=True` to `@dataclass`]
+21:2 SMP703 Dataclass is missing kw_only; set `kw_only=True` [unsafe fix: Pass `kw_only=True` to `@dataclass`]
+33:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
+38:2 SMP703 Dataclass is missing kw_only; set `kw_only=True` [unsafe fix: Pass `kw_only=True` to `@dataclass`]
+45:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
+51:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
+56:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
+62:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
+70:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
+78:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
+83:2 SMP703 Dataclass is missing kw_only; set `kw_only=True` [unsafe fix: Pass `kw_only=True` to `@dataclass`]
+108:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
+113:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
+118:2 SMP703 Dataclass is missing kw_only; set `kw_only=True`
 --- fixed (4 applied, 10 remaining) ---
+__all__ = []
+
 import functools
 from dataclasses import KW_ONLY, InitVar, dataclass, field
 from typing import ClassVar, Generic, TypeVar

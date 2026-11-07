@@ -6,6 +6,8 @@ use crate::common;
 #[test_case("function-docstring", "function_docstring_exported.py" ; "function_docstring_exported")]
 #[test_case("function-docstring", "function_docstring_dynamic.py" ; "function_docstring_dynamic_all")]
 #[test_case("function-docstring", "function_docstring_contract.py" ; "function_docstring_contract")]
+#[test_case("function-docstring", "function_docstring_fields.py" ; "function_docstring_fields")]
+#[test_case("function-docstring", "function_docstring_inherited.py" ; "function_docstring_inherited")]
 #[test_case("function-docstring", "function_docstring_runtime.py" ; "function_docstring_runtime")]
 #[test_case("function-docstring", "undocumented_public_api.py" ; "function_docstring_public_api")]
 #[test_case("function-docstring", "undocumented_public_api_imported.py" ; "function_docstring_imported")]
@@ -17,6 +19,7 @@ use crate::common;
 #[test_case("test-module-docstring", "multiline_module_docstring.py" ; "test_module_docstring_non_test")]
 #[test_case("undocumented-public-api", "undocumented_public_api.py" ; "undocumented_public_api")]
 #[test_case("undocumented-public-api", "undocumented_public_api_imported.py" ; "undocumented_public_api_imported")]
+#[test_case("undocumented-public-api", "undocumented_public_api_inherited.py" ; "undocumented_public_api_inherited")]
 #[test_case("undocumented-public-api", "undocumented_public_api_type_alias.py" ; "undocumented_public_api_type_alias")]
 #[test_case("undocumented-public-api", "undocumented_public_api_ruff_overlap.py" ; "undocumented_public_api_ruff_overlap")]
 #[test_case("undocumented-public-api", "undocumented_public_api_all_forms.py" ; "undocumented_public_api_all_forms")]
@@ -45,6 +48,7 @@ use crate::common;
 #[test_case("rst-unknown-attribute", "rst_unknown_attribute_delete.py" ; "rst_unknown_attribute_delete")]
 #[test_case("rst-unknown-attribute", "rst_unknown_attribute_type_alias.py" ; "rst_unknown_attribute_type_alias")]
 #[test_case("rst-attribute-kind", "rst_attribute_kind.py" ; "rst_attribute_kind")]
+#[test_case("rst-attribute-kind", "rst_attribute_kind_final.py" ; "rst_attribute_kind_final")]
 #[test_case("rst-returns", "rst_returns.py" ; "rst_returns")]
 #[test_case("rst-missing-raises", "rst_missing_raises.py" ; "rst_missing_raises")]
 fn rule(rule: &str, fixture: &str) {
@@ -192,4 +196,34 @@ fn undocumented_public_api_follows_ruff_pydocstyle(source: &str, code: &str, fra
         let stdout = common::check(root.path(), &["--select", "SMP903"]).1;
         assert_eq!(stdout.contains(fragment), !selected, "{stdout}");
     }
+}
+
+// A public class of a library inherits the members of its private base without overriding them, so users reach them
+// through the public class: their docstrings are documentation, and an undocumented one is reported. The override is
+// the public class's own, so the base's docstring of it stays internal.
+#[test]
+fn inherited_members_of_a_private_base_are_public_api() {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.simplint]\nproject-kind = \"library\"\n"),
+        (
+            "pkg/_xdg.py",
+            "class XDGMixin:\n    @property\n    def user_data_dir(self) -> str:\n        \"\"\"Data directory.\"\"\"\n        \
+             return \"/data\"\n\n    def site_dir(self) -> str:\n        return \"/site\"\n\n    def ensure(self, path: \
+             str) -> str:\n        \"\"\"Make it.\"\"\"\n        return path\n",
+        ),
+        (
+            "pkg/unix.py",
+            "from ._xdg import XDGMixin\n\n__all__ = [\"Unix\"]\n\n\nclass Unix(XDGMixin):\n    \"\"\"Unix.\"\"\"\n\n    \
+             def ensure(self, path: str) -> str:\n        \"\"\"Unix override.\"\"\"\n        return path\n",
+        ),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP901,SMP903"]);
+    assert_eq!(
+        stdout,
+        common::native(
+            "pkg/_xdg.py:7:9: SMP903 Public method `XDGMixin.site_dir` has no docstring; document it for its users\n\
+             pkg/_xdg.py:11:9: SMP901 Function docstring on internal code; let the name, signature and types document it\n\
+             Found 2 errors.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n"
+        )
+    );
 }

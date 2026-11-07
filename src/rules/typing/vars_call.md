@@ -80,6 +80,16 @@ No fix is offered: the typed replacement depends on how the result is used.
   values = builtins.vars(object())
   ```
 
+- **A mapping whose keys come from `vars()` in the same expression**: `dict(vars(obj))`, a dict comprehension over
+  `vars(obj).items()`, `vars(obj) | {...}` and `{**vars(obj), ...}` are not reported, since the attributes of an
+  open-ended object have no key type to name. A `vars()` that only supplies a value, as in `{"attributes": vars(obj)}`,
+  is still reported.
+
+  ```python ok
+  def copy(obj: object) -> dict[str, object]:
+      return {**vars(obj), "prog": "x"}
+  ```
+
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** open issue [#3845](https://github.com/astral-sh/ruff/issues/3845).

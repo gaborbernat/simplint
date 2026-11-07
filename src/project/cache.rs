@@ -21,7 +21,7 @@ use rayon::prelude::*;
 use rkyv::util::AlignedVec;
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_db::diagnostic::{
-    Annotation, Diagnostic, DiagnosticId, LintName, SecondaryCode, Severity, Span, SubDiagnosticSeverity,
+    Annotation, Diagnostic, DiagnosticId, LintName, SecondaryCode, Severity, Span, SubDiagnosticSeverity, UnifiedFile,
 };
 use ruff_diagnostics::{Applicability, Edit, Fix, IsolationLevel};
 use ruff_linter::warn_user;
@@ -34,6 +34,7 @@ use ruff_linter::settings::LinterSettings;
 
 use crate::cli::printer::FullDisplay;
 use crate::lint::Linter;
+use crate::lint::checker::source_file_at;
 use crate::lint::registry::{Rule, RuleSet};
 use crate::project::{Ending, FileFacts};
 use crate::run::{Diagnostics, Linting, Mode};
@@ -669,6 +670,37 @@ struct Report {
     noqa_offset: u32,
     help: Vec<String>,
     fix: Option<StoredFix>,
+    // The other locations the report points at, in the order the checker gave them.
+    related: Vec<StoredRelated>,
+}
+
+// A location a report points at besides its primary one, as the file it is in, its byte range and its message.
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+struct StoredRelated {
+    path: String,
+    start: u32,
+    end: u32,
+    message: String,
+}
+
+impl StoredRelated {
+    // The location a secondary annotation names, or `None` when it is not one the checker set: a file its source
+    // cannot be read back from, or one without a message.
+    fn of(annotation: &Annotation) -> Option<Self> {
+        let span = annotation.get_span();
+        let UnifiedFile::Ruff(file) = span.file() else { return None };
+        let range = span.range()?;
+        Some(Self {
+            path: file.name().to_owned(),
+            start: range.start().to_u32(),
+            end: range.end().to_u32(),
+            message: annotation.get_message()?.to_owned(),
+        })
+    }
+
+    fn range(&self) -> TextRange {
+        TextRange::new(TextSize::new(self.start), TextSize::new(self.end))
+    }
 }
 
 impl Report {
@@ -686,6 +718,8 @@ impl Report {
         let url = rule.url();
         let primary = diagnostic.annotations().first()?;
         let range = primary.get_span().range()?;
+        let related: Vec<StoredRelated> =
+            diagnostic.secondary_annotations().map(StoredRelated::of).collect::<Option<_>>()?;
         let help: Vec<String> = diagnostic
             .sub_diagnostics()
             .iter()
@@ -694,7 +728,7 @@ impl Report {
                 help.then(|| sub.headline_message().to_owned())
             })
             .collect::<Option<_>>()?;
-        let plain = diagnostic.annotations().len() == 1
+        let plain = diagnostic.annotations().iter().filter(|annotation| annotation.is_primary()).count() == 1
             && primary.is_primary()
             && primary.get_message().is_none()
             && diagnostic.primary_tags().is_none_or(<[_]>::is_empty)
@@ -711,6 +745,7 @@ impl Report {
             noqa_offset: noqa_row.to_u32(),
             help,
             fix,
+            related,
         })
     }
 
@@ -721,6 +756,11 @@ impl Report {
         let mut diagnostic =
             Diagnostic::new(DiagnosticId::Lint(LintName::of(rule.name())), Severity::Error, self.message.as_str());
         diagnostic.annotate(Annotation::primary(Span::from(file.clone()).with_range(range)));
+        for related in &self.related {
+            let file = source_file_at(Path::new(&related.path))?;
+            let span = Span::from(file).with_range(related.range());
+            diagnostic.annotate(Annotation::secondary(span).message(related.message.as_str()));
+        }
         diagnostic.set_secondary_code(SecondaryCode::new(rule.code().to_owned()));
         diagnostic.set_documentation_url(Some(rule.url()));
         for help in &self.help {

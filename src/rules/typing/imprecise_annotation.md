@@ -155,6 +155,15 @@ annotations are still checked.
       return isinstance(value, str)
   ```
 
+- **`object` as the annotation of `*args` or `**kwargs`**: it is the honest type for arbitrary values, and ANN401 flags
+  `Any` there unless `allow-star-arg-any` is set, so `object` is the one annotation both tools accept. A nested use such
+  as `*args: list[object]` is still reported.
+
+  ```python ok
+  def forward(*args: object, **kwargs: object) -> None:
+      print(args, kwargs)
+  ```
+
 - **An `Any` that ANN401 reports on a parameter or return**, such as `def f(value: Any)`, `-> Optional[Any]` or
   `def f(value: int | Any)`: Ruff's [ANN401](https://docs.astral.sh/ruff/rules/any-type/) reports it, so this rule
   leaves it alone to avoid a double report, but only when the project's Ruff configuration selects ANN401. ANN401
@@ -178,6 +187,18 @@ def run(value: Any) -> None:
     print(value)
 ```
 
+- **`object` as the return type of a `Callable`**, such as `Callable[..., object]` or `Callable[[int], object]`, from
+  `typing` or `collections.abc`: the callable's result is ignored, which is what `object` says there. `object` in its
+  parameter types is still reported.
+
+  ```python ok
+  from collections.abc import Callable
+
+
+  def run(callback: Callable[[int], object]) -> None:
+      callback(1)
+  ```
+
 - **String annotations**: these are not checked.
 
   ```python ok
@@ -193,9 +214,9 @@ Each tool owns a different part of the `Any` reports:
   when the project's Ruff configuration selects it: the whole annotation, or an `Any` inside `Optional`, `Union`, `|` or
   `Annotated`. It reports each such annotation once, at its first character, so `Any | None` and `Optional[Any]` are one
   report each, at the start of the annotation, not at the `Any`.
-- **This rule owns everything else**: `object` everywhere, `Any` in variable annotations, and `Any` in other nested
-  positions such as `list[Any]`, which ANN401 does not report. It also keeps the `Any` of the signatures ANN401 skips,
-  such as `self: Any` or an `@override` method.
+- **This rule owns everything else**: `object` everywhere except as the annotation of `*args` or `**kwargs`, `Any` in
+  variable annotations, and `Any` in other nested positions such as `list[Any]`, which ANN401 does not report. It also
+  keeps the `Any` of the signatures ANN401 skips, such as `self: Any` or an `@override` method.
 
 ## Other tools
 

@@ -6,6 +6,8 @@ mod scan;
 mod statements;
 mod visitor;
 
+use crate::project::computed_reads::ComputedReads;
+use std::collections::BTreeSet;
 use std::hash::Hasher;
 use std::mem::take;
 use std::path::Path;
@@ -56,6 +58,9 @@ pub struct FileFacts {
     // The names the module's top-level statements define, which a module without `__all__` exports.
     pub(super) defined: Vec<String>,
     pub(super) attribute_writes: AttributeWrites,
+    // The modules a write under a computed name reaches, as `pkg.report` for `setattr(report, name, value)` or
+    // `mock.patch(f"pkg.report.{name}")`, whose names any of them may be.
+    pub(super) computed_writes: Vec<String>,
     pub(super) constructors: Constructors,
     // Whether the file reads a docstring off an object, through `__doc__` or a `getdoc` call.
     pub(super) reads_docstrings: bool,
@@ -136,6 +141,7 @@ impl FileFacts {
         let source = std::fs::read_to_string(path).ok()?;
         let parsed = parse_module(&source).ok()?;
         let mut imports = FactVisitor::new(
+            path,
             module_path.or(importable),
             module_name(module_path.or(importable), path),
             parts,
@@ -147,6 +153,12 @@ impl FileFacts {
             .map(|class| ClassBases {
                 name: class.name.to_string(),
                 bases: class.bases().iter().filter_map(|base| imports.class_path(base)).collect(),
+                methods: class
+                    .body
+                    .iter()
+                    .filter_map(Stmt::as_function_def_stmt)
+                    .map(|function| function.name.to_string())
+                    .collect(),
             })
             .collect();
         // A stub publishes what it declares, so its names are the API of the module it describes.
@@ -159,6 +171,15 @@ impl FileFacts {
             AttributeWrites::collect(&parsed.syntax().body, &imports.aliases, &module_name(module_path, path));
         let mut scan = Scan::of(&parsed.syntax().body, parts);
         let constructors = constructors(path, (&source, &parsed), &imports, suppresses_rewrite, parts, &mut scan);
+        // A module whose spec no static path resolves reads names of any module, as a computed import does.
+        let mut modules = scan.modules;
+        modules.extend(imports.unknown_modules.iter().cloned());
+        let reads = module_reads(&parsed.syntax().body, &modules)
+            .into_iter()
+            .chain(imports.unresolved_globals.iter().cloned())
+            .collect::<BTreeSet<String>>()
+            .into_iter()
+            .collect();
         let listed = dunder_all(&parsed.syntax().body);
         let api_reached = match &listed {
             Exports::Listed(names) => api_reached(&parsed.syntax().body, names),
@@ -186,7 +207,7 @@ impl FileFacts {
             references: grouped(imports.references),
             declared,
             assigned_attributes: imports.assigned_attributes,
-            module_reads: module_reads(&parsed.syntax().body, &scan.modules),
+            module_reads: reads,
             base_classes: imports.base_classes,
             star_imports: imports.stars.into_iter().collect(),
             exports,
@@ -195,6 +216,7 @@ impl FileFacts {
             module_names,
             defined,
             attribute_writes,
+            computed_writes: imports.computed_writes.into_iter().collect(),
             constructors,
             reads_docstrings: imports.reads_docstrings,
             reads_class_names: imports.reads_class_names,
@@ -271,6 +293,8 @@ impl Parts {
     // The names whose `__name__` or `__qualname__` the file reads, and whether it reads a class's name off an object,
     // which renaming a function or class changes.
     pub const REFLECTED_NAMES: Self = Self(1 << 10);
+    // The modules a write under a computed name may set any name of, which a rename or move of their variables breaks.
+    pub const COMPUTED_WRITES: Self = Self(1 << 11);
 
     #[must_use]
     pub fn with(self, part: Self) -> Self {
@@ -318,12 +342,40 @@ fn constructors(
     constructors
 }
 
-// A module-level class and the classes it lists as bases, each as (module, name).
+// A module-level class, the classes it lists as bases, each as (module, name), and the names of the methods it defines.
 #[derive(Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct ClassBases {
     pub(super) name: String,
     pub(super) bases: Vec<(String, String)>,
+    pub(super) methods: Vec<String>,
 }
 
 // A module and the names used from it.
 pub(super) type ModuleNames = (String, Vec<String>);
+
+impl FileFacts {
+    // The names the file imports from modules or reads off them, attributes of objects included, which a project outside
+    // the file's own may use.
+    pub fn imported_names(&self) -> impl Iterator<Item = &str> {
+        self.imports.iter().flat_map(|(_, names)| names.iter().map(String::as_str))
+    }
+
+    // The names doctest examples of the file use.
+    pub fn doctests(&self) -> impl Iterator<Item = &str> {
+        self.doctest_names.iter().map(String::as_str)
+    }
+
+    // The attributes the file reads under computed names.
+    pub(crate) fn computed_reads(&self) -> &ComputedReads {
+        &self.constructors.computed_reads
+    }
+
+    pub fn read_names(&self) -> impl Iterator<Item = &str> {
+        self.imports
+            .iter()
+            .chain(&self.references)
+            .flat_map(|(_, names)| names.iter().map(String::as_str))
+            .chain(self.module_reads.iter().map(String::as_str))
+            .chain(self.constructors.attribute_loads.keys().map(String::as_str))
+    }
+}

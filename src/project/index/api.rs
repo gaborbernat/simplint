@@ -30,6 +30,8 @@ pub struct ModuleUse {
     pub defined: FxHashSet<String>,
     // The names the module's functions rebind through `global`, whose value an import would keep from load time.
     pub rebound: FxHashSet<String>,
+    // Whether a write under a computed name may set any of the module's names, so an import would miss the write.
+    pub computed_written: bool,
 }
 
 impl CacheKey for ModuleUse {
@@ -39,6 +41,7 @@ impl CacheKey for ModuleUse {
         self.patched.cache_key(state);
         self.defined.cache_key(state);
         self.rebound.cache_key(state);
+        self.computed_written.cache_key(state);
     }
 }
 
@@ -68,12 +71,15 @@ pub struct FileIndex<'a> {
     pub(super) star_imported: bool,
     pub(super) package_star_imported: bool,
     pub(super) star_source: bool,
+    pub(super) id: Option<FileId>,
     pub(super) role: ModuleRole,
     pub(super) user_facing: Option<&'a FxHashMap<String, Option<PathBuf>>>,
+    pub(super) library_api: Option<&'a FxHashMap<String, Option<PathBuf>>>,
     pub(super) modules: &'a [ModuleUse],
     pub(super) test_only: Option<&'a FxHashSet<String>>,
     pub(super) uncaught_exceptions: Option<&'a FxHashSet<String>>,
     pub(super) api_reached: Option<&'a FxHashSet<String>>,
+    pub(super) inherited: Option<&'a FxHashSet<String>>,
     pub(super) cycle: Option<&'a Cycle>,
     pub(super) star_sites: &'a [StarSite],
     pub(super) duplicates: &'a [DuplicateRun],
@@ -100,12 +106,14 @@ impl FileIndex<'_> {
                 self.star_imported,
                 self.package_star_imported,
                 self.star_source,
+                self.is_computed_written(),
                 self.role,
                 self.user_facing,
+                self.library_api,
                 self.modules,
             ),
             (self.test_only, self.uncaught_exceptions, self.calls, (&self.project.reads, &self.project.computed_reads)),
-            (self.api_reached, self.cycle, self.star_sites, self.duplicates),
+            (self.api_reached, self.inherited, self.cycle, self.star_sites, self.duplicates),
         )
     }
 }
@@ -120,12 +128,15 @@ impl CacheKey for FileIndex<'_> {
         self.star_imported.cache_key(state);
         self.package_star_imported.cache_key(state);
         self.star_source.cache_key(state);
+        self.is_computed_written().cache_key(state);
         self.role.cache_key(state);
         self.user_facing.cache_key(state);
+        self.library_api.cache_key(state);
         self.modules.iter().for_each(|module| module.cache_key(state));
         self.test_only.cache_key(state);
         self.uncaught_exceptions.cache_key(state);
         self.api_reached.cache_key(state);
+        self.inherited.cache_key(state);
         self.cycle.cache_key(state);
         self.star_sites.cache_key(state);
         self.duplicates.cache_key(state);
@@ -141,6 +152,12 @@ impl<'a> FileIndex<'a> {
     // How many files of the run hold `word` as a whole word of a string literal, the file being checked among them.
     pub fn string_word_count(&self, word: &str) -> u32 {
         self.project.reads.string_words.get(word).copied().unwrap_or_default()
+    }
+
+    // Whether the name is part of a library's public API: defined in or re-exported from a public module, whatever
+    // other modules of the project import from it.
+    pub fn is_library_api(&self, name: &str) -> bool {
+        self.library_api.is_some_and(|names| names.contains_key(name))
     }
 
     // Whether a library's users reach the name, and how.
@@ -162,10 +179,22 @@ impl<'a> FileIndex<'a> {
         self.uncaught_exceptions.is_some_and(|names| names.contains(name))
     }
 
+    // Whether a dotted path of the run names the module's `name`, as a string literal or a `patch.object` target does, or
+    // a computed read the run cannot resolve may read it.
+    pub fn is_named_by_path(&self, name: &str) -> bool {
+        self.referenced.is_some_and(|names| names.contains(name)) || self.project.module_reads.contains(name)
+    }
+
     // Whether another exported name's annotations, bases or bounds reach the module's class or alias `name`, which makes
     // it public API though no file imports it.
     pub fn is_api_reached(&self, name: &str) -> bool {
         self.api_reached.is_some_and(|names| names.contains(name))
+    }
+
+    // Whether a public class of the library inherits the member `member` of the class `class` this file defines
+    // without overriding it, so users reach the member through that public class.
+    pub fn is_inherited_api(&self, class: &str, member: &str) -> bool {
+        self.inherited.is_some_and(|names| names.contains(&format!("{class}.{member}")))
     }
 
     // Whether every use of the name in the run comes from a test module. An `import *` that may read a public name, or
@@ -179,6 +208,12 @@ impl<'a> FileIndex<'a> {
     // Whether some file star-imports the module, so the names its `__all__` lists land there.
     pub fn is_star_import_source(&self) -> bool {
         self.star_source
+    }
+
+    // Whether a write under a computed name may set any name of the module, as `setattr(module, name, value)` does, so
+    // a rename or move of its variables breaks the write.
+    pub fn is_computed_written(&self) -> bool {
+        self.id.is_some_and(|id| self.project.computed_writes.contains(&id))
     }
 
     // The index as it holds for `source`. The cycle, `import *` and repeated statements it keeps for the file are ranges
@@ -327,6 +362,7 @@ pub(super) fn module_uses(
     names: Vec<(FileId, String, String, FileId)>,
     sources: &FxHashMap<FileId, &FileFacts>,
     referenced: &FxHashMap<FileId, FxHashSet<String>>,
+    computed_writes: &FxHashSet<FileId>,
 ) -> FxHashMap<FileId, Vec<ModuleUse>> {
     let mut uses: FxHashMap<FileId, Vec<ModuleUse>> = FxHashMap::default();
     for (importer, bound, module, target) in names {
@@ -336,7 +372,8 @@ pub(super) fn module_uses(
         let patched = referenced.get(&target).is_some_and(|names| !names.is_empty());
         let rebound = facts.global_names.iter().cloned().collect();
         let defined = facts.defined.iter().cloned().collect();
-        let module = ModuleUse { bound, module, patched, defined, rebound };
+        let computed_written = computed_writes.contains(&target);
+        let module = ModuleUse { bound, module, patched, defined, rebound, computed_written };
         uses.entry(importer).or_default().push(module);
     }
     uses

@@ -2,7 +2,7 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-3:1 SMP404 `limit` is not in `__all__`; name it `_limit`
+3:1 SMP404 `limit` is not in `__all__`; list it there, or rename it to `_limit` by hand
 6:1 SMP404 `_LOGGER` is in `__all__`; name it `LOGGER` [unsafe fix: Rename `_LOGGER` to `LOGGER`]
 7:1 SMP404 `_listed` is in `__all__`; name it `listed` [unsafe fix: Rename `_listed` to `listed`]
 8:1 SMP404 `__hidden` is in `__all__`; name it `hidden` [unsafe fix: Rename `__hidden` to `hidden`]

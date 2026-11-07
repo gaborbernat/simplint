@@ -172,7 +172,7 @@ fn rule_needs_a_rule_or_all() {
 #[test_case(&["config"], "output-format\nfix\n" ; "list")]
 #[test_case(&["config", "fix"], "Enable fix behavior by-default" ; "text")]
 #[test_case(&["config", "fix", "--output-format", "json"], "{\n  \"doc\": \"Enable fix behavior" ; "json")]
-#[test_case(&["config", "--output-format", "json"], "{\n  \"api-modules\": {" ; "list_json")]
+#[test_case(&["config", "--output-format", "json"], "{\n  \"api-packages\": {" ; "list_json")]
 #[test_case(&["config", "naming.keep-names"], "A list of module-scope names" ; "nested")]
 fn config_describes_options(args: &[&str], start: &str) {
     let root = project(&[]);

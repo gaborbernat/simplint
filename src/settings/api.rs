@@ -56,22 +56,18 @@ pub struct ApiScope {
     // The top-level packages and modules the distribution ships; `None` when none could be found, so every module
     // outside the documentation and the tests counts.
     pub packages: Option<BTreeSet<String>>,
-    // Modules, besides the API packages themselves, whose `__all__` users import from directly.
-    pub modules: Vec<Vec<String>>,
 }
 
-// Where a module sits in the public API: `public` when users may import from it, and `entry` when its `__all__` is the
-// interface the author declares to them, rather than the names the rest of the project happens to use.
+// Where a module sits in the public API: `public` when users may import from it. The `__all__` of a public module is
+// the interface its author declares to them, so no name in it needs an importer in the project.
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub struct ModuleRole {
     pub public: bool,
-    pub entry: bool,
 }
 
 impl CacheKey for ModuleRole {
     fn cache_key(&self, state: &mut CacheKeyHasher) {
         self.public.cache_key(state);
-        self.entry.cache_key(state);
     }
 }
 
@@ -81,7 +77,7 @@ impl ApiScope {
         option: ProjectKindOption,
         build: &BuildConfiguration,
         metadata: &ProjectMetadata,
-        (packages, modules): (Option<&[String]>, Option<&[String]>),
+        packages: Option<&[String]>,
     ) -> Self {
         let library =
             option == ProjectKindOption::Library || option == ProjectKindOption::Auto && is_installable(root, build);
@@ -90,9 +86,7 @@ impl ApiScope {
             || shipped_packages(root, build, metadata),
             |names| Some(names.iter().map(|name| package_name(name)).collect()),
         );
-        let modules =
-            modules.unwrap_or_default().iter().map(|module| module.split('.').map(str::to_owned).collect()).collect();
-        Self { kind, packages, modules }
+        Self { kind, packages }
     }
 
     // A file's role from its module path, such as `["package", "module"]` or `["package", "__init__"]`; a file that is
@@ -120,10 +114,7 @@ impl ApiScope {
         // A dunder module such as `__about__` is public, but `__main__` runs as a script rather than being imported.
         let public = root.is_some()
             && !path.iter().any(|part| Visibility::of(part) == Visibility::Private || part == "__main__");
-        ModuleRole {
-            public,
-            entry: public && (root == Some(path.len()) || self.modules.iter().any(|module| module == path)),
-        }
+        ModuleRole { public }
     }
 }
 
@@ -132,7 +123,6 @@ impl CacheKey for ApiScope {
         (self.kind == ProjectKind::Library).cache_key(state);
         self.packages.iter().flatten().for_each(|package| package.cache_key(state));
         self.packages.is_some().cache_key(state);
-        self.modules.cache_key(state);
     }
 }
 

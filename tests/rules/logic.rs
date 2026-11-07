@@ -29,14 +29,21 @@ use crate::common::{self, check, read};
 #[test_case("single-use-variable", "single_use_variable_width.py", "py314" ; "single_use_variable_width")]
 #[test_case("single-use-variable", "single_use_variable_debug.py", "py314" ; "single_use_variable_debug")]
 #[test_case("single-use-variable", "single_use_variable_requote.py", "py311" ; "single_use_variable_requote")]
+#[test_case("single-use-variable", "single_use_variable_splice.py", "py314" ; "single_use_variable_splice")]
+#[test_case("single-use-variable", "single_use_variable_splice.py", "py311" ; "single_use_variable_splice_before_python312")]
+#[test_case("single-use-variable", "single_use_variable_parens.py", "py314" ; "single_use_variable_parens")]
+#[test_case("single-use-variable", "single_use_variable_field.py", "py314" ; "single_use_variable_field")]
+#[test_case("single-use-variable", "single_use_variable_lifetime.py", "py314" ; "single_use_variable_lifetime")]
 #[test_case("string-concatenation", "string_concatenation.py", "py314" ; "string_concatenation")]
 #[test_case("string-concatenation", "string_concatenation_old.py", "py310" ; "string_concatenation_py310")]
 #[test_case("string-concatenation", "string_concatenation_types.py", "py314" ; "string_concatenation_types")]
 #[test_case("string-concatenation", "string_concatenation_kinds.py", "py314" ; "string_concatenation_kinds")]
+#[test_case("string-concatenation", "string_concatenation_class.py", "py314" ; "string_concatenation_class")]
 #[test_case("string-concatenation", "string_concatenation_genexp.py", "py314" ; "string_concatenation_genexp")]
 #[test_case("string-concatenation", "string_concatenation_type_params.py", "py314" ; "string_concatenation_type_params")]
 #[test_case("string-concatenation", "string_concatenation_ruff_overlap.py", "py314" ; "string_concatenation_ruff_overlap")]
 #[test_case("unused-default", "unused_default.py", "py314" ; "unused_default")]
+#[test_case("unused-default", "unused_default_public_module.py", "py314" ; "unused_default_public_module")]
 #[test_case("error-message-matching", "error_message_matching.py", "py314" ; "error_message_matching")]
 #[test_case("up-comprehension-unpacking", "up_comprehension_unpacking.py", "py315" ; "comprehension_unpacking")]
 #[test_case("up-comprehension-unpacking", "up_comprehension_unpacking.py", "py314" ; "comprehension_unpacking_before_python315")]
@@ -86,6 +93,8 @@ use crate::common::{self, check, read};
 #[test_case("cognitive-complexity", "cognitive_complexity.py", "py314" ; "cognitive_complexity")]
 #[test_case("collection-built-by-statements", "collection_built_by_statements.py", "py314" ; "collection_built_by_statements")]
 #[test_case("collection-built-by-statements", "collection_built_by_statements_names.py", "py314" ; "collection_built_by_statements_names")]
+#[test_case("unnamed-regex-group", "unnamed_regex_group.py", "py314" ; "unnamed_regex_group")]
+#[test_case("unexplained-regex", "unexplained_regex.py", "py314" ; "unexplained_regex")]
 #[test_case("up-utf8-encoding-default", "up_utf8_encoding_default.py", "py315" ; "utf8_encoding_default")]
 #[test_case("up-utf8-encoding-default", "up_utf8_encoding_default.py", "py314" ; "utf8_encoding_default_before_python315")]
 #[test_case("up-utf8-encoding-default", "up_utf8_encoding_default_shadowed.py", "py315" ; "utf8_encoding_default_shadowed_open")]
@@ -217,34 +226,34 @@ fn single_use_decorator(target: &str, value: &str, decorator: &str, inlined: Opt
 // Before Python 3.12 a replacement field cannot hold a backslash or the f-string's own quote (PEP 701).
 #[test_case(
     "py311",
-    "def quote(value):\n    quoted = value.replace(\"'\", \"''\")\n    return f\"'{quoted}'\"\n",
+    "def quote(value):\n    quoted = value.replace(b\"'\", b\"''\")\n    return f\"'{quoted}'\"\n",
     None
     ; "quote_before_python312"
 )]
 #[test_case(
     "py312",
-    "def quote(value):\n    quoted = value.replace(\"'\", \"''\")\n    return f\"'{quoted}'\"\n",
-    Some("def quote(value):\n    return f\"'{value.replace(\"'\", \"''\")}'\"\n")
+    "def quote(value):\n    quoted = value.replace(b\"'\", b\"''\")\n    return f\"'{quoted}'\"\n",
+    Some("def quote(value):\n    return f\"'{value.replace(b\"'\", b\"''\")}'\"\n")
     ; "quote_from_python312"
 )]
 #[test_case(
     "py311",
-    "def join(items):\n    joined = \"\\n\".join(items)\n    return f\"{joined}\"\n",
+    "def join(items):\n    joined = b\"\\n\".join(items)\n    return f\"{joined}\"\n",
     None
     ; "backslash_before_python312"
 )]
 #[test_case(
     "py312",
-    "def join(items):\n    joined = \"\\n\".join(items)\n    return f\"{joined}\"\n",
-    Some("def join(items):\n    return f\"{\"\\n\".join(items)}\"\n")
+    "def join(items):\n    joined = b\"\\n\".join(items)\n    return f\"{joined}\"\n",
+    Some("def join(items):\n    return f\"{b\"\\n\".join(items)}\"\n")
     ; "backslash_from_python312"
 )]
 // A replacement field before Python 3.12 cannot hold a line break, so a value the source spreads over lines goes in on
-// one line, as the formatter joins it, and its string takes the other quote.
+// one line, as the formatter joins it.
 #[test_case(
     "py311",
-    "def join(items):\n    joined = (\n        \", \".join(items)\n    )\n    return f\"Items({joined})\"\n\n\ndef size(items):\n    count = len(items)\n    return f\"{count}\"\n",
-    Some("def join(items):\n    return f\"Items({', '.join(items)})\"\n\n\ndef size(items):\n    return f\"{len(items)}\"\n")
+    "def join(items):\n    joined = (\n        b', '.join(items)\n    )\n    return f\"Items({joined})\"\n\n\ndef size(items):\n    count = len(items)\n    return f\"{count}\"\n",
+    Some("def join(items):\n    return f\"Items({b', '.join(items)})\"\n\n\ndef size(items):\n    return f\"{len(items)}\"\n")
     ; "line_break_before_python312"
 )]
 #[test_case(
@@ -253,18 +262,18 @@ fn single_use_decorator(target: &str, value: &str, decorator: &str, inlined: Opt
     Some("def size(items):\n    return f\"{len(items)}\"\n")
     ; "other_value_before_python312"
 )]
-// A field of an f-string that holds a string cannot take the other quote before Python 3.12, so the value stays, and
-// the fixes it does not block still apply.
+// An f-string value in a bare field is spliced into the f-string around it, so its strings keep their quote before
+// Python 3.12 too, and the fixes it does not block still apply.
 #[test_case(
     "py311",
     "def render(items):\n    prepr = f\"[{','.join(items)}]\"\n    return f\"Items({prepr})\"\n\n\ndef size(items):\n    count = len(items)\n    return f\"{count}\"\n",
-    Some("def render(items):\n    prepr = f\"[{','.join(items)}]\"\n    return f\"Items({prepr})\"\n\n\ndef size(items):\n    return f\"{len(items)}\"\n")
+    Some("def render(items):\n    return f\"Items([{','.join(items)}])\"\n\n\ndef size(items):\n    return f\"{len(items)}\"\n")
     ; "nested_string_before_python312"
 )]
 #[test_case(
     "py312",
     "def render(items):\n    prepr = f\"[{','.join(items)}]\"\n    return f\"Items({prepr})\"\n",
-    Some("def render(items):\n    return f\"Items({f\"[{','.join(items)}]\"})\"\n")
+    Some("def render(items):\n    return f\"Items([{','.join(items)}])\"\n")
     ; "nested_string_from_python312"
 )]
 fn single_use_fstring_quote(target: &str, source: &str, inlined: Option<&str>) {
@@ -370,7 +379,7 @@ fn unused_default_counts_calls_from_other_files() {
 #[test]
 fn unused_default_leaves_the_public_api_alone() {
     let root = common::project(&[
-        ("pyproject.toml", "[tool.simplint]\nproject-kind = \"library\"\napi-modules = [\"core\"]\n"),
+        ("pyproject.toml", "[tool.simplint]\nproject-kind = \"library\"\n"),
         ("core.py", "__all__ = [\"connect\"]\n\n\ndef connect(host, timeout=30):\n    return host, timeout\n"),
         ("main.py", "from core import connect\n\nconnect(\"a\", 1)\n"),
     ]);
@@ -569,4 +578,21 @@ fn up_re_prefixmatch_leaves_truth_tests_to_ruf055(preview: &str, body: &str, rep
     let (_, stdout, _) =
         common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP522", "--output-format", "json"]);
     assert_eq!(stdout.matches("\"code\": \"SMP522\"").count(), reported, "{stdout}");
+}
+
+// Code outside a library may call the public functions and classes of its public modules without the argument, even
+// when every call in the run passes it. A private function there is still judged.
+#[test]
+fn unused_default_leaves_public_functions_of_library_modules_alone() {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.simplint]\nproject-kind = \"library\"\n"),
+        ("core.py", "def connect(host, timeout=30):\n    return host, timeout\n\n\nconnect(\"a\", 5)\n"),
+        ("_core.py", "def _connect(host, timeout=30):\n    return host, timeout\n\n\n_connect(\"a\", 5)\n"),
+    ]);
+    let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP506"]);
+    assert_eq!(
+        stdout,
+        "_core.py:1:28: SMP506 Every call to `_connect` passes `timeout`; drop its default `30`\nFound 1 error.\n1 unsafe \
+         fix available with `--fix --unsafe-fixes`.\n"
+    );
 }

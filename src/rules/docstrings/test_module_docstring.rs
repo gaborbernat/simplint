@@ -7,6 +7,9 @@ use crate::rules::docstring;
 use crate::rules::edits::statement_deletion;
 
 pub fn test_module_docstring(checker: &Checker) {
+    if checker.in_nested_project() {
+        return;
+    }
     if !checker.is_test_module() {
         return;
     }

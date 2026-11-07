@@ -5,6 +5,9 @@ use crate::lint::registry::Rule;
 use crate::rules::docstrings::rst::{FieldKind, Owner, field_deletion};
 
 pub fn rst_type_field(checker: &Checker) {
+    if checker.in_nested_project() {
+        return;
+    }
     for target in checker.state().rst_targets(checker) {
         let parameters = target.parameters().unwrap_or_default();
         let annotated = |name: &str| parameters.iter().any(|parameter| parameter.name == name && parameter.annotated);

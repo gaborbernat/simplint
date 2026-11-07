@@ -7,6 +7,9 @@ use crate::lint::registry::Rule;
 use crate::rules::{docstring, long_paragraphs};
 
 pub fn long_docstring_paragraph(checker: &Checker) {
+    if checker.in_nested_project() {
+        return;
+    }
     let limit = checker.settings.project.knobs.max_paragraph_words;
     let bodies = iter::once(checker.body())
         .chain(checker.function_defs().iter().map(|function| function.body.as_slice()))

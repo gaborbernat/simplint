@@ -8,7 +8,6 @@ use ruff_python_ast::PythonVersion;
 use ruff_workspace::resolver::match_exclusion;
 
 use crate::lint::registry::RuleSet;
-use crate::rules::classes::dataclass_kw_only;
 use crate::settings::Settings;
 
 // The settings a file is linted with: its project's, the rules left on for it, and what Ruff decides for it.
@@ -17,21 +16,15 @@ pub struct FileSettings<'a> {
     pub project: &'a Settings,
     pub from_ruff: FromRuff,
     pub rules: RuleSet,
+    pub is_test: bool,
 }
 
 impl<'a> FileSettings<'a> {
     pub fn new(project: &'a Settings, ruff: &ruff_workspace::Settings, path: &Path) -> Self {
         let from_ruff = FromRuff::of(ruff, path);
         let rules = project.rules_for(path).for_target(from_ruff.target_version);
-        Self { project, from_ruff, rules }
-    }
-
-    pub fn rewrites_dataclass_calls(&self) -> bool {
-        dataclass_kw_only::rewrites_calls(self)
-    }
-
-    pub fn is_test_module(&self, path: &Path) -> bool {
-        self.project.is_test_module(path)
+        let is_test = project.is_test_module(path);
+        Self { project, from_ruff, rules, is_test }
     }
 }
 

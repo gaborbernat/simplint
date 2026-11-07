@@ -1,0 +1,15 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+8:5 SMP102 Module-scope variable `shared` should be named `SHARED` [unsafe fix: Rename `shared` to `SHARED`]
+--- fixed (1 applied, 0 remaining) ---
+import sys
+
+if sys.version_info < (3, 10):
+    msg = "requires Python 3.10"
+    raise RuntimeError(msg)
+
+if sys.platform == "linux":
+    SHARED = 1
+print(SHARED)

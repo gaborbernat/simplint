@@ -8,7 +8,7 @@ pub(crate) mod receivers;
 
 pub use docs::DocReferences;
 pub use facts::{FileFacts, Parts};
-pub use index::{Exposure, FileIndex, ImportResolver, IndexInputs, Project, SearchRoots, StarSite};
+pub use index::{Exposure, External, FileIndex, ImportResolver, IndexInputs, Project, SearchRoots, StarSite};
 
 // What a run does with the structures it built once its output is out. A one-shot CLI process exits next, so freeing
 // them only delays the exit; watch mode and library callers go on, and drop them.

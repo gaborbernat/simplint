@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 use std::cell::{Cell, OnceCell, RefCell};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use ruff_db::diagnostic::{Annotation, Diagnostic, DiagnosticId, LintName, SecondaryCode, Severity, Span};
 use ruff_diagnostics::Fix;
@@ -11,7 +11,7 @@ use ruff_python_codegen::Stylist;
 use ruff_python_index::Indexer;
 use ruff_python_parser::Parsed;
 use ruff_python_trivia::{CommentRanges, has_leading_content};
-use ruff_source_file::{LineRanges, OneIndexed, SourceFile};
+use ruff_source_file::{LineRanges, OneIndexed, SourceFile, SourceFileBuilder};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 use rustc_hash::FxHashMap;
 
@@ -23,6 +23,19 @@ use crate::rules::FileState;
 use crate::semantic::Semantic;
 use crate::settings::FileSettings;
 use crate::syntax::{Exports, dunder_all, for_each_body, string_values};
+
+// A location a report points at besides its primary one, with the message that says what it is.
+pub struct Related {
+    pub path: PathBuf,
+    pub range: TextRange,
+    pub message: String,
+}
+
+// The source of a file of the run, read for a location in it, under the name the run gives the file.
+pub(crate) fn source_file_at(path: &Path) -> Option<SourceFile> {
+    let source = std::fs::read_to_string(path).ok()?;
+    Some(SourceFileBuilder::new(path.to_string_lossy(), source).finish())
+}
 
 pub struct Checker<'a> {
     pub path: &'a Path,
@@ -108,7 +121,29 @@ impl<'a> Checker<'a> {
         fix: Option<Fix>,
         title: impl Into<String>,
     ) {
+        self.report_related(rule, range, message, fix, title, Vec::new());
+    }
+
+    // A report that also points at other locations, in this file or any other of the run. The locations a file cannot
+    // be read for are left out, since the report is still about its primary location.
+    pub fn report_related(
+        &self,
+        rule: Rule,
+        range: TextRange,
+        message: impl Into<String>,
+        fix: Option<Fix>,
+        title: impl Into<String>,
+        related: Vec<Related>,
+    ) {
         let mut diagnostic = self.diagnostic(rule, range, message);
+        for location in related {
+            let file =
+                if location.path == self.path { Some(self.file.clone()) } else { source_file_at(&location.path) };
+            if let Some(file) = file {
+                let span = Span::from(file).with_range(location.range);
+                diagnostic.annotate(Annotation::secondary(span).message(location.message));
+            }
+        }
         // Applying a fix and rendering its diff both walk its edits in order, which unsorted or overlapping
         // edits break.
         debug_assert!(fix.as_ref().is_none_or(disjoint_edits), "{} built a fix with overlapping edits", rule.name());
@@ -229,7 +264,13 @@ impl<'a> Checker<'a> {
     }
 
     pub fn is_test_module(&self) -> bool {
-        self.settings.is_test_module(self.path)
+        self.settings.is_test
+    }
+
+    // Whether the file belongs to a nested test project, whose files are test input for the rules that judge their
+    // docstrings and the visibility of their names.
+    pub fn in_nested_project(&self) -> bool {
+        self.settings.project.nested
     }
 
     pub fn file_name(&self) -> &str {
