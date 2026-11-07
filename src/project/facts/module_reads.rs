@@ -9,7 +9,8 @@ use crate::syntax::attribute_call;
 
 // A module loaded by a computed name, as `importlib.import_module(f"pkg.{name}")` or a test fixture typed `ModuleType`,
 // hands over whichever module that name picks, so each attribute read off it may be a name of any module. `modules` are
-// the names bound to module objects, which the scan of the file collects.
+// the names bound to module objects, which the scan of the file collects, and the ones of unresolved specs the visit
+// adds.
 pub(super) fn module_reads(body: &[Stmt], modules: &FxHashSet<String>) -> Vec<String> {
     if modules.is_empty() {
         return Vec::new();

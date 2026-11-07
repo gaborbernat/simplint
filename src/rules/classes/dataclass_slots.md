@@ -1,5 +1,8 @@
 Flags dataclasses declared without `slots=True`.
 
+The public dataclasses of a library are not reported: users construct and subclass them, so `slots=True` is their choice
+to make.
+
 ## Why is this bad?
 
 [Slots](https://docs.python.org/3/reference/datamodel.html#slots) reject writes to misspelled attributes, as an instance
@@ -68,6 +71,23 @@ class Release:
         version: str
     ```
 
+  - `@dataclass(**DC_KW)`: a `**` splat of a module-level dict literal, or of a `dict(...)` call with keyword arguments,
+    counts the options its keys set. Here `slots` is set, so the class is accepted.
+
+    ```python ok
+    from dataclasses import dataclass
+
+    DC_KW = {"frozen": True, "slots": True}
+
+
+    @dataclass(**DC_KW)
+    class Release:
+        version: str
+    ```
+
+  - A `**` splat simplint cannot read, such as `**get_kw()`, a name bound more than once or changed in place, or a dict
+    literal with a `**` entry or a repeated key, leaves the class unreported, since the options may be set.
+
   - `@dataclass(frozen=True, slots=True)`: `slots` is a literal `True`, so it is accepted.
 
     ```python ok
@@ -100,6 +120,9 @@ class Release:
 ### Fix
 
 The fix sets `slots=True` on the decorator. No fix is offered for:
+
+- a decorator whose `**` splat sets `slots` to a value other than `True`: the fix cannot take the key out of the dict,
+  and adding `slots=True` would repeat it
 
 - a class without fields, such as a test fixture standing for a dataclass with the default options
 

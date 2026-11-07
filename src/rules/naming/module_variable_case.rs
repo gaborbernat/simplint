@@ -11,6 +11,9 @@ use crate::rules::module_variable::{ModuleVariable, module_variables};
 use crate::rules::rename::rename_fix;
 
 pub fn module_variable_case(checker: &Checker) {
+    if checker.in_nested_project() {
+        return;
+    }
     let named_tuples = OnceCell::new();
     for variable in module_variables(checker) {
         let stem = variable.name.trim_start_matches('_');

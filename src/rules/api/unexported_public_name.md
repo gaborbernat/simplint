@@ -162,8 +162,8 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
         pass
     ```
 
-  - names a file reads off a module loaded by a computed name, such as the result of `importlib.import_module`, or off a
-    parameter annotated `ModuleType`:
+  - names a file reads off a module loaded by a computed name, such as the result of `importlib.import_module`, off a
+    parameter annotated `ModuleType`, or off a module whose spec loads from a path no static expression names:
 
     ```python ok
     import importlib
@@ -177,6 +177,44 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
 
 
     __all__ = []
+    ```
+
+  - names read off the result of a string-named import call, such as `pytest.importorskip("plugins")`, directly or
+    through a variable it is assigned to:
+
+    ```python ok file=plugins.py
+    __all__ = []
+
+
+    def helper() -> int:
+        return 1
+    ```
+
+    ```python context file=test_plugins.py
+    import pytest
+
+    helper = pytest.importorskip("plugins").helper
+    ```
+
+  - names read off a module loaded from a file path with `importlib.util.spec_from_file_location` and
+    `module_from_spec`, when the path names a project module, as `Path(__file__).parent / "plugins.py"` does:
+
+    ```python ok file=plugins.py
+    __all__ = []
+
+
+    def helper() -> int:
+        return 1
+    ```
+
+    ```python context file=test_plugins.py
+    import importlib.util
+    from pathlib import Path
+
+    spec = importlib.util.spec_from_file_location("plugins", Path(__file__).parent / "plugins.py")
+    assert spec is not None
+    module = importlib.util.module_from_spec(spec)
+    helper = module.helper
     ```
 
 - **Classes in the signature of an exported name**: a class that an exported function's annotations, or an exported
@@ -230,6 +268,24 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
   __all__ = []
   ```
 
+- **Build backend hooks** of the module that `build-backend` names in `[build-system]`: a build frontend calls the PEP
+  517 and PEP 660 hooks by name.
+
+  ```toml config
+  [build-system]
+  build-backend = "build_backend"
+  requires = ["setuptools"]
+  backend-path = ["."]
+  ```
+
+  ```python ok file=build_backend.py
+  def build_wheel(wheel_directory: str) -> str:
+      return wheel_directory
+
+
+  __all__ = []
+  ```
+
 - **The `t_` lexer rules and `p_` grammar productions of a module that imports [PLY](https://github.com/dabeaz/ply)'s
   `lex` or `yacc`**: PLY finds them by name.
 
@@ -253,6 +309,9 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
 The fix renames the name to `_name` everywhere in the file. **Unsafe fix:** always, as importers outside the run keep
 the old name, and a renamed class changes its `repr` and the name pickle stores. If the name is meant to be public, add
 it to `__all__` instead.
+
+In a public module of a library there is no fix: its names are the API users import, so the report asks for the name in
+`__all__` or a rename by hand.
 
 ```python report
 __all__ = ["exported"]
@@ -412,6 +471,8 @@ No fix is offered when:
       def label(self) -> str:
           return type(self).__name__
   ```
+
+- a file of the run sets an attribute of the module under a computed name, as `setattr(module, name, value)` does
 
 - the old name also names something a text rename cannot tell apart: a parameter, a local variable, a class attribute, a
   keyword argument or an attribute access

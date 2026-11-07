@@ -1,5 +1,8 @@
 Flags dataclasses declared without `frozen=True`.
 
+The public dataclasses of a library are not reported: users construct and subclass them, so `frozen=True` is their
+choice to make.
+
 ## Why is this bad?
 
 Any code holding a reference to a mutable dataclass can change it, so a reader cannot trust a value they saw at
@@ -81,6 +84,26 @@ class Release:
         version: str
     ```
 
+  - `@dataclass(**DC_KW)`: a `**` splat of a module-level dict literal, or of a `dict(...)` call with keyword arguments,
+    counts the options its keys set. Here `frozen` is set, so the class is accepted.
+
+    ```python ok
+    from dataclasses import dataclass
+
+    DC_KW = {"frozen": True, "slots": True}
+
+
+    @dataclass(**DC_KW)
+    class Release:
+        version: str
+    ```
+
+  - `@dataclass(**SLOTS_KW)` with `SLOTS_KW = {"slots": True}`: `frozen` is not set, so it is reported and the fix
+    appends `frozen=True` after the splat.
+
+  - A `**` splat simplint cannot read, such as `**get_kw()`, a name bound more than once or changed in place, or a dict
+    literal with a `**` entry or a repeated key, leaves the class unreported, since the options may be set.
+
 ### Fix
 
 The fix sets `frozen=True` on the decorator. No fix is offered for:
@@ -94,6 +117,20 @@ The fix sets `frozen=True` on the decorator. No fix is offered for:
   @dataclass
   class Empty:
       pass
+  ```
+
+- a decorator whose `**` splat sets `frozen` to a value other than `True`, such as `FROZEN_OFF = {"frozen": False}`: the
+  fix cannot take the key out of the dict, and adding `frozen=True` would repeat it
+
+  ```python report
+  from dataclasses import dataclass
+
+  FROZEN_OFF = {"frozen": False}
+
+
+  @dataclass(**FROZEN_OFF)
+  class Release:
+      version: str
   ```
 
 - a class the module creates inside `with pytest.raises(...)` or `with self.assertRaises(...)`: the test expects code

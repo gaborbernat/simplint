@@ -6,10 +6,13 @@ use ruff_text_size::{TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rst::{Field, FieldKind, Owner, Target, field_deletion, field_insertion, rank};
+use crate::rules::docstrings::rst::{Field, FieldKind, Owner, Target, field_deletion};
 use crate::syntax::{ReturnVisitor, has_decorator, last_segment};
 
 pub fn rst_returns(checker: &Checker) {
+    if checker.in_nested_project() {
+        return;
+    }
     for target in checker.state().rst_targets(checker) {
         let Some(def) = returning_function(checker, target) else {
             continue;
@@ -46,12 +49,10 @@ fn generator_fields(checker: &Checker, target: &Target, name: &str) {
             "Rename the field to `:yields:`",
         );
     } else if target.public(checker) && !has_yields {
-        checker.report_fix(
+        checker.report(
             Rule::RstReturns,
             docstring.range(),
             format!("`{name}` yields values, yet its docstring has no `:yields:` field"),
-            field_insertion_of(checker, target, ":yields:"),
-            "Add `:yields:`",
         );
     }
 }
@@ -79,12 +80,10 @@ fn return_fields(checker: &Checker, target: &Target, def: &ast::StmtFunctionDef,
         }
     };
     if target.public(checker) && returns_value && !has_returns {
-        checker.report_fix(
+        checker.report(
             Rule::RstReturns,
             docstring.range(),
             format!("`{name}` returns a value, yet its docstring has no `:returns:` field"),
-            field_insertion_of(checker, target, ":returns:"),
-            "Add `:returns:`",
         );
     }
     // Without an annotation, a body that is only a placeholder, as in an abstract method, says nothing of the return.
@@ -98,13 +97,6 @@ fn return_fields(checker: &Checker, target: &Target, def: &ast::StmtFunctionDef,
             "Remove the return fields",
         );
     }
-}
-
-// The insertion of a field the docstring lacks, ranked among the fields it has.
-fn field_insertion_of(checker: &Checker, target: &Target, text: &str) -> Option<Fix> {
-    let parameters = target.parameters().unwrap_or_default();
-    let added = [(rank(FieldKind::Returns, None, &parameters), text.to_owned())];
-    field_insertion(checker, &target.docstring, &parameters, &added)
 }
 
 // A quoted annotation, as in `-> "None"`, returns what its unquoted form does.

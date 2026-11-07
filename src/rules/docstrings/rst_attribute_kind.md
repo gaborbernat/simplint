@@ -141,6 +141,7 @@ Checks the docstrings of classes, when `docstring-style = "rst"`, for attribute 
 | Attribute                                                                          | Kind               | Field                |
 | ---------------------------------------------------------------------------------- | ------------------ | -------------------- |
 | a `ClassVar`                                                                       | class variable     | `:cvar:`             |
+| a `Final` with a value in the class body, as `SHOW: Final = 1`                     | class variable     | `:cvar:`             |
 | a name the class body assigns without an annotation, that no method sets on `self` | class variable     | `:cvar:`             |
 | an annotated field                                                                 | instance attribute | `:ivar:`             |
 | a name a method sets on `self`                                                     | instance attribute | `:ivar:`             |

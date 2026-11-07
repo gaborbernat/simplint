@@ -37,6 +37,11 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     // `+` calls an operand's own `__add__` or `__radd__`, and raises `TypeError` for one that is not text, where the
     // f-string formats any value: the two agree only when every operand is surely a `str`.
     let mut kinds = Kinds::new(walker, range);
+    // An object of a class the module defines may override `+` on its own, as `Markup` escapes its operand, so the
+    // f-string would change what the code does.
+    if operands.iter().any(|operand| kinds.is_class_instance(operand)) {
+        return;
+    }
     let texts = operands.iter().all(|operand| kinds.is_str(operand));
     // A comment between the operands has no place in the f-string, so rewriting would drop it.
     let fix = fstring(checker, &operands, walker.in_fstring())

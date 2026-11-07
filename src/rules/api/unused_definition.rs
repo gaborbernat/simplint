@@ -11,6 +11,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::project::computed_reads::ComputedReads;
 use crate::rules::api::{listed_exports, references_outside};
+use crate::rules::is_documented;
 use crate::semantic::Evaluation;
 use crate::syntax::{Visibility, module_statements};
 
@@ -154,18 +155,6 @@ fn members(checker: &Checker, class: &ast::StmtClassDef, local_reads: &ComputedR
             );
         }
     }
-}
-
-// Whether the project's documentation names the definition, by its dotted name under the module's package, or from
-// the module's own name when the run cannot tell its package.
-fn is_documented(checker: &Checker, names: &[&str]) -> bool {
-    let stem = checker.file_name().strip_suffix(".py").unwrap_or(checker.file_name());
-    let (module, anchored) = match checker.module_path() {
-        Some(path) => (path.iter().map(String::as_str).collect(), true),
-        None => (vec![stem], false),
-    };
-    let qualified = module.into_iter().chain(names.iter().copied()).collect::<Vec<_>>().join(".");
-    checker.project().is_documented(&qualified, anchored)
 }
 
 // Whether the run reads the name by an import or a dotted string, or code the index cannot follow reads it.

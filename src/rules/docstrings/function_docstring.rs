@@ -13,25 +13,29 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::comments::is_tool_directive;
 use crate::rules::edits::{lines_with_trailing_blanks, statement_deletion};
-use crate::rules::{docstring, indentation};
+use crate::rules::{docstring, indentation, is_documented};
 
 pub fn function_docstring(checker: &Checker) {
+    if checker.in_nested_project() {
+        return;
+    }
     // Code that reads docstrings off objects, such as a test asserting `func.__doc__` or a framework turning them into
     // help text or a schema, may read any of them, and which ones it reads does not show.
     if checker.project().reads_docstrings() {
         return;
     }
     let api = checker.state().public_api(checker);
+    // A function or class an autodoc directive documents renders its docstring for its users, as public API does.
     let owners = checker
         .function_defs()
         .iter()
-        .filter(|function| !api.covers(function.range))
+        .filter(|function| !api.covers(function.range) && !is_documented(checker, &[function.name.as_str()]))
         .map(|function| (function.range, function.body.as_slice(), function.decorator_list.as_slice(), "Function"))
         .chain(
             checker
                 .class_defs()
                 .iter()
-                .filter(|class| !api.covers(class.range))
+                .filter(|class| !api.covers(class.range) && !is_documented(checker, &[class.name.as_str()]))
                 .map(|class| (class.range, class.body.as_slice(), class.decorator_list.as_slice(), "Class")),
         );
     let levels = OnceCell::new();
@@ -54,15 +58,23 @@ pub fn function_docstring(checker: &Checker) {
         // One short line rarely says more than the name; anything longer may state a contract the code does not show,
         // such as a tie-break rule, so its text stays as a comment.
         let restates = lines.len() <= 1 && lines.iter().all(|line| line.split_whitespace().count() <= 5);
+        // The signature documents the parameters and results, so the comment leaves their field lists out.
+        let documented = drop_fields(&lines);
         // Rewriting the docstring can leave a file-level `noqa` code unused, as with the lines it shortened.
         let (fix, title) = if file_noqa {
             (None, "Remove the docstring")
-        } else if restates {
+        } else if restates || documented.is_empty() {
             (removal(checker, stmt, owner_body).map(Fix::unsafe_edit), "Remove the docstring")
         } else {
             (
-                comment_replacement(checker, owner, owner_body, &lines, levels.get_or_init(|| block_levels(checker)))
-                    .map(Fix::unsafe_edit),
+                comment_replacement(
+                    checker,
+                    owner,
+                    owner_body,
+                    &documented,
+                    levels.get_or_init(|| block_levels(checker)),
+                )
+                .map(Fix::unsafe_edit),
                 "Turn the docstring into a comment",
             )
         };
@@ -246,6 +258,97 @@ fn cleaned_lines(text: &str) -> Vec<String> {
 fn is_underline(line: &str) -> bool {
     let trimmed = line.trim();
     trimmed.len() >= 3 && trimmed.chars().all(|char| matches!(char, '-' | '=' | '~' | '^' | '*' | '+' | '#' | '_'))
+}
+
+// The sections documenting parameters and results, in Google style with a colon and in numpydoc without one.
+const SECTIONS: [&str; 10] = [
+    "Args",
+    "Arguments",
+    "Keyword Args",
+    "Keyword Arguments",
+    "Parameters",
+    "Other Parameters",
+    "Returns",
+    "Return",
+    "Yields",
+    "Raises",
+];
+
+// Drops the reST fields and the sections that document the signature, with their bodies, and the blank lines that
+// would be left separating nothing.
+fn drop_fields(lines: &[String]) -> Vec<String> {
+    let mut kept: Vec<String> = Vec::new();
+    let mut index = 0;
+    while index < lines.len() {
+        if let Some(end) = field_block_end(lines, index) {
+            index = end;
+            continue;
+        }
+        let line = &lines[index];
+        if !(line.is_empty() && kept.last().is_none_or(String::is_empty)) {
+            kept.push(line.clone());
+        }
+        index += 1;
+    }
+    while kept.last().is_some_and(String::is_empty) {
+        kept.pop();
+    }
+    kept
+}
+
+// The index after the field or section starting at `start`, when it starts one.
+fn field_block_end(lines: &[String], start: usize) -> Option<usize> {
+    let line = &lines[start];
+    let trimmed = line.trim();
+    let lead = indent_width(line);
+    if is_field(trimmed) {
+        return Some(indented_end(lines, start, lead));
+    }
+    let (name, colon) = match trimmed.strip_suffix(':') {
+        Some(name) => (name, true),
+        None => (trimmed, false),
+    };
+    if !SECTIONS.contains(&name) {
+        return None;
+    }
+    if colon {
+        return Some(indented_end(lines, start, lead));
+    }
+    // A numpydoc section lists its names at the header's own indentation, so its body runs up to a blank line or the
+    // next section.
+    let body = lines[start + 1..]
+        .iter()
+        .position(|line| line.trim().is_empty() || SECTIONS.contains(&line.trim()))
+        .unwrap_or(lines.len() - start - 1);
+    Some(start + 1 + body)
+}
+
+// The index after the last line indented past `lead` that follows `start`, blank lines in between included.
+fn indented_end(lines: &[String], start: usize, lead: usize) -> usize {
+    let mut end = start + 1;
+    for (offset, line) in lines[start + 1..].iter().enumerate() {
+        if line.trim().is_empty() {
+            continue;
+        }
+        if indent_width(line) <= lead {
+            break;
+        }
+        end = start + 2 + offset;
+    }
+    end
+}
+
+// A reST field such as `:param name: text` or `:return:`, not a role such as `:py:func:` that opens a sentence.
+fn is_field(trimmed: &str) -> bool {
+    trimmed.strip_prefix(':').is_some_and(|rest| {
+        rest.split_once(':').is_some_and(|(name, tail)| {
+            !name.is_empty() && !name.contains('`') && (tail.is_empty() || tail.starts_with(char::is_whitespace))
+        })
+    })
+}
+
+fn indent_width(line: &str) -> usize {
+    line.len() - line.trim_start().len()
 }
 
 // Lines that fit are kept as written, so lists and indented blocks keep their shape. What a long line wraps over joins

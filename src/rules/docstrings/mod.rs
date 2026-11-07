@@ -45,7 +45,7 @@ use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
-use crate::project::Exposure;
+use crate::project::{Exposure, FileIndex};
 use crate::syntax::{Exports, Visibility, decorator_names, is_overload, module_statements};
 
 enum ApiKind {
@@ -129,7 +129,7 @@ impl<'a> PublicApi<'a> {
                     None if dynamic && Visibility::of(&class.name) == Visibility::Public => {
                         api.maybe_public.push(class.range);
                     }
-                    None => {}
+                    None => api.inherited_members(class, &project),
                 },
                 Stmt::Assign(ast::StmtAssign { targets, .. }) => {
                     for target in targets.iter().filter_map(Expr::as_name_expr) {
@@ -155,6 +155,36 @@ impl<'a> PublicApi<'a> {
     fn variable(&mut self, stmt: &'a Stmt, next: Option<&'a Stmt>, target: &'a ast::ExprName, via: Option<&'a Path>) {
         let name = target.id.to_string();
         self.items.push(ApiItem { stmt, name, range: target.range, kind: ApiKind::Variable, next, via });
+    }
+
+    // The public methods and properties a class the file defines, such as a private mixin, that a public class of the
+    // library inherits without overriding them: users reach them through that public class.
+    fn inherited_members(&mut self, class: &'a ast::StmtClassDef, project: &FileIndex) {
+        let name = class.name.as_str();
+        for member in module_statements(&class.body) {
+            let Stmt::FunctionDef(method) = member else {
+                continue;
+            };
+            let method_name = method.name.as_str();
+            let decorators = decorator_names(&method.decorator_list);
+            if Visibility::of(method_name) != Visibility::Public
+                || decorators
+                    .iter()
+                    .any(|decorator| matches!(*decorator, "override" | "setter" | "deleter" | "overload"))
+                || !project.is_inherited_api(name, method_name)
+            {
+                continue;
+            }
+            let kind = if decorators.contains(&"property") { ApiKind::Property } else { ApiKind::Method };
+            self.items.push(ApiItem {
+                stmt: member,
+                name: format!("{name}.{method_name}"),
+                range: method.name.range,
+                kind,
+                next: None,
+                via: None,
+            });
+        }
     }
 
     // A public class, its public methods and properties, and its public nested classes with theirs.

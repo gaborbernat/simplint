@@ -7,7 +7,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 10:23 SMP503 Build text with an f-string instead of `+`
 14:12 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
 14:19 SMP503 Build text with an f-string instead of `+` [unsafe fix: Replace the concatenation with an f-string]
---- fixed (3 applied, 2 remaining) ---
+18:12 SMP503 Build text with an f-string instead of `+`
+--- fixed (3 applied, 3 remaining) ---
 def greet(names: dict[str, str]) -> str:
     return f"Hello {names['first']!s} and {names['last']!s}"
 
@@ -22,3 +23,7 @@ def nested(prefix: str, width: int) -> str:
 
 def nested_sum(label: str) -> str:
     return f"a{f'b{label}'}"
+
+
+def triple_quoted_operand_keeps_its_quote(name: str) -> str:
+    return "<" + name.replace("""a""", 'b') + ">"

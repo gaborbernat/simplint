@@ -31,9 +31,13 @@ pub(crate) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) ->
     for (stmt, next) in module_statements_with_next(&class.body) {
         let documented = is_documented_variable(checker, stmt, next);
         match stmt {
-            Stmt::AnnAssign(ast::StmtAnnAssign { target, annotation, .. }) => {
-                if let Some(name) = target.as_name_expr() {
-                    add(name.id.as_str(), last_segment(unsubscripted(annotation)) == Some("ClassVar"), documented);
+            Stmt::AnnAssign(ast::StmtAnnAssign { target, annotation, value, .. }) => {
+                // A `Final` with a value in a class body is a class variable, as PEP 591 says; without one it is an
+                // instance attribute set in `__init__`.
+                let final_constant = value.is_some() && last_segment(unsubscripted(annotation)) == Some("Final");
+                let class_var = final_constant || last_segment(unsubscripted(annotation)) == Some("ClassVar");
+                for name in std::iter::once(target.as_ref()).filter_map(Expr::as_name_expr) {
+                    add(name.id.as_str(), class_var, documented);
                 }
             }
             Stmt::Assign(ast::StmtAssign { targets, value, .. }) => {

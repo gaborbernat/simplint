@@ -155,6 +155,24 @@ fn cached_report_is_checked_again_when_ruff_starts_running_the_rule() {
     assert_eq!(check(root.path(), &["--select", "SMP004", "--config", "lint.select = [\"PGH004\"]"]).0, 0);
 }
 
+// A pre-commit hook for flake8-lazy turns the rule off for the project, so the cached report is not reused.
+#[test]
+fn cached_absolute_sibling_import_report_is_checked_again_when_flake8_lazy_is_configured() {
+    let root = project(&[
+        ("package/__init__.py", ""),
+        ("package/sub/__init__.py", ""),
+        ("package/sub/sibling.py", "VALUE = 1\n"),
+        ("package/sub/module.py", "from package.sub import sibling\n"),
+    ]);
+    let first = check(root.path(), &["--select", "SMP302"]).0;
+    fs::write(
+        root.path().join(".pre-commit-config.yaml"),
+        "repos:\n  - repo: local\n    hooks:\n      - id: flake8-lazy\n",
+    )
+    .expect("write");
+    assert_eq!((first, check(root.path(), &["--select", "SMP302"]).0), (1, 0));
+}
+
 // A function whose statements another file repeats, so `duplicate-code` reports both.
 const REPEATED: &str = "def run(items):\n    total = 0\n    for item in items:\n        total += item\n    count = len(items)\n    \
                         log(total)\n    log(count)\n    return total\n";
@@ -187,6 +205,15 @@ const REPEATED: &str = "def run(items):\n    total = 0\n    for item in items:\n
     &[("first.py", REPEATED), ("second.py", "def run(items):\n    return items\n")],
     "SMP530", "second.py", REPEATED ; "another_file_repeats_its_statements"
 )]
+#[test_case(
+    &[
+        ("pyproject.toml", "[project]\nname = \"ws\"\n[tool.simplint]\n"),
+        ("sub/pyproject.toml", "[build-system]\nrequires = []\n[project]\nname = \"demo\"\n"),
+        ("sub/demo/__init__.py", "from ._app import run\n\n__all__ = [\"run\"]\n"),
+        ("sub/demo/_app.py", "def run() -> None:\n    \"\"\"Run.\"\"\"\n"),
+    ],
+    "SMP407", "sub/pyproject.toml", "[project]\nname = \"demo\"\n" ; "member_becomes_an_application"
+)]
 fn cached_clean_file_is_checked_again_after_an_edit(files: &[(&str, &str)], select: &str, edited: &str, content: &str) {
     let root = project(files);
     let first = check(root.path(), &["--select", select]).0;
@@ -207,6 +234,16 @@ fn other_file_edit_invalidates_only_cross_file_selections(select: &str, expected
     fs::write(&path, "VALUE = 1\nx = 1\n").expect("write");
     fs::File::options().write(true).open(&path).expect("open").set_modified(modified).expect("set modified time");
     assert_eq!(check(root.path(), &["--select", select]).0, expected);
+}
+
+// A `pyproject.toml` that appears in a test directory makes it a nested project, which its duplicates are compared
+// within, so the cached duplicates of the run must not be reused.
+#[test]
+fn nested_project_marker_added_is_checked_again() {
+    let root = project(&[("pkg/parser.py", REPEATED), ("roots/test-a/parser.py", REPEATED)]);
+    let first = check(root.path(), &["--select", "SMP530"]).0;
+    fs::write(root.path().join("roots/test-a/pyproject.toml"), "[project]\nname = \"nested\"\n").expect("write");
+    assert_eq!((first, check(root.path(), &["--select", "SMP530"]).0), (1, 0));
 }
 
 #[test]

@@ -190,10 +190,14 @@ Sphinx page names is used.
   ```
 
 - **Names the documentation gives**: a `.rst` or `.md` file under the project names a definition with a Sphinx role such
-  as `:func:`, an autodoc directive such as `.. autofunction::` or `.. automodule::` with `:members:`, or the `:module:`
-  and `:func:` options of a sphinx-argparse or sphinx-argparse-cli directive. Names match by their dotted ending, so a
-  page under `.. currentmodule::`, or one whose `conf.py` puts another directory on `sys.path`, still matches. The files
-  are read from the directory of each `pyproject.toml`, outside hidden directories and the paths Ruff excludes.
+  as `:func:`, an autodoc directive such as `.. autofunction::`, or the `:module:` and `:func:` options of a
+  sphinx-argparse or sphinx-argparse-cli directive. An `.. automodule::` with `:members:` documents the members Sphinx
+  renders: the names its module's `__all__` lists, or else its public names, without the ones `:exclude-members:` names,
+  and with the private and special names when `:private-members:` or `:special-members:` is set. Its classes' members
+  are documented too, and so is every member of an `.. autoclass::` with `:members:`. Names match by their dotted
+  ending, so a page under `.. currentmodule::`, or one whose `conf.py` puts another directory on `sys.path`, still
+  matches. The files are read from the directory of each `pyproject.toml`, outside hidden directories and the paths Ruff
+  excludes.
 
   ```toml config
   [project]
@@ -255,7 +259,9 @@ Sphinx page names is used.
       return f"{first} {last}"
   ```
 
-- **Framework hooks**: `setup` and `teardown` functions, and `pytest_*` hooks, are called by Sphinx or pytest by name.
+- **Framework hooks**: `setup` and `teardown` functions, and `pytest_*` hooks, are called by Sphinx or pytest by name,
+  and so are the hooks of the build backend that `build-backend` names in `[build-system]`, which a build frontend
+  calls.
 
   ```python ok file=docs/conf.py
   def setup(app: object) -> None:

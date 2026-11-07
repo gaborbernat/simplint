@@ -13,8 +13,9 @@ A few rules need to know more than one file. Their pages carry a **🔗 Cross-fi
 under **Cross-file**: an edit to another file can change what they report or fix in this one, and checking a single file
 on its own gives them less to go on. Before linting, simplint:
 
-#. indexes every Python file in the run, and the entry points in ``pyproject.toml``, recording the names each file
-   imports, the attributes it assigns and the base classes it names;
+#. indexes every Python file in the run, the entry points in ``pyproject.toml`` and the ``.pth`` files of the
+   directories modules resolve from, recording the names each file imports, the attributes it assigns and the base
+   classes it names;
 #. lints each file, asking the index which of its names other files use;
 #. leaves alone, in every fix, a name another module relies on.
 
@@ -23,6 +24,7 @@ on its own gives them less to go on. Before linting, simplint:
     flowchart LR
         files["Every Python file in the run"] --> index["Project index:<br/>imported names, assigned attributes,<br/>base classes"]
         entry["pyproject.toml entry points"] --> index
+        pth[".pth import lines"] --> index
         index --> lint["Each file is linted"]
         lint --> fix["Fixes leave alone names<br/>another module relies on"]
         classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59
@@ -30,7 +32,7 @@ on its own gives them less to go on. Before linting, simplint:
         classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a
         classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28
         classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606
-        class files,entry blue
+        class files,entry,pth blue
         class index yellow
         class lint teal
         class fix green
@@ -45,6 +47,10 @@ A name counts as used when another file reaches it through:
 - dotted strings such as ``mocker.patch("pkg.mod.NAME")`` from
   `pytest-mock <https://pytest-mock.readthedocs.io/en/latest/>`__
 - the `entry points <https://packaging.python.org/en/latest/specifications/entry-points/>`__ in ``pyproject.toml``
+- the hooks of the build backend that ``build-backend`` names in ``[build-system]``, which a build frontend calls by
+  name
+- the ``import`` lines of a ``.pth`` file in those directories, which the interpreter runs at startup, and the
+  attributes of the modules they import that the lines read
 - the names a ``.pyi`` stub declares
 
 The index also records every attribute name any file assigns and every base class name.

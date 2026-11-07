@@ -49,17 +49,31 @@ Details of each step:
 - As Ruff does with ``[tool.ruff]``, simplint passes over a ``pyproject.toml`` without the table, so a nested package
   inherits its parent's settings.
 
-- When no ``pyproject.toml`` has the table, simplint runs every rule with the defaults, and the nearest
-  ``pyproject.toml`` still gives the project metadata.
+- When no ``pyproject.toml`` has the table, simplint runs every rule with the defaults, and the project metadata comes
+  from the nearest ``pyproject.toml`` that describes a project, as below.
 
 - ``--config PATH`` replaces per-directory discovery with one file for every file checked. Ruff reads its settings
   from that file. simplint reads its ``[tool.simplint]`` only when the file is a ``pyproject.toml``; with a
-  ``ruff.toml`` or any other name, simplint uses its defaults.
+  ``ruff.toml`` or any other name, simplint uses its defaults. A ``pyproject.toml`` named this way also gives the
+  project metadata for every file.
 
 - ``--isolated`` ignores every configuration file, as in Ruff.
 
 - ``--config "KEY = VALUE"`` overrides one setting on top of every configuration file: a ``[tool.simplint]`` key
   overrides simplint's setting, and any other key Ruff's.
+
+.. _settings-metadata-source:
+
+Where the project metadata comes from
+-------------------------------------
+
+The ``[project]`` table and the build settings describe the project a file belongs to, so they come from a different
+``pyproject.toml`` than ``[tool.simplint]`` when a workspace needs it. For each file, simplint uses the **nearest**
+``pyproject.toml`` **with a** ``[project]`` **or** ``[build-system]`` **table**, in the file's directory or a parent
+directory. Without one, it uses the ``pyproject.toml`` that holds the settings.
+
+A workspace root with ``[tool.simplint]`` but no ``[build-system]`` therefore does not make its members applications: a
+member with its own ``[build-system]`` is a library, and a member without a ``[project]`` table inherits the root's.
 
 .. tip::
 
@@ -90,3 +104,44 @@ own, because the schema describes the table, not the whole file.
    configuration/running
    configuration/rule-settings
    configuration/project
+
+.. _settings-nested-projects:
+
+Nested test projects
+--------------------
+
+A library directory whose name only starts with ``test``, such as ``testkit``, is not a project of its own. A directory
+of the run whose name is ``test`` or ``tests``, or starts with ``test-`` or ``test_``, or that lies inside one, and that
+holds its own ``conf.py``, ``pyproject.toml``, ``setup.py`` or ``setup.cfg``, is a project of its own. Test suites use
+these for the small projects they build per test, such as each ``roots/test-*`` directory of Sphinx's test suite. The
+directory is the root of its project, so:
+
+- its files are not test modules of the project around them, since the paths of its own root decide that;
+- its files are checked with the other files of the same nested project only. A name one of them defines is unused
+  when only another nested project uses it, and duplicate code is compared within the project alone, so the copies two
+  nested projects make of one another are not reported;
+- its ``[tool.simplint]`` is the outer project's, unless a ``pyproject.toml`` at or below the directory has one;
+- its metadata and project kind are those of the project around it, unless a ``pyproject.toml`` at or below the directory
+  describes a project, which then decides as it does for any project;
+- its documentation is the ``.rst`` and ``.md`` pages under the directory, so a name they give is used within it, and
+  the pages of the project around it do not reach it, and its pages do not reach the project around it;
+- a name the project around it reads, through an import, an attribute, a doctest or a dynamic load, is used within it,
+  while a name one nested project reads is not used in the project around it or in another nested project.
+- its files are test input for the rules that judge docstrings and the visibility of names: the docstring rules
+  (SMP901 to SMP904 and the reStructuredText rules SMP910 to SMP924) and the export and naming visibility rules (SMP102,
+  SMP401 to SMP404) skip them, while every other rule checks them as it checks any project.
+
+Only directories below the run's project root count, which is the directory the run starts from, or the one ``--config``
+names. A directory outside it is no nested project.
+
+.. code-block:: text
+
+    project/
+        pyproject.toml          # [tool.simplint] for the whole project
+        roots/
+            test-basic/
+                conf.py         # a nested project: its own root and index
+                parser.py
+            test-complex/
+                conf.py         # another nested project
+                parser.py

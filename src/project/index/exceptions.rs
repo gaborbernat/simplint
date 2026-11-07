@@ -29,37 +29,9 @@ pub(super) fn uncaught_exceptions(
         if !test_modules.contains(id) {
             caught.extend(module.caught.iter().map(|(file, name)| (*file, name.clone())));
         }
-        classes.extend(module.classes.iter().map(|(name, bases)| ((*id, name.clone()), bases.clone())));
+        classes.extend(module.classes.iter().map(|(name, bases, _)| ((*id, name.clone()), bases.clone())));
     }
-    let mut reexports: FxHashMap<FileId, Vec<(&str, FileId, &str)>> = FxHashMap::default();
-    for (importer, source, binding) in bindings {
-        reexports.entry(*importer).or_default().push((&binding.bound, *source, &binding.name));
-    }
-    let mut starred: FxHashMap<FileId, Vec<FileId>> = FxHashMap::default();
-    for (importer, source) in stars {
-        starred.entry(*importer).or_default().push(*source);
-    }
-    // The class a name of a file is, following the imports that re-export it from the file that defines it.
-    let home = |file: FileId, name: &str| -> Option<ClassKey> {
-        let mut pending: Vec<(FileId, &str)> = vec![(file, name)];
-        let mut seen: FxHashSet<(FileId, &str)> = FxHashSet::default();
-        while let Some((file, name)) = pending.pop() {
-            if !seen.insert((file, name)) {
-                continue;
-            }
-            let key = (file, name.to_owned());
-            if classes.contains_key(&key) {
-                return Some(key);
-            }
-            for (bound, source, original) in reexports.get(&file).into_iter().flatten() {
-                if *bound == name {
-                    pending.push((*source, original));
-                }
-            }
-            pending.extend(starred.get(&file).into_iter().flatten().map(|source| (*source, name)));
-        }
-        None
-    };
+    let home = class_home(|key| classes.contains_key(key), bindings, stars);
     let mut parents: FxHashMap<&ClassKey, Vec<ClassKey>> = FxHashMap::default();
     let mut outside: FxHashMap<&ClassKey, Vec<(&str, &str)>> = FxHashMap::default();
     for (key, bases) in &classes {
@@ -109,6 +81,43 @@ pub(super) fn uncaught_exceptions(
         }
     }
     uncaught
+}
+
+// The class a name of a file is, following the imports that re-export it from the file that defines it. `is_class`
+// tells the classes of the run apart from the names they bind.
+pub(super) fn class_home<'b>(
+    is_class: impl Fn(&ClassKey) -> bool + 'b,
+    bindings: &[(FileId, FileId, &'b ImportBinding)],
+    stars: &[(FileId, FileId)],
+) -> impl Fn(FileId, &str) -> Option<ClassKey> + 'b {
+    let mut reexports: FxHashMap<FileId, Vec<(&'b str, FileId, &'b str)>> = FxHashMap::default();
+    for (importer, source, binding) in bindings {
+        reexports.entry(*importer).or_default().push((&binding.bound, *source, &binding.name));
+    }
+    let mut starred: FxHashMap<FileId, Vec<FileId>> = FxHashMap::default();
+    for (importer, source) in stars {
+        starred.entry(*importer).or_default().push(*source);
+    }
+    move |file: FileId, name: &str| -> Option<ClassKey> {
+        let mut pending: Vec<(FileId, &str)> = vec![(file, name)];
+        let mut seen: FxHashSet<(FileId, &str)> = FxHashSet::default();
+        while let Some((file, name)) = pending.pop() {
+            if !seen.insert((file, name)) {
+                continue;
+            }
+            let key = (file, name.to_owned());
+            if is_class(&key) {
+                return Some(key);
+            }
+            for (bound, source, original) in reexports.get(&file).into_iter().flatten() {
+                if *bound == name {
+                    pending.push((*source, original));
+                }
+            }
+            pending.extend(starred.get(&file).into_iter().flatten().map(|source| (*source, name)));
+        }
+        None
+    }
 }
 
 // Whether a base class a run does not define is an exception: a builtin one, or a standard-library one, which by its

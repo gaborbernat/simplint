@@ -125,6 +125,24 @@ signature reaches it:
   __all__ = ["helper"]
   ```
 
+- **Build backend hooks** of the module that `build-backend` names in `[build-system]`: a build frontend calls the PEP
+  517 and PEP 660 hooks by name, so the names are used from outside the code.
+
+  ```toml config
+  [build-system]
+  build-backend = "build_backend"
+  requires = ["setuptools"]
+  backend-path = ["."]
+  ```
+
+  ```python report file=build_backend.py
+  def build_wheel(wheel_directory: str) -> str:
+      return wheel_directory
+
+
+  __all__ = []
+  ```
+
 - **Declarations in the module's `.pyi` stub**: a stub publishes the names it lists.
 
   ```python report file=config.py
@@ -390,6 +408,8 @@ What the fix does depends on whether the module already has an `__all__`, and on
 - **The module has an `__all__`**: the fix adds the names to it, and is safe.
 - **It has none, and no other file may star-import it**: the fix creates one, and is unsafe.
 - **It has none, and another file may star-import it**: no fix is offered.
+- **A public module of a library**: no fix is offered at all, since listing a name widens the library's API and what
+  `import *` binds; the author decides.
 
 **Adding to an existing `__all__`**: the fix adds the missing names to the list or tuple literal of the last `=`,
 annotated or `+=` assignment to `__all__`. Adding names is safe.

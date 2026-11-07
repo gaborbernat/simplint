@@ -75,6 +75,9 @@ Checks the docstrings of a library's public classes (see [undocumented-public-ap
 `docstring-style = "rst"`, for attributes without an `:ivar name:`, `:cvar name:` or `:var name:` field. The attributes
 are those [autodoc](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html) documents.
 
+No fix is offered: the description is for the author to write, and [rst-empty-field](SMP914.html) reports the empty
+field until they do.
+
 ### Active on
 
 - **Names the class body assigns**: a `ClassVar` or a name assigned without an annotation is a class variable; an
@@ -220,52 +223,6 @@ are those [autodoc](https://www.sphinx-doc.org/en/master/usage/extensions/autodo
       def __init__(self, speed: int) -> None:
           self.speed = speed
   ```
-
-### Fix
-
-The fix adds a `:cvar name:` or `:ivar name:` field for each attribute, with an empty description for you to write,
-which [rst-empty-field](SMP914.html) reports until you do. The fields go after the parameters and before the return and
-exception fields, in the order Sphinx renders them.
-
-**Unsafe fix:** code may read the docstring through `__doc__`.
-
-```toml config
-[project]
-name = "demo"
-
-[build-system]
-requires = []
-
-[tool.simplint]
-docstring-style = "rst"
-```
-
-```python report
-class Engine:
-    """Run jobs.
-
-    :param speed: How fast it runs.
-    """
-
-    def __init__(self, speed: int) -> None:
-        self.speed = speed
-        self.state = "idle"
-```
-
-```python fixed
-class Engine:
-    """Run jobs.
-
-    :param speed: How fast it runs.
-    :ivar state:
-    """
-
-    def __init__(self, speed: int) -> None:
-        self.speed = speed
-        self.state = "idle"
-```
-
-No fix is offered when escapes in the docstring make its text differ from the source.
 
 ## Other tools
 

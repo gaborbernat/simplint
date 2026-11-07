@@ -37,6 +37,10 @@ pub fn statement(walker: &mut Walker, stmt: &Stmt) {
                 for parameter in &function.parameters {
                     if let Some(annotation) = parameter.annotation() {
                         let variadic = matches!(parameter, AnyParameterRef::Variadic(_));
+                        // ANN401 rejects `Any` here, so `object` is the one annotation both tools accept.
+                        if variadic && is_object(walker, annotation) {
+                            continue;
+                        }
                         let by_ann401 = checked
                             && !(variadic && settings.allow_star_arg_any)
                             && Some(parameter.name().range()) != receiver;
@@ -155,15 +159,30 @@ fn slice_elements(slice: &Expr) -> &[Expr] {
     }
 }
 
+// Whether `expr` names `Callable` from `typing`, `typing_extensions` or `collections.abc`.
+fn is_callable(walker: &Walker, expr: &Expr) -> bool {
+    let semantic = walker.checker.semantic();
+    semantic.match_typing_expr(expr, "Callable") || semantic.resolves_to(expr, &["collections", "abc", "Callable"])
+}
+
 fn report_imprecise(walker: &Walker, annotation: &Expr, ann401: bool) {
     let semantic = walker.checker.semantic();
     let mut left_to_ann401 = FxHashSet::default();
     if ann401 {
         ann401_anys(walker, annotation, &mut left_to_ann401);
     }
+    // The collector visits a subscript before its elements, so the return of a `Callable` is known before `object` is
+    // picked. `Callable[..., object]` says the return value is ignored, which is the point of `object` there.
+    let mut callable_returns = FxHashSet::default();
     let mut finder = ExprCollector::new(|expr: &Expr| {
-        if semantic.is_builtin(expr, "object") || semantic.resolves_to(expr, &["builtins", "object"]) {
-            return Some((expr.range(), OBJECT_MESSAGE));
+        if let Expr::Subscript(ast::ExprSubscript { value, slice, .. }) = expr
+            && is_callable(walker, value)
+            && let Some(returns) = slice_elements(slice).last()
+        {
+            callable_returns.insert(returns.range());
+        }
+        if is_object(walker, expr) {
+            return (!callable_returns.contains(&expr.range())).then_some((expr.range(), OBJECT_MESSAGE));
         }
         (semantic.match_typing_expr(expr, "Any") && !left_to_ann401.contains(&expr.range()))
             .then(|| (expr.range(), ANY_MESSAGE))
@@ -172,4 +191,9 @@ fn report_imprecise(walker: &Walker, annotation: &Expr, ann401: bool) {
     for (range, message) in finder.found {
         walker.checker.report(Rule::ImpreciseAnnotation, range, message);
     }
+}
+
+fn is_object(walker: &Walker, expr: &Expr) -> bool {
+    let semantic = walker.checker.semantic();
+    semantic.is_builtin(expr, "object") || semantic.resolves_to(expr, &["builtins", "object"])
 }

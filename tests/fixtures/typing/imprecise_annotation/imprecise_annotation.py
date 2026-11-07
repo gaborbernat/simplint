@@ -103,3 +103,11 @@ def maybe(value: Any | None) -> None:
 
 def nullable(value: Optional[Any]) -> None:
     pass
+
+
+def forward(*args: object, **kwargs: object) -> None:
+    print(args, kwargs)
+
+
+def forward_nested(*args: list[object]) -> None:
+    print(args)

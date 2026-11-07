@@ -4,6 +4,9 @@ use crate::rules::docstrings::rst::{Field, FieldKind, Owner, field_deletion};
 use rustc_hash::FxHashSet;
 
 pub fn rst_duplicate_param(checker: &Checker) {
+    if checker.in_nested_project() {
+        return;
+    }
     for target in checker.state().rst_targets(checker) {
         let Owner::Class(class) = target.owner else {
             continue;

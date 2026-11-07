@@ -5,6 +5,7 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::logic::cognitive_complexity;
 use crate::rules::logic::forwarding_function::forward_target;
 use crate::syntax::{Visibility, is_repeating_expr};
 
@@ -54,6 +55,15 @@ fn check_helper(checker: &Checker, helper: &ast::StmtFunctionDef) {
     if helper_statements >= knobs.max_helper_statements
         || caller_statements + helper_statements > knobs.max_caller_statements
     {
+        return;
+    }
+    // Inlining at the call site adds the helper's nesting-sensitive increments, so a caller that would pass the limit
+    // cognitive-complexity reports stays as it is. A call the walk cannot place is left alone.
+    let limit = knobs.max_cognitive_complexity;
+    let inlined = cognitive_complexity::nesting_at(&caller.body, reference.range).map_or(usize::MAX, |nesting| {
+        cognitive_complexity::score(&caller.body) + cognitive_complexity::inlined_score(&helper.body, nesting)
+    });
+    if inlined > limit {
         return;
     }
     let caller_name = caller.name.as_str();

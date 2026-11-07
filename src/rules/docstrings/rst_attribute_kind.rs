@@ -6,6 +6,9 @@ use crate::lint::registry::Rule;
 use crate::rules::docstrings::rst::FieldKind;
 
 pub fn rst_attribute_kind(checker: &Checker) {
+    if checker.in_nested_project() {
+        return;
+    }
     for target in checker.state().rst_targets(checker) {
         let attributes = target.attributes(checker);
         for field in target.docstring.fields(&[FieldKind::Var]) {

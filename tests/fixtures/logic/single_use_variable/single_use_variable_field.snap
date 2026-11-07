@@ -1,0 +1,24 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+13:5 SMP504 `label` is used once, right below; inline its value [fix: Inline `label`]
+18:5 SMP504 `total` is used once, right below; inline its value [fix: Inline `total`]
+--- fixed (2 applied, 0 remaining) ---
+def build(val: str, cur_ends_with_sep: bool, ends_with_sep: bool, sep: str) -> str:
+    ending = f" {sep}" if cur_ends_with_sep else ""
+    prepend = "  " if ends_with_sep else ""
+    return f"{prepend}{val}{ending}"
+
+
+def conditional_in_field(first: int, second: int, flag: bool) -> str:
+    total = first if flag else second
+    return f"{total}"
+
+
+def name_in_field(value: str) -> str:
+    return f"{value}"
+
+
+def conditional_outside_field(first: int, second: int, flag: bool) -> None:
+    print(first if flag else second)

@@ -1,9 +1,12 @@
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rst::{FieldKind, is_internal, rank, report_missing};
+use crate::rules::docstrings::rst::{FieldKind, is_internal};
 use rustc_hash::FxHashSet;
 
 pub fn rst_missing_param(checker: &Checker) {
+    if checker.in_nested_project() {
+        return;
+    }
     for target in checker.state().rst_targets(checker).iter().filter(|target| target.public(checker)) {
         let Some(parameters) = target.parameters() else {
             continue;
@@ -15,21 +18,18 @@ pub fn rst_missing_param(checker: &Checker) {
             .chain(constructor.iter().flat_map(|docstring| docstring.fields(&[FieldKind::Param])))
             .filter_map(|field| field.subject())
             .collect();
-        // A parameter with a leading underscore is internal, a knob the documentation leaves out.
-        let missing = parameters
+        // A parameter with a leading underscore is internal, a knob the documentation leaves out. The description
+        // of a parameter is for a person to write, so the report carries no fix.
+        for name in parameters
             .iter()
             .map(|parameter| parameter.name)
             .filter(|name| !is_internal(name, true) && !documented.contains(name))
-            .map(|name| {
-                let message = format!(
-                    "Docstring of `{}` does not document parameter `{name}`; add `:param {name}:`",
-                    target.name()
-                );
-                (rank(FieldKind::Param, Some(name), &parameters), format!(":param {name}:"), message)
-            })
-            .collect();
-        // The fields go where the constructor's parameters are documented already, the class docstring otherwise.
-        let into = constructor.filter(|docstring| docstring.has(FieldKind::Param)).unwrap_or(&target.docstring);
-        report_missing(checker, Rule::RstMissingParam, target.docstring.range(), into, &parameters, missing);
+        {
+            checker.report(
+                Rule::RstMissingParam,
+                target.docstring.range(),
+                format!("Docstring of `{}` does not document parameter `{name}`; add `:param {name}:`", target.name()),
+            );
+        }
     }
 }

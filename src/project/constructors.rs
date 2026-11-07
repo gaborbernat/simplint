@@ -1,6 +1,7 @@
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::OnceCell;
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::PathBuf;
 
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_python_ast::name::UnqualifiedName;
@@ -51,6 +52,8 @@ pub(super) struct NameUse {
     pub(super) discarded: bool,
     // Whether the call runs the module as a program, from `__main__.py` or an `if __name__ == "__main__":` block.
     pub(super) entry: bool,
+    // The byte range of a call, which a dataclass's report points at; `(0, 0)` for a name that is not a call.
+    pub(super) span: (u32, u32),
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
@@ -187,7 +190,7 @@ impl Constructors {
         let comments = OnceCell::new();
         let mut grouped: BTreeMap<String, BTreeSet<NameUse>> = BTreeMap::new();
         for ((module, name, written), found) in uses.found {
-            let (kind, discarded, entry) = match found {
+            let (kind, discarded, entry, span) = match found {
                 Use::Call(call) => {
                     let (discarded, entry) = contexts.classify(call);
                     let kind = match CallKind::of(call) {
@@ -204,11 +207,12 @@ impl Constructors {
                         CallKind::Unpacked => UseKind::Opaque,
                         CallKind::Keyword | CallKind::Positional => UseKind::Call(CallShape::of(call)),
                     };
-                    (kind, discarded, entry)
+                    let range = call.range();
+                    (kind, discarded, entry, (range.start().to_u32(), range.end().to_u32()))
                 }
-                Use::Opaque => (UseKind::Opaque, false, false),
+                Use::Opaque => (UseKind::Opaque, false, false, (0, 0)),
             };
-            grouped.entry(module).or_default().insert(NameUse { name, written, kind, discarded, entry });
+            grouped.entry(module).or_default().insert(NameUse { name, written, kind, discarded, entry, span });
         }
         for FromImport { module, names, .. } in from_imports {
             for alias in *names {
@@ -220,6 +224,7 @@ impl Constructors {
                     kind: UseKind::Imported,
                     discarded: false,
                     entry: false,
+                    span: (0, 0),
                 });
             }
         }
@@ -351,17 +356,16 @@ fn comment_ranges(tokens: &Tokens) -> CommentRanges {
     CommentRanges::new(tokens.iter().filter(|token| token.kind() == TokenKind::Comment).map(Ranged::range).collect())
 }
 
-// Over the run: how other files use each file's dataclasses, and for each file the fields of the dataclasses it calls
-// with positional arguments, by how it spells the call.
-// Over the run: how other files use each file's dataclasses, the calls of each file's functions, and for each file the
-// fields of the dataclasses it calls with positional arguments, by how it spells the call.
+// Over the run: how other files use each file's dataclasses, and the calls of each file's functions, with the positional
+// calls other files make of each dataclass.
 #[derive(Default)]
 pub struct RunCalls {
     // Per file, its dataclasses another file uses in a way no rewrite follows, which includes importing one from a
     // module that passes it on to others.
     opaque: FxHashMap<FileId, FxHashSet<String>>,
     star_imported: FxHashSet<FileId>,
-    fields: FxHashMap<FileId, FxHashMap<String, Vec<String>>>,
+    // Per file, the positional calls of each dataclass it declares that other files make, with where each is.
+    dataclass_calls: FxHashMap<FileId, FxHashMap<String, Vec<CallSite>>>,
     // Per file, the calls of each function it defines, from the other files of the run.
     functions: FxHashMap<FileId, FxHashMap<String, CallSites>>,
     // Per file, how many times the run loads each of the file's method names.
@@ -376,7 +380,9 @@ type Declared<'f> = &'f [(String, Option<Vec<String>>)];
 // and the files its names resolve to with the names it uses from each.
 pub(super) struct FileUses<'f> {
     pub(super) caller: FileId,
-    pub(super) rewrites_calls: bool,
+    pub(super) path: PathBuf,
+    // A digest of the file's source, which a cached report that points into it must match.
+    pub(super) digest: u64,
     pub(super) production: bool,
     pub(super) modules: Vec<(FileId, &'f [NameUse])>,
 }
@@ -401,7 +407,7 @@ impl RunCalls {
             }
         }
         let mut reexported: FxHashSet<String> = FxHashSet::default();
-        for FileUses { caller, rewrites_calls, production, modules } in uses {
+        for FileUses { caller, path, digest, production, modules } in uses {
             for (file, used) in modules {
                 for NameUse { name, kind, discarded, entry, .. } in *used {
                     let sites = calls.functions.entry(*file).or_default().entry(name.clone()).or_default();
@@ -422,7 +428,7 @@ impl RunCalls {
                 let Some(classes) = declared.get(file) else {
                     continue;
                 };
-                for NameUse { name, written, kind, .. } in *used {
+                for NameUse { name, written, kind, span, .. } in *used {
                     if *kind == UseKind::Imported && name == "*" {
                         calls.star_imported.insert(*file);
                         continue;
@@ -430,16 +436,25 @@ impl RunCalls {
                     let Some((_, fields)) = classes.iter().find(|(class, _)| class == name) else {
                         continue;
                     };
-                    let opaque = match (kind, fields) {
-                        (UseKind::Imported, _) => imported.get(caller).is_some_and(|names| names.contains(written)),
-                        (UseKind::Call(shape), _) if shape.positional == 0 => false,
-                        (UseKind::Call(shape), Some(fields))
-                            if *rewrites_calls && shape.positional as usize <= fields.len() =>
-                        {
-                            calls.fields.entry(*caller).or_default().insert(written.clone(), fields.clone());
-                            false
+                    // A call passing fields by position is a site the dataclass's report names; one that passes more
+                    // than the class takes is not one a rewrite could follow.
+                    let opaque = match kind {
+                        UseKind::Imported => imported.get(caller).is_some_and(|names| names.contains(written)),
+                        UseKind::Call(shape) => {
+                            if shape.positional > 0 {
+                                let site =
+                                    CallSite { caller: path.clone(), start: span.0, end: span.1, digest: *digest };
+                                calls
+                                    .dataclass_calls
+                                    .entry(*file)
+                                    .or_default()
+                                    .entry(name.clone())
+                                    .or_default()
+                                    .push(site);
+                            }
+                            shape.positional > 0 && fields.as_ref().is_none_or(|f| shape.positional as usize > f.len())
                         }
-                        _ => true,
+                        UseKind::Opaque => true,
                     };
                     if opaque {
                         calls.opaque.entry(*file).or_default().insert(name.clone());
@@ -471,7 +486,7 @@ impl RunCalls {
         FileCalls {
             opaque: id.and_then(|id| self.opaque.get(&id)),
             star_imported: id.is_some_and(|id| self.star_imported.contains(&id)),
-            fields: id.and_then(|id| self.fields.get(&id)),
+            dataclass_calls: id.and_then(|id| self.dataclass_calls.get(&id)),
             functions: id.and_then(|id| self.functions.get(&id)),
             method_loads: id.and_then(|id| self.method_loads.get(&id)),
             test_support: id.is_some_and(|id| self.test_support.contains(&id)),
@@ -489,7 +504,7 @@ impl RunCalls {
 pub struct FileCalls<'a> {
     opaque: Option<&'a FxHashSet<String>>,
     star_imported: bool,
-    fields: Option<&'a FxHashMap<String, Vec<String>>>,
+    dataclass_calls: Option<&'a FxHashMap<String, Vec<CallSite>>>,
     functions: Option<&'a FxHashMap<String, CallSites>>,
     method_loads: Option<&'a FxHashMap<String, u32>>,
     test_support: bool,
@@ -507,12 +522,9 @@ impl<'a> FileCalls<'a> {
         self.star_imported || self.opaque.is_some_and(|names| names.contains(name))
     }
 
-    pub fn fields(&self, written: &str) -> Option<&'a [String]> {
-        self.fields?.get(written).map(Vec::as_slice)
-    }
-
-    pub fn calls_any(&self) -> bool {
-        self.fields.is_some()
+    // The positional calls other files make of the dataclass `name` this file declares, in no particular order.
+    pub fn positional_calls(&self, name: &str) -> &'a [CallSite] {
+        self.dataclass_calls.and_then(|calls| calls.get(name)).map_or(&[], Vec::as_slice)
     }
 
     // The calls the other files make of the function `name` this file defines, or `None` when they make none.
@@ -530,10 +542,29 @@ impl CacheKey for FileCalls<'_> {
     fn cache_key(&self, state: &mut CacheKeyHasher) {
         self.opaque.cache_key(state);
         self.star_imported.cache_key(state);
-        self.fields.cache_key(state);
+        self.dataclass_calls.cache_key(state);
         self.functions.cache_key(state);
         self.method_loads.cache_key(state);
         self.test_support.cache_key(state);
+    }
+}
+
+// A call that passes fields by position to a dataclass of another file: the file it is in, its byte range, and the digest
+// of that file's source, so a report that names it is kept only while the file is unchanged.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct CallSite {
+    pub(crate) caller: PathBuf,
+    pub(crate) start: u32,
+    pub(crate) end: u32,
+    digest: u64,
+}
+
+impl CacheKey for CallSite {
+    fn cache_key(&self, state: &mut CacheKeyHasher) {
+        self.caller.cache_key(state);
+        self.start.cache_key(state);
+        self.end.cache_key(state);
+        self.digest.cache_key(state);
     }
 }
 

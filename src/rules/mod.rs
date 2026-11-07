@@ -13,6 +13,18 @@ mod rename;
 pub(crate) mod testing;
 pub(crate) mod typing;
 
+// Whether the project's documentation names the definition, by its dotted name under the module's package, or from the
+// module's own name when the run cannot tell its package.
+pub(crate) fn is_documented(checker: &Checker, names: &[&str]) -> bool {
+    let stem = checker.file_name().strip_suffix(".py").unwrap_or(checker.file_name());
+    let (module, anchored) = match checker.module_path() {
+        Some(path) => (path.iter().map(String::as_str).collect(), true),
+        None => (vec![stem], false),
+    };
+    let qualified = module.into_iter().chain(names.iter().copied()).collect::<Vec<_>>().join(".");
+    checker.project().is_documented(&qualified, anchored)
+}
+
 use std::cell::OnceCell;
 
 use ruff_python_ast::helpers::any_over_expr;
@@ -136,6 +148,11 @@ pub fn docstring(body: &[Stmt]) -> Option<&ast::ExprStringLiteral> {
 // The leading whitespace of the line a node starts on; a node after a `;` shares the line, not its indentation.
 pub fn indentation(source: &str, ranged: impl Ranged) -> &str {
     leading_indentation(source.full_line_str(ranged.start()))
+}
+
+// Whether the file is a Sphinx configuration, whose module variables Sphinx reads by their names and types.
+pub fn is_sphinx_conf(checker: &Checker) -> bool {
+    checker.file_name() == "conf.py"
 }
 
 pub fn is_class_like(name: &str) -> bool {

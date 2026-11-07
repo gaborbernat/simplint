@@ -104,13 +104,29 @@ message = f"Hello, {name}!"
   # fmt: on
   ```
 
+- **Chains with an operand that is an instance of a class the module defines**, such as `Markup("<b>")` for a `Markup`
+  class of the module that overrides `__add__`: `+` runs that method, which an f-string would not, so the chain is left
+  alone. An instance of a class imported from another module is not recognized this way, as the code cannot tell a class
+  from a function there.
+
+  ```python ok
+  class Markup(str):
+      def __add__(self, other: str) -> "Markup":
+          return Markup(str.__add__(self, other.replace("<", "&lt;")))
+
+
+  SAFE = Markup("<b>") + "<i>"
+  ```
+
 ### Deciding on a fix
 
 ```mermaid
 flowchart TD
     chain["+ chain with a string"] --> bytes{"holds a<br/>bytes literal?"}
     bytes -->|yes| skip["not reported"]
-    bytes -->|no| known{"every operand<br/>known str?"}
+    bytes -->|no| instance{"holds an instance of<br/>a class of the module?"}
+    instance -->|yes| skip
+    instance -->|no| known{"every operand<br/>known str?"}
     known -->|no| none["reported, no fix"]
     known -->|yes| fits{"chain fits<br/>an f-string?"}
     fits -->|no| none
@@ -121,7 +137,7 @@ flowchart TD
     classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28
     classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606
     class chain blue
-    class bytes,known,fits yellow
+    class bytes,instance,known,fits yellow
     class skip green
     class none orange
     class fix teal

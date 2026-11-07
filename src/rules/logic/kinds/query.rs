@@ -29,6 +29,12 @@ impl<'w, 'a> Kinds<'w, 'a> {
         self.kind(expr, depth) == Some(Kind::Str)
     }
 
+    // Whether `expr` is an instance of a class the module defines, which an operator may run the class's own method for.
+    pub fn is_class_instance(&mut self, expr: &'a Expr) -> bool {
+        let depth = self.scopes.len();
+        matches!(self.kind(expr, depth), Some(Kind::Instance(_)))
+    }
+
     // The kind of `expr`, read in the innermost `depth` scopes.
     pub(super) fn kind(&mut self, expr: &'a Expr, depth: usize) -> Option<Kind> {
         match expr {

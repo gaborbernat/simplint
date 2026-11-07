@@ -17,6 +17,8 @@ pub fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
     if checker.name_token_count(new) > 0
         || is_python_builtin(old, checker.settings.from_ruff.target_version.minor, false)
         || checker.project().is_referenced(old)
+        // A computed write may set any name of the module, as `setattr(module, name, value)` does.
+        || checker.project().is_computed_written()
         || ranges.is_empty()
         || checker.name_token_count(old) != ranges.len()
     {
@@ -45,7 +47,7 @@ pub fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
 // The strings of other files count too, as a test or a generated template may look the name up by its spelling. A
 // file's own export list names the name without reaching it, so only its other strings and the strings of other files
 // block the rename.
-fn appears_in_strings(checker: &Checker, name: &str) -> bool {
+pub(crate) fn appears_in_strings(checker: &Checker, name: &str) -> bool {
     let words = checker.state().string_words(checker);
     // A word is a run of letters, digits and underscores, so a name with any other character is never one.
     name.chars().all(is_word_char)

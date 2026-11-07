@@ -78,7 +78,32 @@ No fix is offered: a meaningful id describes what the case tests, which cannot b
       assert value + 1 == expected
   ```
 
+- **Scalar rows whose value appears more than once in the list**: pytest suffixes the shared id, such as `select0` and
+  `select1`, so the ids say nothing about the cases.
+
+  ```python report
+  import pytest
+
+
+  @pytest.mark.parametrize("tag", ["select", "input", "select"])
+  def test_tag(tag: str) -> None:
+      assert tag
+  ```
+
 ### Exceptions
+
+- **Scalar rows that pytest uses as their id**: a string of printable ASCII without a backslash, a number, `True`,
+  `False` or `None` is its own id, such as `test_tag[select]`, so wrapping it in `pytest.param(..., id=...)` would only
+  repeat it.
+
+  ```python ok
+  import pytest
+
+
+  @pytest.mark.parametrize("tag", ["select", "input"])
+  def test_tag(tag: str) -> None:
+      assert tag
+  ```
 
 - **Rows built elsewhere**, such as a module constant passed as the argument values: the decorator holds no rows to
   check.

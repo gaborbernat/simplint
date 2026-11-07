@@ -11,6 +11,7 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{keep_debug_text, lines_with_trailing_blanks};
+use crate::rules::rename::appears_in_strings;
 use crate::rules::{indentation, is_alone_on_lines, is_class_like, needs_parentheses, single_assignment};
 use crate::semantic::{Binding, BindingKind, Evaluation};
 use crate::syntax::{Exports, Visibility, last_segment};
@@ -28,6 +29,8 @@ pub fn single_user_constant(checker: &Checker) {
         if !private
             || !is_literal(checker, value)
             || checker.project().is_referenced(name)
+            // A string that spells the name may patch or look up the constant, which inlining would break.
+            || appears_in_strings(checker, name)
             || checker.project().is_attribute_assigned(name)
             || is_dunder(name)
             || is_class_like(name)
@@ -165,6 +168,10 @@ impl<'a> Visitor<'a> for Mutation<'_> {
 }
 
 fn move_into_function(checker: &Checker, constant: &Constant) -> Option<Fix> {
+    // A computed write may set the constant, which a copy in the function would not see.
+    if checker.project().is_computed_written() {
+        return None;
+    }
     let source = checker.source;
     let function = constant.function;
     // A value or a renamed local would change the source text a t-string keeps.
@@ -191,8 +198,11 @@ fn move_into_function(checker: &Checker, constant: &Constant) -> Option<Fix> {
     // A comment or a triple-quoted string keeps a value on several lines whatever the layout, so it gets a local name.
     let spans_lines =
         value_text.contains("\"\"\"") || value_text.contains("'''") || checker.has_comment_in(constant.value.range());
+    // An inlined literal is inferred on its own, which may not match the annotation the constant declares, so an
+    // annotated constant keeps its name as a local.
     if let [reference] = constant.references.as_slice()
         && !spans_lines
+        && local_annotation(checker, constant).is_none()
     {
         let context = ReferenceContext::of(&function.body, *reference);
         if !context.repeated
@@ -242,16 +252,8 @@ fn local_fix(checker: &Checker, constant: &Constant, value_text: &str, deletion:
     } else {
         value_text.replace('\n', &format!("\n{indent}"))
     };
-    // An empty container needs its declared type to type check, while `Final` belongs to module scope only.
-    let annotation = match constant.annotation {
-        Some(Expr::Subscript(ast::ExprSubscript { value, slice, .. })) if last_segment(value) == Some("Final") => {
-            Some(checker.text(slice.range()))
-        }
-        Some(annotation) if last_segment(annotation) == Some("Final") => None,
-        Some(annotation) => Some(checker.text(annotation.range())),
-        None => None,
-    };
-    let declared = annotation.map_or_else(|| local.clone(), |annotation| format!("{local}: {annotation}"));
+    let declared = local_annotation(checker, constant)
+        .map_or_else(|| local.clone(), |annotation| format!("{local}: {annotation}"));
     let declaration = format!("{declared} = {value_text}");
     let placements = if on_header {
         let mut gap_start = TextSize::of(source[..function.body[0].start().to_usize()].trim_end());
@@ -290,6 +292,19 @@ fn deletion_keeping_separation(source: &str, range: TextRange) -> TextRange {
         TextRange::new(TextSize::try_from(line_end).unwrap_or_default(), lines.end())
     } else {
         lines
+    }
+}
+
+// The type a local keeps from the constant's annotation. An empty container needs its declared type to type check,
+// while `Final` belongs to module scope only, so `Final[T]` keeps `T` and a bare `Final` keeps nothing.
+fn local_annotation<'a>(checker: &Checker<'a>, constant: &Constant) -> Option<&'a str> {
+    match constant.annotation {
+        Some(Expr::Subscript(ast::ExprSubscript { value, slice, .. })) if last_segment(value) == Some("Final") => {
+            Some(checker.text(slice.range()))
+        }
+        Some(annotation) if last_segment(annotation) == Some("Final") => None,
+        Some(annotation) => Some(checker.text(annotation.range())),
+        None => None,
     }
 }
 

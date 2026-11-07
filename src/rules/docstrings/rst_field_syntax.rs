@@ -7,6 +7,9 @@ use crate::lint::registry::Rule;
 use crate::rules::docstrings::rst::FieldKind;
 
 pub fn rst_field_syntax(checker: &Checker) {
+    if checker.in_nested_project() {
+        return;
+    }
     for target in checker.state().rst_targets(checker) {
         let docstring = &target.docstring;
         for section in &docstring.sections {

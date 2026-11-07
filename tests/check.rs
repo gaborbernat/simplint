@@ -348,3 +348,24 @@ fn check_stdin_lints_like_the_file_it_stands_for(files: &[(&str, &str)], name: &
     );
     assert_eq!((from_stdin.0, &from_stdin), (1, &by_path));
 }
+
+// Standard input is judged by the path it stands for, so a helper read from a test directory is a test module's and
+// its SMP409 is left out, as it is when the file is checked by path.
+#[test_case("tests", "All checks passed!\n" ; "test_directory")]
+#[test_case(
+    "lib",
+    "helpers.py:1:5: SMP409 `helper` is never used in the run; remove it or give it a caller\nFound 1 error.\n" ;
+    "other_directory"
+)]
+fn check_stdin_judges_its_test_module_by_the_directory_it_stands_in(dir: &str, stdout: &str) {
+    let root = project(&[
+        ("pyproject.toml", "[project]\nname = \"demo\"\nversion = \"0\"\n[tool.simplint]\n"),
+        (&format!("{dir}/helpers.py"), "def helper() -> None:\n    pass\n"),
+    ]);
+    let (_, from_stdin, _) = simplint_with_stdin(
+        &root.path().join(dir),
+        &["check", "--output-format", "concise", "--select", "SMP409", "--stdin-filename", "helpers.py"],
+        "def helper() -> None:\n    pass\n",
+    );
+    assert_eq!(from_stdin, stdout);
+}

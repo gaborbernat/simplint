@@ -4,7 +4,7 @@ use std::cmp::Reverse;
 use std::hash::Hasher;
 use std::io::Write;
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 use bitflags::bitflags;
 use colored::Colorize;
 use itertools::{Itertools, iterate};
@@ -13,7 +13,7 @@ use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_db::diagnostic::render::{Renderer, SarifRenderer};
 use ruff_db::diagnostic::{
     Diagnostic, DiagnosticStylesheet, DisplayDiagnosticConfig, LintName, RuleMetadata, SecondaryCode, Severity,
-    fmt_with_hyperlink,
+    UnifiedFile, fmt_with_hyperlink,
 };
 use ruff_linter::fs::relativize_path;
 use ruff_linter::linter::FixTable;
@@ -22,6 +22,7 @@ use ruff_linter::message::{RenderContext, render_diagnostics};
 use ruff_linter::notify_user;
 use ruff_linter::settings::flags;
 use ruff_linter::settings::types::{OutputFormat, UnsafeFixes};
+use ruff_source_file::LineColumn;
 use rustc_hash::FxHashMap;
 use serde::Serialize;
 use supports_hyperlinks::supports_hyperlinks;
@@ -139,8 +140,10 @@ impl Printer<'_> {
                 return Ok(());
             }
             // Ruff's SARIF output describes Ruff's rules; simplint's own rules take their place.
-            OutputFormat::Sarif => SarifRenderer::new(&context, &config, rule_metadata(), env!("CARGO_PKG_VERSION"))
-                .write(&mut rendered, &diagnostics.inner)?,
+            OutputFormat::Sarif => {
+                SarifRenderer::new(&context, &config, rule_metadata(), env!("CARGO_PKG_VERSION"))
+                    .write(&mut rendered, &diagnostics.inner)?;
+            }
             OutputFormat::Rdjson => {
                 render_diagnostics(&mut rendered, self.format, &config, &context, &diagnostics.inner)?;
             }
@@ -155,6 +158,31 @@ impl Printer<'_> {
                 for chunk in render_chunks(self.format, &config, &context, &diagnostics.inner) {
                     writer.write_all(&chunk?)?;
                 }
+                return Ok(());
+            }
+            // Ruff's JSON has no related locations, so each element that has some gets them as `related`.
+            OutputFormat::Json if diagnostics.inner.iter().any(has_related) => {
+                let mut elements: Vec<serde_json::Value> = Vec::new();
+                for chunk in render_chunks(self.format, &config, &context, &diagnostics.inner) {
+                    elements.extend(serde_json::from_slice::<Vec<serde_json::Value>>(&chunk?)?);
+                }
+                let related =
+                    elements.iter_mut().zip(&diagnostics.inner).filter(|(_, diagnostic)| has_related(diagnostic));
+                for (element, diagnostic) in related {
+                    element["related"] = related_entries(diagnostic)
+                        .into_iter()
+                        .map(|(name, start, end, message)| {
+                            serde_json::json!({
+                                "filename": name,
+                                "location": {"row": start.line.get(), "column": start.column.get()},
+                                "end_location": {"row": end.line.get(), "column": end.column.get()},
+                                "message": message,
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                        .into();
+                }
+                writer.write_all(serde_json::to_string_pretty(&elements)?.as_bytes())?;
                 return Ok(());
             }
             OutputFormat::Json if !diagnostics.inner.is_empty() => {
@@ -178,13 +206,44 @@ impl Printer<'_> {
                 return Ok(());
             }
         }
-        Self::write_as_simplint(self.format, &rendered, writer)
+        Self::write_as_simplint(self.format, &rendered, &diagnostics.inner, writer)
     }
 
-    // Ruff's SARIF and rdjson renderers name Ruff, or link to it, as the tool behind the report.
-    fn write_as_simplint(format: OutputFormat, rendered: &[u8], writer: &mut dyn Write) -> Result<()> {
+    // Ruff's SARIF and rdjson renderers name Ruff, or link to it, as the tool behind the report. SARIF also gets the
+    // related locations of the results, which Ruff's renderer leaves out.
+    fn write_as_simplint(
+        format: OutputFormat,
+        rendered: &[u8],
+        diagnostics: &[Diagnostic],
+        writer: &mut dyn Write,
+    ) -> Result<()> {
         let mut report: serde_json::Value = serde_json::from_slice(rendered)?;
         if format == OutputFormat::Sarif {
+            if diagnostics.iter().any(has_related) {
+                let results =
+                    report["runs"][0]["results"].as_array_mut().context("Ruff's SARIF report has no results")?;
+                let related = results.iter_mut().zip(diagnostics).filter(|(_, diagnostic)| has_related(diagnostic));
+                for (result, diagnostic) in related {
+                    result["relatedLocations"] = related_entries(diagnostic)
+                        .into_iter()
+                        .map(|(name, start, end, message)| {
+                            serde_json::json!({
+                                "physicalLocation": {
+                                    "artifactLocation": {"uri": file_uri(&name)},
+                                    "region": {
+                                        "startLine": start.line.get(),
+                                        "startColumn": start.column.get(),
+                                        "endLine": end.line.get(),
+                                        "endColumn": end.column.get(),
+                                    },
+                                },
+                                "message": {"text": message},
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                        .into();
+                }
+            }
             report["runs"][0]["tool"]["driver"]["informationUri"] = env!("CARGO_PKG_REPOSITORY").into();
         } else {
             report["source"] = serde_json::json!({"name": "simplint", "url": "https://simplint.readthedocs.io/"});
@@ -508,4 +567,34 @@ impl FixableStatistics {
         }
         (applicable > 0 || inapplicable_unsafe > 0).then_some(Self { applicable, inapplicable_unsafe })
     }
+}
+
+// Whether the diagnostic points at locations besides its primary one.
+fn has_related(diagnostic: &Diagnostic) -> bool {
+    diagnostic.secondary_annotations().next().is_some()
+}
+
+// The locations a diagnostic's secondary annotations name, each as its file's name, its start and end, and its message.
+// A location in a file the diagnostic cannot name is left out.
+fn related_entries(diagnostic: &Diagnostic) -> Vec<(String, LineColumn, LineColumn, String)> {
+    diagnostic
+        .secondary_annotations()
+        .filter_map(|annotation| {
+            let span = annotation.get_span();
+            let UnifiedFile::Ruff(file) = span.file() else { return None };
+            let range = span.range()?;
+            let code = file.to_source_code();
+            Some((
+                file.name().to_owned(),
+                code.line_column(range.start()),
+                code.line_column(range.end()),
+                annotation.get_message().unwrap_or_default().to_owned(),
+            ))
+        })
+        .collect()
+}
+
+// A file's URI as Ruff writes a result's primary location, so the locations of one result agree.
+fn file_uri(name: &str) -> String {
+    url::Url::from_file_path(name).map_or_else(|()| format!("file://{name}"), |url| url.to_string())
 }

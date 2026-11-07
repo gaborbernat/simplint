@@ -74,7 +74,9 @@ def load(text: str) -> dict[str, str]:
 
 Statements are counted as the top-level statements of a body, each nested block counting as one, and a docstring does
 not count. A helper of `max-helper-statements` or more statements is not reported. The caller's statements plus the
-helper's must stay within `max-caller-statements` for the helper to be reported.
+helper's must stay within `max-caller-statements` for the helper to be reported. The caller's cognitive complexity must
+also stay within `max-cognitive-complexity` once the helper's body is scored at the depth of its call site, so that
+[cognitive-complexity](SMP529.html) does not ask to split the caller again.
 
 ### Active on
 
@@ -224,6 +226,28 @@ helper's must stay within `max-caller-statements` for the helper to be reported.
   def _parse_header(text: str) -> str:
       first = text.splitlines()[0]
       return first.strip()
+  ```
+
+- **A caller that the inlined helper would push over the cognitive-complexity limit**: a call deep inside the caller
+  scores the helper's branches deeper, so the caller would be reported by cognitive-complexity right after inlining.
+
+  ```toml config
+  [tool.simplint.logic]
+  max-cognitive-complexity = 5
+  ```
+
+  ```python ok
+  def load(text: str) -> str:
+      if text:
+          return _first(text)
+      return ""
+
+
+  def _first(text: str) -> str:
+      for line in text.splitlines():
+          if line:
+              return line.strip()
+      return ""
   ```
 
 - **Coroutines**: an `async def` helper returns an awaitable, so its caller would await the result of the inlined code

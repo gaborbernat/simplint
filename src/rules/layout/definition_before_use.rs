@@ -160,28 +160,39 @@ fn report_misplaced(checker: &Checker, suite: &Suite, expected: &[usize], owners
     // One fix reorders the whole block, so only the block's first report carries it: Ruff renders a report's fix in full,
     // and repeating a block-sized edit on every report made output slow on files with many misplaced definitions.
     let mut offered = false;
+    let describe = |index: usize| {
+        definition_name(&suite.body[index]).map_or_else(
+            || format!("the statement on line {}", checker.line_number(suite.body[index].start())),
+            |name| format!("`{}`", name.as_str()),
+        )
+    };
     for position in 1..length {
         let index = expected[position];
         let (Some(owner), Some(identifier)) = (owners[index], definition_name(&suite.body[index])) else {
             continue;
         };
-        if index.checked_sub(1) == Some(expected[position - 1]) {
+        let predecessor = expected[position - 1];
+        if index.checked_sub(1) == Some(predecessor) {
             continue;
         }
         let name = identifier.as_str();
-        let owner_name = definition_name(&suite.body[owner]).map_or_else(
-            || format!("the statement on line {}", checker.line_number(suite.body[owner].start())),
-            |owner| format!("`{}`", owner.as_str()),
-        );
+        let owner_name = describe(owner);
         let (message, title) = if index < owner {
             (
                 format!("`{name}` is defined before its first use in {owner_name}; move it below {owner_name}"),
                 format!("Move `{name}` below {owner_name}"),
             )
-        } else {
+        } else if predecessor == owner {
             (
                 format!("`{name}` should directly follow {owner_name}, its first user"),
                 format!("Move `{name}` right after {owner_name}"),
+            )
+        } else {
+            // The predecessor may be a nested helper `owner` never calls; `owner` is named only to contrast.
+            let predecessor_name = describe(predecessor);
+            (
+                format!("`{name}` should directly follow {predecessor_name}, not {owner_name}, its first user"),
+                format!("Move `{name}` right after {predecessor_name}"),
             )
         };
         let fix = if offered { None } else { reorder_fix(checker, suite, expected, span.clone(), shifts_unsafely) };

@@ -337,6 +337,10 @@ and [PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces):
   through `from ._core import *`, is public where it is defined, through any chain of re-exports. A plain
   `from ._core import name` in a module without `__all__` keeps the name internal.
 
+- a module that a `[project.entry-points]` value names without `:attribute`, such as a pytest plugin, is loaded whole by
+  its host, which finds its names by convention, so every name it defines or imports without a leading `_` is public
+  wherever the module is and whatever its `__all__` lists. A package it names is its `__init__.py`.
+
 ```mermaid
 flowchart TD
     name["name in a module"] --> mod{"public module?"}
