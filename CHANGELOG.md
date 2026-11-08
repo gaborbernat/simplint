@@ -1,5 +1,481 @@
 # Changelog
 
+## 0.8.0 (2026-11-08)
+
+<a name="release-0-8-0"></a>
+
+<a name="release-0-8-0-added"></a>
+
+### Added
+
+- `dataclass-kw-only` (SMP703) reports a dataclass once, at its definition, and lists its positional calls as related
+  locations instead of reporting each call. The fix is offered only when every such call is in the same file; calls in
+  other files need converting by hand ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `unexplained-regex` (SMP533) reports a regular expression pattern of four or more parts, counting its groups,
+  alternations, character classes with their repeats and repeats of groups, that has no comment: neither a `#` comment
+  in verbose mode nor a `(?#...)` comment ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `unnamed-regex-group` (SMP532) reports a regular expression pattern with two or more unnamed capture groups, or with
+  one that the code reads by its number, so each group gets a name the code can read. The groups a pattern's code never
+  reads become non-capturing under an unsafe fix ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-8-0-changes"></a>
+
+### Changes
+
+- `all-format` (SMP405) no longer reports a list whose closing bracket follows a line break with no trailing comma when
+  the project's Ruff configuration selects [COM812](https://docs.astral.sh/ruff/rules/missing-trailing-comma/), which
+  reports it. A list whose last name is parenthesized and followed by a comma is no longer reported as missing that
+  comma ([#67](https://github.com/gaborbernat/simplint/pull/67)) by [@gaborbernat](https://github.com/gaborbernat).
+- `blanket-ignore` (SMP004) leaves the `ruff: ignore` and `ruff: file-ignore` comments without codes to Ruff's
+  [RUF103](https://docs.astral.sh/ruff/rules/invalid-suppression-comment/), which reports them, when the project's Ruff
+  configuration selects it. The other forms are still reported here
+  ([#67](https://github.com/gaborbernat/simplint/pull/67)) by [@gaborbernat](https://github.com/gaborbernat).
+- `class-member-order` (SMP203) no longer reports the statement of a Django model that
+  [DJ012](https://docs.astral.sh/ruff/rules/django-unordered-body-content-in-model/) reports, when the project's Ruff
+  configuration selects it, unless that report carries the fix for the class, which DJ012 lacks. Properties, class
+  methods and other members it reports are still reported here ([#67](https://github.com/gaborbernat/simplint/pull/67))
+  by [@gaborbernat](https://github.com/gaborbernat).
+- `collection-built-by-statements` (SMP531) no longer reports a list that
+  [FURB113](https://docs.astral.sh/ruff/rules/repeated-append/) reports, when Ruff's preview mode is on and the
+  project's Ruff configuration selects it ([#67](https://github.com/gaborbernat/simplint/pull/67)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `constant-assert` (SMP804) no longer reports a string, bytes or f-string test it cannot delete when the project's Ruff
+  configuration selects [PLW0129](https://docs.astral.sh/ruff/rules/assert-on-string-literal/), which reports it
+  ([#67](https://github.com/gaborbernat/simplint/pull/67)) by [@gaborbernat](https://github.com/gaborbernat).
+- `error-message-matching` (SMP507) no longer reports a comparison inside an `assert` that names the exception when the
+  project's Ruff configuration selects [PT017](https://docs.astral.sh/ruff/rules/pytest-assert-in-except/), which
+  reports it ([#67](https://github.com/gaborbernat/simplint/pull/67)) by [@gaborbernat](https://github.com/gaborbernat).
+- `imprecise-annotation` (SMP602) no longer reports an `Any` that [ANN401](https://docs.astral.sh/ruff/rules/any-type/)
+  reports when the project's Ruff configuration selects it, now also inside `Optional`, `Union`, `|` and `Annotated`.
+  While ANN401 runs, it reports the `Any` ANN401 skips, such as `self: Any`, `@override` signatures and, under
+  `allow-star-arg-any`, `*args: Any` ([#67](https://github.com/gaborbernat/simplint/pull/67)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `init-module-content` (SMP407) no longer reports the statements of an `__init__.py` that
+  [RUF067](https://docs.astral.sh/ruff/rules/non-empty-init-module/) reports, when Ruff's preview mode is on and the
+  project's Ruff configuration selects it ([#67](https://github.com/gaborbernat/simplint/pull/67)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `sleep-in-test` (SMP808) no longer reports an `await asyncio.sleep` that is the whole body of a `while` loop when the
+  project's Ruff configuration selects [ASYNC110](https://docs.astral.sh/ruff/rules/async-busy-wait/), which reports it
+  ([#67](https://github.com/gaborbernat/simplint/pull/67)) by [@gaborbernat](https://github.com/gaborbernat).
+- `string-concatenation` (SMP503) no longer reports the message of a logging call when the project's Ruff configuration
+  selects [G003](https://docs.astral.sh/ruff/rules/logging-string-concat/), which reports it, nor two literals joined
+  across lines when it selects [ISC003](https://docs.astral.sh/ruff/rules/explicit-string-concatenation/), which reports
+  it ([#67](https://github.com/gaborbernat/simplint/pull/67)) by [@gaborbernat](https://github.com/gaborbernat).
+- `unused-definition` (SMP409) no longer reports a private protocol or TypedDict class that the file never reads when
+  the project's Ruff configuration selects [PYI046](https://docs.astral.sh/ruff/rules/unused-private-protocol/) or
+  [PYI049](https://docs.astral.sh/ruff/rules/unused-private-typed-dict/), which reports it
+  ([#67](https://github.com/gaborbernat/simplint/pull/67)) by [@gaborbernat](https://github.com/gaborbernat).
+- `up-re-prefixmatch` (SMP522) no longer reports a `re.match` call with a plain-text pattern whose result is only tested
+  for truth when the project's Ruff configuration enables preview mode and selects
+  [RUF055](https://docs.astral.sh/ruff/rules/unnecessary-regular-expression/), which rewrites it to `str.startswith`
+  ([#67](https://github.com/gaborbernat/simplint/pull/67)) by [@gaborbernat](https://github.com/gaborbernat).
+- `up-unittest-assert-helper` (SMP811) stops with a conflict error when the project's Ruff configuration selects
+  [PT009](https://docs.astral.sh/ruff/rules/pytest-unittest-assertion/), since both report the same `self.assertTrue`
+  and `self.assertFalse` calls and fix them in opposite ways ([#67](https://github.com/gaborbernat/simplint/pull/67)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-8-0-fixed"></a>
+
+### Fixed
+
+- `absolute-sibling-import` (SMP302) no longer reports or fixes a project that runs flake8-lazy, configured by a
+  `[tool.flake8-lazy]` table or a pre-commit or prek hook with id `flake8-lazy`. Its fix made flake8-lazy rewrite each
+  module's `__lazy_modules__` list into entries that `ty` rejects
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `single-user-constant` keeps an annotated constant as an annotated local instead of inlining its literal, so a value
+  such as a dict under `Final[dict[str, list[str]]]` keeps the type it declares and still type checks
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `function-docstring` (SMP901) reads a method documented by an `.. autoclass::` directive with `:members:` under its
+  class name, so its docstring is no longer reported as internal
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `function-docstring` (SMP901) and `unused-definition` (SMP409) read `.. autofunction::` directives that name a
+  function of a package by the package, as in `app.helper` for `app/__init__.py`, as documentation
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `unused-definition` (SMP409) and `test-only-code` (SMP408) keep a function that the documentation names with an
+  autodoc directive, so a test calling it no longer makes it test-only code
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `automodule` of a package documents the names its `__init__.py` defines, so they are no longer reported as unused
+  definitions when a `.rst` or `.md` page documents them with `:members:`
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- Entry points that name a module without `:attribute`, such as a pytest plugin, were ignored. Every public name of such
+  a module now counts as public API, so `function-docstring` (SMP901) no longer asks for docstrings on its hooks and
+  fixtures, and `undocumented-public-api` (SMP903) checks them whatever `__all__` lists
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `missing-from-all` (SMP401) no longer lists `annotations` from `from __future__ import annotations` as a name the
+  other modules import from a bare module entry point, such as a pytest plugin. A `__future__` import binds no name its
+  users read ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `blanket-ignore` (SMP004) no longer reports `# ruff: ignore [E501]` and `# ruff: file-ignore [E501]`, which name codes
+  with a space before the bracket, as Ruff reads them ([#67](https://github.com/gaborbernat/simplint/pull/67)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `unused-export`, `unexported-public-name` and `unused-definition` no longer treat the hooks of the `[build-system]`
+  build backend, such as `build_wheel`, as unused or private. A build frontend calls those hooks by name, so they are
+  public names, as entry points are ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `imprecise-annotation` (SMP602) no longer reports `object` as the return type of a `Callable`, such as
+  `Callable[..., object]`, which says that the result is ignored. `object` in its parameters is still reported
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `module-variable-prefix`, `module-variable-case`, `unexported-public-name`, `single-user-constant` and
+  `module-attribute-import` keep their reports but offer no fix for a module that a write under a computed name may set,
+  such as `setattr(module, name, value)` or `mock.patch(f"pkg.module.{name}")`. Renaming, moving or inlining its
+  variables would break that write ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `conditional-in-test` (SMP803) no longer reports a conditional expression that is the item of a comprehension, such as
+  `[tag if tag else "-" for tag in tags]`, as it already did for `if` clauses in comprehensions. A conditional nested
+  inside such an item is still reported ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `unused-export` (SMP402), `unexported-public-name` (SMP403), `unused-definition` (SMP409) and `test-only-code`
+  (SMP408) no longer report the `coverage_init` function of a module that `[tool.coverage.run] plugins` in
+  `pyproject.toml` lists, since coverage calls it by name. The module is found in the project's directory or in a
+  `pythonpath` (pytest) or `extra-paths` (ty) directory ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `dataclass-frozen` (SMP701), `dataclass-slots` (SMP702) and `dataclass-kw-only` (SMP703) no longer offer a fix for a
+  dataclass decorator that holds a comment, since rewriting the decorator dropped the comment
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `dataclass-frozen` (SMP701) no longer offers `frozen=True` for a class whose instances get a `__dict__` store, as
+  `x.__dict__ = ...`, `del x.__dict__` or `setattr(x, "__dict__", ...)`, since a frozen instance raises
+  `FrozenInstanceError` on it and the fix broke the code it changed. Reading `__dict__`, as `vars(x)` does, keeps the
+  fix ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `dataclass-frozen` (SMP701) no longer reports a dataclass written to after construction when the plain class it would
+  become is one Ruff rejects: B903 (`class-as-data-structure`) when the class has no base classes or class keywords, no
+  decorator besides the dataclass's, no method but private ones, and no factory default or `init=False` field, or
+  PLR0913 (`too-many-arguments`) when its parameters, excluding `init=False` fields and `KW_ONLY`, exceed `max-args`.
+  Those rules were the only other way to satisfy the rule, so the two rules asked for contradictory code. Other
+  dataclasses are still reported ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `dataclass-frozen`, `dataclass-kw-only` and `dataclass-slots` leave a dataclass alone when a package without
+  `__all__`, or with a dynamic one, re-exports it and another file imports it from the package, as the other public API
+  rules do ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `dataclass-kw-only` (SMP703) no longer reports a dataclass that is part of a library's public API, nor the positional
+  calls of it in other files, since those callers would break when the fields became keyword-only
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `dataclass-frozen`, `dataclass-kw-only` and `dataclass-slots` leave a public dataclass alone when a public signature
+  of the library returns it, as they do a dataclass its `__all__` lists
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `dataclass-frozen` (SMP701) and `dataclass-slots` (SMP702) treat a `**` splat that sets `frozen` or `slots` to
+  something other than `True` as an explicit option, so the fix for the other option is marked unsafe, as it already was
+  for a keyword ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `dataclass-frozen` (SMP701), `dataclass-slots` (SMP702) and `dataclass-kw-only` (SMP703) read the options a `**` splat
+  passes from a module-level dict, so `@dataclass(**DC_KW)` no longer gets a fix that repeats `frozen=` or `slots=` and
+  breaks imports. A `**` splat simplint cannot read leaves the class unreported, and a call whose splat repeats a field
+  is no longer rewritten to pass that field by keyword ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `definition-before-use` (SMP201) names the definition a misplaced helper should directly follow. A helper placed after
+  an earlier helper of the same caller was reported as following the caller
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `undocumented-public-api` (SMP903), `function-docstring` (SMP901) and `test-only-code` (SMP408) no longer count a name
+  that another module imports from a library's public module when the module's `__all__` leaves the name out, or when
+  the module supplies names through a module-level `__getattr__`
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `single-user-constant` (SMP202), `module-variable-case` (SMP102) and `module-variable-prefix` (SMP404) no longer keep
+  a name that only a docstring mentions, since a string spells a name for a patch or a lookup only outside docstrings
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `module-attribute-import` (SMP304) reports the `module.Name` reads of a module that a doctest reads a name of again,
+  since a doctest reads a name rather than patching the module ([#69](https://github.com/gaborbernat/simplint/pull/69))
+  by [@gaborbernat](https://github.com/gaborbernat).
+- `unused-export` (SMP402) keeps a name that a doctest imports, and its fix no longer removes the name and the import
+  the doctest uses ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `__import__("pkg.mod")` returns the package `pkg`, so the names read off its result are read from `pkg` and not from
+  `pkg.mod`, unless its `fromlist` is a non-empty list or tuple, or an expression that may hold names. A submodule read
+  off its result, as in `__import__("pkg.mod").mod.name`, is read from `pkg.mod`
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `module-attribute-import` reports `module.Name` access again when another file reads an attribute of a module with the
+  same name through `__import__` or a plain `import`. Such a read used to suppress the report for every module of that
+  name ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `unexported-public-name` and `module-variable-prefix` no longer rename a name that a module reads off the result of
+  `importlib.import_module`, `__import__` or `pytest.importorskip` called with a string literal, directly or through a
+  variable ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `rst-missing-param`, `rst-missing-attribute`, `rst-missing-raises` and `rst-returns` no longer offer to add `:param:`,
+  `:ivar:`, `:raises:`, `:returns:` or `:yields:` fields with empty descriptions, which Sphinx's nitpicky builds reject
+  and `rst-empty-field` reports. The reports stay, and the author writes the descriptions
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `single-use-variable` (SMP504) no longer crashes a debug build when its fix inlines an empty string into an f-string
+  field. The fix deletes the field instead ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `unexported-public-name` (SMP403) and `unused-definition` (SMP409) no longer report the names of an entry point's
+  module when that module sits in the project's root directory and `src` does not list that directory
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `error-message-matching` (SMP507) no longer reports a comparison of the text of two exceptions, such as
+  `str(exc) == str(other)` with `other` annotated with an exception type
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `function-docstring` (SMP901) no longer copies reST fields and `Args:` or `Parameters` sections into the comment its
+  fix writes, since the signature documents them ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `unused-definition` (SMP409) no longer reports the hook class of a hatchling custom build or metadata hook, such as
+  `_CustomBuildHook` in `hatch_build.py`, as unused. hatchling calls that class, and the `path` of the hook is honored
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `--fix --unsafe-fixes` no longer stops with "Failed to converge after 100 iterations" and applies nothing when a file
+  has about 100 identical fixes, such as `single-use-variable` inlines of `lock = build()`, and one of them is
+  withdrawn. The withdrawn fix stays withheld while the others apply
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `imprecise-annotation` (SMP602) no longer reports `object` as the annotation of `*args` or `**kwargs`, the honest type
+  for arbitrary values. Before, no annotation satisfied both it and ANN401, which flags `Any` there
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `function-docstring` (SMP901) leaves the docstring of a method that a public class of a library inherits, without
+  overriding it, from a private base or mixin, since users reach it through that class. `undocumented-public-api`
+  (SMP903) expects one there ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `undocumented-public-api` (SMP903) and `function-docstring` (SMP901) judge the methods a public class inherits from a
+  private base as public API when the library re-exports the class from a private module
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `undocumented-public-api` (SMP903) and `function-docstring` (SMP901) judge the methods a private class inherits from a
+  base of its module as public API when a public signature of the library returns an instance of that class
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `--isolated` no longer reads the `pyproject.toml` of a nested test project, so an invalid one no longer fails the run
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `missing-from-all` (SMP401) keeps reporting a name that other modules import but `__all__` leaves out in a public
+  module of a library, and offers no fix there: listing it widens the library's API and what `import *` binds
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `dataclass-slots` (SMP702) and `dataclass-frozen` (SMP701) no longer report the public dataclasses of a library,
+  including those nested in its public classes, since `slots` and `frozen` change what users can do with an instance
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `unused-default` (SMP506) no longer removes a default from a public function or class of a library's public module,
+  since code outside the project may call it without the argument. Its hooks and entry points were already left alone
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- The fixes of `module-variable-case` (SMP102) and `module-variable-prefix` (SMP404) no longer rename a name that a
+  public module of a library offers or lists in `__all__`, since its users import it
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `missing-final` (SMP601) no longer reports the module variables of a Sphinx `conf.py`, which Sphinx reads by their
+  names, as `module-variable` already leaves them alone ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `module-attribute-import` (SMP304) no longer reports a read of a private name, such as `main._compute_max_logs`, when
+  Ruff's `import-private-name` (PLC2701) would flag the import it suggests, so the two rules no longer need a
+  suppression to agree ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `module-attribute-import` (SMP304) no longer reports an attribute read off a parameter, local, loop or comprehension
+  variable named like the module it imports. Only the reads that resolve to the module are reported, and its fix
+  rewrites only those reads. A module whose name a local, parameter, closure variable or class attribute rebinds used to
+  be skipped entirely; its real reads are now reported and fixed
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `module-attribute-import` (SMP304) and `missing-final` (SMP601) count a `setattr` or `patch.object` in a loop over a
+  literal tuple or list of modules as patching the name on each module the loop names. Such a module keeps its attribute
+  on the module instead of being reported ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `module-variable-case` (SMP102) and `module-variable-prefix` (SMP404) no longer report a name that one module-level
+  `if`, `try` or `with` block binds and reads, such as `msg` in a version check before a `raise`. A name read outside
+  the block, or by another file, is still reported ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `module-variable-case` (SMP102) and `module-variable-prefix` (SMP404) no longer report a module-level alias of a
+  function the module defines, such as `_build_cli = build_cli`, which follows the function's name. An alias of an
+  imported function is still reported ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `module-variable-case` (SMP102) and `module-variable-prefix` (SMP404) no longer report an annotation without a value
+  under `if TYPE_CHECKING:`. Such a declaration types a name that a module's PEP 562 `__getattr__` serves at runtime.
+  Renaming it broke the type checker's view of `module.log`, while `__getattr__` keeps serving it at runtime. An
+  assigned name in the same block is still checked ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `module-variable-case` and `module-variable-prefix` keep their report but offer no rename for a module variable that
+  another module assigns as an attribute, as `module.NAME = value` or `setattr(module, "NAME", value)` does, since the
+  rename would leave that write pointing at the old name ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `missing-final` (SMP601) no longer reports a module variable that a `setattr` call sets on its module, such as
+  `scoped.setattr(paths, "OVERRIDE_PIPX_HOME", None)` in a test or `monkeypatch.setattr("pkg.paths.NAME", None)`,
+  whatever the object is named. A module that a `setattr` call may set under a computed name, such as
+  `setattr(paths, name, value)`, reports none of its variables, since any of them may be reassigned
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- The call-site rules, such as `unused-return-value` (SMP411), count a call made through a module that neither the run
+  nor the standard library of the newest Python provides, such as `log.set_threshold(...)` after
+  `from distutils import log` in a tree that shims `distutils.log`, as a call of the run's file of that last name, so a
+  function whose value that call uses is not reported. A standard-library module such as `json` never counts
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- A name that another part of the project stores to as an attribute keeps its `missing-final` (SMP601) suppression
+  inside a nested test project, as it does outside one ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- Results of the rules a nested project leaves out are no longer reused by the outer project, so `simplint check`
+  reports the same docstring findings whichever project it runs from
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- The documentation pages of a nested test project no longer count as the run's project's documentation, so a name only
+  those pages give is reported as unused again ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- A library directory whose name only starts with `test`, such as `testkit`, is no longer checked as a nested test
+  project, so the rules that judge its docstrings and names apply to it again
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- Nested test projects, such as the `roots/test-*` directories of Sphinx's test suite, are now checked as projects of
+  their own: a name one of them defines is not used by another, and their test-module status, project kind and
+  documentation stay within them. A name the run's project reads is used in them, and an `.. automodule::` with
+  `:members:` documents the members Sphinx renders, so their names count as used and their docstrings stay. Their files
+  are test input, so the docstring rules and the export and naming visibility rules leave them alone, while the other
+  rules still check them ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- A nested project rooted at a `test` or `tests` directory, such as numpy's `tools/swig/test` with its own `setup.py`,
+  has its files treated as test code by every rule that reads test modules, as the directory name says, so
+  `duplicate-code` (SMP530) no longer compares them with the rest of the run
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `single-user-constant` (SMP202) no longer inlines a constant that a doctest of its own module reads, which would leave
+  the example reading a name that is gone ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `parametrize-without-id` (SMP802) no longer reports a row built by a helper of the module whose every path ends in
+  `pytest.param(..., id=...)` ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `parametrize-without-id` (SMP802) checks a row name bound once to a `pytest.param(...)` call by that call's `id=`, so
+  a module constant that already has an id is no longer reported. Names the rule cannot read, such as imported or
+  rebound ones, are skipped ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `parametrize-without-id` (SMP802) counts numbers by the id pytest gives them, so `0x10` and `16`, or `1e3` and
+  `1000.0`, repeat each other and their rows are reported ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `parametrize-without-id` (SMP802) no longer reports a row that is a plain string, number, `True`, `False` or `None`
+  whose value pytest already uses as its id, such as `"select"`. It still reports such a row when another row repeats
+  its value, since pytest then suffixes the shared id ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `parametrize-without-id` (SMP802) no longer reports a starred generator in a parametrize list, such as
+  `*(pytest.param(...) for ...)`, since the rows it unpacks are not known. A starred list or tuple, written inline or
+  bound to a name, has its rows checked instead ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `unused-export` no longer drops a name that a test patches through its dotted path, `mock.patch("pkg.mod.NAME")`, or
+  through the module object, `monkeypatch.setattr(module, "NAME", value)`, and `single-user-constant` no longer inlines
+  a constant that a string in the run spells, which would replace the value the test patches
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `--fix` withdraws only the fix whose result Ruff would report, where it used to withdraw every fix of that rule in the
+  file, so the other fixes of the rule still apply ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `unused-default` (SMP506) again judges the private methods of a public class in a library's public module. Only the
+  public methods of such a class are public API, so the defaults of its private methods are checked
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `unused-export` (SMP402) no longer reports names in the `__all__` of a public module of a library, since users import
+  those names and no module of the project needs to. Private modules and applications keep the report
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `unexported-public-name` (SMP403) and `module-variable-prefix` (SMP404) still report a name missing from `__all__` in
+  a public module of a library, but no longer offer to rename it private, since users import those names. The report
+  asks for the name in `__all__` or a rename by hand ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `unnamed-regex-group` (SMP532) reads the decorators, default values and annotations of a function in the scope around
+  it, so a match read in a default no longer makes the match look unused and gets an unsafe fix that breaks the default
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `unnamed-regex-group` (SMP532) and `unexplained-regex` (SMP533) no longer read a pattern as non-verbose when its
+  `flags` argument is a name that holds `re.VERBOSE`, so `#` comments are checked as comments and the fix no longer
+  writes `(?:` inside one ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `unused-export` (SMP402) treats every public module of a library as part of its API, which leaves the `api-modules`
+  option with nothing to do, so it is gone ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- A name a function binds to modules, as `mod = pytest.importorskip(...)` does, reads the names of those modules only,
+  so `module-variable-prefix` (SMP404) no longer offers to rename a name a test reads off a module it loads. A local
+  variable that shares its name with a module-level one no longer makes that name count as read in other files, which
+  reported a variable of an `if` block that only the block reads as `module-variable-case` (SMP102)
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `rst-attribute-kind` (SMP922) and `rst-missing-attribute` (SMP920) take a class-body `Final` with a value as a class
+  variable, as PEP 591 defines it, so such a constant takes `:cvar:` rather than `:ivar:`
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- The reStructuredText rules that report a missing parameter, attribute or raised exception (SMP916, SMP920 and SMP924)
+  list no fix in the rule reference, as they offer none ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `rst-missing-attribute` (SMP920) no longer reports the attributes that a class defined inside a method sets on its own
+  `self` as attributes of the enclosing class ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `unexported-public-name` and `unused-export` no longer rename or drop a name that a script reads by its string key off
+  the globals `runpy.run_path` or `runpy.run_module` returns, such as `runpy.run_path(path)["main"]`, when the path or
+  module names a project module. A key that no static path names counts as a read of any module's name
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- SARIF `relatedLocations` give their file as a `file://` URI, as the primary location of the same result does
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `unused-definition` (SMP409) no longer reports a class or function that a doctest of its module uses without importing
+  it, since a doctest runs in the globals of its module ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `single-caller-helper` (SMP505) no longer asks to inline a helper holding a conditional into a test, where
+  `conditional-in-test` (SMP803) would then report it ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `single-caller-helper` (SMP505) no longer suggests inlining a helper when the caller would then pass the
+  cognitive-complexity limit, which would ask to split it again ([#69](https://github.com/gaborbernat/simplint/pull/69))
+  by [@gaborbernat](https://github.com/gaborbernat).
+- `single-caller-helper` (SMP505) no longer asks to inline a helper when the merged caller could cross the limit of
+  Ruff's `C901`, `PLR0912`, `PLR0915` or `PLR0911` while Ruff runs that rule; the inlined counts are estimated
+  conservatively ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `single-caller-helper` (SMP505) no longer suggests inlining a helper annotated `TypeGuard` or `TypeIs`, since the bare
+  expression would drop the narrowing its caller relies on ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `single-use-variable` (SMP504) no longer inlines a value into a parameter's default when Ruff's
+  `mutable-argument-default` (B006) or `function-call-in-argument-default` (B008) runs and reports that value there
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `single-use-variable` (SMP504) no longer asks to inline a conditional expression, or a value with a string literal in
+  it, into an f-string replacement field, where the result reads worse than the two statements it replaces. A string
+  value on its own is still inlined ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `single-use-variable` no longer nests an f-string or string literal inside the f-string it is inlined into, which it
+  wrote as `f"[{f'<{value}>'}]"`; the value's text joins the enclosing f-string instead, as `f"[<{value}>]"`
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `single-use-variable` (SMP504) no longer inlines a value into the `next`, `anext`, `send` or `close` call that reads
+  it. Inlined, the call became the only holder of a generator, so its `finally` block ran as soon as the call returned
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `single-use-variable` no longer adds parentheses around a value inlined where its precedence does not need them, such
+  as the test of a conditional expression, and keeps them where an operator needs them
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `unused-export` and `unexported-public-name` no longer remove or rename a name a module reads off a module loaded from
+  a file path with `importlib.util.spec_from_file_location`, when the path names a project module. Names read off a
+  module loaded by `importlib.import_module` and similar calls now count as imports, so `missing-from-all` and
+  `unused-export` see them too ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- A `from` import in a `.pth` file, such as `import sys; from pkg.hook import value`, counts the name it imports as read
+  at startup, as `import pkg.hook; pkg.hook.value` does, so `value` is no longer reported as test-only or unused
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- Names that a `.pth` file reads at interpreter startup, such as `import pkg.hook; pkg.hook._run()`, now count as used
+  outside the tests, as entry points do. `test-only-code` (SMP408), `unused-export` (SMP402), `unexported-public-name`
+  (SMP403), `unused-definition` (SMP409) and `function-docstring` (SMP901) no longer report them as test-only, unused,
+  unlisted or undocumented ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `--stdin-filename` judges a file by its path as `check` does, so a helper in a `tests` directory is no longer reported
+  as unused when checked from inside that directory ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `single-user-constant` no longer moves a module variable that another file assigns or deletes as an attribute of its
+  module, as `module.NAME = value` does, which the move would silently break. `module-attribute-import` leaves only the
+  attribute another file stores to or a dotted string patches alone, as it does for `setattr`, so the module's other
+  attributes are still reported ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `string-concatenation` (SMP503) no longer reports a chain whose non-literal operand holds a string with a backslash
+  when the target is older than Python 3.12, where no f-string replacement field can contain one
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `string-concatenation` (SMP503) no longer reports a `+` chain with an instance of a class the module defines, such as
+  `Markup("<b>") + "<i>"`, since `+` runs the class's own `__add__` and an f-string would change what the code does
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `string-concatenation` (SMP503) no longer reports a `+` chain with an instance of a class imported into the module,
+  such as `Markup("<b>") + "<i>"` with `markupsafe.Markup`, since `+` runs that class's own `__add__`. A class of the
+  project is recognized whatever its name, and an import from outside the project counts as a class when its name is
+  CapWords ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `suppression-without-reason` (SMP003) accepts a reason written as a comment on the line directly above a trailing
+  suppression, such as `# ty: ignore[...]`, so the reason need not share the line with the suppression
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `module-attribute-import` (SMP304) no longer reports a read through an alias of the project's own top-level package,
+  such as `pd.NaT` for `import pandas as pd`. Reads through its submodules, and through an alias equal to the package
+  name, are still reported ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `missing-from-all` (SMP401) no longer asks to list a name bound only under `if TYPE_CHECKING:`, since listing it makes
+  `from module import *` fail at run time ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `unused-definition` (SMP409), `unexported-public-name` (SMP403), `module-variable-case` (SMP102) and
+  `module-variable-prefix` (SMP404) no longer skip a name only because a stdlib or third-party import or a doctest
+  spells it, since such a spelling says nothing about the names of the project. Where such a spelling may read the name,
+  the rename fix is withheld ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `unused-default` (SMP506) follows the `__all__` of a library's public module, as the other API rules do: a public
+  function that `__all__` leaves out now has its default reported when every call in the run passes it
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- `vars-call` (SMP604) no longer reports a mapping built from `vars()` in the same expression, such as
+  `dict(vars(obj))`, a dict comprehension over `vars(obj).items()` or `{**vars(obj), ...}`, since the attributes of an
+  open-ended object have no key type to name ([#69](https://github.com/gaborbernat/simplint/pull/69)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `walrus-candidate` (SMP502) no longer offers a fix for an assignment whose `if` is the only statement of an outer `if`
+  with a comment in its header, as Ruff would not merge the two past that comment. `--fix` also applies the other
+  assignments of the file, which it had withdrawn along with that one
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+- A workspace member is now judged as a library or an application by its own `pyproject.toml` when that has a
+  `[project]` or `[build-system]` table, so a workspace root that only configures simplint no longer makes its library
+  members applications. The root's `[tool.simplint]` still sets the rules
+  ([#69](https://github.com/gaborbernat/simplint/pull/69)) by [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-8-0-documentation"></a>
+
+### Documentation
+
+- Each rule page's "Other tools" section now says in a sentence or two how the rule relates to Ruff: which Ruff rule
+  covers which part, or which Ruff issue or pull request asks for the check. Several pages cited issues and pull
+  requests that ask for something else; they are corrected ([#67](https://github.com/gaborbernat/simplint/pull/67)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.7.1 (2026-11-06)
 
 <a name="release-0-7-1"></a>
