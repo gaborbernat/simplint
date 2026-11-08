@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+4:2 SMP701 Dataclass is missing frozen; set `frozen=True`

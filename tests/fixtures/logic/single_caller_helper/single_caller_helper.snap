@@ -2,7 +2,8 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-9:5 SMP505 `_parse_header` is called only from `load`, and inlining keeps `load` short; inline it
-18:5 SMP505 `_public_helper` is called only from `public_caller`, and inlining keeps `public_caller` short; inline it
-117:5 SMP505 `_with_lambda` is called only from `with_lambda`, and inlining keeps `with_lambda` short; inline it
-126:5 SMP505 `_with_nested` is called only from `with_nested_definition`, and inlining keeps `with_nested_definition` short; inline it
+12:5 SMP505 `_parse_header` is called only from `load`, and inlining keeps `load` short; inline it
+21:5 SMP505 `_public_helper` is called only from `public_caller`, and inlining keeps `public_caller` short; inline it
+120:5 SMP505 `_with_lambda` is called only from `with_lambda`, and inlining keeps `with_lambda` short; inline it
+129:5 SMP505 `_with_nested` is called only from `with_nested_definition`, and inlining keeps `with_nested_definition` short; inline it
+240:5 SMP505 `_branch_choice` is called only from `test_branching_caller`, and inlining keeps `test_branching_caller` short; inline it

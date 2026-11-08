@@ -7,7 +7,7 @@ pub(crate) mod edits;
 pub(crate) mod imports;
 pub(crate) mod layout;
 pub(crate) mod logic;
-mod module_variable;
+pub(crate) mod module_variable;
 pub(crate) mod naming;
 mod rename;
 pub(crate) mod testing;
@@ -25,17 +25,20 @@ use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::noqa;
+use crate::project::doctest_code;
 use crate::rules::comments::Comment;
 use crate::rules::docstrings::PublicApi;
 use crate::rules::docstrings::rst::{Target, collect_targets};
 use crate::rules::logic::KindsCache;
+use crate::rules::module_variable::{ModuleVariable, module_variables};
 use crate::rules::naming::ReportedNames;
-use crate::syntax::{all_literal, is_name, last_segment};
+use crate::syntax::{all_literal, code_string_values, is_name, last_segment};
 
 // What the rules memoize for a file, each part built by the first rule that reads it.
 #[derive(Default)]
 pub(crate) struct FileState<'a> {
     public_api: OnceCell<PublicApi<'a>>,
+    module_variables: OnceCell<Vec<ModuleVariable<'a>>>,
     rst_targets: OnceCell<Vec<Target<'a>>>,
     kinds: KindsCache<'a>,
     reported_names: ReportedNames<'a>,
@@ -61,6 +64,12 @@ impl<'a> FileState<'a> {
     pub(crate) fn public_api(&self, checker: &Checker<'a>) -> &PublicApi<'a> {
         checker.assert_flagged_cross_file();
         self.public_api.get_or_init(|| PublicApi::of(checker))
+    }
+
+    // The module-scope variables the case and prefix rules check, which the two of them share.
+    pub(crate) fn module_variables(&self, checker: &Checker<'a>) -> &[ModuleVariable<'a>] {
+        checker.assert_flagged_cross_file();
+        self.module_variables.get_or_init(|| module_variables(checker))
     }
 
     // The parsed docstrings the reStructuredText rules check, empty unless `docstring-style = "rst"`.
@@ -91,7 +100,8 @@ impl<'a> FileState<'a> {
     }
 
     fn string_words(&self, checker: &Checker<'a>) -> &rename::StringWords {
-        self.string_words.get_or_init(|| rename::StringWords::of(checker.string_values(), self.export_strings(checker)))
+        self.string_words
+            .get_or_init(|| rename::StringWords::of(&code_string_values(checker.body()), self.export_strings(checker)))
     }
 
     // The ranges of the t-strings, which keep their source text, so an edit inside one changes what they hold.
@@ -122,6 +132,15 @@ impl<'a> FileState<'a> {
     }
 }
 
+// A doctest runs in its module's globals, so an example that names a definition of the module uses it, whether or not
+// the example imports it.
+pub(crate) fn is_named_by_doctest(checker: &Checker, name: &str) -> bool {
+    checker.string_values().iter().filter(|(_, text)| text.contains(">>>")).any(|(_, text)| {
+        doctest_code(text)
+            .any(|code| code.split(|char: char| !(char.is_alphanumeric() || char == '_')).any(|word| word == name))
+    })
+}
+
 pub fn is_alone_on_lines(source: &str, range: TextRange) -> bool {
     !has_leading_content(range.start(), source) && !has_trailing_content(range.end(), source)
 }
@@ -136,6 +155,11 @@ pub fn docstring(body: &[Stmt]) -> Option<&ast::ExprStringLiteral> {
 // The leading whitespace of the line a node starts on; a node after a `;` shares the line, not its indentation.
 pub fn indentation(source: &str, ranged: impl Ranged) -> &str {
     leading_indentation(source.full_line_str(ranged.start()))
+}
+
+// Whether the file is a Sphinx configuration, whose module variables Sphinx reads by their names and types.
+pub fn is_sphinx_conf(checker: &Checker) -> bool {
+    checker.file_name() == "conf.py"
 }
 
 pub fn is_class_like(name: &str) -> bool {

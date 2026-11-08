@@ -1,0 +1,23 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+7:5 SMP102 Module-scope variable `limit` should be named `LIMIT`
+16:1 SMP102 Module-scope variable `_verbosity` should be named `_VERBOSITY` [unsafe fix: Rename `_verbosity` to `_VERBOSITY`]
+--- fixed (1 applied, 1 remaining) ---
+import typing
+
+if typing.TYPE_CHECKING:
+    log: typing.Callable[[str], None]
+    verbosity: int
+    item: int
+    limit = 3
+else:
+
+    def __getattr__(name: str) -> object: ...
+
+
+for item in range(3):
+    print(item)
+VERBOSITY: typing.Final[int] = 0
+_VERBOSITY = VERBOSITY

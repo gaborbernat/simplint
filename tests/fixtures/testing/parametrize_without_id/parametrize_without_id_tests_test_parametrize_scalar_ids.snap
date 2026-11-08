@@ -1,0 +1,18 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+4:36 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+4:42 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+9:36 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+9:41 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+19:36 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+19:42 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+19:51 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+19:57 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+19:86 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+19:93 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+24:36 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+24:40 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+24:51 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`
+24:74 SMP802 Parametrize row has no id; wrap it in `pytest.param(..., id=...)`

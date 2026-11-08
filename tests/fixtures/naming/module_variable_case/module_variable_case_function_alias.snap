@@ -1,0 +1,15 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+7:1 SMP102 Module-scope variable `limit` should be named `LIMIT`
+8:1 SMP102 Module-scope variable `_last` should be named `_LAST` [unsafe fix: Rename `_last` to `_LAST`]
+--- fixed (1 applied, 1 remaining) ---
+def build_cli() -> int:
+    return 1
+
+
+_build_cli = build_cli
+alias = build_cli
+limit = build_cli()
+_LAST = limit

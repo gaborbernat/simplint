@@ -3,45 +3,61 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::syntax::{Visibility, last_segment, module_statements, names_in};
 
-// The module-level names a module's public interface reaches: the classes and aliases that the annotations, bases and
-// bounds of an exported name refer to, transitively, through the same places of every class and alias they reach. A
-// name counts only when another exported name reaches it, so a type an exported name uses is public though no file
-// imports it.
-pub(super) fn api_reached(body: &[Stmt], exported: &[&str]) -> Vec<String> {
-    let mut refs: FxHashMap<&str, Vec<String>> = FxHashMap::default();
-    let mut types: FxHashSet<&str> = FxHashSet::default();
-    for stmt in module_statements(body) {
-        if let Some(definition) = definition(stmt) {
-            refs.entry(definition.name).or_default().extend(definition.refs);
-            if definition.is_type {
-                types.insert(definition.name);
-            }
-        }
-    }
-    let mut reached: FxHashSet<&str> = FxHashSet::default();
-    for root in exported {
-        // The root itself is reached only through a cycle back to it, which no other exported name causes.
-        let mut seen: FxHashSet<&str> = FxHashSet::default();
-        let mut pending: Vec<&str> = refs.get(root).into_iter().flatten().map(String::as_str).collect();
-        while let Some(name) = pending.pop() {
-            if types.contains(name) && seen.insert(name) {
-                pending.extend(refs.get(name).into_iter().flatten().map(String::as_str));
-            }
-        }
-        reached.extend(seen.into_iter().filter(|name| name != root));
-    }
-    reached.into_iter().map(str::to_owned).collect()
-}
-
 // A module-level definition, with the names its interface refers to. Only classes and aliases can be reached, so only
 // they set `is_type`.
-struct Definition<'a> {
-    name: &'a str,
+#[derive(Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+pub struct Definition {
+    name: String,
     is_type: bool,
     refs: Vec<String>,
 }
 
-fn definition(stmt: &Stmt) -> Option<Definition<'_>> {
+// The definitions a module defines at its top level, for the signature reach the index works out from the names the
+// module exposes.
+pub(super) fn interface(body: &[Stmt]) -> Vec<Definition> {
+    module_statements(body).filter_map(definition).collect()
+}
+
+// The module-level names a module's interface reaches from a set of roots: the classes and aliases that the annotations,
+// bases and bounds of a root refer to, transitively, through the same places of every class and alias they reach. A root
+// counts only when another root reaches it, so a type an exposed name uses is public though no file imports it. Built
+// once per module, so the roots of several sets share the same references.
+pub struct Closure<'a> {
+    refs: FxHashMap<&'a str, Vec<&'a str>>,
+    types: FxHashSet<&'a str>,
+}
+
+impl<'a> Closure<'a> {
+    pub fn new(interface: &'a [Definition]) -> Self {
+        let mut refs: FxHashMap<&str, Vec<&str>> = FxHashMap::default();
+        let mut types: FxHashSet<&str> = FxHashSet::default();
+        for definition in interface {
+            refs.entry(definition.name.as_str()).or_default().extend(definition.refs.iter().map(String::as_str));
+            if definition.is_type {
+                types.insert(definition.name.as_str());
+            }
+        }
+        Self { refs, types }
+    }
+
+    pub fn reached<'r>(&self, roots: impl IntoIterator<Item = &'r str>) -> Vec<String> {
+        let mut reached: FxHashSet<&str> = FxHashSet::default();
+        for root in roots {
+            // The root itself is reached only through a cycle back to it, which no other root causes.
+            let mut seen: FxHashSet<&str> = FxHashSet::default();
+            let mut pending: Vec<&str> = self.refs.get(root).into_iter().flatten().copied().collect();
+            while let Some(name) = pending.pop() {
+                if self.types.contains(name) && seen.insert(name) {
+                    pending.extend(self.refs.get(name).into_iter().flatten().copied());
+                }
+            }
+            reached.extend(seen.into_iter().filter(|name| *name != root));
+        }
+        reached.into_iter().map(str::to_owned).collect()
+    }
+}
+
+fn definition(stmt: &Stmt) -> Option<Definition> {
     let (name, is_type, refs) = match stmt {
         Stmt::FunctionDef(function) => (function.name.as_str(), false, signature_names(function)),
         Stmt::ClassDef(class) => (class.name.as_str(), true, class_names(class)),
@@ -73,7 +89,7 @@ fn definition(stmt: &Stmt) -> Option<Definition<'_>> {
         }
         _ => return None,
     };
-    Some(Definition { name, is_type, refs })
+    Some(Definition { name: name.to_owned(), is_type, refs })
 }
 
 // The names a class puts in its interface: its type parameters' bounds, its bases, the annotations of its fields, and

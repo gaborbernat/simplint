@@ -1,5 +1,8 @@
 Flags dataclasses declared without `frozen=True`.
 
+The public dataclasses of a library are not reported: users construct and subclass them, so `frozen=True` is their
+choice to make.
+
 ## Why is this bad?
 
 Any code holding a reference to a mutable dataclass can change it, so a reader cannot trust a value they saw at
@@ -81,6 +84,86 @@ class Release:
         version: str
     ```
 
+  - `@dataclass(**DC_KW)`: a `**` splat of a module-level dict literal, or of a `dict(...)` call with keyword arguments,
+    counts the options its keys set. Here `frozen` is set, so the class is accepted.
+
+    ```python ok
+    from dataclasses import dataclass
+
+    DC_KW = {"frozen": True, "slots": True}
+
+
+    @dataclass(**DC_KW)
+    class Release:
+        version: str
+    ```
+
+  - `@dataclass(**SLOTS_KW)` with `SLOTS_KW = {"slots": True}`: `frozen` is not set, so it is reported and the fix
+    appends `frozen=True` after the splat.
+
+  - A `**` splat simplint cannot read, such as `**get_kw()`, a name bound more than once or changed in place, or a dict
+    literal with a `**` entry or a repeated key, leaves the class unreported, since the options may be set.
+
+### Exceptions
+
+A class whose instances are written after construction, as the Instances of the class section describes, is not reported
+when the plain class that `frozen=True` would push it towards is one Ruff rejects, since that plain class is the only
+other form of the code. Writes through an object of unknown class do not count, and stubs are always reported, since
+Ruff's rules skip them:
+
+- **Ruff's B903 runs**: `class-as-data-structure` flags a plain class with no base classes or class keywords, no
+  decorator besides the dataclass's, and no method but private ones, such as `_bump`. A public method, such as `bump`,
+  keeps the class reported. Its fields must be plain parameters: a factory default or `field(init=False)` does not
+  qualify, and neither does a hand-written `__init__`. B903 is a preview rule, so the config turns preview on.
+
+  ```toml config
+  [tool.ruff]
+  preview = true
+
+  [tool.ruff.lint]
+  select = ["B903"]
+  ```
+
+  ```python ok
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Counter:
+      count: int
+
+      def _bump(self) -> None:
+          self.count += 1
+  ```
+
+- **Ruff's PLR0913 runs**: `too-many-arguments` flags a plain class whose `__init__` takes more parameters than
+  `max-args`, 5 by default. The count leaves out `field(init=False)` fields and the `KW_ONLY` marker, takes in `InitVar`
+  fields, and leaves out `ClassVar`s. A class with at most `max-args` fields stays reported. Ruff does not count a
+  parameter named like a dummy, such as `_a`, and this rule does, so a class with one can be left unreported where Ruff
+  would not flag it.
+
+  ```toml config
+  [tool.ruff.lint]
+  select = ["PLR0913"]
+  ```
+
+  ```python ok
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Hold:
+      a: int
+      b: int
+      c: int
+      d: int
+      e: int
+      f: int
+
+      def _bump(self) -> None:
+          self.a += 1
+  ```
+
 ### Fix
 
 The fix sets `frozen=True` on the decorator. No fix is offered for:
@@ -94,6 +177,20 @@ The fix sets `frozen=True` on the decorator. No fix is offered for:
   @dataclass
   class Empty:
       pass
+  ```
+
+- a decorator whose `**` splat sets `frozen` to a value other than `True`, such as `FROZEN_OFF = {"frozen": False}`: the
+  fix cannot take the key out of the dict, and adding `frozen=True` would repeat it
+
+  ```python report
+  from dataclasses import dataclass
+
+  FROZEN_OFF = {"frozen": False}
+
+
+  @dataclass(**FROZEN_OFF)
+  class Release:
+      version: str
   ```
 
 - a class the module creates inside `with pytest.raises(...)` or `with self.assertRaises(...)`: the test expects code
@@ -412,6 +509,10 @@ the class, is not detected, and breaks once the fix is applied.
 
 [dataclass-slots](SMP702.html) asks for `slots=True` on the same decorator. [dataclass-kw-only](SMP703.html) asks for
 `kw_only=True`.
+
+A class that writes an attribute other than its fields gets no `slots=True` fix from [dataclass-slots](SMP702.html), so
+the plain class is then the only way to satisfy it. The exceptions above only cover `frozen`, so `dataclass-slots` still
+reports such a class.
 
 ## Other tools
 

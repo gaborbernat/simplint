@@ -29,3 +29,11 @@ def test_nested() -> None:
 def test_lambda() -> None:
     choose = lambda flag: 1 if flag else 2  # noqa: E731
     assert choose(True)
+
+
+def test_comprehension_elements(items: list[int]) -> None:
+    assert [item if item else 0 for item in items] == items
+    assert {item: 1 if item else 2 for item in items}
+    assert {1 if item else 2 for item in items}
+    assert sum(1 if item else 0 for item in items) == len(items)
+    assert [item if (1 if item else 0) else 0 for item in items]

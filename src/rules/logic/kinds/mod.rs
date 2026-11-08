@@ -33,6 +33,8 @@ pub enum Kind {
     IntItems,
     // An instance of the module's class defined at this range.
     Instance(TextRange),
+    // An instance of a class the module imports, which the code does not show, so an operator may run its own method.
+    ImportedInstance,
 }
 
 // What the code shows about the type of an expression, read off the scopes around one spot in the module.

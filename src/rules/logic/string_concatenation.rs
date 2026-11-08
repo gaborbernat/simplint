@@ -1,7 +1,10 @@
+use std::borrow::Cow;
+
 use ruff_diagnostics::{Edit, Fix};
 use ruff_linter::registry::Rule as RuffRule;
+use ruff_python_ast::helpers::any_over_expr;
 use ruff_python_ast::str::Quote;
-use ruff_python_ast::{self as ast, Expr, Operator, PythonVersion, StringFlags};
+use ruff_python_ast::{self as ast, Expr, Operator, PythonVersion};
 use ruff_python_codegen::Generator;
 use ruff_python_stdlib::logging::LoggingLevel;
 use ruff_source_file::LineRanges;
@@ -10,7 +13,7 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
-use crate::rules::logic::inline::{literal_text, requoted_text};
+use crate::rules::logic::inline::{fstring_body_parts, requoted_text};
 use crate::rules::logic::kinds::Kinds;
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
@@ -37,11 +40,20 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     // `+` calls an operand's own `__add__` or `__radd__`, and raises `TypeError` for one that is not text, where the
     // f-string formats any value: the two agree only when every operand is surely a `str`.
     let mut kinds = Kinds::new(walker, range);
+    // A class may override `+` on its own, as `markupsafe.Markup` escapes its operand, so the f-string would change what
+    // the code does. An import from outside the run does not say whether its name is a class, so it counts by its name.
+    if operands.iter().any(|operand| kinds.is_class_instance(operand)) {
+        return;
+    }
     let texts = operands.iter().all(|operand| kinds.is_str(operand));
     // A comment between the operands has no place in the f-string, so rewriting would drop it.
-    let fix = fstring(checker, &operands, walker.in_fstring())
-        .filter(|_| texts && !checker.has_comment_in(range))
-        .map(|text| Fix::unsafe_edit(Edit::range_replacement(text, range)));
+    let fix = match fstring(checker, &operands, walker.in_fstring()) {
+        Err(Unwritable::Impossible) => return,
+        written => written
+            .ok()
+            .filter(|_| texts && !checker.has_comment_in(range))
+            .map(|text| Fix::unsafe_edit(Edit::range_replacement(text, range))),
+    };
     checker.report_fix(
         Rule::StringConcatenation,
         range,
@@ -135,46 +147,49 @@ fn flatten<'a>(expr: &'a Expr, operands: &mut Vec<&'a Expr>) {
     }
 }
 
-fn fstring(checker: &Checker, operands: &[&Expr], nested: bool) -> Option<String> {
+// Why no f-string is written for a chain. Before Python 3.12 a replacement field cannot hold a backslash inside a string,
+// so such a chain has no f-string for that target (`Impossible`) and is not reported. Any other chain this rule does
+// not write is `Declined`, reported without a fix.
+enum Unwritable {
+    Declined,
+    Impossible,
+}
+
+fn fstring(checker: &Checker, operands: &[&Expr], nested: bool) -> Result<String, Unwritable> {
     // Each string part's quote and the text between its quotes.
-    let mut parts: Vec<(Quote, &str)> = Vec::new();
+    let mut parts: Vec<(Quote, Cow<str>)> = Vec::new();
     // The f-string's text, with each interpolated expression, its source text and conversion still to place.
-    let mut pieces: Vec<Result<String, (&Expr, &str, &str)>> = Vec::new();
+    let mut pieces = Vec::new();
     let mut interpolated = false;
+    // A part or an expression the rule does not write leaves the chain reported without a fix, but a later string with a
+    // backslash still makes it impossible, so the loop goes on.
+    let mut declined = false;
+    let before_312 = checker.settings.from_ruff.target_version < PythonVersion::PY312;
     for operand in operands {
         match operand {
             // An implicit concatenation, which `ruff format` may join into one literal, joins here part by part.
-            Expr::StringLiteral(string) => {
-                for literal in &string.value {
-                    let text = literal_text(checker, literal)?;
-                    parts.push((literal.flags.quote_style(), text));
-                    pieces.push(Ok(text.replace('{', "{{").replace('}', "}}")));
+            Expr::StringLiteral(_) | Expr::FString(_) => {
+                let Some(body) = fstring_body_parts(checker, operand) else {
+                    declined = true;
+                    continue;
+                };
+                for (quote, text) in body {
+                    parts.push((quote, text.clone()));
+                    pieces.push(Ok(text));
                 }
-            }
-            Expr::FString(ast::ExprFString { value, .. }) => {
-                for part in value {
-                    match part {
-                        ast::FStringPartRef::Literal(literal) => {
-                            let text = literal_text(checker, literal)?;
-                            parts.push((literal.flags.quote_style(), text));
-                            pieces.push(Ok(text.replace('{', "{{").replace('}', "}}")));
-                        }
-                        ast::FStringPartRef::FString(fstring) => {
-                            if fstring.flags.is_triple_quoted() || fstring.flags.prefix().is_raw() {
-                                return None;
-                            }
-                            let text = checker.text(TextRange::new(
-                                fstring.start() + fstring.flags.opener_len(),
-                                fstring.end() - fstring.flags.closer_len(),
-                            ));
-                            parts.push((fstring.flags.quote_style(), text));
-                            pieces.push(Ok(text.to_owned()));
-                        }
-                    }
-                }
-                interpolated = true;
+                interpolated |= operand.is_f_string_expr();
             }
             other => {
+                // Before Python 3.12 a string inside a replacement field cannot hold a backslash, so a string with one in
+                // an expression leaves no f-string for the chain. A line continuation outside any string is not one.
+                if before_312
+                    && any_over_expr(other, &|sub: &Expr| {
+                        matches!(sub, Expr::StringLiteral(_) | Expr::BytesLiteral(_) | Expr::FString(_))
+                            && checker.text(sub.range()).contains('\\')
+                    })
+                {
+                    return Err(Unwritable::Impossible);
+                }
                 // `str(x)`, `repr(x)` and `ascii(x)` become the conversions `!s`, `!r` and `!a`, as Ruff's RUF010 asks.
                 let (inner, conversion) = match *other {
                     Expr::Call(ast::ExprCall { func, arguments, .. })
@@ -194,30 +209,41 @@ fn fstring(checker: &Checker, operands: &[&Expr], nested: bool) -> Option<String
                 };
                 let text = checker.text(inner.range());
                 if text.contains(FORBIDDEN_IN_EXPRESSION) {
-                    return None;
+                    declined = true;
+                    continue;
                 }
                 pieces.push(Err((inner, text, conversion)));
                 interpolated = true;
             }
         }
     }
+    if declined {
+        return Err(Unwritable::Declined);
+    }
     // A part in the other quote style fits only when its text holds no delimiter, escaped or not.
     // Before Python 3.12 a string inside an f-string's replacement field cannot use that f-string's quote either, so
     // there the parts keep the one quote they share and their expressions stay as written.
-    let before_312 = checker.settings.from_ruff.target_version < PythonVersion::PY312;
     let as_written = nested && before_312;
     let preferred = checker.stylist.quote();
     let alternatives = if as_written { vec![] } else { vec![preferred, preferred.opposite()] };
-    let delimiter = parts.first().map(|(quote, _)| *quote).into_iter().chain(alternatives).find(|delimiter| {
-        parts.iter().all(|(quote, text)| quote == delimiter || !as_written && !text.contains(delimiter.as_char()))
-    })?;
+    let delimiter = parts
+        .first()
+        .map(|(quote, _)| *quote)
+        .into_iter()
+        .chain(alternatives)
+        .find(|delimiter| {
+            parts.iter().all(|(quote, text)| quote == delimiter || !as_written && !text.contains(delimiter.as_char()))
+        })
+        .ok_or(Unwritable::Declined)?;
     let mut content = String::new();
     for piece in pieces {
         match piece {
             Ok(text) => content.push_str(&text),
             Err((expr, text, conversion)) => {
                 content.push('{');
-                content.push_str(&expression_text(checker, expr, text, delimiter, as_written)?);
+                content.push_str(
+                    &expression_text(checker, expr, text, delimiter, as_written).ok_or(Unwritable::Declined)?,
+                );
                 if !conversion.is_empty() {
                     content.push('!');
                     content.push_str(conversion);
@@ -229,7 +255,7 @@ fn fstring(checker: &Checker, operands: &[&Expr], nested: bool) -> Option<String
     let prefix = if interpolated { "f" } else { "" };
     let text = if interpolated { content } else { content.replace("{{", "{").replace("}}", "}") };
     let delimiter = delimiter.as_char();
-    Some(format!("{prefix}{delimiter}{text}{delimiter}"))
+    Ok(format!("{prefix}{delimiter}{text}{delimiter}"))
 }
 
 // The text of an expression as it goes into a replacement field of an f-string quoted with `delimiter`.

@@ -5,6 +5,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
 use crate::project::constructors::{CallSites, Use, Uses};
+use crate::rules::docstrings::Need;
 use crate::syntax::Visibility;
 
 // The uses of every candidate function by its name, found in one walk of the module rather than one per function.
@@ -40,7 +41,7 @@ pub(crate) fn module_candidate(checker: &Checker, function: &ast::StmtFunctionDe
 fn eligible(checker: &Checker, function: &ast::StmtFunctionDef) -> bool {
     function.decorator_list.is_empty()
         && Visibility::of(function.name.as_str()) != Visibility::Dunder
-        && !checker.state().public_api(checker).covers(function.range())
+        && !checker.state().public_api(checker).covers(function.range(), Need::Any)
 }
 
 // The uses of each candidate method of a class by its name, whether through `self`, found in one walk of the class.

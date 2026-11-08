@@ -1,16 +1,24 @@
 mod append;
 mod builder;
 mod django;
+mod runtime;
 
 use std::path::Path;
 
+use ruff_linter::settings::LinterSettings;
 use ruff_python_ast::identifier::Identifier;
 
 use ruff_python_ast::name::QualifiedName;
 use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
 use ruff_python_semantic::analyze::logging;
-use ruff_python_semantic::analyze::typing::find_binding_value;
-use ruff_python_semantic::{BindingId, BindingKind as RuffBindingKind, ScopeKind, SemanticModel, UnresolvedReference};
+use ruff_python_semantic::analyze::typing::{
+    find_binding_value, is_immutable_annotation, is_immutable_func, is_immutable_newtype_call, is_mutable_expr,
+    is_mutable_func,
+};
+use ruff_python_semantic::{
+    Binding as RuffBinding, BindingId, BindingKind as RuffBindingKind, ExecutionContext, ScopeKind, SemanticModel,
+    UnresolvedReference,
+};
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -24,12 +32,21 @@ pub struct Semantic<'a> {
     django_reports: FxHashSet<TextRange>,
     // The statements that are appends on a list, which Ruff's FURB113 counts in a run of consecutive appends.
     list_appends: FxHashSet<TextRange>,
+    // The annotations alone, without a value, that `if TYPE_CHECKING:` declares, which a module's `__getattr__` serves.
+    type_checking_stubs: FxHashSet<TextRange>,
 }
 
 impl<'a> Semantic<'a> {
-    pub fn new(path: &'a Path, body: &'a [Stmt], target_version: PythonVersion) -> Self {
-        let builder::Model { semantic: mut model, loads, module, annotations_are_lazy, django_reports, list_appends } =
-            builder::build(path, body, target_version);
+    pub fn new(path: &'a Path, body: &'a [Stmt], target_version: PythonVersion, settings: &LinterSettings) -> Self {
+        let builder::Model {
+            semantic: mut model,
+            loads,
+            module,
+            annotations_are_lazy,
+            django_reports,
+            list_appends,
+            type_checking_stubs,
+        } = builder::build(path, body, target_version, settings);
         let mut index = Index::default();
         let module_bindings = index.collect_bindings(&model);
         for (name, snapshot) in loads {
@@ -41,7 +58,7 @@ impl<'a> Semantic<'a> {
             references.sort_by_key(|reference| reference.range.start());
         }
         model.restore(module);
-        Self { model, annotations_are_lazy, index, django_reports, list_appends }
+        Self { model, annotations_are_lazy, index, django_reports, list_appends, type_checking_stubs }
     }
 
     // Whether Ruff's DJ012 reports the statement at `range`, a statement of a Django model's body.
@@ -52,6 +69,11 @@ impl<'a> Semantic<'a> {
     // Whether the statement at `range` is an append on a list, as FURB113 matches it.
     pub fn is_list_append(&self, range: TextRange) -> bool {
         self.list_appends.contains(&range)
+    }
+
+    // Whether the binding at `range` is an annotation without a value under `if TYPE_CHECKING:`, which only types a name.
+    pub fn is_type_checking_stub(&self, range: TextRange) -> bool {
+        self.type_checking_stubs.contains(&range)
     }
 
     // Whether `expr` names `segments`, resolved as Ruff does through the imports that bind its head, so `mock.patch`
@@ -76,6 +98,26 @@ impl<'a> Semantic<'a> {
         self.model.resolve_qualified_name(expr)
     }
 
+    // Whether Ruff's B008 reports a call to `func` in a parameter default. It leaves alone a mutable or immutable callee,
+    // and a `NewType` of an immutable type.
+    pub fn is_b008_call(&self, func: &Expr, extend_immutable_calls: &[QualifiedName]) -> bool {
+        !is_mutable_func(func, &self.model)
+            && !is_immutable_func(func, &self.model, extend_immutable_calls)
+            && !func
+                .as_name_expr()
+                .is_some_and(|name| is_immutable_newtype_call(name, &self.model, extend_immutable_calls))
+    }
+
+    // Whether Ruff's B008 skips a parameter with this annotation, as the annotation names an immutable type.
+    pub fn has_immutable_annotation(&self, annotation: &Expr, extend_immutable_calls: &[QualifiedName]) -> bool {
+        is_immutable_annotation(annotation, &self.model, extend_immutable_calls)
+    }
+
+    // Whether `expr` is a mutable display, comprehension, or a call of a mutable builtin or collection.
+    pub fn is_mutable_value(&self, expr: &Expr) -> bool {
+        is_mutable_expr(expr, &self.model)
+    }
+
     // Whether `expr` names `typing.{member}`, or its `typing_extensions` backport.
     pub fn match_typing_expr(&self, expr: &Expr, member: &str) -> bool {
         self.model.match_typing_expr(expr, member)
@@ -86,6 +128,76 @@ impl<'a> Semantic<'a> {
     pub fn only_binding_value(&self, name: &ast::ExprName) -> Option<&Expr> {
         let binding = self.model.binding(self.model.only_binding(name)?);
         find_binding_value(binding, &self.model)
+    }
+
+    // Every binding of `name` in the scope a load of it resolves to, the shadowed ones too; empty when none resolves.
+    pub fn resolved_bindings(&self, name: &ast::ExprName) -> Vec<&RuffBinding<'a>> {
+        let Some(id) = self.model.resolve_name(name) else {
+            return Vec::new();
+        };
+        let scope = self.model.binding(id).scope;
+        self.model.scopes[scope].get_all(name.id.as_str()).map(|id| self.model.binding(id)).collect()
+    }
+
+    // Whether a scope of the file binds the name, which shadows a builtin of that name. Ruff adds a builtin's binding
+    // on its first lookup, which is not a binding of the file.
+    pub fn is_bound_in_file(&self, name: &str) -> bool {
+        self.model.scopes.iter().filter_map(|scope| scope.get(name)).any(|id| !self.model.binding(id).kind.is_builtin())
+    }
+
+    // The `class` statement a binding names, when the binding is a class defined in the file.
+    pub fn class_of_binding(&self, binding: &RuffBinding<'a>) -> Option<&'a ast::StmtClassDef> {
+        if !matches!(binding.kind, RuffBindingKind::ClassDefinition(_)) {
+            return None;
+        }
+        binding.statement(&self.model)?.as_class_def_stmt()
+    }
+
+    // The annotation of the parameter a binding names, when the binding is a parameter of a `def`.
+    pub fn parameter_annotation(&self, binding: &RuffBinding<'a>) -> Option<&'a Expr> {
+        let Stmt::FunctionDef(function) = binding.statement(&self.model)? else {
+            return None;
+        };
+        function.parameters.iter().find(|parameter| parameter.name().range() == binding.range)?.annotation()
+    }
+
+    // The `def` a load of `name` reads when the module binds the name once, to a function it defines and no `global`
+    // statement rebinds.
+    pub fn module_function(&self, name: &ast::ExprName) -> Option<&'a ast::StmtFunctionDef> {
+        if self.is_rebound(name.id.as_str()) {
+            return None;
+        }
+        let bindings = self.resolved_bindings(name);
+        let [binding] = bindings.as_slice() else {
+            return None;
+        };
+        if !matches!(binding.kind, RuffBindingKind::FunctionDefinition(_)) || !binding.scope.is_global() {
+            return None;
+        }
+        binding.statement(&self.model)?.as_function_def_stmt()
+    }
+
+    // The values a binding gives its name, as far as the rules read them: the value an assignment gives, or each item of
+    // a loop over a literal list or tuple. `None` when no value is known, as for an import or a function parameter.
+    pub fn binding_values(&self, binding: &RuffBinding<'a>) -> Option<Vec<&Expr>> {
+        match binding.kind {
+            RuffBindingKind::LoopVar => match binding.statement(&self.model)? {
+                Stmt::For(ast::StmtFor { target, iter, .. })
+                    if target.as_name_expr().is_some_and(|target| target.range() == binding.range) =>
+                {
+                    match iter.as_ref() {
+                        Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. })
+                            if !elts.iter().any(Expr::is_starred_expr) =>
+                        {
+                            Some(elts.iter().collect())
+                        }
+                        _ => None,
+                    }
+                }
+                _ => None,
+            },
+            _ => find_binding_value(binding, &self.model).map(|value| vec![value]),
+        }
     }
 
     // Whether `func` is a method of a logger that Ruff's logging rules check: the `logging` module, a logger it creates,
@@ -259,6 +371,8 @@ impl<'a> Index<'a> {
                 Evaluation::Runtime
             },
             function,
+            typing: matches!(model.execution_context(), ExecutionContext::Typing)
+                || model.in_runtime_evaluated_annotation(),
         });
     }
 }
@@ -290,6 +404,8 @@ pub struct Reference<'a> {
     pub statement: usize,
     pub evaluation: Evaluation,
     pub function: Option<TextRange>,
+    // Whether Ruff's import-private-name exempts the read: a typing context or a runtime-evaluated annotation.
+    pub typing: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

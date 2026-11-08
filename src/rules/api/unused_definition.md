@@ -24,11 +24,11 @@ print("ready")
 
 ## What it does
 
-A name counts as used when the run imports it, reads it through a module, names it in a dotted string or a doctest,
-refers to it elsewhere in its own module, or spells it in a string of its module, as a string annotation does. A read of
-`obj.name` anywhere in the run counts as a use of every function, class, method and class attribute named `name`, since
-the object may be a module the run loads under a computed name. The project's documentation counts too: a definition a
-Sphinx page names is used.
+A name counts as used when the run imports it, reads it through a module, names it in a dotted string, a doctest uses
+it, refers to it elsewhere in its own module, or spells it in a string of its module, as a string annotation does. A
+read of `obj.name` anywhere in the run counts as a use of every function, class, method and class attribute named
+`name`, since the object may be a module the run loads under a computed name. The project's documentation counts too: a
+definition a Sphinx page names is used.
 
 ### Active on
 
@@ -109,8 +109,8 @@ Sphinx page names is used.
 
 - **Names listed in `__all__`**: the module exports them, so the run may use them from outside.
 
-- **Names doctests and unresolved modules use**: a `>>>` example in a docstring runs code the imports do not show, and a
-  module the run cannot resolve may import a name of the run under another name, as CPython's frozen modules do.
+- **Names doctests use**: a `>>>` example in a docstring reads each name it uses, whether it imports the name or not,
+  since a doctest runs in the globals of the module that defines the name, so the example may sit in that module.
 
   ```python ok file=app/markup.py
   class _Escaped:
@@ -190,10 +190,14 @@ Sphinx page names is used.
   ```
 
 - **Names the documentation gives**: a `.rst` or `.md` file under the project names a definition with a Sphinx role such
-  as `:func:`, an autodoc directive such as `.. autofunction::` or `.. automodule::` with `:members:`, or the `:module:`
-  and `:func:` options of a sphinx-argparse or sphinx-argparse-cli directive. Names match by their dotted ending, so a
-  page under `.. currentmodule::`, or one whose `conf.py` puts another directory on `sys.path`, still matches. The files
-  are read from the directory of each `pyproject.toml`, outside hidden directories and the paths Ruff excludes.
+  as `:func:`, an autodoc directive such as `.. autofunction::`, or the `:module:` and `:func:` options of a
+  sphinx-argparse or sphinx-argparse-cli directive. An `.. automodule::` with `:members:` documents the members Sphinx
+  renders: the names its module's `__all__` lists, or else its public names, without the ones `:exclude-members:` names,
+  and with the private and special names when `:private-members:` or `:special-members:` is set. For a package the
+  module is its `__init__.py`. Its classes' members are documented too, and so is every member of an `.. autoclass::`
+  with `:members:`. Names match by their dotted ending, so a page under `.. currentmodule::`, or one whose `conf.py`
+  puts another directory on `sys.path`, still matches. The files are read from the directory of each `pyproject.toml`,
+  outside hidden directories and the paths Ruff excludes.
 
   ```toml config
   [project]
@@ -255,11 +259,50 @@ Sphinx page names is used.
       return f"{first} {last}"
   ```
 
-- **Framework hooks**: `setup` and `teardown` functions, and `pytest_*` hooks, are called by Sphinx or pytest by name.
+- **Framework hooks**: `setup` and `teardown` functions, and `pytest_*` hooks, are called by Sphinx or pytest by name,
+  and so are the hooks of the build backend that `build-backend` names in `[build-system]`, which a build frontend
+  calls.
 
   ```python ok file=docs/conf.py
   def setup(app: object) -> None:
       print(app)
+  ```
+
+- **hatchling custom hooks**: hatchling calls the class that subclasses `BuildHookInterface` or `MetadataHookInterface`
+  in the file a custom hook loads. A hook is declared in `[tool.hatch.build.hooks.custom]`,
+  `[tool.hatch.build.targets.<target>.hooks.custom]` or `[tool.hatch.metadata.hooks.custom]`, or in the same table of a
+  `hatch.toml` next to `pyproject.toml`, which overrides the keys it sets. The file is the `path` the table gives,
+  `hatch_build.py` in the project's directory by default, after `..` is collapsed. The class may subclass a class of the
+  run that subclasses the interface, and the other classes of the file are still judged. A hook given as a
+  `get_build_hook()` function instead of a class is out of scope and is not read.
+
+  ```toml config
+  [tool.hatch]
+  build.hooks.custom = {}
+  ```
+
+  ```python ok file=hatch_build.py
+  from hatchling.builders.hooks.plugin.interface import BuildHookInterface
+
+
+  class _CustomBuildHook(BuildHookInterface):
+      def initialize(self, version: str, build_data: dict[str, object]) -> None:
+          print(version, build_data)
+  ```
+
+- **Coverage plugins**: coverage loads each module that `[tool.coverage.run] plugins` in `pyproject.toml` lists by its
+  dotted name and calls its `coverage_init`, so no import reaches the function. The module is found in the project's
+  directory or in a directory the `pythonpath` of pytest or the `extra-paths` of ty adds to the project's import path.
+  Only that function is read; the other definitions of the module are judged as usual.
+
+  ```toml config
+  [tool.coverage.run]
+  plugins = ["tasks.coverage_pragmas"]
+  ```
+
+  ```python ok file=tasks/coverage_pragmas.py
+  def coverage_init(reg: object, options: dict[str, str]) -> None:
+      pass
   ```
 
 - **Dunder and sunder names** such as `__repr__`, which the interpreter calls without a name in the source, and

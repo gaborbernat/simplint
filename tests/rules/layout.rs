@@ -38,6 +38,10 @@ use crate::common;
     "definition-before-use", "definition_before_use_class_order.py", "py314"
     ; "definition_before_use_class_order"
 )]
+#[test_case(
+    "definition-before-use", "definition_before_use_later_helper.py", "py314"
+    ; "definition_before_use_later_helper"
+)]
 #[test_case("single-user-constant", "single_user_constant.py", "py314" ; "single_user_constant")]
 #[test_case(
     "definition-before-use", "definition_before_use_module_defaults.py", "py314"
@@ -67,6 +71,8 @@ use crate::common;
 #[test_case("single-user-constant", "single_user_constant_spacing.py", "py314" ; "single_user_constant_spacing")]
 #[test_case("single-user-constant", "single_user_constant_source_text.py", "py314" ; "single_user_constant_source_text")]
 #[test_case("single-user-constant", "single_user_constant_debug.py", "py314" ; "single_user_constant_debug")]
+#[test_case("single-user-constant", "single_user_constant_annotated.py", "py314" ; "single_user_constant_annotated")]
+#[test_case("single-user-constant", "single_user_constant_computed.py", "py314" ; "single_user_constant_computed_write")]
 fn rule(rule: &str, fixture: &str, target_version: &str) {
     common::assert_rule_snapshot(rule, fixture, target_version);
 }

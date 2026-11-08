@@ -45,7 +45,7 @@ use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
-use crate::project::Exposure;
+use crate::project::{Exposure, FileIndex};
 use crate::syntax::{Exports, Visibility, decorator_names, is_overload, module_statements};
 
 enum ApiKind {
@@ -65,18 +65,29 @@ struct ApiItem<'a> {
     next: Option<&'a Stmt>,
     // The file that re-exports the item to users, when its own module does not offer it.
     via: Option<&'a Path>,
+    // Whether the docstring rules require docs for the item: not when only a signature of an exposed name reaches it.
+    docs: bool,
 }
 
-// The public API of a library is what its users can import: what a public module offers, through `__all__` or, without
-// one, every name it defines without a leading underscore, and what a public module re-exports from elsewhere, plus the
-// public members of those classes. An application has none. When `__all__` is built dynamically the exports are
-// unknown, so every name without a leading underscore might be public.
+impl ApiItem<'_> {
+    fn matches(&self, range: TextRange, need: Need) -> bool {
+        self.stmt.range() == range && (matches!(need, Need::Any) || self.docs)
+    }
+}
+
+// The public API of a library is `FileIndex::library_exposure`, the names its users can import, with the public members
+// of those classes. An application has none. What the docstring rules add is documentation: autodoc-documented
+// definitions, whose names only the checker's module path makes qualified, and the members that need no docstring.
+// When `__all__` is built dynamically the exports are unknown, so every name without a leading underscore might be
+// public.
 pub(crate) struct PublicApi<'a> {
     items: Vec<ApiItem<'a>>,
     maybe_public: Vec<TextRange>,
     // Members of a public class whose docstring is shown when present but need none: dunders such as `__init__`, which
     // autodoc can render, overrides, which inherit the base docstring, and property setters.
     optional: Vec<TextRange>,
+    // The definitions the documentation names, such as an autodoc directive, which users read as public.
+    documented: Vec<TextRange>,
 }
 
 impl<'a> PublicApi<'a> {
@@ -84,24 +95,15 @@ impl<'a> PublicApi<'a> {
     pub(crate) fn of(checker: &Checker<'a>) -> Self {
         let body = checker.body();
         let project = checker.project();
-        let role = project.role();
         let exports = checker.dunder_all();
-        // The index answers for every file of the run; a module read from standard input has none, so its own offer is
-        // read here too. A name another module imports counts, since `missing-from-all` lists it in `__all__`.
-        let offered = |name: &str| {
-            role.public
-                && (Visibility::of(name) == Visibility::Public && project.is_imported(name)
-                    || match exports {
-                        Exports::Listed(names) => names.contains(&name),
-                        Exports::Absent => Visibility::of(name) == Visibility::Public,
-                        Exports::Dynamic => false,
-                    })
-        };
-        let reach = |name: &str| {
-            project.user_facing(name).or_else(|| offered(name).then_some(Exposure::Offered)).map(Exposure::reexporter)
-        };
+        let reach = |name: &str| project.library_exposure(name);
         let dynamic = matches!(exports, Exports::Dynamic);
-        let mut api = Self { items: Vec::new(), maybe_public: Vec::new(), optional: Vec::new() };
+        let mut api = Self {
+            items: Vec::new(),
+            maybe_public: Vec::new(),
+            optional: Vec::new(),
+            documented: documented_definitions(checker),
+        };
         // Definitions in top-level `if`, `try` and `match` blocks, as a version switch or an optional accelerator, are
         // the module's too.
         for (stmt, next) in module_statements_with_next(body) {
@@ -113,10 +115,18 @@ impl<'a> PublicApi<'a> {
                         Some(_) if is_overload(&function.decorator_list) => {
                             api.optional.push(function.range);
                         }
-                        Some(via) => {
+                        Some(exposure) => {
                             let range = function.name.range;
                             let kind = ApiKind::Function;
-                            api.items.push(ApiItem { stmt, name: name.to_owned(), range, kind, next: None, via });
+                            api.items.push(ApiItem {
+                                stmt,
+                                name: name.to_owned(),
+                                range,
+                                kind,
+                                next: None,
+                                via: exposure.reexporter(),
+                                docs: exposure.is_offered(),
+                            });
                         }
                         None if dynamic && Visibility::of(name) == Visibility::Public => {
                             api.maybe_public.push(function.range);
@@ -125,25 +135,30 @@ impl<'a> PublicApi<'a> {
                     }
                 }
                 Stmt::ClassDef(class) => match reach(class.name.as_str()) {
-                    Some(via) => api.class(stmt, class, class.name.as_str(), via),
+                    Some(exposure) => {
+                        api.class(stmt, class, class.name.as_str(), exposure);
+                        if !exposure.is_offered() {
+                            api.inherited_members(class, &project);
+                        }
+                    }
                     None if dynamic && Visibility::of(&class.name) == Visibility::Public => {
                         api.maybe_public.push(class.range);
                     }
-                    None => {}
+                    None => api.inherited_members(class, &project),
                 },
                 Stmt::Assign(ast::StmtAssign { targets, .. }) => {
                     for target in targets.iter().filter_map(Expr::as_name_expr) {
-                        if let Some(via) = reach(target.id.as_str()) {
-                            api.variable(stmt, next, target, via);
+                        if let Some(exposure) = reach(target.id.as_str()) {
+                            api.variable(stmt, next, target, exposure);
                         }
                     }
                 }
                 Stmt::AnnAssign(ast::StmtAnnAssign { target: name, .. })
                 | Stmt::TypeAlias(ast::StmtTypeAlias { name, .. }) => {
                     if let Some(target) = name.as_name_expr()
-                        && let Some(via) = reach(target.id.as_str())
+                        && let Some(exposure) = reach(target.id.as_str())
                     {
-                        api.variable(stmt, next, target, via);
+                        api.variable(stmt, next, target, exposure);
                     }
                 }
                 _ => {}
@@ -152,58 +167,117 @@ impl<'a> PublicApi<'a> {
         api
     }
 
-    fn variable(&mut self, stmt: &'a Stmt, next: Option<&'a Stmt>, target: &'a ast::ExprName, via: Option<&'a Path>) {
+    fn variable(&mut self, stmt: &'a Stmt, next: Option<&'a Stmt>, target: &'a ast::ExprName, exposure: Exposure<'a>) {
         let name = target.id.to_string();
-        self.items.push(ApiItem { stmt, name, range: target.range, kind: ApiKind::Variable, next, via });
+        let (via, docs) = (exposure.reexporter(), exposure.is_offered());
+        self.items.push(ApiItem { stmt, name, range: target.range, kind: ApiKind::Variable, next, via, docs });
+    }
+
+    // The public methods and properties a class the file defines, such as a private mixin, that a public class of the
+    // library inherits without overriding them: users reach them through that public class.
+    fn inherited_members(&mut self, class: &'a ast::StmtClassDef, project: &FileIndex) {
+        let name = class.name.as_str();
+        for member in module_statements(&class.body) {
+            let Stmt::FunctionDef(method) = member else {
+                continue;
+            };
+            let Offer::Public(kind) = offer(method) else {
+                continue;
+            };
+            let method_name = method.name.as_str();
+            if !project.is_inherited_api(name, method_name) {
+                continue;
+            }
+            // A method a signature-reached class defines is already an item, which its inheritance makes documented.
+            if let Some(item) = self.items.iter_mut().find(|item| item.range == method.name.range) {
+                item.docs = true;
+                continue;
+            }
+            self.items.push(ApiItem {
+                stmt: member,
+                name: format!("{name}.{method_name}"),
+                range: method.name.range,
+                kind,
+                next: None,
+                via: None,
+                docs: true,
+            });
+        }
     }
 
     // A public class, its public methods and properties, and its public nested classes with theirs.
-    fn class(&mut self, stmt: &'a Stmt, class: &'a ast::StmtClassDef, name: &str, via: Option<&'a Path>) {
+    fn class(&mut self, stmt: &'a Stmt, class: &'a ast::StmtClassDef, name: &str, exposure: Exposure<'a>) {
         let range = class.name.range;
-        self.items.push(ApiItem { stmt, name: name.to_owned(), range, kind: ApiKind::Class, next: None, via });
+        let (via, docs) = (exposure.reexporter(), exposure.is_offered());
+        self.items.push(ApiItem { stmt, name: name.to_owned(), range, kind: ApiKind::Class, next: None, via, docs });
         // Members in `if` and `try` blocks of the class body, as a version switch, are the class's too.
         for member in module_statements(&class.body) {
             match member {
                 Stmt::ClassDef(nested) if Visibility::of(&nested.name) == Visibility::Public => {
-                    self.class(member, nested, &format!("{name}.{}", nested.name), via);
+                    self.class(member, nested, &format!("{name}.{}", nested.name), exposure);
                 }
-                Stmt::FunctionDef(method) => {
-                    let method_name = method.name.as_str();
-                    let decorators = decorator_names(&method.decorator_list);
-                    let visibility = Visibility::of(method_name);
-                    if visibility == Visibility::Dunder
-                        || decorators
-                            .iter()
-                            .any(|decorator| matches!(*decorator, "override" | "setter" | "deleter" | "overload"))
-                    {
-                        self.optional.push(member.range());
-                    } else if visibility == Visibility::Public {
-                        let kind = if decorators.contains(&"property") { ApiKind::Property } else { ApiKind::Method };
-                        self.items.push(ApiItem {
-                            stmt: member,
-                            name: format!("{name}.{method_name}"),
-                            range: method.name.range,
-                            kind,
-                            next: None,
-                            via,
-                        });
-                    }
-                }
+                Stmt::FunctionDef(method) => match offer(method) {
+                    Offer::Optional => self.optional.push(member.range()),
+                    Offer::Public(kind) => self.items.push(ApiItem {
+                        stmt: member,
+                        name: format!("{name}.{}", method.name),
+                        range: method.name.range,
+                        kind,
+                        next: None,
+                        via,
+                        docs,
+                    }),
+                    Offer::Private => {}
+                },
                 _ => {}
             }
         }
     }
 
-    // Whether the definition at `range` is part of the public API, as opposed to optional or possibly public.
-    pub(crate) fn is_public(&self, range: TextRange) -> bool {
-        self.items.iter().any(|item| item.stmt.range() == range)
+    // Whether the definition at `range` is part of the public API, as opposed to optional or possibly public: an item
+    // of the API, or one the documentation names. Only the docstring rules need `Need::Docs`, which leaves out the items
+    // only a signature reaches.
+    pub(crate) fn is_public(&self, range: TextRange, need: Need) -> bool {
+        self.items.iter().any(|item| item.matches(range, need)) || self.documented.contains(&range)
     }
 
-    // Whether the definition at `range` may be part of the public API, which includes optional and possibly public ones.
-    pub(crate) fn covers(&self, range: TextRange) -> bool {
-        self.items.iter().any(|item| item.stmt.range() == range)
+    // Whether the definition at `range` may be part of the public API, which includes optional, documented and possibly
+    // public ones. Only the docstring rules need `Need::Docs`, as for `is_public`.
+    pub(crate) fn covers(&self, range: TextRange, need: Need) -> bool {
+        self.items.iter().any(|item| item.matches(range, need))
             || self.optional.contains(&range)
+            || self.documented.contains(&range)
             || self.maybe_public.iter().any(|public| public.contains_range(range))
+    }
+}
+
+// Which items count: the docstring rules require docs only for the names the library offers, while the other rules
+// count every item, the names a signature reaches too.
+#[derive(Clone, Copy)]
+pub(crate) enum Need {
+    Docs,
+    Any,
+}
+
+// How a method of a public class is offered: dunders and overrides need no docstring, public methods and properties
+// are documented, and the rest are private.
+enum Offer {
+    Optional,
+    Public(ApiKind),
+    Private,
+}
+
+fn offer(method: &ast::StmtFunctionDef) -> Offer {
+    let decorators = decorator_names(&method.decorator_list);
+    let visibility = Visibility::of(method.name.as_str());
+    if visibility == Visibility::Dunder
+        || decorators.iter().any(|decorator| matches!(*decorator, "override" | "setter" | "deleter" | "overload"))
+    {
+        Offer::Optional
+    } else if visibility == Visibility::Public {
+        Offer::Public(if decorators.contains(&"property") { ApiKind::Property } else { ApiKind::Method })
+    } else {
+        Offer::Private
     }
 }
 
@@ -239,6 +313,36 @@ fn module_statements_with_next(body: &[Stmt]) -> Vec<(&Stmt, Option<&Stmt>)> {
     let mut found = Vec::new();
     collect(body, &mut found);
     found
+}
+
+// The module's functions, classes and class members that the documentation names by their dotted name under the module's
+// package. A module's `__init__.py` names its package, so that segment is left out, as `ApiScope::role` does.
+fn documented_definitions(checker: &Checker) -> Vec<TextRange> {
+    let stem = checker.file_name().strip_suffix(".py").unwrap_or(checker.file_name());
+    let (module, anchored): (Vec<&str>, bool) = match checker.module_path() {
+        Some(path) => (path.iter().map(String::as_str).collect(), true),
+        None => (vec![stem], false),
+    };
+    let prefix =
+        module.into_iter().filter(|part| *part != "__init__").fold(String::new(), |prefix, part| prefix + part + ".");
+    let mut found = Vec::new();
+    documented_in(checker.body(), &prefix, anchored, &checker.project(), &mut found);
+    found
+}
+
+fn documented_in(body: &[Stmt], prefix: &str, anchored: bool, project: &FileIndex, found: &mut Vec<TextRange>) {
+    for stmt in module_statements(body) {
+        let (name, members) = match stmt {
+            Stmt::FunctionDef(function) => (function.name.as_str(), &[][..]),
+            Stmt::ClassDef(class) => (class.name.as_str(), class.body.as_slice()),
+            _ => continue,
+        };
+        let qualified = format!("{prefix}{name}");
+        if project.is_documented(&qualified, anchored) {
+            found.push(stmt.range());
+        }
+        documented_in(members, &format!("{qualified}."), anchored, project, found);
+    }
 }
 
 // A variable is documented the two ways Sphinx autodoc reads: a string right after it, or `#:` comments right above.

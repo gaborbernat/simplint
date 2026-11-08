@@ -1,6 +1,8 @@
 // What inlining or moving a value takes, shared by the rules that do so, such as `single-use-variable` and
 // `early-assignment`: the walks over the scopes a body sits in and the names it reads and binds, the classes of
 // literals, the text that replaces a use, and the width the statement then needs.
+use std::borrow::Cow;
+
 use ruff_diagnostics::Edit;
 use ruff_formatter::LineWidth;
 use ruff_python_ast::helpers::any_over_expr;
@@ -18,6 +20,7 @@ use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
+use crate::rules::edits::escape_braces;
 use crate::syntax::{for_each_body, for_each_child_body, last_segment};
 
 // Calls `visit` with each statement list under `body`, the scope it sits in and how many indented blocks enclose it.
@@ -104,32 +107,58 @@ pub(super) fn requoted_text(checker: &Checker, expr: &Expr, delimiter: Quote) ->
 // hold the quote its f-string is written in, which Python before 3.12 does not allow.
 fn unquotable(checker: &Checker, expr: &Expr) -> bool {
     match expr {
-        Expr::StringLiteral(string) => string.value.iter().any(|literal| literal_text(checker, literal).is_none()),
+        Expr::StringLiteral(_) => fstring_body_parts(checker, expr).is_none(),
         Expr::FString(ast::ExprFString { value, .. }) => {
-            value.iter().any(|part| match part {
-                ast::FStringPartRef::Literal(literal) => literal_text(checker, literal).is_none(),
-                ast::FStringPartRef::FString(fstring) => {
-                    fstring.flags.is_triple_quoted() || fstring.flags.prefix().is_raw()
-                }
-            }) || value.elements().any(|element| match element {
-                ast::InterpolatedStringElement::Interpolation(interpolation) => {
-                    any_over_expr(&interpolation.expression, &|sub: &Expr| {
-                        matches!(sub, Expr::StringLiteral(_) | Expr::FString(_))
-                    })
-                }
-                ast::InterpolatedStringElement::Literal(_) => false,
-            })
+            fstring_body_parts(checker, expr).is_none()
+                || value.elements().any(|element| match element {
+                    ast::InterpolatedStringElement::Interpolation(interpolation) => {
+                        any_over_expr(&interpolation.expression, &|sub: &Expr| {
+                            matches!(sub, Expr::StringLiteral(_) | Expr::FString(_))
+                        })
+                    }
+                    ast::InterpolatedStringElement::Literal(_) => false,
+                })
         }
         _ => false,
     }
 }
 
+fn literal_part<'a>(checker: &Checker<'a>, literal: &ast::StringLiteral) -> Option<(Quote, Cow<'a, str>)> {
+    Some((literal.flags.quote_style(), Cow::Owned(escape_braces(literal_text(checker, literal)?))))
+}
+
 // A named escape such as `\N{BULLET}` keeps single braces in an f-string, where every other brace doubles.
-pub(super) fn literal_text<'a>(checker: &Checker<'a>, literal: &ast::StringLiteral) -> Option<&'a str> {
+fn literal_text<'a>(checker: &Checker<'a>, literal: &ast::StringLiteral) -> Option<&'a str> {
     let flags = literal.flags;
     let text = checker.text(literal.content_range());
     (!flags.is_triple_quoted() && !flags.prefix().is_raw() && !flags.prefix().is_unicode() && !text.contains("\\N{"))
         .then_some(text)
+}
+
+// The parts of a string or f-string value as an f-string body takes them, each with its quote: a literal's text with its
+// braces doubled, and an f-string's text between its quotes as it stands. `None` when a part cannot move into an
+// f-string body, which is a literal `literal_text` refuses or a raw or triple-quoted f-string.
+pub(super) fn fstring_body_parts<'a>(checker: &Checker<'a>, value: &Expr) -> Option<Vec<(Quote, Cow<'a, str>)>> {
+    match value {
+        Expr::StringLiteral(string) => string.value.iter().map(|literal| literal_part(checker, literal)).collect(),
+        Expr::FString(ast::ExprFString { value, .. }) => value
+            .iter()
+            .map(|part| match part {
+                ast::FStringPartRef::Literal(literal) => literal_part(checker, literal),
+                ast::FStringPartRef::FString(fstring) => {
+                    if fstring.flags.is_triple_quoted() || fstring.flags.prefix().is_raw() {
+                        return None;
+                    }
+                    let content = TextRange::new(
+                        fstring.start() + fstring.flags.opener_len(),
+                        fstring.end() - fstring.flags.closer_len(),
+                    );
+                    Some((fstring.flags.quote_style(), Cow::Borrowed(checker.text(content))))
+                }
+            })
+            .collect(),
+        _ => None,
+    }
 }
 
 struct Requote(Quote);

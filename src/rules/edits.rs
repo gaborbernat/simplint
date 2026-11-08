@@ -141,6 +141,11 @@ pub fn keep_debug_text(checker: &Checker, edits: Vec<Edit>) -> Option<Vec<Edit>>
     Some(rewritten)
 }
 
+// The text with each brace doubled, as an f-string spells a literal brace.
+pub fn escape_braces(text: &str) -> String {
+    text.replace('{', "{{").replace('}', "}}")
+}
+
 // The text of a `=` debug field with its edits applied: the debug text, escaped to a literal, then a plain field.
 fn debug_field(source: &str, field: &DebugField, edits: &[Edit]) -> Option<String> {
     let debug = field.debug.as_str();
@@ -159,7 +164,7 @@ fn debug_field(source: &str, field: &DebugField, edits: &[Edit]) -> Option<Strin
     let conversion = if remainder.is_empty() { "!r" } else { &remainder };
     let space = if expression.starts_with('{') { " " } else { "" };
     let quote = field.quote.as_char();
-    let literal = debug.replace('{', "{{").replace('}', "}}").replace(quote, &format!("\\{quote}"));
+    let literal = escape_braces(debug).replace(quote, &format!("\\{quote}"));
     Some(format!("{literal}{{{space}{expression}{conversion}}}"))
 }
 

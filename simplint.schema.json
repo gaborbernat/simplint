@@ -5,15 +5,6 @@
   "description": "simplint configuration ([tool.simplint] in pyproject.toml)",
   "type": "object",
   "properties": {
-    "api-modules": {
-      "description": "Modules of a library, besides its top-level packages, that users import from directly. Their `__all__` is the\ninterface you declare, so `unused-export` (`SMP402`) keeps names no module of the project imports.",
-      "type": [
-        "array"
-      ],
-      "items": {
-        "type": "string"
-      }
-    },
     "api-packages": {
       "description": "The top-level packages and modules a library ships, whose modules make up its public API. By default they come\nfrom the build backend's settings, then from the packages holding a `py.typed` marker, then from the package\nnamed after the project; when none is found, every module outside `docs` and the tests counts.",
       "type": [
@@ -402,6 +393,8 @@
         "SMP53",
         "SMP530",
         "SMP531",
+        "SMP532",
+        "SMP533",
         "SMP6",
         "SMP60",
         "SMP601",
@@ -529,7 +522,9 @@
         "test-only-code",
         "test-only-parameter",
         "undocumented-public-api",
+        "unexplained-regex",
         "unexported-public-name",
+        "unnamed-regex-group",
         "unused-default",
         "unused-definition",
         "unused-export",

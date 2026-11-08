@@ -10,13 +10,35 @@ use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::rules::edits::keep_debug_text;
+use crate::syntax::Visibility;
+
+// The report for a name a public module keeps: its users import it, so the author lists it or renames it by hand, or,
+// when `__all__` lists it already, renames it by hand.
+pub(crate) fn kept_message(name: &str, new: &str, listed: bool) -> String {
+    if listed {
+        format!("`{name}` is in `__all__`; rename it to `{new}` by hand")
+    } else {
+        format!("`{name}` is not in `__all__`; list it there, or rename it to `{new}` by hand")
+    }
+}
+
+// A name a library's users reach: the library's API, or a public name of a public module.
+fn is_offered(checker: &Checker, name: &str) -> bool {
+    let project = checker.project();
+    project.is_library_api(name) || project.role().public && Visibility::of(name) == Visibility::Public
+}
 
 pub fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
     let ranges = checker.semantic().name_ranges(old);
     // A module name that shadows a builtin, as in `zip = zip`, shares its token with the builtin it reads.
-    if checker.name_token_count(new) > 0
+    if is_offered(checker, old)
+        || checker.name_token_count(new) > 0
         || is_python_builtin(old, checker.settings.from_ruff.target_version.minor, false)
-        || checker.project().is_referenced(old)
+        || checker.project().is_used_elsewhere(old)
+        // Code the index cannot follow may read the name, so only the fix is withheld, never the report.
+        || checker.project().is_read_opaquely(old)
+        // A computed write may set any name of the module, as `setattr(module, name, value)` does.
+        || checker.project().is_computed_written()
         || ranges.is_empty()
         || checker.name_token_count(old) != ranges.len()
     {
@@ -45,7 +67,7 @@ pub fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
 // The strings of other files count too, as a test or a generated template may look the name up by its spelling. A
 // file's own export list names the name without reaching it, so only its other strings and the strings of other files
 // block the rename.
-fn appears_in_strings(checker: &Checker, name: &str) -> bool {
+pub(crate) fn appears_in_strings(checker: &Checker, name: &str) -> bool {
     let words = checker.state().string_words(checker);
     // A word is a run of letters, digits and underscores, so a name with any other character is never one.
     name.chars().all(is_word_char)

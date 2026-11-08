@@ -1,0 +1,8 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+21:38 SMP602 `object` annotation; use the precise type
+25:47 SMP602 `object` annotation; use the precise type
+29:41 SMP602 `Any` accepts any value and turns off type checking for it; use a precise type
+33:34 SMP602 `object` annotation; use the precise type

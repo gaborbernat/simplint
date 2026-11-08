@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Component, Path, PathBuf};
 
+use anyhow::{Context, Result};
 use serde::Deserialize;
 
 // The `[project]` table of a `pyproject.toml`, reduced to what simplint's rules read: the project's name, the modules
@@ -88,27 +90,29 @@ struct ProjectTable {
 }
 
 // How a `pyproject.toml` builds the project: whether a `[build-system]` declares a backend, the packages the backend's
-// own settings ship, and the settings that make a build install no Python package.
+// own settings ship, the settings that make a build install no Python package, and the backend a build frontend loads.
 #[derive(Default)]
 pub struct BuildConfiguration {
     pub has_build_system: bool,
     pub packages: Vec<String>,
     pub uv_package: Option<bool>,
     pub maturin_bindings: Option<String>,
+    // The `build-backend` as written, `module` or `module:object`, and the `backend-path` directories it loads from.
+    pub backend: Option<String>,
+    pub backend_path: Vec<String>,
+    // The `path` of each custom build or metadata hook of hatchling, which loads the hook's class from that file.
+    pub hatch_hooks: Vec<String>,
 }
 
 impl BuildConfiguration {
-    pub(super) fn of(pyproject: &toml::Table) -> Self {
+    pub(super) fn of(pyproject: &toml::Table, hatch_file: Option<&toml::Table>) -> Self {
         let lookup = |path: &[&str]| path.iter().try_fold(pyproject.get("tool")?, |value, key| value.get(key));
-        let strings = |value: Option<&toml::Value>| -> Vec<String> {
-            match value {
-                Some(toml::Value::String(text)) => vec![text.clone()],
-                Some(toml::Value::Array(items)) => {
-                    items.iter().filter_map(|item| item.as_str().map(str::to_owned)).collect()
-                }
-                _ => Vec::new(),
-            }
-        };
+        let mut hatch = lookup(&["hatch"]).and_then(toml::Value::as_table).cloned().unwrap_or_default();
+        if let Some(file) = hatch_file {
+            overlay(&mut hatch, file);
+        }
+        let system = pyproject.get("build-system").and_then(toml::Value::as_table);
+        let system_value = |key: &str| system.and_then(|table| table.get(key));
         // Each backend names the importable packages it ships its own way; a `find` table discovers them instead.
         let packages = [
             &["hatch", "build", "targets", "wheel", "packages"][..],
@@ -127,6 +131,146 @@ impl BuildConfiguration {
             packages,
             uv_package: lookup(&["uv", "package"]).and_then(toml::Value::as_bool),
             maturin_bindings: lookup(&["maturin", "bindings"]).and_then(toml::Value::as_str).map(str::to_owned),
+            backend: system_value("build-backend").and_then(toml::Value::as_str).map(str::to_owned),
+            backend_path: strings(system_value("backend-path")),
+            hatch_hooks: hatch_hook_paths(&hatch),
         }
     }
+}
+
+// The modules coverage loads as plugins, which it calls `coverage_init` on by name, and the directories their import
+// path is searched in: the project's own, then the `pythonpath` of pytest and the `extra-paths` of ty, as the project
+// configures them. Without a plugin there is nothing to search for, so no directory is kept.
+#[derive(Default)]
+pub struct CoveragePlugins {
+    pub modules: Vec<String>,
+    pub search_paths: Vec<PathBuf>,
+}
+
+impl CoveragePlugins {
+    pub(super) fn of(pyproject: &toml::Table, project_dir: &Path) -> Self {
+        let lookup = |path: &[&str]| path.iter().try_fold(pyproject.get("tool")?, |value, key| value.get(key));
+        let modules = strings(lookup(&["coverage", "run", "plugins"]));
+        if modules.is_empty() {
+            return Self::default();
+        }
+        let keys = [
+            &["pytest", "ini_options", "pythonpath"][..],
+            &["pytest", "pythonpath"],
+            &["ty", "environment", "extra-paths"],
+        ];
+        let directories = keys.iter().flat_map(|path| strings(lookup(path)));
+        let search_paths = std::iter::once(project_dir.to_path_buf())
+            .chain(directories.map(|directory| project_dir.join(directory)))
+            .map(|path| path.components().collect::<PathBuf>())
+            // A configured directory a source distribution leaves out would fail the whole search path.
+            .filter(|path| path.is_dir())
+            .collect();
+        Self { modules, search_paths }
+    }
+}
+
+fn strings(value: Option<&toml::Value>) -> Vec<String> {
+    match value {
+        Some(toml::Value::String(text)) => vec![text.clone()],
+        Some(toml::Value::Array(items)) => items.iter().filter_map(|item| item.as_str().map(str::to_owned)).collect(),
+        _ => Vec::new(),
+    }
+}
+
+// hatchling reads a `hatch.toml` next to `pyproject.toml` over the `[tool.hatch]` table, so its tables replace the ones of
+// the same name.
+fn overlay(base: &mut toml::Table, over: &toml::Table) {
+    for (key, value) in over {
+        match (base.get_mut(key), value) {
+            (Some(toml::Value::Table(base_table)), toml::Value::Table(over_table)) => overlay(base_table, over_table),
+            _ => _ = base.insert(key.clone(), value.clone()),
+        }
+    }
+}
+
+// The `path` of each custom build or metadata hook of a hatch table, and of each target's build hook. A hook that names
+// no path loads `hatch_build.py` from the project's directory.
+fn hatch_hook_paths(hatch: &toml::Table) -> Vec<String> {
+    let build = hatch.get("build");
+    let targets = build
+        .and_then(|build| build.get("targets"))
+        .and_then(toml::Value::as_table)
+        .into_iter()
+        .flat_map(toml::Table::values);
+    [build, hatch.get("metadata")]
+        .into_iter()
+        .chain(targets.map(Some))
+        .filter_map(|table| table?.get("hooks")?.get("custom"))
+        .map(|hook| hook.get("path").and_then(toml::Value::as_str).unwrap_or("hatch_build.py").to_owned())
+        .collect()
+}
+
+// The files hatchling loads as its custom build and metadata hooks, each `path` relative to the project's directory.
+// hatchling calls the class that subclasses its hook interface in such a file, so no import reaches it.
+pub(super) fn hatch_hooks(root: &Path, build: &BuildConfiguration) -> Result<Vec<PathBuf>> {
+    build
+        .hatch_hooks
+        .iter()
+        .map(|path| {
+            let file = root.join(path);
+            let absolute =
+                std::path::absolute(&file).with_context(|| format!("Failed to resolve {}", file.display()))?;
+            Ok(normalized(&absolute))
+        })
+        .collect()
+}
+
+// The path hatchling makes of a hook's `path`, which `os.path.normpath` collapses: each `..` drops the component before
+// it, and nothing is read from the file system, so a symbolic link keeps its place. The path is absolute, so a `..`
+// past the root stays the root.
+fn normalized(path: &Path) -> PathBuf {
+    path.components().fold(PathBuf::new(), |mut normal, component| {
+        match component {
+            Component::ParentDir => _ = normal.pop(),
+            _ => normal.push(component),
+        }
+        normal
+    })
+}
+
+// The file and names of the build backend, each name paired with the file that defines it. A backend written as
+// `module:object` is the object the frontend calls the hooks on, so only the object's name counts.
+pub(super) fn build_hooks(root: &Path, build: &BuildConfiguration) -> Result<Vec<(PathBuf, String)>> {
+    let Some(backend) = build.backend.as_deref() else {
+        return Ok(Vec::new());
+    };
+    let (module, object) = backend.split_once(':').map_or((backend, None), |(module, object)| (module, Some(object)));
+    let relative = module.trim().replace('.', "/");
+    // Without a `backend-path`, the backend is looked for in the project's directory.
+    let directories: Vec<PathBuf> = if build.backend_path.is_empty() {
+        vec![root.to_path_buf()]
+    } else {
+        build.backend_path.iter().map(|directory| root.join(directory)).collect()
+    };
+    let Some(file) = directories
+        .iter()
+        .flat_map(|directory| [directory.join(format!("{relative}.py")), directory.join(&relative).join("__init__.py")])
+        .find(|path| path.is_file())
+    else {
+        return Ok(Vec::new());
+    };
+    let file = std::path::absolute(&file).with_context(|| format!("Failed to resolve {}", file.display()))?;
+    // The PEP 517 and PEP 660 hooks a build frontend calls by name, which no import of the project reaches.
+    let names: Vec<String> = match object {
+        Some(object) => vec![object.split('.').next().unwrap_or_default().trim().to_owned()],
+        None => [
+            "build_wheel",
+            "build_sdist",
+            "get_requires_for_build_wheel",
+            "get_requires_for_build_sdist",
+            "prepare_metadata_for_build_wheel",
+            "build_editable",
+            "get_requires_for_build_editable",
+            "prepare_metadata_for_build_editable",
+        ]
+        .map(str::to_owned)
+        .into(),
+    };
+    Ok(names.into_iter().map(|name| (file.clone(), name)).collect())
 }

@@ -2,4 +2,4 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-
+1:5 SMP409 `_frozen_helper` is never used in the run; remove it or give it a caller

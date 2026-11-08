@@ -1,14 +1,14 @@
 // The module-scope variables the case and prefix rules check. Names a framework or tool reads by their exact spelling,
-// and names a loop, `with`, `except` or `match` binds, are left out.
+// names a loop, `with`, `except` or `match` binds, and annotations alone under `if TYPE_CHECKING:` are left out.
 
 use ruff_python_ast::helpers::is_dunder;
 use ruff_python_ast::{self as ast, Expr, Stmt};
-use ruff_text_size::TextRange;
+use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
-use crate::rules::{is_class_like, single_assignment};
-use crate::semantic::BindingKind;
+use crate::rules::{is_class_like, is_sphinx_conf, single_assignment};
+use crate::semantic::{Binding, BindingKind};
 use crate::syntax::{Exports, Visibility};
 
 pub struct ModuleVariable<'a> {
@@ -22,8 +22,7 @@ pub struct ModuleVariable<'a> {
 // Sorted by position, so the rules report them in the order they appear.
 pub fn module_variables<'a>(checker: &Checker<'a>) -> Vec<ModuleVariable<'a>> {
     const MAGIC: &[&str] = &["pytestmark", "pytest_plugins", "collect_ignore", "collect_ignore_glob", "TYPE_CHECKING"];
-    // Sphinx reads its settings off the `conf.py` module by their lowercase names.
-    if checker.file_name() == "conf.py" {
+    if is_sphinx_conf(checker) {
         return Vec::new();
     }
     let exported = match checker.dunder_all() {
@@ -32,13 +31,19 @@ pub fn module_variables<'a>(checker: &Checker<'a>) -> Vec<ModuleVariable<'a>> {
         Exports::Dynamic => return Vec::new(),
     };
     let read_by_name = framework_names(checker);
+    let aliases = function_aliases(checker);
     let kept = &checker.settings.project.knobs.keep_names;
     let mut variables = Vec::new();
+    let stub = |binding: &Binding| checker.semantic().is_type_checking_stub(binding.range);
     for (name, bindings) in checker.semantic().all_bindings() {
+        let Some(first) = bindings.iter().find(|binding| !stub(binding)) else {
+            continue;
+        };
         if is_dunder(name)
             || is_class_like(name)
             || MAGIC.contains(&name)
             || read_by_name.contains(name)
+            || aliases.contains(name)
             || kept.iter().any(|kept| kept == name)
             || bindings.iter().any(|binding| {
                 matches!(
@@ -46,19 +51,54 @@ pub fn module_variables<'a>(checker: &Checker<'a>) -> Vec<ModuleVariable<'a>> {
                     BindingKind::Import | BindingKind::Function | BindingKind::Class | BindingKind::TypeAlias
                 )
             })
-            || bindings.iter().all(|binding| binding.kind == BindingKind::Target)
+            || bindings.iter().filter(|binding| !stub(binding)).all(|binding| binding.kind == BindingKind::Target)
+            || is_block_local(checker, name, bindings)
         {
             continue;
         }
-        let private = if checker.project().is_referenced(name) {
+        let private = if checker.project().is_used_elsewhere(name) {
             Visibility::of(name) != Visibility::Public
         } else {
             !exported.is_some_and(|names| names.contains(&name))
         };
-        variables.push(ModuleVariable { name, range: bindings[0].range, private });
+        variables.push(ModuleVariable { name, range: first.range, private });
     }
     variables.sort_by_key(|variable| variable.range.start());
     variables
+}
+
+// A name that one module-level `if`, `try` or `with` block binds and reads, and nothing outside the block reads, works as
+// a local of that block, as `msg` does before a `raise` in a version check. A name read by another file stays a module
+// variable.
+fn is_block_local(checker: &Checker, name: &str, bindings: &[Binding]) -> bool {
+    let body = checker.body();
+    let references = checker.semantic().references_to(name);
+    let Some(block) = references.first().map(|reference| reference.statement) else {
+        return false;
+    };
+    matches!(body.get(block), Some(Stmt::If(_) | Stmt::Try(_) | Stmt::With(_)))
+        && references.iter().all(|reference| reference.statement == block)
+        && bindings.iter().all(|binding| body.partition_point(|stmt| stmt.end() <= binding.range.start()) == block)
+        && !checker.project().is_used_elsewhere(name)
+}
+
+// The module-scope names bound to a function the module defines, as `_build_cli = build_cli`. Such an alias reads as the
+// function, so it follows the function's name as a class alias does. An import is left out: the semantic model cannot
+// tell whether it binds a function.
+fn function_aliases<'a>(checker: &Checker<'a>) -> FxHashSet<&'a str> {
+    let semantic = checker.semantic();
+    checker
+        .body()
+        .iter()
+        .filter_map(single_assignment)
+        .filter(|(_, _, value)| match value {
+            Expr::Name(name) => {
+                semantic.bindings(name.id.as_str()).iter().any(|binding| binding.kind == BindingKind::Function)
+            }
+            _ => false,
+        })
+        .map(|(target, _, _)| target.id.as_str())
+        .collect()
 }
 
 // The module-scope names a framework reads off this module by their exact names, so renaming them breaks it.

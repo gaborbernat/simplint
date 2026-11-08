@@ -1,6 +1,6 @@
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
-use ruff_text_size::Ranged;
+use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
@@ -8,21 +8,32 @@ use crate::lint::registry::Rule;
 pub fn cognitive_complexity(checker: &Checker) {
     let limit = checker.settings.project.knobs.max_cognitive_complexity;
     for function in checker.function_defs() {
-        let mut score = Score::default();
-        for stmt in &function.body {
-            score.visit_stmt(stmt);
-        }
-        if score.total > limit {
+        let total = score(&function.body, 0);
+        if total > limit {
             checker.report(
                 Rule::CognitiveComplexity,
                 function.name.range(),
                 format!(
-                    "`{}` has cognitive complexity {}, over the limit of {limit}; split it into named helpers",
-                    function.name, score.total
+                    "`{}` has cognitive complexity {total}, over the limit of {limit}; split it into named helpers",
+                    function.name
                 ),
             );
         }
     }
+}
+
+// The score of `body` when it sits `nesting` bodies deep, where each nesting-sensitive increment grows by that depth.
+// An inlined body adds the score it has at the depth of the call it replaces.
+pub fn score(body: &[Stmt], nesting: usize) -> usize {
+    Score::of(body, nesting).total
+}
+
+// The score of `body` together with the number of bodies the expression at `range` sits in, the nesting an inlined
+// body would start at. The nesting is `None` when the walk does not reach `range`.
+pub fn score_probed(body: &[Stmt], range: TextRange) -> (usize, Option<usize>) {
+    let mut score = Score { probe: Some(range), ..Score::default() };
+    score.visit_body(body);
+    (score.total, score.probed)
 }
 
 // The SonarSource score of one function body. A branch, loop, handler or conditional expression adds one, plus one for
@@ -35,9 +46,18 @@ struct Score {
     nesting: usize,
     // The boolean operator the expression being walked is a direct operand of, which a run of the same operator shares.
     boolean: Option<ast::BoolOp>,
+    // The expression whose nesting the walk records, for a call site that an inlined helper would move to.
+    probe: Option<TextRange>,
+    probed: Option<usize>,
 }
 
 impl Score {
+    fn of(body: &[Stmt], nesting: usize) -> Self {
+        let mut score = Score { nesting, ..Score::default() };
+        score.visit_body(body);
+        score
+    }
+
     fn nested(&mut self, visit: impl FnOnce(&mut Self)) {
         self.nesting += 1;
         visit(self);
@@ -109,6 +129,9 @@ impl<'a> Visitor<'a> for Score {
     }
 
     fn visit_expr(&mut self, expr: &'a Expr) {
+        if self.probe == Some(expr.range()) {
+            self.probed = Some(self.nesting);
+        }
         let outer = match expr {
             Expr::BoolOp(ast::ExprBoolOp { op, .. }) => {
                 if self.boolean != Some(*op) {

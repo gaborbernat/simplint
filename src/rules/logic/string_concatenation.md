@@ -104,13 +104,54 @@ message = f"Hello, {name}!"
   # fmt: on
   ```
 
+- **Chains with an operand that is an instance of a class**, such as `Markup("<b>")` for a `Markup` class that overrides
+  `__add__` or one `markupsafe` provides: `+` runs that method, which an f-string would not, so the chain is left alone.
+  The instance may come from a call, a variable holding one, a parameter annotated with the class, a method of such an
+  instance, or a function of the module annotated to return it. A class the run defines is recognized under any name,
+  and a name imported from outside the run counts as a class when its name is CapWords, as PEP 8 spells classes, with
+  leading underscores ignored, so `_Private` counts too.
+
+  ```python ok
+  class Markup(str):
+      def __add__(self, other: str) -> "Markup":
+          return Markup(str.__add__(self, other.replace("<", "&lt;")))
+
+
+  SAFE = Markup("<b>") + "<i>"
+  ```
+
+  ```python ok
+  from markupsafe import Markup
+
+  SAFE = Markup("<b>") + "<i>"
+  ```
+
+- **Chains with a string in a non-literal operand that holds a backslash, on a target before Python 3.12**, such as
+  `"a" + name.strip("\n")`: a replacement field of an f-string cannot hold a backslash inside a string before
+  [PEP 701](https://peps.python.org/pep-0701/#considerations-of-quote-reuse), so no f-string holds the chain for that
+  target and this rule does not report it. From Python 3.12 on the chain is reported as before.
+
+  ```toml config
+  [tool.ruff]
+  target-version = "py311"
+  ```
+
+  ```python ok
+  def trim(name: str) -> str:
+      return "a" + name.strip("\n")
+  ```
+
 ### Deciding on a fix
 
 ```mermaid
 flowchart TD
     chain["+ chain with a string"] --> bytes{"holds a<br/>bytes literal?"}
     bytes -->|yes| skip["not reported"]
-    bytes -->|no| known{"every operand<br/>known str?"}
+    bytes -->|no| instance{"holds an instance of a class,<br/>or a call to an imported class?"}
+    instance -->|yes| skip
+    instance -->|no| target{"holds a backslash in a string<br/>before Python 3.12?"}
+    target -->|yes| skip
+    target -->|no| known{"every operand<br/>known str?"}
     known -->|no| none["reported, no fix"]
     known -->|yes| fits{"chain fits<br/>an f-string?"}
     fits -->|no| none
@@ -121,7 +162,7 @@ flowchart TD
     classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28
     classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606
     class chain blue
-    class bytes,known,fits yellow
+    class bytes,instance,target,known,fits yellow
     class skip green
     class none orange
     class fix teal
@@ -146,7 +187,8 @@ Builtins and the standard library:
 - standard library values the module imports: `os.sep`, `os.linesep`, `sys.platform`, the `string` constants,
   `os.getcwd()`, `platform.system()`, `json.dumps(...)`, `textwrap.dedent(...)`, `os.environ[...]`,
   `os.environ.get(key, "default")`, `os.getenv(key, "default")`, `uuid.uuid4().hex`, `os.path.join(...)` and the other
-  `os.path` functions given a `str`, and the `name`, `stem`, `suffix` and `as_posix()` of a `pathlib.Path`
+  `os.path` functions given a `str`, `re.escape` given a `str`, and the `name`, `stem`, `suffix` and `as_posix()` of a
+  `pathlib.Path`
 
 Code of the module:
 
@@ -207,18 +249,18 @@ The fix copies each non-literal operand into a placeholder as written:
 
 No fix is offered when:
 
-- a literal is implicitly concatenated, triple-quoted, raw or `u`-prefixed;
+- a literal is triple-quoted, raw or `u`-prefixed;
 
   ```python report
   def greet(name: str) -> str:
-      return "Hello, " + name
+      return """Hello, """ + name
   ```
 
 - the literals use different quote characters;
 
   ```python report
   def greet(name: str) -> str:
-      return "Hello, " + name + "!"
+      return 'Say "hi", ' + name + ". It's late."
   ```
 
 - a comment sits between the operands, since the f-string has no place for it;
@@ -231,7 +273,8 @@ No fix is offered when:
       )
   ```
 
-- a non-literal operand spans several lines or contains a backslash, `#`, `:`, `!`, `{` or `}`;
+- a non-literal operand contains a backslash, `#`, `:`, `!`, `{` or `}`; before Python 3.12 a backslash inside a string
+  is an exception above, and one outside a string, such as a line continuation, is reported without a fix;
 
   ```python report
   def greet(name: str) -> str:

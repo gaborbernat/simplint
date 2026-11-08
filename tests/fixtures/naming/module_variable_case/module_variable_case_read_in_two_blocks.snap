@@ -1,0 +1,15 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+4:5 SMP102 Module-scope variable `feeds` should be named `FEEDS` [unsafe fix: Rename `feeds` to `FEEDS`]
+5:5 SMP102 Module-scope variable `libraries` should be named `LIBRARIES` [unsafe fix: Rename `libraries` to `LIBRARIES`]
+--- fixed (2 applied, 0 remaining) ---
+import sys
+
+if sys.platform == "win32":
+    FEEDS = ["a.c"]
+    LIBRARIES = []
+
+if __name__ == "__main__":
+    print(FEEDS, LIBRARIES)

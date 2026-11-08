@@ -116,9 +116,6 @@ pub(crate) struct Docstring<'a> {
     // Whether a comment follows the closing quotes, such as a `# noqa` for the docstring's line, which a fix moving the
     // quotes to another line would strand.
     pub(super) commented: bool,
-    // The indentation of the docstring's lines after the first, which a field must keep to belong to its field list;
-    // `None` for a docstring of one line.
-    pub(super) indent: Option<String>,
 }
 
 impl<'a> Docstring<'a> {
@@ -150,12 +147,6 @@ impl<'a> Docstring<'a> {
             .map(indent)
             .min()
             .unwrap_or_default();
-        let body_indent = lines
-            .iter()
-            .skip(1)
-            .map(|(_, line)| line.trim_end())
-            .find(|line| !line.is_empty() && indent(line) == base)
-            .map(|line| line[..base].to_owned());
         let mut fields: Vec<Field> = Vec::new();
         let mut sections = Vec::new();
         // The position and indentation of the field whose body a deeper line continues.
@@ -214,7 +205,7 @@ impl<'a> Docstring<'a> {
             }
         }
         let commented = checker.trailing_comment(literal).is_some();
-        Self { literal, fields, sections, content, commented, indent: body_indent }
+        Self { literal, fields, sections, content, commented }
     }
 
     pub(crate) fn fields(&self, kinds: &[FieldKind]) -> impl Iterator<Item = &Field> {

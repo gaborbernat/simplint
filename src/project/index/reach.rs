@@ -5,7 +5,7 @@ use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_text_size::TextRange;
 
 use crate::project::FileFacts;
-use crate::project::facts::ImportBinding;
+use crate::project::facts::{Closure, ExportsUnknown, ImportBinding};
 use crate::settings::ModuleRole;
 use crate::syntax::Visibility;
 
@@ -46,13 +46,27 @@ impl StarTargets {
     }
 }
 
-// The classes and aliases each file defines that another exported name's signature reaches, keyed by that file.
-pub(super) fn api_reached(indexed: &[(FileId, &FileFacts)]) -> FxHashMap<FileId, FxHashSet<String>> {
-    indexed
-        .iter()
-        .filter(|(_, facts)| !facts.api_reached.is_empty())
-        .map(|(id, facts)| (*id, facts.api_reached.iter().cloned().collect()))
-        .collect()
+// The classes and aliases each file defines that a signature reaches: from the names its `__all__` lists, and from the
+// names a library exposes, which include re-exports. One pass per file, so both root sets share its references.
+pub(super) fn signature_reached(
+    indexed: &[(FileId, &FileFacts)],
+    library_api: &FxHashMap<FileId, FxHashMap<String, Option<PathBuf>>>,
+) -> (FxHashMap<FileId, FxHashSet<String>>, FxHashMap<FileId, FxHashSet<String>>) {
+    let mut listed = FxHashMap::default();
+    let mut exposed = FxHashMap::default();
+    for (id, facts) in indexed {
+        let closure = Closure::new(&facts.interface);
+        let from_all = closure.reached(facts.exports.iter().flatten().map(String::as_str));
+        if !from_all.is_empty() {
+            listed.insert(*id, from_all.into_iter().collect());
+        }
+        let from_exposed =
+            closure.reached(library_api.get(id).into_iter().flat_map(|names| names.keys().map(String::as_str)));
+        if !from_exposed.is_empty() {
+            exposed.insert(*id, from_exposed.into_iter().collect());
+        }
+    }
+    (listed, exposed)
 }
 
 pub(super) fn unqualified(class: &str) -> &str {
@@ -61,13 +75,16 @@ pub(super) fn unqualified(class: &str) -> &str {
 
 // The names a library's users reach. A public module offers what its `__all__` lists, or, without one, every name it
 // defines or re-exports without a leading underscore, as the typing spec reads a module; a name another module imports
-// from it counts too, since `missing-from-all` lists it there. A module that re-exports a public name, through
-// `__all__`, a redundant alias or `import *`, makes it public where it is defined, through any chain of re-exports.
-// Names only spread, so this settles.
-pub(super) fn user_facing(
+// from a module without `__all__` counts too, since such a module offers what it imports. A module that re-exports a
+// public name, through `__all__`, a redundant alias or `import *`, makes it public where it is defined, through any
+// chain of re-exports. Names only spread, so this settles. A module whose `__getattr__` supplies names lazily offers
+// only what it defines, since the names it re-exports are not all known. A public name an entry point or build hook
+// loads is reached whatever `__all__` says, since the tool that loads it is outside the run.
+pub(super) fn library_api(
     sources: &FxHashMap<FileId, &FileFacts>,
     roles: &FxHashMap<FileId, ModuleRole>,
     imported: &FxHashMap<FileId, FxHashSet<String>>,
+    entries: &[(FileId, String)],
     bindings: &[(FileId, FileId, &ImportBinding)],
     stars: &[(FileId, FileId)],
     files: &FileIds,
@@ -84,6 +101,10 @@ pub(super) fn user_facing(
             (*source, exported)
         })
         .collect();
+    let mut loaded: FxHashMap<FileId, FxHashSet<&str>> = FxHashMap::default();
+    for (file, name) in entries {
+        loaded.entry(*file).or_default().insert(name.as_str());
+    }
     let mut names: FxHashMap<FileId, FxHashMap<String, Option<FileId>>> = FxHashMap::default();
     for (path, facts) in sources {
         if !roles.get(path).is_some_and(|role| role.public) {
@@ -93,24 +114,27 @@ pub(super) fn user_facing(
         let mut add = |name: &str| {
             own.entry(name.to_owned()).or_insert(None);
         };
-        match &facts.exports {
-            Some(listed) => listed.iter().for_each(|name| add(name)),
-            None if facts.exports_unknown => {}
-            None => {
+        loaded.get(path).into_iter().flatten().copied().filter(starred).for_each(&mut add);
+        if let Some(listed) = &facts.exports {
+            for name in listed {
+                add(name);
+            }
+        } else {
+            let unknown = facts.exports_unknown;
+            if unknown != ExportsUnknown::Dynamic {
+                facts.defined.iter().map(String::as_str).filter(starred).for_each(&mut add);
+            }
+            if unknown == ExportsUnknown::No {
                 let redundant = facts.bindings.iter().filter(|binding| binding.redundant).map(|binding| &binding.bound);
-                facts
-                    .defined
-                    .iter()
-                    .map(String::as_str)
-                    .chain(redundant.map(String::as_str))
-                    .filter(starred)
-                    .for_each(&mut add);
+                redundant.map(String::as_str).filter(starred).for_each(&mut add);
                 for (_, source) in stars.iter().filter(|(importer, _)| importer == path) {
                     star_exports[source].iter().copied().for_each(&mut add);
                 }
             }
+            if unknown != ExportsUnknown::Lazy {
+                imported.get(path).into_iter().flatten().map(String::as_str).filter(starred).for_each(&mut add);
+            }
         }
-        imported.get(path).into_iter().flatten().map(String::as_str).filter(starred).for_each(&mut add);
     }
     loop {
         let mut reached: Vec<(FileId, String, FileId)> = Vec::new();
@@ -193,8 +217,8 @@ fn unresolved_candidates(
 }
 
 // A dotted path through a package that names no module, as `nx.reportviews.Name` where `networkx` re-exports its
-// `networkx.classes.reportviews` submodule, may reach any module of that package with the path's last name. Those
-// names count as referenced rather than imported: they are kept, yet not made part of the module's API.
+// `networkx.classes.reportviews` submodule, may reach any module of that package with the path's last name. The names
+// count as the path was written: imported when an import reads them, referenced when a string or a store does.
 pub(super) fn reach_by_last_name(
     referenced: &mut FxHashMap<FileId, FxHashSet<String>>,
     unreached: &[Unreached],
@@ -218,7 +242,7 @@ pub(super) fn reach_by_last_name(
 }
 
 // The last name of the module a file defines: `name` for `name.py` and `name/__init__.py`.
-fn last_name(file: &Path) -> Option<&str> {
+pub(super) fn last_name(file: &Path) -> Option<&str> {
     let stem = file.file_stem().and_then(|stem| stem.to_str());
     if stem == Some("__init__") { file.parent().and_then(Path::file_name).and_then(|name| name.to_str()) } else { stem }
 }
@@ -276,7 +300,7 @@ pub(super) fn star_exports(facts: &FileFacts) -> StarExports {
     StarExports {
         listed: facts.exports.as_ref().map(|names| names.iter().cloned().collect()),
         defined: facts.defined.iter().cloned().collect(),
-        unknown: facts.exports_unknown,
+        unknown: facts.exports_unknown != ExportsUnknown::No,
     }
 }
 

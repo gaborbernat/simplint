@@ -161,6 +161,32 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
   type vector = list[float]
   ```
 
+- **Names bound and read only inside one module-level `if`, `try` or `with` block**: a block such as a version check
+  binds a name for its own use, and nothing outside the block reads it. A name that another file reads stays here.
+
+  ```python ok
+  import sys
+
+  if sys.version_info < (3, 10):
+      msg = "requires Python 3.10"
+      raise RuntimeError(msg)
+  ```
+
+- **Annotations alone under `if TYPE_CHECKING:`**: the rules no longer report a declaration with no value under
+  `if TYPE_CHECKING:`, which only types a name that a module's PEP 562 `__getattr__` serves at runtime. Renaming one
+  breaks the type checker's view of `module.log`, while `__getattr__` keeps serving it at runtime. An assigned name in
+  the same block is still checked.
+
+  ```python ok
+  import typing
+
+  if typing.TYPE_CHECKING:
+      log: typing.Callable[[str], None]
+  else:
+
+      def __getattr__(name: str) -> object: ...
+  ```
+
 - **Names also bound by an import, `def` or `class`**: this rule skips them. This covers:
 
   - An import, such as `from json import dumps`: the import keeps the spelling of what it imports.
@@ -181,6 +207,17 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
 
     limit = limit()
     ```
+
+- **Aliases of a function the module defines**: an alias reads as the function, so it keeps the function's name, as a
+  class alias does. An alias of an imported name is not covered, as the rule cannot tell what an import binds.
+
+  ```python ok
+  def build_cli() -> str:
+      return "cli"
+
+
+  _build_cli = build_cli
+  ```
 
 - **Names bound only as `for`, `with`, `except` or `match` targets**: these hold whatever the statement produces, not a
   value the module defines.
@@ -352,7 +389,15 @@ print(f"limit={LIMIT!r}")
 
 No fix is offered when:
 
-- another module in the run imports the name or reaches it by a dotted string, such as a `mocker.patch` target
+- a public module of a library offers the name, as a public name or one `__all__` lists: its users import it, so the
+  report stays and the author renames it by hand
+
+- code the index cannot follow may read the name: a module the run cannot resolve binds it, such as a stdlib or
+  third-party import, or a doctest spells it. The report stays, since such a read does not show what it reads
+
+- another module in the run imports the name, reaches it by a dotted string, such as a `mocker.patch` target, or assigns
+  it as an attribute of its module, as `module.NAME = value` or `setattr(module, "NAME", value)` does, since the rename
+  would leave that write pointing at the old name
 
   ```python report file=config.py
   limit = 3
@@ -377,6 +422,9 @@ No fix is offered when:
 
   value = importlib.import_module("loader").limit
   ```
+
+- a file of the run sets an attribute of the module under a computed name, as `setattr(module, name, value)` or
+  `mock.patch(f"module.{name}")` does
 
 - the new name is already used as a name in the file
 

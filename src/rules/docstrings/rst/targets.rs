@@ -9,6 +9,7 @@ use super::attributes::{Attribute, attributes, is_field_call, skips_init, unsubs
 use super::{Docstring, has_attribute_bases};
 use crate::lint::checker::Checker;
 use crate::rules::docstring;
+use crate::rules::docstrings::Need;
 use crate::settings::DocstringStyle;
 use crate::syntax::{Visibility, is_overload, last_segment, module_statements, receiver};
 
@@ -48,7 +49,7 @@ impl<'a> Target<'a> {
     // Whether the definition is part of the library's public API. Only the rules that ask for it pay for the public API,
     // which reads the index of the whole run.
     pub(crate) fn public(&self, checker: &Checker) -> bool {
-        checker.state().public_api(checker).is_public(self.definition())
+        checker.state().public_api(checker).is_public(self.definition(), Need::Docs)
     }
 
     // Whether the docstring is the `__init__` docstring of a public class, which documents its constructor's parameters
@@ -56,7 +57,8 @@ impl<'a> Target<'a> {
     pub(crate) fn public_constructor(&self, checker: &Checker) -> bool {
         match self.owner {
             Owner::Function { def, class: Some(class) } => {
-                def.name.as_str() == "__init__" && checker.state().public_api(checker).is_public(class.range)
+                def.name.as_str() == "__init__"
+                    && checker.state().public_api(checker).is_public(class.range, Need::Docs)
             }
             Owner::Function { class: None, .. } | Owner::Class(_) => false,
         }

@@ -1,0 +1,17 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+7:9 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
+--- fixed (1 applied, 0 remaining) ---
+class _Mixin:
+    def describe(self) -> str:
+        """Describe the object for the users of the public class."""
+        return "described"
+
+    def _helper(self) -> str:
+        return "helper"
+
+
+class Child(_Mixin):
+    """A public class that inherits the mixin."""

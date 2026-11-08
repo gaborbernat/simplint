@@ -1,0 +1,23 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+7:26 SMP533 regex has 4 parts and no comments; write it with `re.VERBOSE`, one part per line with a `#` comment
+11:26 SMP533 regex has 4 parts and no comments; write it with `re.VERBOSE`, one part per line with a `#` comment
+15:26 SMP533 regex has 4 parts and no comments; write it with `re.VERBOSE`, one part per line with a `#` comment
+19:26 SMP533 regex has 4 parts and no comments; write it with `re.VERBOSE`, one part per line with a `#` comment
+23:26 SMP533 regex has 4 parts and no comments; write it with `re.VERBOSE`, one part per line with a `#` comment
+27:26 SMP533 regex has 4 parts and no comments; write it with `re.VERBOSE`, one part per line with a `#` comment
+31:26 SMP533 regex has 4 parts and no comments; write it with `re.VERBOSE`, one part per line with a `#` comment
+35:26 SMP533 regex has 4 parts and no comments; write it with `re.VERBOSE`, one part per line with a `#` comment
+39:26 SMP533 regex has 4 parts and no comments; write it with `re.VERBOSE`, one part per line with a `#` comment
+43:26 SMP533 regex has 4 parts and no comments; write it with `re.VERBOSE`, one part per line with a `#` comment
+47:26 SMP533 regex has 4 parts and no comments; write it with `re.VERBOSE`, one part per line with a `#` comment
+71:26 SMP533 regex has 4 parts and no comments; put a `#` comment on each part a reader needs explained
+79:26 SMP533 regex has 4 parts and no comments; put a `#` comment on each part a reader needs explained
+83:26 SMP533 regex has 4 parts and no comments; put a `#` comment on each part a reader needs explained
+87:30 SMP533 regex has 4 parts and no comments; write it with `re.VERBOSE`, one part per line with a `#` comment
+91:26 SMP533 regex has 4 parts and no comments; write it with `re.VERBOSE`, one part per line with a `#` comment
+95:26 SMP533 regex has 4 parts and no comments; write it with `re.VERBOSE`, one part per line with a `#` comment
+115:26 SMP533 regex has 4 parts and no comments; put a `#` comment on each part a reader needs explained
+134:22 SMP533 regex has 4 parts and no comments; write it with `re.VERBOSE`, one part per line with a `#` comment

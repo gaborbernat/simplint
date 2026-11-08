@@ -1,0 +1,7 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+15:5 SMP505 `_strip` is called only from `test_branch_free_helper`, and inlining keeps `test_branch_free_helper` short; inline it
+24:5 SMP505 `_choose` is called only from `branching_caller`, and inlining keeps `branching_caller` short; inline it
+34:5 SMP505 `_labels` is called only from `test_comprehension_item`, and inlining keeps `test_comprehension_item` short; inline it

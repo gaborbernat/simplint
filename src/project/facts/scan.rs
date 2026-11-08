@@ -10,7 +10,7 @@ use rustc_hash::FxHashSet;
 use super::Parts;
 use super::module_reads::{is_module_load, is_module_type};
 use crate::project::computed_reads::ComputedReads;
-use crate::syntax::attribute_call;
+use crate::syntax::{attribute_call, is_prose_statement};
 
 // The facts that need no scopes, collected in one walk of the module rather than a walk for each, which would visit
 // every node again.
@@ -130,6 +130,11 @@ impl<'a> Scan<'a> {
 
 impl<'a> Visitor<'a> for Scan<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        // A docstring is prose, which names no patch target, so its words stay out of the run's words, unless a doctest
+        // reads a name in it.
+        if is_prose_statement(stmt) {
+            return;
+        }
         self.open(stmt);
         visitor::walk_stmt(self, stmt);
         self.close(stmt);

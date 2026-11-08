@@ -91,11 +91,17 @@ No fix is offered: splitting a test into cases needs knowledge of what each bran
       assert Helper().pick(0) == 2
   ```
 
-- **`if` clauses in comprehensions**: they filter the items a comprehension builds, rather than pick which check runs.
+- **`if` clauses and conditional items in comprehensions**: they shape the items a comprehension builds, rather than
+  pick which check runs.
 
   ```python ok file=tests/test_comprehension.py
   def test_filtered(items: list[int]) -> None:
       assert [item for item in items if item] == [1, 2]
+  ```
+
+  ```python ok file=tests/test_comprehension_item.py
+  def test_labels(tags: list[str | None]) -> None:
+      assert [tag if tag is not None else "-" for tag in tags] == ["a", "-"]
   ```
 
 ## Other tools

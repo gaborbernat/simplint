@@ -140,6 +140,20 @@ asserts may check the messages the code raises.
           assert "gone" in str(exc)
   ```
 
+- **Comparisons of two exceptions' text**: every operand is the text of an exception, such as `str(exc) == str(other)`.
+  Both sides are text the runtime produces, so no fixed wording is written into the code that could drift. A name is an
+  exception when each of its bindings in scope is an `except` clause name, or a parameter annotated with an exception
+  type: a builtin one, a class of the run or one it imports from there, alone, in a union with `None`, in
+  `Optional[...]`, or in a string annotation of those.
+
+  ```python ok
+  def replayed(target, error: OSError):
+      try:
+          target()
+      except OSError as replay_error:
+          return type(replay_error) is type(error) and replay_error.args == error.args
+  ```
+
 - **Test modules**: tests may assert on the messages the code raises.
 
   ```python ok file=test_errors.py

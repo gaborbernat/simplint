@@ -6,7 +6,8 @@ use ruff_text_size::TextRange;
 
 use super::bindings::{Bindings, Value, bindings_in};
 use super::declared::{
-    Class, annotation, body_range, class_at, instance_of, is_property, keeps_return, self_parameter, target_binds,
+    Class, annotation, body_range, class_at, instance_of, is_class_name, is_property, keeps_return, self_parameter,
+    target_binds,
 };
 use super::members::{Members, members_of, written_outside};
 use super::tables::{
@@ -27,6 +28,12 @@ impl<'w, 'a> Kinds<'w, 'a> {
     pub fn is_str(&mut self, expr: &'a Expr) -> bool {
         let depth = self.scopes.len();
         self.kind(expr, depth) == Some(Kind::Str)
+    }
+
+    // Whether `expr` is an instance of a class, which an operator may run the class's own method for.
+    pub fn is_class_instance(&mut self, expr: &'a Expr) -> bool {
+        let depth = self.scopes.len();
+        matches!(self.kind(expr, depth), Some(Kind::Instance(_) | Kind::ImportedInstance))
     }
 
     // The kind of `expr`, read in the innermost `depth` scopes.
@@ -122,7 +129,10 @@ impl<'w, 'a> Kinds<'w, 'a> {
                     "range" => Some(Kind::IntItems),
                     _ => None,
                 },
-                Some((bindings, _)) if bindings.imported => self.library_call(call, depth),
+                Some((bindings, scope)) if bindings.imported => {
+                    let run = (scope == 0).then(|| self.walker.checker.project().run_import_class(&name.id)).flatten();
+                    self.imported_callee(call, run, bindings.original, depth)
+                }
                 Some((bindings, _)) => {
                     if let [class] = bindings.classes.as_slice() {
                         bindings.only_classes().then(|| instance_of(self.walker.checker, class)).flatten()
@@ -133,6 +143,9 @@ impl<'w, 'a> Kinds<'w, 'a> {
             },
             Expr::Attribute(ast::ExprAttribute { value, attr, .. }) => {
                 let receiver = self.kind(value, depth);
+                if receiver == Some(Kind::ImportedInstance) {
+                    return Some(Kind::ImportedInstance);
+                }
                 if let Some(kind) = receiver.and_then(|receiver| method(receiver, attr)) {
                     return Some(kind);
                 }
@@ -151,10 +164,59 @@ impl<'w, 'a> Kinds<'w, 'a> {
                 if let Some((members, _)) = self.members(value, attr, depth) {
                     return members.only_methods().and_then(|methods| self.returns(methods));
                 }
-                self.library_call(call, depth)
+                self.imported_attribute_call(call, value, attr, depth)
             }
             _ => None,
         }
+    }
+
+    // The kind a call to a name the module imports gives: an instance of a class of the run, nothing for a function of
+    // the run, else what the standard library gives, or an instance of a class the name is spelled as.
+    fn imported_callee(
+        &mut self,
+        call: &'a ast::ExprCall,
+        run: Option<bool>,
+        name: Option<&str>,
+        depth: usize,
+    ) -> Option<Kind> {
+        match run {
+            Some(true) => Some(Kind::ImportedInstance),
+            Some(false) => None,
+            None => self
+                .library_call(call, depth)
+                .or_else(|| name.filter(|name| is_class_name(name)).map(|_| Kind::ImportedInstance)),
+        }
+    }
+
+    // The kind a call of an attribute of a module the code imports gives: the attribute of a module of the run is a class
+    // or a function there, and any other attribute is the standard library's or spelled as a class.
+    fn imported_attribute_call(
+        &mut self,
+        call: &'a ast::ExprCall,
+        value: &'a Expr,
+        attr: &'a str,
+        depth: usize,
+    ) -> Option<Kind> {
+        let run = match value.as_name_expr() {
+            Some(module) => match self.lookup(&module.id, depth) {
+                Some((bindings, 0)) if bindings.imported => {
+                    self.walker.checker.project().run_module_member(&module.id, attr)
+                }
+                _ => None,
+            },
+            None => None,
+        };
+        let name = self.imported_root(value, depth).then_some(attr);
+        self.imported_callee(call, run, name, depth)
+    }
+
+    // Whether `expr` is a name the module imports, or an attribute of one.
+    fn imported_root(&self, expr: &'a Expr, depth: usize) -> bool {
+        let mut head = expr;
+        while let Expr::Attribute(ast::ExprAttribute { value, .. }) = head {
+            head = value;
+        }
+        head.as_name_expr().and_then(|name| self.lookup(&name.id, depth)).is_some_and(|(bindings, _)| bindings.imported)
     }
 
     // What a call to a standard library function returns, for a function the module imports.
@@ -174,6 +236,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
             ["os", "path", function] if OS_PATH_FUNCTIONS.contains(function) => {
                 args.iter().any(|arg| self.kind(arg, depth) == Some(Kind::Str)).then_some(Kind::Str)
             }
+            ["re", "escape"] => args.iter().any(|arg| self.kind(arg, depth) == Some(Kind::Str)).then_some(Kind::Str),
             ["os", "path", "split" | "splitext"] => match args.as_ref() {
                 [path] => (self.kind(path, depth) == Some(Kind::Str)).then_some(Kind::StrItems),
                 _ => None,
@@ -205,6 +268,9 @@ impl<'w, 'a> Kinds<'w, 'a> {
             return self.member(&members, class, attr);
         }
         let receiver = self.kind(value, depth);
+        if receiver == Some(Kind::ImportedInstance) {
+            return Some(Kind::ImportedInstance);
+        }
         if let Some(Kind::Instance(range)) = receiver {
             let checker = self.walker.checker;
             let members = members_of(checker, class_at(checker, range)?, attr);

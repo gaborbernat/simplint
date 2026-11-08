@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -9,24 +10,34 @@ use ruff_db::files::{File, system_path_to_file};
 use ruff_db::system::{OsSystem, SystemPathBuf};
 use ruff_graph::{ModuleDb, ResolverEnvironment, resolve_search_paths};
 use ruff_python_ast::PythonVersion;
+use ruff_python_stdlib::sys::is_known_standard_library;
 use ruff_text_size::TextRange;
 use ty_module_resolver::{
-    ImportingFile, ModuleName, SearchPaths, resolve_module, resolve_module_confident, resolve_real_module,
+    ImportingFile, Module, ModuleName, SearchPaths, resolve_module, resolve_module_confident, resolve_real_module,
     resolve_real_module_confident,
 };
 
-use crate::project::constructors::NameUse;
+use crate::project::constructors::{NameUse, UseKind};
 use crate::project::facts::{ImportBinding, ImportSite, ModuleNames};
 use crate::project::{Ending, FileFacts};
 
+use super::reach::last_name;
 use super::{FileId, FileIds, SearchRoots};
 
 // Where each file's module names lead, kept for the whole run so a fix round resolves only the files it rewrote. Fixes
 // change what files say but never add or remove one, and resolving reads only which files and directories exist, so
 // neither the database nor the modules of a file no fix touched go stale.
 pub struct ImportResolver {
+    // The roots the modules of the run are named from, as `SearchRoots::module_paths` names them.
+    pub(super) search: SearchRoots,
     pub(super) db: ModuleDb,
     pub(super) paths: SearchPaths,
+    // The search paths each entry point's project resolves its modules with, keyed by the project's directory. A flat
+    // layout keeps its modules in that directory, which is not a source root unless `src` names it.
+    pub(super) entry_paths: FxHashMap<PathBuf, SearchPaths>,
+    // The search paths each coverage plugin's project resolves its plugin modules with, keyed by the project's
+    // directory: its own, and the `pythonpath` and `extra-paths` its tools configure. Entry points do not search these.
+    pub(super) coverage_paths: FxHashMap<PathBuf, SearchPaths>,
     pub(super) python_version: PythonVersion,
     // The names the files of the run can be imported as, from the components of each file's path.
     pub(super) names: FxHashSet<String>,
@@ -35,17 +46,55 @@ pub struct ImportResolver {
 }
 
 impl ImportResolver {
-    pub fn new(roots: &SearchRoots) -> Result<Self> {
+    pub fn new<'a>(
+        roots: &SearchRoots,
+        entry_roots: impl IntoIterator<Item = &'a Path>,
+        coverage: impl IntoIterator<Item = (&'a Path, &'a Path)>,
+    ) -> Result<Self> {
         let cwd = SystemPathBuf::from_path_buf(std::env::current_dir()?)
             .map_err(|path| anyhow::anyhow!("{} is not a UTF-8 path", path.display()))?;
         let system = OsSystem::new(cwd);
-        let src_roots = roots.roots.iter().filter_map(|root| SystemPathBuf::from_path_buf(root.clone()).ok()).collect();
-        let paths = resolve_search_paths(&system, src_roots, None)?;
+        let src_roots: Vec<SystemPathBuf> =
+            roots.roots.iter().filter_map(|root| SystemPathBuf::from_path_buf(root.clone()).ok()).collect();
+        let paths = resolve_search_paths(&system, src_roots.clone(), None)?;
+        // Like the source roots, a non-UTF-8 directory is no search path, so its entry points stay unresolved.
+        let entry_paths = entry_roots
+            .into_iter()
+            .unique()
+            .filter_map(|root| Some((root, SystemPathBuf::from_path_buf(root.to_path_buf()).ok()?)))
+            .map(|(root, system_root)| {
+                let search_roots = src_roots.iter().cloned().chain([system_root]).collect();
+                Ok((root.to_path_buf(), resolve_search_paths(&system, search_roots, None)?))
+            })
+            .collect::<Result<FxHashMap<_, _>>>()?;
+        let coverage_paths = coverage
+            .into_iter()
+            .into_group_map()
+            .into_iter()
+            .map(|(root, directories)| {
+                let search_roots = src_roots
+                    .iter()
+                    .cloned()
+                    .chain(
+                        directories
+                            .into_iter()
+                            .filter_map(|directory| SystemPathBuf::from_path_buf(directory.to_path_buf()).ok()),
+                    )
+                    .collect();
+                Ok((root.to_path_buf(), resolve_search_paths(&system, search_roots, None)?))
+            })
+            .collect::<Result<FxHashMap<_, _>>>()?;
         let db = ModuleDb::new(system);
         paths.try_register_static_roots(&db);
+        for paths in entry_paths.values().chain(coverage_paths.values()) {
+            paths.try_register_static_roots(&db);
+        }
         Ok(Self {
+            search: roots.clone(),
             db,
             paths,
+            entry_paths,
+            coverage_paths,
             python_version: roots.python_version,
             names: FxHashSet::default(),
             files: Arc::default(),
@@ -132,6 +181,80 @@ pub(super) type ClassKey = (FileId, String);
 // A base class as the file it resolves to, if any, with the module and name the class imports it by.
 pub(super) type ClassBase<F = FileId> = (Option<F>, String, String);
 
+// The class a name of a file is, following the imports that re-export it from the file that defines it. `is_class`
+// tells the classes of the run apart from the names they bind.
+pub(super) fn class_home<'b>(
+    is_class: impl Fn(&ClassKey) -> bool + 'b,
+    bindings: &[(FileId, FileId, &'b ImportBinding)],
+    stars: &[(FileId, FileId)],
+) -> impl Fn(FileId, &str) -> Option<ClassKey> + 'b {
+    let mut reexports: FxHashMap<FileId, Vec<(&'b str, FileId, &'b str)>> = FxHashMap::default();
+    for (importer, source, binding) in bindings {
+        reexports.entry(*importer).or_default().push((&binding.bound, *source, &binding.name));
+    }
+    let mut starred: FxHashMap<FileId, Vec<FileId>> = FxHashMap::default();
+    for (importer, source) in stars {
+        starred.entry(*importer).or_default().push(*source);
+    }
+    move |file: FileId, name: &str| -> Option<ClassKey> {
+        let mut pending: Vec<(FileId, &str)> = vec![(file, name)];
+        let mut seen: FxHashSet<(FileId, &str)> = FxHashSet::default();
+        while let Some((file, name)) = pending.pop() {
+            if !seen.insert((file, name)) {
+                continue;
+            }
+            let key = (file, name.to_owned());
+            if is_class(&key) {
+                return Some(key);
+            }
+            for (bound, source, original) in reexports.get(&file).into_iter().flatten() {
+                if *bound == name {
+                    pending.push((*source, original));
+                }
+            }
+            pending.extend(starred.get(&file).into_iter().flatten().map(|source| (*source, name)));
+        }
+        None
+    }
+}
+
+// The modules the names of a file bind, each with the file it resolves to when that file is not the file itself.
+fn named_modules<'f>(
+    names: &'f [(String, String)],
+    resolved: &impl Fn(&'f str) -> Option<PathBuf>,
+    own: &Path,
+) -> Vec<(String, String, PathBuf)> {
+    names
+        .iter()
+        .filter_map(|(bound, module)| Some((bound.clone(), module.clone(), resolved(module)?)))
+        .filter(|(_, _, file)| file != own)
+        .collect()
+}
+
+// The calls a module's uses name in the file the module resolves to. A module that resolves to no file at all, such as
+// `distutils.log` where the standard library has no `distutils` and the run shims its own `log`, may be the run's file of
+// the same last name, so the calls it makes with their value used read that file.
+fn constructor_reads<'f>(
+    module: &'f str,
+    uses: &[NameUse],
+    resolved: &impl Fn(&'f str) -> Option<PathBuf>,
+    found: &impl Fn(&str) -> bool,
+    run: RunFiles,
+) -> Vec<(PathBuf, Vec<NameUse>)> {
+    if let Some(file) = resolved(module) {
+        return vec![(file, uses.to_vec())];
+    }
+    let last = module.rsplit('.').next().unwrap_or(module);
+    let reads: Vec<NameUse> =
+        uses.iter().filter(|name| matches!(name.kind, UseKind::Call(_)) && !name.discarded).cloned().collect();
+    let namesakes = run.paths.iter().filter(|path| last_name(path) == Some(last));
+    let namesakes: Vec<&PathBuf> = namesakes.collect();
+    if reads.is_empty() || namesakes.is_empty() || found(module) {
+        return Vec::new();
+    }
+    namesakes.into_iter().map(|path| (path.clone(), reads.clone())).collect()
+}
+
 // The files of the run, by the names they are called by and by their paths, which resolution checks a module against.
 #[derive(Clone, Copy)]
 pub(super) struct RunFiles<'a> {
@@ -147,20 +270,31 @@ pub(super) struct ModuleFacts<F> {
     pub(super) imports: Vec<(F, Vec<String>)>,
     pub(super) bindings: Vec<(F, ImportBinding)>,
     pub(super) references: Vec<(F, Vec<String>)>,
+    pub(super) doctest_references: Vec<(F, Vec<String>)>,
     pub(super) stars: Vec<F>,
     pub(super) unresolved_stars: Vec<String>,
-    pub(super) unreached: Vec<(PathBuf, String, Vec<String>)>,
+    pub(super) unreached_imports: Vec<(PathBuf, String, Vec<String>)>,
+    pub(super) unreached_references: Vec<(PathBuf, String, Vec<String>)>,
+    pub(super) unreached_doctests: Vec<(PathBuf, String, Vec<String>)>,
     // The names the file imports or reads from modules that resolve to no file of the run, which may be definitions of
     // the run under a name simplint cannot resolve, as CPython's frozen `_frozen_importlib_external` is.
     pub(super) unresolved_names: Vec<String>,
     // The name each module binds, the absolute dotted module it stands for, and the file that module resolves to.
     pub(super) modules: Vec<(String, String, F)>,
     pub(super) caught: Vec<(F, String)>,
-    pub(super) classes: Vec<(String, Vec<ClassBase<F>>)>,
+    // Each class with the bases it lists and the names of the methods it defines.
+    pub(super) classes: Vec<(String, Vec<ClassBase<F>>, Vec<String>)>,
+    pub(super) functions: Vec<String>,
+    // The modules a top-level `import pkg.module` binds by their root name, as `modules` gives them.
+    pub(super) plain_modules: Vec<(String, String, F)>,
     // The files the import statements that run when the module loads import, and the range of each statement.
     pub(super) runtime: Vec<(F, TextRange)>,
     // The files each `import *` statement of the module imports, and the range of each statement.
     pub(super) star_sites: Vec<(F, TextRange)>,
+    // The files a write under a computed name reaches, whose names any of them may be set by it.
+    pub(super) computed_writes: Vec<F>,
+    // The names a `setattr` call of the file sets on each module that resolves to a file of the run.
+    pub(super) written: Vec<(F, Vec<String>)>,
 }
 
 impl<F> ModuleFacts<F> {
@@ -171,22 +305,33 @@ impl<F> ModuleFacts<F> {
             imports: self.imports.into_iter().map(|(file, names)| (to(file), names)).collect(),
             bindings: self.bindings.into_iter().map(|(file, binding)| (to(file), binding)).collect(),
             references: self.references.into_iter().map(|(file, names)| (to(file), names)).collect(),
+            doctest_references: self.doctest_references.into_iter().map(|(file, names)| (to(file), names)).collect(),
             stars: self.stars.into_iter().map(&mut to).collect(),
             unresolved_stars: self.unresolved_stars,
-            unreached: self.unreached,
+            unreached_imports: self.unreached_imports,
+            unreached_references: self.unreached_references,
+            unreached_doctests: self.unreached_doctests,
             unresolved_names: self.unresolved_names,
             modules: self.modules.into_iter().map(|(bound, module, file)| (bound, module, to(file))).collect(),
             caught: self.caught.into_iter().map(|(file, name)| (to(file), name)).collect(),
             classes: self
                 .classes
                 .into_iter()
-                .map(|(name, bases)| {
+                .map(|(name, bases, methods)| {
                     let bases = bases.into_iter().map(|(file, module, base)| (file.map(&mut to), module, base));
-                    (name, bases.collect())
+                    (name, bases.collect(), methods)
                 })
+                .collect(),
+            functions: self.functions,
+            plain_modules: self
+                .plain_modules
+                .into_iter()
+                .map(|(bound, module, file)| (bound, module, to(file)))
                 .collect(),
             runtime: self.runtime.into_iter().map(|(file, range)| (to(file), range)).collect(),
             star_sites: self.star_sites.into_iter().map(|(file, range)| (to(file), range)).collect(),
+            computed_writes: self.computed_writes.into_iter().map(&mut to).collect(),
+            written: self.written.into_iter().map(|(file, names)| (to(file), names)).collect(),
         }
     }
 }
@@ -215,6 +360,7 @@ impl ModuleFacts<PathBuf> {
         };
         // A module whose top name no file of the run is named after resolves outside the run, so the resolver is not
         // asked. A star import is the exception: it needs to tell an unresolved module from one outside the run.
+        let found = |module: &str| is_module_found(db, environment, importing, module);
         let resolved = |module: &'f str| -> Option<PathBuf> {
             let top = module.split_once('.').map_or(module, |(top, _)| top);
             if !run.names.contains(top) {
@@ -231,30 +377,26 @@ impl ModuleFacts<PathBuf> {
         };
         let mut imports = resolve_all(&facts.imports);
         let references = resolve_all(&facts.references);
+        let written = written_names(facts, &resolved);
         let unresolved_names = facts
             .imports
             .iter()
             .chain(&facts.references)
+            .chain(&facts.doctest_references)
             .filter(|(module, _)| resolved(module).is_none())
             .flat_map(|(_, names)| names.iter().cloned())
             .collect();
-        let unreached = unreached_names(facts, &resolved, run);
+        let unreached_imports = unreached_names(&facts.imports, &resolved, run, &own);
+        let unreached_references = unreached_names(&facts.references, &resolved, run, &own);
         if !facts.declared.is_empty() {
             imports.push((own.with_extension("py"), facts.declared.clone()));
         }
-        let mut stars = Vec::new();
-        let mut unresolved_stars = Vec::new();
-        for module in &facts.star_imports {
-            match resolve_cached(module) {
-                Some(file) => stars.extend((file != own).then_some(file)),
-                None => unresolved_stars.extend(module.rsplit('.').next().map(str::to_owned)),
-            }
-        }
+        let (stars, unresolved_stars) = star_targets(&facts.star_imports, &resolve_cached, &own);
         let constructors = facts
             .constructors
             .uses
             .iter()
-            .filter_map(|(module, uses)| Some((resolved(module)?, uses.clone())))
+            .flat_map(|(module, uses)| constructor_reads(module, uses, &resolved, &found, run))
             .filter(|(file, _)| *file != own)
             .collect();
         let bindings = facts
@@ -263,12 +405,7 @@ impl ModuleFacts<PathBuf> {
             .filter_map(|binding| Some((resolved(&binding.module)?, binding.clone())))
             .filter(|(file, _)| *file != own)
             .collect();
-        let modules = facts
-            .module_names
-            .iter()
-            .filter_map(|(bound, module)| Some((bound.clone(), module.clone(), resolved(module)?)))
-            .filter(|(_, _, file)| *file != own)
-            .collect();
+        let modules = named_modules(&facts.module_names, &resolved, &own);
         let caught = facts.caught.iter().filter_map(|(module, name)| Some((resolved(module)?, name.clone()))).collect();
         let runtime = runtime_targets(&facts.runtime_imports, python_version, &resolved, &own);
         let star_sites = facts
@@ -277,12 +414,14 @@ impl ModuleFacts<PathBuf> {
             .filter_map(|site| Some((resolved(&site.module)?, site.range())))
             .filter(|(file, _)| *file != own)
             .collect();
+        // A module may write its own names under a computed name too, so its own file stays.
+        let computed_writes = facts.computed_writes.iter().filter_map(|module| resolved(module)).collect();
         let classes = facts
             .classes
             .iter()
             .map(|class| {
                 let bases = class.bases.iter().map(|(module, name)| (resolved(module), module.clone(), name.clone()));
-                (class.name.clone(), bases.collect())
+                (class.name.clone(), bases.collect(), class.methods.clone())
             })
             .collect();
         Self {
@@ -290,21 +429,55 @@ impl ModuleFacts<PathBuf> {
             imports,
             bindings,
             references,
+            doctest_references: resolve_all(&facts.doctest_references),
             stars,
             unresolved_stars,
-            unreached,
+            unreached_imports,
+            unreached_references,
+            unreached_doctests: unreached_names(&facts.doctest_references, &resolved, run, &own),
             unresolved_names,
             modules,
             caught,
             classes,
+            functions: facts.functions.clone(),
+            plain_modules: named_modules(&facts.plain_modules, &resolved, &own),
             runtime,
             star_sites,
+            computed_writes,
+            written,
         }
     }
 }
 
 // The source file a module name imports: the `.py` file even when a stub sits next to it, since that is where its names
 // are defined; a module with only a stub counts as its `.py` path, which the stub declarations also use.
+// Whether the module exists for the run: a standard-library module, or one the resolver finds, including one that ships
+// with Python, whose stub has no file on disk. The newest Python's standard library decides, so a module older Pythons
+// ship and the newest lacks, such as `distutils`, is one a run file of its name may shadow.
+pub(super) fn is_module_found<'db>(
+    db: &'db ModuleDb,
+    environment: ResolverEnvironment<'db>,
+    importing: Option<File>,
+    module: &str,
+) -> bool {
+    is_known_standard_library(PythonVersion::latest().minor, module.split('.').next().unwrap_or_default())
+        || ModuleName::new(module).is_some_and(|name| locate(db, environment, importing, &name).is_some())
+}
+
+fn locate<'db>(
+    db: &'db ModuleDb,
+    environment: ResolverEnvironment<'db>,
+    importing: Option<File>,
+    name: &ModuleName,
+) -> Option<Module<'db>> {
+    match importing {
+        Some(file) => resolve_real_module(db, ImportingFile::File(file, environment), name)
+            .or_else(|| resolve_module(db, ImportingFile::File(file, environment), name)),
+        None => resolve_real_module_confident(db, environment, name)
+            .or_else(|| resolve_module_confident(db, environment, name)),
+    }
+}
+
 pub(super) fn resolve<'db>(
     db: &'db ModuleDb,
     environment: ResolverEnvironment<'db>,
@@ -312,32 +485,37 @@ pub(super) fn resolve<'db>(
     module: &str,
 ) -> Option<PathBuf> {
     let name = ModuleName::new(module)?;
-    let module = match importing {
-        Some(file) => resolve_real_module(db, ImportingFile::File(file, environment), &name)
-            .or_else(|| resolve_module(db, ImportingFile::File(file, environment), &name)),
-        None => resolve_real_module_confident(db, environment, &name)
-            .or_else(|| resolve_module_confident(db, environment, &name)),
-    }?;
+    let module = locate(db, environment, importing, &name)?;
     let path = module.file(db)?.path(db).as_system_path()?.as_std_path().to_path_buf();
     Some(normalized(&path.with_extension("py")))
 }
 
-// The names a module reaches through a package of the run whose submodule no file of the run is.
-fn unreached_names<'f>(
+// The names a file sets on each module of the run; a `setattr` on an object that is no module of the run sets none.
+fn written_names<'f>(
     facts: &'f FileFacts,
     resolved: &impl Fn(&'f str) -> Option<PathBuf>,
+) -> Vec<(PathBuf, Vec<String>)> {
+    facts.module_writes.iter().filter_map(|(module, names)| Some((resolved(module)?, names.clone()))).collect()
+}
+
+// The names a module reaches through a package of the run whose submodule no file of the run is.
+fn unreached_names<'f>(
+    modules: &'f [ModuleNames],
+    resolved: &impl Fn(&'f str) -> Option<PathBuf>,
     run: RunFiles,
+    own: &Path,
 ) -> Vec<(PathBuf, String, Vec<String>)> {
-    facts
-        .imports
+    modules
         .iter()
-        .chain(&facts.references)
         .filter_map(|(module, names)| {
             // A module named like a file of the run that resolves outside the run, such as the standard library's
             // `typing_extensions` for a `typing_extensions.py` of the run, may be that file, imported from anywhere.
+            // A file that imports a module of its own name from outside the run, as a `tomllib` backport does, is not
+            // that module, so the import is no import of the file's own names.
             let Some((top, rest)) = module.split_once('.') else {
                 let shadows = run.names.contains(module.as_str())
-                    && !resolved(module).is_some_and(|file| run.paths.contains(&file));
+                    && !resolved(module).is_some_and(|file| run.paths.contains(&file))
+                    && last_name(own) != Some(module.as_str());
                 return shadows.then(|| (PathBuf::new(), module.clone(), names.clone()));
             };
             let package = resolved(top)?;
@@ -346,6 +524,23 @@ fn unreached_names<'f>(
             resolved(module).is_none().then(|| (directory, last.to_owned(), names.clone()))
         })
         .collect()
+}
+
+// The files a module's star imports read, and the last name of each star-imported module the resolver does not find.
+fn star_targets<'f>(
+    modules: &'f [String],
+    resolve: &impl Fn(&'f str) -> Option<PathBuf>,
+    own: &Path,
+) -> (Vec<PathBuf>, Vec<String>) {
+    let mut stars = Vec::new();
+    let mut unresolved = Vec::new();
+    for module in modules {
+        match resolve(module) {
+            Some(file) => stars.extend((file != own).then_some(file)),
+            None => unresolved.extend(module.rsplit('.').next().map(str::to_owned)),
+        }
+    }
+    (stars, unresolved)
 }
 
 // The files each runtime import statement runs, with the statement's range. A `from` import reads each name as a

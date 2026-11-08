@@ -70,7 +70,8 @@ excludes included. The command-line flags of the same names override them.
 Settings read from ``[project]``
 ================================
 
-simplint also reads the `project metadata <https://peps.python.org/pep-0621/>`__:
+simplint also reads the `project metadata <https://peps.python.org/pep-0621/>`__ of each file's project, from the
+``pyproject.toml`` described in :ref:`settings-metadata-source`:
 
 - `dependencies <https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies>`__ are the
   packages :doc:`dependency-import-guard </_generated/rules/SMP303>` treats as required, so it reports a ``try``/``except ImportError`` around their imports. A
@@ -87,7 +88,7 @@ simplint also reads the `project metadata <https://peps.python.org/pep-0621/>`__
 Public API
 ==========
 
-``project-kind``, ``api-packages`` and ``api-modules`` tell simplint which code users import. The documentation rules
+``project-kind`` and ``api-packages`` tell simplint which code users import. The documentation rules
 and the unused-export rules read them; :doc:`/how-to/library-api` walks through setting them.
 
 .. _library-or-application:
@@ -150,12 +151,8 @@ these sources that names any:
 3. The package named after the project.
 4. When none is found, every module outside ``docs`` and the tests counts.
 
-``api-modules`` names modules, besides the top-level packages, that users import from directly. Their ``__all__`` is
-the interface you declare, so :doc:`unused-export </_generated/rules/SMP402>` keeps the names no module of the project
-imports and no exported signature reaches.
-
 A module of an API package is **public unless a part of its path starts with** ``_``, as `PEP 8
 <https://peps.python.org/pep-0008/#public-and-internal-interfaces>`__ describes. So a layout that keeps its code in
 ``my_package/_core.py`` and lists the public names in ``my_package/__init__.py`` exposes only those.
 
-``--show-settings`` prints the result as ``linter.project_kind``, ``linter.api_packages`` and ``linter.api_modules``.
+``--show-settings`` prints the result as ``linter.project_kind`` and ``linter.api_packages``.

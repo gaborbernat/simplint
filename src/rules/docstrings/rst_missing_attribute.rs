@@ -1,6 +1,6 @@
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rst::{FieldKind, Owner, rank, report_missing};
+use crate::rules::docstrings::rst::{FieldKind, Owner};
 use crate::syntax::Visibility;
 use rustc_hash::FxHashSet;
 
@@ -16,25 +16,22 @@ pub fn rst_missing_attribute(checker: &Checker) {
             .filter_map(|field| field.subject())
             .collect();
         // An attribute the constructor takes is documented by its `:param:` field, which `rst-missing-param` asks for.
-        let missing = target
-            .attributes(checker)
-            .iter()
-            .filter(|attribute| {
-                Visibility::of(attribute.name) == Visibility::Public
-                    && !attribute.documented
-                    && !documented.contains(attribute.name)
-                    && !parameters.iter().any(|parameter| parameter.name == attribute.name)
-            })
-            .map(|attribute| {
-                let (name, field) = (attribute.name, if attribute.on_instance { "ivar" } else { "cvar" });
-                let message = format!(
+        // The description of an attribute is for a person to write, so the report carries no fix.
+        for attribute in target.attributes(checker).iter().filter(|attribute| {
+            Visibility::of(attribute.name) == Visibility::Public
+                && !attribute.documented
+                && !documented.contains(attribute.name)
+                && !parameters.iter().any(|parameter| parameter.name == attribute.name)
+        }) {
+            let (name, field) = (attribute.name, if attribute.on_instance { "ivar" } else { "cvar" });
+            checker.report(
+                Rule::RstMissingAttribute,
+                target.docstring.range(),
+                format!(
                     "Docstring of `{}` does not document attribute `{name}`; add `:{field} {name}:`",
                     target.name()
-                );
-                (rank(FieldKind::Var, None, &parameters), format!(":{field} {name}:"), message)
-            })
-            .collect();
-        let range = target.docstring.range();
-        report_missing(checker, Rule::RstMissingAttribute, range, &target.docstring, &parameters, missing);
+                ),
+            );
+        }
     }
 }

@@ -138,10 +138,10 @@ functions nested in it. These values count:
       return socket.create_connection((host, 443), timeout=TIMEOUT)
   ```
 
-- **Names another file in the run imports, or patches with
-  [`unittest.mock.patch`](https://docs.python.org/3/library/unittest.mock.html#patch) or
-  [`patch.object`](https://docs.python.org/3/library/unittest.mock.html#patch-object)**: that file needs the name to
-  stay at module level.
+- **Names another file in the run imports, or a string in the run spells, such as the dotted path `"config._TIMEOUT"`
+  that a test patches with [`unittest.mock.patch`](https://docs.python.org/3/library/unittest.mock.html#patch)**: that
+  file needs the name to stay at module level, and a string that looks the name up would miss an inlined value. A
+  docstring that only mentions the name is prose, so it keeps nothing.
 
   ```python ok file=config.py
   _TIMEOUT = 30
@@ -154,6 +154,9 @@ functions nested in it. These values count:
   ```python context file=main.py
   from config import _TIMEOUT
   ```
+
+- **Names a doctest of the module reads**: a `>>>` example in one of the module's docstrings runs in the module's
+  globals, so inlining the constant would leave the example reading a name that is gone.
 
 - **[Dunder](https://docs.python.org/3/reference/lexical_analysis.html#reserved-classes-of-identifiers) names and
   class-like names such as `UserId`**: Python gives dunder names their meaning, and a class-like name stands for a type
@@ -244,9 +247,9 @@ a new object for mutable ones.
 
 The fix moves the value in one of two ways:
 
-- **Inline**: when the constant is used once, outside any loop, nested function or class, lambda or comprehension, and
-  its value fits on one line, the fix inlines the value at the use, adding parentheses when needed. Two exceptions keep
-  a name:
+- **Inline**: when the constant is used once, outside any loop, nested function or class, lambda or comprehension, the
+  fix inlines the value at the use, adding parentheses when needed. A value with a comment inside it, or a triple-quoted
+  string, takes the local form instead. Some constants keep a name:
 
   ```python report
   _TIMEOUT = 30
@@ -259,6 +262,25 @@ The fix moves the value in one of two ways:
   ```python fixed
   def connect(host: str) -> socket.socket:
       return socket.create_connection((host, 443), timeout=30)
+  ```
+
+  A value the source spreads over several lines goes in on one line, written by Ruff's code generator. The layout and
+  trailing commas do not carry over, and each string keeps the quotes it was written with.
+
+  ```python report
+  _CHOICES = (
+      "first",
+      "second",
+  )
+
+
+  def pick() -> None:
+      print(_CHOICES)
+  ```
+
+  ```python fixed
+  def pick() -> None:
+      print(("first", "second"))
   ```
 
   - Inside an f-string it inlines only a number: a value with quotes there is a syntax error before Python 3.12, and a
@@ -305,8 +327,27 @@ The fix moves the value in one of two ways:
         return f"_LIMIT={30!r}"
     ```
 
+  - A constant with an annotation keeps its name, as the annotation types the value where an inlined literal would be
+    typed on its own. A dict literal under `Final[dict[str, list[str]]]` inlined into a `.get` call fails a type check
+    against the function's return annotation.
+
+    ```python report
+    _LIMIT: int = 30
+
+
+    def connect() -> int:
+        return _LIMIT
+    ```
+
+    ```python fixed
+    def connect() -> int:
+        limit: int = 30
+        return limit
+    ```
+
 - **Local**: otherwise it declares a local before the statement that first uses it and renames the uses. The local takes
-  the constant's name in lowercase, without leading underscores, and keeps its annotation, with `Final` taken off.
+  the constant's name in lowercase, without leading underscores, and keeps its annotation, with `Final` taken off. An
+  annotated constant always takes this form.
 
   ```python report
   _LIMIT = 30
@@ -330,9 +371,9 @@ The fix moves the value in one of two ways:
 flowchart TD
     constant["reported constant"] --> once{"used once, outside loops<br/>and nested scopes?"}
     once -->|no| local["declare a local"]
-    once -->|yes| line{"value fits<br/>on one line?"}
-    line -->|no| local
-    line -->|yes| place{"an exception<br/>above applies?"}
+    once -->|yes| line{"value has a comment or<br/>a triple-quoted string?"}
+    line -->|yes| local
+    line -->|no| place{"an exception<br/>above applies?"}
     place -->|yes| local
     place -->|no| inline["inline the value"]
     classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59
@@ -398,6 +439,8 @@ No fix is offered when:
   def show() -> object:
       return t"{_LIMIT}"
   ```
+
+- a file of the run sets an attribute of the module under a computed name, as `setattr(module, name, value)` does
 
 ## Other tools
 

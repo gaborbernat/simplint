@@ -100,6 +100,7 @@ fn conflict_fails_before_linting(pyproject: &str, file: &str, conflict: &str) {
 #[test_case("[project]\nrequires-python = \">=3.13\"\n[tool.ruff]\nlint.select = [\"PT009\"]\n", "module.py" ; "target_before_unittest_helper")]
 #[test_case("[project]\nrequires-python = \">=3.14\"\n[tool.ruff]\nlint.select = [\"PT009\"]\n[tool.simplint]\nper-file-ignores = { \"module.py\" = [\"SMP811\"] }\n", "module.py" ; "simplint_rule_ignored_for_unittest_helper")]
 #[test_case("[tool.ruff]\nlint.select = [\"TID252\"]\n", "module.py" ; "parent_relative_imports_banned")]
+#[test_case("[tool.ruff]\nlint.select = [\"TID252\"]\nlint.flake8-tidy-imports.ban-relative-imports = \"all\"\n[tool.flake8-lazy]\n", "module.py" ; "flake8_lazy_leaves_relative_imports_alone")]
 #[test_case("[tool.ruff]\nlint.select = [\"D103\"]\n", "_private.py" ; "private_module")]
 #[test_case("[tool.ruff]\nlint.select = [\"D100\"]\n", "module.py" ; "not_a_test_module")]
 #[test_case("[tool.ruff]\nlint.select = [\"D100\"]\nlint.per-file-ignores = { \"tests/*\" = [\"D100\"] }\n", "tests/test_module.py" ; "ruff_rule_ignored_for_tests")]

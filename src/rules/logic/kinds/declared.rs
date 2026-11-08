@@ -81,7 +81,8 @@ pub(super) fn annotation(checker: &Checker, expr: &Expr) -> Option<Kind> {
         Expr::Name(name) if !semantic.is_bound(&name.id) => simple(&name.id),
         Expr::Name(name) => class_named(checker, &name.id)
             .map(|class| Kind::Instance(class.range))
-            .or_else(|| path_class(checker, expr)),
+            .or_else(|| path_class(checker, expr))
+            .or_else(|| imported_class(checker, expr)),
         Expr::StringLiteral(string) => {
             let name = string.value.to_str();
             simple(name).or_else(|| class_named(checker, name).map(|class| Kind::Instance(class.range)))
@@ -126,8 +127,36 @@ pub(super) fn annotation(checker: &Checker, expr: &Expr) -> Option<Kind> {
             }
             shared(kinds).and_then(items)
         }
-        _ => path_class(checker, expr),
+        _ => path_class(checker, expr).or_else(|| imported_class(checker, expr)),
     }
+}
+
+// An instance of an imported class that an annotation names: the class of the run, or else one spelled as a class,
+// which is not a typing alias.
+pub(super) fn imported_class(checker: &Checker, expr: &Expr) -> Option<Kind> {
+    let semantic = checker.semantic();
+    let name = semantic.qualified_name(expr)?;
+    let mut head = expr;
+    while let Expr::Attribute(ast::ExprAttribute { value, .. }) = head {
+        head = value;
+    }
+    let root = head.as_name_expr()?;
+    if !semantic.bindings(root.id.as_str()).iter().all(|binding| binding.kind == BindingKind::Import) {
+        return None;
+    }
+    let run = expr.as_name_expr().and_then(|bound| checker.project().run_import_class(&bound.id));
+    match (run, name.segments()) {
+        (Some(true), _) => Some(Kind::ImportedInstance),
+        (Some(false), _) | (None, ["typing" | "typing_extensions", ..]) => None,
+        (None, segments) => segments.last().is_some_and(|last| is_class_name(last)).then_some(Kind::ImportedInstance),
+    }
+}
+
+// A class name is CapWords, which starts with an uppercase letter once leading underscores are dropped, and is not all
+// caps, as PEP 8 spells classes.
+pub(super) fn is_class_name(name: &str) -> bool {
+    let name = name.trim_start_matches('_');
+    name.starts_with(char::is_uppercase) && name.chars().any(char::is_lowercase)
 }
 
 pub(super) fn path_class(checker: &Checker, expr: &Expr) -> Option<Kind> {

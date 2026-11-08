@@ -73,9 +73,8 @@ Checks the `:returns:` and `:yields:` fields of reStructuredText docstrings, whe
 ### Active on
 
 - **Public functions that return a value without a `:returns:` field**: the return annotation is not `None`, `NoReturn`
-  or `Never`, or, without one, the function returns something other than `None`. The fix adds `:returns:` after the
-  parameter fields, with an empty description for you to write, which [rst-empty-field](SMP914.html) reports until you
-  do.
+  or `Never`, or, without one, the function returns something other than `None`. No fix is offered: the description is
+  for the author to write, and [rst-empty-field](SMP914.html) reports an empty `:returns:` until they do.
 
   ```toml config
   [project]
@@ -97,17 +96,7 @@ Checks the `:returns:` and `:yields:` fields of reStructuredText docstrings, whe
       return sum(values)
   ```
 
-  ```python fixed
-  def total(values: list[int]) -> int:
-      """Add the values.
-
-      :param values: The values.
-      :returns:
-      """
-      return sum(values)
-  ```
-
-- **Public generators without a `:yields:` field**: the fix adds `:yields:` the same way.
+- **Public generators without a `:yields:` field**: no fix is offered, for the same reason.
 
   ```toml config
   [project]
@@ -125,16 +114,6 @@ Checks the `:returns:` and `:yields:` fields of reStructuredText docstrings, whe
       """Count up.
 
       :param count: How far.
-      """
-      yield from range(count)
-  ```
-
-  ```python fixed
-  def numbers(count: int):
-      """Count up.
-
-      :param count: How far.
-      :yields:
       """
       yield from range(count)
   ```

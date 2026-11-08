@@ -4,6 +4,7 @@ use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::docstrings::Need;
 use crate::syntax::ExprCollector;
 use crate::syntax::module_statements;
 
@@ -18,7 +19,7 @@ pub fn indistinct_error_class(checker: &Checker) {
             continue;
         };
         let name = class.name.as_str();
-        if !project.is_uncaught_exception(name) || api.is_public(stmt.range()) || has_state(class) {
+        if !project.is_uncaught_exception(name) || api.is_public(stmt.range(), Need::Any) || has_state(class) {
             continue;
         }
         checker.report(

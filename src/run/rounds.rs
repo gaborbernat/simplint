@@ -22,7 +22,9 @@ use crate::cli::printer::FullDisplay;
 use crate::lint::Linter;
 use crate::lint::registry::{Rule, RuleSet};
 use crate::project::cache::{Cache, Caches, FileKey, Fingerprints};
-use crate::project::{DocReferences, Ending, FileFacts, ImportResolver, IndexInputs, Parts, Project, SearchRoots};
+use crate::project::{
+    DocReferences, Ending, External, FileFacts, ImportResolver, IndexInputs, Parts, Project, SearchRoots,
+};
 use crate::rules::classes::dataclass_kw_only::suppresses_rewrite;
 use crate::settings::{FileSettings, ModuleRole, Settings};
 
@@ -108,14 +110,35 @@ pub(crate) fn check_stdin(path: &Path, source: &str, resolved: &Resolved, mode: 
         .map(PackageRoot::root);
     let roots = SearchRoots::new(ruff, package);
     let files = [RunFile::new(&absolute, &settings, ruff, resolved.pyproject_config.path.as_deref(), package, &roots)];
-    ensure_compatible(&files, resolved)?;
-    let rules = rules_of(&files);
-    let index = index_parts(&files, 1, &roots);
-    let read = (vec![None], documentation(&files, rules, None));
-    let linted = (1, wanted_parts(rules), index);
-    let mut passes = index_and_lint(&files, linted, &roots, read, &[None], None, Ending::Drop, |file| {
-        lint_stdin(path, source, &file.linter, mode)
-    })?;
+    let linted: Vec<&RunFile> = files.iter().collect();
+    ensure_compatible(&linted, resolved)?;
+    let rules = rules_of(&linted);
+    let inputs = ProjectInputs::of(&files, &roots);
+    let startup = roots.startup_names();
+    let docs = documentation(&linted, &resolved.settings_resolver.root.root, rules, None)
+        .remove(&files[0].nested)
+        .unwrap_or_default();
+    let parts = wanted_parts(rules);
+    let facts = FileFacts::collect(
+        &absolute,
+        source,
+        files[0].module_path.as_deref(),
+        files[0].importable.as_deref(),
+        &suppresses_rewrite,
+        parts,
+    );
+    let mut passes = index_and_lint(
+        &files,
+        (parts, &inputs, &startup),
+        &roots,
+        vec![facts],
+        &docs,
+        &External::default(),
+        &[None],
+        None,
+        Ending::Drop,
+        &|file| lint_stdin(path, source, &file.linter, mode),
+    )?;
     Ok(passes.pop().and_then(|mut file| file.pop()).expect("the standard input is linted once"))
 }
 
@@ -143,17 +166,26 @@ fn for_each_file<T: Send>(
         paths.iter().map(|path| resolved.settings_resolver.for_file(path)).collect::<Result<_>>()?;
     let packages = resolver.package_roots(&paths);
     let roots = SearchRoots::new(&resolved.pyproject_config.settings, packages.values().flatten().copied());
-    let indexed: Vec<RunFile> = paths
+    // Each nested project is indexed and linted on its own, so the files are grouped by project, and kept in the run's
+    // order within a group, where the linted ones come first.
+    let mut indexed: Vec<RunFile> = paths
         .iter()
         .zip(&settings)
-        .map(|(&path, settings)| {
+        .enumerate()
+        .map(|(at, (&path, settings))| {
             let (ruff, ruff_config) = resolver.resolve_with_path(path);
             let package = path.parent().and_then(|parent| packages.get(parent)).copied().flatten();
-            RunFile::new(path, settings, ruff, ruff_config, package, &roots)
+            RunFile {
+                at,
+                linted: at < python.len(),
+                ..RunFile::new(path, settings, ruff, ruff_config, package, &roots)
+            }
         })
         .collect();
-    ensure_compatible(&indexed[..python.len()], resolved)?;
-    let rules = rules_of(&indexed[..python.len()]);
+    indexed.sort_by(|left, right| (&left.nested, left.at).cmp(&(&right.nested, right.at)));
+    let linted: Vec<&RunFile> = indexed.iter().filter(|file| file.linted).collect();
+    ensure_compatible(&linted, resolved)?;
+    let rules = rules_of(&linted);
     let parts = wanted_parts(rules);
     if let Some(cache_dir) = cache_dir {
         Caches::prepare(cache_dir);
@@ -161,18 +193,9 @@ fn for_each_file<T: Send>(
     // The documentation walk reads files of its own, so it runs while the caches open and the facts are collected,
     // which on a warm run is most of what comes before the index.
     std::thread::scope(|scope| {
-        let docs = scope.spawn(|| documentation(&indexed[..python.len()], rules, cache_dir));
+        let docs = scope.spawn(|| documentation(&linted, &resolved.settings_resolver.root.root, rules, cache_dir));
         let joined = || docs.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic));
-        index_cached(
-            &indexed,
-            (python.len(), parts),
-            (&roots, &packages),
-            cache_dir,
-            joined,
-            (rewrote, reuse),
-            ending,
-            work,
-        )
+        index_cached(&indexed, parts, (&roots, &packages), cache_dir, joined, (rewrote, reuse), ending, work)
     })
 }
 
@@ -183,15 +206,15 @@ type Reuse<'a, T> = dyn Fn(&RunFile, &Cache, FileKey) -> Option<T> + Sync + 'a;
 type Rewrite<'a, T> = dyn Fn(&T) -> bool + Sync + 'a;
 
 // The caches of the run opened, then either every linted file answered from them under the run's digest, or the facts of
-// the files read from them or collected, and the files indexed and linted. `docs` gives what the documentation names
-// once the walk that runs alongside is done.
+// the files read from them or collected, and the files indexed and linted project by project. `docs` gives what the
+// documentation names once the walk that runs alongside is done.
 #[expect(clippy::too_many_arguments, reason = "the run's inputs, which each stage passes on")]
 fn index_cached<'f, T: Send>(
     indexed: &'f [RunFile<'f>],
-    (linted, parts): (usize, Parts),
+    parts: Parts,
     (roots, packages): (&SearchRoots, &FxHashMap<&'f Path, Option<PackageRoot<'f>>>),
     cache_dir: Option<&Path>,
-    docs: impl FnOnce() -> DocReferences,
+    docs: impl FnOnce() -> Documentation,
     (rewrote, reuse): (Option<&Rewrite<'_, T>>, Option<&Reuse<'_, T>>),
     ending: Ending,
     work: impl Fn(&DiscoveredFile) -> T + Sync,
@@ -200,12 +223,15 @@ fn index_cached<'f, T: Send>(
         Caches::open(cache_dir, packages.iter().map(|(parent, package)| package.map_or(*parent, PackageRoot::path)))
     });
     let docs = docs();
-    let index = index_parts(indexed, linted, roots);
+    let startup = roots.startup_names();
+    let groups: Vec<&[RunFile]> = indexed.chunk_by(|left, right| left.nested == right.nested).collect();
+    let inputs: Vec<ProjectInputs> = groups.iter().map(|group| ProjectInputs::of(group, roots)).collect();
+    let linted = indexed.iter().filter(|file| file.linted).count();
     // Only the cache reads the digest, which stats every file and walks every directory an import can name, so a run
     // without one skips it.
     let opened = caches.as_ref().map(|caches| {
         let keys: Vec<Option<FileKey>> = indexed.par_iter().map(|file| FileKey::of(file.path)).collect();
-        let run = run_digest(indexed, &keys, linted, roots, &index, &docs, parts);
+        let run = run_digest(indexed, &keys, linted, roots, &startup, &inputs, &docs, parts);
         (caches.views(run), keys)
     });
     // As in Ruff, a file's cache is its package's, or its directory's outside a package.
@@ -223,25 +249,73 @@ fn index_cached<'f, T: Send>(
         },
     );
     if let Some(reuse) = reuse {
-        let reused: Option<Vec<Vec<T>>> = indexed[..linted]
+        let reused: Option<Vec<(usize, Vec<T>)>> = indexed
             .par_iter()
-            .zip(&file_caches[..linted])
+            .zip(&file_caches)
+            .filter(|(file, _)| file.linted)
             .map(|(file, cached)| {
                 let (cache, key) = (*cached)?;
-                Some(vec![reuse(file, cache, key)?])
+                Some((file.at, vec![reuse(file, cache, key)?]))
             })
             .collect();
         if let Some(passes) = reused {
             persist_views(opened.map(|(views, _)| views), ending)?;
-            return Ok(Some(passes));
+            return Ok(Some(in_file_order(passes)));
         }
     }
-    let facts: Vec<Option<FileFacts>> =
+    let mut facts: Vec<Option<FileFacts>> =
         indexed.par_iter().zip(&file_caches).map(|(file, cached)| file_facts(file, *cached, parts)).collect();
-    let passes =
-        index_and_lint(indexed, (linted, parts, index), roots, (facts, docs), &file_caches, rewrote, ending, work)?;
+    let mut passes: Vec<(usize, Vec<T>)> = Vec::new();
+    let no_docs = DocReferences::default();
+    let no_external = External::default();
+    let external = if indexed.iter().any(|file| file.nested.is_some()) {
+        outer_names(indexed, &facts)
+    } else {
+        External::default()
+    };
+    let mut remaining = &file_caches[..];
+    for (project, project_inputs) in groups.iter().zip(&inputs) {
+        let (project_caches, rest) = remaining.split_at(project.len());
+        remaining = rest;
+        let project_facts: Vec<Option<FileFacts>> = facts.drain(..project.len()).collect();
+        let linted_at = project.iter().filter(|file| file.linted).map(|file| file.at);
+        let project_passes = index_and_lint(
+            project,
+            (parts, project_inputs, &startup),
+            roots,
+            project_facts,
+            docs.get(&project[0].nested).unwrap_or(&no_docs),
+            if project[0].nested.is_some() { &external } else { &no_external },
+            project_caches,
+            rewrote,
+            ending,
+            &work,
+        )?;
+        passes.extend(linted_at.zip(project_passes));
+    }
     persist_views(opened.map(|(views, _)| views), ending)?;
-    Ok(Some(passes))
+    Ok(Some(in_file_order(passes)))
+}
+
+// What the files outside every nested project read, which the files of a nested project count as used by.
+fn outer_names(indexed: &[RunFile], facts: &[Option<FileFacts>]) -> External {
+    let mut external = External::default();
+    for facts in
+        indexed.iter().zip(facts).filter(|(file, _)| file.nested.is_none()).filter_map(|(_, facts)| facts.as_ref())
+    {
+        external.imported.extend(facts.imported_names().map(str::to_owned));
+        external.read.extend(facts.read_names().map(str::to_owned));
+        external.assigned.extend(facts.assigned_names().map(str::to_owned));
+        external.opaque.extend(facts.doctests().map(str::to_owned));
+        external.computed.extend(facts.computed_reads());
+    }
+    external
+}
+
+// The passes of the linted files, in the order the run lists them.
+fn in_file_order<T>(mut passes: Vec<(usize, T)>) -> Vec<T> {
+    passes.sort_unstable_by_key(|(at, _)| *at);
+    passes.into_iter().map(|(_, pass)| pass).collect()
 }
 
 // Writes the caches the run changed, each package's on its own thread.
@@ -252,40 +326,70 @@ fn persist_views(views: Option<FxHashMap<&Path, Cache>>, ending: Ending) -> Resu
     views.into_values().collect::<Vec<_>>().into_par_iter().try_for_each(|cache| cache.persist(ending))
 }
 
-// The inputs of the import index that the linted files and the run's files determine: the entry points, the files
-// whose calls a fix rewrites, where each file sits in its library's API, the test modules and the duplicate window.
-struct IndexParts<'f> {
-    entry_points: Vec<String>,
-    rewrites_calls: FxHashSet<&'f Path>,
+// What a project of the run takes from its files: the entry points, the build hooks, the fewest statements a duplicate
+// block spans, where each file sits in its library's API, and which files are test modules. A nested project is indexed
+// on its own, so its files only take in the ones of their own group.
+struct ProjectInputs<'f> {
+    entry_points: Vec<(PathBuf, String)>,
+    build_hooks: Vec<(PathBuf, String)>,
+    coverage_plugins: Vec<(PathBuf, String)>,
+    coverage_paths: Vec<(PathBuf, PathBuf)>,
+    duplicate_statements: Option<usize>,
     roles: FxHashMap<&'f Path, ModuleRole>,
     test_modules: FxHashSet<&'f Path>,
-    duplicate_statements: Option<usize>,
 }
 
-fn index_parts<'f>(files: &'f [RunFile<'f>], linted: usize, roots: &SearchRoots) -> IndexParts<'f> {
-    let linted_files = &files[..linted];
-    let entry_points: Vec<String> = linted_files
-        .iter()
-        .map(|file| file.settings.project)
-        .unique_by(|settings| std::ptr::from_ref(*settings))
-        .flat_map(|settings| settings.metadata.entry_points.iter().cloned())
-        .sorted_unstable()
-        .dedup()
-        .collect();
-    IndexParts {
-        entry_points,
-        rewrites_calls: linted_files
+impl<'f> ProjectInputs<'f> {
+    fn of(files: &'f [RunFile<'f>], roots: &SearchRoots) -> Self {
+        let linted: Vec<&RunFile> = files.iter().filter(|file| file.linted).collect();
+        let settings: Vec<&Settings> = linted
             .iter()
-            .filter(|file| file.settings.rewrites_dataclass_calls())
-            .map(|file| file.absolute.as_path())
-            .collect(),
-        roles: module_roles(files, roots),
-        test_modules: files
-            .iter()
-            .filter(|file| file.settings.is_test_module(file.path))
-            .map(|file| file.absolute.as_path())
-            .collect(),
-        duplicate_statements: duplicate_window(linted_files, rules_of(linted_files)),
+            .map(|file| file.settings.project)
+            .unique_by(|settings| std::ptr::from_ref(*settings))
+            .collect();
+        Self {
+            entry_points: settings
+                .iter()
+                .flat_map(|settings| {
+                    settings.metadata.entry_points.iter().map(|entry| (settings.project_dir.clone(), entry.clone()))
+                })
+                .sorted_unstable()
+                .dedup()
+                .collect(),
+            build_hooks: settings
+                .iter()
+                .flat_map(|settings| settings.build_hooks.iter().cloned())
+                .sorted_unstable()
+                .dedup()
+                .collect(),
+            coverage_plugins: settings
+                .iter()
+                .flat_map(|settings| {
+                    settings.coverage.modules.iter().map(|module| (settings.project_dir.clone(), module.clone()))
+                })
+                .sorted_unstable()
+                .dedup()
+                .collect(),
+            coverage_paths: settings
+                .iter()
+                .flat_map(|settings| {
+                    settings
+                        .coverage
+                        .search_paths
+                        .iter()
+                        .map(|directory| (settings.project_dir.clone(), directory.clone()))
+                })
+                .sorted_unstable()
+                .dedup()
+                .collect(),
+            duplicate_statements: duplicate_window(&linted, rules_of(&linted)),
+            roles: module_roles(files, roots),
+            test_modules: files
+                .iter()
+                .filter(|file| file.settings.is_test)
+                .map(|file| file.absolute.as_path())
+                .collect(),
+        }
     }
 }
 
@@ -293,13 +397,15 @@ fn index_parts<'f>(files: &'f [RunFile<'f>], linted: usize, roots: &SearchRoots)
 // the directories its resolver reads, every run file with its key and where it sits, the index's own inputs, the
 // documentation and the facts the rules read. A cache entry stored under the same digest was computed from the same
 // index, which then need not be built.
+#[expect(clippy::too_many_arguments, reason = "the run's inputs, which the digest hashes")]
 fn run_digest(
     files: &[RunFile],
     keys: &[Option<FileKey>],
     linted: usize,
     roots: &SearchRoots,
-    index: &IndexParts,
-    docs: &DocReferences,
+    startup: &[String],
+    projects: &[ProjectInputs],
+    docs: &Documentation,
     parts: Parts,
 ) -> u64 {
     let mut hasher = CacheKeyHasher::new();
@@ -313,21 +419,31 @@ fn run_digest(
         file.package.map(PackageRoot::path).map(Path::to_path_buf).cache_key(&mut hasher);
         file.module_path.cache_key(&mut hasher);
         file.importable.cache_key(&mut hasher);
+        file.nested.cache_key(&mut hasher);
     }
-    index.entry_points.cache_key(&mut hasher);
-    index.duplicate_statements.cache_key(&mut hasher);
-    for set in [&index.rewrites_calls, &index.test_modules] {
-        let mut paths: Vec<&Path> = set.iter().copied().collect();
-        paths.sort_unstable();
-        paths.cache_key(&mut hasher);
+    startup.cache_key(&mut hasher);
+    for project in projects {
+        project.entry_points.cache_key(&mut hasher);
+        project.build_hooks.cache_key(&mut hasher);
+        project.coverage_plugins.cache_key(&mut hasher);
+        project.coverage_paths.cache_key(&mut hasher);
+        project.duplicate_statements.cache_key(&mut hasher);
+        let mut test_modules: Vec<&Path> = project.test_modules.iter().copied().collect();
+        test_modules.sort_unstable();
+        test_modules.cache_key(&mut hasher);
+        let mut roles: Vec<(&Path, ModuleRole)> = project.roles.iter().map(|(path, role)| (*path, *role)).collect();
+        roles.sort_unstable_by_key(|(path, _)| *path);
+        for (path, role) in roles {
+            path.cache_key(&mut hasher);
+            role.cache_key(&mut hasher);
+        }
     }
-    let mut roles: Vec<(&Path, ModuleRole)> = index.roles.iter().map(|(path, role)| (*path, *role)).collect();
-    roles.sort_unstable_by_key(|(path, _)| *path);
-    for (path, role) in roles {
-        path.cache_key(&mut hasher);
-        role.cache_key(&mut hasher);
+    let mut projects: Vec<(&Option<PathBuf>, &DocReferences)> = docs.iter().collect();
+    projects.sort_unstable_by_key(|(project, _)| *project);
+    for (project, references) in projects {
+        project.cache_key(&mut hasher);
+        references.cache_key(&mut hasher);
     }
-    docs.cache_key(&mut hasher);
     parts.cache_key(&mut hasher);
     hasher.finish()
 }
@@ -335,7 +451,8 @@ fn run_digest(
 // A file the run indexes, with what indexing and linting it take, worked out once: its settings and Ruff's with the
 // configuration file they come from, its package, and the module it imports as from that package. Ruff sees no package
 // around a file of a namespace package, yet Python resolves its relative imports, so such a file is `importable` from
-// a search root instead.
+// a search root instead. The run's files are indexed in groups by `nested` project, and `at` is the file's position
+// among the run's paths, which `linted` tells apart from the files only indexed.
 struct RunFile<'a> {
     path: &'a Path,
     // The path the index keys the file by. The run's paths may be relative to the working directory, so they are made
@@ -348,6 +465,10 @@ struct RunFile<'a> {
     module_path: Option<Vec<String>>,
     importable: Option<Vec<String>>,
     sibling_init: bool,
+    at: usize,
+    linted: bool,
+    // The directory of the nested project the file is in, which the index of the run keeps apart from the rest.
+    nested: Option<PathBuf>,
 }
 
 impl<'a> RunFile<'a> {
@@ -366,7 +487,21 @@ impl<'a> RunFile<'a> {
         let sibling_init =
             settings.rules.overlaps(RuleSet::sibling_init()) && path.with_file_name("__init__.py").is_file();
         let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
-        Self { path, absolute, settings, ruff, ruff_config, package, module_path, importable, sibling_init }
+        let nested = settings.project.nested.then(|| settings.project.root.clone());
+        Self {
+            path,
+            absolute,
+            settings,
+            ruff,
+            ruff_config,
+            package,
+            module_path,
+            importable,
+            sibling_init,
+            at: 0,
+            linted: true,
+            nested,
+        }
     }
 }
 
@@ -377,37 +512,47 @@ struct DiscoveredFile<'a> {
     cache: Option<(&'a Cache<'a>, FileKey)>,
 }
 
-// The import index of the run's `files`, built from the facts of each one that has them, and then their first
-// `linted` files linted, each with its passes. `enabled` is the union of the linted files' rules, and `parts` the
-// facts they read; `docs` is what the documentation of the linted files' projects names.
-#[expect(clippy::too_many_arguments, reason = "the run's inputs, which each stage passes on")]
+// The import index of one project's `files`, built from the facts of each one that has them, and then its first `linted`
+// files linted, each with its passes. The linted files come first. `parts` are the facts the rules read, and `docs` is
+// what the documentation of the linted files' projects names.
+#[expect(clippy::too_many_arguments, reason = "the project's inputs, which each stage passes on")]
 fn index_and_lint<'f, T: Send>(
     files: &'f [RunFile<'f>],
-    (linted, parts, index): (usize, Parts, IndexParts<'f>),
+    (parts, project, startup): (Parts, &ProjectInputs, &[String]),
     roots: &SearchRoots,
-    (mut facts, docs): (Vec<Option<FileFacts>>, DocReferences),
+    mut facts: Vec<Option<FileFacts>>,
+    docs: &DocReferences,
+    external: &External,
     file_caches: &[Option<(&'f Cache, FileKey)>],
     rewrote: Option<&(dyn Fn(&T) -> bool + Sync)>,
     ending: Ending,
-    work: impl Fn(&DiscoveredFile) -> T + Sync,
+    work: &(dyn Fn(&DiscoveredFile) -> T + Sync),
 ) -> Result<Vec<Vec<T>>> {
     let start = Instant::now();
-    let linted_files = &files[..linted];
+    let linted: Vec<&RunFile> = files.iter().filter(|file| file.linted).collect();
     let inputs = IndexInputs {
-        entry_points: &index.entry_points,
-        rewrites_calls: &index.rewrites_calls,
-        roles: &index.roles,
-        test_modules: &index.test_modules,
-        docs: &docs,
-        duplicate_statements: index.duplicate_statements,
+        entry_points: &project.entry_points,
+        build_hooks: &project.build_hooks,
+        coverage_plugins: &project.coverage_plugins,
+        startup,
+        roles: &project.roles,
+        test_modules: &project.test_modules,
+        docs,
+        duplicate_statements: project.duplicate_statements,
+        external,
     };
-    let mut imports = ImportResolver::new(roots)?;
+    let mut imports = ImportResolver::new(
+        roots,
+        project.entry_points.iter().map(|(root, _)| root.as_path()),
+        project.coverage_paths.iter().map(|(root, directory)| (root.as_path(), directory.as_path())),
+    )?;
     let paths: Vec<&Path> = files.iter().map(|file| file.absolute.as_path()).collect();
-    let project = index_project(&paths, &facts, &mut imports, &inputs);
+    let indexed = index_project(&paths, &facts, &mut imports, &inputs);
     debug!("Indexed {} files in: {:?}", facts.iter().flatten().count(), start.elapsed());
     let start = Instant::now();
+    let linted_files = &files[..linted.len()];
     let index = Index { facts: &mut facts, paths: &paths, resolver: &mut imports, inputs: &inputs, parts };
-    let passes = lint_rounds(linted_files, index, project, file_caches, rewrote, ending, work);
+    let passes = lint_rounds(linted_files, index, indexed, file_caches, rewrote, ending, work);
     debug!("Checked {:?} files in: {:?}", passes.len(), start.elapsed());
     ending.end(facts);
     ending.end(imports);
@@ -415,7 +560,7 @@ fn index_and_lint<'f, T: Send>(
 }
 
 // The rules the run's files turn on, one union for every per-run check.
-fn rules_of(files: &[RunFile]) -> RuleSet {
+fn rules_of(files: &[&RunFile]) -> RuleSet {
     files.iter().fold(RuleSet::default(), |rules, file| rules.union(file.settings.rules))
 }
 
@@ -426,27 +571,37 @@ fn wanted_parts(rules: RuleSet) -> Parts {
 
 // The fewest statements a duplicate block spans: each file reports the blocks its own setting allows, so the index finds
 // the shortest any file asks for. `None` when no file checks for duplicate code, whose statements the facts then lack.
-fn duplicate_window(files: &[RunFile], rules: RuleSet) -> Option<usize> {
+fn duplicate_window(files: &[&RunFile], rules: RuleSet) -> Option<usize> {
     if !rules.contains(Rule::DuplicateCode) {
         return None;
     }
     files.iter().map(|file| file.settings.project.knobs.min_duplicate_statements).min()
 }
 
-// What the documentation of each project with a `pyproject.toml` names, read only when a rule that asks is on.
-fn documentation(files: &[RunFile], rules: RuleSet, cache_dir: Option<&Path>) -> DocReferences {
+// What the documentation of each project names, by the nested project its files are in (`None` for the run's project). A
+// project reads the pages under its own roots, so a name one project's pages give does not count in another.
+type Documentation = FxHashMap<Option<PathBuf>, DocReferences>;
+
+// What the documentation of each project with a `pyproject.toml` names, read only when a rule that asks is on. The
+// run's project `main` leaves the nested projects' pages to them.
+fn documentation(files: &[&RunFile], main: &Path, rules: RuleSet, cache_dir: Option<&Path>) -> Documentation {
     if !rules.overlaps(RuleSet::documentation()) {
-        return DocReferences::default();
+        return Documentation::default();
     }
-    let roots = files
-        .iter()
-        .filter(|file| file.settings.project.path.is_some())
-        .map(|file| (file.settings.project.root.as_path(), file.ruff))
-        .unique_by(|(root, _)| *root);
-    DocReferences::collect(roots, cache_dir)
+    let mut roots: FxHashMap<Option<PathBuf>, Vec<(&Path, &ruff_workspace::Settings)>> = FxHashMap::default();
+    for file in files.iter().filter(|file| file.settings.project.path.is_some()) {
+        roots.entry(file.nested.clone()).or_default().push((file.settings.project.root.as_path(), file.ruff));
+    }
+    roots
+        .into_iter()
+        .map(|(project, roots)| {
+            let roots = roots.into_iter().unique_by(|(root, _)| *root);
+            (project, DocReferences::collect(roots, main, cache_dir))
+        })
+        .collect()
 }
 
-fn ensure_compatible(files: &[RunFile], resolved: &Resolved) -> Result<()> {
+fn ensure_compatible(files: &[&RunFile], resolved: &Resolved) -> Result<()> {
     let scopes = files
         .iter()
         .map(|file| Scope {
@@ -537,10 +692,11 @@ fn module_roles<'s>(files: &'s [RunFile<'_>], roots: &SearchRoots) -> FxHashMap<
         .map(|file| {
             let settings = file.settings.project;
             let module_paths = file.module_path.iter().cloned().chain(roots.module_paths(file.path)).collect_vec();
+            let is_test = file.settings.is_test;
             let roles: Vec<ModuleRole> =
-                module_paths.iter().map(|module_path| settings.role(file.path, Some(module_path))).collect();
+                module_paths.iter().map(|module_path| settings.api.role(Some(module_path), is_test)).collect();
             let role = roles.iter().copied().find(|role| role.public).or_else(|| roles.first().copied());
-            (file.absolute.as_path(), role.unwrap_or_else(|| settings.role(file.path, None)))
+            (file.absolute.as_path(), role.unwrap_or_else(|| settings.api.role(None, is_test)))
         })
         .collect()
 }
@@ -552,8 +708,10 @@ fn file_facts(file: &RunFile, cache: Option<(&Cache<'_>, FileKey)>, parts: Parts
     if let Some(facts) = cached.filter(|facts| facts.covers(parts)) {
         return Some(facts);
     }
+    let source = std::fs::read_to_string(file.path).ok()?;
     let facts = FileFacts::collect(
         file.path,
+        &source,
         file.module_path.as_deref(),
         file.importable.as_deref(),
         &suppresses_rewrite,

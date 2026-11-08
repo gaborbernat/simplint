@@ -15,15 +15,21 @@ pub fn walrus_candidate(checker: &Checker) {
     if checker.settings.from_ruff.target_version < PythonVersion::PY38 || has_version_gate(checker.body()) {
         return;
     }
-    for_each_scoped_body(checker.body(), Scope::Module, 0, &enter_scope, &mut |body, scope, depth| {
-        for pair in body.windows(2) {
-            if let [Stmt::Assign(assign), if_stmt @ Stmt::If(ast::StmtIf { test, .. })] = pair
-                && let Some(candidate) = candidate(checker, scope, assign, if_stmt, test)
-            {
-                report(checker, &candidate, depth);
+    for_each_scoped_body(
+        checker.body(),
+        Block { scope: Scope::Module, owner: None },
+        0,
+        &enter_block,
+        &mut |body, block, depth| {
+            for pair in body.windows(2) {
+                if let [Stmt::Assign(assign), if_stmt @ Stmt::If(ast::StmtIf { test, .. })] = pair
+                    && let Some(candidate) = candidate(checker, block.scope, assign, if_stmt, test)
+                {
+                    report(checker, &candidate, depth, !collapse_blocked(checker, body, block.owner, if_stmt));
+                }
             }
-        }
-    });
+        },
+    );
 }
 
 // The innermost `def` or `class` around a body.
@@ -35,15 +41,35 @@ enum Scope<'a> {
     Class,
 }
 
-fn enter_scope<'a>(scope: Scope<'a>, stmt: &'a Stmt) -> Scope<'a> {
-    match stmt {
-        Stmt::FunctionDef(_) => Scope::Function(stmt),
-        Stmt::ClassDef(_) => Scope::Class,
-        _ => scope,
-    }
+// The scope a body sits in, and the statement it belongs to.
+#[derive(Clone, Copy)]
+struct Block<'a> {
+    scope: Scope<'a>,
+    owner: Option<&'a Stmt>,
 }
 
-fn report(checker: &Checker, candidate: &Candidate, depth: usize) {
+fn enter_block<'a>(block: Block<'a>, stmt: &'a Stmt) -> Block<'a> {
+    let scope = match stmt {
+        Stmt::FunctionDef(_) => Scope::Function(stmt),
+        Stmt::ClassDef(_) => Scope::Class,
+        _ => block.scope,
+    };
+    Block { scope, owner: Some(stmt) }
+}
+
+// Ruff's nested-`if` rule merges an `if` whose only statement is another `if`, but not past a comment in the outer
+// header. The fix loop would withdraw this fix, yet `check` would still mark it fixable, so it is not offered.
+fn collapse_blocked(checker: &Checker, body: &[Stmt], owner: Option<&Stmt>, if_stmt: &Stmt) -> bool {
+    let (Some(Stmt::If(outer)), Stmt::If(inner)) = (owner, if_stmt) else {
+        return false;
+    };
+    body.len() == 2
+        && outer.elif_else_clauses.is_empty()
+        && inner.elif_else_clauses.is_empty()
+        && checker.has_comment_in(TextRange::new(outer.start(), inner.start()))
+}
+
+fn report(checker: &Checker, candidate: &Candidate, depth: usize, fixable: bool) {
     let &Candidate { assign, deleted, name, target, bare, single_use, .. } = candidate;
     let value_range = checker.parenthesized_range(&assign.value, assign.into());
     let value = checker.text(value_range);
@@ -65,13 +91,8 @@ fn report(checker: &Checker, candidate: &Candidate, depth: usize) {
         )
     };
     let deletion = Edit::range_deletion(deleted);
-    checker.report_fix(
-        Rule::WalrusCandidate,
-        assign.range,
-        message,
-        Some(Fix::safe_edits(deletion, [Edit::range_replacement(replacement, target)])),
-        title,
-    );
+    let fix = Fix::safe_edits(deletion, [Edit::range_replacement(replacement, target)]);
+    checker.report_fix(Rule::WalrusCandidate, assign.range, message, fixable.then_some(fix), title);
 }
 
 // The formatter splits an `if` header wider than its line width over several lines, which reads worse than the

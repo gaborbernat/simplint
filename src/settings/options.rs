@@ -144,7 +144,6 @@ impl Configuration {
                 logic,
                 project_kind: options.project_kind,
                 api_packages: options.api_packages,
-                api_modules: options.api_modules,
                 docstring_style: options.docstring_style,
             },
             run: RunOptions {
@@ -199,7 +198,6 @@ pub(super) struct ProjectOptions {
     pub(super) logic: LogicOptions,
     pub(super) project_kind: Option<ProjectKindOption>,
     pub(super) api_packages: Option<Vec<String>>,
-    pub(super) api_modules: Option<Vec<String>>,
     pub(super) docstring_style: Option<DocstringStyle>,
 }
 
@@ -212,7 +210,6 @@ impl ProjectOptions {
             logic: self.logic.combine(other.logic),
             project_kind: self.project_kind.or(other.project_kind),
             api_packages: self.api_packages.or(other.api_packages),
-            api_modules: self.api_modules.or(other.api_modules),
             docstring_style: self.docstring_style.or(other.docstring_style),
         }
     }
@@ -465,17 +462,6 @@ pub struct SimplintOptions {
         "#
     )]
     pub api_packages: Option<Vec<String>>,
-
-    /// Modules of a library, besides its top-level packages, that users import from directly. Their `__all__` is the
-    /// interface you declare, so `unused-export` (`SMP402`) keeps names no module of the project imports.
-    #[option(
-        default = "[]",
-        value_type = "list[str]",
-        example = r#"
-            api-modules = ["my_package.errors"]
-        "#
-    )]
-    pub api_modules: Option<Vec<String>>,
 
     /// The markup of docstrings, which the reStructuredText rules, `SMP910` to `SMP925`, check: `"rst"` for
     /// reStructuredText field lists, such as `:param name:`, `:returns:` and `:raises Error:`. Unset, those rules do not

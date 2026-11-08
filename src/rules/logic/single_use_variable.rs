@@ -1,10 +1,11 @@
 use ruff_diagnostics::{Edit, Fix};
 use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::helpers::{any_over_expr, is_dunder};
+use ruff_python_ast::name::QualifiedName;
 use ruff_python_ast::str::Quote;
 use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, Expr, ExprContext, PythonVersion, Stmt, StringFlags};
+use ruff_python_ast::{self as ast, Expr, ExprContext, OperatorPrecedence, PythonVersion, Stmt, StringFlags};
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::FxHashMap;
@@ -14,7 +15,8 @@ use crate::lint::registry::Rule;
 use crate::rules::edits::keep_debug_text;
 use crate::rules::edits::statement_deletion;
 use crate::rules::logic::inline::{
-    Names, enter_function, fits, for_each_scoped_body, inlined_text, joined, leading_name, requoted_text,
+    Names, enter_function, fits, for_each_scoped_body, fstring_body_parts, inlined_text, joined, leading_name,
+    requoted_text,
 };
 use crate::rules::{is_alone_on_lines, needs_parentheses};
 use crate::syntax::{is_name, is_repeating_expr, last_segment};
@@ -49,7 +51,7 @@ fn check_pair<'a>(
     let Some((use_range, reading)) = single_read(checker, names, (assign, target), next) else {
         return;
     };
-    let Some(replacement) = inlined_replacement(checker, assign, next, (use_range, &reading)) else {
+    let Some((range, replacement)) = inlined_replacement(checker, assign, next, (use_range, &reading)) else {
         return;
     };
     if ruff_writes_same(checker, (assign, target), next, &replacement) {
@@ -58,7 +60,10 @@ fn check_pair<'a>(
     let deletion = statement_deletion(checker, assign.range, Some(next.range()), false)
         .expect("no comment sits between the assignment and the statement after it");
     let deletion = Edit::range_deletion(deletion);
-    let edits = keep_debug_text(checker, vec![Edit::range_replacement(replacement, use_range)]);
+    // An empty value, such as `''` spliced into an f-string, leaves nothing to write, which only a deletion expresses.
+    let edit =
+        if replacement.is_empty() { Edit::range_deletion(range) } else { Edit::range_replacement(replacement, range) };
+    let edits = keep_debug_text(checker, vec![edit]);
     let fix = match edits {
         Some(edits) => {
             // A read in a `=` debug field rewrites the whole field, so the width is measured on the field it becomes.
@@ -87,7 +92,7 @@ fn single_read<'a>(
     names: &Names<'a>,
     (assign, target): (&'a ast::StmtAssign, &'a ast::ExprName),
     next: &'a Stmt,
-) -> Option<(TextRange, Reading)> {
+) -> Option<(TextRange, Reading<'a>)> {
     let name = target.id.as_str();
     let value = assign.value.as_ref();
     // A `while` test runs again on every pass, and `_` is a placeholder rather than a name to read.
@@ -115,7 +120,18 @@ fn single_read<'a>(
         return None;
     }
     let reading = Reading::of(next, use_range);
-    if reading.read != Some(false) {
+    // Inlining moves the generator into the call, which then drops it, so its `finally` runs at the call's end.
+    if reading.read != Some(false) || reading.consumes {
+        return None;
+    }
+    if reading.default_parameter.is_some_and(|parameter| reports_default(checker, value, parameter)) {
+        return None;
+    }
+    // A conditional or a string literal nested in a replacement field reads worse than the statements it replaces.
+    if !reading.fstring_quotes.is_empty()
+        && !matches!(value, Expr::StringLiteral(_) | Expr::FString(_))
+        && any_over_expr(value, &|sub: &Expr| matches!(sub, Expr::StringLiteral(_) | Expr::FString(_) | Expr::If(_)))
+    {
         return None;
     }
     // Ruff's C419 writes a list comprehension passed to `all` or `any` as a generator, which stops at the first element
@@ -126,14 +142,21 @@ fn single_read<'a>(
     Some((use_range, reading))
 }
 
-// The text that replaces the read: the assigned value as the statement takes it, parenthesised where it needs that.
+// The range the read replaces and the text that replaces it: the assigned value as the statement takes it,
+// parenthesised where it needs that. A bare field of an f-string is replaced whole, by the value's text spliced in.
 fn inlined_replacement(
     checker: &Checker,
     assign: &ast::StmtAssign,
     next: &Stmt,
-    (use_range, reading): (TextRange, &Reading),
-) -> Option<String> {
+    (use_range, reading): (TextRange, &Reading<'_>),
+) -> Option<(TextRange, String)> {
     let value = assign.value.as_ref();
+    let before_312 = checker.settings.from_ruff.target_version < PythonVersion::PY312;
+    if let Some(field) = reading.bare_field
+        && let Some(text) = spliced_text(checker, value, reading.field_fstring, before_312)
+    {
+        return Some((field, text));
+    }
     // The formatter drops the parentheses around an assigned value, so the use does not get them either, and
     // `inlined_text` puts them back where the value needs them. A value over several lines keeps them outside brackets,
     // where its line breaks would end the statement.
@@ -145,7 +168,6 @@ fn inlined_replacement(
     let value_text = checker.text(value_range);
     // A replacement field cannot hold a backslash or a line break before Python 3.12 (PEP 701), so a value the source
     // spreads over lines goes in on one line, as `ruff format` joins it once the assignment is gone.
-    let before_312 = checker.settings.from_ruff.target_version < PythonVersion::PY312;
     let field_before_312 = before_312 && !reading.fstring_quotes.is_empty();
     if field_before_312 && value_text.contains('\\') {
         return None;
@@ -160,7 +182,7 @@ fn inlined_replacement(
         return None;
     }
     // A whole argument, return or assigned value needs no parentheses, though a tuple still does.
-    let parenthesize = needs_parentheses(value) && (!reading.whole || value.is_tuple_expr());
+    let parenthesize = needs_parentheses_at(value, reading.slot) && (!reading.whole || value.is_tuple_expr());
     let mut replacement = field_value(
         checker,
         (value, value_range, joined.as_deref()),
@@ -175,7 +197,132 @@ fn inlined_replacement(
     {
         replacement = format!(" {replacement} ");
     }
-    Some(replacement)
+    Some((use_range, replacement))
+}
+
+// The text of a string value that takes the place of a bare field of the f-string around it, with the f-string's
+// braces. `None` where the field's f-string cannot hold the text: a raw or triple-quoted part, a quote of the
+// enclosing f-string in the text, or a backslash before Python 3.12.
+fn spliced_text(checker: &Checker, value: &Expr, outer: Option<ast::FStringFlags>, before_312: bool) -> Option<String> {
+    let outer = outer?;
+    if outer.prefix().is_raw() {
+        return None;
+    }
+    let text: String = fstring_body_parts(checker, value)?.into_iter().map(|(_, text)| text).collect();
+    let splices_wrongly = text.contains(outer.quote_style().as_char()) || (before_312 && text.contains('\\'));
+    (!splices_wrongly).then_some(text)
+}
+
+// The precedence the value needs to stay one operand where the read sits, with the parentheses `needs_parentheses`
+// asks for where the read is in no operator, as an argument or a call.
+fn needs_parentheses_at(value: &Expr, slot: Option<OperatorPrecedence>) -> bool {
+    match slot {
+        Some(required) => {
+            OperatorPrecedence::from_expr(value) < required
+                || matches!(value, Expr::Tuple(tuple) if !tuple.parenthesized)
+        }
+        None => needs_parentheses(value),
+    }
+}
+
+// Whether Ruff's B006 or B008 reports the value once it is the default of `parameter`. Both skip a parameter whose
+// annotation is immutable.
+fn reports_default(checker: &Checker, value: &Expr, parameter: &ast::ParameterWithDefault) -> bool {
+    let from_ruff = &checker.settings.from_ruff;
+    let b006 = from_ruff.ruff_runs(RuffRule::MutableArgumentDefault);
+    let b008 = from_ruff.ruff_runs(RuffRule::FunctionCallInDefaultArgument);
+    if !(b006 || b008) {
+        return false;
+    }
+    let extend_immutable_calls: Vec<QualifiedName> =
+        from_ruff.extend_immutable_calls.iter().map(|target| QualifiedName::from_dotted_name(target)).collect();
+    if parameter
+        .annotation()
+        .is_some_and(|annotation| checker.semantic().has_immutable_annotation(annotation, &extend_immutable_calls))
+    {
+        return false;
+    }
+    let mut calls = DefaultCalls { checker, extend_immutable_calls: &extend_immutable_calls, reported: false };
+    if b008 {
+        calls.visit_expr(value);
+    }
+    calls.reported || (b006 && is_b006_mutable(checker, value))
+}
+
+// The values B006 reports as a mutable default. In preview, it also reports a generator and a tuple that holds one of
+// the mutable values.
+fn is_b006_mutable(checker: &Checker, value: &Expr) -> bool {
+    match value {
+        Expr::Generator(_) if checker.settings.from_ruff.preview => true,
+        Expr::Tuple(ast::ExprTuple { elts, .. }) if checker.settings.from_ruff.preview => {
+            elts.iter().any(|elt| is_b006_mutable(checker, elt))
+        }
+        _ => checker.semantic().is_mutable_value(value),
+    }
+}
+
+struct DefaultCalls<'a, 'b> {
+    checker: &'a Checker<'b>,
+    extend_immutable_calls: &'a [QualifiedName<'a>],
+    reported: bool,
+}
+
+impl<'a> Visitor<'a> for DefaultCalls<'_, '_> {
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        match expr {
+            Expr::Lambda(_) => {}
+            Expr::Call(ast::ExprCall { func, .. })
+                if self.checker.semantic().is_b008_call(func, self.extend_immutable_calls) =>
+            {
+                self.reported = true;
+            }
+            _ => visitor::walk_expr(self, expr),
+        }
+    }
+}
+
+// The precedence the operand that holds the read must have in its operator, `None` when the read is not a direct operand
+// of an operator or test, or the operator is not one that asks for a precedence here.
+fn operand_precedence(expr: &Expr, reference: TextRange) -> Option<OperatorPrecedence> {
+    let direct = |operand: &Expr| operand.range() == reference;
+    match expr {
+        Expr::BoolOp(ast::ExprBoolOp { op, values, .. }) if values.iter().any(direct) => Some(match op {
+            ast::BoolOp::Or => OperatorPrecedence::And,
+            ast::BoolOp::And => OperatorPrecedence::Not,
+        }),
+        Expr::If(ast::ExprIf { test, body, .. }) if direct(test) || direct(body) => Some(OperatorPrecedence::Or),
+        Expr::Compare(ast::ExprCompare { operands, .. }) if operands.iter().any(direct) => {
+            Some(OperatorPrecedence::BitOr)
+        }
+        Expr::BinOp(ast::ExprBinOp { left, op, right, .. }) => {
+            // The left operand keeps the operator's precedence and the right one takes the next level up, as the
+            // operators associate to the left, except `**`, which takes its left operand from `await` and its right one
+            // from a unary operator.
+            let (left_level, right_level) = match op {
+                ast::Operator::BitOr => (OperatorPrecedence::BitOr, OperatorPrecedence::BitXor),
+                ast::Operator::BitXor => (OperatorPrecedence::BitXor, OperatorPrecedence::BitAnd),
+                ast::Operator::BitAnd => (OperatorPrecedence::BitAnd, OperatorPrecedence::LeftRightShift),
+                ast::Operator::LShift | ast::Operator::RShift => {
+                    (OperatorPrecedence::LeftRightShift, OperatorPrecedence::AddSub)
+                }
+                ast::Operator::Add | ast::Operator::Sub => {
+                    (OperatorPrecedence::AddSub, OperatorPrecedence::MulDivRemain)
+                }
+                ast::Operator::Pow => (OperatorPrecedence::Await, OperatorPrecedence::PosNegBitNot),
+                ast::Operator::Mult
+                | ast::Operator::MatMult
+                | ast::Operator::Div
+                | ast::Operator::Mod
+                | ast::Operator::FloorDiv => (OperatorPrecedence::MulDivRemain, OperatorPrecedence::PosNegBitNot),
+            };
+            if direct(left) { Some(left_level) } else { direct(right).then_some(right_level) }
+        }
+        Expr::UnaryOp(ast::ExprUnaryOp { op, operand, .. }) if direct(operand) => Some(match op {
+            ast::UnaryOp::Not => OperatorPrecedence::Not,
+            ast::UnaryOp::Invert | ast::UnaryOp::UAdd | ast::UnaryOp::USub => OperatorPrecedence::PosNegBitNot,
+        }),
+        _ => None,
+    }
 }
 
 // The value as it goes into the statement. Before Python 3.12 a replacement field cannot hold the quote of the f-string
@@ -292,7 +439,7 @@ fn is_dotted_name(expr: &Expr) -> bool {
 // never reaches stays unset, and is not reported. `effects` is set when something before the read may have side
 // effects, so inlining would reorder them.
 #[expect(clippy::struct_excessive_bools, reason = "each flag marks one place the read sits in")]
-struct Reading {
+struct Reading<'a> {
     reference: TextRange,
     // The statements the walk is in, the next statement counting as one.
     statements: usize,
@@ -307,16 +454,25 @@ struct Reading {
     whole: bool,
     // The read starts its f-string field, so a value that starts with `{` would follow the field's `{`.
     field_start: bool,
+    // The whole field the read fills, `{name}`, when it has no conversion, format spec or `=`, and the f-string around it.
+    bare_field: Option<TextRange>,
+    field_fstring: Option<ast::FStringFlags>,
+    // The precedence the operator around the read asks of its operand, `None` where no operator asks for one.
+    slot: Option<OperatorPrecedence>,
     // The read is in the head of a decorator, which before Python 3.9 must be a dotted name.
     decorator_head: bool,
     // The quotes of the f-strings that hold the read.
     fstring_quotes: Vec<Quote>,
     // The read is an argument of `all` or `any`, which stop at the first element that decides them.
     short_circuits: bool,
+    // The read is the argument of `next` or `anext`, or the receiver of `send`, `throw`, `close` or `__next__`.
+    consumes: bool,
+    // The parameter whose default holds the read.
+    default_parameter: Option<&'a ast::ParameterWithDefault>,
 }
 
-impl Reading {
-    fn of(next: &Stmt, reference: TextRange) -> Self {
+impl<'a> Reading<'a> {
+    fn of(next: &'a Stmt, reference: TextRange) -> Self {
         let mut reading = Self {
             reference,
             statements: 0,
@@ -326,9 +482,14 @@ impl Reading {
             effects: false,
             whole: false,
             field_start: false,
+            bare_field: None,
+            field_fstring: None,
+            slot: None,
             decorator_head: false,
             fstring_quotes: Vec::new(),
             short_circuits: false,
+            consumes: false,
+            default_parameter: None,
         };
         reading.visit_stmt(next);
         reading
@@ -341,7 +502,17 @@ impl Reading {
     }
 }
 
-impl<'a> Visitor<'a> for Reading {
+impl<'a> Visitor<'a> for Reading<'a> {
+    fn visit_parameters(&mut self, parameters: &'a ast::Parameters) {
+        if let Some(parameter) = parameters
+            .iter_non_variadic_params()
+            .find(|parameter| parameter.default().is_some_and(|default| default.range().contains_range(self.reference)))
+        {
+            self.default_parameter = Some(parameter);
+        }
+        visitor::walk_parameters(self, parameters);
+    }
+
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         if self.read.is_some() {
             return;
@@ -415,6 +586,11 @@ impl<'a> Visitor<'a> for Reading {
             && interpolation.range.contains_range(self.reference)
         {
             self.field_start |= interpolation.expression.range().start() == self.reference.start();
+            let bare = matches!(interpolation.conversion, ast::ConversionFlag::None)
+                && interpolation.debug_text.is_none()
+                && interpolation.format_spec.is_none();
+            self.bare_field =
+                (bare && interpolation.expression.range() == self.reference).then_some(interpolation.range);
         }
         visitor::walk_interpolated_string_element(self, element);
     }
@@ -427,11 +603,21 @@ impl<'a> Visitor<'a> for Reading {
             self.read = Some(self.statements > 1 || self.repeats > 0 || self.branches > 0);
             return;
         }
+        if expr.range().contains_range(self.reference) {
+            self.slot = operand_precedence(expr, self.reference);
+        }
         if let Expr::Call(ast::ExprCall { func, arguments, .. }) = expr {
             let arguments = arguments.args.iter().chain(arguments.keywords.iter().map(|keyword| &keyword.value));
             let read_argument = arguments.into_iter().any(|argument| argument.range() == self.reference);
             self.whole |= read_argument;
             self.short_circuits |= read_argument && matches!(last_segment(func), Some("all" | "any"));
+            let steps_argument = read_argument && matches!(last_segment(func), Some("next" | "anext"));
+            let steps_receiver = matches!(
+                func.as_ref(),
+                Expr::Attribute(ast::ExprAttribute { value, attr, .. })
+                    if value.range() == self.reference && matches!(attr.as_str(), "send" | "throw" | "close" | "__next__")
+            );
+            self.consumes |= steps_argument || steps_receiver;
         }
         if let Expr::FString(ast::ExprFString { value, .. }) = expr
             && expr.range().contains_range(self.reference)
@@ -442,6 +628,10 @@ impl<'a> Visitor<'a> for Reading {
                     .filter(|fstring| fstring.range.contains_range(self.reference))
                     .map(|fstring| fstring.flags.quote_style()),
             );
+            self.field_fstring = value
+                .f_strings()
+                .find(|fstring| fstring.range.contains_range(self.reference))
+                .map(|fstring| fstring.flags);
         }
         // An expression that does not hold the read finishes before it, so its calls and lookups run first.
         if !expr.range().contains_range(self.reference) && is_effect(expr) {

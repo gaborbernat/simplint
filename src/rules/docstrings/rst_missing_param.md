@@ -62,6 +62,9 @@ def copy(source: str, target: str) -> None:
 Checks the docstrings of a library's public API (see [undocumented-public-api](SMP903.html)), when
 `docstring-style = "rst"`, for parameters without a `:param name:` field.
 
+No fix is offered: the description is for the author to write, and [rst-empty-field](SMP914.html) reports the empty
+field until they do.
+
 ### Active on
 
 - **Parameters of public functions and methods**: each needs a `:param name:` field.
@@ -222,47 +225,6 @@ Checks the docstrings of a library's public API (see [undocumented-public-api](S
       :param source: Where from.
       """
   ```
-
-### Fix
-
-The fix adds a `:param name:` field for each parameter, with an empty description for you to write, which
-[rst-empty-field](SMP914.html) reports until you do. Where each field goes:
-
-- before the first field of a later parameter, or after the last parameter field
-- in a docstring without fields, in a new field list after a blank line
-- for a class, in the `__init__` docstring when it documents parameters already
-
-**Unsafe fix:** code may read the docstring through `__doc__`.
-
-```toml config
-[project]
-name = "demo"
-
-[build-system]
-requires = []
-
-[tool.simplint]
-docstring-style = "rst"
-```
-
-```python report
-def copy(source: str, target: str) -> None:
-    """Copy a file.
-
-    :param source: Where from.
-    """
-```
-
-```python fixed
-def copy(source: str, target: str) -> None:
-    """Copy a file.
-
-    :param source: Where from.
-    :param target:
-    """
-```
-
-No fix is offered when escapes in the docstring make its text differ from the source.
 
 ## Other tools
 

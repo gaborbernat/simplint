@@ -16,12 +16,15 @@ use crate::common;
 #[test_case("missing-final", "missing_final.py", "py37" ; "missing_final_before_python38")]
 #[test_case("missing-final", "missing_final_gate.py", "py314" ; "missing_final_version_gate")]
 #[test_case("missing-final", "missing_final_branch.py", "py314" ; "missing_final_version_branch")]
+#[test_case("missing-final", "docs/conf.py", "py314" ; "missing_final_sphinx_conf")]
 #[test_case("imprecise-annotation", "imprecise_annotation.py", "py314" ; "imprecise_annotation")]
 #[test_case("imprecise-annotation", "imprecise_annotation_type_params.py", "py314" ; "imprecise_annotation_type_params")]
 #[test_case("imprecise-annotation", "imprecise_annotation_ruff_overlap.py", "py314" ; "imprecise_annotation_ruff_overlap")]
+#[test_case("imprecise-annotation", "imprecise_annotation_callable.py", "py314" ; "imprecise_annotation_callable")]
 #[test_case("callable-ellipsis", "callable_ellipsis.py", "py314" ; "callable_ellipsis")]
 #[test_case("vars-call", "vars_call.py", "py314" ; "vars_call")]
 #[test_case("vars-call", "vars_call_bound.py", "py314" ; "vars_call_shadowed")]
+#[test_case("vars-call", "vars_call_mapping.py", "py314" ; "vars_call_mapping")]
 fn rule(rule: &str, fixture: &str, target_version: &str) {
     common::assert_rule_snapshot(rule, fixture, target_version);
 }
@@ -80,4 +83,23 @@ fn imprecise_annotation_follows_ann401_settings(extra: &str, source: &str, repor
     ]);
     let stdout = common::check(root.path(), &["--select", "SMP602"]).1;
     assert_eq!(stdout.contains("`Any` accepts any value"), reported, "{stdout}");
+}
+
+// `object` is the one annotation both ANN401 and SMP602 accept for `*args` and `**kwargs`, so SMP602 leaves a variadic
+// `object` alone whether or not ANN401 runs. A nested `object` or one on a regular parameter stays reported.
+#[test_case("", "def f(*args: object) -> None:\n    print(args)\n", false ; "star_args")]
+#[test_case("", "def f(**kwargs: object) -> None:\n    print(kwargs)\n", false ; "star_kwargs")]
+#[test_case("[tool.ruff.lint.flake8-annotations]\nallow-star-arg-any = true\n", "def f(**kwargs: builtins.object) -> None:\n    print(kwargs)\n", false ; "star_kwargs_qualified")]
+#[test_case("", "def f(*args: list[object]) -> None:\n    print(args)\n", true ; "nested_in_variadic")]
+#[test_case("", "def f(value: object) -> None:\n    print(value)\n", true ; "parameter")]
+fn imprecise_annotation_accepts_object_variadic(extra: &str, source: &str, reported: bool) {
+    for selected in [false, true] {
+        let select = if selected { "\"ANN401\"" } else { "" };
+        let root = common::project(&[
+            ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [{select}]\n{extra}")),
+            ("module.py", &format!("import builtins\n\n\n{source}")),
+        ]);
+        let stdout = common::check(root.path(), &["--select", "SMP602"]).1;
+        assert_eq!(stdout.contains("`object` annotation"), reported, "{stdout}");
+    }
 }

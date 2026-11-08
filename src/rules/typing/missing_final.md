@@ -222,6 +222,40 @@ LIMIT: Final[int] = 10
   config.TIMEOUT = 5
   ```
 
+- **Names a `setattr` or `patch.object` call sets on a module of the run**, such as
+  `monkeypatch.setattr(config, "TIMEOUT", 5)`, `mock.patch.object(config, "TIMEOUT")` or `mock.patch("config.TIMEOUT")`,
+  whatever the object is named: the module's own `TIMEOUT` is not reported, while other modules' names still are. A loop
+  over a literal tuple or list of modules, such as `for module in (config, importlib.import_module("app.config"))`, sets
+  the name on each module it names, until a statement rebinds the loop's name or a function's parameter shadows it.
+
+  ```python ok file=config.py
+  TIMEOUT = 30
+  ```
+
+  ```python context file=test_config.py
+  import config
+
+
+  def test_timeout(monkeypatch) -> None:
+      monkeypatch.setattr(config, "TIMEOUT", 5)
+  ```
+
+- **Every name of a module a `setattr` call sets under a computed name**, such as `setattr(config, name, value)` with
+  `name` a parameter or the item of a loop over a call: the call may set any of them, so none of them is reported.
+
+  ```python ok file=config.py
+  TIMEOUT = 30
+  LIMIT = 10
+  ```
+
+  ```python context file=test_config.py
+  import config
+
+
+  def test_timeout(monkeypatch, name: str) -> None:
+      monkeypatch.setattr(config, name, 5)
+  ```
+
 - **`TYPE_CHECKING = False`**: an idiom that avoids importing `typing` at runtime, which adding `Final` would defeat.
 
   ```python ok

@@ -1,4 +1,7 @@
 import functools
+import typing
+import typing_extensions
+from typing_extensions import TypeGuard as Guard
 
 
 def load(text: str) -> dict[str, str]:
@@ -170,3 +173,71 @@ def long_caller(text: str) -> str:
 def _long_helper(text: str) -> str:
     first = text.splitlines()[0]
     return first.strip()
+
+
+def nested_caller(rows: list[list[int]], limit: int, strict: bool) -> int:
+    if rows:
+        if strict:
+            if limit:
+                return _widest(rows, limit)
+    return 0
+
+
+def _widest(rows: list[list[int]], limit: int) -> int:
+    for row in rows:
+        for value in row:
+            if value > limit:
+                return value
+    return 0
+
+
+def with_default(value: int) -> int:
+    def inner(scale: int = _scale(value)) -> int:
+        return scale
+
+    return inner()
+
+
+def _scale(value: int) -> int:
+    first = value + 1
+    return first * 2
+
+
+def typing_guard(value: object) -> str:
+    if _is_text(value):
+        return value
+    return ""
+
+
+def _is_text(value: object) -> typing.TypeGuard[str]:
+    return isinstance(value, str)
+
+
+def extensions_guard(value: object) -> str:
+    if _is_name(value):
+        return value
+    return ""
+
+
+def _is_name(value: object) -> typing_extensions.TypeIs[str]:
+    return isinstance(value, str)
+
+
+def aliased_guard(value: object) -> str:
+    if _is_label(value):
+        return value
+    return ""
+
+
+def _is_label(value: object) -> Guard[str]:
+    return isinstance(value, str)
+
+
+def test_branching_caller(kind: str) -> int:
+    return _branch_choice(kind)
+
+
+def _branch_choice(kind: str) -> int:
+    if kind == "a":
+        return 1
+    return 2

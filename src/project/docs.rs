@@ -14,6 +14,7 @@ use ruff_workspace::resolver::match_exclusion;
 use rustc_hash::FxHashSet;
 
 use crate::project::cache;
+use crate::settings::is_nested_root;
 
 #[derive(Clone, Default, PartialEq)]
 pub struct DocReferences {
@@ -21,9 +22,21 @@ pub struct DocReferences {
     // whole project, and `conf.py` may put any directory on `sys.path`, so any definition whose dotted name ends with
     // one may be the target.
     names: FxHashSet<String>,
-    // `pkg.module.` of `automodule` and `pkg.module.Class.` of `autoclass` with `:members:`, whose members are all
-    // documented, wherever the module's path starts.
+    // `pkg.Class.` of `autoclass` with `:members:`, whose members are all documented, wherever the module's path starts.
     scopes: FxHashSet<String>,
+    // The modules of `automodule` with `:members:` alone, whose members Sphinx renders: the ones the module's `__all__`
+    // lists, or else its public names. The index resolves them to names, which needs the module's facts.
+    modules: FxHashSet<Module>,
+}
+
+// A module `automodule` documents with `:members:`, with the members it leaves out and the private and special members
+// it takes in.
+#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct Module {
+    pub target: String,
+    pub exclude: Vec<String>,
+    pub private: bool,
+    pub special: bool,
 }
 
 const ROLES: [&str; 12] =
@@ -43,25 +56,41 @@ const OBJECTS: [&str; 10] = [
 ];
 
 impl DocReferences {
-    // Reads the `.rst` and `.md` files under each project root, skipping hidden directories and the paths Ruff
-    // excludes from discovery there. The walk is the one discovery makes: `.gitignore` and `.ignore` files apply when
-    // the settings respect them, and symlinks are not followed. With a cache directory, what a root's pages name is
-    // kept there under the key `tree_key` gives, so a run where nothing under the root changed neither walks it nor
-    // reads a page.
+    // The modules `automodule` documents with `:members:` alone.
+    pub fn modules(&self) -> impl Iterator<Item = &Module> {
+        self.modules.iter()
+    }
+
+    // Adds the dotted names of the definitions a directive documents, which a reference reaches as it does a name.
+    pub fn add_names(&mut self, names: impl IntoIterator<Item = String>) {
+        self.names.extend(names);
+    }
+
+    // Adds a class whose members a directive documents, as `pkg.Class.`.
+    pub fn add_scope(&mut self, scope: String) {
+        self.scopes.insert(scope);
+    }
+
+    // Reads the `.rst` and `.md` files under each project root, skipping hidden directories, the paths Ruff excludes
+    // from discovery there, and the nested projects of the run's project `main`, whose pages are their own. The walk is
+    // the one discovery makes: `.gitignore` and `.ignore` files apply when the settings respect them, and symlinks are
+    // not followed. With a cache directory, what a root's pages name is kept there under the key `tree_key` gives, so a
+    // run where nothing under the root changed neither walks it nor reads a page.
     pub fn collect<'a>(
         roots: impl IntoIterator<Item = (&'a Path, &'a ruff_workspace::Settings)>,
+        main: &Path,
         cache_dir: Option<&Path>,
     ) -> Self {
         let mut references = Self::default();
         for (root, settings) in roots {
             let cache =
-                cache_dir.map(|cache_dir| (cache::documentation_file(cache_dir, root), tree_key(root, settings)));
+                cache_dir.map(|cache_dir| (cache::documentation_file(cache_dir, root), tree_key(root, settings, main)));
             if let Some(cached) = cache.as_ref().and_then(|(path, key)| Self::cached(path, *key)) {
                 references.extend(cached);
                 continue;
             }
             let mut found = Self::default();
-            for path in pages(root, settings) {
+            for path in pages(root, settings, main) {
                 if let Ok(text) = fs::read_to_string(path) {
                     found.read(&text);
                 }
@@ -79,8 +108,15 @@ impl DocReferences {
         let mut bytes = AlignedVec::<16>::new();
         bytes.extend_from_reader(&mut fs::File::open(path).ok()?).ok()?;
         let cached = rkyv::from_bytes::<CachedDocs, rkyv::rancor::Error>(&bytes).ok()?;
-        (cached.key == key)
-            .then(|| Self { names: cached.names.into_iter().collect(), scopes: cached.scopes.into_iter().collect() })
+        (cached.key == key).then(|| Self {
+            names: cached.names.into_iter().collect(),
+            scopes: cached.scopes.into_iter().collect(),
+            modules: cached
+                .modules
+                .into_iter()
+                .map(|(target, exclude, private, special)| Module { target, exclude, private, special })
+                .collect(),
+        })
     }
 
     // Keeping the cache is best effort: a run that cannot write it reads the pages again next time.
@@ -89,6 +125,11 @@ impl DocReferences {
             key,
             names: self.names.iter().cloned().collect(),
             scopes: self.scopes.iter().cloned().collect(),
+            modules: self
+                .modules
+                .iter()
+                .map(|module| (module.target.clone(), module.exclude.clone(), module.private, module.special))
+                .collect(),
         };
         let written = rkyv::to_bytes::<rkyv::rancor::Error>(&cached)
             .map_err(anyhow::Error::from)
@@ -101,6 +142,7 @@ impl DocReferences {
     fn extend(&mut self, other: Self) {
         self.names.extend(other.names);
         self.scopes.extend(other.scopes);
+        self.modules.extend(other.modules);
     }
 
     fn read(&mut self, text: &str) {
@@ -146,12 +188,14 @@ struct CachedDocs {
     key: u64,
     names: Vec<String>,
     scopes: Vec<String>,
+    modules: Vec<(String, Vec<String>, bool, bool)>,
 }
 
 // The `.rst` and `.md` pages under a root the walk reaches.
-fn pages(root: &Path, settings: &ruff_workspace::Settings) -> Vec<PathBuf> {
+fn pages(root: &Path, settings: &ruff_workspace::Settings, main: &Path) -> Vec<PathBuf> {
     let exclude = settings.file_resolver.exclude.clone();
     let extend_exclude = settings.file_resolver.extend_exclude.clone();
+    let main = main.to_path_buf();
     let walk = WalkBuilder::new(root)
         .standard_filters(settings.file_resolver.respect_gitignore)
         .hidden(false)
@@ -159,7 +203,12 @@ fn pages(root: &Path, settings: &ruff_workspace::Settings) -> Vec<PathBuf> {
             let path = entry.path();
             let name = path.file_name().unwrap_or_default();
             let hidden = entry.depth() > 0 && entry.file_name().to_str().is_some_and(|name| name.starts_with('.'));
-            !hidden && !match_exclusion(path, name, &exclude) && !match_exclusion(path, name, &extend_exclude)
+            let nested =
+                entry.depth() > 0 && entry.file_type().is_some_and(|kind| kind.is_dir()) && is_nested_root(&main, path);
+            !hidden
+                && !nested
+                && !match_exclusion(path, name, &exclude)
+                && !match_exclusion(path, name, &extend_exclude)
         })
         .build();
     walk.filter_map(Result::ok)
@@ -181,7 +230,7 @@ fn is_page(path: &Path) -> bool {
 // leave their directory's time as it was, those of the ignore files above the root and the global one, which the walk
 // reads too, and the walk's settings. A directory an ignore file hides is listed all the same, so the key covers at
 // least what the walk reads.
-fn tree_key(root: &Path, settings: &ruff_workspace::Settings) -> u64 {
+fn tree_key(root: &Path, settings: &ruff_workspace::Settings, main: &Path) -> u64 {
     let resolver = &settings.file_resolver;
     let mut hasher = CacheKeyHasher::new();
     resolver.cache_key(&mut hasher);
@@ -207,6 +256,7 @@ fn tree_key(root: &Path, settings: &ruff_workspace::Settings) -> u64 {
                 if !hidden
                     && !match_exclusion(&path, &name, &resolver.exclude)
                     && !match_exclusion(&path, &name, &resolver.extend_exclude)
+                    && !is_nested_root(main, &path)
                 {
                     pending.push(path);
                 }
@@ -235,6 +285,14 @@ impl CacheKey for DocReferences {
             sorted.sort_unstable();
             sorted.cache_key(state);
         }
+        let mut modules: Vec<&Module> = self.modules.iter().collect();
+        modules.sort_unstable();
+        for module in modules {
+            module.target.cache_key(state);
+            module.exclude.cache_key(state);
+            module.private.cache_key(state);
+            module.special.cache_key(state);
+        }
     }
 }
 
@@ -255,7 +313,22 @@ impl Directive<'_> {
         let object = name.strip_prefix("auto").unwrap_or(name);
         if matches!(object, "module" | "class" | "exception") && name.starts_with("auto") {
             // `:members:` alone documents every member, and with a list only those it names.
+            let exclude = value("exclude-members")
+                .unwrap_or_default()
+                .split(',')
+                .map(str::trim)
+                .filter(|member| !member.is_empty())
+                .map(str::to_owned)
+                .collect();
             match value("members") {
+                Some("") if object == "module" => {
+                    references.modules.insert(Module {
+                        target: target.clone(),
+                        exclude,
+                        private: value("private-members").is_some(),
+                        special: value("special-members").is_some(),
+                    });
+                }
                 Some("") => _ = references.scopes.insert(format!("{target}.")),
                 Some(listed) => references.names.extend(
                     listed

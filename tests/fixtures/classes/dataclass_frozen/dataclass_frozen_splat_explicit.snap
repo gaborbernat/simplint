@@ -1,0 +1,20 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+6:2 SMP701 Dataclass is missing frozen; set `frozen=True` [unsafe fix: Pass `frozen=True` to `@dataclass`]
+11:2 SMP701 Dataclass is missing frozen; set `frozen=True` [unsafe fix: Pass `frozen=True` to `@dataclass`]
+--- fixed (2 applied, 0 remaining) ---
+from dataclasses import dataclass
+
+SLOTS_OFF = {"slots": False}
+
+
+@dataclass(**SLOTS_OFF, frozen=True)
+class SplatSlotsOff:
+    splat_marker: int
+
+
+@dataclass(frozen=True, slots=False)
+class KeywordSlotsOff:
+    splat_marker: int

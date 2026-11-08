@@ -116,6 +116,20 @@ writer = DbWriter()
   text = jsonlib.dumps([])
   ```
 
+- **The project's own top-level package under another name**: `import pkg as pd` reads the package's names through its
+  alias, as `pd.NAT` does, which is how the package is meant to be used. A read through a submodule, such as
+  `import pkg.core.common as com`, is still reported, and so is an alias equal to the package name, `import pkg as pkg`.
+
+  ```python context file=pkg/__init__.py
+  NAT = object()
+  ```
+
+  ```python ok file=pkg/consumer.py
+  import pkg as pd
+
+  writer = pd.NAT
+  ```
+
 - **Modules listed in
   [`module-attributes`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#module-attributes)**:
   the listed module is left alone, as in the configuration example above.
@@ -159,8 +173,10 @@ writer = DbWriter()
   ```
 
 - **Attributes stored or deleted**: `findings.DEBUG = True` and `del findings.OLD` change the module, which an import
-  cannot do. A store in any file of the run counts, and so does a name a function of the module rebinds through
-  `global`, which changes it after the import has bound the value it had at load.
+  cannot do. A store in any file of the run patches that attribute the way `setattr` over a literal does, so the
+  attribute is left alone while the module's other attributes are still reported. A name a function of the module
+  rebinds through `global` changes it after the import has bound the value it had at load, so that name is not converted
+  either.
 
   ```python context file=pkg/__init__.py
   # A package.
@@ -216,6 +232,27 @@ writer = DbWriter()
   writer = findings.DbWriter()
   ```
 
+- **A name the module's own name shadows**: a parameter, local, loop or comprehension variable named like the module is
+  that variable's value, so an attribute read off it does not reach the module. The real reads of the module are still
+  reported.
+
+  ```python context file=pkg/__init__.py
+  # A package.
+  ```
+
+  ```python context file=pkg/findings.py
+  class DbWriter:
+      pass
+  ```
+
+  ```python ok file=pkg/consumer.py
+  from . import findings
+
+
+  def write(findings: object) -> object:
+      return findings.DbWriter()
+  ```
+
 - **Module dunders such as `__name__`**: they describe the module they are read from, so importing them would read the
   wrong module.
 
@@ -234,8 +271,35 @@ writer = DbWriter()
   NAME = findings.__name__
   ```
 
+- **Private names that Ruff's import-private-name reports**: `from pkg.findings import _make_writer` is a private import
+  across packages, which Ruff's [import-private-name](https://docs.astral.sh/ruff/rules/import-private-name/) (PLC2701)
+  flags, so a read of such a name is left to Ruff while the project's Ruff configuration selects that rule.
+
+  ```toml config
+  [tool.ruff]
+  lint.preview = true
+  lint.select = ["PLC2701"]
+  ```
+
+  ```python context file=pkg/__init__.py
+  # A package.
+  ```
+
+  ```python context file=pkg/findings.py
+  def _make_writer() -> object:
+      return object()
+  ```
+
+  ```python ok file=tests/test_writer.py
+  from pkg import findings
+
+  writer = findings._make_writer()
+  ```
+
 - **Modules that tests patch by attribute**: a dotted string such as `mocker.patch("pkg.findings.DbWriter")` names the
-  attribute in the module, so the code keeps reaching it through the module, where the patch takes effect.
+  attribute in the module, so the code keeps reaching it through the module, where the patch takes effect. The module's
+  other attributes are still reported. A `setattr` in a loop over a literal tuple or list of modules patches the name on
+  each of them the same way, until a statement rebinds the loop's name or a function's parameter shadows it.
 
   ```python context file=pkg/__init__.py
   # A package.
@@ -261,7 +325,8 @@ writer = DbWriter()
 
 **Unsafe fix:** the fix rewrites the import to bind the names, so the object is bound when the module loads. A test that
 patches the module attribute later no longer reaches the name. The fix replaces the import and every `findings.Name`
-access in the file, and it is offered only when every use of the module is such an access to a name the module defines.
+access in the file, and it is offered only when every use of the module is such an access to a name the module defines
+and no computed write, such as `setattr(module, name, value)`, may set a name of the module.
 
 ```python context file=pkg/__init__.py
 # A package.
@@ -284,8 +349,8 @@ from .findings import DbWriter
 writer = DbWriter()
 ```
 
-A use the fix cannot rewrite keeps the report without a fix. Here `findings.DEBUG = True` is a store, so `DbWriter` is
-reported without a fix.
+A use the fix cannot rewrite keeps the report without a fix. Here `findings.__name__` is a module dunder, so `DbWriter`
+is reported without a fix.
 
 ```python context file=pkg/__init__.py
 # A package.
@@ -300,7 +365,7 @@ class DbWriter:
 from . import findings
 
 writer = findings.DbWriter()
-findings.DEBUG = True
+label = findings.__name__
 ```
 
 A use that a local binding of the same name shadows keeps the report without a fix, since the bare name would resolve to
@@ -357,6 +422,16 @@ lazy from .findings import DbWriter
 
 writer = DbWriter()
 ```
+
+## Ruff overlap
+
+Ruff's [import-private-name](https://docs.astral.sh/ruff/rules/import-private-name/) (PLC2701) forbids the import this
+rule would write for a private name, but exempts a read whose reference is in a typing context or a runtime-evaluated
+annotation. A typing context is a `TYPE_CHECKING` block, a type parameter bound, a `type` alias value, or an annotation
+Python does not evaluate at runtime. A read outside those contexts is one Ruff flags, so it is left to Ruff while the
+project's Ruff configuration selects the rule. That includes an annotation that `flake8-type-checking` lists as
+runtime-required or ambiguous through its class or decorator. A public name imported from a private module is left to
+Ruff too, since the import's path has a private part.
 
 ## Other tools
 

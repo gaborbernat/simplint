@@ -6,6 +6,7 @@ mod schema;
 
 use rustc_hash::FxHashMap;
 use std::collections::BTreeMap;
+use std::collections::hash_map::Entry;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -24,7 +25,7 @@ pub use options::{Configuration, Overrides, RunOptions, SimplintOptions, Source,
 pub use schema::config_schema;
 
 use crate::lint::registry::{Rule, RuleSet};
-use crate::settings::metadata::{BuildConfiguration, ProjectMetadata};
+use crate::settings::metadata::{BuildConfiguration, CoveragePlugins, ProjectMetadata, build_hooks, hatch_hooks};
 use crate::settings::options::{
     ImportsOptions, LogicOptions, NamingOptions, PerFileIgnoreSource, ProjectOptions, Selector, SelectorLayer,
 };
@@ -75,8 +76,21 @@ impl Knobs {
 // exclude come from Ruff's configuration instead, resolved the way `ruff check` resolves them.
 pub struct Settings {
     pub root: PathBuf,
+    // Whether the root is a nested project of the run, whose files are test input for the rules that judge docstrings
+    // and the visibility of names.
+    pub nested: bool,
     pub path: Option<PathBuf>,
     pub metadata: ProjectMetadata,
+    // The `pyproject.toml` the metadata and build settings come from, which can differ from `path` in a workspace.
+    pub metadata_path: Option<PathBuf>,
+    // The directory of the metadata's `pyproject.toml`, which can sit above `root` in a workspace.
+    pub project_dir: PathBuf,
+    // The build backend's hooks, each with the file that defines it.
+    pub build_hooks: Vec<(PathBuf, String)>,
+    // The files hatchling loads its custom build and metadata hooks from, whose hook class no import reaches.
+    pub hatch_hooks: Vec<PathBuf>,
+    // The coverage plugins and the directories they resolve from, which the index searches for them.
+    pub coverage: CoveragePlugins,
     pub run: RunOptions,
     pub knobs: Knobs,
     pub api: ApiScope,
@@ -89,46 +103,81 @@ pub struct Settings {
 
 impl Settings {
     // Ruff's `Configuration::into_settings`: the command line goes on top of the `pyproject.toml`'s options, then the
-    // rule selections resolve in order. Without a `pyproject.toml`, the defaults apply; one comes with its parsed table.
-    fn resolve(root: &Path, pyproject: Option<(&Path, toml::Table)>, overrides: &Overrides) -> Result<Self> {
-        let path = pyproject.as_ref().map(|(path, _)| *path);
-        let (metadata, build, configuration) = match pyproject {
+    // rule selections resolve in order. The configuration's `[tool.simplint]` gives the options; the metadata's
+    // `[project]` and build settings give the project. Without a `pyproject.toml`, the defaults apply.
+    fn resolve(
+        root: &Path,
+        configuration: Option<(&Path, &toml::Table)>,
+        metadata: Option<(&Path, &toml::Table)>,
+        overrides: &Overrides,
+        isolated: bool,
+    ) -> Result<Self> {
+        let path = configuration.map(|(path, _)| path);
+        let configures_flake8_lazy =
+            [metadata, configuration].into_iter().flatten().any(|(_, table)| configures(table, "flake8-lazy"));
+        let coverage = metadata.map_or_else(CoveragePlugins::default, |(path, table)| {
+            CoveragePlugins::of(table, path.parent().unwrap_or(root))
+        });
+        let (metadata_path, metadata, build) = match metadata {
             Some((path, table)) => {
-                let build = BuildConfiguration::of(&table);
-                let mut pyproject: Pyproject =
-                    table.try_into().with_context(|| format!("Failed to parse {}", path.display()))?;
-                pyproject.project.add_groups(&pyproject.dependency_groups);
-                let source = Source::File(Arc::from(path));
-                (pyproject.project, build, Configuration::from_options(pyproject.tool.simplint, root, &source))
+                let hatch_file = path.with_file_name("hatch.toml");
+                let hatch = hatch_file.is_file().then(|| read_table(&hatch_file)).transpose()?;
+                let build = BuildConfiguration::of(table, hatch.as_ref());
+                let mut project: ProjectFile =
+                    table.clone().try_into().with_context(|| format!("Failed to parse {}", path.display()))?;
+                project.project.add_groups(&project.dependency_groups);
+                (Some(path), project.project, build)
             }
-            None => (ProjectMetadata::default(), BuildConfiguration::default(), Configuration::default()),
+            None => (None, ProjectMetadata::default(), BuildConfiguration::default()),
+        };
+        let configuration = match configuration {
+            Some((path, table)) => {
+                let pyproject: Pyproject =
+                    table.clone().try_into().with_context(|| format!("Failed to parse {}", path.display()))?;
+                let source = Source::File(Arc::from(path));
+                Configuration::from_options(pyproject.tool.simplint, root, &source)
+            }
+            None => Configuration::default(),
         };
         let configuration = overrides.transform(configuration);
+        // Its `setup.py` and the packages next to it belong to the metadata's project, which may sit above `root`.
+        let project_dir = metadata_path.and_then(Path::parent).unwrap_or(root);
+        // Without a `pyproject.toml`, the run's root holds the project, unless `--isolated` reads no files.
+        let project = metadata_path.and_then(Path::parent).or_else(|| (!isolated).then_some(root));
         let rules = resolve_rules(configuration.rule_selections.iter().map(|selection| &selection.enabled))?;
+        // flake8-lazy rebuilds each module's `__lazy_modules__` from its imports, so it and this rule's fix keep
+        // rewriting each other's output; the rule stays off for the whole project. The hook configuration is read only
+        // when the rule would run.
+        let rules = if rules.contains(Rule::AbsoluteSiblingImport)
+            && (configures_flake8_lazy || hook_runs_flake8_lazy(project)?)
+        {
+            rules.subtract(RuleSet::from_rules([Rule::AbsoluteSiblingImport]))
+        } else {
+            rules
+        };
         let fixable = resolve_rules(configuration.rule_selections.iter().map(|selection| &selection.fixable))?;
         let fix_safety =
             FixSafetyTable::from_selectors(&configuration.extend_safe_fixes, &configuration.extend_unsafe_fixes)?;
-        let ProjectOptions {
-            max_paragraph_words,
-            naming,
-            imports,
-            logic,
-            project_kind,
-            api_packages,
-            api_modules,
-            docstring_style,
-        } = configuration.project;
+        let ProjectOptions { max_paragraph_words, naming, imports, logic, project_kind, api_packages, docstring_style } =
+            configuration.project;
         let knobs = Knobs::resolve(max_paragraph_words, naming, imports, logic);
         let api = ApiScope::resolve(
-            root,
+            project_dir,
             project_kind.unwrap_or_default(),
             &build,
             &metadata,
-            (api_packages.as_deref(), api_modules.as_deref()),
+            api_packages.as_deref(),
         );
         Ok(Self {
             root: root.to_path_buf(),
+            nested: false,
             path: path.map(Path::to_path_buf),
+            metadata_path: metadata_path.map(Path::to_path_buf),
+            project_dir: project_dir.to_path_buf(),
+            // `backend-path` is relative to the `pyproject.toml` that declares the backend.
+            build_hooks: build_hooks(project_dir, &build)?,
+            hatch_hooks: hatch_hooks(project_dir, &build)?,
+            coverage,
             metadata,
             api,
             docstring_style,
@@ -148,11 +197,12 @@ impl Settings {
     }
 
     pub fn rules_for(&self, path: &Path) -> RuleSet {
+        let rules = if self.nested { self.rules.subtract(RuleSet::skipped_in_nested()) } else { self.rules };
         let absolute = std::path::absolute(path).unwrap_or_default();
         self.per_file_ignores
             .iter()
             .filter(|ignore| ignore.matches(&absolute))
-            .fold(self.rules, |rules, ignore| rules.subtract(ignore.rules))
+            .fold(rules, |rules, ignore| rules.subtract(ignore.rules))
     }
 
     // Ruff drops the fix of a rule `fixable` leaves out, and `extend-safe-fixes` and `extend-unsafe-fixes` change how
@@ -169,14 +219,13 @@ impl Settings {
 
     pub fn is_test_module(&self, path: &Path) -> bool {
         let name = path.file_name().and_then(|name| name.to_str()).unwrap_or_default();
+        // A nested project rooted at a test directory, such as `tools/swig/test` with its own `setup.py`, has its files
+        // below that directory, which the path relative to the root no longer names.
         name.starts_with("test_")
             || name.ends_with("_test.py")
             || name == "conftest.py"
-            || path
-                .strip_prefix(&self.root)
-                .unwrap_or(path)
-                .components()
-                .any(|part| matches!(part.as_os_str().to_str(), Some("tests" | "test")))
+            || in_test_directory(path.strip_prefix(&self.root).unwrap_or(path))
+            || (self.nested && self.root.file_name().is_some_and(|root| in_test_directory(Path::new(root))))
     }
 
     // The rule tables `--show-settings` lists: enabled, fixable, forced safe and forced unsafe.
@@ -188,11 +237,6 @@ impl Settings {
     pub fn per_file_ignores(&self) -> impl Iterator<Item = (&str, RuleSet)> {
         self.per_file_ignores.iter().map(|ignore| (ignore.pattern.as_str(), ignore.rules))
     }
-
-    // Where a file sits in its library's public API; `module_path` is the module Python imports it as.
-    pub fn role(&self, path: &Path, module_path: Option<&[String]>) -> ModuleRole {
-        self.api.role(module_path, self.is_test_module(path))
-    }
 }
 
 // The part of a file's settings its whole project shares that its diagnostics depend on, so a cached result is reused
@@ -200,9 +244,15 @@ impl Settings {
 impl CacheKey for Settings {
     fn cache_key(&self, state: &mut CacheKeyHasher) {
         self.root.cache_key(state);
+        self.nested.cache_key(state);
+        self.metadata_path.cache_key(state);
         self.metadata.dependencies.iter().for_each(|dependency| dependency.cache_key(state));
         self.metadata.declared.iter().for_each(|dependency| dependency.cache_key(state));
         self.metadata.entry_points.cache_key(state);
+        self.build_hooks.cache_key(state);
+        self.hatch_hooks.cache_key(state);
+        self.coverage.modules.cache_key(state);
+        self.coverage.search_paths.cache_key(state);
         self.fixable.cache_key(state);
         self.fix_safety.forced_safe.cache_key(state);
         self.fix_safety.forced_unsafe.cache_key(state);
@@ -306,8 +356,8 @@ impl PerFileIgnore {
     }
 }
 
-// Where `[tool.simplint]` comes from: nowhere with `--isolated`, the `--config` file when it is a `pyproject.toml`, and
-// otherwise the `pyproject.toml` closest to each file.
+// Where `[tool.simplint]` and the project metadata come from: nowhere with `--isolated`, the `--config` file when it is
+// a `pyproject.toml`, and otherwise the `pyproject.toml`s closest to each file.
 pub struct SettingsResolver {
     pub root: Arc<Settings>,
     overrides: Overrides,
@@ -327,15 +377,22 @@ impl SettingsResolver {
             ),
             None => {
                 let discovery = Discovery::Hierarchical { run_root: cwd.clone(), projects: Mutex::default() };
-                return Ok(Self { root: discovery.settings(&cwd, &overrides)?, overrides, discovery });
+                let root = discovery.settings(&cwd, &overrides)?;
+                discovery.set_main(&root.root);
+                return Ok(Self { root, overrides, discovery });
             }
         };
         let pyproject = match pyproject {
             Some(path) => Some((path, read_table(path)?)),
             None => None,
         };
-        let fixed = Arc::new(Settings::resolve(root, pyproject, &overrides)?);
-        Ok(Self { root: Arc::clone(&fixed), overrides, discovery: Discovery::Fixed(fixed) })
+        // The one file is both: a `--config` run takes its metadata from the same file, as it takes its settings.
+        let table = pyproject.as_ref().map(|(path, table)| (*path, table));
+        let fixed = Arc::new(Settings::resolve(root, table, table, &overrides, isolated)?);
+        let mut projects = Projects { main: Some(fixed.root.clone()), ..Projects::default() };
+        projects.resolved.insert((fixed.root.clone(), fixed.metadata_path.clone()), Arc::clone(&fixed));
+        let discovery = Discovery::Fixed { settings: Arc::clone(&fixed), projects: Mutex::new(projects), isolated };
+        Ok(Self { root: fixed, overrides, discovery })
     }
 
     pub fn for_file(&self, path: &Path) -> Result<Arc<Settings>> {
@@ -344,86 +401,242 @@ impl SettingsResolver {
 }
 
 // Ruff's `PyprojectDiscoveryStrategy`: one configuration for every file, or the one each file's location points at,
-// read once per project.
+// read once per project. A file under a nested project resolves to that project's directory as its root.
 enum Discovery {
-    Fixed(Arc<Settings>),
+    // With `--config`, the settings of the run's project, which a file of a nested project overrides. With `--isolated`,
+    // no `pyproject.toml` is read, nested projects' included.
+    Fixed { settings: Arc<Settings>, projects: Mutex<Projects>, isolated: bool },
     // `run_root` is the directory the run starts from, which roots a project without a `pyproject.toml`.
     Hierarchical { run_root: PathBuf, projects: Mutex<Projects> },
 }
 
 impl Discovery {
-    // The closest `pyproject.toml` with a `[tool.simplint]` table holds the settings and the project's metadata;
-    // without one, the defaults apply, rooted at the run's directory or the nearest ancestor of it holding the file,
-    // as Ruff roots a project without configuration at the working directory. Projects are cached by both the
-    // directory a lookup starts from and their root.
+    // The closest `pyproject.toml` with a `[tool.simplint]` table holds the settings, and the closest with `[project]`
+    // or `[build-system]` holds the project's metadata. Each falls back to the closest `pyproject.toml` when nothing
+    // matches, so a nested package without its own table inherits its parent's settings. Without any
+    // `pyproject.toml`, the defaults apply, rooted at the run's directory or the nearest ancestor of it holding the
+    // file, as Ruff roots a project without configuration at the working directory. A nested project is rooted at its
+    // directory, with the settings of the project around it, and the metadata of a `pyproject.toml` at or below it that
+    // describes a project, or else the metadata of the project around it. Settings are cached by the directory a lookup
+    // starts from, and by the root and metadata file they resolve to, since files of one root can have different
+    // metadata.
     fn settings(&self, path: &Path, overrides: &Overrides) -> Result<Arc<Settings>> {
-        let (run_root, projects) = match self {
-            Self::Fixed(settings) => return Ok(Arc::clone(settings)),
-            Self::Hierarchical { run_root, projects } => (run_root, projects),
-        };
         let absolute = std::path::absolute(path)?;
         let start = if absolute.is_dir() { absolute.as_path() } else { absolute.parent().unwrap_or(&absolute) };
-        let mut projects = projects.lock().expect("no worker panics while resolving settings");
+        let mut projects = self.projects().lock().expect("no worker panics while resolving settings");
         if let Some(settings) = projects.settings.get(start) {
             return Ok(Arc::clone(settings));
         }
-        let pyproject = projects.find_pyproject(start)?;
-        let root = match pyproject.as_deref().and_then(Path::parent) {
-            Some(root) => root,
-            None => run_root.ancestors().find(|dir| start.starts_with(dir)).unwrap_or(start),
+        let (settings_file, metadata_file, root) = match self {
+            Self::Fixed { settings, .. } => {
+                (settings.path.clone(), settings.metadata_path.clone(), settings.root.clone())
+            }
+            Self::Hierarchical { run_root, .. } => {
+                let [configured, closest, described] =
+                    projects.nearest(start, None, [|table| configures(table, "simplint"), |_| true, describes])?;
+                let settings_file = configured.or(closest);
+                let metadata_file = described.or_else(|| settings_file.clone());
+                let root = match settings_file.as_deref().and_then(Path::parent) {
+                    Some(root) => root.to_path_buf(),
+                    None => run_root.ancestors().find(|dir| start.starts_with(dir)).unwrap_or(start).to_path_buf(),
+                };
+                (settings_file, metadata_file, root)
+            }
         };
-        let settings = if let Some(settings) = projects.settings.get(root) {
+        let nested = projects.nested(start);
+        let (root, metadata_file) = match &nested {
+            Some(project) => {
+                let [own] =
+                    if self.is_isolated() { [None] } else { projects.nearest(start, Some(project), [describes])? };
+                (project.clone(), own.or(metadata_file))
+            }
+            None => (root, metadata_file),
+        };
+        let key = (root.clone(), metadata_file.clone());
+        let settings = if let Some(settings) = projects.resolved.get(&key) {
             Arc::clone(settings)
         } else {
-            let parsed = pyproject.as_deref().map(|path| (path, projects.take_table(path)));
-            Arc::new(Settings::resolve(root, parsed, overrides)?)
+            for file in settings_file.iter().chain(&metadata_file) {
+                projects.table(file)?;
+            }
+            let configuration = settings_file.as_deref().map(|file| (file, &projects.pyprojects[file]));
+            let metadata = metadata_file.as_deref().map(|file| (file, &projects.pyprojects[file]));
+            let mut resolved = Settings::resolve(&root, configuration, metadata, overrides, false)?;
+            resolved.nested = nested.is_some();
+            Arc::new(resolved)
         };
-        projects.settings.insert(root.to_path_buf(), Arc::clone(&settings));
+        projects.resolved.insert(key, Arc::clone(&settings));
         projects.settings.insert(start.to_path_buf(), Arc::clone(&settings));
         Ok(settings)
     }
+
+    // Makes `main` the run's project, which a nested project lies strictly below. The settings found so far are dropped,
+    // since directories below `main` may have resolved as projects around it.
+    fn set_main(&self, main: &Path) {
+        let mut projects = self.projects().lock().expect("no worker panics while resolving settings");
+        projects.main = Some(main.to_path_buf());
+        projects.settings.clear();
+    }
+
+    fn projects(&self) -> &Mutex<Projects> {
+        match self {
+            Self::Fixed { projects, .. } | Self::Hierarchical { projects, .. } => projects,
+        }
+    }
+
+    fn is_isolated(&self) -> bool {
+        matches!(self, Self::Fixed { isolated: true, .. })
+    }
 }
 
-// What hierarchical discovery found so far: the settings by the directories they apply to, and each `pyproject.toml`
-// it met, so every one is read and parsed once.
+// What discovery found so far: the settings by the directories they apply to, the settings each root and metadata file
+// resolves to, and each `pyproject.toml` it met, so every one is read and parsed once.
 #[derive(Default)]
 struct Projects {
+    // The run's project, which a nested project lies strictly below.
+    main: Option<PathBuf>,
     settings: FxHashMap<PathBuf, Arc<Settings>>,
-    pyprojects: FxHashMap<PathBuf, PyprojectFile>,
+    resolved: FxHashMap<(PathBuf, Option<PathBuf>), Arc<Settings>>,
+    pyprojects: FxHashMap<PathBuf, toml::Table>,
 }
 
-// A `pyproject.toml` met: whether it configures simplint, and its table until the project rooted next to it takes it.
-struct PyprojectFile {
-    configures: bool,
-    table: Option<toml::Table>,
+// The files that mark a directory as a project of its own.
+const NESTED_MARKERS: [&str; 4] = ["conf.py", "pyproject.toml", "setup.py", "setup.cfg"];
+
+// Whether a directory is a nested project of the run's project `main`: a test directory below it that holds one of
+// `NESTED_MARKERS`. Documentation reads the same test directories, so a page under one belongs to its project.
+pub(crate) fn is_nested_root(main: &Path, dir: &Path) -> bool {
+    dir.strip_prefix(main).is_ok_and(in_nested_test_directory)
+        && NESTED_MARKERS.iter().any(|marker| dir.join(marker).is_file())
 }
 
 impl Projects {
-    // Like Ruff's `settings_toml`, which passes over a `pyproject.toml` without `[tool.ruff]`, so that a nested package
-    // inherits its parent's settings. When no ancestor configures simplint, the nearest `pyproject.toml` still gives
-    // the project's metadata.
-    fn find_pyproject(&mut self, start: &Path) -> Result<Option<PathBuf>> {
-        let candidates =
-            start.ancestors().map(|dir| dir.join("pyproject.toml")).filter(|candidate| candidate.is_file());
-        let mut nearest = None;
-        for candidate in candidates {
-            if !self.pyprojects.contains_key(&candidate) {
-                let table = read_table(&candidate)?;
-                let configures = table.get("tool").and_then(|tool| tool.get("simplint")).is_some();
-                self.pyprojects.insert(candidate.clone(), PyprojectFile { configures, table: Some(table) });
-            }
-            if self.pyprojects[&candidate].configures {
-                return Ok(Some(candidate));
-            }
-            nearest.get_or_insert(candidate);
-        }
-        Ok(nearest)
+    // The directory of the nested project `start` is in: the nearest directory below the run's project that
+    // `is_nested_root` accepts.
+    fn nested(&self, start: &Path) -> Option<PathBuf> {
+        let main = self.main.as_deref()?;
+        start
+            .ancestors()
+            .take_while(|dir| *dir != main && dir.starts_with(main))
+            .find(|dir| is_nested_root(main, dir))
+            .map(Path::to_path_buf)
     }
 
-    // A project resolves once, from the table `find_pyproject` parsed.
-    fn take_table(&mut self, path: &Path) -> toml::Table {
-        self.pyprojects.get_mut(path).and_then(|file| file.table.take()).expect("a project resolves once")
+    // For each of `matches`, the closest `pyproject.toml` from `start` upwards, down to `limit` when there is one, whose
+    // table it accepts. One walk answers them all, and stops once each has its file, so no file is read twice.
+    fn nearest<const N: usize>(
+        &mut self,
+        start: &Path,
+        limit: Option<&Path>,
+        matches: [fn(&toml::Table) -> bool; N],
+    ) -> Result<[Option<PathBuf>; N]> {
+        let candidates = start
+            .ancestors()
+            .take_while(|dir| limit.is_none_or(|limit| dir.starts_with(limit)))
+            .map(|dir| dir.join("pyproject.toml"))
+            .filter(|candidate| candidate.is_file());
+        let mut found: [Option<PathBuf>; N] = [const { None }; N];
+        for candidate in candidates {
+            let table = self.table(&candidate)?;
+            for (slot, matches) in found.iter_mut().zip(matches) {
+                if slot.is_none() && matches(table) {
+                    *slot = Some(candidate.clone());
+                }
+            }
+            if found.iter().all(Option::is_some) {
+                break;
+            }
+        }
+        Ok(found)
     }
+
+    // The table of a `pyproject.toml`, read on first use, so each file is read once.
+    fn table(&mut self, path: &Path) -> Result<&toml::Table> {
+        match self.pyprojects.entry(path.to_path_buf()) {
+            Entry::Occupied(entry) => Ok(entry.into_mut()),
+            Entry::Vacant(entry) => Ok(entry.insert(read_table(path)?)),
+        }
+    }
+}
+
+// Whether a path, relative to a project, has a directory named `tests` or `test`, where the project keeps its tests.
+fn in_test_directory(relative: &Path) -> bool {
+    relative.components().any(|part| matches!(part.as_os_str().to_str(), Some("tests" | "test")))
+}
+
+// Whether a path, relative to a project, has a directory that marks a nested test project: `tests` or `test`, or a
+// `test-*` or `test_*` directory such as the roots of Sphinx's test suite. A name that only starts with `test`, such as
+// `testkit`, is a library's.
+fn in_nested_test_directory(relative: &Path) -> bool {
+    in_test_directory(relative)
+        || relative.components().any(|part| {
+            part.as_os_str().to_str().is_some_and(|name| name.starts_with("test-") || name.starts_with("test_"))
+        })
+}
+
+// Whether a `pyproject.toml` has a `[tool.<name>]` table.
+fn configures(table: &toml::Table, name: &str) -> bool {
+    table.get("tool").and_then(|tool| tool.get(name)).is_some()
+}
+
+// The hook configuration files pre-commit and prek read from a project, which the nearest one upwards decides.
+pub const HOOK_CONFIGS: [&str; 3] = [".pre-commit-config.yaml", ".pre-commit-config.yml", "prek.toml"];
+
+// Whether the nearest hook configuration from `project` upwards, not past the repository root, has a flake8-lazy hook.
+fn hook_runs_flake8_lazy(project: Option<&Path>) -> Result<bool> {
+    let Some(project) = project else {
+        return Ok(false);
+    };
+    for dir in project.ancestors() {
+        let configs = HOOK_CONFIGS.iter().map(|name| dir.join(name)).filter(|path| path.is_file()).collect_vec();
+        if !configs.is_empty() {
+            for config in &configs {
+                if config_has_flake8_lazy(config)? {
+                    return Ok(true);
+                }
+            }
+            return Ok(false);
+        }
+        if dir.join(".git").exists() {
+            break;
+        }
+    }
+    Ok(false)
+}
+
+fn config_has_flake8_lazy(path: &Path) -> Result<bool> {
+    let bytes = std::fs::read(path).with_context(|| format!("Failed to read {}", path.display()))?;
+    let text = String::from_utf8_lossy(&bytes);
+    if path.extension().is_some_and(|extension| extension == "toml") {
+        let table: toml::Table =
+            toml::from_str(&text).with_context(|| format!("Failed to parse {}", path.display()))?;
+        return Ok(table
+            .get("repos")
+            .and_then(toml::Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|repo| repo.get("hooks")?.as_array())
+            .flatten()
+            .any(|hook| hook.get("id").and_then(toml::Value::as_str) == Some("flake8-lazy")));
+    }
+    Ok(text.lines().filter_map(hook_id).any(|id| id == "flake8-lazy"))
+}
+
+// The id a line of a pre-commit configuration gives a hook, as in `  - id: flake8-lazy  # lazy imports`. The line scan
+// does not read flow-style hooks, such as `hooks: [{id: flake8-lazy}]`.
+fn hook_id(line: &str) -> Option<&str> {
+    let entry = line.trim_start().trim_start_matches('-').trim_start();
+    let value = entry.strip_prefix("id:")?;
+    let value = value
+        .char_indices()
+        .find(|(index, character)| *character == '#' && value[..*index].ends_with([' ', '\t']))
+        .map_or(value, |(index, _)| &value[..index]);
+    Some(value.trim().trim_matches(['"', '\'']))
+}
+
+// Whether a `pyproject.toml` describes a project: a `[project]` table, or a `[build-system]` that installs it.
+fn describes(table: &toml::Table) -> bool {
+    table.contains_key("project") || table.contains_key("build-system")
 }
 
 fn read_table(path: &Path) -> Result<toml::Table> {
@@ -433,10 +646,15 @@ fn read_table(path: &Path) -> Result<toml::Table> {
 
 #[derive(Deserialize, Default)]
 #[serde(default)]
-struct Pyproject {
+struct ProjectFile {
     project: ProjectMetadata,
     #[serde(rename = "dependency-groups")]
     dependency_groups: BTreeMap<String, Vec<toml::Value>>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(default)]
+struct Pyproject {
     tool: Tool,
 }
 

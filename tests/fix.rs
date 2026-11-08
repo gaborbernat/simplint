@@ -1,6 +1,7 @@
 mod common;
 
 use std::fmt::Write as _;
+use std::time::{Duration, Instant};
 
 use test_case::test_case;
 
@@ -245,6 +246,95 @@ fn fix_withdraws_only_the_rule_whose_result_ruff_would_report() {
         (format!("module.py:1:1: {SINGLE_USER}\nFound 2 errors (1 fixed, 1 remaining).\n"), COMPARED.to_owned())
     );
 }
+
+// Ruff's PLR2004 reports the value the `limit` fix inlines into a comparison, with the line length kept at 120 so the
+// `gil` report stays.
+const RUFF_PLR2004_WIDE: (&str, &str) =
+    ("pyproject.toml", "[tool.ruff]\nline-length = 120\n[tool.ruff.lint]\nselect = [\"PLR2004\"]\n");
+
+#[test]
+fn fix_withdraws_only_the_report_whose_result_ruff_would_report() {
+    let root = project(&[RUFF_PLR2004_WIDE, ("module.py", SINGLE_USE_BUILDS)]);
+    let stdout = fix_unsafe(root.path(), "SMP504").1;
+    assert_eq!(
+        (stdout, read(root.path(), "module.py")),
+        (
+            "module.py:10:5: SMP504 `limit` is used once, right below; inline its value\nFound 2 errors (1 fixed, 1 remaining).\n"
+                .to_owned(),
+            GIL_INLINED.to_owned()
+        )
+    );
+}
+
+// The `limit` of `_printed` is valid to inline, as its report is the same as `_compared`'s, yet it is fixed.
+#[test]
+fn fix_withholds_only_the_identical_report_ruff_would_report() {
+    let root = project(&[RUFF_PLR2004_WIDE, ("module.py", COLLIDING)]);
+    let stdout = fix_unsafe(root.path(), "SMP504").1;
+    assert_eq!(
+        (stdout, read(root.path(), "module.py")),
+        (
+            "module.py:2:5: SMP504 `limit` is used once, right below; inline its value\nFound 2 errors (1 fixed, 1 remaining).\n"
+                .to_owned(),
+            COLLIDING.replace("    limit = 5\n    print(limit)\n", "    print(5)\n")
+        )
+    );
+}
+
+// Each valid fix settles with the rest, and a bad one is found by halving the fixes it is withheld from, so the time
+// stays near-linear in the file, where one settle per fix took tens of seconds at 800 fixes.
+#[test]
+fn fix_finds_a_bad_fix_among_many_valid_ones_quickly() {
+    let mut source = String::new();
+    for index in 0..400 {
+        write!(
+            source,
+            "def func_{index}(arg):\n    value_{index} = arg.compute({index})\n    return value_{index}\n\n\n"
+        )
+        .expect("write source");
+    }
+    source.push_str(UNCONTENDED);
+    let root = project(&[RUFF_PLR2004_WIDE, ("module.py", &source)]);
+    let started = Instant::now();
+    let stdout = fix_unsafe(root.path(), "SMP504").1;
+    assert_eq!(
+        (stdout.ends_with("Found 401 errors (400 fixed, 1 remaining).\n"), started.elapsed() < Duration::from_secs(4)),
+        (true, true)
+    );
+}
+
+// The valid inlines have the same text, so a withheld report is told apart from them only by its occurrence, which the
+// inlines applied before it change. The bad inline sits between them and must stay withheld as they apply.
+#[test]
+fn fix_withholds_a_bad_fix_among_identical_valid_ones() {
+    let mut source = String::new();
+    let mut inlined = String::new();
+    for index in 0..100 {
+        if index == 50 {
+            source.push_str(UNCONTENDED);
+            inlined.push_str(UNCONTENDED);
+        }
+        write!(source, "def valid_{index}():\n    limit = 5\n    print(limit)\n\n\n").expect("write source");
+        write!(inlined, "def valid_{index}():\n    print(5)\n\n\n").expect("write source");
+    }
+    let root = project(&[RUFF_PLR2004_WIDE, ("module.py", &source)]);
+    let started = Instant::now();
+    let stdout = fix_unsafe(root.path(), "SMP504").1;
+    assert_eq!(
+        (
+            stdout.ends_with("Found 101 errors (100 fixed, 1 remaining).\n"),
+            read(root.path(), "module.py"),
+            started.elapsed() < Duration::from_secs(4),
+        ),
+        (true, inlined, true)
+    );
+}
+
+const UNCONTENDED: &str = "def _compared(value):\n    limit = 5\n\n    if value > limit:\n        print(value)\n";
+const COLLIDING: &str = "def _compared(value):\n    limit = 5\n\n    if value > limit:\n        print(value)\n\n\ndef _printed():\n    limit = 5\n    print(limit)\n";
+
+const SINGLE_USE_BUILDS: &str = "import sys\n\n\ndef _environment() -> str:\n    gil = getattr(sys, \"_is_gil_enabled\", lambda: True)()\n    build = \"gil\" if gil else \"free-threaded\"\n    return f\"x {build}\"\n\n\ndef _compared(value):\n    limit = 5\n\n    if value > limit:\n        print(value)\n";
+const GIL_INLINED: &str = "import sys\n\n\ndef _environment() -> str:\n    build = \"gil\" if getattr(sys, \"_is_gil_enabled\", lambda: True)() else \"free-threaded\"\n    return f\"x {build}\"\n\n\ndef _compared(value):\n    limit = 5\n\n    if value > limit:\n        print(value)\n";
 
 #[test]
 fn ruff_violations_already_present_are_not_fixed_by_simplint() {

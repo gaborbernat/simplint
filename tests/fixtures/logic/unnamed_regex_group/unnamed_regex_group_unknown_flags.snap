@@ -1,0 +1,6 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+12:21 SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses
+24:21 SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses
