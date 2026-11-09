@@ -101,6 +101,10 @@ functions nested in it. These values count:
 
 ### Exceptions
 
+- **Functions already at Ruff's local-variable limit**: when PLR0914 runs, moving a multiline or annotated constant into
+  a function can add a local and cause a new Ruff report. Such constants stay at module scope. The limit comes from
+  Ruff's `lint.pylint.max-locals` setting.
+
 - **Any other value**: built once at import, it may hold state every call shares or be the object a test patches, and
   moving it into the function would build a new one on every call.
 

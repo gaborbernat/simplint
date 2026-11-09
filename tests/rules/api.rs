@@ -92,6 +92,35 @@ fn rule(rule: &str, fixture: &str) {
     common::assert_rule_snapshot(rule, fixture, "py314");
 }
 
+#[test]
+fn init_module_content_allows_test_packages_and_pep_562_hooks() {
+    let root = common::project(&[
+        ("tests/__init__.py", "VALUE = 1\n"),
+        ("roots/test-example/pyproject.toml", "[project]\nname = \"example\"\n"),
+        ("roots/test-example/package/__init__.py", "VALUE = 1\n"),
+        (
+            "package/__init__.py",
+            "from typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from package import model\n\n\ndef __getattr__(name: str):\n    return name\n\n\ndef __dir__():\n    return []\n\nVALUE = 1\n",
+        ),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP407"]);
+    assert_eq!(stdout.matches("SMP407").count(), 2, "{stdout}");
+    assert!(!stdout.contains("tests/__init__.py"), "{stdout}");
+    assert!(!stdout.contains("roots/test-example"), "{stdout}");
+}
+
+#[test]
+fn missing_from_all_allows_main_modules() {
+    let root = common::project(&[
+        ("package/__main__.py", "VALUE = 1\n"),
+        ("package/module.py", "VALUE = 1\n"),
+        ("package/user.py", "from package.module import VALUE\n\nprint(VALUE)\n"),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP401"]);
+    assert_eq!(stdout.matches("SMP401").count(), 1, "{stdout}");
+    assert!(stdout.contains("module.py"), "{stdout}");
+}
+
 // Listing a name drops the `noqa` that named only F401 for its import, wherever the import is split, and keeps the
 // comments that name other codes.
 #[test]
@@ -227,7 +256,7 @@ const RUF067_STRICT: &str = "[tool.ruff.lint]\npreview = true\nselect = [\"RUF06
 #[test_case(RUF067_PREVIEW, "VALUE = 1\n", 0 ; "preview_assignment")]
 #[test_case(RUF067_PREVIEW, "import os\n", 1 ; "preview_import_allowed")]
 #[test_case(RUF067_PREVIEW, "__version__ = \"1\"\n", 1 ; "preview_dunder_allowed")]
-#[test_case(RUF067_PREVIEW, "if TYPE_CHECKING:\n    pass\n", 1 ; "preview_type_checking_allowed")]
+#[test_case(RUF067_PREVIEW, "if TYPE_CHECKING:\n    pass\n", 0 ; "preview_type_checking_allowed")]
 #[test_case(RUF067_PREVIEW, "def helper() -> None:\n    pass\n", 0 ; "preview_function")]
 #[test_case(RUF067_PREVIEW, "X = 1\n\"\"\"Doc of X.\"\"\"\n", 1 ; "preview_attribute_docstring")]
 #[test_case(RUF067_PREVIEW, "def helper() -> None:\n    pass\n\n\"stray\"\n", 0 ; "preview_stray_string")]
@@ -237,7 +266,7 @@ const RUF067_STRICT: &str = "[tool.ruff.lint]\npreview = true\nselect = [\"RUF06
 #[test_case(RUF067_PREVIEW, "__all__: list[str] = []\n", 1 ; "preview_dunder_annotated_allowed")]
 #[test_case(RUF067_PREVIEW, "__all__ += [\"x\"]\n", 1 ; "preview_dunder_augmented_allowed")]
 #[test_case(RUF067_PREVIEW, "counter += 1\n", 0 ; "preview_augmented_reported")]
-#[test_case(RUF067_PREVIEW, "import typing\n\nif typing.TYPE_CHECKING:\n    pass\n", 2 ; "preview_attribute_type_checking_allowed")]
+#[test_case(RUF067_PREVIEW, "import typing\n\nif typing.TYPE_CHECKING:\n    pass\n", 1 ; "preview_attribute_type_checking_allowed")]
 #[test_case(RUF067_PREVIEW, "if callable(print):\n    pass\n", 0 ; "preview_other_if_reported")]
 #[test_case(RUF067_STRICT, "X: int = 1\n\"\"\"Doc of X.\"\"\"\n", 1 ; "preview_strict_annotated_attribute_docstring")]
 fn init_module_content_leaves_ruf067_to_ruff(config: &str, source: &str, reported: usize) {

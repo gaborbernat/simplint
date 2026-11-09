@@ -3,6 +3,7 @@ use ruff_text_size::Ranged;
 
 use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
+use crate::syntax::last_segment;
 
 // The methods the pickle and copy protocols call, which return a tuple of the shape they read. `__getstate__` returns
 // what the class's own `__setstate__` reads back.
@@ -29,6 +30,7 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
         || name.ends_with("_key")
         || tuple.elts.iter().any(Expr::is_starred_expr)
         || function.returns.as_deref().is_some_and(|returns| is_sequence(walker, returns))
+        || function.decorator_list.iter().any(|decorator| last_segment(&decorator.expression) == Some("override"))
     {
         return;
     }

@@ -131,6 +131,10 @@ match.
 
 ### Exceptions
 
+- **Separate distributions in one repository**: files are compared within the distribution identified by their nearest
+  project metadata. For example, code repeated in two workspace members with separate `[project]` tables is not reported
+  across those members. Repeats within either member are still reported.
+
 - **Repeats inside one module**, which pylint's duplicate check does not compare either.
 
   ```python ok file=twice.py

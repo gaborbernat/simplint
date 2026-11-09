@@ -16,7 +16,10 @@ use crate::syntax::is_main_guard;
 use crate::syntax::{Exports, Visibility, all_binding, all_literal};
 
 pub fn missing_from_all(checker: &Checker) {
-    if checker.is_init_module() || checker.is_test_module() {
+    if checker.is_init_module()
+        || checker.is_test_module()
+        || checker.path.file_stem().is_some_and(|stem| stem == "__main__")
+    {
         return;
     }
     let exported = match checker.dunder_all() {

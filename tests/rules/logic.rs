@@ -682,6 +682,47 @@ fn long_tuple_return_limit(settings: &str, reports: usize) {
     assert_eq!(stdout.matches("SMP528").count(), reports);
 }
 
+#[test_case("from typing import override", "@override", 0 ; "typing_override")]
+#[test_case("from typing_extensions import override", "@override", 0 ; "typing_extensions_override")]
+#[test_case("from compatibility import override", "@override", 0 ; "compatibility_override")]
+#[test_case("", "", 1 ; "unconstrained_return")]
+fn long_tuple_return_respects_override_contract(import: &str, decorator: &str, reports: usize) {
+    let root = common::project(&[(
+        "module.py",
+        &format!(
+            "{import}\n\nclass Base:\n    def fields(self) -> tuple[int, int, int]:\n        return 1, 2, 3\n\n\nclass Child(Base):\n    {decorator}\n    def fields(self) -> tuple[int, int, int]:\n        return 1, 2, 3\n"
+        ),
+    )]);
+    let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP528"]);
+    assert_eq!(stdout.matches("SMP528").count(), reports + 1, "{stdout}");
+}
+
+#[test_case("PLR1702", "max-nested-blocks = 1", "if value:\n        return _helper(value)\n    return 0", "if value:\n        return 1\n    return 0" ; "nested_blocks")]
+#[test_case("PLW0717", "max-statements-in-try = 0", "try:\n        return _helper(value)\n    except ValueError:\n        return 0", "copy = value\n    return copy" ; "try_clause")]
+#[test_case("TRY301", "", "try:\n        return _helper(value)\n    except ValueError:\n        return 0", "if value:\n        raise ValueError\n    return 0" ; "raise_in_try")]
+fn single_caller_helper_respects_other_ruff_rules(rule: &str, option: &str, caller: &str, helper: &str) {
+    let config =
+        format!("[tool.ruff.lint]\npreview = true\nselect = [\"{rule}\"]\n[tool.ruff.lint.pylint]\n{option}\n");
+    let source = format!("def _helper(value):\n    {helper}\n\n\ndef run(value):\n    {caller}\n");
+    let root = common::project(&[("pyproject.toml", &config), ("module.py", &source)]);
+    let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP505"]);
+    assert!(!stdout.contains("`_helper` is called only"), "{stdout}");
+}
+
+#[test_case("TRY301", "", "OSError", "if value:\n        raise ValueError\n    return 0" ; "unrelated_handler")]
+#[test_case("PLR1702", "max-nested-blocks = 2", "ValueError", "if value:\n        return 1\n    return 0" ; "nested_limit_not_crossed")]
+#[test_case("PLW0717", "max-statements-in-try = 2", "ValueError", "copy = value\n    return copy" ; "try_limit_not_crossed")]
+fn single_caller_helper_reports_when_ruff_limits_hold(rule: &str, option: &str, handled: &str, helper: &str) {
+    let config =
+        format!("[tool.ruff.lint]\npreview = true\nselect = [\"{rule}\"]\n[tool.ruff.lint.pylint]\n{option}\n");
+    let source = format!(
+        "def _helper(value):\n    {helper}\n\n\ndef run(value):\n    try:\n        return _helper(value)\n    except {handled}:\n        return 0\n"
+    );
+    let root = common::project(&[("pyproject.toml", &config), ("module.py", &source)]);
+    let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP505"]);
+    assert!(stdout.contains("`_helper` is called only"), "{stdout}");
+}
+
 // A function scoring 18 is reported above a limit of 17 and left alone at 18, since the limit is the highest score kept.
 #[test_case("", 1 ; "default_limit_of_twenty_reports_twenty_one")]
 #[test_case("[tool.simplint.logic]\nmax-cognitive-complexity = 17\n", 2 ; "limit_seventeen_reports_eighteen")]

@@ -228,6 +228,8 @@ signature reaches it:
 
 ### Exceptions
 
+- **`__main__.py` files**: these are entry points, so imports by tests or runners do not make their names a public API.
+
 - **Names starting with `_`**: the underscore already marks them as internal.
 
   ```python ok file=config.py

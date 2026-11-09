@@ -76,6 +76,9 @@ its own `return` statements, so a nested function's return belongs to the nested
 
 ### Exceptions
 
+- **Methods decorated with `@override`**: a base class or plugin contract fixes the return shape. This also recognizes
+  compatibility imports of `override` that forward to `typing.override`.
+
 - **The methods the pickle and copy protocols call**: `__reduce__`, `__reduce_ex__`, `__getnewargs__` and
   `__getnewargs_ex__` must return a tuple of the shape those protocols read.
 

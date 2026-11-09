@@ -116,6 +116,14 @@ it belongs.
 
 ### Exceptions
 
+- **Test packages and nested test projects**: fixtures may need initializer code to exercise import behavior. A package
+  under a test root that is itself a project is treated as test input, even when its module name does not start with
+  `test_`.
+
+- **PEP 562 package hooks and `if TYPE_CHECKING` blocks**: `__getattr__` can load package attributes on demand,
+  `__dir__` can list them, and a `TYPE_CHECKING` block can expose their types to type checkers. The imports used by
+  those hooks may still need a suppression when they are not re-exports.
+
 - **The module docstring**: it documents the package and runs no code.
 
   ```python ok file=pkg/__init__.py

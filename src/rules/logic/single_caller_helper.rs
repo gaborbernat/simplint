@@ -1,5 +1,5 @@
 use ruff_linter::registry::Rule as RuffRule;
-use ruff_python_ast::helpers::{ReturnStatementVisitor, body_without_leading_docstring};
+use ruff_python_ast::helpers::{RaiseStatementVisitor, ReturnStatementVisitor, body_without_leading_docstring};
 use ruff_python_ast::statement_visitor::StatementVisitor;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, ExceptHandler, Expr, Stmt};
@@ -10,7 +10,7 @@ use crate::lint::registry::Rule;
 use crate::rules::logic::cognitive_complexity;
 use crate::rules::logic::forwarding_function::forward_target;
 use crate::rules::testing::{conditionals, is_test_module_function};
-use crate::syntax::{Visibility, is_repeating_expr};
+use crate::syntax::{Visibility, is_repeating_expr, last_segment};
 
 pub fn single_caller_helper(checker: &Checker) {
     for stmt in checker.body() {
@@ -88,8 +88,14 @@ fn check_helper(checker: &Checker, helper: &ast::StmtFunctionDef) {
 // the caller stays while any of those rules runs, unless the helper is a lone `return`, which inlines as an expression.
 fn ruff_limit_crossed(checker: &Checker, caller: &[Stmt], helper: &[Stmt], reference: TextRange) -> bool {
     let from_ruff = &checker.settings.from_ruff;
-    let mut site = CallSite { reference, returned: false, elif_test: false, conditional: false };
+    let mut site = CallSite { reference, returned: false, elif_test: false, conditional: false, depth: 0, nesting: 0 };
     site.visit_body(caller);
+    let mut tried = TryContext { reference, statements: 0, catches: false, handled: Vec::new(), catch_all: false };
+    tried.visit_body(caller);
+    let mut helper_nesting = NestedDepth::default();
+    helper_nesting.visit_body(helper);
+    let mut raises = RaiseStatementVisitor::default();
+    raises.visit_body(helper);
     let counted = [
         RuffRule::ComplexStructure,
         RuffRule::TooManyBranches,
@@ -109,8 +115,23 @@ fn ruff_limit_crossed(checker: &Checker, caller: &[Stmt], helper: &[Stmt], refer
     let inlined_returns = (2 * helper_returns).saturating_sub(1);
     let caller_returns = ruff_returns(caller);
     let returns = if site.returned { caller_returns + helper_returns - 1 } else { caller_returns };
-    (from_ruff.ruff_runs(RuffRule::ComplexStructure)
-        && mccabe_complexity(caller) + mccabe_complexity(helper) + 1 > from_ruff.max_complexity)
+    (from_ruff.ruff_runs(RuffRule::TooManyNestedBlocks)
+        && site.nesting + helper_nesting.maximum > from_ruff.max_nested_blocks)
+        || (from_ruff.ruff_runs(RuffRule::TooManyStatementsInTryClause)
+            && tried.catches
+            && tried.statements + ruff_statements(helper) > from_ruff.max_statements_in_try)
+        || (from_ruff.ruff_runs(RuffRule::RaiseWithinTry)
+            && tried.catches
+            && raises.raises.iter().any(|(_, exception, _)| {
+                let exception_name = exception.and_then(|exception| match exception {
+                    Expr::Call(call) => last_segment(&call.func),
+                    _ => last_segment(exception),
+                });
+                exception_name
+                    .is_some_and(|name| tried.catch_all || tried.handled.iter().any(|handler| catches(handler, name)))
+            }))
+        || (from_ruff.ruff_runs(RuffRule::ComplexStructure)
+            && mccabe_complexity(caller) + mccabe_complexity(helper) + 1 > from_ruff.max_complexity)
         || (from_ruff.ruff_runs(RuffRule::TooManyBranches)
             && ruff_branches(caller) + ruff_branches(helper) + helper_returns.saturating_sub(1) + elif
                 > from_ruff.max_branches)
@@ -125,6 +146,8 @@ struct CallSite {
     returned: bool,
     elif_test: bool,
     conditional: bool,
+    depth: usize,
+    nesting: usize,
 }
 
 impl<'a> Visitor<'a> for CallSite {
@@ -141,7 +164,9 @@ impl<'a> Visitor<'a> for CallSite {
             }
             _ => {}
         }
+        self.depth += usize::from(is_nested_block(stmt));
         visitor::walk_stmt(self, stmt);
+        self.depth -= usize::from(is_nested_block(stmt));
     }
 
     fn visit_expr(&mut self, expr: &'a Expr) {
@@ -155,7 +180,64 @@ impl<'a> Visitor<'a> for CallSite {
             }
             _ => {}
         }
+        if expr.range() == self.reference {
+            self.nesting = self.depth;
+        }
         visitor::walk_expr(self, expr);
+    }
+}
+
+fn is_nested_block(stmt: &Stmt) -> bool {
+    matches!(stmt, Stmt::If(_) | Stmt::While(_) | Stmt::For(_) | Stmt::Try(_) | Stmt::With(_))
+}
+
+#[derive(Default)]
+struct NestedDepth {
+    depth: usize,
+    maximum: usize,
+}
+
+impl<'a> Visitor<'a> for NestedDepth {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        self.depth += usize::from(is_nested_block(stmt));
+        self.maximum = self.maximum.max(self.depth);
+        visitor::walk_stmt(self, stmt);
+        self.depth -= usize::from(is_nested_block(stmt));
+    }
+}
+
+struct TryContext<'a> {
+    reference: TextRange,
+    statements: usize,
+    catches: bool,
+    handled: Vec<&'a Expr>,
+    catch_all: bool,
+}
+
+impl<'a> Visitor<'a> for TryContext<'a> {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        if let Stmt::Try(branch) = stmt
+            && !branch.handlers.is_empty()
+            && branch.body.iter().any(|part| part.range().contains_range(self.reference))
+        {
+            self.statements = self.statements.max(ruff_statements(&branch.body));
+            self.catches = true;
+            for handler in &branch.handlers {
+                let ExceptHandler::ExceptHandler(ast::ExceptHandlerExceptHandler { type_, .. }) = handler;
+                match type_ {
+                    Some(exception) => self.handled.push(exception),
+                    None => self.catch_all = true,
+                }
+            }
+        }
+        visitor::walk_stmt(self, stmt);
+    }
+}
+
+fn catches(handler: &Expr, raised: &str) -> bool {
+    match handler {
+        Expr::Tuple(tuple) => tuple.elts.iter().any(|element| catches(element, raised)),
+        _ => last_segment(handler).is_some_and(|name| name == raised || matches!(name, "Exception" | "BaseException")),
     }
 }
 

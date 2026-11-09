@@ -74,6 +74,10 @@ No fix is offered: the real signature has to be written by hand.
 
 ### Exceptions
 
+- **Test parameters that are not called in the test body**: a test may inspect a callable or pass it to another API
+  without invoking it itself. Its annotation need not describe one call signature. A direct call in the body still
+  reports, including one inside a nested block.
+
 - **String annotations**: these are not checked.
 
   ```python ok

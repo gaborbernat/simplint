@@ -62,6 +62,9 @@ pub struct FromRuff {
     pub max_statements: usize,
     pub max_returns: usize,
     pub max_args: usize,
+    pub max_locals: usize,
+    pub max_nested_blocks: usize,
+    pub max_statements_in_try: usize,
     // The rules Ruff's settings enable, which decide whether a rule that Ruff covers is left to it. Per-file ignores
     // are not applied: a file that silences a Ruff rule is the project's choice, as a `noqa` for it is.
     ruff_rules: RuffRuleSet,
@@ -93,6 +96,9 @@ impl FromRuff {
             max_statements: settings.linter.pylint.max_statements,
             max_returns: settings.linter.pylint.max_returns,
             max_args: settings.linter.pylint.max_args,
+            max_locals: settings.linter.pylint.max_locals,
+            max_nested_blocks: settings.linter.pylint.max_nested_blocks,
+            max_statements_in_try: settings.linter.pylint.max_statements_in_try,
             ruff_rules: settings.linter.rules.iter_enabled().collect(),
         }
     }

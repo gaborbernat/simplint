@@ -85,6 +85,9 @@ def test_client(mocker: MockerFixture) -> None:
 
 ### Exceptions
 
+- **`from unittest.mock import create_autospec` alone**: making a mock from a real object is separate from managing a
+  patch. An import that also brings in `patch` or another mock helper is still reported.
+
 - **Relative imports**, such as `from .unittest import mock`: they name a module of the project, not the standard
   library.
 

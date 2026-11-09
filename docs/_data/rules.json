@@ -3443,7 +3443,7 @@
     "name": "single-user-constant",
     "summary": "Module constants only one function uses",
     "fix": "Sometimes",
-    "explanation": "Flags module-level constants that only one function uses. Keeping the value next to its only use lets the reader follow\nthe function without scrolling away to find it.\n\n## Why is this bad?\n\nA module constant that only one function uses makes the code, and that function, harder to read for no benefit. Code\nlocality makes a function easy to read and reason about without scrolling around to find the value. In later pull\nrequests the constant may not even be in the diff, which makes reviews harder. Nothing pays for that: with one user,\nthere is no duplication the constant avoids, so such a constant is better inlined.\n\nA module-level constant also suggests the value is shared, so a reader has to search the module to learn that one\nfunction uses it. Defined in that function, its scope matches its use. A comment above the constant, such as one saying\nit is built once for speed, keeps it at module level.\n\n## Example\n\n```python report\n_TIMEOUT = 30\n\n\ndef connect(host: str) -> socket.socket:\n    return socket.create_connection((host, 443), timeout=_TIMEOUT)\n```\n\nUse instead:\n\n```python ok\ndef connect(host: str) -> socket.socket:\n    return socket.create_connection((host, 443), timeout=30)\n```\n\n## Conflicts with Ruff\n\nRuff's [magic-value-comparison](https://docs.astral.sh/ruff/rules/magic-value-comparison/) asks for a named constant\nwhere the inlined value lands in a comparison. When a fix would give it a new report, simplint withdraws the fix and\nkeeps the report.\n\n## What it does\n\n### Active on\n\nA constant here is a name assigned once, with `=` or an\n[annotated assignment](https://docs.python.org/3/reference/simple_stmts.html#annotated-assignment-statements), to a\nvalue written out in the source. Such a value holds no state shared between calls, so it can move into the function. It\nis reported when every reference to it sits inside the body of a single top-level function or method, including\nfunctions nested in it. These values count:\n\n- **Literals**: a string, bytes, number, `True`, `False`, `None` or `...`, including strings joined by placing them side\n  by side.\n\n  ```python report\n  _TIMEOUT = 30\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=_TIMEOUT)\n  ```\n\n- **Negative numbers**, such as `-1`: a literal with a sign.\n\n  ```python report\n  _OFFSET = -1\n\n\n  def shift(value: int) -> int:\n      return value + _OFFSET\n  ```\n\n- **Binary operations between such values**, arithmetic or other, such as `60 * 60` or `\"-\" * 40`: the result follows\n  from the literals alone.\n\n  ```python report\n  _WINDOW = 60 * 60\n\n\n  def expired(age: int) -> bool:\n      return age > _WINDOW\n  ```\n\n- **Tuple, list, set or dict displays made only of such values**, such as `(\"a\", 1)` or `{\"ok\": 0}`: the container is\n  written out in full.\n\n  ```python report\n  _FIELDS = (\"name\", 1)\n\n\n  def describe() -> str:\n      return str(_FIELDS)\n  ```\n\n- **`frozenset()`, or `frozenset` called with one such value**, while the module does not bind the name `frozenset`, so\n  the call is the builtin.\n\n  ```python report\n  _KEYS = frozenset([\"a\", \"b\"])\n\n\n  def has(key: str) -> bool:\n      return key in _KEYS\n  ```\n\n### Exceptions\n\n- **Any other value**: built once at import, it may hold state every call shares or be the object a test patches, and\n  moving it into the function would build a new one on every call.\n\n  That covers a call result such as a cache, a logger from `logging.getLogger(__name__)`, a pattern from `re.compile`, a\n  `Path` or a client instance; a name or attribute such as `logging.INFO`; an f-string; and a display unpacking another\n  value with `*` or `**`.\n\n  ```python ok\n  import logging\n\n  _LOGGER = logging.getLogger(__name__)\n\n\n  def run() -> None:\n      _LOGGER.info(\"run\")\n  ```\n\n- **A constant used only inside a module-level lambda**: a constant cannot move into a lambda.\n\n  ```python ok\n  _LIMIT = 3\n  TAKE = lambda items: items[:_LIMIT]\n  ```\n\n- **Public names**: those listed in\n  [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package), or, when the module has no\n  `__all__`, builds it dynamically or binds it inside a nested block, names without a leading `_`. Other modules may use\n  them.\n\n  ```python ok\n  TIMEOUT = 30\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=TIMEOUT)\n  ```\n\n- **Names another file in the run imports, or a string in the run spells, such as the dotted path `\"config._TIMEOUT\"`\n  that a test patches with [`unittest.mock.patch`](https://docs.python.org/3/library/unittest.mock.html#patch)**: that\n  file needs the name to stay at module level, and a string that looks the name up would miss an inlined value. A\n  docstring that only mentions the name is prose, so it keeps nothing.\n\n  ```python ok file=config.py\n  _TIMEOUT = 30\n\n\n  def connect() -> int:\n      return _TIMEOUT\n  ```\n\n  ```python context file=main.py\n  from config import _TIMEOUT\n  ```\n\n- **Names a doctest of the module reads**: a `>>>` example in one of the module's docstrings runs in the module's\n  globals, so inlining the constant would leave the example reading a name that is gone.\n\n- **[Dunder](https://docs.python.org/3/reference/lexical_analysis.html#reserved-classes-of-identifiers) names and\n  class-like names such as `UserId`**: Python gives dunder names their meaning, and a class-like name stands for a type\n  rather than a value.\n\n  ```python ok\n  UserId = 5\n\n\n  def load() -> int:\n      return UserId\n  ```\n\n- **Constants with a comment on the line directly above or at the end of their line**: the comment may say why the value\n  lives at module level, such as being built once for speed.\n\n  ```python ok\n  _TIMEOUT = 30  # seconds\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=_TIMEOUT)\n  ```\n\n- **Names another module in the run assigns as an attribute**, such as `config._TIMEOUT = 5`: a local copy would ignore\n  the override.\n\n  ```python ok file=config.py\n  _TIMEOUT = 30\n\n\n  def connect() -> int:\n      return _TIMEOUT\n  ```\n\n  ```python context file=main.py\n  import config\n\n  config._TIMEOUT = 5\n  ```\n\n- **Containers the function changes**: they are state that must outlive each call. The function calls a mutating method\n  on them such as `add`, `append` or `update`, or assigns or deletes an item.\n\n  ```python ok\n  _SEEN = {\"a\"}\n\n\n  def mark(item: str) -> None:\n      _SEEN.add(item)\n  ```\n\n- **Constants referenced at import time**, such as in a default value or decorator, or in any annotation: the value must\n  exist while the module loads, before any function runs.\n\n  ```python ok\n  _LIMIT = 3\n\n\n  def load(limit: int = _LIMIT) -> int:\n      return limit\n  ```\n\n```mermaid\nflowchart TD\n    constant[\"module-level name\"] --> literal{\"value written<br/>out in source?\"}\n    literal -->|no| stays[\"not reported\"]\n    literal -->|yes| single{\"one function<br/>uses it?\"}\n    single -->|no| stays\n    single -->|yes| skipped{\"listed under<br/>Exceptions?\"}\n    skipped -->|yes| stays\n    skipped -->|no| report[\"reported\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class constant blue\n    class literal,single,skipped yellow\n    class stays green\n    class report orange\n```\n\n### Fix\n\n**Unsafe fix:** always, as the value is rebuilt on every call, which costs time for expensive values and gives each call\na new object for mutable ones.\n\nThe fix moves the value in one of two ways:\n\n- **Inline**: when the constant is used once, outside any loop, nested function or class, lambda or comprehension, the\n  fix inlines the value at the use, adding parentheses when needed. A value with a comment inside it, or a triple-quoted\n  string, takes the local form instead. Some constants keep a name:\n\n  ```python report\n  _TIMEOUT = 30\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=_TIMEOUT)\n  ```\n\n  ```python fixed\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=30)\n  ```\n\n  A value the source spreads over several lines goes in on one line, written by Ruff's code generator. The layout and\n  trailing commas do not carry over, and each string keeps the quotes it was written with.\n\n  ```python report\n  _CHOICES = (\n      \"first\",\n      \"second\",\n  )\n\n\n  def pick() -> None:\n      print(_CHOICES)\n  ```\n\n  ```python fixed\n  def pick() -> None:\n      print((\"first\", \"second\"))\n  ```\n\n  - Inside an f-string it inlines only a number: a value with quotes there is a syntax error before Python 3.12, and a\n    longer one buries the text the f-string builds.\n\n    ```python report\n    _NAME = \"shop\"\n\n\n    def label() -> str:\n        return f\"name: {_NAME}\"\n    ```\n\n    ```python fixed\n    def label() -> str:\n        name = \"shop\"\n        return f\"name: {name}\"\n    ```\n\n  - A string that calls `format` keeps a name: as a literal it becomes Ruff's\n    [f-string](https://docs.astral.sh/ruff/rules/f-string/) candidate, which Ruff reports only while no argument spans\n    lines, so the result would depend on how `ruff format` lays out the call.\n\n    ```python report\n    _TEMPLATE = \"{} items\"\n\n\n    def describe(count: int) -> str:\n        return _TEMPLATE.format(count)\n    ```\n\n  - Inside an f-string `=` debug field the field keeps its printed text, so the value moves into a plain field after it.\n\n    ```python report\n    _LIMIT = 30\n\n\n    def show() -> str:\n        return f\"{_LIMIT=}\"\n    ```\n\n    ```python fixed\n    def show() -> str:\n        return f\"_LIMIT={30!r}\"\n    ```\n\n  - A constant with an annotation keeps its name, as the annotation types the value where an inlined literal would be\n    typed on its own. A dict literal under `Final[dict[str, list[str]]]` inlined into a `.get` call fails a type check\n    against the function's return annotation.\n\n    ```python report\n    _LIMIT: int = 30\n\n\n    def connect() -> int:\n        return _LIMIT\n    ```\n\n    ```python fixed\n    def connect() -> int:\n        limit: int = 30\n        return limit\n    ```\n\n- **Local**: otherwise it declares a local before the statement that first uses it and renames the uses. The local takes\n  the constant's name in lowercase, without leading underscores, and keeps its annotation, with `Final` taken off. An\n  annotated constant always takes this form.\n\n  ```python report\n  _LIMIT = 30\n\n\n  def connect(host: str) -> socket.socket:\n      if _LIMIT:\n          return socket.create_connection((host, 443), timeout=_LIMIT)\n      return socket.create_connection((host, 443))\n  ```\n\n  ```python fixed\n  def connect(host: str) -> socket.socket:\n      limit = 30\n      if limit:\n          return socket.create_connection((host, 443), timeout=limit)\n      return socket.create_connection((host, 443))\n  ```\n\n```mermaid\nflowchart TD\n    constant[\"reported constant\"] --> once{\"used once, outside loops<br/>and nested scopes?\"}\n    once -->|no| local[\"declare a local\"]\n    once -->|yes| line{\"value has a comment or<br/>a triple-quoted string?\"}\n    line -->|yes| local\n    line -->|no| place{\"an exception<br/>above applies?\"}\n    place -->|yes| local\n    place -->|no| inline[\"inline the value\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class constant blue\n    class once,line,place yellow\n    class local,inline green\n```\n\nOf the blank lines above and below the constant, the fix removes the shorter run, so the code around it keeps the wider\ngap. At the top of the file, the blank lines below go with it.\n\nNo fix is offered when:\n\n- the constant shares a line with other code;\n\n  ```python report\n  _TIMEOUT = 30\n  _RETRIES = 3\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=_TIMEOUT, retries=_RETRIES)\n  ```\n\n- the local name already appears in the file;\n\n  ```python report\n  _TIMEOUT = 30\n  timeout = 5\n\n\n  def connect(host: str) -> socket.socket:\n      if _TIMEOUT:\n          return socket.create_connection((host, 443), timeout=_TIMEOUT)\n      return socket.create_connection((host, 443), timeout=timeout)\n  ```\n\n- the value calls `frozenset` and the function has a parameter or local named `frozenset`.\n\n  ```python report\n  _KEYS = frozenset([\"a\", \"b\"])\n\n\n  def has(frozenset: set, key: str) -> bool:\n      return key in _KEYS\n  ```\n\n- the constant is read in a t-string, which keeps the source text of its expressions;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  _LIMIT = 30\n\n\n  def show() -> object:\n      return t\"{_LIMIT}\"\n  ```\n\n- a file of the run sets an attribute of the module under a computed name, as `setattr(module, name, value)` does\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags module-level constants that only one function uses. Keeping the value next to its only use lets the reader follow\nthe function without scrolling away to find it.\n\n## Why is this bad?\n\nA module constant that only one function uses makes the code, and that function, harder to read for no benefit. Code\nlocality makes a function easy to read and reason about without scrolling around to find the value. In later pull\nrequests the constant may not even be in the diff, which makes reviews harder. Nothing pays for that: with one user,\nthere is no duplication the constant avoids, so such a constant is better inlined.\n\nA module-level constant also suggests the value is shared, so a reader has to search the module to learn that one\nfunction uses it. Defined in that function, its scope matches its use. A comment above the constant, such as one saying\nit is built once for speed, keeps it at module level.\n\n## Example\n\n```python report\n_TIMEOUT = 30\n\n\ndef connect(host: str) -> socket.socket:\n    return socket.create_connection((host, 443), timeout=_TIMEOUT)\n```\n\nUse instead:\n\n```python ok\ndef connect(host: str) -> socket.socket:\n    return socket.create_connection((host, 443), timeout=30)\n```\n\n## Conflicts with Ruff\n\nRuff's [magic-value-comparison](https://docs.astral.sh/ruff/rules/magic-value-comparison/) asks for a named constant\nwhere the inlined value lands in a comparison. When a fix would give it a new report, simplint withdraws the fix and\nkeeps the report.\n\n## What it does\n\n### Active on\n\nA constant here is a name assigned once, with `=` or an\n[annotated assignment](https://docs.python.org/3/reference/simple_stmts.html#annotated-assignment-statements), to a\nvalue written out in the source. Such a value holds no state shared between calls, so it can move into the function. It\nis reported when every reference to it sits inside the body of a single top-level function or method, including\nfunctions nested in it. These values count:\n\n- **Literals**: a string, bytes, number, `True`, `False`, `None` or `...`, including strings joined by placing them side\n  by side.\n\n  ```python report\n  _TIMEOUT = 30\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=_TIMEOUT)\n  ```\n\n- **Negative numbers**, such as `-1`: a literal with a sign.\n\n  ```python report\n  _OFFSET = -1\n\n\n  def shift(value: int) -> int:\n      return value + _OFFSET\n  ```\n\n- **Binary operations between such values**, arithmetic or other, such as `60 * 60` or `\"-\" * 40`: the result follows\n  from the literals alone.\n\n  ```python report\n  _WINDOW = 60 * 60\n\n\n  def expired(age: int) -> bool:\n      return age > _WINDOW\n  ```\n\n- **Tuple, list, set or dict displays made only of such values**, such as `(\"a\", 1)` or `{\"ok\": 0}`: the container is\n  written out in full.\n\n  ```python report\n  _FIELDS = (\"name\", 1)\n\n\n  def describe() -> str:\n      return str(_FIELDS)\n  ```\n\n- **`frozenset()`, or `frozenset` called with one such value**, while the module does not bind the name `frozenset`, so\n  the call is the builtin.\n\n  ```python report\n  _KEYS = frozenset([\"a\", \"b\"])\n\n\n  def has(key: str) -> bool:\n      return key in _KEYS\n  ```\n\n### Exceptions\n\n- **Functions already at Ruff's local-variable limit**: when PLR0914 runs, moving a multiline or annotated constant into\n  a function can add a local and cause a new Ruff report. Such constants stay at module scope. The limit comes from\n  Ruff's `lint.pylint.max-locals` setting.\n\n- **Any other value**: built once at import, it may hold state every call shares or be the object a test patches, and\n  moving it into the function would build a new one on every call.\n\n  That covers a call result such as a cache, a logger from `logging.getLogger(__name__)`, a pattern from `re.compile`, a\n  `Path` or a client instance; a name or attribute such as `logging.INFO`; an f-string; and a display unpacking another\n  value with `*` or `**`.\n\n  ```python ok\n  import logging\n\n  _LOGGER = logging.getLogger(__name__)\n\n\n  def run() -> None:\n      _LOGGER.info(\"run\")\n  ```\n\n- **A constant used only inside a module-level lambda**: a constant cannot move into a lambda.\n\n  ```python ok\n  _LIMIT = 3\n  TAKE = lambda items: items[:_LIMIT]\n  ```\n\n- **Public names**: those listed in\n  [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package), or, when the module has no\n  `__all__`, builds it dynamically or binds it inside a nested block, names without a leading `_`. Other modules may use\n  them.\n\n  ```python ok\n  TIMEOUT = 30\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=TIMEOUT)\n  ```\n\n- **Names another file in the run imports, or a string in the run spells, such as the dotted path `\"config._TIMEOUT\"`\n  that a test patches with [`unittest.mock.patch`](https://docs.python.org/3/library/unittest.mock.html#patch)**: that\n  file needs the name to stay at module level, and a string that looks the name up would miss an inlined value. A\n  docstring that only mentions the name is prose, so it keeps nothing.\n\n  ```python ok file=config.py\n  _TIMEOUT = 30\n\n\n  def connect() -> int:\n      return _TIMEOUT\n  ```\n\n  ```python context file=main.py\n  from config import _TIMEOUT\n  ```\n\n- **Names a doctest of the module reads**: a `>>>` example in one of the module's docstrings runs in the module's\n  globals, so inlining the constant would leave the example reading a name that is gone.\n\n- **[Dunder](https://docs.python.org/3/reference/lexical_analysis.html#reserved-classes-of-identifiers) names and\n  class-like names such as `UserId`**: Python gives dunder names their meaning, and a class-like name stands for a type\n  rather than a value.\n\n  ```python ok\n  UserId = 5\n\n\n  def load() -> int:\n      return UserId\n  ```\n\n- **Constants with a comment on the line directly above or at the end of their line**: the comment may say why the value\n  lives at module level, such as being built once for speed.\n\n  ```python ok\n  _TIMEOUT = 30  # seconds\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=_TIMEOUT)\n  ```\n\n- **Names another module in the run assigns as an attribute**, such as `config._TIMEOUT = 5`: a local copy would ignore\n  the override.\n\n  ```python ok file=config.py\n  _TIMEOUT = 30\n\n\n  def connect() -> int:\n      return _TIMEOUT\n  ```\n\n  ```python context file=main.py\n  import config\n\n  config._TIMEOUT = 5\n  ```\n\n- **Containers the function changes**: they are state that must outlive each call. The function calls a mutating method\n  on them such as `add`, `append` or `update`, or assigns or deletes an item.\n\n  ```python ok\n  _SEEN = {\"a\"}\n\n\n  def mark(item: str) -> None:\n      _SEEN.add(item)\n  ```\n\n- **Constants referenced at import time**, such as in a default value or decorator, or in any annotation: the value must\n  exist while the module loads, before any function runs.\n\n  ```python ok\n  _LIMIT = 3\n\n\n  def load(limit: int = _LIMIT) -> int:\n      return limit\n  ```\n\n```mermaid\nflowchart TD\n    constant[\"module-level name\"] --> literal{\"value written<br/>out in source?\"}\n    literal -->|no| stays[\"not reported\"]\n    literal -->|yes| single{\"one function<br/>uses it?\"}\n    single -->|no| stays\n    single -->|yes| skipped{\"listed under<br/>Exceptions?\"}\n    skipped -->|yes| stays\n    skipped -->|no| report[\"reported\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class constant blue\n    class literal,single,skipped yellow\n    class stays green\n    class report orange\n```\n\n### Fix\n\n**Unsafe fix:** always, as the value is rebuilt on every call, which costs time for expensive values and gives each call\na new object for mutable ones.\n\nThe fix moves the value in one of two ways:\n\n- **Inline**: when the constant is used once, outside any loop, nested function or class, lambda or comprehension, the\n  fix inlines the value at the use, adding parentheses when needed. A value with a comment inside it, or a triple-quoted\n  string, takes the local form instead. Some constants keep a name:\n\n  ```python report\n  _TIMEOUT = 30\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=_TIMEOUT)\n  ```\n\n  ```python fixed\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=30)\n  ```\n\n  A value the source spreads over several lines goes in on one line, written by Ruff's code generator. The layout and\n  trailing commas do not carry over, and each string keeps the quotes it was written with.\n\n  ```python report\n  _CHOICES = (\n      \"first\",\n      \"second\",\n  )\n\n\n  def pick() -> None:\n      print(_CHOICES)\n  ```\n\n  ```python fixed\n  def pick() -> None:\n      print((\"first\", \"second\"))\n  ```\n\n  - Inside an f-string it inlines only a number: a value with quotes there is a syntax error before Python 3.12, and a\n    longer one buries the text the f-string builds.\n\n    ```python report\n    _NAME = \"shop\"\n\n\n    def label() -> str:\n        return f\"name: {_NAME}\"\n    ```\n\n    ```python fixed\n    def label() -> str:\n        name = \"shop\"\n        return f\"name: {name}\"\n    ```\n\n  - A string that calls `format` keeps a name: as a literal it becomes Ruff's\n    [f-string](https://docs.astral.sh/ruff/rules/f-string/) candidate, which Ruff reports only while no argument spans\n    lines, so the result would depend on how `ruff format` lays out the call.\n\n    ```python report\n    _TEMPLATE = \"{} items\"\n\n\n    def describe(count: int) -> str:\n        return _TEMPLATE.format(count)\n    ```\n\n  - Inside an f-string `=` debug field the field keeps its printed text, so the value moves into a plain field after it.\n\n    ```python report\n    _LIMIT = 30\n\n\n    def show() -> str:\n        return f\"{_LIMIT=}\"\n    ```\n\n    ```python fixed\n    def show() -> str:\n        return f\"_LIMIT={30!r}\"\n    ```\n\n  - A constant with an annotation keeps its name, as the annotation types the value where an inlined literal would be\n    typed on its own. A dict literal under `Final[dict[str, list[str]]]` inlined into a `.get` call fails a type check\n    against the function's return annotation.\n\n    ```python report\n    _LIMIT: int = 30\n\n\n    def connect() -> int:\n        return _LIMIT\n    ```\n\n    ```python fixed\n    def connect() -> int:\n        limit: int = 30\n        return limit\n    ```\n\n- **Local**: otherwise it declares a local before the statement that first uses it and renames the uses. The local takes\n  the constant's name in lowercase, without leading underscores, and keeps its annotation, with `Final` taken off. An\n  annotated constant always takes this form.\n\n  ```python report\n  _LIMIT = 30\n\n\n  def connect(host: str) -> socket.socket:\n      if _LIMIT:\n          return socket.create_connection((host, 443), timeout=_LIMIT)\n      return socket.create_connection((host, 443))\n  ```\n\n  ```python fixed\n  def connect(host: str) -> socket.socket:\n      limit = 30\n      if limit:\n          return socket.create_connection((host, 443), timeout=limit)\n      return socket.create_connection((host, 443))\n  ```\n\n```mermaid\nflowchart TD\n    constant[\"reported constant\"] --> once{\"used once, outside loops<br/>and nested scopes?\"}\n    once -->|no| local[\"declare a local\"]\n    once -->|yes| line{\"value has a comment or<br/>a triple-quoted string?\"}\n    line -->|yes| local\n    line -->|no| place{\"an exception<br/>above applies?\"}\n    place -->|yes| local\n    place -->|no| inline[\"inline the value\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class constant blue\n    class once,line,place yellow\n    class local,inline green\n```\n\nOf the blank lines above and below the constant, the fix removes the shorter run, so the code around it keeps the wider\ngap. At the top of the file, the blank lines below go with it.\n\nNo fix is offered when:\n\n- the constant shares a line with other code;\n\n  ```python report\n  _TIMEOUT = 30\n  _RETRIES = 3\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=_TIMEOUT, retries=_RETRIES)\n  ```\n\n- the local name already appears in the file;\n\n  ```python report\n  _TIMEOUT = 30\n  timeout = 5\n\n\n  def connect(host: str) -> socket.socket:\n      if _TIMEOUT:\n          return socket.create_connection((host, 443), timeout=_TIMEOUT)\n      return socket.create_connection((host, 443), timeout=timeout)\n  ```\n\n- the value calls `frozenset` and the function has a parameter or local named `frozenset`.\n\n  ```python report\n  _KEYS = frozenset([\"a\", \"b\"])\n\n\n  def has(frozenset: set, key: str) -> bool:\n      return key in _KEYS\n  ```\n\n- the constant is read in a t-string, which keeps the source text of its expressions;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  _LIMIT = 30\n\n\n  def show() -> object:\n      return t\"{_LIMIT}\"\n  ```\n\n- a file of the run sets an attribute of the module under a computed name, as `setattr(module, name, value)` does\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -3567,8 +3567,8 @@
         },
         {
           "section": "What it does",
-          "line": 111,
-          "end_line": 119,
+          "line": 115,
+          "end_line": 123,
           "config": null,
           "blocks": [
             {
@@ -3576,16 +3576,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 111,
-              "end_line": 119,
+              "line": 115,
+              "end_line": 123,
               "source": "import logging\n\n_LOGGER = logging.getLogger(__name__)\n\n\ndef run() -> None:\n    _LOGGER.info(\"run\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 123,
-          "end_line": 126,
+          "line": 127,
+          "end_line": 130,
           "config": null,
           "blocks": [
             {
@@ -3593,16 +3593,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 123,
-              "end_line": 126,
+              "line": 127,
+              "end_line": 130,
               "source": "_LIMIT = 3\nTAKE = lambda items: items[:_LIMIT]\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 133,
-          "end_line": 139,
+          "line": 137,
+          "end_line": 143,
           "config": null,
           "blocks": [
             {
@@ -3610,16 +3610,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 133,
-              "end_line": 139,
+              "line": 137,
+              "end_line": 143,
               "source": "TIMEOUT = 30\n\n\ndef connect(host: str) -> socket.socket:\n    return socket.create_connection((host, 443), timeout=TIMEOUT)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 146,
-          "end_line": 156,
+          "line": 150,
+          "end_line": 160,
           "config": null,
           "blocks": [
             {
@@ -3627,8 +3627,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 146,
-              "end_line": 152,
+              "line": 150,
+              "end_line": 156,
               "source": "_TIMEOUT = 30\n\n\ndef connect() -> int:\n    return _TIMEOUT\n"
             },
             {
@@ -3636,16 +3636,16 @@
               "language": "python",
               "file": "main.py",
               "named": true,
-              "line": 154,
-              "end_line": 156,
+              "line": 158,
+              "end_line": 160,
               "source": "from config import _TIMEOUT\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 165,
-          "end_line": 171,
+          "line": 169,
+          "end_line": 175,
           "config": null,
           "blocks": [
             {
@@ -3653,16 +3653,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 165,
-              "end_line": 171,
+              "line": 169,
+              "end_line": 175,
               "source": "UserId = 5\n\n\ndef load() -> int:\n    return UserId\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 176,
-          "end_line": 182,
+          "line": 180,
+          "end_line": 186,
           "config": null,
           "blocks": [
             {
@@ -3670,16 +3670,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 176,
-              "end_line": 182,
+              "line": 180,
+              "end_line": 186,
               "source": "_TIMEOUT = 30  # seconds\n\n\ndef connect(host: str) -> socket.socket:\n    return socket.create_connection((host, 443), timeout=_TIMEOUT)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 187,
-          "end_line": 199,
+          "line": 191,
+          "end_line": 203,
           "config": null,
           "blocks": [
             {
@@ -3687,8 +3687,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 187,
-              "end_line": 193,
+              "line": 191,
+              "end_line": 197,
               "source": "_TIMEOUT = 30\n\n\ndef connect() -> int:\n    return _TIMEOUT\n"
             },
             {
@@ -3696,16 +3696,16 @@
               "language": "python",
               "file": "main.py",
               "named": true,
-              "line": 195,
-              "end_line": 199,
+              "line": 199,
+              "end_line": 203,
               "source": "import config\n\nconfig._TIMEOUT = 5\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 204,
-          "end_line": 210,
+          "line": 208,
+          "end_line": 214,
           "config": null,
           "blocks": [
             {
@@ -3713,16 +3713,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 204,
-              "end_line": 210,
+              "line": 208,
+              "end_line": 214,
               "source": "_SEEN = {\"a\"}\n\n\ndef mark(item: str) -> None:\n    _SEEN.add(item)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 215,
-          "end_line": 221,
+          "line": 219,
+          "end_line": 225,
           "config": null,
           "blocks": [
             {
@@ -3730,16 +3730,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 215,
-              "end_line": 221,
+              "line": 219,
+              "end_line": 225,
               "source": "_LIMIT = 3\n\n\ndef load(limit: int = _LIMIT) -> int:\n    return limit\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 254,
-          "end_line": 265,
+          "line": 258,
+          "end_line": 269,
           "config": null,
           "blocks": [
             {
@@ -3747,8 +3747,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 254,
-              "end_line": 260,
+              "line": 258,
+              "end_line": 264,
               "source": "_TIMEOUT = 30\n\n\ndef connect(host: str) -> socket.socket:\n    return socket.create_connection((host, 443), timeout=_TIMEOUT)\n"
             },
             {
@@ -3756,16 +3756,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 262,
-              "end_line": 265,
+              "line": 266,
+              "end_line": 269,
               "source": "def connect(host: str) -> socket.socket:\n    return socket.create_connection((host, 443), timeout=30)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 270,
-          "end_line": 284,
+          "line": 274,
+          "end_line": 288,
           "config": null,
           "blocks": [
             {
@@ -3773,8 +3773,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 270,
-              "end_line": 279,
+              "line": 274,
+              "end_line": 283,
               "source": "_CHOICES = (\n    \"first\",\n    \"second\",\n)\n\n\ndef pick() -> None:\n    print(_CHOICES)\n"
             },
             {
@@ -3782,16 +3782,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 281,
-              "end_line": 284,
+              "line": 285,
+              "end_line": 288,
               "source": "def pick() -> None:\n    print((\"first\", \"second\"))\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 289,
-          "end_line": 301,
+          "line": 293,
+          "end_line": 305,
           "config": null,
           "blocks": [
             {
@@ -3799,8 +3799,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 289,
-              "end_line": 295,
+              "line": 293,
+              "end_line": 299,
               "source": "_NAME = \"shop\"\n\n\ndef label() -> str:\n    return f\"name: {_NAME}\"\n"
             },
             {
@@ -3808,16 +3808,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 297,
-              "end_line": 301,
+              "line": 301,
+              "end_line": 305,
               "source": "def label() -> str:\n    name = \"shop\"\n    return f\"name: {name}\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 307,
-          "end_line": 313,
+          "line": 311,
+          "end_line": 317,
           "config": null,
           "blocks": [
             {
@@ -3825,16 +3825,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 307,
-              "end_line": 313,
+              "line": 311,
+              "end_line": 317,
               "source": "_TEMPLATE = \"{} items\"\n\n\ndef describe(count: int) -> str:\n    return _TEMPLATE.format(count)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 317,
-          "end_line": 328,
+          "line": 321,
+          "end_line": 332,
           "config": null,
           "blocks": [
             {
@@ -3842,8 +3842,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 317,
-              "end_line": 323,
+              "line": 321,
+              "end_line": 327,
               "source": "_LIMIT = 30\n\n\ndef show() -> str:\n    return f\"{_LIMIT=}\"\n"
             },
             {
@@ -3851,16 +3851,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 325,
-              "end_line": 328,
+              "line": 329,
+              "end_line": 332,
               "source": "def show() -> str:\n    return f\"_LIMIT={30!r}\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 334,
-          "end_line": 346,
+          "line": 338,
+          "end_line": 350,
           "config": null,
           "blocks": [
             {
@@ -3868,8 +3868,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 334,
-              "end_line": 340,
+              "line": 338,
+              "end_line": 344,
               "source": "_LIMIT: int = 30\n\n\ndef connect() -> int:\n    return _LIMIT\n"
             },
             {
@@ -3877,16 +3877,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 342,
-              "end_line": 346,
+              "line": 346,
+              "end_line": 350,
               "source": "def connect() -> int:\n    limit: int = 30\n    return limit\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 352,
-          "end_line": 368,
+          "line": 356,
+          "end_line": 372,
           "config": null,
           "blocks": [
             {
@@ -3894,8 +3894,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 352,
-              "end_line": 360,
+              "line": 356,
+              "end_line": 364,
               "source": "_LIMIT = 30\n\n\ndef connect(host: str) -> socket.socket:\n    if _LIMIT:\n        return socket.create_connection((host, 443), timeout=_LIMIT)\n    return socket.create_connection((host, 443))\n"
             },
             {
@@ -3903,16 +3903,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 362,
-              "end_line": 368,
+              "line": 366,
+              "end_line": 372,
               "source": "def connect(host: str) -> socket.socket:\n    limit = 30\n    if limit:\n        return socket.create_connection((host, 443), timeout=limit)\n    return socket.create_connection((host, 443))\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 396,
-          "end_line": 403,
+          "line": 400,
+          "end_line": 407,
           "config": null,
           "blocks": [
             {
@@ -3920,16 +3920,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 396,
-              "end_line": 403,
+              "line": 400,
+              "end_line": 407,
               "source": "_TIMEOUT = 30\n_RETRIES = 3\n\n\ndef connect(host: str) -> socket.socket:\n    return socket.create_connection((host, 443), timeout=_TIMEOUT, retries=_RETRIES)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 407,
-          "end_line": 416,
+          "line": 411,
+          "end_line": 420,
           "config": null,
           "blocks": [
             {
@@ -3937,16 +3937,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 407,
-              "end_line": 416,
+              "line": 411,
+              "end_line": 420,
               "source": "_TIMEOUT = 30\ntimeout = 5\n\n\ndef connect(host: str) -> socket.socket:\n    if _TIMEOUT:\n        return socket.create_connection((host, 443), timeout=_TIMEOUT)\n    return socket.create_connection((host, 443), timeout=timeout)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 420,
-          "end_line": 426,
+          "line": 424,
+          "end_line": 430,
           "config": null,
           "blocks": [
             {
@@ -3954,19 +3954,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 420,
-              "end_line": 426,
+              "line": 424,
+              "end_line": 430,
               "source": "_KEYS = frozenset([\"a\", \"b\"])\n\n\ndef has(frozenset: set, key: str) -> bool:\n    return key in _KEYS\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 430,
-          "end_line": 441,
+          "line": 434,
+          "end_line": 445,
           "config": {
-            "line": 430,
-            "end_line": 433,
+            "line": 434,
+            "end_line": 437,
             "source": "[project]\nrequires-python = \">=3.14\"\n"
           },
           "blocks": [
@@ -3975,8 +3975,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 435,
-              "end_line": 441,
+              "line": 439,
+              "end_line": 445,
               "source": "_LIMIT = 30\n\n\ndef show() -> object:\n    return t\"{_LIMIT}\"\n"
             }
           ]
@@ -7329,7 +7329,7 @@
     "name": "missing-from-all",
     "summary": "Names other modules import that `__all__` omits",
     "fix": "Sometimes",
-    "explanation": "Flags public module-level names that another file in the same run imports but `__all__` does not list.\n\n## Why is this bad?\n\n`__all__` lists the names that make up a module's public interface\n([PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces)). A name other modules depend on but\n`__all__` omits looks private, so a later change can remove or rename it without anyone noticing the importers.\n\nIn the example below, `cli.py` imports `LIMIT` and `shared` from `config.py`, yet `config.py` lists neither, so nothing\nin `config.py` tells its next editor that `cli.py` relies on them.\n\n## Example\n\n```python context file=cli.py\nfrom config import LIMIT, local, shared\n\nprint(LIMIT, local(), shared())\n```\n\n```python report file=config.py\nLIMIT = 3\n\n\ndef shared() -> int:\n    return LIMIT\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\"local\"]  # cli.py also imports LIMIT and shared\n```\n\nUse instead:\n\n```python context file=cli.py\nfrom config import LIMIT, local, shared\n\nprint(LIMIT, local(), shared())\n```\n\n```python ok file=config.py\nLIMIT = 3\n\n\ndef shared() -> int:\n    return LIMIT\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\"LIMIT\", \"local\", \"shared\"]\n```\n\n## What it does\n\n### Active on\n\nA public module-level name that [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package)\ndoes not list is reported when another file in the same run imports it in one of these ways, or when a listed name's\nsignature reaches it:\n\n- **`from module import name`**, absolute or relative: the importer names the module and the name directly.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\n- **`module.name` access after `import module`**: the importer reads the name as an attribute of the module.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=cli.py\n  import config\n\n  print(config.LIMIT)\n  ```\n\n- **[Entry points](https://packaging.python.org/en/latest/specifications/pyproject-toml/#entry-points)** declared in\n  `pyproject.toml` under `[project.scripts]`, `[project.gui-scripts]` or `[project.entry-points]`: installers and plugin\n  hosts import the name from outside the code.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [project.scripts]\n  run = \"config:main\"\n  ```\n\n  ```python report file=config.py\n  def main() -> None:\n      pass\n\n\n  def helper() -> int:\n      return 1\n\n\n  __all__ = [\"helper\"]\n  ```\n\n- **String-named handlers** passed to `pkgutil.resolve_name` as `module:attribute`, or stored with\n  `parser.set_defaults(handler=\"module:attribute\")`: the dispatch reads the named attribute at runtime.\n\n- **Tool references in `pyproject.toml`**: setuptools reads `[tool.setuptools.dynamic]` `attr` values and\n  `[tool.setuptools.cmdclass]` classes; mypy calls the function named by `[tool.mypy] plugins` (`plugin` by default);\n  Pylint calls `register` in `[tool.pylint.main] load-plugins`. Legacy `[tool.poetry.plugins]` values are entry points.\n  A pytest plugin loaded with `-p` in `[tool.pytest.ini_options] addopts` or `[tool.pytest] addopts` exposes its public\n  hooks by name.\n\n- **Build backend hooks** of the module that `build-backend` names in `[build-system]`: a build frontend calls the PEP\n  517 and PEP 660 hooks by name, so the names are used from outside the code. When the backend is `pdm.backend`, its\n  local `pdm_build.py` hook functions are also called by name; `[tool.pdm.build] custom-hook` may name another file.\n\n  ```toml config\n  [build-system]\n  build-backend = \"build_backend\"\n  requires = [\"setuptools\"]\n  backend-path = [\".\"]\n  ```\n\n  ```python report file=build_backend.py\n  def build_wheel(wheel_directory: str) -> str:\n      return wheel_directory\n\n\n  __all__ = []\n  ```\n\n- **Declarations in the module's `.pyi` stub**: a stub publishes the names it lists.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=config.pyi\n  LIMIT: int\n  ```\n\n- **Imports the module never uses**: such an import is there for its importers, so it counts as a re-export and is\n  reported.\n\n  ```python report file=config.py\n  from os import sep\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=cli.py\n  from config import sep\n\n  print(sep)\n  ```\n\n- **Classes and aliases in the signature of a listed name**: the annotations, bases and bounds of an exported function,\n  or of a public class, that refer to a class or alias make it public API, though no file imports it. Such a name is\n  reached through the same places of every class and alias the signature reaches, and it counts only when its name is\n  public.\n\n  ```python report file=config.py\n  Level = int\n\n\n  def local() -> Level:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python fixed file=config.py\n  Level = int\n\n\n  def local() -> Level:\n      return 1\n\n\n  __all__ = [\n      \"Level\",\n      \"local\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import local\n\n  print(local())\n  ```\n\n### Exceptions\n\n- **Names starting with `_`**: the underscore already marks them as internal.\n\n  ```python ok file=config.py\n  _LIMIT = 3\n  __all__ = []\n  ```\n\n  ```python context file=cli.py\n  from config import _LIMIT\n\n  print(_LIMIT)\n  ```\n\n- **`__init__.py` files**: these are not checked.\n\n  ```python ok file=pkg/__init__.py\n  LIMIT = 3\n  __all__ = []\n  ```\n\n  ```python context file=cli.py\n  from pkg import LIMIT\n\n  print(LIMIT)\n  ```\n\n- **Private names in the signature of an exported name**: a type a listed name's annotations refer to is public API only\n  when its name is public, and the underscore marks a private one as internal.\n\n  ```python ok file=config.py\n  _Level = int\n\n\n  def local() -> _Level:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=cli.py\n  from config import local\n\n  print(local())\n  ```\n\n- **Test modules**, as defined in [test-class](SMP801.html): these are not checked.\n\n  ```python ok file=test_config.py\n  LIMIT = 3\n  __all__ = []\n  ```\n\n  ```python context file=cli.py\n  from test_config import LIMIT\n\n  print(LIMIT)\n  ```\n\n- **Modules that import `__all__` from elsewhere**: `from ._impl import __all__` re-exports a list this module cannot\n  see.\n\n  ```python ok file=pkg/api.py\n  from ._impl import __all__\n  ```\n\n  ```python context file=pkg/_impl.py\n  LIMIT = 3\n  __all__ = [\"LIMIT\"]\n  ```\n\n- **Names bound only under `if TYPE_CHECKING:`**: such a name exists for type checkers alone, so listing it makes\n  `from module import *` raise `AttributeError` at run time.\n\n  ```python ok file=pkg/typed.py\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n\n      class Locked(dict): ...\n\n\n  def use(x: \"Locked\") -> None: ...\n\n\n  __all__ = [\"use\"]\n  ```\n\n- **A name equal to the module's own name, when the package's `__init__.py` star-imports the module**: listing it would\n  make the `import *` bind it over the package attribute that holds the submodule.\n\n  ```python ok file=pkg/shared.py\n  def shared() -> int:\n      return 1\n\n\n  __all__ = []\n  ```\n\n  ```python context file=pkg/__init__.py\n  from .shared import *\n  ```\n\n  ```python context file=cli.py\n  from pkg.shared import shared\n\n  print(shared())\n  ```\n\n- **Names the module imports and uses itself**: another module reaching `sys` as `app.sys` borrows a name `app` needs,\n  which is not part of its API.\n\n  ```python ok file=app.py\n  import sys\n\n  print(sys.argv)\n  ```\n\n  ```python context file=cli.py\n  import app\n\n  print(app.sys)\n  ```\n\n- **Dotted strings and attribute patches**, such as `mocker.patch(\"pkg.mod.name\")` and `patch.object(module, \"name\")`:\n  they reach into the module without making the name part of its API. Fixes that rename or move a name still leave names\n  reached this way alone.\n\n  ```python ok file=config.py\n  LIMIT = 3\n  __all__ = []\n  ```\n\n  ```python context file=cli.py\n  import config\n  from unittest import mock\n\n  with mock.patch(\"config.LIMIT\"), mock.patch.object(config, \"LIMIT\"):\n      pass\n  ```\n\n- **An `__all__` built any other way** than the forms listed under Reading `__all__` below, such as `list(...)` or\n  `.remove(...)`, or bound inside a nested block such as an `if`, `try` or function: its contents depend on how the\n  module runs, so nothing is reported.\n\n  - a call, such as `list(...)`\n\n    ```python ok file=config.py\n    LIMIT = 3\n\n\n    def local() -> int:\n        return 1\n\n\n    __all__ = list([\"local\"])\n    ```\n\n    ```python context file=cli.py\n    from config import LIMIT\n\n    print(LIMIT)\n    ```\n\n  - a binding in a nested block\n\n    ```python ok file=config.py\n    LIMIT = 3\n\n\n    def local() -> int:\n        return 1\n\n\n    if LIMIT:\n        __all__ = [\"local\"]\n    ```\n\n    ```python context file=cli.py\n    from config import LIMIT\n\n    print(LIMIT)\n    ```\n\n### Resolving modules\n\nModule names resolve to files the way Ruff's import graph resolves them, from Ruff's\n[`src`](https://docs.astral.sh/ruff/settings/#src) directories and the directory above each package. So a `src` layout\nworks, and `tests/helpers.py` imported as `tests.helpers` matches even when `tests` has no `__init__.py`.\n\nA module of a namespace package, a directory without `__init__.py`, is named from the search root above it, as Python\nnames it, so its relative imports count.\n\n### Reading `__all__`\n\nsimplint reads `__all__` from these forms, all holding string literals:\n\n- module-level `=`, annotated and `+=` assignments of list or tuple literals\n- `.extend([...])` and `.append(\"name\")` calls\n\n### Fix\n\nWhat the fix does depends on whether the module already has an `__all__`, and on who star-imports it:\n\n- **The module has an `__all__`**: the fix adds the names to it, and is safe.\n- **It has none, and no other file may star-import it**: the fix creates one, and is unsafe.\n- **It has none, and another file may star-import it**: no fix is offered.\n- **A public module of a library**: no fix is offered at all, since listing a name widens the library's API and what\n  `import *` binds; the author decides.\n\n**Adding to an existing `__all__`**: the fix adds the missing names to the list or tuple literal of the last `=`,\nannotated or `+=` assignment to `__all__`. Adding names is safe.\n\n- Each name goes before the first listed name that Ruff's\n  [unsorted-dunder-all](https://docs.astral.sh/ruff/rules/unsorted-dunder-all/) sorts after it, so a sorted `__all__`\n  stays sorted.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  def shared() -> int:\n      return LIMIT + local()\n\n\n  __all__ = [\n      \"LIMIT\",\n      \"shared\",\n  ]\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  def shared() -> int:\n      return LIMIT + local()\n\n\n  __all__ = [\n      \"LIMIT\",\n      \"local\",\n      \"shared\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import local\n\n  print(local())\n  ```\n\n- A literal written on one line is rewritten one name per line with a trailing comma, the layout `ruff format` gives it.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\n      \"LIMIT\",\n      \"local\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\n**Creating a new `__all__`**: a module without `__all__` gets a new one, sorted and one name per line, as its last\nstatement, or above a closing `if __name__ == \"__main__\":` block. **Unsafe fix:** it narrows what `from module import *`\nexports.\n\n- Last statement of the module:\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\n      \"LIMIT\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\n- Above a closing `__main__` block:\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def main() -> None:\n      print(LIMIT)\n\n\n  if __name__ == \"__main__\":\n      main()\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def main() -> None:\n      print(LIMIT)\n\n\n  __all__ = [\n      \"LIMIT\",\n  ]\n\n\n  if __name__ == \"__main__\":\n      main()\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\nA module another file of the run star-imports, or may star-import, gets no new `__all__`. `import *` takes every public\nname of it, and a name such as `ResourceType` that `pkg/__init__.py` re-exports with `from ._types import *` would\nvanish from `pkg`. A name imported from `pkg` counts as imported from `pkg/_types.py`. Importers outside the run are not\nseen.\n\n```python report file=config.py\nLIMIT = 3\n\n\ndef local() -> int:\n    return 1\n```\n\n```python fixed file=config.py\nLIMIT = 3\n\n\ndef local() -> int:\n    return 1\n```\n\n```python context file=cli.py\nfrom config import LIMIT\n\nprint(LIMIT)\n```\n\n```python context file=star.py\nfrom config import *\n\nprint(local())\n```\n\n### Related rules\n\n[unused-export](SMP402.html) removes the opposite: names `__all__` lists that no other module imports.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#167](https://github.com/astral-sh/ruff/issues/167)\n  (report importers of names `__all__` omits), [#2098](https://github.com/astral-sh/ruff/issues/2098) and\n  [#3482](https://github.com/astral-sh/ruff/issues/3482) (modules with no `__all__`).\n",
+    "explanation": "Flags public module-level names that another file in the same run imports but `__all__` does not list.\n\n## Why is this bad?\n\n`__all__` lists the names that make up a module's public interface\n([PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces)). A name other modules depend on but\n`__all__` omits looks private, so a later change can remove or rename it without anyone noticing the importers.\n\nIn the example below, `cli.py` imports `LIMIT` and `shared` from `config.py`, yet `config.py` lists neither, so nothing\nin `config.py` tells its next editor that `cli.py` relies on them.\n\n## Example\n\n```python context file=cli.py\nfrom config import LIMIT, local, shared\n\nprint(LIMIT, local(), shared())\n```\n\n```python report file=config.py\nLIMIT = 3\n\n\ndef shared() -> int:\n    return LIMIT\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\"local\"]  # cli.py also imports LIMIT and shared\n```\n\nUse instead:\n\n```python context file=cli.py\nfrom config import LIMIT, local, shared\n\nprint(LIMIT, local(), shared())\n```\n\n```python ok file=config.py\nLIMIT = 3\n\n\ndef shared() -> int:\n    return LIMIT\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\"LIMIT\", \"local\", \"shared\"]\n```\n\n## What it does\n\n### Active on\n\nA public module-level name that [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package)\ndoes not list is reported when another file in the same run imports it in one of these ways, or when a listed name's\nsignature reaches it:\n\n- **`from module import name`**, absolute or relative: the importer names the module and the name directly.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\n- **`module.name` access after `import module`**: the importer reads the name as an attribute of the module.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=cli.py\n  import config\n\n  print(config.LIMIT)\n  ```\n\n- **[Entry points](https://packaging.python.org/en/latest/specifications/pyproject-toml/#entry-points)** declared in\n  `pyproject.toml` under `[project.scripts]`, `[project.gui-scripts]` or `[project.entry-points]`: installers and plugin\n  hosts import the name from outside the code.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [project.scripts]\n  run = \"config:main\"\n  ```\n\n  ```python report file=config.py\n  def main() -> None:\n      pass\n\n\n  def helper() -> int:\n      return 1\n\n\n  __all__ = [\"helper\"]\n  ```\n\n- **String-named handlers** passed to `pkgutil.resolve_name` as `module:attribute`, or stored with\n  `parser.set_defaults(handler=\"module:attribute\")`: the dispatch reads the named attribute at runtime.\n\n- **Tool references in `pyproject.toml`**: setuptools reads `[tool.setuptools.dynamic]` `attr` values and\n  `[tool.setuptools.cmdclass]` classes; mypy calls the function named by `[tool.mypy] plugins` (`plugin` by default);\n  Pylint calls `register` in `[tool.pylint.main] load-plugins`. Legacy `[tool.poetry.plugins]` values are entry points.\n  A pytest plugin loaded with `-p` in `[tool.pytest.ini_options] addopts` or `[tool.pytest] addopts` exposes its public\n  hooks by name.\n\n- **Build backend hooks** of the module that `build-backend` names in `[build-system]`: a build frontend calls the PEP\n  517 and PEP 660 hooks by name, so the names are used from outside the code. When the backend is `pdm.backend`, its\n  local `pdm_build.py` hook functions are also called by name; `[tool.pdm.build] custom-hook` may name another file.\n\n  ```toml config\n  [build-system]\n  build-backend = \"build_backend\"\n  requires = [\"setuptools\"]\n  backend-path = [\".\"]\n  ```\n\n  ```python report file=build_backend.py\n  def build_wheel(wheel_directory: str) -> str:\n      return wheel_directory\n\n\n  __all__ = []\n  ```\n\n- **Declarations in the module's `.pyi` stub**: a stub publishes the names it lists.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=config.pyi\n  LIMIT: int\n  ```\n\n- **Imports the module never uses**: such an import is there for its importers, so it counts as a re-export and is\n  reported.\n\n  ```python report file=config.py\n  from os import sep\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=cli.py\n  from config import sep\n\n  print(sep)\n  ```\n\n- **Classes and aliases in the signature of a listed name**: the annotations, bases and bounds of an exported function,\n  or of a public class, that refer to a class or alias make it public API, though no file imports it. Such a name is\n  reached through the same places of every class and alias the signature reaches, and it counts only when its name is\n  public.\n\n  ```python report file=config.py\n  Level = int\n\n\n  def local() -> Level:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python fixed file=config.py\n  Level = int\n\n\n  def local() -> Level:\n      return 1\n\n\n  __all__ = [\n      \"Level\",\n      \"local\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import local\n\n  print(local())\n  ```\n\n### Exceptions\n\n- **`__main__.py` files**: these are entry points, so imports by tests or runners do not make their names a public API.\n\n- **Names starting with `_`**: the underscore already marks them as internal.\n\n  ```python ok file=config.py\n  _LIMIT = 3\n  __all__ = []\n  ```\n\n  ```python context file=cli.py\n  from config import _LIMIT\n\n  print(_LIMIT)\n  ```\n\n- **`__init__.py` files**: these are not checked.\n\n  ```python ok file=pkg/__init__.py\n  LIMIT = 3\n  __all__ = []\n  ```\n\n  ```python context file=cli.py\n  from pkg import LIMIT\n\n  print(LIMIT)\n  ```\n\n- **Private names in the signature of an exported name**: a type a listed name's annotations refer to is public API only\n  when its name is public, and the underscore marks a private one as internal.\n\n  ```python ok file=config.py\n  _Level = int\n\n\n  def local() -> _Level:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=cli.py\n  from config import local\n\n  print(local())\n  ```\n\n- **Test modules**, as defined in [test-class](SMP801.html): these are not checked.\n\n  ```python ok file=test_config.py\n  LIMIT = 3\n  __all__ = []\n  ```\n\n  ```python context file=cli.py\n  from test_config import LIMIT\n\n  print(LIMIT)\n  ```\n\n- **Modules that import `__all__` from elsewhere**: `from ._impl import __all__` re-exports a list this module cannot\n  see.\n\n  ```python ok file=pkg/api.py\n  from ._impl import __all__\n  ```\n\n  ```python context file=pkg/_impl.py\n  LIMIT = 3\n  __all__ = [\"LIMIT\"]\n  ```\n\n- **Names bound only under `if TYPE_CHECKING:`**: such a name exists for type checkers alone, so listing it makes\n  `from module import *` raise `AttributeError` at run time.\n\n  ```python ok file=pkg/typed.py\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n\n      class Locked(dict): ...\n\n\n  def use(x: \"Locked\") -> None: ...\n\n\n  __all__ = [\"use\"]\n  ```\n\n- **A name equal to the module's own name, when the package's `__init__.py` star-imports the module**: listing it would\n  make the `import *` bind it over the package attribute that holds the submodule.\n\n  ```python ok file=pkg/shared.py\n  def shared() -> int:\n      return 1\n\n\n  __all__ = []\n  ```\n\n  ```python context file=pkg/__init__.py\n  from .shared import *\n  ```\n\n  ```python context file=cli.py\n  from pkg.shared import shared\n\n  print(shared())\n  ```\n\n- **Names the module imports and uses itself**: another module reaching `sys` as `app.sys` borrows a name `app` needs,\n  which is not part of its API.\n\n  ```python ok file=app.py\n  import sys\n\n  print(sys.argv)\n  ```\n\n  ```python context file=cli.py\n  import app\n\n  print(app.sys)\n  ```\n\n- **Dotted strings and attribute patches**, such as `mocker.patch(\"pkg.mod.name\")` and `patch.object(module, \"name\")`:\n  they reach into the module without making the name part of its API. Fixes that rename or move a name still leave names\n  reached this way alone.\n\n  ```python ok file=config.py\n  LIMIT = 3\n  __all__ = []\n  ```\n\n  ```python context file=cli.py\n  import config\n  from unittest import mock\n\n  with mock.patch(\"config.LIMIT\"), mock.patch.object(config, \"LIMIT\"):\n      pass\n  ```\n\n- **An `__all__` built any other way** than the forms listed under Reading `__all__` below, such as `list(...)` or\n  `.remove(...)`, or bound inside a nested block such as an `if`, `try` or function: its contents depend on how the\n  module runs, so nothing is reported.\n\n  - a call, such as `list(...)`\n\n    ```python ok file=config.py\n    LIMIT = 3\n\n\n    def local() -> int:\n        return 1\n\n\n    __all__ = list([\"local\"])\n    ```\n\n    ```python context file=cli.py\n    from config import LIMIT\n\n    print(LIMIT)\n    ```\n\n  - a binding in a nested block\n\n    ```python ok file=config.py\n    LIMIT = 3\n\n\n    def local() -> int:\n        return 1\n\n\n    if LIMIT:\n        __all__ = [\"local\"]\n    ```\n\n    ```python context file=cli.py\n    from config import LIMIT\n\n    print(LIMIT)\n    ```\n\n### Resolving modules\n\nModule names resolve to files the way Ruff's import graph resolves them, from Ruff's\n[`src`](https://docs.astral.sh/ruff/settings/#src) directories and the directory above each package. So a `src` layout\nworks, and `tests/helpers.py` imported as `tests.helpers` matches even when `tests` has no `__init__.py`.\n\nA module of a namespace package, a directory without `__init__.py`, is named from the search root above it, as Python\nnames it, so its relative imports count.\n\n### Reading `__all__`\n\nsimplint reads `__all__` from these forms, all holding string literals:\n\n- module-level `=`, annotated and `+=` assignments of list or tuple literals\n- `.extend([...])` and `.append(\"name\")` calls\n\n### Fix\n\nWhat the fix does depends on whether the module already has an `__all__`, and on who star-imports it:\n\n- **The module has an `__all__`**: the fix adds the names to it, and is safe.\n- **It has none, and no other file may star-import it**: the fix creates one, and is unsafe.\n- **It has none, and another file may star-import it**: no fix is offered.\n- **A public module of a library**: no fix is offered at all, since listing a name widens the library's API and what\n  `import *` binds; the author decides.\n\n**Adding to an existing `__all__`**: the fix adds the missing names to the list or tuple literal of the last `=`,\nannotated or `+=` assignment to `__all__`. Adding names is safe.\n\n- Each name goes before the first listed name that Ruff's\n  [unsorted-dunder-all](https://docs.astral.sh/ruff/rules/unsorted-dunder-all/) sorts after it, so a sorted `__all__`\n  stays sorted.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  def shared() -> int:\n      return LIMIT + local()\n\n\n  __all__ = [\n      \"LIMIT\",\n      \"shared\",\n  ]\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  def shared() -> int:\n      return LIMIT + local()\n\n\n  __all__ = [\n      \"LIMIT\",\n      \"local\",\n      \"shared\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import local\n\n  print(local())\n  ```\n\n- A literal written on one line is rewritten one name per line with a trailing comma, the layout `ruff format` gives it.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\n      \"LIMIT\",\n      \"local\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\n**Creating a new `__all__`**: a module without `__all__` gets a new one, sorted and one name per line, as its last\nstatement, or above a closing `if __name__ == \"__main__\":` block. **Unsafe fix:** it narrows what `from module import *`\nexports.\n\n- Last statement of the module:\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\n      \"LIMIT\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\n- Above a closing `__main__` block:\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def main() -> None:\n      print(LIMIT)\n\n\n  if __name__ == \"__main__\":\n      main()\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def main() -> None:\n      print(LIMIT)\n\n\n  __all__ = [\n      \"LIMIT\",\n  ]\n\n\n  if __name__ == \"__main__\":\n      main()\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\nA module another file of the run star-imports, or may star-import, gets no new `__all__`. `import *` takes every public\nname of it, and a name such as `ResourceType` that `pkg/__init__.py` re-exports with `from ._types import *` would\nvanish from `pkg`. A name imported from `pkg` counts as imported from `pkg/_types.py`. Importers outside the run are not\nseen.\n\n```python report file=config.py\nLIMIT = 3\n\n\ndef local() -> int:\n    return 1\n```\n\n```python fixed file=config.py\nLIMIT = 3\n\n\ndef local() -> int:\n    return 1\n```\n\n```python context file=cli.py\nfrom config import LIMIT\n\nprint(LIMIT)\n```\n\n```python context file=star.py\nfrom config import *\n\nprint(local())\n```\n\n### Related rules\n\n[unused-export](SMP402.html) removes the opposite: names `__all__` lists that no other module imports.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#167](https://github.com/astral-sh/ruff/issues/167)\n  (report importers of names `__all__` omits), [#2098](https://github.com/astral-sh/ruff/issues/2098) and\n  [#3482](https://github.com/astral-sh/ruff/issues/3482) (modules with no `__all__`).\n",
     "examples": {
       "parsed": [
         {
@@ -7567,8 +7567,8 @@
         },
         {
           "section": "What it does",
-          "line": 233,
-          "end_line": 242,
+          "line": 235,
+          "end_line": 244,
           "config": null,
           "blocks": [
             {
@@ -7576,8 +7576,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 233,
-              "end_line": 236,
+              "line": 235,
+              "end_line": 238,
               "source": "_LIMIT = 3\n__all__ = []\n"
             },
             {
@@ -7585,16 +7585,16 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 238,
-              "end_line": 242,
+              "line": 240,
+              "end_line": 244,
               "source": "from config import _LIMIT\n\nprint(_LIMIT)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 246,
-          "end_line": 255,
+          "line": 248,
+          "end_line": 257,
           "config": null,
           "blocks": [
             {
@@ -7602,8 +7602,8 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 246,
-              "end_line": 249,
+              "line": 248,
+              "end_line": 251,
               "source": "LIMIT = 3\n__all__ = []\n"
             },
             {
@@ -7611,16 +7611,16 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 251,
-              "end_line": 255,
+              "line": 253,
+              "end_line": 257,
               "source": "from pkg import LIMIT\n\nprint(LIMIT)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 260,
-          "end_line": 275,
+          "line": 262,
+          "end_line": 277,
           "config": null,
           "blocks": [
             {
@@ -7628,8 +7628,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 260,
-              "end_line": 269,
+              "line": 262,
+              "end_line": 271,
               "source": "_Level = int\n\n\ndef local() -> _Level:\n    return 1\n\n\n__all__ = [\"local\"]\n"
             },
             {
@@ -7637,16 +7637,16 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 271,
-              "end_line": 275,
+              "line": 273,
+              "end_line": 277,
               "source": "from config import local\n\nprint(local())\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 279,
-          "end_line": 288,
+          "line": 281,
+          "end_line": 290,
           "config": null,
           "blocks": [
             {
@@ -7654,8 +7654,8 @@
               "language": "python",
               "file": "test_config.py",
               "named": true,
-              "line": 279,
-              "end_line": 282,
+              "line": 281,
+              "end_line": 284,
               "source": "LIMIT = 3\n__all__ = []\n"
             },
             {
@@ -7663,16 +7663,16 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 284,
-              "end_line": 288,
+              "line": 286,
+              "end_line": 290,
               "source": "from test_config import LIMIT\n\nprint(LIMIT)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 293,
-          "end_line": 300,
+          "line": 295,
+          "end_line": 302,
           "config": null,
           "blocks": [
             {
@@ -7680,8 +7680,8 @@
               "language": "python",
               "file": "pkg/api.py",
               "named": true,
-              "line": 293,
-              "end_line": 295,
+              "line": 295,
+              "end_line": 297,
               "source": "from ._impl import __all__\n"
             },
             {
@@ -7689,16 +7689,16 @@
               "language": "python",
               "file": "pkg/_impl.py",
               "named": true,
-              "line": 297,
-              "end_line": 300,
+              "line": 299,
+              "end_line": 302,
               "source": "LIMIT = 3\n__all__ = [\"LIMIT\"]\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 305,
-          "end_line": 317,
+          "line": 307,
+          "end_line": 319,
           "config": null,
           "blocks": [
             {
@@ -7706,16 +7706,16 @@
               "language": "python",
               "file": "pkg/typed.py",
               "named": true,
-              "line": 305,
-              "end_line": 317,
+              "line": 307,
+              "end_line": 319,
               "source": "from typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n\n    class Locked(dict): ...\n\n\ndef use(x: \"Locked\") -> None: ...\n\n\n__all__ = [\"use\"]\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 322,
-          "end_line": 338,
+          "line": 324,
+          "end_line": 340,
           "config": null,
           "blocks": [
             {
@@ -7723,8 +7723,8 @@
               "language": "python",
               "file": "pkg/shared.py",
               "named": true,
-              "line": 322,
-              "end_line": 328,
+              "line": 324,
+              "end_line": 330,
               "source": "def shared() -> int:\n    return 1\n\n\n__all__ = []\n"
             },
             {
@@ -7732,8 +7732,8 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 330,
-              "end_line": 332,
+              "line": 332,
+              "end_line": 334,
               "source": "from .shared import *\n"
             },
             {
@@ -7741,16 +7741,16 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 334,
-              "end_line": 338,
+              "line": 336,
+              "end_line": 340,
               "source": "from pkg.shared import shared\n\nprint(shared())\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 343,
-          "end_line": 353,
+          "line": 345,
+          "end_line": 355,
           "config": null,
           "blocks": [
             {
@@ -7758,8 +7758,8 @@
               "language": "python",
               "file": "app.py",
               "named": true,
-              "line": 343,
-              "end_line": 347,
+              "line": 345,
+              "end_line": 349,
               "source": "import sys\n\nprint(sys.argv)\n"
             },
             {
@@ -7767,16 +7767,16 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 349,
-              "end_line": 353,
+              "line": 351,
+              "end_line": 355,
               "source": "import app\n\nprint(app.sys)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 359,
-          "end_line": 370,
+          "line": 361,
+          "end_line": 372,
           "config": null,
           "blocks": [
             {
@@ -7784,8 +7784,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 359,
-              "end_line": 362,
+              "line": 361,
+              "end_line": 364,
               "source": "LIMIT = 3\n__all__ = []\n"
             },
             {
@@ -7793,16 +7793,16 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 364,
-              "end_line": 370,
+              "line": 366,
+              "end_line": 372,
               "source": "import config\nfrom unittest import mock\n\nwith mock.patch(\"config.LIMIT\"), mock.patch.object(config, \"LIMIT\"):\n    pass\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 378,
-          "end_line": 393,
+          "line": 380,
+          "end_line": 395,
           "config": null,
           "blocks": [
             {
@@ -7810,8 +7810,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 378,
-              "end_line": 387,
+              "line": 380,
+              "end_line": 389,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = list([\"local\"])\n"
             },
             {
@@ -7819,16 +7819,16 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 389,
-              "end_line": 393,
+              "line": 391,
+              "end_line": 395,
               "source": "from config import LIMIT\n\nprint(LIMIT)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 397,
-          "end_line": 413,
+          "line": 399,
+          "end_line": 415,
           "config": null,
           "blocks": [
             {
@@ -7836,8 +7836,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 397,
-              "end_line": 407,
+              "line": 399,
+              "end_line": 409,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\nif LIMIT:\n    __all__ = [\"local\"]\n"
             },
             {
@@ -7845,16 +7845,16 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 409,
-              "end_line": 413,
+              "line": 411,
+              "end_line": 415,
               "source": "from config import LIMIT\n\nprint(LIMIT)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 448,
-          "end_line": 489,
+          "line": 450,
+          "end_line": 491,
           "config": null,
           "blocks": [
             {
@@ -7862,8 +7862,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 448,
-              "end_line": 464,
+              "line": 450,
+              "end_line": 466,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\ndef shared() -> int:\n    return LIMIT + local()\n\n\n__all__ = [\n    \"LIMIT\",\n    \"shared\",\n]\n"
             },
             {
@@ -7871,8 +7871,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 466,
-              "end_line": 483,
+              "line": 468,
+              "end_line": 485,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\ndef shared() -> int:\n    return LIMIT + local()\n\n\n__all__ = [\n    \"LIMIT\",\n    \"local\",\n    \"shared\",\n]\n"
             },
             {
@@ -7880,16 +7880,16 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 485,
-              "end_line": 489,
+              "line": 487,
+              "end_line": 491,
               "source": "from config import local\n\nprint(local())\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 493,
-          "end_line": 522,
+          "line": 495,
+          "end_line": 524,
           "config": null,
           "blocks": [
             {
@@ -7897,8 +7897,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 493,
-              "end_line": 502,
+              "line": 495,
+              "end_line": 504,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\"local\"]\n"
             },
             {
@@ -7906,8 +7906,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 504,
-              "end_line": 516,
+              "line": 506,
+              "end_line": 518,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"LIMIT\",\n    \"local\",\n]\n"
             },
             {
@@ -7915,16 +7915,16 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 518,
-              "end_line": 522,
+              "line": 520,
+              "end_line": 524,
               "source": "from config import LIMIT\n\nprint(LIMIT)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 530,
-          "end_line": 555,
+          "line": 532,
+          "end_line": 557,
           "config": null,
           "blocks": [
             {
@@ -7932,8 +7932,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 530,
-              "end_line": 536,
+              "line": 532,
+              "end_line": 538,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n"
             },
             {
@@ -7941,8 +7941,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 538,
-              "end_line": 549,
+              "line": 540,
+              "end_line": 551,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"LIMIT\",\n]\n"
             },
             {
@@ -7950,16 +7950,16 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 551,
-              "end_line": 555,
+              "line": 553,
+              "end_line": 557,
               "source": "from config import LIMIT\n\nprint(LIMIT)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 559,
-          "end_line": 592,
+          "line": 561,
+          "end_line": 594,
           "config": null,
           "blocks": [
             {
@@ -7967,8 +7967,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 559,
-              "end_line": 569,
+              "line": 561,
+              "end_line": 571,
               "source": "LIMIT = 3\n\n\ndef main() -> None:\n    print(LIMIT)\n\n\nif __name__ == \"__main__\":\n    main()\n"
             },
             {
@@ -7976,8 +7976,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 571,
-              "end_line": 586,
+              "line": 573,
+              "end_line": 588,
               "source": "LIMIT = 3\n\n\ndef main() -> None:\n    print(LIMIT)\n\n\n__all__ = [\n    \"LIMIT\",\n]\n\n\nif __name__ == \"__main__\":\n    main()\n"
             },
             {
@@ -7985,16 +7985,16 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 588,
-              "end_line": 592,
+              "line": 590,
+              "end_line": 594,
               "source": "from config import LIMIT\n\nprint(LIMIT)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 599,
-          "end_line": 625,
+          "line": 601,
+          "end_line": 627,
           "config": null,
           "blocks": [
             {
@@ -8002,8 +8002,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 599,
-              "end_line": 605,
+              "line": 601,
+              "end_line": 607,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n"
             },
             {
@@ -8011,8 +8011,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 607,
-              "end_line": 613,
+              "line": 609,
+              "end_line": 615,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n"
             },
             {
@@ -8020,8 +8020,8 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 615,
-              "end_line": 619,
+              "line": 617,
+              "end_line": 621,
               "source": "from config import LIMIT\n\nprint(LIMIT)\n"
             },
             {
@@ -8029,8 +8029,8 @@
               "language": "python",
               "file": "star.py",
               "named": true,
-              "line": 621,
-              "end_line": 625,
+              "line": 623,
+              "end_line": 627,
               "source": "from config import *\n\nprint(local())\n"
             }
           ]
@@ -10188,7 +10188,7 @@
     "name": "init-module-content",
     "summary": "`__init__.py` holding more than a docstring",
     "fix": "None",
-    "explanation": "Flags `__init__.py` files that hold anything besides a module docstring. Importing any submodule runs the package's\n`__init__.py` first, so code there slows down or breaks unrelated modules.\n\n## Why is this bad?\n\nPython runs a package's `__init__.py` before it imports any of the package's submodules. Importing `pkg.sub` therefore\nalso runs everything in `pkg/__init__.py`, and a slow or failing import there slows down or breaks unrelated modules.\nRe-exports give one object two import paths and invite circular imports.\n\n## Example\n\n```python context file=http_client/client.py\nclass Client:\n    pass\n```\n\n```python report file=http_client/__init__.py\n\"\"\"HTTP client.\"\"\"\n\nfrom .client import Client\n\n__all__ = [\"Client\"]\n```\n\nUse instead:\n\n```python context file=http_client/client.py\nclass Client:\n    pass\n```\n\n```python ok file=http_client/__init__.py\n\"\"\"HTTP client.\"\"\"\n```\n\nImporters then use `from http_client.client import Client`. In a library whose public package presents the API, keep the\ncode in a private module and only re-export it:\n\n```toml config\n[tool.simplint]\nproject-kind = \"library\"\n```\n\n```python context file=http_client/_client.py\nclass Client:\n    pass\n```\n\n```python ok file=http_client/__init__.py\n\"\"\"HTTP client.\"\"\"\n\nfrom ._client import Client\n\n__all__ = [\"Client\"]\n```\n\n## What it does\n\nNo fix is offered: removing the code breaks every importer that relies on it, and moving it needs a decision about where\nit belongs.\n\n### Active on\n\n- **Statements after the docstring of an\n  [`__init__.py`](https://docs.python.org/3/reference/import.html#regular-packages)**: every one is reported, including\n  imports and [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package), since each runs\n  whenever any submodule is imported.\n\n  ```python report file=pkg/__init__.py\n  \"\"\"HTTP client.\"\"\"\n\n  from .client import Client\n\n  __all__ = [\"Client\"]\n  ```\n\n- **Other statements in a public package of a library**: anything beyond the re-exports listed under Exceptions is\n  reported there too.\n\n  - an import of a name it does not export:\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python report file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    from ._core import run\n    from ._core import stop as stop\n\n    __all__ = [\"stop\"]\n    ```\n\n  - any other statement, such as an assignment:\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python report file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    VERSION = \"1.0\"\n    ```\n\n### Exceptions\n\n- **The module docstring**: it documents the package and runs no code.\n\n  ```python ok file=pkg/__init__.py\n  \"\"\"HTTP client.\"\"\"\n  ```\n\n- **Re-exports in a public package of a library**: such a package may re-export its public API, as\n  [PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces) describes for a package's `__init__` that\n  exposes functionality from submodules. Its `__init__.py` may hold:\n\n  - imports whose every name it exports through `__all__`:\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python ok file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    from ._core import run\n\n    __all__ = [\"run\"]\n    ```\n\n  - a redundant alias, such as `from ._core import run as run`:\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python ok file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    from ._core import run as run\n    ```\n\n  - `import *`:\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python ok file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    from ._core import *\n    ```\n\n  - the `__all__` that lists them\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python ok file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    __all__ = [\"run\"]\n    ```\n\n  - `from __future__` imports, which change no behavior at run time\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python ok file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    from __future__ import annotations\n    ```\n\n  - `__lazy_modules__`, the modules Python 3.15 loads lazily when the package's imports run\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python ok file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    __lazy_modules__ = [\"demo._core\"]\n\n    from ._core import run\n\n    __all__ = [\"run\"]\n    ```\n\n- **Statements Ruff reports**: with Ruff's preview mode on and\n  [RUF067](https://docs.astral.sh/ruff/rules/non-empty-init-module/) selected, Ruff reports the statements of an\n  `__init__.py` that it does not allow, so this rule leaves them to Ruff. Ruff allows imports, dunder assignments and\n  `if TYPE_CHECKING` blocks, unless `strictly-empty-init-modules` is set.\n\n  ```toml config\n  [tool.ruff.lint]\n  preview = true\n  select = [\"RUF067\"]\n  ```\n\n  ```python ok file=pkg/__init__.py\n  \"\"\"HTTP client.\"\"\"\n\n  VERSION = \"1.0\"\n  ```\n\n### Public packages\n\nA package is **public** when it belongs to one of the library's API packages and no part of its path starts with `_`;\nsee [undocumented-public-api](SMP903.html).\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rule\n  [RUF067](https://docs.astral.sh/ruff/rules/non-empty-init-module/), which reports code in `__init__.py` except imports\n  and dunder assignments (all of it with `strictly-empty-init-modules`) and which this rule leaves to it; this rule also\n  reports the imports a library's public package does not re-export.\n- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports logic in an `__init__`\n  module as\n  [WPS412](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/best_practices.html#wemake_python_styleguide.violations.best_practices.InitModuleHasLogicViolation),\n  with no fix.\n",
+    "explanation": "Flags `__init__.py` files that hold anything besides a module docstring. Importing any submodule runs the package's\n`__init__.py` first, so code there slows down or breaks unrelated modules.\n\n## Why is this bad?\n\nPython runs a package's `__init__.py` before it imports any of the package's submodules. Importing `pkg.sub` therefore\nalso runs everything in `pkg/__init__.py`, and a slow or failing import there slows down or breaks unrelated modules.\nRe-exports give one object two import paths and invite circular imports.\n\n## Example\n\n```python context file=http_client/client.py\nclass Client:\n    pass\n```\n\n```python report file=http_client/__init__.py\n\"\"\"HTTP client.\"\"\"\n\nfrom .client import Client\n\n__all__ = [\"Client\"]\n```\n\nUse instead:\n\n```python context file=http_client/client.py\nclass Client:\n    pass\n```\n\n```python ok file=http_client/__init__.py\n\"\"\"HTTP client.\"\"\"\n```\n\nImporters then use `from http_client.client import Client`. In a library whose public package presents the API, keep the\ncode in a private module and only re-export it:\n\n```toml config\n[tool.simplint]\nproject-kind = \"library\"\n```\n\n```python context file=http_client/_client.py\nclass Client:\n    pass\n```\n\n```python ok file=http_client/__init__.py\n\"\"\"HTTP client.\"\"\"\n\nfrom ._client import Client\n\n__all__ = [\"Client\"]\n```\n\n## What it does\n\nNo fix is offered: removing the code breaks every importer that relies on it, and moving it needs a decision about where\nit belongs.\n\n### Active on\n\n- **Statements after the docstring of an\n  [`__init__.py`](https://docs.python.org/3/reference/import.html#regular-packages)**: every one is reported, including\n  imports and [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package), since each runs\n  whenever any submodule is imported.\n\n  ```python report file=pkg/__init__.py\n  \"\"\"HTTP client.\"\"\"\n\n  from .client import Client\n\n  __all__ = [\"Client\"]\n  ```\n\n- **Other statements in a public package of a library**: anything beyond the re-exports listed under Exceptions is\n  reported there too.\n\n  - an import of a name it does not export:\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python report file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    from ._core import run\n    from ._core import stop as stop\n\n    __all__ = [\"stop\"]\n    ```\n\n  - any other statement, such as an assignment:\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python report file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    VERSION = \"1.0\"\n    ```\n\n### Exceptions\n\n- **Test packages and nested test projects**: fixtures may need initializer code to exercise import behavior. A package\n  under a test root that is itself a project is treated as test input, even when its module name does not start with\n  `test_`.\n\n- **PEP 562 package hooks and `if TYPE_CHECKING` blocks**: `__getattr__` can load package attributes on demand,\n  `__dir__` can list them, and a `TYPE_CHECKING` block can expose their types to type checkers. The imports used by\n  those hooks may still need a suppression when they are not re-exports.\n\n- **The module docstring**: it documents the package and runs no code.\n\n  ```python ok file=pkg/__init__.py\n  \"\"\"HTTP client.\"\"\"\n  ```\n\n- **Re-exports in a public package of a library**: such a package may re-export its public API, as\n  [PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces) describes for a package's `__init__` that\n  exposes functionality from submodules. Its `__init__.py` may hold:\n\n  - imports whose every name it exports through `__all__`:\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python ok file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    from ._core import run\n\n    __all__ = [\"run\"]\n    ```\n\n  - a redundant alias, such as `from ._core import run as run`:\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python ok file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    from ._core import run as run\n    ```\n\n  - `import *`:\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python ok file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    from ._core import *\n    ```\n\n  - the `__all__` that lists them\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python ok file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    __all__ = [\"run\"]\n    ```\n\n  - `from __future__` imports, which change no behavior at run time\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python ok file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    from __future__ import annotations\n    ```\n\n  - `__lazy_modules__`, the modules Python 3.15 loads lazily when the package's imports run\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python ok file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    __lazy_modules__ = [\"demo._core\"]\n\n    from ._core import run\n\n    __all__ = [\"run\"]\n    ```\n\n- **Statements Ruff reports**: with Ruff's preview mode on and\n  [RUF067](https://docs.astral.sh/ruff/rules/non-empty-init-module/) selected, Ruff reports the statements of an\n  `__init__.py` that it does not allow, so this rule leaves them to Ruff. Ruff allows imports, dunder assignments and\n  `if TYPE_CHECKING` blocks, unless `strictly-empty-init-modules` is set.\n\n  ```toml config\n  [tool.ruff.lint]\n  preview = true\n  select = [\"RUF067\"]\n  ```\n\n  ```python ok file=pkg/__init__.py\n  \"\"\"HTTP client.\"\"\"\n\n  VERSION = \"1.0\"\n  ```\n\n### Public packages\n\nA package is **public** when it belongs to one of the library's API packages and no part of its path starts with `_`;\nsee [undocumented-public-api](SMP903.html).\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rule\n  [RUF067](https://docs.astral.sh/ruff/rules/non-empty-init-module/), which reports code in `__init__.py` except imports\n  and dunder assignments (all of it with `strictly-empty-init-modules`) and which this rule leaves to it; this rule also\n  reports the imports a library's public package does not re-export.\n- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports logic in an `__init__`\n  module as\n  [WPS412](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/best_practices.html#wemake_python_styleguide.violations.best_practices.InitModuleHasLogicViolation),\n  with no fix.\n",
     "examples": {
       "parsed": [
         {
@@ -10334,8 +10334,8 @@
         },
         {
           "section": "What it does",
-          "line": 121,
-          "end_line": 123,
+          "line": 129,
+          "end_line": 131,
           "config": null,
           "blocks": [
             {
@@ -10343,19 +10343,19 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 121,
-              "end_line": 123,
+              "line": 129,
+              "end_line": 131,
               "source": "\"\"\"HTTP client.\"\"\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 131,
-          "end_line": 146,
+          "line": 139,
+          "end_line": 154,
           "config": {
-            "line": 131,
-            "end_line": 138,
+            "line": 139,
+            "end_line": 146,
             "source": "[build-system]\nrequires = [\"setuptools\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"demo\"\n"
           },
           "blocks": [
@@ -10364,19 +10364,19 @@
               "language": "python",
               "file": "demo/__init__.py",
               "named": true,
-              "line": 140,
-              "end_line": 146,
+              "line": 148,
+              "end_line": 154,
               "source": "\"\"\"HTTP client.\"\"\"\n\nfrom ._core import run\n\n__all__ = [\"run\"]\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 150,
-          "end_line": 163,
+          "line": 158,
+          "end_line": 171,
           "config": {
-            "line": 150,
-            "end_line": 157,
+            "line": 158,
+            "end_line": 165,
             "source": "[build-system]\nrequires = [\"setuptools\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"demo\"\n"
           },
           "blocks": [
@@ -10385,19 +10385,19 @@
               "language": "python",
               "file": "demo/__init__.py",
               "named": true,
-              "line": 159,
-              "end_line": 163,
+              "line": 167,
+              "end_line": 171,
               "source": "\"\"\"HTTP client.\"\"\"\n\nfrom ._core import run as run\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 167,
-          "end_line": 180,
+          "line": 175,
+          "end_line": 188,
           "config": {
-            "line": 167,
-            "end_line": 174,
+            "line": 175,
+            "end_line": 182,
             "source": "[build-system]\nrequires = [\"setuptools\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"demo\"\n"
           },
           "blocks": [
@@ -10406,19 +10406,19 @@
               "language": "python",
               "file": "demo/__init__.py",
               "named": true,
-              "line": 176,
-              "end_line": 180,
+              "line": 184,
+              "end_line": 188,
               "source": "\"\"\"HTTP client.\"\"\"\n\nfrom ._core import *\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 184,
-          "end_line": 197,
+          "line": 192,
+          "end_line": 205,
           "config": {
-            "line": 184,
-            "end_line": 191,
+            "line": 192,
+            "end_line": 199,
             "source": "[build-system]\nrequires = [\"setuptools\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"demo\"\n"
           },
           "blocks": [
@@ -10427,19 +10427,19 @@
               "language": "python",
               "file": "demo/__init__.py",
               "named": true,
-              "line": 193,
-              "end_line": 197,
+              "line": 201,
+              "end_line": 205,
               "source": "\"\"\"HTTP client.\"\"\"\n\n__all__ = [\"run\"]\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 201,
-          "end_line": 214,
+          "line": 209,
+          "end_line": 222,
           "config": {
-            "line": 201,
-            "end_line": 208,
+            "line": 209,
+            "end_line": 216,
             "source": "[build-system]\nrequires = [\"setuptools\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"demo\"\n"
           },
           "blocks": [
@@ -10448,19 +10448,19 @@
               "language": "python",
               "file": "demo/__init__.py",
               "named": true,
-              "line": 210,
-              "end_line": 214,
+              "line": 218,
+              "end_line": 222,
               "source": "\"\"\"HTTP client.\"\"\"\n\nfrom __future__ import annotations\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 218,
-          "end_line": 235,
+          "line": 226,
+          "end_line": 243,
           "config": {
-            "line": 218,
-            "end_line": 225,
+            "line": 226,
+            "end_line": 233,
             "source": "[build-system]\nrequires = [\"setuptools\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"demo\"\n"
           },
           "blocks": [
@@ -10469,19 +10469,19 @@
               "language": "python",
               "file": "demo/__init__.py",
               "named": true,
-              "line": 227,
-              "end_line": 235,
+              "line": 235,
+              "end_line": 243,
               "source": "\"\"\"HTTP client.\"\"\"\n\n__lazy_modules__ = [\"demo._core\"]\n\nfrom ._core import run\n\n__all__ = [\"run\"]\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 242,
-          "end_line": 252,
+          "line": 250,
+          "end_line": 260,
           "config": {
-            "line": 242,
-            "end_line": 246,
+            "line": 250,
+            "end_line": 254,
             "source": "[tool.ruff.lint]\npreview = true\nselect = [\"RUF067\"]\n"
           },
           "blocks": [
@@ -10490,8 +10490,8 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 248,
-              "end_line": 252,
+              "line": 256,
+              "end_line": 260,
               "source": "\"\"\"HTTP client.\"\"\"\n\nVERSION = \"1.0\"\n"
             }
           ]
@@ -13995,7 +13995,7 @@
     "name": "single-caller-helper",
     "summary": "Private helpers with one short call site, which inlining would keep short",
     "fix": "None",
-    "explanation": "Flags a private module-level function that only one other function calls, when inlining its statements into that caller\nkeeps the caller short.\n\n## Why is this bad?\n\nA helper with a single caller splits one piece of work over two functions. A reader has to jump to the helper to learn\nwhat the caller does, and the helper's name adds little when only one place uses it. Inlining the helper's statements\nkeeps the work in one function, as long as the caller stays short enough to read at once.\n\n## Example\n\n```python report\ndef load(text: str) -> dict[str, str]:\n    header = _parse_header(text)\n    return {\"header\": header}\n\n\ndef _parse_header(text: str) -> str:\n    first = text.splitlines()[0]\n    return first.strip()\n```\n\nUse instead:\n\n```python ok\ndef load(text: str) -> dict[str, str]:\n    first = text.splitlines()[0]\n    header = first.strip()\n    return {\"header\": header}\n```\n\n## Configuration\n\n- [`logic.max-helper-statements`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#logic) in\n  `[tool.simplint]`: the most statements a helper may have to be suggested for inlining, such as\n  `max-helper-statements = 2` under `[tool.simplint.logic]`\n\n  ```toml config\n  [tool.simplint.logic]\n  max-helper-statements = 2\n  ```\n\n  ```python ok\n  def load(text: str) -> str:\n      return _first(text)\n\n\n  def _first(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- [`logic.max-caller-statements`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#logic) in\n  `[tool.simplint]`: the most statements the caller may have once the helper's are added, such as\n  `max-caller-statements = 30` under `[tool.simplint.logic]`\n\n  ```toml config\n  [tool.simplint.logic]\n  max-caller-statements = 3\n  ```\n\n  ```python ok\n  def load(text: str) -> dict[str, str]:\n      header = _parse_header(text)\n      return {\"header\": header}\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n## What it does\n\nStatements are counted as the top-level statements of a body, each nested block counting as one, and a docstring does\nnot count. A helper of `max-helper-statements` or more statements is not reported. The caller's statements plus the\nhelper's must stay within `max-caller-statements` for the helper to be reported. The caller's cognitive complexity must\nalso stay within `max-cognitive-complexity` once the helper's body is scored at the depth of its call site, so that\n[cognitive-complexity](SMP529.html) does not ask to split the caller again. The caller must also stay within the limits\nof the Ruff rules that run, which count the inlined statements: `lint.mccabe.max-complexity` for C901, and\n`lint.pylint.max-branches`, `lint.pylint.max-statements` and `lint.pylint.max-returns` for PLR0912, PLR0915 and PLR0911.\nThese counts are conservative estimates, so a caller they might report is left as it is.\n\n### Active on\n\n- **Private module-level functions with one call site in the run**: a function whose name starts with an underscore,\n  that no other module imports and no string names, and that one other function calls. The call is the only reference to\n  the helper, and the helper has fewer statements than `max-helper-statements`.\n\n  ```python report\n  def load(text: str) -> dict[str, str]:\n      header = _parse_header(text)\n      return {\"header\": header}\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n### Exceptions\n\n- **Helpers that only forward their arguments**: [forwarding-function](SMP501.html) reports them, asking to call the\n  target directly rather than inline the wrapper.\n\n  ```python ok\n  import json\n\n\n  def run(path: str) -> dict[str, str]:\n      return _load(path)\n\n\n  def _load(path: str) -> dict[str, str]:\n      return json.loads(path)\n  ```\n\n- **Helpers called from another module**: inlining would move code across files, so an import of the helper keeps it.\n\n  ```python ok file=helpers.py\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n  ```python context file=main.py\n  from helpers import _parse_header\n\n\n  def load(text: str) -> str:\n      return _parse_header(text)\n  ```\n\n- **Helpers passed as a value**: `map(_parse_header, texts)` does not call the helper where it stands.\n\n  ```python ok\n  def load(texts: list[str]) -> list[str]:\n      return list(map(_parse_header, texts))\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **Decorated helpers**: a decorator wraps the helper, so the call does not run its body.\n\n  ```python ok\n  import functools\n\n\n  def load(text: str) -> str:\n      return _parse_header(text)\n\n\n  @functools.cache\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **Helpers named in `__all__`**: the module exports them, so they stay.\n\n  ```python ok\n  __all__ = [\"_parse_header\", \"load\"]\n\n\n  def load(text: str) -> str:\n      return _parse_header(text)\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **Recursive helpers**: a helper that calls itself keeps its own call.\n\n  ```python ok\n  def load(depth: int) -> int:\n      return _count(depth)\n\n\n  def _count(depth: int) -> int:\n      return 0 if depth == 0 else _count(depth - 1)\n  ```\n\n- **Calls inside a loop, a comprehension or a lambda**: inlining would run the helper's statements once per pass.\n\n  ```python ok\n  def load(texts: list[str]) -> list[str]:\n      headers = []\n      for text in texts:\n          headers.append(_parse_header(text))\n      return headers\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **Helpers with `max-helper-statements` or more statements**: a longer helper is worth its name.\n\n  ```python ok\n  def load(text: str) -> str:\n      return _parse_header(text)\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      stripped = first.strip()\n      return stripped.lower()\n  ```\n\n- **A caller that would grow past `max-caller-statements`**: the inlined caller would be too long to read at once.\n\n  ```toml config\n  [tool.simplint.logic]\n  max-caller-statements = 3\n  ```\n\n  ```python ok\n  def load(text: str) -> dict[str, str]:\n      header = _parse_header(text)\n      return {\"header\": header}\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **A caller that the inlined helper would push over the cognitive-complexity limit**: a call deep inside the caller\n  scores the helper's branches deeper, so the caller would be reported by cognitive-complexity right after inlining.\n\n  ```toml config\n  [tool.simplint.logic]\n  max-cognitive-complexity = 5\n  ```\n\n  ```python ok\n  def load(text: str) -> str:\n      if text:\n          return _first(text)\n      return \"\"\n\n\n  def _first(text: str) -> str:\n      for line in text.splitlines():\n          if line:\n              return line.strip()\n      return \"\"\n  ```\n\n- **Branching helpers called from a test**: [conditional-in-test](SMP803.html) reports the branches of a test function,\n  so inlining a helper with an `if`, `match` or conditional expression would move that branch into the test. A\n  conditional that only forms a comprehension's item does not count, since conditional-in-test exempts it.\n\n  ```python ok file=tests/test_header.py\n  def test_kind() -> None:\n      assert _expected(\"a\") == 1\n\n\n  def _expected(kind: str) -> int:\n      if kind == \"a\":\n          return 1\n      return 2\n  ```\n\n- **A caller that the inlined helper might push over a limit of a Ruff rule**: Ruff's complexity and size rules count\n  the inlined statements too, so a caller one of them might report stays as it is. Each limit counts only while its rule\n  is selected in Ruff: `lint.mccabe.max-complexity` for C901 `complex-structure`, `lint.pylint.max-branches` for PLR0912\n  `too-many-branches`, `lint.pylint.max-statements` for PLR0915 `too-many-statements`, and `lint.pylint.max-returns` for\n  PLR0911 `too-many-return-statements`.\n\n  While any of those four rules runs, a call in a conditional expression or in a later `and`/`or` operand is left alone,\n  since inlining it would need a new `if`. A helper that is a lone `return` is reported anyway, as it inlines as an\n  expression.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"C901\"]\n\n  [tool.ruff.lint.mccabe]\n  max-complexity = 1\n  ```\n\n  ```python ok\n  def load(text: str) -> str:\n      return _first(text)\n\n\n  def _first(text: str) -> str:\n      if text:\n          return text.strip()\n      return \"\"\n  ```\n\n- **Coroutines**: an `async def` helper returns an awaitable, so its caller would await the result of the inlined code\n  instead.\n\n  ```python ok\n  async def load(text: str) -> str:\n      return await _parse_header(text)\n\n\n  async def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **Generators**: a helper with `yield` runs only when iterated, so inlining it would turn its caller into a generator.\n\n  ```python ok\n  def load(text: str) -> list[str]:\n      return list(_lines(text))\n\n\n  def _lines(text: str):\n      for line in text.splitlines():\n          yield line.strip()\n  ```\n\n- **Type guards**: a helper returning `TypeGuard[...]` or `TypeIs[...]`, from `typing` or `typing_extensions` under any\n  alias, narrows the caller's type where it is called, and the bare expression inlined in its place would not, so the\n  caller would fail type checking.\n\n  ```python ok\n  from typing import TypeGuard\n\n\n  def load(value: object) -> str:\n      if _is_text(value):\n          return value\n      return \"\"\n\n\n  def _is_text(value: object) -> TypeGuard[str]:\n      return isinstance(value, str)\n  ```\n\n### Fix\n\nThe rule has no fix: inlining needs the helper's parameters renamed to the caller's arguments, which the rule does not\nattempt.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags a private module-level function that only one other function calls, when inlining its statements into that caller\nkeeps the caller short.\n\n## Why is this bad?\n\nA helper with a single caller splits one piece of work over two functions. A reader has to jump to the helper to learn\nwhat the caller does, and the helper's name adds little when only one place uses it. Inlining the helper's statements\nkeeps the work in one function, as long as the caller stays short enough to read at once.\n\n## Example\n\n```python report\ndef load(text: str) -> dict[str, str]:\n    header = _parse_header(text)\n    return {\"header\": header}\n\n\ndef _parse_header(text: str) -> str:\n    first = text.splitlines()[0]\n    return first.strip()\n```\n\nUse instead:\n\n```python ok\ndef load(text: str) -> dict[str, str]:\n    first = text.splitlines()[0]\n    header = first.strip()\n    return {\"header\": header}\n```\n\n## Configuration\n\n- [`logic.max-helper-statements`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#logic) in\n  `[tool.simplint]`: the most statements a helper may have to be suggested for inlining, such as\n  `max-helper-statements = 2` under `[tool.simplint.logic]`\n\n  ```toml config\n  [tool.simplint.logic]\n  max-helper-statements = 2\n  ```\n\n  ```python ok\n  def load(text: str) -> str:\n      return _first(text)\n\n\n  def _first(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- [`logic.max-caller-statements`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#logic) in\n  `[tool.simplint]`: the most statements the caller may have once the helper's are added, such as\n  `max-caller-statements = 30` under `[tool.simplint.logic]`\n\n  ```toml config\n  [tool.simplint.logic]\n  max-caller-statements = 3\n  ```\n\n  ```python ok\n  def load(text: str) -> dict[str, str]:\n      header = _parse_header(text)\n      return {\"header\": header}\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n## What it does\n\nStatements are counted as the top-level statements of a body, each nested block counting as one, and a docstring does\nnot count. A helper of `max-helper-statements` or more statements is not reported. The caller's statements plus the\nhelper's must stay within `max-caller-statements` for the helper to be reported. The caller's cognitive complexity must\nalso stay within `max-cognitive-complexity` once the helper's body is scored at the depth of its call site, so that\n[cognitive-complexity](SMP529.html) does not ask to split the caller again. The caller must also stay within the limits\nof the Ruff rules that run, which count the inlined statements: `lint.mccabe.max-complexity` for C901, and\n`lint.pylint.max-branches`, `lint.pylint.max-statements` and `lint.pylint.max-returns` for PLR0912, PLR0915 and PLR0911.\nIt also checks PLR1702's nested-block limit, PLW0717's try-clause statement limit and TRY301 when a helper raises inside\na caller's `try` block. These counts are conservative estimates, so a caller they might report is left as it is.\n\n### Active on\n\n- **Private module-level functions with one call site in the run**: a function whose name starts with an underscore,\n  that no other module imports and no string names, and that one other function calls. The call is the only reference to\n  the helper, and the helper has fewer statements than `max-helper-statements`.\n\n  ```python report\n  def load(text: str) -> dict[str, str]:\n      header = _parse_header(text)\n      return {\"header\": header}\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n### Exceptions\n\n- **Helpers that only forward their arguments**: [forwarding-function](SMP501.html) reports them, asking to call the\n  target directly rather than inline the wrapper.\n\n  ```python ok\n  import json\n\n\n  def run(path: str) -> dict[str, str]:\n      return _load(path)\n\n\n  def _load(path: str) -> dict[str, str]:\n      return json.loads(path)\n  ```\n\n- **Helpers called from another module**: inlining would move code across files, so an import of the helper keeps it.\n\n  ```python ok file=helpers.py\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n  ```python context file=main.py\n  from helpers import _parse_header\n\n\n  def load(text: str) -> str:\n      return _parse_header(text)\n  ```\n\n- **Helpers passed as a value**: `map(_parse_header, texts)` does not call the helper where it stands.\n\n  ```python ok\n  def load(texts: list[str]) -> list[str]:\n      return list(map(_parse_header, texts))\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **Decorated helpers**: a decorator wraps the helper, so the call does not run its body.\n\n  ```python ok\n  import functools\n\n\n  def load(text: str) -> str:\n      return _parse_header(text)\n\n\n  @functools.cache\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **Helpers named in `__all__`**: the module exports them, so they stay.\n\n  ```python ok\n  __all__ = [\"_parse_header\", \"load\"]\n\n\n  def load(text: str) -> str:\n      return _parse_header(text)\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **Recursive helpers**: a helper that calls itself keeps its own call.\n\n  ```python ok\n  def load(depth: int) -> int:\n      return _count(depth)\n\n\n  def _count(depth: int) -> int:\n      return 0 if depth == 0 else _count(depth - 1)\n  ```\n\n- **Calls inside a loop, a comprehension or a lambda**: inlining would run the helper's statements once per pass.\n\n  ```python ok\n  def load(texts: list[str]) -> list[str]:\n      headers = []\n      for text in texts:\n          headers.append(_parse_header(text))\n      return headers\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **Helpers with `max-helper-statements` or more statements**: a longer helper is worth its name.\n\n  ```python ok\n  def load(text: str) -> str:\n      return _parse_header(text)\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      stripped = first.strip()\n      return stripped.lower()\n  ```\n\n- **A caller that would grow past `max-caller-statements`**: the inlined caller would be too long to read at once.\n\n  ```toml config\n  [tool.simplint.logic]\n  max-caller-statements = 3\n  ```\n\n  ```python ok\n  def load(text: str) -> dict[str, str]:\n      header = _parse_header(text)\n      return {\"header\": header}\n\n\n  def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **A caller that the inlined helper would push over the cognitive-complexity limit**: a call deep inside the caller\n  scores the helper's branches deeper, so the caller would be reported by cognitive-complexity right after inlining.\n\n  ```toml config\n  [tool.simplint.logic]\n  max-cognitive-complexity = 5\n  ```\n\n  ```python ok\n  def load(text: str) -> str:\n      if text:\n          return _first(text)\n      return \"\"\n\n\n  def _first(text: str) -> str:\n      for line in text.splitlines():\n          if line:\n              return line.strip()\n      return \"\"\n  ```\n\n- **Branching helpers called from a test**: [conditional-in-test](SMP803.html) reports the branches of a test function,\n  so inlining a helper with an `if`, `match` or conditional expression would move that branch into the test. A\n  conditional that only forms a comprehension's item does not count, since conditional-in-test exempts it.\n\n  ```python ok file=tests/test_header.py\n  def test_kind() -> None:\n      assert _expected(\"a\") == 1\n\n\n  def _expected(kind: str) -> int:\n      if kind == \"a\":\n          return 1\n      return 2\n  ```\n\n- **A caller that the inlined helper might push over a limit of a Ruff rule**: Ruff's complexity and size rules count\n  the inlined statements too, so a caller one of them might report stays as it is. Each limit counts only while its rule\n  is selected in Ruff: `lint.mccabe.max-complexity` for C901 `complex-structure`, `lint.pylint.max-branches` for PLR0912\n  `too-many-branches`, `lint.pylint.max-statements` for PLR0915 `too-many-statements`, and `lint.pylint.max-returns` for\n  PLR0911 `too-many-return-statements`.\n\n  While any of those four rules runs, a call in a conditional expression or in a later `and`/`or` operand is left alone,\n  since inlining it would need a new `if`. A helper that is a lone `return` is reported anyway, as it inlines as an\n  expression.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"C901\"]\n\n  [tool.ruff.lint.mccabe]\n  max-complexity = 1\n  ```\n\n  ```python ok\n  def load(text: str) -> str:\n      return _first(text)\n\n\n  def _first(text: str) -> str:\n      if text:\n          return text.strip()\n      return \"\"\n  ```\n\n- **Coroutines**: an `async def` helper returns an awaitable, so its caller would await the result of the inlined code\n  instead.\n\n  ```python ok\n  async def load(text: str) -> str:\n      return await _parse_header(text)\n\n\n  async def _parse_header(text: str) -> str:\n      first = text.splitlines()[0]\n      return first.strip()\n  ```\n\n- **Generators**: a helper with `yield` runs only when iterated, so inlining it would turn its caller into a generator.\n\n  ```python ok\n  def load(text: str) -> list[str]:\n      return list(_lines(text))\n\n\n  def _lines(text: str):\n      for line in text.splitlines():\n          yield line.strip()\n  ```\n\n- **Type guards**: a helper returning `TypeGuard[...]` or `TypeIs[...]`, from `typing` or `typing_extensions` under any\n  alias, narrows the caller's type where it is called, and the bare expression inlined in its place would not, so the\n  caller would fail type checking.\n\n  ```python ok\n  from typing import TypeGuard\n\n\n  def load(value: object) -> str:\n      if _is_text(value):\n          return value\n      return \"\"\n\n\n  def _is_text(value: object) -> TypeGuard[str]:\n      return isinstance(value, str)\n  ```\n\n### Fix\n\nThe rule has no fix: inlining needs the helper's parameters renamed to the caller's arguments, which the rule does not\nattempt.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -14076,8 +14076,8 @@
         },
         {
           "section": "What it does",
-          "line": 90,
-          "end_line": 99,
+          "line": 91,
+          "end_line": 100,
           "config": null,
           "blocks": [
             {
@@ -14085,16 +14085,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 90,
-              "end_line": 99,
+              "line": 91,
+              "end_line": 100,
               "source": "def load(text: str) -> dict[str, str]:\n    header = _parse_header(text)\n    return {\"header\": header}\n\n\ndef _parse_header(text: str) -> str:\n    first = text.splitlines()[0]\n    return first.strip()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 106,
-          "end_line": 116,
+          "line": 107,
+          "end_line": 117,
           "config": null,
           "blocks": [
             {
@@ -14102,16 +14102,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 106,
-              "end_line": 116,
+              "line": 107,
+              "end_line": 117,
               "source": "import json\n\n\ndef run(path: str) -> dict[str, str]:\n    return _load(path)\n\n\ndef _load(path: str) -> dict[str, str]:\n    return json.loads(path)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 120,
-          "end_line": 132,
+          "line": 121,
+          "end_line": 133,
           "config": null,
           "blocks": [
             {
@@ -14119,8 +14119,8 @@
               "language": "python",
               "file": "helpers.py",
               "named": true,
-              "line": 120,
-              "end_line": 124,
+              "line": 121,
+              "end_line": 125,
               "source": "def _parse_header(text: str) -> str:\n    first = text.splitlines()[0]\n    return first.strip()\n"
             },
             {
@@ -14128,16 +14128,16 @@
               "language": "python",
               "file": "main.py",
               "named": true,
-              "line": 126,
-              "end_line": 132,
+              "line": 127,
+              "end_line": 133,
               "source": "from helpers import _parse_header\n\n\ndef load(text: str) -> str:\n    return _parse_header(text)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 136,
-          "end_line": 144,
+          "line": 137,
+          "end_line": 145,
           "config": null,
           "blocks": [
             {
@@ -14145,16 +14145,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 136,
-              "end_line": 144,
+              "line": 137,
+              "end_line": 145,
               "source": "def load(texts: list[str]) -> list[str]:\n    return list(map(_parse_header, texts))\n\n\ndef _parse_header(text: str) -> str:\n    first = text.splitlines()[0]\n    return first.strip()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 148,
-          "end_line": 160,
+          "line": 149,
+          "end_line": 161,
           "config": null,
           "blocks": [
             {
@@ -14162,16 +14162,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 148,
-              "end_line": 160,
+              "line": 149,
+              "end_line": 161,
               "source": "import functools\n\n\ndef load(text: str) -> str:\n    return _parse_header(text)\n\n\n@functools.cache\ndef _parse_header(text: str) -> str:\n    first = text.splitlines()[0]\n    return first.strip()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 164,
-          "end_line": 175,
+          "line": 165,
+          "end_line": 176,
           "config": null,
           "blocks": [
             {
@@ -14179,16 +14179,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 164,
-              "end_line": 175,
+              "line": 165,
+              "end_line": 176,
               "source": "__all__ = [\"_parse_header\", \"load\"]\n\n\ndef load(text: str) -> str:\n    return _parse_header(text)\n\n\ndef _parse_header(text: str) -> str:\n    first = text.splitlines()[0]\n    return first.strip()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 179,
-          "end_line": 186,
+          "line": 180,
+          "end_line": 187,
           "config": null,
           "blocks": [
             {
@@ -14196,16 +14196,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 179,
-              "end_line": 186,
+              "line": 180,
+              "end_line": 187,
               "source": "def load(depth: int) -> int:\n    return _count(depth)\n\n\ndef _count(depth: int) -> int:\n    return 0 if depth == 0 else _count(depth - 1)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 190,
-          "end_line": 201,
+          "line": 191,
+          "end_line": 202,
           "config": null,
           "blocks": [
             {
@@ -14213,16 +14213,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 190,
-              "end_line": 201,
+              "line": 191,
+              "end_line": 202,
               "source": "def load(texts: list[str]) -> list[str]:\n    headers = []\n    for text in texts:\n        headers.append(_parse_header(text))\n    return headers\n\n\ndef _parse_header(text: str) -> str:\n    first = text.splitlines()[0]\n    return first.strip()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 205,
-          "end_line": 214,
+          "line": 206,
+          "end_line": 215,
           "config": null,
           "blocks": [
             {
@@ -14230,19 +14230,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 205,
-              "end_line": 214,
+              "line": 206,
+              "end_line": 215,
               "source": "def load(text: str) -> str:\n    return _parse_header(text)\n\n\ndef _parse_header(text: str) -> str:\n    first = text.splitlines()[0]\n    stripped = first.strip()\n    return stripped.lower()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 218,
-          "end_line": 232,
+          "line": 219,
+          "end_line": 233,
           "config": {
-            "line": 218,
-            "end_line": 221,
+            "line": 219,
+            "end_line": 222,
             "source": "[tool.simplint.logic]\nmax-caller-statements = 3\n"
           },
           "blocks": [
@@ -14251,19 +14251,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 223,
-              "end_line": 232,
+              "line": 224,
+              "end_line": 233,
               "source": "def load(text: str) -> dict[str, str]:\n    header = _parse_header(text)\n    return {\"header\": header}\n\n\ndef _parse_header(text: str) -> str:\n    first = text.splitlines()[0]\n    return first.strip()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 237,
-          "end_line": 254,
+          "line": 238,
+          "end_line": 255,
           "config": {
-            "line": 237,
-            "end_line": 240,
+            "line": 238,
+            "end_line": 241,
             "source": "[tool.simplint.logic]\nmax-cognitive-complexity = 5\n"
           },
           "blocks": [
@@ -14272,16 +14272,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 242,
-              "end_line": 254,
+              "line": 243,
+              "end_line": 255,
               "source": "def load(text: str) -> str:\n    if text:\n        return _first(text)\n    return \"\"\n\n\ndef _first(text: str) -> str:\n    for line in text.splitlines():\n        if line:\n            return line.strip()\n    return \"\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 260,
-          "end_line": 269,
+          "line": 261,
+          "end_line": 270,
           "config": null,
           "blocks": [
             {
@@ -14289,19 +14289,19 @@
               "language": "python",
               "file": "tests/test_header.py",
               "named": true,
-              "line": 260,
-              "end_line": 269,
+              "line": 261,
+              "end_line": 270,
               "source": "def test_kind() -> None:\n    assert _expected(\"a\") == 1\n\n\ndef _expected(kind: str) -> int:\n    if kind == \"a\":\n        return 1\n    return 2\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 281,
-          "end_line": 298,
+          "line": 282,
+          "end_line": 299,
           "config": {
-            "line": 281,
-            "end_line": 287,
+            "line": 282,
+            "end_line": 288,
             "source": "[tool.ruff.lint]\nselect = [\"C901\"]\n\n[tool.ruff.lint.mccabe]\nmax-complexity = 1\n"
           },
           "blocks": [
@@ -14310,16 +14310,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 289,
-              "end_line": 298,
+              "line": 290,
+              "end_line": 299,
               "source": "def load(text: str) -> str:\n    return _first(text)\n\n\ndef _first(text: str) -> str:\n    if text:\n        return text.strip()\n    return \"\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 303,
-          "end_line": 311,
+          "line": 304,
+          "end_line": 312,
           "config": null,
           "blocks": [
             {
@@ -14327,16 +14327,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 303,
-              "end_line": 311,
+              "line": 304,
+              "end_line": 312,
               "source": "async def load(text: str) -> str:\n    return await _parse_header(text)\n\n\nasync def _parse_header(text: str) -> str:\n    first = text.splitlines()[0]\n    return first.strip()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 315,
-          "end_line": 323,
+          "line": 316,
+          "end_line": 324,
           "config": null,
           "blocks": [
             {
@@ -14344,16 +14344,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 315,
-              "end_line": 323,
+              "line": 316,
+              "end_line": 324,
               "source": "def load(text: str) -> list[str]:\n    return list(_lines(text))\n\n\ndef _lines(text: str):\n    for line in text.splitlines():\n        yield line.strip()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 329,
-          "end_line": 341,
+          "line": 330,
+          "end_line": 342,
           "config": null,
           "blocks": [
             {
@@ -14361,8 +14361,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 329,
-              "end_line": 341,
+              "line": 330,
+              "end_line": 342,
               "source": "from typing import TypeGuard\n\n\ndef load(value: object) -> str:\n    if _is_text(value):\n        return value\n    return \"\"\n\n\ndef _is_text(value: object) -> TypeGuard[str]:\n    return isinstance(value, str)\n"
             }
           ]
@@ -18522,7 +18522,7 @@
     "name": "long-tuple-return",
     "summary": "Functions returning tuples too long to unpack by position",
     "fix": "None",
-    "explanation": "Flags a function that returns a tuple with more elements than the limit, which is two by default. A tuple of three or\nmore values that travel together is a record, and a dataclass or a named tuple gives its fields names.\n\n## Why is this bad?\n\nCallers unpack a tuple by position, so a reader must find the function to learn what each element means. Past two or\nthree elements that is easy to get wrong: swapping two `int`s type-checks and runs. A record names each field where it\nis defined and where it is read.\n\n## Example\n\n```python report\ndef span(text: str) -> tuple[int, int, str]:\n    start = text.find(\"(\")\n    end = text.rfind(\")\")\n    return start, end, text[start:end]\n```\n\nUse instead:\n\n```python ok\nfrom typing import NamedTuple\n\n\nclass Span(NamedTuple):\n    start: int\n    end: int\n    text: str\n\n\ndef span(text: str) -> Span:\n    start = text.find(\"(\")\n    end = text.rfind(\")\")\n    return Span(start, end, text[start:end])\n```\n\n## Configuration\n\n- [`logic.max-tuple-elements`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#logic) in\n  `[tool.simplint]`: the most elements a returned tuple may hold, such as `max-tuple-elements = 3` under\n  `[tool.simplint.logic]`\n\n  ```toml config\n  [tool.simplint.logic]\n  max-tuple-elements = 3\n  ```\n\n  ```python report\n  def corners() -> tuple[int, int, int, int]:\n      return 0, 0, 1, 1\n  ```\n\n## What it does\n\n### Active on\n\nA `return` whose value is a tuple display longer than the limit is reported, at the tuple. Each function is judged by\nits own `return` statements, so a nested function's return belongs to the nested function.\n\n- **A tuple display of the length**: parentheses do not matter.\n\n  ```python report\n  def bounds(values: list[int]) -> tuple[int, int, int]:\n      return min(values), max(values), len(values)\n  ```\n\n- **A nested function**: its return is judged on its own.\n\n  ```python report\n  def outer() -> int:\n      def inner() -> tuple[int, int, int]:\n          return 1, 2, 3\n\n      return inner()[0]\n  ```\n\n### Exceptions\n\n- **The methods the pickle and copy protocols call**: `__reduce__`, `__reduce_ex__`, `__getnewargs__` and\n  `__getnewargs_ex__` must return a tuple of the shape those protocols read.\n\n  ```python ok\n  class Point:\n      def __reduce__(self):\n          return self.__class__, (self.x,), self.__dict__\n  ```\n\n- **`__getstate__`**: its tuple goes back to the class's own `__setstate__`, which the pickle protocol calls with it.\n\n  ```python ok\n  class Point:\n      def __getstate__(self):\n          return self.x, self.y, self.z\n  ```\n\n- **A key function**, named `key` or ending in `_key`: its tuple is compared or hashed as a whole to sort or cache, and\n  never unpacked.\n\n  ```python ok\n  class Version:\n      def _sort_key(self):\n          return self.major, self.minor, self.micro\n  ```\n\n- **A function annotated to return `tuple[T, ...]`**: its tuple is a sequence of any length rather than a record.\n\n  ```python ok\n  def primes() -> tuple[int, ...]:\n      return 2, 3, 5, 7\n  ```\n\n- **A tuple with a starred element**: the number of values it stands for is not known.\n\n  ```python ok\n  def first(items: list[int]) -> tuple[int, ...]:\n      return (*items, 1, 2)\n  ```\n\n- **A `yield`**: a generator's tuples are the items of a stream, which callers loop over, and not one value to unpack.\n\n  ```python ok\n  def rows() -> Iterator[tuple[int, int, int]]:\n      yield 1, 2, 3\n  ```\n\n### Fix\n\nNo fix is offered: a record needs a name for its fields, which only the author can choose.\n\n## Ruff overlap\n\nRuff has no rule for the length of a returned tuple.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#3845](https://github.com/astral-sh/ruff/issues/3845) and\n  [#8022](https://github.com/astral-sh/ruff/issues/8022).\n- [flake8-too-many](https://github.com/queensferryme/flake8-too-many) counts return values as\n  [TMN002](https://github.com/queensferryme/flake8-too-many) against `max-function-return-values`, which defaults to 3.\n  This rule's limit defaults to 2.\n- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports long returned tuples\n  as\n  [WPS227](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/complexity.html#wemake_python_styleguide.violations.complexity.TooLongOutputTupleViolation),\n  with no fix.\n",
+    "explanation": "Flags a function that returns a tuple with more elements than the limit, which is two by default. A tuple of three or\nmore values that travel together is a record, and a dataclass or a named tuple gives its fields names.\n\n## Why is this bad?\n\nCallers unpack a tuple by position, so a reader must find the function to learn what each element means. Past two or\nthree elements that is easy to get wrong: swapping two `int`s type-checks and runs. A record names each field where it\nis defined and where it is read.\n\n## Example\n\n```python report\ndef span(text: str) -> tuple[int, int, str]:\n    start = text.find(\"(\")\n    end = text.rfind(\")\")\n    return start, end, text[start:end]\n```\n\nUse instead:\n\n```python ok\nfrom typing import NamedTuple\n\n\nclass Span(NamedTuple):\n    start: int\n    end: int\n    text: str\n\n\ndef span(text: str) -> Span:\n    start = text.find(\"(\")\n    end = text.rfind(\")\")\n    return Span(start, end, text[start:end])\n```\n\n## Configuration\n\n- [`logic.max-tuple-elements`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#logic) in\n  `[tool.simplint]`: the most elements a returned tuple may hold, such as `max-tuple-elements = 3` under\n  `[tool.simplint.logic]`\n\n  ```toml config\n  [tool.simplint.logic]\n  max-tuple-elements = 3\n  ```\n\n  ```python report\n  def corners() -> tuple[int, int, int, int]:\n      return 0, 0, 1, 1\n  ```\n\n## What it does\n\n### Active on\n\nA `return` whose value is a tuple display longer than the limit is reported, at the tuple. Each function is judged by\nits own `return` statements, so a nested function's return belongs to the nested function.\n\n- **A tuple display of the length**: parentheses do not matter.\n\n  ```python report\n  def bounds(values: list[int]) -> tuple[int, int, int]:\n      return min(values), max(values), len(values)\n  ```\n\n- **A nested function**: its return is judged on its own.\n\n  ```python report\n  def outer() -> int:\n      def inner() -> tuple[int, int, int]:\n          return 1, 2, 3\n\n      return inner()[0]\n  ```\n\n### Exceptions\n\n- **Methods decorated with `@override`**: a base class or plugin contract fixes the return shape. This also recognizes\n  compatibility imports of `override` that forward to `typing.override`.\n\n- **The methods the pickle and copy protocols call**: `__reduce__`, `__reduce_ex__`, `__getnewargs__` and\n  `__getnewargs_ex__` must return a tuple of the shape those protocols read.\n\n  ```python ok\n  class Point:\n      def __reduce__(self):\n          return self.__class__, (self.x,), self.__dict__\n  ```\n\n- **`__getstate__`**: its tuple goes back to the class's own `__setstate__`, which the pickle protocol calls with it.\n\n  ```python ok\n  class Point:\n      def __getstate__(self):\n          return self.x, self.y, self.z\n  ```\n\n- **A key function**, named `key` or ending in `_key`: its tuple is compared or hashed as a whole to sort or cache, and\n  never unpacked.\n\n  ```python ok\n  class Version:\n      def _sort_key(self):\n          return self.major, self.minor, self.micro\n  ```\n\n- **A function annotated to return `tuple[T, ...]`**: its tuple is a sequence of any length rather than a record.\n\n  ```python ok\n  def primes() -> tuple[int, ...]:\n      return 2, 3, 5, 7\n  ```\n\n- **A tuple with a starred element**: the number of values it stands for is not known.\n\n  ```python ok\n  def first(items: list[int]) -> tuple[int, ...]:\n      return (*items, 1, 2)\n  ```\n\n- **A `yield`**: a generator's tuples are the items of a stream, which callers loop over, and not one value to unpack.\n\n  ```python ok\n  def rows() -> Iterator[tuple[int, int, int]]:\n      yield 1, 2, 3\n  ```\n\n### Fix\n\nNo fix is offered: a record needs a name for its fields, which only the author can choose.\n\n## Ruff overlap\n\nRuff has no rule for the length of a returned tuple.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#3845](https://github.com/astral-sh/ruff/issues/3845) and\n  [#8022](https://github.com/astral-sh/ruff/issues/8022).\n- [flake8-too-many](https://github.com/queensferryme/flake8-too-many) counts return values as\n  [TMN002](https://github.com/queensferryme/flake8-too-many) against `max-function-return-values`, which defaults to 3.\n  This rule's limit defaults to 2.\n- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports long returned tuples\n  as\n  [WPS227](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/complexity.html#wemake_python_styleguide.violations.complexity.TooLongOutputTupleViolation),\n  with no fix.\n",
     "examples": {
       "parsed": [
         {
@@ -18616,8 +18616,8 @@
         },
         {
           "section": "What it does",
-          "line": 82,
-          "end_line": 86,
+          "line": 85,
+          "end_line": 89,
           "config": null,
           "blocks": [
             {
@@ -18625,16 +18625,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 82,
-              "end_line": 86,
+              "line": 85,
+              "end_line": 89,
               "source": "class Point:\n    def __reduce__(self):\n        return self.__class__, (self.x,), self.__dict__\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 90,
-          "end_line": 94,
+          "line": 93,
+          "end_line": 97,
           "config": null,
           "blocks": [
             {
@@ -18642,16 +18642,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 90,
-              "end_line": 94,
+              "line": 93,
+              "end_line": 97,
               "source": "class Point:\n    def __getstate__(self):\n        return self.x, self.y, self.z\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 99,
-          "end_line": 103,
+          "line": 102,
+          "end_line": 106,
           "config": null,
           "blocks": [
             {
@@ -18659,16 +18659,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 99,
-              "end_line": 103,
+              "line": 102,
+              "end_line": 106,
               "source": "class Version:\n    def _sort_key(self):\n        return self.major, self.minor, self.micro\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 107,
-          "end_line": 110,
+          "line": 110,
+          "end_line": 113,
           "config": null,
           "blocks": [
             {
@@ -18676,16 +18676,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 107,
-              "end_line": 110,
+              "line": 110,
+              "end_line": 113,
               "source": "def primes() -> tuple[int, ...]:\n    return 2, 3, 5, 7\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 114,
-          "end_line": 117,
+          "line": 117,
+          "end_line": 120,
           "config": null,
           "blocks": [
             {
@@ -18693,16 +18693,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 114,
-              "end_line": 117,
+              "line": 117,
+              "end_line": 120,
               "source": "def first(items: list[int]) -> tuple[int, ...]:\n    return (*items, 1, 2)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 121,
-          "end_line": 124,
+          "line": 124,
+          "end_line": 127,
           "config": null,
           "blocks": [
             {
@@ -18710,8 +18710,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 121,
-              "end_line": 124,
+              "line": 124,
+              "end_line": 127,
               "source": "def rows() -> Iterator[tuple[int, int, int]]:\n    yield 1, 2, 3\n"
             }
           ]
@@ -18882,7 +18882,7 @@
     "name": "duplicate-code",
     "summary": "Statements that another module repeats",
     "fix": "None",
-    "explanation": "Flags six or more statements in a row that another module repeats.\n\n## Why is this bad?\n\nCopied code drifts. A fix or a change lands in one copy and not the other, and nothing says the two were ever the same.\nOne definition that both modules call keeps a single place to change.\n\nIn the example below, `reader.py` and `writer.py` each define the same six statements.\n\n## Example\n\n```python report file=reader.py\ndef parse_lines(text):\n    lines = text.splitlines()\n    values = {}\n    for line in lines:\n        key, _, value = line.partition(\"=\")\n        values[key] = value\n    count = len(values)\n    if count == 0:\n        raise ValueError(\"no values\")\n    return values, count\n```\n\n```python report file=writer.py\ndef parse_lines(text):\n    lines = text.splitlines()\n    values = {}\n    for line in lines:\n        key, _, value = line.partition(\"=\")\n        values[key] = value\n    count = len(values)\n    if count == 0:\n        raise ValueError(\"no values\")\n    return values, count\n```\n\nMove the parser into one module that both import:\n\n```python context file=parsing.py\ndef parse_lines(text):\n    lines = text.splitlines()\n    values = {}\n    for line in lines:\n        key, _, value = line.partition(\"=\")\n        values[key] = value\n    count = len(values)\n    if count == 0:\n        raise ValueError(\"no values\")\n    return values, count\n```\n\n```python ok file=reader.py\nfrom parsing import parse_lines\n```\n\n## Configuration\n\n- [`logic.min-duplicate-statements`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#logic)\n  in `[tool.simplint]`: the fewest statements in a row another module must repeat, 6 by default, such as\n  `min-duplicate-statements = 4` under `[tool.simplint.logic]`\n\n  ```toml config\n  [tool.simplint.logic]\n  min-duplicate-statements = 4\n  ```\n\n  ```python context file=first.py\n  def run(items):\n      total = sum(items)\n      count = len(items)\n      log(total)\n      return total, count\n  ```\n\n  ```python report file=second.py\n  def run(items):\n      total = sum(items)\n      count = len(items)\n      log(total)\n      return total, count\n  ```\n\n  Six is where the copies on CPython's standard library turn from boilerplate to code worth sharing: at four and five\n  statements most reports are the generated codec classes of `encodings`, and at eight the copied file classes of `bz2`\n  and `lzma` go unreported.\n\n## Conflicts with Ruff\n\nRuff has no rule for repeated code, so the two do not overlap.\n\n## What it does\n\nsimplint compares the statements of every body of every module of the run, and reports a run of\n`min-duplicate-statements` statements or more that another module holds too. Overlapping copies make one block, reported\nonce in each module on its first statement, and a block inside another one, as the body of a function the outer block\nholds, is left to the outer one. The report names the other modules where their copy starts: up to three, then a count\nof the rest.\n\nStatements match when their tokens match. Comments, layout, imports and docstrings do not count. Identifiers and\nliterals must match exactly, so a copy with a renamed variable does not match. Statements are compared by a hash of\ntheir tokens first and by the tokens themselves before a report, so two different statements whose hashes collide never\nmatch.\n\n### Active on\n\n- **Six consecutive statements of one body** that another module repeats, at any depth, such as the body of a function,\n  a method or an `if` block. A nested block, such as a `for` loop, counts as one statement.\n\n  ```python context file=first.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n  ```python report file=second.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n### Exceptions\n\n- **Repeats inside one module**, which pylint's duplicate check does not compare either.\n\n  ```python ok file=twice.py\n  def first(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n\n\n  def second(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n- **Test modules**, which the run tells by their names and the `tests` and `test` directories of the project. Tests\n  repeat their setup and checks so each test reads on its own, and copy the code they test to compare against it. Stub\n  files are not compared either, since stubs repeat each other's signatures by design.\n\n  ```python context file=tests/test_first.py\n  def test_run():\n      total = 0\n      for item in ITEMS:\n          total += item\n      count = len(ITEMS)\n      log(total)\n      log(count)\n      assert total\n  ```\n\n  ```python ok file=tests/test_second.py\n  def test_run():\n      total = 0\n      for item in ITEMS:\n          total += item\n      count = len(ITEMS)\n      log(total)\n      log(count)\n      assert total\n  ```\n\n- **Nested test projects**, which are directories named `test*`, or inside one, that hold a project of their own with a\n  `conf.py`, `pyproject.toml`, `setup.py` or `setup.cfg`, such as each `roots/test-*` project of Sphinx's test suite. A\n  nested project repeats code by design, so its modules are compared with each other only, never with another nested\n  project or the rest of the run. Repeats within one nested project are still reported.\n\n  ```python context file=roots/test-first/conf.py\n  project = \"first\"\n  ```\n\n  ```python context file=roots/test-first/parser.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n  ```python context file=roots/test-second/conf.py\n  project = \"second\"\n  ```\n\n  ```python ok file=roots/test-second/parser.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n- **Runs shorter than `min-duplicate-statements`**, which are too short to report.\n\n  ```python context file=short_first.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      return total, count\n  ```\n\n  ```python ok file=short_second.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      return total, count\n  ```\n\n### Undetected cases\n\nCode repeated with renamed identifiers, changed literals or reordered statements does not match.\n\n### Fix\n\nsimplint offers no fix: the right shared definition depends on the code around the copies.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#17724](https://github.com/astral-sh/ruff/issues/17724).\n- [pylint](https://github.com/pylint-dev/pylint) reports similar lines repeated across modules as\n  [duplicate-code](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/duplicate-code.html), with no\n  fix.\n",
+    "explanation": "Flags six or more statements in a row that another module repeats.\n\n## Why is this bad?\n\nCopied code drifts. A fix or a change lands in one copy and not the other, and nothing says the two were ever the same.\nOne definition that both modules call keeps a single place to change.\n\nIn the example below, `reader.py` and `writer.py` each define the same six statements.\n\n## Example\n\n```python report file=reader.py\ndef parse_lines(text):\n    lines = text.splitlines()\n    values = {}\n    for line in lines:\n        key, _, value = line.partition(\"=\")\n        values[key] = value\n    count = len(values)\n    if count == 0:\n        raise ValueError(\"no values\")\n    return values, count\n```\n\n```python report file=writer.py\ndef parse_lines(text):\n    lines = text.splitlines()\n    values = {}\n    for line in lines:\n        key, _, value = line.partition(\"=\")\n        values[key] = value\n    count = len(values)\n    if count == 0:\n        raise ValueError(\"no values\")\n    return values, count\n```\n\nMove the parser into one module that both import:\n\n```python context file=parsing.py\ndef parse_lines(text):\n    lines = text.splitlines()\n    values = {}\n    for line in lines:\n        key, _, value = line.partition(\"=\")\n        values[key] = value\n    count = len(values)\n    if count == 0:\n        raise ValueError(\"no values\")\n    return values, count\n```\n\n```python ok file=reader.py\nfrom parsing import parse_lines\n```\n\n## Configuration\n\n- [`logic.min-duplicate-statements`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#logic)\n  in `[tool.simplint]`: the fewest statements in a row another module must repeat, 6 by default, such as\n  `min-duplicate-statements = 4` under `[tool.simplint.logic]`\n\n  ```toml config\n  [tool.simplint.logic]\n  min-duplicate-statements = 4\n  ```\n\n  ```python context file=first.py\n  def run(items):\n      total = sum(items)\n      count = len(items)\n      log(total)\n      return total, count\n  ```\n\n  ```python report file=second.py\n  def run(items):\n      total = sum(items)\n      count = len(items)\n      log(total)\n      return total, count\n  ```\n\n  Six is where the copies on CPython's standard library turn from boilerplate to code worth sharing: at four and five\n  statements most reports are the generated codec classes of `encodings`, and at eight the copied file classes of `bz2`\n  and `lzma` go unreported.\n\n## Conflicts with Ruff\n\nRuff has no rule for repeated code, so the two do not overlap.\n\n## What it does\n\nsimplint compares the statements of every body of every module of the run, and reports a run of\n`min-duplicate-statements` statements or more that another module holds too. Overlapping copies make one block, reported\nonce in each module on its first statement, and a block inside another one, as the body of a function the outer block\nholds, is left to the outer one. The report names the other modules where their copy starts: up to three, then a count\nof the rest.\n\nStatements match when their tokens match. Comments, layout, imports and docstrings do not count. Identifiers and\nliterals must match exactly, so a copy with a renamed variable does not match. Statements are compared by a hash of\ntheir tokens first and by the tokens themselves before a report, so two different statements whose hashes collide never\nmatch.\n\n### Active on\n\n- **Six consecutive statements of one body** that another module repeats, at any depth, such as the body of a function,\n  a method or an `if` block. A nested block, such as a `for` loop, counts as one statement.\n\n  ```python context file=first.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n  ```python report file=second.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n### Exceptions\n\n- **Separate distributions in one repository**: files are compared within the distribution identified by their nearest\n  project metadata. For example, code repeated in two workspace members with separate `[project]` tables is not reported\n  across those members. Repeats within either member are still reported.\n\n- **Repeats inside one module**, which pylint's duplicate check does not compare either.\n\n  ```python ok file=twice.py\n  def first(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n\n\n  def second(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n- **Test modules**, which the run tells by their names and the `tests` and `test` directories of the project. Tests\n  repeat their setup and checks so each test reads on its own, and copy the code they test to compare against it. Stub\n  files are not compared either, since stubs repeat each other's signatures by design.\n\n  ```python context file=tests/test_first.py\n  def test_run():\n      total = 0\n      for item in ITEMS:\n          total += item\n      count = len(ITEMS)\n      log(total)\n      log(count)\n      assert total\n  ```\n\n  ```python ok file=tests/test_second.py\n  def test_run():\n      total = 0\n      for item in ITEMS:\n          total += item\n      count = len(ITEMS)\n      log(total)\n      log(count)\n      assert total\n  ```\n\n- **Nested test projects**, which are directories named `test*`, or inside one, that hold a project of their own with a\n  `conf.py`, `pyproject.toml`, `setup.py` or `setup.cfg`, such as each `roots/test-*` project of Sphinx's test suite. A\n  nested project repeats code by design, so its modules are compared with each other only, never with another nested\n  project or the rest of the run. Repeats within one nested project are still reported.\n\n  ```python context file=roots/test-first/conf.py\n  project = \"first\"\n  ```\n\n  ```python context file=roots/test-first/parser.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n  ```python context file=roots/test-second/conf.py\n  project = \"second\"\n  ```\n\n  ```python ok file=roots/test-second/parser.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n- **Runs shorter than `min-duplicate-statements`**, which are too short to report.\n\n  ```python context file=short_first.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      return total, count\n  ```\n\n  ```python ok file=short_second.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      return total, count\n  ```\n\n### Undetected cases\n\nCode repeated with renamed identifiers, changed literals or reordered statements does not match.\n\n### Fix\n\nsimplint offers no fix: the right shared definition depends on the code around the copies.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#17724](https://github.com/astral-sh/ruff/issues/17724).\n- [pylint](https://github.com/pylint-dev/pylint) reports similar lines repeated across modules as\n  [duplicate-code](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/duplicate-code.html), with no\n  fix.\n",
     "examples": {
       "parsed": [
         {
@@ -18995,8 +18995,8 @@
         },
         {
           "section": "What it does",
-          "line": 136,
-          "end_line": 155,
+          "line": 140,
+          "end_line": 159,
           "config": null,
           "blocks": [
             {
@@ -19004,16 +19004,16 @@
               "language": "python",
               "file": "twice.py",
               "named": true,
-              "line": 136,
-              "end_line": 155,
+              "line": 140,
+              "end_line": 159,
               "source": "def first(items):\n    total = 0\n    for item in items:\n        total += item\n    count = len(items)\n    log(total)\n    log(count)\n    return total\n\n\ndef second(items):\n    total = 0\n    for item in items:\n        total += item\n    count = len(items)\n    log(total)\n    log(count)\n    return total\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 161,
-          "end_line": 181,
+          "line": 165,
+          "end_line": 185,
           "config": null,
           "blocks": [
             {
@@ -19021,8 +19021,8 @@
               "language": "python",
               "file": "tests/test_first.py",
               "named": true,
-              "line": 161,
-              "end_line": 170,
+              "line": 165,
+              "end_line": 174,
               "source": "def test_run():\n    total = 0\n    for item in ITEMS:\n        total += item\n    count = len(ITEMS)\n    log(total)\n    log(count)\n    assert total\n"
             },
             {
@@ -19030,16 +19030,16 @@
               "language": "python",
               "file": "tests/test_second.py",
               "named": true,
-              "line": 172,
-              "end_line": 181,
+              "line": 176,
+              "end_line": 185,
               "source": "def test_run():\n    total = 0\n    for item in ITEMS:\n        total += item\n    count = len(ITEMS)\n    log(total)\n    log(count)\n    assert total\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 188,
-          "end_line": 216,
+          "line": 192,
+          "end_line": 220,
           "config": null,
           "blocks": [
             {
@@ -19047,8 +19047,8 @@
               "language": "python",
               "file": "roots/test-first/conf.py",
               "named": true,
-              "line": 188,
-              "end_line": 190,
+              "line": 192,
+              "end_line": 194,
               "source": "project = \"first\"\n"
             },
             {
@@ -19056,8 +19056,8 @@
               "language": "python",
               "file": "roots/test-first/parser.py",
               "named": true,
-              "line": 192,
-              "end_line": 201,
+              "line": 196,
+              "end_line": 205,
               "source": "def run(items):\n    total = 0\n    for item in items:\n        total += item\n    count = len(items)\n    log(total)\n    log(count)\n    return total\n"
             },
             {
@@ -19065,8 +19065,8 @@
               "language": "python",
               "file": "roots/test-second/conf.py",
               "named": true,
-              "line": 203,
-              "end_line": 205,
+              "line": 207,
+              "end_line": 209,
               "source": "project = \"second\"\n"
             },
             {
@@ -19074,16 +19074,16 @@
               "language": "python",
               "file": "roots/test-second/parser.py",
               "named": true,
-              "line": 207,
-              "end_line": 216,
+              "line": 211,
+              "end_line": 220,
               "source": "def run(items):\n    total = 0\n    for item in items:\n        total += item\n    count = len(items)\n    log(total)\n    log(count)\n    return total\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 220,
-          "end_line": 236,
+          "line": 224,
+          "end_line": 240,
           "config": null,
           "blocks": [
             {
@@ -19091,8 +19091,8 @@
               "language": "python",
               "file": "short_first.py",
               "named": true,
-              "line": 220,
-              "end_line": 227,
+              "line": 224,
+              "end_line": 231,
               "source": "def run(items):\n    total = 0\n    for item in items:\n        total += item\n    count = len(items)\n    return total, count\n"
             },
             {
@@ -19100,8 +19100,8 @@
               "language": "python",
               "file": "short_second.py",
               "named": true,
-              "line": 229,
-              "end_line": 236,
+              "line": 233,
+              "end_line": 240,
               "source": "def run(items):\n    total = 0\n    for item in items:\n        total += item\n    count = len(items)\n    return total, count\n"
             }
           ]
@@ -20699,7 +20699,7 @@
     "name": "callable-ellipsis",
     "summary": "`Callable[..., T]`",
     "fix": "None",
-    "explanation": "Flags `Callable[..., T]` annotations.\n\n## Why is this bad?\n\n`...` accepts any arguments, so the type checker cannot catch a call with the wrong number, type or names of arguments.\nA [`Protocol`](https://docs.python.org/3/library/typing.html#typing.Protocol)\n([PEP 544](https://peps.python.org/pep-0544/)) with a `__call__` method, called a\n[callback protocol](https://typing.python.org/en/latest/spec/callables.html#callback-protocols), states the parameters.\nIt can also state keyword names and defaults, which a parameter list such as `Callable[[str, int], T]` cannot express.\n\n## Example\n\n```python report\nfrom collections.abc import Callable\n\n\ndef run(callback: Callable[..., None]) -> None:\n    callback(\"build\", retries=3)\n```\n\nUse instead:\n\n```python ok\nfrom typing import Protocol\n\n\nclass Callback(Protocol):\n    def __call__(self, name: str, *, retries: int) -> None: ...\n\n\ndef run(callback: Callback) -> None:\n    callback(\"build\", retries=3)\n```\n\n## What it does\n\nNo fix is offered: the real signature has to be written by hand.\n\n### Active on\n\n- **`Callable[..., T]`**: a subscript whose first argument is `...` and whose name, or the last part of a dotted name,\n  is `Callable`. The check goes by name only, so it also matches type aliases and other expressions outside annotations.\n  The matched names are:\n\n  - a bare `Callable` imported from `typing` or `collections.abc`.\n\n    ```python report\n    from collections.abc import Callable\n\n\n    def run(callback: Callable[..., None]) -> None:\n        callback()\n    ```\n\n  - [`typing.Callable`](https://docs.python.org/3/library/typing.html#typing.Callable), a dotted name, here in a type\n    alias.\n\n    ```python report\n    import typing\n\n    Handler = typing.Callable[..., int]\n    ```\n\n  - [`collections.abc.Callable`](https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable), a\n    dotted name in a parameter annotation.\n\n    ```python report\n    import collections.abc\n\n\n    def run(callback: collections.abc.Callable[..., None]) -> None:\n        callback()\n    ```\n\n### Exceptions\n\n- **String annotations**: these are not checked.\n\n  ```python ok\n  def run(callback: \"Callable[..., None]\") -> None:\n      callback()\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags `Callable[..., T]` annotations.\n\n## Why is this bad?\n\n`...` accepts any arguments, so the type checker cannot catch a call with the wrong number, type or names of arguments.\nA [`Protocol`](https://docs.python.org/3/library/typing.html#typing.Protocol)\n([PEP 544](https://peps.python.org/pep-0544/)) with a `__call__` method, called a\n[callback protocol](https://typing.python.org/en/latest/spec/callables.html#callback-protocols), states the parameters.\nIt can also state keyword names and defaults, which a parameter list such as `Callable[[str, int], T]` cannot express.\n\n## Example\n\n```python report\nfrom collections.abc import Callable\n\n\ndef run(callback: Callable[..., None]) -> None:\n    callback(\"build\", retries=3)\n```\n\nUse instead:\n\n```python ok\nfrom typing import Protocol\n\n\nclass Callback(Protocol):\n    def __call__(self, name: str, *, retries: int) -> None: ...\n\n\ndef run(callback: Callback) -> None:\n    callback(\"build\", retries=3)\n```\n\n## What it does\n\nNo fix is offered: the real signature has to be written by hand.\n\n### Active on\n\n- **`Callable[..., T]`**: a subscript whose first argument is `...` and whose name, or the last part of a dotted name,\n  is `Callable`. The check goes by name only, so it also matches type aliases and other expressions outside annotations.\n  The matched names are:\n\n  - a bare `Callable` imported from `typing` or `collections.abc`.\n\n    ```python report\n    from collections.abc import Callable\n\n\n    def run(callback: Callable[..., None]) -> None:\n        callback()\n    ```\n\n  - [`typing.Callable`](https://docs.python.org/3/library/typing.html#typing.Callable), a dotted name, here in a type\n    alias.\n\n    ```python report\n    import typing\n\n    Handler = typing.Callable[..., int]\n    ```\n\n  - [`collections.abc.Callable`](https://docs.python.org/3/library/collections.abc.html#collections.abc.Callable), a\n    dotted name in a parameter annotation.\n\n    ```python report\n    import collections.abc\n\n\n    def run(callback: collections.abc.Callable[..., None]) -> None:\n        callback()\n    ```\n\n### Exceptions\n\n- **Test parameters that are not called in the test body**: a test may inspect a callable or pass it to another API\n  without invoking it itself. Its annotation need not describe one call signature. A direct call in the body still\n  reports, including one inside a nested block.\n\n- **String annotations**: these are not checked.\n\n  ```python ok\n  def run(callback: \"Callable[..., None]\") -> None:\n      callback()\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -20789,8 +20789,8 @@
         },
         {
           "section": "What it does",
-          "line": 79,
-          "end_line": 82,
+          "line": 83,
+          "end_line": 86,
           "config": null,
           "blocks": [
             {
@@ -20798,8 +20798,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 79,
-              "end_line": 82,
+              "line": 83,
+              "end_line": 86,
               "source": "def run(callback: \"Callable[..., None]\") -> None:\n    callback()\n"
             }
           ]
@@ -24764,7 +24764,7 @@
     "name": "stdlib-mock",
     "summary": "`unittest.mock` imports in projects that depend on pytest-mock",
     "fix": "None",
-    "explanation": "Flags imports from `unittest.mock` in a test module of a project that depends on pytest-mock.\n\n## Why is this bad?\n\npytest-mock provides the `mocker` fixture, which undoes each patch when its test ends. A test that imports\n`unittest.mock` must manage the patch itself, with a `with` block or a decorator, and the project then has two ways to\npatch. Using `mocker` everywhere keeps one style and needs no cleanup code in the test.\n\n## Example\n\n```toml config\n[project]\nname = \"demo\"\ndependencies = [\"pytest-mock>=3\"]\n```\n\n```python report file=tests/test_client.py\nfrom unittest.mock import MagicMock\n\n\ndef test_client() -> None:\n    client = MagicMock()\n```\n\nUse instead:\n\n```python ok file=tests/test_client.py\nfrom pytest_mock import MockerFixture\n\n\ndef test_client(mocker: MockerFixture) -> None:\n    client = mocker.MagicMock()\n```\n\n## What it does\n\n### Active on\n\n- **Imports of `unittest.mock` in a test module of a project that depends on pytest-mock**: `import unittest.mock`,\n  `from unittest import mock` and `from unittest.mock import ...`, which bring the module in whatever the name. A file\n  is a test module when its name starts with `test_`, ends with `_test.py` or is `conftest.py`, or when it sits under a\n  `tests` or `test` directory. The project depends on pytest-mock when any of these lists `pytest-mock`, with or without\n  an environment marker:\n\n  - [`project.dependencies`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies)\n\n    ```toml config\n    [project]\n    name = \"demo\"\n    dependencies = [\"pytest-mock>=3\"]\n    ```\n\n    ```python report file=tests/test_api.py\n    import unittest.mock\n    from unittest import mock\n    from unittest.mock import MagicMock\n    ```\n\n  - [`project.optional-dependencies`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#optional-dependencies),\n    in any extra\n\n    ```toml config\n    [project]\n    name = \"demo\"\n\n    [project.optional-dependencies]\n    test = [\"pytest-mock\"]\n    ```\n\n    ```python report file=tests/test_api.py\n    from unittest.mock import MagicMock\n    ```\n\n  - [`dependency-groups`](https://peps.python.org/pep-0735/), in any group, including one that another group includes\n\n    ```toml config\n    [dependency-groups]\n    test = [\"pytest-mock>=3\", \"pytest\"]\n    dev = [{ include-group = \"test\" }]\n    ```\n\n    ```python report file=tests/test_api.py\n    from unittest.mock import MagicMock\n    ```\n\n### Exceptions\n\n- **Relative imports**, such as `from .unittest import mock`: they name a module of the project, not the standard\n  library.\n\n### Fix\n\nNo fix is offered: a test that moves to `mocker` changes its fixtures and its calls to the patched objects, which is a\nrewrite of the test.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n  [UP026](https://docs.astral.sh/ruff/rules/deprecated-mock-import/) moves `mock` imports to `unittest.mock`, which this\n  rule then reports.\n",
+    "explanation": "Flags imports from `unittest.mock` in a test module of a project that depends on pytest-mock.\n\n## Why is this bad?\n\npytest-mock provides the `mocker` fixture, which undoes each patch when its test ends. A test that imports\n`unittest.mock` must manage the patch itself, with a `with` block or a decorator, and the project then has two ways to\npatch. Using `mocker` everywhere keeps one style and needs no cleanup code in the test.\n\n## Example\n\n```toml config\n[project]\nname = \"demo\"\ndependencies = [\"pytest-mock>=3\"]\n```\n\n```python report file=tests/test_client.py\nfrom unittest.mock import MagicMock\n\n\ndef test_client() -> None:\n    client = MagicMock()\n```\n\nUse instead:\n\n```python ok file=tests/test_client.py\nfrom pytest_mock import MockerFixture\n\n\ndef test_client(mocker: MockerFixture) -> None:\n    client = mocker.MagicMock()\n```\n\n## What it does\n\n### Active on\n\n- **Imports of `unittest.mock` in a test module of a project that depends on pytest-mock**: `import unittest.mock`,\n  `from unittest import mock` and `from unittest.mock import ...`, which bring the module in whatever the name. A file\n  is a test module when its name starts with `test_`, ends with `_test.py` or is `conftest.py`, or when it sits under a\n  `tests` or `test` directory. The project depends on pytest-mock when any of these lists `pytest-mock`, with or without\n  an environment marker:\n\n  - [`project.dependencies`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies)\n\n    ```toml config\n    [project]\n    name = \"demo\"\n    dependencies = [\"pytest-mock>=3\"]\n    ```\n\n    ```python report file=tests/test_api.py\n    import unittest.mock\n    from unittest import mock\n    from unittest.mock import MagicMock\n    ```\n\n  - [`project.optional-dependencies`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#optional-dependencies),\n    in any extra\n\n    ```toml config\n    [project]\n    name = \"demo\"\n\n    [project.optional-dependencies]\n    test = [\"pytest-mock\"]\n    ```\n\n    ```python report file=tests/test_api.py\n    from unittest.mock import MagicMock\n    ```\n\n  - [`dependency-groups`](https://peps.python.org/pep-0735/), in any group, including one that another group includes\n\n    ```toml config\n    [dependency-groups]\n    test = [\"pytest-mock>=3\", \"pytest\"]\n    dev = [{ include-group = \"test\" }]\n    ```\n\n    ```python report file=tests/test_api.py\n    from unittest.mock import MagicMock\n    ```\n\n### Exceptions\n\n- **`from unittest.mock import create_autospec` alone**: making a mock from a real object is separate from managing a\n  patch. An import that also brings in `patch` or another mock helper is still reported.\n\n- **Relative imports**, such as `from .unittest import mock`: they name a module of the project, not the standard\n  library.\n\n### Fix\n\nNo fix is offered: a test that moves to `mocker` changes its fixtures and its calls to the patched objects, which is a\nrewrite of the test.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n  [UP026](https://docs.astral.sh/ruff/rules/deprecated-mock-import/) moves `mock` imports to `unittest.mock`, which this\n  rule then reports.\n",
     "examples": {
       "parsed": [
         {
