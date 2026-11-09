@@ -1,4 +1,5 @@
 use ruff_diagnostics::{Edit, Fix};
+use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::{self as ast, Arguments, Expr};
 use ruff_text_size::Ranged;
 
@@ -26,6 +27,13 @@ pub fn expression(walker: &mut Walker, expr: &Expr) {
     let Some((positive, operands)) = helper_for(inner) else {
         return;
     };
+    // PT009 rewrites the same calls to a bare `assert`, which supersedes this helper. Its per-file ignores can turn it
+    // off for this file, so Ruff is asked about the file rather than about the project's selection.
+    if checker.settings.from_ruff.ruff_runs(RuffRule::PytestUnittestAssertion)
+        && checker.ruff_reports(RuffRule::PytestUnittestAssertion, "self.assertTrue(True)\n")
+    {
+        return;
+    }
     let name = if negated { format!("assertNot{}", &positive["assert".len()..]) } else { positive.to_owned() };
     let fix = (!checker.has_comment_in(call.range())).then(|| {
         let operands: Vec<&str> = operands.iter().map(|operand| checker.text(operand.range())).collect();

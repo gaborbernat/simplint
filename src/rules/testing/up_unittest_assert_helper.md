@@ -36,8 +36,8 @@ class ConfigTest(TestCase):
 ## Conflicts with Ruff
 
 Ruff's [pytest-unittest-assertion](https://docs.astral.sh/ruff/rules/pytest-unittest-assertion/) (PT009) asks for the
-same `self.assertTrue` and `self.assertFalse` calls, and its fix replaces them with a bare `assert`. simplint stops with
-an error before linting while both apply to a file that targets Python 3.14 or newer; ignore one of the two rules.
+same `self.assertTrue` and `self.assertFalse` calls, and its fix replaces them with a bare `assert`. While PT009 is on
+for a file, this rule stays silent there, because PT009's fix supersedes its helper.
 
 ## Configuration
 
@@ -142,9 +142,9 @@ comment in it is reported without a fix, because the rewrite would drop the comm
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** conflicts with released rule
-  [PT009](https://docs.astral.sh/ruff/rules/pytest-unittest-assertion/), which rewrites the same calls to bare `assert`;
-  simplint refuses to run both. Open issue [#2417](https://github.com/astral-sh/ruff/issues/2417) asks for
+- **[Ruff](https://github.com/astral-sh/ruff):** released rule
+  [PT009](https://docs.astral.sh/ruff/rules/pytest-unittest-assertion/) rewrites the same calls to bare `assert`; while
+  PT009 is on, simplint stays silent on them. Open issue [#2417](https://github.com/astral-sh/ruff/issues/2417) asks for
   flake8-assertive's helper rewrites.
 - [flake8-assertive](https://github.com/jparise/flake8-assertive) reports `assertTrue` and `assertFalse` calls on
   comparisons and `is` checks that have a `TestCase` helper, as [A500](https://github.com/jparise/flake8-assertive),

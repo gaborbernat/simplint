@@ -40,6 +40,23 @@ impl<'a> RuffFile<'a> {
         self.package.map(PackageRoot::path)
     }
 
+    // Whether Ruff reports `rule` on `source` as if it were the file at `path`, which applies the per-file ignores of
+    // that path the way Ruff's own run does.
+    pub fn reports(&self, path: &Path, rule: RuffRule, source: &str) -> bool {
+        lint_only(
+            path,
+            self.package,
+            self.settings,
+            flags::Noqa::Disabled,
+            &SourceKind::Python { code: source.to_owned(), is_stub: false },
+            PySourceType::Python,
+            ParseSource::None,
+        )
+        .diagnostics
+        .iter()
+        .any(|diagnostic| diagnostic.name() == rule.name().as_str())
+    }
+
     // Ruff's report on the source at no line length limit. Layout is `ruff format`'s job, as it runs after simplint: a
     // finding about whitespace, blank lines or line length may come or go when it formats the code, so it does not
     // count either way, save a line too long for any layout.
