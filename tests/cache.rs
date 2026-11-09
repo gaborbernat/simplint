@@ -209,7 +209,7 @@ const REPEATED: &str = "def run(items):\n    total = 0\n    for item in items:\n
     &[
         ("pyproject.toml", "[project]\nname = \"ws\"\n[tool.simplint]\n"),
         ("sub/pyproject.toml", "[build-system]\nrequires = []\n[project]\nname = \"demo\"\n"),
-        ("sub/demo/__init__.py", "from ._app import run\n\n__all__ = [\"run\"]\n"),
+        ("sub/demo/__init__.py", "from ._app import run as run\n"),
         ("sub/demo/_app.py", "def run() -> None:\n    \"\"\"Run.\"\"\"\n"),
     ],
     "SMP407", "sub/pyproject.toml", "[project]\nname = \"demo\"\n" ; "member_becomes_an_application"

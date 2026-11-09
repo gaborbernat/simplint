@@ -1,11 +1,12 @@
-Flags `__init__.py` files that hold anything besides a module docstring. Importing any submodule runs the package's
-`__init__.py` first, so code there slows down or breaks unrelated modules.
+Flags `__init__.py` files that hold code beyond a module docstring and deliberate API re-exports. Importing any
+submodule runs the package's `__init__.py` first, so code there can slow down or break unrelated modules.
 
 ## Why is this bad?
 
 Python runs a package's `__init__.py` before it imports any of the package's submodules. Importing `pkg.sub` therefore
 also runs everything in `pkg/__init__.py`, and a slow or failing import there slows down or breaks unrelated modules.
-Re-exports give one object two import paths and invite circular imports.
+Unplanned re-exports give one object two import paths and invite circular imports. A package can deliberately expose
+selected names from private modules through `__all__`.
 
 ## Example
 
@@ -18,8 +19,6 @@ class Client:
 """HTTP client."""
 
 from .client import Client
-
-__all__ = ["Client"]
 ```
 
 Use instead:
@@ -33,13 +32,8 @@ class Client:
 """HTTP client."""
 ```
 
-Importers then use `from http_client.client import Client`. In a library whose public package presents the API, keep the
-code in a private module and only re-export it:
-
-```toml config
-[tool.simplint]
-project-kind = "library"
-```
+Importers then use `from http_client.client import Client`. When the package presents an API, keep the implementation in
+a private module and list the names it exposes:
 
 ```python context file=http_client/_client.py
 class Client:
@@ -62,16 +56,14 @@ it belongs.
 ### Active on
 
 - **Statements after the docstring of an
-  [`__init__.py`](https://docs.python.org/3/reference/import.html#regular-packages)**: every one is reported, including
-  imports and [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package), since each runs
-  whenever any submodule is imported.
+  [`__init__.py`](https://docs.python.org/3/reference/import.html#regular-packages)** that do not form an explicit API:
+  imports absent from [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package) and direct
+  definitions are reported.
 
   ```python report file=pkg/__init__.py
   """HTTP client."""
 
   from .client import Client
-
-  __all__ = ["Client"]
   ```
 
 - **Other statements in a public package of a library**: anything beyond the re-exports listed under Exceptions is
@@ -130,28 +122,24 @@ it belongs.
   """HTTP client."""
   ```
 
-- **Re-exports in a public package of a library**: such a package may re-export its public API, as
-  [PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces) describes for a package's `__init__` that
-  exposes functionality from submodules. Its `__init__.py` may hold:
+- **Names listed in `__all__`**: any package can expose selected names from a private module. The list must be readable
+  statically; an unlisted import is still reported. This works in applications and private subpackages as well as public
+  library packages.
 
-  - imports whose every name it exports through `__all__`:
+  ```python context file=pkg/_api.py
+  class API:
+      pass
+  ```
 
-    ```toml config
-    [build-system]
-    requires = ["setuptools"]
-    build-backend = "setuptools.build_meta"
+  ```python ok file=pkg/__init__.py
+  from ._api import API
 
-    [project]
-    name = "demo"
-    ```
+  __all__ = ["API"]
+  ```
 
-    ```python ok file=demo/__init__.py
-    """HTTP client."""
-
-    from ._core import run
-
-    __all__ = ["run"]
-    ```
+- **Other re-exports in a public package of a library**:
+  [PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces) describes a package's `__init__` exposing
+  functionality from submodules. A public library package may also hold:
 
   - a redundant alias, such as `from ._core import run as run`:
 
@@ -185,23 +173,6 @@ it belongs.
     """HTTP client."""
 
     from ._core import *
-    ```
-
-  - the `__all__` that lists them
-
-    ```toml config
-    [build-system]
-    requires = ["setuptools"]
-    build-backend = "setuptools.build_meta"
-
-    [project]
-    name = "demo"
-    ```
-
-    ```python ok file=demo/__init__.py
-    """HTTP client."""
-
-    __all__ = ["run"]
     ```
 
   - `from __future__` imports, which change no behavior at run time
