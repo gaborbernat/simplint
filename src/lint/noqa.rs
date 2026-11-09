@@ -135,9 +135,8 @@ impl<'a> Suppressions<'a> {
         for (start, selectors) in groups.into_iter().rev() {
             let before = current.clone();
             for selector in selectors.into_iter().rev() {
-                let Some((edit, replacement)) = remove_ignore_selector(&current, start, &selector) else {
-                    continue;
-                };
+                let (edit, replacement) = remove_ignore_selector(&current, start, &selector)
+                    .expect("a parsed selector exists in its comment");
                 let mut proposed = current.clone();
                 proposed.replace_range(usize::from(edit.start())..usize::from(edit.end()), &replacement);
                 let next = relint(&proposed);
@@ -316,6 +315,7 @@ fn same_or_fewer_reports(before: &[Diagnostic], after: &[Diagnostic], edit: Text
     }
     let start = edit.start().to_usize();
     let old_len = edit.len().to_usize();
+    let mut observed = FxHashMap::default();
     after.iter().all(|report| {
         let Some(range) = report.range() else { return false };
         let position = range.start().to_usize();
@@ -327,12 +327,9 @@ fn same_or_fewer_reports(before: &[Diagnostic], after: &[Diagnostic], edit: Text
             return false;
         };
         let key = (report.secondary_code_or_id(), report.headline_message(), mapped);
-        let Some(count) = known.get_mut(&key) else { return false };
-        if *count == 0 {
-            return false;
-        }
-        *count -= 1;
-        true
+        let count = observed.entry(key).or_insert(0);
+        *count += 1;
+        *count <= *known.get(&key).unwrap_or(&0)
     })
 }
 

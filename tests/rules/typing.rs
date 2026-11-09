@@ -43,6 +43,16 @@ fn callable_ellipsis_in_test_parameter_depends_on_use(body: &str, reports: usize
     assert_eq!(stdout.matches("Callable[..., T]").count(), reports, "{stdout}");
 }
 
+#[test]
+fn callable_ellipsis_in_test_module_outside_function_reports() {
+    let root = common::project(&[(
+        "tests/test_callbacks.py",
+        "from collections.abc import Callable\n\ncallback: Callable[..., int]\n",
+    )]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP603"]);
+    assert_eq!(stdout.matches("Callable[..., T]").count(), 1, "{stdout}");
+}
+
 // Ruff's ANN401 reports an `Any` that is a whole annotation, or starts one as in `Any | None`, which SMP602 leaves to it
 // while the project's Ruff configuration runs it.
 #[test_case("def f(value: Any | None) -> None:\n    print(value)\n", "ANN401", "`Any` accepts any value" ; "parameter")]

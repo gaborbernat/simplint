@@ -324,3 +324,33 @@ fn unused_ignore_removes_multiple_selectors_after_unicode() {
     assert_eq!(check(root.path(), &["--select", "SMP009", "--fix"]).0, 0);
     assert_eq!(read(root.path(), "module.py"), "name = 'é'\n");
 }
+
+#[test]
+fn unused_ignore_rewrites_separators_around_a_stale_selector() {
+    let root = project(&[(
+        "module.py",
+        "from typing import Any\n\n\ndef x(value: Any) -> None:  # simplint: ignore[SMP101,SMP603,SMP602]\n    pass\n",
+    )]);
+    assert_eq!(check(root.path(), &["--select", "SMP101,SMP602,SMP009", "--fix"]).0, 0);
+    assert_eq!(
+        read(root.path(), "module.py"),
+        "from typing import Any\n\n\ndef x(value: Any) -> None:  # simplint: ignore[SMP101, SMP602]\n    pass\n"
+    );
+}
+
+#[test]
+fn unused_ignore_handles_file_level_suppression() {
+    let root = project(&[("module.py", "# ruff: noqa: SMP101\nx = 1  # simplint: ignore[SMP101]\n")]);
+    assert_eq!(check(root.path(), &["--select", "SMP101,SMP009", "--fix"]).0, 0);
+    assert_eq!(read(root.path(), "module.py"), "# ruff: noqa: SMP101\nx = 1\n");
+}
+
+#[test]
+fn unused_ignore_keeps_selector_when_replacement_moves_a_report() {
+    let source = "x = 1  # simplint: ignore[SMP602,SMP101]\n";
+    let root = project(&[("module.py", source)]);
+    let (status, output, _) = check(root.path(), &["--select", "SMP008,SMP009"]);
+    assert_eq!(status, 1);
+    assert!(!output.contains("SMP009"), "{output}");
+    assert_eq!(read(root.path(), "module.py"), source);
+}

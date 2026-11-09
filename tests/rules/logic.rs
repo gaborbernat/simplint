@@ -709,6 +709,23 @@ fn single_caller_helper_respects_other_ruff_rules(rule: &str, option: &str, call
     assert!(!stdout.contains("`_helper` is called only"), "{stdout}");
 }
 
+#[test_case("raise ValueError('bad')", "except ValueError:" ; "constructed_exception")]
+#[test_case("raise ValueError", "except:" ; "catch_all")]
+#[test_case("raise ValueError", "except (ValueError, TypeError):" ; "tuple_handler")]
+fn single_caller_helper_keeps_caught_raises_outside_try(raised: &str, handler: &str) {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.ruff.lint]\nselect = [\"TRY301\"]\n"),
+        (
+            "module.py",
+            &format!(
+                "def _helper(value):\n    if value:\n        {raised}\n    return 0\n\n\ndef run(value):\n    try:\n        return _helper(value)\n    {handler}\n        return 0\n"
+            ),
+        ),
+    ]);
+    let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP505"]);
+    assert!(!stdout.contains("`_helper` is called only"), "{stdout}");
+}
+
 #[test_case("TRY301", "", "OSError", "if value:\n        raise ValueError\n    return 0" ; "unrelated_handler")]
 #[test_case("PLR1702", "max-nested-blocks = 2", "ValueError", "if value:\n        return 1\n    return 0" ; "nested_limit_not_crossed")]
 #[test_case("PLW0717", "max-statements-in-try = 2", "ValueError", "copy = value\n    return copy" ; "try_limit_not_crossed")]
