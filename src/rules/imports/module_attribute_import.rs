@@ -1,6 +1,5 @@
 use itertools::Itertools;
 use ruff_diagnostics::{Edit, Fix};
-use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::helpers::is_dunder;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
@@ -9,7 +8,7 @@ use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::syntax::for_each_body;
+use crate::syntax::{Visibility, for_each_body};
 
 // A module bound by an import of this run's own code is reached through an attribute, which the name itself reaches
 // without the module.
@@ -40,18 +39,10 @@ pub fn module_attribute_import(checker: &Checker) {
         // The fix replaces the import, so it is offered only when every use of the module is convertible: a single
         // import, no stores, no computed write the import would miss, and each name importable from the module.
         let mut convertible = aliases(statement).len() == 1 && !module.computed_written;
-        // Ruff's import-private-name reports the import the fix would write, so Ruff keeps those names while it runs.
-        let left_to_ruff = if checker.settings.from_ruff.ruff_runs(RuffRule::ImportPrivateName) {
-            ruff_private_names(checker, &module.bound, &path, &uses.attributes)
-        } else {
-            FxHashSet::default()
-        };
+        let private_path = path.split('.').any(|part| Visibility::of(part) == Visibility::Private);
         let mut reports = Vec::new();
         for attribute in &uses.attributes {
-            let reportable = attribute.load
-                && !is_dunder(attribute.name)
-                && !semantic.is_bound(attribute.name)
-                && !left_to_ruff.contains(attribute.name);
+            let reportable = attribute.load && !is_dunder(attribute.name) && !semantic.is_bound(attribute.name);
             // Only a name another file patches or stores stays on the module; its other attributes still move.
             if !reportable || module.patched.contains(attribute.name) {
                 convertible = false;
@@ -61,7 +52,11 @@ pub fn module_attribute_import(checker: &Checker) {
             // attribute after the import would have bound it.
             let rebound =
                 module.rebound.contains(attribute.name) || checker.project().is_attribute_assigned(attribute.name);
-            convertible &= module.defined.contains(attribute.name) && !is_shadowed(checker, attribute) && !rebound;
+            convertible &= !private_path
+                && Visibility::of(attribute.name) != Visibility::Private
+                && module.defined.contains(attribute.name)
+                && !is_shadowed(checker, attribute)
+                && !rebound;
             reports.push(attribute);
         }
         let fix = convertible.then(|| {
@@ -89,39 +84,6 @@ pub fn module_attribute_import(checker: &Checker) {
             }
         }
     }
-}
-
-// The names the module reads outside a typing context, whose import Ruff's import-private-name flags. A name read only
-// in typing contexts stays reported, as Ruff exempts it.
-fn ruff_private_names<'a>(
-    checker: &Checker,
-    bound: &str,
-    path: &str,
-    attributes: &[Attribute<'a>],
-) -> FxHashSet<&'a str> {
-    let typing: FxHashSet<TextRange> = checker
-        .semantic()
-        .references_to(bound)
-        .iter()
-        .filter(|reference| reference.typing)
-        .map(|reference| reference.range)
-        .collect();
-    attributes
-        .iter()
-        .filter(|attribute| !typing.contains(&attribute.value))
-        .map(|attribute| attribute.name)
-        .filter(|name| flagged_by_ruff(checker, path, name))
-        .collect()
-}
-
-// Whether Ruff's import-private-name flags `from path import name`: the import is absolute and not a dunder, comes from
-// outside the importer's package, and has a private name among its module or the name itself.
-fn flagged_by_ruff(checker: &Checker, path: &str, name: &str) -> bool {
-    let root = path.split_once('.').map_or(path, |(root, _)| root);
-    !path.starts_with('.')
-        && !is_dunder(root)
-        && !checker.package_path().is_some_and(|package| package.ends_with(root))
-        && path.split('.').chain([name]).any(|part| part.starts_with('_') && !is_dunder(part))
 }
 
 // Whether a local binding of the attribute's name shares the top-level statement of the use, so the bare name may
@@ -184,7 +146,6 @@ struct Uses<'a> {
 
 struct Attribute<'a> {
     range: TextRange,
-    value: TextRange,
     name: &'a str,
     // Whether the access reads the attribute, rather than storing or deleting it.
     load: bool,
@@ -198,7 +159,6 @@ impl<'a> Visitor<'a> for Uses<'a> {
             {
                 self.attributes.push(Attribute {
                     range: *range,
-                    value: value.range(),
                     name: attr.as_str(),
                     load: matches!(ctx, ExprContext::Load),
                 });

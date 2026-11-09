@@ -105,6 +105,20 @@ writer = DbWriter()
   writer = findings.DbWriter()
   ```
 
+- **Private attributes of imported modules**, such as `main._compute`, including when Ruff selects `PLC2701`. Only a
+  module that resolves to a file of this project is checked.
+
+  ```python context file=pkg/main.py
+  def _compute() -> int:
+      return 1
+  ```
+
+  ```python report file=pkg/consumer.py
+  from . import main
+
+  result = main._compute()
+  ```
+
 ### Exceptions
 
 - **Third-party and standard-library modules**: only modules that resolve to a file of the run count, so `json` stays as
@@ -271,31 +285,6 @@ writer = DbWriter()
   NAME = findings.__name__
   ```
 
-- **Private names that Ruff's import-private-name reports**: `from pkg.findings import _make_writer` is a private import
-  across packages, which Ruff's [import-private-name](https://docs.astral.sh/ruff/rules/import-private-name/) (PLC2701)
-  flags, so a read of such a name is left to Ruff while the project's Ruff configuration selects that rule.
-
-  ```toml config
-  [tool.ruff]
-  lint.preview = true
-  lint.select = ["PLC2701"]
-  ```
-
-  ```python context file=pkg/__init__.py
-  # A package.
-  ```
-
-  ```python context file=pkg/findings.py
-  def _make_writer() -> object:
-      return object()
-  ```
-
-  ```python ok file=tests/test_writer.py
-  from pkg import findings
-
-  writer = findings._make_writer()
-  ```
-
 - **Modules that tests patch by attribute**: a dotted string such as `mocker.patch("pkg.findings.DbWriter")` names the
   attribute in the module, so the code keeps reaching it through the module, where the patch takes effect. The module's
   other attributes are still reported. A `setattr` in a loop over a literal tuple or list of modules patches the name on
@@ -423,15 +412,14 @@ lazy from .findings import DbWriter
 writer = DbWriter()
 ```
 
-## Ruff overlap
+## Private module attributes
 
-Ruff's [import-private-name](https://docs.astral.sh/ruff/rules/import-private-name/) (PLC2701) forbids the import this
-rule would write for a private name, but exempts a read whose reference is in a typing context or a runtime-evaluated
-annotation. A typing context is a `TYPE_CHECKING` block, a type parameter bound, a `type` alias value, or an annotation
-Python does not evaluate at runtime. A read outside those contexts is one Ruff flags, so it is left to Ruff while the
-project's Ruff configuration selects the rule. That includes an annotation that `flake8-type-checking` lists as
-runtime-required or ambiguous through its class or decorator. A public name imported from a private module is left to
-Ruff too, since the import's path has a private part.
+The rule reports `module._name` when `module` resolves to a file in this project. It does not check attributes of
+classes, functions or other values. Private names and private module paths receive no automatic fix: a replacement
+import can cross a package boundary or violate
+[private-import-path](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP310.html). Ruff's
+[import-private-name](https://docs.astral.sh/ruff/rules/import-private-name/) (PLC2701) checks imports, not attribute
+access, so selecting it does not suppress this report.
 
 ## Other tools
 

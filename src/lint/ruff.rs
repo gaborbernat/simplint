@@ -36,10 +36,6 @@ impl<'a> RuffFile<'a> {
         Self { settings, package, unbounded: OnceLock::new(), lean: OnceLock::new(), lean_unbounded: OnceLock::new() }
     }
 
-    pub fn package_path(&self) -> Option<&'a Path> {
-        self.package.map(PackageRoot::path)
-    }
-
     // Ruff's report on the source at no line length limit. Layout is `ruff format`'s job, as it runs after simplint: a
     // finding about whitespace, blank lines or line length may come or go when it formats the code, so it does not
     // count either way, save a line too long for any layout.

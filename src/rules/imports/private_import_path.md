@@ -1,0 +1,63 @@
+Flags private imports that reach beyond one direct relative module, and imports that bind a private module as an object.
+
+## Why is this bad?
+
+Importing a module such as `package._api` exposes its implementation path to callers. Importing names directly lets a
+package keep its implementation private while choosing what to expose through `__all__`. A parent-relative import such
+as `from .._api import API` also crosses a package boundary.
+
+## Example
+
+```python context file=package/_api.py
+def make() -> object:
+    return object()
+```
+
+```python report file=package/consumer.py
+import package._api as api
+
+value = api.make()
+```
+
+Use instead:
+
+```python ok file=package/consumer.py
+from ._api import make
+
+value = make()
+```
+
+## What it does
+
+The rule checks imports in module, class and function bodies. It offers no fix for an import alone: choosing a public
+re-export or replacing uses of a module object may require changes elsewhere.
+
+### Active on
+
+- **Private module-object imports**, such as `import package._api as api` and `from . import _api`.
+
+- **Absolute private imports**, such as `from package._api import API`. Use `from ._api import API` within the same
+  package, or import `API` from a public re-export elsewhere.
+
+- **Parent-relative private imports**, such as `from .._api import API` and `from .. import _api`.
+
+- **Paths with two private names**, such as `from ._internal._helpers import API` or `from ._internal import _helper`. A
+  direct relative import may cross one private name, not two.
+
+- **Private modules below a sibling**, such as `from ._api.helpers import API`.
+
+### Exceptions
+
+- **One private name in a direct relative import**: `from ._api import API` lets the package use a private sibling to
+  build an API. `from .public import _helper` also stays within the same package level.
+
+- **Dunder names**: `__future__` and `__version__` do not count as private names.
+
+- **Documented public underscore names**: [`os._exit`](https://docs.python.org/3/library/os.html#os._exit) is a public
+  API despite its underscore.
+
+## Other tools
+
+[Ruff's import-private-name](https://docs.astral.sh/ruff/rules/import-private-name/) (PLC2701) reports private imports
+across packages, but exempts relative imports and absolute imports within the same top-level package. This rule checks
+those paths and module-object imports too.

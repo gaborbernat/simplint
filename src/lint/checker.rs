@@ -332,11 +332,6 @@ impl<'a> Checker<'a> {
         self.linter.module_path.as_deref()
     }
 
-    // The directory of the package the file sits in, which Ruff compares the top-level names of imports against.
-    pub fn package_path(&self) -> Option<&'a Path> {
-        self.linter.ruff.package_path()
-    }
-
     // Whether the file's directory holds an `__init__.py`, which a package-relative rule checks.
     pub fn has_sibling_init(&self) -> bool {
         self.linter.sibling_init
