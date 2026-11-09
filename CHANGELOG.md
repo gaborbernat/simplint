@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.9.0 (2026-11-09)
+
+<a name="release-0-9-0"></a>
+
+<a name="release-0-9-0-added"></a>
+
+### Added
+
+- `simplint: ignore[...]` accepts rule names such as `imprecise-annotation`. `numeric-ignore` (SMP008) reports known
+  numeric codes in these comments and offers a safe fix to replace them with names. `--add-ignore` writes names too
+  ([#71](https://github.com/gaborbernat/simplint/pull/71)) by [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-9-0-fixed"></a>
+
+### Fixed
+
+- `unused-export` and related API rules count functions and classes named by `pkgutil.resolve_name`, argparse handler
+  defaults, and supported `pyproject.toml` tool settings as used. This includes setuptools attributes and command
+  classes, mypy, Pylint, pytest and Poetry plugins, and local PDM build hooks
+  ([#71](https://github.com/gaborbernat/simplint/pull/71)) by [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.8.0 (2026-11-08)
 
 <a name="release-0-8-0"></a>
