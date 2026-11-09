@@ -261,7 +261,8 @@ definition a Sphinx page names is used.
 
 - **Framework hooks**: `setup` and `teardown` functions, and `pytest_*` hooks, are called by Sphinx or pytest by name,
   and so are the hooks of the build backend that `build-backend` names in `[build-system]`, which a build frontend
-  calls.
+  calls. With `pdm.backend`, functions in the local `pdm_build.py` file or its `[tool.pdm.build] custom-hook`
+  replacement are build hooks too.
 
   ```python ok file=docs/conf.py
   def setup(app: object) -> None:
@@ -304,6 +305,10 @@ definition a Sphinx page names is used.
   def coverage_init(reg: object, options: dict[str, str]) -> None:
       pass
   ```
+
+- **Tool references in `pyproject.toml`**: setuptools dynamic attributes and command classes, mypy and Pylint plugin
+  functions, Poetry plugin entry points, and pytest plugins loaded through `addopts` count as used. For a bare pytest
+  plugin module, its public hooks count as used by the host.
 
 - **Dunder and sunder names** such as `__repr__`, which the interpreter calls without a name in the source, and
   `_repr_html_` or `_missing_`, which Jupyter and `enum` call by name.

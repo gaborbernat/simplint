@@ -126,6 +126,7 @@ impl Settings {
                 let mut project: ProjectFile =
                     table.clone().try_into().with_context(|| format!("Failed to parse {}", path.display()))?;
                 project.project.add_groups(&project.dependency_groups);
+                project.project.add_tool_references(table);
                 (Some(path), project.project, build)
             }
             None => (None, ProjectMetadata::default(), BuildConfiguration::default()),

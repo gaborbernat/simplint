@@ -23,6 +23,65 @@ impl ProjectMetadata {
     pub(super) fn add_groups(&mut self, groups: &BTreeMap<String, Vec<toml::Value>>) {
         self.declared.extend(groups.values().flatten().filter_map(toml::Value::as_str).flat_map(import_names));
     }
+
+    pub(super) fn add_tool_references(&mut self, pyproject: &toml::Table) {
+        let lookup = |path: &[&str]| path.iter().try_fold(pyproject.get("tool")?, |value, key| value.get(key));
+        if let Some(dynamic) = lookup(&["setuptools", "dynamic"]).and_then(toml::Value::as_table) {
+            self.entry_points
+                .extend(dynamic.values().filter_map(|value| value.get("attr")?.as_str().and_then(dotted_attribute)));
+        }
+        if let Some(classes) = lookup(&["setuptools", "cmdclass"]).and_then(toml::Value::as_table) {
+            self.entry_points.extend(classes.values().filter_map(toml::Value::as_str).filter_map(dotted_attribute));
+        }
+        if let Some(groups) = lookup(&["poetry", "plugins"]).and_then(toml::Value::as_table) {
+            self.entry_points.extend(
+                groups
+                    .values()
+                    .filter_map(toml::Value::as_table)
+                    .flat_map(toml::Table::values)
+                    .filter_map(toml::Value::as_str)
+                    .map(str::to_owned),
+            );
+        }
+        self.entry_points.extend(strings(lookup(&["mypy", "plugins"])).into_iter().flat_map(|plugins| {
+            plugins
+                .split(',')
+                .map(str::trim)
+                .filter(|plugin| !plugin.is_empty())
+                .map(|plugin| if plugin.contains(':') { plugin.to_owned() } else { format!("{plugin}:plugin") })
+                .collect::<Vec<_>>()
+        }));
+        self.entry_points.extend(strings(lookup(&["pylint", "main", "load-plugins"])).into_iter().flat_map(
+            |plugins| {
+                plugins
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|plugin| !plugin.is_empty())
+                    .map(|plugin| format!("{plugin}:register"))
+                    .collect::<Vec<_>>()
+            },
+        ));
+        for path in [&["pytest", "ini_options", "addopts"][..], &["pytest", "addopts"]] {
+            let options: Vec<String> = strings(lookup(path))
+                .into_iter()
+                .flat_map(|option| option.split_whitespace().map(str::to_owned).collect::<Vec<_>>())
+                .collect();
+            self.entry_points.extend(
+                options
+                    .windows(2)
+                    .filter(|pair| pair[0] == "-p")
+                    .map(|pair| pair[1].as_str())
+                    .chain(options.iter().filter_map(|option| option.strip_prefix("-p")))
+                    .filter(|plugin| !plugin.is_empty() && !plugin.starts_with("no:"))
+                    .map(str::to_owned),
+            );
+        }
+    }
+}
+
+fn dotted_attribute(value: &str) -> Option<String> {
+    let (module, attribute) = value.rsplit_once('.')?;
+    Some(format!("{module}:{attribute}"))
 }
 
 impl From<ProjectTable> for ProjectMetadata {
@@ -102,6 +161,7 @@ pub struct BuildConfiguration {
     pub backend_path: Vec<String>,
     // The `path` of each custom build or metadata hook of hatchling, which loads the hook's class from that file.
     pub hatch_hooks: Vec<String>,
+    pub pdm_hook: Option<String>,
 }
 
 impl BuildConfiguration {
@@ -134,6 +194,7 @@ impl BuildConfiguration {
             backend: system_value("build-backend").and_then(toml::Value::as_str).map(str::to_owned),
             backend_path: strings(system_value("backend-path")),
             hatch_hooks: hatch_hook_paths(&hatch),
+            pdm_hook: lookup(&["pdm", "build", "custom-hook"]).and_then(toml::Value::as_str).map(str::to_owned),
         }
     }
 }
@@ -240,6 +301,25 @@ pub(super) fn build_hooks(root: &Path, build: &BuildConfiguration) -> Result<Vec
     let Some(backend) = build.backend.as_deref() else {
         return Ok(Vec::new());
     };
+    let mut hooks = Vec::new();
+    if backend == "pdm.backend" {
+        let file = root.join(build.pdm_hook.as_deref().unwrap_or("pdm_build.py"));
+        if file.is_file() {
+            let file = std::path::absolute(&file).with_context(|| format!("Failed to resolve {}", file.display()))?;
+            hooks.extend(
+                [
+                    "pdm_build_hook_enabled",
+                    "pdm_build_clean",
+                    "pdm_build_initialize",
+                    "pdm_build_update_setup_kwargs",
+                    "pdm_build_update_files",
+                    "pdm_build_finalize",
+                ]
+                .into_iter()
+                .map(|name| (file.clone(), name.to_owned())),
+            );
+        }
+    }
     let (module, object) = backend.split_once(':').map_or((backend, None), |(module, object)| (module, Some(object)));
     let relative = module.trim().replace('.', "/");
     // Without a `backend-path`, the backend is looked for in the project's directory.
@@ -253,7 +333,7 @@ pub(super) fn build_hooks(root: &Path, build: &BuildConfiguration) -> Result<Vec
         .flat_map(|directory| [directory.join(format!("{relative}.py")), directory.join(&relative).join("__init__.py")])
         .find(|path| path.is_file())
     else {
-        return Ok(Vec::new());
+        return Ok(hooks);
     };
     let file = std::path::absolute(&file).with_context(|| format!("Failed to resolve {}", file.display()))?;
     // The PEP 517 and PEP 660 hooks a build frontend calls by name, which no import of the project reaches.
@@ -272,5 +352,6 @@ pub(super) fn build_hooks(root: &Path, build: &BuildConfiguration) -> Result<Vec
         .map(str::to_owned)
         .into(),
     };
-    Ok(names.into_iter().map(|name| (file.clone(), name)).collect())
+    hooks.extend(names.into_iter().map(|name| (file.clone(), name)));
+    Ok(hooks)
 }

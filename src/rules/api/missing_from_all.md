@@ -128,8 +128,15 @@ signature reaches it:
 - **String-named handlers** passed to `pkgutil.resolve_name` as `module:attribute`, or stored with
   `parser.set_defaults(handler="module:attribute")`: the dispatch reads the named attribute at runtime.
 
+- **Tool references in `pyproject.toml`**: setuptools reads `[tool.setuptools.dynamic]` `attr` values and
+  `[tool.setuptools.cmdclass]` classes; mypy calls the function named by `[tool.mypy] plugins` (`plugin` by default);
+  Pylint calls `register` in `[tool.pylint.main] load-plugins`. Legacy `[tool.poetry.plugins]` values are entry points.
+  A pytest plugin loaded with `-p` in `[tool.pytest.ini_options] addopts` or `[tool.pytest] addopts` exposes its public
+  hooks by name.
+
 - **Build backend hooks** of the module that `build-backend` names in `[build-system]`: a build frontend calls the PEP
-  517 and PEP 660 hooks by name, so the names are used from outside the code.
+  517 and PEP 660 hooks by name, so the names are used from outside the code. When the backend is `pdm.backend`, its
+  local `pdm_build.py` hook functions are also called by name; `[tool.pdm.build] custom-hook` may name another file.
 
   ```toml config
   [build-system]

@@ -1831,6 +1831,70 @@ fn string_named_handler_requires_an_export() {
     assert!(check(root.path(), &["--select", "SMP401"]).1.contains("`run` is imported by other modules"));
 }
 
+#[test_case("[tool.setuptools.dynamic]\nversion = { attr = \"pkg._plugin.version\" }\n", "version" ; "setuptools_dynamic_attribute")]
+#[test_case("[tool.setuptools.cmdclass]\nbuild_py = \"pkg._plugin.Build\"\n", "Build" ; "setuptools_command_class")]
+#[test_case("[tool.mypy]\nplugins = [\"pkg._plugin\"]\n", "plugin" ; "mypy_plugin")]
+#[test_case("[tool.mypy]\nplugins = [\"pkg._plugin:custom\"]\n", "custom" ; "mypy_custom_plugin")]
+#[test_case("[tool.pylint.main]\nload-plugins = [\"pkg._plugin\"]\n", "register" ; "pylint_plugin")]
+#[test_case("[tool.poetry.plugins.example]\nplugin = \"pkg._plugin:activate\"\n", "activate" ; "poetry_plugin")]
+fn pyproject_named_attribute_counts_as_used(tool: &str, name: &str) {
+    let root = project(&[
+        ("pyproject.toml", &format!("{LIBRARY}{tool}")),
+        ("pkg/__init__.py", ""),
+        ("pkg/_plugin.py", &format!("__all__ = [\"{name}\"]\n\n\ndef {name}() -> None: ...\n")),
+    ]);
+    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, "All checks passed!\n");
+}
+
+#[test_case("[tool.pytest.ini_options]\naddopts = \"-q -p pkg._plugin\"\n" ; "ini_options")]
+#[test_case("[tool.pytest]\naddopts = [\"-q\", \"-p\", \"pkg._plugin\"]\n" ; "native_options")]
+fn pyproject_pytest_plugin_counts_as_used(tool: &str) {
+    let root = project(&[
+        ("pyproject.toml", &format!("{LIBRARY}{tool}")),
+        ("pkg/__init__.py", ""),
+        ("pkg/_plugin.py", "__all__ = [\"pytest_configure\"]\n\n\ndef pytest_configure() -> None: ...\n"),
+    ]);
+    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, "All checks passed!\n");
+}
+
+#[test]
+fn disabled_pytest_plugin_does_not_count_as_used() {
+    let root = project(&[
+        ("pyproject.toml", &format!("{LIBRARY}[tool.pytest.ini_options]\naddopts = \"-p no:pkg._plugin\"\n")),
+        ("pkg/__init__.py", ""),
+        ("pkg/_plugin.py", "__all__ = [\"pytest_configure\"]\n\n\ndef pytest_configure() -> None: ...\n"),
+    ]);
+    assert!(check(root.path(), &["--select", "SMP402"]).1.contains("`pytest_configure`"));
+}
+
+#[test_case("", "pdm_build.py" ; "default_hook")]
+#[test_case("[tool.pdm.build]\ncustom-hook = \"build.py\"\n", "build.py" ; "custom_hook")]
+fn pdm_build_hooks_count_as_used(config: &str, file: &str) {
+    let root = project(&[
+        (
+            "pyproject.toml",
+            &format!(
+                "[project]\nname = \"pkg\"\n[build-system]\nbuild-backend = \"pdm.backend\"\nrequires = [\"pdm-backend\"]\n{config}"
+            ),
+        ),
+        (file, "__all__ = [\"pdm_build_initialize\"]\n\n\ndef pdm_build_initialize(context: object) -> None: ...\n"),
+    ]);
+    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, "All checks passed!\n");
+}
+
+#[test]
+fn missing_pdm_build_hook_names_no_function() {
+    let root = project(&[
+        (
+            "pyproject.toml",
+            "[project]\nname = \"pkg\"\n[build-system]\nbuild-backend = \"pdm.backend\"\nrequires = [\"pdm-backend\"]\n",
+        ),
+        ("pkg/__init__.py", ""),
+        ("pkg/_plugin.py", "__all__ = [\"pdm_build_initialize\"]\n\n\ndef pdm_build_initialize() -> None: ...\n"),
+    ]);
+    assert!(check(root.path(), &["--select", "SMP402"]).1.contains("`pdm_build_initialize`"));
+}
+
 // Nothing outside an application imports its modules, so dropping an unused export is safe there.
 #[test]
 fn application_drops_unused_exports_safely() {
