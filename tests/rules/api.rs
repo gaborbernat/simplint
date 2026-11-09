@@ -110,6 +110,18 @@ fn init_module_content_allows_test_packages_and_pep_562_hooks() {
 }
 
 #[test]
+fn init_module_content_allows_explicit_api_in_applications() {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.simplint]\nproject-kind = \"application\"\n"),
+        ("package/__init__.py", "from ._api import API\nfrom ._api import hidden\n\n__all__ = [\"API\"]\n"),
+        ("package/_api.py", "API = 1\nhidden = 2\n"),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP407"]);
+    assert_eq!(stdout.matches("SMP407").count(), 1, "{stdout}");
+    assert!(stdout.contains("package/__init__.py:2:1"), "{stdout}");
+}
+
+#[test]
 fn missing_from_all_allows_main_modules() {
     let root = common::project(&[
         ("package/__main__.py", "VALUE = 1\n"),
@@ -263,7 +275,7 @@ const RUF067_STRICT: &str = "[tool.ruff.lint]\npreview = true\nselect = [\"RUF06
 #[test_case(RUF067_STRICT, "import os\n", 0 ; "preview_strict_import")]
 #[test_case(RUF067_STRICT, "X = 1\n\"\"\"Doc of X.\"\"\"\n", 1 ; "preview_strict_attribute_docstring")]
 #[test_case("[tool.ruff.lint]\nselect = [\"RUF067\"]\n", "VALUE = 1\n", 1 ; "preview_off_leaves_it_to_the_run")]
-#[test_case(RUF067_PREVIEW, "__all__: list[str] = []\n", 1 ; "preview_dunder_annotated_allowed")]
+#[test_case(RUF067_PREVIEW, "__all__: list[str] = []\n", 0 ; "preview_dunder_annotated_allowed")]
 #[test_case(RUF067_PREVIEW, "__all__ += [\"x\"]\n", 1 ; "preview_dunder_augmented_allowed")]
 #[test_case(RUF067_PREVIEW, "counter += 1\n", 0 ; "preview_augmented_reported")]
 #[test_case(RUF067_PREVIEW, "import typing\n\nif typing.TYPE_CHECKING:\n    pass\n", 1 ; "preview_attribute_type_checking_allowed")]

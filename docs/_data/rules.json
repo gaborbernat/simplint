@@ -10235,15 +10235,15 @@
   {
     "code": "SMP407",
     "name": "init-module-content",
-    "summary": "`__init__.py` holding more than a docstring",
+    "summary": "`__init__.py` holding code beyond its API",
     "fix": "None",
-    "explanation": "Flags `__init__.py` files that hold anything besides a module docstring. Importing any submodule runs the package's\n`__init__.py` first, so code there slows down or breaks unrelated modules.\n\n## Why is this bad?\n\nPython runs a package's `__init__.py` before it imports any of the package's submodules. Importing `pkg.sub` therefore\nalso runs everything in `pkg/__init__.py`, and a slow or failing import there slows down or breaks unrelated modules.\nRe-exports give one object two import paths and invite circular imports.\n\n## Example\n\n```python context file=http_client/client.py\nclass Client:\n    pass\n```\n\n```python report file=http_client/__init__.py\n\"\"\"HTTP client.\"\"\"\n\nfrom .client import Client\n\n__all__ = [\"Client\"]\n```\n\nUse instead:\n\n```python context file=http_client/client.py\nclass Client:\n    pass\n```\n\n```python ok file=http_client/__init__.py\n\"\"\"HTTP client.\"\"\"\n```\n\nImporters then use `from http_client.client import Client`. In a library whose public package presents the API, keep the\ncode in a private module and only re-export it:\n\n```toml config\n[tool.simplint]\nproject-kind = \"library\"\n```\n\n```python context file=http_client/_client.py\nclass Client:\n    pass\n```\n\n```python ok file=http_client/__init__.py\n\"\"\"HTTP client.\"\"\"\n\nfrom ._client import Client\n\n__all__ = [\"Client\"]\n```\n\n## What it does\n\nNo fix is offered: removing the code breaks every importer that relies on it, and moving it needs a decision about where\nit belongs.\n\n### Active on\n\n- **Statements after the docstring of an\n  [`__init__.py`](https://docs.python.org/3/reference/import.html#regular-packages)**: every one is reported, including\n  imports and [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package), since each runs\n  whenever any submodule is imported.\n\n  ```python report file=pkg/__init__.py\n  \"\"\"HTTP client.\"\"\"\n\n  from .client import Client\n\n  __all__ = [\"Client\"]\n  ```\n\n- **Other statements in a public package of a library**: anything beyond the re-exports listed under Exceptions is\n  reported there too.\n\n  - an import of a name it does not export:\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python report file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    from ._core import run\n    from ._core import stop as stop\n\n    __all__ = [\"stop\"]\n    ```\n\n  - any other statement, such as an assignment:\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python report file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    VERSION = \"1.0\"\n    ```\n\n### Exceptions\n\n- **Test packages and nested test projects**: fixtures may need initializer code to exercise import behavior. A package\n  under a test root that is itself a project is treated as test input, even when its module name does not start with\n  `test_`.\n\n- **PEP 562 package hooks and `if TYPE_CHECKING` blocks**: `__getattr__` can load package attributes on demand,\n  `__dir__` can list them, and a `TYPE_CHECKING` block can expose their types to type checkers. The imports used by\n  those hooks may still need a suppression when they are not re-exports.\n\n- **The module docstring**: it documents the package and runs no code.\n\n  ```python ok file=pkg/__init__.py\n  \"\"\"HTTP client.\"\"\"\n  ```\n\n- **Re-exports in a public package of a library**: such a package may re-export its public API, as\n  [PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces) describes for a package's `__init__` that\n  exposes functionality from submodules. Its `__init__.py` may hold:\n\n  - imports whose every name it exports through `__all__`:\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python ok file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    from ._core import run\n\n    __all__ = [\"run\"]\n    ```\n\n  - a redundant alias, such as `from ._core import run as run`:\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python ok file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    from ._core import run as run\n    ```\n\n  - `import *`:\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python ok file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    from ._core import *\n    ```\n\n  - the `__all__` that lists them\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python ok file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    __all__ = [\"run\"]\n    ```\n\n  - `from __future__` imports, which change no behavior at run time\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python ok file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    from __future__ import annotations\n    ```\n\n  - `__lazy_modules__`, the modules Python 3.15 loads lazily when the package's imports run\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python ok file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    __lazy_modules__ = [\"demo._core\"]\n\n    from ._core import run\n\n    __all__ = [\"run\"]\n    ```\n\n- **Statements Ruff reports**: with Ruff's preview mode on and\n  [RUF067](https://docs.astral.sh/ruff/rules/non-empty-init-module/) selected, Ruff reports the statements of an\n  `__init__.py` that it does not allow, so this rule leaves them to Ruff. Ruff allows imports, dunder assignments and\n  `if TYPE_CHECKING` blocks, unless `strictly-empty-init-modules` is set.\n\n  ```toml config\n  [tool.ruff.lint]\n  preview = true\n  select = [\"RUF067\"]\n  ```\n\n  ```python ok file=pkg/__init__.py\n  \"\"\"HTTP client.\"\"\"\n\n  VERSION = \"1.0\"\n  ```\n\n### Public packages\n\nA package is **public** when it belongs to one of the library's API packages and no part of its path starts with `_`;\nsee [undocumented-public-api](SMP903.html).\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rule\n  [RUF067](https://docs.astral.sh/ruff/rules/non-empty-init-module/), which reports code in `__init__.py` except imports\n  and dunder assignments (all of it with `strictly-empty-init-modules`) and which this rule leaves to it; this rule also\n  reports the imports a library's public package does not re-export.\n- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports logic in an `__init__`\n  module as\n  [WPS412](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/best_practices.html#wemake_python_styleguide.violations.best_practices.InitModuleHasLogicViolation),\n  with no fix.\n",
+    "explanation": "Flags `__init__.py` files that hold code beyond a module docstring and deliberate API re-exports. Importing any\nsubmodule runs the package's `__init__.py` first, so code there can slow down or break unrelated modules.\n\n## Why is this bad?\n\nPython runs a package's `__init__.py` before it imports any of the package's submodules. Importing `pkg.sub` therefore\nalso runs everything in `pkg/__init__.py`, and a slow or failing import there slows down or breaks unrelated modules.\nUnplanned re-exports give one object two import paths and invite circular imports. A package can deliberately expose\nselected names from private modules through `__all__`.\n\n## Example\n\n```python context file=http_client/client.py\nclass Client:\n    pass\n```\n\n```python report file=http_client/__init__.py\n\"\"\"HTTP client.\"\"\"\n\nfrom .client import Client\n```\n\nUse instead:\n\n```python context file=http_client/client.py\nclass Client:\n    pass\n```\n\n```python ok file=http_client/__init__.py\n\"\"\"HTTP client.\"\"\"\n```\n\nImporters then use `from http_client.client import Client`. When the package presents an API, keep the implementation in\na private module and list the names it exposes:\n\n```python context file=http_client/_client.py\nclass Client:\n    pass\n```\n\n```python ok file=http_client/__init__.py\n\"\"\"HTTP client.\"\"\"\n\nfrom ._client import Client\n\n__all__ = [\"Client\"]\n```\n\n## What it does\n\nNo fix is offered: removing the code breaks every importer that relies on it, and moving it needs a decision about where\nit belongs.\n\n### Active on\n\n- **Statements after the docstring of an\n  [`__init__.py`](https://docs.python.org/3/reference/import.html#regular-packages)** that do not form an explicit API:\n  imports absent from [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package) and direct\n  definitions are reported.\n\n  ```python report file=pkg/__init__.py\n  \"\"\"HTTP client.\"\"\"\n\n  from .client import Client\n  ```\n\n- **Other statements in a public package of a library**: anything beyond the re-exports listed under Exceptions is\n  reported there too.\n\n  - an import of a name it does not export:\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python report file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    from ._core import run\n    from ._core import stop as stop\n\n    __all__ = [\"stop\"]\n    ```\n\n  - any other statement, such as an assignment:\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python report file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    VERSION = \"1.0\"\n    ```\n\n### Exceptions\n\n- **Test packages and nested test projects**: fixtures may need initializer code to exercise import behavior. A package\n  under a test root that is itself a project is treated as test input, even when its module name does not start with\n  `test_`.\n\n- **PEP 562 package hooks and `if TYPE_CHECKING` blocks**: `__getattr__` can load package attributes on demand,\n  `__dir__` can list them, and a `TYPE_CHECKING` block can expose their types to type checkers. The imports used by\n  those hooks may still need a suppression when they are not re-exports.\n\n- **The module docstring**: it documents the package and runs no code.\n\n  ```python ok file=pkg/__init__.py\n  \"\"\"HTTP client.\"\"\"\n  ```\n\n- **Names listed in `__all__`**: any package can expose selected names from a private module. The list must be readable\n  statically; an unlisted import is still reported. This works in applications and private subpackages as well as public\n  library packages.\n\n  ```python context file=pkg/_api.py\n  class API:\n      pass\n  ```\n\n  ```python ok file=pkg/__init__.py\n  from ._api import API\n\n  __all__ = [\"API\"]\n  ```\n\n- **Other re-exports in a public package of a library**:\n  [PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces) describes a package's `__init__` exposing\n  functionality from submodules. A public library package may also hold:\n\n  - a redundant alias, such as `from ._core import run as run`:\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python ok file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    from ._core import run as run\n    ```\n\n  - `import *`:\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python ok file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    from ._core import *\n    ```\n\n  - `from __future__` imports, which change no behavior at run time\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python ok file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    from __future__ import annotations\n    ```\n\n  - `__lazy_modules__`, the modules Python 3.15 loads lazily when the package's imports run\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python ok file=demo/__init__.py\n    \"\"\"HTTP client.\"\"\"\n\n    __lazy_modules__ = [\"demo._core\"]\n\n    from ._core import run\n\n    __all__ = [\"run\"]\n    ```\n\n- **Statements Ruff reports**: with Ruff's preview mode on and\n  [RUF067](https://docs.astral.sh/ruff/rules/non-empty-init-module/) selected, Ruff reports the statements of an\n  `__init__.py` that it does not allow, so this rule leaves them to Ruff. Ruff allows imports, dunder assignments and\n  `if TYPE_CHECKING` blocks, unless `strictly-empty-init-modules` is set.\n\n  ```toml config\n  [tool.ruff.lint]\n  preview = true\n  select = [\"RUF067\"]\n  ```\n\n  ```python ok file=pkg/__init__.py\n  \"\"\"HTTP client.\"\"\"\n\n  VERSION = \"1.0\"\n  ```\n\n### Public packages\n\nA package is **public** when it belongs to one of the library's API packages and no part of its path starts with `_`;\nsee [undocumented-public-api](SMP903.html).\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rule\n  [RUF067](https://docs.astral.sh/ruff/rules/non-empty-init-module/), which reports code in `__init__.py` except imports\n  and dunder assignments (all of it with `strictly-empty-init-modules`) and which this rule leaves to it; this rule also\n  reports the imports a library's public package does not re-export.\n- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports logic in an `__init__`\n  module as\n  [WPS412](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/best_practices.html#wemake_python_styleguide.violations.best_practices.InitModuleHasLogicViolation),\n  with no fix.\n",
     "examples": {
       "parsed": [
         {
           "section": "Example",
-          "line": 12,
-          "end_line": 23,
+          "line": 13,
+          "end_line": 22,
           "config": null,
           "blocks": [
             {
@@ -10251,8 +10251,8 @@
               "language": "python",
               "file": "http_client/client.py",
               "named": true,
-              "line": 12,
-              "end_line": 15,
+              "line": 13,
+              "end_line": 16,
               "source": "class Client:\n    pass\n"
             },
             {
@@ -10260,16 +10260,16 @@
               "language": "python",
               "file": "http_client/__init__.py",
               "named": true,
-              "line": 17,
-              "end_line": 23,
-              "source": "\"\"\"HTTP client.\"\"\"\n\nfrom .client import Client\n\n__all__ = [\"Client\"]\n"
+              "line": 18,
+              "end_line": 22,
+              "source": "\"\"\"HTTP client.\"\"\"\n\nfrom .client import Client\n"
             }
           ]
         },
         {
           "section": "Example",
-          "line": 27,
-          "end_line": 34,
+          "line": 26,
+          "end_line": 33,
           "config": null,
           "blocks": [
             {
@@ -10277,8 +10277,8 @@
               "language": "python",
               "file": "http_client/client.py",
               "named": true,
-              "line": 27,
-              "end_line": 30,
+              "line": 26,
+              "end_line": 29,
               "source": "class Client:\n    pass\n"
             },
             {
@@ -10286,29 +10286,25 @@
               "language": "python",
               "file": "http_client/__init__.py",
               "named": true,
-              "line": 32,
-              "end_line": 34,
+              "line": 31,
+              "end_line": 33,
               "source": "\"\"\"HTTP client.\"\"\"\n"
             }
           ]
         },
         {
           "section": "Example",
-          "line": 39,
-          "end_line": 55,
-          "config": {
-            "line": 39,
-            "end_line": 42,
-            "source": "[tool.simplint]\nproject-kind = \"library\"\n"
-          },
+          "line": 38,
+          "end_line": 49,
+          "config": null,
           "blocks": [
             {
               "role": "context",
               "language": "python",
               "file": "http_client/_client.py",
               "named": true,
-              "line": 44,
-              "end_line": 47,
+              "line": 38,
+              "end_line": 41,
               "source": "class Client:\n    pass\n"
             },
             {
@@ -10316,16 +10312,16 @@
               "language": "python",
               "file": "http_client/__init__.py",
               "named": true,
-              "line": 49,
-              "end_line": 55,
+              "line": 43,
+              "end_line": 49,
               "source": "\"\"\"HTTP client.\"\"\"\n\nfrom ._client import Client\n\n__all__ = [\"Client\"]\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 69,
-          "end_line": 75,
+          "line": 63,
+          "end_line": 67,
           "config": null,
           "blocks": [
             {
@@ -10333,19 +10329,19 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 69,
-              "end_line": 75,
-              "source": "\"\"\"HTTP client.\"\"\"\n\nfrom .client import Client\n\n__all__ = [\"Client\"]\n"
+              "line": 63,
+              "end_line": 67,
+              "source": "\"\"\"HTTP client.\"\"\"\n\nfrom .client import Client\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 82,
-          "end_line": 98,
+          "line": 74,
+          "end_line": 90,
           "config": {
-            "line": 82,
-            "end_line": 89,
+            "line": 74,
+            "end_line": 81,
             "source": "[build-system]\nrequires = [\"setuptools\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"demo\"\n"
           },
           "blocks": [
@@ -10354,19 +10350,19 @@
               "language": "python",
               "file": "demo/__init__.py",
               "named": true,
-              "line": 91,
-              "end_line": 98,
+              "line": 83,
+              "end_line": 90,
               "source": "\"\"\"HTTP client.\"\"\"\n\nfrom ._core import run\nfrom ._core import stop as stop\n\n__all__ = [\"stop\"]\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 102,
-          "end_line": 115,
+          "line": 94,
+          "end_line": 107,
           "config": {
-            "line": 102,
-            "end_line": 109,
+            "line": 94,
+            "end_line": 101,
             "source": "[build-system]\nrequires = [\"setuptools\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"demo\"\n"
           },
           "blocks": [
@@ -10375,16 +10371,16 @@
               "language": "python",
               "file": "demo/__init__.py",
               "named": true,
-              "line": 111,
-              "end_line": 115,
+              "line": 103,
+              "end_line": 107,
               "source": "\"\"\"HTTP client.\"\"\"\n\nVERSION = \"1.0\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 129,
-          "end_line": 131,
+          "line": 121,
+          "end_line": 123,
           "config": null,
           "blocks": [
             {
@@ -10392,40 +10388,45 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 129,
-              "end_line": 131,
+              "line": 121,
+              "end_line": 123,
               "source": "\"\"\"HTTP client.\"\"\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 139,
-          "end_line": 154,
-          "config": {
-            "line": 139,
-            "end_line": 146,
-            "source": "[build-system]\nrequires = [\"setuptools\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"demo\"\n"
-          },
+          "line": 129,
+          "end_line": 138,
+          "config": null,
           "blocks": [
+            {
+              "role": "context",
+              "language": "python",
+              "file": "pkg/_api.py",
+              "named": true,
+              "line": 129,
+              "end_line": 132,
+              "source": "class API:\n    pass\n"
+            },
             {
               "role": "ok",
               "language": "python",
-              "file": "demo/__init__.py",
+              "file": "pkg/__init__.py",
               "named": true,
-              "line": 148,
-              "end_line": 154,
-              "source": "\"\"\"HTTP client.\"\"\"\n\nfrom ._core import run\n\n__all__ = [\"run\"]\n"
+              "line": 134,
+              "end_line": 138,
+              "source": "from ._api import API\n\n__all__ = [\"API\"]\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 158,
-          "end_line": 171,
+          "line": 146,
+          "end_line": 159,
           "config": {
-            "line": 158,
-            "end_line": 165,
+            "line": 146,
+            "end_line": 153,
             "source": "[build-system]\nrequires = [\"setuptools\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"demo\"\n"
           },
           "blocks": [
@@ -10434,19 +10435,19 @@
               "language": "python",
               "file": "demo/__init__.py",
               "named": true,
-              "line": 167,
-              "end_line": 171,
+              "line": 155,
+              "end_line": 159,
               "source": "\"\"\"HTTP client.\"\"\"\n\nfrom ._core import run as run\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 175,
-          "end_line": 188,
+          "line": 163,
+          "end_line": 176,
           "config": {
-            "line": 175,
-            "end_line": 182,
+            "line": 163,
+            "end_line": 170,
             "source": "[build-system]\nrequires = [\"setuptools\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"demo\"\n"
           },
           "blocks": [
@@ -10455,19 +10456,19 @@
               "language": "python",
               "file": "demo/__init__.py",
               "named": true,
-              "line": 184,
-              "end_line": 188,
+              "line": 172,
+              "end_line": 176,
               "source": "\"\"\"HTTP client.\"\"\"\n\nfrom ._core import *\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 192,
-          "end_line": 205,
+          "line": 180,
+          "end_line": 193,
           "config": {
-            "line": 192,
-            "end_line": 199,
+            "line": 180,
+            "end_line": 187,
             "source": "[build-system]\nrequires = [\"setuptools\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"demo\"\n"
           },
           "blocks": [
@@ -10476,40 +10477,19 @@
               "language": "python",
               "file": "demo/__init__.py",
               "named": true,
-              "line": 201,
-              "end_line": 205,
-              "source": "\"\"\"HTTP client.\"\"\"\n\n__all__ = [\"run\"]\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 209,
-          "end_line": 222,
-          "config": {
-            "line": 209,
-            "end_line": 216,
-            "source": "[build-system]\nrequires = [\"setuptools\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"demo\"\n"
-          },
-          "blocks": [
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "demo/__init__.py",
-              "named": true,
-              "line": 218,
-              "end_line": 222,
+              "line": 189,
+              "end_line": 193,
               "source": "\"\"\"HTTP client.\"\"\"\n\nfrom __future__ import annotations\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 226,
-          "end_line": 243,
+          "line": 197,
+          "end_line": 214,
           "config": {
-            "line": 226,
-            "end_line": 233,
+            "line": 197,
+            "end_line": 204,
             "source": "[build-system]\nrequires = [\"setuptools\"]\nbuild-backend = \"setuptools.build_meta\"\n\n[project]\nname = \"demo\"\n"
           },
           "blocks": [
@@ -10518,19 +10498,19 @@
               "language": "python",
               "file": "demo/__init__.py",
               "named": true,
-              "line": 235,
-              "end_line": 243,
+              "line": 206,
+              "end_line": 214,
               "source": "\"\"\"HTTP client.\"\"\"\n\n__lazy_modules__ = [\"demo._core\"]\n\nfrom ._core import run\n\n__all__ = [\"run\"]\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 250,
-          "end_line": 260,
+          "line": 221,
+          "end_line": 231,
           "config": {
-            "line": 250,
-            "end_line": 254,
+            "line": 221,
+            "end_line": 225,
             "source": "[tool.ruff.lint]\npreview = true\nselect = [\"RUF067\"]\n"
           },
           "blocks": [
@@ -10539,8 +10519,8 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 256,
-              "end_line": 260,
+              "line": 227,
+              "end_line": 231,
               "source": "\"\"\"HTTP client.\"\"\"\n\nVERSION = \"1.0\"\n"
             }
           ]

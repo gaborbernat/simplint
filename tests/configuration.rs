@@ -174,7 +174,7 @@ fn member_metadata_comes_from_its_own_pyproject(root_pyproject: &str, member_pyp
     let root = project(&[
         ("pyproject.toml", root_pyproject),
         ("sub/pyproject.toml", member_pyproject),
-        ("sub/demo/__init__.py", "from ._app import run\n\n__all__ = [\"run\"]\n"),
+        ("sub/demo/__init__.py", "from ._app import run as run\n"),
         ("sub/demo/_app.py", "def run() -> None:\n    \"\"\"Run.\"\"\"\n"),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP407"]).0, exit);

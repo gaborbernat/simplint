@@ -12,10 +12,13 @@ pub fn init_module_content(checker: &Checker) {
     if !checker.is_init_module() || checker.is_test_module() || checker.settings.project.nested {
         return;
     }
-    // A public package of a library may present the API its private modules define, as PEP 8 describes for a package's
-    // `__init__` that exposes functionality from submodules.
+    // A package can expose private implementation through a deliberate `__all__`; public library packages can also
+    // use the implicit re-export forms PEP 8 describes.
     let facade = checker.project().role().public;
-    let message = if facade {
+    let explicit_api = !facade
+        && matches!(checker.dunder_all(), Exports::Listed(_))
+        && checker.body().iter().any(|stmt| all_binding(stmt).is_some_and(|binding| binding.operator.is_none()));
+    let message = if facade || explicit_api {
         "`__init__.py` holds code; keep only its docstring and the re-exports of its public API"
     } else {
         "`__init__.py` holds code; keep only its docstring"
@@ -23,7 +26,7 @@ pub fn init_module_content(checker: &Checker) {
     let body = body_without_leading_docstring(checker.body());
     for (index, stmt) in body.iter().enumerate() {
         let previous = index.checked_sub(1).map(|previous| &body[previous]);
-        let reexport = facade && is_reexport(stmt, checker.dunder_all());
+        let reexport = (facade || explicit_api) && is_reexport(stmt, checker.dunder_all(), facade);
         let package_hook = matches!(stmt, Stmt::FunctionDef(function) if matches!(function.name.as_str(), "__getattr__" | "__dir__"))
             || matches!(stmt, Stmt::If(branch) if is_type_checking(&branch.test, checker));
         if !reexport && !package_hook && !left_to_ruff(checker, stmt, previous) {
@@ -86,14 +89,15 @@ pub(crate) fn is_type_checking(test: &Expr, checker: &Checker) -> bool {
 // An import whose every name the package exports, through `__all__`, a redundant alias or `import *`, the `__all__`
 // that lists them, `from __future__` imports, which change no behavior at run time, and the `__lazy_modules__` that
 // Python 3.15 reads from the package's globals to load the imports after it lazily.
-fn is_reexport(stmt: &Stmt, exports: &Exports) -> bool {
+fn is_reexport(stmt: &Stmt, exports: &Exports, facade: bool) -> bool {
     match stmt {
         Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
             future_import(stmt).is_some()
                 || names.iter().all(|alias| {
                     let bound = alias_binding(alias);
-                    alias.name.as_str() == "*"
-                        || alias.asname.as_ref().is_some_and(|asname| asname.as_str() == alias.name.as_str())
+                    facade
+                        && (alias.name.as_str() == "*"
+                            || alias.asname.as_ref().is_some_and(|asname| asname.as_str() == alias.name.as_str()))
                         || matches!(exports, Exports::Listed(names) if names.contains(&bound))
                 })
         }
