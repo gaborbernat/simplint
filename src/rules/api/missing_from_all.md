@@ -125,6 +125,9 @@ signature reaches it:
   __all__ = ["helper"]
   ```
 
+- **String-named handlers** passed to `pkgutil.resolve_name` as `module:attribute`, or stored with
+  `parser.set_defaults(handler="module:attribute")`: the dispatch reads the named attribute at runtime.
+
 - **Build backend hooks** of the module that `build-backend` names in `[build-system]`: a build frontend calls the PEP
   517 and PEP 660 hooks by name, so the names are used from outside the code.
 

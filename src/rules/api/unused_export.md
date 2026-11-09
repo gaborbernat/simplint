@@ -205,6 +205,8 @@ __all__ = ["parse"]
 
   - the entry points `pyproject.toml` declares
 
+  - `module:attribute` strings passed to `pkgutil.resolve_name` or stored as an argparse `handler` with `set_defaults`
+
     ```toml config
     [project]
     name = "demo"

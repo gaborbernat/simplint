@@ -1797,6 +1797,40 @@ fn public_module_all_is_the_declared_api(module: &str, stdout: &str) {
     );
 }
 
+#[test_case("import pkgutil\n\nHANDLER = pkgutil.resolve_name(\"pkg._cli._validate:run\")\n", true ; "direct_resolve_name")]
+#[test_case("from pkgutil import resolve_name\n\nHANDLER = resolve_name(\"pkg._cli._validate:run\")\n", true ; "imported_resolve_name")]
+#[test_case("def build_parser(parser):\n    parser.set_defaults(handler=\"pkg._cli._validate:run\")\n", true ; "argparse_handler")]
+#[test_case("HANDLER = \"pkg._cli._validate:run\"\n", false ; "unresolved_string")]
+#[test_case("def build_parser(parser):\n    parser.set_defaults(description=\"pkg._cli._validate:run\")\n", false ; "other_default")]
+#[test_case("def build_parser(parser):\n    parser.set_defaults(handler=\"pkg._cli._validate:run!\")\n", false ; "invalid_attribute")]
+#[test_case("import pkgutil\n\nHANDLER = pkgutil.resolve_name(\"pkg._cli._validate.run\")\n", true ; "dotted_resolve_name")]
+fn string_named_handlers_count_as_imported(consumer: &str, imported: bool) {
+    let root = project(&[
+        ("pyproject.toml", LIBRARY),
+        ("pkg/__init__.py", ""),
+        ("pkg/_cli/__init__.py", ""),
+        ("pkg/_cli/_validate.py", "def run() -> None: ...\n\n\n__all__ = [\"run\"]\n"),
+        ("pkg/_cli/_parser.py", consumer),
+    ]);
+    let report = check(root.path(), &["--select", "SMP402"]).1;
+    assert_eq!(report == "All checks passed!\n", imported, "{report}");
+}
+
+#[test]
+fn string_named_handler_requires_an_export() {
+    let root = project(&[
+        ("pyproject.toml", LIBRARY),
+        ("pkg/__init__.py", ""),
+        ("pkg/_cli/__init__.py", ""),
+        ("pkg/_cli/_validate.py", "def run() -> None: ...\n"),
+        (
+            "pkg/_cli/_parser.py",
+            "def build_parser(parser):\n    parser.set_defaults(handler=\"pkg._cli._validate:run\")\n",
+        ),
+    ]);
+    assert!(check(root.path(), &["--select", "SMP401"]).1.contains("`run` is imported by other modules"));
+}
+
 // Nothing outside an application imports its modules, so dropping an unused export is safe there.
 #[test]
 fn application_drops_unused_exports_safely() {

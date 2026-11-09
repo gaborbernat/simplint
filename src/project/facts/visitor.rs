@@ -814,6 +814,7 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
                 }
             }
             Expr::Call(ast::ExprCall { func, arguments, .. }) => {
+                self.record_named_handler(func, arguments);
                 // The name `@pytest.fixture(name="db")` gives is the fixture's own, not a request of it.
                 if self.parts.has(Parts::FIXTURES)
                     && last_segment(func) == Some("fixture")
@@ -853,6 +854,28 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
         visitor::walk_expr(self, expr);
         restore_bindings(&mut self.loop_modules, shadowed);
     }
+}
+
+impl FactVisitor<'_> {
+    fn record_named_handler(&mut self, func: &Expr, arguments: &ast::Arguments) {
+        let target = if self.qualified(func).as_deref() == Some("pkgutil.resolve_name") {
+            arguments.args.first().and_then(Expr::as_string_literal_expr)
+        } else if func.as_attribute_expr().is_some_and(|attribute| attribute.attr.as_str() == "set_defaults") {
+            arguments.find_keyword("handler").and_then(|keyword| keyword.value.as_string_literal_expr())
+        } else {
+            None
+        };
+        if let Some((module, name)) = target.and_then(|literal| module_attribute(literal.value.to_str())) {
+            self.edges.entry(module.to_owned()).or_default().insert(name.to_owned());
+            self.record_references(module.to_owned(), [name.to_owned()]);
+        }
+    }
+}
+
+fn module_attribute(path: &str) -> Option<(&str, &str)> {
+    let (module, attribute) = path.split_once(':')?;
+    (module.split('.').all(is_identifier) && attribute.split('.').all(is_identifier))
+        .then(|| (module, attribute.split('.').next().expect("an identifier")))
 }
 
 // The names a loop binds, paired with the value each of them held before it, so the loop can hand them back.
