@@ -1,5 +1,7 @@
 mod common;
 
+use std::fmt::Write as _;
+
 use test_case::test_case;
 
 use common::{check, project, read};
@@ -210,4 +212,145 @@ fn add_noqa_logs_an_unreadable_file() {
     common::set_mode(&root.path().join("module.py"), 0o000);
     let (code, _, stderr) = check(root.path(), &["--select", "SMP101", "--add-noqa"]);
     assert_eq!((code, stderr.contains("Failed to extract source from")), (0, true));
+}
+
+#[test]
+fn unused_ignore_reports_and_fixes_each_selector() {
+    let root = project(&[(
+        "module.py",
+        "x = 1  # simplint: ignore[SMP101, SMP602]  # needed for x\nvalue = 2  # simplint: ignore[SMP602]  # stale\n",
+    )]);
+    let (status, output, _) = check(root.path(), &["--select", "SMP101,SMP009"]);
+    assert_eq!(status, 1);
+    assert_eq!(output.matches(" SMP009 ").count(), 1);
+    assert!(output.contains("2 unused simplint ignore selectors"), "{output}");
+    assert_eq!(check(root.path(), &["--select", "SMP101,SMP009", "--fix"]).0, 0);
+    assert_eq!(read(root.path(), "module.py"), "x = 1  # simplint: ignore[SMP101]  # needed for x\nvalue = 2\n");
+}
+
+#[test_case("[tool.ruff.lint]\npreview = true\nselect = [\"PLR0914\"]\n[tool.ruff.lint.pylint]\nmax-locals = 2\n", true ; "local_limit_blocks_report")]
+#[test_case("[tool.ruff.lint]\nselect = []\n", false ; "comment_exposes_report")]
+fn unused_ignore_rechecks_comment_sensitive_rules(config: &str, removed: bool) {
+    let source = "_MESSAGE = '''hello\nworld'''  # simplint: ignore[SMP202]  # moving adds a local\n\n\ndef read() -> str:\n    first = 1\n    second = 2\n    return _MESSAGE + str(first + second)\n";
+    let root = project(&[("pyproject.toml", config), ("module.py", source)]);
+    let (status, output, _) = check(root.path(), &["--select", "SMP202,SMP009"]);
+    assert_eq!(output.contains("unused-ignore"), removed, "{output}");
+    assert_eq!(status == 1, removed);
+    check(root.path(), &["--select", "SMP202,SMP009", "--fix"]);
+    assert_eq!(read(root.path(), "module.py").contains("simplint: ignore"), !removed);
+}
+
+#[test]
+fn unused_ignore_keeps_required_selectors() {
+    let source = "x = 1  # simplint: ignore[SMP101]  # short fixture name\n";
+    let root = project(&[("module.py", source)]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP101,SMP009", "--fix"]),
+        (0, "All checks passed!\n".to_owned(), String::new())
+    );
+    assert_eq!(read(root.path(), "module.py"), source);
+}
+
+#[test]
+fn unused_ignore_preserves_crlf() {
+    let root = project(&[("module.py", "value = 1  # simplint: ignore[SMP101]\r\nnext_value = 2\r\n")]);
+    check(root.path(), &["--select", "SMP101,SMP009", "--fix"]);
+    assert_eq!(read(root.path(), "module.py"), "value = 1\r\nnext_value = 2\r\n");
+}
+
+#[test]
+fn unused_ignore_drops_standalone_comment_without_hiding_later_reports() {
+    let root = project(&[("module.py", "# simplint: ignore[SMP602]  # stale\nx = 1\n")]);
+    assert_eq!(check(root.path(), &["--select", "SMP101,SMP009", "--fix"]).0, 1);
+    assert_eq!(read(root.path(), "module.py"), "x = 1\n");
+    assert_eq!(check(root.path(), &["--select", "SMP101"]).0, 1);
+}
+
+#[test]
+fn unused_ignore_removes_a_selector_already_covered_by_noqa() {
+    let root = project(&[("module.py", "x = 1  # noqa: SMP101  # simplint: ignore[SMP101]\n")]);
+    assert_eq!(check(root.path(), &["--select", "SMP101,SMP009", "--fix"]).0, 0);
+    assert_eq!(read(root.path(), "module.py"), "x = 1  # noqa: SMP101\n");
+}
+
+#[test]
+fn unused_ignore_honors_unfixable() {
+    let source = "value = 1  # simplint: ignore[SMP101]\n";
+    let root = project(&[("module.py", source)]);
+    assert_eq!(check(root.path(), &["--select", "SMP009", "--unfixable", "SMP009", "--fix"]).0, 1);
+    assert_eq!(read(root.path(), "module.py"), source);
+}
+
+#[test]
+fn unused_ignore_is_opt_in() {
+    let root = project(&[("module.py", "value = 1  # simplint: ignore[SMP101]\n")]);
+    assert!(!check(root.path(), &[]).1.contains("SMP009"));
+    assert!(check(root.path(), &["--extend-select", "SMP009"]).1.contains("SMP009"));
+    check(root.path(), &["--extend-select", "SMP009", "--fix"]);
+    assert_eq!(read(root.path(), "module.py"), "value = 1\n");
+}
+
+#[test]
+fn unused_ignore_fix_appears_in_diff() {
+    let source = "value = 1  # simplint: ignore[SMP101]\n";
+    let root = project(&[("module.py", source)]);
+    let (status, output, _) = check(root.path(), &["--select", "SMP009", "--diff"]);
+    assert_eq!(status, 1);
+    assert!(output.contains("+value = 1\n"), "{output}");
+    assert_eq!(read(root.path(), "module.py"), source);
+}
+
+#[test]
+fn unused_ignore_follows_numeric_ignore_fix() {
+    let root = project(&[("module.py", "value = 1  # simplint: ignore[SMP602]\n")]);
+    assert_eq!(check(root.path(), &["--select", "SMP008,SMP009", "--fix"]).0, 0);
+    assert_eq!(read(root.path(), "module.py"), "value = 1\n");
+}
+
+#[test]
+fn unused_ignore_fixes_many_comments_in_one_pass() {
+    let source = (0..120).fold(String::new(), |mut source, index| {
+        writeln!(source, "value_{index} = {index}  # simplint: ignore[SMP101]").expect("write to string");
+        source
+    });
+    let root = project(&[("module.py", &source)]);
+    assert_eq!(check(root.path(), &["--select", "SMP009", "--fix"]).0, 0);
+    assert_eq!(read(root.path(), "module.py"), source.replace("  # simplint: ignore[SMP101]", ""));
+}
+
+#[test]
+fn unused_ignore_removes_multiple_selectors_after_unicode() {
+    let root = project(&[("module.py", "name = 'é'  # simplint: ignore[SMP101, SMP602]\n")]);
+    assert_eq!(check(root.path(), &["--select", "SMP009", "--fix"]).0, 0);
+    assert_eq!(read(root.path(), "module.py"), "name = 'é'\n");
+}
+
+#[test]
+fn unused_ignore_rewrites_separators_around_a_stale_selector() {
+    let root = project(&[(
+        "module.py",
+        "from typing import Any\n\n\ndef x(value: Any) -> None:  # simplint: ignore[SMP101,SMP603,SMP602]\n    pass\n",
+    )]);
+    assert_eq!(check(root.path(), &["--select", "SMP101,SMP602,SMP009", "--fix"]).0, 0);
+    assert_eq!(
+        read(root.path(), "module.py"),
+        "from typing import Any\n\n\ndef x(value: Any) -> None:  # simplint: ignore[SMP101, SMP602]\n    pass\n"
+    );
+}
+
+#[test]
+fn unused_ignore_handles_file_level_suppression() {
+    let root = project(&[("module.py", "# ruff: noqa: SMP101\nx = 1  # simplint: ignore[SMP101]\n")]);
+    assert_eq!(check(root.path(), &["--select", "SMP101,SMP009", "--fix"]).0, 0);
+    assert_eq!(read(root.path(), "module.py"), "# ruff: noqa: SMP101\nx = 1\n");
+}
+
+#[test]
+fn unused_ignore_keeps_selector_when_replacement_moves_a_report() {
+    let source = "x = 1  # simplint: ignore[SMP602,SMP101]\n";
+    let root = project(&[("module.py", source)]);
+    let (status, output, _) = check(root.path(), &["--select", "SMP008,SMP009"]);
+    assert_eq!(status, 1);
+    assert!(!output.contains("SMP009"), "{output}");
+    assert_eq!(read(root.path(), "module.py"), source);
 }

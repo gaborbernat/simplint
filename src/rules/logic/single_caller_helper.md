@@ -79,7 +79,8 @@ also stay within `max-cognitive-complexity` once the helper's body is scored at 
 [cognitive-complexity](SMP529.html) does not ask to split the caller again. The caller must also stay within the limits
 of the Ruff rules that run, which count the inlined statements: `lint.mccabe.max-complexity` for C901, and
 `lint.pylint.max-branches`, `lint.pylint.max-statements` and `lint.pylint.max-returns` for PLR0912, PLR0915 and PLR0911.
-These counts are conservative estimates, so a caller they might report is left as it is.
+It also checks PLR1702's nested-block limit, PLW0717's try-clause statement limit and TRY301 when a helper raises inside
+a caller's `try` block. These counts are conservative estimates, so a caller they might report is left as it is.
 
 ### Active on
 

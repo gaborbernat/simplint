@@ -9,7 +9,7 @@ use crate::semantic::future_import;
 use crate::syntax::{Exports, alias_binding, all_binding, all_mutation, is_name};
 
 pub fn init_module_content(checker: &Checker) {
-    if !checker.is_init_module() {
+    if !checker.is_init_module() || checker.is_test_module() || checker.settings.project.nested {
         return;
     }
     // A public package of a library may present the API its private modules define, as PEP 8 describes for a package's
@@ -24,7 +24,9 @@ pub fn init_module_content(checker: &Checker) {
     for (index, stmt) in body.iter().enumerate() {
         let previous = index.checked_sub(1).map(|previous| &body[previous]);
         let reexport = facade && is_reexport(stmt, checker.dunder_all());
-        if !reexport && !left_to_ruff(checker, stmt, previous) {
+        let package_hook = matches!(stmt, Stmt::FunctionDef(function) if matches!(function.name.as_str(), "__getattr__" | "__dir__"))
+            || matches!(stmt, Stmt::If(branch) if is_type_checking(&branch.test, checker));
+        if !reexport && !package_hook && !left_to_ruff(checker, stmt, previous) {
             checker.report(Rule::InitModuleContent, stmt.range(), message);
         }
     }

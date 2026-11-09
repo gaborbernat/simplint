@@ -279,6 +279,7 @@ pub struct IndexInputs<'a> {
     pub startup: &'a [String],
     pub roles: &'a FxHashMap<&'a Path, ModuleRole>,
     pub test_modules: &'a FxHashSet<&'a Path>,
+    pub distribution_roots: &'a FxHashMap<&'a Path, &'a Path>,
     // The Python objects the project's documentation names.
     pub docs: &'a DocReferences,
     // The fewest statements a duplicate block of any file of the run spans, when a file checks for duplicate code.
@@ -308,6 +309,7 @@ impl Project {
             startup,
             docs,
             duplicate_statements,
+            distribution_roots,
             external,
             ..
         } = *inputs;
@@ -353,7 +355,7 @@ impl Project {
             || {
                 let (cycles, duplicates) = rayon::join(
                     || runtime_cycles(runtime, &test_modules, ids_of),
-                    || duplicate_reports(&sources, &test_modules, ids_of, duplicate_statements),
+                    || duplicate_reports(&sources, &test_modules, ids_of, duplicate_statements, distribution_roots),
                 );
                 (cycles, duplicates, RunReads::collect(&indexed))
             },
@@ -660,12 +662,22 @@ fn duplicate_reports(
     test_modules: &FxHashSet<FileId>,
     files: &FileIds,
     window: Option<usize>,
+    distribution_roots: &FxHashMap<&Path, &Path>,
 ) -> FxHashMap<FileId, Vec<DuplicateRun>> {
     let Some(window) = window else { return FxHashMap::default() };
-    let mut compared: Vec<(FileId, &FileFacts)> =
-        sources.iter().filter(|(file, _)| !test_modules.contains(file)).map(|(file, facts)| (*file, *facts)).collect();
-    compared.sort_unstable_by_key(|(file, _)| *file);
-    duplicates::duplicate_runs(&compared, files, window)
+    let mut distributions: FxHashMap<&Path, Vec<(FileId, &FileFacts)>> = FxHashMap::default();
+    for (file, facts) in sources.iter().filter(|(file, _)| !test_modules.contains(file)) {
+        let path = files.path(*file);
+        let root = distribution_roots.get(path).copied().unwrap_or(path);
+        distributions.entry(root).or_default().push((*file, *facts));
+    }
+    distributions
+        .into_values()
+        .flat_map(|mut compared| {
+            compared.sort_unstable_by_key(|(file, _)| *file);
+            duplicates::duplicate_runs(&compared, files, window)
+        })
+        .collect()
 }
 
 // The entry of a file's id, if the file has one.

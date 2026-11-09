@@ -77,6 +77,34 @@ fn rule(rule: &str, fixture: &str, target_version: &str) {
     common::assert_rule_snapshot(rule, fixture, target_version);
 }
 
+#[test_case("[tool.ruff.lint]\npreview = true\nselect = [\"PLR0914\"]\n[tool.ruff.lint.pylint]\nmax-locals = 2\n", 0 ; "enabled_limit")]
+#[test_case("[tool.ruff.lint]\nselect = []\n[tool.ruff.lint.pylint]\nmax-locals = 2\n", 1 ; "disabled_limit")]
+#[test_case("[tool.ruff.lint]\npreview = true\nselect = [\"PLR0914\"]\n[tool.ruff.lint.pylint]\nmax-locals = 3\n", 1 ; "room_for_local")]
+fn single_user_constant_respects_ruff_local_limit(config: &str, reports: usize) {
+    let root = common::project(&[
+        ("pyproject.toml", config),
+        (
+            "module.py",
+            "_MESSAGE = '''hello\nworld'''\n\n\ndef read() -> str:\n    first = 1\n    second = 2\n    return _MESSAGE + str(first + second)\n",
+        ),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP202"]);
+    assert_eq!(stdout.matches("`_MESSAGE` is used by one function").count(), reports, "{stdout}");
+}
+
+#[test]
+fn single_user_constant_still_reports_inlineable_value_at_local_limit() {
+    let root = common::project(&[
+        (
+            "pyproject.toml",
+            "[tool.ruff.lint]\npreview = true\nselect = [\"PLR0914\"]\n[tool.ruff.lint.pylint]\nmax-locals = 1\n",
+        ),
+        ("module.py", "_OFFSET = 1\n\n\ndef read() -> int:\n    value = 2\n    return value + _OFFSET\n"),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP202"]);
+    assert!(stdout.contains("`_OFFSET` is used by one function"), "{stdout}");
+}
+
 // SMP201 and SMP203 read one expected order, so one `--fix` run over every fixture settles them: a second run changes no
 // file.
 #[test]

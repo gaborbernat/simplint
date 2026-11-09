@@ -34,6 +34,20 @@ fn rule(rule: &str, fixture: &str) {
     common::assert_rule_snapshot(rule, fixture, "py314");
 }
 
+#[test_case("create_autospec", 0 ; "autospec_only")]
+#[test_case("create_autospec, patch", 1 ; "also_patching")]
+fn stdlib_mock_allows_create_autospec_only(imports: &str, reports: usize) {
+    let root = common::project(&[
+        ("pyproject.toml", "[project]\nname = \"example\"\nversion = \"1\"\ndependencies = [\"pytest-mock\"]\n"),
+        (
+            "tests/test_mock.py",
+            &format!("from unittest.mock import {imports}\n\n\ndef test_mock() -> None:\n    assert True\n"),
+        ),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP809"]);
+    assert_eq!(stdout.matches("SMP809").count(), reports, "{stdout}");
+}
+
 #[test]
 fn test_class_generic_before_3_13() {
     common::assert_rule_snapshot("test-class", "tests/test_class_generic.py", "py312");

@@ -1,4 +1,4 @@
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -27,6 +27,12 @@ pub struct Suppressions<'a> {
     stylist: &'a Stylist<'a>,
     lines: FxHashMap<TextSize, Line>,
     file: Vec<Directive>,
+}
+
+pub struct UnusedIgnore {
+    pub start: TextSize,
+    pub count: usize,
+    pub edits: Vec<(TextRange, String)>,
 }
 
 #[derive(Default)]
@@ -72,6 +78,84 @@ impl<'a> Suppressions<'a> {
                     && self.lines.get(line).is_none_or(|directives| !directives.suppresses(code))
             })
             .collect()
+    }
+
+    pub fn ignore_candidates(&self, diagnostics: &[Diagnostic]) -> Vec<(TextSize, String)> {
+        let mut located = diagnostics.to_vec();
+        let rows = self.locate(&mut located);
+        let mut used = FxHashSet::default();
+        for (diagnostic, line) in located.iter().zip(rows) {
+            let code = diagnostic.secondary_code().expect("a rule diagnostic has a code").as_str();
+            if self.file.iter().any(|directive| directive.suppresses(code)) {
+                continue;
+            }
+            let Some(directives) = self.lines.get(&line) else { continue };
+            if directives.noqa.as_ref().is_some_and(|(_, directive)| directive.suppresses(code)) {
+                continue;
+            }
+            let Some((start, codes)) = &directives.ignore else { continue };
+            let mut matches = codes.iter().filter(|candidate| matches_ignore(candidate, code));
+            if let Some(candidate) = matches.next()
+                && matches.next().is_none()
+            {
+                used.insert((*start, candidate.clone()));
+            }
+        }
+        self.indexer
+            .comment_ranges()
+            .iter()
+            .filter_map(|range| {
+                let (offset, codes) = parse_ignore(&self.source[*range])?;
+                Some(codes.into_iter().map(move |code| (range.start() + offset, code)))
+            })
+            .flatten()
+            .filter(|candidate| !used.contains(candidate))
+            .collect()
+    }
+
+    pub fn unused_ignores(
+        &self,
+        diagnostics: Vec<Diagnostic>,
+        relint: impl Fn(&str) -> Vec<Diagnostic>,
+    ) -> Option<UnusedIgnore> {
+        let candidates = self.ignore_candidates(&diagnostics);
+        if candidates.is_empty() {
+            return None;
+        }
+        let mut baseline: Vec<Diagnostic> =
+            self.pending(diagnostics).into_iter().map(|(diagnostic, _)| diagnostic).collect();
+        let mut groups: BTreeMap<TextSize, Vec<String>> = BTreeMap::new();
+        for (start, selector) in candidates {
+            groups.entry(start).or_default().push(selector);
+        }
+        let mut current = self.source.to_owned();
+        let mut edits = Vec::new();
+        let mut count = 0;
+        let mut first = TextSize::default();
+        for (start, selectors) in groups.into_iter().rev() {
+            let before = current.clone();
+            for selector in selectors.into_iter().rev() {
+                let (edit, replacement) = remove_ignore_selector(&current, start, &selector)
+                    .expect("a parsed selector exists in its comment");
+                let mut proposed = current.clone();
+                proposed.replace_range(usize::from(edit.start())..usize::from(edit.end()), &replacement);
+                let next = relint(&proposed);
+                if !same_or_fewer_reports(&baseline, &next, edit, replacement.len()) {
+                    continue;
+                }
+                current = proposed;
+                baseline = next;
+                count += 1;
+                first = start;
+                if replacement.is_empty() {
+                    break;
+                }
+            }
+            if current != before {
+                edits.push(changed_region(&before, &current));
+            }
+        }
+        (count > 0).then_some(UnusedIgnore { start: first, count, edits })
     }
 
     // Ruff expects a `noqa` comment on the diagnostic's line, or on the last line of the multi-line string or
@@ -178,6 +262,75 @@ impl<'a> Suppressions<'a> {
         output.push_str(&self.source[usize::from(last)..]);
         (count, output)
     }
+}
+
+fn remove_ignore_selector(source: &str, start: TextSize, selector: &str) -> Option<(TextRange, String)> {
+    let comment = &source[TextRange::new(start, source.line_end(start))];
+    let (offset, contents) = ignore_contents(comment)?;
+    let mut codes: Vec<&str> =
+        contents.split(|char: char| char == ',' || char.is_whitespace()).filter(|code| !code.is_empty()).collect();
+    codes.remove(codes.iter().position(|code| *code == selector)?);
+    if !codes.is_empty() {
+        let from = start + offset;
+        return Some((TextRange::new(from, from + TextSize::of(contents)), codes.join(", ")));
+    }
+    let line_start = source.line_start(start);
+    let prefix = &source[TextRange::new(line_start, start)];
+    if prefix.trim().is_empty() {
+        Some((TextRange::new(line_start, source.full_line_end(start)), String::new()))
+    } else {
+        let trimmed = line_start + TextSize::of(prefix.trim_end());
+        Some((TextRange::new(trimmed, source.line_end(start)), String::new()))
+    }
+}
+
+fn changed_region(before: &str, after: &str) -> (TextRange, String) {
+    let prefix: usize = before
+        .chars()
+        .zip(after.chars())
+        .take_while(|(left, right)| left == right)
+        .map(|(char, _)| char.len_utf8())
+        .sum();
+    let suffix: usize = before[prefix..]
+        .chars()
+        .rev()
+        .zip(after[prefix..].chars().rev())
+        .take_while(|(left, right)| left == right)
+        .map(|(char, _)| char.len_utf8())
+        .sum();
+    let range = TextRange::new(
+        TextSize::try_from(prefix).expect("a source fits a text size"),
+        TextSize::try_from(before.len() - suffix).expect("a source fits a text size"),
+    );
+    (range, after[prefix..after.len() - suffix].to_owned())
+}
+
+fn same_or_fewer_reports(before: &[Diagnostic], after: &[Diagnostic], edit: TextRange, new_len: usize) -> bool {
+    let mut known: FxHashMap<(&str, &str, usize), usize> = FxHashMap::default();
+    for report in before {
+        let Some(range) = report.range() else { return false };
+        *known
+            .entry((report.secondary_code_or_id(), report.headline_message(), range.start().to_usize()))
+            .or_default() += 1;
+    }
+    let start = edit.start().to_usize();
+    let old_len = edit.len().to_usize();
+    let mut observed = FxHashMap::default();
+    after.iter().all(|report| {
+        let Some(range) = report.range() else { return false };
+        let position = range.start().to_usize();
+        let mapped = if position < start {
+            position
+        } else if position >= start + new_len {
+            position + old_len - new_len
+        } else {
+            return false;
+        };
+        let key = (report.secondary_code_or_id(), report.headline_message(), mapped);
+        let count = observed.entry(key).or_insert(0);
+        *count += 1;
+        *count <= *known.get(&key).unwrap_or(&0)
+    })
 }
 
 impl Line {

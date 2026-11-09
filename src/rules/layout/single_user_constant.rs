@@ -1,4 +1,5 @@
 use ruff_diagnostics::{Edit, Fix};
+use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::helpers::{StoredNameFinder, any_over_expr, body_without_leading_docstring, is_dunder};
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
@@ -70,7 +71,18 @@ pub fn single_user_constant(checker: &Checker) {
             continue;
         }
         let constant = Constant { stmt, name, annotation, value, function, references };
-        let fix = move_into_function(checker, &constant);
+        let (fix, adds_local) = match move_into_function(checker, &constant) {
+            Some((fix, adds_local)) => (Some(fix), adds_local),
+            None => (None, false),
+        };
+        let from_ruff = &checker.settings.from_ruff;
+        if adds_local && from_ruff.ruff_runs(RuffRule::TooManyLocals) {
+            let mut locals = StoredNameFinder::default();
+            locals.visit_body(&function.body);
+            if locals.names.len() >= from_ruff.max_locals {
+                continue;
+            }
+        }
         checker.report_fix(
             Rule::SingleUserConstant,
             stmt.range(),
@@ -171,7 +183,7 @@ impl<'a> Visitor<'a> for Mutation<'_> {
     }
 }
 
-fn move_into_function(checker: &Checker, constant: &Constant) -> Option<Fix> {
+fn move_into_function(checker: &Checker, constant: &Constant) -> Option<(Fix, bool)> {
     // A computed write may set the constant, which a copy in the function would not see.
     if checker.project().is_computed_written() {
         return None;
@@ -213,10 +225,10 @@ fn move_into_function(checker: &Checker, constant: &Constant) -> Option<Fix> {
             && (simple || !context.in_fstring)
             && (!context.format_receiver || !constant.value.is_string_literal_expr())
         {
-            return inline_fix(checker, constant.value, value_text, deletion, *reference);
+            return inline_fix(checker, constant.value, value_text, deletion, *reference).map(|fix| (fix, false));
         }
     }
-    local_fix(checker, constant, value_text, deletion)
+    local_fix(checker, constant, value_text, deletion).map(|fix| (fix, true))
 }
 
 fn inline_fix(checker: &Checker, value: &Expr, value_text: &str, deletion: Edit, reference: TextRange) -> Option<Fix> {

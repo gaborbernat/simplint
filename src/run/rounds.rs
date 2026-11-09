@@ -337,6 +337,7 @@ struct ProjectInputs<'f> {
     duplicate_statements: Option<usize>,
     roles: FxHashMap<&'f Path, ModuleRole>,
     test_modules: FxHashSet<&'f Path>,
+    distribution_roots: FxHashMap<&'f Path, &'f Path>,
 }
 
 impl<'f> ProjectInputs<'f> {
@@ -389,6 +390,10 @@ impl<'f> ProjectInputs<'f> {
                 .filter(|file| file.settings.is_test)
                 .map(|file| file.absolute.as_path())
                 .collect(),
+            distribution_roots: files
+                .iter()
+                .map(|file| (file.absolute.as_path(), file.settings.project.project_dir.as_path()))
+                .collect(),
         }
     }
 }
@@ -431,6 +436,13 @@ fn run_digest(
         let mut test_modules: Vec<&Path> = project.test_modules.iter().copied().collect();
         test_modules.sort_unstable();
         test_modules.cache_key(&mut hasher);
+        let mut distribution_roots: Vec<(&Path, &Path)> =
+            project.distribution_roots.iter().map(|(path, root)| (*path, *root)).collect();
+        distribution_roots.sort_unstable_by_key(|(path, _)| *path);
+        for (path, root) in distribution_roots {
+            path.cache_key(&mut hasher);
+            root.cache_key(&mut hasher);
+        }
         let mut roles: Vec<(&Path, ModuleRole)> = project.roles.iter().map(|(path, role)| (*path, *role)).collect();
         roles.sort_unstable_by_key(|(path, _)| *path);
         for (path, role) in roles {
@@ -537,6 +549,7 @@ fn index_and_lint<'f, T: Send>(
         startup,
         roles: &project.roles,
         test_modules: &project.test_modules,
+        distribution_roots: &project.distribution_roots,
         docs,
         duplicate_statements: project.duplicate_statements,
         external,

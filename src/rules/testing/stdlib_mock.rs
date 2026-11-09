@@ -25,7 +25,7 @@ fn imports_unittest_mock(stmt: &Stmt) -> bool {
         Stmt::Import(ast::StmtImport { names, .. }) => names.iter().any(|alias| alias.name.as_str() == "unittest.mock"),
         Stmt::ImportFrom(ast::StmtImportFrom { module, names, level, .. }) if *level == 0 => {
             match module.as_ref().map(ruff_python_ast::Identifier::as_str) {
-                Some("unittest.mock") => true,
+                Some("unittest.mock") => names.iter().any(|alias| alias.name.as_str() != "create_autospec"),
                 Some("unittest") => names.iter().any(|alias| alias.name.as_str() == "mock"),
                 _ => false,
             }

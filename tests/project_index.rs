@@ -2329,6 +2329,20 @@ fn marked_directory_without_a_test_name_is_the_main_project() {
     );
 }
 
+#[test]
+fn separate_distributions_are_not_compared_for_duplicate_code() {
+    assert_eq!(
+        duplicate_code_reports(&[
+            ("first/pyproject.toml", "[project]\nname = \"first\"\n"),
+            ("first/src/first/a.py", REPEATED),
+            ("first/src/first/b.py", REPEATED),
+            ("second/pyproject.toml", "[project]\nname = \"second\"\n"),
+            ("second/src/second/c.py", REPEATED),
+        ]),
+        ["first/src/first/a.py", "first/src/first/b.py"]
+    );
+}
+
 // A test-named directory without a marker is not a project of its own.
 #[test]
 fn unmarked_test_directory_is_the_main_project() {

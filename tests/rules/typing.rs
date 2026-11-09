@@ -29,6 +29,30 @@ fn rule(rule: &str, fixture: &str, target_version: &str) {
     common::assert_rule_snapshot(rule, fixture, target_version);
 }
 
+#[test_case("assert inspect.signature(callback)", 0 ; "inspected_not_called")]
+#[test_case("assert callback(1)", 1 ; "called")]
+#[test_case("assert callback.__call__(1)", 1 ; "explicit_dunder_call")]
+fn callable_ellipsis_in_test_parameter_depends_on_use(body: &str, reports: usize) {
+    let root = common::project(&[(
+        "tests/test_callbacks.py",
+        &format!(
+            "from collections.abc import Callable\nimport inspect\n\n\ndef test_callback(callback: Callable[..., int]) -> None:\n    {body}\n"
+        ),
+    )]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP603"]);
+    assert_eq!(stdout.matches("Callable[..., T]").count(), reports, "{stdout}");
+}
+
+#[test]
+fn callable_ellipsis_in_test_module_outside_function_reports() {
+    let root = common::project(&[(
+        "tests/test_callbacks.py",
+        "from collections.abc import Callable\n\ncallback: Callable[..., int]\n",
+    )]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP603"]);
+    assert_eq!(stdout.matches("Callable[..., T]").count(), 1, "{stdout}");
+}
+
 // Ruff's ANN401 reports an `Any` that is a whole annotation, or starts one as in `Any | None`, which SMP602 leaves to it
 // while the project's Ruff configuration runs it.
 #[test_case("def f(value: Any | None) -> None:\n    print(value)\n", "ANN401", "`Any` accepts any value" ; "parameter")]
