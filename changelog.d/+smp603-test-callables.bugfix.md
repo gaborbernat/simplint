@@ -1,1 +1,1 @@
-SMP603 allows callable annotations that a test body does not invoke.
+`callable-ellipsis` allows callable annotations that a test body does not invoke.

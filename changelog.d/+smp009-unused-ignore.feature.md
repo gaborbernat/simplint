@@ -1,1 +1,1 @@
-SMP009 reports unused `simplint: ignore` selectors and removes them with a safe fix.
+`unused-ignore` reports unused `simplint: ignore` selectors and removes them with a safe fix.

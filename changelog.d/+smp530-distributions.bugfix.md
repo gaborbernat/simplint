@@ -1,1 +1,1 @@
-SMP530 compares duplicate code only within the same distribution.
+`duplicate-code` compares duplicate code only within the same distribution.
