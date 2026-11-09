@@ -249,6 +249,7 @@ rules! {
     RestatingComment => ("SMP005", "restating-comment", "Comments that only repeat the code below", Always, comments::restating_comment { module }),
     StringStatementComment => ("SMP006", "string-statement-comment", "Bare strings used as comments instead of `#` comments", Sometimes, comments::string_statement_comment { module }),
     LongCommentLine => ("SMP007", "long-comment-line", "Comment and docstring lines over the line length", Always, comments::long_comment_line { module }),
+    NumericIgnore => ("SMP008", "numeric-ignore", "Numeric codes in simplint ignore comments", Always, comments::numeric_ignore { module }),
     SingleLetterName => ("SMP101", "single-letter-name", "Single-letter names outside comprehensions", None, naming::single_letter_name { statement, expression, scope, except_handler, pattern, type_param }),
     ModuleVariableCase => ("SMP102", "module-variable-case", "Module variables not `UPPER_CASE`", Sometimes, naming::module_variable_case { module } reads [cross_file, STRING_WORDS, COMPUTED_WRITES, DOCTESTS] skips [nested]),
     MeaninglessName => ("SMP103", "meaningless-name", "Variables, parameters and attributes named with a word that says nothing", None, naming::meaningless_name { expression, scope, except_handler, pattern }),

@@ -1512,6 +1512,81 @@
     "cross_file": false
   },
   {
+    "code": "SMP008",
+    "name": "numeric-ignore",
+    "summary": "Numeric codes in simplint ignore comments",
+    "fix": "Always",
+    "explanation": "Flags numeric codes in `# simplint: ignore[...]` comments and replaces them with rule names.\n\n## Why is this bad?\n\nThe name says what the suppression covers without looking up a code. It also stays readable when the comment is reviewed\noutside a diagnostic report.\n\n## Example\n\n```python report\ndef initialize(build_data: dict[str, Any]) -> None:  # simplint: ignore[SMP602] # required signature\n    pass\n```\n\n```python fixed\ndef initialize(build_data: dict[str, Any]) -> None:  # simplint: ignore[imprecise-annotation] # required signature\n    pass\n```\n\n## What it does\n\n### Active on\n\n- **Known numeric simplint codes** in `simplint: ignore[...]`. The fix replaces only the codes and preserves the other\n  names, spacing, and reason in the comment.\n\n  ```python report\n  def run(value: Any) -> None:  # simplint: ignore[SMP602, single-letter-name] # external signature\n      pass\n  ```\n\n### Exceptions\n\n- **Rule names** already use the preferred form. Unknown codes are left as written.\n\n  ```python ok\n  def run(value: Any) -> None:  # simplint: ignore[imprecise-annotation] # external signature\n      pass\n  ```\n\n### Fix\n\nThe fix is safe and changes only known numeric codes inside the brackets.\n",
+    "examples": {
+      "parsed": [
+        {
+          "section": "Example",
+          "line": 10,
+          "end_line": 18,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 10,
+              "end_line": 13,
+              "source": "def initialize(build_data: dict[str, Any]) -> None:  # simplint: ignore[SMP602] # required signature\n    pass\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 15,
+              "end_line": 18,
+              "source": "def initialize(build_data: dict[str, Any]) -> None:  # simplint: ignore[imprecise-annotation] # required signature\n    pass\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 27,
+          "end_line": 30,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 27,
+              "end_line": 30,
+              "source": "def run(value: Any) -> None:  # simplint: ignore[SMP602, single-letter-name] # external signature\n    pass\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 36,
+          "end_line": 39,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 36,
+              "end_line": 39,
+              "source": "def run(value: Any) -> None:  # simplint: ignore[imprecise-annotation] # external signature\n    pass\n"
+            }
+          ]
+        }
+      ]
+    },
+    "family": "comments",
+    "group": "Comments",
+    "short_group": "Comments",
+    "cross_file": false
+  },
+  {
     "code": "SMP101",
     "name": "single-letter-name",
     "summary": "Single-letter names outside comprehensions",

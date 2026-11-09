@@ -14,6 +14,25 @@ fn rule(rule: &str, fixture: &str) {
     common::assert_rule_snapshot(rule, fixture, "py314");
 }
 
+#[test]
+fn numeric_ignore_fixes_known_codes_and_keeps_the_reason() {
+    let source = "x = 1  # simplint: ignore[SMP101, imprecise-annotation, SMP999] # external name\n";
+    let root = common::project(&[("module.py", source)]);
+    let (code, stdout, _) = common::check(root.path(), &["--select", "SMP008"]);
+    assert_eq!((code, stdout.contains("Numeric simplint ignore; use rule names")), (1, true));
+    common::check(root.path(), &["--select", "SMP008", "--fix"]);
+    assert_eq!(
+        common::read(root.path(), "module.py"),
+        "x = 1  # simplint: ignore[single-letter-name, imprecise-annotation, SMP999] # external name\n"
+    );
+}
+
+#[test]
+fn named_ignore_needs_no_migration() {
+    let root = common::project(&[("module.py", "x = 1  # simplint: ignore[single-letter-name] # external name\n")]);
+    assert_eq!(common::check(root.path(), &["--select", "SMP008"]).1, "All checks passed!\n");
+}
+
 // Ruff's PGH003, PGH004 and RUF103 report a blanket directive, which SMP004 leaves to them while the project's Ruff
 // configuration runs them.
 #[test_case("import os  # noqa\n", "PGH004", "`# noqa` suppresses every error" ; "noqa")]

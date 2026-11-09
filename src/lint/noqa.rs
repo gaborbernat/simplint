@@ -126,7 +126,12 @@ impl<'a> Suppressions<'a> {
                 continue;
             }
             let code = diagnostic.secondary_code().expect("a rule diagnostic has a code");
-            codes.entry(*line).or_default().insert(code.to_string());
+            let name = if matches!(kind, SuppressionKind::Ignore) {
+                Rule::from_code(code.as_str()).map_or_else(|| code.to_string(), |rule| rule.name().to_owned())
+            } else {
+                code.to_string()
+            };
+            codes.entry(*line).or_default().insert(name);
         }
         let line_ending = self.stylist.line_ending();
         let mut output = String::with_capacity(self.source.len());
@@ -141,7 +146,13 @@ impl<'a> Suppressions<'a> {
                 SuppressionKind::Ignore => directives.ignore.clone(),
             });
             let (edit_range, blank_line) = if let Some((start, existing_codes)) = existing {
-                line_codes.extend(existing_codes);
+                line_codes.extend(existing_codes.into_iter().map(|code| {
+                    if matches!(kind, SuppressionKind::Ignore) {
+                        Rule::from_code(&code).map_or(code.clone(), |rule| rule.name().to_owned())
+                    } else {
+                        code
+                    }
+                }));
                 let prefix = &self.source[TextRange::new(line_range.start(), start)];
                 let blank = prefix.trim().is_empty();
                 let edit_start = if blank { start } else { line_range.start() + TextSize::of(prefix.trim_end()) };
@@ -172,14 +183,21 @@ impl<'a> Suppressions<'a> {
 impl Line {
     fn suppresses(&self, code: &str) -> bool {
         self.noqa.as_ref().is_some_and(|(_, directive)| directive.suppresses(code))
-            || self.ignore.as_ref().is_some_and(|(_, codes)| codes.iter().any(|candidate| candidate == code))
+            || self
+                .ignore
+                .as_ref()
+                .is_some_and(|(_, codes)| codes.iter().any(|candidate| matches_ignore(candidate, code)))
     }
 }
 
 // Whether a comment's `noqa` or `simplint: ignore` directive suppresses `code` on its line.
 pub fn suppresses(comment: &str, code: &str) -> bool {
     Directive::parse(comment).is_some_and(|(_, directive)| directive.suppresses(code))
-        || parse_ignore(comment).is_some_and(|(_, codes)| codes.iter().any(|candidate| candidate == code))
+        || parse_ignore(comment).is_some_and(|(_, codes)| codes.iter().any(|candidate| matches_ignore(candidate, code)))
+}
+
+fn matches_ignore(candidate: &str, code: &str) -> bool {
+    candidate == code || Rule::from_code(code).is_some_and(|rule| rule.name() == candidate)
 }
 
 // Whether the file has a file-level `ruff: noqa`, `flake8: noqa` or `ruff: file-ignore`, the directives `Suppressions`
@@ -314,6 +332,14 @@ fn code_list(codes: &str) -> impl Iterator<Item = &str> {
 // and the offset of its `#` in the comment.
 fn parse_ignore(comment: &str) -> Option<(TextSize, Vec<String>)> {
     parse_bracket(comment, "simplint", "ignore[")
+}
+
+pub(crate) fn ignore_contents(comment: &str) -> Option<(TextSize, &str)> {
+    comment.match_indices('#').find_map(|(index, _)| {
+        let rest = after_tool(comment[index + 1..].trim_start(), "simplint")?.strip_prefix("ignore[")?;
+        let (codes, _) = rest.split_once(']')?;
+        Some((TextSize::try_from(comment.len() - rest.len()).expect("a comment fits a text size"), codes))
+    })
 }
 
 // A `# tool: action[CODES]` comment: the codes and the offset of its `#` in the comment.
