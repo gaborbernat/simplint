@@ -26,3 +26,38 @@ guesses wrong:
    ``my_package/errors.py``, is part of the API, and a private module with a leading underscore is not.
 
 The full resolution order for each setting is in :doc:`/configuration/project`.
+
+Names used from ``pyproject.toml``
+***********************************
+
+Simplint counts Python names referenced by these tables as used, even when no Python file imports them:
+
+* ``[project.scripts]``, ``[project.gui-scripts]``, and ``[project.entry-points]`` name installed commands or plugins.
+  Legacy ``[tool.poetry.plugins]`` values work the same way.
+* ``[build-system] build-backend`` names a local backend and its build hooks. Hatch custom build and metadata hook files
+  and ``[tool.coverage.run] plugins`` also name code their hosts call. With ``pdm.backend``, ``pdm_build.py`` or the
+  file named by ``[tool.pdm.build] custom-hook`` supplies build hooks.
+* ``[tool.setuptools.dynamic]`` values with ``attr`` read a module attribute. Values in ``[tool.setuptools.cmdclass]``
+  name command classes.
+* ``[tool.mypy] plugins`` loads the named module's ``plugin`` function, or the function after a colon.
+  ``[tool.pylint.main]`` ``load-plugins`` loads the named module's ``register`` function.
+* ``[tool.pytest.ini_options]`` and ``[tool.pytest]`` ``addopts`` load plugin modules named after ``-p``. Public names
+  in those modules may be called by pytest.
+
+For example, a function named only by mypy configuration still counts as used:
+
+.. code-block:: toml
+
+    [tool.mypy]
+    plugins = ["my_package.mypy_plugin:custom_plugin"]
+
+These references are resolved against Python files in the project. Simplint does not execute configuration, so a
+command embedded in an arbitrary script setting does not supply a Python reference. The packaging entry point format
+is defined by the `Python Packaging User Guide <https://packaging.python.org/en/latest/specifications/entry-points/>`_;
+the tool-specific forms are documented by
+`setuptools <https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html#dynamic-metadata>`_,
+`mypy <https://mypy.readthedocs.io/en/stable/extending_mypy.html#configuring-mypy-to-use-plugins>`_,
+`Pylint <https://pylint.pycqa.org/en/stable/development_guide/how_tos/plugins.html>`_,
+`pytest <https://docs.pytest.org/en/stable/how-to/plugins.html>`_, and
+`Poetry <https://python-poetry.org/docs/pyproject/#plugins>`_. PDM documents its
+`local build hooks <https://backend.pdm-project.org/build_config/#local-build-hooks>`_.

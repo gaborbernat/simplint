@@ -1797,6 +1797,104 @@ fn public_module_all_is_the_declared_api(module: &str, stdout: &str) {
     );
 }
 
+#[test_case("import pkgutil\n\nHANDLER = pkgutil.resolve_name(\"pkg._cli._validate:run\")\n", true ; "direct_resolve_name")]
+#[test_case("from pkgutil import resolve_name\n\nHANDLER = resolve_name(\"pkg._cli._validate:run\")\n", true ; "imported_resolve_name")]
+#[test_case("def build_parser(parser):\n    parser.set_defaults(handler=\"pkg._cli._validate:run\")\n", true ; "argparse_handler")]
+#[test_case("HANDLER = \"pkg._cli._validate:run\"\n", false ; "unresolved_string")]
+#[test_case("def build_parser(parser):\n    parser.set_defaults(description=\"pkg._cli._validate:run\")\n", false ; "other_default")]
+#[test_case("def build_parser(parser):\n    parser.set_defaults(handler=\"pkg._cli._validate:run!\")\n", false ; "invalid_attribute")]
+#[test_case("import pkgutil\n\nHANDLER = pkgutil.resolve_name(\"pkg._cli._validate.run\")\n", true ; "dotted_resolve_name")]
+fn string_named_handlers_count_as_imported(consumer: &str, imported: bool) {
+    let root = project(&[
+        ("pyproject.toml", LIBRARY),
+        ("pkg/__init__.py", ""),
+        ("pkg/_cli/__init__.py", ""),
+        ("pkg/_cli/_validate.py", "def run() -> None: ...\n\n\n__all__ = [\"run\"]\n"),
+        ("pkg/_cli/_parser.py", consumer),
+    ]);
+    let report = check(root.path(), &["--select", "SMP402"]).1;
+    assert_eq!(report == "All checks passed!\n", imported, "{report}");
+}
+
+#[test]
+fn string_named_handler_requires_an_export() {
+    let root = project(&[
+        ("pyproject.toml", LIBRARY),
+        ("pkg/__init__.py", ""),
+        ("pkg/_cli/__init__.py", ""),
+        ("pkg/_cli/_validate.py", "def run() -> None: ...\n"),
+        (
+            "pkg/_cli/_parser.py",
+            "def build_parser(parser):\n    parser.set_defaults(handler=\"pkg._cli._validate:run\")\n",
+        ),
+    ]);
+    assert!(check(root.path(), &["--select", "SMP401"]).1.contains("`run` is imported by other modules"));
+}
+
+#[test_case("[tool.setuptools.dynamic]\nversion = { attr = \"pkg._plugin.version\" }\n", "version" ; "setuptools_dynamic_attribute")]
+#[test_case("[tool.setuptools.cmdclass]\nbuild_py = \"pkg._plugin.Build\"\n", "Build" ; "setuptools_command_class")]
+#[test_case("[tool.mypy]\nplugins = [\"pkg._plugin\"]\n", "plugin" ; "mypy_plugin")]
+#[test_case("[tool.mypy]\nplugins = [\"pkg._plugin:custom\"]\n", "custom" ; "mypy_custom_plugin")]
+#[test_case("[tool.pylint.main]\nload-plugins = [\"pkg._plugin\"]\n", "register" ; "pylint_plugin")]
+#[test_case("[tool.poetry.plugins.example]\nplugin = \"pkg._plugin:activate\"\n", "activate" ; "poetry_plugin")]
+fn pyproject_named_attribute_counts_as_used(tool: &str, name: &str) {
+    let root = project(&[
+        ("pyproject.toml", &format!("{LIBRARY}{tool}")),
+        ("pkg/__init__.py", ""),
+        ("pkg/_plugin.py", &format!("__all__ = [\"{name}\"]\n\n\ndef {name}() -> None: ...\n")),
+    ]);
+    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, "All checks passed!\n");
+}
+
+#[test_case("[tool.pytest.ini_options]\naddopts = \"-q -p pkg._plugin\"\n" ; "ini_options")]
+#[test_case("[tool.pytest]\naddopts = [\"-q\", \"-p\", \"pkg._plugin\"]\n" ; "native_options")]
+fn pyproject_pytest_plugin_counts_as_used(tool: &str) {
+    let root = project(&[
+        ("pyproject.toml", &format!("{LIBRARY}{tool}")),
+        ("pkg/__init__.py", ""),
+        ("pkg/_plugin.py", "__all__ = [\"pytest_configure\"]\n\n\ndef pytest_configure() -> None: ...\n"),
+    ]);
+    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, "All checks passed!\n");
+}
+
+#[test]
+fn disabled_pytest_plugin_does_not_count_as_used() {
+    let root = project(&[
+        ("pyproject.toml", &format!("{LIBRARY}[tool.pytest.ini_options]\naddopts = \"-p no:pkg._plugin\"\n")),
+        ("pkg/__init__.py", ""),
+        ("pkg/_plugin.py", "__all__ = [\"pytest_configure\"]\n\n\ndef pytest_configure() -> None: ...\n"),
+    ]);
+    assert!(check(root.path(), &["--select", "SMP402"]).1.contains("`pytest_configure`"));
+}
+
+#[test_case("", "pdm_build.py" ; "default_hook")]
+#[test_case("[tool.pdm.build]\ncustom-hook = \"build.py\"\n", "build.py" ; "custom_hook")]
+fn pdm_build_hooks_count_as_used(config: &str, file: &str) {
+    let root = project(&[
+        (
+            "pyproject.toml",
+            &format!(
+                "[project]\nname = \"pkg\"\n[build-system]\nbuild-backend = \"pdm.backend\"\nrequires = [\"pdm-backend\"]\n{config}"
+            ),
+        ),
+        (file, "__all__ = [\"pdm_build_initialize\"]\n\n\ndef pdm_build_initialize(context: object) -> None: ...\n"),
+    ]);
+    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, "All checks passed!\n");
+}
+
+#[test]
+fn missing_pdm_build_hook_names_no_function() {
+    let root = project(&[
+        (
+            "pyproject.toml",
+            "[project]\nname = \"pkg\"\n[build-system]\nbuild-backend = \"pdm.backend\"\nrequires = [\"pdm-backend\"]\n",
+        ),
+        ("pkg/__init__.py", ""),
+        ("pkg/_plugin.py", "__all__ = [\"pdm_build_initialize\"]\n\n\ndef pdm_build_initialize() -> None: ...\n"),
+    ]);
+    assert!(check(root.path(), &["--select", "SMP402"]).1.contains("`pdm_build_initialize`"));
+}
+
 // Nothing outside an application imports its modules, so dropping an unused export is safe there.
 #[test]
 fn application_drops_unused_exports_safely() {

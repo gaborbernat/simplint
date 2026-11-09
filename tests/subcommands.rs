@@ -187,8 +187,8 @@ fn config_rejects_unknown_options() {
     assert_eq!((code, stderr.starts_with("error: invalid value 'nope' for '[OPTION]'")), (2, true));
 }
 
-#[test_case("text", "Comments: SMP001, SMP002, SMP003, SMP004, SMP005, SMP006, SMP007\n" ; "text")]
-#[test_case("json", "[\n  {\n    \"name\": \"Comments\",\n    \"codes\": [\n      \"SMP001\",\n      \"SMP002\",\n      \"SMP003\",\n      \"SMP004\",\n      \"SMP005\",\n      \"SMP006\",\n      \"SMP007\"\n    ]\n  }," ; "json")]
+#[test_case("text", "Comments: SMP001, SMP002, SMP003, SMP004, SMP005, SMP006, SMP007, SMP008\n" ; "text")]
+#[test_case("json", "[\n  {\n    \"name\": \"Comments\",\n    \"codes\": [\n      \"SMP001\",\n      \"SMP002\",\n      \"SMP003\",\n      \"SMP004\",\n      \"SMP005\",\n      \"SMP006\",\n      \"SMP007\",\n      \"SMP008\"\n    ]\n  }," ; "json")]
 fn linter_lists_rule_groups(format: &str, first_group: &str) {
     let root = project(&[]);
     let (code, stdout, stderr) = simplint(root.path(), &["linter", "--output-format", format]);

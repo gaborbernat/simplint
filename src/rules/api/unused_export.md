@@ -221,6 +221,13 @@ __all__ = ["parse"]
     __all__ = ["main"]
     ```
 
+  - `module:attribute` strings passed to `pkgutil.resolve_name` or stored as an argparse `handler` with `set_defaults`
+
+  - setuptools dynamic `attr` values and command classes, mypy and Pylint plugins, pytest plugins loaded by `addopts`,
+    and legacy Poetry plugin entry points declared in `pyproject.toml`
+
+  - local PDM build hooks in `pdm_build.py` or the file named by `[tool.pdm.build] custom-hook`
+
   - the coverage plugin `pyproject.toml` lists under `[tool.coverage.run] plugins`, whose `coverage_init` coverage
     calls; the module is found in the project's directory or in a `pythonpath` or `extra-paths` directory of pytest or
     ty

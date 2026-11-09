@@ -21,6 +21,7 @@ fn check_ignore_noqa_reports_suppressed_code() {
 }
 
 #[test_case("x = 1  # simplint: ignore[SMP101]\n" ; "ignore")]
+#[test_case("x = 1  # simplint: ignore[single-letter-name]\n" ; "long_name")]
 #[test_case("x = 1  # simplint : ignore[SMP101]\n" ; "ignore_space_before_colon")]
 #[test_case("x = 1  # simplint:  ignore[SMP101]\n" ; "ignore_spaces_after_colon")]
 fn simplint_ignore_suppresses_with_any_space_around_its_colon(source: &str) {
@@ -139,7 +140,7 @@ fn add_ignore_merges_into_ignore_comments() {
         (result, read(root.path(), "module.py")),
         (
             (0, String::new(), "Added 3 ignore comments.\n".to_owned()),
-            "x = 1  # simplint: ignore[SMP101, SMP601]\n# simplint: ignore[SMP002, SMP003]\ny = 1  # noqa: SMP601  # simplint: ignore[SMP003, SMP101]\n".to_owned()
+            "x = 1  # simplint: ignore[missing-final, single-letter-name]\n# simplint: ignore[long-paragraph, suppression-without-reason]\ny = 1  # noqa: SMP601  # simplint: ignore[single-letter-name, suppression-without-reason]\n".to_owned()
         )
     );
 }
@@ -154,7 +155,7 @@ fn add_ignore_counts_one_comment() {
         (result, read(root.path(), "module.py")),
         (
             (0, String::new(), "Added 1 ignore comment.\n".to_owned()),
-            format!("x = 1  # simplint: ignore[SMP101] paper{newline}")
+            format!("x = 1  # simplint: ignore[single-letter-name] paper{newline}")
         )
     );
 }
