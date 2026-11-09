@@ -59,15 +59,24 @@ impl<'a> Linter<'a> {
 
     // Like Ruff, a file that does not parse reports its syntax errors; the rules, which need a valid tree, skip it.
     pub fn lint(&self, path: &Path, source: &str, noqa: flags::Noqa) -> Lint {
-        let (unsupported, outcome) = self.check(path, source, |mut diagnostics, suppressions| {
-            diagnostics.sort_by(Diagnostic::ruff_start_ordering);
-            if noqa.is_enabled() {
-                suppressions.pending(diagnostics).into_iter().unzip()
-            } else {
-                let noqa_rows = suppressions.locate(&mut diagnostics);
-                (diagnostics, noqa_rows)
-            }
-        });
+        self.lint_inner(path, source, noqa, noqa.is_enabled())
+    }
+
+    pub(crate) fn lint_without_unused_ignore(&self, path: &Path, source: &str) -> Lint {
+        self.lint_inner(path, source, flags::Noqa::Enabled, false)
+    }
+
+    fn lint_inner(&self, path: &Path, source: &str, noqa: flags::Noqa, include_unused_ignore: bool) -> Lint {
+        let (unsupported, outcome) =
+            self.check(path, source, include_unused_ignore, |mut diagnostics, suppressions| {
+                diagnostics.sort_by(Diagnostic::ruff_start_ordering);
+                if noqa.is_enabled() {
+                    suppressions.pending(diagnostics).into_iter().unzip()
+                } else {
+                    let noqa_rows = suppressions.locate(&mut diagnostics);
+                    (diagnostics, noqa_rows)
+                }
+            });
         match outcome {
             Ok((diagnostics, noqa_rows)) => Lint { diagnostics, unsupported, noqa_rows },
             Err(syntax_errors) => Lint { diagnostics: syntax_errors, unsupported, noqa_rows: Vec::new() },
@@ -83,7 +92,7 @@ impl<'a> Linter<'a> {
         kind: SuppressionKind,
         reason: Option<&str>,
     ) -> (usize, String) {
-        let (_, outcome) = self.check(path, source, |diagnostics, suppressions| {
+        let (_, outcome) = self.check(path, source, false, |diagnostics, suppressions| {
             suppressions.add(&suppressions.pending(diagnostics), kind, reason)
         });
         outcome.unwrap_or_else(|_| (0, source.to_owned()))
@@ -95,6 +104,7 @@ impl<'a> Linter<'a> {
         &self,
         path: &Path,
         source: &str,
+        include_unused_ignore: bool,
         then: impl FnOnce(Vec<Diagnostic>, &Suppressions) -> T,
     ) -> (Vec<UnsupportedSyntaxError>, Result<T, Vec<Diagnostic>>) {
         let file = SourceFileBuilder::new(path.to_string_lossy(), source).finish();
@@ -113,7 +123,7 @@ impl<'a> Linter<'a> {
         }
         let indexer = Indexer::from_tokens(parsed.tokens(), source);
         let stylist = Stylist::from_tokens(parsed.tokens(), source);
-        let diagnostics = Checker::new(path, &file, &parsed, &indexer, &stylist, self).run();
+        let diagnostics = Checker::new(path, &file, &parsed, &indexer, &stylist, self).run(include_unused_ignore);
         (unsupported, Ok(then(diagnostics, &Suppressions::new(path, source, &parsed, &indexer, &stylist))))
     }
 }

@@ -3,7 +3,7 @@ use std::cell::{Cell, OnceCell, RefCell};
 use std::path::{Path, PathBuf};
 
 use ruff_db::diagnostic::{Annotation, Diagnostic, DiagnosticId, LintName, SecondaryCode, Severity, Span};
-use ruff_diagnostics::Fix;
+use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::parenthesize::parenthesized_range;
 use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::{self as ast, AnyNodeRef, Expr, ModModule, Stmt};
@@ -16,6 +16,7 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 use rustc_hash::FxHashMap;
 
 use crate::lint::Linter;
+use crate::lint::noqa::Suppressions;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
 use crate::project::FileIndex;
@@ -91,7 +92,7 @@ impl<'a> Checker<'a> {
         }
     }
 
-    pub fn run(self) -> Vec<Diagnostic> {
+    pub fn run(self, include_unused_ignore: bool) -> Vec<Diagnostic> {
         let rules = self.settings.rules;
         for rule in rules.iter() {
             self.enter(rule);
@@ -101,10 +102,40 @@ impl<'a> Checker<'a> {
         if rules.iter().any(Rule::walks) {
             Walker::run(&self, rules);
         }
+        if include_unused_ignore && rules.contains(Rule::UnusedIgnore) {
+            self.report_unused_ignores();
+        }
         let mut diagnostics = self.diagnostics.into_inner();
         // Reports at the same position keep the order of the rules, as when each rule ran alone; the sort is stable.
         diagnostics.sort_by_key(|(rule, _)| *rule);
         diagnostics.into_iter().map(|(_, diagnostic)| diagnostic).collect()
+    }
+
+    fn report_unused_ignores(&self) {
+        let suppressions = Suppressions::new(self.path, self.source, self.parsed, self.indexer, self.stylist);
+        let diagnostics: Vec<Diagnostic> =
+            self.diagnostics.borrow().iter().map(|(_, diagnostic)| diagnostic.clone()).collect();
+        let Some(unused) = suppressions.unused_ignores(diagnostics, |proposed| {
+            self.linter.lint_without_unused_ignore(self.path, proposed).diagnostics
+        }) else {
+            return;
+        };
+        let mut edits = unused.edits.into_iter().map(|(range, replacement)| {
+            if replacement.is_empty() {
+                Edit::range_deletion(range)
+            } else {
+                Edit::range_replacement(replacement, range)
+            }
+        });
+        let first = edits.next().expect("an unused ignore has an edit");
+        let range = TextRange::new(unused.start, self.source.line_end(unused.start));
+        self.report_fix(
+            Rule::UnusedIgnore,
+            range,
+            format!("{} unused simplint ignore selector{}", unused.count, if unused.count == 1 { "" } else { "s" }),
+            Some(Fix::safe_edits(first, edits)),
+            "Remove unused ignore selectors",
+        );
     }
 
     pub fn report(&self, rule: Rule, range: TextRange, message: impl Into<String>) {

@@ -41,6 +41,12 @@ To silence every remaining report at once:
 - ``--add-ignore`` writes ``# simplint: ignore`` comments the same way.
 - Both take a reason to write after the codes: ``--add-noqa="matches the paper's notation"``.
 
+The :doc:`unused-ignore </_generated/rules/SMP009>` rule reports obsolete selectors in ``# simplint: ignore[...]``
+comments. Run ``simplint check --extend-select SMP009 --fix`` to remove them. The fix re-lints uncertain removals so a
+comment that affects another rule stays in place. It leaves ``# noqa`` and configuration-level ignores alone.
+
+Run with the project's normal rule selection. A narrow ``--select`` can make ignores for other rules appear unused.
+
 .. important::
 
     Ruff does not know the ``SMP`` codes. List them in

@@ -145,7 +145,10 @@ impl Settings {
         let project_dir = metadata_path.and_then(Path::parent).unwrap_or(root);
         // Without a `pyproject.toml`, the run's root holds the project, unless `--isolated` reads no files.
         let project = metadata_path.and_then(Path::parent).or_else(|| (!isolated).then_some(root));
-        let rules = resolve_rules(configuration.rule_selections.iter().map(|selection| &selection.enabled))?;
+        let rules = resolve_rules(
+            configuration.rule_selections.iter().map(|selection| &selection.enabled),
+            RuleSet::all().subtract(RuleSet::from_rules([Rule::UnusedIgnore])),
+        )?;
         // flake8-lazy rebuilds each module's `__lazy_modules__` from its imports, so it and this rule's fix keep
         // rewriting each other's output; the rule stays off for the whole project. The hook configuration is read only
         // when the rule would run.
@@ -156,7 +159,8 @@ impl Settings {
         } else {
             rules
         };
-        let fixable = resolve_rules(configuration.rule_selections.iter().map(|selection| &selection.fixable))?;
+        let fixable =
+            resolve_rules(configuration.rule_selections.iter().map(|selection| &selection.fixable), RuleSet::all())?;
         let fix_safety =
             FixSafetyTable::from_selectors(&configuration.extend_safe_fixes, &configuration.extend_unsafe_fixes)?;
         let ProjectOptions { max_paragraph_words, naming, imports, logic, project_kind, api_packages, docstring_style } =
@@ -265,8 +269,8 @@ impl CacheKey for Settings {
 
 // Ruff's `as_rule_table`: each layer applies its selectors from the least to the most specific, an ignore beating a
 // select of the same specificity, and a layer that sets `select` (or `fixable`) starts from nothing.
-fn resolve_rules<'a>(layers: impl IntoIterator<Item = &'a SelectorLayer>) -> Result<RuleSet> {
-    layers.into_iter().try_fold(RuleSet::all(), |rules, layer| {
+fn resolve_rules<'a>(layers: impl IntoIterator<Item = &'a SelectorLayer>, default: RuleSet) -> Result<RuleSet> {
+    layers.into_iter().try_fold(default, |rules, layer| {
         let enable = layer.replace.iter().flatten().chain(&layer.extend).map(|selector| (selector, true));
         let updates: Vec<(usize, RuleSet, bool)> = enable
             .chain(layer.remove.iter().map(|selector| (selector, false)))

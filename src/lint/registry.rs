@@ -14,7 +14,7 @@ use crate::rules;
 // kind of node the walker hands to the function of that name in the rule's module.
 macro_rules! rules {
     ($($variant:ident => (
-        $code:literal, $name:literal, $summary:literal, $fix:ident, $family:ident::$check:ident { $($hook:ident),+ }
+        $code:literal, $name:literal, $summary:literal, $fix:ident, $family:ident::$check:ident { $($hook:ident),* }
         $(since $min:ident)?
         $(reads [$($read:ident), *])?
         $(skips [$($skip:ident), *])?
@@ -87,7 +87,7 @@ macro_rules! rules {
 
             pub(crate) fn check_module(self, checker: &Checker) {
                 match self {
-                    $(Rule::$variant => { $(hook!(module, $hook, $family::$check(checker));)+ })*
+                    $(Rule::$variant => { $(hook!(module, $hook, $family::$check(checker));)* })*
                 }
             }
 
@@ -120,33 +120,33 @@ macro_rules! rules {
 
             pub(crate) fn walks(self) -> bool {
                 match self {
-                    $(Rule::$variant => false $(|| hook!(walks, $hook))+,)*
+                    $(Rule::$variant => false $(|| hook!(walks, $hook))*,)*
                 }
             }
         }
 
         pub(crate) fn statement<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
-            $($(if rules.contains(Rule::$variant) { hook!(statement, $hook, walker, Rule::$variant, $family::$check(walker, stmt)) })+)*
+            $($(if rules.contains(Rule::$variant) { hook!(statement, $hook, walker, Rule::$variant, $family::$check(walker, stmt)) })*)*
         }
 
         pub(crate) fn expression<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
-            $($(if rules.contains(Rule::$variant) { hook!(expression, $hook, walker, Rule::$variant, $family::$check(walker, expr)) })+)*
+            $($(if rules.contains(Rule::$variant) { hook!(expression, $hook, walker, Rule::$variant, $family::$check(walker, expr)) })*)*
         }
 
         pub(crate) fn scope<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, scope: &Scope<'a>) {
-            $($(if rules.contains(Rule::$variant) { hook!(scope, $hook, walker, Rule::$variant, $family::$check(walker, scope)) })+)*
+            $($(if rules.contains(Rule::$variant) { hook!(scope, $hook, walker, Rule::$variant, $family::$check(walker, scope)) })*)*
         }
 
         pub(crate) fn except_handler<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, handler: &'a ast::ExceptHandler) {
-            $($(if rules.contains(Rule::$variant) { hook!(except_handler, $hook, walker, Rule::$variant, $family::$check(walker, handler)) })+)*
+            $($(if rules.contains(Rule::$variant) { hook!(except_handler, $hook, walker, Rule::$variant, $family::$check(walker, handler)) })*)*
         }
 
         pub(crate) fn pattern<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, pattern: &'a Pattern) {
-            $($(if rules.contains(Rule::$variant) { hook!(pattern, $hook, walker, Rule::$variant, $family::$check(walker, pattern)) })+)*
+            $($(if rules.contains(Rule::$variant) { hook!(pattern, $hook, walker, Rule::$variant, $family::$check(walker, pattern)) })*)*
         }
 
         pub(crate) fn type_param<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, type_param: &'a TypeParam) {
-            $($(if rules.contains(Rule::$variant) { hook!(type_param, $hook, walker, Rule::$variant, $family::$check(walker, type_param)) })+)*
+            $($(if rules.contains(Rule::$variant) { hook!(type_param, $hook, walker, Rule::$variant, $family::$check(walker, type_param)) })*)*
         }
     };
 }
@@ -250,6 +250,7 @@ rules! {
     StringStatementComment => ("SMP006", "string-statement-comment", "Bare strings used as comments instead of `#` comments", Sometimes, comments::string_statement_comment { module }),
     LongCommentLine => ("SMP007", "long-comment-line", "Comment and docstring lines over the line length", Always, comments::long_comment_line { module }),
     NumericIgnore => ("SMP008", "numeric-ignore", "Numeric codes in simplint ignore comments", Always, comments::numeric_ignore { module }),
+    UnusedIgnore => ("SMP009", "unused-ignore", "Unused selectors in simplint ignore comments", Always, comments::unused_ignore {}),
     SingleLetterName => ("SMP101", "single-letter-name", "Single-letter names outside comprehensions", None, naming::single_letter_name { statement, expression, scope, except_handler, pattern, type_param }),
     ModuleVariableCase => ("SMP102", "module-variable-case", "Module variables not `UPPER_CASE`", Sometimes, naming::module_variable_case { module } reads [cross_file, STRING_WORDS, COMPUTED_WRITES, DOCTESTS] skips [nested]),
     MeaninglessName => ("SMP103", "meaningless-name", "Variables, parameters and attributes named with a word that says nothing", None, naming::meaningless_name { expression, scope, except_handler, pattern }),
