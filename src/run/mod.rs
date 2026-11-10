@@ -39,7 +39,7 @@ pub(crate) struct Resolved {
     pub(crate) config_arguments: ConfigArguments,
     pub(crate) settings_resolver: SettingsResolver,
     pub(crate) pyproject_config: PyprojectConfig,
-    pub(crate) cache_dir: PathBuf,
+    pub(crate) cache_dir: Option<PathBuf>,
 }
 
 impl Resolved {

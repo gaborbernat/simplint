@@ -531,6 +531,32 @@ fn cache_dir_through_a_link_outside_the_project_falls_back_to_the_default() {
     );
 }
 
+// A link committed in place of the default cache directory, or of simplint's directory in it, cannot point the cache
+// out of the project either; with no directory inside it left, the run does not cache.
+#[cfg(unix)]
+#[test_case(&[], ".ruff_cache" ; "default_without_configuration")]
+#[test_case(&[("pyproject.toml", "[tool.ruff]\n")], ".ruff_cache" ; "default")]
+#[test_case(&[("pyproject.toml", "[tool.ruff]\n"), (".ruff_cache/keep", "")], ".ruff_cache/simplint" ; "simplint")]
+fn cache_directory_linked_outside_the_project_is_not_used(extra: &[(&str, &str)], link: &str) {
+    let outside = tempfile::TempDir::new().expect("temporary directory");
+    let root = project(&[extra, &[("module.py", "VALUE = 1\n")]].concat());
+    std::os::unix::fs::symlink(outside.path(), root.path().join(link)).expect("symlink");
+    let (code, _, stderr) = check(root.path(), &["--select", "SMP101"]);
+    assert_eq!(
+        (code, stderr.contains("Not caching"), fs::read_dir(outside.path()).expect("read").count()),
+        (0, true, 0)
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn show_settings_names_no_cache_directory_when_it_leads_outside_the_project() {
+    let outside = tempfile::TempDir::new().expect("temporary directory");
+    let root = project(&[("module.py", "VALUE = 1\n")]);
+    std::os::unix::fs::symlink(outside.path(), root.path().join(".ruff_cache")).expect("symlink");
+    assert!(check(root.path(), &["--show-settings"]).1.contains("\ncache_dir = none\n"));
+}
+
 // The command line and `RUFF_CACHE_DIR` name the directory the user chose, so they may point anywhere.
 #[test]
 fn cache_dir_flag_may_point_outside_the_project() {

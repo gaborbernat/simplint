@@ -154,8 +154,8 @@ fn show_settings(files: &[PathBuf], resolved: &Resolved, writer: &mut dyn Write)
         writeln!(writer, "Settings path: {:?}", settings_path.display().to_string())?;
     }
     let target_version = FileSettings::new(&settings, resolver.resolve(path), path).from_ruff.target_version;
-    let cache_dir = cache::directory(&resolved.cache_dir);
-    write_settings(writer, &settings, target_version, &cache_dir)?;
+    let cache_dir = resolved.cache_dir.as_deref().map(cache::directory);
+    write_settings(writer, &settings, target_version, cache_dir.as_deref())?;
     Ok(())
 }
 
@@ -164,14 +164,17 @@ fn write_settings(
     writer: &mut dyn Write,
     settings: &Settings,
     target_version: PythonVersion,
-    cache_dir: &Path,
+    cache_dir: Option<&Path>,
 ) -> std::io::Result<()> {
     let rules = |set: RuleSet| set.iter().map(|rule| format!("{} ({})", rule.name(), rule.code())).collect_vec();
     let quoted = |items: &mut dyn Iterator<Item = &String>| items.map(|item| format!("{item:?}")).collect_vec();
     let Settings { root, metadata, run, knobs, api, docstring_style, .. } = settings;
     let [enabled, fixable, forced_safe, forced_unsafe] = settings.rule_sets();
     writeln!(writer, "\n# General Settings")?;
-    writeln!(writer, "cache_dir = \"{}\"", cache_dir.display())?;
+    match cache_dir {
+        Some(cache_dir) => writeln!(writer, "cache_dir = \"{}\"", cache_dir.display())?,
+        None => writeln!(writer, "cache_dir = none")?,
+    }
     writeln!(writer, "fix = {}", run.fix.unwrap_or_default())?;
     writeln!(writer, "fix_only = {}", run.fix_only.unwrap_or_default())?;
     writeln!(writer, "output_format = {}", run.output_format.unwrap_or_default())?;

@@ -47,6 +47,9 @@ Where the cache lives:
 
 - In a ``simplint`` directory inside Ruff's cache directory: ``.ruff_cache`` unless Ruff's ``cache-dir`` setting,
   ``--cache-dir`` or ``RUFF_CACHE_DIR`` names another. It never touches Ruff's own files there.
+- Inside the project, when the project picks it. A ``cache-dir`` setting that leads outside falls back to
+  ``.ruff_cache``, and a run whose ``.ruff_cache`` links outside does not cache. ``--cache-dir`` and
+  ``RUFF_CACHE_DIR`` may point anywhere.
 - ``--no-cache`` skips it.
 - Each simplint build keeps its own subdirectory there. A run removes the subdirectories of other builds that no run
   has written to for 30 days.
