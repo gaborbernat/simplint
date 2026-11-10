@@ -207,9 +207,35 @@ when the module reads it through:
   print(sys.modules[__name__].__all__)
   ```
 
+  ```python fixed
+  import sys
+
+  __all__ = ["main"]
+
+
+  def main() -> None:
+      pass
+
+
+  print(sys.modules[__name__].__all__)
+  ```
+
 - the string `"__all__"`, such as in `getattr(sys.modules[__name__], "__all__")`:
 
   ```python report
+  import sys
+
+  __all__ = ["main"]
+
+
+  def main() -> None:
+      pass
+
+
+  print(getattr(sys.modules[__name__], "__all__"))
+  ```
+
+  ```python fixed
   import sys
 
   __all__ = ["main"]
@@ -235,6 +261,17 @@ when the module reads it through:
   print(sorted(globals()))
   ```
 
+  ```python fixed
+  __all__ = ["main"]
+
+
+  def main() -> None:
+      pass
+
+
+  print(sorted(globals()))
+  ```
+
 - a call to `vars()`:
 
   ```python report
@@ -248,9 +285,31 @@ when the module reads it through:
   print(sorted(vars()))
   ```
 
+  ```python fixed
+  __all__ = ["main"]
+
+
+  def main() -> None:
+      pass
+
+
+  print(sorted(vars()))
+  ```
+
 - a call to `dir()`:
 
   ```python report
+  __all__ = ["main"]
+
+
+  def main() -> None:
+      pass
+
+
+  print(dir())
+  ```
+
+  ```python fixed
   __all__ = ["main"]
 
 
