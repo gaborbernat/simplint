@@ -90,6 +90,11 @@ fn fixed_with(pyproject: &str, source: &str, select: &str) -> (i32, String, Stri
     "code under fmt off to the end"
 )]
 #[test_case(
+    17, "# fmt: off\nprint()  # fmt: skip\nvalue = [1, 2, 3]\n# fmt: on\nprint(value)\n", "SMP404",
+    "module.py:3:1: SMP404 `value` is not in `__all__`; name it `_value`\nFound 1 error.\n" ;
+    "fmt skip under fmt off"
+)]
+#[test_case(
     30, "value = [1, 2, 3]  # fmt: skip\nprint(value)\n", "SMP404",
     "module.py:1:1: SMP404 `value` is not in `__all__`; name it `_value`\nFound 1 error.\n" ;
     "statement under fmt skip"

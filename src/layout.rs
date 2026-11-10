@@ -427,6 +427,9 @@ fn collapsed(code: &str) -> usize {
 struct Frozen {
     whole: bool,
     ranges: Vec<TextRange>,
+    // The ranges with overlapping ones joined, in order, for `contains` to search: a file with a `# fmt: skip` on
+    // every line asks once per token.
+    joined: Vec<TextRange>,
     off: Option<TextSize>,
 }
 
@@ -439,12 +442,12 @@ impl Frozen {
             }
             Some(FormatSuppression::On) if own_line => {
                 if let Some(off) = self.off.take() {
-                    self.ranges.push(TextRange::new(off, comment.end()));
+                    self.push(TextRange::new(off, comment.end()));
                 }
             }
             Some(FormatSuppression::Skip) => {
                 if let Some(start) = line {
-                    self.ranges.push(TextRange::new(start, comment.end()));
+                    self.push(TextRange::new(start, comment.end()));
                 }
             }
             _ => {}
@@ -455,15 +458,29 @@ impl Frozen {
         if self.whole {
             self.ranges = vec![TextRange::up_to(TextSize::of(source))];
         } else if let Some(off) = self.off.take() {
-            self.ranges.push(TextRange::new(off, TextSize::of(source)));
+            self.push(TextRange::new(off, TextSize::of(source)));
         }
         self
+    }
+
+    // Each range ends at a comment after those before it, or at the end of the source, so the joined ranges stay in
+    // order by joining a new range only with those at the end that reach it.
+    fn push(&mut self, range: TextRange) {
+        self.ranges.push(range);
+        let mut start = range.start();
+        while let Some(last) = self.joined.pop_if(|last| last.end() >= range.start()) {
+            start = start.min(last.start());
+        }
+        self.joined.push(TextRange::new(start, range.end()));
     }
 
     fn contains(&self, offset: TextSize) -> bool {
         self.whole
             || self.off.is_some_and(|off| off <= offset)
-            || self.ranges.iter().any(|range| range.contains_inclusive(offset))
+            || self
+                .joined
+                .get(self.joined.partition_point(|range| range.end() < offset))
+                .is_some_and(|range| range.start() <= offset)
     }
 
     // Lines over the limit as they stand, save one that is a single word once its trailing pragma comment is left
