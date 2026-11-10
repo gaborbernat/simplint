@@ -3347,7 +3347,7 @@
     "name": "single-user-constant",
     "summary": "Module constants only one function uses",
     "fix": "Sometimes",
-    "explanation": "Flags module-level constants that only one function uses. Keeping the value next to its only use lets the reader follow\nthe function without scrolling away to find it.\n\n## Why is this bad?\n\nA module constant that only one function uses makes the code, and that function, harder to read for no benefit. Code\nlocality makes a function easy to read and reason about without scrolling around to find the value. In later pull\nrequests the constant may not even be in the diff, which makes reviews harder. Nothing pays for that: with one user,\nthere is no duplication the constant avoids, so such a constant is better inlined.\n\nA module-level constant also suggests the value is shared, so a reader has to search the module to learn that one\nfunction uses it. Defined in that function, its scope matches its use. A comment above the constant, such as one saying\nit is built once for speed, keeps it at module level.\n\n## Example\n\n```python report\n_TIMEOUT = 30\n\n\ndef connect(host: str) -> socket.socket:\n    return socket.create_connection((host, 443), timeout=_TIMEOUT)\n```\n\nUse instead:\n\n```python ok\ndef connect(host: str) -> socket.socket:\n    return socket.create_connection((host, 443), timeout=30)\n```\n\n## Conflicts with Ruff\n\nRuff's [magic-value-comparison](https://docs.astral.sh/ruff/rules/magic-value-comparison/) asks for a named constant\nwhere the inlined value lands in a comparison. When a fix would give it a new report, simplint withdraws the fix and\nkeeps the report.\n\n## What it does\n\n### Active on\n\nA constant here is a name assigned once, with `=` or an\n[annotated assignment](https://docs.python.org/3/reference/simple_stmts.html#annotated-assignment-statements), to a\nvalue written out in the source. Such a value holds no state shared between calls, so it can move into the function. It\nis reported when every reference to it sits inside the body of a single top-level function or method, including\nfunctions nested in it. These values count:\n\n- **Literals**: a string, bytes, number, `True`, `False`, `None` or `...`, including strings joined by placing them side\n  by side.\n\n  ```python report\n  _TIMEOUT = 30\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=_TIMEOUT)\n  ```\n\n- **Negative numbers**, such as `-1`: a literal with a sign.\n\n  ```python report\n  _OFFSET = -1\n\n\n  def shift(value: int) -> int:\n      return value + _OFFSET\n  ```\n\n- **Binary operations between such values**, arithmetic or other, such as `60 * 60` or `\"-\" * 40`: the result follows\n  from the literals alone.\n\n  ```python report\n  _WINDOW = 60 * 60\n\n\n  def expired(age: int) -> bool:\n      return age > _WINDOW\n  ```\n\n- **Tuple, list, set or dict displays made only of such values**, such as `(\"a\", 1)` or `{\"ok\": 0}`: the container is\n  written out in full.\n\n  ```python report\n  _FIELDS = (\"name\", 1)\n\n\n  def describe() -> str:\n      return str(_FIELDS)\n  ```\n\n- **`frozenset()`, or `frozenset` called with one such value**, while the module does not bind the name `frozenset`, so\n  the call is the builtin.\n\n  ```python report\n  _KEYS = frozenset([\"a\", \"b\"])\n\n\n  def has(key: str) -> bool:\n      return key in _KEYS\n  ```\n\n### Exceptions\n\n- **Functions already at Ruff's local-variable limit**: when PLR0914 runs, moving a multiline or annotated constant into\n  a function can add a local and cause a new Ruff report. Such constants stay at module scope. The limit comes from\n  Ruff's `lint.pylint.max-locals` setting.\n\n- **Any other value**: built once at import, it may hold state every call shares or be the object a test patches, and\n  moving it into the function would build a new one on every call.\n\n  That covers a call result such as a cache, a logger from `logging.getLogger(__name__)`, a pattern from `re.compile`, a\n  `Path` or a client instance; a name or attribute such as `logging.INFO`; an f-string; and a display unpacking another\n  value with `*` or `**`.\n\n  ```python ok\n  import logging\n\n  _LOGGER = logging.getLogger(__name__)\n\n\n  def run() -> None:\n      _LOGGER.info(\"run\")\n  ```\n\n- **A constant used only inside a module-level lambda**: a constant cannot move into a lambda.\n\n  ```python ok\n  _LIMIT = 3\n  TAKE = lambda items: items[:_LIMIT]\n  ```\n\n- **Public names**: those listed in\n  [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package), or, when the module has no\n  `__all__`, builds it dynamically or binds it inside a nested block, names without a leading `_`. Other modules may use\n  them.\n\n  ```python ok\n  TIMEOUT = 30\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=TIMEOUT)\n  ```\n\n- **Names another file in the run imports, or a string in the run spells, such as the dotted path `\"config._TIMEOUT\"`\n  that a test patches with [`unittest.mock.patch`](https://docs.python.org/3/library/unittest.mock.html#patch)**: that\n  file needs the name to stay at module level, and a string that looks the name up would miss an inlined value. A\n  docstring that only mentions the name is prose, so it keeps nothing.\n\n  ```python ok file=config.py\n  _TIMEOUT = 30\n\n\n  def connect() -> int:\n      return _TIMEOUT\n  ```\n\n  ```python context file=main.py\n  from config import _TIMEOUT\n  ```\n\n- **Names a doctest of the module reads**: a `>>>` example in one of the module's docstrings runs in the module's\n  globals, so inlining the constant would leave the example reading a name that is gone.\n\n- **[Dunder](https://docs.python.org/3/reference/lexical_analysis.html#reserved-classes-of-identifiers) names and\n  class-like names such as `UserId`**: Python gives dunder names their meaning, and a class-like name stands for a type\n  rather than a value.\n\n  ```python ok\n  UserId = 5\n\n\n  def load() -> int:\n      return UserId\n  ```\n\n- **Constants with a comment on the line directly above or at the end of their line**: the comment may say why the value\n  lives at module level, such as being built once for speed.\n\n  ```python ok\n  _TIMEOUT = 30  # seconds\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=_TIMEOUT)\n  ```\n\n- **Names another module in the run assigns as an attribute**, such as `config._TIMEOUT = 5`: a local copy would ignore\n  the override.\n\n  ```python ok file=config.py\n  _TIMEOUT = 30\n\n\n  def connect() -> int:\n      return _TIMEOUT\n  ```\n\n  ```python context file=main.py\n  import config\n\n  config._TIMEOUT = 5\n  ```\n\n- **Containers the function changes**: they are state that must outlive each call. The function calls a mutating method\n  on them such as `add`, `append` or `update`, or assigns or deletes an item.\n\n  ```python ok\n  _SEEN = {\"a\"}\n\n\n  def mark(item: str) -> None:\n      _SEEN.add(item)\n  ```\n\n- **Constants referenced at import time**, such as in a default value or decorator, or in any annotation: the value must\n  exist while the module loads, before any function runs.\n\n  ```python ok\n  _LIMIT = 3\n\n\n  def load(limit: int = _LIMIT) -> int:\n      return limit\n  ```\n\n```mermaid\nflowchart TD\n    constant[\"module-level name\"] --> literal{\"value written<br/>out in source?\"}\n    literal -->|no| stays[\"not reported\"]\n    literal -->|yes| single{\"one function<br/>uses it?\"}\n    single -->|no| stays\n    single -->|yes| skipped{\"listed under<br/>Exceptions?\"}\n    skipped -->|yes| stays\n    skipped -->|no| report[\"reported\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class constant blue\n    class literal,single,skipped yellow\n    class stays green\n    class report orange\n```\n\n### Fix\n\n**Unsafe fix:** always, as the value is rebuilt on every call, which costs time for expensive values and gives each call\na new object for mutable ones.\n\nThe fix moves the value in one of two ways:\n\n- **Inline**: when the constant is used once, outside any loop, nested function or class, lambda or comprehension, the\n  fix inlines the value at the use, adding parentheses when needed. A value with a comment inside it, or a triple-quoted\n  string, takes the local form instead. Some constants keep a name:\n\n  ```python report\n  _TIMEOUT = 30\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=_TIMEOUT)\n  ```\n\n  ```python fixed\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=30)\n  ```\n\n  A value the source spreads over several lines goes in on one line, written by Ruff's code generator. The layout and\n  trailing commas do not carry over, and each string keeps the quotes it was written with.\n\n  ```python report\n  _CHOICES = (\n      \"first\",\n      \"second\",\n  )\n\n\n  def pick() -> None:\n      print(_CHOICES)\n  ```\n\n  ```python fixed\n  def pick() -> None:\n      print((\"first\", \"second\"))\n  ```\n\n  - Inside an f-string it inlines only a number: a value with quotes there is a syntax error before Python 3.12, and a\n    longer one buries the text the f-string builds.\n\n    ```python report\n    _NAME = \"shop\"\n\n\n    def label() -> str:\n        return f\"name: {_NAME}\"\n    ```\n\n    ```python fixed\n    def label() -> str:\n        name = \"shop\"\n        return f\"name: {name}\"\n    ```\n\n  - A string that calls `format` keeps a name: as a literal it becomes Ruff's\n    [f-string](https://docs.astral.sh/ruff/rules/f-string/) candidate, which Ruff reports only while no argument spans\n    lines, so the result would depend on how `ruff format` lays out the call.\n\n    ```python report\n    _TEMPLATE = \"{} items\"\n\n\n    def describe(count: int) -> str:\n        return _TEMPLATE.format(count)\n    ```\n\n  - Inside an f-string `=` debug field the field keeps its printed text, so the value moves into a plain field after it.\n\n    ```python report\n    _LIMIT = 30\n\n\n    def show() -> str:\n        return f\"{_LIMIT=}\"\n    ```\n\n    ```python fixed\n    def show() -> str:\n        return f\"_LIMIT={30!r}\"\n    ```\n\n  - A constant with an annotation keeps its name, as the annotation types the value where an inlined literal would be\n    typed on its own. A dict literal under `Final[dict[str, list[str]]]` inlined into a `.get` call fails a type check\n    against the function's return annotation.\n\n    ```python report\n    _LIMIT: int = 30\n\n\n    def connect() -> int:\n        return _LIMIT\n    ```\n\n    ```python fixed\n    def connect() -> int:\n        limit: int = 30\n        return limit\n    ```\n\n- **Local**: otherwise it declares a local before the statement that first uses it and renames the uses. The local takes\n  the constant's name in lowercase, without leading underscores, and keeps its annotation, with `Final` taken off. An\n  annotated constant always takes this form.\n\n  ```python report\n  _LIMIT = 30\n\n\n  def connect(host: str) -> socket.socket:\n      if _LIMIT:\n          return socket.create_connection((host, 443), timeout=_LIMIT)\n      return socket.create_connection((host, 443))\n  ```\n\n  ```python fixed\n  def connect(host: str) -> socket.socket:\n      limit = 30\n      if limit:\n          return socket.create_connection((host, 443), timeout=limit)\n      return socket.create_connection((host, 443))\n  ```\n\n```mermaid\nflowchart TD\n    constant[\"reported constant\"] --> once{\"used once, outside loops<br/>and nested scopes?\"}\n    once -->|no| local[\"declare a local\"]\n    once -->|yes| line{\"value has a comment or<br/>a triple-quoted string?\"}\n    line -->|yes| local\n    line -->|no| place{\"an exception<br/>above applies?\"}\n    place -->|yes| local\n    place -->|no| inline[\"inline the value\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class constant blue\n    class once,line,place yellow\n    class local,inline green\n```\n\nOf the blank lines above and below the constant, the fix removes the shorter run, so the code around it keeps the wider\ngap. At the top of the file, the blank lines below go with it.\n\nNo fix is offered when:\n\n- the constant shares a line with other code;\n\n  ```python report\n  _TIMEOUT = 30\n  _RETRIES = 3\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=_TIMEOUT, retries=_RETRIES)\n  ```\n\n- the local name already appears in the file;\n\n  ```python report\n  _TIMEOUT = 30\n  timeout = 5\n\n\n  def connect(host: str) -> socket.socket:\n      if _TIMEOUT:\n          return socket.create_connection((host, 443), timeout=_TIMEOUT)\n      return socket.create_connection((host, 443), timeout=timeout)\n  ```\n\n- the value calls `frozenset` and the function has a parameter or local named `frozenset`.\n\n  ```python report\n  _KEYS = frozenset([\"a\", \"b\"])\n\n\n  def has(frozenset: set, key: str) -> bool:\n      return key in _KEYS\n  ```\n\n- the constant is read in a t-string, which keeps the source text of its expressions;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  _LIMIT = 30\n\n\n  def show() -> object:\n      return t\"{_LIMIT}\"\n  ```\n\n- a file of the run sets an attribute of the module under a computed name, as `setattr(module, name, value)` does\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags module-level constants that only one function uses. Keeping the value next to its only use lets the reader follow\nthe function without scrolling away to find it.\n\n## Why is this bad?\n\nA module constant that only one function uses makes the code, and that function, harder to read for no benefit. Code\nlocality makes a function easy to read and reason about without scrolling around to find the value. In later pull\nrequests the constant may not even be in the diff, which makes reviews harder. Nothing pays for that: with one user,\nthere is no duplication the constant avoids, so such a constant is better inlined.\n\nA module-level constant also suggests the value is shared, so a reader has to search the module to learn that one\nfunction uses it. Defined in that function, its scope matches its use. A comment above the constant, such as one saying\nit is built once for speed, keeps it at module level.\n\n## Example\n\n```python report\n_TIMEOUT = 30\n\n\ndef connect(host: str) -> socket.socket:\n    return socket.create_connection((host, 443), timeout=_TIMEOUT)\n```\n\nUse instead:\n\n```python ok\ndef connect(host: str) -> socket.socket:\n    return socket.create_connection((host, 443), timeout=30)\n```\n\n## Conflicts with Ruff\n\nRuff's [magic-value-comparison](https://docs.astral.sh/ruff/rules/magic-value-comparison/) asks for a named constant\nwhere the inlined value lands in a comparison. When a fix would give it a new report, simplint withdraws the fix and\nkeeps the report.\n\n## What it does\n\n### Active on\n\nA constant here is a name assigned once, with `=` or an\n[annotated assignment](https://docs.python.org/3/reference/simple_stmts.html#annotated-assignment-statements), to a\nvalue written out in the source. Such a value is built the same way on every call, so it can move into the function. It\nis reported when every reference to it sits inside the body of a single top-level function or method, including\nfunctions nested in it. These values count:\n\n- **Literals**: a string, bytes, number, `True`, `False`, `None` or `...`, including strings joined by placing them side\n  by side.\n\n  ```python report\n  _TIMEOUT = 30\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=_TIMEOUT)\n  ```\n\n- **Negative numbers**, such as `-1`: a literal with a sign.\n\n  ```python report\n  _OFFSET = -1\n\n\n  def shift(value: int) -> int:\n      return value + _OFFSET\n  ```\n\n- **Binary operations between such values**, arithmetic or other, such as `60 * 60` or `\"-\" * 40`: the result follows\n  from the literals alone.\n\n  ```python report\n  _WINDOW = 60 * 60\n\n\n  def expired(age: int) -> bool:\n      return age > _WINDOW\n  ```\n\n- **Tuple, list, set or dict displays made only of such values**, such as `(\"a\", 1)` or `{\"ok\": 0}`: the container is\n  written out in full.\n\n  ```python report\n  _FIELDS = (\"name\", 1)\n\n\n  def describe() -> str:\n      return str(_FIELDS)\n  ```\n\n- **`frozenset()`, or `frozenset` called with one such value**, while the module does not bind the name `frozenset`, so\n  the call is the builtin.\n\n  ```python report\n  _KEYS = frozenset([\"a\", \"b\"])\n\n\n  def has(key: str) -> bool:\n      return key in _KEYS\n  ```\n\n### Exceptions\n\n- **Functions already at Ruff's local-variable limit**: when PLR0914 runs, moving a multiline or annotated constant into\n  a function can add a local and cause a new Ruff report. Such constants stay at module scope. The limit comes from\n  Ruff's `lint.pylint.max-locals` setting.\n\n- **Any other value**: built once at import, it may hold state every call shares or be the object a test patches, and\n  moving it into the function would build a new one on every call.\n\n  That covers a call result such as a cache, a logger from `logging.getLogger(__name__)`, a pattern from `re.compile`, a\n  `Path` or a client instance; a name or attribute such as `logging.INFO`; an f-string; and a display unpacking another\n  value with `*` or `**`.\n\n  ```python ok\n  import logging\n\n  _LOGGER = logging.getLogger(__name__)\n\n\n  def run() -> None:\n      _LOGGER.info(\"run\")\n  ```\n\n- **A constant used only inside a module-level lambda**: a constant cannot move into a lambda.\n\n  ```python ok\n  _LIMIT = 3\n  TAKE = lambda items: items[:_LIMIT]\n  ```\n\n- **Public names**: those listed in\n  [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package), or, when the module has no\n  `__all__`, builds it dynamically or binds it inside a nested block, names without a leading `_`. Other modules may use\n  them.\n\n  ```python ok\n  TIMEOUT = 30\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=TIMEOUT)\n  ```\n\n- **Names another file in the run imports, or a string in the run spells, such as the dotted path `\"config._TIMEOUT\"`\n  that a test patches with [`unittest.mock.patch`](https://docs.python.org/3/library/unittest.mock.html#patch)**: that\n  file needs the name to stay at module level, and a string that looks the name up would miss an inlined value. A\n  docstring that only mentions the name is prose, so it keeps nothing.\n\n  ```python ok file=config.py\n  _TIMEOUT = 30\n\n\n  def connect() -> int:\n      return _TIMEOUT\n  ```\n\n  ```python context file=main.py\n  from config import _TIMEOUT\n  ```\n\n- **Names a doctest of the module reads**: a `>>>` example in one of the module's docstrings runs in the module's\n  globals, so inlining the constant would leave the example reading a name that is gone.\n\n- **[Dunder](https://docs.python.org/3/reference/lexical_analysis.html#reserved-classes-of-identifiers) names and\n  class-like names such as `UserId`**: Python gives dunder names their meaning, and a class-like name stands for a type\n  rather than a value.\n\n  ```python ok\n  UserId = 5\n\n\n  def load() -> int:\n      return UserId\n  ```\n\n- **Constants with a comment on the line directly above or at the end of their line**: the comment may say why the value\n  lives at module level, such as being built once for speed.\n\n  ```python ok\n  _TIMEOUT = 30  # seconds\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=_TIMEOUT)\n  ```\n\n- **Names another module in the run assigns as an attribute**, such as `config._TIMEOUT = 5`: a local copy would ignore\n  the override.\n\n  ```python ok file=config.py\n  _TIMEOUT = 30\n\n\n  def connect() -> int:\n      return _TIMEOUT\n  ```\n\n  ```python context file=main.py\n  import config\n\n  config._TIMEOUT = 5\n  ```\n\n- **Containers other code can reach or change**: a list, set or dict, or a tuple holding one, is state that must outlive\n  each call. A function that calls a method on it such as `add`, returns it, passes it to another function or binds\n  another name to it lets that state be changed or kept. A container stays reportable only when the function tests\n  membership with `in` or calls `len` on it, or, when its items are immutable, iterates, indexes or unpacks it, calls\n  `copy`, `count`, `get`, `index`, `items`, `keys` or `values` on it, or passes it to a builtin that copies or reduces\n  it, such as `sorted` or `sum`.\n\n  ```python ok\n  _SEEN = {\"a\"}\n\n\n  def mark(item: str) -> None:\n      _SEEN.add(item)\n  ```\n\n  ```python ok\n  import heapq\n\n  _QUEUE = []\n\n\n  def push(item: int) -> int:\n      heapq.heappush(_QUEUE, item)\n      return len(_QUEUE)\n  ```\n\n- **Constants referenced at import time**, such as in a default value or decorator, or in any annotation: the value must\n  exist while the module loads, before any function runs.\n\n  ```python ok\n  _LIMIT = 3\n\n\n  def load(limit: int = _LIMIT) -> int:\n      return limit\n  ```\n\n```mermaid\nflowchart TD\n    constant[\"module-level name\"] --> literal{\"value written<br/>out in source?\"}\n    literal -->|no| stays[\"not reported\"]\n    literal -->|yes| single{\"one function<br/>uses it?\"}\n    single -->|no| stays\n    single -->|yes| skipped{\"listed under<br/>Exceptions?\"}\n    skipped -->|yes| stays\n    skipped -->|no| report[\"reported\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class constant blue\n    class literal,single,skipped yellow\n    class stays green\n    class report orange\n```\n\n### Fix\n\n**Unsafe fix:** always, as the value is rebuilt on every call, which costs time for expensive values and gives each call\na new object for mutable ones.\n\nThe fix moves the value in one of two ways:\n\n- **Inline**: when the constant is used once, outside any loop, nested function or class, lambda or comprehension, the\n  fix inlines the value at the use, adding parentheses when needed. A value with a comment inside it, or a triple-quoted\n  string, takes the local form instead. Some constants keep a name:\n\n  ```python report\n  _TIMEOUT = 30\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=_TIMEOUT)\n  ```\n\n  ```python fixed\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=30)\n  ```\n\n  A value the source spreads over several lines goes in on one line, written by Ruff's code generator. The layout and\n  trailing commas do not carry over, and each string keeps the quotes it was written with.\n\n  ```python report\n  _CHOICES = (\n      \"first\",\n      \"second\",\n  )\n\n\n  def pick() -> None:\n      print(_CHOICES)\n  ```\n\n  ```python fixed\n  def pick() -> None:\n      print((\"first\", \"second\"))\n  ```\n\n  - Inside an f-string it inlines only a number: a value with quotes there is a syntax error before Python 3.12, and a\n    longer one buries the text the f-string builds.\n\n    ```python report\n    _NAME = \"shop\"\n\n\n    def label() -> str:\n        return f\"name: {_NAME}\"\n    ```\n\n    ```python fixed\n    def label() -> str:\n        name = \"shop\"\n        return f\"name: {name}\"\n    ```\n\n  - A string that calls `format` keeps a name: as a literal it becomes Ruff's\n    [f-string](https://docs.astral.sh/ruff/rules/f-string/) candidate, which Ruff reports only while no argument spans\n    lines, so the result would depend on how `ruff format` lays out the call.\n\n    ```python report\n    _TEMPLATE = \"{} items\"\n\n\n    def describe(count: int) -> str:\n        return _TEMPLATE.format(count)\n    ```\n\n  - Inside an f-string `=` debug field the field keeps its printed text, so the value moves into a plain field after it.\n\n    ```python report\n    _LIMIT = 30\n\n\n    def show() -> str:\n        return f\"{_LIMIT=}\"\n    ```\n\n    ```python fixed\n    def show() -> str:\n        return f\"_LIMIT={30!r}\"\n    ```\n\n  - A constant with an annotation keeps its name, as the annotation types the value where an inlined literal would be\n    typed on its own. A dict literal under `Final[dict[str, list[str]]]` inlined into a `.get` call fails a type check\n    against the function's return annotation.\n\n    ```python report\n    _LIMIT: int = 30\n\n\n    def connect() -> int:\n        return _LIMIT\n    ```\n\n    ```python fixed\n    def connect() -> int:\n        limit: int = 30\n        return limit\n    ```\n\n- **Local**: otherwise it declares a local before the statement that first uses it and renames the uses. The local takes\n  the constant's name in lowercase, without leading underscores, and keeps its annotation, with `Final` taken off. An\n  annotated constant always takes this form.\n\n  ```python report\n  _LIMIT = 30\n\n\n  def connect(host: str) -> socket.socket:\n      if _LIMIT:\n          return socket.create_connection((host, 443), timeout=_LIMIT)\n      return socket.create_connection((host, 443))\n  ```\n\n  ```python fixed\n  def connect(host: str) -> socket.socket:\n      limit = 30\n      if limit:\n          return socket.create_connection((host, 443), timeout=limit)\n      return socket.create_connection((host, 443))\n  ```\n\n```mermaid\nflowchart TD\n    constant[\"reported constant\"] --> once{\"used once, outside loops<br/>and nested scopes?\"}\n    once -->|no| local[\"declare a local\"]\n    once -->|yes| line{\"value has a comment or<br/>a triple-quoted string?\"}\n    line -->|yes| local\n    line -->|no| place{\"an exception<br/>above applies?\"}\n    place -->|yes| local\n    place -->|no| inline[\"inline the value\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class constant blue\n    class once,line,place yellow\n    class local,inline green\n```\n\nOf the blank lines above and below the constant, the fix removes the shorter run, so the code around it keeps the wider\ngap. At the top of the file, the blank lines below go with it.\n\nNo fix is offered when:\n\n- the constant shares a line with other code;\n\n  ```python report\n  _TIMEOUT = 30\n  _RETRIES = 3\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=_TIMEOUT, retries=_RETRIES)\n  ```\n\n- the local name already appears in the file;\n\n  ```python report\n  _TIMEOUT = 30\n  timeout = 5\n\n\n  def connect(host: str) -> socket.socket:\n      if _TIMEOUT:\n          return socket.create_connection((host, 443), timeout=_TIMEOUT)\n      return socket.create_connection((host, 443), timeout=timeout)\n  ```\n\n- the value calls `frozenset` and the function has a parameter or local named `frozenset`.\n\n  ```python report\n  _KEYS = frozenset([\"a\", \"b\"])\n\n\n  def has(frozenset: set, key: str) -> bool:\n      return key in _KEYS\n  ```\n\n- the constant is read in a t-string, which keeps the source text of its expressions;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  _LIMIT = 30\n\n\n  def show() -> object:\n      return t\"{_LIMIT}\"\n  ```\n\n- a file of the run sets an attribute of the module under a computed name, as `setattr(module, name, value)` does\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -3608,8 +3608,8 @@
         },
         {
           "section": "What it does",
-          "line": 208,
-          "end_line": 214,
+          "line": 212,
+          "end_line": 218,
           "config": null,
           "blocks": [
             {
@@ -3617,16 +3617,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 208,
-              "end_line": 214,
+              "line": 212,
+              "end_line": 218,
               "source": "_SEEN = {\"a\"}\n\n\ndef mark(item: str) -> None:\n    _SEEN.add(item)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 219,
-          "end_line": 225,
+          "line": 220,
+          "end_line": 229,
           "config": null,
           "blocks": [
             {
@@ -3634,16 +3634,33 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 219,
-              "end_line": 225,
+              "line": 220,
+              "end_line": 229,
+              "source": "import heapq\n\n_QUEUE = []\n\n\ndef push(item: int) -> int:\n    heapq.heappush(_QUEUE, item)\n    return len(_QUEUE)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 234,
+          "end_line": 240,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 234,
+              "end_line": 240,
               "source": "_LIMIT = 3\n\n\ndef load(limit: int = _LIMIT) -> int:\n    return limit\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 258,
-          "end_line": 269,
+          "line": 273,
+          "end_line": 284,
           "config": null,
           "blocks": [
             {
@@ -3651,8 +3668,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 258,
-              "end_line": 264,
+              "line": 273,
+              "end_line": 279,
               "source": "_TIMEOUT = 30\n\n\ndef connect(host: str) -> socket.socket:\n    return socket.create_connection((host, 443), timeout=_TIMEOUT)\n"
             },
             {
@@ -3660,16 +3677,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 266,
-              "end_line": 269,
+              "line": 281,
+              "end_line": 284,
               "source": "def connect(host: str) -> socket.socket:\n    return socket.create_connection((host, 443), timeout=30)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 274,
-          "end_line": 288,
+          "line": 289,
+          "end_line": 303,
           "config": null,
           "blocks": [
             {
@@ -3677,8 +3694,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 274,
-              "end_line": 283,
+              "line": 289,
+              "end_line": 298,
               "source": "_CHOICES = (\n    \"first\",\n    \"second\",\n)\n\n\ndef pick() -> None:\n    print(_CHOICES)\n"
             },
             {
@@ -3686,16 +3703,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 285,
-              "end_line": 288,
+              "line": 300,
+              "end_line": 303,
               "source": "def pick() -> None:\n    print((\"first\", \"second\"))\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 293,
-          "end_line": 305,
+          "line": 308,
+          "end_line": 320,
           "config": null,
           "blocks": [
             {
@@ -3703,8 +3720,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 293,
-              "end_line": 299,
+              "line": 308,
+              "end_line": 314,
               "source": "_NAME = \"shop\"\n\n\ndef label() -> str:\n    return f\"name: {_NAME}\"\n"
             },
             {
@@ -3712,32 +3729,15 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 301,
-              "end_line": 305,
+              "line": 316,
+              "end_line": 320,
               "source": "def label() -> str:\n    name = \"shop\"\n    return f\"name: {name}\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 311,
-          "end_line": 317,
-          "config": null,
-          "blocks": [
-            {
-              "role": "report",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 311,
-              "end_line": 317,
-              "source": "_TEMPLATE = \"{} items\"\n\n\ndef describe(count: int) -> str:\n    return _TEMPLATE.format(count)\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 321,
+          "line": 326,
           "end_line": 332,
           "config": null,
           "blocks": [
@@ -3746,8 +3746,25 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 321,
-              "end_line": 327,
+              "line": 326,
+              "end_line": 332,
+              "source": "_TEMPLATE = \"{} items\"\n\n\ndef describe(count: int) -> str:\n    return _TEMPLATE.format(count)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 336,
+          "end_line": 347,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 336,
+              "end_line": 342,
               "source": "_LIMIT = 30\n\n\ndef show() -> str:\n    return f\"{_LIMIT=}\"\n"
             },
             {
@@ -3755,16 +3772,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 329,
-              "end_line": 332,
+              "line": 344,
+              "end_line": 347,
               "source": "def show() -> str:\n    return f\"_LIMIT={30!r}\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 338,
-          "end_line": 350,
+          "line": 353,
+          "end_line": 365,
           "config": null,
           "blocks": [
             {
@@ -3772,8 +3789,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 338,
-              "end_line": 344,
+              "line": 353,
+              "end_line": 359,
               "source": "_LIMIT: int = 30\n\n\ndef connect() -> int:\n    return _LIMIT\n"
             },
             {
@@ -3781,16 +3798,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 346,
-              "end_line": 350,
+              "line": 361,
+              "end_line": 365,
               "source": "def connect() -> int:\n    limit: int = 30\n    return limit\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 356,
-          "end_line": 372,
+          "line": 371,
+          "end_line": 387,
           "config": null,
           "blocks": [
             {
@@ -3798,8 +3815,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 356,
-              "end_line": 364,
+              "line": 371,
+              "end_line": 379,
               "source": "_LIMIT = 30\n\n\ndef connect(host: str) -> socket.socket:\n    if _LIMIT:\n        return socket.create_connection((host, 443), timeout=_LIMIT)\n    return socket.create_connection((host, 443))\n"
             },
             {
@@ -3807,16 +3824,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 366,
-              "end_line": 372,
+              "line": 381,
+              "end_line": 387,
               "source": "def connect(host: str) -> socket.socket:\n    limit = 30\n    if limit:\n        return socket.create_connection((host, 443), timeout=limit)\n    return socket.create_connection((host, 443))\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 400,
-          "end_line": 407,
+          "line": 415,
+          "end_line": 422,
           "config": null,
           "blocks": [
             {
@@ -3824,16 +3841,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 400,
-              "end_line": 407,
+              "line": 415,
+              "end_line": 422,
               "source": "_TIMEOUT = 30\n_RETRIES = 3\n\n\ndef connect(host: str) -> socket.socket:\n    return socket.create_connection((host, 443), timeout=_TIMEOUT, retries=_RETRIES)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 411,
-          "end_line": 420,
+          "line": 426,
+          "end_line": 435,
           "config": null,
           "blocks": [
             {
@@ -3841,38 +3858,17 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 411,
-              "end_line": 420,
+              "line": 426,
+              "end_line": 435,
               "source": "_TIMEOUT = 30\ntimeout = 5\n\n\ndef connect(host: str) -> socket.socket:\n    if _TIMEOUT:\n        return socket.create_connection((host, 443), timeout=_TIMEOUT)\n    return socket.create_connection((host, 443), timeout=timeout)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 424,
-          "end_line": 430,
-          "config": null,
-          "blocks": [
-            {
-              "role": "report",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 424,
-              "end_line": 430,
-              "source": "_KEYS = frozenset([\"a\", \"b\"])\n\n\ndef has(frozenset: set, key: str) -> bool:\n    return key in _KEYS\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 434,
+          "line": 439,
           "end_line": 445,
-          "config": {
-            "line": 434,
-            "end_line": 437,
-            "source": "[project]\nrequires-python = \">=3.14\"\n"
-          },
+          "config": null,
           "blocks": [
             {
               "role": "report",
@@ -3881,6 +3877,27 @@
               "named": false,
               "line": 439,
               "end_line": 445,
+              "source": "_KEYS = frozenset([\"a\", \"b\"])\n\n\ndef has(frozenset: set, key: str) -> bool:\n    return key in _KEYS\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 449,
+          "end_line": 460,
+          "config": {
+            "line": 449,
+            "end_line": 452,
+            "source": "[project]\nrequires-python = \">=3.14\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 454,
+              "end_line": 460,
               "source": "_LIMIT = 30\n\n\ndef show() -> object:\n    return t\"{_LIMIT}\"\n"
             }
           ]
@@ -4419,7 +4436,7 @@
     "name": "absolute-sibling-import",
     "summary": "Absolute imports from the same package",
     "fix": "Always",
-    "explanation": "Flags `from ... import` statements that name the file's own package, or a package below it, by its absolute path.\n\n## Why is this bad?\n\nAn absolute import repeats the package name, so renaming or vendoring the package means editing every such import. A\n[relative import](https://docs.python.org/3/reference/import.html#package-relative-imports)\n([PEP 328](https://peps.python.org/pep-0328/)) shows at a glance that the target lives next to the importing module.\n\n## Example\n\n```python context file=package/__init__.py\n\n```\n\n```python context file=package/sub/__init__.py\n\n```\n\n```python context file=package/sub/sibling.py\n\n```\n\n```python context file=package/sub/deep.py\n\n```\n\n```python report file=package/sub/module.py\nfrom package.sub import sibling\nfrom package.sub.deep import thing\n```\n\nUse instead:\n\n```python context file=package/__init__.py\n\n```\n\n```python context file=package/sub/__init__.py\n\n```\n\n```python context file=package/sub/sibling.py\n\n```\n\n```python context file=package/sub/deep.py\n\n```\n\n```python ok file=package/sub/module.py\nfrom . import sibling\nfrom .deep import thing\n```\n\n## Conflicts with Ruff\n\nRuff's [relative-imports](https://docs.astral.sh/ruff/rules/relative-imports/) bans only relative imports from parent\npackages by default, which fits this rule.\n\nRuff's [relative-imports](https://docs.astral.sh/ruff/rules/relative-imports/) with\n[`ban-relative-imports`](https://docs.astral.sh/ruff/settings/#lint_flake8-tidy-imports_ban-relative-imports) set to\n`\"all\"` contradicts it: it asks for the absolute import this rule replaces, and its fix turns the relative import back.\nsimplint stops with an error before linting while both apply to a file; set `ban-relative-imports` to `\"parents\"`, or\nturn one of the two rules off. A project that runs flake8-lazy has no such conflict, since this rule stays off there.\n\n## What it does\n\n### Active on\n\n- **`from` imports of the file's own package or a package below it**, written by absolute path, such as\n  `from package.sub import sibling` in `package/sub/module.py`. A file belongs to a package when its directory holds an\n  [`__init__.py`](https://docs.python.org/3/reference/import.html#regular-packages); simplint builds the package name\n  from the chain of directories with an `__init__.py` above the file. The fix is safe for a module imported as part of\n  its package, where the relative import resolves to the same module.\n\n  ```python context file=package/__init__.py\n  # A package.\n  ```\n\n  ```python context file=package/sub/__init__.py\n  # A subpackage.\n  ```\n\n  ```python context file=package/sub/sibling.py\n  VALUE = 1\n  ```\n\n  ```python report file=package/sub/module.py\n  from package.sub import sibling\n  ```\n\n  ```python fixed file=package/sub/module.py\n  from . import sibling\n  ```\n\n### Exceptions\n\n- **Imports from a parent package**: Ruff's [relative-imports](https://docs.astral.sh/ruff/rules/relative-imports/) bans\n  relative imports from parent packages by default, so these stay absolute.\n\n  ```python context file=package/__init__.py\n  # A package.\n  ```\n\n  ```python context file=package/helpers.py\n  VALUE = 1\n  ```\n\n  ```python context file=package/sub/__init__.py\n  # A subpackage.\n  ```\n\n  ```python ok file=package/sub/module.py\n  from package import helpers\n  ```\n\n- **Imports in a directory without an `__init__.py` that Ruff's\n  [`namespace-packages`](https://docs.astral.sh/ruff/settings/#namespace-packages) makes a package**: pytest imports a\n  test module there as a top-level module, where a relative import fails.\n\n  ```python context file=namespace/other.py\n  VALUE = 1\n  ```\n\n  ```python ok file=namespace/test_module.py\n  from namespace import other\n  ```\n\n- **A module with a top-level `if` that compares `__name__` with a string**, such as\n  [`if __name__ == \"__main__\":`](https://docs.python.org/3/library/__main__.html#name-main) for a file run as\n  `python path/to/module.py`, or execnet's `if __name__ == \"__channelexec__\":` for a module sent to another interpreter\n  as source: the code runs outside its package, where a relative import fails.\n\n  ```python context file=package/__init__.py\n  # A package.\n  ```\n\n  ```python context file=package/sub/__init__.py\n  # A subpackage.\n  ```\n\n  ```python context file=package/sub/sibling.py\n  VALUE = 1\n  ```\n\n  ```python ok file=package/sub/script.py\n  from package.sub import sibling\n\n  if __name__ == \"__main__\":\n      print(sibling.VALUE)\n  ```\n\n- **The body of a top-level function passed by name as the first argument to a `remote_exec(...)` or\n  [`inspect.getsource(...)`](https://docs.python.org/3/library/inspect.html#inspect.getsource) call in the same\n  module**: that call turns the function into source text that runs elsewhere, outside the package.\n\n  ```python context file=package/__init__.py\n  # A package.\n  ```\n\n  ```python context file=package/sub/__init__.py\n  # A subpackage.\n  ```\n\n  ```python context file=package/sub/sibling.py\n  VALUE = 1\n  ```\n\n  ```python ok file=package/sub/worker.py\n  def remote(channel):\n      from package.sub import sibling\n\n      channel.send(sibling.VALUE)\n\n\n  execnet.remote_exec(remote)\n  ```\n\n- **Every file of a project that runs [flake8-lazy](https://github.com/henryiii/flake8-lazy)**: flake8-lazy rewrites\n  each module's `__lazy_modules__` list from its absolute imports. In pipx, a relative import made it write a list that\n  `ty` rejects (99 errors), and flake8-lazy and this fix then keep rewriting each other's output, so the rule stays off.\n  An explicit `--select absolute-sibling-import` does not turn it back on for such a project. The project runs\n  flake8-lazy when one of its `pyproject.toml` files, the one with `[project]` or the one with `[tool.simplint]`, has a\n  `[tool.flake8-lazy]` table, or when the nearest `.pre-commit-config.yaml`, `.pre-commit-config.yml` or `prek.toml`\n  from the project upwards, stopping at the repository root, has a hook with id `flake8-lazy`. A `flake8-lazy` entry in\n  another hook's `additional_dependencies` does not count, since it only installs the plugin into flake8.\n\n  ```toml config\n  [tool.flake8-lazy]\n  ```\n\n  ```python context file=package/__init__.py\n  # A package.\n  ```\n\n  ```python context file=package/sub/__init__.py\n  # A subpackage.\n  ```\n\n  ```python context file=package/sub/sibling.py\n  VALUE = 1\n  ```\n\n  ```python ok file=package/sub/module.py\n  from package.sub import sibling\n  ```\n\n### Undetected cases\n\nA build script that a tool runs by path without a `__name__` check, or a module that only another file sends as source,\nis not detected; turn the rule off for that file.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule\n  [TID252](https://docs.astral.sh/ruff/rules/relative-imports/), which bans relative imports, the opposite direction;\n  open pull request [#16772](https://github.com/astral-sh/ruff/pull/16772); open issue\n  [#1014](https://github.com/astral-sh/ruff/issues/1014).\n",
+    "explanation": "Flags `from ... import` statements that name the file's own package, or a package below it, by its absolute path.\n\n## Why is this bad?\n\nAn absolute import repeats the package name, so renaming or vendoring the package means editing every such import. A\n[relative import](https://docs.python.org/3/reference/import.html#package-relative-imports)\n([PEP 328](https://peps.python.org/pep-0328/)) shows at a glance that the target lives next to the importing module.\n\n## Example\n\n```python context file=package/__init__.py\n\n```\n\n```python context file=package/sub/__init__.py\n\n```\n\n```python context file=package/sub/sibling.py\n\n```\n\n```python context file=package/sub/deep.py\n\n```\n\n```python report file=package/sub/module.py\nfrom package.sub import sibling\nfrom package.sub.deep import thing\n```\n\nUse instead:\n\n```python context file=package/__init__.py\n\n```\n\n```python context file=package/sub/__init__.py\n\n```\n\n```python context file=package/sub/sibling.py\n\n```\n\n```python context file=package/sub/deep.py\n\n```\n\n```python ok file=package/sub/module.py\nfrom . import sibling\nfrom .deep import thing\n```\n\n## Conflicts with Ruff\n\nRuff's [relative-imports](https://docs.astral.sh/ruff/rules/relative-imports/) bans only relative imports from parent\npackages by default, which fits this rule.\n\nRuff's [relative-imports](https://docs.astral.sh/ruff/rules/relative-imports/) with\n[`ban-relative-imports`](https://docs.astral.sh/ruff/settings/#lint_flake8-tidy-imports_ban-relative-imports) set to\n`\"all\"` contradicts it: it asks for the absolute import this rule replaces, and its fix turns the relative import back.\nsimplint stops with an error before linting while both apply to a file; set `ban-relative-imports` to `\"parents\"`, or\nturn one of the two rules off. A project that runs flake8-lazy has no such conflict, since this rule stays off there.\n\n## What it does\n\n### Active on\n\n- **`from` imports of the file's own package or a package below it**, written by absolute path, such as\n  `from package.sub import sibling` in `package/sub/module.py`. A file belongs to a package when its directory holds an\n  [`__init__.py`](https://docs.python.org/3/reference/import.html#regular-packages); simplint builds the package name\n  from the chain of directories with an `__init__.py` above the file. The fix is safe for a module imported as part of\n  its package, where the relative import resolves to the same module.\n\n  ```python context file=package/__init__.py\n  # A package.\n  ```\n\n  ```python context file=package/sub/__init__.py\n  # A subpackage.\n  ```\n\n  ```python context file=package/sub/sibling.py\n  VALUE = 1\n  ```\n\n  ```python report file=package/sub/module.py\n  from package.sub import sibling\n  ```\n\n  ```python fixed file=package/sub/module.py\n  from . import sibling\n  ```\n\n### Exceptions\n\n- **Imports from a parent package**: Ruff's [relative-imports](https://docs.astral.sh/ruff/rules/relative-imports/) bans\n  relative imports from parent packages by default, so these stay absolute.\n\n  ```python context file=package/__init__.py\n  # A package.\n  ```\n\n  ```python context file=package/helpers.py\n  VALUE = 1\n  ```\n\n  ```python context file=package/sub/__init__.py\n  # A subpackage.\n  ```\n\n  ```python ok file=package/sub/module.py\n  from package import helpers\n  ```\n\n- **Imports in a directory without an `__init__.py` that Ruff's\n  [`namespace-packages`](https://docs.astral.sh/ruff/settings/#namespace-packages) makes a package**: pytest imports a\n  test module there as a top-level module, where a relative import fails.\n\n  ```python context file=namespace/other.py\n  VALUE = 1\n  ```\n\n  ```python ok file=namespace/test_module.py\n  from namespace import other\n  ```\n\n- **A module with a top-level `if` that compares `__name__` with a string**, such as\n  [`if __name__ == \"__main__\":`](https://docs.python.org/3/library/__main__.html#name-main) for a file run as\n  `python path/to/module.py`, or execnet's `if __name__ == \"__channelexec__\":` for a module sent to another interpreter\n  as source: the code runs outside its package, where a relative import fails.\n\n  ```python context file=package/__init__.py\n  # A package.\n  ```\n\n  ```python context file=package/sub/__init__.py\n  # A subpackage.\n  ```\n\n  ```python context file=package/sub/sibling.py\n  VALUE = 1\n  ```\n\n  ```python ok file=package/sub/script.py\n  from package.sub import sibling\n\n  if __name__ == \"__main__\":\n      print(sibling.VALUE)\n  ```\n\n- **The body of a top-level function passed by name as the first argument to a `remote_exec(...)` or\n  [`inspect.getsource(...)`](https://docs.python.org/3/library/inspect.html#inspect.getsource) call in the same\n  module**: that call turns the function into source text that runs elsewhere, outside the package.\n\n  ```python context file=package/__init__.py\n  # A package.\n  ```\n\n  ```python context file=package/sub/__init__.py\n  # A subpackage.\n  ```\n\n  ```python context file=package/sub/sibling.py\n  VALUE = 1\n  ```\n\n  ```python ok file=package/sub/worker.py\n  def remote(channel):\n      from package.sub import sibling\n\n      channel.send(sibling.VALUE)\n\n\n  execnet.remote_exec(remote)\n  ```\n\n- **Every file of a project that runs [flake8-lazy](https://github.com/henryiii/flake8-lazy)**: flake8-lazy rewrites\n  each module's `__lazy_modules__` list from its absolute imports. In pipx, a relative import made it write a list that\n  `ty` rejects (99 errors), and flake8-lazy and this fix then keep rewriting each other's output, so the rule stays off.\n  An explicit `--select absolute-sibling-import` does not turn it back on for such a project. The project runs\n  flake8-lazy when one of its `pyproject.toml` files, the one with `[project]` or the one with `[tool.simplint]`, has a\n  `[tool.flake8-lazy]` table, or when the nearest `.pre-commit-config.yaml`, `.pre-commit-config.yml` or `prek.toml`\n  from the project upwards, stopping at the repository root, or at the linted project outside a repository, has a hook\n  with id `flake8-lazy`. A hook configuration simplint cannot read or parse counts as none, with a warning. A\n  `flake8-lazy` entry in another hook's `additional_dependencies` does not count, since it only installs the plugin into\n  flake8.\n\n  ```toml config\n  [tool.flake8-lazy]\n  ```\n\n  ```python context file=package/__init__.py\n  # A package.\n  ```\n\n  ```python context file=package/sub/__init__.py\n  # A subpackage.\n  ```\n\n  ```python context file=package/sub/sibling.py\n  VALUE = 1\n  ```\n\n  ```python ok file=package/sub/module.py\n  from package.sub import sibling\n  ```\n\n### Undetected cases\n\nA build script that a tool runs by path without a `__name__` check, or a module that only another file sends as source,\nis not detected; turn the rule off for that file.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule\n  [TID252](https://docs.astral.sh/ruff/rules/relative-imports/), which bans relative imports, the opposite direction;\n  open pull request [#16772](https://github.com/astral-sh/ruff/pull/16772); open issue\n  [#1014](https://github.com/astral-sh/ruff/issues/1014).\n",
     "examples": {
       "parsed": [
         {
@@ -4741,11 +4758,11 @@
         },
         {
           "section": "What it does",
-          "line": 188,
-          "end_line": 206,
+          "line": 190,
+          "end_line": 208,
           "config": {
-            "line": 188,
-            "end_line": 190,
+            "line": 190,
+            "end_line": 192,
             "source": "[tool.flake8-lazy]\n"
           },
           "blocks": [
@@ -4754,8 +4771,8 @@
               "language": "python",
               "file": "package/__init__.py",
               "named": true,
-              "line": 192,
-              "end_line": 194,
+              "line": 194,
+              "end_line": 196,
               "source": "# A package.\n"
             },
             {
@@ -4763,8 +4780,8 @@
               "language": "python",
               "file": "package/sub/__init__.py",
               "named": true,
-              "line": 196,
-              "end_line": 198,
+              "line": 198,
+              "end_line": 200,
               "source": "# A subpackage.\n"
             },
             {
@@ -4772,8 +4789,8 @@
               "language": "python",
               "file": "package/sub/sibling.py",
               "named": true,
-              "line": 200,
-              "end_line": 202,
+              "line": 202,
+              "end_line": 204,
               "source": "VALUE = 1\n"
             },
             {
@@ -4781,8 +4798,8 @@
               "language": "python",
               "file": "package/sub/module.py",
               "named": true,
-              "line": 204,
-              "end_line": 206,
+              "line": 206,
+              "end_line": 208,
               "source": "from package.sub import sibling\n"
             }
           ]
@@ -12996,7 +13013,7 @@
     "name": "single-use-variable",
     "summary": "Variables read once, right below their assignment",
     "fix": "Always",
-    "explanation": "Flags a local variable that is assigned once and read once, in the statement right after the assignment. Inlining its\nvalue removes the name and keeps the value next to the code that uses it.\n\n## Why is this bad?\n\nA name that exists only to be read on the next line adds a step to follow without adding meaning. The reader has to find\nthe assignment, remember the value, and then reach the line that uses it. Inlining the value keeps the decision in one\nplace.\n\n## Example\n\n```python report\ndef total_price(prices: list[float]) -> str:\n    total = sum(prices)\n    return f\"{total:.2f}\"\n```\n\nUse instead:\n\n```python ok\ndef total_price(prices: list[float]) -> str:\n    return f\"{sum(prices):.2f}\"\n```\n\n## Configuration\n\n- [`line-length`](https://docs.astral.sh/ruff/settings/#line-length) and\n  [`indent-width`](https://docs.astral.sh/ruff/settings/#indent-width), which give the width a statement must fit after\n  the value is inlined; see\n  [Settings shared with Ruff](https://simplint.readthedocs.io/en/latest/configuration/project.html#settings-shared-with-ruff)\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python),\n  which decide the f-strings that cannot hold a backslash or their own quote before Python 3.12, and the decorators that\n  must be dotted names before Python 3.9; see\n  [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py312\"\n  ```\n\n  ```python report\n  def lines(rows: list[bytes]) -> str:\n      joined = b\"\\n\".join(rows)\n      return f\"{joined}\"\n  ```\n\n- [`extend-immutable-calls`](https://docs.astral.sh/ruff/settings/#lint_flake8-bugbear_extend-immutable-calls) in\n  `[tool.ruff.lint.flake8-bugbear]`, which adds calls to the ones B008 takes as immutable, so a value calling one of\n  them is inlined into a default; see the read in a parameter's default above\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"B008\"]\n\n  [tool.ruff.lint.flake8-bugbear]\n  extend-immutable-calls = [\"frozen.freeze\"]\n  ```\n\n  ```python report\n  from frozen import freeze\n\n\n  def run(items: list[str]) -> None:\n      frozen = freeze(items)\n\n      def show(held=frozen) -> None:\n          print(held)\n  ```\n\n  ```python fixed\n  from frozen import freeze\n\n\n  def run(items: list[str]) -> None:\n\n      def show(held=freeze(items)) -> None:\n          print(held)\n  ```\n\n- [`preview`](https://docs.astral.sh/ruff/settings/#preview) in `[tool.ruff]`, which makes B006 also report a generator\n  and a tuple that holds a mutable value, so such a value is not inlined into a default either\n\n  ```toml config\n  [tool.ruff]\n  preview = true\n\n  [tool.ruff.lint]\n  select = [\"B006\"]\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      rows = (item for item in items)\n\n      def show(held=rows) -> None:\n          print(held)\n\n      show()\n  ```\n\n## What it does\n\n### Active on\n\n- **A plain assignment to one name whose only other mention is the next statement's read**: the name is bound once in\n  the function, and read once, in the statement directly after the assignment, in the same block.\n\n  ```python report\n  def price(prices: list[float]) -> str:\n      total = sum(prices)\n      return f\"{total:.2f}\"\n\n\n  def show(items: list[str]) -> None:\n      count = len(items)\n      print(count)\n  ```\n\n  ```python fixed\n  def price(prices: list[float]) -> str:\n      return f\"{sum(prices):.2f}\"\n\n\n  def show(items: list[str]) -> None:\n      print(len(items))\n  ```\n\n- **A dict or set display inlined right after an f-string field's `{`**: the value gets a space inside the braces,\n  because `{{` would be read as an escaped brace.\n\n  ```python report\n  def show(key: str) -> None:\n      mapping = {key: 2}\n      print(f\"{mapping}\")\n  ```\n\n  ```python fixed\n  def show(key: str) -> None:\n      print(f\"{ {key: 2} }\")\n  ```\n\n- **A read in an f-string field with a [`=`](https://docs.python.org/3/reference/lexical_analysis.html#f-strings) debug\n  specifier**, such as `{total=}`: the field prints the text of its expression, so the text stays as written and the\n  value moves into a plain field after it. The printed text does not change.\n\n  ```python report\n  def show(items: list[str]) -> None:\n      total = len(items)\n      print(f\"{total=}\")\n  ```\n\n  ```python fixed\n  def show(items: list[str]) -> None:\n      print(f\"total={len(items)!r}\")\n  ```\n\n- **A string or f-string value inlined into a bare field of an f-string**: its text joins the enclosing f-string, so\n  `f\"[{inner}]\"` with `inner = f\"<{value}>\"` becomes `f\"[<{value}>]\"` rather than a nested f-string.\n\n- **Before Python 3.12, a value whose strings use the f-string's quote**: a string in the value takes the other quote,\n  which the field can hold. A value spread over lines goes in on one line, as `ruff format` joins it, since the field\n  cannot hold a line break either.\n\n  ```python report\n  def wrap(value: str) -> str:\n      inner = f\"<{value}>\"\n      return f\"[{inner!r}]\"\n  ```\n\n  ```python fixed\n  def wrap(value: str) -> str:\n      return f\"[{f'<{value}>'!r}]\"\n  ```\n\n### Exceptions\n\n- **A name that is `_`, or a dunder such as `__all__`**: `_` is a placeholder, and a dunder has a meaning to Python.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      _ = len(items)\n      print(_)\n  ```\n\n- **A name the function declares [`global`](https://docs.python.org/3/reference/simple_stmts.html#the-global-statement)\n  or [`nonlocal`](https://docs.python.org/3/reference/simple_stmts.html#the-nonlocal-statement)**: code outside the\n  function reads the binding too.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      global count\n      count = len(items)\n      print(count)\n  ```\n\n- **A value that is a `yield`, `await` or `:=` expression**: these run or bind in a way that moving them changes.\n\n  ```python ok\n  async def run(source: Source) -> None:\n      data = await source.read()\n      print(data)\n  ```\n\n- **A read as the argument of [`next`](https://docs.python.org/3/library/functions.html#next) or\n  [`anext`](https://docs.python.org/3/library/functions.html#anext), or as the receiver of `send`, `throw`, `close` or\n  `__next__`**: the call steps or closes the object the name holds. Without the name, the call would be the only holder\n  of the object, so the object would be released as soon as the call returns, which runs a generator's `finally` early.\n  Keeping the name is the only way to leave the object alone, so the variable is not reported.\n\n  ```python ok\n  def run(rows: list[int]) -> None:\n      stream = produce(rows)\n      print(next(stream))\n  ```\n\n- **A next statement that is `return name` or `yield name`**: Ruff's\n  [unnecessary-assign](https://docs.astral.sh/ruff/rules/unnecessary-assign/) covers the `return` case while the\n  project's Ruff configuration selects it, and `yield` keeps the same shape. The inline is skipped whenever Ruff selects\n  the rule, even where `per-file-ignores` or `noqa` silence it.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"RET504\"]\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> int:\n      count = len(items)\n      return count\n  ```\n\n- **A next statement that is `yield from name`, while Ruff's preview mode is on**: Ruff's preview rule\n  [unnecessary-assign-before-yield](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/) covers it when\n  the project's Ruff configuration selects it, even when this rule's fix would differ. With preview off, or without\n  RUF070, this rule reports the pair. The inline is skipped whenever Ruff selects the rule, even where\n  `per-file-ignores` or `noqa` silence it.\n\n- **A read in a parameter's default, while Ruff's\n  [mutable-argument-default](https://docs.astral.sh/ruff/rules/mutable-argument-default/) (B006) or\n  [function-call-in-argument-default](https://docs.astral.sh/ruff/rules/function-call-in-argument-default/) (B008)\n  runs**: the default is evaluated once, when the function is defined, and inlining a value that one of them reports\n  would make Ruff report it, so the variable stays. B006 reports a mutable display, a comprehension, or a call of a\n  mutable type such as `list()` or `collections.Counter()`. B008 reports a call, except one of an immutable type such as\n  `tuple()`, a [`NewType`](https://docs.python.org/3/library/typing.html#newtype) of an immutable type, or a callee\n  listed in `extend-immutable-calls` (see Configuration). A call inside a lambda is not reported. A parameter annotated\n  with an immutable type is not reported by either, so the value is still inlined. The inline is skipped whenever Ruff\n  runs the rule, even where `per-file-ignores` or `noqa` silence it. The variable is reported when the project's Ruff\n  configuration runs neither rule.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"B006\", \"B008\"]\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n\n      def show(size=count) -> None:\n          print(size)\n\n      show()\n  ```\n\n- **A read inside a loop body, a comprehension, a lambda or a nested function**: inlining would compute the value once\n  per pass instead of once.\n\n  ```python ok\n  def run(rows: list[list[int]]) -> list[int]:\n      total = sum(rows[0])\n      return [total + value for value in rows[1]]\n  ```\n\n- **A read in a nested block of the next statement**, such as the body of an `if`: the value would run only when the\n  block does, so inlining would skip it when the block is not taken.\n\n  ```python ok\n  def run(items: list[str], verbose: bool) -> None:\n      count = len(items)\n      if verbose:\n          print(count)\n  ```\n\n- **A read after `and` or `or`**, or in a branch of a conditional expression, a later link of a chained comparison, an\n  `assert`, a `case` or the type of an `except` clause: each runs only when the code before it does not decide the\n  outcome, or when an exception or a match reaches it.\n\n  ```python ok\n  def run(items: list[str], flag: bool) -> None:\n      count = len(items)\n      print(flag and count)\n  ```\n\n  ```python ok\n  def run(items: list[str], flag: bool) -> None:\n      count = len(items)\n      print(count if flag else 0)\n  ```\n\n  ```python ok\n  def run(items: list[str], low: int) -> None:\n      count = len(items)\n      print(low < 0 < count)\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n      assert count, \"no items\"\n  ```\n\n  ```python ok\n  def run(command: str, items: list[str]) -> None:\n      count = len(items)\n      match command:\n          case \"count\":\n              print(count)\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      error = ValueError\n      try:\n          print(items[0])\n      except error:\n          print(\"empty\")\n  ```\n\n- **A read in an annotation, a `type` statement or a type parameter**: an annotation in a function body is never\n  evaluated, and the others are evaluated lazily, so the value would not run where the name was read.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      kind = list[str]\n      values: kind = items\n      print(values)\n  ```\n\n- **A conditional expression, or a value with a string literal in it, read inside an f-string field**: the field would\n  hold the conditional or the literal inside its braces, which reads worse than the two statements. A value that is a\n  string or an f-string on its own is still inlined.\n\n  ```python ok\n  def run(items: list[str], flag: bool) -> str:\n      sep = \" \" if flag else \"\"\n      return f\"[{sep}{items[0]}]\"\n  ```\n\n- **Before Python 3.12, a value with a backslash, or whose strings hold the other quote**: a replacement field cannot\n  hold a backslash or the f-string's own quote until [PEP 701](https://peps.python.org/pep-0701/), and a string that\n  holds the other quote cannot take it, so the inlined code would not parse.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py311\"\n  ```\n\n  ```python ok\n  def quote(value: str) -> str:\n      quoted = value.replace(\"'\", \"''\")\n      return f\"'{quoted}'\"\n  ```\n\n- **An assignment with a comment on its line, or between it and the read**: inlining would lose the comment.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)  # the number of rows\n      print(count)\n  ```\n\n- **A name read in an `if` test that starts with it**: [walrus-candidate](SMP502.html) covers those, and writes the\n  value into the test.\n\n  ```python ok\n  def run(text: str) -> None:\n      found = text.find(\"x\")\n      if found:\n          print(found)\n  ```\n\n- **A name read again elsewhere in the function**, or bound again: the name is needed after the read, or the read is not\n  the only one.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n      print(count)\n      print(count)\n  ```\n\n- **Functions that read their locals by name, such as `locals()` or `eval`**: a removed name would vanish from what they\n  see.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n      print(locals())\n  ```\n\n- **A next statement that is a `while` loop**: its test runs again on every pass.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      limit = len(items)\n      while limit:\n          limit -= 1\n  ```\n\n- **An inlined header that would no longer fit [`line-length`](https://docs.astral.sh/ruff/settings/#line-length)**:\n  `ruff format` would split the statement over several lines, which reads worse than the two statements. The header is\n  measured joined on one line at its block's indentation, with the value in place of the name.\n\n  ```toml config\n  [tool.ruff]\n  line-length = 40\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items) + len(items) + len(items)\n      print(count + 1000000)\n  ```\n\n- **A message bound for an exception call in a `raise`**: Ruff's\n  [raw-string-in-exception](https://docs.astral.sh/ruff/rules/raw-string-in-exception/) and\n  [f-string-in-exception](https://docs.astral.sh/ruff/rules/f-string-in-exception/) ask for an exception's message to be\n  a variable, so inlining it would bring back the report those rules remove.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      msg = f\"{len(items)} items\"\n      raise ValueError(msg)\n  ```\n\n- **A name bound another way in the function**, such as by an `import`, a `def`, a `class`, an `except` clause or a\n  `match` capture: the other binding is a second assignment the walk does not follow, so the name is not single-use.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n      from os import count\n\n      print(count)\n  ```\n\n### Fix\n\nThe fix deletes the assignment and writes the value where the name was, in parentheses when its precedence requires\nthem.\n\n**Unsafe fix:** the next statement calls something, awaits, or reads an attribute or a subscript before the read, so the\nvalue would run after it instead of before.\n\n```python report\ndef run(items: list[str], log: Log) -> None:\n    count = len(items)\n    log.write(count)\n```\n\n```python fixed\ndef run(items: list[str], log: Log) -> None:\n    log.write(len(items))\n```\n\nHere `log.write` is looked up before `len(items)` runs, which differs only when that lookup has side effects.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules\n  [RET504](https://docs.astral.sh/ruff/rules/unnecessary-assign/) and preview\n  [RUF070](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/), which cover a value returned or yielded\n  on the next line and which this rule leaves to them; every other single read is open issue\n  [#10108](https://github.com/astral-sh/ruff/issues/10108).\n- [Sourcery](https://sourcery.ai) inlines a variable that is used once anywhere in its block through\n  [inline-variable](https://docs.sourcery.ai/reference/refactorings/python/inline-variable/). This rule only inlines a\n  value read on the line right below its assignment.\n",
+    "explanation": "Flags a local variable that is assigned once and read once, in the statement right after the assignment. Inlining its\nvalue removes the name and keeps the value next to the code that uses it.\n\n## Why is this bad?\n\nA name that exists only to be read on the next line adds a step to follow without adding meaning. The reader has to find\nthe assignment, remember the value, and then reach the line that uses it. Inlining the value keeps the decision in one\nplace.\n\n## Example\n\n```python report\ndef total_price(prices: list[float]) -> str:\n    total = sum(prices)\n    return f\"{total:.2f}\"\n```\n\nUse instead:\n\n```python ok\ndef total_price(prices: list[float]) -> str:\n    return f\"{sum(prices):.2f}\"\n```\n\n## Configuration\n\n- [`line-length`](https://docs.astral.sh/ruff/settings/#line-length) and\n  [`indent-width`](https://docs.astral.sh/ruff/settings/#indent-width), which give the width a statement must fit after\n  the value is inlined; see\n  [Settings shared with Ruff](https://simplint.readthedocs.io/en/latest/configuration/project.html#settings-shared-with-ruff)\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python),\n  which decide the f-strings that cannot hold a backslash or their own quote before Python 3.12, and the decorators that\n  must be dotted names before Python 3.9; see\n  [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py312\"\n  ```\n\n  ```python report\n  def lines(rows: list[bytes]) -> str:\n      joined = b\"\\n\".join(rows)\n      return f\"{joined}\"\n  ```\n\n- [`extend-immutable-calls`](https://docs.astral.sh/ruff/settings/#lint_flake8-bugbear_extend-immutable-calls) in\n  `[tool.ruff.lint.flake8-bugbear]`, which adds calls to the ones B008 takes as immutable, so a value calling one of\n  them is inlined into a default; see the read in a parameter's default above\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"B008\"]\n\n  [tool.ruff.lint.flake8-bugbear]\n  extend-immutable-calls = [\"frozen.freeze\"]\n  ```\n\n  ```python report\n  from frozen import freeze\n\n\n  def run(items: list[str]) -> None:\n      frozen = freeze(items)\n\n      def show(held=frozen) -> None:\n          print(held)\n  ```\n\n  ```python fixed\n  from frozen import freeze\n\n\n  def run(items: list[str]) -> None:\n\n      def show(held=freeze(items)) -> None:\n          print(held)\n  ```\n\n- [`preview`](https://docs.astral.sh/ruff/settings/#preview) in `[tool.ruff]`, which makes B006 also report a generator\n  and a tuple that holds a mutable value, so such a value is not inlined into a default either\n\n  ```toml config\n  [tool.ruff]\n  preview = true\n\n  [tool.ruff.lint]\n  select = [\"B006\"]\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      rows = (item for item in items)\n\n      def show(held=rows) -> None:\n          print(held)\n\n      show()\n  ```\n\n## What it does\n\n### Active on\n\n- **A plain assignment to one name whose only other mention is the next statement's read**: the name is bound once in\n  the function, and read once, in the statement directly after the assignment, in the same block.\n\n  ```python report\n  def price(prices: list[float]) -> str:\n      total = sum(prices)\n      return f\"{total:.2f}\"\n\n\n  def show(items: list[str]) -> None:\n      count = len(items)\n      print(count)\n  ```\n\n  ```python fixed\n  def price(prices: list[float]) -> str:\n      return f\"{sum(prices):.2f}\"\n\n\n  def show(items: list[str]) -> None:\n      print(len(items))\n  ```\n\n- **A dict or set display inlined right after an f-string field's `{`**: the value gets a space inside the braces,\n  because `{{` would be read as an escaped brace.\n\n  ```python report\n  def show(key: str) -> None:\n      mapping = {key: 2}\n      print(f\"{mapping}\")\n  ```\n\n  ```python fixed\n  def show(key: str) -> None:\n      print(f\"{ {key: 2} }\")\n  ```\n\n- **A read in an f-string field with a [`=`](https://docs.python.org/3/reference/lexical_analysis.html#f-strings) debug\n  specifier**, such as `{total=}`: the field prints the text of its expression, so the text stays as written and the\n  value moves into a plain field after it. The printed text does not change.\n\n  ```python report\n  def show(items: list[str]) -> None:\n      total = len(items)\n      print(f\"{total=}\")\n  ```\n\n  ```python fixed\n  def show(items: list[str]) -> None:\n      print(f\"total={len(items)!r}\")\n  ```\n\n- **A string or f-string value inlined into a bare field of an f-string**: its text joins the enclosing f-string, so\n  `f\"[{inner}]\"` with `inner = f\"<{value}>\"` becomes `f\"[<{value}>]\"` rather than a nested f-string.\n\n- **Before Python 3.12, a value whose strings use the f-string's quote**: a string in the value takes the other quote,\n  which the field can hold. A value spread over lines goes in on one line, as `ruff format` joins it, since the field\n  cannot hold a line break either.\n\n  ```python report\n  def wrap(value: str) -> str:\n      inner = f\"<{value}>\"\n      return f\"[{inner!r}]\"\n  ```\n\n  ```python fixed\n  def wrap(value: str) -> str:\n      return f\"[{f'<{value}>'!r}]\"\n  ```\n\n### Exceptions\n\n- **A name that is `_`, or a dunder such as `__all__`**: `_` is a placeholder, and a dunder has a meaning to Python.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      _ = len(items)\n      print(_)\n  ```\n\n- **A name the function declares [`global`](https://docs.python.org/3/reference/simple_stmts.html#the-global-statement)\n  or [`nonlocal`](https://docs.python.org/3/reference/simple_stmts.html#the-nonlocal-statement)**: code outside the\n  function reads the binding too.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      global count\n      count = len(items)\n      print(count)\n  ```\n\n- **A value that is a `yield`, `await` or `:=` expression**: these run or bind in a way that moving them changes.\n\n  ```python ok\n  async def run(source: Source) -> None:\n      data = await source.read()\n      print(data)\n  ```\n\n- **A read as the argument of [`next`](https://docs.python.org/3/library/functions.html#next) or\n  [`anext`](https://docs.python.org/3/library/functions.html#anext), or as the receiver of `send`, `throw`, `close` or\n  `__next__`**: the call steps or closes the object the name holds. Without the name, the call would be the only holder\n  of the object, so the object would be released as soon as the call returns, which runs a generator's `finally` early.\n  Keeping the name is the only way to leave the object alone, so the variable is not reported.\n\n  ```python ok\n  def run(rows: list[int]) -> None:\n      stream = produce(rows)\n      print(next(stream))\n  ```\n\n- **A next statement that is `return name` or `yield name`**: Ruff's\n  [unnecessary-assign](https://docs.astral.sh/ruff/rules/unnecessary-assign/) covers the `return` case while the\n  project's Ruff configuration selects it, and `yield` keeps the same shape. The inline is skipped whenever Ruff selects\n  the rule, even where `per-file-ignores` or `noqa` silence it.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"RET504\"]\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> int:\n      count = len(items)\n      return count\n  ```\n\n- **A next statement that is `yield from name`, while Ruff's preview mode is on**: Ruff's preview rule\n  [unnecessary-assign-before-yield](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/) covers it when\n  the project's Ruff configuration selects it, even when this rule's fix would differ. With preview off, or without\n  RUF070, this rule reports the pair. The inline is skipped whenever Ruff selects the rule, even where\n  `per-file-ignores` or `noqa` silence it.\n\n- **A read in a parameter's default, while Ruff's\n  [mutable-argument-default](https://docs.astral.sh/ruff/rules/mutable-argument-default/) (B006) or\n  [function-call-in-argument-default](https://docs.astral.sh/ruff/rules/function-call-in-argument-default/) (B008)\n  runs**: the default is evaluated once, when the function is defined, and inlining a value that one of them reports\n  would make Ruff report it, so the variable stays. B006 reports a mutable display, a comprehension, or a call of a\n  mutable type such as `list()` or `collections.Counter()`. B008 reports a call, except one of an immutable type such as\n  `tuple()`, a [`NewType`](https://docs.python.org/3/library/typing.html#newtype) of an immutable type, or a callee\n  listed in `extend-immutable-calls` (see Configuration). A call inside a lambda is not reported. A parameter annotated\n  with an immutable type is not reported by either, so the value is still inlined. The inline is skipped whenever Ruff\n  runs the rule, even where `per-file-ignores` or `noqa` silence it. The variable is reported when the project's Ruff\n  configuration runs neither rule.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"B006\", \"B008\"]\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n\n      def show(size=count) -> None:\n          print(size)\n\n      show()\n  ```\n\n- **A read inside a loop body, a comprehension, a lambda or a nested function**: inlining would compute the value once\n  per pass instead of once.\n\n  ```python ok\n  def run(rows: list[list[int]]) -> list[int]:\n      total = sum(rows[0])\n      return [total + value for value in rows[1]]\n  ```\n\n- **A read in a nested block of the next statement**, such as the body of an `if`: the value would run only when the\n  block does, so inlining would skip it when the block is not taken.\n\n  ```python ok\n  def run(items: list[str], verbose: bool) -> None:\n      count = len(items)\n      if verbose:\n          print(count)\n  ```\n\n- **A read after `and` or `or`**, or in a branch of a conditional expression, a later link of a chained comparison, an\n  `assert`, a `case` or the type of an `except` clause: each runs only when the code before it does not decide the\n  outcome, or when an exception or a match reaches it.\n\n  ```python ok\n  def run(items: list[str], flag: bool) -> None:\n      count = len(items)\n      print(flag and count)\n  ```\n\n  ```python ok\n  def run(items: list[str], flag: bool) -> None:\n      count = len(items)\n      print(count if flag else 0)\n  ```\n\n  ```python ok\n  def run(items: list[str], low: int) -> None:\n      count = len(items)\n      print(low < 0 < count)\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n      assert count, \"no items\"\n  ```\n\n  ```python ok\n  def run(command: str, items: list[str]) -> None:\n      count = len(items)\n      match command:\n          case \"count\":\n              print(count)\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      error = ValueError\n      try:\n          print(items[0])\n      except error:\n          print(\"empty\")\n  ```\n\n- **A read in an annotation, a `type` statement or a type parameter**: an annotation in a function body is never\n  evaluated, and the others are evaluated lazily, so the value would not run where the name was read.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      kind = list[str]\n      values: kind = items\n      print(values)\n  ```\n\n- **A conditional expression, or a value with a string literal in it, read inside an f-string field**: the field would\n  hold the conditional or the literal inside its braces, which reads worse than the two statements. A value that is a\n  string or an f-string on its own is still inlined.\n\n  ```python ok\n  def run(items: list[str], flag: bool) -> str:\n      sep = \" \" if flag else \"\"\n      return f\"[{sep}{items[0]}]\"\n  ```\n\n- **Before Python 3.12, a value with a backslash, or whose strings hold the other quote**: a replacement field cannot\n  hold a backslash or the f-string's own quote until [PEP 701](https://peps.python.org/pep-0701/), and a string that\n  holds the other quote cannot take it, so the inlined code would not parse.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py311\"\n  ```\n\n  ```python ok\n  def quote(value: str) -> str:\n      quoted = value.replace(\"'\", \"''\")\n      return f\"'{quoted}'\"\n  ```\n\n- **An assignment with a comment on its line, or between it and the read**: inlining would lose the comment.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)  # the number of rows\n      print(count)\n  ```\n\n- **A name read in an `if` test that starts with it**: [walrus-candidate](SMP502.html) covers those, and writes the\n  value into the test.\n\n  ```python ok\n  def run(text: str) -> None:\n      found = text.find(\"x\")\n      if found:\n          print(found)\n  ```\n\n- **A name read again elsewhere in the function**, or bound again: the name is needed after the read, or the read is not\n  the only one.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n      print(count)\n      print(count)\n  ```\n\n- **Functions that read their locals by name, such as `locals()` or `eval`**: a removed name would vanish from what they\n  see.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n      print(locals())\n  ```\n\n- **A next statement that is a `while` loop**: its test runs again on every pass.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      limit = len(items)\n      while limit:\n          limit -= 1\n  ```\n\n- **An inlined header that would no longer fit [`line-length`](https://docs.astral.sh/ruff/settings/#line-length)**:\n  `ruff format` would split the statement over several lines, which reads worse than the two statements. The header is\n  measured joined on one line at its block's indentation, with the value in place of the name.\n\n  ```toml config\n  [tool.ruff]\n  line-length = 40\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items) + len(items) + len(items)\n      print(count + 1000000)\n  ```\n\n- **A message bound for an exception call in a `raise`**: Ruff's\n  [raw-string-in-exception](https://docs.astral.sh/ruff/rules/raw-string-in-exception/) and\n  [f-string-in-exception](https://docs.astral.sh/ruff/rules/f-string-in-exception/) ask for an exception's message to be\n  a variable, so inlining it would bring back the report those rules remove.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      msg = f\"{len(items)} items\"\n      raise ValueError(msg)\n  ```\n\n- **A name bound another way in the function**, such as by an `import`, a `def`, a `class`, an `except` clause or a\n  `match` capture: the other binding is a second assignment the walk does not follow, so the name is not single-use.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n      from os import count\n\n      print(count)\n  ```\n\n### Fix\n\nThe fix deletes the assignment and writes the value where the name was, in parentheses when its precedence requires\nthem.\n\n**Unsafe fix:** the next statement calls something, awaits, or reads an attribute or a subscript before the read, so the\nvalue would run after it instead of before.\n\n```python report\ndef run(items: list[str], log: Log) -> None:\n    count = len(items)\n    log.write(count)\n```\n\n```python fixed\ndef run(items: list[str], log: Log) -> None:\n    log.write(len(items))\n```\n\nHere `log.write` is looked up before `len(items)` runs, which differs only when that lookup has side effects.\n\nThe fix is also unsafe when the value calls or looks something up and the next statement reads a name before the read\nthat sees what the call changes: a name formatted in an f-string field or unpacked with `*` or `**`, which takes the\nobject's state at that point, or a name some function in the module declares `global` or `nonlocal`, which the call can\nrebind.\n\n```python report\ndef run(stack: list[int]) -> str:\n    top = stack.pop()\n    return f\"{stack} after popping {top}\"\n```\n\n```python fixed\ndef run(stack: list[int]) -> str:\n    return f\"{stack} after popping {stack.pop()}\"\n```\n\nInlined, `stack` is formatted before `stack.pop()` runs, so the message shows the popped item still in the list.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules\n  [RET504](https://docs.astral.sh/ruff/rules/unnecessary-assign/) and preview\n  [RUF070](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/), which cover a value returned or yielded\n  on the next line and which this rule leaves to them; every other single read is open issue\n  [#10108](https://github.com/astral-sh/ruff/issues/10108).\n- [Sourcery](https://sourcery.ai) inlines a variable that is used once anywhere in its block through\n  [inline-variable](https://docs.sourcery.ai/reference/refactorings/python/inline-variable/). This rule only inlines a\n  value read on the line right below its assignment.\n",
     "examples": {
       "parsed": [
         {
@@ -13673,6 +13690,32 @@
               "line": 464,
               "end_line": 467,
               "source": "def run(items: list[str], log: Log) -> None:\n    log.write(len(items))\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 476,
+          "end_line": 485,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 476,
+              "end_line": 480,
+              "source": "def run(stack: list[int]) -> str:\n    top = stack.pop()\n    return f\"{stack} after popping {top}\"\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 482,
+              "end_line": 485,
+              "source": "def run(stack: list[int]) -> str:\n    return f\"{stack} after popping {stack.pop()}\"\n"
             }
           ]
         }
@@ -15379,7 +15422,7 @@
     "name": "up-context-var-token-reset",
     "summary": "`ContextVar.set()` tokens reset in a `finally` block",
     "fix": "Sometimes",
-    "explanation": "Flags a `ContextVar.set()` token that a `try` block resets in its `finally` clause, which a `with` block does on exit\nfrom Python 3.14.\n\n## Why is this bad?\n\nSince Python 3.14 the token `ContextVar.set()` returns is a context manager that resets the variable when the block\nends. The `try`/`finally` pair repeats that by hand, and leaves a name in scope that nothing else reads.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nimport contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    token = request_id.set(value)\n    try:\n        return process()\n    finally:\n        request_id.reset(token)\n```\n\nUse instead:\n\n```python ok\nimport contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    with request_id.set(value):\n        return process()\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  import contextvars\n\n  request_id = contextvars.ContextVar(\"request_id\")\n\n\n  def handle(value):\n      token = request_id.set(value)\n      try:\n          return process()\n      finally:\n          request_id.reset(token)\n  ```\n\n## What it does\n\nReports an assignment `token = variable.set(value)` followed directly by a `try` whose only clause is a `finally` that\nholds `variable.reset(token)`, with no `except` and no `else`.\n\n### Active on\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nimport contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\ntoken = request_id.set(\"one\")\ntry:\n    print(request_id.get())\nfinally:\n    request_id.reset(token)\n```\n\n```python fixed\nimport contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\nwith request_id.set(\"one\"):\n    print(request_id.get())\n```\n\n### Exceptions\n\n- **A token read outside the reset**: the block would take the name's last use away.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  import contextvars\n\n  request_id = contextvars.ContextVar(\"request_id\")\n  token = request_id.set(\"one\")\n  try:\n      print(request_id.get())\n  finally:\n      request_id.reset(token)\n  print(token)\n  ```\n\n- **A `finally` with more than the reset**: the statements after the reset would run inside the block.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  import contextvars\n\n  request_id = contextvars.ContextVar(\"request_id\")\n  token = request_id.set(\"one\")\n  try:\n      print(request_id.get())\n  finally:\n      request_id.reset(token)\n      print(\"done\")\n  ```\n\n- **A reset on another variable**: the token belongs to the variable it was set on.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  import contextvars\n\n  request_id = contextvars.ContextVar(\"request_id\")\n  user = contextvars.ContextVar(\"user\")\n  token = request_id.set(\"one\")\n  try:\n      print(request_id.get())\n  finally:\n      user.reset(token)\n  ```\n\n- **Target versions before 3.14**: the token is not a context manager there, and `with` raises `TypeError`.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  import contextvars\n\n  request_id = contextvars.ContextVar(\"request_id\")\n  token = request_id.set(\"one\")\n  try:\n      print(request_id.get())\n  finally:\n      request_id.reset(token)\n  ```\n\n### Fix\n\nThe fix is safe and reports without a fix when a comment sits in the lines it would remove, which would lose the\ncomment.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags a `ContextVar.set()` token that a `try` block resets in its `finally` clause, which a `with` block does on exit\nfrom Python 3.14.\n\n## Why is this bad?\n\nSince Python 3.14 the token `ContextVar.set()` returns is a context manager that resets the variable when the block\nends. The `try`/`finally` pair repeats that by hand, and leaves a name in scope that nothing else reads.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nimport contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    token = request_id.set(value)\n    try:\n        return process()\n    finally:\n        request_id.reset(token)\n```\n\nUse instead:\n\n```python ok\nimport contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    with request_id.set(value):\n        return process()\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  import contextvars\n\n  request_id = contextvars.ContextVar(\"request_id\")\n\n\n  def handle(value):\n      token = request_id.set(value)\n      try:\n          return process()\n      finally:\n          request_id.reset(token)\n  ```\n\n## What it does\n\nReports an assignment `token = variable.set(value)` followed directly by a `try` whose only clause is a `finally` that\nholds `variable.reset(token)`, with no `except` and no `else`. `variable` is a name the file assigns a\n`contextvars.ContextVar(...)` call to, or a parameter annotated as `ContextVar`.\n\n### Active on\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nimport contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\ntoken = request_id.set(\"one\")\ntry:\n    print(request_id.get())\nfinally:\n    request_id.reset(token)\n```\n\n```python fixed\nimport contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\nwith request_id.set(\"one\"):\n    print(request_id.get())\n```\n\n### Exceptions\n\n- **A token read outside the reset**: the block would take the name's last use away.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  import contextvars\n\n  request_id = contextvars.ContextVar(\"request_id\")\n  token = request_id.set(\"one\")\n  try:\n      print(request_id.get())\n  finally:\n      request_id.reset(token)\n  print(token)\n  ```\n\n- **A `finally` with more than the reset**: the statements after the reset would run inside the block.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  import contextvars\n\n  request_id = contextvars.ContextVar(\"request_id\")\n  token = request_id.set(\"one\")\n  try:\n      print(request_id.get())\n  finally:\n      request_id.reset(token)\n      print(\"done\")\n  ```\n\n- **A reset on another variable**: the token belongs to the variable it was set on.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  import contextvars\n\n  request_id = contextvars.ContextVar(\"request_id\")\n  user = contextvars.ContextVar(\"user\")\n  token = request_id.set(\"one\")\n  try:\n      print(request_id.get())\n  finally:\n      user.reset(token)\n  ```\n\n- **A receiver not known to be a `ContextVar`**: an attribute, an unannotated parameter, or an object of another class,\n  whose `set` may return something that is not a context manager.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  class Settings:\n      def set(self, value):\n          old, self.value = self.value, value\n          return old\n\n      def reset(self, old):\n          self.value = old\n\n\n  settings = Settings()\n  token = settings.set(\"one\")\n  try:\n      print(settings.value)\n  finally:\n      settings.reset(token)\n  ```\n\n- **Target versions before 3.14**: the token is not a context manager there, and `with` raises `TypeError`.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  import contextvars\n\n  request_id = contextvars.ContextVar(\"request_id\")\n  token = request_id.set(\"one\")\n  try:\n      print(request_id.get())\n  finally:\n      request_id.reset(token)\n  ```\n\n### Fix\n\nThe fix is safe and reports without a fix when a comment sits in the lines it would remove, which would lose the\ncomment.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -15447,11 +15490,11 @@
         },
         {
           "section": "What it does",
-          "line": 76,
-          "end_line": 98,
+          "line": 77,
+          "end_line": 99,
           "config": {
-            "line": 76,
-            "end_line": 79,
+            "line": 77,
+            "end_line": 80,
             "source": "[project]\nrequires-python = \">=3.14\"\n"
           },
           "blocks": [
@@ -15460,8 +15503,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 81,
-              "end_line": 90,
+              "line": 82,
+              "end_line": 91,
               "source": "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\ntoken = request_id.set(\"one\")\ntry:\n    print(request_id.get())\nfinally:\n    request_id.reset(token)\n"
             },
             {
@@ -15469,19 +15512,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 92,
-              "end_line": 98,
+              "line": 93,
+              "end_line": 99,
               "source": "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\nwith request_id.set(\"one\"):\n    print(request_id.get())\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 104,
-          "end_line": 119,
+          "line": 105,
+          "end_line": 120,
           "config": {
-            "line": 104,
-            "end_line": 107,
+            "line": 105,
+            "end_line": 108,
             "source": "[project]\nrequires-python = \">=3.14\"\n"
           },
           "blocks": [
@@ -15490,19 +15533,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 109,
-              "end_line": 119,
+              "line": 110,
+              "end_line": 120,
               "source": "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\ntoken = request_id.set(\"one\")\ntry:\n    print(request_id.get())\nfinally:\n    request_id.reset(token)\nprint(token)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 123,
-          "end_line": 138,
+          "line": 124,
+          "end_line": 139,
           "config": {
-            "line": 123,
-            "end_line": 126,
+            "line": 124,
+            "end_line": 127,
             "source": "[project]\nrequires-python = \">=3.14\"\n"
           },
           "blocks": [
@@ -15511,19 +15554,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 128,
-              "end_line": 138,
+              "line": 129,
+              "end_line": 139,
               "source": "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\ntoken = request_id.set(\"one\")\ntry:\n    print(request_id.get())\nfinally:\n    request_id.reset(token)\n    print(\"done\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 142,
-          "end_line": 157,
+          "line": 143,
+          "end_line": 158,
           "config": {
-            "line": 142,
-            "end_line": 145,
+            "line": 143,
+            "end_line": 146,
             "source": "[project]\nrequires-python = \">=3.14\"\n"
           },
           "blocks": [
@@ -15532,19 +15575,40 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 147,
-              "end_line": 157,
+              "line": 148,
+              "end_line": 158,
               "source": "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\nuser = contextvars.ContextVar(\"user\")\ntoken = request_id.set(\"one\")\ntry:\n    print(request_id.get())\nfinally:\n    user.reset(token)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 161,
-          "end_line": 175,
+          "line": 163,
+          "end_line": 184,
           "config": {
-            "line": 161,
-            "end_line": 164,
+            "line": 163,
+            "end_line": 166,
+            "source": "[project]\nrequires-python = \">=3.14\"\n"
+          },
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 168,
+              "end_line": 184,
+              "source": "class Settings:\n    def set(self, value):\n        old, self.value = self.value, value\n        return old\n\n    def reset(self, old):\n        self.value = old\n\n\nsettings = Settings()\ntoken = settings.set(\"one\")\ntry:\n    print(settings.value)\nfinally:\n    settings.reset(token)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 188,
+          "end_line": 202,
+          "config": {
+            "line": 188,
+            "end_line": 191,
             "source": "[project]\nrequires-python = \">=3.13\"\n"
           },
           "blocks": [
@@ -15553,8 +15617,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 166,
-              "end_line": 175,
+              "line": 193,
+              "end_line": 202,
               "source": "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\ntoken = request_id.set(\"one\")\ntry:\n    print(request_id.get())\nfinally:\n    request_id.reset(token)\n"
             }
           ]
@@ -16238,7 +16302,7 @@
     "name": "up-re-error-alias",
     "summary": "`re.error` references",
     "fix": "Always",
-    "explanation": "Flags `re.error` references, which `re.PatternError` names from Python 3.13.\n\n## Why is this bad?\n\n`re.PatternError` is the name the standard library documents for the exception `re` raises on an invalid pattern. From\nPython 3.13 it is the same class as `re.error`, so the new name says what the exception is. `re.error` is not deprecated\nand keeps working.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.13\"\n```\n\n```python report\nimport re\n\n\ndef compile_pattern(text):\n    try:\n        return re.compile(text)\n    except re.error:\n        return None\n```\n\nUse instead:\n\n```python ok\nimport re\n\n\ndef compile_pattern(text):\n    try:\n        return re.compile(text)\n    except re.PatternError:\n        return None\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py313\"\n  ```\n\n  ```python report\n  import re\n\n\n  def compile_pattern(text):\n      try:\n          return re.compile(text)\n      except re.error:\n          return None\n  ```\n\n## What it does\n\n### Active on\n\n- **`re.error` references**, where `re` is the module. **Safe fix:** the attribute is renamed to `PatternError`.\n  `re.PatternError is re.error` on Python 3.13 and later, so the rename keeps the behavior. A name imported from `re`,\n  such as `from re import error`, is not reported.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python report\n  import re\n\n\n  def compile_pattern(text):\n      try:\n          return re.compile(text)\n      except re.error:\n          return None\n  ```\n\n  ```python fixed\n  import re\n\n\n  def compile_pattern(text):\n      try:\n          return re.compile(text)\n      except re.PatternError:\n          return None\n  ```\n\n### Exceptions\n\n- **Targets before Python 3.13**: `re.PatternError` does not exist there.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py312\"\n  ```\n\n  ```python ok\n  import re\n\n\n  def compile_pattern(text):\n      try:\n          return re.compile(text)\n      except re.error:\n          return None\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags `re.error` references, which `re.PatternError` names from Python 3.13.\n\n## Why is this bad?\n\n`re.PatternError` is the name the standard library documents for the exception `re` raises on an invalid pattern. From\nPython 3.13 it is the same class as `re.error`, so the new name says what the exception is. `re.error` is not deprecated\nand keeps working.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.13\"\n```\n\n```python report\nimport re\n\n\ndef compile_pattern(text):\n    try:\n        return re.compile(text)\n    except re.error:\n        return None\n```\n\nUse instead:\n\n```python ok\nimport re\n\n\ndef compile_pattern(text):\n    try:\n        return re.compile(text)\n    except re.PatternError:\n        return None\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py313\"\n  ```\n\n  ```python report\n  import re\n\n\n  def compile_pattern(text):\n      try:\n          return re.compile(text)\n      except re.error:\n          return None\n  ```\n\n## What it does\n\n### Active on\n\n- **`re.error` references**, where `re` is the module. **Safe fix:** the attribute is renamed to `PatternError`.\n  `re.PatternError is re.error` on Python 3.13 and later, so the rename keeps the behavior. A name imported from `re`,\n  such as `from re import error`, is not reported.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python report\n  import re\n\n\n  def compile_pattern(text):\n      try:\n          return re.compile(text)\n      except re.error:\n          return None\n  ```\n\n  ```python fixed\n  import re\n\n\n  def compile_pattern(text):\n      try:\n          return re.compile(text)\n      except re.PatternError:\n          return None\n  ```\n\n### Exceptions\n\n- **An assignment or `del`**: it patches the module, and renamed it would patch `re.PatternError` while code that reads\n  `re.error` keeps the original.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  import re\n\n\n  class LoggedError(re.PatternError):\n      pass\n\n\n  re.error = LoggedError\n  ```\n\n- **Targets before Python 3.13**: `re.PatternError` does not exist there.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py312\"\n  ```\n\n  ```python ok\n  import re\n\n\n  def compile_pattern(text):\n      try:\n          return re.compile(text)\n      except re.error:\n          return None\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -16336,11 +16400,32 @@
         },
         {
           "section": "What it does",
-          "line": 102,
-          "end_line": 116,
+          "line": 103,
+          "end_line": 117,
           "config": {
-            "line": 102,
-            "end_line": 105,
+            "line": 103,
+            "end_line": 106,
+            "source": "[project]\nrequires-python = \">=3.13\"\n"
+          },
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 108,
+              "end_line": 117,
+              "source": "import re\n\n\nclass LoggedError(re.PatternError):\n    pass\n\n\nre.error = LoggedError\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 121,
+          "end_line": 135,
+          "config": {
+            "line": 121,
+            "end_line": 124,
             "source": "[tool.ruff]\ntarget-version = \"py312\"\n"
           },
           "blocks": [
@@ -16349,8 +16434,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 107,
-              "end_line": 116,
+              "line": 126,
+              "end_line": 135,
               "source": "import re\n\n\ndef compile_pattern(text):\n    try:\n        return re.compile(text)\n    except re.error:\n        return None\n"
             }
           ]
@@ -22540,7 +22625,7 @@
     "name": "test-class",
     "summary": "Test classes",
     "fix": "Sometimes",
-    "explanation": "Flags test classes in test modules: top-level `Test` classes with `test` methods. A test class adds a level of nesting\nand a `self` that most tests never use, and invites shared state.\n\n## Why is this bad?\n\nA test class adds a level of nesting and a `self` that most tests never use. It also invites shared state through\nattributes and [setup methods](https://docs.pytest.org/en/stable/how-to/xunit_setup.html). Module-level functions with\nthe class name folded into a prefix keep the grouping visible in the test name.\n\n## Example\n\n```python report file=tests/test_parser.py\nclass TestParser:\n    def test_handles_empty(self) -> None:\n        assert parse(\"\") == []\n```\n\nUse instead:\n\n```python ok file=tests/test_parser.py\ndef test_parser_handles_empty() -> None:\n    assert parse(\"\") == []\n```\n\n## What it does\n\n### Active on\n\n- **Top-level classes in a test module whose name starts with `Test` and that define a method whose name starts with\n  `test`**: with its default\n  [`python_classes`](https://docs.pytest.org/en/stable/reference/reference.html#confval-python_classes) and\n  [`python_functions`](https://docs.pytest.org/en/stable/reference/reference.html#confval-python_functions) settings,\n  these are the classes pytest collects tests from. A file is a test module when its name starts with `test_`, ends with\n  `_test.py` or is `conftest.py`, or when it sits under a `tests` or `test` directory. **Unsafe fix:** always, as it\n  renames every test, which changes its [node ID](https://docs.pytest.org/en/stable/how-to/usage.html#nodeids) and\n  breaks `-k` selections or deselect lists that name it.\n\n  ```python report file=tests/test_parser.py\n  class TestParser:\n      def test_handles_empty(self) -> None:\n          assert parse(\"\") == []\n  ```\n\n### Fix\n\nThe fix turns each method into a module-level function whose name carries a prefix: the class name with one leading\n`Test` removed, in snake case with acronyms kept together, so `TestHTTPClient.test_get` becomes `test_http_client_get`.\nA class named just `Test` keeps its method names.\n\n```python report file=tests/test_http.py\nclass TestHTTPClient:\n    def test_get(self) -> None:\n        assert get(\"/\") == 200\n```\n\n```python fixed file=tests/test_http.py\ndef test_http_client_get() -> None:\n    assert get(\"/\") == 200\n```\n\nA method that uses its class's type parameters gets them on its function, with their bounds, defaults and the other\nparameters they name. A method that names none gets none. Defaults on type parameters need Python 3.13, so below that\ntarget a method that uses a defaulted parameter gets no fix.\n\n```toml config\n[project]\nrequires-python = \">=3.12\"\n```\n\n```python report file=tests/test_box.py\nclass TestBox[T: int]:\n    def test_default(self, value: T | None = None) -> None:\n        assert value is None\n```\n\n```python fixed file=tests/test_box.py\ndef test_box_default[T: int](value: T | None = None) -> None:\n    assert value is None\n```\n\nNo fix is offered when:\n\n- the class has bases or decorators, or a docstring, which module-level functions have nowhere to keep;\n\n  ```python report file=tests/test_based.py\n  class TestParser(BaseParserTests):\n      def test_handles_empty(self) -> None:\n          assert parse(\"\") == []\n  ```\n\n- a method's decorators or default values name a type parameter of its class, which is not bound where they are\n  evaluated;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.12\"\n  ```\n\n  ```python report file=tests/test_generic.py\n  class TestBox[T]:\n      def test_holds_value(self, kind: type = list[T]) -> None:\n          assert Box[int]().get(1) == 1\n  ```\n\n- another class extends it, or the file refers to it by name, so it must stay a class;\n\n- the class contains a string that spans several lines, other than a method's docstring, whose indentation `ruff format`\n  rewrites anyway;\n\n- the class body holds anything besides methods whose names start with `test`;\n\n- a method uses `self`, has no `self` as its first parameter, or takes positional-only parameters;\n\n  ```python report file=tests/test_uses_self.py\n  class TestParser:\n      def test_handles_empty(self) -> None:\n          assert self.parse(\"\") == []\n  ```\n\n- a new name is already used in the file.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags test classes in test modules: top-level `Test` classes with `test` methods. A test class adds a level of nesting\nand a `self` that most tests never use, and invites shared state.\n\n## Why is this bad?\n\nA test class adds a level of nesting and a `self` that most tests never use. It also invites shared state through\nattributes and [setup methods](https://docs.pytest.org/en/stable/how-to/xunit_setup.html). Module-level functions with\nthe class name folded into a prefix keep the grouping visible in the test name.\n\n## Example\n\n```python report file=tests/test_parser.py\nclass TestParser:\n    def test_handles_empty(self) -> None:\n        assert parse(\"\") == []\n```\n\nUse instead:\n\n```python ok file=tests/test_parser.py\ndef test_parser_handles_empty() -> None:\n    assert parse(\"\") == []\n```\n\n## What it does\n\n### Active on\n\n- **Top-level classes in a test module whose name starts with `Test` and that define a method whose name starts with\n  `test`**: with its default\n  [`python_classes`](https://docs.pytest.org/en/stable/reference/reference.html#confval-python_classes) and\n  [`python_functions`](https://docs.pytest.org/en/stable/reference/reference.html#confval-python_functions) settings,\n  these are the classes pytest collects tests from. A file is a test module when its name starts with `test_`, ends with\n  `_test.py` or is `conftest.py`, or when it sits under a `tests` or `test` directory. **Unsafe fix:** always, as it\n  renames every test, which changes its [node ID](https://docs.pytest.org/en/stable/how-to/usage.html#nodeids) and\n  breaks `-k` selections or deselect lists that name it.\n\n  ```python report file=tests/test_parser.py\n  class TestParser:\n      def test_handles_empty(self) -> None:\n          assert parse(\"\") == []\n  ```\n\n### Fix\n\nThe fix turns each method into a module-level function whose name carries a prefix: the class name with one leading\n`Test` removed, in snake case with acronyms kept together, so `TestHTTPClient.test_get` becomes `test_http_client_get`.\nA class named just `Test` keeps its method names.\n\n```python report file=tests/test_http.py\nclass TestHTTPClient:\n    def test_get(self) -> None:\n        assert get(\"/\") == 200\n```\n\n```python fixed file=tests/test_http.py\ndef test_http_client_get() -> None:\n    assert get(\"/\") == 200\n```\n\nA method that uses its class's type parameters gets them on its function, with their bounds, defaults and the other\nparameters they name. A method that names none gets none. Defaults on type parameters need Python 3.13, so below that\ntarget a method that uses a defaulted parameter gets no fix.\n\n```toml config\n[project]\nrequires-python = \">=3.12\"\n```\n\n```python report file=tests/test_box.py\nclass TestBox[T: int]:\n    def test_default(self, value: T | None = None) -> None:\n        assert value is None\n```\n\n```python fixed file=tests/test_box.py\ndef test_box_default[T: int](value: T | None = None) -> None:\n    assert value is None\n```\n\nNo fix is offered when:\n\n- the class has bases or decorators, or a docstring, which module-level functions have nowhere to keep;\n\n  ```python report file=tests/test_based.py\n  class TestParser(BaseParserTests):\n      def test_handles_empty(self) -> None:\n          assert parse(\"\") == []\n  ```\n\n- a comment in the class is neither inside a method nor on the lines directly above one, such as a comment on the class\n  line, which no function would carry;\n\n  ```python report file=tests/test_noted.py\n  class TestParser:  # grouped for the report\n      def test_handles_empty(self) -> None:\n          assert parse(\"\") == []\n  ```\n\n- a method's decorators or default values name a type parameter of its class, which is not bound where they are\n  evaluated;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.12\"\n  ```\n\n  ```python report file=tests/test_generic.py\n  class TestBox[T]:\n      def test_holds_value(self, kind: type = list[T]) -> None:\n          assert Box[int]().get(1) == 1\n  ```\n\n- another class extends it, or the file refers to it by name, so it must stay a class;\n\n- the class contains a string that spans several lines, other than a method's docstring, whose indentation `ruff format`\n  rewrites anyway;\n\n- the class body holds anything besides methods whose names start with `test`;\n\n- a method uses `self`, has no `self` as its first parameter, or takes positional-only parameters;\n\n  ```python report file=tests/test_uses_self.py\n  class TestParser:\n      def test_handles_empty(self) -> None:\n          assert self.parse(\"\") == []\n  ```\n\n- a new name is already used in the file.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -22670,10 +22755,27 @@
         {
           "section": "What it does",
           "line": 94,
-          "end_line": 103,
+          "end_line": 98,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "tests/test_noted.py",
+              "named": true,
+              "line": 94,
+              "end_line": 98,
+              "source": "class TestParser:  # grouped for the report\n    def test_handles_empty(self) -> None:\n        assert parse(\"\") == []\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 103,
+          "end_line": 112,
           "config": {
-            "line": 94,
-            "end_line": 97,
+            "line": 103,
+            "end_line": 106,
             "source": "[project]\nrequires-python = \">=3.12\"\n"
           },
           "blocks": [
@@ -22682,16 +22784,16 @@
               "language": "python",
               "file": "tests/test_generic.py",
               "named": true,
-              "line": 99,
-              "end_line": 103,
+              "line": 108,
+              "end_line": 112,
               "source": "class TestBox[T]:\n    def test_holds_value(self, kind: type = list[T]) -> None:\n        assert Box[int]().get(1) == 1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 114,
-          "end_line": 118,
+          "line": 123,
+          "end_line": 127,
           "config": null,
           "blocks": [
             {
@@ -22699,8 +22801,8 @@
               "language": "python",
               "file": "tests/test_uses_self.py",
               "named": true,
-              "line": 114,
-              "end_line": 118,
+              "line": 123,
+              "end_line": 127,
               "source": "class TestParser:\n    def test_handles_empty(self) -> None:\n        assert self.parse(\"\") == []\n"
             }
           ]
@@ -24977,7 +25079,7 @@
     "name": "mock-assertion-typo",
     "summary": "Mock assertion methods misspelled or missing their `assert_` prefix",
     "fix": "Always",
-    "explanation": "Flags attribute names that are mock assertion methods written without their `assert_` prefix, or misspelled.\n\n## Why is this bad?\n\n`unittest.mock` raises `AttributeError` for an unknown name that starts with `assert`, `assret`, `asert`, `aseert` or\n`assrt`, so a misspelled assertion with one of those prefixes fails the test. Other names are ordinary attributes to the\nmock: the call returns a child mock and checks nothing. Python 3.12 added the names of the `Mock` assertions without\ntheir prefix, such as `called_once_with`, to the names a mock rejects, but not those of the `AsyncMock` assertions, such\nas `awaited_once_with`. So `called_once_with` passes silently on Python 3.11 and older, and `awaited_once_with` or a\nmisspelling such as `asssert_called_once` passes silently on every version. The lint reports these before the test runs.\n\n## Example\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.called_once_with(\"out.json\")\n```\n\nUse instead:\n\n```python ok\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.assert_called_once_with(\"out.json\")\n```\n\n## What it does\n\nReports an attribute, read or called, whose name is one of these:\n\n- an assertion method without its `assert_` prefix, such as `called_with`, `has_calls` or `not_called`, but not\n  `called`, which every mock has as an attribute;\n- an assertion method with a misspelled name, such as `asssert_called_once` or `assetr_called_with`, that is within two\n  edits of exactly one assertion method. Only names that start with `as` are compared, since a misspelled prefix keeps\n  those two letters, and not those that start with a prefix the mock rejects.\n\n### Active on\n\n- **Assertion methods without their prefix**: the name is the assertion's name minus `assert_`.\n\n  ```python report\n  mock.called_once()\n  ```\n\n  ```python report\n  mock.has_calls([call(1)])\n  ```\n\n- **Misspelled assertion methods**: the nearest assertion method is the one meant, when it is the only nearest.\n\n  ```python report\n  mock.asssert_called_once()\n  ```\n\n  ```python report\n  mock.assetr_called_with(1)\n  ```\n\n### Exceptions\n\n- **`called`**: a mock attribute that records whether it was called, not an assertion.\n\n  ```python ok\n  assert mock.called\n  ```\n\n- **Names that are not close to an assertion**: `assert_equal` on a helper or a numeric library is left alone.\n\n  ```python ok\n  numbers.assert_equal(1)\n  ```\n\n- **Names with a prefix the mock rejects**: a mock raises `AttributeError` for `assert_called_ones_with`, so the test\n  already fails, and the same names are methods of other classes, such as `assert_failed` on a test helper.\n\n  ```python ok\n  outcome.assert_failed()\n  ```\n\n- **Names the file defines or the project assigns**: such a name is a class's own attribute, not a mock method. A name\n  the file defines as a function, or the project sets or deletes as an attribute anywhere, is left alone.\n\n  ```python ok\n  class Spec:\n      def called_once(self) -> None: ...\n\n\n  def test_spec(mock: MagicMock) -> None:\n      mock.called_once()\n  ```\n\n- **Code that expects the call to fail**: a `with` block of `pytest.raises` or `assertRaises...` checks the error, so\n  the misspelled name is the point.\n\n  ```python ok\n  def test_unsafe_name(mock: MagicMock) -> None:\n      with pytest.raises(AttributeError):\n          mock.called_once()\n  ```\n\n- **Names that Ruff's PGH005 reports**: [PGH005](https://docs.astral.sh/ruff/rules/invalid-mock-access/) reports these\n  names, so this rule leaves them to Ruff only when the project's Ruff configuration selects PGH005. With Ruff's preview\n  mode off, the test of an `assert` is the only place, bare or called. With preview on, a name on a line of its own is\n  one too. The set follows the project's preview setting. The operand of a `not` or `and`, or a comparison, is not\n  checked by Ruff, so this rule still reports a name there.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"PGH005\"]\n  ```\n\n  ```python ok\n  def test_save(save: MagicMock) -> None:\n      run_save()\n      assert save.not_called()\n  ```\n\n### Fix\n\nThe fix renames the attribute to the assertion it stands for. **Unsafe fix:** the call becomes a check, so a test that\npassed without checking may now fail. Every report offers the fix, since each one names a single assertion to rename to.\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.called_once_with(\"out.json\")\n```\n\n```python fixed\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.assert_called_once_with(\"out.json\")\n```\n\n## Ruff overlap\n\nThere is no overlap. Ruff's [invalid-mock-access](https://docs.astral.sh/ruff/rules/invalid-mock-access/) (PGH005)\nreports the prefix-less assertion names in the test of an `assert`, bare or called, such as `assert mock.not_called()`,\nand with Ruff's preview mode on, also those names on a line of their own. This rule follows the same preview setting: it\nleaves those names to Ruff only when the project's Ruff configuration selects PGH005, and reports the rest, which are\noperands of `not` and `and`, comparisons, names in call arguments, and every misspelling, since Ruff does not report\nthose. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are respected too.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule\n  [PGH005](https://docs.astral.sh/ruff/rules/invalid-mock-access/), which reports an assertion name missing its\n  `assert_` prefix and which this rule leaves to it; this rule covers misspellings and the rest.\n- [flake8-mock](https://github.com/zupo/flake8-mock) reports misspelled mock assertions, such as `called_once_with`, as\n  [M001](https://github.com/zupo/flake8-mock), with no fix. This rule's fix renames them to the assertion they stand\n  for.\n",
+    "explanation": "Flags attribute names that are mock assertion methods written without their `assert_` prefix, or misspelled.\n\n## Why is this bad?\n\n`unittest.mock` raises `AttributeError` for an unknown name that starts with `assert`, `assret`, `asert`, `aseert` or\n`assrt`, so a misspelled assertion with one of those prefixes fails the test. Other names are ordinary attributes to the\nmock: the call returns a child mock and checks nothing. Python 3.12 added the names of the `Mock` assertions without\ntheir prefix, such as `called_once_with`, to the names a mock rejects, but not those of the `AsyncMock` assertions, such\nas `awaited_once_with`. So `called_once_with` passes silently on Python 3.11 and older, and `awaited_once_with` or a\nmisspelling such as `asssert_called_once` passes silently on every version. The lint reports these before the test runs.\n\n## Example\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.called_once_with(\"out.json\")\n```\n\nUse instead:\n\n```python ok\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.assert_called_once_with(\"out.json\")\n```\n\n## What it does\n\nReports an attribute, read or called, whose name is one of these:\n\n- an assertion method without its `assert_` prefix, such as `called_with`, `has_calls` or `not_called`, but not\n  `called`, which every mock has as an attribute;\n- an assertion method with a misspelled name, such as `asssert_called_once` or `assetr_called_with`, that is within two\n  edits of exactly one assertion method. Only names that start with `as` are compared, since a misspelled prefix keeps\n  those two letters, and not those that start with a prefix the mock rejects.\n\n### Active on\n\n- **Assertion methods without their prefix**: the name is the assertion's name minus `assert_`.\n\n  ```python report\n  mock.called_once()\n  ```\n\n  ```python report\n  mock.has_calls([call(1)])\n  ```\n\n- **Misspelled assertion methods**: the nearest assertion method is the one meant, when it is the only nearest.\n\n  ```python report\n  mock.asssert_called_once()\n  ```\n\n  ```python report\n  mock.assetr_called_with(1)\n  ```\n\n### Exceptions\n\n- **`called`**: a mock attribute that records whether it was called, not an assertion.\n\n  ```python ok\n  assert mock.called\n  ```\n\n- **Names that are not close to an assertion**: `assert_equal` on a helper or a numeric library is left alone.\n\n  ```python ok\n  numbers.assert_equal(1)\n  ```\n\n- **Names with a prefix the mock rejects**: a mock raises `AttributeError` for `assert_called_ones_with`, so the test\n  already fails, and the same names are methods of other classes, such as `assert_failed` on a test helper.\n\n  ```python ok\n  outcome.assert_failed()\n  ```\n\n- **Names the file defines or the project assigns**: such a name is a class's own attribute, not a mock method. A name\n  the file defines as a function, or the project sets or deletes as an attribute anywhere, is left alone.\n\n  ```python ok\n  class Spec:\n      def called_once(self) -> None: ...\n\n\n  def test_spec(mock: MagicMock) -> None:\n      mock.called_once()\n  ```\n\n- **Code that expects the call to fail**: a `with` block of `pytest.raises` or `assertRaises...` checks the error, so\n  the misspelled name is the point.\n\n  ```python ok\n  def test_unsafe_name(mock: MagicMock) -> None:\n      with pytest.raises(AttributeError):\n          mock.called_once()\n  ```\n\n- **Names that Ruff's PGH005 reports**: [PGH005](https://docs.astral.sh/ruff/rules/invalid-mock-access/) reports these\n  names, so this rule leaves them to Ruff only when the project's Ruff configuration selects PGH005. With Ruff's preview\n  mode off, the test of an `assert` is the only place, bare or called. With preview on, a name on a line of its own is\n  one too. The set follows the project's preview setting. The operand of a `not` or `and`, or a comparison, is not\n  checked by Ruff, so this rule still reports a name there.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"PGH005\"]\n  ```\n\n  ```python ok\n  def test_save(save: MagicMock) -> None:\n      run_save()\n      assert save.not_called()\n  ```\n\n### Fix\n\nThe fix renames the attribute to the assertion it stands for. **Unsafe fix:** the call becomes a check, so a test that\npassed without checking may now fail.\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.called_once_with(\"out.json\")\n```\n\n```python fixed\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.assert_called_once_with(\"out.json\")\n```\n\nAn assertion method returns `None`, so when the call is the whole test of an `assert` without a message, the fix drops\nthe `assert` too.\n\n```toml config\n[tool.ruff.lint]\nselect = []\n```\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    assert save.not_called()\n```\n\n```python fixed\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.assert_not_called()\n```\n\nOnly a call on a line of its own, or the whole test of such an `assert`, gets the fix. Renamed anywhere else, the name\nwould be a bound method that is always true, or the `None` the method returns, which the code then goes on to use.\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    assert not save.called_once\n```\n\n## Ruff overlap\n\nThere is no overlap. Ruff's [invalid-mock-access](https://docs.astral.sh/ruff/rules/invalid-mock-access/) (PGH005)\nreports the prefix-less assertion names in the test of an `assert`, bare or called, such as `assert mock.not_called()`,\nand with Ruff's preview mode on, also those names on a line of their own. This rule follows the same preview setting: it\nleaves those names to Ruff only when the project's Ruff configuration selects PGH005, and reports the rest, which are\noperands of `not` and `and`, comparisons, names in call arguments, and every misspelling, since Ruff does not report\nthose. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are respected too.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule\n  [PGH005](https://docs.astral.sh/ruff/rules/invalid-mock-access/), which reports an assertion name missing its\n  `assert_` prefix and which this rule leaves to it; this rule covers misspellings and the rest.\n- [flake8-mock](https://github.com/zupo/flake8-mock) reports misspelled mock assertions, such as `called_once_with`, as\n  [M001](https://github.com/zupo/flake8-mock), with no fix. This rule's fix renames them to the assertion they stand\n  for.\n",
     "examples": {
       "parsed": [
         {
@@ -25211,6 +25313,53 @@
               "line": 130,
               "end_line": 134,
               "source": "def test_save(save: MagicMock) -> None:\n    run_save()\n    save.assert_called_once_with(\"out.json\")\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 139,
+          "end_line": 154,
+          "config": {
+            "line": 139,
+            "end_line": 142,
+            "source": "[tool.ruff.lint]\nselect = []\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 144,
+              "end_line": 148,
+              "source": "def test_save(save: MagicMock) -> None:\n    run_save()\n    assert save.not_called()\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 150,
+              "end_line": 154,
+              "source": "def test_save(save: MagicMock) -> None:\n    run_save()\n    save.assert_not_called()\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 159,
+          "end_line": 163,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 159,
+              "end_line": 163,
+              "source": "def test_save(save: MagicMock) -> None:\n    run_save()\n    assert not save.called_once\n"
             }
           ]
         }

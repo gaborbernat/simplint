@@ -18,7 +18,10 @@ expression: "lint_fixture(rule, fixture, target_version)"
 95:7 SMP801 Test class `TestDocumented`; use module-level test functions with a name prefix
 107:7 SMP801 Test class `TestBase`; use module-level test functions with a name prefix
 112:7 SMP801 Test class `TestDerived`; use module-level test functions with a name prefix
---- fixed (6 applied, 10 remaining) ---
+117:7 SMP801 Test class `TestCommented`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `TestCommented` into module-level functions]
+129:7 SMP801 Test class `TestDetached`; use module-level test functions with a name prefix
+139:7 SMP801 Test class `TestHeader`; use module-level test functions with a name prefix
+--- fixed (7 applied, 12 remaining) ---
 import pytest
 
 
@@ -128,4 +131,31 @@ class TestBase:
 
 class TestDerived(TestBase):
     def test_more(self) -> None:
+        assert True
+
+
+# Shared setup lives in conftest.
+def test_commented_first() -> None:
+    assert True  # trailing
+
+
+# Regression for issue 12: zero must fail.
+@pytest.mark.slow
+def test_commented_zero() -> None:
+    # inside
+    assert True
+
+
+class TestDetached:
+    def test_first(self) -> None:
+        assert True
+
+    # A note apart from any method.
+
+    def test_second(self) -> None:
+        assert True
+
+
+class TestHeader:  # grouped for the report
+    def test_first(self) -> None:
         assert True

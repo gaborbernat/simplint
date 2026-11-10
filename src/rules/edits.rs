@@ -88,6 +88,27 @@ pub fn lines_with_trailing_blanks(source: &str, range: TextRange) -> TextRange {
     TextRange::new(start, end)
 }
 
+// The full lines of a statement with its decorators and the comment lines directly above it, which go wherever it goes.
+pub fn statement_block(source: &str, stmt: &Stmt) -> TextRange {
+    let start = match stmt {
+        Stmt::FunctionDef(ast::StmtFunctionDef { decorator_list, .. })
+        | Stmt::ClassDef(ast::StmtClassDef { decorator_list, .. }) => {
+            decorator_list.first().map_or(stmt.start(), Ranged::start)
+        }
+        _ => stmt.start(),
+    };
+    let mut line_start = source.line_start(start);
+    // A byte order mark is not a line to step back into.
+    while line_start > source.bom_start_offset() {
+        let previous = source.line_start(line_start - TextSize::from(1));
+        if !source[TextRange::new(previous, line_start)].trim_start().starts_with('#') {
+            break;
+        }
+        line_start = previous;
+    }
+    TextRange::new(line_start, source.full_line_end(stmt.end()))
+}
+
 // The keyword with the comma that separates it from a neighbor, so the rest of the call keeps its layout. A sole
 // argument goes with its trailing comma, up to the closing parenthesis.
 pub fn keyword_removal(checker: &Checker, call: &ast::ExprCall, keyword: &ast::Keyword) -> Option<TextRange> {
@@ -213,9 +234,10 @@ fn has_import(body: &[Stmt], module: &str, member: Option<&str>) -> bool {
 fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Edit {
     let body = checker.body();
     let source = checker.source;
+    let eol = checker.stylist.line_ending().as_str();
     let text = match member {
-        Some(member) => format!("from {module} import {member}\n"),
-        None => format!("import {module}\n"),
+        Some(member) => format!("from {module} import {member}{eol}"),
+        None => format!("import {module}{eol}"),
     };
     let key = (member.is_some(), module.to_ascii_lowercase());
     let preamble = body.iter().take_while(|stmt| future_import(stmt).is_some() || is_docstring_stmt(stmt)).count();
@@ -241,7 +263,7 @@ fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Ed
         return Edit::insertion(text, source.full_line_end(last.end()));
     }
     // The statement the import goes before follows the preamble, so the body has one there.
-    Edit::insertion(format!("{text}\n"), source.line_start(body[preamble].start()))
+    Edit::insertion(format!("{text}{eol}"), source.line_start(body[preamble].start()))
 }
 
 // The `=` debug fields of a module, each with its quote and the text of its debug specifier.

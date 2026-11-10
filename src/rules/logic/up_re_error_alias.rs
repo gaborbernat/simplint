@@ -10,8 +10,9 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let Expr::Attribute(attribute) = expr else {
         return;
     };
-    // `re.PatternError` exists from Python 3.13, and `re.PatternError is re.error` there.
-    if !checker.semantic().resolves_to(expr, &["re", "error"]) {
+    // `re.PatternError` exists from Python 3.13, and `re.PatternError is re.error` there. An assignment or `del` patches
+    // the module, where a rename would patch the other name.
+    if !attribute.ctx.is_load() || !checker.semantic().resolves_to(expr, &["re", "error"]) {
         return;
     }
     let fix = Fix::safe_edit(Edit::range_replacement("PatternError".to_owned(), attribute.attr.range()));

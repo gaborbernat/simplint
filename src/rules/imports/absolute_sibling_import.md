@@ -182,8 +182,10 @@ turn one of the two rules off. A project that runs flake8-lazy has no such confl
   An explicit `--select absolute-sibling-import` does not turn it back on for such a project. The project runs
   flake8-lazy when one of its `pyproject.toml` files, the one with `[project]` or the one with `[tool.simplint]`, has a
   `[tool.flake8-lazy]` table, or when the nearest `.pre-commit-config.yaml`, `.pre-commit-config.yml` or `prek.toml`
-  from the project upwards, stopping at the repository root, has a hook with id `flake8-lazy`. A `flake8-lazy` entry in
-  another hook's `additional_dependencies` does not count, since it only installs the plugin into flake8.
+  from the project upwards, stopping at the repository root, or at the linted project outside a repository, has a hook
+  with id `flake8-lazy`. A hook configuration simplint cannot read or parse counts as none, with a warning. A
+  `flake8-lazy` entry in another hook's `additional_dependencies` does not count, since it only installs the plugin into
+  flake8.
 
   ```toml config
   [tool.flake8-lazy]

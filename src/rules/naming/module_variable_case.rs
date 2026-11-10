@@ -15,7 +15,7 @@ pub fn module_variable_case(checker: &Checker) {
     for variable in checker.state().module_variables(checker) {
         let stem = variable.name.trim_start_matches('_');
         let prefix = &variable.name[..variable.name.len() - stem.len()];
-        let expected = format!("{prefix}{}", stem.to_ascii_uppercase());
+        let expected = format!("{prefix}{}", stem.to_uppercase());
         if expected == variable.name {
             continue;
         }

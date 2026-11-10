@@ -1034,3 +1034,38 @@ fn unused_default_leaves_public_functions_of_library_modules_alone() {
          fix available with `--fix --unsafe-fixes`.\n"
     );
 }
+
+// A fix writes the line ending the file uses, so a CRLF file comes out as the LF file does, with CRLF line endings.
+#[test_case(
+    "SMP513",
+    "py311",
+    "import contextlib\nimport os\n\n\ndef build(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        run()\n    finally:\n        os.chdir(old)\n"
+    ; "chdir_restore"
+)]
+#[test_case(
+    "SMP512",
+    "py314",
+    "import contextvars\n\nuser = contextvars.ContextVar(\"user\")\n\n\ndef handle(value):\n    token = user.set(value)\n    try:\n        run()\n    finally:\n        user.reset(token)\n"
+    ; "context_var_token_reset"
+)]
+#[test_case(
+    "SMP524",
+    "py313",
+    "import warnings\n\n\ndef connect(host):\n    warnings.warn(\"connect() is deprecated\", DeprecationWarning, stacklevel=2)\n    return host\n"
+    ; "warnings_deprecated"
+)]
+#[test_case(
+    "SMP526",
+    "py314",
+    "def total(items: list[int]) -> int:\n    count = 0\n    items.sort()\n    print(items); print(count)\n    return 0\n"
+    ; "early_assignment_split_line"
+)]
+fn logic_fix_keeps_crlf_line_endings(select: &str, target: &str, source: &str) {
+    let fix = |source: &str| {
+        let pyproject = format!("[tool.ruff]\ntarget-version = \"{target}\"\n");
+        common::fixed_file(&pyproject, "module.py", source, select).2
+    };
+    let fixed = fix(source);
+    assert_ne!(fixed, source);
+    assert_eq!(fix(&source.replace('\n', "\r\n")), fixed.replace('\n', "\r\n"));
+}

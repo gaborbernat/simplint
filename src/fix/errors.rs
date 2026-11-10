@@ -1,6 +1,7 @@
+use std::fmt;
 use std::path::Path;
 
-use anyhow::{Error, Result, anyhow, bail};
+use anyhow::{Error, anyhow};
 use colored::Colorize;
 use itertools::Itertools;
 use ruff_db::diagnostic::Diagnostic;
@@ -14,17 +15,62 @@ use ruff_python_parser::parse_unchecked_source;
 
 const MAX_ITERATIONS: usize = 100;
 
+// A bug one of simplint's fixes hit. The fix loop drops a withdrawal candidate that hits one, so it is reported only
+// once the loop gives up on the file.
+#[derive(Debug)]
+pub enum FixBug {
+    BrokenSyntax { transformed: String, rules: String, error: String },
+    NotConverging { rules: String },
+}
+
+impl FixBug {
+    pub fn report(&self, path: &Path) {
+        match self {
+            Self::BrokenSyntax { transformed, rules, error } => {
+                report_broken_syntax(path, transformed, rules, error, SIMPLINT);
+            }
+            Self::NotConverging { rules } => report_bug(
+                &format!("Failed to converge after {MAX_ITERATIONS} iterations."),
+                "Infinite%20loop",
+                path,
+                rules,
+                SIMPLINT,
+            ),
+        }
+    }
+}
+
+impl fmt::Display for FixBug {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::BrokenSyntax { .. } => "Fix introduced a syntax error",
+            Self::NotConverging { .. } => "Failed to converge",
+        })
+    }
+}
+
+impl std::error::Error for FixBug {}
+
 // Fails with the message of the syntax error a fix introduced, if `introduced` names one.
-pub fn ensure_syntax(path: &Path, transformed: &str, fixed: &FixTable, introduced: Result<(), String>) -> Result<()> {
-    let Err(error) = introduced else { return Ok(()) };
-    report_broken_syntax(path, transformed, fixed, &error, SIMPLINT);
-    bail!("Fix introduced a syntax error")
+pub fn ensure_syntax(transformed: &str, fixed: &FixTable, introduced: Result<(), String>) -> Result<(), FixBug> {
+    introduced.map_err(|error| FixBug::BrokenSyntax {
+        transformed: transformed.to_owned(),
+        rules: fixed_codes(fixed),
+        error,
+    })
+}
+
+pub fn ensure_converging(iterations: usize, diagnostics: &[Diagnostic]) -> Result<(), FixBug> {
+    if iterations < MAX_ITERATIONS {
+        return Ok(());
+    }
+    Err(FixBug::NotConverging { rules: codes(diagnostics.iter().map(Diagnostic::secondary_code_or_id)) })
 }
 
 // Ruff's `lint_fix` reports the same bugs in its own fixes.
 pub fn ruff_broken_syntax(path: &Path, transformed: &str, fixed: &FixTable) -> Error {
     let parsed = parse_unchecked_source(transformed, PySourceType::Python);
-    report_broken_syntax(path, transformed, fixed, &parsed.errors()[0].to_string(), RUFF);
+    report_broken_syntax(path, transformed, &fixed_codes(fixed), &parsed.errors()[0].to_string(), RUFF);
     anyhow!("Fix introduced a syntax error")
 }
 
@@ -59,8 +105,7 @@ type Tool = (&'static str, &'static str);
 const SIMPLINT: Tool = ("simplint", "gaborbernat/simplint");
 const RUFF: Tool = ("Ruff", "astral-sh/ruff");
 
-fn report_broken_syntax(path: &Path, transformed: &str, fixed: &FixTable, error: &str, tool: Tool) {
-    let rules = codes(fixed.iter().map(|(id, code, _)| code.map_or_else(|| id.as_str(), |code| code.as_str())));
+fn report_broken_syntax(path: &Path, transformed: &str, rules: &str, error: &str, tool: Tool) {
     if cfg!(debug_assertions) {
         eprintln!(
             "{}{} Fix introduced a syntax error in `{}` with rule codes {rules}: {error}\n---\n{transformed}\n---",
@@ -69,23 +114,12 @@ fn report_broken_syntax(path: &Path, transformed: &str, fixed: &FixTable, error:
             relativize_path(path),
         );
     } else {
-        report_bug("Fix introduced a syntax error. Reverting all changes.", "Fix%20error", path, &rules, tool);
+        report_bug("Fix introduced a syntax error. Reverting all changes.", "Fix%20error", path, rules, tool);
     }
 }
 
-pub fn ensure_converging(path: &Path, iterations: usize, diagnostics: &[Diagnostic]) -> Result<()> {
-    if iterations < MAX_ITERATIONS {
-        return Ok(());
-    }
-    let rules = codes(diagnostics.iter().map(Diagnostic::secondary_code_or_id));
-    report_bug(
-        &format!("Failed to converge after {MAX_ITERATIONS} iterations."),
-        "Infinite%20loop",
-        path,
-        &rules,
-        SIMPLINT,
-    );
-    bail!("Failed to converge")
+fn fixed_codes(fixed: &FixTable) -> String {
+    codes(fixed.iter().map(|(id, code, _)| code.map_or_else(|| id.as_str(), |code| code.as_str())))
 }
 
 fn codes<'a>(codes: impl IntoIterator<Item = &'a str>) -> String {

@@ -69,7 +69,12 @@ fn fix(
     {
         return None;
     }
-    let decorator = format!("{}@{}.deprecated({text})\n", indentation(source, name), checker.text(func.value.range()));
+    let decorator = format!(
+        "{}@{}.deprecated({text}){}",
+        indentation(source, name),
+        checker.text(func.value.range()),
+        checker.stylist.line_ending().as_str()
+    );
     // A body of only the warning keeps a statement, as the decorated function still has to run to its end.
     let removal = if body.len() == 1 {
         Edit::range_replacement("pass".to_owned(), warning.range())

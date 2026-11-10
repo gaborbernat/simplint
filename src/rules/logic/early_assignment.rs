@@ -180,18 +180,19 @@ fn move_fix(checker: &Checker, assign: &ast::StmtAssign, next: &Stmt) -> Option<
         return Some(Fix::safe_edits(Edit::range_deletion(lines), [Edit::insertion(text, start)]));
     }
     let indentation = leading_indentation(before);
+    let eol = checker.stylist.line_ending().as_str();
     let assign_text = checker.text(assign.range);
     let statement = checker.text(next.range());
     let mut content = if before.trim().is_empty() {
-        format!("{indentation}{assign_text}\n{indentation}{statement}")
+        format!("{indentation}{assign_text}{eol}{indentation}{statement}")
     } else {
         let head = before.trim_end().strip_suffix(';')?.trim_end();
-        format!("{head}\n{indentation}{assign_text}\n{indentation}{statement}")
+        format!("{head}{eol}{indentation}{assign_text}{eol}{indentation}{statement}")
     };
     if !after.trim().is_empty() {
         let rest = after.trim_start().strip_prefix(';')?.trim_start();
         if !rest.is_empty() {
-            content = format!("{content}\n{indentation}{rest}");
+            content = format!("{content}{eol}{indentation}{rest}");
         }
     }
     Some(Fix::safe_edits(Edit::range_deletion(lines), [Edit::range_replacement(content, TextRange::new(start, end))]))

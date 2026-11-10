@@ -2,15 +2,32 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-8:5 SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit [fix: Enter the `set` call as a `with` block]
-33:5 SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit [fix: Enter the `set` call as a `with` block]
-41:5 SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit
-50:5 SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit
---- fixed (2 applied, 2 remaining) ---
+23:5 SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit [fix: Enter the `set` call as a `with` block]
+48:5 SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit [fix: Enter the `set` call as a `with` block]
+56:5 SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit
+65:5 SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit
+182:5 SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit [fix: Enter the `set` call as a `with` block]
+190:5 SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit [fix: Enter the `set` call as a `with` block]
+--- fixed (4 applied, 2 remaining) ---
 import contextvars
+from contextvars import ContextVar
 
 request_id = contextvars.ContextVar("request_id")
 user = contextvars.ContextVar("user")
+tenant: ContextVar[str] = ContextVar("tenant")
+
+
+class Settings:
+    def set(self, value):
+        old = self.value
+        self.value = value
+        return old
+
+    def reset(self, old):
+        self.value = old
+
+
+settings = Settings()
 
 
 def simple(value):
@@ -164,3 +181,37 @@ def bare_finally(value):
         return process()
     finally:
         token
+
+
+def annotated_module_variable(value):
+    with tenant.set(value):
+        return process()
+
+
+def annotated_parameter(variable: ContextVar[str], value):
+    with variable.set(value):
+        return process()
+
+
+def unannotated_parameter(variable, value):
+    token = variable.set(value)
+    try:
+        return process()
+    finally:
+        variable.reset(token)
+
+
+def other_class(value):
+    token = settings.set(value)
+    try:
+        return process()
+    finally:
+        settings.reset(token)
+
+
+def attribute_receiver(holder, value):
+    token = holder.variable.set(value)
+    try:
+        return process()
+    finally:
+        holder.variable.reset(token)

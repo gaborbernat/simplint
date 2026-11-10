@@ -1,0 +1,87 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+50:1 SMP202 `_PAIRS` is used by one function only; define it there [unsafe fix: Move `_PAIRS` into `has_pair`]
+57:1 SMP202 `_NAMES` is used by one function only; define it there [unsafe fix: Move `_NAMES` into `others`]
+65:1 SMP202 `_LIMITS` is used by one function only; define it there [unsafe fix: Move `_LIMITS` into `total_limit`]
+75:1 SMP202 `_DEFAULTS` is used by one function only; define it there [unsafe fix: Move `_DEFAULTS` into `merged`]
+76:1 SMP202 `_PARTS` is used by one function only; define it there [unsafe fix: Move `_PARTS` into `merged`]
+--- fixed (5 applied, 0 remaining) ---
+import heapq
+
+_QUEUE = []
+
+
+def push(item: int) -> int:
+    heapq.heappush(_QUEUE, item)
+    return len(_QUEUE)
+
+
+_REGISTRY = {}
+
+
+def registry() -> dict[str, int]:
+    return _REGISTRY
+
+
+_ALIASED = [1]
+
+
+def alias() -> list[int]:
+    aliased = _ALIASED
+    return aliased
+
+
+_YIELDED = {"a": 1}
+
+
+def produce() -> object:
+    yield _YIELDED
+
+
+_NESTED = {"a": [1]}
+
+
+def nested() -> list[int]:
+    return _NESTED["a"]
+
+
+_ROWS = ([1], [2])
+
+
+def rows() -> int:
+    total = 0
+    for row in _ROWS:
+        total += sum(row)
+    return total
+
+
+def has_pair(item: list[int]) -> bool:
+    pairs = [[1, 2]]
+    return item in pairs and len(pairs) > 0
+
+
+def others(name: str) -> list[str]:
+    names = ["a", "b"]
+    ordered = sorted(names)
+    return [*ordered, *(item for item in names if item != name), names[0], str(names.index(name))]
+
+
+def total_limit(key: str) -> int:
+    limits = {"low": 1, "high": 2}
+    total = sum(limits.values()) + max(limits)
+    for limit in limits:
+        total += len(limit)
+    return total + limits.get(key, 0) + len(list(limits.items()))
+
+
+def merged(extra: dict[str, int]) -> tuple[dict[str, int], list[str]]:
+    return {**{"a": 1}, **extra}, [*["a"], "b"]
+
+
+_REPEATED = [1] * 3
+
+
+def repeated() -> list[int]:
+    return _REPEATED

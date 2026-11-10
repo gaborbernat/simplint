@@ -468,6 +468,24 @@ def run(items: list[str], log: Log) -> None:
 
 Here `log.write` is looked up before `len(items)` runs, which differs only when that lookup has side effects.
 
+The fix is also unsafe when the value calls or looks something up and the next statement reads a name before the read
+that sees what the call changes: a name formatted in an f-string field or unpacked with `*` or `**`, which takes the
+object's state at that point, or a name some function in the module declares `global` or `nonlocal`, which the call can
+rebind.
+
+```python report
+def run(stack: list[int]) -> str:
+    top = stack.pop()
+    return f"{stack} after popping {top}"
+```
+
+```python fixed
+def run(stack: list[int]) -> str:
+    return f"{stack} after popping {stack.pop()}"
+```
+
+Inlined, `stack` is formatted before `stack.pop()` runs, so the message shows the popped item still in the list.
+
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules

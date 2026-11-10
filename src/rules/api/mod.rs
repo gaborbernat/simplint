@@ -35,8 +35,9 @@ use crate::syntax::{Exports, ReturnVisitor};
 // The one-name-per-line layout `ruff format` gives a list with a trailing comma, so the fix needs no formatter pass.
 fn exploded(checker: &Checker, base: &str, items: &[String]) -> String {
     let indent = checker.stylist.indentation().as_str();
-    let lines = items.iter().fold(String::new(), |text, item| text + base + indent + item + ",\n");
-    format!("[\n{lines}{base}]")
+    let eol = checker.stylist.line_ending().as_str();
+    let lines = items.iter().fold(String::new(), |text, item| text + base + indent + item + "," + eol);
+    format!("[{eol}{lines}{base}]")
 }
 
 // A star import of this module can call its functions under names no file spells out, so none is judged. A module

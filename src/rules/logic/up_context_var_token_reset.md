@@ -69,7 +69,8 @@ def handle(value):
 ## What it does
 
 Reports an assignment `token = variable.set(value)` followed directly by a `try` whose only clause is a `finally` that
-holds `variable.reset(token)`, with no `except` and no `else`.
+holds `variable.reset(token)`, with no `except` and no `else`. `variable` is a name the file assigns a
+`contextvars.ContextVar(...)` call to, or a parameter annotated as `ContextVar`.
 
 ### Active on
 
@@ -154,6 +155,32 @@ with request_id.set("one"):
       print(request_id.get())
   finally:
       user.reset(token)
+  ```
+
+- **A receiver not known to be a `ContextVar`**: an attribute, an unannotated parameter, or an object of another class,
+  whose `set` may return something that is not a context manager.
+
+  ```toml config
+  [project]
+  requires-python = ">=3.14"
+  ```
+
+  ```python ok
+  class Settings:
+      def set(self, value):
+          old, self.value = self.value, value
+          return old
+
+      def reset(self, old):
+          self.value = old
+
+
+  settings = Settings()
+  token = settings.set("one")
+  try:
+      print(settings.value)
+  finally:
+      settings.reset(token)
   ```
 
 - **Target versions before 3.14**: the token is not a context manager there, and `with` raises `TypeError`.

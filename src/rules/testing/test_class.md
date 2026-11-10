@@ -88,6 +88,15 @@ No fix is offered when:
           assert parse("") == []
   ```
 
+- a comment in the class is neither inside a method nor on the lines directly above one, such as a comment on the class
+  line, which no function would carry;
+
+  ```python report file=tests/test_noted.py
+  class TestParser:  # grouped for the report
+      def test_handles_empty(self) -> None:
+          assert parse("") == []
+  ```
+
 - a method's decorators or default values name a type parameter of its class, which is not bound where they are
   evaluated;
 

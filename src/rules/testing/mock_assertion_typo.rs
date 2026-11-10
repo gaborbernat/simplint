@@ -3,7 +3,7 @@ use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
@@ -55,6 +55,7 @@ pub fn mock_assertion_typo(checker: &Checker) {
     let ruff_pgh005 = checker.settings.from_ruff.ruff_runs(RuffRule::InvalidMockAccess);
     let mut finder = Typos {
         found: Vec::new(),
+        fixable: FxHashMap::default(),
         ruff_reported: FxHashSet::default(),
         ruff_pgh005,
         preview: checker.settings.from_ruff.preview,
@@ -68,12 +69,18 @@ pub fn mock_assertion_typo(checker: &Checker) {
         {
             continue;
         }
-        let fix = Fix::unsafe_edit(Edit::range_replacement(intended.to_owned(), attr.range()));
+        let fix = finder.fixable.get(&attr.range()).map(|prefix| {
+            let rename = Edit::range_replacement(intended.to_owned(), attr.range());
+            match prefix {
+                Some(prefix) => Fix::unsafe_edits(Edit::range_deletion(*prefix), [rename]),
+                None => Fix::unsafe_edit(rename),
+            }
+        });
         checker.report_fix(
             Rule::MockAssertionTypo,
             attr.range(),
             format!("`{name}` is not a mock assertion; it is `{intended}`"),
-            Some(fix),
+            fix,
             format!("Rename to `{intended}`"),
         );
     }
@@ -81,6 +88,10 @@ pub fn mock_assertion_typo(checker: &Checker) {
 
 struct Typos<'a> {
     found: Vec<(&'a ast::Identifier, &'static str)>,
+    // The names called as a statement of their own, by their range, which the rename turns into a check. A call that is
+    // the whole test of an `assert` maps to the `assert ` prefix to drop, since an assertion method returns `None`.
+    // Renamed anywhere else, the name would be a bound method, which is always true, or a `None` the code goes on to use.
+    fixable: FxHashMap<TextRange, Option<TextRange>>,
     // The names Ruff's PGH005 reports, by their range, so this rule leaves them to it when PGH005 runs.
     ruff_reported: FxHashSet<TextRange>,
     ruff_pgh005: bool,
@@ -90,6 +101,19 @@ struct Typos<'a> {
 
 impl<'a> Visitor<'a> for Typos<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        match stmt {
+            Stmt::Expr(ast::StmtExpr { value, .. }) => {
+                if let Some(attr) = called_attribute(value) {
+                    self.fixable.insert(attr.range(), None);
+                }
+            }
+            Stmt::Assert(ast::StmtAssert { test, msg: None, .. }) => {
+                if let Some(attr) = called_attribute(test) {
+                    self.fixable.insert(attr.range(), Some(TextRange::new(stmt.start(), test.start())));
+                }
+            }
+            _ => {}
+        }
         match stmt {
             // Code under `assertRaises` or `pytest.raises` expects the call to fail, so the misspelling is the point.
             Stmt::With(ast::StmtWith { items, .. }) if items.iter().any(|item| expects_error(&item.context_expr)) => {}
@@ -130,6 +154,13 @@ fn ruff_reported_name(expr: &Expr) -> Option<&ast::Identifier> {
         _ => return None,
     };
     RUFF_NON_EXISTENT_NAMES.contains(&attribute.attr.as_str()).then_some(&attribute.attr)
+}
+
+fn called_attribute(expr: &Expr) -> Option<&ast::Identifier> {
+    let Expr::Call(ast::ExprCall { func, .. }) = expr else {
+        return None;
+    };
+    func.as_attribute_expr().map(|attribute| &attribute.attr)
 }
 
 fn expects_error(expr: &Expr) -> bool {

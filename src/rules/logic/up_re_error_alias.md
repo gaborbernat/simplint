@@ -97,6 +97,25 @@ def compile_pattern(text):
 
 ### Exceptions
 
+- **An assignment or `del`**: it patches the module, and renamed it would patch `re.PatternError` while code that reads
+  `re.error` keeps the original.
+
+  ```toml config
+  [project]
+  requires-python = ">=3.13"
+  ```
+
+  ```python ok
+  import re
+
+
+  class LoggedError(re.PatternError):
+      pass
+
+
+  re.error = LoggedError
+  ```
+
 - **Targets before Python 3.13**: `re.PatternError` does not exist there.
 
   ```toml config

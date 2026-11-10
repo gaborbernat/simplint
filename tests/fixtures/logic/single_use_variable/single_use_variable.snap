@@ -21,7 +21,15 @@ expression: "lint_fixture(rule, fixture, target_version)"
 299:9 SMP504 `total` is used once, right below; inline its value [fix: Inline `total`]
 316:5 SMP504 `pair` is used once, right below; inline its value [fix: Inline `pair`]
 321:5 SMP504 `names` is used once, right below; inline its value [fix: Inline `names`]
---- fixed (20 applied, 0 remaining) ---
+335:5 SMP504 `top` is used once, right below; inline its value [unsafe fix: Inline `top`]
+340:5 SMP504 `added` is used once, right below; inline its value [unsafe fix: Inline `added`]
+345:5 SMP504 `head` is used once, right below; inline its value [unsafe fix: Inline `head`]
+350:5 SMP504 `removed` is used once, right below; inline its value [unsafe fix: Inline `removed`]
+355:5 SMP504 `value` is used once, right below; inline its value [unsafe fix: Inline `value`]
+367:5 SMP504 `value` is used once, right below; inline its value [unsafe fix: Inline `value`]
+372:5 SMP504 `count` is used once, right below; inline its value [fix: Inline `count`]
+377:5 SMP504 `shown` is used once, right below; inline its value [fix: Inline `shown`]
+--- fixed (28 applied, 0 remaining) ---
 import os
 from typing import Any
 
@@ -323,3 +331,51 @@ def inlined_yield_from_tuple(first: int, second: int):
 
 def inlined_yield_from(items: list[str]):
     yield from sorted(items)
+
+
+calls = 0
+
+
+def bump() -> int:
+    global calls
+    calls += 1
+    return calls
+
+
+def unsafe_before_formatted_name(stack: list[int]) -> str:
+    return f"{stack} after popping {stack.pop()}"
+
+
+def unsafe_before_double_star(base: dict[str, int], extra: dict[str, int]) -> dict[str, int]:
+    return {**base, "n": (base.update(extra) or len(base))}
+
+
+def unsafe_before_star(items: list[int]) -> None:
+    print([*items], items.pop())
+
+
+def unsafe_before_keyword_unpacking(options: dict[str, int]) -> None:
+    print(**options, removed=options.pop("a"))
+
+
+def unsafe_before_global_name() -> None:
+    print(calls, bump())
+
+
+def unsafe_before_nonlocal_name() -> tuple[int, int]:
+    total = 0
+
+    def step() -> int:
+        nonlocal total
+        total += 1
+        return total
+
+    return total, step()
+
+
+def inlined_after_parameter(items: list[int], log: list[int]) -> None:
+    print(log, len(items))
+
+
+def inlined_pure_after_formatted_name(stack: list[int], top: int) -> str:
+    return f"{stack} after popping {(top + 1)}"

@@ -320,3 +320,59 @@ def inlined_yield_from_tuple(first: int, second: int):
 def inlined_yield_from(items: list[str]):
     names = sorted(items)
     yield from names
+
+
+calls = 0
+
+
+def bump() -> int:
+    global calls
+    calls += 1
+    return calls
+
+
+def unsafe_before_formatted_name(stack: list[int]) -> str:
+    top = stack.pop()
+    return f"{stack} after popping {top}"
+
+
+def unsafe_before_double_star(base: dict[str, int], extra: dict[str, int]) -> dict[str, int]:
+    added = base.update(extra) or len(base)
+    return {**base, "n": added}
+
+
+def unsafe_before_star(items: list[int]) -> None:
+    head = items.pop()
+    print([*items], head)
+
+
+def unsafe_before_keyword_unpacking(options: dict[str, int]) -> None:
+    removed = options.pop("a")
+    print(**options, removed=removed)
+
+
+def unsafe_before_global_name() -> None:
+    value = bump()
+    print(calls, value)
+
+
+def unsafe_before_nonlocal_name() -> tuple[int, int]:
+    total = 0
+
+    def step() -> int:
+        nonlocal total
+        total += 1
+        return total
+
+    value = step()
+    return total, value
+
+
+def inlined_after_parameter(items: list[int], log: list[int]) -> None:
+    count = len(items)
+    print(log, count)
+
+
+def inlined_pure_after_formatted_name(stack: list[int], top: int) -> str:
+    shown = top + 1
+    return f"{stack} after popping {shown}"

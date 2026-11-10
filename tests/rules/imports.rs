@@ -264,6 +264,16 @@ fn absolute_sibling_import_stops_at_the_repository_root() {
     assert!(reported(project_of(&files).path().join("outer/repo").as_path()));
 }
 
+// Outside a repository, the search stops at the run's project, so a hook above it, as in the home directory, does not
+// count.
+#[test]
+fn absolute_sibling_import_outside_a_repository_stops_at_the_project() {
+    let mut files = sibling_package("home/repo/");
+    files.push(("home/.pre-commit-config.yaml".to_owned(), HOOK));
+    files.push(("home/repo/pyproject.toml".to_owned(), PROJECT));
+    assert!(reported(project_of(&files).path().join("home/repo").as_path()));
+}
+
 // A `[tool.flake8-lazy]` table in the settings pyproject, which a workspace member's own `pyproject.toml` does not hold.
 #[test]
 fn absolute_sibling_import_finds_table_in_settings_pyproject() {
@@ -317,27 +327,27 @@ fn isolated_run_does_not_read_hook_configurations() {
     assert_eq!((isolated.contains("SMP302"), reported(root.path())), (true, false));
 }
 
-// A hook configuration that cannot be parsed only stops the runs whose rules read it.
-#[test_case("SMP101", 0 ; "rule_off_does_not_read_it")]
-#[test_case("absolute-sibling-import", 2 ; "rule_on_reads_it")]
-fn unparsable_hook_configuration_stops_only_runs_that_read_it(select: &str, code: i32) {
+// A hook configuration that cannot be parsed counts as no hook, with a warning from the runs whose rules read it.
+#[test_case("SMP101", (0, false) ; "rule_off_does_not_read_it")]
+#[test_case("absolute-sibling-import", (1, true) ; "rule_on_reads_it")]
+fn unparsable_hook_configuration_counts_as_no_hook(select: &str, expected: (i32, bool)) {
     let mut files = sibling_package("");
     files.push(("prek.toml".to_owned(), "[[repos]\n"));
     let root = project_of(&files);
     let (status, _, stderr) = common::check(root.path(), &["--select", select]);
-    assert_eq!((status, stderr.contains("Failed to parse")), (code, code == 2));
+    assert_eq!((status, stderr.contains("Failed to parse")), expected);
 }
 
-// A hook configuration that cannot be read only stops the runs whose rules read it.
-#[test_case("SMP101", 0 ; "rule_off_does_not_read_it")]
-#[test_case("absolute-sibling-import", 2 ; "rule_on_reads_it")]
-fn unreadable_hook_configuration_stops_only_runs_that_read_it(select: &str, code: i32) {
+// A hook configuration that cannot be read counts as no hook, with a warning from the runs whose rules read it.
+#[test_case("SMP101", (0, false) ; "rule_off_does_not_read_it")]
+#[test_case("absolute-sibling-import", (1, true) ; "rule_on_reads_it")]
+fn unreadable_hook_configuration_counts_as_no_hook(select: &str, expected: (i32, bool)) {
     let mut files = sibling_package("");
     files.push((".pre-commit-config.yaml".to_owned(), HOOK));
     let root = project_of(&files);
     common::set_mode(&root.path().join(".pre-commit-config.yaml"), 0o000);
     let (status, _, stderr) = common::check(root.path(), &["--select", select]);
-    assert_eq!((status, stderr.contains("Failed to read")), (code, code == 2));
+    assert_eq!((status, stderr.contains("Failed to read")), expected);
 }
 
 // A hook configuration in Latin-1 is read as far as its ids go, so its other bytes do not stop the run.

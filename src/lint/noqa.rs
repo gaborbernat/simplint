@@ -202,20 +202,33 @@ impl<'a> Suppressions<'a> {
     ) -> (usize, String) {
         let mut codes: BTreeMap<TextSize, BTreeSet<String>> = BTreeMap::new();
         for (diagnostic, line) in pending {
-            if self
-                .lines
-                .get(line)
-                .is_some_and(|directives| directives.noqa.as_ref().is_some_and(|(_, noqa)| noqa.is_blanket()))
+            let directives = self.lines.get(line);
+            if directives.is_some_and(|directives| directives.noqa.as_ref().is_some_and(|(_, noqa)| noqa.is_blanket()))
             {
                 continue;
             }
-            let code = diagnostic.secondary_code().expect("a rule diagnostic has a code");
-            let name = if matches!(kind, SuppressionKind::Ignore) {
-                Rule::from_code(code.as_str()).map_or_else(|| code.to_string(), |rule| rule.name().to_owned())
-            } else {
-                code.to_string()
+            let code = diagnostic.secondary_code().expect("a rule diagnostic has a code").as_str();
+            let line_codes = codes.entry(*line).or_default();
+            let name = match kind {
+                SuppressionKind::Noqa => code.to_owned(),
+                // Merging into the line's ignore comment renames its numeric codes, which settles SMP008 there.
+                SuppressionKind::Ignore
+                    if code == Rule::NumericIgnore.code()
+                        && directives.and_then(|directives| directives.ignore.as_ref()).is_some_and(
+                            |(start, _)| {
+                                diagnostic.range().is_some_and(|range| {
+                                    TextRange::new(*start, self.source.line_end(*start)).contains(range.start())
+                                })
+                            },
+                        ) =>
+                {
+                    continue;
+                }
+                SuppressionKind::Ignore => {
+                    Rule::from_code(code).map_or_else(|| code.to_owned(), |rule| rule.name().to_owned())
+                }
             };
-            codes.entry(*line).or_default().insert(name);
+            line_codes.insert(name);
         }
         let line_ending = self.stylist.line_ending();
         let mut output = String::with_capacity(self.source.len());
@@ -229,7 +242,7 @@ impl<'a> Suppressions<'a> {
                 }
                 SuppressionKind::Ignore => directives.ignore.clone(),
             });
-            let (edit_range, blank_line) = if let Some((start, existing_codes)) = existing {
+            let (edit_range, blank_line, suffix) = if let Some((start, existing_codes)) = existing {
                 line_codes.extend(existing_codes.into_iter().map(|code| {
                     if matches!(kind, SuppressionKind::Ignore) {
                         Rule::from_code(&code).map_or(code.clone(), |rule| rule.name().to_owned())
@@ -240,11 +253,18 @@ impl<'a> Suppressions<'a> {
                 let prefix = &self.source[TextRange::new(line_range.start(), start)];
                 let blank = prefix.trim().is_empty();
                 let edit_start = if blank { start } else { line_range.start() + TextSize::of(prefix.trim_end()) };
-                (TextRange::new(edit_start, line_range.end()), blank)
+                let line_end = self.source.line_end(start);
+                let after = &self.source[TextRange::new(self.codes_end(start, kind), line_end)];
+                (TextRange::new(edit_start, line_end), blank, with_reason(after, reason))
             } else {
                 let trimmed = self.source[line_range].trim_end();
                 let start = line_range.start() + TextSize::of(trimmed);
-                (TextRange::new(start, line_range.end()), trimmed.trim_start().is_empty())
+                let reason = reason.map(|reason| format!(" {reason}")).unwrap_or_default();
+                (
+                    TextRange::new(start, line_range.end()),
+                    trimmed.trim_start().is_empty(),
+                    [reason.as_str(), line_ending.as_str()].concat(),
+                )
             };
             output.push_str(&self.source[TextRange::new(last, edit_range.start())]);
             if !blank_line {
@@ -255,13 +275,44 @@ impl<'a> Suppressions<'a> {
                 SuppressionKind::Noqa => format!("# noqa: {joined}"),
                 SuppressionKind::Ignore => format!("# simplint: ignore[{joined}]"),
             };
-            let reason = reason.map(|reason| format!(" {reason}")).unwrap_or_default();
-            output.push_str(&[comment.as_str(), &reason, line_ending.as_str()].concat());
+            output.push_str(&comment);
+            output.push_str(&suffix);
             last = edit_range.end();
         }
         output.push_str(&self.source[usize::from(last)..]);
         (count, output)
     }
+
+    // Where the codes of the directive whose `#` is at `start` end; its reason and any later comment follow.
+    fn codes_end(&self, start: TextSize, kind: SuppressionKind) -> TextSize {
+        let comment = &self.source[TextRange::new(start, self.source.line_end(start))];
+        let head = match kind {
+            SuppressionKind::Noqa => {
+                let after = strip_noqa(comment[1..].trim_start()).expect("the directive starts at its `#`");
+                let (_, rest) = noqa_codes(after).expect("the directive's codes parsed");
+                comment[..comment.len() - rest.len()].trim_end()
+            }
+            SuppressionKind::Ignore => {
+                let (offset, codes) = ignore_contents(comment).expect("the directive starts at its `#`");
+                &comment[..=usize::from(offset) + codes.len()]
+            }
+        };
+        start + TextSize::of(head)
+    }
+}
+
+// The text after a directive's codes with `reason` in place of the one it gives, keeping any comment after the reason.
+fn with_reason(after: &str, reason: Option<&str>) -> String {
+    let Some(reason) = reason else {
+        return after.to_owned();
+    };
+    let (old, tail) = after.split_at(after.find('#').unwrap_or(after.len()));
+    let gap = match &old[old.trim_end().len()..] {
+        _ if tail.is_empty() => "",
+        "" => "  ",
+        gap => gap,
+    };
+    format!(" {reason}{gap}{tail}")
 }
 
 fn remove_ignore_selector(source: &str, start: TextSize, selector: &str) -> Option<(TextRange, String)> {
@@ -305,26 +356,29 @@ fn changed_region(before: &str, after: &str) -> (TextRange, String) {
     (range, after[prefix..after.len() - suffix].to_owned())
 }
 
+// Whether the edit leaves no report that was not there before. A report inside the edited span, such as SMP008 on the
+// codes of the comment it edits, has no position to map back, so it matches any report of the same rule and message
+// that started inside the span before.
 fn same_or_fewer_reports(before: &[Diagnostic], after: &[Diagnostic], edit: TextRange, new_len: usize) -> bool {
+    let start = edit.start().to_usize();
+    let old_len = edit.len().to_usize();
     let mut known: FxHashMap<(&str, &str, usize), usize> = FxHashMap::default();
     for report in before {
         let Some(range) = report.range() else { return false };
-        *known
-            .entry((report.secondary_code_or_id(), report.headline_message(), range.start().to_usize()))
-            .or_default() += 1;
+        let position = range.start().to_usize();
+        let mapped = if (start..start + old_len).contains(&position) { start } else { position };
+        *known.entry((report.secondary_code_or_id(), report.headline_message(), mapped)).or_default() += 1;
     }
-    let start = edit.start().to_usize();
-    let old_len = edit.len().to_usize();
     let mut observed = FxHashMap::default();
     after.iter().all(|report| {
         let Some(range) = report.range() else { return false };
         let position = range.start().to_usize();
         let mapped = if position < start {
             position
-        } else if position >= start + new_len {
-            position + old_len - new_len
+        } else if position < start + new_len {
+            start
         } else {
-            return false;
+            position + old_len - new_len
         };
         let key = (report.secondary_code_or_id(), report.headline_message(), mapped);
         let count = observed.entry(key).or_insert(0);
@@ -404,12 +458,13 @@ impl Directive {
         self.codes.is_empty()
     }
 
-    // A blanket `# noqa` is itself what SMP003 and SMP004 report, so it cannot silence those reports.
+    // A blanket `# noqa` is itself what SMP003 and SMP004 report, so it cannot silence those reports. A `file-ignore`
+    // takes rule names as well as codes, as a line's `ruff: ignore` does.
     fn suppresses(&self, code: &str) -> bool {
         if self.is_blanket() {
             code != Rule::SuppressionWithoutReason.code() && code != Rule::BlanketIgnore.code()
         } else {
-            self.codes.iter().any(|candidate| candidate == code)
+            self.codes.iter().any(|candidate| matches_ignore(candidate, code))
         }
     }
 }

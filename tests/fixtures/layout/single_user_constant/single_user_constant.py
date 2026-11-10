@@ -212,3 +212,10 @@ def resource(project: str, location: str) -> str:
         project,
         location,
     )
+
+
+_ÉTAT = 2
+
+
+def twice() -> int:
+    return _ÉTAT + _ÉTAT

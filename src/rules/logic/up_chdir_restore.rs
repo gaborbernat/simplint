@@ -51,7 +51,7 @@ fn report_restore(checker: &Checker, assign: &ast::StmtAssign, change: &Expr, tr
     if identifier_uses(checker, scope_of(checker, assign.range()), old.id.as_str()) != 2 {
         return;
     }
-    let header = format!("with contextlib.chdir({}):\n", checker.text(target));
+    let header = format!("with contextlib.chdir({}):", checker.text(target));
     let fix = contextlib_import(checker).and_then(|imports| {
         let [head, tail] = wrap_edits(checker, assign.range(), try_stmt, &header)?;
         let mut edits = vec![tail];

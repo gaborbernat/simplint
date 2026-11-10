@@ -56,8 +56,8 @@ pub fn identifier_uses(checker: &Checker, scope: TextRange, name: &str) -> usize
         .count()
 }
 
-// The edits that replace `first` through the `try` header with `header`, and delete the `finally` clause. Comments in
-// the lines they remove would go with them, so they block the edit.
+// The edits that replace `first` through the `try` header with the line `header`, and delete the `finally` clause.
+// Comments in the lines they remove would go with them, so they block the edit.
 pub fn wrap_edits(checker: &Checker, first: TextRange, try_stmt: &ast::StmtTry, header: &str) -> Option<[Edit; 2]> {
     let source = checker.source;
     let body_first = try_stmt.body.first()?;
@@ -71,5 +71,6 @@ pub fn wrap_edits(checker: &Checker, first: TextRange, try_stmt: &ast::StmtTry, 
     if checker.has_comment_in(head) || checker.has_comment_in(tail) {
         return None;
     }
-    Some([Edit::range_replacement(header.to_owned(), head), Edit::range_deletion(tail)])
+    let header = format!("{header}{}", checker.stylist.line_ending().as_str());
+    Some([Edit::range_replacement(header, head), Edit::range_deletion(tail)])
 }

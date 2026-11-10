@@ -18,11 +18,11 @@ pub fn definition_before_use(checker: &Checker) {
     let uses = module_uses(checker, body, &runtime_names);
     let owners = owners(body.len(), &uses);
     let expected = expected_order(body.len(), &owners, &uses);
-    report_misplaced(checker, &Suite { body, separator: "\n\n" }, &expected, &owners);
+    report_misplaced(checker, &Suite { body, blank_lines: 2 }, &expected, &owners);
     for class in checker.class_defs() {
         let order = class_order(checker, class);
         let expected = order.expected(Arrangement::Helpers);
-        report_misplaced(checker, &Suite { body: &class.body, separator: "\n" }, &expected, &order.helper_owners());
+        report_misplaced(checker, &Suite { body: &class.body, blank_lines: 1 }, &expected, &order.helper_owners());
     }
 }
 

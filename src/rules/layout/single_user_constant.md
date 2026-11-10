@@ -41,7 +41,7 @@ keeps the report.
 
 A constant here is a name assigned once, with `=` or an
 [annotated assignment](https://docs.python.org/3/reference/simple_stmts.html#annotated-assignment-statements), to a
-value written out in the source. Such a value holds no state shared between calls, so it can move into the function. It
+value written out in the source. Such a value is built the same way on every call, so it can move into the function. It
 is reported when every reference to it sits inside the body of a single top-level function or method, including
 functions nested in it. These values count:
 
@@ -202,8 +202,12 @@ functions nested in it. These values count:
   config._TIMEOUT = 5
   ```
 
-- **Containers the function changes**: they are state that must outlive each call. The function calls a mutating method
-  on them such as `add`, `append` or `update`, or assigns or deletes an item.
+- **Containers other code can reach or change**: a list, set or dict, or a tuple holding one, is state that must outlive
+  each call. A function that calls a method on it such as `add`, returns it, passes it to another function or binds
+  another name to it lets that state be changed or kept. A container stays reportable only when the function tests
+  membership with `in` or calls `len` on it, or, when its items are immutable, iterates, indexes or unpacks it, calls
+  `copy`, `count`, `get`, `index`, `items`, `keys` or `values` on it, or passes it to a builtin that copies or reduces
+  it, such as `sorted` or `sum`.
 
   ```python ok
   _SEEN = {"a"}
@@ -211,6 +215,17 @@ functions nested in it. These values count:
 
   def mark(item: str) -> None:
       _SEEN.add(item)
+  ```
+
+  ```python ok
+  import heapq
+
+  _QUEUE = []
+
+
+  def push(item: int) -> int:
+      heapq.heappush(_QUEUE, item)
+      return len(_QUEUE)
   ```
 
 - **Constants referenced at import time**, such as in a default value or decorator, or in any annotation: the value must

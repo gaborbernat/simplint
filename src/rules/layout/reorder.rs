@@ -1,17 +1,17 @@
 use std::ops::RangeInclusive;
 
 use ruff_diagnostics::{Edit, Fix};
-use ruff_python_ast::{self as ast, Stmt};
-use ruff_source_file::LineRanges;
-use ruff_text_size::{Ranged, TextRange, TextSize};
+use ruff_python_ast::Stmt;
+use ruff_text_size::{Ranged, TextRange};
 
 use super::definition_time::calls_at_definition;
 use crate::lint::checker::Checker;
+use crate::rules::edits::statement_block;
 use crate::syntax::last_segment;
 
 pub(super) struct Suite<'a> {
     pub(super) body: &'a [Stmt],
-    pub(super) separator: &'static str,
+    pub(super) blank_lines: usize,
 }
 
 // The positions a reordering moves: from the first to the last statement that `expected` puts elsewhere.
@@ -21,7 +21,7 @@ pub(super) fn moved_span(expected: &[usize]) -> Option<RangeInclusive<usize>> {
     Some(low..=high)
 }
 
-// The fix that puts the statements at `expected` in the span's place, with the separator between them. Each statement
+// The fix that puts the statements at `expected` in the span's place, with blank lines between them. Each statement
 // keeps its decorators and the comment lines above it. `shifts_unsafely` tells the statements whose move is unsafe.
 pub(super) fn reorder_fix(
     checker: &Checker,
@@ -43,42 +43,23 @@ pub(super) fn reorder_fix(
     {
         return None;
     }
+    let eol = checker.stylist.line_ending().as_str();
     let text: Vec<String> = expected[span.clone()]
         .iter()
         .map(|index| {
             let block = &source[blocks[*index]];
-            if block.ends_with('\n') { block.to_owned() } else { format!("{block}\n") }
+            if block.ends_with('\n') { block.to_owned() } else { format!("{block}{eol}") }
         })
         .collect();
-    let mut replacement = text.join(suite.separator);
+    let mut replacement = text.join(&eol.repeat(suite.blank_lines));
     if !source[region].ends_with('\n') {
-        replacement.pop();
+        replacement.truncate(replacement.len() - eol.len());
     }
     let moved_unsafe = span
         .filter(|position| expected[*position] != *position)
         .any(|position| shifts_unsafely(&suite.body[expected[position]]));
     let edit = Edit::range_replacement(replacement, region);
     Some(if moved_unsafe { Fix::unsafe_edit(edit) } else { Fix::safe_edit(edit) })
-}
-
-fn statement_block(source: &str, stmt: &Stmt) -> TextRange {
-    let start = match stmt {
-        Stmt::FunctionDef(ast::StmtFunctionDef { decorator_list, .. })
-        | Stmt::ClassDef(ast::StmtClassDef { decorator_list, .. }) => {
-            decorator_list.first().map_or(stmt.start(), Ranged::start)
-        }
-        _ => stmt.start(),
-    };
-    let mut line_start = source.line_start(start);
-    // A byte order mark is not a line to step back into.
-    while line_start > source.bom_start_offset() {
-        let previous = source.line_start(line_start - TextSize::from(1));
-        if !source[TextRange::new(previous, line_start)].trim_start().starts_with('#') {
-            break;
-        }
-        line_start = previous;
-    }
-    TextRange::new(line_start, source.full_line_end(stmt.end()))
 }
 
 // Decorators with no effect of their own, so moving a decorated method past another only changes the order of

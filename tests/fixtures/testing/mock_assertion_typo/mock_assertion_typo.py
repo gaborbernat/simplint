@@ -32,6 +32,10 @@ def check(mock: MagicMock, numbers: list[int]) -> None:
     assert mock.awaited_once
     assert not mock.not_called()
     assert mock.not_called(mock.called_with)
+    assert mock.called_once_with(1), "called once"
+    flag = mock.has_calls
+    mock.called_once
+    print(flag, mock.called_with(1))
     numbers.assert_equal(1)
 
 

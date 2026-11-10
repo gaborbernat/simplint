@@ -7,6 +7,7 @@ mod comments;
 mod docstrings;
 mod imports;
 mod layout;
+mod line_endings;
 mod logic;
 mod naming;
 mod testing;

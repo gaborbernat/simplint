@@ -73,6 +73,7 @@ use crate::common;
 #[test_case("single-user-constant", "single_user_constant_debug.py", "py314" ; "single_user_constant_debug")]
 #[test_case("single-user-constant", "single_user_constant_annotated.py", "py314" ; "single_user_constant_annotated")]
 #[test_case("single-user-constant", "single_user_constant_computed.py", "py314" ; "single_user_constant_computed_write")]
+#[test_case("single-user-constant", "single_user_constant_shared.py", "py314" ; "single_user_constant_shared_state")]
 fn rule(rule: &str, fixture: &str, target_version: &str) {
     common::assert_rule_snapshot(rule, fixture, target_version);
 }

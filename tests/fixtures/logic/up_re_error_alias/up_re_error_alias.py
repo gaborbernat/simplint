@@ -18,3 +18,11 @@ def imported(text):
         return re.compile(text)
     except error:
         return None
+
+
+def patched(replacement):
+    re.error = replacement
+
+
+def unpatched():
+    del re.error
