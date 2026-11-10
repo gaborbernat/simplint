@@ -1,0 +1,8 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:1 SMP202 `_LIMIT` is used by one function only; define it there [unsafe fix: Move `_LIMIT` into `bits`]
+--- fixed (1 applied, 0 remaining) ---
+def bits() -> int:
+    return (30).bit_length()
