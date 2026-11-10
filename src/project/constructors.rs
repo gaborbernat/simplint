@@ -54,6 +54,8 @@ pub(super) struct NameUse {
     pub(super) entry: bool,
     // The byte range of a call, which a dataclass's report points at; `(0, 0)` for a name that is not a call.
     pub(super) span: (u32, u32),
+    // The comments on the lines of a call that passes arguments by position.
+    pub(super) comments: Vec<String>,
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
@@ -159,7 +161,6 @@ impl Constructors {
         body: &[Stmt],
         aliases: &FxHashMap<&str, String>,
         from_imports: &[FromImport],
-        suppresses_rewrite: &dyn Fn(&str) -> bool,
         contexts: &CallContexts,
     ) -> Self {
         let qualify = |expr: &Expr| qualified(UnqualifiedName::from_expr(expr)?.segments(), aliases);
@@ -190,29 +191,31 @@ impl Constructors {
         let comments = OnceCell::new();
         let mut grouped: BTreeMap<String, BTreeSet<NameUse>> = BTreeMap::new();
         for ((module, name, written), found) in uses.found {
-            let (kind, discarded, entry, span) = match found {
+            let (kind, discarded, entry, span, call_comments) = match found {
                 Use::Call(call) => {
                     let (discarded, entry) = contexts.classify(call);
-                    let kind = match CallKind::of(call) {
-                        CallKind::Positional
-                            if is_suppressed(
-                                source,
-                                comments.get_or_init(|| comment_ranges(tokens)),
-                                call,
-                                suppresses_rewrite,
-                            ) =>
-                        {
-                            UseKind::Opaque
-                        }
-                        CallKind::Unpacked => UseKind::Opaque,
-                        CallKind::Keyword | CallKind::Positional => UseKind::Call(CallShape::of(call)),
+                    let (kind, call_comments) = match CallKind::of(call) {
+                        CallKind::Unpacked => (UseKind::Opaque, Vec::new()),
+                        CallKind::Keyword => (UseKind::Call(CallShape::of(call)), Vec::new()),
+                        CallKind::Positional => (
+                            UseKind::Call(CallShape::of(call)),
+                            comments_on_lines(source, comments.get_or_init(|| comment_ranges(tokens)), call),
+                        ),
                     };
                     let range = call.range();
-                    (kind, discarded, entry, (range.start().to_u32(), range.end().to_u32()))
+                    (kind, discarded, entry, (range.start().to_u32(), range.end().to_u32()), call_comments)
                 }
-                Use::Opaque => (UseKind::Opaque, false, false, (0, 0)),
+                Use::Opaque => (UseKind::Opaque, false, false, (0, 0), Vec::new()),
             };
-            grouped.entry(module).or_default().insert(NameUse { name, written, kind, discarded, entry, span });
+            grouped.entry(module).or_default().insert(NameUse {
+                name,
+                written,
+                kind,
+                discarded,
+                entry,
+                span,
+                comments: call_comments,
+            });
         }
         for FromImport { module, names, .. } in from_imports {
             for alias in *names {
@@ -225,6 +228,7 @@ impl Constructors {
                     discarded: false,
                     entry: false,
                     span: (0, 0),
+                    comments: Vec::new(),
                 });
             }
         }
@@ -339,17 +343,12 @@ fn entry_blocks(body: &[Stmt], is_main: bool) -> Vec<TextRange> {
     body.iter().filter(|stmt| is_main_guard(stmt)).map(Ranged::range).collect()
 }
 
-// A suppression comment on the call keeps its own `dataclass-kw-only` report from rewriting it.
-fn is_suppressed(
-    source: &str,
-    comments: &CommentRanges,
-    call: &ast::ExprCall,
-    suppresses_rewrite: &dyn Fn(&str) -> bool,
-) -> bool {
+fn comments_on_lines(source: &str, comments: &CommentRanges, call: &ast::ExprCall) -> Vec<String> {
     comments
         .comments_in_range(source.full_lines_range(call.range()))
         .iter()
-        .any(|comment| suppresses_rewrite(&source[*comment]))
+        .map(|comment| source[*comment].to_owned())
+        .collect()
 }
 
 fn comment_ranges(tokens: &Tokens) -> CommentRanges {
@@ -434,7 +433,7 @@ impl RunCalls {
                 let Some(classes) = declared.get(file) else {
                     continue;
                 };
-                for NameUse { name, written, kind, span, .. } in *used {
+                for NameUse { name, written, kind, span, comments, .. } in *used {
                     if *kind == UseKind::Imported && name == "*" {
                         calls.star_imported.insert(*file);
                         continue;
@@ -450,8 +449,13 @@ impl RunCalls {
                         UseKind::Imported => imported.get(caller).is_some_and(|names| names.contains(written)),
                         UseKind::Call(shape) => {
                             if shape.positional > 0 {
-                                let site =
-                                    CallSite { caller: path.clone(), start: span.0, end: span.1, digest: *digest };
+                                let site = CallSite {
+                                    caller: path.clone(),
+                                    start: span.0,
+                                    end: span.1,
+                                    digest: *digest,
+                                    comments: comments.clone(),
+                                };
                                 calls
                                     .dataclass_calls
                                     .entry(*file)
@@ -565,6 +569,8 @@ pub struct CallSite {
     pub(crate) start: u32,
     pub(crate) end: u32,
     digest: u64,
+    // The comments on the call's lines, where a suppression of the report that names the call sits.
+    pub(crate) comments: Vec<String>,
 }
 
 impl CacheKey for CallSite {
@@ -573,6 +579,7 @@ impl CacheKey for CallSite {
         self.start.cache_key(state);
         self.end.cache_key(state);
         self.digest.cache_key(state);
+        self.comments.cache_key(state);
     }
 }
 

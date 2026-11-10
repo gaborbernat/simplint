@@ -24,7 +24,6 @@ use crate::project::cache::{self, FileKey};
 use crate::project::{
     DocReferences, Ending, External, FileFacts, ImportResolver, IndexInputs, Parts, Project, SearchRoots,
 };
-use crate::rules::classes::dataclass_kw_only::suppresses_rewrite;
 use crate::run::cache::{Cache, Caches, Fingerprints, FullDisplay};
 use crate::settings::{FileSettings, ModuleRole, Settings};
 
@@ -119,14 +118,8 @@ pub(crate) fn check_stdin(path: &Path, source: &str, resolved: &Resolved, mode: 
         .remove(&files[0].nested)
         .unwrap_or_default();
     let parts = wanted_parts(rules);
-    let facts = FileFacts::collect(
-        &absolute,
-        source,
-        files[0].module_path.as_deref(),
-        files[0].importable.as_deref(),
-        &suppresses_rewrite,
-        parts,
-    );
+    let facts =
+        FileFacts::collect(&absolute, source, files[0].module_path.as_deref(), files[0].importable.as_deref(), parts);
     let mut passes = index_and_lint(
         &files,
         (parts, &inputs, &startup),
@@ -727,7 +720,7 @@ fn file_facts(file: &RunFile, cache: Option<(&Cache<'_>, FileKey)>, parts: Parts
         None => parts,
     };
     let source = std::fs::read_to_string(file.path).ok()?;
-    let facts = FileFacts::collect(file.path, &source, module_path, importable, &suppresses_rewrite, parts)?;
+    let facts = FileFacts::collect(file.path, &source, module_path, importable, parts)?;
     if let Some((cache, key)) = cache {
         cache.set_facts(file.path, key, &facts);
     }
