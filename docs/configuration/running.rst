@@ -26,6 +26,9 @@ permissions, and also by its size. With a :ref:`cross-file rule <cross-file-rule
 depends on the names other files use from that file, so editing an importer checks the files it imports again. A file
 only per-file rules check keeps its cached result.
 
+Without fixes, a file that does not parse, or cannot be read because it is not UTF-8, keeps its syntax error or read
+error too, so a warm run reports it again without building the project index.
+
 .. mermaid::
 
     flowchart TD

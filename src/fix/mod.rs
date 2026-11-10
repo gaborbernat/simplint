@@ -264,7 +264,11 @@ impl<'l, 'a> Fixer<'l, 'a> {
         }
         let parser_version = self.linter.settings.from_ruff.parser_version;
         let cleaned = cleanup(self.path, source, introduced, parser_version, |source| self.check(source));
-        self.cleanups.lock().expect("no worker panics while cleaning up").insert(key, self.sources.intern(&cleaned));
+        let mut cleanups = self.cleanups.lock().expect("no worker panics while cleaning up");
+        if cleanups.len() >= ENTRIES {
+            cleanups.clear();
+        }
+        cleanups.insert(key, self.sources.intern(&cleaned));
         cleaned
     }
 
@@ -465,6 +469,10 @@ struct Settled {
     held: Withdrawn,
 }
 
+// The admission bisection meets a new source at each step, so an unbounded memo would hold every intermediate lint and
+// Ruff check. A map already holding this many entries is cleared before its next insert, which only costs recomputing.
+const ENTRIES: usize = 128;
+
 // Results keyed by the source they were computed from. The lock is not held while computing, so parallel candidates
 // do not wait on each other; two that need the same source at once both compute it.
 struct Memo<T>(Mutex<FxHashMap<Arc<str>, T>>);
@@ -481,7 +489,11 @@ impl<T: Clone> Memo<T> {
             return known.clone();
         }
         let computed = compute();
-        self.entries().insert(sources.intern(source), computed.clone());
+        let mut entries = self.entries();
+        if entries.len() >= ENTRIES {
+            entries.clear();
+        }
+        entries.insert(sources.intern(source), computed.clone());
         computed
     }
 
@@ -501,6 +513,9 @@ impl Sources {
             return Arc::clone(known);
         }
         let interned = Arc::<str>::from(source);
+        if sources.len() >= ENTRIES {
+            sources.clear();
+        }
         sources.insert(Arc::clone(&interned));
         interned
     }
