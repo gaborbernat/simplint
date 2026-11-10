@@ -4121,7 +4121,7 @@
     "name": "future-annotations",
     "summary": "`from __future__ import annotations` on Python 3.14+",
     "fix": "Sometimes",
-    "explanation": "Flags `from __future__ import annotations` when the target version is Python 3.14 or newer. Annotations are evaluated\nlazily there by default, so the import no longer does what it was added for.\n\n## Why is this bad?\n\nSince Python 3.14, annotations are\n[evaluated lazily](https://docs.python.org/3/whatsnew/3.14.html#whatsnew314-deferred-annotations) by default\n([PEP 649](https://peps.python.org/pep-0649/), [PEP 749](https://peps.python.org/pep-0749/)). The import no longer\navoids forward-reference errors or the cost of evaluating annotations at import time. Its only remaining effect is to\nturn annotations into strings for code that inspects them at runtime.\n\n## Example\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.14\"\n```\n\n```python report\nfrom __future__ import annotations, generator_stop\n```\n\nUse instead:\n\n```python ok\nfrom __future__ import generator_stop\n```\n\n## Conflicts with Ruff\n\nWhen Ruff's isort setting [`required-imports`](https://docs.astral.sh/ruff/settings/#lint_isort_required-imports) lists\n`from __future__ import annotations`,\n[missing-required-import](https://docs.astral.sh/ruff/rules/missing-required-import/) adds back the import this rule\nremoves. simplint stops with an error before linting while both apply to a file that targets Python 3.14 or newer; drop\nthe import from `required-imports` once the project targets Python 3.14, or turn this rule off.\n\n## Configuration\n\n- The Python version the code targets, taken from the first of these that applies; see\n  [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version):\n\n  1. [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version) in `[tool.ruff]`: for\n     the files a pattern matches\n\n     ```toml config\n     [tool.ruff.per-file-target-version]\n     \"new/*.py\" = \"py314\"\n     ```\n\n     ```python report file=new/module.py\n     from __future__ import annotations\n\n     VALUE = 1\n     ```\n\n  1. [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) in `[tool.ruff]`: for every other file\n\n     ```toml config\n     [tool.ruff]\n     target-version = \"py313\"\n     ```\n\n     ```python ok\n     from __future__ import annotations\n\n     VALUE = 1\n     ```\n\n  1. [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python):\n     its lowest version, when Ruff sets neither\n\n     ```toml config\n     [project]\n     name = \"demo\"\n     requires-python = \">=3.14\"\n     ```\n\n     ```python report\n     from __future__ import annotations\n\n     VALUE = 1\n     ```\n\n## What it does\n\n### Active on\n\n- **Module-level `from __future__ import annotations`** ([PEP 563](https://peps.python.org/pep-0563/)) in a file that\n  targets Python 3.14 or newer, where lazy evaluation is already the default. **Unsafe fix** when the module refers to\n  the name `TYPE_CHECKING` in code; a mention in a comment or string does not count. Lazy annotations are still\n  evaluated on access, and an annotation that names something imported only under\n  [`if TYPE_CHECKING:`](https://docs.python.org/3/library/typing.html#typing.TYPE_CHECKING) raises `NameError` there.\n  The fix is also unsafe when an annotation unions a string with a type, such as `\"Node\" | None`, which raises once\n  evaluated, or when an import sits under a module-level `if`, which may leave its name unbound. Otherwise the fix is\n  safe.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  from __future__ import annotations\n\n  VALUE = 1\n  ```\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  # Demo module.\n  from __future__ import annotations\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      from os import PathLike\n\n\n  def path(value: PathLike) -> None:\n      pass\n  ```\n\n  ```python fixed\n  # Demo module.\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      from os import PathLike\n\n\n  def path(value: PathLike) -> None:\n      pass\n  ```\n\n- **Annotations that name the class itself or a later module-level name**: the class body binds neither, so the rule\n  still reports the module.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  from __future__ import annotations\n\n\n  class Node:\n      def add(self, other: Node) -> Tree:\n          return self\n\n\n  class Tree:\n      pass\n  ```\n\n### Exceptions\n\n- **Classes whose annotations read a name their body binds**: lazily evaluated annotations see the class namespace, so a\n  method named `list` makes `list[str]` mean the method. The import keeps annotations resolving in the module globals,\n  so the rule reports nothing in the module while any class does this.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  from __future__ import annotations\n\n\n  class Repo:\n      def list(self) -> list[str]:\n          return []\n\n\n  class Point:\n      float: float = 0.0\n  ```\n\n- **Files that target a version before Python 3.14**: there the import still defers evaluation, which annotations do not\n  do by default.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py313\"\n  ```\n\n  ```python ok\n  from __future__ import annotations\n\n  VALUE = 1\n  ```\n\n### Target version\n\nsimplint reads the target version from Ruff's configuration, as `ruff check` does, taking the first that is set:\n\n1. [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) or\n   [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version)\n1. `project.requires-python`\n1. Ruff's default\n\n### Fix\n\nThe fix removes `annotations` from the import:\n\n- When `annotations` is the statement's only name, the fix deletes the statement.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  # Demo module.\n  from __future__ import annotations\n\n  VALUE = 1\n  ```\n\n  ```python fixed\n  # Demo module.\n\n  VALUE = 1\n  ```\n\n- If that statement is the only one in the module, the fix replaces it with `pass`.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  from __future__ import annotations\n  ```\n\n  ```python fixed\n  pass\n  ```\n\n- No fix is offered when a statement that imports only `annotations` shares its line with other code.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  from __future__ import annotations\n\n  VALUE = 1\n  ```\n\n- No fix is offered when a comment sits on the statement's lines, since the fix would delete it.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  from __future__ import annotations  # kept for the docs build\n\n  VALUE = 1\n  ```\n\nAfter the fix, code that reads `__annotations__` and expects strings gets evaluated objects\n([annotations best practices](https://docs.python.org/3/howto/annotations.html)).\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#20739](https://github.com/astral-sh/ruff/issues/20739).\n",
+    "explanation": "Flags `from __future__ import annotations` when the target version is Python 3.14 or newer. Annotations are evaluated\nlazily there by default, so the import no longer does what it was added for.\n\n## Why is this bad?\n\nSince Python 3.14, annotations are\n[evaluated lazily](https://docs.python.org/3/whatsnew/3.14.html#whatsnew314-deferred-annotations) by default\n([PEP 649](https://peps.python.org/pep-0649/), [PEP 749](https://peps.python.org/pep-0749/)). The import no longer\navoids forward-reference errors or the cost of evaluating annotations at import time. Its only remaining effect is to\nturn annotations into strings for code that inspects them at runtime.\n\n## Example\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.14\"\n```\n\n```python report\nfrom __future__ import annotations, generator_stop\n```\n\nUse instead:\n\n```python ok\nfrom __future__ import generator_stop\n```\n\n## Conflicts with Ruff\n\nWhen Ruff's isort setting [`required-imports`](https://docs.astral.sh/ruff/settings/#lint_isort_required-imports) lists\n`from __future__ import annotations`,\n[missing-required-import](https://docs.astral.sh/ruff/rules/missing-required-import/) adds back the import this rule\nremoves. simplint stops with an error before linting while both apply to a file that targets Python 3.14 or newer; drop\nthe import from `required-imports` once the project targets Python 3.14, or turn this rule off.\n\n## Configuration\n\n- The Python version the code targets, taken from the first of these that applies; see\n  [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version):\n\n  1. [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version) in `[tool.ruff]`: for\n     the files a pattern matches\n\n     ```toml config\n     [tool.ruff.per-file-target-version]\n     \"new/*.py\" = \"py314\"\n     ```\n\n     ```python report file=new/module.py\n     from __future__ import annotations\n\n     VALUE = 1\n     ```\n\n  1. [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) in `[tool.ruff]`: for every other file\n\n     ```toml config\n     [tool.ruff]\n     target-version = \"py313\"\n     ```\n\n     ```python ok\n     from __future__ import annotations\n\n     VALUE = 1\n     ```\n\n  1. [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python):\n     its lowest version, when Ruff sets neither\n\n     ```toml config\n     [project]\n     name = \"demo\"\n     requires-python = \">=3.14\"\n     ```\n\n     ```python report\n     from __future__ import annotations\n\n     VALUE = 1\n     ```\n\n## What it does\n\n### Active on\n\n- **Module-level `from __future__ import annotations`** ([PEP 563](https://peps.python.org/pep-0563/)) in a file that\n  targets Python 3.14 or newer, where lazy evaluation is already the default. **Unsafe fix** when the module refers to\n  the name `TYPE_CHECKING` in code; a mention in a comment or string does not count. Lazy annotations are still\n  evaluated on access, and an annotation that names something imported only under\n  [`if TYPE_CHECKING:`](https://docs.python.org/3/library/typing.html#typing.TYPE_CHECKING) raises `NameError` there.\n  The fix is also unsafe when an annotation unions a string with a type, such as `\"Node\" | None`, which raises once\n  evaluated, or when an import sits under a module-level `if`, which may leave its name unbound. Otherwise the fix is\n  safe.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  from __future__ import annotations\n\n  VALUE = 1\n  ```\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  # Demo module.\n  from __future__ import annotations\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      from os import PathLike\n\n\n  def path(value: PathLike) -> None:\n      pass\n  ```\n\n  ```python fixed\n  # Demo module.\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      from os import PathLike\n\n\n  def path(value: PathLike) -> None:\n      pass\n  ```\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  # Demo module.\n  from __future__ import annotations\n\n\n  class Node:\n      pass\n\n\n  def find(parent: \"Node\" | None) -> None:\n      pass\n  ```\n\n  ```python fixed\n  # Demo module.\n\n\n  class Node:\n      pass\n\n\n  def find(parent: \"Node\" | None) -> None:\n      pass\n  ```\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  from __future__ import annotations\n  import sys\n\n  if sys.platform == \"win32\":\n      from os import PathLike\n\n\n  def path(value: PathLike) -> None:\n      pass\n  ```\n\n  ```python fixed\n  import sys\n\n  if sys.platform == \"win32\":\n      from os import PathLike\n\n\n  def path(value: PathLike) -> None:\n      pass\n  ```\n\n- **Annotations that name the class itself or a later module-level name**: the class body binds neither, so the rule\n  still reports the module.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  from __future__ import annotations\n\n\n  class Node:\n      def add(self, other: Node) -> Tree:\n          return self\n\n\n  class Tree:\n      pass\n  ```\n\n### Exceptions\n\n- **Classes whose annotations read a name their body binds**: lazily evaluated annotations see the class namespace, so a\n  method named `list` makes `list[str]` mean the method. The import keeps annotations resolving in the module globals,\n  so the rule reports nothing in the module while any class does this.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  from __future__ import annotations\n\n\n  class Repo:\n      def list(self) -> list[str]:\n          return []\n\n\n  class Point:\n      float: float = 0.0\n  ```\n\n- **Files that target a version before Python 3.14**: there the import still defers evaluation, which annotations do not\n  do by default.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py313\"\n  ```\n\n  ```python ok\n  from __future__ import annotations\n\n  VALUE = 1\n  ```\n\n### Target version\n\nsimplint reads the target version from Ruff's configuration, as `ruff check` does, taking the first that is set:\n\n1. [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) or\n   [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version)\n1. `project.requires-python`\n1. Ruff's default\n\n### Fix\n\nThe fix removes `annotations` from the import:\n\n- When `annotations` is the statement's only name, the fix deletes the statement.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  # Demo module.\n  from __future__ import annotations\n\n  VALUE = 1\n  ```\n\n  ```python fixed\n  # Demo module.\n\n  VALUE = 1\n  ```\n\n- If that statement is the only one in the module, the fix replaces it with `pass`.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  from __future__ import annotations\n  ```\n\n  ```python fixed\n  pass\n  ```\n\n- No fix is offered when a statement that imports only `annotations` shares its line with other code.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  from __future__ import annotations\n\n  VALUE = 1\n  ```\n\n- No fix is offered when a comment sits on the statement's lines, since the fix would delete it.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  from __future__ import annotations  # kept for the docs build\n\n  VALUE = 1\n  ```\n\nAfter the fix, code that reads `__annotations__` and expects strings gets evaluated objects\n([annotations best practices](https://docs.python.org/3/howto/annotations.html)).\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#20739](https://github.com/astral-sh/ruff/issues/20739).\n",
     "examples": {
       "parsed": [
         {
@@ -4282,11 +4282,11 @@
         },
         {
           "section": "What it does",
-          "line": 144,
-          "end_line": 161,
+          "line": 141,
+          "end_line": 170,
           "config": {
-            "line": 144,
-            "end_line": 148,
+            "line": 141,
+            "end_line": 145,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.14\"\n"
           },
           "blocks": [
@@ -4295,19 +4295,79 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 150,
-              "end_line": 161,
+              "line": 147,
+              "end_line": 158,
+              "source": "# Demo module.\nfrom __future__ import annotations\n\n\nclass Node:\n    pass\n\n\ndef find(parent: \"Node\" | None) -> None:\n    pass\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 160,
+              "end_line": 170,
+              "source": "# Demo module.\n\n\nclass Node:\n    pass\n\n\ndef find(parent: \"Node\" | None) -> None:\n    pass\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 172,
+          "end_line": 199,
+          "config": {
+            "line": 172,
+            "end_line": 176,
+            "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.14\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 178,
+              "end_line": 188,
+              "source": "from __future__ import annotations\nimport sys\n\nif sys.platform == \"win32\":\n    from os import PathLike\n\n\ndef path(value: PathLike) -> None:\n    pass\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 190,
+              "end_line": 199,
+              "source": "import sys\n\nif sys.platform == \"win32\":\n    from os import PathLike\n\n\ndef path(value: PathLike) -> None:\n    pass\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 204,
+          "end_line": 221,
+          "config": {
+            "line": 204,
+            "end_line": 208,
+            "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.14\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 210,
+              "end_line": 221,
               "source": "from __future__ import annotations\n\n\nclass Node:\n    def add(self, other: Node) -> Tree:\n        return self\n\n\nclass Tree:\n    pass\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 169,
-          "end_line": 186,
+          "line": 229,
+          "end_line": 246,
           "config": {
-            "line": 169,
-            "end_line": 173,
+            "line": 229,
+            "end_line": 233,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.14\"\n"
           },
           "blocks": [
@@ -4316,19 +4376,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 175,
-              "end_line": 186,
+              "line": 235,
+              "end_line": 246,
               "source": "from __future__ import annotations\n\n\nclass Repo:\n    def list(self) -> list[str]:\n        return []\n\n\nclass Point:\n    float: float = 0.0\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 191,
-          "end_line": 200,
+          "line": 251,
+          "end_line": 260,
           "config": {
-            "line": 191,
-            "end_line": 194,
+            "line": 251,
+            "end_line": 254,
             "source": "[tool.ruff]\ntarget-version = \"py313\"\n"
           },
           "blocks": [
@@ -4337,19 +4397,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 196,
-              "end_line": 200,
+              "line": 256,
+              "end_line": 260,
               "source": "from __future__ import annotations\n\nVALUE = 1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 217,
-          "end_line": 234,
+          "line": 277,
+          "end_line": 294,
           "config": {
-            "line": 217,
-            "end_line": 221,
+            "line": 277,
+            "end_line": 281,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.14\"\n"
           },
           "blocks": [
@@ -4358,8 +4418,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 223,
-              "end_line": 228,
+              "line": 283,
+              "end_line": 288,
               "source": "# Demo module.\nfrom __future__ import annotations\n\nVALUE = 1\n"
             },
             {
@@ -4367,19 +4427,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 230,
-              "end_line": 234,
+              "line": 290,
+              "end_line": 294,
               "source": "# Demo module.\n\nVALUE = 1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 238,
-          "end_line": 250,
+          "line": 298,
+          "end_line": 310,
           "config": {
-            "line": 238,
-            "end_line": 242,
+            "line": 298,
+            "end_line": 302,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.14\"\n"
           },
           "blocks": [
@@ -4388,8 +4448,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 244,
-              "end_line": 246,
+              "line": 304,
+              "end_line": 306,
               "source": "from __future__ import annotations\n"
             },
             {
@@ -4397,19 +4457,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 248,
-              "end_line": 250,
+              "line": 308,
+              "end_line": 310,
               "source": "pass\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 254,
-          "end_line": 264,
+          "line": 314,
+          "end_line": 324,
           "config": {
-            "line": 254,
-            "end_line": 258,
+            "line": 314,
+            "end_line": 318,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.14\"\n"
           },
           "blocks": [
@@ -4418,19 +4478,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 260,
-              "end_line": 264,
+              "line": 320,
+              "end_line": 324,
               "source": "from __future__ import annotations\n\nVALUE = 1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 268,
-          "end_line": 278,
+          "line": 328,
+          "end_line": 338,
           "config": {
-            "line": 268,
-            "end_line": 272,
+            "line": 328,
+            "end_line": 332,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.14\"\n"
           },
           "blocks": [
@@ -4439,8 +4499,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 274,
-              "end_line": 278,
+              "line": 334,
+              "end_line": 338,
               "source": "from __future__ import annotations  # kept for the docs build\n\nVALUE = 1\n"
             }
           ]
@@ -4837,7 +4897,7 @@
     "name": "dependency-import-guard",
     "summary": "`try`/`except ImportError` around a required dependency",
     "fix": "Sometimes",
-    "explanation": "Flags `try`/`except ImportError` guards around imports of modules that are always installed: the standard library and\nthe project's required dependencies. The fallback never runs in a working environment, and in a broken one the guard\nhides the import error.\n\n## Why is this bad?\n\nA required dependency is always installed, so the fallback never runs in a working environment. When the install is\nbroken, the guard hides the import error until something later fails with a less clear message.\n\n## Example\n\n```toml config\n[project]\nname = \"demo\"\ndependencies = [\"requests\"]\n```\n\n```python report\ntry:\n    import requests\nexcept ImportError:\n    requests = None\n```\n\nUse instead:\n\n```python ok\nimport requests\n```\n\n## Configuration\n\n- The Python version the code targets, taken from the first of these that applies; see\n  [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version):\n\n  1. [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version) in `[tool.ruff]`: for\n     the files a pattern matches\n\n     ```toml config\n     [tool.ruff.per-file-target-version]\n     \"legacy/*.py\" = \"py38\"\n     ```\n\n     ```python ok file=legacy/old.py\n     try:\n         import tomllib\n     except ImportError:\n         tomllib = None\n     ```\n\n     ```python report file=new.py\n     try:\n         import tomllib\n     except ImportError:\n         tomllib = None\n     ```\n\n  1. [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) in `[tool.ruff]`: for every other file\n\n     ```toml config\n     [tool.ruff]\n     target-version = \"py311\"\n     ```\n\n     ```python report\n     try:\n         import tomllib\n     except ImportError:\n         tomllib = None\n     ```\n\n  1. [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python):\n     its lowest version, when Ruff sets neither\n\n     ```toml config\n     [project]\n     name = \"demo\"\n     requires-python = \">=3.11\"\n     ```\n\n     ```python report\n     try:\n         import tomllib\n     except ImportError:\n         tomllib = None\n     ```\n\n- [`project.dependencies`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies); see\n  [Settings read from [project]](https://simplint.readthedocs.io/en/latest/configuration/project.html#settings-read-from-project)\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"requests\"]\n  ```\n\n  ```python report\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  ```\n\n## What it does\n\nThe rule checks `try` statements whose body holds only `import` statements of **required** modules and that have an\n`except` handler catching [`ImportError`](https://docs.python.org/3/builtins/exceptions.html#ImportError) or\n[`ModuleNotFoundError`](https://docs.python.org/3/builtins/exceptions.html#ModuleNotFoundError). The handler may catch\nthem alone or in a tuple, also when spelled `builtins.ImportError` or `builtins.ModuleNotFoundError`.\n\n### Active on\n\nA module is required when its top-level package is one of these:\n\n- **Standard library modules**: top-level modules and submodules of standard library packages, in the standard library\n  of every Python version from the target onward, set by Ruff's\n  [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) or\n  [`requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python). Every\n  supported interpreter ships them, so a module removed later, such as `distutils` in 3.12, does not count. A submodule\n  counts from the version that adds it, so `asyncio.taskgroups` counts from 3.11 and `string.templatelib` from 3.14.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python report\n  try:\n      import tomllib\n  except ImportError:\n      tomllib = None\n  ```\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python report\n  try:\n      import asyncio.taskgroups\n  except ImportError:\n      asyncio = None\n  ```\n\n- **Required dependencies**: listed in\n  [`project.dependencies`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies) of\n  `pyproject.toml`, which every install of the project brings along.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"requests\"]\n  ```\n\n  ```python report\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  ```\n\n### Exceptions\n\n- **Standard library modules that exist on one platform only**, such as `fcntl`, `msvcrt` or `winreg`: the import fails\n  on the other platforms.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  try:\n      import fcntl\n  except ImportError:\n      fcntl = None\n  ```\n\n- **Standard library modules that minimal and alternative builds may leave out**, such as `ctypes`, `ssl`, `sqlite3`,\n  `tkinter` or `_zstd`: the import can fail on such a build.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  try:\n      import ssl\n  except ImportError:\n      ssl = None\n  ```\n\n- **CPython's test extensions**, such as `_testcapi`: only builds made for CPython's own test suite include them, so the\n  import can fail on a release build.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  try:\n      import _testcapi\n  except ImportError:\n      _testcapi = None\n  ```\n\n- **Submodules that a version from the target onward lacks**, such as `asyncio.taskgroups` on 3.10, or that a version\n  removes, such as `distutils.core` from 3.12: the import fails on that version. A submodule the rule does not know is\n  not counted either.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.10\"\n  ```\n\n  ```python ok\n  try:\n      import asyncio.taskgroups\n  except ImportError:\n      asyncio = None\n  ```\n\n- **Imports of the package the file belongs to**: guarding an optional compiled extension of your own package is not\n  reported.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python ok file=pkg/core.py\n  try:\n      import pkg._speedups\n  except ImportError:\n      pkg = None\n  ```\n\n- **`from` imports**: they also fail when the module lacks the name on some platform or version, such as\n  `from os import geteuid` outside POSIX or `from yaml import CSafeLoader` without libyaml.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  try:\n      from os import geteuid\n  except ImportError:\n      geteuid = None\n  ```\n\n- **Requirements with an [environment marker](https://peps.python.org/pep-0508/#environment-markers) (`;`)**: the\n  requirement is conditional, so the package may be missing.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"requests; sys_platform == 'win32'\"]\n  ```\n\n  ```python ok\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  ```\n\n- **Optional dependencies and dependency groups**: these are not read, as an install may leave them out.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = []\n\n  [project.optional-dependencies]\n  extra = [\"requests\"]\n  ```\n\n  ```python ok\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  ```\n\n```mermaid\nflowchart TD\n    from{\"A from import?\"}\n    from -->|yes| optional[\"Not required\"]\n    from -->|no| own{\"From the file's<br/>own package?\"}\n    own -->|yes| optional\n    own -->|no| stdlib{\"Standard library on every target<br/>version and platform?\"}\n    stdlib -->|yes| required[\"Required\"]\n    stdlib -->|no| deps{\"In project.dependencies<br/>without a marker?\"}\n    deps -->|yes| required\n    deps -->|no| optional\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class from,own,stdlib,deps yellow\n    class required orange\n    class optional green\n```\n\n### Matching dependency names\n\n- Dependencies are matched by their\n  [normalized name](https://packaging.python.org/en/latest/specifications/name-normalization/).\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"Requests\"]\n  ```\n\n  ```python report\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  ```\n\n- A short list of well-known distributions that import under another name also match that name, such as `PyYAML` as\n  `yaml`, `Pillow` as `PIL` or `beautifulsoup4` as `bs4`. Other renamed distributions are not recognized.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"PyYAML\"]\n  ```\n\n  ```python report\n  try:\n      import yaml\n  except ImportError:\n      yaml = None\n  ```\n\n### Fix\n\nThe fix replaces the `try` statement with its dedented body and drops every `except` handler. **Unsafe fix:** always,\nbecause the fallback code is removed and a failing import now raises.\n\nAn import the unwrapped body leaves unused keeps a suppression, `# noqa: F401  # fails when the module is missing`, so\nRuff's unused-import fix does not delete it. The import is there to fail when the module is missing. In a function, an\nimport counts as used when the function loads its name, so an import the function returns gets no suppression.\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.11\"\n```\n\n```python report\ntry:\n    import tomllib\nexcept ImportError:\n    pass\n```\n\n```python fixed\nimport tomllib  # noqa: F401  # fails when the module is missing\n```\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.11\"\n```\n\n```python report\ndef load():\n    try:\n        import tomllib\n    except ImportError:\n        tomllib = None\n\n    return tomllib\n```\n\n```python fixed\ndef load():\n    import tomllib\n\n    return tomllib\n```\n\n```toml config\n[project]\nname = \"demo\"\ndependencies = [\"requests\"]\n\n[tool.ruff.lint]\nselect = []\n```\n\n```python report\ntry:\n    import requests\nexcept ImportError:\n    requests = None\n```\n\n```python fixed\nimport requests  # noqa: F401  # fails when the module is missing\n```\n\nNo fix is offered when the statement:\n\n- has an `else` or `finally` clause\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"requests\"]\n  ```\n\n  ```python report\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  else:\n      pass\n  ```\n\n- shares a line with other code\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"requests\"]\n  ```\n\n  ```python report\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  ```\n\n- holds an unused import on a line shared with another statement, as the suppression would then cover one import only\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python report\n  try:\n      import json\n      import tomllib\n  except ImportError:\n      pass\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags `try`/`except ImportError` guards around imports of modules that are always installed: the standard library and\nthe project's required dependencies. The fallback never runs in a working environment, and in a broken one the guard\nhides the import error.\n\n## Why is this bad?\n\nA required dependency is always installed, so the fallback never runs in a working environment. When the install is\nbroken, the guard hides the import error until something later fails with a less clear message.\n\n## Example\n\n```toml config\n[project]\nname = \"demo\"\ndependencies = [\"requests\"]\n```\n\n```python report\ntry:\n    import requests\nexcept ImportError:\n    requests = None\n```\n\nUse instead:\n\n```python ok\nimport requests\n```\n\n## Configuration\n\n- The Python version the code targets, taken from the first of these that applies; see\n  [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version):\n\n  1. [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version) in `[tool.ruff]`: for\n     the files a pattern matches\n\n     ```toml config\n     [tool.ruff.per-file-target-version]\n     \"legacy/*.py\" = \"py38\"\n     ```\n\n     ```python ok file=legacy/old.py\n     try:\n         import tomllib\n     except ImportError:\n         tomllib = None\n     ```\n\n     ```python report file=new.py\n     try:\n         import tomllib\n     except ImportError:\n         tomllib = None\n     ```\n\n  1. [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) in `[tool.ruff]`: for every other file\n\n     ```toml config\n     [tool.ruff]\n     target-version = \"py311\"\n     ```\n\n     ```python report\n     try:\n         import tomllib\n     except ImportError:\n         tomllib = None\n     ```\n\n  1. [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python):\n     its lowest version, when Ruff sets neither\n\n     ```toml config\n     [project]\n     name = \"demo\"\n     requires-python = \">=3.11\"\n     ```\n\n     ```python report\n     try:\n         import tomllib\n     except ImportError:\n         tomllib = None\n     ```\n\n- [`project.dependencies`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies); see\n  [Settings read from [project]](https://simplint.readthedocs.io/en/latest/configuration/project.html#settings-read-from-project)\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"requests\"]\n  ```\n\n  ```python report\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  ```\n\n## What it does\n\nThe rule checks `try` statements whose body holds only `import` statements of **required** modules and that have an\n`except` handler catching [`ImportError`](https://docs.python.org/3/builtins/exceptions.html#ImportError) or\n[`ModuleNotFoundError`](https://docs.python.org/3/builtins/exceptions.html#ModuleNotFoundError). The handler may catch\nthem alone or in a tuple, also when spelled `builtins.ImportError` or `builtins.ModuleNotFoundError`.\n\n### Active on\n\nA module is required when its top-level package is one of these:\n\n- **Standard library modules**: top-level modules and submodules of standard library packages, in the standard library\n  of every Python version from the target onward, set by Ruff's\n  [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) or\n  [`requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python). Every\n  supported interpreter ships them, so a module removed later, such as `distutils` in 3.12, does not count. A submodule\n  counts from the version that adds it, so `asyncio.taskgroups` counts from 3.11 and `string.templatelib` from 3.14.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python report\n  try:\n      import tomllib\n  except ImportError:\n      tomllib = None\n  ```\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python report\n  try:\n      import asyncio.taskgroups\n  except ImportError:\n      asyncio = None\n  ```\n\n- **Required dependencies**: listed in\n  [`project.dependencies`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies) of\n  `pyproject.toml`, which every install of the project brings along.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"requests\"]\n  ```\n\n  ```python report\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  ```\n\n### Exceptions\n\n- **Standard library modules that exist on one platform only**, such as `fcntl`, `msvcrt` or `winreg`: the import fails\n  on the other platforms.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  try:\n      import fcntl\n  except ImportError:\n      fcntl = None\n  ```\n\n- **Standard library modules that minimal and alternative builds may leave out**, such as `_hashlib`, `ctypes`, `gzip`,\n  `mmap`, `ssl`, `sqlite3`, `tkinter` or `_zstd`: the import can fail on such a build.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  try:\n      import ssl\n  except ImportError:\n      ssl = None\n  ```\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  try:\n      import _hashlib\n  except ImportError:\n      _hashlib = None\n\n  try:\n      import gzip\n  except ImportError:\n      gzip = None\n\n  try:\n      import mmap\n  except ImportError:\n      mmap = None\n  ```\n\n- **CPython's test extensions**, such as `_testcapi`: only builds made for CPython's own test suite include them, so the\n  import can fail on a release build.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  try:\n      import _testcapi\n  except ImportError:\n      _testcapi = None\n  ```\n\n- **Submodules that a version from the target onward lacks**, such as `asyncio.taskgroups` on 3.10, or that a version\n  removes, such as `distutils.core` from 3.12: the import fails on that version. A submodule the rule does not know is\n  not counted either.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.10\"\n  ```\n\n  ```python ok\n  try:\n      import asyncio.taskgroups\n  except ImportError:\n      asyncio = None\n  ```\n\n- **Imports of the package the file belongs to**: guarding an optional compiled extension of your own package is not\n  reported.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python ok file=pkg/core.py\n  try:\n      import pkg._speedups\n  except ImportError:\n      pkg = None\n  ```\n\n- **`from` imports**: they also fail when the module lacks the name on some platform or version, such as\n  `from os import geteuid` outside POSIX or `from yaml import CSafeLoader` without libyaml.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  try:\n      from os import geteuid\n  except ImportError:\n      geteuid = None\n  ```\n\n- **Requirements with an [environment marker](https://peps.python.org/pep-0508/#environment-markers) (`;`)**: the\n  requirement is conditional, so the package may be missing.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"requests; sys_platform == 'win32'\"]\n  ```\n\n  ```python ok\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  ```\n\n- **Optional dependencies and dependency groups**: these are not read, as an install may leave them out.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = []\n\n  [project.optional-dependencies]\n  extra = [\"requests\"]\n  ```\n\n  ```python ok\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  ```\n\n```mermaid\nflowchart TD\n    from{\"A from import?\"}\n    from -->|yes| optional[\"Not required\"]\n    from -->|no| own{\"From the file's<br/>own package?\"}\n    own -->|yes| optional\n    own -->|no| stdlib{\"Standard library on every target<br/>version and platform?\"}\n    stdlib -->|yes| required[\"Required\"]\n    stdlib -->|no| deps{\"In project.dependencies<br/>without a marker?\"}\n    deps -->|yes| required\n    deps -->|no| optional\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class from,own,stdlib,deps yellow\n    class required orange\n    class optional green\n```\n\n### Matching dependency names\n\n- Dependencies are matched by their\n  [normalized name](https://packaging.python.org/en/latest/specifications/name-normalization/).\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"Requests\"]\n  ```\n\n  ```python report\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  ```\n\n- A short list of well-known distributions that import under another name also match that name, such as `PyYAML` as\n  `yaml`, `Pillow` as `PIL` or `beautifulsoup4` as `bs4`. Other renamed distributions are not recognized.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"PyYAML\"]\n  ```\n\n  ```python report\n  try:\n      import yaml\n  except ImportError:\n      yaml = None\n  ```\n\n### Fix\n\nThe fix replaces the `try` statement with its dedented body and drops every `except` handler. **Unsafe fix:** always,\nbecause the fallback code is removed and a failing import now raises.\n\nAn import the unwrapped body leaves unused keeps a suppression, `# noqa: F401  # fails when the module is missing`, so\nRuff's unused-import fix does not delete it. The import is there to fail when the module is missing. In a function, an\nimport counts as used when the function loads its name, so an import the function returns gets no suppression.\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.11\"\n```\n\n```python report\ntry:\n    import tomllib\nexcept ImportError:\n    pass\n```\n\n```python fixed\nimport tomllib  # noqa: F401  # fails when the module is missing\n```\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.11\"\n```\n\n```python report\ndef load():\n    try:\n        import tomllib\n    except ImportError:\n        tomllib = None\n\n    return tomllib\n```\n\n```python fixed\ndef load():\n    import tomllib\n\n    return tomllib\n```\n\n```toml config\n[project]\nname = \"demo\"\ndependencies = [\"requests\"]\n\n[tool.ruff.lint]\nselect = []\n```\n\n```python report\ntry:\n    import requests\nexcept ImportError:\n    requests = None\n```\n\n```python fixed\nimport requests  # noqa: F401  # fails when the module is missing\n```\n\nNo fix is offered when the statement:\n\n- has an `else` or `finally` clause\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"requests\"]\n  ```\n\n  ```python report\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  else:\n      pass\n  ```\n\n- shares a line with other code\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"requests\"]\n  ```\n\n  ```python report\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  ```\n\n- holds an unused import on a line shared with another statement, as the suppression would then cover one import only\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python report\n  try:\n      import json\n      import tomllib\n  except ImportError:\n      pass\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -5082,11 +5142,11 @@
         },
         {
           "section": "What it does",
-          "line": 202,
-          "end_line": 213,
+          "line": 199,
+          "end_line": 220,
           "config": {
-            "line": 202,
-            "end_line": 206,
+            "line": 199,
+            "end_line": 203,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.11\"\n"
           },
           "blocks": [
@@ -5095,19 +5155,40 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 208,
-              "end_line": 213,
+              "line": 205,
+              "end_line": 220,
+              "source": "try:\n    import _hashlib\nexcept ImportError:\n    _hashlib = None\n\ntry:\n    import gzip\nexcept ImportError:\n    gzip = None\n\ntry:\n    import mmap\nexcept ImportError:\n    mmap = None\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 225,
+          "end_line": 236,
+          "config": {
+            "line": 225,
+            "end_line": 229,
+            "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.11\"\n"
+          },
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 231,
+              "end_line": 236,
               "source": "try:\n    import _testcapi\nexcept ImportError:\n    _testcapi = None\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 219,
-          "end_line": 230,
+          "line": 242,
+          "end_line": 253,
           "config": {
-            "line": 219,
-            "end_line": 223,
+            "line": 242,
+            "end_line": 246,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.10\"\n"
           },
           "blocks": [
@@ -5116,16 +5197,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 225,
-              "end_line": 230,
+              "line": 248,
+              "end_line": 253,
               "source": "try:\n    import asyncio.taskgroups\nexcept ImportError:\n    asyncio = None\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 235,
-          "end_line": 244,
+          "line": 258,
+          "end_line": 267,
           "config": null,
           "blocks": [
             {
@@ -5133,8 +5214,8 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 235,
-              "end_line": 237,
+              "line": 258,
+              "end_line": 260,
               "source": "# A package.\n"
             },
             {
@@ -5142,19 +5223,19 @@
               "language": "python",
               "file": "pkg/core.py",
               "named": true,
-              "line": 239,
-              "end_line": 244,
+              "line": 262,
+              "end_line": 267,
               "source": "try:\n    import pkg._speedups\nexcept ImportError:\n    pkg = None\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 249,
-          "end_line": 260,
+          "line": 272,
+          "end_line": 283,
           "config": {
-            "line": 249,
-            "end_line": 253,
+            "line": 272,
+            "end_line": 276,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.11\"\n"
           },
           "blocks": [
@@ -5163,19 +5244,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 255,
-              "end_line": 260,
+              "line": 278,
+              "end_line": 283,
               "source": "try:\n    from os import geteuid\nexcept ImportError:\n    geteuid = None\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 265,
-          "end_line": 276,
+          "line": 288,
+          "end_line": 299,
           "config": {
-            "line": 265,
-            "end_line": 269,
+            "line": 288,
+            "end_line": 292,
             "source": "[project]\nname = \"demo\"\ndependencies = [\"requests; sys_platform == 'win32'\"]\n"
           },
           "blocks": [
@@ -5184,19 +5265,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 271,
-              "end_line": 276,
+              "line": 294,
+              "end_line": 299,
               "source": "try:\n    import requests\nexcept ImportError:\n    requests = None\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 280,
-          "end_line": 294,
+          "line": 303,
+          "end_line": 317,
           "config": {
-            "line": 280,
-            "end_line": 287,
+            "line": 303,
+            "end_line": 310,
             "source": "[project]\nname = \"demo\"\ndependencies = []\n\n[project.optional-dependencies]\nextra = [\"requests\"]\n"
           },
           "blocks": [
@@ -5205,19 +5286,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 289,
-              "end_line": 294,
+              "line": 312,
+              "end_line": 317,
               "source": "try:\n    import requests\nexcept ImportError:\n    requests = None\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 322,
-          "end_line": 333,
+          "line": 345,
+          "end_line": 356,
           "config": {
-            "line": 322,
-            "end_line": 326,
+            "line": 345,
+            "end_line": 349,
             "source": "[project]\nname = \"demo\"\ndependencies = [\"Requests\"]\n"
           },
           "blocks": [
@@ -5226,19 +5307,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 328,
-              "end_line": 333,
+              "line": 351,
+              "end_line": 356,
               "source": "try:\n    import requests\nexcept ImportError:\n    requests = None\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 338,
-          "end_line": 349,
+          "line": 361,
+          "end_line": 372,
           "config": {
-            "line": 338,
-            "end_line": 342,
+            "line": 361,
+            "end_line": 365,
             "source": "[project]\nname = \"demo\"\ndependencies = [\"PyYAML\"]\n"
           },
           "blocks": [
@@ -5247,19 +5328,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 344,
-              "end_line": 349,
+              "line": 367,
+              "end_line": 372,
               "source": "try:\n    import yaml\nexcept ImportError:\n    yaml = None\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 360,
-          "end_line": 375,
+          "line": 383,
+          "end_line": 398,
           "config": {
-            "line": 360,
-            "end_line": 364,
+            "line": 383,
+            "end_line": 387,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.11\"\n"
           },
           "blocks": [
@@ -5268,8 +5349,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 366,
-              "end_line": 371,
+              "line": 389,
+              "end_line": 394,
               "source": "try:\n    import tomllib\nexcept ImportError:\n    pass\n"
             },
             {
@@ -5277,19 +5358,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 373,
-              "end_line": 375,
+              "line": 396,
+              "end_line": 398,
               "source": "import tomllib  # noqa: F401  # fails when the module is missing\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 377,
-          "end_line": 398,
+          "line": 400,
+          "end_line": 421,
           "config": {
-            "line": 377,
-            "end_line": 381,
+            "line": 400,
+            "end_line": 404,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.11\"\n"
           },
           "blocks": [
@@ -5298,8 +5379,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 383,
-              "end_line": 391,
+              "line": 406,
+              "end_line": 414,
               "source": "def load():\n    try:\n        import tomllib\n    except ImportError:\n        tomllib = None\n\n    return tomllib\n"
             },
             {
@@ -5307,19 +5388,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 393,
-              "end_line": 398,
+              "line": 416,
+              "end_line": 421,
               "source": "def load():\n    import tomllib\n\n    return tomllib\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 400,
-          "end_line": 418,
+          "line": 423,
+          "end_line": 441,
           "config": {
-            "line": 400,
-            "end_line": 407,
+            "line": 423,
+            "end_line": 430,
             "source": "[project]\nname = \"demo\"\ndependencies = [\"requests\"]\n\n[tool.ruff.lint]\nselect = []\n"
           },
           "blocks": [
@@ -5328,8 +5409,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 409,
-              "end_line": 414,
+              "line": 432,
+              "end_line": 437,
               "source": "try:\n    import requests\nexcept ImportError:\n    requests = None\n"
             },
             {
@@ -5337,19 +5418,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 416,
-              "end_line": 418,
+              "line": 439,
+              "end_line": 441,
               "source": "import requests  # noqa: F401  # fails when the module is missing\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 424,
-          "end_line": 437,
+          "line": 447,
+          "end_line": 460,
           "config": {
-            "line": 424,
-            "end_line": 428,
+            "line": 447,
+            "end_line": 451,
             "source": "[project]\nname = \"demo\"\ndependencies = [\"requests\"]\n"
           },
           "blocks": [
@@ -5358,19 +5439,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 430,
-              "end_line": 437,
+              "line": 453,
+              "end_line": 460,
               "source": "try:\n    import requests\nexcept ImportError:\n    requests = None\nelse:\n    pass\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 441,
-          "end_line": 452,
+          "line": 464,
+          "end_line": 475,
           "config": {
-            "line": 441,
-            "end_line": 445,
+            "line": 464,
+            "end_line": 468,
             "source": "[project]\nname = \"demo\"\ndependencies = [\"requests\"]\n"
           },
           "blocks": [
@@ -5379,19 +5460,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 447,
-              "end_line": 452,
+              "line": 470,
+              "end_line": 475,
               "source": "try:\n    import requests\nexcept ImportError:\n    requests = None\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 456,
-          "end_line": 468,
+          "line": 479,
+          "end_line": 491,
           "config": {
-            "line": 456,
-            "end_line": 460,
+            "line": 479,
+            "end_line": 483,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.11\"\n"
           },
           "blocks": [
@@ -5400,8 +5481,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 462,
-              "end_line": 468,
+              "line": 485,
+              "end_line": 491,
               "source": "try:\n    import json\n    import tomllib\nexcept ImportError:\n    pass\n"
             }
           ]
@@ -5418,7 +5499,7 @@
     "name": "module-attribute-import",
     "summary": "Module attributes reached as `module.Name` instead of imported",
     "fix": "Sometimes",
-    "explanation": "Flags `module.Name` attribute access on a module of this project, where `from module import Name` would bind the same\nobject.\n\n## Why is this bad?\n\nReaching a name through its module makes the reader trace where the module came from at every use, and it repeats the\nmodule name in each line. Importing the name once states the dependency at the top of the file.\n\n## Example\n\n```python context file=pkg/__init__.py\n\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\n```\n\nUse instead:\n\n```python context file=pkg/__init__.py\n\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python ok file=pkg/consumer.py\nfrom .findings import DbWriter\n\nwriter = DbWriter()\n```\n\n## Configuration\n\n- [`module-attributes`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#module-attributes):\n  modules whose attributes the code reaches as `module.Name`, by absolute dotted name, such as a module that tests patch\n  attribute by attribute. The default is `[]`.\n\n  ```toml config\n  [tool.simplint.imports]\n  module-attributes = [\"pkg.findings\"]\n  ```\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  writer = findings.DbWriter()\n  ```\n\n## What it does\n\n### Active on\n\n- **Attribute access on a module of this project bound by `from . import module` or `from package import module`**: the\n  module must resolve to a file of the run, so the attribute reads a name the file defines.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python report file=pkg/consumer.py\n  from . import findings\n\n  writer = findings.DbWriter()\n  ```\n\n- **Attribute access on a module bound by `import package.module as name`**, which binds the module like the form above.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python report file=pkg/consumer.py\n  import pkg.findings as findings\n\n  writer = findings.DbWriter()\n  ```\n\n- **Private attributes of imported modules**, such as `main._compute`, including when Ruff selects `PLC2701`. Only a\n  module that resolves to a file of this project is checked.\n\n  ```python context file=pkg/main.py\n  def _compute() -> int:\n      return 1\n  ```\n\n  ```python report file=pkg/consumer.py\n  from . import main\n\n  result = main._compute()\n  ```\n\n### Exceptions\n\n- **Third-party and standard-library modules**: only modules that resolve to a file of the run count, so `json` stays as\n  it is.\n\n  ```python ok\n  import json as jsonlib\n\n  text = jsonlib.dumps([])\n  ```\n\n- **The project's own top-level package under another name**: `import pkg as pd` reads the package's names through its\n  alias, as `pd.NAT` does, which is how the package is meant to be used. A read through a submodule, such as\n  `import pkg.core.common as com`, is still reported, and so is an alias equal to the package name, `import pkg as pkg`.\n\n  ```python context file=pkg/__init__.py\n  NAT = object()\n  ```\n\n  ```python ok file=pkg/consumer.py\n  import pkg as pd\n\n  writer = pd.NAT\n  ```\n\n- **Modules listed in\n  [`module-attributes`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#module-attributes)**:\n  the listed module is left alone, as in the configuration example above.\n\n  ```toml config\n  [tool.simplint.imports]\n  module-attributes = [\"pkg.findings\"]\n  ```\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  writer = findings.DbWriter()\n  ```\n\n- **A module used as a value**: passed to a function, assigned or returned, as in `getattr(findings, \"DbWriter\")` or\n  `importlib.reload(findings)`, the module is an object of its own, so the file keeps it.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  writer = getattr(findings, \"DbWriter\")\n  ```\n\n- **Attributes stored or deleted**: `findings.DEBUG = True` and `del findings.OLD` change the module, which an import\n  cannot do. A store in any file of the run patches that attribute the way `setattr` over a literal does, so the\n  attribute is left alone while the module's other attributes are still reported. A name a function of the module\n  rebinds through `global` changes it after the import has bound the value it had at load, so that name is not converted\n  either.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  DEBUG = False\n\n\n  def enable() -> None:\n      global DEBUG\n      DEBUG = True\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  print(findings.DEBUG)\n  ```\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  findings.DEBUG = True\n  del findings.OLD\n  ```\n\n- **Names the file binds itself**: when the file already binds the attribute name to something else, importing it would\n  clash with that binding.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  DbWriter = object\n  writer = findings.DbWriter()\n  ```\n\n- **A name the module's own name shadows**: a parameter, local, loop or comprehension variable named like the module is\n  that variable's value, so an attribute read off it does not reach the module. The real reads of the module are still\n  reported.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n\n  def write(findings: object) -> object:\n      return findings.DbWriter()\n  ```\n\n- **Module dunders such as `__name__`**: they describe the module they are read from, so importing them would read the\n  wrong module.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  NAME = findings.__name__\n  ```\n\n- **Modules that tests patch by attribute**: a dotted string such as `mocker.patch(\"pkg.findings.DbWriter\")` names the\n  attribute in the module, so the code keeps reaching it through the module, where the patch takes effect. The module's\n  other attributes are still reported. A `setattr` in a loop over a literal tuple or list of modules patches the name on\n  each of them the same way, until a statement rebinds the loop's name or a function's parameter shadows it.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  writer = findings.DbWriter()\n  ```\n\n  ```python context file=tests/test_writer.py\n  def test_writer(mocker):\n      mocker.patch(\"pkg.findings.DbWriter\")\n  ```\n\n### Fix\n\n**Unsafe fix:** the fix rewrites the import to bind the names, so the object is bound when the module loads. A test that\npatches the module attribute later no longer reaches the name. The fix replaces the import and every `findings.Name`\naccess in the file, and it is offered only when every use of the module is such an access to a name the module defines,\nno computed write, such as `setattr(module, name, value)`, may set a name of the module, and no other module of the run\nimports or reads the module's name, which the replaced import would no longer bind. The fix is attached to the first\nreport only, since it covers all of them.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\n```\n\n```python fixed file=pkg/consumer.py\nfrom .findings import DbWriter\n\nwriter = DbWriter()\n```\n\nA use the fix cannot rewrite keeps the report without a fix. Here `findings.__name__` is a module dunder, so `DbWriter`\nis reported without a fix.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\nlabel = findings.__name__\n```\n\nA use that a local binding of the same name shadows keeps the report without a fix, since the bare name would resolve to\nthat binding. Here the type parameter `Item` shadows the module's `Item`.\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.12\"\n```\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass Item:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\n\ndef make[Item](kind: type[Item]) -> object:\n    return findings.Item()\n```\n\nA name that is a Python builtin keeps the report without a fix, since the bare name would shadow the builtin that the\nmodule may still call. Here `set` is the attribute reached through `findings`, and the module also calls the builtin\n`set`.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\ndef set(key, value):\n    return key, value\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nconfigured = findings.set(\"a\", 1)\nvalues = set([1, 2])\n```\n\nA `lazy` import stays lazy after the fix, so the module still loads on first use of a name.\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n```\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/consumer.py\nlazy from . import findings\n\nwriter = findings.DbWriter()\n```\n\n```python fixed file=pkg/consumer.py\nlazy from .findings import DbWriter\n\nwriter = DbWriter()\n```\n\n## Private module attributes\n\nThe rule reports `module._name` when `module` resolves to a file in this project. It does not check attributes of\nclasses, functions or other values. Private names and private module paths receive no automatic fix: a replacement\nimport can cross a package boundary or violate [private-import-path](SMP310.html). Ruff's\n[import-private-name](https://docs.astral.sh/ruff/rules/import-private-name/) (PLC2701) checks imports, not attribute\naccess, so selecting it does not suppress this report.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#21025](https://github.com/astral-sh/ruff/issues/21025)\n  and [#14070](https://github.com/astral-sh/ruff/issues/14070).\n",
+    "explanation": "Flags `module.Name` attribute access on a module of this project, where `from module import Name` would bind the same\nobject.\n\n## Why is this bad?\n\nReaching a name through its module makes the reader trace where the module came from at every use, and it repeats the\nmodule name in each line. Importing the name once states the dependency at the top of the file.\n\n## Example\n\n```python context file=pkg/__init__.py\n\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\n```\n\nUse instead:\n\n```python context file=pkg/__init__.py\n\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python ok file=pkg/consumer.py\nfrom .findings import DbWriter\n\nwriter = DbWriter()\n```\n\n## Configuration\n\n- [`module-attributes`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#module-attributes):\n  modules whose attributes the code reaches as `module.Name`, by absolute dotted name, such as a module that tests patch\n  attribute by attribute. The default is `[]`.\n\n  ```toml config\n  [tool.simplint.imports]\n  module-attributes = [\"pkg.findings\"]\n  ```\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  writer = findings.DbWriter()\n  ```\n\n## What it does\n\n### Active on\n\n- **Attribute access on a module of this project bound by `from . import module` or `from package import module`**: the\n  module must resolve to a file of the run, so the attribute reads a name the file defines.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python report file=pkg/consumer.py\n  from . import findings\n\n  writer = findings.DbWriter()\n  ```\n\n- **Attribute access on a module bound by `import package.module as name`**, which binds the module like the form above.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python report file=pkg/consumer.py\n  import pkg.findings as findings\n\n  writer = findings.DbWriter()\n  ```\n\n- **Private attributes of imported modules**, such as `main._compute`, including when Ruff selects `PLC2701`. Only a\n  module that resolves to a file of this project is checked.\n\n  ```python context file=pkg/main.py\n  def _compute() -> int:\n      return 1\n  ```\n\n  ```python report file=pkg/consumer.py\n  from . import main\n\n  result = main._compute()\n  ```\n\n### Exceptions\n\n- **Third-party and standard-library modules**: only modules that resolve to a file of the run count, so `json` stays as\n  it is.\n\n  ```python ok\n  import json as jsonlib\n\n  text = jsonlib.dumps([])\n  ```\n\n- **The project's own top-level package under another name**: `import pkg as pd` reads the package's names through its\n  alias, as `pd.NAT` does, which is how the package is meant to be used. A read through a submodule, such as\n  `import pkg.core.common as com`, is still reported, and so is an alias equal to the package name, `import pkg as pkg`.\n\n  ```python context file=pkg/__init__.py\n  NAT = object()\n  ```\n\n  ```python ok file=pkg/consumer.py\n  import pkg as pd\n\n  writer = pd.NAT\n  ```\n\n- **Modules listed in\n  [`module-attributes`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#module-attributes)**:\n  the listed module is left alone, as in the configuration example above.\n\n  ```toml config\n  [tool.simplint.imports]\n  module-attributes = [\"pkg.findings\"]\n  ```\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  writer = findings.DbWriter()\n  ```\n\n- **A module used as a value**: passed to a function, assigned or returned, as in `getattr(findings, \"DbWriter\")` or\n  `importlib.reload(findings)`, the module is an object of its own, so the file keeps it.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  writer = getattr(findings, \"DbWriter\")\n  ```\n\n- **Attributes stored or deleted**: `findings.DEBUG = True` and `del findings.OLD` change the module, which an import\n  cannot do. A store in any file of the run patches that attribute the way `setattr` over a literal does, so the\n  attribute is left alone while the module's other attributes are still reported. A name a function of the module\n  rebinds through `global` changes it after the import has bound the value it had at load, so that name is not converted\n  either.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  DEBUG = False\n\n\n  def enable() -> None:\n      global DEBUG\n      DEBUG = True\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  print(findings.DEBUG)\n  ```\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  findings.DEBUG = True\n  del findings.OLD\n  ```\n\n- **Names the file binds itself**: when the file already binds the attribute name to something else, importing it would\n  clash with that binding.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  DbWriter = object\n  writer = findings.DbWriter()\n  ```\n\n- **A name the module's own name shadows**: a parameter, local, loop or comprehension variable named like the module is\n  that variable's value, so an attribute read off it does not reach the module. The real reads of the module are still\n  reported.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n\n  def write(findings: object) -> object:\n      return findings.DbWriter()\n  ```\n\n- **Module dunders such as `__name__`**: they describe the module they are read from, so importing them would read the\n  wrong module.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  NAME = findings.__name__\n  ```\n\n- **Modules that tests patch by attribute**: a dotted string such as `mocker.patch(\"pkg.findings.DbWriter\")` names the\n  attribute in the module, so the code keeps reaching it through the module, where the patch takes effect. The module's\n  other attributes are still reported. A `setattr` in a loop over a literal tuple or list of modules patches the name on\n  each of them the same way, until a statement rebinds the loop's name or a function's parameter shadows it.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  writer = findings.DbWriter()\n  ```\n\n  ```python context file=tests/test_writer.py\n  def test_writer(mocker):\n      mocker.patch(\"pkg.findings.DbWriter\")\n  ```\n\n### Fix\n\n**Unsafe fix:** the fix rewrites the import to bind the names, so the object is bound when the module loads. A test that\npatches the module attribute later no longer reaches the name. The fix replaces the import and every `findings.Name`\naccess in the file, and it is offered only when every use of the module is such an access to a name the module defines,\nno computed write, such as `setattr(module, name, value)`, may set a name of the module, no other module of the run\nimports or reads the module's name, and `__all__` does not list it, since the replaced import would no longer bind it.\nThe fix is attached to the first report only, since it covers all of them.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\n```\n\n```python fixed file=pkg/consumer.py\nfrom .findings import DbWriter\n\nwriter = DbWriter()\n```\n\nThe fix rewrites every access in the file, so only the first report below carries it, and the second has none.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n\n\nclass Reader:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\nreader = findings.Reader()\n```\n\n```python fixed file=pkg/consumer.py\nfrom .findings import DbWriter, Reader\n\nwriter = DbWriter()\nreader = Reader()\n```\n\nA use the fix cannot rewrite keeps the report without a fix. Here `findings.__name__` is a module dunder, so `DbWriter`\nis reported without a fix.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\nlabel = findings.__name__\n```\n\nA use that a local binding of the same name shadows keeps the report without a fix, since the bare name would resolve to\nthat binding. Here the type parameter `Item` shadows the module's `Item`.\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.12\"\n```\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass Item:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\n\ndef make[Item](kind: type[Item]) -> object:\n    return findings.Item()\n```\n\nA name that is a Python builtin keeps the report without a fix, since the bare name would shadow the builtin that the\nmodule may still call. Here `set` is the attribute reached through `findings`, and the module also calls the builtin\n`set`.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\ndef set(key, value):\n    return key, value\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nconfigured = findings.set(\"a\", 1)\nvalues = set([1, 2])\n```\n\nA name that another file of the run imports from this module keeps the report without a fix, since the replaced import\nwould no longer bind it here. Here `pkg/other.py` imports `findings` from `pkg.consumer`.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python context file=pkg/other.py\nfrom .consumer import findings\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\n```\n\n```python fixed file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\n```\n\nA module name that the file lists in `__all__` keeps the report without a fix, since the replaced import would stop\nbinding the name the file exports. Here `pkg/api.py` re-exports `findings`.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/api.py\nfrom . import findings\n\n__all__ = [\"findings\"]\n\nwriter = findings.DbWriter()\n```\n\n```python fixed file=pkg/api.py\nfrom . import findings\n\n__all__ = [\"findings\"]\n\nwriter = findings.DbWriter()\n```\n\nA `lazy` import stays lazy after the fix, so the module still loads on first use of a name.\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n```\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/consumer.py\nlazy from . import findings\n\nwriter = findings.DbWriter()\n```\n\n```python fixed file=pkg/consumer.py\nlazy from .findings import DbWriter\n\nwriter = DbWriter()\n```\n\n## Private module attributes\n\nThe rule reports `module._name` when `module` resolves to a file in this project. It does not check attributes of\nclasses, functions or other values. Private names and private module paths receive no automatic fix: a replacement\nimport can cross a package boundary or violate [private-import-path](SMP310.html). Ruff's\n[import-private-name](https://docs.astral.sh/ruff/rules/import-private-name/) (PLC2701) checks imports, not attribute\naccess, so selecting it does not suppress this report.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#21025](https://github.com/astral-sh/ruff/issues/21025)\n  and [#14070](https://github.com/astral-sh/ruff/issues/14070).\n",
     "examples": {
       "parsed": [
         {
@@ -6000,8 +6081,8 @@
         },
         {
           "section": "What it does",
-          "line": 346,
-          "end_line": 360,
+          "line": 345,
+          "end_line": 370,
           "config": null,
           "blocks": [
             {
@@ -6009,8 +6090,8 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 346,
-              "end_line": 348,
+              "line": 345,
+              "end_line": 347,
               "source": "# A package.\n"
             },
             {
@@ -6018,8 +6099,52 @@
               "language": "python",
               "file": "pkg/findings.py",
               "named": true,
-              "line": 350,
-              "end_line": 353,
+              "line": 349,
+              "end_line": 356,
+              "source": "class DbWriter:\n    pass\n\n\nclass Reader:\n    pass\n"
+            },
+            {
+              "role": "report",
+              "language": "python",
+              "file": "pkg/consumer.py",
+              "named": true,
+              "line": 358,
+              "end_line": 363,
+              "source": "from . import findings\n\nwriter = findings.DbWriter()\nreader = findings.Reader()\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "pkg/consumer.py",
+              "named": true,
+              "line": 365,
+              "end_line": 370,
+              "source": "from .findings import DbWriter, Reader\n\nwriter = DbWriter()\nreader = Reader()\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 375,
+          "end_line": 389,
+          "config": null,
+          "blocks": [
+            {
+              "role": "context",
+              "language": "python",
+              "file": "pkg/__init__.py",
+              "named": true,
+              "line": 375,
+              "end_line": 377,
+              "source": "# A package.\n"
+            },
+            {
+              "role": "context",
+              "language": "python",
+              "file": "pkg/findings.py",
+              "named": true,
+              "line": 379,
+              "end_line": 382,
               "source": "class DbWriter:\n    pass\n"
             },
             {
@@ -6027,19 +6152,19 @@
               "language": "python",
               "file": "pkg/consumer.py",
               "named": true,
-              "line": 355,
-              "end_line": 360,
+              "line": 384,
+              "end_line": 389,
               "source": "from . import findings\n\nwriter = findings.DbWriter()\nlabel = findings.__name__\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 365,
-          "end_line": 386,
+          "line": 394,
+          "end_line": 415,
           "config": {
-            "line": 365,
-            "end_line": 369,
+            "line": 394,
+            "end_line": 398,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.12\"\n"
           },
           "blocks": [
@@ -6048,8 +6173,8 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 371,
-              "end_line": 373,
+              "line": 400,
+              "end_line": 402,
               "source": "# A package.\n"
             },
             {
@@ -6057,8 +6182,8 @@
               "language": "python",
               "file": "pkg/findings.py",
               "named": true,
-              "line": 375,
-              "end_line": 378,
+              "line": 404,
+              "end_line": 407,
               "source": "class Item:\n    pass\n"
             },
             {
@@ -6066,16 +6191,16 @@
               "language": "python",
               "file": "pkg/consumer.py",
               "named": true,
-              "line": 380,
-              "end_line": 386,
+              "line": 409,
+              "end_line": 415,
               "source": "from . import findings\n\n\ndef make[Item](kind: type[Item]) -> object:\n    return findings.Item()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 392,
-          "end_line": 406,
+          "line": 421,
+          "end_line": 435,
           "config": null,
           "blocks": [
             {
@@ -6083,8 +6208,8 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 392,
-              "end_line": 394,
+              "line": 421,
+              "end_line": 423,
               "source": "# A package.\n"
             },
             {
@@ -6092,8 +6217,8 @@
               "language": "python",
               "file": "pkg/findings.py",
               "named": true,
-              "line": 396,
-              "end_line": 399,
+              "line": 425,
+              "end_line": 428,
               "source": "def set(key, value):\n    return key, value\n"
             },
             {
@@ -6101,19 +6226,116 @@
               "language": "python",
               "file": "pkg/consumer.py",
               "named": true,
-              "line": 401,
-              "end_line": 406,
+              "line": 430,
+              "end_line": 435,
               "source": "from . import findings\n\nconfigured = findings.set(\"a\", 1)\nvalues = set([1, 2])\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 410,
-          "end_line": 435,
+          "line": 440,
+          "end_line": 463,
+          "config": null,
+          "blocks": [
+            {
+              "role": "context",
+              "language": "python",
+              "file": "pkg/__init__.py",
+              "named": true,
+              "line": 440,
+              "end_line": 442,
+              "source": "# A package.\n"
+            },
+            {
+              "role": "context",
+              "language": "python",
+              "file": "pkg/findings.py",
+              "named": true,
+              "line": 444,
+              "end_line": 447,
+              "source": "class DbWriter:\n    pass\n"
+            },
+            {
+              "role": "context",
+              "language": "python",
+              "file": "pkg/other.py",
+              "named": true,
+              "line": 449,
+              "end_line": 451,
+              "source": "from .consumer import findings\n"
+            },
+            {
+              "role": "report",
+              "language": "python",
+              "file": "pkg/consumer.py",
+              "named": true,
+              "line": 453,
+              "end_line": 457,
+              "source": "from . import findings\n\nwriter = findings.DbWriter()\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "pkg/consumer.py",
+              "named": true,
+              "line": 459,
+              "end_line": 463,
+              "source": "from . import findings\n\nwriter = findings.DbWriter()\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 468,
+          "end_line": 491,
+          "config": null,
+          "blocks": [
+            {
+              "role": "context",
+              "language": "python",
+              "file": "pkg/__init__.py",
+              "named": true,
+              "line": 468,
+              "end_line": 470,
+              "source": "# A package.\n"
+            },
+            {
+              "role": "context",
+              "language": "python",
+              "file": "pkg/findings.py",
+              "named": true,
+              "line": 472,
+              "end_line": 475,
+              "source": "class DbWriter:\n    pass\n"
+            },
+            {
+              "role": "report",
+              "language": "python",
+              "file": "pkg/api.py",
+              "named": true,
+              "line": 477,
+              "end_line": 483,
+              "source": "from . import findings\n\n__all__ = [\"findings\"]\n\nwriter = findings.DbWriter()\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "pkg/api.py",
+              "named": true,
+              "line": 485,
+              "end_line": 491,
+              "source": "from . import findings\n\n__all__ = [\"findings\"]\n\nwriter = findings.DbWriter()\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 495,
+          "end_line": 520,
           "config": {
-            "line": 410,
-            "end_line": 414,
+            "line": 495,
+            "end_line": 499,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n"
           },
           "blocks": [
@@ -6122,8 +6344,8 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 416,
-              "end_line": 418,
+              "line": 501,
+              "end_line": 503,
               "source": "# A package.\n"
             },
             {
@@ -6131,8 +6353,8 @@
               "language": "python",
               "file": "pkg/findings.py",
               "named": true,
-              "line": 420,
-              "end_line": 423,
+              "line": 505,
+              "end_line": 508,
               "source": "class DbWriter:\n    pass\n"
             },
             {
@@ -6140,8 +6362,8 @@
               "language": "python",
               "file": "pkg/consumer.py",
               "named": true,
-              "line": 425,
-              "end_line": 429,
+              "line": 510,
+              "end_line": 514,
               "source": "lazy from . import findings\n\nwriter = findings.DbWriter()\n"
             },
             {
@@ -6149,8 +6371,8 @@
               "language": "python",
               "file": "pkg/consumer.py",
               "named": true,
-              "line": 431,
-              "end_line": 435,
+              "line": 516,
+              "end_line": 520,
               "source": "lazy from .findings import DbWriter\n\nwriter = DbWriter()\n"
             }
           ]

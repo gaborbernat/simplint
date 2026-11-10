@@ -138,6 +138,66 @@ the import from `required-imports` once the project targets Python 3.14, or turn
       pass
   ```
 
+  ```toml config
+  [project]
+  name = "demo"
+  requires-python = ">=3.14"
+  ```
+
+  ```python report
+  # Demo module.
+  from __future__ import annotations
+
+
+  class Node:
+      pass
+
+
+  def find(parent: "Node" | None) -> None:
+      pass
+  ```
+
+  ```python fixed
+  # Demo module.
+
+
+  class Node:
+      pass
+
+
+  def find(parent: "Node" | None) -> None:
+      pass
+  ```
+
+  ```toml config
+  [project]
+  name = "demo"
+  requires-python = ">=3.14"
+  ```
+
+  ```python report
+  from __future__ import annotations
+  import sys
+
+  if sys.platform == "win32":
+      from os import PathLike
+
+
+  def path(value: PathLike) -> None:
+      pass
+  ```
+
+  ```python fixed
+  import sys
+
+  if sys.platform == "win32":
+      from os import PathLike
+
+
+  def path(value: PathLike) -> None:
+      pass
+  ```
+
 - **Annotations that name the class itself or a later module-level name**: the class body binds neither, so the rule
   still reports the module.
 

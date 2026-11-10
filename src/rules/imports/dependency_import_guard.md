@@ -180,8 +180,8 @@ A module is required when its top-level package is one of these:
       fcntl = None
   ```
 
-- **Standard library modules that minimal and alternative builds may leave out**, such as `ctypes`, `ssl`, `sqlite3`,
-  `tkinter` or `_zstd`: the import can fail on such a build.
+- **Standard library modules that minimal and alternative builds may leave out**, such as `_hashlib`, `ctypes`, `gzip`,
+  `mmap`, `ssl`, `sqlite3`, `tkinter` or `_zstd`: the import can fail on such a build.
 
   ```toml config
   [project]
@@ -194,6 +194,29 @@ A module is required when its top-level package is one of these:
       import ssl
   except ImportError:
       ssl = None
+  ```
+
+  ```toml config
+  [project]
+  name = "demo"
+  requires-python = ">=3.11"
+  ```
+
+  ```python ok
+  try:
+      import _hashlib
+  except ImportError:
+      _hashlib = None
+
+  try:
+      import gzip
+  except ImportError:
+      gzip = None
+
+  try:
+      import mmap
+  except ImportError:
+      mmap = None
   ```
 
 - **CPython's test extensions**, such as `_testcapi`: only builds made for CPython's own test suite include them, so the
