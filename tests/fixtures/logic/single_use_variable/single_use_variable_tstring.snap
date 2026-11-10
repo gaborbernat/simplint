@@ -1,0 +1,14 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:5 SMP504 `value` is used once, right below; inline its value
+7:5 SMP504 `label` is used once, right below; inline its value [fix: Inline `label`]
+--- fixed (1 applied, 1 remaining) ---
+def render(a: int):
+    value = a + 1
+    return t"{value}"
+
+
+def plain_fstring(name: str) -> str:
+    return f"ready!"

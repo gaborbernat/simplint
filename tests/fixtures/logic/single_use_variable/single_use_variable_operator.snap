@@ -1,0 +1,28 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:5 SMP504 `last` is used once, right below; inline its value [unsafe fix: Inline `last`]
+7:5 SMP504 `top` is used once, right below; inline its value [unsafe fix: Inline `top`]
+12:5 SMP504 `head` is used once, right below; inline its value [unsafe fix: Inline `head`]
+17:5 SMP504 `value` is used once, right below; inline its value [unsafe fix: Inline `value`]
+22:5 SMP504 `last` is used once, right below; inline its value [fix: Inline `last`]
+--- fixed (5 applied, 0 remaining) ---
+def copy_before(prices: list[int]) -> tuple[list[int], int]:
+    return (prices + [0], prices.pop())
+
+
+def percent(stack: list[int]) -> tuple[str, int]:
+    return ("%s" % stack, stack.pop())
+
+
+def emptied(queue: list[int]) -> tuple[bool, int]:
+    return (not queue, queue.pop())
+
+
+def member(config: dict[str, int]) -> tuple[bool, int]:
+    return ("debug" in config, config.pop("debug"))
+
+
+def operator_holds_read(prices: list[int]) -> list[int]:
+    return prices + [prices.pop()]

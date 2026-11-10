@@ -486,6 +486,130 @@ def run(stack: list[int]) -> str:
 
 Inlined, `stack` is formatted before `stack.pop()` runs, so the message shows the popped item still in the list.
 
+The fix is also unsafe when the value calls something and the next statement reads an attribute or a subscript of the
+name, such as `tmp.name`, because the call's object is dropped right after that read, so its finalizer runs early. A
+method call on the name, such as `tmp.describe()`, keeps the object alive while it runs, so that fix stays safe.
+
+```python report
+import tempfile
+from pathlib import Path
+
+
+def make_note() -> None:
+    tmp = tempfile.TemporaryDirectory()
+    Path(tmp.name, "note").write_text("hi")
+```
+
+```python fixed
+import tempfile
+from pathlib import Path
+
+
+def make_note() -> None:
+    Path(tempfile.TemporaryDirectory().name, "note").write_text("hi")
+```
+
+The fix is also unsafe when the value calls something and the next statement reads a name in an operator before the
+read, such as `not queue`, because the operator takes the name's state before the call runs.
+
+```python report
+def pop_once(queue: list[int]) -> tuple[bool, int]:
+    head = queue.pop()
+    return (not queue, head)
+```
+
+```python fixed
+def pop_once(queue: list[int]) -> tuple[bool, int]:
+    return (not queue, queue.pop())
+```
+
+An augmented assignment before the read is unsafe when the value calls something, because the target is loaded before
+that call runs, or when its target is an attribute or a subscript, whose object and lookup run first.
+
+```python report
+def run(counter: Counter) -> int:
+    step = counter.bump()
+    counter.total += step
+    return counter.total
+```
+
+```python fixed
+def run(counter: Counter) -> int:
+    counter.total += counter.bump()
+    return counter.total
+```
+
+```python report
+def count_items(items: list[int]) -> int:
+    total = 0
+    step = len(items)
+    total += step
+    return total
+```
+
+```python fixed
+def count_items(items: list[int]) -> int:
+    total = 0
+    total += len(items)
+    return total
+```
+
+The fix is also unsafe when the value holds a walrus that rebinds a name the next statement reads before the read,
+because that read would see the new value.
+
+```python report
+def run(reader: Reader) -> tuple[int, int]:
+    y = 0
+    count = (y := reader.read()) + 1
+    return (y, count)
+```
+
+```python fixed
+def run(reader: Reader) -> tuple[int, int]:
+    y = 0
+    return (y, ((y := reader.read()) + 1))
+```
+
+A read in a t-string is reported without a fix, because a t-string keeps the source text of each field, which the
+inlined value would change.
+
+```toml config
+[tool.ruff]
+target-version = "py314"
+```
+
+```python report
+def render(a: int) -> object:
+    value = a + 1
+    return t"{value}"
+```
+
+```python fixed
+def render(a: int) -> object:
+    value = a + 1
+    return t"{value}"
+```
+
+A string value with braces that replaces a field in a format spec, as in `{value:{inner}}`, is written as an expression
+inside the nested field instead of being spliced into the f-string, because `{` and `}` are not escapes in a format
+spec.
+
+```toml config
+[tool.ruff]
+target-version = "py311"
+```
+
+```python report
+def render(value: object) -> str:
+    inner = "a{b}"
+    return f"{value:{inner}}"
+```
+
+```python fixed
+def render(value: object) -> str:
+    return f"{value:{'a{b}'}}"
+```
+
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules
