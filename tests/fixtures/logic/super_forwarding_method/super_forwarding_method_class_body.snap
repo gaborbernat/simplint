@@ -1,0 +1,46 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+32:9 SMP527 `describe` only returns `super().describe()` called with its own arguments; the parent's method is inherited [fix: Delete the method]
+40:9 SMP527 `describe` only returns `super().describe()` called with its own arguments; the parent's method is inherited [fix: Delete the method]
+--- fixed (2 applied, 0 remaining) ---
+import sys
+
+
+class Base:
+    def describe(self):
+        return "base"
+
+
+class ReadInClassBody(Base):
+    def describe(self):
+        return super().describe()
+
+    label = describe
+
+
+class BoundUnderIf(Base):
+    def describe(self):
+        return super().describe()
+
+    if sys.version_info > (3,):
+        describe = str
+
+
+class ImportedInClassBody(Base):
+    def describe(self):
+        return super().describe()
+
+    from os import path as describe
+
+
+class ReadByOtherMethod(Base):
+    def label(self):
+        return describe()
+
+
+class BoundByOtherMethod(Base):
+    def label(self):
+        describe = str
+        return describe()
