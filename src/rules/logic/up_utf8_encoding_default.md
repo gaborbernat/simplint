@@ -102,6 +102,25 @@ after the fix.
 
 No fix is offered when the call has a comment inside it, which the rewrite would drop.
 
+A parenthesized positional argument stays a valid call when the keyword after it is removed.
+
+```toml config
+[project]
+requires-python = ">=3.15"
+```
+
+```python report
+def read_config(path):
+    with open(("config.txt"), encoding="utf-8") as handle:
+        return handle.read()
+```
+
+```python fixed
+def read_config(path):
+    with open("config.txt") as handle:
+        return handle.read()
+```
+
 ### Exceptions
 
 - **Targets before Python 3.15**: UTF-8 mode is not the default there, so the argument stays.

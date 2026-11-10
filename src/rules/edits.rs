@@ -11,6 +11,7 @@ use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};
 use crate::lint::checker::Checker;
 use crate::rules::is_alone_on_lines;
 use crate::semantic::future_import;
+use crate::syntax::previous_line_start;
 
 pub fn delete_statement(source: &str, stmt: &Stmt, body: &[Stmt]) -> Edit {
     if body.len() == 1 {
@@ -55,8 +56,8 @@ fn lines_with_shared_blanks(source: &str, range: TextRange) -> TextRange {
     let limit = if leading_indentation(source.full_line_str(range.start())).is_empty() { 2 } else { 1 };
     let mut before: usize = 0;
     let mut start = lines.start();
-    while start > TextSize::default() && source.full_line_str(start - TextSize::from(1)).trim().is_empty() {
-        start = source.line_start(start - TextSize::from(1));
+    while start > TextSize::default() && source.full_line_str(previous_line_start(source, start)).trim().is_empty() {
+        start = previous_line_start(source, start);
         before += 1;
     }
     let mut after: usize = 0;
@@ -81,8 +82,9 @@ pub fn lines_with_trailing_blanks(source: &str, range: TextRange) -> TextRange {
     // At the end of the file the blank lines above go too: after a module left with comments only, `ruff format` keeps
     // them, and Ruff reports blank lines ending the file.
     if end.to_usize() == source.len() {
-        while start > TextSize::default() && source.full_line_str(start - TextSize::from(1)).trim().is_empty() {
-            start = source.line_start(start - TextSize::from(1));
+        while start > TextSize::default() && source.full_line_str(previous_line_start(source, start)).trim().is_empty()
+        {
+            start = previous_line_start(source, start);
         }
     }
     TextRange::new(start, end)
@@ -100,7 +102,7 @@ pub fn statement_block(source: &str, stmt: &Stmt) -> TextRange {
     let mut line_start = source.line_start(start);
     // A byte order mark is not a line to step back into.
     while line_start > source.bom_start_offset() {
-        let previous = source.line_start(line_start - TextSize::from(1));
+        let previous = previous_line_start(source, line_start);
         if !source[TextRange::new(previous, line_start)].trim_start().starts_with('#') {
             break;
         }
@@ -119,7 +121,7 @@ pub fn keyword_removal(checker: &Checker, call: &ast::ExprCall, keyword: &ast::K
         .arguments
         .args
         .iter()
-        .map(Ranged::range)
+        .map(|argument| checker.parenthesized_range(argument, (&call.arguments).into()))
         .chain(call.arguments.keywords.iter().map(Ranged::range))
         .collect();
     arguments.sort_by_key(Ranged::start);
@@ -213,7 +215,7 @@ pub fn ensure_import(checker: &Checker, module: &str, member: Option<&str>) -> O
     if checker.semantic().is_bound(binding) {
         return None;
     }
-    Some((binding.to_owned(), Some(import_insertion(checker, module, member))))
+    Some((binding.to_owned(), Some(import_insertion(checker, module, member)?)))
 }
 
 // Whether a top-level import already brings the module, or the member, in under its own name.
@@ -231,7 +233,7 @@ fn has_import(body: &[Stmt], module: &str, member: Option<&str>) -> bool {
 
 // The import goes where Ruff's isort keeps it: in the standard library section of the leading import block, plain
 // `import x` lines before `from x import y` lines, each group in module order. A new section gets a blank line after it.
-fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Edit {
+fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Option<Edit> {
     let body = checker.body();
     let source = checker.source;
     let eol = checker.stylist.line_ending().as_str();
@@ -256,14 +258,20 @@ fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Ed
             _ => None,
         })
         .collect();
-    if let Some((next, _)) = stdlib.iter().find(|(_, sort)| *sort > key) {
-        return Edit::insertion(text, source.line_start(next.start()));
+    let (line, insertion) = if let Some((next, _)) = stdlib.iter().find(|(_, sort)| *sort > key) {
+        (source.line_start(next.start()), text)
+    } else if let Some((last, _)) = stdlib.last() {
+        (source.full_line_end(last.end()), text)
+    } else {
+        // The statement the import goes before follows the preamble, so the body has one there.
+        (source.line_start(body[preamble].start()), format!("{text}{eol}"))
+    };
+    // A line that starts inside the preamble's last statement would put the import above a docstring sharing its line,
+    // which then stops being `__doc__`, or above a `from __future__` import, which is a syntax error.
+    if preamble > 0 && line < body[preamble - 1].end() {
+        return None;
     }
-    if let Some((last, _)) = stdlib.last() {
-        return Edit::insertion(text, source.full_line_end(last.end()));
-    }
-    // The statement the import goes before follows the preamble, so the body has one there.
-    Edit::insertion(format!("{text}{eol}"), source.line_start(body[preamble].start()))
+    Some(Edit::insertion(insertion, line))
 }
 
 // The `=` debug fields of a module, each with its quote and the text of its debug specifier.

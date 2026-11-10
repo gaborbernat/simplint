@@ -25,7 +25,7 @@ use crate::rules::layout::leaves_django_order_to_ruff;
 use crate::rules::logic::counts_ruff_appends;
 use crate::semantic::{RuffMatches, Semantic};
 use crate::settings::FileSettings;
-use crate::syntax::{Exports, dunder_all, for_each_body, string_values};
+use crate::syntax::{Exports, dunder_all, for_each_body, previous_line_start, string_values};
 
 // A location a report points at besides its primary one, with the message that says what it is.
 pub struct Related {
@@ -259,8 +259,10 @@ impl<'a> Checker<'a> {
     pub fn comment_above(&self, node: impl Ranged) -> Option<TextRange> {
         let line_start = self.source.line_start(node.start());
         // On the first line, which may follow a byte order mark, there is no line above.
-        let above = Some(line_start).filter(|start| *start > self.source.bom_start_offset())? - TextSize::from(1);
-        let previous_line = TextRange::new(self.source.line_start(above), line_start);
+        if line_start <= self.source.bom_start_offset() {
+            return None;
+        }
+        let previous_line = TextRange::new(previous_line_start(self.source, line_start), line_start);
         self.comment_ranges()
             .comments_in_range(previous_line)
             .first()

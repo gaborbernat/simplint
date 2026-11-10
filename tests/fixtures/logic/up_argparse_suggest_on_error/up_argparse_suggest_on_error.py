@@ -12,6 +12,7 @@ multiline = argparse.ArgumentParser(
 imported = ArgumentParser(prog="tool", suggest_on_error=True)
 disabled = argparse.ArgumentParser(prog="tool", suggest_on_error=False)
 dynamic = argparse.ArgumentParser(prog="tool", suggest_on_error=flag)
+parenthesized = argparse.ArgumentParser(("prog"), suggest_on_error=True)
 
 
 def build_other(parser_class):

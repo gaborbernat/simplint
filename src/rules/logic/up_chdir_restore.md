@@ -202,6 +202,45 @@ def run(target):
         os.chdir(old)
 ```
 
+A module docstring that shares its line with code keeps the report without a fix, since an import above it would leave
+`__doc__` as `None`. A `from __future__` import that shares its line with code does the same, since an import above it
+is a syntax error.
+
+```toml config
+[project]
+requires-python = ">=3.11"
+```
+
+```python report
+# fmt: off
+"""Build helpers."""; import os
+# fmt: on
+
+
+def build(target):
+    old = os.getcwd()
+    os.chdir(target)
+    try:
+        return compile_project()
+    finally:
+        os.chdir(old)
+```
+
+```python fixed
+# fmt: off
+"""Build helpers."""; import os
+# fmt: on
+
+
+def build(target):
+    old = os.getcwd()
+    os.chdir(target)
+    try:
+        return compile_project()
+    finally:
+        os.chdir(old)
+```
+
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

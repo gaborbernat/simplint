@@ -31,3 +31,34 @@ fn fixed(select: &str, files: &[(&str, &str)]) -> BTreeMap<String, String> {
     common::check(root.path(), &["--no-cache", "--fix", "--unsafe-fixes", "--select", select]);
     files.iter().map(|(name, _)| ((*name).to_owned(), common::read(root.path(), name))).collect()
 }
+
+const PROJECT: &str = "[project]\nrequires-python = \">=3.14\"\n";
+
+// The diagnostics of `select` on a module, and the module after its fixes.
+fn report_and_fix(select: &str, source: &str) -> (String, String) {
+    let root = common::project(&[("pyproject.toml", PROJECT), ("module.py", source)]);
+    let report = common::check(root.path(), &["--no-cache", "--select", select]).1;
+    common::check(root.path(), &["--no-cache", "--fix", "--unsafe-fixes", "--select", select]);
+    (report, common::read(root.path(), "module.py"))
+}
+
+#[test_case("SMP201", "# Reads the raw value.\ndef _helper() -> int:\n    return 1\n\n\ndef main() -> int:\n    return _helper()\n" ; "comment_moves_with_definition")]
+#[test_case("SMP406", "import os\n\n# fmt: off\n__all__ = [\n    \"first\", \"second\",\n]\n# fmt: on\n\n\ndef first() -> str:\n    return os.sep\n\n\ndef second() -> str:\n    return os.linesep\n" ; "all_not_last_fenced")]
+fn crlf_reports_and_fixes_match_lf(select: &str, source: &str) {
+    let lf = report_and_fix(select, source);
+    let crlf = report_and_fix(select, &source.replace('\n', "\r\n"));
+    assert_ne!(lf.1, source);
+    assert_eq!(crlf.0, lf.0);
+    assert_eq!(crlf.1, lf.1.replace('\n', "\r\n"));
+}
+
+#[test_case("\n" ; "lf")]
+#[test_case("\r\n" ; "crlf")]
+fn comment_above_exempts_constant(line_ending: &str) {
+    let source = "import sys\n\n# Reserved name; nothing else may claim it.\n_STORAGE_NAME = \"reserved\"\n\n\ndef claim(names: list[str]) -> None:\n    names.append(_STORAGE_NAME)\n\n\nif __name__ == \"__main__\":\n    claim(sys.argv)\n";
+    let root = common::project(&[("pyproject.toml", PROJECT), ("module.py", &source.replace('\n', line_ending))]);
+    assert_eq!(
+        common::check(root.path(), &["--no-cache", "--select", "SMP202"]),
+        (0, "All checks passed!\n".to_owned(), String::new())
+    );
+}
