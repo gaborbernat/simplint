@@ -16,6 +16,7 @@ use itertools::Itertools;
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_diagnostics::{Applicability, Fix};
 use ruff_linter::settings::types::GlobPath;
+use ruff_linter::warn_user_once_by_message;
 use ruff_macros::CacheKey;
 use serde::Deserialize;
 
@@ -107,6 +108,7 @@ impl Settings {
     // `[project]` and build settings give the project. Without a `pyproject.toml`, the defaults apply.
     fn resolve(
         root: &Path,
+        main: Option<&Path>,
         configuration: Option<(&Path, &toml::Table)>,
         metadata: Option<(&Path, &toml::Table)>,
         overrides: &Overrides,
@@ -121,7 +123,7 @@ impl Settings {
         let (metadata_path, metadata, build) = match metadata {
             Some((path, table)) => {
                 let hatch_file = path.with_file_name("hatch.toml");
-                let hatch = hatch_file.is_file().then(|| read_table(&hatch_file)).transpose()?;
+                let hatch = hatch_file.is_file().then(|| optional(&hatch_file, read_table)).flatten();
                 let build = BuildConfiguration::of(table, hatch.as_ref());
                 let mut project: ProjectFile =
                     table.clone().try_into().with_context(|| format!("Failed to parse {}", path.display()))?;
@@ -153,7 +155,7 @@ impl Settings {
         // rewriting each other's output; the rule stays off for the whole project. The hook configuration is read only
         // when the rule would run.
         let rules = if rules.contains(Rule::AbsoluteSiblingImport)
-            && (configures_flake8_lazy || hook_runs_flake8_lazy(project)?)
+            && (configures_flake8_lazy || hook_runs_flake8_lazy(project, main))
         {
             rules.subtract(RuleSet::from_rules([Rule::AbsoluteSiblingImport]))
         } else {
@@ -394,7 +396,7 @@ impl SettingsResolver {
         };
         // The one file is both: a `--config` run takes its metadata from the same file, as it takes its settings.
         let table = pyproject.as_ref().map(|(path, table)| (*path, table));
-        let fixed = Arc::new(Settings::resolve(root, table, table, &overrides, isolated)?);
+        let fixed = Arc::new(Settings::resolve(root, None, table, table, &overrides, isolated)?);
         let mut projects = Projects { main: Some(fixed.root.clone()), ..Projects::default() };
         projects.resolved.insert((fixed.root.clone(), fixed.metadata_path.clone()), Arc::clone(&fixed));
         let discovery = Discovery::Fixed { settings: Arc::clone(&fixed), projects: Mutex::new(projects), isolated };
@@ -467,7 +469,8 @@ impl Discovery {
             }
             let configuration = settings_file.as_deref().map(|file| (file, &projects.pyprojects[file]));
             let metadata = metadata_file.as_deref().map(|file| (file, &projects.pyprojects[file]));
-            let mut resolved = Settings::resolve(&root, configuration, metadata, overrides, false)?;
+            let mut resolved =
+                Settings::resolve(&root, projects.main.as_deref(), configuration, metadata, overrides, false)?;
             resolved.nested = nested.is_some();
             Arc::new(resolved)
         };
@@ -588,26 +591,37 @@ fn configures(table: &toml::Table, name: &str) -> bool {
 // The hook configuration files pre-commit and prek read from a project, which the nearest one upwards decides.
 pub const HOOK_CONFIGS: [&str; 3] = [".pre-commit-config.yaml", ".pre-commit-config.yml", "prek.toml"];
 
-// Whether the nearest hook configuration from `project` upwards, not past the repository root, has a flake8-lazy hook.
-fn hook_runs_flake8_lazy(project: Option<&Path>) -> Result<bool> {
+// Whether the nearest hook configuration from `project` upwards has a flake8-lazy hook. pre-commit and prek read it at
+// the repository root, so the search stops there. Outside a repository it stops at the run's project, `main`, since a
+// configuration further up, such as one in the home directory, belongs to no hook run of this project.
+fn hook_runs_flake8_lazy(project: Option<&Path>, main: Option<&Path>) -> bool {
     let Some(project) = project else {
-        return Ok(false);
+        return false;
     };
+    let top = project
+        .ancestors()
+        .find(|dir| dir.join(".git").exists())
+        .or_else(|| main.filter(|main| project.starts_with(main)))
+        .unwrap_or(project);
     for dir in project.ancestors() {
         let configs = HOOK_CONFIGS.iter().map(|name| dir.join(name)).filter(|path| path.is_file()).collect_vec();
         if !configs.is_empty() {
-            for config in &configs {
-                if config_has_flake8_lazy(config)? {
-                    return Ok(true);
-                }
-            }
-            return Ok(false);
+            return configs.iter().any(|config| optional(config, config_has_flake8_lazy).unwrap_or(false));
         }
-        if dir.join(".git").exists() {
+        if dir == top {
             break;
         }
     }
-    Ok(false)
+    false
+}
+
+// A file another tool owns, which simplint only reads for hints, so one it cannot read or parse counts as absent.
+fn optional<T>(path: &Path, read: impl FnOnce(&Path) -> Result<T>) -> Option<T> {
+    read(path)
+        .inspect_err(|error| {
+            warn_user_once_by_message!("Ignoring {}: {error:#}", path.file_name().unwrap_or_default().display());
+        })
+        .ok()
 }
 
 fn config_has_flake8_lazy(path: &Path) -> Result<bool> {

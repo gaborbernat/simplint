@@ -2111,6 +2111,26 @@ fn hatch_toml_configures_the_hook(hatch: &str, file: &str, source: &str) {
     assert_eq!(check(root.path(), &["--select", "SMP409"]).1, "All checks passed!\n");
 }
 
+// A `hatch.toml` that cannot be parsed configures no hook, with a warning, rather than stopping the run.
+#[test]
+fn unparsable_hatch_toml_configures_nothing() {
+    let root = project(&[
+        ("pyproject.toml", "[project]\nname = \"demo\"\nversion = \"1\"\n"),
+        ("hatch.toml", "[build\n"),
+        ("hatch_build.py", BUILD_HOOK),
+    ]);
+    let (status, stdout, stderr) = check(root.path(), &["--select", "SMP409"]);
+    assert_eq!(
+        (status, stdout, stderr.contains("Failed to parse")),
+        (
+            1,
+            "hatch_build.py:4:7: SMP409 `_Hook` is never used in the run; remove it or give it a user\nFound 1 error.\n"
+                .to_owned(),
+            true
+        )
+    );
+}
+
 // A `hatch.toml` is merged over the `[tool.hatch]` table key by key, so a key it sets wins and one it leaves unset keeps
 // the pyproject's value.
 #[test_case("[tool.hatch.build.hooks.custom]\npath = \"other.py\"\n", "[build.hooks.custom]\npath = \"hatch_build.py\"\n", "All checks passed!\n" ; "hatch_toml_overrides_the_path")]
