@@ -85,6 +85,7 @@ impl<'l, 'a> Fixer<'l, 'a> {
             current.clone_from(&result.transformed);
         };
         result.fixed = fixed;
+        let (mut result, withdrawn) = self.unless_unchanged(source, result, withdrawn);
         Self::withdraw(&result.transformed, &mut result.diagnostics, &withdrawn);
         Ok((result, withdrawn))
     }
@@ -129,18 +130,19 @@ impl<'l, 'a> Fixer<'l, 'a> {
                 None => (batch, batch_settled),
             };
         }
-        // Fixes Ruff's cleanup undoes, such as a relative import the project bans, leave the source as it was, and a
-        // fix that changes nothing is not offered.
-        if settled.result.transformed == source && !settled.result.fixed.is_empty() {
-            withdrawn.rules = withdrawn.rules.union(RuleSet::from_rules(Self::fixing_rules(&settled.result.fixed)));
-            let result = FixerResult {
-                diagnostics: linted.lint.diagnostics.clone(),
-                transformed: source.to_owned(),
-                fixed: FixTable::default(),
-            };
-            return Ok((result, withdrawn));
+        Ok(self.unless_unchanged(source, settled.result, settled.held))
+    }
+
+    // Fixes that leave the source as it was, as when Ruff's cleanup undoes them, such as a relative import the project
+    // bans, or when later runs of the loop return to the source, fixed nothing. They are withdrawn, so their reports
+    // are not offered as fixable and the file is not written.
+    fn unless_unchanged(&self, source: &str, result: FixerResult, mut withdrawn: Withdrawn) -> (FixerResult, Withdrawn) {
+        if result.transformed != source || result.fixed.is_empty() {
+            return (result, withdrawn);
         }
-        Ok((settled.result, settled.held))
+        withdrawn.rules = withdrawn.rules.union(RuleSet::from_rules(Self::fixing_rules(&result.fixed)));
+        let diagnostics = self.lint(source).diagnostics;
+        (FixerResult { diagnostics, transformed: source.to_owned(), fixed: FixTable::default() }, withdrawn)
     }
 
     // Withdraws the fixes of `rule` that `linted` reports, keeping each group of them whose result leaves no more Ruff
