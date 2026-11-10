@@ -34,12 +34,12 @@ jobs:
       run: ${{ github.event_name != 'pull_request' || steps.filter.outputs.run == 'true' }}
     steps:
       - name: 📥 Check out code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
       - name: 🧭 Detect changed paths
         if: github.event_name == 'pull_request'
-        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        uses: dorny/paths-filter@v4.0.3
         id: filter
         with:
           filters: |
@@ -58,7 +58,7 @@ jobs:
     name: 🏗️ Build distributions
     needs: changes
     if: ${{ needs.changes.outputs.run == 'true' }}
-    uses: tox-dev/github-workflows/.github/workflows/build-maturin-wheels.yaml@13381289334b15375958be7f7438f3c3d860e575 # 6.5.5
+    uses: tox-dev/github-workflows/.github/workflows/build-maturin-wheels.yaml@81a3fc661be49ecdc4ea4af99a69fa3879b3d7a1 # 6.8.1
     with:
       package-name: simplint
       matrix: >-
@@ -79,17 +79,17 @@ jobs:
       version: ${{ steps.maturin.outputs.version }}
     steps:
       - name: 📥 Check out code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
       - name: 🐍 Set up Python
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@v10.3.3
         with:
           version: latest-known
           enable-cache: false
           python-version: "3.15"
       - name: 📦 Install locked build tool
-        uses: tox-dev/github-workflows/install-locked-tools@13381289334b15375958be7f7438f3c3d860e575 # 6.5.5
+        uses: tox-dev/github-workflows/install-locked-tools@6.8.1
         with:
           groups: release-build
           venv: ${{ runner.temp }}/release-tools
@@ -120,7 +120,7 @@ jobs:
       PGO_TARGET: ${{ matrix.platform.pgo }}
     steps:
       - name: 📥 Check out code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -128,12 +128,12 @@ jobs:
         shell: bash
         run: echo "SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)" >>"$GITHUB_ENV"
       - name: 📩 Download source
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        uses: actions/download-artifact@v8.0.2
         with:
           name: simplint-source
           path: .
       - name: 🐍 Set up Python
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@v10.3.3
         env:
           UV_VENV_SEED: "true"
         with:
@@ -154,19 +154,19 @@ jobs:
       - name: 📦 Restore PGO profile
         id: profile
         if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo }}
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@v6.1.0
         with:
           path: pgo/simplint.profdata
           key: pgo-profile-${{ matrix.platform.pgo }}-${{ steps.version.outputs.version }}-${{ github.sha }}-rust${{ steps.toolchain.outputs.channel }}-maturin${{ needs.maturin.outputs.version }}-${{ hashFiles('Cargo.lock', 'Cargo.toml', 'rust-toolchain.toml', 'tasks/pgo*') }}
       - name: 🦀 Install Rust toolchain
         if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo }}
-        uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        uses: actions-rust-lang/setup-rust-toolchain@v2.0.0
         with:
           components: llvm-tools-preview
           cache: false
       - name: 🏗️ Build instrumented binary
         if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo && steps.profile.outputs.cache-hit != 'true' }}
-        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        uses: PyO3/maturin-action@v1.51.0
         with:
           maturin-version: ${{ needs.maturin.outputs.version }}
           target: ${{ matrix.platform.target }}
@@ -179,7 +179,7 @@ jobs:
       - name: 📦 Restore PGO corpus
         id: corpus
         if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo && steps.profile.outputs.cache-hit != 'true' }}
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/restore@v6.1.0
         with:
           path: pgo-corpus
           key: pgo-corpus-${{ runner.os }}-${{ hashFiles('tasks/pgo_corpus.toml') }}
@@ -190,13 +190,13 @@ jobs:
         run: python -m tasks.pgo train "target/pgo-build/$PGO_TARGET/release/simplint" pgo --cache pgo-corpus
       - name: 💾 Save PGO corpus
         if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo && steps.profile.outputs.cache-hit != 'true' && steps.corpus.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/save@v6.1.0
         with:
           path: pgo-corpus
           key: ${{ steps.corpus.outputs.cache-primary-key }}
       - name: 💾 Save PGO profile
         if: ${{ (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo && steps.profile.outputs.cache-hit != 'true' }}
-        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache/save@v6.1.0
         with:
           path: pgo/simplint.profdata
           key: ${{ steps.profile.outputs.cache-primary-key }}
@@ -209,7 +209,7 @@ jobs:
           echo "PGO_BUILD_LOG=$GITHUB_WORKSPACE/pgo/build.log" >>"$GITHUB_ENV"
       - name: 🏗️ Build wheels
         if: ${{ startsWith(matrix.platform.runner, 'ubuntu') || !((startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && inputs.pgo)) && matrix.platform.pgo) }}
-        uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b # v1.51.0
+        uses: PyO3/maturin-action@v1.51.0
         with:
           maturin-version: ${{ needs.maturin.outputs.version }}
           target: ${{ matrix.platform.target }}
@@ -234,7 +234,7 @@ jobs:
         shell: bash
         run: python -m tasks.pgo verify pgo/build.log pgo/simplint.profdata
       - name: 📤 Upload wheels
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: simplint-wheels-pgo-${{ matrix.platform.target }}
           path: dist
