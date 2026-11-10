@@ -138,7 +138,13 @@ impl ImportResolver {
         let groups: Vec<&[usize]> = directories.values().flat_map(|group| group.chunks(GROUP)).collect();
         let (python_version, paths, names) = (self.python_version, &self.paths, &self.names);
         let run_paths: FxHashSet<PathBuf> = files.iter().map(|(path, _)| path.to_path_buf()).collect();
-        let run = RunFiles { names, paths: &run_paths };
+        let mut namesakes: FxHashMap<&str, Vec<&PathBuf>> = FxHashMap::default();
+        for path in &run_paths {
+            if let Some(name) = last_name(path) {
+                namesakes.entry(name).or_default().push(path);
+            }
+        }
+        let run = RunFiles { names, paths: &run_paths, namesakes: &namesakes };
         // The database is not `Sync`, so each worker resolves with its own clone, which shares the cached results.
         let fresh: Vec<Vec<(FileId, ModuleFacts<PathBuf>)>> = groups
             .par_iter()
@@ -244,22 +250,25 @@ fn constructor_reads<'f>(
     if let Some(file) = resolved(module) {
         return vec![(file, uses.to_vec())];
     }
-    let last = module.rsplit('.').next().unwrap_or(module);
     let reads: Vec<NameUse> =
         uses.iter().filter(|name| matches!(name.kind, UseKind::Call(_)) && !name.discarded).cloned().collect();
-    let namesakes = run.paths.iter().filter(|path| last_name(path) == Some(last));
-    let namesakes: Vec<&PathBuf> = namesakes.collect();
-    if reads.is_empty() || namesakes.is_empty() || found(module) {
+    if reads.is_empty() {
         return Vec::new();
     }
-    namesakes.into_iter().map(|path| (path.clone(), reads.clone())).collect()
+    let last = module.rsplit('.').next().unwrap_or(module);
+    match run.namesakes.get(last) {
+        Some(namesakes) if !found(module) => namesakes.iter().map(|path| ((*path).clone(), reads.clone())).collect(),
+        _ => Vec::new(),
+    }
 }
 
-// The files of the run, by the names they are called by and by their paths, which resolution checks a module against.
+// The files of the run, by the names they are called by and by their paths, which resolution checks a module against,
+// and by their last names, which a module that resolves to no file is matched with.
 #[derive(Clone, Copy)]
 pub(super) struct RunFiles<'a> {
     names: &'a FxHashSet<String>,
     paths: &'a FxHashSet<PathBuf>,
+    namesakes: &'a FxHashMap<&'a str, Vec<&'a PathBuf>>,
 }
 
 // The files a file's names resolve to, with the names it uses from each, and the files it star-imports, or the last
