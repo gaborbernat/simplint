@@ -30,7 +30,8 @@ memory, neither for the file it fixes nor for another file linted after that fix
 fixed source, not the disk.
 
 Without fixes, a file that does not parse, or cannot be read because it is not UTF-8, keeps its syntax error or read
-error too, so a warm run reports it again without building the project index.
+error too, so a warm run reports it again without building the project index. A read error that is only logged, because
+``io-error`` (E902) is not selected, is not cached, so every run logs it again.
 
 .. mermaid::
 

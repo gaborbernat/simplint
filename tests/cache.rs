@@ -668,6 +668,18 @@ fn warm_run_reuses_the_reports_of_a_file_no_rule_reports(source: &[u8], flags: &
     );
 }
 
+// A read error is reported only while `io-error` is selected: without it the run logs a warning, which a cached clean
+// result would not log again.
+#[test_case("F", (false, true) ; "logged_without_io_error")]
+#[test_case("E902", (true, false) ; "reported_with_io_error")]
+fn unreadable_file_is_reported_again_on_a_warm_run(select: &str, expected: (bool, bool)) {
+    let root = project(&[("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [\"{select}\"]\n"))]);
+    fs::write(root.path().join("latin.py"), b"name = \"\xff\"\n").expect("write");
+    check(root.path(), &[]);
+    let (_, stdout, stderr) = check(root.path(), &[]);
+    assert_eq!((stdout.contains("E902"), stderr.contains("Failed to lint latin.py")), expected);
+}
+
 const HELPER: &str = "def helper() -> None:\n    pass\n";
 const CLIENT: &str = "from helpers import helper\n";
 
