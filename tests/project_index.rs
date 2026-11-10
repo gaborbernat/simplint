@@ -2474,7 +2474,8 @@ const NESTED_SECOND: &str = "def run(x, y):\n    a = 1\n    b = 2\n    if x:\n  
 
 // Six repeated statements, one copy right after the end of an `if` block, whose dedent is not part of the repeat.
 const AFTER_BLOCK: &str = "def run(x, y):\n    if x:\n        log(x)\n    a = 1\n    b = 2\n    c = a + b\n    d = c * 2\n    log(d)\n    return d\n";
-const AFTER_STATEMENT: &str = "def run(x, y):\n    log(y)\n    a = 1\n    b = 2\n    c = a + b\n    d = c * 2\n    log(d)\n    return d\n";
+const AFTER_STATEMENT: &str =
+    "def run(x, y):\n    log(y)\n    a = 1\n    b = 2\n    c = a + b\n    d = c * 2\n    log(d)\n    return d\n";
 
 #[test_case(NESTED_FIRST, NESTED_SECOND, &[] ; "nesting_differs")]
 #[test_case(NESTED_FIRST, NESTED_FIRST, &["first.py", "second.py"] ; "nesting_repeats")]
