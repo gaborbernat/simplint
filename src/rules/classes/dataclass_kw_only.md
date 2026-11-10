@@ -229,6 +229,32 @@ class Release:
         return cls(name=name)
 ```
 
+The `cls` of an ordinary method is left alone:
+
+```python report
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class Release:
+    name: str
+
+    def build(self, cls: type, name: str) -> object:
+        return cls(name)
+```
+
+```python fixed
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Release:
+    name: str
+
+    def build(self, cls: type, name: str) -> object:
+        return cls(name)
+```
+
 The keywords follow the field order of the generated `__init__`:
 
 - inherited fields come first

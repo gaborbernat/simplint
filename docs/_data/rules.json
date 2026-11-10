@@ -20762,7 +20762,7 @@
     "name": "dataclass-frozen",
     "summary": "Dataclasses without `frozen`",
     "fix": "Always",
-    "explanation": "Flags dataclasses declared without `frozen=True`.\n\nThe public dataclasses of a library are not reported: users construct and subclass them, so `frozen=True` is their\nchoice to make.\n\n## Why is this bad?\n\nAny code holding a reference to a mutable dataclass can change it, so a reader cannot trust a value they saw at\nconstruction time. A [frozen](https://docs.python.org/3/library/dataclasses.html#frozen-instances) instance raises on\nattribute assignment. With the default `eq=True` it gets a `__hash__`, so it can go in a set or serve as a dict key when\nits fields are hashable.\n\n## Example\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n```\n\nUse instead:\n\n```python ok\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass Release:\n    version: str\n```\n\n## What it does\n\n### Active on\n\n- **[Dataclass](https://docs.python.org/3/library/dataclasses.html#dataclasses.dataclass) decorators**: a decorator\n  spelled `@dataclass` or `@dataclasses.dataclass` without `frozen=True`. Any value other than a literal `True`, such as\n  `frozen=False`, is reported too, since only a literal `True` shows that the option is on.\n\n  - `@dataclass`: `frozen` is not set.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    @dataclass\n    class Release:\n        version: str\n    ```\n\n  - `@dataclasses.dataclass(slots=True)`: the dotted spelling, with `frozen` missing.\n\n    ```python report\n    import dataclasses\n\n\n    @dataclasses.dataclass(slots=True)\n    class Release:\n        version: str\n    ```\n\n  - `@dataclass(frozen=False)`: a value other than a literal `True`.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=False)\n    class Release:\n        version: str\n    ```\n\n  - `@dataclass(frozen=True, slots=True)`: `frozen` is a literal `True`, so it is accepted.\n\n    ```python ok\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=True, slots=True)\n    class Release:\n        version: str\n    ```\n\n  - `@dataclass(**DC_KW)`: a `**` splat of a module-level dict literal, or of a `dict(...)` call with keyword arguments,\n    counts the options its keys set. Here `frozen` is set, so the class is accepted.\n\n    ```python ok\n    from dataclasses import dataclass\n\n    DC_KW = {\"frozen\": True, \"slots\": True}\n\n\n    @dataclass(**DC_KW)\n    class Release:\n        version: str\n    ```\n\n  - `@dataclass(**SLOTS_KW)` with `SLOTS_KW = {\"slots\": True}`: `frozen` is not set, so it is reported and the fix\n    appends `frozen=True` after the splat.\n\n  - A `**` splat simplint cannot read, such as `**get_kw()`, a name bound more than once or changed in place, or a dict\n    literal with a `**` entry or a repeated key, leaves the class unreported, since the options may be set.\n\n### Exceptions\n\nA class whose instances are written after construction, as the Instances of the class section describes, is not reported\nwhen the plain class that `frozen=True` would push it towards is one Ruff rejects, since that plain class is the only\nother form of the code. Writes through an object of unknown class do not count, and stubs are always reported, since\nRuff's rules skip them:\n\n- **Ruff's B903 runs**: `class-as-data-structure` flags a plain class with no base classes or class keywords, no\n  decorator besides the dataclass's, and no method but private ones, such as `_bump`. A public method, such as `bump`,\n  keeps the class reported. Its fields must be plain parameters: a factory default or `field(init=False)` does not\n  qualify, and neither does a hand-written `__init__`. B903 is a preview rule, so the config turns preview on.\n\n  ```toml config\n  [tool.ruff]\n  preview = true\n\n  [tool.ruff.lint]\n  select = [\"B903\"]\n  ```\n\n  ```python ok\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Counter:\n      count: int\n\n      def _bump(self) -> None:\n          self.count += 1\n  ```\n\n- **Ruff's PLR0913 runs**: `too-many-arguments` flags a plain class whose `__init__` takes more parameters than\n  `max-args`, 5 by default. The count leaves out `field(init=False)` fields and the `KW_ONLY` marker, takes in `InitVar`\n  fields, and leaves out `ClassVar`s. A class with at most `max-args` fields stays reported. Ruff does not count a\n  parameter named like a dummy, such as `_a`, and this rule does, so a class with one can be left unreported where Ruff\n  would not flag it.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"PLR0913\"]\n  ```\n\n  ```python ok\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Hold:\n      a: int\n      b: int\n      c: int\n      d: int\n      e: int\n      f: int\n\n      def _bump(self) -> None:\n          self.a += 1\n  ```\n\n### Fix\n\nThe fix sets `frozen=True` on the decorator. No fix is offered for:\n\n- a class without fields, such as a test fixture standing for a dataclass with the default options\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Empty:\n      pass\n  ```\n\n- a decorator whose `**` splat sets `frozen` to a value other than `True`, such as `FROZEN_OFF = {\"frozen\": False}`: the\n  fix cannot take the key out of the dict, and adding `frozen=True` would repeat it\n\n  ```python report\n  from dataclasses import dataclass\n\n  FROZEN_OFF = {\"frozen\": False}\n\n\n  @dataclass(**FROZEN_OFF)\n  class Release:\n      version: str\n  ```\n\n- a class the module creates inside `with pytest.raises(...)` or `with self.assertRaises(...)`: the test expects code\n  using the instance to fail, such as `{Key(\"a\"): True}` raising because the class is unhashable, and freezing can\n  change that\n\n  ```python report\n  from dataclasses import dataclass\n\n  import pytest\n\n\n  def test_key() -> None:\n      with pytest.raises(TypeError):\n\n          @dataclass\n          class Key:\n              name: str\n  ```\n\nOtherwise the fix leaves out `frozen` when checked code shows that a frozen instance breaks it.\n\n```mermaid\nflowchart TD\n    fields{\"Has fields?\"}\n    fields -->|no| none[\"No fix\"]\n    fields -->|yes| raises{\"Created inside pytest.raises<br/>or assertRaises?\"}\n    raises -->|yes| none\n    raises -->|no| breaks{\"Does checked code<br/>break a frozen instance?\"}\n    breaks -->|yes| none\n    breaks -->|no| add[\"Add frozen=True\"]\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    class fields,raises,breaks yellow\n    class none orange\n    class add green\n```\n\nA fix that adds `frozen`:\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n```\n\n```python fixed\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass Release:\n    version: str\n```\n\n### When `frozen=True` is left out\n\n- the class has a base class other than `Generic[...]`: its methods may set attributes, and a frozen dataclass cannot\n  inherit from it unless it is frozen too\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  class Base:\n      pass\n\n\n  @dataclass\n  class Release(Base):\n      version: str\n  ```\n\n- any class in the checked files inherits from a class with its name\n\n  ```python report file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Release:\n      version: str\n  ```\n\n  ```python context file=app/extra.py\n  from app.models import Release\n\n\n  class Release(Release):\n      pass\n  ```\n\n- the class defines `__setattr__` or `__delattr__`\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Release:\n      version: str\n\n      def __setattr__(self, name: str, value: object) -> None:\n          object.__setattr__(self, name, value)\n  ```\n\n- one of its methods sets or deletes an attribute on `self`\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Counter:\n      count: int = 0\n\n      def bump(self) -> None:\n          self.count += 1\n  ```\n\n- other code sets or deletes an attribute on an instance known to be of the class, such as `result.status = \"done\"`\n  after `result = Result(...)`, in this file or another checked file\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Result:\n      status: str\n\n\n  def run() -> None:\n      result = Result(\"ok\")\n      result.status = \"done\"\n  ```\n\n- other code sets or deletes an attribute of an instance known to be of the class under a name computed at run time, or\n  through `monkeypatch.setattr`, `mock.patch.object` or `obj.__setattr__(...)`, such as the `setattr(self, key, value)`\n  of a method that updates its fields from a dict\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Release:\n      version: str\n\n      def update(self, **changes: str) -> None:\n          for key, value in changes.items():\n              setattr(self, key, value)\n  ```\n\n- other code sets or deletes an attribute named like one of the fields or `ClassVar` attributes on an object of unknown\n  class, such as `envs[name].active = True`, directly or through `setattr`\n\n  ```python report file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Env:\n      active: bool = False\n  ```\n\n  ```python context file=app/toggle.py\n  def toggle(envs: dict[str, object], name: str) -> None:\n      envs[name].active = True\n  ```\n\n### Instances of the class\n\nAn object is **known to be of the class** when it is:\n\n- `self` in a method of the class\n- a name bound to a call of the class\n- a name annotated with the class, `Optional[...]` and `... | None` included\n- an attribute of `self` the class body annotates with it, such as `self.config` after `config: Config`\n\nAn object known to be a mock never counts, nor does anything reached from one. Mocks are names bound to `Mock()`,\n`MagicMock()`, `create_autospec(...)`, `mocker.Mock()` or `mocker.patch(...)`, and `with patch(...) as name` targets.\n\nAny other object is unknown, so a write through it counts only when it names a field or a `ClassVar` attribute. An\nunannotated parameter such as `result` below is unknown: its write to `log` is not tied to `Result`, so `frozen=True` is\nstill offered, and that write fails at runtime once the fix is applied.\n\n```python report file=app/models.py\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass Result:\n    status: str\n```\n\n```python fixed file=app/models.py\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass Result:\n    status: str\n```\n\n```python context file=app/record.py\nfrom app.models import Result\n\n\ndef record(result) -> None:\n    result.log = \"x\"\n\n\nrecord(Result(\"ok\"))\n```\n\n### Unsafe fix\n\nThe fix is safe only when nothing else in the checked files might notice the change. It is unsafe when:\n\n- the decorator already sets `frozen` or `slots` to something other than `True`;\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=False)\n  class Release:\n      version: str\n  ```\n\n  ```python fixed\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True)\n  class Release:\n      version: str\n  ```\n\n- the class has a `Generic[...]` base class;\n\n  ```python report\n  from dataclasses import dataclass\n  from typing import Generic, TypeVar\n\n  T = TypeVar(\"T\")\n\n\n  @dataclass\n  class Box(Generic[T]):\n      value: T\n  ```\n\n  ```python fixed\n  from dataclasses import dataclass\n  from typing import Generic, TypeVar\n\n  T = TypeVar(\"T\")\n\n\n  @dataclass(frozen=True)\n  class Box(Generic[T]):\n      value: T\n  ```\n\n- another class with the same name, defined in another module, gets attributes written on its instances or has a\n  subclass that a slotted base breaks, as an import simplint cannot follow, such as through a re-export, may name this\n  class;\n\n  ```python report file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Release:\n      version: str\n  ```\n\n  ```python fixed file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True)\n  class Release:\n      version: str\n  ```\n\n  ```python context file=app/other.py\n  class Release:\n      pass\n\n\n  release = Release()\n  release.label = \"x\"\n  ```\n\n- the class body assigns or deletes an attribute on anything other than `self`, or mentions `super`, `__dict__`,\n  `__weakref__`, `__setattr__` or `__delattr__`.\n\n  ```python report\n  from dataclasses import dataclass\n\n  settings = object()\n\n\n  @dataclass\n  class Release:\n      version: str\n      settings.flag = True\n  ```\n\n  ```python fixed\n  from dataclasses import dataclass\n\n  settings = object()\n\n\n  @dataclass(frozen=True)\n  class Release:\n      version: str\n      settings.flag = True\n  ```\n\nCode outside the checked files, and code that adds an attribute that is not a field to an object simplint cannot tie to\nthe class, is not detected, and breaks once the fix is applied.\n\n### Related rules\n\n[dataclass-slots](SMP702.html) asks for `slots=True` on the same decorator. [dataclass-kw-only](SMP703.html) asks for\n`kw_only=True`.\n\nA class that writes an attribute other than its fields gets no `slots=True` fix from [dataclass-slots](SMP702.html), so\nthe plain class is then the only way to satisfy it. The exceptions above only cover `frozen`, so `dataclass-slots` still\nreports such a class.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#8981](https://github.com/astral-sh/ruff/issues/8981).\n",
+    "explanation": "Flags dataclasses declared without `frozen=True`.\n\nThe public dataclasses of a library are not reported: users construct and subclass them, so `frozen=True` is their\nchoice to make.\n\n## Why is this bad?\n\nAny code holding a reference to a mutable dataclass can change it, so a reader cannot trust a value they saw at\nconstruction time. A [frozen](https://docs.python.org/3/library/dataclasses.html#frozen-instances) instance raises on\nattribute assignment. With the default `eq=True` it gets a `__hash__`, so it can go in a set or serve as a dict key when\nits fields are hashable.\n\n## Example\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n```\n\nUse instead:\n\n```python ok\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass Release:\n    version: str\n```\n\n## What it does\n\n### Active on\n\n- **[Dataclass](https://docs.python.org/3/library/dataclasses.html#dataclasses.dataclass) decorators**: a decorator\n  spelled `@dataclass` or `@dataclasses.dataclass` without `frozen=True`. Any value other than a literal `True`, such as\n  `frozen=False`, is reported too, since only a literal `True` shows that the option is on.\n\n  - `@dataclass`: `frozen` is not set.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    @dataclass\n    class Release:\n        version: str\n    ```\n\n  - `@dataclasses.dataclass(slots=True)`: the dotted spelling, with `frozen` missing.\n\n    ```python report\n    import dataclasses\n\n\n    @dataclasses.dataclass(slots=True)\n    class Release:\n        version: str\n    ```\n\n  - `@dataclass(frozen=False)`: a value other than a literal `True`.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=False)\n    class Release:\n        version: str\n    ```\n\n  - `@dataclass(frozen=True, slots=True)`: `frozen` is a literal `True`, so it is accepted.\n\n    ```python ok\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=True, slots=True)\n    class Release:\n        version: str\n    ```\n\n  - `@dataclass(**DC_KW)`: a `**` splat of a module-level dict literal, or of a `dict(...)` call with keyword arguments,\n    counts the options its keys set. Here `frozen` is set, so the class is accepted.\n\n    ```python ok\n    from dataclasses import dataclass\n\n    DC_KW = {\"frozen\": True, \"slots\": True}\n\n\n    @dataclass(**DC_KW)\n    class Release:\n        version: str\n    ```\n\n  - `@dataclass(**SLOTS_KW)` with `SLOTS_KW = {\"slots\": True}`: `frozen` is not set, so it is reported and the fix\n    appends `frozen=True` after the splat.\n\n  - A `**` splat simplint cannot read, such as `**get_kw()`, a name bound more than once or changed in place, or a dict\n    literal with a `**` entry or a repeated key, leaves the class unreported, since the options may be set.\n\n### Exceptions\n\nA class whose instances are written after construction, as the Instances of the class section describes, is not reported\nwhen the plain class that `frozen=True` would push it towards is one Ruff rejects, since that plain class is the only\nother form of the code. Writes through an object of unknown class do not count, and stubs are always reported, since\nRuff's rules skip them:\n\n- **Ruff's B903 runs**: `class-as-data-structure` flags a plain class with no base classes or class keywords, no\n  decorator besides the dataclass's, and no method but private ones, such as `_bump`. A public method, such as `bump`,\n  keeps the class reported. Its fields must be plain parameters: a factory default or `field(init=False)` does not\n  qualify, and neither does a hand-written `__init__`. B903 is a preview rule, so the config turns preview on.\n\n  ```toml config\n  [tool.ruff]\n  preview = true\n\n  [tool.ruff.lint]\n  select = [\"B903\"]\n  ```\n\n  ```python ok\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Counter:\n      count: int\n\n      def _bump(self) -> None:\n          self.count += 1\n  ```\n\n- **Ruff's PLR0913 runs**: `too-many-arguments` flags a plain class whose `__init__` takes more parameters than\n  `max-args`, 5 by default. The count leaves out `field(init=False)` fields and the `KW_ONLY` marker, takes in `InitVar`\n  fields, and leaves out `ClassVar`s. A class with at most `max-args` fields stays reported. Ruff does not count a\n  parameter named like a dummy, such as `_a`, and this rule does, so a class with one can be left unreported where Ruff\n  would not flag it.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"PLR0913\"]\n  ```\n\n  ```python ok\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Hold:\n      a: int\n      b: int\n      c: int\n      d: int\n      e: int\n      f: int\n\n      def _bump(self) -> None:\n          self.a += 1\n  ```\n\n### Fix\n\nThe fix sets `frozen=True` on the decorator. No fix is offered for:\n\n- a class without fields, such as a test fixture standing for a dataclass with the default options\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Empty:\n      pass\n  ```\n\n- a decorator whose `**` splat sets `frozen` to a value other than `True`, such as `FROZEN_OFF = {\"frozen\": False}`: the\n  fix cannot take the key out of the dict, and adding `frozen=True` would repeat it\n\n  ```python report\n  from dataclasses import dataclass\n\n  FROZEN_OFF = {\"frozen\": False}\n\n\n  @dataclass(**FROZEN_OFF)\n  class Release:\n      version: str\n  ```\n\n- a class the module creates inside `with pytest.raises(...)` or `with self.assertRaises(...)`: the test expects code\n  using the instance to fail, such as `{Key(\"a\"): True}` raising because the class is unhashable, and freezing can\n  change that\n\n  ```python report\n  from dataclasses import dataclass\n\n  import pytest\n\n\n  def test_key() -> None:\n      with pytest.raises(TypeError):\n\n          @dataclass\n          class Key:\n              name: str\n  ```\n\nOtherwise the fix leaves out `frozen` when checked code shows that a frozen instance breaks it.\n\n```mermaid\nflowchart TD\n    fields{\"Has fields?\"}\n    fields -->|no| none[\"No fix\"]\n    fields -->|yes| raises{\"Created inside pytest.raises<br/>or assertRaises?\"}\n    raises -->|yes| none\n    raises -->|no| breaks{\"Does checked code<br/>break a frozen instance?\"}\n    breaks -->|yes| none\n    breaks -->|no| add[\"Add frozen=True\"]\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    class fields,raises,breaks yellow\n    class none orange\n    class add green\n```\n\nA fix that adds `frozen`:\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n```\n\n```python fixed\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass Release:\n    version: str\n```\n\n### When `frozen=True` is left out\n\n- the class has a base class other than `Generic[...]`: its methods may set attributes, and a frozen dataclass cannot\n  inherit from it unless it is frozen too\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  class Base:\n      pass\n\n\n  @dataclass\n  class Release(Base):\n      version: str\n  ```\n\n- any class in the checked files inherits from a class with its name\n\n  ```python report file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Release:\n      version: str\n  ```\n\n  ```python context file=app/extra.py\n  from app.models import Release\n\n\n  class Release(Release):\n      pass\n  ```\n\n- the class defines `__setattr__` or `__delattr__`\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Release:\n      version: str\n\n      def __setattr__(self, name: str, value: object) -> None:\n          object.__setattr__(self, name, value)\n  ```\n\n- one of its methods sets or deletes an attribute on `self`\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Counter:\n      count: int = 0\n\n      def bump(self) -> None:\n          self.count += 1\n  ```\n\n- other code sets or deletes an attribute on an instance known to be of the class, such as `result.status = \"done\"`\n  after `result = Result(...)`, in this file or another checked file\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Result:\n      status: str\n\n\n  def run() -> None:\n      result = Result(\"ok\")\n      result.status = \"done\"\n  ```\n\n- other code sets or deletes an attribute of an instance known to be of the class under a name computed at run time,\n  such as the `setattr(self, key, value)` of a method that updates its fields from a dict, or\n  `setattr(release, key, value)` on an annotated parameter\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Release:\n      version: str\n\n      def update(self, **changes: str) -> None:\n          for key, value in changes.items():\n              setattr(self, key, value)\n  ```\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Release:\n      version: str\n\n\n  def apply(release: Release, key: str, value: str) -> None:\n      setattr(release, key, value)\n  ```\n\n  ```python fixed\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Release:\n      version: str\n\n\n  def apply(release: Release, key: str, value: str) -> None:\n      setattr(release, key, value)\n  ```\n\n- other code sets or deletes an attribute of an instance known to be of the class through `monkeypatch.setattr`,\n  `mock.patch.object`, `obj.__setattr__(...)` or `obj.__delattr__(...)`\n\n  ```python report\n  from dataclasses import dataclass\n  from unittest import mock\n\n\n  @dataclass\n  class Release:\n      version: str\n\n\n  def test_release(monkeypatch) -> None:\n      release = Release(\"1\")\n      monkeypatch.setattr(release, \"version\", \"2\")\n      with mock.patch.object(release, \"version\", \"3\"):\n          release.__setattr__(\"version\", \"4\")\n          release.__delattr__(\"version\")\n  ```\n\n  ```python fixed\n  from dataclasses import dataclass\n  from unittest import mock\n\n\n  @dataclass\n  class Release:\n      version: str\n\n\n  def test_release(monkeypatch) -> None:\n      release = Release(\"1\")\n      monkeypatch.setattr(release, \"version\", \"2\")\n      with mock.patch.object(release, \"version\", \"3\"):\n          release.__setattr__(\"version\", \"4\")\n          release.__delattr__(\"version\")\n  ```\n\n- other code sets or deletes an attribute named like one of the fields or `ClassVar` attributes on an object of unknown\n  class, such as `envs[name].active = True`, directly or through `setattr`. `mock.patch.object(Env, \"active\")` and the\n  dotted string `monkeypatch.setattr(\"app.models.Env.active\", True)` name the field on a class, an object of unknown\n  class to the rule, so they count too\n\n  ```python report file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Env:\n      active: bool = False\n  ```\n\n  ```python fixed file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Env:\n      active: bool = False\n  ```\n\n  ```python context file=app/toggle.py\n  def toggle(envs: dict[str, object], name: str) -> None:\n      envs[name].active = True\n  ```\n\n  ```python context file=app/test_env.py\n  from unittest import mock\n\n  from app.models import Env\n\n\n  def test_active(monkeypatch) -> None:\n      monkeypatch.setattr(\"app.models.Env.active\", True)\n      with mock.patch.object(Env, \"active\"):\n          pass\n  ```\n\n### Instances of the class\n\nAn object is **known to be of the class** when it is:\n\n- `self` in a method of the class\n- a name bound to a call of the class\n- a name annotated with the class, `Optional[...]` and `... | None` included\n- an attribute of `self` the class body annotates with it, such as `self.config` after `config: Config`\n\nAn object known to be a mock never counts, nor does anything reached from one. Mocks are names bound to `Mock()`,\n`MagicMock()`, `create_autospec(...)`, `mocker.Mock()` or `mocker.patch(...)`, and `with patch(...) as name` targets.\n\nAny other object is unknown, so a write through it counts only when it names a field or a `ClassVar` attribute. An\nunannotated parameter such as `result` below is unknown: its write to `log` is not tied to `Result`, so `frozen=True` is\nstill offered, and that write fails at runtime once the fix is applied.\n\n```python report file=app/models.py\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass Result:\n    status: str\n```\n\n```python fixed file=app/models.py\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass Result:\n    status: str\n```\n\n```python context file=app/record.py\nfrom app.models import Result\n\n\ndef record(result) -> None:\n    result.log = \"x\"\n\n\nrecord(Result(\"ok\"))\n```\n\nA call of a class with a private name, such as `_Result(...)`, or with an all-caps name of three or more letters, such\nas `URL(...)`, makes its result known to be of that class. A one- or two-letter capital such as `T` does not, since it\nis more likely a type variable:\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass _Result:\n    status: str\n\n\nresult = _Result(\"ok\")\nresult.cached = True\n```\n\n```python fixed\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass _Result:\n    status: str\n\n\nresult = _Result(\"ok\")\nresult.cached = True\n```\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass URL:\n    value: str\n\n\nurl = URL(\"https://example.com\")\nurl.cached = True\n```\n\n```python fixed\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass URL:\n    value: str\n\n\nurl = URL(\"https://example.com\")\nurl.cached = True\n```\n\n### Unsafe fix\n\nThe fix is safe only when nothing else in the checked files might notice the change. It is unsafe when:\n\n- the decorator already sets `frozen` or `slots` to something other than `True`;\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=False)\n  class Release:\n      version: str\n  ```\n\n  ```python fixed\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True)\n  class Release:\n      version: str\n  ```\n\n- the class has a `Generic[...]` base class;\n\n  ```python report\n  from dataclasses import dataclass\n  from typing import Generic, TypeVar\n\n  T = TypeVar(\"T\")\n\n\n  @dataclass\n  class Box(Generic[T]):\n      value: T\n  ```\n\n  ```python fixed\n  from dataclasses import dataclass\n  from typing import Generic, TypeVar\n\n  T = TypeVar(\"T\")\n\n\n  @dataclass(frozen=True)\n  class Box(Generic[T]):\n      value: T\n  ```\n\n- another class with the same name, defined in another module, gets attributes written on its instances or has a\n  subclass that a slotted base breaks, as an import simplint cannot follow, such as through a re-export, may name this\n  class;\n\n  ```python report file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Release:\n      version: str\n  ```\n\n  ```python fixed file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True)\n  class Release:\n      version: str\n  ```\n\n  ```python context file=app/other.py\n  class Release:\n      pass\n\n\n  release = Release()\n  release.label = \"x\"\n  ```\n\n- the class body assigns or deletes an attribute on anything other than `self`, or mentions `super`, `__dict__`,\n  `__weakref__`, `__setattr__` or `__delattr__`.\n\n  ```python report\n  from dataclasses import dataclass\n\n  settings = object()\n\n\n  @dataclass\n  class Release:\n      version: str\n      settings.flag = True\n  ```\n\n  ```python fixed\n  from dataclasses import dataclass\n\n  settings = object()\n\n\n  @dataclass(frozen=True)\n  class Release:\n      version: str\n      settings.flag = True\n  ```\n\n  `object.__setattr__(self, ...)` and `super().__setattr__(...)` are how a frozen class writes its own fields, so they\n  do not count as writes and keep the fix offered, but naming `__setattr__` or `super` still makes it unsafe:\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Release:\n      version: str\n\n      def rename(self, version: str) -> None:\n          object.__setattr__(self, \"version\", version)\n\n      def relabel(self, version: str) -> None:\n          super().__setattr__(\"version\", version)\n  ```\n\n  ```python fixed\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True)\n  class Release:\n      version: str\n\n      def rename(self, version: str) -> None:\n          object.__setattr__(self, \"version\", version)\n\n      def relabel(self, version: str) -> None:\n          super().__setattr__(\"version\", version)\n  ```\n\nCode outside the checked files, and code that adds an attribute that is not a field to an object simplint cannot tie to\nthe class, is not detected, and breaks once the fix is applied.\n\n### Related rules\n\n[dataclass-slots](SMP702.html) asks for `slots=True` on the same decorator. [dataclass-kw-only](SMP703.html) asks for\n`kw_only=True`.\n\nA class that writes an attribute other than its fields gets no `slots=True` fix from [dataclass-slots](SMP702.html), so\nthe plain class is then the only way to satisfy it. The exceptions above only cover `frozen`, so `dataclass-slots` still\nreports such a class.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#8981](https://github.com/astral-sh/ruff/issues/8981).\n",
     "examples": {
       "parsed": [
         {
@@ -21116,8 +21116,60 @@
         },
         {
           "section": "What it does",
-          "line": 355,
-          "end_line": 367,
+          "line": 352,
+          "end_line": 376,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 352,
+              "end_line": 363,
+              "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n\n\ndef apply(release: Release, key: str, value: str) -> None:\n    setattr(release, key, value)\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 365,
+              "end_line": 376,
+              "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n\n\ndef apply(release: Release, key: str, value: str) -> None:\n    setattr(release, key, value)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 381,
+          "end_line": 415,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 381,
+              "end_line": 397,
+              "source": "from dataclasses import dataclass\nfrom unittest import mock\n\n\n@dataclass\nclass Release:\n    version: str\n\n\ndef test_release(monkeypatch) -> None:\n    release = Release(\"1\")\n    monkeypatch.setattr(release, \"version\", \"2\")\n    with mock.patch.object(release, \"version\", \"3\"):\n        release.__setattr__(\"version\", \"4\")\n        release.__delattr__(\"version\")\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 399,
+              "end_line": 415,
+              "source": "from dataclasses import dataclass\nfrom unittest import mock\n\n\n@dataclass\nclass Release:\n    version: str\n\n\ndef test_release(monkeypatch) -> None:\n    release = Release(\"1\")\n    monkeypatch.setattr(release, \"version\", \"2\")\n    with mock.patch.object(release, \"version\", \"3\"):\n        release.__setattr__(\"version\", \"4\")\n        release.__delattr__(\"version\")\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 422,
+          "end_line": 455,
           "config": null,
           "blocks": [
             {
@@ -21125,8 +21177,17 @@
               "language": "python",
               "file": "app/models.py",
               "named": true,
-              "line": 355,
-              "end_line": 362,
+              "line": 422,
+              "end_line": 429,
+              "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass Env:\n    active: bool = False\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "app/models.py",
+              "named": true,
+              "line": 431,
+              "end_line": 438,
               "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass Env:\n    active: bool = False\n"
             },
             {
@@ -21134,16 +21195,25 @@
               "language": "python",
               "file": "app/toggle.py",
               "named": true,
-              "line": 364,
-              "end_line": 367,
+              "line": 440,
+              "end_line": 443,
               "source": "def toggle(envs: dict[str, object], name: str) -> None:\n    envs[name].active = True\n"
+            },
+            {
+              "role": "context",
+              "language": "python",
+              "file": "app/test_env.py",
+              "named": true,
+              "line": 445,
+              "end_line": 455,
+              "source": "from unittest import mock\n\nfrom app.models import Env\n\n\ndef test_active(monkeypatch) -> None:\n    monkeypatch.setattr(\"app.models.Env.active\", True)\n    with mock.patch.object(Env, \"active\"):\n        pass\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 385,
-          "end_line": 412,
+          "line": 473,
+          "end_line": 500,
           "config": null,
           "blocks": [
             {
@@ -21151,8 +21221,8 @@
               "language": "python",
               "file": "app/models.py",
               "named": true,
-              "line": 385,
-              "end_line": 392,
+              "line": 473,
+              "end_line": 480,
               "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass Result:\n    status: str\n"
             },
             {
@@ -21160,8 +21230,8 @@
               "language": "python",
               "file": "app/models.py",
               "named": true,
-              "line": 394,
-              "end_line": 401,
+              "line": 482,
+              "end_line": 489,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass Result:\n    status: str\n"
             },
             {
@@ -21169,16 +21239,16 @@
               "language": "python",
               "file": "app/record.py",
               "named": true,
-              "line": 403,
-              "end_line": 412,
+              "line": 491,
+              "end_line": 500,
               "source": "from app.models import Result\n\n\ndef record(result) -> None:\n    result.log = \"x\"\n\n\nrecord(Result(\"ok\"))\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 420,
-          "end_line": 436,
+          "line": 506,
+          "end_line": 530,
           "config": null,
           "blocks": [
             {
@@ -21186,8 +21256,60 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 420,
-              "end_line": 427,
+              "line": 506,
+              "end_line": 517,
+              "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass _Result:\n    status: str\n\n\nresult = _Result(\"ok\")\nresult.cached = True\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 519,
+              "end_line": 530,
+              "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass _Result:\n    status: str\n\n\nresult = _Result(\"ok\")\nresult.cached = True\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 532,
+          "end_line": 556,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 532,
+              "end_line": 543,
+              "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass URL:\n    value: str\n\n\nurl = URL(\"https://example.com\")\nurl.cached = True\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 545,
+              "end_line": 556,
+              "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass URL:\n    value: str\n\n\nurl = URL(\"https://example.com\")\nurl.cached = True\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 564,
+          "end_line": 580,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 564,
+              "end_line": 571,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=False)\nclass Release:\n    version: str\n"
             },
             {
@@ -21195,16 +21317,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 429,
-              "end_line": 436,
+              "line": 573,
+              "end_line": 580,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass Release:\n    version: str\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 440,
-          "end_line": 462,
+          "line": 584,
+          "end_line": 606,
           "config": null,
           "blocks": [
             {
@@ -21212,8 +21334,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 440,
-              "end_line": 450,
+              "line": 584,
+              "end_line": 594,
               "source": "from dataclasses import dataclass\nfrom typing import Generic, TypeVar\n\nT = TypeVar(\"T\")\n\n\n@dataclass\nclass Box(Generic[T]):\n    value: T\n"
             },
             {
@@ -21221,16 +21343,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 452,
-              "end_line": 462,
+              "line": 596,
+              "end_line": 606,
               "source": "from dataclasses import dataclass\nfrom typing import Generic, TypeVar\n\nT = TypeVar(\"T\")\n\n\n@dataclass(frozen=True)\nclass Box(Generic[T]):\n    value: T\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 468,
-          "end_line": 493,
+          "line": 612,
+          "end_line": 637,
           "config": null,
           "blocks": [
             {
@@ -21238,8 +21360,8 @@
               "language": "python",
               "file": "app/models.py",
               "named": true,
-              "line": 468,
-              "end_line": 475,
+              "line": 612,
+              "end_line": 619,
               "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n"
             },
             {
@@ -21247,8 +21369,8 @@
               "language": "python",
               "file": "app/models.py",
               "named": true,
-              "line": 477,
-              "end_line": 484,
+              "line": 621,
+              "end_line": 628,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass Release:\n    version: str\n"
             },
             {
@@ -21256,16 +21378,16 @@
               "language": "python",
               "file": "app/other.py",
               "named": true,
-              "line": 486,
-              "end_line": 493,
+              "line": 630,
+              "end_line": 637,
               "source": "class Release:\n    pass\n\n\nrelease = Release()\nrelease.label = \"x\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 498,
-          "end_line": 520,
+          "line": 642,
+          "end_line": 664,
           "config": null,
           "blocks": [
             {
@@ -21273,8 +21395,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 498,
-              "end_line": 508,
+              "line": 642,
+              "end_line": 652,
               "source": "from dataclasses import dataclass\n\nsettings = object()\n\n\n@dataclass\nclass Release:\n    version: str\n    settings.flag = True\n"
             },
             {
@@ -21282,9 +21404,35 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 510,
-              "end_line": 520,
+              "line": 654,
+              "end_line": 664,
               "source": "from dataclasses import dataclass\n\nsettings = object()\n\n\n@dataclass(frozen=True)\nclass Release:\n    version: str\n    settings.flag = True\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 669,
+          "end_line": 697,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 669,
+              "end_line": 682,
+              "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n\n    def rename(self, version: str) -> None:\n        object.__setattr__(self, \"version\", version)\n\n    def relabel(self, version: str) -> None:\n        super().__setattr__(\"version\", version)\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 684,
+              "end_line": 697,
+              "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass Release:\n    version: str\n\n    def rename(self, version: str) -> None:\n        object.__setattr__(self, \"version\", version)\n\n    def relabel(self, version: str) -> None:\n        super().__setattr__(\"version\", version)\n"
             }
           ]
         }
@@ -21300,7 +21448,7 @@
     "name": "dataclass-slots",
     "summary": "Dataclasses without `slots`",
     "fix": "Always",
-    "explanation": "Flags dataclasses declared without `slots=True`.\n\nThe public dataclasses of a library are not reported: users construct and subclass them, so `slots=True` is their choice\nto make.\n\n## Why is this bad?\n\n[Slots](https://docs.python.org/3/reference/datamodel.html#slots) reject writes to misspelled attributes, as an instance\nhas no `__dict__` to take a new name, and make each instance smaller.\n\n## Example\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n```\n\nUse instead:\n\n```python ok\nfrom dataclasses import dataclass\n\n\n@dataclass(slots=True)\nclass Release:\n    version: str\n```\n\n## What it does\n\n### Active on\n\n- **[Dataclass](https://docs.python.org/3/library/dataclasses.html#dataclasses.dataclass) decorators**: a decorator\n  spelled `@dataclass` or `@dataclasses.dataclass` without `slots=True`. Any value other than a literal `True`, such as\n  `slots=False`, is reported too, since only a literal `True` shows that the option is on.\n\n  - `@dataclass`: `slots` is not set.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    @dataclass\n    class Release:\n        version: str\n    ```\n\n  - `@dataclasses.dataclass(frozen=True)`: the dotted spelling, with `slots` missing.\n\n    ```python report\n    import dataclasses\n\n\n    @dataclasses.dataclass(frozen=True)\n    class Release:\n        version: str\n    ```\n\n  - `@dataclass(slots=False)`: a value other than a literal `True`.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    @dataclass(slots=False)\n    class Release:\n        version: str\n    ```\n\n  - `@dataclass(**DC_KW)`: a `**` splat of a module-level dict literal, or of a `dict(...)` call with keyword arguments,\n    counts the options its keys set. Here `slots` is set, so the class is accepted.\n\n    ```python ok\n    from dataclasses import dataclass\n\n    DC_KW = {\"frozen\": True, \"slots\": True}\n\n\n    @dataclass(**DC_KW)\n    class Release:\n        version: str\n    ```\n\n  - A `**` splat simplint cannot read, such as `**get_kw()`, a name bound more than once or changed in place, or a dict\n    literal with a `**` entry or a repeated key, leaves the class unreported, since the options may be set.\n\n  - `@dataclass(frozen=True, slots=True)`: `slots` is a literal `True`, so it is accepted.\n\n    ```python ok\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=True, slots=True)\n    class Release:\n        version: str\n    ```\n\n### Exceptions\n\n- **Target versions before 3.10**: nothing is reported, as `slots=` needs Python 3.10 or later.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py39\"\n  ```\n\n  ```python ok\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Release:\n      version: str\n  ```\n\n### Fix\n\nThe fix sets `slots=True` on the decorator. No fix is offered for:\n\n- a decorator whose `**` splat sets `slots` to a value other than `True`: the fix cannot take the key out of the dict,\n  and adding `slots=True` would repeat it\n\n- a class without fields, such as a test fixture standing for a dataclass with the default options\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Empty:\n      pass\n  ```\n\n- a class the module creates inside `with pytest.raises(...)` or `with self.assertRaises(...)`: the test expects code\n  using the instance to fail, such as `{Key(\"a\"): True}` raising because the class is unhashable, and slotting can\n  change that\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  import pytest\n\n\n  def test_key() -> None:\n      with pytest.raises(TypeError):\n\n          @dataclass\n          class Key:\n              name: str\n  ```\n\nOtherwise the fix leaves out `slots` when checked code shows that a slotted instance breaks the class.\n\n```mermaid\nflowchart TD\n    fields{\"Has fields?\"}\n    fields -->|no| none[\"No fix\"]\n    fields -->|yes| raises{\"Created inside pytest.raises<br/>or assertRaises?\"}\n    raises -->|yes| none\n    raises -->|no| breaks{\"Does checked code<br/>break a slotted instance?\"}\n    breaks -->|yes| none\n    breaks -->|no| add[\"Add slots=True\"]\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    class fields,raises,breaks yellow\n    class none orange\n    class add green\n```\n\nA fix that adds `slots`:\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n```\n\n```python fixed\nfrom dataclasses import dataclass\n\n\n@dataclass(slots=True)\nclass Release:\n    version: str\n```\n\n### When `slots=True` is left out\n\n- the class declares `__slots__`\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True)\n  class Release:\n      __slots__ = (\"version\",)\n      version: str\n  ```\n\n- the class uses [`cached_property`](https://docs.python.org/3/library/functools.html#functools.cached_property), or has\n  a subclass that does\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  from functools import cached_property\n\n\n  @dataclass(frozen=True)\n  class Release:\n      version: str\n\n      @cached_property\n      def label(self) -> str:\n          return self.version.upper()\n  ```\n\n- the class has a subclass with several bases, such as `class Context(FileContext, threading.local)`, whose layouts\n  conflict with a slotted one\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  import threading\n\n\n  @dataclass(frozen=True)\n  class FileContext:\n      path: str\n\n\n  class Context(FileContext, threading.local):\n      pass\n  ```\n\n- code sets an attribute that is not a field on `self` or on an instance known to be of the class, a `ClassVar` or\n  `InitVar` attribute included, as a slotted instance has no `__dict__` to shadow it in\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True)\n  class Release:\n      version: str\n\n      def mark(self) -> None:\n          self.marked = True\n  ```\n\n- code sets an attribute of an instance known to be of the class through `monkeypatch.setattr`, `mock.patch.object` or\n  `obj.__setattr__(...)`, or under a name computed at run time through `setattr`, which may name any attribute\n\n  ```python report\n  from dataclasses import dataclass\n  from unittest import mock\n\n\n  @dataclass(frozen=True)\n  class Release:\n      version: str\n\n      def send(self) -> str:\n          return self.version\n\n\n  def stub() -> None:\n      release = Release(\"1\")\n      with mock.patch.object(release, \"send\", return_value=\"x\"):\n          print(release.send())\n  ```\n\n- a weak reference to an instance, from `weakref.ref`, `weakref.proxy` or `weakref.finalize`, which needs a\n  `__weakref__` slot the class does not have\n\n  ```python report\n  import weakref\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True)\n  class Release:\n      version: str\n\n\n  release = Release(\"1\")\n  reference = weakref.ref(release)\n  ```\n\n- a decorator listed below `@dataclass`, which runs first: `slots=True` makes the dataclass return a new class, which\n  the decorator never saw\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  def register(cls: type) -> type:\n      return cls\n\n\n  @dataclass(frozen=True)\n  @register\n  class Release:\n      version: str\n  ```\n\n- code reaches the instance `__dict__`, as `self.__dict__.update(...)` or `vars(config)` do\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True)\n  class Release:\n      version: str\n\n      def load(self, values: dict[str, object]) -> None:\n          self.__dict__.update(values)\n  ```\n\n- the class stays mutable and any checked file pickles with a protocol that may be 0 or 1, such as\n  `pickle.dumps(obj, protocol)` in a loop over every protocol: those protocols refuse a slotted class without\n  `__getstate__`, which a dataclass gets only when frozen. Here a method writes `self`, so `frozen` is left out too, and\n  no fix is offered.\n\n  ```python report\n  import pickle\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Release:\n      version: str\n      count: int = 0\n\n      def bump(self) -> None:\n          self.count += 1\n\n\n  def dump(release: Release) -> None:\n      for protocol in range(2):\n          pickle.dumps(release, protocol)\n  ```\n\n- the class is frozen and has a subclass whose methods store attributes on `self`: the `__getstate__` a frozen slotted\n  dataclass gets pickles only the fields and drops them\n\n  ```python report file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True)\n  class Release:\n      version: str\n  ```\n\n  ```python context file=app/cache.py\n  from app.models import Release\n\n\n  class CachedRelease(Release):\n      def store(self) -> None:\n          self.value = 1\n  ```\n\n### Instances of the class\n\nAn object is **known to be of the class** when it is:\n\n- `self` in a method of the class\n- a name bound to a call of the class\n- a name annotated with the class, `Optional[...]` and `... | None` included\n- an attribute of `self` the class body annotates with it, such as `self.config` after `config: Config`\n\nAn object known to be a mock never counts, nor does anything reached from one. Mocks are names bound to `Mock()`,\n`MagicMock()`, `create_autospec(...)`, `mocker.Mock()` or `mocker.patch(...)`, and `with patch(...) as name` targets.\n\nAny other object is unknown, so a write through it counts only when it names a field or a `ClassVar` attribute. An\nunannotated parameter such as `result` below is unknown: its write to `log` is not tied to `Result`, so `slots=True` is\nstill offered, and that write fails at runtime once the fix is applied.\n\n```python report file=app/models.py\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass Result:\n    status: str\n```\n\n```python fixed file=app/models.py\nfrom dataclasses import dataclass\n\n\n@dataclass(slots=True)\nclass Result:\n    status: str\n```\n\n```python context file=app/record.py\nfrom app.models import Result\n\n\ndef record(result) -> None:\n    result.log = \"x\"\n\n\nrecord(Result(\"ok\"))\n```\n\n### Unsafe fix\n\nThe fix is safe only when nothing else in the checked files might notice the change. It is unsafe when:\n\n- the decorator already sets `frozen` or `slots` to something other than `True`;\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=False)\n  class Release:\n      version: str\n  ```\n\n  ```python fixed\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=False, slots=True)\n  class Release:\n      version: str\n  ```\n\n- the class has base classes;\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  class Base:\n      pass\n\n\n  @dataclass\n  class Release(Base):\n      version: str\n  ```\n\n  ```python fixed\n  from dataclasses import dataclass\n\n\n  class Base:\n      pass\n\n\n  @dataclass(slots=True)\n  class Release(Base):\n      version: str\n  ```\n\n- another class with the same name, defined in another module, gets attributes written on its instances or has a\n  subclass that a slotted base breaks, as an import simplint cannot follow, such as through a re-export, may name this\n  class;\n\n  ```python report file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Release:\n      version: str\n  ```\n\n  ```python fixed file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass(slots=True)\n  class Release:\n      version: str\n  ```\n\n  ```python context file=app/other.py\n  class Release:\n      pass\n\n\n  release = Release()\n  release.label = \"x\"\n  ```\n\n- the class body assigns or deletes an attribute on anything other than `self`, or mentions `super`, `__dict__`,\n  `__weakref__`, `__setattr__` or `__delattr__`.\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  settings = object()\n\n\n  @dataclass\n  class Release:\n      version: str\n      settings.flag = True\n  ```\n\n  ```python fixed\n  from dataclasses import dataclass\n\n\n  settings = object()\n\n\n  @dataclass(slots=True)\n  class Release:\n      version: str\n      settings.flag = True\n  ```\n\nCode outside the checked files, and code that adds an attribute that is not a field to an object simplint cannot tie to\nthe class, is not detected, and breaks once the fix is applied.\n\n### Related rules\n\n[dataclass-frozen](SMP701.html) asks for `frozen=True` and [dataclass-kw-only](SMP703.html) asks for `kw_only=True` on\nthe same decorator.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#8981](https://github.com/astral-sh/ruff/issues/8981).\n",
+    "explanation": "Flags dataclasses declared without `slots=True`.\n\nThe public dataclasses of a library are not reported: users construct and subclass them, so `slots=True` is their choice\nto make.\n\n## Why is this bad?\n\n[Slots](https://docs.python.org/3/reference/datamodel.html#slots) reject writes to misspelled attributes, as an instance\nhas no `__dict__` to take a new name, and make each instance smaller.\n\n## Example\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n```\n\nUse instead:\n\n```python ok\nfrom dataclasses import dataclass\n\n\n@dataclass(slots=True)\nclass Release:\n    version: str\n```\n\n## What it does\n\n### Active on\n\n- **[Dataclass](https://docs.python.org/3/library/dataclasses.html#dataclasses.dataclass) decorators**: a decorator\n  spelled `@dataclass` or `@dataclasses.dataclass` without `slots=True`. Any value other than a literal `True`, such as\n  `slots=False`, is reported too, since only a literal `True` shows that the option is on.\n\n  - `@dataclass`: `slots` is not set.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    @dataclass\n    class Release:\n        version: str\n    ```\n\n  - `@dataclasses.dataclass(frozen=True)`: the dotted spelling, with `slots` missing.\n\n    ```python report\n    import dataclasses\n\n\n    @dataclasses.dataclass(frozen=True)\n    class Release:\n        version: str\n    ```\n\n  - `@dataclass(slots=False)`: a value other than a literal `True`.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    @dataclass(slots=False)\n    class Release:\n        version: str\n    ```\n\n  - `@dataclass(**DC_KW)`: a `**` splat of a module-level dict literal, or of a `dict(...)` call with keyword arguments,\n    counts the options its keys set. Here `slots` is set, so the class is accepted.\n\n    ```python ok\n    from dataclasses import dataclass\n\n    DC_KW = {\"frozen\": True, \"slots\": True}\n\n\n    @dataclass(**DC_KW)\n    class Release:\n        version: str\n    ```\n\n  - A `**` splat simplint cannot read, such as `**get_kw()`, a name bound more than once or changed in place, or a dict\n    literal with a `**` entry or a repeated key, leaves the class unreported, since the options may be set.\n\n  - `@dataclass(frozen=True, slots=True)`: `slots` is a literal `True`, so it is accepted.\n\n    ```python ok\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=True, slots=True)\n    class Release:\n        version: str\n    ```\n\n### Exceptions\n\n- **Target versions before 3.10**: nothing is reported, as `slots=` needs Python 3.10 or later.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py39\"\n  ```\n\n  ```python ok\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Release:\n      version: str\n  ```\n\n### Fix\n\nThe fix sets `slots=True` on the decorator. No fix is offered for:\n\n- a decorator whose `**` splat sets `slots` to a value other than `True`: the fix cannot take the key out of the dict,\n  and adding `slots=True` would repeat it\n\n- a class without fields, such as a test fixture standing for a dataclass with the default options\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Empty:\n      pass\n  ```\n\n- a class the module creates inside `with pytest.raises(...)` or `with self.assertRaises(...)`: the test expects code\n  using the instance to fail, such as `{Key(\"a\"): True}` raising because the class is unhashable, and slotting can\n  change that\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  import pytest\n\n\n  def test_key() -> None:\n      with pytest.raises(TypeError):\n\n          @dataclass\n          class Key:\n              name: str\n  ```\n\nOtherwise the fix leaves out `slots` when checked code shows that a slotted instance breaks the class.\n\n```mermaid\nflowchart TD\n    fields{\"Has fields?\"}\n    fields -->|no| none[\"No fix\"]\n    fields -->|yes| raises{\"Created inside pytest.raises<br/>or assertRaises?\"}\n    raises -->|yes| none\n    raises -->|no| breaks{\"Does checked code<br/>break a slotted instance?\"}\n    breaks -->|yes| none\n    breaks -->|no| add[\"Add slots=True\"]\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    class fields,raises,breaks yellow\n    class none orange\n    class add green\n```\n\nA fix that adds `slots`:\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n```\n\n```python fixed\nfrom dataclasses import dataclass\n\n\n@dataclass(slots=True)\nclass Release:\n    version: str\n```\n\n### When `slots=True` is left out\n\n- the class declares `__slots__`\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True)\n  class Release:\n      __slots__ = (\"version\",)\n      version: str\n  ```\n\n- the class uses [`cached_property`](https://docs.python.org/3/library/functools.html#functools.cached_property), or has\n  a subclass that does\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  from functools import cached_property\n\n\n  @dataclass(frozen=True)\n  class Release:\n      version: str\n\n      @cached_property\n      def label(self) -> str:\n          return self.version.upper()\n  ```\n\n- the class has a subclass with several bases, such as `class Context(FileContext, threading.local)`, whose layouts\n  conflict with a slotted one\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  import threading\n\n\n  @dataclass(frozen=True)\n  class FileContext:\n      path: str\n\n\n  class Context(FileContext, threading.local):\n      pass\n  ```\n\n- code sets an attribute that is not a field on `self` or on an instance known to be of the class, a `ClassVar` or\n  `InitVar` attribute included, as a slotted instance has no `__dict__` to shadow it in\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True)\n  class Release:\n      version: str\n\n      def mark(self) -> None:\n          self.marked = True\n  ```\n\n- code sets an attribute of an instance known to be of the class through `monkeypatch.setattr`, `mock.patch.object`,\n  `obj.__setattr__(...)` or `obj.__delattr__(...)`, which may name any attribute\n\n  ```python report\n  from dataclasses import dataclass\n  from unittest import mock\n\n\n  @dataclass(frozen=True)\n  class Release:\n      version: str\n\n      def send(self) -> str:\n          return self.version\n\n\n  def stub() -> None:\n      release = Release(\"1\")\n      with mock.patch.object(release, \"send\", return_value=\"x\"):\n          print(release.send())\n  ```\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True)\n  class Release:\n      version: str\n\n\n  def stub(monkeypatch) -> None:\n      release = Release(\"1\")\n      monkeypatch.setattr(release, \"marked\", True)\n      release.__setattr__(\"marked\", False)\n      release.__delattr__(\"marked\")\n  ```\n\n  ```python fixed\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True)\n  class Release:\n      version: str\n\n\n  def stub(monkeypatch) -> None:\n      release = Release(\"1\")\n      monkeypatch.setattr(release, \"marked\", True)\n      release.__setattr__(\"marked\", False)\n      release.__delattr__(\"marked\")\n  ```\n\n- code sets an attribute under a name computed at run time through `setattr`, such as `setattr(self, key, value)` or\n  `setattr(release, key, value)` on an annotated parameter, which may name any attribute\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Release:\n      version: str\n\n      def update(self, **changes: str) -> None:\n          for key, value in changes.items():\n              setattr(self, key, value)\n\n\n  def apply(release: Release, key: str, value: str) -> None:\n      setattr(release, key, value)\n  ```\n\n  ```python fixed\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Release:\n      version: str\n\n      def update(self, **changes: str) -> None:\n          for key, value in changes.items():\n              setattr(self, key, value)\n\n\n  def apply(release: Release, key: str, value: str) -> None:\n      setattr(release, key, value)\n  ```\n\n- a weak reference to an instance, from `weakref.ref`, `weakref.proxy` or `weakref.finalize`, which needs a\n  `__weakref__` slot the class does not have\n\n  ```python report\n  import weakref\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True)\n  class Release:\n      version: str\n\n\n  release = Release(\"1\")\n  reference = weakref.ref(release)\n  proxy = weakref.proxy(release)\n  finalizer = weakref.finalize(release, print, \"released\")\n  ```\n\n  ```python fixed\n  import weakref\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True)\n  class Release:\n      version: str\n\n\n  release = Release(\"1\")\n  reference = weakref.ref(release)\n  proxy = weakref.proxy(release)\n  finalizer = weakref.finalize(release, print, \"released\")\n  ```\n\n- a decorator listed below `@dataclass`, which runs first: `slots=True` makes the dataclass return a new class, which\n  the decorator never saw\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  def register(cls: type) -> type:\n      return cls\n\n\n  @dataclass(frozen=True)\n  @register\n  class Release:\n      version: str\n  ```\n\n- code reaches the instance `__dict__`, as `self.__dict__.update(...)` or `vars(config)` do\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True)\n  class Release:\n      version: str\n\n      def load(self, values: dict[str, object]) -> None:\n          self.__dict__.update(values)\n  ```\n\n- the class stays mutable and any checked file pickles with a protocol that may be 0 or 1, such as\n  `pickle.dumps(obj, protocol)` in a loop over every protocol: those protocols refuse a slotted class without\n  `__getstate__`, which a dataclass gets only when frozen. Here a method writes `self`, so `frozen` is left out too, and\n  no fix is offered.\n\n  ```python report\n  import pickle\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Release:\n      version: str\n      count: int = 0\n\n      def bump(self) -> None:\n          self.count += 1\n\n\n  def dump(release: Release) -> None:\n      for protocol in range(2):\n          pickle.dumps(release, protocol)\n  ```\n\n- the class is frozen and has a subclass whose methods store attributes on `self`: the `__getstate__` a frozen slotted\n  dataclass gets pickles only the fields and drops them\n\n  ```python report file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True)\n  class Release:\n      version: str\n  ```\n\n  ```python context file=app/cache.py\n  from app.models import Release\n\n\n  class CachedRelease(Release):\n      def store(self) -> None:\n          self.value = 1\n  ```\n\n### Instances of the class\n\nAn object is **known to be of the class** when it is:\n\n- `self` in a method of the class\n- a name bound to a call of the class\n- a name annotated with the class, `Optional[...]` and `... | None` included\n- an attribute of `self` the class body annotates with it, such as `self.config` after `config: Config`\n\nAn object known to be a mock never counts, nor does anything reached from one. Mocks are names bound to `Mock()`,\n`MagicMock()`, `create_autospec(...)`, `mocker.Mock()` or `mocker.patch(...)`, and `with patch(...) as name` targets.\n\nAny other object is unknown, so a write through it counts only when it names a field or a `ClassVar` attribute. An\nunannotated parameter such as `result` below is unknown: its write to `log` is not tied to `Result`, so `slots=True` is\nstill offered, and that write fails at runtime once the fix is applied.\n\n```python report file=app/models.py\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass Result:\n    status: str\n```\n\n```python fixed file=app/models.py\nfrom dataclasses import dataclass\n\n\n@dataclass(slots=True)\nclass Result:\n    status: str\n```\n\n```python context file=app/record.py\nfrom app.models import Result\n\n\ndef record(result) -> None:\n    result.log = \"x\"\n\n\nrecord(Result(\"ok\"))\n```\n\nA call of a class with a private name, such as `_Result(...)`, or with an all-caps name of three or more letters, such\nas `URL(...)`, makes its result known to be of that class. A one- or two-letter capital such as `T` does not, since it\nis more likely a type variable:\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass _Result:\n    status: str\n\n\nresult = _Result(\"ok\")\nresult.cached = True\n```\n\n```python fixed\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass _Result:\n    status: str\n\n\nresult = _Result(\"ok\")\nresult.cached = True\n```\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass URL:\n    value: str\n\n\nurl = URL(\"https://example.com\")\nurl.cached = True\n```\n\n```python fixed\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass URL:\n    value: str\n\n\nurl = URL(\"https://example.com\")\nurl.cached = True\n```\n\n### Unsafe fix\n\nThe fix is safe only when nothing else in the checked files might notice the change. It is unsafe when:\n\n- the decorator already sets `frozen` or `slots` to something other than `True`;\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=False)\n  class Release:\n      version: str\n  ```\n\n  ```python fixed\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=False, slots=True)\n  class Release:\n      version: str\n  ```\n\n- the class has base classes;\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  class Base:\n      pass\n\n\n  @dataclass\n  class Release(Base):\n      version: str\n  ```\n\n  ```python fixed\n  from dataclasses import dataclass\n\n\n  class Base:\n      pass\n\n\n  @dataclass(slots=True)\n  class Release(Base):\n      version: str\n  ```\n\n- another class with the same name, defined in another module, gets attributes written on its instances or has a\n  subclass that a slotted base breaks, as an import simplint cannot follow, such as through a re-export, may name this\n  class;\n\n  ```python report file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Release:\n      version: str\n  ```\n\n  ```python fixed file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass(slots=True)\n  class Release:\n      version: str\n  ```\n\n  ```python context file=app/other.py\n  class Release:\n      pass\n\n\n  release = Release()\n  release.label = \"x\"\n  ```\n\n- the class body assigns or deletes an attribute on anything other than `self`, or mentions `super`, `__dict__`,\n  `__weakref__`, `__setattr__` or `__delattr__`.\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  settings = object()\n\n\n  @dataclass\n  class Release:\n      version: str\n      settings.flag = True\n  ```\n\n  ```python fixed\n  from dataclasses import dataclass\n\n\n  settings = object()\n\n\n  @dataclass(slots=True)\n  class Release:\n      version: str\n      settings.flag = True\n  ```\n\n  `object.__setattr__(self, ...)` and `super().__setattr__(...)` are how a class writes its own fields, so they do not\n  count as writes and keep the fix offered, but naming `__setattr__` or `super` still makes it unsafe:\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Release:\n      version: str\n\n      def rename(self, version: str) -> None:\n          object.__setattr__(self, \"version\", version)\n\n      def relabel(self, version: str) -> None:\n          super().__setattr__(\"version\", version)\n  ```\n\n  ```python fixed\n  from dataclasses import dataclass\n\n\n  @dataclass(slots=True)\n  class Release:\n      version: str\n\n      def rename(self, version: str) -> None:\n          object.__setattr__(self, \"version\", version)\n\n      def relabel(self, version: str) -> None:\n          super().__setattr__(\"version\", version)\n  ```\n\nCode outside the checked files, and code that adds an attribute that is not a field to an object simplint cannot tie to\nthe class, is not detected, and breaks once the fix is applied.\n\n### Related rules\n\n[dataclass-frozen](SMP701.html) asks for `frozen=True` and [dataclass-kw-only](SMP703.html) asks for `kw_only=True` on\nthe same decorator.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#8981](https://github.com/astral-sh/ruff/issues/8981).\n",
     "examples": {
       "parsed": [
         {
@@ -21590,8 +21738,8 @@
         },
         {
           "section": "What it does",
-          "line": 288,
-          "end_line": 300,
+          "line": 285,
+          "end_line": 315,
           "config": null,
           "blocks": [
             {
@@ -21599,16 +21747,25 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 288,
-              "end_line": 300,
-              "source": "import weakref\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass Release:\n    version: str\n\n\nrelease = Release(\"1\")\nreference = weakref.ref(release)\n"
+              "line": 285,
+              "end_line": 299,
+              "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass Release:\n    version: str\n\n\ndef stub(monkeypatch) -> None:\n    release = Release(\"1\")\n    monkeypatch.setattr(release, \"marked\", True)\n    release.__setattr__(\"marked\", False)\n    release.__delattr__(\"marked\")\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 301,
+              "end_line": 315,
+              "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass Release:\n    version: str\n\n\ndef stub(monkeypatch) -> None:\n    release = Release(\"1\")\n    monkeypatch.setattr(release, \"marked\", True)\n    release.__setattr__(\"marked\", False)\n    release.__delattr__(\"marked\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 305,
-          "end_line": 317,
+          "line": 320,
+          "end_line": 352,
           "config": null,
           "blocks": [
             {
@@ -21616,16 +21773,68 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 305,
-              "end_line": 317,
+              "line": 320,
+              "end_line": 335,
+              "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n\n    def update(self, **changes: str) -> None:\n        for key, value in changes.items():\n            setattr(self, key, value)\n\n\ndef apply(release: Release, key: str, value: str) -> None:\n    setattr(release, key, value)\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 337,
+              "end_line": 352,
+              "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n\n    def update(self, **changes: str) -> None:\n        for key, value in changes.items():\n            setattr(self, key, value)\n\n\ndef apply(release: Release, key: str, value: str) -> None:\n    setattr(release, key, value)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 357,
+          "end_line": 387,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 357,
+              "end_line": 371,
+              "source": "import weakref\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass Release:\n    version: str\n\n\nrelease = Release(\"1\")\nreference = weakref.ref(release)\nproxy = weakref.proxy(release)\nfinalizer = weakref.finalize(release, print, \"released\")\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 373,
+              "end_line": 387,
+              "source": "import weakref\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass Release:\n    version: str\n\n\nrelease = Release(\"1\")\nreference = weakref.ref(release)\nproxy = weakref.proxy(release)\nfinalizer = weakref.finalize(release, print, \"released\")\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 392,
+          "end_line": 404,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 392,
+              "end_line": 404,
               "source": "from dataclasses import dataclass\n\n\ndef register(cls: type) -> type:\n    return cls\n\n\n@dataclass(frozen=True)\n@register\nclass Release:\n    version: str\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 321,
-          "end_line": 331,
+          "line": 408,
+          "end_line": 418,
           "config": null,
           "blocks": [
             {
@@ -21633,16 +21842,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 321,
-              "end_line": 331,
+              "line": 408,
+              "end_line": 418,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass Release:\n    version: str\n\n    def load(self, values: dict[str, object]) -> None:\n        self.__dict__.update(values)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 338,
-          "end_line": 355,
+          "line": 425,
+          "end_line": 442,
           "config": null,
           "blocks": [
             {
@@ -21650,16 +21859,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 338,
-              "end_line": 355,
+              "line": 425,
+              "end_line": 442,
               "source": "import pickle\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n    count: int = 0\n\n    def bump(self) -> None:\n        self.count += 1\n\n\ndef dump(release: Release) -> None:\n    for protocol in range(2):\n        pickle.dumps(release, protocol)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 360,
-          "end_line": 376,
+          "line": 447,
+          "end_line": 463,
           "config": null,
           "blocks": [
             {
@@ -21667,8 +21876,8 @@
               "language": "python",
               "file": "app/models.py",
               "named": true,
-              "line": 360,
-              "end_line": 367,
+              "line": 447,
+              "end_line": 454,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True)\nclass Release:\n    version: str\n"
             },
             {
@@ -21676,16 +21885,16 @@
               "language": "python",
               "file": "app/cache.py",
               "named": true,
-              "line": 369,
-              "end_line": 376,
+              "line": 456,
+              "end_line": 463,
               "source": "from app.models import Release\n\n\nclass CachedRelease(Release):\n    def store(self) -> None:\n        self.value = 1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 394,
-          "end_line": 421,
+          "line": 481,
+          "end_line": 508,
           "config": null,
           "blocks": [
             {
@@ -21693,8 +21902,8 @@
               "language": "python",
               "file": "app/models.py",
               "named": true,
-              "line": 394,
-              "end_line": 401,
+              "line": 481,
+              "end_line": 488,
               "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass Result:\n    status: str\n"
             },
             {
@@ -21702,8 +21911,8 @@
               "language": "python",
               "file": "app/models.py",
               "named": true,
-              "line": 403,
-              "end_line": 410,
+              "line": 490,
+              "end_line": 497,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(slots=True)\nclass Result:\n    status: str\n"
             },
             {
@@ -21711,16 +21920,16 @@
               "language": "python",
               "file": "app/record.py",
               "named": true,
-              "line": 412,
-              "end_line": 421,
+              "line": 499,
+              "end_line": 508,
               "source": "from app.models import Result\n\n\ndef record(result) -> None:\n    result.log = \"x\"\n\n\nrecord(Result(\"ok\"))\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 429,
-          "end_line": 445,
+          "line": 514,
+          "end_line": 538,
           "config": null,
           "blocks": [
             {
@@ -21728,8 +21937,60 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 429,
-              "end_line": 436,
+              "line": 514,
+              "end_line": 525,
+              "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass _Result:\n    status: str\n\n\nresult = _Result(\"ok\")\nresult.cached = True\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 527,
+              "end_line": 538,
+              "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass _Result:\n    status: str\n\n\nresult = _Result(\"ok\")\nresult.cached = True\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 540,
+          "end_line": 564,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 540,
+              "end_line": 551,
+              "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass URL:\n    value: str\n\n\nurl = URL(\"https://example.com\")\nurl.cached = True\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 553,
+              "end_line": 564,
+              "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass URL:\n    value: str\n\n\nurl = URL(\"https://example.com\")\nurl.cached = True\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 572,
+          "end_line": 588,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 572,
+              "end_line": 579,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=False)\nclass Release:\n    version: str\n"
             },
             {
@@ -21737,16 +21998,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 438,
-              "end_line": 445,
+              "line": 581,
+              "end_line": 588,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=False, slots=True)\nclass Release:\n    version: str\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 449,
-          "end_line": 473,
+          "line": 592,
+          "end_line": 616,
           "config": null,
           "blocks": [
             {
@@ -21754,8 +22015,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 449,
-              "end_line": 460,
+              "line": 592,
+              "end_line": 603,
               "source": "from dataclasses import dataclass\n\n\nclass Base:\n    pass\n\n\n@dataclass\nclass Release(Base):\n    version: str\n"
             },
             {
@@ -21763,16 +22024,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 462,
-              "end_line": 473,
+              "line": 605,
+              "end_line": 616,
               "source": "from dataclasses import dataclass\n\n\nclass Base:\n    pass\n\n\n@dataclass(slots=True)\nclass Release(Base):\n    version: str\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 479,
-          "end_line": 504,
+          "line": 622,
+          "end_line": 647,
           "config": null,
           "blocks": [
             {
@@ -21780,8 +22041,8 @@
               "language": "python",
               "file": "app/models.py",
               "named": true,
-              "line": 479,
-              "end_line": 486,
+              "line": 622,
+              "end_line": 629,
               "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n"
             },
             {
@@ -21789,8 +22050,8 @@
               "language": "python",
               "file": "app/models.py",
               "named": true,
-              "line": 488,
-              "end_line": 495,
+              "line": 631,
+              "end_line": 638,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(slots=True)\nclass Release:\n    version: str\n"
             },
             {
@@ -21798,16 +22059,16 @@
               "language": "python",
               "file": "app/other.py",
               "named": true,
-              "line": 497,
-              "end_line": 504,
+              "line": 640,
+              "end_line": 647,
               "source": "class Release:\n    pass\n\n\nrelease = Release()\nrelease.label = \"x\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 509,
-          "end_line": 533,
+          "line": 652,
+          "end_line": 676,
           "config": null,
           "blocks": [
             {
@@ -21815,8 +22076,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 509,
-              "end_line": 520,
+              "line": 652,
+              "end_line": 663,
               "source": "from dataclasses import dataclass\n\n\nsettings = object()\n\n\n@dataclass\nclass Release:\n    version: str\n    settings.flag = True\n"
             },
             {
@@ -21824,9 +22085,35 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 522,
-              "end_line": 533,
+              "line": 665,
+              "end_line": 676,
               "source": "from dataclasses import dataclass\n\n\nsettings = object()\n\n\n@dataclass(slots=True)\nclass Release:\n    version: str\n    settings.flag = True\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 681,
+          "end_line": 709,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 681,
+              "end_line": 694,
+              "source": "from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n\n    def rename(self, version: str) -> None:\n        object.__setattr__(self, \"version\", version)\n\n    def relabel(self, version: str) -> None:\n        super().__setattr__(\"version\", version)\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 696,
+              "end_line": 709,
+              "source": "from dataclasses import dataclass\n\n\n@dataclass(slots=True)\nclass Release:\n    version: str\n\n    def rename(self, version: str) -> None:\n        object.__setattr__(self, \"version\", version)\n\n    def relabel(self, version: str) -> None:\n        super().__setattr__(\"version\", version)\n"
             }
           ]
         }
@@ -21842,7 +22129,7 @@
     "name": "dataclass-kw-only",
     "summary": "Dataclasses without `kw_only`",
     "fix": "Always",
-    "explanation": "Flags dataclasses declared without `kw_only=True`, and the calls that pass their fields by position.\n\n## Why is this bad?\n\nPositional construction ties every caller to the field order, so reordering or inserting a field silently shifts values\ninto the wrong fields. Keyword-only fields name each value at the call site.\n\n## Example\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n    version: str\n\n\nRelease(\"simplint\", \"1.0.0\")\n```\n\nUse instead:\n\n```python ok\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass Release:\n    name: str\n    version: str\n\n\nRelease(name=\"simplint\", version=\"1.0.0\")\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py39\"\n  ```\n\n  ```python ok\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Release:\n      name: str\n  ```\n\n## What it does\n\n### Active on\n\n- **[Dataclass](https://docs.python.org/3/library/dataclasses.html#dataclasses.dataclass) decorators**: a decorator\n  spelled `@dataclass` or `@dataclasses.dataclass` without `kw_only=True`. Any value other than a literal `True`, such\n  as `kw_only=False`, is reported too, since only a literal `True` shows that every field is keyword-only. The report\n  points at each call in the run that passes the fields by position. Its fix sets `kw_only=True` and passes those\n  arguments by keyword, but only when every such call is in the same module. The forms are:\n\n  - `@dataclass(frozen=True, slots=True)`: no `kw_only` option, so it is reported.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=True, slots=True)\n    class Release:\n        name: str\n        version: str\n    ```\n\n  - `@dataclass(**DC_KW)`: a `**` splat of a module-level dict literal, or of a `dict(...)` call with keyword arguments,\n    counts the options its keys set. A splat simplint cannot read leaves the class unreported, as for the other\n    dataclass rules.\n\n  - `@dataclass(frozen=True, slots=True, kw_only=False)`: a value other than a literal `True`.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=True, slots=True, kw_only=False)\n    class Release:\n        name: str\n        version: str\n    ```\n\n  - `@dataclass(frozen=True, slots=True, kw_only=True)`: accepted.\n\n    ```python ok\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=True, slots=True, kw_only=True)\n    class Release:\n        name: str\n        version: str\n    ```\n\n  **Unsafe fix:** code outside the checked files, such as the users of a published library, can still call the class by\n  position. A library's public dataclasses are not reported at all, as the exceptions below describe.\n\n- **Positional calls in other files**: each call in another file that passes the fields by position is a related\n  location of the class's report, and the report gets no fix, since a rewrite does not reach another file. The message\n  counts the calls that need converting by hand. A call gets no report of its own, so a suppression comment on the class\n  silences the report with its related locations.\n\n  ```python report file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      version: str\n  ```\n\n  ```python ok file=app/use.py\n  from app.models import Release\n\n\n  def build() -> Release:\n      return Release(\"simplint\", \"1.0.0\")\n  ```\n\n  The full output lists the call as a related location of the class report:\n\n  ```text\n  SMP703 Dataclass is missing kw_only; set `kw_only=True`; 1 positional call in another file needs keyword arguments by hand\n   --> app/models.py:4:2\n    |\n  4 | @dataclass(frozen=True, slots=True)\n    |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  5 | class Release:\n  6 |     name: str\n    |\n   ::: app/use.py:5:12\n    |\n  4 | def build() -> Release:\n  5 |     return Release(\"simplint\", \"1.0.0\")\n    |            ---------------------------- positional arguments pass the fields by position\n\n  Found 1 error.\n  ```\n\n### Exceptions\n\n- **Public API of a library**: a dataclass that a public module offers, defined in or re-exported from it, where its\n  `__all__` lists it or, without one, its name is public. Also a dataclass a public name's signature refers to, such as\n  the base class of a listed class or a return annotation. Users of the library call it by position, so neither the\n  class nor its positional calls in other files are reported. A class a module with an `__all__` leaves out is still\n  reported, unless such a signature refers to it.\n\n  ```toml config\n  [build-system]\n  requires = []\n  ```\n\n  ```python ok\n  from dataclasses import dataclass\n\n  __all__ = [\"Release\"]\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n  ```\n\n- **Target versions before 3.10**: the `kw_only` option needs Python 3.10 or later, so nothing is reported when the\n  target version is older.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py39\"\n  ```\n\n  ```python ok\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n  ```\n\n### Fix\n\nThe fix sets `kw_only=True` and rewrites the positional calls of the class in its own module, including `cls(...)` in\nits classmethods. A `cls` parameter of an ordinary method is some other value, so its calls stay as they are. A call\nthat unpacks `**kwargs` passes those fields by keyword, so it keeps working.\n\nA call that has positional arguments and a `**` splat is rewritten only when the splat is one simplint can read and it\ndoes not pass one of the fields the rewrite names, since the keyword would repeat it. The class gets no fix when one of\nits calls is not rewritten, so its other calls keep their positional arguments.\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n\n    @classmethod\n    def named(cls, name: str) -> \"Release\":\n        return cls(name)\n```\n\n```python fixed\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass Release:\n    name: str\n\n    @classmethod\n    def named(cls, name: str) -> \"Release\":\n        return cls(name=name)\n```\n\nThe keywords follow the field order of the generated `__init__`:\n\n- inherited fields come first\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Base:\n      name: str\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release(Base):\n      version: str\n\n\n  Release(\"simplint\", \"1.0.0\")\n  ```\n\n- `ClassVar` fields are left out, as are fields with `init=False` or `kw_only=True` and the fields after `KW_ONLY`\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  from dataclasses import KW_ONLY, dataclass, field\n  from typing import ClassVar\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      count: ClassVar[int] = 0\n      name: str\n      cached: str = field(init=False, default=\"\")\n      _: KW_ONLY\n      version: str\n\n\n  Release(\"simplint\", version=\"1.0.0\")\n  ```\n\n- `InitVar` fields are included\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  from dataclasses import InitVar, dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      token: InitVar[str]\n\n\n  Release(\"simplint\", \"secret\")\n  ```\n\nNo fix is offered while any use could still pass fields by position, or while a positional call is in another file:\n\n- a call that unpacks `*args`, or passes more arguments than the class has positional fields;\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n\n\n  def build(*args: str) -> Release:\n      return Release(*args)\n  ```\n\n- the class used as a value, as in `functools.partial(Partition, topic)`, or matched by position in a `case` pattern;\n\n  ```python report\n  from dataclasses import dataclass\n  from functools import partial\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      version: str\n\n\n  make = partial(Release, \"simplint\")\n  ```\n\n- the class read by `getattr(module, \"Name\")` from another file, which calls it by position under a name no import\n  shows;\n\n  ```python report file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      version: str\n  ```\n\n  ```python context file=app/main.py\n  import app.models\n\n\n  Release = getattr(app.models, \"Release\")(\"simplint\", \"1\")\n  ```\n\n- a subclass, or a call through `type(self)(...)` or `self.__class__(...)`;\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n\n      def copy(self) -> \"Release\":\n          return type(self)(self.name)\n  ```\n\n- a file that imports the module with `*`, or that imports the class and passes it on to other modules;\n\n  ```python report file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      version: str\n  ```\n\n  ```python context file=app/use.py\n  from app.models import *\n\n\n  Release(\"simplint\", \"1.0.0\")\n  ```\n\n- a positional call simplint cannot tie to the class, such as through a local name that shadows the import, or of an\n  attribute with the class's name on something no import binds, such as `module.Partition(\"a\", 1)` on a module a test\n  loads from its file path;\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      version: str\n\n\n  def build(Release: type) -> object:\n      return Release(\"simplint\", \"1.0.0\")\n  ```\n\n- a positional call with a suppression comment for SMP703 on the call, which the fix would rewrite regardless;\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      version: str\n\n\n  Release(\"simplint\", \"1.0.0\")  # noqa: SMP703\n  ```\n\n- a class in one of these forms:\n\n  - nested in a function or another class.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    def build() -> object:\n        @dataclass(frozen=True, slots=True)\n        class Release:\n            name: str\n\n        return Release(\"simplint\")\n    ```\n\n  - that defines `__init__` or `__new__`.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=True, slots=True)\n    class Release:\n        name: str\n\n        def __init__(self, name: str) -> None:\n            self.name = name\n    ```\n\n  - that sets `init=False`.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=True, slots=True, init=False)\n    class Release:\n        name: str\n    ```\n\n  - that has a base class that is not a dataclass of the same module.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    class Base:\n        name: str\n\n\n    @dataclass(frozen=True, slots=True)\n    class Release(Base):\n        version: str\n    ```\n\nA call in an f-string `=` debug field keeps the printed text: the call's source text stays, and its value follows in a\nplain field, so the output is the same once the call passes its fields by keyword.\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n\n\ndef show() -> str:\n    return f\"{Release('simplint')=}\"\n```\n\n```python fixed\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass Release:\n    name: str\n\n\ndef show() -> str:\n    return f\"Release('simplint')={Release(name='simplint')!r}\"\n```\n\n### Related rules\n\n[dataclass-frozen](SMP701.html) asks for `frozen=True` and [dataclass-slots](SMP702.html) for `slots=True` on the same\ndecorator.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#28777](https://github.com/astral-sh/ruff/issues/28777).\n",
+    "explanation": "Flags dataclasses declared without `kw_only=True`, and the calls that pass their fields by position.\n\n## Why is this bad?\n\nPositional construction ties every caller to the field order, so reordering or inserting a field silently shifts values\ninto the wrong fields. Keyword-only fields name each value at the call site.\n\n## Example\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n    version: str\n\n\nRelease(\"simplint\", \"1.0.0\")\n```\n\nUse instead:\n\n```python ok\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass Release:\n    name: str\n    version: str\n\n\nRelease(name=\"simplint\", version=\"1.0.0\")\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py39\"\n  ```\n\n  ```python ok\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Release:\n      name: str\n  ```\n\n## What it does\n\n### Active on\n\n- **[Dataclass](https://docs.python.org/3/library/dataclasses.html#dataclasses.dataclass) decorators**: a decorator\n  spelled `@dataclass` or `@dataclasses.dataclass` without `kw_only=True`. Any value other than a literal `True`, such\n  as `kw_only=False`, is reported too, since only a literal `True` shows that every field is keyword-only. The report\n  points at each call in the run that passes the fields by position. Its fix sets `kw_only=True` and passes those\n  arguments by keyword, but only when every such call is in the same module. The forms are:\n\n  - `@dataclass(frozen=True, slots=True)`: no `kw_only` option, so it is reported.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=True, slots=True)\n    class Release:\n        name: str\n        version: str\n    ```\n\n  - `@dataclass(**DC_KW)`: a `**` splat of a module-level dict literal, or of a `dict(...)` call with keyword arguments,\n    counts the options its keys set. A splat simplint cannot read leaves the class unreported, as for the other\n    dataclass rules.\n\n  - `@dataclass(frozen=True, slots=True, kw_only=False)`: a value other than a literal `True`.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=True, slots=True, kw_only=False)\n    class Release:\n        name: str\n        version: str\n    ```\n\n  - `@dataclass(frozen=True, slots=True, kw_only=True)`: accepted.\n\n    ```python ok\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=True, slots=True, kw_only=True)\n    class Release:\n        name: str\n        version: str\n    ```\n\n  **Unsafe fix:** code outside the checked files, such as the users of a published library, can still call the class by\n  position. A library's public dataclasses are not reported at all, as the exceptions below describe.\n\n- **Positional calls in other files**: each call in another file that passes the fields by position is a related\n  location of the class's report, and the report gets no fix, since a rewrite does not reach another file. The message\n  counts the calls that need converting by hand. A call gets no report of its own, so a suppression comment on the class\n  silences the report with its related locations.\n\n  ```python report file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      version: str\n  ```\n\n  ```python ok file=app/use.py\n  from app.models import Release\n\n\n  def build() -> Release:\n      return Release(\"simplint\", \"1.0.0\")\n  ```\n\n  The full output lists the call as a related location of the class report:\n\n  ```text\n  SMP703 Dataclass is missing kw_only; set `kw_only=True`; 1 positional call in another file needs keyword arguments by hand\n   --> app/models.py:4:2\n    |\n  4 | @dataclass(frozen=True, slots=True)\n    |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  5 | class Release:\n  6 |     name: str\n    |\n   ::: app/use.py:5:12\n    |\n  4 | def build() -> Release:\n  5 |     return Release(\"simplint\", \"1.0.0\")\n    |            ---------------------------- positional arguments pass the fields by position\n\n  Found 1 error.\n  ```\n\n### Exceptions\n\n- **Public API of a library**: a dataclass that a public module offers, defined in or re-exported from it, where its\n  `__all__` lists it or, without one, its name is public. Also a dataclass a public name's signature refers to, such as\n  the base class of a listed class or a return annotation. Users of the library call it by position, so neither the\n  class nor its positional calls in other files are reported. A class a module with an `__all__` leaves out is still\n  reported, unless such a signature refers to it.\n\n  ```toml config\n  [build-system]\n  requires = []\n  ```\n\n  ```python ok\n  from dataclasses import dataclass\n\n  __all__ = [\"Release\"]\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n  ```\n\n- **Target versions before 3.10**: the `kw_only` option needs Python 3.10 or later, so nothing is reported when the\n  target version is older.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py39\"\n  ```\n\n  ```python ok\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n  ```\n\n### Fix\n\nThe fix sets `kw_only=True` and rewrites the positional calls of the class in its own module, including `cls(...)` in\nits classmethods. A `cls` parameter of an ordinary method is some other value, so its calls stay as they are. A call\nthat unpacks `**kwargs` passes those fields by keyword, so it keeps working.\n\nA call that has positional arguments and a `**` splat is rewritten only when the splat is one simplint can read and it\ndoes not pass one of the fields the rewrite names, since the keyword would repeat it. The class gets no fix when one of\nits calls is not rewritten, so its other calls keep their positional arguments.\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n\n    @classmethod\n    def named(cls, name: str) -> \"Release\":\n        return cls(name)\n```\n\n```python fixed\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass Release:\n    name: str\n\n    @classmethod\n    def named(cls, name: str) -> \"Release\":\n        return cls(name=name)\n```\n\nThe `cls` of an ordinary method is left alone:\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n\n    def build(self, cls: type, name: str) -> object:\n        return cls(name)\n```\n\n```python fixed\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass Release:\n    name: str\n\n    def build(self, cls: type, name: str) -> object:\n        return cls(name)\n```\n\nThe keywords follow the field order of the generated `__init__`:\n\n- inherited fields come first\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Base:\n      name: str\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release(Base):\n      version: str\n\n\n  Release(\"simplint\", \"1.0.0\")\n  ```\n\n- `ClassVar` fields are left out, as are fields with `init=False` or `kw_only=True` and the fields after `KW_ONLY`\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  from dataclasses import KW_ONLY, dataclass, field\n  from typing import ClassVar\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      count: ClassVar[int] = 0\n      name: str\n      cached: str = field(init=False, default=\"\")\n      _: KW_ONLY\n      version: str\n\n\n  Release(\"simplint\", version=\"1.0.0\")\n  ```\n\n- `InitVar` fields are included\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  from dataclasses import InitVar, dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      token: InitVar[str]\n\n\n  Release(\"simplint\", \"secret\")\n  ```\n\nNo fix is offered while any use could still pass fields by position, or while a positional call is in another file:\n\n- a call that unpacks `*args`, or passes more arguments than the class has positional fields;\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n\n\n  def build(*args: str) -> Release:\n      return Release(*args)\n  ```\n\n- the class used as a value, as in `functools.partial(Partition, topic)`, or matched by position in a `case` pattern;\n\n  ```python report\n  from dataclasses import dataclass\n  from functools import partial\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      version: str\n\n\n  make = partial(Release, \"simplint\")\n  ```\n\n- the class read by `getattr(module, \"Name\")` from another file, which calls it by position under a name no import\n  shows;\n\n  ```python report file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      version: str\n  ```\n\n  ```python context file=app/main.py\n  import app.models\n\n\n  Release = getattr(app.models, \"Release\")(\"simplint\", \"1\")\n  ```\n\n- a subclass, or a call through `type(self)(...)` or `self.__class__(...)`;\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n\n      def copy(self) -> \"Release\":\n          return type(self)(self.name)\n  ```\n\n- a file that imports the module with `*`, or that imports the class and passes it on to other modules;\n\n  ```python report file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      version: str\n  ```\n\n  ```python context file=app/use.py\n  from app.models import *\n\n\n  Release(\"simplint\", \"1.0.0\")\n  ```\n\n- a positional call simplint cannot tie to the class, such as through a local name that shadows the import, or of an\n  attribute with the class's name on something no import binds, such as `module.Partition(\"a\", 1)` on a module a test\n  loads from its file path;\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      version: str\n\n\n  def build(Release: type) -> object:\n      return Release(\"simplint\", \"1.0.0\")\n  ```\n\n- a positional call with a suppression comment for SMP703 on the call, which the fix would rewrite regardless;\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      version: str\n\n\n  Release(\"simplint\", \"1.0.0\")  # noqa: SMP703\n  ```\n\n- a class in one of these forms:\n\n  - nested in a function or another class.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    def build() -> object:\n        @dataclass(frozen=True, slots=True)\n        class Release:\n            name: str\n\n        return Release(\"simplint\")\n    ```\n\n  - that defines `__init__` or `__new__`.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=True, slots=True)\n    class Release:\n        name: str\n\n        def __init__(self, name: str) -> None:\n            self.name = name\n    ```\n\n  - that sets `init=False`.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=True, slots=True, init=False)\n    class Release:\n        name: str\n    ```\n\n  - that has a base class that is not a dataclass of the same module.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    class Base:\n        name: str\n\n\n    @dataclass(frozen=True, slots=True)\n    class Release(Base):\n        version: str\n    ```\n\nA call in an f-string `=` debug field keeps the printed text: the call's source text stays, and its value follows in a\nplain field, so the output is the same once the call passes its fields by keyword.\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n\n\ndef show() -> str:\n    return f\"{Release('simplint')=}\"\n```\n\n```python fixed\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass Release:\n    name: str\n\n\ndef show() -> str:\n    return f\"Release('simplint')={Release(name='simplint')!r}\"\n```\n\n### Related rules\n\n[dataclass-frozen](SMP701.html) asks for `frozen=True` and [dataclass-slots](SMP702.html) for `slots=True` on the same\ndecorator.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#28777](https://github.com/astral-sh/ruff/issues/28777).\n",
     "examples": {
       "parsed": [
         {
@@ -22047,8 +22334,8 @@
         },
         {
           "section": "What it does",
-          "line": 236,
-          "end_line": 251,
+          "line": 234,
+          "end_line": 256,
           "config": null,
           "blocks": [
             {
@@ -22056,16 +22343,42 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 236,
-              "end_line": 251,
+              "line": 234,
+              "end_line": 244,
+              "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n\n    def build(self, cls: type, name: str) -> object:\n        return cls(name)\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 246,
+              "end_line": 256,
+              "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass Release:\n    name: str\n\n    def build(self, cls: type, name: str) -> object:\n        return cls(name)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 262,
+          "end_line": 277,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 262,
+              "end_line": 277,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Base:\n    name: str\n\n\n@dataclass(frozen=True, slots=True)\nclass Release(Base):\n    version: str\n\n\nRelease(\"simplint\", \"1.0.0\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 255,
-          "end_line": 273,
+          "line": 281,
+          "end_line": 299,
           "config": null,
           "blocks": [
             {
@@ -22073,16 +22386,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 255,
-              "end_line": 273,
+              "line": 281,
+              "end_line": 299,
               "source": "from dataclasses import dataclass\n\n\nfrom dataclasses import KW_ONLY, dataclass, field\nfrom typing import ClassVar\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    count: ClassVar[int] = 0\n    name: str\n    cached: str = field(init=False, default=\"\")\n    _: KW_ONLY\n    version: str\n\n\nRelease(\"simplint\", version=\"1.0.0\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 277,
-          "end_line": 291,
+          "line": 303,
+          "end_line": 317,
           "config": null,
           "blocks": [
             {
@@ -22090,16 +22403,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 277,
-              "end_line": 291,
+              "line": 303,
+              "end_line": 317,
               "source": "from dataclasses import dataclass\n\n\nfrom dataclasses import InitVar, dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n    token: InitVar[str]\n\n\nRelease(\"simplint\", \"secret\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 297,
-          "end_line": 308,
+          "line": 323,
+          "end_line": 334,
           "config": null,
           "blocks": [
             {
@@ -22107,16 +22420,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 297,
-              "end_line": 308,
+              "line": 323,
+              "end_line": 334,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n\n\ndef build(*args: str) -> Release:\n    return Release(*args)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 312,
-          "end_line": 324,
+          "line": 338,
+          "end_line": 350,
           "config": null,
           "blocks": [
             {
@@ -22124,16 +22437,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 312,
-              "end_line": 324,
+              "line": 338,
+              "end_line": 350,
               "source": "from dataclasses import dataclass\nfrom functools import partial\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n    version: str\n\n\nmake = partial(Release, \"simplint\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 329,
-          "end_line": 344,
+          "line": 355,
+          "end_line": 370,
           "config": null,
           "blocks": [
             {
@@ -22141,8 +22454,8 @@
               "language": "python",
               "file": "app/models.py",
               "named": true,
-              "line": 329,
-              "end_line": 337,
+              "line": 355,
+              "end_line": 363,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n    version: str\n"
             },
             {
@@ -22150,16 +22463,16 @@
               "language": "python",
               "file": "app/main.py",
               "named": true,
-              "line": 339,
-              "end_line": 344,
+              "line": 365,
+              "end_line": 370,
               "source": "import app.models\n\n\nRelease = getattr(app.models, \"Release\")(\"simplint\", \"1\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 348,
-          "end_line": 358,
+          "line": 374,
+          "end_line": 384,
           "config": null,
           "blocks": [
             {
@@ -22167,16 +22480,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 348,
-              "end_line": 358,
+              "line": 374,
+              "end_line": 384,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n\n    def copy(self) -> \"Release\":\n        return type(self)(self.name)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 362,
-          "end_line": 377,
+          "line": 388,
+          "end_line": 403,
           "config": null,
           "blocks": [
             {
@@ -22184,8 +22497,8 @@
               "language": "python",
               "file": "app/models.py",
               "named": true,
-              "line": 362,
-              "end_line": 370,
+              "line": 388,
+              "end_line": 396,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n    version: str\n"
             },
             {
@@ -22193,16 +22506,16 @@
               "language": "python",
               "file": "app/use.py",
               "named": true,
-              "line": 372,
-              "end_line": 377,
+              "line": 398,
+              "end_line": 403,
               "source": "from app.models import *\n\n\nRelease(\"simplint\", \"1.0.0\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 383,
-          "end_line": 395,
+          "line": 409,
+          "end_line": 421,
           "config": null,
           "blocks": [
             {
@@ -22210,16 +22523,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 383,
-              "end_line": 395,
+              "line": 409,
+              "end_line": 421,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n    version: str\n\n\ndef build(Release: type) -> object:\n    return Release(\"simplint\", \"1.0.0\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 399,
-          "end_line": 410,
+          "line": 425,
+          "end_line": 436,
           "config": null,
           "blocks": [
             {
@@ -22227,16 +22540,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 399,
-              "end_line": 410,
+              "line": 425,
+              "end_line": 436,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n    version: str\n\n\nRelease(\"simplint\", \"1.0.0\")  # noqa: SMP703\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 416,
-          "end_line": 426,
+          "line": 442,
+          "end_line": 452,
           "config": null,
           "blocks": [
             {
@@ -22244,49 +22557,15 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 416,
-              "end_line": 426,
+              "line": 442,
+              "end_line": 452,
               "source": "from dataclasses import dataclass\n\n\ndef build() -> object:\n    @dataclass(frozen=True, slots=True)\n    class Release:\n        name: str\n\n    return Release(\"simplint\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 430,
-          "end_line": 440,
-          "config": null,
-          "blocks": [
-            {
-              "role": "report",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 430,
-              "end_line": 440,
-              "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n\n    def __init__(self, name: str) -> None:\n        self.name = name\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 444,
-          "end_line": 451,
-          "config": null,
-          "blocks": [
-            {
-              "role": "report",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 444,
-              "end_line": 451,
-              "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True, init=False)\nclass Release:\n    name: str\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 455,
+          "line": 456,
           "end_line": 466,
           "config": null,
           "blocks": [
@@ -22295,16 +22574,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 455,
+              "line": 456,
               "end_line": 466,
-              "source": "from dataclasses import dataclass\n\n\nclass Base:\n    name: str\n\n\n@dataclass(frozen=True, slots=True)\nclass Release(Base):\n    version: str\n"
+              "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n\n    def __init__(self, name: str) -> None:\n        self.name = name\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 471,
-          "end_line": 495,
+          "line": 470,
+          "end_line": 477,
           "config": null,
           "blocks": [
             {
@@ -22312,8 +22591,42 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 471,
-              "end_line": 482,
+              "line": 470,
+              "end_line": 477,
+              "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True, init=False)\nclass Release:\n    name: str\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 481,
+          "end_line": 492,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 481,
+              "end_line": 492,
+              "source": "from dataclasses import dataclass\n\n\nclass Base:\n    name: str\n\n\n@dataclass(frozen=True, slots=True)\nclass Release(Base):\n    version: str\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 497,
+          "end_line": 521,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 497,
+              "end_line": 508,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n\n\ndef show() -> str:\n    return f\"{Release('simplint')=}\"\n"
             },
             {
@@ -22321,8 +22634,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 484,
-              "end_line": 495,
+              "line": 510,
+              "end_line": 521,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass Release:\n    name: str\n\n\ndef show() -> str:\n    return f\"Release('simplint')={Release(name='simplint')!r}\"\n"
             }
           ]

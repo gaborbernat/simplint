@@ -260,8 +260,8 @@ class Release:
           self.marked = True
   ```
 
-- code sets an attribute of an instance known to be of the class through `monkeypatch.setattr`, `mock.patch.object` or
-  `obj.__setattr__(...)`, or under a name computed at run time through `setattr`, which may name any attribute
+- code sets an attribute of an instance known to be of the class through `monkeypatch.setattr`, `mock.patch.object`,
+  `obj.__setattr__(...)` or `obj.__delattr__(...)`, which may name any attribute
 
   ```python report
   from dataclasses import dataclass
@@ -282,6 +282,75 @@ class Release:
           print(release.send())
   ```
 
+  ```python report
+  from dataclasses import dataclass
+
+
+  @dataclass(frozen=True)
+  class Release:
+      version: str
+
+
+  def stub(monkeypatch) -> None:
+      release = Release("1")
+      monkeypatch.setattr(release, "marked", True)
+      release.__setattr__("marked", False)
+      release.__delattr__("marked")
+  ```
+
+  ```python fixed
+  from dataclasses import dataclass
+
+
+  @dataclass(frozen=True)
+  class Release:
+      version: str
+
+
+  def stub(monkeypatch) -> None:
+      release = Release("1")
+      monkeypatch.setattr(release, "marked", True)
+      release.__setattr__("marked", False)
+      release.__delattr__("marked")
+  ```
+
+- code sets an attribute under a name computed at run time through `setattr`, such as `setattr(self, key, value)` or
+  `setattr(release, key, value)` on an annotated parameter, which may name any attribute
+
+  ```python report
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Release:
+      version: str
+
+      def update(self, **changes: str) -> None:
+          for key, value in changes.items():
+              setattr(self, key, value)
+
+
+  def apply(release: Release, key: str, value: str) -> None:
+      setattr(release, key, value)
+  ```
+
+  ```python fixed
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Release:
+      version: str
+
+      def update(self, **changes: str) -> None:
+          for key, value in changes.items():
+              setattr(self, key, value)
+
+
+  def apply(release: Release, key: str, value: str) -> None:
+      setattr(release, key, value)
+  ```
+
 - a weak reference to an instance, from `weakref.ref`, `weakref.proxy` or `weakref.finalize`, which needs a
   `__weakref__` slot the class does not have
 
@@ -297,6 +366,24 @@ class Release:
 
   release = Release("1")
   reference = weakref.ref(release)
+  proxy = weakref.proxy(release)
+  finalizer = weakref.finalize(release, print, "released")
+  ```
+
+  ```python fixed
+  import weakref
+  from dataclasses import dataclass
+
+
+  @dataclass(frozen=True)
+  class Release:
+      version: str
+
+
+  release = Release("1")
+  reference = weakref.ref(release)
+  proxy = weakref.proxy(release)
+  finalizer = weakref.finalize(release, print, "released")
   ```
 
 - a decorator listed below `@dataclass`, which runs first: `slots=True` makes the dataclass return a new class, which
@@ -420,6 +507,62 @@ def record(result) -> None:
 record(Result("ok"))
 ```
 
+A call of a class with a private name, such as `_Result(...)`, or with an all-caps name of three or more letters, such
+as `URL(...)`, makes its result known to be of that class. A one- or two-letter capital such as `T` does not, since it
+is more likely a type variable:
+
+```python report
+from dataclasses import dataclass
+
+
+@dataclass
+class _Result:
+    status: str
+
+
+result = _Result("ok")
+result.cached = True
+```
+
+```python fixed
+from dataclasses import dataclass
+
+
+@dataclass
+class _Result:
+    status: str
+
+
+result = _Result("ok")
+result.cached = True
+```
+
+```python report
+from dataclasses import dataclass
+
+
+@dataclass
+class URL:
+    value: str
+
+
+url = URL("https://example.com")
+url.cached = True
+```
+
+```python fixed
+from dataclasses import dataclass
+
+
+@dataclass
+class URL:
+    value: str
+
+
+url = URL("https://example.com")
+url.cached = True
+```
+
 ### Unsafe fix
 
 The fix is safe only when nothing else in the checked files might notice the change. It is unsafe when:
@@ -530,6 +673,39 @@ The fix is safe only when nothing else in the checked files might notice the cha
   class Release:
       version: str
       settings.flag = True
+  ```
+
+  `object.__setattr__(self, ...)` and `super().__setattr__(...)` are how a class writes its own fields, so they do not
+  count as writes and keep the fix offered, but naming `__setattr__` or `super` still makes it unsafe:
+
+  ```python report
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Release:
+      version: str
+
+      def rename(self, version: str) -> None:
+          object.__setattr__(self, "version", version)
+
+      def relabel(self, version: str) -> None:
+          super().__setattr__("version", version)
+  ```
+
+  ```python fixed
+  from dataclasses import dataclass
+
+
+  @dataclass(slots=True)
+  class Release:
+      version: str
+
+      def rename(self, version: str) -> None:
+          object.__setattr__(self, "version", version)
+
+      def relabel(self, version: str) -> None:
+          super().__setattr__("version", version)
   ```
 
 Code outside the checked files, and code that adds an attribute that is not a field to an object simplint cannot tie to
