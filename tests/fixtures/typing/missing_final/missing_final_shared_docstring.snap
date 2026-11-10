@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:13 SMP601 `LIMIT` is never reassigned; annotate it `Final`

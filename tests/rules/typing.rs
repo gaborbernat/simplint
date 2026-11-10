@@ -9,6 +9,8 @@ use crate::common;
 #[test_case("missing-final", "missing_final_alias.py", "py314" ; "missing_final_uses_typing_alias")]
 #[test_case("missing-final", "missing_final_module.py", "py314" ; "missing_final_typing_module")]
 #[test_case("missing-final", "missing_final_new.py", "py314" ; "missing_final_new_import")]
+#[test_case("missing-final", "missing_final_shared_docstring.py", "py314" ; "missing_final_shared_docstring")]
+#[test_case("missing-final", "missing_final_docstring_import.py", "py314" ; "missing_final_docstring_import")]
 #[test_case("missing-final", "missing_final_bare.py", "py314" ; "missing_final_import_at_top")]
 #[test_case("missing-final", "missing_final_checking.py", "py310" ; "missing_final_type_checking_eager")]
 #[test_case("missing-final", "missing_final_checking.py", "py314" ; "missing_final_type_checking_lazy")]
