@@ -528,7 +528,7 @@
         "undocumented-public-api",
         "unexplained-regex",
         "unexported-public-name",
-        "unguarded-main-call",
+        "unguarded-entrypoint-call",
         "unnamed-regex-group",
         "unused-default",
         "unused-definition",

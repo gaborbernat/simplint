@@ -2977,16 +2977,16 @@
   },
   {
     "code": "SMP106",
-    "name": "unguarded-main-call",
-    "summary": "A trailing top-level `main()` call that runs when its module is imported",
-    "fix": "None",
-    "explanation": "Flags a trailing `main()` call that runs when its module is imported.\n\n## Why is this bad?\n\nImporting a module executes its top-level statements. A command that calls `main()` during import can run unexpectedly\nwhen another module imports its functions or tests inspect it.\n[Python's `__main__` documentation](https://docs.python.org/3/library/__main__.html#idiomatic-usage) recommends a guard\nfor ordinary modules that can run as scripts.\n\n## Example\n\n```python report file=command.py\ndef main() -> None:\n    print(\"ready\")\n\n\nmain()\n```\n\nUse instead:\n\n```python ok file=command.py\ndef main() -> None:\n    print(\"ready\")\n\n\nif __name__ == \"__main__\":\n    main()\n```\n\n## What it does\n\nThe rule checks the final top-level statement of a module. It reports a direct `main()` call and a call passed into an\nexit wrapper, such as `sys.exit(main())` or `raise SystemExit(main())`. Calls inside an `if __name__ == \"__main__\":`\nblock are allowed. It offers no fix because moving a call into a guard can change import-time behavior.\n\n### Exceptions\n\n- **`__main__.py`**: Python's\n  [package entrypoint guidance](https://docs.python.org/3/library/__main__.html#main-py-in-python-packages) recommends a\n  bare call in this file, including for zip application entrypoints.\n",
+    "name": "unguarded-entrypoint-call",
+    "summary": "A trailing top-level `main()` or `run()` call that runs when its module is imported",
+    "fix": "Sometimes",
+    "explanation": "Flags a trailing `main()` or `run()` call that runs when its module is imported.\n\n## Why is this bad?\n\nImporting a module executes its top-level statements. A command that calls `main()` or `run()` during import can run\nwhen another module imports its functions or tests inspect it.\n[Python's `__main__` documentation](https://docs.python.org/3/library/__main__.html#idiomatic-usage) recommends a guard\nfor ordinary modules that can run as scripts.\n\n## Example\n\nThe unsafe fix wraps the call:\n\n```python report file=command.py\ndef main() -> None:\n    print(\"ready\")\n\n\nmain()\n```\n\n```python fixed file=command.py\ndef main() -> None:\n    print(\"ready\")\n\n\nif __name__ == \"__main__\":\n    main()\n```\n\n## What it does\n\nThe rule checks the final top-level statement of a module. It reports a direct `main()` or `run()` call, including a\ncall passed into another call, such as `sys.exit(run())` or `raise SystemExit(main())`. Calls inside an\n`if __name__ == \"__main__\":` block are allowed.\n\n### Exceptions\n\n- **`__main__.py`**: Python's\n  [package entrypoint guidance](https://docs.python.org/3/library/__main__.html#main-py-in-python-packages) recommends a\n  bare call in this file, including for zip application entrypoints.\n\n## Fix\n\nThe unsafe fix wraps a single-line statement in a main guard. It preserves an inline comment and the file's line\nendings. Moving the statement changes import-time behavior, so the fix requires `--fix --unsafe-fixes`. Multiline\nstatements and statements sharing a line with other code remain reports without a fix.\n",
     "examples": {
       "parsed": [
         {
           "section": "Example",
-          "line": 12,
-          "end_line": 18,
+          "line": 14,
+          "end_line": 29,
           "config": null,
           "blocks": [
             {
@@ -2994,20 +2994,12 @@
               "language": "python",
               "file": "command.py",
               "named": true,
-              "line": 12,
-              "end_line": 18,
+              "line": 14,
+              "end_line": 20,
               "source": "def main() -> None:\n    print(\"ready\")\n\n\nmain()\n"
-            }
-          ]
-        },
-        {
-          "section": "Example",
-          "line": 22,
-          "end_line": 29,
-          "config": null,
-          "blocks": [
+            },
             {
-              "role": "ok",
+              "role": "fixed",
               "language": "python",
               "file": "command.py",
               "named": true,

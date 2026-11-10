@@ -20,18 +20,57 @@ fn entrypoint_module_name(file: &str, metadata: &str, source: &str, expected: us
 }
 
 #[test_case("main()", 1 ; "direct")]
+#[test_case("run()", 1 ; "run")]
 #[test_case("sys.exit(main())", 1 ; "sys_exit")]
+#[test_case("sys.exit(run())", 1 ; "run_sys_exit")]
 #[test_case("raise SystemExit(main())", 1 ; "system_exit")]
+#[test_case("raise SystemExit(run())", 1 ; "run_system_exit")]
 #[test_case("run(result=main())", 1 ; "keyword_argument")]
 #[test_case("if __name__ == \"__main__\":\n    main()", 0 ; "guarded")]
+#[test_case("if __name__ == \"__main__\":\n    run()", 0 ; "run_guarded")]
 #[test_case("if \"__main__\" == __name__:\n    sys.exit(main())", 0 ; "reversed_guard")]
 #[test_case("runner.main()", 0 ; "attribute")]
+#[test_case("runner.run()", 0 ; "run_attribute")]
 #[test_case("register(lambda: main())", 0 ; "deferred")]
 #[test_case("main()\nprint(\"done\")", 0 ; "not_last")]
-fn trailing_main_call_needs_guard(trailing: &str, expected: usize) {
-    let root = common::project(&[("command.py", &format!("def main() -> None:\n    pass\n\n\n{trailing}\n"))]);
+fn trailing_entrypoint_call_needs_guard(trailing: &str, expected: usize) {
+    let root = common::project(&[(
+        "command.py",
+        &format!("def main() -> None:\n    pass\n\n\ndef run() -> None:\n    pass\n\n\n{trailing}\n"),
+    )]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP106"]);
     assert_eq!(stdout.matches("SMP106").count(), expected, "{stdout}");
+}
+
+#[test_case("main()\n", "if __name__ == \"__main__\":\n    main()\n" ; "main")]
+#[test_case("run()\n", "if __name__ == \"__main__\":\n    run()\n" ; "run")]
+#[test_case("sys.exit(run())\n", "if __name__ == \"__main__\":\n    sys.exit(run())\n" ; "exit_wrapper")]
+#[test_case("raise SystemExit(main())\n", "if __name__ == \"__main__\":\n    raise SystemExit(main())\n" ; "raise_wrapper")]
+#[test_case("run()  # launch\n", "if __name__ == \"__main__\":\n    run()  # launch\n" ; "inline_comment")]
+#[test_case("run()\r\n", "if __name__ == \"__main__\":\r\n    run()\r\n" ; "crlf")]
+#[test_case("run()", "if __name__ == \"__main__\":\n    run()" ; "no_final_newline")]
+fn trailing_entrypoint_call_autofix(source: &str, expected: &str) {
+    let root = common::project(&[("command.py", source)]);
+    let (code, stdout, _) = common::fix_unsafe(root.path(), "SMP106");
+    assert_eq!(code, 0, "{stdout}");
+    assert_eq!(common::read(root.path(), "command.py"), expected);
+}
+
+#[test_case("run(\n)\n" ; "multiline")]
+#[test_case("value = 1; run()\n" ; "shared_line")]
+fn trailing_entrypoint_call_without_fix(source: &str) {
+    let root = common::project(&[("command.py", source)]);
+    let (_, stdout, _) = common::fix_unsafe(root.path(), "SMP106");
+    assert!(stdout.contains("SMP106"), "{stdout}");
+    assert_eq!(common::read(root.path(), "command.py"), source);
+}
+
+#[test]
+fn trailing_entrypoint_call_requires_unsafe_fixes() {
+    let root = common::project(&[("command.py", "run()\n")]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP106", "--fix"]);
+    assert!(stdout.contains("SMP106"), "{stdout}");
+    assert_eq!(common::read(root.path(), "command.py"), "run()\n");
 }
 
 #[test]
