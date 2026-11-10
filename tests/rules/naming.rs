@@ -19,6 +19,142 @@ fn entrypoint_module_name(file: &str, metadata: &str, source: &str, expected: us
     assert_eq!(stdout.matches("SMP105").count(), expected, "{stdout}");
 }
 
+#[test_case("", "main()", 0 ; "name_alone_main")]
+#[test_case("", "run()", 0 ; "name_alone_run")]
+#[test_case("", "populate_cache()", 0 ; "ordinary_cache")]
+#[test_case("#!/usr/bin/env python\n", "launch()", 1 ; "shebang")]
+#[test_case("#!/usr/bin/env python\n", "sys.exit(launch())", 1 ; "exit_wrapper")]
+#[test_case("#!/usr/bin/env python\n", "raise SystemExit(launch())", 1 ; "raise_wrapper")]
+#[test_case("#!/usr/bin/env python\n", "sys.exit(0)", 1 ; "exit_without_call")]
+#[test_case("#!/usr/bin/env python\n", "if __name__ == \"__main__\":\n    launch()", 0 ; "guarded")]
+#[test_case("#!/usr/bin/env python\n", "launch()\nvalue = 1", 0 ; "not_last")]
+#[test_case("#!/usr/bin/env python\n", "cache = populate_cache()", 0 ; "cache_assignment")]
+#[test_case("", "register(lambda: main())", 0 ; "deferred_in_ordinary_module")]
+#[test_case("#!/usr/bin/env python\n", "raise ValueError()", 0 ; "ordinary_raise")]
+fn trailing_entrypoint_call_needs_guard(prefix: &str, trailing: &str, expected: usize) {
+    let root = common::project(&[(
+        "command.py",
+        &format!(
+            "{prefix}def main() -> None:\n    pass\n\n\ndef run() -> None:\n    pass\n\n\ndef launch() -> None:\n    pass\n\n\n{trailing}\n"
+        ),
+    )]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP106"]);
+    assert_eq!(stdout.matches("SMP106").count(), expected, "{stdout}");
+}
+
+#[cfg(unix)]
+#[test]
+fn non_utf8_script_path_has_no_target() {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
+    let root = common::project(&[(
+        "pyproject.toml",
+        "[project]\nname = \"pkg\"\nversion = \"1\"\n[project.scripts]\ncli = \"pkg.cli:run\"\n",
+    )]);
+    std::fs::write(root.path().join(OsString::from_vec(b"cli-\xff.py".to_vec())), "run()\n").unwrap();
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP106"]);
+    assert!(!stdout.contains("SMP106"), "{stdout}");
+}
+
+#[test_case("main()\n", "if __name__ == \"__main__\":\n    main()\n" ; "main")]
+#[test_case("run()\n", "if __name__ == \"__main__\":\n    run()\n" ; "run")]
+#[test_case("sys.exit(run())\n", "if __name__ == \"__main__\":\n    sys.exit(run())\n" ; "exit_wrapper")]
+#[test_case("raise SystemExit(main())\n", "if __name__ == \"__main__\":\n    raise SystemExit(main())\n" ; "raise_wrapper")]
+#[test_case("run()  # launch\n", "if __name__ == \"__main__\":\n    run()  # launch\n" ; "inline_comment")]
+#[test_case("run()\r\n", "if __name__ == \"__main__\":\r\n    run()\r\n" ; "crlf")]
+#[test_case("run()", "if __name__ == \"__main__\":\n    run()" ; "no_final_newline")]
+fn trailing_entrypoint_call_autofix(source: &str, expected: &str) {
+    let shebang = if source.contains("\r\n") { "#!/usr/bin/env python\r\n" } else { "#!/usr/bin/env python\n" };
+    let root = common::project(&[("command.py", &format!("{shebang}{source}"))]);
+    let (code, stdout, _) = common::fix_unsafe(root.path(), "SMP106");
+    assert_eq!(code, 0, "{stdout}");
+    assert_eq!(common::read(root.path(), "command.py"), format!("{shebang}{expected}"));
+}
+
+#[test_case("run(\n)\n" ; "multiline")]
+#[test_case("value = 1; run()\n" ; "shared_line")]
+fn trailing_entrypoint_call_without_fix(source: &str) {
+    let source = format!("#!/usr/bin/env python\n{source}");
+    let root = common::project(&[("command.py", &source)]);
+    let (_, stdout, _) = common::fix_unsafe(root.path(), "SMP106");
+    assert!(stdout.contains("SMP106"), "{stdout}");
+    assert_eq!(common::read(root.path(), "command.py"), source);
+}
+
+#[test]
+fn trailing_entrypoint_call_requires_unsafe_fixes() {
+    let root = common::project(&[("command.py", "#!/usr/bin/env python\nrun()\n")]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP106", "--fix"]);
+    assert!(stdout.contains("SMP106"), "{stdout}");
+    assert_eq!(common::read(root.path(), "command.py"), "#!/usr/bin/env python\nrun()\n");
+}
+
+#[test_case("__main__.py" ; "root")]
+#[test_case("pkg/__main__.py" ; "package")]
+fn main_module_requires_guard(file: &str) {
+    let root = common::project(&[(file, "from pkg.cli import launch\n\nlaunch()\n")]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP106"]);
+    assert_eq!(stdout.matches("SMP106").count(), 1, "{stdout}");
+    let (code, stdout, _) = common::fix_unsafe(root.path(), "SMP106");
+    assert_eq!(code, 0, "{stdout}");
+    assert_eq!(
+        common::read(root.path(), file),
+        "from pkg.cli import launch\n\nif __name__ == \"__main__\":\n    launch()\n"
+    );
+}
+
+#[test_case("[project.scripts]\ncli = \"pkg.cli:launch\"\n", "launch()", 1 ; "console_script")]
+#[test_case("[project.gui-scripts]\ncli = \"pkg.cli:launch\"\n", "sys.exit(launch())", 1 ; "gui_script")]
+#[test_case("[project.scripts]\ncli = \"pkg.cli:Cli.start\"\n", "Cli . start()", 1 ; "dotted_target")]
+#[test_case("[project.scripts]\ncli = \"pkg.cli:launch\"\n", "populate_cache()", 0 ; "unrelated_call")]
+#[test_case("[project.entry-points.plugins]\ncli = \"pkg.cli:launch\"\n", "launch()", 0 ; "plugin")]
+fn configured_entrypoint_call(metadata: &str, trailing: &str, expected: usize) {
+    let root = common::project(&[
+        ("pyproject.toml", &format!("[project]\nname = \"pkg\"\nversion = \"1\"\n{metadata}")),
+        ("pkg/__init__.py", ""),
+        ("pkg/cli.py", &format!("def launch() -> None:\n    pass\n\n\n{trailing}\n")),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP106"]);
+    assert_eq!(stdout.matches("SMP106").count(), expected, "{stdout}");
+}
+
+#[test]
+fn configured_entrypoint_call_autofix() {
+    let root = common::project(&[
+        ("pyproject.toml", "[project]\nname = \"pkg\"\nversion = \"1\"\n[project.scripts]\ncli = \"pkg.cli:launch\"\n"),
+        ("pkg/__init__.py", ""),
+        ("pkg/cli.py", "def launch() -> None:\n    pass\n\n\nlaunch()\n"),
+    ]);
+    let (code, stdout, _) = common::fix_unsafe(root.path(), "SMP106");
+    assert_eq!(code, 0, "{stdout}");
+    assert_eq!(
+        common::read(root.path(), "pkg/cli.py"),
+        "def launch() -> None:\n    pass\n\n\nif __name__ == \"__main__\":\n    launch()\n"
+    );
+}
+
+#[test]
+fn package_init_console_script_call() {
+    let root = common::project(&[
+        ("pyproject.toml", "[project]\nname = \"pkg\"\nversion = \"1\"\n[project.scripts]\ncli = \"pkg:launch\"\n"),
+        ("pkg/__init__.py", "def launch() -> None:\n    pass\n\n\nlaunch()\n"),
+    ]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP106"]);
+    assert_eq!(stdout.matches("SMP106").count(), 1, "{stdout}");
+}
+
+#[cfg(unix)]
+#[test]
+fn executable_script_requires_guard() {
+    let root = common::project(&[("command.py", "launch()\n")]);
+    let (_, stdout, _) = common::check(root.path(), &["--select", "SMP106"]);
+    assert!(!stdout.contains("SMP106"), "{stdout}");
+    common::set_mode(&root.path().join("command.py"), 0o755);
+    let (_, stdout, _) = common::check(root.path(), &["--select", "SMP106"]);
+    assert_eq!(stdout.matches("SMP106").count(), 1, "{stdout}");
+}
+
 #[test_case("single-letter-name", "single_letter_name.py" ; "single_letter_name")]
 #[test_case("meaningless-name", "meaningless_name.py" ; "meaningless_name")]
 #[test_case("catch-all-module", "utils/__init__.py" ; "catch_all_module_package")]
