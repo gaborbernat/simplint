@@ -21,11 +21,12 @@ use super::{Diagnostics, Mode, Resolved, StdinLint, lint_path, lint_stdin, write
 use crate::cli::printer::FullDisplay;
 use crate::lint::Linter;
 use crate::lint::registry::{Rule, RuleSet};
-use crate::project::cache::{Cache, Caches, FileKey, Fingerprints};
+use crate::project::cache::{self, FileKey};
 use crate::project::{
     DocReferences, Ending, External, FileFacts, ImportResolver, IndexInputs, Parts, Project, SearchRoots,
 };
 use crate::rules::classes::dataclass_kw_only::suppresses_rewrite;
+use crate::run::cache::{Cache, Caches, Fingerprints};
 use crate::settings::{FileSettings, ModuleRole, Settings};
 
 // Ruff's `add_noqa`: a file that cannot be read or written is logged and left as it is.
@@ -188,7 +189,7 @@ fn for_each_file<T: Send>(
     let rules = rules_of(&linted);
     let parts = wanted_parts(rules);
     if let Some(cache_dir) = cache_dir {
-        Caches::prepare(cache_dir);
+        cache::prepare(cache_dir);
     }
     // The documentation walk reads files of its own, so it runs while the caches open and the facts are collected,
     // which on a warm run is most of what comes before the index.

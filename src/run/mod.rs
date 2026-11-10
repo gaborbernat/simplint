@@ -1,5 +1,6 @@
 // The lint pipeline and the run over a set of files: what a file's lint reports, how a run finds its files, indexes
 // them and lints them. The command line reads these, and the project cache stores their results.
+mod cache;
 mod conflicts;
 mod discover;
 mod rounds;
