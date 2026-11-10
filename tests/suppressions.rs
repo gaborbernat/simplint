@@ -173,6 +173,13 @@ fn add_ignore_does_not_name_the_numeric_codes_it_renames() {
 }
 
 #[test]
+fn add_ignore_keeps_a_code_no_rule_has() {
+    let root = project(&[("module.py", "x = 1  # simplint: ignore[SMP999] kept\n")]);
+    check(root.path(), &["--select", "SMP101", "--add-ignore"]);
+    assert_eq!(read(root.path(), "module.py"), "x = 1  # simplint: ignore[SMP999, single-letter-name] kept\n");
+}
+
+#[test]
 fn add_ignore_counts_one_comment() {
     let root = project(&[("module.py", "x = 1")]);
     let result = check(root.path(), &["--select", "SMP101", "--add-ignore=paper"]);
