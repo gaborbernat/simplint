@@ -126,7 +126,8 @@ The fix is safe for `.date()`. For `.time()` it is safe when the format is a str
 unsafe otherwise: `time.strptime` keeps the zone that `.time()` drops, so the value changes with either directive. When
 the class is imported by name, the fix adds `date` or `time` to that `from datetime import` line. It reports without a
 fix when the file already spells `date` or `time` outside an attribute, since the new name would take that binding's
-place.
+place. No fix is offered when a comment lies in the class or in the `.date()` or `.time()` call it drops, since the
+rewrite would drop it.
 
 ## Other tools
 

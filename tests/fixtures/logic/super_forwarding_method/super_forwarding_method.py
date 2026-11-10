@@ -209,3 +209,8 @@ def build():
             return super().ordered(name)
 
     return Local
+
+
+class Trailing(Base):
+    def run(self, name):
+        return super().run(name)  # keep: the base class validates the name

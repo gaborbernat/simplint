@@ -1,7 +1,8 @@
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::helpers::body_without_leading_docstring;
 use ruff_python_ast::{self as ast, Expr, Stmt};
-use ruff_text_size::Ranged;
+use ruff_source_file::LineRanges;
+use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
@@ -27,12 +28,14 @@ pub fn super_forwarding_method(checker: &Checker) {
 fn check_method<'a>(checker: &Checker<'a>, body: &[Stmt], parent: &'a ast::StmtClassDef, stmt: &Stmt) {
     let Stmt::FunctionDef(function) = stmt else { return };
     let name = function.name.as_str();
-    // A comment above the method says why it is there, such as a workaround for a type checker. A class that defines
-    // `__eq__` without `__hash__` gets `__hash__ = None`, so either of the two may be there to keep the pair in step.
+    // A comment above the method or in its body says why it is there, such as a workaround for a type checker, and the
+    // deletion would take it away. A class that defines `__eq__` without `__hash__` gets `__hash__ = None`, so either
+    // of the two may be there to keep the pair in step.
     if !function.decorator_list.is_empty()
         || function.is_async
         || matches!(name, "__eq__" | "__hash__")
         || checker.comment_above(function).is_some()
+        || checker.has_comment_in(TextRange::new(function.start(), checker.source.line_end(function.end())))
         || !forwards_to_parent(function)
     {
         return;

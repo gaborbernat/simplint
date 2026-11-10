@@ -96,7 +96,7 @@ Reports these forms, when the call resolves to `sys.exc_info`, so `import sys as
 ### Fix
 
 The fix is safe. It replaces the subscript with `sys.exception()`, or the unpacked argument with it, which gives the
-same value.
+same value. No fix is offered when a comment lies in the replaced code, since the rewrite would drop it.
 
 ## Other tools
 

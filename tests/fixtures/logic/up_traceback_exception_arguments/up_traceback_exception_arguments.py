@@ -45,3 +45,11 @@ def shadowed(error):
         raise ValueError
     except ValueError as error:
         return traceback.format_exception(type(error), error, error.__traceback__)
+
+
+def commented(run):
+    try:
+        run()
+    except Exception as error:
+        traceback.print_exception(type(error),  # keep the type
+                                  error, error.__traceback__)

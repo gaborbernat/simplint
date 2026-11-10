@@ -15,12 +15,13 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
             let Some(module) = exc_info_module(checker, value) else {
                 return;
             };
-            let fix = Fix::safe_edit(Edit::range_replacement(format!("{module}.exception()"), expr.range()));
+            let fix = (!checker.has_comment_in(expr.range()))
+                .then(|| Fix::safe_edit(Edit::range_replacement(format!("{module}.exception()"), expr.range())));
             checker.report_fix(
                 Rule::ExcInfoException,
                 expr.range(),
                 "`sys.exc_info()[1]` is the exception being handled; `sys.exception()` returns it directly",
-                Some(fix),
+                fix,
                 "Use `sys.exception()`",
             );
         }
@@ -33,12 +34,13 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
             let Some(module) = exc_info_module(checker, value) else {
                 return;
             };
-            let fix = Fix::safe_edit(Edit::range_replacement(format!("{module}.exception()"), starred.range()));
+            let fix = (!checker.has_comment_in(starred.range()))
+                .then(|| Fix::safe_edit(Edit::range_replacement(format!("{module}.exception()"), starred.range())));
             checker.report_fix(
                 Rule::ExcInfoException,
                 starred.range(),
                 "Unpacking `sys.exc_info()` passes its three values; `sys.exception()` passes the exception alone",
-                Some(fix),
+                fix,
                 "Pass `sys.exception()`",
             );
         }

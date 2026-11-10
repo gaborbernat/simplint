@@ -191,8 +191,8 @@ be a plain `def` taking the same parameters under the same names, without defaul
           return super().load()
   ```
 
-- **A method with a comment on the line above it**: the comment says why the method is there, such as a workaround for a
-  type checker, so deleting it would undo that.
+- **A method with a comment on the line above it or in its body**: the comment says why the method is there, such as a
+  workaround for a type checker, so deleting it would undo that.
 
   ```python ok
   class Base:

@@ -7,7 +7,9 @@ expression: "lint_fixture(rule, fixture, target_version)"
 13:35 SMP510 Unpacking `sys.exc_info()` passes its three values; `sys.exception()` passes the exception alone [fix: Pass `sys.exception()`]
 14:35 SMP510 Unpacking `sys.exc_info()` passes its three values; `sys.exception()` passes the exception alone [fix: Pass `sys.exception()`]
 23:45 SMP510 `sys.exc_info()[1]` is the exception being handled; `sys.exception()` returns it directly [fix: Use `sys.exception()`]
---- fixed (5 applied, 0 remaining) ---
+31:16 SMP510 `sys.exc_info()[1]` is the exception being handled; `sys.exception()` returns it directly
+33:35 SMP510 Unpacking `sys.exc_info()` passes its three values; `sys.exception()` passes the exception alone
+--- fixed (5 applied, 2 remaining) ---
 import sys
 import sys as system
 import traceback
@@ -32,3 +34,14 @@ def handle(run, other):
         plain = traceback.print_exception(*sys.exc_info(1))
         counted = traceback.print_exception(sys.exception(), *other)
         return first, second, kind, trace, arg, third, unknown, indexed, unpacked, plain, counted
+
+
+def commented(run):
+    try:
+        run()
+    except Exception:
+        kept = sys.exc_info(  # keep the call
+        )[1]
+        traceback.print_exception(*sys.exc_info(  # keep the call
+        ))
+        return kept

@@ -22,3 +22,14 @@ def handle(run, other):
         plain = traceback.print_exception(*sys.exc_info(1))
         counted = traceback.print_exception(sys.exc_info()[1], *other)
         return first, second, kind, trace, arg, third, unknown, indexed, unpacked, plain, counted
+
+
+def commented(run):
+    try:
+        run()
+    except Exception:
+        kept = sys.exc_info(  # keep the call
+        )[1]
+        traceback.print_exception(*sys.exc_info(  # keep the call
+        ))
+        return kept
