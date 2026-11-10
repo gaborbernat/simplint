@@ -1,4 +1,5 @@
 use rustc_hash::{FxHashMap, FxHashSet};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use ruff_cache::{CacheKey, CacheKeyHasher};
@@ -13,6 +14,7 @@ use crate::syntax::Visibility;
 use super::cycles::Cycle;
 use super::duplicates::DuplicateRun;
 use super::reach::unqualified;
+use super::run_imports::Members;
 use super::{FileId, FileIds, Project};
 
 // A module a file binds at its top level, as `from pkg import module` and `import pkg.module as module` do, and the
@@ -90,7 +92,7 @@ pub struct FileIndex<'a> {
     pub(super) exception_types: Option<&'a FxHashSet<String>>,
     pub(super) hook_classes: Option<&'a FxHashSet<String>>,
     pub(super) run_imports: Option<&'a FxHashMap<String, bool>>,
-    pub(super) run_modules: Option<&'a FxHashMap<String, FxHashMap<String, bool>>>,
+    pub(super) run_modules: Option<&'a FxHashMap<String, FileId>>,
     pub(super) api_reached: Option<&'a FxHashSet<String>>,
     pub(super) library_reached: Option<&'a FxHashSet<String>>,
     pub(super) inherited: Option<&'a FxHashMap<String, FxHashSet<String>>>,
@@ -132,7 +134,7 @@ impl FileIndex<'_> {
                 self.exception_types,
                 self.hook_classes,
                 self.run_imports,
-                self.run_modules,
+                self.run_module_members(),
                 self.calls,
                 (&self.project.reads, &self.project.computed_reads),
             ),
@@ -162,7 +164,7 @@ impl CacheKey for FileIndex<'_> {
         self.exception_types.cache_key(state);
         self.hook_classes.cache_key(state);
         self.run_imports.cache_key(state);
-        self.run_modules.cache_key(state);
+        self.run_module_members().cache_key(state);
         self.api_reached.cache_key(state);
         self.library_reached.cache_key(state);
         self.inherited.cache_key(state);
@@ -229,10 +231,19 @@ impl<'a> FileIndex<'a> {
         self.run_imports.and_then(|names| names.get(name).copied())
     }
 
+    // The members of each module the file binds, by the name it binds the module as. They compare and hash by content,
+    // not by the files that hold them, so a fix that changes what a module defines reaches the files that import it.
+    fn run_module_members(&self) -> Option<BTreeMap<&'a str, &'a Members>> {
+        self.run_modules.map(|modules| {
+            modules.iter().map(|(alias, target)| (alias.as_str(), &self.project.run_members[target])).collect()
+        })
+    }
+
     // Whether the attribute `name` of a module of the run that the file binds as `module` is a class there (true), or a
     // function (false). `None` when the index does not know it.
     pub fn run_module_member(&self, module: &str, name: &str) -> Option<bool> {
-        self.run_modules.and_then(|modules| modules.get(module)?.get(name).copied())
+        let target = self.run_modules?.get(module)?;
+        self.project.run_members[target].get(name).copied()
     }
 
     // Whether another exported name's annotations, bases or bounds reach the module's class or alias `name`, which makes

@@ -12,8 +12,10 @@ pub(super) type Members = FxHashMap<String, bool>;
 pub(super) struct RunImports {
     // The names each file binds by importing them from a file of the run.
     pub(super) names: FxHashMap<FileId, Members>,
-    // The members of the module each file binds by importing a file of the run as a module, by the bound name.
-    pub(super) modules: FxHashMap<FileId, FxHashMap<String, Members>>,
+    // The file each module a file binds by importing a file of the run as a module names, by the bound name.
+    pub(super) modules: FxHashMap<FileId, FxHashMap<String, FileId>>,
+    // The members of each file of the run, which the modules above name.
+    pub(super) members: FxHashMap<FileId, Members>,
 }
 
 pub(super) fn run_import_kinds(
@@ -50,17 +52,18 @@ pub(super) fn run_import_kinds(
             (*id, found)
         })
         .collect();
-    let modules: FxHashMap<FileId, FxHashMap<String, Members>> = modules
+    let modules: FxHashMap<FileId, FxHashMap<String, FileId>> = modules
         .iter()
         .map(|(importer, module)| {
             let found = module
                 .modules
                 .iter()
                 .chain(&module.plain_modules)
-                .filter_map(|(alias, _, target)| Some((alias.clone(), members.get(target)?.clone())))
+                .filter(|(_, _, target)| members.contains_key(target))
+                .map(|(alias, _, target)| (alias.clone(), *target))
                 .collect();
             (*importer, found)
         })
         .collect();
-    RunImports { names, modules }
+    RunImports { names, modules, members }
 }
