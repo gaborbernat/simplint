@@ -72,12 +72,19 @@ pub fn missing_from_all(checker: &Checker) {
     };
     let names: Vec<String> = missing.iter().map(|(name, _, _)| format!("`{name}`")).collect();
     let title = format!("Add {} to `__all__`", names.join(", "));
-    // Every report would carry the whole listing, so only the first one does; the others need no fix of their own.
+    let offer_at = fix
+        .as_ref()
+        .and_then(|_| checker.first_unsuppressed(Rule::MissingFromAll, missing.iter().map(|(_, range, _)| *range)));
+    // Repeating the whole listing in every report makes output slow; the first visible report carries it.
     let mut offer = fix.map(|fix| (fix, title));
     for (name, range, imported) in missing {
         let reason =
             if imported { "is imported by other modules" } else { "appears in the signature of a name in `__all__`" };
-        let (fix, title) = offer.take().map_or((None, String::new()), |(fix, title)| (Some(fix), title));
+        let (fix, title) = if offer_at == Some(range) {
+            offer.take().map_or((None, String::new()), |(fix, title)| (Some(fix), title))
+        } else {
+            (None, String::new())
+        };
         checker.report_fix(Rule::MissingFromAll, range, format!("`{name}` {reason}; list it in `__all__`"), fix, title);
     }
 }

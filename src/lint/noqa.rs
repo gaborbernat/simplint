@@ -66,6 +66,10 @@ impl<'a> Suppressions<'a> {
         Self { source, path, parsed, indexer, stylist, lines, file }
     }
 
+    pub fn has_directives(&self) -> bool {
+        !self.lines.is_empty() || !self.file.is_empty()
+    }
+
     // Each diagnostic no comment suppresses, with the line its suppression comment belongs on.
     pub fn pending(&self, mut diagnostics: Vec<Diagnostic>) -> Vec<(Diagnostic, TextSize)> {
         let lines = self.locate(&mut diagnostics);
