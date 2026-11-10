@@ -1,13 +1,10 @@
 // Names the cache directory after the source the cached data depends on, so changing it starts a fresh cache rather
-// than failing to read the old one, or reading facts an older build collected, as happens between development builds
-// of one version. That source is every file declaring a type the cache stores, every file of `src/project`, which
-// collects the facts, and the files outside it whose helpers decide what the facts hold. Tracking imports would follow
-// every change, but a fixed list is simpler; a new helper module the facts read belongs in `SHARED`.
+// than failing to read the old one, or reading facts and findings an older build produced, as happens between
+// development builds of one version. The findings depend on every rule and on the code that runs them, so the name
+// hashes every Rust file of the crate: any change starts a fresh cache, and a new module cannot be left out.
 use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::{Path, PathBuf};
-
-const SHARED: [&str; 2] = ["src/syntax.rs", "src/lint/noqa.rs"];
 
 fn main() {
     println!("cargo::rerun-if-changed=src");
@@ -16,11 +13,8 @@ fn main() {
     files.sort();
     let mut hasher = DefaultHasher::new();
     for file in files {
-        let text = fs::read_to_string(&file).unwrap_or_else(|error| panic!("read {}: {error}", file.display()));
-        let feeds_facts = file.starts_with("src/project") || SHARED.iter().any(|shared| file == Path::new(shared));
-        if feeds_facts || text.contains("rkyv::Archive") {
-            text.hash(&mut hasher);
-        }
+        file.hash(&mut hasher);
+        fs::read_to_string(&file).unwrap_or_else(|error| panic!("read {}: {error}", file.display())).hash(&mut hasher);
     }
     println!("cargo::rustc-env=SIMPLINT_CACHE_FORMAT={:016x}", hasher.finish());
 }

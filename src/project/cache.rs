@@ -146,8 +146,8 @@ fn read_rendered(path: &Path) -> FxHashMap<String, Rendered> {
         .unwrap_or_default()
 }
 
-// The version and a hash of the cached types' source, which `build.rs` computes, so a development build that changes
-// them does not read caches an earlier build of the same version wrote.
+// The version and a hash of the crate's source, which `build.rs` computes, so a development build that changes it does
+// not read caches an earlier build of the same version wrote.
 const FORMAT: &str = concat!(env!("CARGO_PKG_VERSION"), "-", env!("SIMPLINT_CACHE_FORMAT"));
 
 // How long a cached file, or the directory of another simplint build, stays without a run that uses it, as in Ruff.
