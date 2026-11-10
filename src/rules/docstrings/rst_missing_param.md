@@ -226,6 +226,36 @@ field until they do.
       """
   ```
 
+- **Class variables of a generated class**: a `ClassVar` field is no constructor parameter, whether its annotation is
+  written as `ClassVar[int]` or as the quoted string `"ClassVar[int]"`.
+
+  ```toml config
+  [project]
+  name = "demo"
+
+  [build-system]
+  requires = []
+
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python ok
+  from dataclasses import dataclass
+  from typing import ClassVar
+
+
+  @dataclass
+  class Reader:
+      """Read files.
+
+      :param source: Where to read from.
+      """
+
+      source: str
+      count: "ClassVar[int]" = 0
+  ```
+
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** open issues [#12434](https://github.com/astral-sh/ruff/issues/12434)

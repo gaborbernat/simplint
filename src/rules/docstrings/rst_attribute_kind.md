@@ -79,6 +79,26 @@ Checks the docstrings of classes, when `docstring-style = "rst"`, for attribute 
       limit = 3
   ```
 
+  A `ClassVar` annotation counts the same when quoted, as `"ClassVar[int]"`.
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python report
+  from typing import ClassVar
+
+
+  class Engine:
+      """Run jobs.
+
+      :ivar limit: The most jobs it runs at once.
+      """
+
+      limit: "ClassVar[int]" = 3
+  ```
+
 - **`:cvar name:` fields**: reported when `name` is an instance attribute.
 
   ```toml config

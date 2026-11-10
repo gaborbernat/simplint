@@ -268,6 +268,25 @@ LIMIT: Final[int] = 10
       globals()["LIMIT"] = 2
   ```
 
+  ```python ok
+  LIMIT = 1
+  RATE = 2
+
+
+  def set_name(name: str) -> None:
+      globals()[name] = 3
+  ```
+
+  ```python ok
+  LIMIT = 1
+
+
+  def reset() -> None:
+      globals().update({"LIMIT": 2})
+      globals().setdefault("LIMIT", 3)
+      globals().pop("LIMIT")
+  ```
+
 - **`TYPE_CHECKING = False`**: an idiom that avoids importing `typing` at runtime, which adding `Final` would defeat.
 
   ```python ok

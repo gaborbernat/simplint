@@ -117,6 +117,27 @@ loads only from the attribute it is stored under, so a class attribute is named 
 `sentinel("Config.SENTINEL")`. A placeholder in a class inside a function is reported without a fix, since no qualified
 name reaches it.
 
+```toml config
+[project]
+requires-python = ">=3.15"
+```
+
+```python report
+def build():
+    class Config:
+        SENTINEL = object()
+
+    return Config
+```
+
+```python fixed
+def build():
+    class Config:
+        SENTINEL = object()
+
+    return Config
+```
+
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

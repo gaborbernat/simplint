@@ -15247,7 +15247,7 @@
     "name": "up-object-sentinel",
     "summary": "`object()` placeholders `sentinel` would name",
     "fix": "Always",
-    "explanation": "Flags a module or class constant assigned a bare `object()` placeholder, which `sentinel` from Python 3.15 names.\n\n## Why is this bad?\n\nA bare `object()` reprs as an address, so a traceback or a debugger shows `<object object at 0x7f...>` where the name\nwould tell the reader which placeholder it is. `sentinel` takes the name and uses it in the repr.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\n_MISSING = object()\n```\n\nUse instead:\n\n```python ok\n_MISSING = sentinel(\"_MISSING\")\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  _MISSING = object()\n  ```\n\n## What it does\n\nReports a single-name assignment of a bare `object()` call, with no arguments, when it sits in a module body or a class\nbody and the name is assigned only once in the file.\n\n### Active on\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\nclass Config:\n    SENTINEL = object()\n```\n\n```python fixed\nclass Config:\n    SENTINEL = sentinel(\"Config.SENTINEL\")\n```\n\n### Exceptions\n\n- **A name assigned again**: the second binding is a different object, so the placeholder is not the only one.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  _MISSING = object()\n  _MISSING = 2\n  ```\n\n- **A placeholder in a function**: a local is not visible by name outside the function.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  def run():\n      missing = object()\n      return missing\n  ```\n\n- **A file that already spells `sentinel`**: the name may be a different binding.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  sentinel = 1\n  _MISSING = object()\n  ```\n\n- **Target versions before 3.15**: the builtin does not exist there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  _MISSING = object()\n  ```\n\n### Fix\n\nThe fix is unsafe. The repr changes from an address to the name, which a program can read, and a pickled `sentinel`\nloads only from the attribute it is stored under, so a class attribute is named with its classes, as\n`sentinel(\"Config.SENTINEL\")`. A placeholder in a class inside a function is reported without a fix, since no qualified\nname reaches it.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags a module or class constant assigned a bare `object()` placeholder, which `sentinel` from Python 3.15 names.\n\n## Why is this bad?\n\nA bare `object()` reprs as an address, so a traceback or a debugger shows `<object object at 0x7f...>` where the name\nwould tell the reader which placeholder it is. `sentinel` takes the name and uses it in the repr.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\n_MISSING = object()\n```\n\nUse instead:\n\n```python ok\n_MISSING = sentinel(\"_MISSING\")\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  _MISSING = object()\n  ```\n\n## What it does\n\nReports a single-name assignment of a bare `object()` call, with no arguments, when it sits in a module body or a class\nbody and the name is assigned only once in the file.\n\n### Active on\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\nclass Config:\n    SENTINEL = object()\n```\n\n```python fixed\nclass Config:\n    SENTINEL = sentinel(\"Config.SENTINEL\")\n```\n\n### Exceptions\n\n- **A name assigned again**: the second binding is a different object, so the placeholder is not the only one.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  _MISSING = object()\n  _MISSING = 2\n  ```\n\n- **A placeholder in a function**: a local is not visible by name outside the function.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  def run():\n      missing = object()\n      return missing\n  ```\n\n- **A file that already spells `sentinel`**: the name may be a different binding.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  sentinel = 1\n  _MISSING = object()\n  ```\n\n- **Target versions before 3.15**: the builtin does not exist there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  _MISSING = object()\n  ```\n\n### Fix\n\nThe fix is unsafe. The repr changes from an address to the name, which a program can read, and a pickled `sentinel`\nloads only from the attribute it is stored under, so a class attribute is named with its classes, as\n`sentinel(\"Config.SENTINEL\")`. A placeholder in a class inside a function is reported without a fix, since no qualified\nname reaches it.\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\ndef build():\n    class Config:\n        SENTINEL = object()\n\n    return Config\n```\n\n```python fixed\ndef build():\n    class Config:\n        SENTINEL = object()\n\n    return Config\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -15424,6 +15424,36 @@
               "line": 109,
               "end_line": 111,
               "source": "_MISSING = object()\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 120,
+          "end_line": 139,
+          "config": {
+            "line": 120,
+            "end_line": 123,
+            "source": "[project]\nrequires-python = \">=3.15\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 125,
+              "end_line": 131,
+              "source": "def build():\n    class Config:\n        SENTINEL = object()\n\n    return Config\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 133,
+              "end_line": 139,
+              "source": "def build():\n    class Config:\n        SENTINEL = object()\n\n    return Config\n"
             }
           ]
         }
@@ -15823,7 +15853,7 @@
     "name": "up-strptime-date",
     "summary": "`datetime.strptime()` results narrowed to a `date` or `time`",
     "fix": "Sometimes",
-    "explanation": "Flags `datetime.strptime(...).date()` and `datetime.strptime(...).time()`, which Python 3.14 replaces with\n`date.strptime` and `time.strptime`.\n\n## Why is this bad?\n\n`datetime.strptime(text, format).date()` builds a full datetime to keep one part of it. From Python 3.14 `date` and\n`time` parse their own part, which says what the code reads and skips the intermediate value.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nfrom datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date()\n```\n\nUse instead:\n\n```python ok\nfrom datetime import date\n\n\ndef parse_day(text):\n    return date.strptime(text, \"%Y-%m-%d\")\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  from datetime import datetime\n\n\n  def parse_day(text):\n      return datetime.strptime(text, \"%Y-%m-%d\").date()\n  ```\n\n## What it does\n\nReports a call `.date()` or `.time()` with no arguments on a call that resolves to `datetime.datetime.strptime`, whether\nthe class is imported by name or reached through the `datetime` module.\n\n### Active on\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nimport datetime\n\n\ndef parse_day(text):\n    return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n```\n\n```python fixed\nimport datetime\n\n\ndef parse_day(text):\n    return datetime.date.strptime(text, \"%Y-%m-%d\")\n```\n\n### Exceptions\n\n- **Target versions before 3.14**: `date.strptime` does not exist there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  import datetime\n\n\n  def parse_day(text):\n      return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n  ```\n\n### Fix\n\nThe fix is safe for `.date()`. For `.time()` it is safe when the format is a string literal without `%z` or `%:z`, and\nunsafe otherwise: `time.strptime` keeps the zone that `.time()` drops, so the value changes with either directive. When\nthe class is imported by name, the fix adds `date` or `time` to that `from datetime import` line. It reports without a\nfix when the file already spells `date` or `time` outside an attribute, since the new name would take that binding's\nplace.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Released rule\n  [DTZ007](https://docs.astral.sh/ruff/rules/call-datetime-strptime-without-zone/) reports the same call for its missing\n  timezone, which open issue [#13359](https://github.com/astral-sh/ruff/issues/13359) calls a false positive before\n  `.date()`; this rule's fix clears both.\n",
+    "explanation": "Flags `datetime.strptime(...).date()` and `datetime.strptime(...).time()`, which Python 3.14 replaces with\n`date.strptime` and `time.strptime`.\n\n## Why is this bad?\n\n`datetime.strptime(text, format).date()` builds a full datetime to keep one part of it. From Python 3.14 `date` and\n`time` parse their own part, which says what the code reads and skips the intermediate value.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nfrom datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date()\n```\n\nUse instead:\n\n```python ok\nfrom datetime import date\n\n\ndef parse_day(text):\n    return date.strptime(text, \"%Y-%m-%d\")\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  from datetime import datetime\n\n\n  def parse_day(text):\n      return datetime.strptime(text, \"%Y-%m-%d\").date()\n  ```\n\n## What it does\n\nReports a call `.date()` or `.time()` with no arguments on a call that resolves to `datetime.datetime.strptime`, whether\nthe class is imported by name or reached through the `datetime` module.\n\n### Active on\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nimport datetime\n\n\ndef parse_day(text):\n    return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n```\n\n```python fixed\nimport datetime\n\n\ndef parse_day(text):\n    return datetime.date.strptime(text, \"%Y-%m-%d\")\n```\n\n- **`.time()` with a format that has `%:z`**: the fix is unsafe, since `time.strptime` reads the zone that `.time()`\n  drops. **Unsafe fix:** the call becomes `time.strptime`, which keeps the zone.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  import datetime\n\n\n  def parse_time(text):\n      return datetime.datetime.strptime(text, \"%H:%M:%:z\").time()\n  ```\n\n  ```python fixed\n  import datetime\n\n\n  def parse_time(text):\n      return datetime.time.strptime(text, \"%H:%M:%:z\")\n  ```\n\n### Exceptions\n\n- **Target versions before 3.14**: `date.strptime` does not exist there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  import datetime\n\n\n  def parse_day(text):\n      return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n  ```\n\n### Fix\n\nThe fix is safe for `.date()`. For `.time()` it is safe when the format is a string literal without `%z` or `%:z`, and\nunsafe otherwise: `time.strptime` keeps the zone that `.time()` drops, so the value changes with either directive. When\nthe class is imported by name, the fix adds `date` or `time` to that `from datetime import` line. It reports without a\nfix when the file already spells `date` or `time` outside an attribute, since the new name would take that binding's\nplace.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Released rule\n  [DTZ007](https://docs.astral.sh/ruff/rules/call-datetime-strptime-without-zone/) reports the same call for its missing\n  timezone, which open issue [#13359](https://github.com/astral-sh/ruff/issues/13359) calls a false positive before\n  `.date()`; this rule's fix clears both.\n",
     "examples": {
       "parsed": [
         {
@@ -15921,11 +15951,41 @@
         },
         {
           "section": "What it does",
-          "line": 86,
-          "end_line": 97,
+          "line": 85,
+          "end_line": 104,
           "config": {
-            "line": 86,
-            "end_line": 89,
+            "line": 85,
+            "end_line": 88,
+            "source": "[project]\nrequires-python = \">=3.14\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 90,
+              "end_line": 96,
+              "source": "import datetime\n\n\ndef parse_time(text):\n    return datetime.datetime.strptime(text, \"%H:%M:%:z\").time()\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 98,
+              "end_line": 104,
+              "source": "import datetime\n\n\ndef parse_time(text):\n    return datetime.time.strptime(text, \"%H:%M:%:z\")\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 110,
+          "end_line": 121,
+          "config": {
+            "line": 110,
+            "end_line": 113,
             "source": "[project]\nrequires-python = \">=3.13\"\n"
           },
           "blocks": [
@@ -15934,8 +15994,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 91,
-              "end_line": 97,
+              "line": 115,
+              "end_line": 121,
               "source": "import datetime\n\n\ndef parse_day(text):\n    return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n"
             }
           ]
@@ -19172,7 +19232,7 @@
     "name": "unnamed-regex-group",
     "summary": "Regular expressions with unnamed capture groups",
     "fix": "Sometimes",
-    "explanation": "Flags regular expression patterns with two or more unnamed capturing groups, or with one that the code reads by its\nnumber, so the groups are named with `(?P<name>...)`.\n\n## Why is this bad?\n\nA reader of `match.group(1)` and `match.group(2)` counts parentheses to learn which part of the text each group holds. A\nnamed group says what the part is in the pattern, and `match[\"text\"]` says it again where the code reads it. The numbers\nalso shift when a group is added or moved, which a name survives.\n\n## Example\n\n```python report\nimport re\n\nLINE = re.compile(r\"^(.*?)\\s*\\{([^}]+)\\}\\s*$\")\n\n\ndef parse(line):\n    match = LINE.match(line)\n    return match.group(1), match.group(2)\n```\n\nUse instead:\n\n```python ok\nimport re\n\nLINE = re.compile(r\"^(?P<text>.*?)\\s*\\{(?P<tag>[^}]+)\\}\\s*$\")\n\n\ndef parse(line):\n    match = LINE.match(line)\n    return match[\"text\"], match[\"tag\"]\n```\n\nSimplint does not invent the names, so it offers no fix for a group the code reads. A group the code never reads has no\nname to be read by, and the fix turns it into a non-capturing group instead, as described below.\n\n## What it does\n\n### Active on\n\n- **Patterns of `re` and `regex` calls**, where the pattern is a string or bytes literal, including implicit\n  concatenation. The calls are `compile`, `match`, `search`, `fullmatch`, `finditer`, `findall`, `split`, `sub` and\n  `subn`, and the methods of a compiled pattern with the same names. The rule counts the unnamed groups of the pattern,\n  reading the verbose flag from `re.VERBOSE`, `re.X` or an inline `(?x)`. A `flags` argument that is a name or other\n  expression not resolving to a `re` flag leaves the pattern unchecked, since its value may turn verbose mode on.\n\n  - **Two or more unnamed groups** are reported at the pattern.\n  - **One unnamed group** is reported when the code reads it by its number: a `group`, `start`, `end` or `span` call\n    with a number from 1 on, a subscript with such a number, or a `groups()` call. The tracking follows a name bound\n    once in its function, or at module level, to the call's result, to a match of a compiled pattern, or to the loop\n    variable of a `finditer` loop. A pattern with a named group is not reported for one unnamed group, since the number\n    the code reads may belong to the named group. A group in a `split`, `findall` or `sub` call is left alone, since\n    returning the group's text there is the normal use.\n\n  ```python report\n  import re\n\n\n  def is_version(text):\n      return bool(re.match(r\"(\\d+)\\.(\\d+)\", text))\n  ```\n\n  ```python fixed\n  import re\n\n\n  def is_version(text):\n      return bool(re.match(r\"(?:\\d+)\\.(?:\\d+)\", text))\n  ```\n\n- **Unsafe fix:** the groups the code never reads become non-capturing, `(` becomes `(?:`. The fix runs only when the\n  pattern and its match objects are all tested for truth, compared to `None`, or discarded, with no group read from\n  them. A match object that leaves the code that made it, by being returned, stored or passed on, may have its\n  `groups()` read somewhere else, and a compiled pattern shared with another module can do the same, so the fix is\n  unsafe. A `split` or `findall` call is left unfixed for that reason too: its result holds the groups' text. A name\n  bound more than once in its function is not followed, so its pattern keeps its groups. Neither is a pattern bound in a\n  class body, a name declared `global` or `nonlocal`, or a module name another module imports or `__all__` lists, since\n  the reads of those can come from code the rule does not see.\n\n### Exceptions\n\n- **A single unnamed group that the code does not read by number**, such as a lone group in `split` or a match tested\n  for truth.\n\n  ```python ok\n  import re\n\n\n  def words(text):\n      return re.split(r\"(\\s+)\", text)\n  ```\n\n- **Named groups** are what the rule asks for.\n\n  ```python ok\n  import re\n\n\n  def is_version(text):\n      return bool(re.match(r\"(?P<major>\\d+)\\.(?P<minor>\\d+)\", text))\n  ```\n\n- **Non-capturing groups, lookarounds and inline flags** do not capture, so they are not counted.\n\n  ```python ok\n  import re\n\n\n  def is_version(text):\n      return bool(re.match(r\"(?:\\d+)\\.(?=\\d)(?i:\\d+)\", text))\n  ```\n\n- **A parenthesis in a character class or escaped with a backslash** is text, not a group.\n\n  ```python ok\n  import re\n\n\n  def is_call(text):\n      return bool(re.match(r\"[(]\\(\\d+\\)\", text))\n  ```\n\n- **A parenthesis in a verbose comment** is ignored when the verbose flag is on.\n\n  ```python ok\n  import re\n\n\n  def is_version(text):\n      return bool(\n          re.match(\n              r\"\"\"\\d+  # the major (or the minor) number\n          \\.\\d+\"\"\",\n              text,\n              re.VERBOSE,\n          )\n      )\n  ```\n\n- **A pattern that is not a literal**, such as an f-string or a name, is not read.\n\n  ```python ok\n  import re\n\n\n  def is_version(text, prefix):\n      return bool(re.match(f\"{prefix}(\\\\d+)\\\\.(\\\\d+)\", text))\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** no rule reports unnamed capture groups. Open issue\n  [#4935](https://github.com/astral-sh/ruff/issues/4935) asks for a port of Sonar's Python checks in general, which does\n  not name this one.\n",
+    "explanation": "Flags regular expression patterns with two or more unnamed capturing groups, or with one that the code reads by its\nnumber, so the groups are named with `(?P<name>...)`.\n\n## Why is this bad?\n\nA reader of `match.group(1)` and `match.group(2)` counts parentheses to learn which part of the text each group holds. A\nnamed group says what the part is in the pattern, and `match[\"text\"]` says it again where the code reads it. The numbers\nalso shift when a group is added or moved, which a name survives.\n\n## Example\n\n```python report\nimport re\n\nLINE = re.compile(r\"^(.*?)\\s*\\{([^}]+)\\}\\s*$\")\n\n\ndef parse(line):\n    match = LINE.match(line)\n    return match.group(1), match.group(2)\n```\n\nUse instead:\n\n```python ok\nimport re\n\nLINE = re.compile(r\"^(?P<text>.*?)\\s*\\{(?P<tag>[^}]+)\\}\\s*$\")\n\n\ndef parse(line):\n    match = LINE.match(line)\n    return match[\"text\"], match[\"tag\"]\n```\n\nSimplint does not invent the names, so it offers no fix for a group the code reads. A group the code never reads has no\nname to be read by, and the fix turns it into a non-capturing group instead, as described below.\n\n## What it does\n\n### Active on\n\n- **Patterns of `re` and `regex` calls**, where the pattern is a string or bytes literal, including implicit\n  concatenation. The calls are `compile`, `match`, `search`, `fullmatch`, `finditer`, `findall`, `split`, `sub` and\n  `subn`, and the methods of a compiled pattern with the same names. The rule counts the unnamed groups of the pattern,\n  reading the verbose flag from `re.VERBOSE`, `re.X` or an inline `(?x)`. A `flags` argument that is a name or other\n  expression not resolving to a `re` flag leaves the pattern unchecked, since its value may turn verbose mode on.\n\n  - **Two or more unnamed groups** are reported at the pattern.\n  - **One unnamed group** is reported when the code reads it by its number: a `group`, `start`, `end` or `span` call\n    with a number from 1 on, a subscript with such a number, or a `groups()` call. The tracking follows a name bound\n    once in its function, or at module level, to the call's result, to a match of a compiled pattern, or to the loop\n    variable of a `finditer` loop. A pattern with a named group is not reported for one unnamed group, since the number\n    the code reads may belong to the named group. A group in a `split`, `findall` or `sub` call is left alone, since\n    returning the group's text there is the normal use.\n\n  ```python report\n  import re\n\n\n  def is_version(text):\n      return bool(re.match(r\"(\\d+)\\.(\\d+)\", text))\n  ```\n\n  ```python fixed\n  import re\n\n\n  def is_version(text):\n      return bool(re.match(r\"(?:\\d+)\\.(?:\\d+)\", text))\n  ```\n\n- **Unsafe fix:** the groups the code never reads become non-capturing, `(` becomes `(?:`. The fix runs only when the\n  pattern and its match objects are all tested for truth, compared to `None`, or discarded, with no group read from\n  them. A match object that leaves the code that made it, by being returned, stored or passed on, may have its\n  `groups()` read somewhere else, and a compiled pattern shared with another module can do the same, so the fix is\n  unsafe. A `split` or `findall` call is left unfixed for that reason too: its result holds the groups' text. A name\n  bound more than once in its function is not followed, so its pattern keeps its groups. Neither is a pattern bound in a\n  class body, a name declared `global` or `nonlocal`, or a module name another module imports or `__all__` lists, since\n  the reads of those can come from code the rule does not see.\n\n  - **A pattern in a class body**: reported, with no fix.\n\n    ```python report\n    import re\n\n\n    class Parser:\n        LINE = re.compile(r\"(\\d+)-(\\d+)\")\n    ```\n\n    ```python fixed\n    import re\n\n\n    class Parser:\n        LINE = re.compile(r\"(\\d+)-(\\d+)\")\n    ```\n\n  - **A name a function declares `global`**: the pattern the function binds to it is reported, with no fix.\n\n    ```python report\n    import re\n\n\n    def reset():\n        global PATTERN\n        PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n    ```\n\n    ```python fixed\n    import re\n\n\n    def reset():\n        global PATTERN\n        PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n    ```\n\n  - **A name a function declares `nonlocal`**: the pattern bound to it is reported, with no fix.\n\n    ```python report\n    import re\n\n\n    def outer():\n        pattern = None\n\n        def reset():\n            nonlocal pattern\n            pattern = re.compile(r\"(\\d+)-(\\d+)\")\n\n        reset()\n        return pattern\n    ```\n\n    ```python fixed\n    import re\n\n\n    def outer():\n        pattern = None\n\n        def reset():\n            nonlocal pattern\n            pattern = re.compile(r\"(\\d+)-(\\d+)\")\n\n        reset()\n        return pattern\n    ```\n\n  - **A module name another module imports**: reported, with no fix.\n\n    ```python report file=example.py\n    import re\n\n    PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n    ```\n\n    ```python fixed file=example.py\n    import re\n\n    PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n    ```\n\n    ```python context file=main.py\n    from example import PATTERN\n    ```\n\n  - **A module name `__all__` lists**: reported, with no fix.\n\n    ```python report\n    import re\n\n    __all__ = [\"PATTERN\"]\n    PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n    ```\n\n    ```python fixed\n    import re\n\n    __all__ = [\"PATTERN\"]\n    PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n    ```\n\n### Exceptions\n\n- **A single unnamed group that the code does not read by number**, such as a lone group in `split` or a match tested\n  for truth.\n\n  ```python ok\n  import re\n\n\n  def words(text):\n      return re.split(r\"(\\s+)\", text)\n  ```\n\n- **Named groups** are what the rule asks for.\n\n  ```python ok\n  import re\n\n\n  def is_version(text):\n      return bool(re.match(r\"(?P<major>\\d+)\\.(?P<minor>\\d+)\", text))\n  ```\n\n- **Non-capturing groups, lookarounds and inline flags** do not capture, so they are not counted.\n\n  ```python ok\n  import re\n\n\n  def is_version(text):\n      return bool(re.match(r\"(?:\\d+)\\.(?=\\d)(?i:\\d+)\", text))\n  ```\n\n- **A parenthesis in a character class or escaped with a backslash** is text, not a group.\n\n  ```python ok\n  import re\n\n\n  def is_call(text):\n      return bool(re.match(r\"[(]\\(\\d+\\)\", text))\n  ```\n\n- **A parenthesis in a verbose comment** is ignored when the verbose flag is on.\n\n  ```python ok\n  import re\n\n\n  def is_version(text):\n      return bool(\n          re.match(\n              r\"\"\"\\d+  # the major (or the minor) number\n          \\.\\d+\"\"\",\n              text,\n              re.VERBOSE,\n          )\n      )\n  ```\n\n- **A pattern that is not a literal**, such as an f-string or a name, is not read.\n\n  ```python ok\n  import re\n\n\n  def is_version(text, prefix):\n      return bool(re.match(f\"{prefix}(\\\\d+)\\\\.(\\\\d+)\", text))\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** no rule reports unnamed capture groups. Open issue\n  [#4935](https://github.com/astral-sh/ruff/issues/4935) asks for a port of Sonar's Python checks in general, which does\n  not name this one.\n",
     "examples": {
       "parsed": [
         {
@@ -19237,8 +19297,147 @@
         },
         {
           "section": "What it does",
-          "line": 87,
-          "end_line": 93,
+          "line": 84,
+          "end_line": 98,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 84,
+              "end_line": 90,
+              "source": "import re\n\n\nclass Parser:\n    LINE = re.compile(r\"(\\d+)-(\\d+)\")\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 92,
+              "end_line": 98,
+              "source": "import re\n\n\nclass Parser:\n    LINE = re.compile(r\"(\\d+)-(\\d+)\")\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 102,
+          "end_line": 118,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 102,
+              "end_line": 109,
+              "source": "import re\n\n\ndef reset():\n    global PATTERN\n    PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 111,
+              "end_line": 118,
+              "source": "import re\n\n\ndef reset():\n    global PATTERN\n    PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 122,
+          "end_line": 150,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 122,
+              "end_line": 135,
+              "source": "import re\n\n\ndef outer():\n    pattern = None\n\n    def reset():\n        nonlocal pattern\n        pattern = re.compile(r\"(\\d+)-(\\d+)\")\n\n    reset()\n    return pattern\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 137,
+              "end_line": 150,
+              "source": "import re\n\n\ndef outer():\n    pattern = None\n\n    def reset():\n        nonlocal pattern\n        pattern = re.compile(r\"(\\d+)-(\\d+)\")\n\n    reset()\n    return pattern\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 154,
+          "end_line": 168,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": true,
+              "line": 154,
+              "end_line": 158,
+              "source": "import re\n\nPATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": true,
+              "line": 160,
+              "end_line": 164,
+              "source": "import re\n\nPATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n"
+            },
+            {
+              "role": "context",
+              "language": "python",
+              "file": "main.py",
+              "named": true,
+              "line": 166,
+              "end_line": 168,
+              "source": "from example import PATTERN\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 172,
+          "end_line": 184,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 172,
+              "end_line": 177,
+              "source": "import re\n\n__all__ = [\"PATTERN\"]\nPATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 179,
+              "end_line": 184,
+              "source": "import re\n\n__all__ = [\"PATTERN\"]\nPATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 191,
+          "end_line": 197,
           "config": null,
           "blocks": [
             {
@@ -19246,16 +19445,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 87,
-              "end_line": 93,
+              "line": 191,
+              "end_line": 197,
               "source": "import re\n\n\ndef words(text):\n    return re.split(r\"(\\s+)\", text)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 97,
-          "end_line": 103,
+          "line": 201,
+          "end_line": 207,
           "config": null,
           "blocks": [
             {
@@ -19263,16 +19462,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 97,
-              "end_line": 103,
+              "line": 201,
+              "end_line": 207,
               "source": "import re\n\n\ndef is_version(text):\n    return bool(re.match(r\"(?P<major>\\d+)\\.(?P<minor>\\d+)\", text))\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 107,
-          "end_line": 113,
+          "line": 211,
+          "end_line": 217,
           "config": null,
           "blocks": [
             {
@@ -19280,16 +19479,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 107,
-              "end_line": 113,
+              "line": 211,
+              "end_line": 217,
               "source": "import re\n\n\ndef is_version(text):\n    return bool(re.match(r\"(?:\\d+)\\.(?=\\d)(?i:\\d+)\", text))\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 117,
-          "end_line": 123,
+          "line": 221,
+          "end_line": 227,
           "config": null,
           "blocks": [
             {
@@ -19297,16 +19496,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 117,
-              "end_line": 123,
+              "line": 221,
+              "end_line": 227,
               "source": "import re\n\n\ndef is_call(text):\n    return bool(re.match(r\"[(]\\(\\d+\\)\", text))\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 127,
-          "end_line": 140,
+          "line": 231,
+          "end_line": 244,
           "config": null,
           "blocks": [
             {
@@ -19314,16 +19513,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 127,
-              "end_line": 140,
+              "line": 231,
+              "end_line": 244,
               "source": "import re\n\n\ndef is_version(text):\n    return bool(\n        re.match(\n            r\"\"\"\\d+  # the major (or the minor) number\n        \\.\\d+\"\"\",\n            text,\n            re.VERBOSE,\n        )\n    )\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 144,
-          "end_line": 150,
+          "line": 248,
+          "end_line": 254,
           "config": null,
           "blocks": [
             {
@@ -19331,8 +19530,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 144,
-              "end_line": 150,
+              "line": 248,
+              "end_line": 254,
               "source": "import re\n\n\ndef is_version(text, prefix):\n    return bool(re.match(f\"{prefix}(\\\\d+)\\\\.(\\\\d+)\", text))\n"
             }
           ]
@@ -19483,7 +19682,7 @@
     "name": "missing-final",
     "summary": "Module constants not annotated `Final`",
     "fix": "Sometimes",
-    "explanation": "Flags module-level variables that are assigned once and not annotated `Final`.\n\n## Why is this bad?\n\nWithout `Final`, a reader has to search the codebase to learn that a module variable never changes. With it, the type\nchecker rejects any reassignment, here or in another module ([PEP 591](https://peps.python.org/pep-0591/)).\n\n## Example\n\n```python report\nTIMEOUT = 30\nLIMIT: int = 10\n```\n\nUse instead:\n\n```python ok\nfrom typing import Final\n\nTIMEOUT: Final[int] = 30\nLIMIT: Final[int] = 10\n```\n\n## Configuration\n\n- The Python version the code targets, taken from the first of these that applies; see\n  [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version):\n\n  1. [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version) in `[tool.ruff]`: for\n     the files a pattern matches\n\n     ```toml config\n     [tool.ruff.per-file-target-version]\n     \"legacy/*.py\" = \"py37\"\n     ```\n\n     ```python ok file=legacy/old.py\n     TIMEOUT = 30\n     ```\n\n     ```python report file=new.py\n     TIMEOUT = 30\n     ```\n\n  1. [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) in `[tool.ruff]`: for every other file\n\n     ```toml config\n     [tool.ruff]\n     target-version = \"py38\"\n     ```\n\n     ```python report\n     TIMEOUT = 30\n     ```\n\n  1. [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python):\n     its lowest version, when Ruff sets neither\n\n     ```toml config\n     [project]\n     name = \"demo\"\n     requires-python = \">=3.8\"\n     ```\n\n     ```python report\n     TIMEOUT = 30\n     ```\n\n## What it does\n\n### Active on\n\n- **Module-level variables assigned once and not annotated\n  [`Final`](https://docs.python.org/3/library/typing.html#typing.Final)**: a plain assignment to one name, or an\n  annotated assignment with a value, among the statements at the top level of the module. With one binding, the value\n  never changes, which `Final` states.\n\n  ```python report\n  TIMEOUT = 30\n  LIMIT: int = 10\n  ```\n\n  ```python ok\n  from typing import Final\n\n  TIMEOUT: Final[int] = 30\n  ```\n\n- **Module-level variables annotated with a bare\n  [`Final`](https://docs.python.org/3/library/typing.html#typing.Final)**, such as `TIMEOUT: Final = 1`, whatever the\n  name looks like, including class-like names and dunders. The type reads at a glance, and a type checker infers a bare\n  `Final` as a literal type that rejects nothing a wider type would. The fix adds the type inside the brackets and is\n  **unsafe**, since `Final[int]` widens the `Literal[1]` a checker infers.\n\n  ```python report\n  from typing import Final\n\n  TIMEOUT: Final = 1\n  Alias: Final = 1\n  __version__: Final = \"1\"\n  ```\n\n  ```python fixed\n  from typing import Final\n\n  TIMEOUT: Final[int] = 1\n  Alias: Final[int] = 1\n  __version__: Final[str] = \"1\"\n  ```\n\n### Exceptions\n\n- **Assignments inside an `if`, `try` or other block**: only statements at the top level of the module are checked.\n\n  ```python ok\n  if FLAG:\n      TIMEOUT = 30\n  ```\n\n- **Names the module binds more than once**: the name counts as reassigned, which `Final` forbids. Any second binding\n  counts:\n\n  - another assignment\n\n    ```python ok\n    TIMEOUT = 30\n    TIMEOUT = 60\n    ```\n\n  - `+=` and other augmented assignments\n\n    ```python ok\n    TIMEOUT = 30\n    TIMEOUT += 1\n    ```\n\n  - `del`\n\n    ```python ok\n    TIMEOUT = 30\n    del TIMEOUT\n    ```\n\n  - an import, a `def` or a loop target\n\n    ```python ok\n    from settings import LIMIT\n\n    LIMIT = 1\n\n    for RATE in range(3):\n        pass\n    RATE = 2\n\n\n    def RUN() -> None:\n        pass\n\n\n    RUN = 3\n    ```\n\n  - an assignment in a function that declares the name\n    [`global`](https://docs.python.org/3/reference/simple_stmts.html#the-global-statement)\n\n    ```python ok\n    COUNT = 0\n\n\n    def bump() -> None:\n        global COUNT\n        COUNT = 1\n    ```\n\n- **Target versions older than 3.8**: Python 3.8 introduced `typing.Final`.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py37\"\n  ```\n\n  ```python ok\n  TIMEOUT = 30\n  ```\n\n- **Modules with a version gate**: a top-level `if` that tests `sys.version_info` and ends in `raise` or\n  `sys.exit(...)`, which exists to run on older interpreters and report them.\n\n  ```python ok\n  import sys\n\n  if sys.version_info < (3, 8):\n      raise SystemExit(\"Python 3.8 or newer is required\")\n\n  TIMEOUT = 30\n  ```\n\n- **Dunder names** such as `__version__`: these are not reported.\n\n  ```python ok\n  __version__ = \"1.0\"\n  ```\n\n- **Implicit type aliases**: a generic such as `dict[str, Any]` or `Literal[\"a\"]`, or a union of builtin types such as\n  `str | bytes`. `Final` would turn the alias into a variable that type expressions cannot use.\n\n  ```python ok\n  payload = dict[str, int]\n  text = str | bytes\n  ```\n\n- **Names another module in the run assigns as an attribute**, such as `config.TIMEOUT = 5`: an override `Final` would\n  forbid.\n\n  ```python ok file=config.py\n  TIMEOUT = 30\n  ```\n\n  ```python context file=main.py\n  import config\n\n  config.TIMEOUT = 5\n  ```\n\n- **Names a `setattr` or `patch.object` call sets on a module of the run**, such as\n  `monkeypatch.setattr(config, \"TIMEOUT\", 5)`, `mock.patch.object(config, \"TIMEOUT\")` or `mock.patch(\"config.TIMEOUT\")`,\n  whatever the object is named: the module's own `TIMEOUT` is not reported, while other modules' names still are. A loop\n  over a literal tuple or list of modules, such as `for module in (config, importlib.import_module(\"app.config\"))`, sets\n  the name on each module it names, until a statement rebinds the loop's name or a function's parameter shadows it.\n\n  ```python ok file=config.py\n  TIMEOUT = 30\n  ```\n\n  ```python context file=test_config.py\n  import config\n\n\n  def test_timeout(monkeypatch) -> None:\n      monkeypatch.setattr(config, \"TIMEOUT\", 5)\n  ```\n\n- **Every name of a module a `setattr` call sets under a computed name**, such as `setattr(config, name, value)` with\n  `name` a parameter or the item of a loop over a call: the call may set any of them, so none of them is reported.\n\n  ```python ok file=config.py\n  TIMEOUT = 30\n  LIMIT = 10\n  ```\n\n  ```python context file=test_config.py\n  import config\n\n\n  def test_timeout(monkeypatch, name: str) -> None:\n      monkeypatch.setattr(config, name, 5)\n  ```\n\n- **Names a module writes through `globals()`**, such as `globals()[\"LIMIT\"] = 2` in a function: that write sets the\n  name. A write under a computed key, or through `globals().update`, `setdefault` or `pop`, may set any name, so none of\n  the module's names is reported.\n\n  ```python ok\n  LIMIT = 1\n\n\n  def raise_limit() -> None:\n      globals()[\"LIMIT\"] = 2\n  ```\n\n- **`TYPE_CHECKING = False`**: an idiom that avoids importing `typing` at runtime, which adding `Final` would defeat.\n\n  ```python ok\n  TYPE_CHECKING = False\n  ```\n\n- **Class-like names**, which start with a capital letter and contain a lowercase one, such as `Alias`: they name a\n  type, as an alias does, rather than a value.\n\n  ```python ok\n  Alias = int\n  ```\n\n- **Tuple unpacking** such as `FIRST, SECOND = 1, 2`, **and chained assignments** such as `FIRST = SECOND = 1`: an\n  annotated assignment takes a single target, so there is no place for `Final`.\n\n  ```python ok\n  FIRST, SECOND = 1, 2\n  THIRD = FOURTH = 1\n  ```\n\n- **Annotations that already use `Final[...]`,\n  [`ClassVar`](https://docs.python.org/3/library/typing.html#typing.ClassVar) or\n  [`TypeAlias`](https://docs.python.org/3/library/typing.html#typing.TypeAlias)**, also inside `Annotated[...]`: the\n  annotation already says what kind of name it is.\n\n  ```python ok\n  from typing import Annotated, Final, TypeAlias\n\n  LIMIT: Final[int] = 10\n  Name: TypeAlias = int\n  RATE: Annotated[Final[int], \"ms\"] = 10\n  ```\n\n- **Values built by [`TypeVar`](https://docs.python.org/3/library/typing.html#typing.TypeVar),\n  [`ParamSpec`](https://docs.python.org/3/library/typing.html#typing.ParamSpec),\n  [`TypeVarTuple`](https://docs.python.org/3/library/typing.html#typing.TypeVarTuple),\n  [`NewType`](https://docs.python.org/3/library/typing.html#typing.NewType),\n  [`TypeAliasType`](https://docs.python.org/3/library/typing.html#typing.TypeAliasType),\n  [`NamedTuple`](https://docs.python.org/3/library/typing.html#typing.NamedTuple) or\n  [`TypedDict`](https://docs.python.org/3/library/typing.html#typing.TypedDict)**: type checkers reject these as\n  `Final`, since they declare types rather than hold values.\n\n  ```python ok\n  from typing import NamedTuple, NewType, ParamSpec, TypedDict, TypeVar\n\n  T = TypeVar(\"T\")\n  P = ParamSpec(\"P\")\n  USER = NewType(\"USER\", int)\n  POINT = NamedTuple(\"POINT\", [(\"x\", int)])\n  ROW = TypedDict(\"ROW\", {\"a\": int})\n  ```\n\n### Fix\n\n**Unsafe fix:** the annotation lands in the module's `__annotations__`, which code reads at runtime, such as Sphinx\nautodoc rendering the type or a dataclass-style library. Adding `Final` may also add a `typing` import.\n\nThe annotation the fix writes:\n\n- When the variable has an annotation, the fix wraps it in `Final[...]`. A bare `Final` gets the type inside its\n  brackets, as `Final[int]`.\n\n  ```python report\n  LIMIT: int = 10\n  ```\n\n  ```python fixed\n  from typing import Final\n\n  LIMIT: Final[int] = 10\n  ```\n\n- Without one, the fix adds `Final[int]`, `Final[float]`, `Final[str]`, `Final[bytes]` or `Final[bool]` when the value\n  is a literal of that type; f-strings count as `str`.\n\n  ```python report\n  TIMEOUT = 30\n  ```\n\n  ```python fixed\n  from typing import Final\n\n  TIMEOUT: Final[int] = 30\n  ```\n\n- Any other value, such as a call, a negative number or a container, gets no fix, because its type cannot be read from\n  the text.\n\n  ```python report\n  NAMES = [\"a\"]\n  LIMIT = -1\n  ```\n\n```mermaid\nflowchart TD\n    variable[\"reported variable\"] --> annotated{\"has an<br/>annotation?\"}\n    annotated -->|yes| bare{\"bare Final?\"}\n    bare -->|no| wrap[\"wrap it in Final[...]\"]\n    bare -->|yes| literal\n    annotated -->|no| literal{\"int, float, str,<br/>bytes or bool literal?\"}\n    literal -->|yes| typed[\"add or write Final[type]\"]\n    literal -->|no| none[\"no fix\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class variable blue\n    class annotated,bare,literal yellow\n    class wrap,typed green\n    class none orange\n```\n\nTo make `Final` available, the fix picks the first of these that applies:\n\n1. Write `Final` when the module already binds it.\n\n   ```python report\n   from typing import Final\n\n   TIMEOUT = 30\n   ```\n\n   ```python fixed\n   from typing import Final\n\n   TIMEOUT: Final[int] = 30\n   ```\n\n1. Write `typing.Final` when the module has `import typing`, or `t.Final` for `import typing as t`.\n\n   ```python report\n   import typing\n\n   TIMEOUT = 30\n   ```\n\n   ```python fixed\n   import typing\n\n   TIMEOUT: typing.Final[int] = 30\n   ```\n\n1. Add `Final` to the first `from typing import` statement, in the order Ruff's isort keeps: constants such as\n   `TYPE_CHECKING` first, then classes, then the rest, each alphabetically.\n\n   ```python report\n   from typing import Literal\n\n   TIMEOUT = 30\n   ```\n\n   ```python fixed\n   from typing import Final, Literal\n\n   TIMEOUT: Final[int] = 30\n   ```\n\n1. Insert `from typing import Final` after the module docstring and\n   [`__future__`](https://docs.python.org/3/library/__future__.html) imports, or before the first statement when there\n   are none.\n\n   ```python report\n   \"\"\"Settings.\"\"\"\n\n   TIMEOUT = 30\n   ```\n\n   ```python fixed\n   \"\"\"Settings.\"\"\"\n\n   from typing import Final\n\n   TIMEOUT: Final[int] = 30\n   ```\n\nA `Final` imported only under [`if TYPE_CHECKING:`](https://docs.python.org/3/library/typing.html#typing.TYPE_CHECKING)\ndoes not count as bound when annotations are evaluated eagerly, which is before Python 3.14 without\n`from __future__ import annotations`. In that case the fix adds a runtime import.\n\n### Related rules\n\n[module-variable-case](SMP102.html) checks the names of the same variables.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#21584](https://github.com/astral-sh/ruff/issues/21584).\n  Also open issue [#10137](https://github.com/astral-sh/ruff/issues/10137) (uppercase names only).\n",
+    "explanation": "Flags module-level variables that are assigned once and not annotated `Final`.\n\n## Why is this bad?\n\nWithout `Final`, a reader has to search the codebase to learn that a module variable never changes. With it, the type\nchecker rejects any reassignment, here or in another module ([PEP 591](https://peps.python.org/pep-0591/)).\n\n## Example\n\n```python report\nTIMEOUT = 30\nLIMIT: int = 10\n```\n\nUse instead:\n\n```python ok\nfrom typing import Final\n\nTIMEOUT: Final[int] = 30\nLIMIT: Final[int] = 10\n```\n\n## Configuration\n\n- The Python version the code targets, taken from the first of these that applies; see\n  [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version):\n\n  1. [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version) in `[tool.ruff]`: for\n     the files a pattern matches\n\n     ```toml config\n     [tool.ruff.per-file-target-version]\n     \"legacy/*.py\" = \"py37\"\n     ```\n\n     ```python ok file=legacy/old.py\n     TIMEOUT = 30\n     ```\n\n     ```python report file=new.py\n     TIMEOUT = 30\n     ```\n\n  1. [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) in `[tool.ruff]`: for every other file\n\n     ```toml config\n     [tool.ruff]\n     target-version = \"py38\"\n     ```\n\n     ```python report\n     TIMEOUT = 30\n     ```\n\n  1. [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python):\n     its lowest version, when Ruff sets neither\n\n     ```toml config\n     [project]\n     name = \"demo\"\n     requires-python = \">=3.8\"\n     ```\n\n     ```python report\n     TIMEOUT = 30\n     ```\n\n## What it does\n\n### Active on\n\n- **Module-level variables assigned once and not annotated\n  [`Final`](https://docs.python.org/3/library/typing.html#typing.Final)**: a plain assignment to one name, or an\n  annotated assignment with a value, among the statements at the top level of the module. With one binding, the value\n  never changes, which `Final` states.\n\n  ```python report\n  TIMEOUT = 30\n  LIMIT: int = 10\n  ```\n\n  ```python ok\n  from typing import Final\n\n  TIMEOUT: Final[int] = 30\n  ```\n\n- **Module-level variables annotated with a bare\n  [`Final`](https://docs.python.org/3/library/typing.html#typing.Final)**, such as `TIMEOUT: Final = 1`, whatever the\n  name looks like, including class-like names and dunders. The type reads at a glance, and a type checker infers a bare\n  `Final` as a literal type that rejects nothing a wider type would. The fix adds the type inside the brackets and is\n  **unsafe**, since `Final[int]` widens the `Literal[1]` a checker infers.\n\n  ```python report\n  from typing import Final\n\n  TIMEOUT: Final = 1\n  Alias: Final = 1\n  __version__: Final = \"1\"\n  ```\n\n  ```python fixed\n  from typing import Final\n\n  TIMEOUT: Final[int] = 1\n  Alias: Final[int] = 1\n  __version__: Final[str] = \"1\"\n  ```\n\n### Exceptions\n\n- **Assignments inside an `if`, `try` or other block**: only statements at the top level of the module are checked.\n\n  ```python ok\n  if FLAG:\n      TIMEOUT = 30\n  ```\n\n- **Names the module binds more than once**: the name counts as reassigned, which `Final` forbids. Any second binding\n  counts:\n\n  - another assignment\n\n    ```python ok\n    TIMEOUT = 30\n    TIMEOUT = 60\n    ```\n\n  - `+=` and other augmented assignments\n\n    ```python ok\n    TIMEOUT = 30\n    TIMEOUT += 1\n    ```\n\n  - `del`\n\n    ```python ok\n    TIMEOUT = 30\n    del TIMEOUT\n    ```\n\n  - an import, a `def` or a loop target\n\n    ```python ok\n    from settings import LIMIT\n\n    LIMIT = 1\n\n    for RATE in range(3):\n        pass\n    RATE = 2\n\n\n    def RUN() -> None:\n        pass\n\n\n    RUN = 3\n    ```\n\n  - an assignment in a function that declares the name\n    [`global`](https://docs.python.org/3/reference/simple_stmts.html#the-global-statement)\n\n    ```python ok\n    COUNT = 0\n\n\n    def bump() -> None:\n        global COUNT\n        COUNT = 1\n    ```\n\n- **Target versions older than 3.8**: Python 3.8 introduced `typing.Final`.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py37\"\n  ```\n\n  ```python ok\n  TIMEOUT = 30\n  ```\n\n- **Modules with a version gate**: a top-level `if` that tests `sys.version_info` and ends in `raise` or\n  `sys.exit(...)`, which exists to run on older interpreters and report them.\n\n  ```python ok\n  import sys\n\n  if sys.version_info < (3, 8):\n      raise SystemExit(\"Python 3.8 or newer is required\")\n\n  TIMEOUT = 30\n  ```\n\n- **Dunder names** such as `__version__`: these are not reported.\n\n  ```python ok\n  __version__ = \"1.0\"\n  ```\n\n- **Implicit type aliases**: a generic such as `dict[str, Any]` or `Literal[\"a\"]`, or a union of builtin types such as\n  `str | bytes`. `Final` would turn the alias into a variable that type expressions cannot use.\n\n  ```python ok\n  payload = dict[str, int]\n  text = str | bytes\n  ```\n\n- **Names another module in the run assigns as an attribute**, such as `config.TIMEOUT = 5`: an override `Final` would\n  forbid.\n\n  ```python ok file=config.py\n  TIMEOUT = 30\n  ```\n\n  ```python context file=main.py\n  import config\n\n  config.TIMEOUT = 5\n  ```\n\n- **Names a `setattr` or `patch.object` call sets on a module of the run**, such as\n  `monkeypatch.setattr(config, \"TIMEOUT\", 5)`, `mock.patch.object(config, \"TIMEOUT\")` or `mock.patch(\"config.TIMEOUT\")`,\n  whatever the object is named: the module's own `TIMEOUT` is not reported, while other modules' names still are. A loop\n  over a literal tuple or list of modules, such as `for module in (config, importlib.import_module(\"app.config\"))`, sets\n  the name on each module it names, until a statement rebinds the loop's name or a function's parameter shadows it.\n\n  ```python ok file=config.py\n  TIMEOUT = 30\n  ```\n\n  ```python context file=test_config.py\n  import config\n\n\n  def test_timeout(monkeypatch) -> None:\n      monkeypatch.setattr(config, \"TIMEOUT\", 5)\n  ```\n\n- **Every name of a module a `setattr` call sets under a computed name**, such as `setattr(config, name, value)` with\n  `name` a parameter or the item of a loop over a call: the call may set any of them, so none of them is reported.\n\n  ```python ok file=config.py\n  TIMEOUT = 30\n  LIMIT = 10\n  ```\n\n  ```python context file=test_config.py\n  import config\n\n\n  def test_timeout(monkeypatch, name: str) -> None:\n      monkeypatch.setattr(config, name, 5)\n  ```\n\n- **Names a module writes through `globals()`**, such as `globals()[\"LIMIT\"] = 2` in a function: that write sets the\n  name. A write under a computed key, or through `globals().update`, `setdefault` or `pop`, may set any name, so none of\n  the module's names is reported.\n\n  ```python ok\n  LIMIT = 1\n\n\n  def raise_limit() -> None:\n      globals()[\"LIMIT\"] = 2\n  ```\n\n  ```python ok\n  LIMIT = 1\n  RATE = 2\n\n\n  def set_name(name: str) -> None:\n      globals()[name] = 3\n  ```\n\n  ```python ok\n  LIMIT = 1\n\n\n  def reset() -> None:\n      globals().update({\"LIMIT\": 2})\n      globals().setdefault(\"LIMIT\", 3)\n      globals().pop(\"LIMIT\")\n  ```\n\n- **`TYPE_CHECKING = False`**: an idiom that avoids importing `typing` at runtime, which adding `Final` would defeat.\n\n  ```python ok\n  TYPE_CHECKING = False\n  ```\n\n- **Class-like names**, which start with a capital letter and contain a lowercase one, such as `Alias`: they name a\n  type, as an alias does, rather than a value.\n\n  ```python ok\n  Alias = int\n  ```\n\n- **Tuple unpacking** such as `FIRST, SECOND = 1, 2`, **and chained assignments** such as `FIRST = SECOND = 1`: an\n  annotated assignment takes a single target, so there is no place for `Final`.\n\n  ```python ok\n  FIRST, SECOND = 1, 2\n  THIRD = FOURTH = 1\n  ```\n\n- **Annotations that already use `Final[...]`,\n  [`ClassVar`](https://docs.python.org/3/library/typing.html#typing.ClassVar) or\n  [`TypeAlias`](https://docs.python.org/3/library/typing.html#typing.TypeAlias)**, also inside `Annotated[...]`: the\n  annotation already says what kind of name it is.\n\n  ```python ok\n  from typing import Annotated, Final, TypeAlias\n\n  LIMIT: Final[int] = 10\n  Name: TypeAlias = int\n  RATE: Annotated[Final[int], \"ms\"] = 10\n  ```\n\n- **Values built by [`TypeVar`](https://docs.python.org/3/library/typing.html#typing.TypeVar),\n  [`ParamSpec`](https://docs.python.org/3/library/typing.html#typing.ParamSpec),\n  [`TypeVarTuple`](https://docs.python.org/3/library/typing.html#typing.TypeVarTuple),\n  [`NewType`](https://docs.python.org/3/library/typing.html#typing.NewType),\n  [`TypeAliasType`](https://docs.python.org/3/library/typing.html#typing.TypeAliasType),\n  [`NamedTuple`](https://docs.python.org/3/library/typing.html#typing.NamedTuple) or\n  [`TypedDict`](https://docs.python.org/3/library/typing.html#typing.TypedDict)**: type checkers reject these as\n  `Final`, since they declare types rather than hold values.\n\n  ```python ok\n  from typing import NamedTuple, NewType, ParamSpec, TypedDict, TypeVar\n\n  T = TypeVar(\"T\")\n  P = ParamSpec(\"P\")\n  USER = NewType(\"USER\", int)\n  POINT = NamedTuple(\"POINT\", [(\"x\", int)])\n  ROW = TypedDict(\"ROW\", {\"a\": int})\n  ```\n\n### Fix\n\n**Unsafe fix:** the annotation lands in the module's `__annotations__`, which code reads at runtime, such as Sphinx\nautodoc rendering the type or a dataclass-style library. Adding `Final` may also add a `typing` import.\n\nThe annotation the fix writes:\n\n- When the variable has an annotation, the fix wraps it in `Final[...]`. A bare `Final` gets the type inside its\n  brackets, as `Final[int]`.\n\n  ```python report\n  LIMIT: int = 10\n  ```\n\n  ```python fixed\n  from typing import Final\n\n  LIMIT: Final[int] = 10\n  ```\n\n- Without one, the fix adds `Final[int]`, `Final[float]`, `Final[str]`, `Final[bytes]` or `Final[bool]` when the value\n  is a literal of that type; f-strings count as `str`.\n\n  ```python report\n  TIMEOUT = 30\n  ```\n\n  ```python fixed\n  from typing import Final\n\n  TIMEOUT: Final[int] = 30\n  ```\n\n- Any other value, such as a call, a negative number or a container, gets no fix, because its type cannot be read from\n  the text.\n\n  ```python report\n  NAMES = [\"a\"]\n  LIMIT = -1\n  ```\n\n```mermaid\nflowchart TD\n    variable[\"reported variable\"] --> annotated{\"has an<br/>annotation?\"}\n    annotated -->|yes| bare{\"bare Final?\"}\n    bare -->|no| wrap[\"wrap it in Final[...]\"]\n    bare -->|yes| literal\n    annotated -->|no| literal{\"int, float, str,<br/>bytes or bool literal?\"}\n    literal -->|yes| typed[\"add or write Final[type]\"]\n    literal -->|no| none[\"no fix\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class variable blue\n    class annotated,bare,literal yellow\n    class wrap,typed green\n    class none orange\n```\n\nTo make `Final` available, the fix picks the first of these that applies:\n\n1. Write `Final` when the module already binds it.\n\n   ```python report\n   from typing import Final\n\n   TIMEOUT = 30\n   ```\n\n   ```python fixed\n   from typing import Final\n\n   TIMEOUT: Final[int] = 30\n   ```\n\n1. Write `typing.Final` when the module has `import typing`, or `t.Final` for `import typing as t`.\n\n   ```python report\n   import typing\n\n   TIMEOUT = 30\n   ```\n\n   ```python fixed\n   import typing\n\n   TIMEOUT: typing.Final[int] = 30\n   ```\n\n1. Add `Final` to the first `from typing import` statement, in the order Ruff's isort keeps: constants such as\n   `TYPE_CHECKING` first, then classes, then the rest, each alphabetically.\n\n   ```python report\n   from typing import Literal\n\n   TIMEOUT = 30\n   ```\n\n   ```python fixed\n   from typing import Final, Literal\n\n   TIMEOUT: Final[int] = 30\n   ```\n\n1. Insert `from typing import Final` after the module docstring and\n   [`__future__`](https://docs.python.org/3/library/__future__.html) imports, or before the first statement when there\n   are none.\n\n   ```python report\n   \"\"\"Settings.\"\"\"\n\n   TIMEOUT = 30\n   ```\n\n   ```python fixed\n   \"\"\"Settings.\"\"\"\n\n   from typing import Final\n\n   TIMEOUT: Final[int] = 30\n   ```\n\nA `Final` imported only under [`if TYPE_CHECKING:`](https://docs.python.org/3/library/typing.html#typing.TYPE_CHECKING)\ndoes not count as bound when annotations are evaluated eagerly, which is before Python 3.14 without\n`from __future__ import annotations`. In that case the fix adds a runtime import.\n\n### Related rules\n\n[module-variable-case](SMP102.html) checks the names of the same variables.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#21584](https://github.com/astral-sh/ruff/issues/21584).\n  Also open issue [#10137](https://github.com/astral-sh/ruff/issues/10137) (uppercase names only).\n",
     "examples": {
       "parsed": [
         {
@@ -19923,8 +20122,8 @@
         },
         {
           "section": "What it does",
-          "line": 273,
-          "end_line": 275,
+          "line": 271,
+          "end_line": 278,
           "config": null,
           "blocks": [
             {
@@ -19932,16 +20131,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 273,
-              "end_line": 275,
-              "source": "TYPE_CHECKING = False\n"
+              "line": 271,
+              "end_line": 278,
+              "source": "LIMIT = 1\nRATE = 2\n\n\ndef set_name(name: str) -> None:\n    globals()[name] = 3\n"
             }
           ]
         },
         {
           "section": "What it does",
           "line": 280,
-          "end_line": 282,
+          "end_line": 288,
           "config": null,
           "blocks": [
             {
@@ -19950,15 +20149,49 @@
               "file": "example.py",
               "named": false,
               "line": 280,
-              "end_line": 282,
+              "end_line": 288,
+              "source": "LIMIT = 1\n\n\ndef reset() -> None:\n    globals().update({\"LIMIT\": 2})\n    globals().setdefault(\"LIMIT\", 3)\n    globals().pop(\"LIMIT\")\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 292,
+          "end_line": 294,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 292,
+              "end_line": 294,
+              "source": "TYPE_CHECKING = False\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 299,
+          "end_line": 301,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 299,
+              "end_line": 301,
               "source": "Alias = int\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 287,
-          "end_line": 290,
+          "line": 306,
+          "end_line": 309,
           "config": null,
           "blocks": [
             {
@@ -19966,32 +20199,15 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 287,
-              "end_line": 290,
+              "line": 306,
+              "end_line": 309,
               "source": "FIRST, SECOND = 1, 2\nTHIRD = FOURTH = 1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 297,
-          "end_line": 303,
-          "config": null,
-          "blocks": [
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 297,
-              "end_line": 303,
-              "source": "from typing import Annotated, Final, TypeAlias\n\nLIMIT: Final[int] = 10\nName: TypeAlias = int\nRATE: Annotated[Final[int], \"ms\"] = 10\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 314,
+          "line": 316,
           "end_line": 322,
           "config": null,
           "blocks": [
@@ -20000,16 +20216,33 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 314,
+              "line": 316,
               "end_line": 322,
+              "source": "from typing import Annotated, Final, TypeAlias\n\nLIMIT: Final[int] = 10\nName: TypeAlias = int\nRATE: Annotated[Final[int], \"ms\"] = 10\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 333,
+          "end_line": 341,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 333,
+              "end_line": 341,
               "source": "from typing import NamedTuple, NewType, ParamSpec, TypedDict, TypeVar\n\nT = TypeVar(\"T\")\nP = ParamSpec(\"P\")\nUSER = NewType(\"USER\", int)\nPOINT = NamedTuple(\"POINT\", [(\"x\", int)])\nROW = TypedDict(\"ROW\", {\"a\": int})\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 334,
-          "end_line": 342,
+          "line": 353,
+          "end_line": 361,
           "config": null,
           "blocks": [
             {
@@ -20017,8 +20250,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 334,
-              "end_line": 336,
+              "line": 353,
+              "end_line": 355,
               "source": "LIMIT: int = 10\n"
             },
             {
@@ -20026,16 +20259,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 338,
-              "end_line": 342,
+              "line": 357,
+              "end_line": 361,
               "source": "from typing import Final\n\nLIMIT: Final[int] = 10\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 347,
-          "end_line": 355,
+          "line": 366,
+          "end_line": 374,
           "config": null,
           "blocks": [
             {
@@ -20043,8 +20276,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 347,
-              "end_line": 349,
+              "line": 366,
+              "end_line": 368,
               "source": "TIMEOUT = 30\n"
             },
             {
@@ -20052,16 +20285,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 351,
-              "end_line": 355,
+              "line": 370,
+              "end_line": 374,
               "source": "from typing import Final\n\nTIMEOUT: Final[int] = 30\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 360,
-          "end_line": 363,
+          "line": 379,
+          "end_line": 382,
           "config": null,
           "blocks": [
             {
@@ -20069,16 +20302,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 360,
-              "end_line": 363,
+              "line": 379,
+              "end_line": 382,
               "source": "NAMES = [\"a\"]\nLIMIT = -1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 389,
-          "end_line": 399,
+          "line": 408,
+          "end_line": 418,
           "config": null,
           "blocks": [
             {
@@ -20086,8 +20319,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 389,
-              "end_line": 393,
+              "line": 408,
+              "end_line": 412,
               "source": "from typing import Final\n\nTIMEOUT = 30\n"
             },
             {
@@ -20095,16 +20328,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 395,
-              "end_line": 399,
+              "line": 414,
+              "end_line": 418,
               "source": "from typing import Final\n\nTIMEOUT: Final[int] = 30\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 403,
-          "end_line": 413,
+          "line": 422,
+          "end_line": 432,
           "config": null,
           "blocks": [
             {
@@ -20112,8 +20345,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 403,
-              "end_line": 407,
+              "line": 422,
+              "end_line": 426,
               "source": "import typing\n\nTIMEOUT = 30\n"
             },
             {
@@ -20121,16 +20354,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 409,
-              "end_line": 413,
+              "line": 428,
+              "end_line": 432,
               "source": "import typing\n\nTIMEOUT: typing.Final[int] = 30\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 418,
-          "end_line": 428,
+          "line": 437,
+          "end_line": 447,
           "config": null,
           "blocks": [
             {
@@ -20138,8 +20371,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 418,
-              "end_line": 422,
+              "line": 437,
+              "end_line": 441,
               "source": "from typing import Literal\n\nTIMEOUT = 30\n"
             },
             {
@@ -20147,16 +20380,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 424,
-              "end_line": 428,
+              "line": 443,
+              "end_line": 447,
               "source": "from typing import Final, Literal\n\nTIMEOUT: Final[int] = 30\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 434,
-          "end_line": 446,
+          "line": 453,
+          "end_line": 465,
           "config": null,
           "blocks": [
             {
@@ -20164,8 +20397,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 434,
-              "end_line": 438,
+              "line": 453,
+              "end_line": 457,
               "source": "\"\"\"Settings.\"\"\"\n\nTIMEOUT = 30\n"
             },
             {
@@ -20173,8 +20406,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 440,
-              "end_line": 446,
+              "line": 459,
+              "end_line": 465,
               "source": "\"\"\"Settings.\"\"\"\n\nfrom typing import Final\n\nTIMEOUT: Final[int] = 30\n"
             }
           ]
@@ -27216,7 +27449,7 @@
     "name": "rst-inline-markup",
     "summary": "Roles without backticks and unclosed inline literals",
     "fix": "Sometimes",
-    "explanation": "Flags Sphinx roles whose target lacks backticks and inline literals left unclosed in reStructuredText docstrings. Such\nmarkup renders as plain text, or turns the rest of the paragraph into code.\n\n## Why is this bad?\n\nWithout backticks a role is plain text: the reference shows `:class:Path` instead of a link. An unclosed inline literal\nturns the rest of the paragraph into code, or makes Sphinx warn and show the markup as written.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\ndef open_file(path: str) -> None:\n    \"\"\"Open the file at :class:Path, as ``open does.\"\"\"\n```\n\nUse instead:\n\n```python ok\ndef open_file(path: str) -> None:\n    \"\"\"Open the file at :class:`Path`, as ``open`` does.\"\"\"\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def open_file(path: str) -> None:\n      \"\"\"Open the file at :class:Path.\"\"\"\n  ```\n\n  ```python ok\n  def open_file(path: str) -> None:\n      \"\"\"Open the file at :class:Path.\"\"\"\n  ```\n\n## What it does\n\nChecks reStructuredText docstrings, when `docstring-style = \"rst\"`, for inline markup that does not render as meant.\n\n### Active on\n\n- **Roles without backticks**: a\n  [Sphinx role](https://www.sphinx-doc.org/en/master/usage/domains/python.html#cross-referencing-python-objects), such\n  as `:class:`, `:func:`, `:meth:`, `:attr:`, `:mod:`, `:exc:` or `:ref:`, whose target lacks backticks, as\n  `:class:Path`. A role's target runs to the next whitespace, without the punctuation that ends a sentence. The fix puts\n  the target in backticks. **Unsafe fix:** code may read the docstring through `__doc__`. No fix is offered when the\n  target holds a character a reference cannot, as the `=` of `:attr:debug=True`, since where the target ends is then for\n  the author to say.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def open_file(path: str) -> None:\n      \"\"\"Open the file at :class:Path.\"\"\"\n  ```\n\n  ```python fixed\n  def open_file(path: str) -> None:\n      \"\"\"Open the file at :class:`Path`.\"\"\"\n  ```\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def open_file(path: str) -> None:\n      \"\"\"Open the file at :attr:debug=True.\"\"\"\n  ```\n\n- **Unclosed inline literals**: an inline literal opened with double backticks that no later pair closes within its\n  paragraph. No fix is offered, since where it should end is for the author to say.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def open_file(path: str) -> None:\n      \"\"\"Open the file, as ``open does.\"\"\"\n  ```\n\n- **Prose directives, such as `.. note::`**: their content is prose, so it is checked.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def open_file(path: str) -> None:\n      \"\"\"Open the file.\n\n      .. note:: Use :class:Path here.\n      \"\"\"\n  ```\n\n### Exceptions\n\n- **Literal blocks indented under a paragraph ending in `::`**: their content is code, which holds no inline markup. The\n  first line of a docstring follows its opening quotes, so it is measured against the body's indentation in the lines\n  after it, and a summary ending in `::` opens a block only for lines indented past that body.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def open_file(path: str) -> None:\n      \"\"\"Open the file.\n\n      Example::\n\n          x = ``open\n      \"\"\"\n  ```\n\n- **The content of a code directive such as `.. code-block::`**: the directive shows code, which holds no inline markup.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def open_file(path: str) -> None:\n      \"\"\"Open the file.\n\n      .. code-block:: python\n\n          x = ``open\n      \"\"\"\n  ```\n\n- **Doctest blocks, from a `>>>` line to the next blank line**: they are code, which holds no inline markup.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def open_file(path: str) -> None:\n      \"\"\"Open the file.\n\n      >>> open_file(\"a\") ``b\n      \"\"\"\n  ```\n\n- **Docstrings whose escapes make their text differ from the source**: positions in the source hold only for a docstring\n  whose text is its source, so the rule does not check them and offers no fix.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def open_file(path: str) -> None:\n      \"\"\"Open the file at \\x3aclass:Path.\"\"\"\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Open issue\n  [#283](https://github.com/astral-sh/ruff/issues/283) names flake8-rst-docstrings only as a plugin candidate.\n- [flake8-rst-docstrings](https://github.com/peterjc/flake8-rst-docstrings) reports an inline literal with no closing\n  backticks as [RST214](https://github.com/peterjc/flake8-rst-docstrings), with no fix.\n",
+    "explanation": "Flags Sphinx roles whose target lacks backticks and inline literals left unclosed in reStructuredText docstrings. Such\nmarkup renders as plain text, or turns the rest of the paragraph into code.\n\n## Why is this bad?\n\nWithout backticks a role is plain text: the reference shows `:class:Path` instead of a link. An unclosed inline literal\nturns the rest of the paragraph into code, or makes Sphinx warn and show the markup as written.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\ndef open_file(path: str) -> None:\n    \"\"\"Open the file at :class:Path, as ``open does.\"\"\"\n```\n\nUse instead:\n\n```python ok\ndef open_file(path: str) -> None:\n    \"\"\"Open the file at :class:`Path`, as ``open`` does.\"\"\"\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def open_file(path: str) -> None:\n      \"\"\"Open the file at :class:Path.\"\"\"\n  ```\n\n  ```python ok\n  def open_file(path: str) -> None:\n      \"\"\"Open the file at :class:Path.\"\"\"\n  ```\n\n## What it does\n\nChecks reStructuredText docstrings, when `docstring-style = \"rst\"`, for inline markup that does not render as meant.\n\n### Active on\n\n- **Roles without backticks**: a\n  [Sphinx role](https://www.sphinx-doc.org/en/master/usage/domains/python.html#cross-referencing-python-objects), such\n  as `:class:`, `:func:`, `:meth:`, `:attr:`, `:mod:`, `:exc:` or `:ref:`, whose target lacks backticks, as\n  `:class:Path`. A role's target runs to the next whitespace, without the punctuation that ends a sentence. The fix puts\n  the target in backticks. **Unsafe fix:** code may read the docstring through `__doc__`. No fix is offered when the\n  target holds a character a reference cannot, as the `=` of `:attr:debug=True`, since where the target ends is then for\n  the author to say.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def open_file(path: str) -> None:\n      \"\"\"Open the file at :class:Path.\"\"\"\n  ```\n\n  ```python fixed\n  def open_file(path: str) -> None:\n      \"\"\"Open the file at :class:`Path`.\"\"\"\n  ```\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def open_file(path: str) -> None:\n      \"\"\"Open the file at :attr:debug=True.\"\"\"\n  ```\n\n- **Unclosed inline literals**: an inline literal opened with double backticks that no later pair closes within its\n  paragraph. No fix is offered, since where it should end is for the author to say.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def open_file(path: str) -> None:\n      \"\"\"Open the file, as ``open does.\"\"\"\n  ```\n\n- **Prose directives, such as `.. note::`**: their content is prose, so it is checked.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def open_file(path: str) -> None:\n      \"\"\"Open the file.\n\n      .. note:: Use :class:Path here.\n      \"\"\"\n  ```\n\n- **A summary ending in `::`**: the lines after it are prose, unless they are indented past the docstring's body. Here\n  the line sits at the body's indentation, so its unclosed inline literal is reported.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def open_file(path: str) -> None:\n      \"\"\"Open the file::\n\n      Use ``open here.\n      \"\"\"\n  ```\n\n### Exceptions\n\n- **Literal blocks indented under a paragraph ending in `::`**: their content is code, which holds no inline markup. The\n  first line of a docstring follows its opening quotes, so it is measured against the body's indentation in the lines\n  after it, and a summary ending in `::` opens a block only for lines indented past that body.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def open_file(path: str) -> None:\n      \"\"\"Open the file.\n\n      Example::\n\n          x = ``open\n      \"\"\"\n  ```\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def open_file(path: str) -> None:\n      \"\"\"Open the file::\n\n          handle = ``open(path)\n\n      Close it when done.\n      \"\"\"\n  ```\n\n- **The content of a code directive such as `.. code-block::`**: the directive shows code, which holds no inline markup.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def open_file(path: str) -> None:\n      \"\"\"Open the file.\n\n      .. code-block:: python\n\n          x = ``open\n      \"\"\"\n  ```\n\n- **Doctest blocks, from a `>>>` line to the next blank line**: they are code, which holds no inline markup.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def open_file(path: str) -> None:\n      \"\"\"Open the file.\n\n      >>> open_file(\"a\") ``b\n      \"\"\"\n  ```\n\n- **Docstrings whose escapes make their text differ from the source**: positions in the source hold only for a docstring\n  whose text is its source, so the rule does not check them and offers no fix.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def open_file(path: str) -> None:\n      \"\"\"Open the file at \\x3aclass:Path.\"\"\"\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Open issue\n  [#283](https://github.com/astral-sh/ruff/issues/283) names flake8-rst-docstrings only as a plugin candidate.\n- [flake8-rst-docstrings](https://github.com/peterjc/flake8-rst-docstrings) reports an inline literal with no closing\n  backticks as [RST214](https://github.com/peterjc/flake8-rst-docstrings), with no fix.\n",
     "examples": {
       "parsed": [
         {
@@ -27394,11 +27627,32 @@
         },
         {
           "section": "What it does",
-          "line": 121,
-          "end_line": 134,
+          "line": 118,
+          "end_line": 129,
           "config": {
-            "line": 121,
-            "end_line": 124,
+            "line": 118,
+            "end_line": 121,
+            "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 123,
+              "end_line": 129,
+              "source": "def open_file(path: str) -> None:\n    \"\"\"Open the file::\n\n    Use ``open here.\n    \"\"\"\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 137,
+          "end_line": 150,
+          "config": {
+            "line": 137,
+            "end_line": 140,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -27407,19 +27661,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 126,
-              "end_line": 134,
+              "line": 142,
+              "end_line": 150,
               "source": "def open_file(path: str) -> None:\n    \"\"\"Open the file.\n\n    Example::\n\n        x = ``open\n    \"\"\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 138,
-          "end_line": 151,
+          "line": 152,
+          "end_line": 165,
           "config": {
-            "line": 138,
-            "end_line": 141,
+            "line": 152,
+            "end_line": 155,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -27428,19 +27682,40 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 143,
-              "end_line": 151,
+              "line": 157,
+              "end_line": 165,
+              "source": "def open_file(path: str) -> None:\n    \"\"\"Open the file::\n\n        handle = ``open(path)\n\n    Close it when done.\n    \"\"\"\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 169,
+          "end_line": 182,
+          "config": {
+            "line": 169,
+            "end_line": 172,
+            "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
+          },
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 174,
+              "end_line": 182,
               "source": "def open_file(path: str) -> None:\n    \"\"\"Open the file.\n\n    .. code-block:: python\n\n        x = ``open\n    \"\"\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 155,
-          "end_line": 166,
+          "line": 186,
+          "end_line": 197,
           "config": {
-            "line": 155,
-            "end_line": 158,
+            "line": 186,
+            "end_line": 189,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -27449,19 +27724,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 160,
-              "end_line": 166,
+              "line": 191,
+              "end_line": 197,
               "source": "def open_file(path: str) -> None:\n    \"\"\"Open the file.\n\n    >>> open_file(\"a\") ``b\n    \"\"\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 171,
-          "end_line": 179,
+          "line": 202,
+          "end_line": 210,
           "config": {
-            "line": 171,
-            "end_line": 174,
+            "line": 202,
+            "end_line": 205,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -27470,8 +27745,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 176,
-              "end_line": 179,
+              "line": 207,
+              "end_line": 210,
               "source": "def open_file(path: str) -> None:\n    \"\"\"Open the file at \\x3aclass:Path.\"\"\"\n"
             }
           ]
@@ -28142,7 +28417,7 @@
     "name": "rst-missing-param",
     "summary": "Public API docstrings that leave a parameter undocumented",
     "fix": "None",
-    "explanation": "Flags parameters that a public API docstring leaves without a `:param name:` field, when the project uses\nreStructuredText docstrings. Without the field, the reference shows only the parameter's name and type.\n\n## Why is this bad?\n\nUsers read a parameter's meaning in the rendered reference or their editor's hover help. A parameter the docstring skips\nshows with its name and type only, leaving its units, defaults and constraints unsaid.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\nproject-kind = \"library\"\n```\n\n```python report\ndef copy(source: str, target: str) -> None:\n    \"\"\"Copy a file.\n\n    :param source: Where from.\n    \"\"\"\n```\n\nUse instead:\n\n```python ok\ndef copy(source: str, target: str) -> None:\n    \"\"\"Copy a file.\n\n    :param source: Where from.\n    :param target: Where to.\n    \"\"\"\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def copy(source: str, target: str) -> None:\n      \"\"\"Copy a file.\n\n      :param source: Where from.\n      \"\"\"\n  ```\n\n## What it does\n\nChecks the docstrings of a library's public API (see [undocumented-public-api](SMP903.html)), when\n`docstring-style = \"rst\"`, for parameters without a `:param name:` field.\n\nNo fix is offered: the description is for the author to write, and [rst-empty-field](SMP914.html) reports the empty\nfield until they do.\n\n### Active on\n\n- **Parameters of public functions and methods**: each needs a `:param name:` field.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def copy(source: str, target: str) -> None:\n      \"\"\"Copy a file.\n\n      :param source: Where from.\n      \"\"\"\n  ```\n\n- **Constructor parameters of a public class**: they may be documented in the class docstring or in its `__init__`\n  docstring.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Reader:\n      \"\"\"Read files.\n\n      :param source: Where to read from.\n      \"\"\"\n\n      def __init__(self, source: str, encoding: str) -> None:\n          \"\"\"Set up.\"\"\"\n  ```\n\n- **`*args` and `**kwargs`**: they count as `args` and `kwargs`, written with or without their stars, as\n  `:param \\*args:`.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def copy(source: str, *args: str, **kwargs: str) -> None:\n      \"\"\"Copy a file.\n\n      :param source: Where from.\n      \"\"\"\n  ```\n\n- **Parameters named with two leading underscores, such as `__obj`**: the double underscore marks the parameter\n  positional-only rather than internal, so it is checked.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def wrap(__obj: int) -> int:\n      \"\"\"Wrap a value.\"\"\"\n      return __obj\n  ```\n\n### Exceptions\n\n- **The instance or class a method receives first**: callers do not pass it, so there is nothing to document.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Reader:\n      \"\"\"Read files.\"\"\"\n\n      def read(self, size: int) -> str:\n          \"\"\"Read the file.\n\n          :param size: Bytes to read.\n          \"\"\"\n          return \"\"\n  ```\n\n- **Parameters named with one leading underscore**: they are internal, a knob the documentation leaves out;\n  [rst-private-field](SMP915.html) reports documentation of them in the public API.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def fetch(url: str, _retries: int = 3) -> bytes:\n      \"\"\"Download a resource.\n\n      :param url: Address of the resource.\n      \"\"\"\n      return b\"\"\n  ```\n\n- **Docstrings outside the public API**: [function-docstring](SMP901.html) asks for no docstring there.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok file=demo/_core.py\n  def copy(source: str, target: str) -> None:\n      \"\"\"Copy a file.\n\n      :param source: Where from.\n      \"\"\"\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#12434](https://github.com/astral-sh/ruff/issues/12434)\n  (DOC101) and [#6606](https://github.com/astral-sh/ruff/issues/6606) (Sphinx style). Released rule\n  [D417](https://docs.astral.sh/ruff/rules/undocumented-param/) and open pull request\n  [#21076](https://github.com/astral-sh/ruff/pull/21076) check only Google and NumPy sections, not `:param` fields.\n- [pydoclint](https://github.com/jsh9/pydoclint) reports a docstring with fewer parameters than the signature as\n  [DOC101](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.\n- [darglint](https://github.com/terrencepreilly/darglint) reports a missing parameter as\n  [DAR101](https://github.com/terrencepreilly/darglint), with no fix.\n",
+    "explanation": "Flags parameters that a public API docstring leaves without a `:param name:` field, when the project uses\nreStructuredText docstrings. Without the field, the reference shows only the parameter's name and type.\n\n## Why is this bad?\n\nUsers read a parameter's meaning in the rendered reference or their editor's hover help. A parameter the docstring skips\nshows with its name and type only, leaving its units, defaults and constraints unsaid.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\nproject-kind = \"library\"\n```\n\n```python report\ndef copy(source: str, target: str) -> None:\n    \"\"\"Copy a file.\n\n    :param source: Where from.\n    \"\"\"\n```\n\nUse instead:\n\n```python ok\ndef copy(source: str, target: str) -> None:\n    \"\"\"Copy a file.\n\n    :param source: Where from.\n    :param target: Where to.\n    \"\"\"\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def copy(source: str, target: str) -> None:\n      \"\"\"Copy a file.\n\n      :param source: Where from.\n      \"\"\"\n  ```\n\n## What it does\n\nChecks the docstrings of a library's public API (see [undocumented-public-api](SMP903.html)), when\n`docstring-style = \"rst\"`, for parameters without a `:param name:` field.\n\nNo fix is offered: the description is for the author to write, and [rst-empty-field](SMP914.html) reports the empty\nfield until they do.\n\n### Active on\n\n- **Parameters of public functions and methods**: each needs a `:param name:` field.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def copy(source: str, target: str) -> None:\n      \"\"\"Copy a file.\n\n      :param source: Where from.\n      \"\"\"\n  ```\n\n- **Constructor parameters of a public class**: they may be documented in the class docstring or in its `__init__`\n  docstring.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Reader:\n      \"\"\"Read files.\n\n      :param source: Where to read from.\n      \"\"\"\n\n      def __init__(self, source: str, encoding: str) -> None:\n          \"\"\"Set up.\"\"\"\n  ```\n\n- **`*args` and `**kwargs`**: they count as `args` and `kwargs`, written with or without their stars, as\n  `:param \\*args:`.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def copy(source: str, *args: str, **kwargs: str) -> None:\n      \"\"\"Copy a file.\n\n      :param source: Where from.\n      \"\"\"\n  ```\n\n- **Parameters named with two leading underscores, such as `__obj`**: the double underscore marks the parameter\n  positional-only rather than internal, so it is checked.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def wrap(__obj: int) -> int:\n      \"\"\"Wrap a value.\"\"\"\n      return __obj\n  ```\n\n### Exceptions\n\n- **The instance or class a method receives first**: callers do not pass it, so there is nothing to document.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Reader:\n      \"\"\"Read files.\"\"\"\n\n      def read(self, size: int) -> str:\n          \"\"\"Read the file.\n\n          :param size: Bytes to read.\n          \"\"\"\n          return \"\"\n  ```\n\n- **Parameters named with one leading underscore**: they are internal, a knob the documentation leaves out;\n  [rst-private-field](SMP915.html) reports documentation of them in the public API.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def fetch(url: str, _retries: int = 3) -> bytes:\n      \"\"\"Download a resource.\n\n      :param url: Address of the resource.\n      \"\"\"\n      return b\"\"\n  ```\n\n- **Docstrings outside the public API**: [function-docstring](SMP901.html) asks for no docstring there.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok file=demo/_core.py\n  def copy(source: str, target: str) -> None:\n      \"\"\"Copy a file.\n\n      :param source: Where from.\n      \"\"\"\n  ```\n\n- **Class variables of a generated class**: a `ClassVar` field is no constructor parameter, whether its annotation is\n  written as `ClassVar[int]` or as the quoted string `\"ClassVar[int]\"`.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  from dataclasses import dataclass\n  from typing import ClassVar\n\n\n  @dataclass\n  class Reader:\n      \"\"\"Read files.\n\n      :param source: Where to read from.\n      \"\"\"\n\n      source: str\n      count: \"ClassVar[int]\" = 0\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#12434](https://github.com/astral-sh/ruff/issues/12434)\n  (DOC101) and [#6606](https://github.com/astral-sh/ruff/issues/6606) (Sphinx style). Released rule\n  [D417](https://docs.astral.sh/ruff/rules/undocumented-param/) and open pull request\n  [#21076](https://github.com/astral-sh/ruff/pull/21076) check only Google and NumPy sections, not `:param` fields.\n- [pydoclint](https://github.com/jsh9/pydoclint) reports a docstring with fewer parameters than the signature as\n  [DOC101](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.\n- [darglint](https://github.com/terrencepreilly/darglint) reports a missing parameter as\n  [DAR101](https://github.com/terrencepreilly/darglint), with no fix.\n",
     "examples": {
       "parsed": [
         {
@@ -28352,6 +28627,27 @@
               "line": 221,
               "end_line": 227,
               "source": "def copy(source: str, target: str) -> None:\n    \"\"\"Copy a file.\n\n    :param source: Where from.\n    \"\"\"\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 232,
+          "end_line": 257,
+          "config": {
+            "line": 232,
+            "end_line": 241,
+            "source": "[project]\nname = \"demo\"\n\n[build-system]\nrequires = []\n\n[tool.simplint]\ndocstring-style = \"rst\"\n"
+          },
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 243,
+              "end_line": 257,
+              "source": "from dataclasses import dataclass\nfrom typing import ClassVar\n\n\n@dataclass\nclass Reader:\n    \"\"\"Read files.\n\n    :param source: Where to read from.\n    \"\"\"\n\n    source: str\n    count: \"ClassVar[int]\" = 0\n"
             }
           ]
         }
@@ -29063,7 +29359,7 @@
     "name": "rst-unknown-attribute",
     "summary": "`:ivar:`, `:cvar:` and `:var:` fields for attributes the class lacks",
     "fix": "Sometimes",
-    "explanation": "Flags `:ivar:`, `:cvar:`, `:var:` and `:vartype:` fields in a reStructuredText class docstring that name an attribute\nthe class does not have. Such a field, often left behind by a rename or removal, documents state no instance has.\n\n## Why is this bad?\n\nA field for an attribute that is gone, often renamed or removed in a later change, documents state no instance has.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    :ivar queue: The jobs waiting.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n```\n\nUse instead:\n\n```python ok\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :cvar limit: The most jobs it runs at once.\n      \"\"\"\n\n      state = \"idle\"\n  ```\n\n## What it does\n\nChecks the docstrings of classes, when `docstring-style = \"rst\"`, for `:ivar name:`, `:cvar name:`, `:var name:` and\n`:vartype name:` fields naming an attribute the class does not have.\n\n### Active on\n\n- **Attribute fields in a class docstring**: reported when the name is none of the attributes the class has: those its\n  body assigns, including names unpacked from a tuple and the strings of a `__slots__`, those its methods set on `self`,\n  and its methods and properties, which autodoc can render as attributes.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar state: What it is doing.\n      :ivar queue: The jobs waiting.\n      \"\"\"\n\n      def __init__(self) -> None:\n          self.state = \"idle\"\n  ```\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar run: The entry point.\n      \"\"\"\n\n      def run(self) -> None:\n          print()\n  ```\n\n- **Type aliases in the class body**: a `type` statement there is a class attribute, so a `:cvar` field may document it.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.12\"\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\n\n      :cvar Point: The pair of coordinates.\n      \"\"\"\n\n      type Point = tuple[int, int]\n  ```\n\n### Exceptions\n\n- **A class with a base class other than `object`, `ABC`, `Protocol`, `Generic`, `NamedTuple` or `TypedDict`**: the base\n  may define the attribute.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine(Base):\n      \"\"\"Run jobs.\n\n      :ivar queue: The jobs waiting.\n      \"\"\"\n  ```\n\n### Fix\n\nThe fix deletes the field with the lines that continue it.\n\n**Unsafe fix:** code may read the docstring through `__doc__`.\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    :ivar queue: The jobs waiting.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n```\n\n```python fixed\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n```\n\nNo fix is offered when escapes in the docstring make its text differ from the source.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#12434](https://github.com/astral-sh/ruff/issues/12434).\n- [pydoclint](https://github.com/jsh9/pydoclint) reports a class docstring that lists more attributes than the class has\n  as [DOC602](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.\n",
+    "explanation": "Flags `:ivar:`, `:cvar:`, `:var:` and `:vartype:` fields in a reStructuredText class docstring that name an attribute\nthe class does not have. Such a field, often left behind by a rename or removal, documents state no instance has.\n\n## Why is this bad?\n\nA field for an attribute that is gone, often renamed or removed in a later change, documents state no instance has.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    :ivar queue: The jobs waiting.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n```\n\nUse instead:\n\n```python ok\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :cvar limit: The most jobs it runs at once.\n      \"\"\"\n\n      state = \"idle\"\n  ```\n\n## What it does\n\nChecks the docstrings of classes, when `docstring-style = \"rst\"`, for `:ivar name:`, `:cvar name:`, `:var name:` and\n`:vartype name:` fields naming an attribute the class does not have.\n\n### Active on\n\n- **Attribute fields in a class docstring**: reported when the name is none of the attributes the class has: those its\n  body assigns, including names unpacked from a tuple and the strings of a `__slots__`, those its methods set on `self`,\n  and its methods and properties, which autodoc can render as attributes.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar state: What it is doing.\n      :ivar queue: The jobs waiting.\n      \"\"\"\n\n      def __init__(self) -> None:\n          self.state = \"idle\"\n  ```\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar run: The entry point.\n      \"\"\"\n\n      def run(self) -> None:\n          print()\n  ```\n\n- **Type aliases in the class body**: a `type` statement there is a class attribute, so a `:cvar` field may document it.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.12\"\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\n\n      :cvar Point: The pair of coordinates.\n      \"\"\"\n\n      type Point = tuple[int, int]\n  ```\n\n### Exceptions\n\n- **A class with a base class other than `object`, `ABC`, `Protocol`, `Generic`, `NamedTuple` or `TypedDict`**: the base\n  may define the attribute.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine(Base):\n      \"\"\"Run jobs.\n\n      :ivar queue: The jobs waiting.\n      \"\"\"\n  ```\n\n- **Names a `__slots__` declares**: the strings of a string, tuple, list or set, and the keys of a dict, whether the\n  assignment is annotated or not.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Named:\n      \"\"\"A name.\n\n      :ivar text: The text.\n      \"\"\"\n\n      __slots__ = \"text\"\n\n\n  class Pair:\n      \"\"\"Two names.\n\n      :ivar first: The first.\n      :ivar second: The second.\n      \"\"\"\n\n      __slots__ = (\"first\", \"second\")\n\n\n  class Listed:\n      \"\"\"A list of names.\n\n      :ivar third: The third.\n      \"\"\"\n\n      __slots__ = [\"third\"]\n\n\n  class Stored:\n      \"\"\"A set of names.\n\n      :ivar fourth: The fourth.\n      \"\"\"\n\n      __slots__ = {\"fourth\"}\n\n\n  class Keyed:\n      \"\"\"Keys.\n\n      :ivar key: The key.\n      \"\"\"\n\n      __slots__ = {\"key\": \"The key.\"}\n\n\n  class Annotated:\n      \"\"\"Annotated slots.\n\n      :ivar size: The size.\n      \"\"\"\n\n      __slots__: tuple[str, ...] = (\"size\",)\n  ```\n\n- **Names unpacked into the class body**: each name a tuple or starred target binds, such as `low` and `high` in\n  `low, high = 0, 10`, or `tail` in `head, *tail = values`.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Bounds:\n      \"\"\"Limits of a range.\n\n      :cvar low: The lower limit.\n      :cvar high: The upper limit.\n      :cvar tail: The rest.\n      \"\"\"\n\n      low, high = 0, 10\n      head, *tail = 1, 2, 3\n  ```\n\n### Fix\n\nThe fix deletes the field with the lines that continue it.\n\n**Unsafe fix:** code may read the docstring through `__doc__`.\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    :ivar queue: The jobs waiting.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n```\n\n```python fixed\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n```\n\nNo fix is offered when escapes in the docstring make its text differ from the source.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#12434](https://github.com/astral-sh/ruff/issues/12434).\n- [pydoclint](https://github.com/jsh9/pydoclint) reports a class docstring that lists more attributes than the class has\n  as [DOC602](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.\n",
     "examples": {
       "parsed": [
         {
@@ -29215,11 +29511,53 @@
         },
         {
           "section": "What it does",
-          "line": 148,
-          "end_line": 174,
+          "line": 145,
+          "end_line": 204,
           "config": {
-            "line": 148,
-            "end_line": 151,
+            "line": 145,
+            "end_line": 148,
+            "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
+          },
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 150,
+              "end_line": 204,
+              "source": "class Named:\n    \"\"\"A name.\n\n    :ivar text: The text.\n    \"\"\"\n\n    __slots__ = \"text\"\n\n\nclass Pair:\n    \"\"\"Two names.\n\n    :ivar first: The first.\n    :ivar second: The second.\n    \"\"\"\n\n    __slots__ = (\"first\", \"second\")\n\n\nclass Listed:\n    \"\"\"A list of names.\n\n    :ivar third: The third.\n    \"\"\"\n\n    __slots__ = [\"third\"]\n\n\nclass Stored:\n    \"\"\"A set of names.\n\n    :ivar fourth: The fourth.\n    \"\"\"\n\n    __slots__ = {\"fourth\"}\n\n\nclass Keyed:\n    \"\"\"Keys.\n\n    :ivar key: The key.\n    \"\"\"\n\n    __slots__ = {\"key\": \"The key.\"}\n\n\nclass Annotated:\n    \"\"\"Annotated slots.\n\n    :ivar size: The size.\n    \"\"\"\n\n    __slots__: tuple[str, ...] = (\"size\",)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 209,
+          "end_line": 225,
+          "config": {
+            "line": 209,
+            "end_line": 212,
+            "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
+          },
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 214,
+              "end_line": 225,
+              "source": "class Bounds:\n    \"\"\"Limits of a range.\n\n    :cvar low: The lower limit.\n    :cvar high: The upper limit.\n    :cvar tail: The rest.\n    \"\"\"\n\n    low, high = 0, 10\n    head, *tail = 1, 2, 3\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 233,
+          "end_line": 259,
+          "config": {
+            "line": 233,
+            "end_line": 236,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -29228,8 +29566,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 153,
-              "end_line": 163,
+              "line": 238,
+              "end_line": 248,
               "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    :ivar queue: The jobs waiting.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n"
             },
             {
@@ -29237,8 +29575,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 165,
-              "end_line": 174,
+              "line": 250,
+              "end_line": 259,
               "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n"
             }
           ]
@@ -29255,7 +29593,7 @@
     "name": "rst-attribute-kind",
     "summary": "`:ivar:` on class variables and `:cvar:` on instance attributes",
     "fix": "Sometimes",
-    "explanation": "Flags an `:ivar:` field documenting a class variable, or a `:cvar:` field documenting an instance attribute, in\nreStructuredText class docstrings. Sphinx renders the two under different headings, so the wrong field sends readers to\nthe wrong place.\n\n## Why is this bad?\n\nSphinx renders the two as \"Instance Variables\" and \"Class Variables\", so the wrong one tells readers to look for the\nvalue in the wrong place.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n```\n\nUse instead:\n\n```python ok\nclass Engine:\n    \"\"\"Run jobs.\n\n    :cvar limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar limit: The most jobs it runs at once.\n      \"\"\"\n\n      limit = 3\n  ```\n\n## What it does\n\nChecks the docstrings of classes, when `docstring-style = \"rst\"`, for attribute fields of the wrong kind.\n\n### Active on\n\n- **`:ivar name:` fields**: reported when `name` is a class variable.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar limit: The most jobs it runs at once.\n      \"\"\"\n\n      limit = 3\n  ```\n\n- **`:cvar name:` fields**: reported when `name` is an instance attribute.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :cvar state: What it is doing.\n      \"\"\"\n\n      def __init__(self) -> None:\n          self.state = \"idle\"\n  ```\n\n### Exceptions\n\n- **`:var name:` fields**: `:var:` suits both kinds.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\n\n      :var limit: The most jobs it runs at once.\n      \"\"\"\n\n      limit = 3\n  ```\n\n- **A class default that methods also set on `self`**: the attribute is both kinds, so `:ivar:` and `:cvar:` both fit.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar limit: The most jobs it runs at once.\n      \"\"\"\n\n      limit = 3\n\n      def reset(self) -> None:\n          self.limit = 3\n  ```\n\n### Attribute kinds\n\n| Attribute                                                                          | Kind               | Field                |\n| ---------------------------------------------------------------------------------- | ------------------ | -------------------- |\n| a `ClassVar`                                                                       | class variable     | `:cvar:`             |\n| a `Final` with a value in the class body, as `SHOW: Final = 1`                     | class variable     | `:cvar:`             |\n| a name the class body assigns without an annotation, that no method sets on `self` | class variable     | `:cvar:`             |\n| an annotated field                                                                 | instance attribute | `:ivar:`             |\n| a name a method sets on `self`                                                     | instance attribute | `:ivar:`             |\n| a class default that methods also set on `self`                                    | both               | `:ivar:` or `:cvar:` |\n\n### Fix\n\nThe fix renames the field, keeping its description.\n\n**Unsafe fix:** code may read the docstring through `__doc__`.\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n```\n\n```python fixed\nclass Engine:\n    \"\"\"Run jobs.\n\n    :cvar limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n```\n\nNo fix is offered when escapes in the docstring make its text differ from the source.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags an `:ivar:` field documenting a class variable, or a `:cvar:` field documenting an instance attribute, in\nreStructuredText class docstrings. Sphinx renders the two under different headings, so the wrong field sends readers to\nthe wrong place.\n\n## Why is this bad?\n\nSphinx renders the two as \"Instance Variables\" and \"Class Variables\", so the wrong one tells readers to look for the\nvalue in the wrong place.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n```\n\nUse instead:\n\n```python ok\nclass Engine:\n    \"\"\"Run jobs.\n\n    :cvar limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar limit: The most jobs it runs at once.\n      \"\"\"\n\n      limit = 3\n  ```\n\n## What it does\n\nChecks the docstrings of classes, when `docstring-style = \"rst\"`, for attribute fields of the wrong kind.\n\n### Active on\n\n- **`:ivar name:` fields**: reported when `name` is a class variable.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar limit: The most jobs it runs at once.\n      \"\"\"\n\n      limit = 3\n  ```\n\n  A `ClassVar` annotation counts the same when quoted, as `\"ClassVar[int]\"`.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  from typing import ClassVar\n\n\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar limit: The most jobs it runs at once.\n      \"\"\"\n\n      limit: \"ClassVar[int]\" = 3\n  ```\n\n- **`:cvar name:` fields**: reported when `name` is an instance attribute.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :cvar state: What it is doing.\n      \"\"\"\n\n      def __init__(self) -> None:\n          self.state = \"idle\"\n  ```\n\n### Exceptions\n\n- **`:var name:` fields**: `:var:` suits both kinds.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\n\n      :var limit: The most jobs it runs at once.\n      \"\"\"\n\n      limit = 3\n  ```\n\n- **A class default that methods also set on `self`**: the attribute is both kinds, so `:ivar:` and `:cvar:` both fit.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar limit: The most jobs it runs at once.\n      \"\"\"\n\n      limit = 3\n\n      def reset(self) -> None:\n          self.limit = 3\n  ```\n\n### Attribute kinds\n\n| Attribute                                                                          | Kind               | Field                |\n| ---------------------------------------------------------------------------------- | ------------------ | -------------------- |\n| a `ClassVar`                                                                       | class variable     | `:cvar:`             |\n| a `Final` with a value in the class body, as `SHOW: Final = 1`                     | class variable     | `:cvar:`             |\n| a name the class body assigns without an annotation, that no method sets on `self` | class variable     | `:cvar:`             |\n| an annotated field                                                                 | instance attribute | `:ivar:`             |\n| a name a method sets on `self`                                                     | instance attribute | `:ivar:`             |\n| a class default that methods also set on `self`                                    | both               | `:ivar:` or `:cvar:` |\n\n### Fix\n\nThe fix renames the field, keeping its description.\n\n**Unsafe fix:** code may read the docstring through `__doc__`.\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n```\n\n```python fixed\nclass Engine:\n    \"\"\"Run jobs.\n\n    :cvar limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n```\n\nNo fix is offered when escapes in the docstring make its text differ from the source.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -29345,7 +29683,7 @@
         {
           "section": "What it does",
           "line": 84,
-          "end_line": 98,
+          "end_line": 100,
           "config": {
             "line": 84,
             "end_line": 87,
@@ -29358,60 +29696,18 @@
               "file": "example.py",
               "named": false,
               "line": 89,
-              "end_line": 98,
-              "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :cvar state: What it is doing.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n"
+              "end_line": 100,
+              "source": "from typing import ClassVar\n\n\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit: \"ClassVar[int]\" = 3\n"
             }
           ]
         },
         {
           "section": "What it does",
           "line": 104,
-          "end_line": 117,
+          "end_line": 118,
           "config": {
             "line": 104,
             "end_line": 107,
-            "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
-          },
-          "blocks": [
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 109,
-              "end_line": 117,
-              "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :var limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 121,
-          "end_line": 137,
-          "config": {
-            "line": 121,
-            "end_line": 124,
-            "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
-          },
-          "blocks": [
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 126,
-              "end_line": 137,
-              "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :ivar limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n\n    def reset(self) -> None:\n        self.limit = 3\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 156,
-          "end_line": 179,
-          "config": {
-            "line": 156,
-            "end_line": 159,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -29420,8 +29716,71 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 161,
-              "end_line": 169,
+              "line": 109,
+              "end_line": 118,
+              "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :cvar state: What it is doing.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 124,
+          "end_line": 137,
+          "config": {
+            "line": 124,
+            "end_line": 127,
+            "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
+          },
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 129,
+              "end_line": 137,
+              "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :var limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 141,
+          "end_line": 157,
+          "config": {
+            "line": 141,
+            "end_line": 144,
+            "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
+          },
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 146,
+              "end_line": 157,
+              "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :ivar limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n\n    def reset(self) -> None:\n        self.limit = 3\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 176,
+          "end_line": 199,
+          "config": {
+            "line": 176,
+            "end_line": 179,
+            "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 181,
+              "end_line": 189,
               "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :ivar limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n"
             },
             {
@@ -29429,8 +29788,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 171,
-              "end_line": 179,
+              "line": 191,
+              "end_line": 199,
               "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :cvar limit: The most jobs it runs at once.\n    \"\"\"\n\n    limit = 3\n"
             }
           ]

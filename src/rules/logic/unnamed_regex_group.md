@@ -79,6 +79,110 @@ name to be read by, and the fix turns it into a non-capturing group instead, as 
   class body, a name declared `global` or `nonlocal`, or a module name another module imports or `__all__` lists, since
   the reads of those can come from code the rule does not see.
 
+  - **A pattern in a class body**: reported, with no fix.
+
+    ```python report
+    import re
+
+
+    class Parser:
+        LINE = re.compile(r"(\d+)-(\d+)")
+    ```
+
+    ```python fixed
+    import re
+
+
+    class Parser:
+        LINE = re.compile(r"(\d+)-(\d+)")
+    ```
+
+  - **A name a function declares `global`**: the pattern the function binds to it is reported, with no fix.
+
+    ```python report
+    import re
+
+
+    def reset():
+        global PATTERN
+        PATTERN = re.compile(r"(\d+)-(\d+)")
+    ```
+
+    ```python fixed
+    import re
+
+
+    def reset():
+        global PATTERN
+        PATTERN = re.compile(r"(\d+)-(\d+)")
+    ```
+
+  - **A name a function declares `nonlocal`**: the pattern bound to it is reported, with no fix.
+
+    ```python report
+    import re
+
+
+    def outer():
+        pattern = None
+
+        def reset():
+            nonlocal pattern
+            pattern = re.compile(r"(\d+)-(\d+)")
+
+        reset()
+        return pattern
+    ```
+
+    ```python fixed
+    import re
+
+
+    def outer():
+        pattern = None
+
+        def reset():
+            nonlocal pattern
+            pattern = re.compile(r"(\d+)-(\d+)")
+
+        reset()
+        return pattern
+    ```
+
+  - **A module name another module imports**: reported, with no fix.
+
+    ```python report file=example.py
+    import re
+
+    PATTERN = re.compile(r"(\d+)-(\d+)")
+    ```
+
+    ```python fixed file=example.py
+    import re
+
+    PATTERN = re.compile(r"(\d+)-(\d+)")
+    ```
+
+    ```python context file=main.py
+    from example import PATTERN
+    ```
+
+  - **A module name `__all__` lists**: reported, with no fix.
+
+    ```python report
+    import re
+
+    __all__ = ["PATTERN"]
+    PATTERN = re.compile(r"(\d+)-(\d+)")
+    ```
+
+    ```python fixed
+    import re
+
+    __all__ = ["PATTERN"]
+    PATTERN = re.compile(r"(\d+)-(\d+)")
+    ```
+
 ### Exceptions
 
 - **A single unnamed group that the code does not read by number**, such as a lone group in `split` or a match tested
