@@ -1,4 +1,5 @@
 mod catch_all_module;
+mod entrypoint_module_name;
 pub(crate) mod meaningless_name;
 mod module_variable_case;
 pub(crate) mod single_letter_name;
@@ -13,6 +14,7 @@ use crate::lint::walker::{Scope, Walker};
 use crate::syntax::last_segment;
 
 pub(crate) use catch_all_module::catch_all_module;
+pub(crate) use entrypoint_module_name::entrypoint_module_name;
 pub(crate) use module_variable_case::module_variable_case;
 
 // The names the naming rules reported in each def, class or lambda, by its range, the module's an empty one: each name

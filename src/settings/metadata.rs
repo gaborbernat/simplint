@@ -15,6 +15,7 @@ pub struct ProjectMetadata {
     // asks whether a tool is declared at all, which an install may leave out.
     pub declared: BTreeSet<String>,
     pub entry_points: Vec<String>,
+    pub scripts: Vec<String>,
 }
 
 impl ProjectMetadata {
@@ -86,6 +87,7 @@ fn dotted_attribute(value: &str) -> Option<String> {
 
 impl From<ProjectTable> for ProjectMetadata {
     fn from(project: ProjectTable) -> Self {
+        let scripts: Vec<String> = project.scripts.into_values().chain(project.gui_scripts.into_values()).collect();
         Self {
             name: project.name,
             // A requirement with an environment marker is conditional, so a guarded import of it is legitimate.
@@ -101,12 +103,12 @@ impl From<ProjectTable> for ProjectMetadata {
                 .chain(project.optional_dependencies.values().flatten())
                 .flat_map(|spec| import_names(spec))
                 .collect(),
-            entry_points: project
-                .scripts
-                .into_values()
-                .chain(project.gui_scripts.into_values())
+            entry_points: scripts
+                .iter()
+                .cloned()
                 .chain(project.entry_points.into_values().flat_map(BTreeMap::into_values))
                 .collect(),
+            scripts,
         }
     }
 }

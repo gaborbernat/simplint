@@ -2,6 +2,23 @@ use test_case::test_case;
 
 use crate::common;
 
+#[test_case("pkg/main.py", "[project.scripts]\ncli = \"pkg.main:run\"\n", "def run() -> None:\n    pass\n", 1 ; "console_script")]
+#[test_case("main.py", "[project.scripts]\ncli = \"main:run\"\n", "def run() -> None:\n    pass\n", 1 ; "flat_script")]
+#[test_case("src/app/main.py", "[project.scripts]\ncli = \"app.main:run\"\n", "def run() -> None:\n    pass\n", 1 ; "namespace_script")]
+#[test_case("pkg/_main.py", "[project.gui-scripts]\ncli = \"pkg._main:run\"\n", "def run() -> None:\n    pass\n", 1 ; "gui_script")]
+#[test_case("pkg/main.py", "[project.entry-points.example]\nplugin = \"pkg.main:run\"\n", "def run() -> None:\n    pass\n", 0 ; "plugin_not_main")]
+#[test_case("pkg/main.py", "", "def run() -> None:\n    pass\n", 0 ; "ordinary_module")]
+#[test_case("pkg/main.py", "", "if __name__ == \"__main__\":\n    run()\n", 1 ; "direct_script")]
+#[test_case("pkg/_main.py", "", "if \"__main__\" == __name__:\n    run()\n", 1 ; "reversed_guard")]
+#[test_case("pkg/__main__.py", "[project.scripts]\ncli = \"pkg.__main__:run\"\n", "def run() -> None:\n    pass\n", 0 ; "preferred_name")]
+#[test_case("pkg/_main.py", "[project.scripts]\ncli = \"pkg.__main__:run\"\n", "def run() -> None:\n    pass\n", 0 ; "implementation_module")]
+fn entrypoint_module_name(file: &str, metadata: &str, source: &str, expected: usize) {
+    let pyproject = format!("[project]\nname = \"pkg\"\nversion = \"1\"\n{metadata}");
+    let root = common::project(&[("pyproject.toml", &pyproject), ("pkg/__init__.py", ""), (file, source)]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP105"]);
+    assert_eq!(stdout.matches("SMP105").count(), expected, "{stdout}");
+}
+
 #[test_case("single-letter-name", "single_letter_name.py" ; "single_letter_name")]
 #[test_case("meaningless-name", "meaningless_name.py" ; "meaningless_name")]
 #[test_case("catch-all-module", "utils/__init__.py" ; "catch_all_module_package")]
