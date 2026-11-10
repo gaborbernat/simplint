@@ -146,6 +146,7 @@ fn private_import_path_in_tests(file: &str, source: &str, expected: usize) {
 #[test_case("tests/pkg/_html/url/test_url.py", "pkg._html", "src/pkg/_html.pyi", 0 ; "extension_suite_with_package")]
 #[test_case("tests/_html/test_url.py", "pkg._other", "src/pkg/_other.py", 1 ; "different_suite_module")]
 #[test_case("tests/_other/test_url.py", "pkg._html", "src/pkg/_html.pyi", 1 ; "different_suite_path")]
+#[test_case("tests/_htmlish/test_url.py", "pkg._html", "src/pkg/_html.pyi", 1 ; "suite_path_prefix")]
 #[test_case("tests/_render/test_intersphinx.py", "pkg._render.other", "src/pkg/_render/other.py", 1 ; "different_stem")]
 #[test_case(
     "tests/_resolve/guards/test_run.py", "pkg._resolve.other.run", "src/pkg/_resolve/other/run.py", 1

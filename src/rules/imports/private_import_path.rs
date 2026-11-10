@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use ruff_python_ast::{self as ast, Stmt};
 use ruff_text_size::{Ranged, TextRange};
@@ -58,9 +58,13 @@ fn paired_test_module(walker: &Walker<'_, '_>, path: &str, level: u32) -> bool {
         return false;
     }
     let root = &walker.checker.settings.project.root;
-    let Some(relative) = walker.checker.path.strip_prefix(root).ok().and_then(Path::parent) else {
-        return false;
-    };
+    let relative = walker
+        .checker
+        .path
+        .strip_prefix(root)
+        .unwrap_or(walker.checker.path)
+        .parent()
+        .expect("checked file has a parent");
     let relative = relative.strip_prefix("tests").or_else(|_| relative.strip_prefix("test")).unwrap_or(relative);
     let relative = relative.strip_prefix("src").unwrap_or(relative);
     let package = PathBuf::from_iter(package.split('.').filter(|part| !part.is_empty()));
