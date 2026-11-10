@@ -255,6 +255,7 @@ rules! {
     ModuleVariableCase => ("SMP102", "module-variable-case", "Module variables not `UPPER_CASE`", Sometimes, naming::module_variable_case { module } reads [cross_file, STRING_WORDS, COMPUTED_WRITES, DOCTESTS] skips [nested]),
     MeaninglessName => ("SMP103", "meaningless-name", "Variables, parameters and attributes named with a word that says nothing", None, naming::meaningless_name { expression, scope, except_handler, pattern }),
     CatchAllModule => ("SMP104", "catch-all-module", "Modules and packages named for a grab bag of code", None, naming::catch_all_module { module }),
+    EntrypointModuleName => ("SMP105", "entrypoint-module-name", "Entrypoints in `main.py` or `_main.py` instead of `__main__.py`", None, naming::entrypoint_module_name { module }),
     DefinitionBeforeUse => ("SMP201", "definition-before-use", "Helpers defined above their first caller, or away from it", Sometimes, layout::definition_before_use { module }),
     SingleUserConstant => ("SMP202", "single-user-constant", "Module constants only one function uses", Sometimes, layout::single_user_constant { module } reads [cross_file, STRING_WORDS, COMPUTED_WRITES]),
     ClassMemberOrder => ("SMP203", "class-member-order", "Class members defined out of section order, such as a constructor below a method", Sometimes, layout::class_member_order { module }),
