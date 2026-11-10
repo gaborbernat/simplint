@@ -3,6 +3,7 @@ use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange};
+use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
@@ -21,12 +22,13 @@ const PATCHERS: &[&[&str]] = &[
 ];
 
 pub fn up_unittest_enter_context(checker: &Checker) {
+    let mut spellings = FxHashMap::default();
     for class in checker.class_defs().iter().filter(|class| is_test_case(checker, class)) {
         for method in class.body.iter().filter_map(Stmt::as_function_def_stmt) {
             for_each_body(&method.body, &mut |statements, _| {
                 for window in statements.windows(3) {
                     if let [start, bind, cleanup] = window {
-                        check_sequence(checker, method.range(), start, bind, cleanup);
+                        check_sequence(checker, &mut spellings, method.range(), start, bind, cleanup);
                     }
                 }
             });
@@ -36,7 +38,14 @@ pub fn up_unittest_enter_context(checker: &Checker) {
 
 // The three statements a manual start and stop take: `patcher = patch(...)`, `value = patcher.start()` and
 // `self.addCleanup(patcher.stop)`.
-fn check_sequence(checker: &Checker, method: TextRange, start: &Stmt, bind: &Stmt, cleanup: &Stmt) {
+fn check_sequence<'a>(
+    checker: &Checker<'a>,
+    spellings: &mut FxHashMap<TextRange, FxHashMap<&'a str, usize>>,
+    method: TextRange,
+    start: &Stmt,
+    bind: &Stmt,
+    cleanup: &Stmt,
+) {
     let Some((patcher, call)) = patcher_assignment(checker.semantic(), start) else {
         return;
     };
@@ -47,12 +56,8 @@ fn check_sequence(checker: &Checker, method: TextRange, start: &Stmt, bind: &Stm
         return;
     }
     // The fix drops the patcher's name, so the method may use it only in the three statements, each once.
-    let spellings = checker
-        .parsed
-        .tokens()
-        .iter()
-        .filter(|token| token.kind() == TokenKind::Identifier && method.contains_range(token.range()));
-    let used_elsewhere = spellings.filter(|token| checker.text(token.range()) == patcher).count() > 3;
+    let counts = spellings.entry(method).or_insert_with(|| identifier_counts(checker, method));
+    let used_elsewhere = counts.get(patcher).is_some_and(|&count| count > 3);
     let source = checker.source;
     let range = TextRange::new(start.start(), cleanup.end());
     let fix = (!used_elsewhere
@@ -74,6 +79,15 @@ fn check_sequence(checker: &Checker, method: TextRange, start: &Stmt, bind: &Stm
         fix,
         "Enter the patch with `self.enterContext`",
     );
+}
+
+// How often each name is spelled as an identifier within a method.
+fn identifier_counts<'a>(checker: &Checker<'a>, method: TextRange) -> FxHashMap<&'a str, usize> {
+    let mut counts = FxHashMap::default();
+    for token in checker.parsed.tokens().in_range(method).iter().filter(|token| token.kind() == TokenKind::Identifier) {
+        *counts.entry(checker.text(token.range())).or_default() += 1;
+    }
+    counts
 }
 
 fn patcher_assignment<'a>(semantic: &Semantic, stmt: &'a Stmt) -> Option<(&'a str, &'a ast::ExprCall)> {

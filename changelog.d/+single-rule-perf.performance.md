@@ -18,3 +18,6 @@ or `nonlocal` once per function instead of once per assignment it checks, so 32,
 function take 0.45 seconds instead of 4.7. [early-assignment](../src/rules/logic/early_assignment.md) searches the
 string tokens and the statements of a block by position instead of scanning them for each constant, so 32,000 constants
 assigned above their uses take 0.05 seconds instead of 1.8.
+[up-unittest-enter-context](../src/rules/testing/up_unittest_enter_context.md) counts the names of each test method once
+instead of scanning the tokens of the whole file for every patch it checks, so 16,000 manual patch sequences take 0.15
+seconds instead of 3.3.
