@@ -19367,7 +19367,7 @@
     "name": "early-assignment",
     "summary": "Constants assigned well above their first use",
     "fix": "Sometimes",
-    "explanation": "Flags a local assigned a constant above the statements that do not use it, when the first statement that reads it comes\nfurther down the same block. Moving the assignment down to that statement keeps the value next to the code that reads\nit.\n\n## Why is this bad?\n\nA value set at the top of a function and read many statements later makes the reader carry it across everything in\nbetween. The assignment looks like it matters to the code around it, when only the later read does. Assigning the\nconstant just before its first use shows where the value comes from.\n\n## Example\n\n```python report\ndef total(items: list[int]) -> int:\n    count = 0\n    items.sort()\n    print(\"sorted\")\n    return count + len(items)\n```\n\nUse instead:\n\n```python ok\ndef total(items: list[int]) -> int:\n    items.sort()\n    print(\"sorted\")\n    count = 0\n    return count + len(items)\n```\n\n## What it does\n\nA constant is a number, string, bytes, `True`, `False`, `None` or `...`, or a list, tuple, set or dict display of\nconstants. Dict keys and set elements must be hashable, so a display of lists is not one of them.\n\n### Active on\n\nA plain assignment of a constant to one name is reported when the first statement that mentions the name reads it, and\nthat statement comes at least two statements below the assignment in the same block.\n\n- **A constant read further down the function**: the statements between do not touch the name.\n\n  ```python report\n  def price(items: list[float]) -> str:\n      discount = 0.1\n      total = sum(items)\n      return f\"{total * (1 - discount):.2f}\"\n  ```\n\n  ```python fixed\n  def price(items: list[float]) -> str:\n      total = sum(items)\n      discount = 0.1\n      return f\"{total * (1 - discount):.2f}\"\n  ```\n\n### Exceptions\n\n- **A value that is not a constant**: a name, a call or an operator can read or change state that the statements in\n  between also change, so moving it could change its result or when it runs.\n\n  ```python ok\n  def total(items: list[int]) -> int:\n      base = len(items)\n      items.sort()\n      return base\n  ```\n\n- **A name read by a statement right below the assignment**: that statement is the one\n  [single-use-variable](SMP504.html) covers, and there is nothing to move.\n\n  ```python ok\n  def total(items: list[int]) -> int:\n      count = 0\n      return count + len(items)\n  ```\n\n- **A first use that binds the name again**, such as a `for` target, an assignment or an augmented assignment: the\n  assignment is then not the one that supplies the value at that point.\n\n  ```python ok\n  def last(items: list[int]) -> int:\n      count = 0\n      items.sort()\n      for count in items:\n          pass\n      return count\n  ```\n\n- **A name read by a nested function, lambda or class**: the nested scope may read it whenever it is called, so the name\n  must exist from the assignment onwards.\n\n  ```python ok\n  def collect(items: list[int]) -> list[int]:\n      found = []\n      items.sort()\n\n      def add() -> None:\n          found.append(1)\n\n      add()\n      return found\n  ```\n\n- **A use outside the block, or a use before the assignment**: a loop may read the name on its next pass, and an\n  exception handler outside the block may read it after the block is left by an exception, so the constant would not be\n  set on every path.\n\n  ```python ok\n  def fill(items: list[int]) -> list[int]:\n      out = []\n      while items:\n          print(out)\n          out = [1]\n          items.pop()\n      return out\n  ```\n\n  ```python ok\n  def fill(items: list[int]) -> list[int]:\n      try:\n          out = []\n          items.sort()\n          out.append(1)\n      except ValueError:\n          return out\n      return out\n  ```\n\n- **A function that reads its locals by name**, such as with `locals()`, `vars()`, `eval()` or `exec()`: moving the\n  assignment changes what they see.\n\n  ```python ok\n  def run(items: list[int]) -> None:\n      seed = 2\n      items.sort()\n      print(locals())\n  ```\n\n- **A comment between the assignment and the use**: moving the statement would move the comment's meaning with it.\n\n  ```python ok\n  def total(items: list[int]) -> int:\n      count = 0  # the running total\n      items.sort()\n      return count + len(items)\n  ```\n\n- **A constant assigned again between the assignment and its use**: the two constants would take turns moving past each\n  other from one fix round to the next, so only the constant nearest its use is reported, and that one moves first.\n\n  ```python ok\n  def total(items: list[int]) -> int:\n      count = 0\n      limit = 3\n      return count + limit + len(items)\n  ```\n\n- **Assignments at module level**: another module can read a module attribute while an import runs the statements in\n  between.\n\n  ```python ok\n  LIMIT = 3\n  print(\"starting\")\n  print(LIMIT)\n  ```\n\n- **A name that is `_` or a dunder**: `_` is a placeholder, and a dunder has a meaning to Python.\n\n### Fix\n\nThe fix moves the assignment's lines in front of the statement that reads the name. It is offered only when both the\nassignment and that statement sit on lines of their own, so a `;` never has to be split. The move is safe, since a\nconstant has no effect and the statements in between do not read or bind the name.\n\n## Related rules\n\n- [single-use-variable](SMP504.html) inlines a value read by the statement right below its assignment.\n- [collection-built-by-statements](SMP531.html) writes an empty collection's entries in its literal.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#11060](https://github.com/astral-sh/ruff/issues/11060).\n- [Sourcery](https://sourcery.ai) moves an assignment down to its first use through\n  [move-assign](https://docs.sourcery.ai/reference/refactorings/python/move-assign/), for any variable. This rule covers\n  constants only.\n",
+    "explanation": "Flags a local assigned a constant above the statements that do not use it, when the first statement that reads it comes\nfurther down the same block. Moving the assignment down to that statement keeps the value next to the code that reads\nit.\n\n## Why is this bad?\n\nA value set at the top of a function and read many statements later makes the reader carry it across everything in\nbetween. The assignment looks like it matters to the code around it, when only the later read does. Assigning the\nconstant just before its first use shows where the value comes from.\n\n## Example\n\n```python report\ndef total(items: list[int]) -> int:\n    count = 0\n    items.sort()\n    print(\"sorted\")\n    return count + len(items)\n```\n\nUse instead:\n\n```python ok\ndef total(items: list[int]) -> int:\n    items.sort()\n    print(\"sorted\")\n    count = 0\n    return count + len(items)\n```\n\n## What it does\n\nA constant is a number, string, bytes, `True`, `False`, `None` or `...`, or a list, tuple, set or dict display of\nconstants. Dict keys and set elements must be hashable, so a display of lists is not one of them.\n\n### Active on\n\nA plain assignment of a constant to one name is reported when the first statement that mentions the name reads it, and\nthat statement comes at least two statements below the assignment in the same block.\n\n- **A constant read further down the function**: the statements between do not touch the name.\n\n  ```python report\n  def price(items: list[float]) -> str:\n      discount = 0.1\n      total = sum(items)\n      return f\"{total * (1 - discount):.2f}\"\n  ```\n\n  ```python fixed\n  def price(items: list[float]) -> str:\n      total = sum(items)\n      discount = 0.1\n      return f\"{total * (1 - discount):.2f}\"\n  ```\n\n### Exceptions\n\n- **A value that is not a constant**: a name, a call or an operator can read or change state that the statements in\n  between also change, so moving it could change its result or when it runs.\n\n  ```python ok\n  def total(items: list[int]) -> int:\n      base = len(items)\n      items.sort()\n      return base\n  ```\n\n- **A name read by a statement right below the assignment**: that statement is the one\n  [single-use-variable](SMP504.html) covers, and there is nothing to move.\n\n  ```python ok\n  def total(items: list[int]) -> int:\n      count = 0\n      return count + len(items)\n  ```\n\n- **A first use that binds the name again**, such as a `for` target, an assignment or an augmented assignment: the\n  assignment is then not the one that supplies the value at that point.\n\n  ```python ok\n  def last(items: list[int]) -> int:\n      count = 0\n      items.sort()\n      for count in items:\n          pass\n      return count\n  ```\n\n- **A name read by a nested function, lambda or class**: the nested scope may read it whenever it is called, so the name\n  must exist from the assignment onwards.\n\n  ```python ok\n  def collect(items: list[int]) -> list[int]:\n      found = []\n      items.sort()\n\n      def add() -> None:\n          found.append(1)\n\n      add()\n      return found\n  ```\n\n- **A use outside the block, or a use before the assignment**: a loop may read the name on its next pass, and an\n  exception handler outside the block may read it after the block is left by an exception, so the constant would not be\n  set on every path.\n\n  ```python ok\n  def fill(items: list[int]) -> list[int]:\n      out = []\n      while items:\n          print(out)\n          out = [1]\n          items.pop()\n      return out\n  ```\n\n  ```python ok\n  def fill(items: list[int]) -> list[int]:\n      try:\n          out = []\n          items.sort()\n          out.append(1)\n      except ValueError:\n          return out\n      return out\n  ```\n\n- **A function that reads its locals by name**, such as with `locals()`, `vars()`, `eval()` or `exec()`: moving the\n  assignment changes what they see.\n\n  ```python ok\n  def run(items: list[int]) -> None:\n      seed = 2\n      items.sort()\n      print(locals())\n  ```\n\n- **A comment between the assignment and the use**: moving the statement would move the comment's meaning with it.\n\n  ```python ok\n  def total(items: list[int]) -> int:\n      count = 0  # the running total\n      items.sort()\n      return count + len(items)\n  ```\n\n- **A comment on the line above the assignment**: the comment explains the assignment, and it would stay behind when the\n  assignment moves. The assignment is still reported, but no fix is offered.\n\n  ```python report\n  def run(items, prepare, log, send):\n      # Retries allowed before giving up: the upstream API drops one call in three.\n      limit = 3\n      prepare(items)\n      log(items)\n      return send(items, limit)\n  ```\n\n  ```python fixed\n  def run(items, prepare, log, send):\n      # Retries allowed before giving up: the upstream API drops one call in three.\n      limit = 3\n      prepare(items)\n      log(items)\n      return send(items, limit)\n  ```\n\n- **A constant assigned again between the assignment and its use**: the two constants would take turns moving past each\n  other from one fix round to the next, so only the constant nearest its use is reported, and that one moves first.\n\n  ```python ok\n  def total(items: list[int]) -> int:\n      count = 0\n      limit = 3\n      return count + limit + len(items)\n  ```\n\n- **Assignments at module level**: another module can read a module attribute while an import runs the statements in\n  between.\n\n  ```python ok\n  LIMIT = 3\n  print(\"starting\")\n  print(LIMIT)\n  ```\n\n- **A name that is `_` or a dunder**: `_` is a placeholder, and a dunder has a meaning to Python.\n\n### Fix\n\nThe fix moves the assignment's lines in front of the statement that reads the name. It is offered only when both the\nassignment and that statement sit on lines of their own, so a `;` never has to be split. The move is safe, since a\nconstant has no effect and the statements in between do not read or bind the name.\n\n## Related rules\n\n- [single-use-variable](SMP504.html) inlines a value read by the statement right below its assignment.\n- [collection-built-by-statements](SMP531.html) writes an empty collection's entries in its literal.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#11060](https://github.com/astral-sh/ruff/issues/11060).\n- [Sourcery](https://sourcery.ai) moves an assignment down to its first use through\n  [move-assign](https://docs.sourcery.ai/reference/refactorings/python/move-assign/), for any variable. This rule covers\n  constants only.\n",
     "examples": {
       "parsed": [
         {
@@ -19569,7 +19569,33 @@
         {
           "section": "What it does",
           "line": 152,
-          "end_line": 157,
+          "end_line": 168,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 152,
+              "end_line": 159,
+              "source": "def run(items, prepare, log, send):\n    # Retries allowed before giving up: the upstream API drops one call in three.\n    limit = 3\n    prepare(items)\n    log(items)\n    return send(items, limit)\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 161,
+              "end_line": 168,
+              "source": "def run(items, prepare, log, send):\n    # Retries allowed before giving up: the upstream API drops one call in three.\n    limit = 3\n    prepare(items)\n    log(items)\n    return send(items, limit)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 173,
+          "end_line": 178,
           "config": null,
           "blocks": [
             {
@@ -19577,16 +19603,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 152,
-              "end_line": 157,
+              "line": 173,
+              "end_line": 178,
               "source": "def total(items: list[int]) -> int:\n    count = 0\n    limit = 3\n    return count + limit + len(items)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 162,
-          "end_line": 166,
+          "line": 183,
+          "end_line": 187,
           "config": null,
           "blocks": [
             {
@@ -19594,8 +19620,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 162,
-              "end_line": 166,
+              "line": 183,
+              "end_line": 187,
               "source": "LIMIT = 3\nprint(\"starting\")\nprint(LIMIT)\n"
             }
           ]

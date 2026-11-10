@@ -101,6 +101,7 @@ use crate::common::{self, check, read};
 #[test_case("up-removed-ast-node", "up_removed_ast_node_shadowed.py", "py314" ; "removed_ast_node_shadowed")]
 #[test_case("early-assignment", "early_assignment.py", "py314" ; "early_assignment")]
 #[test_case("early-assignment", "early_assignment_blocked.py", "py314" ; "early_assignment_blocked")]
+#[test_case("early-assignment", "early_assignment_comment.py", "py314" ; "early_assignment_comment")]
 #[test_case("super-forwarding-method", "super_forwarding_method.py", "py314" ; "super_forwarding_method")]
 #[test_case("super-forwarding-method", "super_forwarding_method_decorated.py", "py314" ; "super_forwarding_method_decorated")]
 #[test_case("super-forwarding-method", "super_forwarding_method_class_body.py", "py314" ; "super_forwarding_method_class_body")]

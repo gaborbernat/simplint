@@ -1,0 +1,20 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+3:5 SMP526 `limit` is assigned above the statements that do not use it; assign it just before its first use
+10:5 SMP526 `limit` is assigned above the statements that do not use it; assign it just before its first use [fix: Move the assignment down]
+--- fixed (1 applied, 1 remaining) ---
+def run(items, prepare, log, send):
+    # Retries allowed before giving up: the upstream API drops one call in three.
+    limit = 3
+    prepare(items)
+    log(items)
+    return send(items, limit)
+
+
+def plain(items, prepare, log, send):
+    prepare(items)
+    log(items)
+    limit = 3
+    return send(items, limit)
