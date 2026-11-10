@@ -136,7 +136,6 @@ lint.select = [
 lint.ignore = [
   "CPY",                                       # the project omits copyright headers
   "D1",                                        # names and types document the code
-  "DOC",                                       # documentation rules conflict with the docstring-free style
   "incorrect-blank-line-before-class",         # incompatible with D211
   "missing-trailing-comma",                    # conflicts with the formatter
   "multi-line-summary-first-line",             # incompatible with D213
@@ -152,8 +151,6 @@ lint.per-file-ignores."tasks/**.py" = [
 ]
 lint.per-file-ignores."tests/**/*.py" = [
   "assert",                               # asserts allowed in tests
-  "D",                                    # test names document behavior
-  "FBT",                                  # positional booleans keep cases compact
   "implicit-namespace-package",           # test modules are not packages
   "magic-value-comparison",               # assertions need literal expected values
   "subprocess-without-shell-equals-true", # tests pass trusted commands
