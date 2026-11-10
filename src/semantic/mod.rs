@@ -16,7 +16,7 @@ use ruff_python_semantic::analyze::typing::{
     is_mutable_func,
 };
 use ruff_python_semantic::{
-    Binding as RuffBinding, BindingId, BindingKind as RuffBindingKind, ExecutionContext, ScopeKind, SemanticModel,
+    Binding as RuffBinding, BindingId, BindingKind as RuffBindingKind, ScopeKind, SemanticModel,
 };
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
