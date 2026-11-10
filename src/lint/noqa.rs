@@ -202,20 +202,33 @@ impl<'a> Suppressions<'a> {
     ) -> (usize, String) {
         let mut codes: BTreeMap<TextSize, BTreeSet<String>> = BTreeMap::new();
         for (diagnostic, line) in pending {
-            if self
-                .lines
-                .get(line)
-                .is_some_and(|directives| directives.noqa.as_ref().is_some_and(|(_, noqa)| noqa.is_blanket()))
+            let directives = self.lines.get(line);
+            if directives.is_some_and(|directives| directives.noqa.as_ref().is_some_and(|(_, noqa)| noqa.is_blanket()))
             {
                 continue;
             }
-            let code = diagnostic.secondary_code().expect("a rule diagnostic has a code");
-            let name = if matches!(kind, SuppressionKind::Ignore) {
-                Rule::from_code(code.as_str()).map_or_else(|| code.to_string(), |rule| rule.name().to_owned())
-            } else {
-                code.to_string()
+            let code = diagnostic.secondary_code().expect("a rule diagnostic has a code").as_str();
+            let line_codes = codes.entry(*line).or_default();
+            let name = match kind {
+                SuppressionKind::Noqa => code.to_owned(),
+                // Merging into the line's ignore comment renames its numeric codes, which settles SMP008 there.
+                SuppressionKind::Ignore
+                    if code == Rule::NumericIgnore.code()
+                        && directives.and_then(|directives| directives.ignore.as_ref()).is_some_and(
+                            |(start, _)| {
+                                diagnostic.range().is_some_and(|range| {
+                                    TextRange::new(*start, self.source.line_end(*start)).contains(range.start())
+                                })
+                            },
+                        ) =>
+                {
+                    continue;
+                }
+                SuppressionKind::Ignore => {
+                    Rule::from_code(code).map_or_else(|| code.to_owned(), |rule| rule.name().to_owned())
+                }
             };
-            codes.entry(*line).or_default().insert(name);
+            line_codes.insert(name);
         }
         let line_ending = self.stylist.line_ending();
         let mut output = String::with_capacity(self.source.len());

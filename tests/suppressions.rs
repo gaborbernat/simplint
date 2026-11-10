@@ -154,6 +154,23 @@ fn add_suppression_keeps_what_follows_the_codes(flag: &str, source: &str, expect
     assert_eq!(read(root.path(), "module.py"), expected);
 }
 
+// The merge renames the comment's numeric codes, which leaves nothing for a `numeric-ignore` selector to silence there.
+#[test]
+fn add_ignore_does_not_name_the_numeric_codes_it_renames() {
+    let root = project(&[(
+        "module.py",
+        "x = 1  # simplint: ignore[SMP601] kept\ny = 2  # simplint: ignore[SMP101] kept\n# simplint: ignore[SMP101]\n",
+    )]);
+    let result = check(root.path(), &["--select", "SMP101,SMP008", "--add-ignore"]);
+    assert_eq!(
+        (result, read(root.path(), "module.py")),
+        (
+            (0, String::new(), "Added 3 ignore comments.\n".to_owned()),
+            "x = 1  # simplint: ignore[missing-final, single-letter-name] kept\ny = 2  # simplint: ignore[single-letter-name] kept\n# simplint: ignore[single-letter-name]\n".to_owned()
+        )
+    );
+}
+
 #[test]
 fn add_ignore_counts_one_comment() {
     let root = project(&[("module.py", "x = 1")]);
