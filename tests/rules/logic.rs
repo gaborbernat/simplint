@@ -966,6 +966,10 @@ fn string_concatenation_before_python312(target: &str, source: &str, reported: u
 #[test_case("preview = true\nselect = [\"FURB113\"]\n", "xs = []\nxs.append(1)\nxs.append(2)\nxs = []\nxs.append(3)\nxs.append(4)\n", 1 ; "rebound_second_run_kept")]
 #[test_case("preview = true\nselect = [\"FURB113\"]\n", "def build() -> list[int]:\n    xs = []\n    xs.append(1)\n    xs.append(2)\n    return xs\n", 0 ; "function_scope")]
 #[test_case("preview = true\nselect = [\"FURB113\"]\n", "def build(xs: list[int]) -> None:\n    xs = []\n    xs.append(1)\n    xs.append(2)\n", 1 ; "parameter_rebound_kept")]
+#[test_case("preview = true\nselect = [\"FURB113\"]\n", "xs = []\nxs.append(1)\nprint(xs)\nxs.append(2)\n", 1 ; "call_between")]
+#[test_case("preview = true\nselect = [\"FURB113\"]\n", "xs = []\nxs.append(1)\nxs\nxs.append(2)\n", 1 ; "expression_between")]
+#[test_case("preview = true\nselect = [\"FURB113\"]\n", "xs = []\nxs.append(1)\nxs.copy().append(0)\nxs.append(2)\n", 1 ; "append_on_call_between")]
+#[test_case("preview = true\nselect = [\"FURB113\"]\n", "xs = []\nxs.append(1)\nxs.insert(0, 0)\nxs.append(2)\n", 1 ; "insert_between")]
 fn collection_built_by_statements_leaves_repeated_appends_to_ruff(config: &str, source: &str, reported: usize) {
     let ruff = format!("[tool.ruff.lint]\n{config}");
     let root = common::project(&[("pyproject.toml", ruff.as_str()), ("module.py", source)]);

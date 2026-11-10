@@ -21,7 +21,9 @@ use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
 use crate::project::FileIndex;
 use crate::rules::FileState;
-use crate::semantic::Semantic;
+use crate::rules::layout::leaves_django_order_to_ruff;
+use crate::rules::logic::counts_ruff_appends;
+use crate::semantic::{RuffMatches, Semantic};
 use crate::settings::FileSettings;
 use crate::syntax::{Exports, dunder_all, for_each_body, string_values};
 
@@ -209,7 +211,17 @@ impl<'a> Checker<'a> {
 
     pub fn semantic(&self) -> &Semantic<'a> {
         self.semantic.get_or_init(|| {
-            Semantic::new(self.path, self.body(), self.settings.from_ruff.target_version, self.linter.ruff.settings)
+            let matches = RuffMatches {
+                list_appends: counts_ruff_appends(self.settings),
+                django_reports: leaves_django_order_to_ruff(self.settings),
+            };
+            Semantic::new(
+                self.path,
+                self.body(),
+                self.settings.from_ruff.target_version,
+                self.linter.ruff.settings,
+                matches,
+            )
         })
     }
 
