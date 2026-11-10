@@ -19,6 +19,7 @@ use crate::lint::registry::RuleSet;
 use crate::project::{Ending, cache};
 use crate::run::{
     Diagnostics, Discovered, Mode, Resolved, add_suppressions, check_files, check_stdin, discover, linted_roots,
+    warn_missing,
 };
 use crate::settings::{FileSettings, Settings};
 
@@ -157,7 +158,8 @@ fn check_standard_input(cli: &CheckCommand, resolved: &Resolved, mode: &Mode) ->
 }
 
 fn show_settings(files: &[PathBuf], resolved: &Resolved, writer: &mut dyn Write) -> Result<()> {
-    let Discovered { python, resolver, .. } = discover(files, resolved)?;
+    let Discovered { python, resolver, missing, .. } = discover(files, resolved)?;
+    warn_missing(&missing);
     let Some(path) = python.first() else {
         bail!("No files found under the given path");
     };
@@ -239,6 +241,7 @@ fn write_list(writer: &mut dyn Write, name: &str, items: &[String]) -> std::io::
 
 fn show_files(files: &[PathBuf], resolved: &Resolved, writer: &mut dyn Write) -> Result<()> {
     let discovered = discover(files, resolved)?;
+    warn_missing(&discovered.missing);
     if discovered.python.is_empty() {
         warn_user_once!("No Python files found under the given path(s)");
     }

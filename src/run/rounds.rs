@@ -11,13 +11,14 @@ use std::hash::Hasher;
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_linter::package::PackageRoot;
 use ruff_linter::packaging::detect_package_root;
+use ruff_linter::registry::Rule as RuffRule;
 use ruff_linter::{SuppressionKind, warn_user_once};
 use ruff_python_ast::helpers::to_module_path;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::conflicts::{self, Scope};
 use super::discover::{Discovered, discover, linted_roots};
-use super::{Diagnostics, Mode, Resolved, StdinLint, lint_path, lint_stdin, write_source};
+use super::{Diagnostics, Mode, Resolved, StdinLint, io_error, lint_path, lint_stdin, warn_missing, write_source};
 use crate::lint::Linter;
 use crate::lint::registry::{Rule, RuleSet};
 use crate::project::cache::{self, FileKey};
@@ -36,7 +37,7 @@ pub(crate) fn add_suppressions(
 ) -> Result<usize> {
     // A suppression comment changes no file's facts, so one round is final.
     let roots = linted_roots(files);
-    let counts =
+    let (counts, missing) =
         for_each_file(files, resolved, None, None, None, Ending::Drop, |DiscoveredFile { path, linter, .. }| {
             let source = match std::fs::read_to_string(path) {
                 Ok(source) => source,
@@ -54,6 +55,7 @@ pub(crate) fn add_suppressions(
             }
             count
         })?;
+    warn_missing(&missing);
     Ok(counts.into_iter().flatten().flatten().sum())
 }
 
@@ -78,7 +80,7 @@ pub(crate) fn check_files(
     };
     let reuse =
         mode.fix.is_generate().then_some(&reuse as &(dyn Fn(&RunFile, &Cache, FileKey) -> Option<Diagnostics> + Sync));
-    let results =
+    let (results, missing) =
         for_each_file(files, resolved, cache_dir, mode.fix.is_apply().then_some(&rewrote), reuse, ending, |file| {
             let lint = |settled| lint_path(file.path, &file.linter, mode, settled);
             let Some((cache, key)) = file.cache else {
@@ -94,7 +96,19 @@ pub(crate) fn check_files(
             earlier
         })
     });
-    Ok(file_results.fold(Diagnostics::default(), |left, right| left + right))
+    Ok(file_results.fold(Diagnostics::default(), |left, right| left + right) + missing_diagnostics(missing, resolved))
+}
+
+// Ruff's `io-error` for each path the run names that does not exist, or a warning each while that rule is off.
+fn missing_diagnostics(missing: Vec<(PathBuf, String)>, resolved: &Resolved) -> Diagnostics {
+    if !resolved.pyproject_config.settings.linter.rules.enabled(RuffRule::IOError) {
+        warn_missing(&missing);
+        return Diagnostics::default();
+    }
+    Diagnostics {
+        inner: missing.into_iter().map(|(path, message)| io_error(&path, message)).collect(),
+        ..Diagnostics::default()
+    }
 }
 
 // Ruff's `check_stdin`: the source comes from standard input, and nothing else is indexed. Otherwise it is linted as
@@ -135,9 +149,14 @@ pub(crate) fn check_stdin(path: &Path, source: &str, resolved: &Resolved, mode: 
     Ok(passes.pop().and_then(|mut file| file.pop()).expect("the standard input is linted once"))
 }
 
+// The passes of a run's files, which are `None` when there is no Python file to check, and the paths the run names that
+// do not exist, with the message each reports.
+type Walked<T> = (Option<Vec<Vec<T>>>, Vec<(PathBuf, String)>);
+
 // Ruff's per-file loop over the discovered files, with the import index of the whole run built first, and the caches
 // in `cache_dir` read before and written after. With `rewrote` set, the files a round rewrites are indexed and linted
-// again, as `lint_rounds` tells. `None` when there is no Python file to check.
+// again, as `lint_rounds` tells. The paths the run names that do not exist come back with the passes, for the caller
+// to report.
 fn for_each_file<T: Send>(
     files: &[PathBuf],
     resolved: &Resolved,
@@ -146,13 +165,13 @@ fn for_each_file<T: Send>(
     reuse: Option<&Reuse<'_, T>>,
     ending: Ending,
     work: impl Fn(&DiscoveredFile) -> T + Sync,
-) -> Result<Option<Vec<Vec<T>>>> {
+) -> Result<Walked<T>> {
     let start = Instant::now();
-    let Discovered { python, unlinted, resolver } = discover(files, resolved)?;
+    let Discovered { python, unlinted, resolver, missing } = discover(files, resolved)?;
     debug!("Identified files to lint in: {:?}", start.elapsed());
     if python.is_empty() {
         warn_user_once!("No Python files found under the given path(s)");
-        return Ok(None);
+        return Ok((None, missing));
     }
     let paths: Vec<&Path> = python.iter().chain(&unlinted).map(PathBuf::as_path).collect();
     let settings: Vec<Arc<Settings>> =
@@ -185,11 +204,12 @@ fn for_each_file<T: Send>(
     }
     // The documentation walk reads files of its own, so it runs while the caches open and the facts are collected,
     // which on a warm run is most of what comes before the index.
-    std::thread::scope(|scope| {
+    let passes = std::thread::scope(|scope| {
         let docs = scope.spawn(|| documentation(&linted, &resolved.settings_resolver.root.root, rules, cache_dir));
         let joined = || docs.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic));
         index_cached(&indexed, parts, (&roots, &packages), cache_dir, joined, (rewrote, reuse), ending, work)
-    })
+    })?;
+    Ok((passes, missing))
 }
 
 // A check of a file's cached reports, given the file, its cache and its key, from which the run skips the index.

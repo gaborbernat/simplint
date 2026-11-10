@@ -32,7 +32,7 @@ use crate::lint::Linter;
 use crate::settings::SettingsResolver;
 
 pub(crate) use cache::FullDisplay;
-pub(crate) use discover::{Discovered, discover, linted_roots, redact_extended, within};
+pub(crate) use discover::{Discovered, discover, linted_roots, redact_extended, warn_missing, within};
 pub(crate) use rounds::{add_suppressions, check_files, check_stdin};
 
 // Ruff's configuration and simplint's, from the same command line, as a run reads them.
@@ -71,10 +71,14 @@ impl Diagnostics {
             warn!("{}{}{} {message}", "Failed to lint ".bold(), relativize_path(path).bold(), ":".bold());
             return Self::default();
         }
-        let file = SourceFileBuilder::new(path.to_string_lossy(), "").finish();
-        let diagnostic = IOError { message }.into_diagnostic(TextRange::default(), &file);
-        Self { inner: vec![diagnostic], ..Self::default() }
+        Self { inner: vec![io_error(path, message)], ..Self::default() }
     }
+}
+
+// Ruff's `io-error` diagnostic for a path that cannot be read, written or found.
+pub(crate) fn io_error(path: &Path, message: String) -> Diagnostic {
+    let file = SourceFileBuilder::new(path.to_string_lossy(), "").finish();
+    IOError { message }.into_diagnostic(TextRange::default(), &file)
 }
 
 impl Add for Diagnostics {
