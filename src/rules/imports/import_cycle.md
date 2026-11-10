@@ -60,7 +60,8 @@ Ruff has no lint rule for import cycles, so the two do not overlap.
 
 simplint builds a graph of the modules of the run whose imports run when the module loads. A module reports once, on its
 first import into a cycle of the graph, and the report names the cycle: a cycle of two modules gives two reports, one in
-each module, each on the import that closes the cycle from that module.
+each module, each on the import that closes the cycle from that module. A cycle of more than eight modules names its
+first eight, then how many it leaves out, before the module it closes on.
 
 ### Active on
 

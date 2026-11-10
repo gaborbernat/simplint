@@ -6618,7 +6618,7 @@
     "name": "import-cycle",
     "summary": "Runtime imports that close a cycle between modules",
     "fix": "None",
-    "explanation": "Flags a runtime import that closes a cycle of modules which import each other when they load.\n\n## Why is this bad?\n\nA module runs its imports before its own body. When two modules import each other at load time, whichever loads first\nsees the other half-built: a name it imports from the other may not exist yet, and the failure depends on which module\nthe program imports first. The cycle also ties the two modules together, so neither can be read, tested or moved on its\nown.\n\nIn the example below, `orders.py` and `cart.py` import each other at the top of their files.\n\n## Example\n\n```python report file=orders.py\nfrom cart import total\n\n\ndef place(items):\n    return total(items)\n```\n\n```python report file=cart.py\nfrom orders import place\n\n\ndef total(items):\n    return sum(items)\n\n\ndef checkout(items):\n    return place(items)\n```\n\nImport `place` inside `checkout` instead, where it runs after both modules have loaded:\n\n```python context file=orders.py\nfrom cart import total\n\n\ndef place(items):\n    return total(items)\n```\n\n```python ok file=cart.py\ndef total(items):\n    return sum(items)\n\n\ndef checkout(items):\n    from orders import place\n\n    return place(items)\n```\n\n## Conflicts with Ruff\n\nRuff has no lint rule for import cycles, so the two do not overlap.\n\n## What it does\n\nsimplint builds a graph of the modules of the run whose imports run when the module loads. A module reports once, on its\nfirst import into a cycle of the graph, and the report names the cycle: a cycle of two modules gives two reports, one in\neach module, each on the import that closes the cycle from that module.\n\n### Active on\n\n- **`import` and `from ... import` statements at module level**, including those in a top-level `if` or `try` block and\n  in a class body, which also run when the module loads.\n\n  ```python report file=a.py\n  import b\n  ```\n\n  ```python report file=b.py\n  import a\n  ```\n\n- **A submodule's import of a name its package's `__init__.py` defines**, when the `__init__.py` imports the submodule:\n  the package's `__init__.py` has not finished when the submodule runs. A `from . import name` that names a submodule\n  imports that submodule instead.\n\n  ```python report file=pkg/__init__.py\n  from .core import run\n\n  VERSION = \"1\"\n  ```\n\n  ```python report file=pkg/core.py\n  from . import VERSION\n\n\n  def run():\n      return VERSION\n  ```\n\n- **Imports under a platform check**, such as `if sys.platform == \"win32\":`, since the cycle breaks the program on that\n  platform.\n\n  ```python report file=a.py\n  import b\n  ```\n\n  ```python report file=b.py\n  import sys\n\n  if sys.platform == \"win32\":\n      import a\n  ```\n\n### Exceptions\n\n- **Imports inside a function**, which run when the function is called, and not when the module loads.\n\n  ```python context file=a.py\n  VALUE = 1\n  ```\n\n  ```python ok file=b.py\n  def load():\n      import a\n\n      return a.VALUE\n  ```\n\n- **Imports under `if TYPE_CHECKING:`**, which a type checker reads but the interpreter never runs.\n\n  ```python context file=a.py\n  VALUE = 1\n  ```\n\n  ```python ok file=b.py\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      import a\n  ```\n\n- **Imports under a [`__main__` guard](https://docs.python.org/3/library/__main__.html#name-main)**, such as\n  `if __name__ == \"__main__\":`, which run only when the file is executed as a script.\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  VALUE = 1\n\n  if __name__ == \"__main__\":\n      import a\n  ```\n\n- **Imports under an `if` whose test is false at run time**: a false constant such as `False`, `0` or `None`, or a\n  module-level name the module binds once to one, as `_false = 0` does to keep an import that only tools read.\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  _false = 0\n  if _false:\n      import a\n  ```\n\n- **Imports under a `sys.version_info` check that only older Pythons than the project's target pass**, such as\n  `if sys.version_info < (3, 8):` for a project that targets Python 3.11, or the `else` of\n  `if sys.version_info >= (3, 8):`. A check of the first item, as `sys.version_info[0] == 2` or\n  `sys.version_info.major < 3`, counts too.\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  import sys\n\n  if sys.version_info < (3, 8):\n      import a\n  ```\n\n- **Imports in an `except ImportError:` or `except ModuleNotFoundError:` clause**, a fallback that runs only when the\n  import its `try` attempts fails, as when a pure Python module stands in for a missing C accelerator.\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  try:\n      from _speedups import parse\n  except ImportError:\n      from a import parse\n  ```\n\n- **Test modules**, which the run tells by their names and the `tests` and `test` directories of the project. Tests\n  import each other as fixtures, and the tests of an import system build cycles on purpose.\n\n  ```python context file=tests/helpers.py\n  import tests.test_load\n  ```\n\n  ```python ok file=tests/test_load.py\n  import tests.helpers\n  ```\n\n- **`lazy` imports**, which Python 3.15 binds on first use.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.15\"\n  ```\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  lazy import a\n  ```\n\n### Undetected cases\n\nImports that a program runs by name, such as `importlib.import_module(\"a\")`, are not in the graph, and neither is the\nimport of a package's `__init__.py` that Python runs before a submodule.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#2914](https://github.com/astral-sh/ruff/issues/2914) and\n  [#970](https://github.com/astral-sh/ruff/issues/970) (pylint `cyclic-import`); pull request\n  [#3880](https://github.com/astral-sh/ruff/pull/3880) was closed unmerged.\n- [pylint](https://github.com/pylint-dev/pylint) reports the same cycles as\n  [cyclic-import](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/cyclic-import.html), with no fix.\n",
+    "explanation": "Flags a runtime import that closes a cycle of modules which import each other when they load.\n\n## Why is this bad?\n\nA module runs its imports before its own body. When two modules import each other at load time, whichever loads first\nsees the other half-built: a name it imports from the other may not exist yet, and the failure depends on which module\nthe program imports first. The cycle also ties the two modules together, so neither can be read, tested or moved on its\nown.\n\nIn the example below, `orders.py` and `cart.py` import each other at the top of their files.\n\n## Example\n\n```python report file=orders.py\nfrom cart import total\n\n\ndef place(items):\n    return total(items)\n```\n\n```python report file=cart.py\nfrom orders import place\n\n\ndef total(items):\n    return sum(items)\n\n\ndef checkout(items):\n    return place(items)\n```\n\nImport `place` inside `checkout` instead, where it runs after both modules have loaded:\n\n```python context file=orders.py\nfrom cart import total\n\n\ndef place(items):\n    return total(items)\n```\n\n```python ok file=cart.py\ndef total(items):\n    return sum(items)\n\n\ndef checkout(items):\n    from orders import place\n\n    return place(items)\n```\n\n## Conflicts with Ruff\n\nRuff has no lint rule for import cycles, so the two do not overlap.\n\n## What it does\n\nsimplint builds a graph of the modules of the run whose imports run when the module loads. A module reports once, on its\nfirst import into a cycle of the graph, and the report names the cycle: a cycle of two modules gives two reports, one in\neach module, each on the import that closes the cycle from that module. A cycle of more than eight modules names its\nfirst eight, then how many it leaves out, before the module it closes on.\n\n### Active on\n\n- **`import` and `from ... import` statements at module level**, including those in a top-level `if` or `try` block and\n  in a class body, which also run when the module loads.\n\n  ```python report file=a.py\n  import b\n  ```\n\n  ```python report file=b.py\n  import a\n  ```\n\n- **A submodule's import of a name its package's `__init__.py` defines**, when the `__init__.py` imports the submodule:\n  the package's `__init__.py` has not finished when the submodule runs. A `from . import name` that names a submodule\n  imports that submodule instead.\n\n  ```python report file=pkg/__init__.py\n  from .core import run\n\n  VERSION = \"1\"\n  ```\n\n  ```python report file=pkg/core.py\n  from . import VERSION\n\n\n  def run():\n      return VERSION\n  ```\n\n- **Imports under a platform check**, such as `if sys.platform == \"win32\":`, since the cycle breaks the program on that\n  platform.\n\n  ```python report file=a.py\n  import b\n  ```\n\n  ```python report file=b.py\n  import sys\n\n  if sys.platform == \"win32\":\n      import a\n  ```\n\n### Exceptions\n\n- **Imports inside a function**, which run when the function is called, and not when the module loads.\n\n  ```python context file=a.py\n  VALUE = 1\n  ```\n\n  ```python ok file=b.py\n  def load():\n      import a\n\n      return a.VALUE\n  ```\n\n- **Imports under `if TYPE_CHECKING:`**, which a type checker reads but the interpreter never runs.\n\n  ```python context file=a.py\n  VALUE = 1\n  ```\n\n  ```python ok file=b.py\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      import a\n  ```\n\n- **Imports under a [`__main__` guard](https://docs.python.org/3/library/__main__.html#name-main)**, such as\n  `if __name__ == \"__main__\":`, which run only when the file is executed as a script.\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  VALUE = 1\n\n  if __name__ == \"__main__\":\n      import a\n  ```\n\n- **Imports under an `if` whose test is false at run time**: a false constant such as `False`, `0` or `None`, or a\n  module-level name the module binds once to one, as `_false = 0` does to keep an import that only tools read.\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  _false = 0\n  if _false:\n      import a\n  ```\n\n- **Imports under a `sys.version_info` check that only older Pythons than the project's target pass**, such as\n  `if sys.version_info < (3, 8):` for a project that targets Python 3.11, or the `else` of\n  `if sys.version_info >= (3, 8):`. A check of the first item, as `sys.version_info[0] == 2` or\n  `sys.version_info.major < 3`, counts too.\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  import sys\n\n  if sys.version_info < (3, 8):\n      import a\n  ```\n\n- **Imports in an `except ImportError:` or `except ModuleNotFoundError:` clause**, a fallback that runs only when the\n  import its `try` attempts fails, as when a pure Python module stands in for a missing C accelerator.\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  try:\n      from _speedups import parse\n  except ImportError:\n      from a import parse\n  ```\n\n- **Test modules**, which the run tells by their names and the `tests` and `test` directories of the project. Tests\n  import each other as fixtures, and the tests of an import system build cycles on purpose.\n\n  ```python context file=tests/helpers.py\n  import tests.test_load\n  ```\n\n  ```python ok file=tests/test_load.py\n  import tests.helpers\n  ```\n\n- **`lazy` imports**, which Python 3.15 binds on first use.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.15\"\n  ```\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  lazy import a\n  ```\n\n### Undetected cases\n\nImports that a program runs by name, such as `importlib.import_module(\"a\")`, are not in the graph, and neither is the\nimport of a package's `__init__.py` that Python runs before a submodule.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#2914](https://github.com/astral-sh/ruff/issues/2914) and\n  [#970](https://github.com/astral-sh/ruff/issues/970) (pylint `cyclic-import`); pull request\n  [#3880](https://github.com/astral-sh/ruff/pull/3880) was closed unmerged.\n- [pylint](https://github.com/pylint-dev/pylint) reports the same cycles as\n  [cyclic-import](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/cyclic-import.html), with no fix.\n",
     "examples": {
       "parsed": [
         {
@@ -6675,8 +6675,8 @@
         },
         {
           "section": "What it does",
-          "line": 70,
-          "end_line": 76,
+          "line": 71,
+          "end_line": 77,
           "config": null,
           "blocks": [
             {
@@ -6684,8 +6684,8 @@
               "language": "python",
               "file": "a.py",
               "named": true,
-              "line": 70,
-              "end_line": 72,
+              "line": 71,
+              "end_line": 73,
               "source": "import b\n"
             },
             {
@@ -6693,16 +6693,16 @@
               "language": "python",
               "file": "b.py",
               "named": true,
-              "line": 74,
-              "end_line": 76,
+              "line": 75,
+              "end_line": 77,
               "source": "import a\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 82,
-          "end_line": 94,
+          "line": 83,
+          "end_line": 95,
           "config": null,
           "blocks": [
             {
@@ -6710,8 +6710,8 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 82,
-              "end_line": 86,
+              "line": 83,
+              "end_line": 87,
               "source": "from .core import run\n\nVERSION = \"1\"\n"
             },
             {
@@ -6719,16 +6719,16 @@
               "language": "python",
               "file": "pkg/core.py",
               "named": true,
-              "line": 88,
-              "end_line": 94,
+              "line": 89,
+              "end_line": 95,
               "source": "from . import VERSION\n\n\ndef run():\n    return VERSION\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 99,
-          "end_line": 108,
+          "line": 100,
+          "end_line": 109,
           "config": null,
           "blocks": [
             {
@@ -6736,8 +6736,8 @@
               "language": "python",
               "file": "a.py",
               "named": true,
-              "line": 99,
-              "end_line": 101,
+              "line": 100,
+              "end_line": 102,
               "source": "import b\n"
             },
             {
@@ -6745,16 +6745,16 @@
               "language": "python",
               "file": "b.py",
               "named": true,
-              "line": 103,
-              "end_line": 108,
+              "line": 104,
+              "end_line": 109,
               "source": "import sys\n\nif sys.platform == \"win32\":\n    import a\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 114,
-          "end_line": 123,
+          "line": 115,
+          "end_line": 124,
           "config": null,
           "blocks": [
             {
@@ -6762,8 +6762,8 @@
               "language": "python",
               "file": "a.py",
               "named": true,
-              "line": 114,
-              "end_line": 116,
+              "line": 115,
+              "end_line": 117,
               "source": "VALUE = 1\n"
             },
             {
@@ -6771,16 +6771,16 @@
               "language": "python",
               "file": "b.py",
               "named": true,
-              "line": 118,
-              "end_line": 123,
+              "line": 119,
+              "end_line": 124,
               "source": "def load():\n    import a\n\n    return a.VALUE\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 127,
-          "end_line": 136,
+          "line": 128,
+          "end_line": 137,
           "config": null,
           "blocks": [
             {
@@ -6788,8 +6788,8 @@
               "language": "python",
               "file": "a.py",
               "named": true,
-              "line": 127,
-              "end_line": 129,
+              "line": 128,
+              "end_line": 130,
               "source": "VALUE = 1\n"
             },
             {
@@ -6797,16 +6797,16 @@
               "language": "python",
               "file": "b.py",
               "named": true,
-              "line": 131,
-              "end_line": 136,
+              "line": 132,
+              "end_line": 137,
               "source": "from typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    import a\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 141,
-          "end_line": 150,
+          "line": 142,
+          "end_line": 151,
           "config": null,
           "blocks": [
             {
@@ -6814,8 +6814,8 @@
               "language": "python",
               "file": "a.py",
               "named": true,
-              "line": 141,
-              "end_line": 143,
+              "line": 142,
+              "end_line": 144,
               "source": "import b\n"
             },
             {
@@ -6823,16 +6823,16 @@
               "language": "python",
               "file": "b.py",
               "named": true,
-              "line": 145,
-              "end_line": 150,
+              "line": 146,
+              "end_line": 151,
               "source": "VALUE = 1\n\nif __name__ == \"__main__\":\n    import a\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 155,
-          "end_line": 163,
+          "line": 156,
+          "end_line": 164,
           "config": null,
           "blocks": [
             {
@@ -6840,8 +6840,8 @@
               "language": "python",
               "file": "a.py",
               "named": true,
-              "line": 155,
-              "end_line": 157,
+              "line": 156,
+              "end_line": 158,
               "source": "import b\n"
             },
             {
@@ -6849,16 +6849,16 @@
               "language": "python",
               "file": "b.py",
               "named": true,
-              "line": 159,
-              "end_line": 163,
+              "line": 160,
+              "end_line": 164,
               "source": "_false = 0\nif _false:\n    import a\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 170,
-          "end_line": 179,
+          "line": 171,
+          "end_line": 180,
           "config": null,
           "blocks": [
             {
@@ -6866,8 +6866,8 @@
               "language": "python",
               "file": "a.py",
               "named": true,
-              "line": 170,
-              "end_line": 172,
+              "line": 171,
+              "end_line": 173,
               "source": "import b\n"
             },
             {
@@ -6875,16 +6875,16 @@
               "language": "python",
               "file": "b.py",
               "named": true,
-              "line": 174,
-              "end_line": 179,
+              "line": 175,
+              "end_line": 180,
               "source": "import sys\n\nif sys.version_info < (3, 8):\n    import a\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 184,
-          "end_line": 193,
+          "line": 185,
+          "end_line": 194,
           "config": null,
           "blocks": [
             {
@@ -6892,8 +6892,8 @@
               "language": "python",
               "file": "a.py",
               "named": true,
-              "line": 184,
-              "end_line": 186,
+              "line": 185,
+              "end_line": 187,
               "source": "import b\n"
             },
             {
@@ -6901,16 +6901,16 @@
               "language": "python",
               "file": "b.py",
               "named": true,
-              "line": 188,
-              "end_line": 193,
+              "line": 189,
+              "end_line": 194,
               "source": "try:\n    from _speedups import parse\nexcept ImportError:\n    from a import parse\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 198,
-          "end_line": 204,
+          "line": 199,
+          "end_line": 205,
           "config": null,
           "blocks": [
             {
@@ -6918,8 +6918,8 @@
               "language": "python",
               "file": "tests/helpers.py",
               "named": true,
-              "line": 198,
-              "end_line": 200,
+              "line": 199,
+              "end_line": 201,
               "source": "import tests.test_load\n"
             },
             {
@@ -6927,19 +6927,19 @@
               "language": "python",
               "file": "tests/test_load.py",
               "named": true,
-              "line": 202,
-              "end_line": 204,
+              "line": 203,
+              "end_line": 205,
               "source": "import tests.helpers\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 208,
-          "end_line": 220,
+          "line": 209,
+          "end_line": 221,
           "config": {
-            "line": 208,
-            "end_line": 212,
+            "line": 209,
+            "end_line": 213,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n"
           },
           "blocks": [
@@ -6948,8 +6948,8 @@
               "language": "python",
               "file": "a.py",
               "named": true,
-              "line": 214,
-              "end_line": 216,
+              "line": 215,
+              "end_line": 217,
               "source": "import b\n"
             },
             {
@@ -6957,8 +6957,8 @@
               "language": "python",
               "file": "b.py",
               "named": true,
-              "line": 218,
-              "end_line": 220,
+              "line": 219,
+              "end_line": 221,
               "source": "lazy import a\n"
             }
           ]

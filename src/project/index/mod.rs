@@ -42,7 +42,7 @@ use self::exceptions::exception_classes;
 use self::hatch::hatch_hook_classes;
 use self::reach::{StarTargets, library_api, reach_by_last_name, reexport, signature_reached, unqualified};
 use self::resolve::{Unreached, normalized, resolve};
-use self::run_imports::{RunImports, run_import_kinds};
+use self::run_imports::{Members, RunImports, run_import_kinds};
 
 // Where imports resolve, as `ruff analyze graph` searches: the configured `src` directories first, then the directory
 // above each package.
@@ -229,8 +229,10 @@ pub struct Project {
     pub(super) hook_classes: FxHashMap<FileId, FxHashSet<String>>,
     // Whether each name a file imports from a file of the run is a class there, by the name it binds.
     pub(super) run_imports: FxHashMap<FileId, FxHashMap<String, bool>>,
-    // The members of each module a file binds by importing a file of the run as a module, by the name it binds.
-    pub(super) run_modules: FxHashMap<FileId, FxHashMap<String, FxHashMap<String, bool>>>,
+    // The file each module a file binds by importing a file of the run as a module names, by the name it binds.
+    pub(super) run_modules: FxHashMap<FileId, FxHashMap<String, FileId>>,
+    // The members of each file of the run that `run_modules` names.
+    pub(super) run_members: FxHashMap<FileId, Members>,
     // The classes and aliases each file defines that another exported name's signature reaches.
     pub(super) api_reached: FxHashMap<FileId, FxHashSet<String>>,
     pub(super) library_reached: FxHashMap<FileId, FxHashSet<String>>,
@@ -367,7 +369,7 @@ impl Project {
         let (aside, ()) = rayon::join(
             || {
                 let (cycles, duplicates) = rayon::join(
-                    || runtime_cycles(runtime, &test_modules, ids_of),
+                    || runtime_cycles(runtime, &test_modules),
                     || duplicate_reports(&sources, &test_modules, ids_of, duplicate_statements, distribution_roots),
                 );
                 (cycles, duplicates, RunReads::collect(&indexed))
@@ -405,7 +407,7 @@ impl Project {
         let entry_only = entry_uses(&entry_names, &bare_names, &mut imported, &mut from_others);
         opaque_names.extend(external.opaque.iter().cloned());
         let hook_classes = hatch_hook_classes(&resolver.modules, &bindings, &stars);
-        let RunImports { names: run_imports, modules: run_modules } =
+        let RunImports { names: run_imports, modules: run_modules, members: run_members } =
             run_import_kinds(&resolver.modules, &bindings, &stars);
         let (
             ((uncaught_exceptions, exception_types), module_uses),
@@ -465,6 +467,7 @@ impl Project {
             hook_classes,
             run_imports,
             run_modules,
+            run_members,
             api_reached,
             library_reached,
             inherited,
@@ -654,13 +657,9 @@ fn non_stub_facts<'a>(ids: &[FileId], files: &[(&Path, &'a FileFacts)]) -> FxHas
 
 // The cycles of the runtime imports outside test modules, which import each other as fixtures and deliberately close
 // cycles when they test the import system.
-fn runtime_cycles(
-    mut runtime: RuntimeGraph,
-    test_modules: &FxHashSet<FileId>,
-    files: &FileIds,
-) -> FxHashMap<FileId, Cycle> {
+fn runtime_cycles(mut runtime: RuntimeGraph, test_modules: &FxHashSet<FileId>) -> FxHashMap<FileId, Cycle> {
     runtime.retain(|file, _| !test_modules.contains(file));
-    cycles::cycles(runtime, files)
+    cycles::cycles(runtime)
 }
 
 // The statements each file shares with another, which `duplicate-code` reports. Stubs repeat each other's signatures by

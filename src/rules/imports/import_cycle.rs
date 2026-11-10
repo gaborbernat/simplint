@@ -3,10 +3,16 @@ use crate::lint::registry::Rule;
 use crate::lint::relative_path;
 
 pub fn import_cycle(checker: &Checker) {
-    let Some(cycle) = checker.project().import_cycle() else {
+    let project = checker.project();
+    let Some(cycle) = project.import_cycle() else {
         return;
     };
-    let chain: Vec<String> = cycle.chain().iter().map(|path| relative_path(path)).collect();
+    let (closing, kept) = cycle.chain().split_last().expect("a cycle closes on the file that reports it");
+    let mut chain: Vec<String> = kept.iter().map(|&id| relative_path(project.path_of(id))).collect();
+    if cycle.omitted() > 0 {
+        chain.push(format!("... ({} more)", cycle.omitted()));
+    }
+    chain.push(relative_path(project.path_of(*closing)));
     checker.report(
         Rule::ImportCycle,
         cycle.range(),

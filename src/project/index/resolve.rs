@@ -138,7 +138,13 @@ impl ImportResolver {
         let groups: Vec<&[usize]> = directories.values().flat_map(|group| group.chunks(GROUP)).collect();
         let (python_version, paths, names) = (self.python_version, &self.paths, &self.names);
         let run_paths: FxHashSet<PathBuf> = files.iter().map(|(path, _)| path.to_path_buf()).collect();
-        let run = RunFiles { names, paths: &run_paths };
+        let mut namesakes: FxHashMap<&str, Vec<&PathBuf>> = FxHashMap::default();
+        for path in &run_paths {
+            if let Some(name) = last_name(path) {
+                namesakes.entry(name).or_default().push(path);
+            }
+        }
+        let run = RunFiles { names, paths: &run_paths, namesakes: &namesakes };
         // The database is not `Sync`, so each worker resolves with its own clone, which shares the cached results.
         let fresh: Vec<Vec<(FileId, ModuleFacts<PathBuf>)>> = groups
             .par_iter()
@@ -181,6 +187,9 @@ pub(super) type ClassKey = (FileId, String);
 // A base class as the file it resolves to, if any, with the module and name the class imports it by.
 pub(super) type ClassBase<F = FileId> = (Option<F>, String, String);
 
+// A file and a name of it, as `class_home` walks the imports that re-export a class.
+type Node<'n> = (FileId, &'n str);
+
 // The class a name of a file is, following the imports that re-export it from the file that defines it. `is_class`
 // tells the classes of the run apart from the names they bind.
 pub(super) fn class_home<'b>(
@@ -196,26 +205,85 @@ pub(super) fn class_home<'b>(
     for (importer, source) in stars {
         starred.entry(*importer).or_default().push(*source);
     }
+    let memoize = acyclic(bindings, stars);
+    let known: RefCell<FxHashMap<(FileId, String), Option<ClassKey>>> = RefCell::default();
     move |file: FileId, name: &str| -> Option<ClassKey> {
-        let mut pending: Vec<(FileId, &str)> = vec![(file, name)];
-        let mut seen: FxHashSet<(FileId, &str)> = FxHashSet::default();
-        while let Some((file, name)) = pending.pop() {
-            if !seen.insert((file, name)) {
+        let mut pending: Vec<(Node, Option<Node>)> = vec![((file, name), None)];
+        let mut parents: FxHashMap<Node, Option<Node>> = FxHashMap::default();
+        let mut found = None;
+        while let Some((node, parent)) = pending.pop() {
+            if parents.contains_key(&node) {
                 continue;
             }
-            let key = (file, name.to_owned());
-            if is_class(&key) {
-                return Some(key);
+            parents.insert(node, parent);
+            let key = (node.0, node.1.to_owned());
+            let cached = if memoize { known.borrow().get(&key).cloned() } else { None };
+            match cached {
+                Some(Some(class)) => {
+                    found = Some((node, class));
+                    break;
+                }
+                Some(None) => continue,
+                None if is_class(&key) => {
+                    found = Some((node, key));
+                    break;
+                }
+                None => {}
             }
+            let (file, name) = node;
             for (bound, source, original) in reexports.get(&file).into_iter().flatten() {
                 if *bound == name {
-                    pending.push((*source, original));
+                    pending.push(((*source, *original), Some(node)));
                 }
             }
-            pending.extend(starred.get(&file).into_iter().flatten().map(|source| (*source, name)));
+            pending.extend(starred.get(&file).into_iter().flatten().map(|source| ((*source, name), Some(node))));
         }
-        None
+        if memoize {
+            match &found {
+                Some((node, class)) => {
+                    let mut known = known.borrow_mut();
+                    let mut at = Some(*node);
+                    while let Some(member) = at {
+                        known.insert((member.0, member.1.to_owned()), Some(class.clone()));
+                        at = parents[&member];
+                    }
+                }
+                None => {
+                    known.borrow_mut().extend(parents.keys().map(|&(file, name)| ((file, name.to_owned()), None)));
+                }
+            }
+        }
+        found.map(|(_, class)| class)
     }
+}
+
+// Whether no file reaches itself through the imports that bind names or star-import them. `class_home` memoises only
+// then: a walk that loops back to a file on its own path can reach a different class than a walk from a file it passed
+// through would, so the memo would change which class a name is.
+fn acyclic(bindings: &[(FileId, FileId, &ImportBinding)], stars: &[(FileId, FileId)]) -> bool {
+    let mut successors: FxHashMap<FileId, Vec<FileId>> = FxHashMap::default();
+    let mut indegree: FxHashMap<FileId, usize> = FxHashMap::default();
+    for (importer, source) in
+        bindings.iter().map(|(importer, source, _)| (*importer, *source)).chain(stars.iter().copied())
+    {
+        successors.entry(importer).or_default().push(source);
+        *indegree.entry(source).or_default() += 1;
+        indegree.entry(importer).or_default();
+    }
+    let files = indegree.len();
+    let mut ready: Vec<FileId> = indegree.iter().filter(|(_, degree)| **degree == 0).map(|(file, _)| *file).collect();
+    let mut ordered = 0;
+    while let Some(file) = ready.pop() {
+        ordered += 1;
+        for source in successors.get(&file).into_iter().flatten() {
+            let degree = indegree.entry(*source).or_default();
+            *degree -= 1;
+            if *degree == 0 {
+                ready.push(*source);
+            }
+        }
+    }
+    ordered == files
 }
 
 // The modules the names of a file bind, each with the file it resolves to when that file is not the file itself.
@@ -244,22 +312,25 @@ fn constructor_reads<'f>(
     if let Some(file) = resolved(module) {
         return vec![(file, uses.to_vec())];
     }
-    let last = module.rsplit('.').next().unwrap_or(module);
     let reads: Vec<NameUse> =
         uses.iter().filter(|name| matches!(name.kind, UseKind::Call(_)) && !name.discarded).cloned().collect();
-    let namesakes = run.paths.iter().filter(|path| last_name(path) == Some(last));
-    let namesakes: Vec<&PathBuf> = namesakes.collect();
-    if reads.is_empty() || namesakes.is_empty() || found(module) {
+    if reads.is_empty() {
         return Vec::new();
     }
-    namesakes.into_iter().map(|path| (path.clone(), reads.clone())).collect()
+    let last = module.rsplit('.').next().unwrap_or(module);
+    match run.namesakes.get(last) {
+        Some(namesakes) if !found(module) => namesakes.iter().map(|path| ((*path).clone(), reads.clone())).collect(),
+        _ => Vec::new(),
+    }
 }
 
-// The files of the run, by the names they are called by and by their paths, which resolution checks a module against.
+// The files of the run, by the names they are called by and by their paths, which resolution checks a module against,
+// and by their last names, which a module that resolves to no file is matched with.
 #[derive(Clone, Copy)]
 pub(super) struct RunFiles<'a> {
     names: &'a FxHashSet<String>,
     paths: &'a FxHashSet<PathBuf>,
+    namesakes: &'a FxHashMap<&'a str, Vec<&'a PathBuf>>,
 }
 
 // The files a file's names resolve to, with the names it uses from each, and the files it star-imports, or the last
