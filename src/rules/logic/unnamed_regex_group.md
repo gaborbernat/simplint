@@ -75,7 +75,9 @@ name to be read by, and the fix turns it into a non-capturing group instead, as 
   them. A match object that leaves the code that made it, by being returned, stored or passed on, may have its
   `groups()` read somewhere else, and a compiled pattern shared with another module can do the same, so the fix is
   unsafe. A `split` or `findall` call is left unfixed for that reason too: its result holds the groups' text. A name
-  bound more than once in its function is not followed, so its pattern keeps its groups.
+  bound more than once in its function is not followed, so its pattern keeps its groups. Neither is a pattern bound in a
+  class body, a name declared `global` or `nonlocal`, or a module name another module imports or `__all__` lists, since
+  the reads of those can come from code the rule does not see.
 
 ### Exceptions
 

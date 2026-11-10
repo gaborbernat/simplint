@@ -317,7 +317,7 @@ rules! {
     CognitiveComplexity => ("SMP529", "cognitive-complexity", "Functions whose cognitive complexity is over the limit", None, logic::cognitive_complexity { module }),
     DuplicateCode => ("SMP530", "duplicate-code", "Statements that another module repeats", None, logic::duplicate_code { module } reads [cross_file, STATEMENTS]),
     CollectionBuiltByStatements => ("SMP531", "collection-built-by-statements", "Empty collections filled by the statements right after them", Sometimes, logic::collection_built_by_statements { module }),
-    UnnamedRegexGroup => ("SMP532", "unnamed-regex-group", "Regular expressions with unnamed capture groups", Sometimes, logic::unnamed_regex_group { module }),
+    UnnamedRegexGroup => ("SMP532", "unnamed-regex-group", "Regular expressions with unnamed capture groups", Sometimes, logic::unnamed_regex_group { module } reads [cross_file]),
     UnexplainedRegex => ("SMP533", "unexplained-regex", "Regular expressions with four or more parts and no comments", None, logic::unexplained_regex { module }),
     MissingFinal => ("SMP601", "missing-final", "Module constants not annotated `Final`", Sometimes, typing::missing_final { module } reads [cross_file, COMPUTED_WRITES]),
     ImpreciseAnnotation => ("SMP602", "imprecise-annotation", "`object` and `Any` in annotations", None, typing::imprecise_annotation { statement }),

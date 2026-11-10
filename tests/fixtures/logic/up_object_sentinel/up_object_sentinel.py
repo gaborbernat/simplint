@@ -25,3 +25,15 @@ def run():
 
 
 _LOCAL_STRING = "object()"
+
+
+class Outer:
+    class Inner:
+        LIMIT = object()
+
+
+def make_local():
+    class Local:
+        MARK = object()
+
+    return Local

@@ -3,9 +3,11 @@ source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
 1:12 SMP511 `_MISSING` is a bare `object()`, whose repr is an address; `sentinel("_MISSING")` names it [unsafe fix: Create it with `sentinel`]
-14:16 SMP511 `SENTINEL` is a bare `object()`, whose repr is an address; `sentinel("SENTINEL")` names it [unsafe fix: Create it with `sentinel`]
-15:13 SMP511 `value` is a bare `object()`, whose repr is an address; `sentinel("value")` names it [unsafe fix: Create it with `sentinel`]
---- fixed (3 applied, 0 remaining) ---
+14:16 SMP511 `SENTINEL` is a bare `object()`, whose repr is an address; `sentinel("Config.SENTINEL")` names it [unsafe fix: Create it with `sentinel`]
+15:13 SMP511 `value` is a bare `object()`, whose repr is an address; `sentinel("Config.value")` names it [unsafe fix: Create it with `sentinel`]
+32:17 SMP511 `LIMIT` is a bare `object()`, whose repr is an address; `sentinel("Outer.Inner.LIMIT")` names it [unsafe fix: Create it with `sentinel`]
+37:16 SMP511 `MARK` is a bare `object()`, whose repr is an address; `sentinel("Local.MARK")` names it
+--- fixed (4 applied, 0 remaining) ---
 _MISSING = sentinel("_MISSING")
 _SHARED = object()
 _SHARED = 2
@@ -19,8 +21,8 @@ if MAYBE is None:
 
 
 class Config:
-    SENTINEL = sentinel("SENTINEL")
-    value = sentinel("value")
+    SENTINEL = sentinel("Config.SENTINEL")
+    value = sentinel("Config.value")
 
     def method(self):
         local = object()
@@ -33,3 +35,15 @@ def run():
 
 
 _LOCAL_STRING = "object()"
+
+
+class Outer:
+    class Inner:
+        LIMIT = sentinel("Outer.Inner.LIMIT")
+
+
+def make_local():
+    class Local:
+        MARK = object()
+
+    return Local

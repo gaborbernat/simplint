@@ -98,10 +98,11 @@ def parse_day(text):
 
 ### Fix
 
-The fix is safe for `.date()`. For `.time()` it is safe when the format is a string literal without `%z`, and unsafe
-otherwise: `time.strptime` keeps the zone that `.time()` drops, so the value changes with `%z`. When the class is
-imported by name, the fix adds `date` or `time` to that `from datetime import` line. It reports without a fix when the
-file already spells `date` or `time` outside an attribute, since the new name would take that binding's place.
+The fix is safe for `.date()`. For `.time()` it is safe when the format is a string literal without `%z` or `%:z`, and
+unsafe otherwise: `time.strptime` keeps the zone that `.time()` drops, so the value changes with either directive. When
+the class is imported by name, the fix adds `date` or `time` to that `from datetime import` line. It reports without a
+fix when the file already spells `date` or `time` outside an attribute, since the new name would take that binding's
+place.
 
 ## Other tools
 

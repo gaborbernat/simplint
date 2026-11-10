@@ -15247,7 +15247,7 @@
     "name": "up-object-sentinel",
     "summary": "`object()` placeholders `sentinel` would name",
     "fix": "Always",
-    "explanation": "Flags a module or class constant assigned a bare `object()` placeholder, which `sentinel` from Python 3.15 names.\n\n## Why is this bad?\n\nA bare `object()` reprs as an address, so a traceback or a debugger shows `<object object at 0x7f...>` where the name\nwould tell the reader which placeholder it is. `sentinel` takes the name and uses it in the repr.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\n_MISSING = object()\n```\n\nUse instead:\n\n```python ok\n_MISSING = sentinel(\"_MISSING\")\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  _MISSING = object()\n  ```\n\n## What it does\n\nReports a single-name assignment of a bare `object()` call, with no arguments, when it sits in a module body or a class\nbody and the name is assigned only once in the file.\n\n### Active on\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\nclass Config:\n    SENTINEL = object()\n```\n\n```python fixed\nclass Config:\n    SENTINEL = sentinel(\"SENTINEL\")\n```\n\n### Exceptions\n\n- **A name assigned again**: the second binding is a different object, so the placeholder is not the only one.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  _MISSING = object()\n  _MISSING = 2\n  ```\n\n- **A placeholder in a function**: a local is not visible by name outside the function.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  def run():\n      missing = object()\n      return missing\n  ```\n\n- **A file that already spells `sentinel`**: the name may be a different binding.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  sentinel = 1\n  _MISSING = object()\n  ```\n\n- **Target versions before 3.15**: the builtin does not exist there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  _MISSING = object()\n  ```\n\n### Fix\n\nThe fix is unsafe. The repr changes from an address to the name, which a program can read, and a pickled `sentinel`\nloads only when the module has an attribute of the same name, so the name must match the module attribute the value is\nstored under.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags a module or class constant assigned a bare `object()` placeholder, which `sentinel` from Python 3.15 names.\n\n## Why is this bad?\n\nA bare `object()` reprs as an address, so a traceback or a debugger shows `<object object at 0x7f...>` where the name\nwould tell the reader which placeholder it is. `sentinel` takes the name and uses it in the repr.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\n_MISSING = object()\n```\n\nUse instead:\n\n```python ok\n_MISSING = sentinel(\"_MISSING\")\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  _MISSING = object()\n  ```\n\n## What it does\n\nReports a single-name assignment of a bare `object()` call, with no arguments, when it sits in a module body or a class\nbody and the name is assigned only once in the file.\n\n### Active on\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\nclass Config:\n    SENTINEL = object()\n```\n\n```python fixed\nclass Config:\n    SENTINEL = sentinel(\"Config.SENTINEL\")\n```\n\n### Exceptions\n\n- **A name assigned again**: the second binding is a different object, so the placeholder is not the only one.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  _MISSING = object()\n  _MISSING = 2\n  ```\n\n- **A placeholder in a function**: a local is not visible by name outside the function.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  def run():\n      missing = object()\n      return missing\n  ```\n\n- **A file that already spells `sentinel`**: the name may be a different binding.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  sentinel = 1\n  _MISSING = object()\n  ```\n\n- **Target versions before 3.15**: the builtin does not exist there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  _MISSING = object()\n  ```\n\n### Fix\n\nThe fix is unsafe. The repr changes from an address to the name, which a program can read, and a pickled `sentinel`\nloads only from the attribute it is stored under, so a class attribute is named with its classes, as\n`sentinel(\"Config.SENTINEL\")`. A placeholder in a class inside a function is reported without a fix, since no qualified\nname reaches it.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -15339,7 +15339,7 @@
               "named": false,
               "line": 58,
               "end_line": 61,
-              "source": "class Config:\n    SENTINEL = sentinel(\"SENTINEL\")\n"
+              "source": "class Config:\n    SENTINEL = sentinel(\"Config.SENTINEL\")\n"
             }
           ]
         },
@@ -15823,7 +15823,7 @@
     "name": "up-strptime-date",
     "summary": "`datetime.strptime()` results narrowed to a `date` or `time`",
     "fix": "Sometimes",
-    "explanation": "Flags `datetime.strptime(...).date()` and `datetime.strptime(...).time()`, which Python 3.14 replaces with\n`date.strptime` and `time.strptime`.\n\n## Why is this bad?\n\n`datetime.strptime(text, format).date()` builds a full datetime to keep one part of it. From Python 3.14 `date` and\n`time` parse their own part, which says what the code reads and skips the intermediate value.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nfrom datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date()\n```\n\nUse instead:\n\n```python ok\nfrom datetime import date\n\n\ndef parse_day(text):\n    return date.strptime(text, \"%Y-%m-%d\")\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  from datetime import datetime\n\n\n  def parse_day(text):\n      return datetime.strptime(text, \"%Y-%m-%d\").date()\n  ```\n\n## What it does\n\nReports a call `.date()` or `.time()` with no arguments on a call that resolves to `datetime.datetime.strptime`, whether\nthe class is imported by name or reached through the `datetime` module.\n\n### Active on\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nimport datetime\n\n\ndef parse_day(text):\n    return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n```\n\n```python fixed\nimport datetime\n\n\ndef parse_day(text):\n    return datetime.date.strptime(text, \"%Y-%m-%d\")\n```\n\n### Exceptions\n\n- **Target versions before 3.14**: `date.strptime` does not exist there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  import datetime\n\n\n  def parse_day(text):\n      return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n  ```\n\n### Fix\n\nThe fix is safe for `.date()`. For `.time()` it is safe when the format is a string literal without `%z`, and unsafe\notherwise: `time.strptime` keeps the zone that `.time()` drops, so the value changes with `%z`. When the class is\nimported by name, the fix adds `date` or `time` to that `from datetime import` line. It reports without a fix when the\nfile already spells `date` or `time` outside an attribute, since the new name would take that binding's place.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Released rule\n  [DTZ007](https://docs.astral.sh/ruff/rules/call-datetime-strptime-without-zone/) reports the same call for its missing\n  timezone, which open issue [#13359](https://github.com/astral-sh/ruff/issues/13359) calls a false positive before\n  `.date()`; this rule's fix clears both.\n",
+    "explanation": "Flags `datetime.strptime(...).date()` and `datetime.strptime(...).time()`, which Python 3.14 replaces with\n`date.strptime` and `time.strptime`.\n\n## Why is this bad?\n\n`datetime.strptime(text, format).date()` builds a full datetime to keep one part of it. From Python 3.14 `date` and\n`time` parse their own part, which says what the code reads and skips the intermediate value.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nfrom datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date()\n```\n\nUse instead:\n\n```python ok\nfrom datetime import date\n\n\ndef parse_day(text):\n    return date.strptime(text, \"%Y-%m-%d\")\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  from datetime import datetime\n\n\n  def parse_day(text):\n      return datetime.strptime(text, \"%Y-%m-%d\").date()\n  ```\n\n## What it does\n\nReports a call `.date()` or `.time()` with no arguments on a call that resolves to `datetime.datetime.strptime`, whether\nthe class is imported by name or reached through the `datetime` module.\n\n### Active on\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nimport datetime\n\n\ndef parse_day(text):\n    return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n```\n\n```python fixed\nimport datetime\n\n\ndef parse_day(text):\n    return datetime.date.strptime(text, \"%Y-%m-%d\")\n```\n\n### Exceptions\n\n- **Target versions before 3.14**: `date.strptime` does not exist there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  import datetime\n\n\n  def parse_day(text):\n      return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n  ```\n\n### Fix\n\nThe fix is safe for `.date()`. For `.time()` it is safe when the format is a string literal without `%z` or `%:z`, and\nunsafe otherwise: `time.strptime` keeps the zone that `.time()` drops, so the value changes with either directive. When\nthe class is imported by name, the fix adds `date` or `time` to that `from datetime import` line. It reports without a\nfix when the file already spells `date` or `time` outside an attribute, since the new name would take that binding's\nplace.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Released rule\n  [DTZ007](https://docs.astral.sh/ruff/rules/call-datetime-strptime-without-zone/) reports the same call for its missing\n  timezone, which open issue [#13359](https://github.com/astral-sh/ruff/issues/13359) calls a false positive before\n  `.date()`; this rule's fix clears both.\n",
     "examples": {
       "parsed": [
         {
@@ -19172,7 +19172,7 @@
     "name": "unnamed-regex-group",
     "summary": "Regular expressions with unnamed capture groups",
     "fix": "Sometimes",
-    "explanation": "Flags regular expression patterns with two or more unnamed capturing groups, or with one that the code reads by its\nnumber, so the groups are named with `(?P<name>...)`.\n\n## Why is this bad?\n\nA reader of `match.group(1)` and `match.group(2)` counts parentheses to learn which part of the text each group holds. A\nnamed group says what the part is in the pattern, and `match[\"text\"]` says it again where the code reads it. The numbers\nalso shift when a group is added or moved, which a name survives.\n\n## Example\n\n```python report\nimport re\n\nLINE = re.compile(r\"^(.*?)\\s*\\{([^}]+)\\}\\s*$\")\n\n\ndef parse(line):\n    match = LINE.match(line)\n    return match.group(1), match.group(2)\n```\n\nUse instead:\n\n```python ok\nimport re\n\nLINE = re.compile(r\"^(?P<text>.*?)\\s*\\{(?P<tag>[^}]+)\\}\\s*$\")\n\n\ndef parse(line):\n    match = LINE.match(line)\n    return match[\"text\"], match[\"tag\"]\n```\n\nSimplint does not invent the names, so it offers no fix for a group the code reads. A group the code never reads has no\nname to be read by, and the fix turns it into a non-capturing group instead, as described below.\n\n## What it does\n\n### Active on\n\n- **Patterns of `re` and `regex` calls**, where the pattern is a string or bytes literal, including implicit\n  concatenation. The calls are `compile`, `match`, `search`, `fullmatch`, `finditer`, `findall`, `split`, `sub` and\n  `subn`, and the methods of a compiled pattern with the same names. The rule counts the unnamed groups of the pattern,\n  reading the verbose flag from `re.VERBOSE`, `re.X` or an inline `(?x)`. A `flags` argument that is a name or other\n  expression not resolving to a `re` flag leaves the pattern unchecked, since its value may turn verbose mode on.\n\n  - **Two or more unnamed groups** are reported at the pattern.\n  - **One unnamed group** is reported when the code reads it by its number: a `group`, `start`, `end` or `span` call\n    with a number from 1 on, a subscript with such a number, or a `groups()` call. The tracking follows a name bound\n    once in its function, or at module level, to the call's result, to a match of a compiled pattern, or to the loop\n    variable of a `finditer` loop. A pattern with a named group is not reported for one unnamed group, since the number\n    the code reads may belong to the named group. A group in a `split`, `findall` or `sub` call is left alone, since\n    returning the group's text there is the normal use.\n\n  ```python report\n  import re\n\n\n  def is_version(text):\n      return bool(re.match(r\"(\\d+)\\.(\\d+)\", text))\n  ```\n\n  ```python fixed\n  import re\n\n\n  def is_version(text):\n      return bool(re.match(r\"(?:\\d+)\\.(?:\\d+)\", text))\n  ```\n\n- **Unsafe fix:** the groups the code never reads become non-capturing, `(` becomes `(?:`. The fix runs only when the\n  pattern and its match objects are all tested for truth, compared to `None`, or discarded, with no group read from\n  them. A match object that leaves the code that made it, by being returned, stored or passed on, may have its\n  `groups()` read somewhere else, and a compiled pattern shared with another module can do the same, so the fix is\n  unsafe. A `split` or `findall` call is left unfixed for that reason too: its result holds the groups' text. A name\n  bound more than once in its function is not followed, so its pattern keeps its groups.\n\n### Exceptions\n\n- **A single unnamed group that the code does not read by number**, such as a lone group in `split` or a match tested\n  for truth.\n\n  ```python ok\n  import re\n\n\n  def words(text):\n      return re.split(r\"(\\s+)\", text)\n  ```\n\n- **Named groups** are what the rule asks for.\n\n  ```python ok\n  import re\n\n\n  def is_version(text):\n      return bool(re.match(r\"(?P<major>\\d+)\\.(?P<minor>\\d+)\", text))\n  ```\n\n- **Non-capturing groups, lookarounds and inline flags** do not capture, so they are not counted.\n\n  ```python ok\n  import re\n\n\n  def is_version(text):\n      return bool(re.match(r\"(?:\\d+)\\.(?=\\d)(?i:\\d+)\", text))\n  ```\n\n- **A parenthesis in a character class or escaped with a backslash** is text, not a group.\n\n  ```python ok\n  import re\n\n\n  def is_call(text):\n      return bool(re.match(r\"[(]\\(\\d+\\)\", text))\n  ```\n\n- **A parenthesis in a verbose comment** is ignored when the verbose flag is on.\n\n  ```python ok\n  import re\n\n\n  def is_version(text):\n      return bool(\n          re.match(\n              r\"\"\"\\d+  # the major (or the minor) number\n          \\.\\d+\"\"\",\n              text,\n              re.VERBOSE,\n          )\n      )\n  ```\n\n- **A pattern that is not a literal**, such as an f-string or a name, is not read.\n\n  ```python ok\n  import re\n\n\n  def is_version(text, prefix):\n      return bool(re.match(f\"{prefix}(\\\\d+)\\\\.(\\\\d+)\", text))\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** no rule reports unnamed capture groups. Open issue\n  [#4935](https://github.com/astral-sh/ruff/issues/4935) asks for a port of Sonar's Python checks in general, which does\n  not name this one.\n",
+    "explanation": "Flags regular expression patterns with two or more unnamed capturing groups, or with one that the code reads by its\nnumber, so the groups are named with `(?P<name>...)`.\n\n## Why is this bad?\n\nA reader of `match.group(1)` and `match.group(2)` counts parentheses to learn which part of the text each group holds. A\nnamed group says what the part is in the pattern, and `match[\"text\"]` says it again where the code reads it. The numbers\nalso shift when a group is added or moved, which a name survives.\n\n## Example\n\n```python report\nimport re\n\nLINE = re.compile(r\"^(.*?)\\s*\\{([^}]+)\\}\\s*$\")\n\n\ndef parse(line):\n    match = LINE.match(line)\n    return match.group(1), match.group(2)\n```\n\nUse instead:\n\n```python ok\nimport re\n\nLINE = re.compile(r\"^(?P<text>.*?)\\s*\\{(?P<tag>[^}]+)\\}\\s*$\")\n\n\ndef parse(line):\n    match = LINE.match(line)\n    return match[\"text\"], match[\"tag\"]\n```\n\nSimplint does not invent the names, so it offers no fix for a group the code reads. A group the code never reads has no\nname to be read by, and the fix turns it into a non-capturing group instead, as described below.\n\n## What it does\n\n### Active on\n\n- **Patterns of `re` and `regex` calls**, where the pattern is a string or bytes literal, including implicit\n  concatenation. The calls are `compile`, `match`, `search`, `fullmatch`, `finditer`, `findall`, `split`, `sub` and\n  `subn`, and the methods of a compiled pattern with the same names. The rule counts the unnamed groups of the pattern,\n  reading the verbose flag from `re.VERBOSE`, `re.X` or an inline `(?x)`. A `flags` argument that is a name or other\n  expression not resolving to a `re` flag leaves the pattern unchecked, since its value may turn verbose mode on.\n\n  - **Two or more unnamed groups** are reported at the pattern.\n  - **One unnamed group** is reported when the code reads it by its number: a `group`, `start`, `end` or `span` call\n    with a number from 1 on, a subscript with such a number, or a `groups()` call. The tracking follows a name bound\n    once in its function, or at module level, to the call's result, to a match of a compiled pattern, or to the loop\n    variable of a `finditer` loop. A pattern with a named group is not reported for one unnamed group, since the number\n    the code reads may belong to the named group. A group in a `split`, `findall` or `sub` call is left alone, since\n    returning the group's text there is the normal use.\n\n  ```python report\n  import re\n\n\n  def is_version(text):\n      return bool(re.match(r\"(\\d+)\\.(\\d+)\", text))\n  ```\n\n  ```python fixed\n  import re\n\n\n  def is_version(text):\n      return bool(re.match(r\"(?:\\d+)\\.(?:\\d+)\", text))\n  ```\n\n- **Unsafe fix:** the groups the code never reads become non-capturing, `(` becomes `(?:`. The fix runs only when the\n  pattern and its match objects are all tested for truth, compared to `None`, or discarded, with no group read from\n  them. A match object that leaves the code that made it, by being returned, stored or passed on, may have its\n  `groups()` read somewhere else, and a compiled pattern shared with another module can do the same, so the fix is\n  unsafe. A `split` or `findall` call is left unfixed for that reason too: its result holds the groups' text. A name\n  bound more than once in its function is not followed, so its pattern keeps its groups. Neither is a pattern bound in a\n  class body, a name declared `global` or `nonlocal`, or a module name another module imports or `__all__` lists, since\n  the reads of those can come from code the rule does not see.\n\n### Exceptions\n\n- **A single unnamed group that the code does not read by number**, such as a lone group in `split` or a match tested\n  for truth.\n\n  ```python ok\n  import re\n\n\n  def words(text):\n      return re.split(r\"(\\s+)\", text)\n  ```\n\n- **Named groups** are what the rule asks for.\n\n  ```python ok\n  import re\n\n\n  def is_version(text):\n      return bool(re.match(r\"(?P<major>\\d+)\\.(?P<minor>\\d+)\", text))\n  ```\n\n- **Non-capturing groups, lookarounds and inline flags** do not capture, so they are not counted.\n\n  ```python ok\n  import re\n\n\n  def is_version(text):\n      return bool(re.match(r\"(?:\\d+)\\.(?=\\d)(?i:\\d+)\", text))\n  ```\n\n- **A parenthesis in a character class or escaped with a backslash** is text, not a group.\n\n  ```python ok\n  import re\n\n\n  def is_call(text):\n      return bool(re.match(r\"[(]\\(\\d+\\)\", text))\n  ```\n\n- **A parenthesis in a verbose comment** is ignored when the verbose flag is on.\n\n  ```python ok\n  import re\n\n\n  def is_version(text):\n      return bool(\n          re.match(\n              r\"\"\"\\d+  # the major (or the minor) number\n          \\.\\d+\"\"\",\n              text,\n              re.VERBOSE,\n          )\n      )\n  ```\n\n- **A pattern that is not a literal**, such as an f-string or a name, is not read.\n\n  ```python ok\n  import re\n\n\n  def is_version(text, prefix):\n      return bool(re.match(f\"{prefix}(\\\\d+)\\\\.(\\\\d+)\", text))\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** no rule reports unnamed capture groups. Open issue\n  [#4935](https://github.com/astral-sh/ruff/issues/4935) asks for a port of Sonar's Python checks in general, which does\n  not name this one.\n",
     "examples": {
       "parsed": [
         {
@@ -19237,8 +19237,8 @@
         },
         {
           "section": "What it does",
-          "line": 85,
-          "end_line": 91,
+          "line": 87,
+          "end_line": 93,
           "config": null,
           "blocks": [
             {
@@ -19246,16 +19246,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 85,
-              "end_line": 91,
+              "line": 87,
+              "end_line": 93,
               "source": "import re\n\n\ndef words(text):\n    return re.split(r\"(\\s+)\", text)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 95,
-          "end_line": 101,
+          "line": 97,
+          "end_line": 103,
           "config": null,
           "blocks": [
             {
@@ -19263,16 +19263,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 95,
-              "end_line": 101,
+              "line": 97,
+              "end_line": 103,
               "source": "import re\n\n\ndef is_version(text):\n    return bool(re.match(r\"(?P<major>\\d+)\\.(?P<minor>\\d+)\", text))\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 105,
-          "end_line": 111,
+          "line": 107,
+          "end_line": 113,
           "config": null,
           "blocks": [
             {
@@ -19280,16 +19280,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 105,
-              "end_line": 111,
+              "line": 107,
+              "end_line": 113,
               "source": "import re\n\n\ndef is_version(text):\n    return bool(re.match(r\"(?:\\d+)\\.(?=\\d)(?i:\\d+)\", text))\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 115,
-          "end_line": 121,
+          "line": 117,
+          "end_line": 123,
           "config": null,
           "blocks": [
             {
@@ -19297,16 +19297,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 115,
-              "end_line": 121,
+              "line": 117,
+              "end_line": 123,
               "source": "import re\n\n\ndef is_call(text):\n    return bool(re.match(r\"[(]\\(\\d+\\)\", text))\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 125,
-          "end_line": 138,
+          "line": 127,
+          "end_line": 140,
           "config": null,
           "blocks": [
             {
@@ -19314,16 +19314,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 125,
-              "end_line": 138,
+              "line": 127,
+              "end_line": 140,
               "source": "import re\n\n\ndef is_version(text):\n    return bool(\n        re.match(\n            r\"\"\"\\d+  # the major (or the minor) number\n        \\.\\d+\"\"\",\n            text,\n            re.VERBOSE,\n        )\n    )\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 142,
-          "end_line": 148,
+          "line": 144,
+          "end_line": 150,
           "config": null,
           "blocks": [
             {
@@ -19331,8 +19331,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 142,
-              "end_line": 148,
+              "line": 144,
+              "end_line": 150,
               "source": "import re\n\n\ndef is_version(text, prefix):\n    return bool(re.match(f\"{prefix}(\\\\d+)\\\\.(\\\\d+)\", text))\n"
             }
           ]
@@ -19342,7 +19342,7 @@
     "family": "logic",
     "group": "Logic",
     "short_group": "Logic",
-    "cross_file": false
+    "cross_file": true
   },
   {
     "code": "SMP533",

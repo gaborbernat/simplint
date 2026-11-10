@@ -3,7 +3,7 @@ use std::ptr;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, CmpOp, Expr, Stmt, UnaryOp};
 use ruff_text_size::{Ranged, TextRange};
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
 use crate::syntax::alias_binding;
@@ -119,6 +119,11 @@ pub(crate) struct Facts<'c, 'a> {
     calls: FxHashMap<TextRange, Call<'a>>,
     // How many times each name is bound in each scope.
     bindings: FxHashMap<(Scope, &'a str), usize>,
+    // The bindings a read the walk does not follow may reach: class attributes, and names a function declares `global`
+    // or `nonlocal`.
+    escaping: FxHashSet<(Scope, &'a str)>,
+    // Whether the walk is directly in a class body, where a name it binds is an attribute.
+    class_body: bool,
     // Each name use with the scopes it sits in, innermost first, until it is resolved to the scope that binds it.
     pending: Vec<(Vec<Scope>, &'a str, Usage)>,
     usages: FxHashMap<(Scope, &'a str), Vec<Usage>>,
@@ -136,6 +141,8 @@ impl<'c, 'a> Facts<'c, 'a> {
             checker,
             calls: FxHashMap::default(),
             bindings: FxHashMap::default(),
+            escaping: FxHashSet::default(),
+            class_body: false,
             pending: Vec::new(),
             usages: FxHashMap::default(),
             exprs: Vec::new(),
@@ -181,13 +188,21 @@ impl<'a> Visitor<'a> for Facts<'_, 'a> {
                     self.visit_annotation(returns);
                 }
                 self.scopes.push(Some(function.range));
+                let class_body = std::mem::replace(&mut self.class_body, false);
                 self.bind_parameters(&function.parameters);
                 self.visit_body(&function.body);
+                self.class_body = class_body;
                 self.scopes.pop();
             }
             Stmt::ClassDef(class) => {
                 self.bind(class.name.as_str());
+                let class_body = std::mem::replace(&mut self.class_body, true);
                 visitor::walk_stmt(self, stmt);
+                self.class_body = class_body;
+            }
+            Stmt::Global(ast::StmtGlobal { names, .. }) | Stmt::Nonlocal(ast::StmtNonlocal { names, .. }) => {
+                let scope = self.scope();
+                self.escaping.extend(names.iter().map(|name| (scope, name.as_str())));
             }
             Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
                 for alias in names {
@@ -222,10 +237,12 @@ impl<'a> Visitor<'a> for Facts<'_, 'a> {
                 self.visit_parameters(parameters);
             }
             self.scopes.push(Some(lambda.range));
+            let class_body = std::mem::replace(&mut self.class_body, false);
             if let Some(parameters) = &lambda.parameters {
                 self.bind_parameters(parameters);
             }
             self.visit_expr(&lambda.body);
+            self.class_body = class_body;
             self.scopes.pop();
         } else {
             visitor::walk_expr(self, expr);
@@ -245,7 +262,11 @@ impl<'a> Facts<'_, 'a> {
     }
 
     fn bind(&mut self, name: &'a str) {
-        *self.bindings.entry((self.scope(), name)).or_default() += 1;
+        let key = (self.scope(), name);
+        *self.bindings.entry(key).or_default() += 1;
+        if self.class_body {
+            self.escaping.insert(key);
+        }
     }
 
     fn bind_parameters(&mut self, parameters: &'a ast::Parameters) {
@@ -389,7 +410,9 @@ impl<'a> Facts<'_, 'a> {
     }
 
     fn name_flows(&self, scope: Scope, name: &'a str) -> bool {
-        self.bindings.get(&(scope, name)) == Some(&1)
+        !self.escaping.contains(&(scope, name))
+            && !self.exported(scope, name)
+            && self.bindings.get(&(scope, name)) == Some(&1)
             && self.usages_of(scope, name).iter().all(|usage| match usage {
                 Usage::Test => true,
                 Usage::Method { call, reads } => {
@@ -407,6 +430,12 @@ impl<'a> Facts<'_, 'a> {
             "sub" | "subn" => call.plain_replacement,
             attr => GROUP_READS.contains(&attr),
         }
+    }
+
+    // A module name another module imports or `__all__` lists, whose reads this file does not all contain. Asked only
+    // here, since reading the project is a cross-file read that the other rules sharing the walk do not declare.
+    fn exported(&self, scope: Scope, name: &str) -> bool {
+        scope.is_none() && (self.checker.project().is_referenced(name) || self.checker.dunder_all().may_list(name))
     }
 
     fn usages_of(&self, scope: Scope, name: &'a str) -> &[Usage] {

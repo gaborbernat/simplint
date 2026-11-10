@@ -29,12 +29,12 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let Some(class) = parse.func.as_attribute_expr().map(|attribute| attribute.value.as_ref()) else {
         return;
     };
-    // `time.strptime` keeps the zone that `.time()` drops, so a format with `%z` may give another value.
+    // `time.strptime` keeps the zone that `.time()` drops, so a format with `%z` or `%:z` may give another value.
     let plain_format = parse
         .arguments
         .find_argument_value("format", 1)
         .and_then(Expr::as_string_literal_expr)
-        .is_some_and(|format| !format.value.to_str().contains("%z"));
+        .is_some_and(|format| !["%z", "%:z"].iter().any(|zone| format.value.to_str().contains(zone)));
     let fix = class_replacement(checker, class, member).map(|(replacement, import)| {
         let class_edit = Edit::range_replacement(replacement, class.range());
         // Drops `.date()` or `.time()`, keeping the parentheses around the call when it has them.

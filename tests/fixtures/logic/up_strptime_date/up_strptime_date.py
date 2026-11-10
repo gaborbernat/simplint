@@ -14,6 +14,10 @@ def zone_form(text):
     return moment.strptime(text, "%H:%M %z").time()
 
 
+def colon_zone_form(text):
+    return datetime.datetime.strptime(text, "%H:%M %:z").time()
+
+
 def variable_format(text, fmt):
     return moment.strptime(text, fmt).time()
 
