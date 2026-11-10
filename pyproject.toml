@@ -204,8 +204,8 @@ uploaded-prior-to = "P7D"
 decision-order = "stable"
 matrix.python = ">=3.15,<3.16"
 matrix.platforms = [ "linux_x86_64" ]
-# release-creator 4.4.0 needs a seven-day cutoff exception through 2026-11-09.
-# expires 2026-11-09
+# The frozen lock window predates release-creator 4.4.0; keep its cutoff until the next lock refresh.
+# expires 2026-11-16
 packages.release-creator.uploaded-prior-to = 2026-11-02T21:45:00Z
 # ruff 0.17.4, which the Ruff crates and the pre-commit hook use, needs one through 2026-11-12.
 # expires 2026-11-12
