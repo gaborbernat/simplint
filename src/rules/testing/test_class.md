@@ -58,6 +58,32 @@ def test_http_client_get() -> None:
     assert get("/") == 200
 ```
 
+Each method is dedented by its class body's indentation, not by the file's first indented block, so a file that indents
+another block by a different width still gets valid code.
+
+```python report file=tests/test_thing.py
+# fmt: off
+def helper():
+  return 1
+
+
+class TestThing:
+    def test_one(self):
+        assert helper() == 2
+# fmt: on
+```
+
+```python fixed file=tests/test_thing.py
+# fmt: off
+def helper():
+  return 1
+
+
+def test_thing_one():
+    assert helper() == 2
+# fmt: on
+```
+
 A method that uses its class's type parameters gets them on its function, with their bounds, defaults and the other
 parameters they name. A method that names none gets none. Defaults on type parameters need Python 3.13, so below that
 target a method that uses a defaulted parameter gets no fix.
@@ -115,6 +141,26 @@ No fix is offered when:
 
 - a method keeps its name, as in `class Test`, and the module already binds that name, so the flattened function would
   replace it;
+
+  ```python report file=tests/test_shadow.py
+  def test_value() -> None:
+      assert 1 == 2
+
+
+  class Test:
+      def test_value(self) -> None:
+          assert 1 == 1
+  ```
+
+  ```python fixed file=tests/test_shadow.py
+  def test_value() -> None:
+      assert 1 == 2
+
+
+  class Test:
+      def test_value(self) -> None:
+          assert 1 == 1
+  ```
 
 - the class contains a string that spans several lines, other than a method's docstring, whose indentation `ruff format`
   rewrites anyway;

@@ -206,6 +206,43 @@ with request_id.set("one"):
 The fix is safe and reports without a fix when a comment sits in the lines it would remove, which would lose the
 comment, or when the assignment shares its line with an earlier statement.
 
+```toml config
+[project]
+requires-python = ">=3.14"
+```
+
+```python report
+import contextvars
+
+request_id = contextvars.ContextVar("request_id")
+
+
+def handle(value):
+    # fmt: off
+    started = True; token = request_id.set(value)
+    # fmt: on
+    try:
+        return process()
+    finally:
+        request_id.reset(token)
+```
+
+```python fixed
+import contextvars
+
+request_id = contextvars.ContextVar("request_id")
+
+
+def handle(value):
+    # fmt: off
+    started = True; token = request_id.set(value)
+    # fmt: on
+    try:
+        return process()
+    finally:
+        request_id.reset(token)
+```
+
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

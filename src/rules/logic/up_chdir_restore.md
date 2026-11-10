@@ -167,6 +167,41 @@ imports `contextlib` already. When another binding holds the name `contextlib`, 
 reports without a fix when a comment sits in the lines it would remove, or when the assignment shares its line with an
 earlier statement.
 
+```toml config
+[project]
+requires-python = ">=3.11"
+```
+
+```python report
+import os
+
+
+def run(target):
+    # fmt: off
+    log("start"); old = os.getcwd()
+    # fmt: on
+    os.chdir(target)
+    try:
+        step()
+    finally:
+        os.chdir(old)
+```
+
+```python fixed
+import os
+
+
+def run(target):
+    # fmt: off
+    log("start"); old = os.getcwd()
+    # fmt: on
+    os.chdir(target)
+    try:
+        step()
+    finally:
+        os.chdir(old)
+```
+
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

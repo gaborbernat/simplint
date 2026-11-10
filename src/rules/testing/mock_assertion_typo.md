@@ -144,6 +144,27 @@ select = []
 ```python report
 def test_save(save: MagicMock) -> None:
     run_save()
+    # fmt: off
+    assert (save.not_called())
+    # fmt: on
+```
+
+```python fixed
+def test_save(save: MagicMock) -> None:
+    run_save()
+    # fmt: off
+    save.assert_not_called()
+    # fmt: on
+```
+
+```toml config
+[tool.ruff.lint]
+select = []
+```
+
+```python report
+def test_save(save: MagicMock) -> None:
+    run_save()
     assert save.not_called()
 ```
 

@@ -364,6 +364,22 @@ The fix moves the value in one of two ways:
         return limit
     ```
 
+  - An integer followed by a `.` gets parentheses, since `30.bit_length()` reads the dot as a decimal point and does not
+    parse.
+
+    ```python report
+    _LIMIT = 30
+
+
+    def bits() -> int:
+        return _LIMIT.bit_length()
+    ```
+
+    ```python fixed
+    def bits() -> int:
+        return (30).bit_length()
+    ```
+
 - **Local**: otherwise it declares a local before the statement that first uses it and renames the uses. The local takes
   the constant's name in lowercase, without leading underscores, and keeps its annotation, with `Final` taken off. An
   annotated constant always takes this form.

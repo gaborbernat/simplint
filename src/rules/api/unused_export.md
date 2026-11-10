@@ -399,6 +399,30 @@ from config import LIMIT
 print(LIMIT)
 ```
 
+A name in parentheses goes with its parentheses:
+
+```python context file=cli.py
+from config import ZETA, GAMMA
+
+print(ZETA, GAMMA)
+```
+
+```python report file=config.py
+ZETA = 1
+BETA = 2
+GAMMA = 3
+
+__all__ = "ZETA", ("BETA"), "GAMMA"
+```
+
+```python fixed file=config.py
+ZETA = 1
+BETA = 2
+GAMMA = 3
+
+__all__ = "ZETA", "GAMMA"
+```
+
 ```python report
 def parse() -> int:
     return 1

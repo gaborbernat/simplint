@@ -118,6 +118,25 @@ client.timeout = 5
 client = MagicMock(timeout=5)
 ```
 
+A comment after the last argument does not hide its comma, so no second comma is added:
+
+```python report
+# fmt: off
+client = MagicMock(
+    spec=dict,  # the real type
+)
+client.timeout = 3
+# fmt: on
+```
+
+```python fixed
+# fmt: off
+client = MagicMock(
+    spec=dict,  # the real type
+ timeout=3)
+# fmt: on
+```
+
 **Unsafe fix** for a `create_autospec` call that sets an attribute other than `return_value` or `side_effect`: when the
 spec is a function, `create_autospec` returns a wrapper function and hands the other keywords to the mock inside it, so
 the test no longer sees them on the object it holds.
