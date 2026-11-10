@@ -1,5 +1,86 @@
 # Changelog
 
+## 0.10.0 (2026-11-10)
+
+<a name="release-0-10-0"></a>
+
+<a name="release-0-10-0-added"></a>
+
+### Added
+
+- `unused-ignore` reports unused `simplint: ignore` selectors and removes them with a safe fix
+  ([#72](https://github.com/gaborbernat/simplint/pull/72)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`entrypoint-module-name`](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP105.html) reports command
+  entrypoints in `main.py` or `_main.py` so they can move to `__main__.py`
+  ([#76](https://github.com/gaborbernat/simplint/pull/76)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`unguarded-entrypoint-call`](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP106.html) uses script
+  metadata, shebangs, executable bits, and `__main__.py` to report trailing entrypoint calls regardless of their name.
+  Single-line statements have an unsafe guard fix ([#78](https://github.com/gaborbernat/simplint/pull/78)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`private-import-path`](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP310.html) reports private
+  module-object imports and private imports outside a direct relative path, including nested names such as `._x._y`.
+  Tests may import names from a private module only when their package path and `test_` stem match the source module
+  ([#74](https://github.com/gaborbernat/simplint/pull/74)) by [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-10-0-changes"></a>
+
+### Changes
+
+- Removed `up-unittest-assert-helper`: Ruff's
+  [`pytest-unittest-assertion`](https://docs.astral.sh/ruff/rules/pytest-unittest-assertion/) reports every assertion it
+  covered when Ruff rules are all enabled ([#75](https://github.com/gaborbernat/simplint/pull/75)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-10-0-fixed"></a>
+
+### Fixed
+
+- [constant-assert](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP804.html) leaves tuple and string
+  literal assertions to Ruff's F631 and PLW0129 even when simplint could fix them
+  ([#77](https://github.com/gaborbernat/simplint/pull/77)) by [@gaborbernat](https://github.com/gaborbernat).
+- [module-variable-case](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP102.html) leaves `mixedCase`
+  names to Ruff's N816 even when simplint could rename them ([#77](https://github.com/gaborbernat/simplint/pull/77)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [single-use-variable](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP504.html) leaves `yield from`
+  assignments to Ruff's RUF070 even when Ruff's fix differs ([#77](https://github.com/gaborbernat/simplint/pull/77)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `single-user-constant` respects Ruff's enabled local-variable limit before suggesting moving a constant into a
+  function ([#72](https://github.com/gaborbernat/simplint/pull/72)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`module-attribute-import`](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP304.html) reports private
+  module attribute access even when Ruff selects `PLC2701`, which checks imports rather than attribute access
+  ([#74](https://github.com/gaborbernat/simplint/pull/74)) by [@gaborbernat](https://github.com/gaborbernat).
+- `missing-from-all` leaves `__main__.py` out of the missing-export check
+  ([#72](https://github.com/gaborbernat/simplint/pull/72)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`init-module-content`](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP407.html) accepts package
+  re-exports listed in `__all__`, including in applications and private subpackages
+  ([#73](https://github.com/gaborbernat/simplint/pull/73)) by [@gaborbernat](https://github.com/gaborbernat).
+- `init-module-content` allows test package initializers, PEP 562 hooks, and `TYPE_CHECKING` blocks
+  ([#72](https://github.com/gaborbernat/simplint/pull/72)) by [@gaborbernat](https://github.com/gaborbernat).
+- `single-caller-helper` avoids suggesting inlining when it would cross enabled Ruff limits for nested blocks or try
+  statements, or trigger [raise-within-try](https://docs.astral.sh/ruff/rules/raise-within-try/)
+  ([#72](https://github.com/gaborbernat/simplint/pull/72)) by [@gaborbernat](https://github.com/gaborbernat).
+- `long-tuple-return` respects `@override` return contracts when a method returns a long tuple
+  ([#72](https://github.com/gaborbernat/simplint/pull/72)) by [@gaborbernat](https://github.com/gaborbernat).
+- `duplicate-code` compares duplicate code only within the same distribution
+  ([#72](https://github.com/gaborbernat/simplint/pull/72)) by [@gaborbernat](https://github.com/gaborbernat).
+- `callable-ellipsis` allows callable annotations that a test body does not invoke
+  ([#72](https://github.com/gaborbernat/simplint/pull/72)) by [@gaborbernat](https://github.com/gaborbernat).
+- `stdlib-mock` allows `create_autospec` imports without other patching helpers
+  ([#72](https://github.com/gaborbernat/simplint/pull/72)) by [@gaborbernat](https://github.com/gaborbernat).
+
+<a name="release-0-10-0-deprecated"></a>
+
+### Deprecated
+
+- Remove
+  [long-comment-line](https://github.com/gaborbernat/simplint/blob/1a1b43c/src/rules/comments/long_comment_line.md):
+  Ruff's [E501](https://docs.astral.sh/ruff/rules/line-too-long/) and
+  [W505](https://docs.astral.sh/ruff/rules/doc-line-too-long/) report every case it covered
+  ([#77](https://github.com/gaborbernat/simplint/pull/77)) by [@gaborbernat](https://github.com/gaborbernat).
+- Remove [star-import](https://github.com/gaborbernat/simplint/blob/1a1b43c/src/rules/imports/star_import.md): Ruff's
+  [F403](https://docs.astral.sh/ruff/rules/undefined-local-with-import-star/) reports every case it covered
+  ([#77](https://github.com/gaborbernat/simplint/pull/77)) by [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.9.0 (2026-11-09)
 
 <a name="release-0-9-0"></a>
