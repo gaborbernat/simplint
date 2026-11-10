@@ -43,6 +43,7 @@ use std::path::Path;
 
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
 use crate::project::{Exposure, FileIndex};
@@ -69,12 +70,6 @@ struct ApiItem<'a> {
     docs: bool,
 }
 
-impl ApiItem<'_> {
-    fn matches(&self, range: TextRange, need: Need) -> bool {
-        self.stmt.range() == range && (matches!(need, Need::Any) || self.docs)
-    }
-}
-
 // The public API of a library is `FileIndex::library_exposure`, the names its users can import, with the public members
 // of those classes. An application has none. What the docstring rules add is documentation: autodoc-documented
 // definitions, whose names only the checker's module path makes qualified, and the members that need no docstring.
@@ -82,12 +77,14 @@ impl ApiItem<'_> {
 // public.
 pub(crate) struct PublicApi<'a> {
     items: Vec<ApiItem<'a>>,
+    // Each item's statement, and whether any item of it needs docs, so a lookup does not scan the items.
+    statements: FxHashMap<TextRange, bool>,
     maybe_public: Vec<TextRange>,
     // Members of a public class whose docstring is shown when present but need none: dunders such as `__init__`, which
     // autodoc can render, overrides, which inherit the base docstring, and property setters.
-    optional: Vec<TextRange>,
+    optional: FxHashSet<TextRange>,
     // The definitions the documentation names, such as an autodoc directive, which users read as public.
-    documented: Vec<TextRange>,
+    documented: FxHashSet<TextRange>,
 }
 
 impl<'a> PublicApi<'a> {
@@ -100,8 +97,9 @@ impl<'a> PublicApi<'a> {
         let dynamic = matches!(exports, Exports::Dynamic);
         let mut api = Self {
             items: Vec::new(),
+            statements: FxHashMap::default(),
             maybe_public: Vec::new(),
-            optional: Vec::new(),
+            optional: FxHashSet::default(),
             documented: documented_definitions(checker),
         };
         // Definitions in top-level `if`, `try` and `match` blocks, as a version switch or an optional accelerator, are
@@ -113,7 +111,7 @@ impl<'a> PublicApi<'a> {
                     match reach(name) {
                         // An `@overload` variant of a public function may carry a docstring, but needs none.
                         Some(_) if is_overload(&function.decorator_list) => {
-                            api.optional.push(function.range);
+                            api.optional.insert(function.range);
                         }
                         Some(exposure) => {
                             let range = function.name.range;
@@ -163,6 +161,9 @@ impl<'a> PublicApi<'a> {
                 }
                 _ => {}
             }
+        }
+        for item in &api.items {
+            *api.statements.entry(item.stmt.range()).or_default() |= item.docs;
         }
         api
     }
@@ -217,7 +218,9 @@ impl<'a> PublicApi<'a> {
                     self.class(member, nested, &format!("{name}.{}", nested.name), exposure);
                 }
                 Stmt::FunctionDef(method) => match offer(method) {
-                    Offer::Optional => self.optional.push(member.range()),
+                    Offer::Optional => {
+                        self.optional.insert(member.range());
+                    }
                     Offer::Public(kind) => self.items.push(ApiItem {
                         stmt: member,
                         name: format!("{name}.{}", method.name),
@@ -238,16 +241,20 @@ impl<'a> PublicApi<'a> {
     // of the API, or one the documentation names. Only the docstring rules need `Need::Docs`, which leaves out the items
     // only a signature reaches.
     pub(crate) fn is_public(&self, range: TextRange, need: Need) -> bool {
-        self.items.iter().any(|item| item.matches(range, need)) || self.documented.contains(&range)
+        self.is_item(range, need) || self.documented.contains(&range)
     }
 
     // Whether the definition at `range` may be part of the public API, which includes optional, documented and possibly
     // public ones. Only the docstring rules need `Need::Docs`, as for `is_public`.
     pub(crate) fn covers(&self, range: TextRange, need: Need) -> bool {
-        self.items.iter().any(|item| item.matches(range, need))
+        self.is_item(range, need)
             || self.optional.contains(&range)
             || self.documented.contains(&range)
             || self.maybe_public.iter().any(|public| public.contains_range(range))
+    }
+
+    fn is_item(&self, range: TextRange, need: Need) -> bool {
+        self.statements.get(&range).is_some_and(|docs| matches!(need, Need::Any) || *docs)
     }
 }
 
@@ -317,7 +324,7 @@ fn module_statements_with_next(body: &[Stmt]) -> Vec<(&Stmt, Option<&Stmt>)> {
 
 // The module's functions, classes and class members that the documentation names by their dotted name under the module's
 // package. A module's `__init__.py` names its package, so that segment is left out, as `ApiScope::role` does.
-fn documented_definitions(checker: &Checker) -> Vec<TextRange> {
+fn documented_definitions(checker: &Checker) -> FxHashSet<TextRange> {
     let stem = checker.file_name().strip_suffix(".py").unwrap_or(checker.file_name());
     let (module, anchored): (Vec<&str>, bool) = match checker.module_path() {
         Some(path) => (path.iter().map(String::as_str).collect(), true),
@@ -325,12 +332,12 @@ fn documented_definitions(checker: &Checker) -> Vec<TextRange> {
     };
     let prefix =
         module.into_iter().filter(|part| *part != "__init__").fold(String::new(), |prefix, part| prefix + part + ".");
-    let mut found = Vec::new();
+    let mut found = FxHashSet::default();
     documented_in(checker.body(), &prefix, anchored, &checker.project(), &mut found);
     found
 }
 
-fn documented_in(body: &[Stmt], prefix: &str, anchored: bool, project: &FileIndex, found: &mut Vec<TextRange>) {
+fn documented_in(body: &[Stmt], prefix: &str, anchored: bool, project: &FileIndex, found: &mut FxHashSet<TextRange>) {
     for stmt in module_statements(body) {
         let (name, members) = match stmt {
             Stmt::FunctionDef(function) => (function.name.as_str(), &[][..]),
@@ -339,7 +346,7 @@ fn documented_in(body: &[Stmt], prefix: &str, anchored: bool, project: &FileInde
         };
         let qualified = format!("{prefix}{name}");
         if project.is_documented(&qualified, anchored) {
-            found.push(stmt.range());
+            found.insert(stmt.range());
         }
         documented_in(members, &format!("{qualified}."), anchored, project, found);
     }
