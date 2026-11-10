@@ -33,6 +33,7 @@ use crate::common;
 #[test_case("unused-export", "_exporting/unused_export_lazy.py" ; "unused_export_lazy_module")]
 #[test_case("unused-export", "_exporting/unused_export_packed.py" ; "unused_export_packed")]
 #[test_case("unused-export", "_exporting/unused_export_tuple_end.py" ; "unused_export_tuple_end")]
+#[test_case("unused-export", "_exporting/unused_export_parenthesized.py" ; "unused_export_parenthesized")]
 #[test_case("unused-export", "_exporting/unused_export_noted.py" ; "unused_export_noted")]
 #[test_case("unused-export", "_exporting/unused_export_star.py" ; "unused_export_star_imported")]
 #[test_case("unused-export", "unused_export_root.py" ; "unused_export_api_root")]

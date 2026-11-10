@@ -1,0 +1,13 @@
+def used_first() -> None: ...
+
+
+def spare_first() -> None: ...
+
+
+def used_last() -> None: ...
+
+
+def spare_last() -> None: ...
+
+
+__all__ = "spare_first", ("used_first"), "used_last", ("spare_last")
