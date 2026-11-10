@@ -11,6 +11,18 @@ from typing import Final
 from tasks.assemble_release import RULE_SOURCE_LINK, rule_source_name
 
 _RULE_PAGE: Final[re.Pattern[str]] = re.compile(r"https?://simplint\.readthedocs\.io/(?:en/[^/]+/)?_generated/rules/")
+# Only a link of the exact RULE_SOURCE_LINK form becomes a rule page link; any other link into the rule sources stays a
+# relative path, which the published changelog resolves outside the documentation.
+_ANY_SOURCE_LINK: Final[re.Pattern[str]] = re.compile(
+    r"""
+    \[[^\]]*\]  # any link text
+    \(          # Markdown link target
+    (?:\.\./)?  # fragment files sit one directory below the root
+    src/rules/  # rule source directory
+    [^)]*\)     # rest of the target
+    """,
+    re.VERBOSE,
+)
 
 
 def main(paths: list[str]) -> int:
@@ -25,6 +37,13 @@ def main(paths: list[str]) -> int:
                     file=sys.stderr,
                 )
                 failed = True
+            for link in _ANY_SOURCE_LINK.finditer(line):
+                if not RULE_SOURCE_LINK.fullmatch(link[0]):
+                    print(
+                        f"{path}:{line_number}: write the rule source link as [`name`](path): {link[0]}",
+                        file=sys.stderr,
+                    )
+                    failed = True
             for match in RULE_SOURCE_LINK.finditer(line):
                 try:
                     _validate_source_link(match, path, known_names)
