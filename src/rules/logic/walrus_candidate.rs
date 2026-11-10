@@ -1,7 +1,10 @@
+use std::cell::OnceCell;
+
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
 use ruff_text_size::{Ranged, TextLen, TextRange};
+use rustc_hash::FxHashMap;
 
 use crate::layout::joined_width;
 use crate::lint::checker::Checker;
@@ -15,6 +18,7 @@ pub fn walrus_candidate(checker: &Checker) {
     if checker.settings.from_ruff.target_version < PythonVersion::PY38 || has_version_gate(checker.body()) {
         return;
     }
+    let mentions = OnceCell::new();
     for_each_scoped_body(
         checker.body(),
         Block { scope: Scope::Module, owner: None },
@@ -23,7 +27,7 @@ pub fn walrus_candidate(checker: &Checker) {
         &mut |body, block, depth| {
             for pair in body.windows(2) {
                 if let [Stmt::Assign(assign), if_stmt @ Stmt::If(ast::StmtIf { test, .. })] = pair
-                    && let Some(candidate) = candidate(checker, block.scope, assign, if_stmt, test)
+                    && let Some(candidate) = candidate(checker, &mentions, block.scope, assign, if_stmt, test)
                 {
                     report(checker, &candidate, depth, !collapse_blocked(checker, body, block.owner, if_stmt));
                 }
@@ -128,6 +132,7 @@ struct Candidate<'a> {
 
 fn candidate<'a>(
     checker: &Checker<'a>,
+    mentions: &OnceCell<Mentions<'a>>,
     scope: Scope<'a>,
     assign: &'a ast::StmtAssign,
     if_stmt: &'a Stmt,
@@ -154,22 +159,21 @@ fn candidate<'a>(
     }
     // Inlining deletes the binding, so any other reader of it, earlier in the scope (a closure, the previous loop
     // iteration), in another module, or through `global`/`nonlocal`, would lose it.
-    let (scope_body, scope_range, shared) = match scope {
+    let (scope_range, shared) = match scope {
         Scope::Class => return None,
         Scope::Function(function) => (
-            std::slice::from_ref(function),
             function.range(),
             function.as_function_def_stmt().is_some_and(|function| declared_outer(&function.body).contains(name)),
         ),
         Scope::Module => (
-            checker.body(),
             TextRange::up_to(checker.source.text_len()),
             checker.project().is_referenced(name) || checker.dunder_all().may_list(name),
         ),
     };
+    let mentions = mentions.get_or_init(|| Mentions::of(checker.body()));
     if shared
-        || body_mentions(scope_body, name, TextRange::new(scope_range.start(), assign.start()))
-        || body_mentions(scope_body, name, TextRange::new(if_stmt.end(), scope_range.end()))
+        || mentions.within(name, TextRange::new(scope_range.start(), assign.start()))
+        || mentions.within(name, TextRange::new(if_stmt.end(), scope_range.end()))
     {
         return None;
     }
@@ -180,46 +184,37 @@ fn candidate<'a>(
         name,
         target: first.range,
         bare,
-        single_use: !body_mentions(std::slice::from_ref(if_stmt), name, TextRange::new(first.end(), if_stmt.end())),
+        single_use: !mentions.within(name, TextRange::new(first.end(), if_stmt.end())),
     })
 }
 
-// Whether `body` holds `name` anywhere inside `within`.
-fn body_mentions(body: &[Stmt], name: &str, within: TextRange) -> bool {
-    let mut finder = NameFinder { name, within, found: false };
-    finder.visit_body(body);
-    finder.found
-}
+// Where each name is mentioned in the module, so checking for a name inside a range is a lookup rather than a walk of
+// every statement before it.
+struct Mentions<'a>(FxHashMap<&'a str, Vec<TextRange>>);
 
-struct NameFinder<'n> {
-    name: &'n str,
-    within: TextRange,
-    found: bool,
-}
-
-impl NameFinder<'_> {
-    // A node can only hold a name inside `within` when the two overlap.
-    fn skips(&self, node: TextRange) -> bool {
-        self.found || node.end() <= self.within.start() || node.start() >= self.within.end()
-    }
-}
-
-impl<'a> Visitor<'a> for NameFinder<'_> {
-    fn visit_stmt(&mut self, stmt: &'a Stmt) {
-        if !self.skips(stmt.range()) {
-            visitor::walk_stmt(self, stmt);
+impl<'a> Mentions<'a> {
+    fn of(body: &'a [Stmt]) -> Self {
+        let mut mentions = Self(FxHashMap::default());
+        mentions.visit_body(body);
+        for ranges in mentions.0.values_mut() {
+            ranges.sort_unstable_by_key(Ranged::start);
         }
+        mentions
     }
 
+    // Names never overlap, so the first mention starting inside `range` is the only one that can decide it.
+    fn within(&self, name: &str, range: TextRange) -> bool {
+        self.0.get(name).is_some_and(|ranges| {
+            let first = ranges.partition_point(|mention| mention.start() < range.start());
+            ranges.get(first).is_some_and(|mention| mention.end() <= range.end())
+        })
+    }
+}
+
+impl<'a> Visitor<'a> for Mentions<'a> {
     fn visit_expr(&mut self, expr: &'a Expr) {
-        if self.skips(expr.range()) {
-            return;
-        }
-        if let Expr::Name(name) = expr
-            && name.id.as_str() == self.name
-            && self.within.contains_range(name.range)
-        {
-            self.found = true;
+        if let Expr::Name(name) = expr {
+            self.0.entry(name.id.as_str()).or_default().push(name.range);
         }
         visitor::walk_expr(self, expr);
     }
