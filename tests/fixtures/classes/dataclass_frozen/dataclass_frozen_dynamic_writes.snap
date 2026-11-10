@@ -8,9 +8,10 @@ expression: "lint_fixture(rule, fixture, target_version)"
 25:2 SMP701 Dataclass is missing frozen; set `frozen=True`
 30:2 SMP701 Dataclass is missing frozen; set `frozen=True`
 35:2 SMP701 Dataclass is missing frozen; set `frozen=True` [unsafe fix: Pass `frozen=True` to `@dataclass`]
-43:2 SMP701 Dataclass is missing frozen; set `frozen=True` [fix: Pass `frozen=True` to `@dataclass`]
-48:2 SMP701 Dataclass is missing frozen; set `frozen=True`
---- fixed (2 applied, 6 remaining) ---
+43:2 SMP701 Dataclass is missing frozen; set `frozen=True`
+48:2 SMP701 Dataclass is missing frozen; set `frozen=True` [fix: Pass `frozen=True` to `@dataclass`]
+53:2 SMP701 Dataclass is missing frozen; set `frozen=True`
+--- fixed (2 applied, 7 remaining) ---
 from dataclasses import dataclass
 from unittest import mock
 
@@ -53,6 +54,11 @@ class Ledger:
         object.__setattr__(self, "serial", self.serial.upper())
 
 
+@dataclass
+class Gauge:
+    reading: int = 0
+
+
 @dataclass(frozen=True)
 class Control:
     size: int = 0
@@ -77,6 +83,7 @@ def stub(monkeypatch: object) -> None:
     vault = Vault()
     with mock.patch.object(vault, "depth", 5):
         print(vault.depth)
+    monkeypatch.setattr("pkg.Gauge.reading", "size")
 
 
 def run() -> _Result:

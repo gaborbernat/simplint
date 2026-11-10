@@ -142,6 +142,12 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
                     ([target, attribute, ..], Some("setattr" | "delattr")) => self.record_write(target, attribute),
                     ([target], Some("vars")) => self.record(target, "__dict__"),
                     ([target, ..], _) if self.weakly_references(func) => self.record(target, "__weakref__"),
+                    // `monkeypatch.setattr("pkg.Class.name", value)` names the object and the attribute in one path.
+                    ([Expr::StringLiteral(path), ..], _) if is_patch_helper(func) => {
+                        if let Some((_, name)) = path.value.to_str().rsplit_once('.') {
+                            self.writes.untyped.push(name.to_owned());
+                        }
+                    }
                     ([target, attribute, ..], _) if is_patch_helper(func) => self.record_write(target, attribute),
                     _ => self.record_dunder_write(func, arguments),
                 }

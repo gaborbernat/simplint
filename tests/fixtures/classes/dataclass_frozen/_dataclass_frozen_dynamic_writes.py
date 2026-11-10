@@ -41,6 +41,11 @@ class Ledger:
 
 
 @dataclass
+class Gauge:
+    reading: int = 0
+
+
+@dataclass
 class Control:
     size: int = 0
 
@@ -64,6 +69,7 @@ def stub(monkeypatch: object) -> None:
     vault = Vault()
     with mock.patch.object(vault, "depth", 5):
         print(vault.depth)
+    monkeypatch.setattr("pkg.Gauge.reading", "size")
 
 
 def run() -> _Result:
