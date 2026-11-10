@@ -16,7 +16,7 @@ use super::computed_reads::ComputedReads;
 use super::facts::{FromImport, qualified};
 use super::index::FileId;
 use crate::syntax::is_main_guard;
-use crate::syntax::{dataclass_decorator, keyword_is_true, module_statements};
+use crate::syntax::{ExprCollector, attribute_call, dataclass_decorator, keyword_is_true, module_statements};
 
 // What `dataclass-kw-only` needs to rewrite every positional call of a dataclass it makes keyword-only: the dataclasses
 // a file declares without `kw_only=True`, with the fields their `__init__` takes by position, and how the file uses
@@ -27,7 +27,8 @@ pub struct Constructors {
     pub(super) dataclasses: Vec<(String, Option<Vec<String>>)>,
     pub(super) uses: Vec<(String, Vec<NameUse>)>,
     // The capitalized names called with positional arguments as attributes of something no import binds, such as
-    // `module.Ranked(issue, score)` on a module a test loads from its file path; any dataclass so named may be the one.
+    // `module.Ranked(issue, score)` on a module a test loads from its file path, and the capitalized names a
+    // `getattr(object, "Name")` reads; any dataclass so named may be the one.
     pub(super) dynamic: Vec<String>,
     // The methods of the module's top-level classes.
     pub(super) methods: Vec<String>,
@@ -187,6 +188,7 @@ impl Constructors {
                 Use::Call(call) if CallKind::of(call) != CallKind::Keyword => Some(name),
                 _ => None,
             })
+            .chain(getattr_names(body))
             .collect();
         let comments = OnceCell::new();
         let mut grouped: BTreeMap<String, BTreeSet<NameUse>> = BTreeMap::new();
@@ -341,6 +343,17 @@ fn entry_blocks(body: &[Stmt], is_main: bool) -> Vec<TextRange> {
         return body.iter().map(Ranged::range).collect();
     }
     body.iter().filter(|stmt| is_main_guard(stmt)).map(Ranged::range).collect()
+}
+
+// The capitalized names a `getattr(object, "Name")` reads: a class read this way may be called by position anywhere.
+fn getattr_names(body: &[Stmt]) -> Vec<String> {
+    let mut reached = ExprCollector::new(|expr: &Expr| {
+        let (_, attribute) = attribute_call(expr, &["getattr"])?;
+        let name = attribute.as_string_literal_expr()?.value.to_str();
+        name.starts_with(|first: char| first.is_ascii_uppercase()).then(|| name.to_owned())
+    });
+    reached.visit_body(body);
+    reached.found
 }
 
 fn comments_on_lines(source: &str, comments: &CommentRanges, call: &ast::ExprCall) -> Vec<String> {

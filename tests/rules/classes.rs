@@ -21,6 +21,7 @@ use crate::common;
 #[test_case("dataclass-kw-only", "dataclass_kw_only_calls.py", "py314" ; "dataclass_kw_only_calls")]
 #[test_case("dataclass-kw-only", "dataclass_kw_only_debug.py", "py314" ; "dataclass_kw_only_debug")]
 #[test_case("dataclass-kw-only", "dataclass_kw_only_splat_calls.py", "py314" ; "dataclass_kw_only_splat_calls")]
+#[test_case("dataclass-kw-only", "dataclass_kw_only_cls.py", "py314" ; "dataclass_kw_only_cls")]
 #[test_case("dataclass-kw-only", "dataclass_kw_only_public.py", "py314" ; "dataclass_kw_only_public")]
 #[test_case("indistinct-error-class", "ierr_errors.py", "py314" ; "indistinct_error_class")]
 #[test_case("indistinct-error-class", "ierr_app.py", "py314" ; "indistinct_error_class_catching_module")]
@@ -443,4 +444,21 @@ fn dict_write_leaves_the_class_without_a_frozen_fix() {
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "dataclass-frozen"]);
     assert_eq!(stdout.matches("Dataclass is missing").count(), 1, "{stdout}");
     assert!(!stdout.contains("[*]"), "{stdout}");
+}
+
+// `getattr(module, "Release")` reaches a dataclass by a name no import shows, so its positional calls may come from
+// anywhere, and no file gets the keyword-only fix. Without such a call the fix goes through.
+#[test_case("import models\n", true ; "not_reached_by_getattr")]
+#[test_case("import models\n\nRelease = getattr(models, \"Release\")(\"a\", \"1\")\n", false ; "reached_by_getattr")]
+fn getattr_reached_dataclass_keeps_its_positional_calls(caller: &str, fixed: bool) {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.simplint]\nproject-kind = \"application\"\n"),
+        (
+            "models.py",
+            "from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    name: str\n    version: str\n",
+        ),
+        ("main.py", caller),
+    ]);
+    common::fix_unsafe(root.path(), "dataclass-kw-only");
+    assert_eq!(common::read(root.path(), "models.py").contains("kw_only=True"), fixed);
 }
