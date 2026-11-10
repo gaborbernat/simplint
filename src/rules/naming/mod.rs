@@ -11,6 +11,7 @@ use ruff_python_ast::{self as ast, Pattern};
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::FxHashSet;
 
+use crate::lint::checker::Checker;
 use crate::lint::walker::{Scope, Walker};
 use crate::syntax::last_segment;
 
@@ -18,6 +19,31 @@ pub(crate) use catch_all_module::catch_all_module;
 pub(crate) use entrypoint_module_name::entrypoint_module_name;
 pub(crate) use module_variable_case::module_variable_case;
 pub(crate) use unguarded_entrypoint_call::unguarded_entrypoint_call;
+
+fn script_targets<'a>(checker: &'a Checker<'_>) -> Vec<&'a str> {
+    if checker.settings.project.metadata.scripts.is_empty() {
+        return Vec::new();
+    }
+    let Some(module) = checker.module_path().map(|path| path.join(".")).or_else(|| {
+        let path = checker.path.strip_prefix(&checker.settings.project.root).ok()?;
+        let path = path.strip_prefix("src").unwrap_or(path);
+        let parts = path.with_extension("");
+        Some(parts.iter().map(|part| part.to_str()).collect::<Option<Vec<_>>>()?.join("."))
+    }) else {
+        return Vec::new();
+    };
+    let module = module.strip_suffix(".__init__").unwrap_or(&module);
+    checker
+        .settings
+        .project
+        .metadata
+        .scripts
+        .iter()
+        .filter_map(|entry| entry.split_once(':'))
+        .filter(|(entry_module, _)| entry_module.trim() == module)
+        .filter_map(|(_, target)| target.split_whitespace().next())
+        .collect()
+}
 
 // The names the naming rules reported in each def, class or lambda, by its range, the module's an empty one: each name
 // is reported once per scope, at its first binding.

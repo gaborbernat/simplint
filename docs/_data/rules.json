@@ -2978,15 +2978,15 @@
   {
     "code": "SMP106",
     "name": "unguarded-entrypoint-call",
-    "summary": "A trailing top-level `main()` or `run()` call that runs when its module is imported",
+    "summary": "A trailing top-level call in a runnable module that runs during import",
     "fix": "Sometimes",
-    "explanation": "Flags a trailing `main()` or `run()` call that runs when its module is imported.\n\n## Why is this bad?\n\nImporting a module executes its top-level statements. A command that calls `main()` or `run()` during import can run\nwhen another module imports its functions or tests inspect it.\n[Python's `__main__` documentation](https://docs.python.org/3/library/__main__.html#idiomatic-usage) recommends a guard\nfor ordinary modules that can run as scripts.\n\n## Example\n\nThe unsafe fix wraps the call:\n\n```python report file=command.py\ndef main() -> None:\n    print(\"ready\")\n\n\nmain()\n```\n\n```python fixed file=command.py\ndef main() -> None:\n    print(\"ready\")\n\n\nif __name__ == \"__main__\":\n    main()\n```\n\n## What it does\n\nThe rule checks the final top-level statement of a module. It reports a direct `main()` or `run()` call, including a\ncall passed into another call, such as `sys.exit(run())` or `raise SystemExit(main())`. Calls inside an\n`if __name__ == \"__main__\":` block are allowed.\n\n### Exceptions\n\n- **`__main__.py`**: Python's\n  [package entrypoint guidance](https://docs.python.org/3/library/__main__.html#main-py-in-python-packages) recommends a\n  bare call in this file, including for zip application entrypoints.\n\n## Fix\n\nThe unsafe fix wraps a single-line statement in a main guard. It preserves an inline comment and the file's line\nendings. Moving the statement changes import-time behavior, so the fix requires `--fix --unsafe-fixes`. Multiline\nstatements and statements sharing a line with other code remain reports without a fix.\n",
+    "explanation": "Flags a trailing call in a runnable module when importing that module would execute the call.\n\n## Why is this bad?\n\nPython executes top-level statements when it imports a module. A command can run during import if its final statement\ncalls its entrypoint without an `if __name__ == \"__main__\":` guard. A\n[console script](https://packaging.python.org/en/latest/specifications/entry-points/#use-for-scripts) imports the\nconfigured callable before calling it, so an unguarded call can run the command twice.\n\n## Example\n\nThe unsafe fix wraps the call:\n\n```python report file=command.py\n#!/usr/bin/env python\n\n\ndef launch() -> None:\n    print(\"ready\")\n\n\nlaunch()\n```\n\n```python fixed file=command.py\n#!/usr/bin/env python\n\n\ndef launch() -> None:\n    print(\"ready\")\n\n\nif __name__ == \"__main__\":\n    launch()\n```\n\n## What it does\n\nThe rule checks the final top-level statement of a module. A direct call, a call inside `sys.exit(...)`, and a call\ninside `raise SystemExit(...)` count. The callable's name does not matter.\n\nIt reports a call when one of these signals identifies a runnable module:\n\n- The file is named `__main__.py`.\n- The file begins with a shebang or has an executable bit on Unix.\n- `[project.scripts]` or `[project.gui-scripts]` names the called object. In this case an unrelated trailing call, such\n  as `populate_cache()`, is left alone.\n\nAn ordinary module with no such signal is left alone even if its final call is named `main()` or `run()`. Assignments\nsuch as `CACHE = populate_cache()` are not entrypoint calls. Calls under a main guard are allowed.\n\nPython's [`__main__.py` guidance](https://docs.python.org/3/library/__main__.html#idiomatic-usage) commonly uses a bare\ncall there. This rule requires the guard because a package's `__main__.py` can also be imported as a module.\n\n## Fix\n\nThe unsafe fix wraps a single-line statement in a main guard. It preserves an inline comment and the file's line\nendings. Moving the statement changes import-time behavior, so the fix requires `--fix --unsafe-fixes`. Multiline\nstatements and statements sharing a line with other code remain reports without a fix.\n",
     "examples": {
       "parsed": [
         {
           "section": "Example",
           "line": 14,
-          "end_line": 29,
+          "end_line": 35,
           "config": null,
           "blocks": [
             {
@@ -2995,17 +2995,17 @@
               "file": "command.py",
               "named": true,
               "line": 14,
-              "end_line": 20,
-              "source": "def main() -> None:\n    print(\"ready\")\n\n\nmain()\n"
+              "end_line": 23,
+              "source": "#!/usr/bin/env python\n\n\ndef launch() -> None:\n    print(\"ready\")\n\n\nlaunch()\n"
             },
             {
               "role": "fixed",
               "language": "python",
               "file": "command.py",
               "named": true,
-              "line": 22,
-              "end_line": 29,
-              "source": "def main() -> None:\n    print(\"ready\")\n\n\nif __name__ == \"__main__\":\n    main()\n"
+              "line": 25,
+              "end_line": 35,
+              "source": "#!/usr/bin/env python\n\n\ndef launch() -> None:\n    print(\"ready\")\n\n\nif __name__ == \"__main__\":\n    launch()\n"
             }
           ]
         }
