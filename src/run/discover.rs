@@ -5,6 +5,7 @@ use anyhow::{Result, anyhow};
 use colored::Colorize;
 use log::warn;
 use ruff_workspace::resolver::{Resolver, match_exclusion, project_files_in_path};
+use rustc_hash::FxHashSet;
 
 use super::Resolved;
 
@@ -58,8 +59,17 @@ pub(crate) fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Re
         }
         python.push(path.to_path_buf());
     }
+    Ok(Discovered { python: distinct(python), unlinted, resolver })
+}
+
+// The files sorted, with each file the links in the run reach kept once, by its own path when the run found it: files
+// lint in parallel, so a fix applied through two paths to one file would race, and its reports would show twice.
+fn distinct(mut python: Vec<PathBuf>) -> Vec<PathBuf> {
+    python.sort_by_cached_key(|path| (path.is_symlink(), path.clone()));
+    let mut seen = FxHashSet::default();
+    python.retain(|path| fs::canonicalize(path).map_or(true, |target| seen.insert(target)));
     python.sort();
-    Ok(Discovered { python, unlinted, resolver })
+    python
 }
 
 // Ruff quotes the text of an `extend`ed file it cannot load. The repository may point `extend` anywhere, so such a file
