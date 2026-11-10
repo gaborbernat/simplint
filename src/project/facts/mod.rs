@@ -19,7 +19,6 @@ use ruff_python_ast::visitor::Visitor;
 use ruff_python_ast::{self as ast, Expr, ModModule, Stmt};
 use ruff_python_parser::{Parsed, parse_module};
 use ruff_text_size::{TextRange, TextSize};
-use rustc_hash::FxHashSet;
 
 use self::api_reached::interface;
 pub(crate) use self::api_reached::{Closure, Definition};
@@ -228,11 +227,7 @@ impl FileFacts {
             defined.extend(declared_names(stmt));
         }
         let bindings = top_level_bindings(&imports.from_statements);
-        let module_names: Vec<(String, String)> = bindings
-            .iter()
-            .map(|binding| (binding.bound.clone(), format!("{}.{}", binding.module, binding.name)))
-            .chain(imports.module_aliases)
-            .collect();
+        let (module_names, module_values) = module_bindings(&bindings, &imports);
         Some(Self {
             imports: grouped(imports.edges),
             references: grouped(imports.references),
@@ -250,7 +245,7 @@ impl FileFacts {
                 (false, false) => ExportsUnknown::No,
             },
             bindings,
-            module_values: module_values(&module_names, &imports.value_loads),
+            module_values,
             module_names,
             defined,
             attribute_writes,
@@ -287,12 +282,37 @@ impl FileFacts {
     }
 }
 
-// The modules among the names a file binds at its top level that the file loads as a value.
-fn module_values(module_names: &[(String, String)], value_loads: &FxHashSet<&str>) -> Vec<String> {
+// The modules a file binds at its top level, by the name each binds, and the modules it loads as a value.
+fn module_bindings(bindings: &[ImportBinding], imports: &FactVisitor<'_>) -> (Vec<(String, String)>, Vec<String>) {
+    let module_names: Vec<(String, String)> = bindings
+        .iter()
+        .map(|binding| (binding.bound.clone(), format!("{}.{}", binding.module, binding.name)))
+        .chain(imports.module_aliases.iter().cloned())
+        .collect();
+    let values = module_values(&module_names, imports);
+    (module_names, values)
+}
+
+// The modules a file loads as a value: those among the names it binds that it loads as a value, as `fast` in
+// `codec = fast` does, and those a dotted name it loads as a value, as `app.fast` in `codec = app.fast`, names. An
+// import in a function body binds its name in the same way, and an import in a class body counts whatever its name is,
+// since other code reads the module through the class attribute.
+fn module_values(module_names: &[(String, String)], imports: &FactVisitor<'_>) -> Vec<String> {
+    let dotted = imports
+        .dotted_loads
+        .iter()
+        .filter_map(|dotted| visitor::qualified(&dotted.split('.').collect::<Vec<_>>(), &imports.aliases));
+    let nested = imports
+        .nested_modules
+        .iter()
+        .filter(|(bound, _, class_body)| *class_body || imports.value_loads.contains(bound.as_str()))
+        .map(|(_, module, _)| module.clone());
     module_names
         .iter()
-        .filter(|(bound, _)| value_loads.contains(bound.as_str()))
+        .filter(|(bound, _)| imports.value_loads.contains(bound.as_str()))
         .map(|(_, module)| module.clone())
+        .chain(dotted)
+        .chain(nested)
         .collect()
 }
 

@@ -2299,6 +2299,63 @@ fn module_loaded_as_value_has_no_test_only_names(service: &str, stdout: &str) {
     );
 }
 
+// A production module reaches another as a value through a dotted name, or through an import in a function or class
+// body, so a call through the value reaches the module's functions with no import of them. Only the import alone is not
+// a value.
+#[test_case("import pkg.fast\n\nCODEC = pkg.fast\n", "All checks passed!\n" ; "dotted_name_loaded")]
+#[test_case(
+    "def codec():\n    from pkg import fast\n\n    return fast\n",
+    "All checks passed!\n" ; "import_in_function"
+)]
+#[test_case(
+    "class Service:\n    from pkg import fast as codec\n\n\ndef run(text: str) -> str:\n    return Service.codec.decode(text)\n",
+    "All checks passed!\n" ;
+    "import_in_class_read_as_an_attribute"
+)]
+#[test_case(
+    "import pkg.fast\n",
+    "pkg/fast.py:1:5: SMP408 `decode` is used only by tests; move it into the tests or a test helper module\nFound 1 error.\n" ;
+    "dotted_import_alone"
+)]
+fn module_loaded_through_a_nested_or_dotted_name_has_no_test_only_names(service: &str, stdout: &str) {
+    let root = project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/fast.py", "def decode(text: str) -> str:\n    return text\n"),
+        ("pkg/service.py", service),
+        (
+            "tests/test_fast.py",
+            "from pkg import fast\n\n\ndef test_decode() -> None:\n    assert fast.decode(\"1\") == \"1\"\n",
+        ),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP408"]).1,
+        stdout.replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+    );
+}
+
+// A function that imports a module and only calls one of its functions loads no name as a value, so the module's other
+// functions that only tests use are still reported.
+#[test]
+fn import_only_called_through_keeps_other_test_only_names() {
+    let root = project(&[
+        ("pkg/__init__.py", ""),
+        (
+            "pkg/fast.py",
+            "def decode(text: str) -> str:\n    return text\n\n\ndef encode(text: str) -> str:\n    return text\n",
+        ),
+        ("pkg/service.py", "def run(text: str) -> str:\n    from pkg import fast\n\n    return fast.decode(text)\n"),
+        (
+            "tests/test_fast.py",
+            "from pkg import fast\n\n\ndef test_encode() -> None:\n    assert fast.encode(\"1\") == \"1\"\n",
+        ),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP408"]).1,
+        "pkg/fast.py:5:5: SMP408 `encode` is used only by tests; move it into the tests or a test helper module\nFound 1 error.\n"
+            .replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+    );
+}
+
 // The value load only hides the module's test-only names from SMP408. SMP401 still lists a name that production imports.
 #[test_case("from pkg import fast\n\nCODEC = fast\n", "All checks passed!\n" ; "module_loaded_as_value")]
 #[test_case(

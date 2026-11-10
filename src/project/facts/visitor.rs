@@ -98,6 +98,13 @@ impl<'a> LoadedModules<'a> {
     }
 }
 
+// The kind of body a statement sits in. A class body binds class attributes, which other code reads through the class.
+#[derive(Clone, Copy, PartialEq)]
+enum Body {
+    Class,
+    Other,
+}
+
 pub(super) struct FactVisitor<'a> {
     pub(super) module_path: Option<&'a [String]>,
     pub(super) aliases: FxHashMap<&'a str, String>,
@@ -168,6 +175,14 @@ pub(super) struct FactVisitor<'a> {
     pub(super) runtime_sites: Vec<ImportSite>,
     // The names the file loads other than as the object of an attribute, as `fast` in `codec = fast` is.
     pub(super) value_loads: FxHashSet<&'a str>,
+    // The dotted names the file loads other than as the object of an attribute, as `app.fast` in `codec = app.fast` is.
+    pub(super) dotted_loads: FxHashSet<String>,
+    // The name, module and whether the class body holds the import of each import in a function or class body. An
+    // import in a function body loads its module as a value only when the file loads its name as a value, while a class
+    // body's import is an attribute other code reads.
+    pub(super) nested_modules: Vec<(String, String, bool)>,
+    // The kind of body the statements visited are directly in.
+    body: Body,
     // The ranges of the objects of the attributes the file reads, which are not loads as a value.
     attribute_values: FxHashSet<TextRange>,
     // The facts only some rules read that the run collects.
@@ -225,6 +240,9 @@ impl<'a> FactVisitor<'a> {
             parts,
             runtime_sites: Vec::new(),
             value_loads: FxHashSet::default(),
+            dotted_loads: FxHashSet::default(),
+            nested_modules: Vec::new(),
+            body: Body::Other,
             attribute_values: FxHashSet::default(),
         }
     }
@@ -234,12 +252,32 @@ impl<'a> FactVisitor<'a> {
     // The object of an attribute is read through the attribute's name, which an import shows, so only other loads count
     // as values.
     fn record_value_load(&mut self, expr: &'a Expr) {
-        if let Expr::Attribute(ast::ExprAttribute { value, .. }) = expr {
+        if let Expr::Attribute(ast::ExprAttribute { value, ctx, .. }) = expr {
+            if ctx.is_load()
+                && !self.attribute_values.contains(&expr.range())
+                && let Some(name) = UnqualifiedName::from_expr(expr)
+            {
+                self.dotted_loads.insert(name.segments().join("."));
+            }
             self.attribute_values.insert(value.range());
         } else if let Expr::Name(ast::ExprName { id, ctx: ExprContext::Load, range, .. }) = expr
             && !self.attribute_values.contains(range)
         {
             self.value_loads.insert(id.as_str());
+        }
+    }
+
+    // Walks a function or class statement, whose statements sit in the body it names.
+    fn walk_body(&mut self, stmt: &'a Stmt, body: Body) {
+        let outer = std::mem::replace(&mut self.body, body);
+        visitor::walk_stmt(self, stmt);
+        self.body = outer;
+    }
+
+    // The module an import in a function or class body binds to a name, as `fast` for `from pkg import fast` in a class.
+    fn record_nested(&mut self, top_level: bool, bound: &str, module: &str) {
+        if !top_level {
+            self.nested_modules.push((bound.to_owned(), module.to_owned(), self.body == Body::Class));
         }
     }
 
@@ -270,6 +308,13 @@ impl<'a> FactVisitor<'a> {
                 self.edges.entry(resolved.clone()).or_default().insert(alias.name.as_str().to_owned());
                 let bound = alias.asname.as_ref().unwrap_or(&alias.name).as_str();
                 self.aliases.insert(bound, format!("{resolved}.{}", alias.name.as_str()));
+            }
+            if !top_level {
+                let class_body = self.body == Body::Class;
+                self.nested_modules.extend(names.iter().filter(|alias| alias.name.as_str() != "*").map(|alias| {
+                    let bound = alias.asname.as_ref().unwrap_or(&alias.name);
+                    (bound.to_string(), format!("{resolved}.{}", alias.name.as_str()), class_body)
+                }));
             }
             self.from_statements.push(FromImport { module: resolved, names, top_level });
         }
@@ -658,7 +703,7 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
                 let parameters = parameter_names(&function.parameters);
                 let shadowed = self.shadow(parameters.clone());
                 self.loaded_modules.enter(parameters);
-                visitor::walk_stmt(self, stmt);
+                self.walk_body(stmt, Body::Other);
                 self.loaded_modules.functions.pop();
                 restore_bindings(&mut self.loop_modules, shadowed);
             }
@@ -674,12 +719,14 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
                         if top_level {
                             self.module_aliases.push((asname.as_str().to_owned(), full.to_owned()));
                         }
+                        self.record_nested(top_level, asname.as_str(), full);
                         self.aliases.insert(asname.as_str(), full.to_owned())
                     } else {
                         let root = full.split('.').next().unwrap_or_default();
                         if top_level {
                             self.plain_modules.push((root.to_owned(), root.to_owned()));
                         }
+                        self.record_nested(top_level, root, root);
                         self.aliases.insert(root, root.to_owned())
                     };
                 }
@@ -701,7 +748,7 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
                     UnqualifiedName::from_expr(base)
                         .and_then(|name| name.segments().last().map(|last| (*last).to_owned()))
                 }));
-                visitor::walk_stmt(self, stmt);
+                self.walk_body(stmt, Body::Class);
             }
             Stmt::If(ast::StmtIf { test, body, elif_else_clauses, .. }) => {
                 // A clause runs when its own test may hold and every test before it may fail.
