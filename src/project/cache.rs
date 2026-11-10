@@ -42,13 +42,17 @@ use crate::run::{Diagnostics, Linting, Mode};
 use crate::settings::FileSettings;
 
 // A file's modification time, permissions and size. Ruff's `FileCacheKey` hashes the first two; the size also catches a
-// rewrite within one tick of a coarse clock, or a copy that keeps the modification time.
+// rewrite within one tick of a coarse clock, or a copy that keeps the modification time. The size also bounds the
+// ranges of the facts cached under the key.
 #[derive(Clone, Copy)]
-pub struct FileKey(u64);
+pub struct FileKey {
+    hash: u64,
+    length: u64,
+}
 
 impl CacheKey for FileKey {
     fn cache_key(&self, state: &mut CacheKeyHasher) {
-        self.0.cache_key(state);
+        self.hash.cache_key(state);
     }
 }
 
@@ -59,7 +63,7 @@ impl FileKey {
         FileTime::from_last_modification_time(&metadata).cache_key(&mut hasher);
         permissions(&metadata).cache_key(&mut hasher);
         metadata.len().cache_key(&mut hasher);
-        Some(Self(hasher.finish()))
+        Some(Self { hash: hasher.finish(), length: metadata.len() })
     }
 }
 
@@ -295,12 +299,13 @@ impl<'a> Cache<'a> {
         }
     }
 
-    // The import facts of a file that has not changed since they were cached.
+    // The import facts of a file that has not changed since they were cached, unless their ranges do not fit the file.
     pub fn facts(&self, path: &Path, key: FileKey) -> Option<FileFacts> {
         let facts = self.get(path, key)?.facts.as_ref()?;
         rkyv::deserialize::<FileFacts, rkyv::rancor::Error>(facts)
             .inspect_err(|error| error!("Failed to read the facts of {}: {error}", path.display()))
             .ok()
+            .filter(|facts| facts.fits(key.length))
     }
 
     pub fn set_facts(&self, path: &Path, key: FileKey, facts: FileFacts) {
@@ -361,7 +366,7 @@ impl<'a> Cache<'a> {
         let held = file.is_some_and(|file| file.findings.is_some());
         let rendered = full
             .filter(|_| held && !diagnostics.inner.is_empty())
-            .map(|full| text(full, &path.to_string_lossy(), &mut diagnostics, key.0, fingerprint.clean));
+            .map(|full| text(full, &path.to_string_lossy(), &mut diagnostics, key.hash, fingerprint.clean));
         if diagnostics.inner.is_empty() && diagnostics.fixed.is_empty() {
             self.update(path, key, ChangeData::Clean(fingerprint.clean, index));
         } else if let (true, Some(fingerprint), Some(withdrawn)) = (fresh, fingerprint.settled, settled) {
@@ -410,10 +415,12 @@ impl<'a> Cache<'a> {
         let name = path.to_string_lossy().into_owned();
         let stored = self.relative(path).and_then(|relative| self.stored_rendered().get(relative));
         match stored {
-            Some(stored) if stored.file == key.0 && stored.findings == fingerprint && stored.key == full.key(&name) => {
+            Some(stored)
+                if stored.file == key.hash && stored.findings == fingerprint && stored.key == full.key(&name) =>
+            {
                 diagnostics.rendered.insert(name, stored.text.clone());
             }
-            _ => self.store_text(path, text(full, &name, diagnostics, key.0, fingerprint)),
+            _ => self.store_text(path, text(full, &name, diagnostics, key.hash, fingerprint)),
         }
     }
 
@@ -437,7 +444,7 @@ impl<'a> Cache<'a> {
     fn get(&self, path: &Path, key: FileKey) -> Option<&'a ArchivedFileCache> {
         let relative = path.strip_prefix(self.package_root).ok()?.to_str()?;
         let file = self.archived?.files.get(relative)?;
-        if file.key.to_native() != key.0 {
+        if file.key.to_native() != key.hash {
             return None;
         }
         self.seen.lock().expect("no worker panics while recording").insert(relative.to_owned());
@@ -446,7 +453,7 @@ impl<'a> Cache<'a> {
 
     fn update(&self, path: &Path, key: FileKey, data: ChangeData) {
         if let Some(relative) = path.strip_prefix(self.package_root).ok().and_then(Path::to_str) {
-            let change = Change { path: relative.to_owned(), key: key.0, data };
+            let change = Change { path: relative.to_owned(), key: key.hash, data };
             self.changes.lock().expect("no worker panics while recording").push(change);
         }
     }
@@ -698,10 +705,6 @@ impl StoredRelated {
             message: annotation.get_message()?.to_owned(),
         })
     }
-
-    fn range(&self) -> TextRange {
-        TextRange::new(TextSize::new(self.start), TextSize::new(self.end))
-    }
 }
 
 impl Report {
@@ -750,16 +753,20 @@ impl Report {
         })
     }
 
-    // The diagnostic `of` took the report from, given the file it reports on.
+    // The diagnostic `of` took the report from, given the file it reports on, or `None` when a range does not fit the
+    // file as it now reads.
     fn diagnostic(&self, file: &SourceFile) -> Option<Diagnostic> {
         let rule = rule_by_code(&self.code)?;
-        let range = TextRange::new(TextSize::new(self.start), TextSize::new(self.end));
+        let length = file.source_text().len();
+        let range = stored_range(self.start, self.end, length)?;
+        stored_range(self.noqa_offset, self.noqa_offset, length)?;
         let mut diagnostic =
             Diagnostic::new(DiagnosticId::Lint(LintName::of(rule.name())), Severity::Error, self.message.as_str());
         diagnostic.annotate(Annotation::primary(Span::from(file.clone()).with_range(range)));
         for related in &self.related {
             let file = source_file_at(Path::new(&related.path))?;
-            let span = Span::from(file).with_range(related.range());
+            let range = stored_range(related.start, related.end, file.source_text().len())?;
+            let span = Span::from(file).with_range(range);
             diagnostic.annotate(Annotation::secondary(span).message(related.message.as_str()));
         }
         diagnostic.set_secondary_code(SecondaryCode::new(rule.code().to_owned()));
@@ -768,7 +775,7 @@ impl Report {
             diagnostic.help(help.as_str());
         }
         if let Some(fix) = &self.fix {
-            diagnostic.set_fix(fix.fix()?);
+            diagnostic.set_fix(fix.fix(length)?);
         }
         diagnostic.set_noqa_offset(TextSize::new(self.noqa_offset));
         Some(diagnostic)
@@ -808,8 +815,9 @@ impl StoredFix {
         }
     }
 
-    // `None` for a fix without edits, which no rule builds and which a cache file therefore cannot hold.
-    fn fix(&self) -> Option<Fix> {
+    // `None` for a fix without edits, which no rule builds and which a cache file therefore cannot hold, or with an edit
+    // outside a source of `length` bytes.
+    fn fix(&self, length: usize) -> Option<Fix> {
         let applicability = match self.applicability {
             StoredApplicability::DisplayOnly => Applicability::DisplayOnly,
             StoredApplicability::Unsafe => Applicability::Unsafe,
@@ -819,9 +827,9 @@ impl StoredFix {
             StoredIsolation::Group(group) => IsolationLevel::Group(group),
             StoredIsolation::NonOverlapping => IsolationLevel::NonOverlapping,
         };
-        let (first, rest) = self.edits.split_first()?;
-        let rest = rest.iter().map(StoredEdit::edit);
-        Some(Fix::applicable_edits(first.edit(), rest, applicability).isolate(isolation))
+        let edits: Vec<Edit> = self.edits.iter().map(|edit| edit.edit(length)).collect::<Option<_>>()?;
+        let (first, rest) = edits.split_first()?;
+        Some(Fix::applicable_edits(first.clone(), rest.iter().cloned(), applicability).isolate(isolation))
     }
 }
 
@@ -847,13 +855,20 @@ struct StoredEdit {
 }
 
 impl StoredEdit {
-    fn edit(&self) -> Edit {
-        let range = TextRange::new(TextSize::new(self.start), TextSize::new(self.end));
-        match &self.content {
+    fn edit(&self, length: usize) -> Option<Edit> {
+        let range = stored_range(self.start, self.end, length)?;
+        Some(match &self.content {
             Some(content) => Edit::range_replacement(content.clone(), range),
             None => Edit::range_deletion(range),
-        }
+        })
     }
+}
+
+// A range read back from a cache file, or `None` when it cannot lie in a source of `length` bytes, as in a cache file
+// that was damaged or edited by hand, or a file changed without changing its key.
+fn stored_range(start: u32, end: u32, length: usize) -> Option<TextRange> {
+    (start <= end && usize::try_from(end).is_ok_and(|end| end <= length))
+        .then(|| TextRange::new(TextSize::new(start), TextSize::new(end)))
 }
 
 // The fix loop's last run over an unchanged file: the fingerprint it ran under and the fixes it withdrew, rules by code
@@ -1005,7 +1020,11 @@ mod tests {
     use ruff_text_size::{TextRange, TextSize};
     use test_case::test_case;
 
-    use super::{StoredApplicability, StoredFix, StoredIsolation};
+    use ruff_source_file::SourceFileBuilder;
+
+    use super::{Report, StoredApplicability, StoredEdit, StoredFix, StoredIsolation};
+
+    const SOURCE_LENGTH: usize = 30;
 
     fn range(start: u32, end: u32) -> TextRange {
         TextRange::new(TextSize::new(start), TextSize::new(end))
@@ -1014,7 +1033,7 @@ mod tests {
     // The fix a cache file holds after an rkyv round trip, which is what a later run reads back.
     fn round_trip(fix: &Fix) -> Option<Fix> {
         let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(&StoredFix::of(fix)).expect("serialize");
-        rkyv::from_bytes::<StoredFix, rkyv::rancor::Error>(&bytes).expect("deserialize").fix()
+        rkyv::from_bytes::<StoredFix, rkyv::rancor::Error>(&bytes).expect("deserialize").fix(SOURCE_LENGTH)
     }
 
     #[test_case(Fix::safe_edit(Edit::range_replacement("y".to_owned(), range(4, 9))) ; "safe_replacement")]
@@ -1037,7 +1056,37 @@ mod tests {
             isolation: StoredIsolation::NonOverlapping,
             edits: Vec::new(),
         };
-        assert!(stored.fix().is_none());
+        assert!(stored.fix(SOURCE_LENGTH).is_none());
+    }
+
+    #[test_case(0, 1, 0, true ; "fits")]
+    #[test_case(1, 0, 0, false ; "end_before_start")]
+    #[test_case(0, 12, 0, false ; "end_past_the_source")]
+    #[test_case(0, 1, 12, false ; "suppression_past_the_source")]
+    fn report_is_restored_only_inside_the_source(start: u32, end: u32, noqa_offset: u32, restored: bool) {
+        let file = SourceFileBuilder::new("module.py", "x = 1\ny = 2").finish();
+        let report = Report {
+            code: "SMP101".to_owned(),
+            message: "Single-letter name".to_owned(),
+            start,
+            end,
+            noqa_offset,
+            help: Vec::new(),
+            fix: None,
+            related: Vec::new(),
+        };
+        assert_eq!(report.diagnostic(&file).is_some(), restored);
+    }
+
+    #[test_case(5, 3 ; "end_before_start")]
+    #[test_case(3, 31 ; "end_past_the_source")]
+    fn fix_with_an_edit_outside_the_source_is_not_restored(start: u32, end: u32) {
+        let stored = StoredFix {
+            applicability: StoredApplicability::Safe,
+            isolation: StoredIsolation::NonOverlapping,
+            edits: vec![StoredEdit { start, end, content: None }],
+        };
+        assert!(stored.fix(SOURCE_LENGTH).is_none());
     }
 
     #[test]
