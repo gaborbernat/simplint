@@ -22,14 +22,14 @@ Cache
 -----
 
 Like Ruff, simplint caches which files had nothing to report, keyed by each file's modification time and
-permissions. With a :ref:`cross-file rule <cross-file-rules>` enabled, a cached result also depends on the names other
-files use from that file, so editing an importer checks the files it imports again. A file only per-file rules check
-keeps its cached result.
+permissions, and also by its size. With a :ref:`cross-file rule <cross-file-rules>` enabled, a cached result also
+depends on the names other files use from that file, so editing an importer checks the files it imports again. A file
+only per-file rules check keeps its cached result.
 
 .. mermaid::
 
     flowchart TD
-        file["File in the run"] --> same{"mtime or permissions<br/>changed?"}
+        file["File in the run"] --> same{"mtime, permissions<br/>or size changed?"}
         same -->|yes| lint["Lint it"]
         same -->|no| clean{"Cached clean under the<br/>same settings and, for<br/>cross-file rules, index?"}
         clean -->|yes| skip["Skip it"]

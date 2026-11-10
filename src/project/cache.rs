@@ -41,7 +41,8 @@ use crate::project::{Ending, FileFacts};
 use crate::run::{Diagnostics, Linting, Mode};
 use crate::settings::FileSettings;
 
-// A file's modification time and permissions, hashed as Ruff's `FileCacheKey`.
+// A file's modification time, permissions and size. Ruff's `FileCacheKey` hashes the first two; the size also catches a
+// rewrite within one tick of a coarse clock, or a copy that keeps the modification time.
 #[derive(Clone, Copy)]
 pub struct FileKey(u64);
 
@@ -57,6 +58,7 @@ impl FileKey {
         let mut hasher = CacheKeyHasher::new();
         FileTime::from_last_modification_time(&metadata).cache_key(&mut hasher);
         permissions(&metadata).cache_key(&mut hasher);
+        metadata.len().cache_key(&mut hasher);
         Some(Self(hasher.finish()))
     }
 }
