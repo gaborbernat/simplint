@@ -1,0 +1,24 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+4:6 SMP917 `:param gone:` documents `gone`, which `ends_in_double_quotes` does not take [unsafe fix: Remove `:param gone:`]
+12:6 SMP917 `:param gone:` documents `gone`, which `ends_in_quote` does not take [unsafe fix: Remove `:param gone:`]
+20:6 SMP917 `:param gone:` documents `gone`, which `ends_in_backslash` does not take [unsafe fix: Remove `:param gone:`]
+--- fixed (3 applied, 0 remaining) ---
+def ends_in_double_quotes(value: int) -> int:
+    """Return the default is ""
+    """
+    return value
+
+
+def ends_in_quote(value: int) -> int:
+    """Say "hi"
+    """
+    return value
+
+
+def ends_in_backslash(value: int) -> int:
+    r"""Split on \
+    """
+    return value
