@@ -153,10 +153,8 @@ fn check_assign<'a>(
         return;
     }
     let after = &body[index + 1..];
-    let Some(offset) = after.partition_point(|stmt| stmt.start() <= first.start()).checked_sub(1) else { return };
-    if !after[offset].range().contains_range(first) {
-        return;
-    }
+    let candidate = after.partition_point(|stmt| stmt.start() <= first.start()).checked_sub(1);
+    let Some(offset) = candidate.filter(|&offset| after[offset].range().contains_range(first)) else { return };
     let next = &after[offset];
     // Only the statement directly after the assignment is SMP504's, which inlines a single use.
     if offset == 0 || checker.has_comment_in(TextRange::new(assign.start(), next.start())) {
