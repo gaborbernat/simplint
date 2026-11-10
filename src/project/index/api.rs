@@ -168,7 +168,10 @@ impl CacheKey for FileIndex<'_> {
         self.api_reached.cache_key(state);
         self.library_reached.cache_key(state);
         self.inherited.cache_key(state);
-        self.cycle.cache_key(state);
+        self.cycle.is_some().cache_key(state);
+        if let Some(cycle) = self.cycle {
+            cycle.cache_key_with(&self.project.files, state);
+        }
         self.duplicates.cache_key(state);
         self.calls.cache_key(state);
     }
@@ -294,6 +297,11 @@ impl<'a> FileIndex<'a> {
     // The statement that closes a cycle of runtime imports this file takes part in, if it is the file that reports it.
     pub fn import_cycle(&self) -> Option<&'a Cycle> {
         self.cycle
+    }
+
+    // The path of a file of the run, by the id a cycle names it with.
+    pub fn path_of(&self, id: FileId) -> &'a Path {
+        self.project.files.path(id)
     }
 
     // The runs of statements of this file that another file repeats.

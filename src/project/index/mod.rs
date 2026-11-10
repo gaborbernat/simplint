@@ -369,7 +369,7 @@ impl Project {
         let (aside, ()) = rayon::join(
             || {
                 let (cycles, duplicates) = rayon::join(
-                    || runtime_cycles(runtime, &test_modules, ids_of),
+                    || runtime_cycles(runtime, &test_modules),
                     || duplicate_reports(&sources, &test_modules, ids_of, duplicate_statements, distribution_roots),
                 );
                 (cycles, duplicates, RunReads::collect(&indexed))
@@ -657,13 +657,9 @@ fn non_stub_facts<'a>(ids: &[FileId], files: &[(&Path, &'a FileFacts)]) -> FxHas
 
 // The cycles of the runtime imports outside test modules, which import each other as fixtures and deliberately close
 // cycles when they test the import system.
-fn runtime_cycles(
-    mut runtime: RuntimeGraph,
-    test_modules: &FxHashSet<FileId>,
-    files: &FileIds,
-) -> FxHashMap<FileId, Cycle> {
+fn runtime_cycles(mut runtime: RuntimeGraph, test_modules: &FxHashSet<FileId>) -> FxHashMap<FileId, Cycle> {
     runtime.retain(|file, _| !test_modules.contains(file));
-    cycles::cycles(runtime, files)
+    cycles::cycles(runtime)
 }
 
 // The statements each file shares with another, which `duplicate-code` reports. Stubs repeat each other's signatures by

@@ -20,6 +20,19 @@ fn import_through_directory_without_init_counts_as_imported() {
 }
 
 #[test]
+fn long_import_cycle_names_its_first_files_and_counts_the_rest() {
+    let sources: Vec<(String, String)> =
+        (0..12).map(|index| (format!("ring{index}.py"), format!("import ring{}\n", (index + 1) % 12))).collect();
+    let files: Vec<(&str, &str)> = sources.iter().map(|(name, source)| (name.as_str(), source.as_str())).collect();
+    let root = project(&files);
+    assert!(check(root.path(), &["--select", "SMP308"]).1.contains(
+        "ring0.py:1:1: SMP308 This import closes a cycle of runtime imports, `ring0.py -> ring1.py -> ring2.py -> \
+             ring3.py -> ring4.py -> ring5.py -> ring6.py -> ring7.py -> ... (4 more) -> ring0.py`; import inside the \
+             function that needs it"
+    ));
+}
+
+#[test]
 fn package_outside_the_source_roots_resolves_from_its_parent() {
     let root = project(&[
         ("lib/pkg/__init__.py", ""),

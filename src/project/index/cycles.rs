@@ -1,5 +1,4 @@
 use std::collections::VecDeque;
-use std::path::PathBuf;
 
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_text_size::TextRange;
@@ -8,12 +7,17 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use super::range_key;
 use super::{FileId, FileIds};
 
+// The files a cycle names before it counts the rest, as a ring of thousands of modules would otherwise name every one of
+// them in each of its reports.
+const SHOWN: usize = 8;
+
 // The statement that closes a cycle of runtime imports, and the files the cycle runs through, starting and ending at
-// the file the statement sits in.
+// the file the statement sits in. A long cycle keeps its first files, and the number of files it leaves out.
 #[derive(Clone, PartialEq)]
 pub struct Cycle {
     pub(super) range: TextRange,
-    pub(super) chain: Vec<PathBuf>,
+    pub(super) chain: Vec<FileId>,
+    pub(super) omitted: usize,
 }
 
 impl Cycle {
@@ -21,15 +25,19 @@ impl Cycle {
         self.range
     }
 
-    pub fn chain(&self) -> &[PathBuf] {
+    pub fn chain(&self) -> &[FileId] {
         &self.chain
     }
-}
 
-impl CacheKey for Cycle {
-    fn cache_key(&self, state: &mut CacheKeyHasher) {
+    pub fn omitted(&self) -> usize {
+        self.omitted
+    }
+
+    // Ids are numbered per run, so the key hashes the paths, which a cached report must match in the next run.
+    pub(super) fn cache_key_with(&self, files: &FileIds, state: &mut CacheKeyHasher) {
         range_key(self.range(), state);
-        self.chain().cache_key(state);
+        self.omitted.cache_key(state);
+        self.chain.iter().map(|&id| files.path(id)).collect::<Vec<_>>().cache_key(state);
     }
 }
 
@@ -39,7 +47,7 @@ pub(super) type RuntimeGraph = FxHashMap<FileId, Vec<(FileId, TextRange)>>;
 // The cycles of the runtime import graph: a file in a strongly connected component of two or more files reports its
 // first import into that component, with the shortest cycle through it. Each file reports once, so a cycle of n files
 // gives n reports, one per file, each on the import that closes the cycle from that file.
-pub(super) fn cycles(mut graph: RuntimeGraph, files: &FileIds) -> FxHashMap<FileId, Cycle> {
+pub(super) fn cycles(mut graph: RuntimeGraph) -> FxHashMap<FileId, Cycle> {
     for imports in graph.values_mut() {
         imports.sort_by_key(|(_, range)| range.start());
     }
@@ -61,8 +69,12 @@ pub(super) fn cycles(mut graph: RuntimeGraph, files: &FileIds) -> FxHashMap<File
             .expect("a file in a cycle imports a file of its component");
         let mut chain = vec![file];
         chain.extend(shortest_path(&graph, &component, home, first, file));
-        let chain = chain.into_iter().map(|id| files.path(id).to_path_buf()).collect();
-        cycles.insert(file, Cycle { range, chain });
+        // The path ends on `file`, which the chain closes on once more after the files it keeps.
+        chain.pop();
+        let omitted = chain.len().saturating_sub(SHOWN);
+        chain.truncate(SHOWN);
+        chain.push(file);
+        cycles.insert(file, Cycle { range, chain, omitted });
     }
     cycles
 }
