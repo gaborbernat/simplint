@@ -1,3 +1,5 @@
+use std::mem;
+
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use ruff_python_ast::visitor::{Visitor, walk_expr, walk_stmt};
@@ -50,12 +52,17 @@ fn module_uses(checker: &Checker, body: &[Stmt], runtime_names: &FxHashMap<TextR
         }
         other => other,
     };
-    // The statements that, as they run, read a name something other than an import binds.
+    // The statements that, as they run, read a name something other than an import above the first definition binds. A
+    // definition moves past an import below it, so that import pins its readers like any other binding.
+    let first_definition = body.iter().find(|stmt| definition_name(stmt).is_some()).map(Ranged::start);
     let runtime_readers: FxHashSet<usize> = semantic
         .references()
         .filter(|reference| {
             evaluation(reference) == Evaluation::Runtime
-                && semantic.bindings(reference.name).iter().any(|binding| binding.kind != BindingKind::Import)
+                && semantic.bindings(reference.name).iter().any(|binding| {
+                    binding.kind != BindingKind::Import
+                        || first_definition.is_some_and(|start| binding.range.start() > start)
+                })
         })
         .map(|reference| reference.statement)
         .collect();
@@ -102,10 +109,11 @@ fn eager_annotations(checker: &Checker) -> Vec<TextRange> {
 }
 
 // The functions and lambdas that may run while the module loads, so what they read must already exist: a lambda in
-// module-level code, as `(lambda: x)()` or a callback handed to a call, and a function a class body calls, as in
-// `tokens = [state(1)]`. A lambda bound straight to a name is a definition like any `def`.
+// module-level code, as `(lambda: x)()` or a callback handed to a call, a function a class body calls, as in
+// `tokens = [state(1)]`, and a `def` in a block of module-level code, such as an `if __name__ == "__main__":` body,
+// which the block usually calls. A lambda bound straight to a name is a definition like any `def`.
 fn import_time_functions(body: &[Stmt], runtime_names: &FxHashMap<TextRange, FxHashSet<&str>>) -> FxHashSet<TextRange> {
-    let mut finder = ImportTimeFunctions { runtime_names, ranges: FxHashSet::default() };
+    let mut finder = ImportTimeFunctions { runtime_names, ranges: FxHashSet::default(), blocks: 0, in_class: false };
     finder.visit_body(body);
     finder.ranges
 }
@@ -113,12 +121,17 @@ fn import_time_functions(body: &[Stmt], runtime_names: &FxHashMap<TextRange, FxH
 struct ImportTimeFunctions<'r> {
     runtime_names: &'r FxHashMap<TextRange, FxHashSet<&'r str>>,
     ranges: FxHashSet<TextRange>,
+    blocks: usize,
+    in_class: bool,
 }
 
 impl<'a> Visitor<'a> for ImportTimeFunctions<'_> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
             Stmt::FunctionDef(function) => {
+                if self.blocks > 0 {
+                    self.ranges.insert(function.range());
+                }
                 for expr in definition_time_exprs(function) {
                     self.visit_expr(expr);
                 }
@@ -133,7 +146,16 @@ impl<'a> Visitor<'a> for ImportTimeFunctions<'_> {
                         .filter(|function| called.contains(function.name.as_str()))
                         .map(Ranged::range),
                 );
+                let outer = (mem::take(&mut self.blocks), mem::replace(&mut self.in_class, true));
                 walk_stmt(self, stmt);
+                (self.blocks, self.in_class) = outer;
+            }
+            Stmt::If(_) | Stmt::Try(_) | Stmt::With(_) | Stmt::For(_) | Stmt::While(_) | Stmt::Match(_)
+                if !self.in_class =>
+            {
+                self.blocks += 1;
+                walk_stmt(self, stmt);
+                self.blocks -= 1;
             }
             Stmt::Assign(ast::StmtAssign { targets, value, .. })
                 if targets.len() == 1 && targets[0].is_name_expr() && value.is_lambda_expr() => {}

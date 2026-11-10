@@ -42,6 +42,21 @@ use crate::common;
     "definition-before-use", "definition_before_use_later_helper.py", "py314"
     ; "definition_before_use_later_helper"
 )]
+#[test_case(
+    "definition-before-use", "definition_before_use_block_helper.py", "py314"
+    ; "definition_before_use_block_helper"
+)]
+#[test_case(
+    "definition-before-use", "definition_before_use_block_method.py", "py314"
+    ; "definition_before_use_block_method"
+)]
+#[test_case(
+    "definition-before-use", "definition_before_use_mid_import.py", "py314" ; "definition_before_use_mid_import"
+)]
+#[test_case(
+    "definition-before-use", "definition_before_use_leading_import.py", "py314"
+    ; "definition_before_use_leading_import"
+)]
 #[test_case("single-user-constant", "single_user_constant.py", "py314" ; "single_user_constant")]
 #[test_case(
     "definition-before-use", "definition_before_use_module_defaults.py", "py314"
