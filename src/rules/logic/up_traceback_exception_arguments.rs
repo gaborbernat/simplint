@@ -37,7 +37,10 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         [traceback] if function != "format_exception_only" && is_traceback_of(traceback, name) => traceback,
         _ => return,
     };
-    let range = TextRange::new(exc_type.start(), last.end());
+    let range = TextRange::new(
+        checker.parenthesized_range(exc_type, (&call.arguments).into()).start(),
+        checker.parenthesized_range(last, (&call.arguments).into()).end(),
+    );
     let fix = (!checker.has_comment_in(range)).then(|| Fix::safe_edit(Edit::range_replacement(name.to_owned(), range)));
     checker.report_fix(
         Rule::TracebackExceptionArguments,

@@ -10,7 +10,10 @@ expression: "lint_fixture(rule, fixture, target_version)"
 16:9 SMP509 `traceback.print_exception` reads the type and traceback from `error`; pass `error` alone [fix: Drop the type and traceback arguments]
 17:9 SMP509 `traceback.format_exception` reads the type and traceback from `error`; pass `error` alone [fix: Drop the type and traceback arguments]
 54:9 SMP509 `traceback.print_exception` reads the type and traceback from `error`; pass `error` alone
---- fixed (7 applied, 1 remaining) ---
+62:9 SMP509 `traceback.print_exception` reads the type and traceback from `error`; pass `error` alone [fix: Drop the type and traceback arguments]
+63:9 SMP509 `traceback.format_exception` reads the type and traceback from `error`; pass `error` alone [fix: Drop the type and traceback arguments]
+64:16 SMP509 `traceback.format_exception_only` reads the type and traceback from `error`; pass `error` alone [fix: Drop the type and traceback arguments]
+--- fixed (10 applied, 1 remaining) ---
 import sys
 import traceback
 import traceback as tb_module
@@ -66,3 +69,12 @@ def commented(run):
     except Exception as error:
         traceback.print_exception(type(error),  # keep the type
                                   error, error.__traceback__)
+
+
+def parenthesized(run):
+    try:
+        run()
+    except Exception as error:
+        traceback.print_exception(error)
+        traceback.format_exception(error)
+        return traceback.format_exception_only(error)
