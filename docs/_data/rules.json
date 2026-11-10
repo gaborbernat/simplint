@@ -12958,7 +12958,7 @@
     "name": "walrus-candidate",
     "summary": "An assignment the next `if` test could absorb with `:=`",
     "fix": "Always",
-    "explanation": "Flags an assignment to a name that only feeds the `if` statement right after it. Inlining the value, or binding it in\nthe test with `:=`, keeps the value next to the check that uses it.\n\n## Why is this bad?\n\nA name that exists only to feed the next test splits one decision over two statements. It also stays in scope after it\nstops mattering. Inlining the value, or binding it in the test with an\n[assignment expression](https://docs.python.org/3/reference/expressions.html#assignment-expressions) (`:=`, from\n[PEP 572](https://peps.python.org/pep-0572/)), keeps the value next to the check that uses it.\n\n## Example\n\n```python report\ndef first_word(text: str) -> str:\n    found = re.match(r\"\\w+\", text)\n    if found:\n        return found.group(0)\n    stripped = text.strip()\n    if not stripped:\n        return \"\"\n    return text\n```\n\nUse instead:\n\n```python ok\ndef first_word(text: str) -> str:\n    if found := re.match(r\"\\w+\", text):\n        return found.group(0)\n    if not text.strip():\n        return \"\"\n    return text\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py37\"\n  ```\n\n  ```python ok\n  def first_word(text: str) -> str:\n      found = text.strip()\n      if found:\n          return found\n      return \"\"\n  ```\n\n- [`line-length`](https://docs.astral.sh/ruff/settings/#line-length) and\n  [`indent-width`](https://docs.astral.sh/ruff/settings/#indent-width), which give the width an `if` header must fit;\n  see\n  [Settings shared with Ruff](https://simplint.readthedocs.io/en/latest/configuration/project.html#settings-shared-with-ruff)\n\n  ```toml config\n  [tool.ruff]\n  line-length = 40\n  ```\n\n  ```python ok\n  def check(text: str) -> bool:\n      size = len(text) + len(text) + len(text) + len(text)\n      if size > 1000000:\n          return True\n      return False\n  ```\n\n## What it does\n\n### Active on\n\nAn assignment to a single name is reported when it is directly followed by an `if` statement whose test starts with that\nname, and nothing else reads the name: not after the `if` statement, and not before the assignment either, such as a\nclosure or an earlier statement of the same loop. The search covers the enclosing function, or the whole file at module\nlevel. The test starts with the name when the name is:\n\n- **The whole test**, as in `if found:`.\n\n  ```python report\n  def first_word(text: str) -> str:\n      found = text.strip()\n      if found:\n          return found\n      return \"\"\n  ```\n\n  ```python fixed\n  def first_word(text: str) -> str:\n      if found := text.strip():\n          return found\n      return \"\"\n  ```\n\n- **The operand of `not`**, as in `if not found:`.\n\n  ```python report\n  def first_word(text: str) -> str:\n      found = text.strip()\n      if not found:\n          return \"\"\n      return text\n  ```\n\n  ```python fixed\n  def first_word(text: str) -> str:\n      if not text.strip():\n          return \"\"\n      return text\n  ```\n\n- **The left side of a comparison**, as in `if found > 3:`.\n\n  ```python report\n  def long_enough(text: str) -> bool:\n      size = len(text)\n      if size > 3:\n          return True\n      return False\n  ```\n\n  ```python fixed\n  def long_enough(text: str) -> bool:\n      if len(text) > 3:\n          return True\n      return False\n  ```\n\n- **The first operand of `and` or `or`**, as in `if found and ready:`.\n\n  ```python report\n  def first_word(text: str, ready: bool) -> str:\n      found = text.strip()\n      if found and ready:\n          return found\n      return \"\"\n  ```\n\n  ```python fixed\n  def first_word(text: str, ready: bool) -> str:\n      if (found := text.strip()) and ready:\n          return found\n      return \"\"\n  ```\n\nIn each case the value can take the name's place at the start of the test without changing what runs first.\n\n### Exceptions\n\n- **Target versions older than 3.8**: Python 3.8 introduced `:=`.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py37\"\n  ```\n\n  ```python ok\n  def first_word(text: str) -> str:\n      found = text.strip()\n      if found:\n          return found\n      return \"\"\n  ```\n\n- **Modules with a version gate**, as [missing-final](SMP601.html) describes: the module exists to run on older\n  interpreters and report them.\n\n  ```python ok\n  import sys\n\n  if sys.version_info < (3, 8):\n      raise SystemExit(\"Python 3.8 or newer is required\")\n\n\n  def first_word(text: str) -> str:\n      found = text.strip()\n      if found:\n          return found\n      return \"\"\n  ```\n\n- **Assignments in a class body**, including inside an `if`, `for` or `try` block of the class, unless a function sits\n  between: such an assignment defines a class attribute, which `Class.name` reads without a name reference.\n\n  ```python ok\n  class Config:\n      found = len(\"text\")\n      if found:\n          LIMIT = found\n  ```\n\n- **Values that are a lambda, `yield`, `yield from`, an `:=` expression or a tuple without parentheses**: these are not\n  reported.\n\n  ```python ok\n  def run(items: list[str]) -> list[str]:\n      found = lambda: items\n      if found:\n          return found()\n      return items\n  ```\n\n- **Values that mention the name itself**: these are not reported.\n\n  ```python ok\n  def run(text: str) -> str:\n      found = text.strip() or found\n      if found:\n          return found\n      return text\n  ```\n\n- **Assignments that share a line with other code**: the fix deletes the assignment's whole line.\n\n  ```python ok\n  def run(text: str) -> str:\n      found = text.strip()\n      other = 1\n      if found:\n          return found\n      return str(other)\n  ```\n\n- **Assignments with a comment on their line, or between them and the `if`**: deleting the assignment would lose the\n  comment.\n\n  ```python ok\n  def run(text: str) -> str:\n      found = text.strip()  # the stripped text\n      if found:\n          return found\n      return text\n  ```\n\n- **`TYPE_CHECKING`**: type checkers recognize the guard by that name whatever its value, so the name must stay.\n\n  ```python ok\n  TYPE_CHECKING = False\n\n  if TYPE_CHECKING:\n      import os\n  ```\n\n- **Module-level names that another module in the run imports or patches by name, or that `__all__` lists, and every\n  module-level name when `__all__` is computed**: the other module would lose the binding.\n\n  ```python ok file=settings.py\n  found = len(\"text\")\n  if found:\n      print(found)\n  ```\n\n  ```python context file=main.py\n  from settings import found\n  ```\n\n- **Names the function declares [`global`](https://docs.python.org/3/reference/simple_stmts.html#the-global-statement)\n  or [`nonlocal`](https://docs.python.org/3/reference/simple_stmts.html#the-nonlocal-statement)**: code in the outer\n  scope reads the binding too.\n\n  ```python ok\n  def run(text: str) -> str:\n      global found\n      found = text.strip()\n      if found:\n          return found\n      return text\n  ```\n\n- **An `if` whose header, with the value folded in, would not fit\n  [`line-length`](https://docs.astral.sh/ruff/settings/#line-length) on one line at its block's indentation**:\n  `ruff format` would split it over several lines, which reads worse than the two statements.\n\n  The header is measured joined on one line without parentheses around the test, which the formatter drops, so how the\n  code is laid out now does not matter. A header with a comment or a string over several lines never fits.\n\n  ```python ok\n  def run(text: str, flag: bool) -> str:\n      found = text.strip()\n      if flag and found and text.startswith(\"a\") and text.endswith(\"b\") and text.isalpha() and text.isascii():\n          return found\n      return text\n  ```\n\n```mermaid\nflowchart TD\n    assign[\"name = value\"] --> test{\"next if test<br/>starts with name?\"}\n    test -->|no| skip[\"not reported\"]\n    test -->|yes| read{\"name read<br/>anywhere else?\"}\n    read -->|yes| skip\n    read -->|no| skipped{\"skipped case, or<br/>header too long?\"}\n    skipped -->|yes| skip\n    skipped -->|no| again{\"name used again<br/>in the if?\"}\n    again -->|yes| walrus[\"fix: name := value<br/>in the test\"]\n    again -->|no| inline[\"fix: inline the value\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class assign blue\n    class test,read,skipped,again yellow\n    class skip green\n    class walrus,inline teal\n```\n\n### Fix\n\nThe fix is safe. It deletes the assignment, then:\n\n- when the name appears nowhere else in the `if` statement, including the rest of the test, the body and any `elif` or\n  `else` branch, it inlines the value and adds parentheses where precedence requires them;\n\n  ```python report\n  def run(text: str) -> bool:\n      found = text.strip() + \"!\"\n      if found:\n          return True\n      return False\n  ```\n\n  ```python fixed\n  def run(text: str) -> bool:\n      if text.strip() + \"!\":\n          return True\n      return False\n  ```\n\n- otherwise it writes `name := value` in the test, in parentheses unless the name is the whole test.\n\n  ```python report\n  def run(text: str) -> str:\n      found = text.strip()\n      if found:\n          return found\n      return \"\"\n  ```\n\n  ```python fixed\n  def run(text: str) -> str:\n      if found := text.strip():\n          return found\n      return \"\"\n  ```\n\nWhen the assignment and the `if` it leads to are the only statements of an `if` whose header holds a comment, and that\n`if` has no `else` or `elif` branch, Ruff would merge the two `if` statements only past the comment. The fix would leave\nthat work behind, so the finding is reported without a fix.\n\n```python report\ndef run(text: str, flag: bool) -> str:\n    if flag:  # keep\n        size = len(text)\n        if size > 3:\n            return text\n    return \"\"\n```\n\nThe search for other reads looks only at names in code. It misses importers outside the run and references held in\nstrings, such as an `__all__` entry.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#970](https://github.com/astral-sh/ruff/issues/970),\n  [#11060](https://github.com/astral-sh/ruff/issues/11060) and [#10108](https://github.com/astral-sh/ruff/issues/10108).\n- [pylint](https://github.com/pylint-dev/pylint) reports the same assignment and `if` pairs as\n  [consider-using-assignment-expr](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/consider-using-assignment-expr.html),\n  for targets that allow `:=`, with no fix.\n",
+    "explanation": "Flags an assignment to a name that only feeds the `if` statement right after it. Inlining the value, or binding it in\nthe test with `:=`, keeps the value next to the check that uses it.\n\n## Why is this bad?\n\nA name that exists only to feed the next test splits one decision over two statements. It also stays in scope after it\nstops mattering. Inlining the value, or binding it in the test with an\n[assignment expression](https://docs.python.org/3/reference/expressions.html#assignment-expressions) (`:=`, from\n[PEP 572](https://peps.python.org/pep-0572/)), keeps the value next to the check that uses it.\n\n## Example\n\n```python report\ndef first_word(text: str) -> str:\n    found = re.match(r\"\\w+\", text)\n    if found:\n        return found.group(0)\n    stripped = text.strip()\n    if not stripped:\n        return \"\"\n    return text\n```\n\nUse instead:\n\n```python ok\ndef first_word(text: str) -> str:\n    if found := re.match(r\"\\w+\", text):\n        return found.group(0)\n    if not text.strip():\n        return \"\"\n    return text\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py37\"\n  ```\n\n  ```python ok\n  def first_word(text: str) -> str:\n      found = text.strip()\n      if found:\n          return found\n      return \"\"\n  ```\n\n- [`line-length`](https://docs.astral.sh/ruff/settings/#line-length) and\n  [`indent-width`](https://docs.astral.sh/ruff/settings/#indent-width), which give the width an `if` header must fit;\n  see\n  [Settings shared with Ruff](https://simplint.readthedocs.io/en/latest/configuration/project.html#settings-shared-with-ruff)\n\n  ```toml config\n  [tool.ruff]\n  line-length = 40\n  ```\n\n  ```python ok\n  def check(text: str) -> bool:\n      size = len(text) + len(text) + len(text) + len(text)\n      if size > 1000000:\n          return True\n      return False\n  ```\n\n## What it does\n\n### Active on\n\nAn assignment to a single name is reported when it is directly followed by an `if` statement whose test starts with that\nname, and nothing else reads the name: not after the `if` statement, and not before the assignment either, such as a\nclosure or an earlier statement of the same loop. The search covers the enclosing function, or the whole file at module\nlevel. The test starts with the name when the name is:\n\n- **The whole test**, as in `if found:`.\n\n  ```python report\n  def first_word(text: str) -> str:\n      found = text.strip()\n      if found:\n          return found\n      return \"\"\n  ```\n\n  ```python fixed\n  def first_word(text: str) -> str:\n      if found := text.strip():\n          return found\n      return \"\"\n  ```\n\n- **The operand of `not`**, as in `if not found:`.\n\n  ```python report\n  def first_word(text: str) -> str:\n      found = text.strip()\n      if not found:\n          return \"\"\n      return text\n  ```\n\n  ```python fixed\n  def first_word(text: str) -> str:\n      if not text.strip():\n          return \"\"\n      return text\n  ```\n\n- **The left side of a comparison**, as in `if found > 3:`.\n\n  ```python report\n  def long_enough(text: str) -> bool:\n      size = len(text)\n      if size > 3:\n          return True\n      return False\n  ```\n\n  ```python fixed\n  def long_enough(text: str) -> bool:\n      if len(text) > 3:\n          return True\n      return False\n  ```\n\n- **The first operand of `and` or `or`**, as in `if found and ready:`.\n\n  ```python report\n  def first_word(text: str, ready: bool) -> str:\n      found = text.strip()\n      if found and ready:\n          return found\n      return \"\"\n  ```\n\n  ```python fixed\n  def first_word(text: str, ready: bool) -> str:\n      if (found := text.strip()) and ready:\n          return found\n      return \"\"\n  ```\n\nIn each case the value can take the name's place at the start of the test without changing what runs first.\n\n### Exceptions\n\n- **Target versions older than 3.8**: Python 3.8 introduced `:=`.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py37\"\n  ```\n\n  ```python ok\n  def first_word(text: str) -> str:\n      found = text.strip()\n      if found:\n          return found\n      return \"\"\n  ```\n\n- **Modules with a version gate**, as [missing-final](SMP601.html) describes: the module exists to run on older\n  interpreters and report them.\n\n  ```python ok\n  import sys\n\n  if sys.version_info < (3, 8):\n      raise SystemExit(\"Python 3.8 or newer is required\")\n\n\n  def first_word(text: str) -> str:\n      found = text.strip()\n      if found:\n          return found\n      return \"\"\n  ```\n\n- **Assignments in a class body**, including inside an `if`, `for` or `try` block of the class, unless a function sits\n  between: such an assignment defines a class attribute, which `Class.name` reads without a name reference.\n\n  ```python ok\n  class Config:\n      found = len(\"text\")\n      if found:\n          LIMIT = found\n  ```\n\n- **Values that are a lambda, `yield`, `yield from`, an `:=` expression or a tuple without parentheses**: these are not\n  reported.\n\n  ```python ok\n  def run(items: list[str]) -> list[str]:\n      found = lambda: items\n      if found:\n          return found()\n      return items\n  ```\n\n- **Values that mention the name itself**: these are not reported.\n\n  ```python ok\n  def run(text: str) -> str:\n      found = text.strip() or found\n      if found:\n          return found\n      return text\n  ```\n\n- **Assignments that share a line with other code**: the fix deletes the assignment's whole line.\n\n  ```python ok\n  def run(text: str) -> str:\n      found = text.strip()\n      other = 1\n      if found:\n          return found\n      return str(other)\n  ```\n\n- **Assignments with a comment on their line, or between them and the `if`**: deleting the assignment would lose the\n  comment.\n\n  ```python ok\n  def run(text: str) -> str:\n      found = text.strip()  # the stripped text\n      if found:\n          return found\n      return text\n  ```\n\n- **`TYPE_CHECKING`**: type checkers recognize the guard by that name whatever its value, so the name must stay.\n\n  ```python ok\n  TYPE_CHECKING = False\n\n  if TYPE_CHECKING:\n      import os\n  ```\n\n- **Module-level names that another module in the run imports or patches by name, or that `__all__` lists, and every\n  module-level name when `__all__` is computed**: the other module would lose the binding.\n\n  ```python ok file=settings.py\n  found = len(\"text\")\n  if found:\n      print(found)\n  ```\n\n  ```python context file=main.py\n  from settings import found\n  ```\n\n- **Names the function declares [`global`](https://docs.python.org/3/reference/simple_stmts.html#the-global-statement)\n  or [`nonlocal`](https://docs.python.org/3/reference/simple_stmts.html#the-nonlocal-statement)**: code in the outer\n  scope reads the binding too.\n\n  ```python ok\n  def run(text: str) -> str:\n      global found\n      found = text.strip()\n      if found:\n          return found\n      return text\n  ```\n\n- **A name in a function that also mentions `locals`, `vars`, `eval` or `exec`, or a module-level name in a file that\n  mentions one of them or `globals`**: those calls find names by their text, so removing the binding would hide it from\n  them. At module level the search covers the whole file, functions included.\n\n  ```python ok\n  def run(text: str) -> str:\n      found = text.strip()\n      if found:\n          return str(locals())\n      return \"\"\n  ```\n\n  ```python ok\n  found = len(\"text\")\n  if found:\n      print(found)\n  print(globals())\n  ```\n\n- **An `if` whose header, with the value folded in, would not fit\n  [`line-length`](https://docs.astral.sh/ruff/settings/#line-length) on one line at its block's indentation**:\n  `ruff format` would split it over several lines, which reads worse than the two statements.\n\n  The header is measured joined on one line without parentheses around the test, which the formatter drops, so how the\n  code is laid out now does not matter. A header with a comment or a string over several lines never fits.\n\n  ```python ok\n  def run(text: str, flag: bool) -> str:\n      found = text.strip()\n      if flag and found and text.startswith(\"a\") and text.endswith(\"b\") and text.isalpha() and text.isascii():\n          return found\n      return text\n  ```\n\n```mermaid\nflowchart TD\n    assign[\"name = value\"] --> test{\"next if test<br/>starts with name?\"}\n    test -->|no| skip[\"not reported\"]\n    test -->|yes| read{\"name read<br/>anywhere else?\"}\n    read -->|yes| skip\n    read -->|no| skipped{\"skipped case, or<br/>header too long?\"}\n    skipped -->|yes| skip\n    skipped -->|no| again{\"name used again<br/>in the if?\"}\n    again -->|yes| walrus[\"fix: name := value<br/>in the test\"]\n    again -->|no| inline[\"fix: inline the value\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class assign blue\n    class test,read,skipped,again yellow\n    class skip green\n    class walrus,inline teal\n```\n\n### Fix\n\nThe fix is safe. It deletes the assignment, then:\n\n- when the name appears nowhere else in the `if` statement, including the rest of the test, the body and any `elif` or\n  `else` branch, it inlines the value and adds parentheses where precedence requires them;\n\n  ```python report\n  def run(text: str) -> bool:\n      found = text.strip() + \"!\"\n      if found:\n          return True\n      return False\n  ```\n\n  ```python fixed\n  def run(text: str) -> bool:\n      if text.strip() + \"!\":\n          return True\n      return False\n  ```\n\n- otherwise it writes `name := value` in the test, in parentheses unless the name is the whole test.\n\n  ```python report\n  def run(text: str) -> str:\n      found = text.strip()\n      if found:\n          return found\n      return \"\"\n  ```\n\n  ```python fixed\n  def run(text: str) -> str:\n      if found := text.strip():\n          return found\n      return \"\"\n  ```\n\nWhen the assignment and the `if` it leads to are the only statements of an `if` whose header holds a comment, and that\n`if` has no `else` or `elif` branch, Ruff would merge the two `if` statements only past the comment. The fix would leave\nthat work behind, so the finding is reported without a fix.\n\n```python report\ndef run(text: str, flag: bool) -> str:\n    if flag:  # keep\n        size = len(text)\n        if size > 3:\n            return text\n    return \"\"\n```\n\nThe search for other reads looks only at names in code. It misses importers outside the run and references held in\nstrings, such as an `__all__` entry.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#970](https://github.com/astral-sh/ruff/issues/970),\n  [#11060](https://github.com/astral-sh/ruff/issues/11060) and [#10108](https://github.com/astral-sh/ruff/issues/10108).\n- [pylint](https://github.com/pylint-dev/pylint) reports the same assignment and `if` pairs as\n  [consider-using-assignment-expr](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/consider-using-assignment-expr.html),\n  for targets that allow `:=`, with no fix.\n",
     "examples": {
       "parsed": [
         {
@@ -13326,8 +13326,8 @@
         },
         {
           "section": "What it does",
-          "line": 281,
-          "end_line": 287,
+          "line": 278,
+          "end_line": 284,
           "config": null,
           "blocks": [
             {
@@ -13335,16 +13335,50 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 281,
-              "end_line": 287,
+              "line": 278,
+              "end_line": 284,
+              "source": "def run(text: str) -> str:\n    found = text.strip()\n    if found:\n        return str(locals())\n    return \"\"\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 286,
+          "end_line": 291,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 286,
+              "end_line": 291,
+              "source": "found = len(\"text\")\nif found:\n    print(found)\nprint(globals())\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 300,
+          "end_line": 306,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 300,
+              "end_line": 306,
               "source": "def run(text: str, flag: bool) -> str:\n    found = text.strip()\n    if flag and found and text.startswith(\"a\") and text.endswith(\"b\") and text.isalpha() and text.isascii():\n        return found\n    return text\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 318,
-          "end_line": 331,
+          "line": 337,
+          "end_line": 350,
           "config": null,
           "blocks": [
             {
@@ -13352,8 +13386,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 318,
-              "end_line": 324,
+              "line": 337,
+              "end_line": 343,
               "source": "def run(text: str) -> bool:\n    found = text.strip() + \"!\"\n    if found:\n        return True\n    return False\n"
             },
             {
@@ -13361,42 +13395,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 326,
-              "end_line": 331,
+              "line": 345,
+              "end_line": 350,
               "source": "def run(text: str) -> bool:\n    if text.strip() + \"!\":\n        return True\n    return False\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 335,
-          "end_line": 348,
-          "config": null,
-          "blocks": [
-            {
-              "role": "report",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 335,
-              "end_line": 341,
-              "source": "def run(text: str) -> str:\n    found = text.strip()\n    if found:\n        return found\n    return \"\"\n"
-            },
-            {
-              "role": "fixed",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 343,
-              "end_line": 348,
-              "source": "def run(text: str) -> str:\n    if found := text.strip():\n        return found\n    return \"\"\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
           "line": 354,
-          "end_line": 361,
+          "end_line": 367,
           "config": null,
           "blocks": [
             {
@@ -13405,7 +13413,33 @@
               "file": "example.py",
               "named": false,
               "line": 354,
-              "end_line": 361,
+              "end_line": 360,
+              "source": "def run(text: str) -> str:\n    found = text.strip()\n    if found:\n        return found\n    return \"\"\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 362,
+              "end_line": 367,
+              "source": "def run(text: str) -> str:\n    if found := text.strip():\n        return found\n    return \"\"\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 373,
+          "end_line": 380,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 373,
+              "end_line": 380,
               "source": "def run(text: str, flag: bool) -> str:\n    if flag:  # keep\n        size = len(text)\n        if size > 3:\n            return text\n    return \"\"\n"
             }
           ]
@@ -13820,7 +13854,7 @@
     "name": "single-use-variable",
     "summary": "Variables read once, right below their assignment",
     "fix": "Always",
-    "explanation": "Flags a local variable that is assigned once and read once, in the statement right after the assignment. Inlining its\nvalue removes the name and keeps the value next to the code that uses it.\n\n## Why is this bad?\n\nA name that exists only to be read on the next line adds a step to follow without adding meaning. The reader has to find\nthe assignment, remember the value, and then reach the line that uses it. Inlining the value keeps the decision in one\nplace.\n\n## Example\n\n```python report\ndef total_price(prices: list[float]) -> str:\n    total = sum(prices)\n    return f\"{total:.2f}\"\n```\n\nUse instead:\n\n```python ok\ndef total_price(prices: list[float]) -> str:\n    return f\"{sum(prices):.2f}\"\n```\n\n## Configuration\n\n- [`line-length`](https://docs.astral.sh/ruff/settings/#line-length) and\n  [`indent-width`](https://docs.astral.sh/ruff/settings/#indent-width), which give the width a statement must fit after\n  the value is inlined; see\n  [Settings shared with Ruff](https://simplint.readthedocs.io/en/latest/configuration/project.html#settings-shared-with-ruff)\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python),\n  which decide the f-strings that cannot hold a backslash or their own quote before Python 3.12, and the decorators that\n  must be dotted names before Python 3.9; see\n  [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py312\"\n  ```\n\n  ```python report\n  def lines(rows: list[bytes]) -> str:\n      joined = b\"\\n\".join(rows)\n      return f\"{joined}\"\n  ```\n\n- [`extend-immutable-calls`](https://docs.astral.sh/ruff/settings/#lint_flake8-bugbear_extend-immutable-calls) in\n  `[tool.ruff.lint.flake8-bugbear]`, which adds calls to the ones B008 takes as immutable, so a value calling one of\n  them is inlined into a default; see the read in a parameter's default above\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"B008\"]\n\n  [tool.ruff.lint.flake8-bugbear]\n  extend-immutable-calls = [\"frozen.freeze\"]\n  ```\n\n  ```python report\n  from frozen import freeze\n\n\n  def run(items: list[str]) -> None:\n      frozen = freeze(items)\n\n      def show(held=frozen) -> None:\n          print(held)\n  ```\n\n  ```python fixed\n  from frozen import freeze\n\n\n  def run(items: list[str]) -> None:\n\n      def show(held=freeze(items)) -> None:\n          print(held)\n  ```\n\n- [`preview`](https://docs.astral.sh/ruff/settings/#preview) in `[tool.ruff]`, which makes B006 also report a generator\n  and a tuple that holds a mutable value, so such a value is not inlined into a default either\n\n  ```toml config\n  [tool.ruff]\n  preview = true\n\n  [tool.ruff.lint]\n  select = [\"B006\"]\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      rows = (item for item in items)\n\n      def show(held=rows) -> None:\n          print(held)\n\n      show()\n  ```\n\n## What it does\n\n### Active on\n\n- **A plain assignment to one name whose only other mention is the next statement's read**: the name is bound once in\n  the function, and read once, in the statement directly after the assignment, in the same block.\n\n  ```python report\n  def price(prices: list[float]) -> str:\n      total = sum(prices)\n      return f\"{total:.2f}\"\n\n\n  def show(items: list[str]) -> None:\n      count = len(items)\n      print(count)\n  ```\n\n  ```python fixed\n  def price(prices: list[float]) -> str:\n      return f\"{sum(prices):.2f}\"\n\n\n  def show(items: list[str]) -> None:\n      print(len(items))\n  ```\n\n- **A dict or set display inlined right after an f-string field's `{`**: the value gets a space inside the braces,\n  because `{{` would be read as an escaped brace.\n\n  ```python report\n  def show(key: str) -> None:\n      mapping = {key: 2}\n      print(f\"{mapping}\")\n  ```\n\n  ```python fixed\n  def show(key: str) -> None:\n      print(f\"{ {key: 2} }\")\n  ```\n\n- **A read in an f-string field with a [`=`](https://docs.python.org/3/reference/lexical_analysis.html#f-strings) debug\n  specifier**, such as `{total=}`: the field prints the text of its expression, so the text stays as written and the\n  value moves into a plain field after it. The printed text does not change.\n\n  ```python report\n  def show(items: list[str]) -> None:\n      total = len(items)\n      print(f\"{total=}\")\n  ```\n\n  ```python fixed\n  def show(items: list[str]) -> None:\n      print(f\"total={len(items)!r}\")\n  ```\n\n- **A string or f-string value inlined into a bare field of an f-string**: its text joins the enclosing f-string, so\n  `f\"[{inner}]\"` with `inner = f\"<{value}>\"` becomes `f\"[<{value}>]\"` rather than a nested f-string.\n\n- **Before Python 3.12, a value whose strings use the f-string's quote**: a string in the value takes the other quote,\n  which the field can hold. A value spread over lines goes in on one line, as `ruff format` joins it, since the field\n  cannot hold a line break either.\n\n  ```python report\n  def wrap(value: str) -> str:\n      inner = f\"<{value}>\"\n      return f\"[{inner!r}]\"\n  ```\n\n  ```python fixed\n  def wrap(value: str) -> str:\n      return f\"[{f'<{value}>'!r}]\"\n  ```\n\n### Exceptions\n\n- **A name that is `_`, or a dunder such as `__all__`**: `_` is a placeholder, and a dunder has a meaning to Python.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      _ = len(items)\n      print(_)\n  ```\n\n- **A name the function declares [`global`](https://docs.python.org/3/reference/simple_stmts.html#the-global-statement)\n  or [`nonlocal`](https://docs.python.org/3/reference/simple_stmts.html#the-nonlocal-statement)**: code outside the\n  function reads the binding too.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      global count\n      count = len(items)\n      print(count)\n  ```\n\n- **A value that is a `yield`, `await` or `:=` expression**: these run or bind in a way that moving them changes.\n\n  ```python ok\n  async def run(source: Source) -> None:\n      data = await source.read()\n      print(data)\n  ```\n\n- **A read as the argument of [`next`](https://docs.python.org/3/library/functions.html#next) or\n  [`anext`](https://docs.python.org/3/library/functions.html#anext), or as the receiver of `send`, `throw`, `close` or\n  `__next__`**: the call steps or closes the object the name holds. Without the name, the call would be the only holder\n  of the object, so the object would be released as soon as the call returns, which runs a generator's `finally` early.\n  Keeping the name is the only way to leave the object alone, so the variable is not reported.\n\n  ```python ok\n  def run(rows: list[int]) -> None:\n      stream = produce(rows)\n      print(next(stream))\n  ```\n\n- **A next statement that is `return name` or `yield name`**: Ruff's\n  [unnecessary-assign](https://docs.astral.sh/ruff/rules/unnecessary-assign/) covers the `return` case while the\n  project's Ruff configuration selects it, and `yield` keeps the same shape. The inline is skipped whenever Ruff selects\n  the rule, even where `per-file-ignores` or `noqa` silence it.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"RET504\"]\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> int:\n      count = len(items)\n      return count\n  ```\n\n- **A next statement that is `yield from name`, while Ruff's preview mode is on**: Ruff's preview rule\n  [unnecessary-assign-before-yield](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/) covers it when\n  the project's Ruff configuration selects it, even when this rule's fix would differ. With preview off, or without\n  RUF070, this rule reports the pair. The inline is skipped whenever Ruff selects the rule, even where\n  `per-file-ignores` or `noqa` silence it.\n\n- **A read in a parameter's default, while Ruff's\n  [mutable-argument-default](https://docs.astral.sh/ruff/rules/mutable-argument-default/) (B006) or\n  [function-call-in-argument-default](https://docs.astral.sh/ruff/rules/function-call-in-argument-default/) (B008)\n  runs**: the default is evaluated once, when the function is defined, and inlining a value that one of them reports\n  would make Ruff report it, so the variable stays. B006 reports a mutable display, a comprehension, or a call of a\n  mutable type such as `list()` or `collections.Counter()`. B008 reports a call, except one of an immutable type such as\n  `tuple()`, a [`NewType`](https://docs.python.org/3/library/typing.html#newtype) of an immutable type, or a callee\n  listed in `extend-immutable-calls` (see Configuration). A call inside a lambda is not reported. A parameter annotated\n  with an immutable type is not reported by either, so the value is still inlined. The inline is skipped whenever Ruff\n  runs the rule, even where `per-file-ignores` or `noqa` silence it. The variable is reported when the project's Ruff\n  configuration runs neither rule.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"B006\", \"B008\"]\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n\n      def show(size=count) -> None:\n          print(size)\n\n      show()\n  ```\n\n- **A read inside a loop body, a comprehension, a lambda or a nested function**: inlining would compute the value once\n  per pass instead of once.\n\n  ```python ok\n  def run(rows: list[list[int]]) -> list[int]:\n      total = sum(rows[0])\n      return [total + value for value in rows[1]]\n  ```\n\n- **A read in a nested block of the next statement**, such as the body of an `if`: the value would run only when the\n  block does, so inlining would skip it when the block is not taken.\n\n  ```python ok\n  def run(items: list[str], verbose: bool) -> None:\n      count = len(items)\n      if verbose:\n          print(count)\n  ```\n\n- **A read after `and` or `or`**, or in a branch of a conditional expression, a later link of a chained comparison, an\n  `assert`, a `case` or the type of an `except` clause: each runs only when the code before it does not decide the\n  outcome, or when an exception or a match reaches it.\n\n  ```python ok\n  def run(items: list[str], flag: bool) -> None:\n      count = len(items)\n      print(flag and count)\n  ```\n\n  ```python ok\n  def run(items: list[str], flag: bool) -> None:\n      count = len(items)\n      print(count if flag else 0)\n  ```\n\n  ```python ok\n  def run(items: list[str], low: int) -> None:\n      count = len(items)\n      print(low < 0 < count)\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n      assert count, \"no items\"\n  ```\n\n  ```python ok\n  def run(command: str, items: list[str]) -> None:\n      count = len(items)\n      match command:\n          case \"count\":\n              print(count)\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      error = ValueError\n      try:\n          print(items[0])\n      except error:\n          print(\"empty\")\n  ```\n\n- **A read in an annotation, a `type` statement or a type parameter**: an annotation in a function body is never\n  evaluated, and the others are evaluated lazily, so the value would not run where the name was read.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      kind = list[str]\n      values: kind = items\n      print(values)\n  ```\n\n- **A conditional expression, or a value with a string literal in it, read inside an f-string field**: the field would\n  hold the conditional or the literal inside its braces, which reads worse than the two statements. A value that is a\n  string or an f-string on its own is still inlined.\n\n  ```python ok\n  def run(items: list[str], flag: bool) -> str:\n      sep = \" \" if flag else \"\"\n      return f\"[{sep}{items[0]}]\"\n  ```\n\n- **Before Python 3.12, a value with a backslash, or whose strings hold the other quote**: a replacement field cannot\n  hold a backslash or the f-string's own quote until [PEP 701](https://peps.python.org/pep-0701/), and a string that\n  holds the other quote cannot take it, so the inlined code would not parse.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py311\"\n  ```\n\n  ```python ok\n  def quote(value: str) -> str:\n      quoted = value.replace(\"'\", \"''\")\n      return f\"'{quoted}'\"\n  ```\n\n- **An assignment with a comment on its line, or between it and the read**: inlining would lose the comment.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)  # the number of rows\n      print(count)\n  ```\n\n- **A name read in an `if` test that starts with it**: [walrus-candidate](SMP502.html) covers those, and writes the\n  value into the test.\n\n  ```python ok\n  def run(text: str) -> None:\n      found = text.find(\"x\")\n      if found:\n          print(found)\n  ```\n\n- **A name read again elsewhere in the function**, or bound again: the name is needed after the read, or the read is not\n  the only one.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n      print(count)\n      print(count)\n  ```\n\n- **Functions that read their locals by name, such as `locals()` or `eval`**: a removed name would vanish from what they\n  see.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n      print(locals())\n  ```\n\n- **A next statement that is a `while` loop**: its test runs again on every pass.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      limit = len(items)\n      while limit:\n          limit -= 1\n  ```\n\n- **An inlined header that would no longer fit [`line-length`](https://docs.astral.sh/ruff/settings/#line-length)**:\n  `ruff format` would split the statement over several lines, which reads worse than the two statements. The header is\n  measured joined on one line at its block's indentation, with the value in place of the name.\n\n  ```toml config\n  [tool.ruff]\n  line-length = 40\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items) + len(items) + len(items)\n      print(count + 1000000)\n  ```\n\n- **A message bound for an exception call in a `raise`**: Ruff's\n  [raw-string-in-exception](https://docs.astral.sh/ruff/rules/raw-string-in-exception/) and\n  [f-string-in-exception](https://docs.astral.sh/ruff/rules/f-string-in-exception/) ask for an exception's message to be\n  a variable, so inlining it would bring back the report those rules remove.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      msg = f\"{len(items)} items\"\n      raise ValueError(msg)\n  ```\n\n- **A name bound another way in the function**, such as by an `import`, a `def`, a `class`, an `except` clause or a\n  `match` capture: the other binding is a second assignment the walk does not follow, so the name is not single-use.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n      from os import count\n\n      print(count)\n  ```\n\n### Fix\n\nThe fix deletes the assignment and writes the value where the name was, in parentheses when its precedence requires\nthem.\n\n**Unsafe fix:** the next statement calls something, awaits, or reads an attribute or a subscript before the read, so the\nvalue would run after it instead of before.\n\n```python report\ndef run(items: list[str], log: Log) -> None:\n    count = len(items)\n    log.write(count)\n```\n\n```python fixed\ndef run(items: list[str], log: Log) -> None:\n    log.write(len(items))\n```\n\nHere `log.write` is looked up before `len(items)` runs, which differs only when that lookup has side effects.\n\nThe fix is also unsafe when the value calls or looks something up and the next statement reads a name before the read\nthat sees what the call changes: a name formatted in an f-string field or unpacked with `*` or `**`, which takes the\nobject's state at that point, or a name some function in the module declares `global` or `nonlocal`, which the call can\nrebind.\n\n```python report\ndef run(stack: list[int]) -> str:\n    top = stack.pop()\n    return f\"{stack} after popping {top}\"\n```\n\n```python fixed\ndef run(stack: list[int]) -> str:\n    return f\"{stack} after popping {stack.pop()}\"\n```\n\nInlined, `stack` is formatted before `stack.pop()` runs, so the message shows the popped item still in the list.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules\n  [RET504](https://docs.astral.sh/ruff/rules/unnecessary-assign/) and preview\n  [RUF070](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/), which cover a value returned or yielded\n  on the next line and which this rule leaves to them; every other single read is open issue\n  [#10108](https://github.com/astral-sh/ruff/issues/10108).\n- [Sourcery](https://sourcery.ai) inlines a variable that is used once anywhere in its block through\n  [inline-variable](https://docs.sourcery.ai/reference/refactorings/python/inline-variable/). This rule only inlines a\n  value read on the line right below its assignment.\n",
+    "explanation": "Flags a local variable that is assigned once and read once, in the statement right after the assignment. Inlining its\nvalue removes the name and keeps the value next to the code that uses it.\n\n## Why is this bad?\n\nA name that exists only to be read on the next line adds a step to follow without adding meaning. The reader has to find\nthe assignment, remember the value, and then reach the line that uses it. Inlining the value keeps the decision in one\nplace.\n\n## Example\n\n```python report\ndef total_price(prices: list[float]) -> str:\n    total = sum(prices)\n    return f\"{total:.2f}\"\n```\n\nUse instead:\n\n```python ok\ndef total_price(prices: list[float]) -> str:\n    return f\"{sum(prices):.2f}\"\n```\n\n## Configuration\n\n- [`line-length`](https://docs.astral.sh/ruff/settings/#line-length) and\n  [`indent-width`](https://docs.astral.sh/ruff/settings/#indent-width), which give the width a statement must fit after\n  the value is inlined; see\n  [Settings shared with Ruff](https://simplint.readthedocs.io/en/latest/configuration/project.html#settings-shared-with-ruff)\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python),\n  which decide the f-strings that cannot hold a backslash or their own quote before Python 3.12, and the decorators that\n  must be dotted names before Python 3.9; see\n  [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py312\"\n  ```\n\n  ```python report\n  def lines(rows: list[bytes]) -> str:\n      joined = b\"\\n\".join(rows)\n      return f\"{joined}\"\n  ```\n\n- [`extend-immutable-calls`](https://docs.astral.sh/ruff/settings/#lint_flake8-bugbear_extend-immutable-calls) in\n  `[tool.ruff.lint.flake8-bugbear]`, which adds calls to the ones B008 takes as immutable, so a value calling one of\n  them is inlined into a default; see the read in a parameter's default above\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"B008\"]\n\n  [tool.ruff.lint.flake8-bugbear]\n  extend-immutable-calls = [\"frozen.freeze\"]\n  ```\n\n  ```python report\n  from frozen import freeze\n\n\n  def run(items: list[str]) -> None:\n      frozen = freeze(items)\n\n      def show(held=frozen) -> None:\n          print(held)\n  ```\n\n  ```python fixed\n  from frozen import freeze\n\n\n  def run(items: list[str]) -> None:\n\n      def show(held=freeze(items)) -> None:\n          print(held)\n  ```\n\n- [`preview`](https://docs.astral.sh/ruff/settings/#preview) in `[tool.ruff]`, which makes B006 also report a generator\n  and a tuple that holds a mutable value, so such a value is not inlined into a default either\n\n  ```toml config\n  [tool.ruff]\n  preview = true\n\n  [tool.ruff.lint]\n  select = [\"B006\"]\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      rows = (item for item in items)\n\n      def show(held=rows) -> None:\n          print(held)\n\n      show()\n  ```\n\n## What it does\n\n### Active on\n\n- **A plain assignment to one name whose only other mention is the next statement's read**: the name is bound once in\n  the function, and read once, in the statement directly after the assignment, in the same block.\n\n  ```python report\n  def price(prices: list[float]) -> str:\n      total = sum(prices)\n      return f\"{total:.2f}\"\n\n\n  def show(items: list[str]) -> None:\n      count = len(items)\n      print(count)\n  ```\n\n  ```python fixed\n  def price(prices: list[float]) -> str:\n      return f\"{sum(prices):.2f}\"\n\n\n  def show(items: list[str]) -> None:\n      print(len(items))\n  ```\n\n- **A dict or set display inlined right after an f-string field's `{`**: the value gets a space inside the braces,\n  because `{{` would be read as an escaped brace.\n\n  ```python report\n  def show(key: str) -> None:\n      mapping = {key: 2}\n      print(f\"{mapping}\")\n  ```\n\n  ```python fixed\n  def show(key: str) -> None:\n      print(f\"{ {key: 2} }\")\n  ```\n\n- **A read in an f-string field with a [`=`](https://docs.python.org/3/reference/lexical_analysis.html#f-strings) debug\n  specifier**, such as `{total=}`: the field prints the text of its expression, so the text stays as written and the\n  value moves into a plain field after it. The printed text does not change.\n\n  ```python report\n  def show(items: list[str]) -> None:\n      total = len(items)\n      print(f\"{total=}\")\n  ```\n\n  ```python fixed\n  def show(items: list[str]) -> None:\n      print(f\"total={len(items)!r}\")\n  ```\n\n- **A string or f-string value inlined into a bare field of an f-string**: its text joins the enclosing f-string, so\n  `f\"[{inner}]\"` with `inner = f\"<{value}>\"` becomes `f\"[<{value}>]\"` rather than a nested f-string.\n\n- **Before Python 3.12, a value whose strings use the f-string's quote**: a string in the value takes the other quote,\n  which the field can hold. A value spread over lines goes in on one line, as `ruff format` joins it, since the field\n  cannot hold a line break either.\n\n  ```python report\n  def wrap(value: str) -> str:\n      inner = f\"<{value}>\"\n      return f\"[{inner!r}]\"\n  ```\n\n  ```python fixed\n  def wrap(value: str) -> str:\n      return f\"[{f'<{value}>'!r}]\"\n  ```\n\n### Exceptions\n\n- **A name that is `_`, or a dunder such as `__all__`**: `_` is a placeholder, and a dunder has a meaning to Python.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      _ = len(items)\n      print(_)\n  ```\n\n- **A name the function declares [`global`](https://docs.python.org/3/reference/simple_stmts.html#the-global-statement)\n  or [`nonlocal`](https://docs.python.org/3/reference/simple_stmts.html#the-nonlocal-statement)**: code outside the\n  function reads the binding too.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      global count\n      count = len(items)\n      print(count)\n  ```\n\n- **A value that is a `yield`, `await` or `:=` expression**: these run or bind in a way that moving them changes.\n\n  ```python ok\n  async def run(source: Source) -> None:\n      data = await source.read()\n      print(data)\n  ```\n\n- **A read as the argument of [`next`](https://docs.python.org/3/library/functions.html#next) or\n  [`anext`](https://docs.python.org/3/library/functions.html#anext), or as the receiver of `send`, `throw`, `close` or\n  `__next__`**: the call steps or closes the object the name holds. Without the name, the call would be the only holder\n  of the object, so the object would be released as soon as the call returns, which runs a generator's `finally` early.\n  Keeping the name is the only way to leave the object alone, so the variable is not reported.\n\n  ```python ok\n  def run(rows: list[int]) -> None:\n      stream = produce(rows)\n      print(next(stream))\n  ```\n\n- **A next statement that is `return name` or `yield name`**: Ruff's\n  [unnecessary-assign](https://docs.astral.sh/ruff/rules/unnecessary-assign/) covers the `return` case while the\n  project's Ruff configuration selects it, and `yield` keeps the same shape. The inline is skipped whenever Ruff selects\n  the rule, even where `per-file-ignores` or `noqa` silence it.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"RET504\"]\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> int:\n      count = len(items)\n      return count\n  ```\n\n- **A next statement that is `yield from name`, while Ruff's preview mode is on**: Ruff's preview rule\n  [unnecessary-assign-before-yield](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/) covers it when\n  the project's Ruff configuration selects it, even when this rule's fix would differ. With preview off, or without\n  RUF070, this rule reports the pair. The inline is skipped whenever Ruff selects the rule, even where\n  `per-file-ignores` or `noqa` silence it.\n\n- **A read in a parameter's default, while Ruff's\n  [mutable-argument-default](https://docs.astral.sh/ruff/rules/mutable-argument-default/) (B006) or\n  [function-call-in-argument-default](https://docs.astral.sh/ruff/rules/function-call-in-argument-default/) (B008)\n  runs**: the default is evaluated once, when the function is defined, and inlining a value that one of them reports\n  would make Ruff report it, so the variable stays. B006 reports a mutable display, a comprehension, or a call of a\n  mutable type such as `list()` or `collections.Counter()`. B008 reports a call, except one of an immutable type such as\n  `tuple()`, a [`NewType`](https://docs.python.org/3/library/typing.html#newtype) of an immutable type, or a callee\n  listed in `extend-immutable-calls` (see Configuration). A call inside a lambda is not reported. A parameter annotated\n  with an immutable type is not reported by either, so the value is still inlined. The inline is skipped whenever Ruff\n  runs the rule, even where `per-file-ignores` or `noqa` silence it. The variable is reported when the project's Ruff\n  configuration runs neither rule.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"B006\", \"B008\"]\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n\n      def show(size=count) -> None:\n          print(size)\n\n      show()\n  ```\n\n- **A read inside a loop body, a comprehension, a lambda or a nested function**: inlining would compute the value once\n  per pass instead of once.\n\n  ```python ok\n  def run(rows: list[list[int]]) -> list[int]:\n      total = sum(rows[0])\n      return [total + value for value in rows[1]]\n  ```\n\n- **A read in a nested block of the next statement**, such as the body of an `if`: the value would run only when the\n  block does, so inlining would skip it when the block is not taken.\n\n  ```python ok\n  def run(items: list[str], verbose: bool) -> None:\n      count = len(items)\n      if verbose:\n          print(count)\n  ```\n\n- **A read after `and` or `or`**, or in a branch of a conditional expression, a later link of a chained comparison, an\n  `assert`, a `case` or the type of an `except` clause: each runs only when the code before it does not decide the\n  outcome, or when an exception or a match reaches it.\n\n  ```python ok\n  def run(items: list[str], flag: bool) -> None:\n      count = len(items)\n      print(flag and count)\n  ```\n\n  ```python ok\n  def run(items: list[str], flag: bool) -> None:\n      count = len(items)\n      print(count if flag else 0)\n  ```\n\n  ```python ok\n  def run(items: list[str], low: int) -> None:\n      count = len(items)\n      print(low < 0 < count)\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n      assert count, \"no items\"\n  ```\n\n  ```python ok\n  def run(command: str, items: list[str]) -> None:\n      count = len(items)\n      match command:\n          case \"count\":\n              print(count)\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      error = ValueError\n      try:\n          print(items[0])\n      except error:\n          print(\"empty\")\n  ```\n\n- **A read in an annotation, a `type` statement or a type parameter**: an annotation in a function body is never\n  evaluated, and the others are evaluated lazily, so the value would not run where the name was read.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      kind = list[str]\n      values: kind = items\n      print(values)\n  ```\n\n- **A conditional expression, or a value with a string literal in it, read inside an f-string field**: the field would\n  hold the conditional or the literal inside its braces, which reads worse than the two statements. A value that is a\n  string or an f-string on its own is still inlined.\n\n  ```python ok\n  def run(items: list[str], flag: bool) -> str:\n      sep = \" \" if flag else \"\"\n      return f\"[{sep}{items[0]}]\"\n  ```\n\n- **Before Python 3.12, a value with a backslash, or whose strings hold the other quote**: a replacement field cannot\n  hold a backslash or the f-string's own quote until [PEP 701](https://peps.python.org/pep-0701/), and a string that\n  holds the other quote cannot take it, so the inlined code would not parse.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py311\"\n  ```\n\n  ```python ok\n  def quote(value: str) -> str:\n      quoted = value.replace(\"'\", \"''\")\n      return f\"'{quoted}'\"\n  ```\n\n- **An assignment with a comment on its line, or between it and the read**: inlining would lose the comment.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)  # the number of rows\n      print(count)\n  ```\n\n- **A name read in an `if` test that starts with it**: [walrus-candidate](SMP502.html) covers those, and writes the\n  value into the test.\n\n  ```python ok\n  def run(text: str) -> None:\n      found = text.find(\"x\")\n      if found:\n          print(found)\n  ```\n\n- **A name read again elsewhere in the function**, or bound again: the name is needed after the read, or the read is not\n  the only one.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n      print(count)\n      print(count)\n  ```\n\n- **Functions that read their locals by name, such as `locals()` or `eval`**: a removed name would vanish from what they\n  see.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n      print(locals())\n  ```\n\n- **A next statement that is a `while` loop**: its test runs again on every pass.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      limit = len(items)\n      while limit:\n          limit -= 1\n  ```\n\n- **An inlined header that would no longer fit [`line-length`](https://docs.astral.sh/ruff/settings/#line-length)**:\n  `ruff format` would split the statement over several lines, which reads worse than the two statements. The header is\n  measured joined on one line at its block's indentation, with the value in place of the name.\n\n  ```toml config\n  [tool.ruff]\n  line-length = 40\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items) + len(items) + len(items)\n      print(count + 1000000)\n  ```\n\n- **A message bound for an exception call in a `raise`**: Ruff's\n  [raw-string-in-exception](https://docs.astral.sh/ruff/rules/raw-string-in-exception/) and\n  [f-string-in-exception](https://docs.astral.sh/ruff/rules/f-string-in-exception/) ask for an exception's message to be\n  a variable, so inlining it would bring back the report those rules remove.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      msg = f\"{len(items)} items\"\n      raise ValueError(msg)\n  ```\n\n- **A name bound another way in the function**, such as by an `import`, a `def`, a `class`, an `except` clause or a\n  `match` capture: the other binding is a second assignment the walk does not follow, so the name is not single-use.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n      from os import count\n\n      print(count)\n  ```\n\n### Fix\n\nThe fix deletes the assignment and writes the value where the name was, in parentheses when its precedence requires\nthem.\n\n**Unsafe fix:** the next statement calls something, awaits, or reads an attribute or a subscript before the read, so the\nvalue would run after it instead of before.\n\n```python report\ndef run(items: list[str], log: Log) -> None:\n    count = len(items)\n    log.write(count)\n```\n\n```python fixed\ndef run(items: list[str], log: Log) -> None:\n    log.write(len(items))\n```\n\nHere `log.write` is looked up before `len(items)` runs, which differs only when that lookup has side effects.\n\nThe fix is also unsafe when the value calls or looks something up and the next statement reads a name before the read\nthat sees what the call changes: a name formatted in an f-string field or unpacked with `*` or `**`, which takes the\nobject's state at that point, or a name some function in the module declares `global` or `nonlocal`, which the call can\nrebind.\n\n```python report\ndef run(stack: list[int]) -> str:\n    top = stack.pop()\n    return f\"{stack} after popping {top}\"\n```\n\n```python fixed\ndef run(stack: list[int]) -> str:\n    return f\"{stack} after popping {stack.pop()}\"\n```\n\nInlined, `stack` is formatted before `stack.pop()` runs, so the message shows the popped item still in the list.\n\nThe fix is also unsafe when the value calls something and the next statement reads an attribute or a subscript of the\nname, such as `tmp.name`, because the call's object is dropped right after that read, so its finalizer runs early. A\nmethod call on the name, such as `tmp.describe()`, keeps the object alive while it runs, so that fix stays safe.\n\n```python report\nimport tempfile\nfrom pathlib import Path\n\n\ndef make_note() -> None:\n    tmp = tempfile.TemporaryDirectory()\n    Path(tmp.name, \"note\").write_text(\"hi\")\n```\n\n```python fixed\nimport tempfile\nfrom pathlib import Path\n\n\ndef make_note() -> None:\n    Path(tempfile.TemporaryDirectory().name, \"note\").write_text(\"hi\")\n```\n\nThe fix is also unsafe when the value calls something and the next statement reads a name in an operator before the\nread, such as `not queue`, because the operator takes the name's state before the call runs.\n\n```python report\ndef pop_once(queue: list[int]) -> tuple[bool, int]:\n    head = queue.pop()\n    return (not queue, head)\n```\n\n```python fixed\ndef pop_once(queue: list[int]) -> tuple[bool, int]:\n    return (not queue, queue.pop())\n```\n\nAn augmented assignment before the read is unsafe when the value calls something, because the target is loaded before\nthat call runs, or when its target is an attribute or a subscript, whose object and lookup run first.\n\n```python report\ndef run(counter: Counter) -> int:\n    step = counter.bump()\n    counter.total += step\n    return counter.total\n```\n\n```python fixed\ndef run(counter: Counter) -> int:\n    counter.total += counter.bump()\n    return counter.total\n```\n\n```python report\ndef count_items(items: list[int]) -> int:\n    total = 0\n    step = len(items)\n    total += step\n    return total\n```\n\n```python fixed\ndef count_items(items: list[int]) -> int:\n    total = 0\n    total += len(items)\n    return total\n```\n\nThe fix is also unsafe when the value holds a walrus that rebinds a name the next statement reads before the read,\nbecause that read would see the new value.\n\n```python report\ndef run(reader: Reader) -> tuple[int, int]:\n    y = 0\n    count = (y := reader.read()) + 1\n    return (y, count)\n```\n\n```python fixed\ndef run(reader: Reader) -> tuple[int, int]:\n    y = 0\n    return (y, ((y := reader.read()) + 1))\n```\n\nA read in a t-string is reported without a fix, because a t-string keeps the source text of each field, which the\ninlined value would change.\n\n```toml config\n[tool.ruff]\ntarget-version = \"py314\"\n```\n\n```python report\ndef render(a: int) -> object:\n    value = a + 1\n    return t\"{value}\"\n```\n\n```python fixed\ndef render(a: int) -> object:\n    value = a + 1\n    return t\"{value}\"\n```\n\nA string value with braces that replaces a field in a format spec, as in `{value:{inner}}`, is written as an expression\ninside the nested field instead of being spliced into the f-string, because `{` and `}` are not escapes in a format\nspec.\n\n```toml config\n[tool.ruff]\ntarget-version = \"py311\"\n```\n\n```python report\ndef render(value: object) -> str:\n    inner = \"a{b}\"\n    return f\"{value:{inner}}\"\n```\n\n```python fixed\ndef render(value: object) -> str:\n    return f\"{value:{'a{b}'}}\"\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules\n  [RET504](https://docs.astral.sh/ruff/rules/unnecessary-assign/) and preview\n  [RUF070](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/), which cover a value returned or yielded\n  on the next line and which this rule leaves to them; every other single read is open issue\n  [#10108](https://github.com/astral-sh/ruff/issues/10108).\n- [Sourcery](https://sourcery.ai) inlines a variable that is used once anywhere in its block through\n  [inline-variable](https://docs.sourcery.ai/reference/refactorings/python/inline-variable/). This rule only inlines a\n  value read on the line right below its assignment.\n",
     "examples": {
       "parsed": [
         {
@@ -14523,6 +14557,196 @@
               "line": 482,
               "end_line": 485,
               "source": "def run(stack: list[int]) -> str:\n    return f\"{stack} after popping {stack.pop()}\"\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 493,
+          "end_line": 510,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 493,
+              "end_line": 501,
+              "source": "import tempfile\nfrom pathlib import Path\n\n\ndef make_note() -> None:\n    tmp = tempfile.TemporaryDirectory()\n    Path(tmp.name, \"note\").write_text(\"hi\")\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 503,
+              "end_line": 510,
+              "source": "import tempfile\nfrom pathlib import Path\n\n\ndef make_note() -> None:\n    Path(tempfile.TemporaryDirectory().name, \"note\").write_text(\"hi\")\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 515,
+          "end_line": 524,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 515,
+              "end_line": 519,
+              "source": "def pop_once(queue: list[int]) -> tuple[bool, int]:\n    head = queue.pop()\n    return (not queue, head)\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 521,
+              "end_line": 524,
+              "source": "def pop_once(queue: list[int]) -> tuple[bool, int]:\n    return (not queue, queue.pop())\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 529,
+          "end_line": 540,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 529,
+              "end_line": 534,
+              "source": "def run(counter: Counter) -> int:\n    step = counter.bump()\n    counter.total += step\n    return counter.total\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 536,
+              "end_line": 540,
+              "source": "def run(counter: Counter) -> int:\n    counter.total += counter.bump()\n    return counter.total\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 542,
+          "end_line": 555,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 542,
+              "end_line": 548,
+              "source": "def count_items(items: list[int]) -> int:\n    total = 0\n    step = len(items)\n    total += step\n    return total\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 550,
+              "end_line": 555,
+              "source": "def count_items(items: list[int]) -> int:\n    total = 0\n    total += len(items)\n    return total\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 560,
+          "end_line": 571,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 560,
+              "end_line": 565,
+              "source": "def run(reader: Reader) -> tuple[int, int]:\n    y = 0\n    count = (y := reader.read()) + 1\n    return (y, count)\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 567,
+              "end_line": 571,
+              "source": "def run(reader: Reader) -> tuple[int, int]:\n    y = 0\n    return (y, ((y := reader.read()) + 1))\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 576,
+          "end_line": 591,
+          "config": {
+            "line": 576,
+            "end_line": 579,
+            "source": "[tool.ruff]\ntarget-version = \"py314\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 581,
+              "end_line": 585,
+              "source": "def render(a: int) -> object:\n    value = a + 1\n    return t\"{value}\"\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 587,
+              "end_line": 591,
+              "source": "def render(a: int) -> object:\n    value = a + 1\n    return t\"{value}\"\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 597,
+          "end_line": 611,
+          "config": {
+            "line": 597,
+            "end_line": 600,
+            "source": "[tool.ruff]\ntarget-version = \"py311\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 602,
+              "end_line": 606,
+              "source": "def render(value: object) -> str:\n    inner = \"a{b}\"\n    return f\"{value:{inner}}\"\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 608,
+              "end_line": 611,
+              "source": "def render(value: object) -> str:\n    return f\"{value:{'a{b}'}}\"\n"
             }
           ]
         }

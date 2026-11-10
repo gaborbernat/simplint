@@ -271,6 +271,25 @@ In each case the value can take the name's place at the start of the test withou
       return text
   ```
 
+- **A name in a function that also mentions `locals`, `vars`, `eval` or `exec`, or a module-level name in a file that
+  mentions one of them or `globals`**: those calls find names by their text, so removing the binding would hide it from
+  them. At module level the search covers the whole file, functions included.
+
+  ```python ok
+  def run(text: str) -> str:
+      found = text.strip()
+      if found:
+          return str(locals())
+      return ""
+  ```
+
+  ```python ok
+  found = len("text")
+  if found:
+      print(found)
+  print(globals())
+  ```
+
 - **An `if` whose header, with the value folded in, would not fit
   [`line-length`](https://docs.astral.sh/ruff/settings/#line-length) on one line at its block's indentation**:
   `ruff format` would split it over several lines, which reads worse than the two statements.

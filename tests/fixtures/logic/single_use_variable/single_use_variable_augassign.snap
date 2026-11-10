@@ -1,0 +1,49 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+10:9 SMP504 `step` is used once, right below; inline its value [unsafe fix: Inline `step`]
+23:5 SMP504 `step` is used once, right below; inline its value [unsafe fix: Inline `step`]
+30:5 SMP504 `step` is used once, right below; inline its value [unsafe fix: Inline `step`]
+37:5 SMP504 `step` is used once, right below; inline its value [fix: Inline `step`]
+43:5 SMP504 `holder` is used once, right below; inline its value [fix: Inline `holder`]
+--- fixed (5 applied, 0 remaining) ---
+class Counter:
+    def __init__(self) -> None:
+        self.total = 0
+
+    def bump(self) -> int:
+        self.total += 10
+        return 1
+
+    def run(self) -> int:
+        self.total += self.bump()
+        return self.total
+
+
+def closure() -> int:
+    total = 0
+
+    def bump() -> int:
+        nonlocal total
+        total += 10
+        return 1
+
+    total += bump()
+    return total
+
+
+def local_call(items: list[int]) -> int:
+    count = 0
+    count += len(items)
+    return count
+
+
+def local_literal(items: list[int]) -> int:
+    count = len(items)
+    count += 2
+    return count
+
+
+def augmented_on_holder() -> None:
+    [0][0] += 2

@@ -40,3 +40,31 @@ def collected(rows: list[int]) -> None:
     stream = produce(rows)
     items = list(stream)
     print(items)
+
+
+class Scratch:
+    def __init__(self) -> None:
+        self.name = "scratch"
+
+    def describe(self) -> str:
+        return self.name
+
+
+def make_scratch() -> Scratch:
+    return Scratch()
+
+
+def name_of_temporary() -> str:
+    scratch = make_scratch()
+    name = scratch.name
+    return name.upper()
+
+
+def method_on_temporary() -> str:
+    scratch = make_scratch()
+    return scratch.describe()
+
+
+def part_of_literal() -> str:
+    pair = ("scratch", 1)
+    return pair[0]

@@ -66,7 +66,7 @@ fn check_pair<'a>(
         if replacement.is_empty() { Edit::range_deletion(range) } else { Edit::range_replacement(replacement, range) };
     let edits = keep_debug_text(checker, vec![edit]);
     let fix = match edits {
-        Some(edits) => {
+        Some(edits) if !reading.in_tstring => {
             // A read in a `=` debug field rewrites the whole field, so the width is measured on the field it becomes.
             let Some(replace) = edits.first() else { return };
             if !fits(checker, next, replace, depth) {
@@ -78,8 +78,9 @@ fn check_pair<'a>(
                 Fix::safe_edits(deletion, edits)
             })
         }
-        // A debug field that cannot be rewritten keeps the report, as the variable is still used once.
-        None => None,
+        // A debug field that cannot be rewritten keeps the report, and so does a t-string, whose fields keep their
+        // source text, as the variable is still used once.
+        _ => None,
     };
     checker.report_fix(
         Rule::SingleUseVariable,
@@ -158,7 +159,7 @@ fn inlined_replacement(
     let value = assign.value.as_ref();
     let before_312 = checker.settings.from_ruff.target_version < PythonVersion::PY312;
     if let Some(field) = reading.bare_field
-        && let Some(text) = spliced_text(checker, value, reading.field_fstring, before_312)
+        && let Some(text) = spliced_text(checker, value, reading.field_fstring, reading.in_format_spec, before_312)
     {
         return Some((field, text));
     }
@@ -207,14 +208,22 @@ fn inlined_replacement(
 
 // The text of a string value that takes the place of a bare field of the f-string around it, with the f-string's
 // braces. `None` where the field's f-string cannot hold the text: a raw or triple-quoted part, a quote of the
-// enclosing f-string in the text, or a backslash before Python 3.12.
-fn spliced_text(checker: &Checker, value: &Expr, outer: Option<ast::FStringFlags>, before_312: bool) -> Option<String> {
+// enclosing f-string in the text, a backslash before Python 3.12, or a brace in a format spec, where `{{` is no escape.
+fn spliced_text(
+    checker: &Checker,
+    value: &Expr,
+    outer: Option<ast::FStringFlags>,
+    in_format_spec: bool,
+    before_312: bool,
+) -> Option<String> {
     let outer = outer?;
     if outer.prefix().is_raw() {
         return None;
     }
     let text: String = fstring_body_parts(checker, value)?.into_iter().map(|(_, text)| text).collect();
-    let splices_wrongly = text.contains(outer.quote_style().as_char()) || (before_312 && text.contains('\\'));
+    let splices_wrongly = text.contains(outer.quote_style().as_char())
+        || (before_312 && text.contains('\\'))
+        || (in_format_spec && text.contains(['{', '}']));
     (!splices_wrongly).then_some(text)
 }
 
@@ -441,6 +450,12 @@ struct Reading<'a> {
     whole: bool,
     // The read starts its f-string field, so a value that starts with `{` would follow the field's `{`.
     field_start: bool,
+    // The read sits in the format spec of a field, where `{` and `}` are not escapes.
+    in_format_spec: bool,
+    // The read is in a t-string, whose fields keep their source text.
+    in_tstring: bool,
+    // The read is a part of its value, an attribute or a subscript that is not the callee of a call.
+    reads_part: bool,
     // The whole field the read fills, `{name}`, when it has no conversion, format spec or `=`, and the f-string around it.
     bare_field: Option<TextRange>,
     field_fstring: Option<ast::FStringFlags>,
@@ -462,7 +477,7 @@ struct Reading<'a> {
     takes_state: usize,
     // A name read before the read is formatted or unpacked there, which takes the state of its object at that point.
     state_before: bool,
-    // The callee of the call the walk is in, which names the function rather than reading state.
+    // The callee of the call the walk is in, which names the function or method rather than reading state.
     callee: Option<TextRange>,
 }
 
@@ -477,6 +492,9 @@ impl<'a> Reading<'a> {
             effects: false,
             whole: false,
             field_start: false,
+            in_format_spec: false,
+            in_tstring: false,
+            reads_part: false,
             bare_field: None,
             field_fstring: None,
             slot: None,
@@ -507,6 +525,22 @@ impl<'a> Reading<'a> {
         self.visit_expr(expr);
         self.takes_state -= usize::from(outside);
     }
+
+    // Reading a part of the value lets its object die right after the read, and a t-string keeps its fields' source text.
+    fn places_read(&mut self, expr: &Expr) {
+        match expr {
+            Expr::Attribute(ast::ExprAttribute { value, .. })
+                if value.range() == self.reference && self.callee != Some(expr.range()) =>
+            {
+                self.reads_part = true;
+            }
+            Expr::Subscript(ast::ExprSubscript { value, .. }) if value.range() == self.reference => {
+                self.reads_part = true;
+            }
+            Expr::TString(_) if expr.range().contains_range(self.reference) => self.in_tstring = true,
+            _ => {}
+        }
+    }
 }
 
 impl<'a> Visitor<'a> for Reading<'a> {
@@ -536,6 +570,20 @@ impl<'a> Visitor<'a> for Reading<'a> {
             Stmt::Assign(assign) => {
                 self.visit_expr(&assign.value);
                 assign.targets.iter().for_each(|target| self.visit_expr(target));
+            }
+            // The target is loaded before the value, and an attribute or subscript target looks itself up first.
+            Stmt::AugAssign(ast::StmtAugAssign { target, value, .. }) => {
+                if !target.range().contains_range(self.reference) {
+                    match target.as_ref() {
+                        Expr::Name(name) => {
+                            self.state_before = true;
+                            self.names_before.push(name.id.as_str());
+                        }
+                        _ => self.effects = true,
+                    }
+                }
+                self.visit_expr(value);
+                self.visit_expr(target);
             }
             // `python -O` skips an assertion, and a type alias evaluates its value lazily.
             Stmt::Assert(_) | Stmt::TypeAlias(_) => self.in_branch(|reading| visitor::walk_stmt(reading, stmt)),
@@ -602,6 +650,8 @@ impl<'a> Visitor<'a> for Reading<'a> {
         };
         let formats = !interpolation.range.contains_range(self.reference);
         if !formats {
+            self.in_format_spec |=
+                interpolation.format_spec.as_ref().is_some_and(|spec| spec.range.contains_range(self.reference));
             self.field_start |= interpolation.expression.range().start() == self.reference.start();
             let bare = matches!(interpolation.conversion, ast::ConversionFlag::None)
                 && interpolation.debug_text.is_none()
@@ -625,6 +675,7 @@ impl<'a> Visitor<'a> for Reading<'a> {
         if expr.range().contains_range(self.reference) {
             self.slot = operand_precedence(expr, self.reference);
         }
+        self.places_read(expr);
         if let Expr::Name(name) = expr
             && name.ctx.is_load()
             && self.callee != Some(name.range)
@@ -633,7 +684,7 @@ impl<'a> Visitor<'a> for Reading<'a> {
             self.names_before.push(name.id.as_str());
         }
         if let Expr::Call(ast::ExprCall { func, arguments, .. }) = expr {
-            self.callee = func.is_name_expr().then(|| func.range());
+            self.callee = Some(func.range());
             let arguments = arguments.args.iter().chain(arguments.keywords.iter().map(|keyword| &keyword.value));
             let read_argument = arguments.into_iter().any(|argument| argument.range() == self.reference);
             self.whole |= read_argument;
@@ -665,6 +716,10 @@ impl<'a> Visitor<'a> for Reading<'a> {
             self.effects = true;
             return;
         }
+        // An operator that does not hold the read computes its result before the read, so the names it reads are taken.
+        let operator = !expr.range().contains_range(self.reference)
+            && matches!(expr, Expr::BinOp(_) | Expr::UnaryOp(_) | Expr::Compare(_) | Expr::BoolOp(_));
+        self.takes_state += usize::from(operator);
         let repeats = is_repeating_expr(expr);
         self.repeats += usize::from(repeats);
         match expr {
@@ -708,17 +763,24 @@ impl<'a> Visitor<'a> for Reading<'a> {
             }
             _ => visitor::walk_expr(self, expr),
         }
+        self.takes_state -= usize::from(operator);
         self.repeats -= usize::from(repeats);
     }
 }
 
 // Whether inlining moves the value's evaluation past code that observes what the value changes: a call, lookup or
 // await before the read, or, when the value itself calls or looks something up, a name read before the read that is
-// formatted or unpacked there, or that a call can rebind.
+// formatted or unpacked there, or that a call can rebind. The value's object also dies with the read of one of its
+// parts, which a call can finalize, and a walrus in the value can rebind a name read before the read.
 fn reorders(rebindable: &FxHashSet<&str>, assign: &ast::StmtAssign, reading: &Reading) -> bool {
     reading.effects
         || (any_over_expr(&assign.value, &is_effect)
             && (reading.state_before || reading.names_before.iter().any(|name| rebindable.contains(name))))
+        || (reading.reads_part && any_over_expr(&assign.value, &Expr::is_call_expr))
+        || any_over_expr(&assign.value, &|expr: &Expr| {
+            matches!(expr, Expr::Named(ast::ExprNamed { target, .. })
+                if reading.names_before.iter().any(|name| is_name(target, name)))
+        })
 }
 
 // Before Python 3.9 a decorator takes a dotted name, optionally called, so only the callee of a call is in its head.

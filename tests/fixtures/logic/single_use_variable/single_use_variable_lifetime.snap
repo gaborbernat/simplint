@@ -1,6 +1,5 @@
 ---
 source: tests/common/mod.rs
-assertion_line: 137
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
 11:5 SMP504 `first` is used once, right below; inline its value [fix: Inline `first`]
@@ -8,7 +7,11 @@ expression: "lint_fixture(rule, fixture, target_version)"
 23:5 SMP504 `reply` is used once, right below; inline its value [fix: Inline `reply`]
 40:5 SMP504 `stream` is used once, right below; inline its value [fix: Inline `stream`]
 41:5 SMP504 `items` is used once, right below; inline its value [fix: Inline `items`]
---- fixed (5 applied, 0 remaining) ---
+58:5 SMP504 `scratch` is used once, right below; inline its value [unsafe fix: Inline `scratch`]
+59:5 SMP504 `name` is used once, right below; inline its value [fix: Inline `name`]
+64:5 SMP504 `scratch` is used once, right below; inline its value [fix: Inline `scratch`]
+69:5 SMP504 `pair` is used once, right below; inline its value [fix: Inline `pair`]
+--- fixed (9 applied, 0 remaining) ---
 def produce(rows: list[int]):
     try:
         yield rows[0]
@@ -46,3 +49,27 @@ async def first_from_anext(source: AsyncSource) -> None:
 
 def collected(rows: list[int]) -> None:
     print(list(produce(rows)))
+
+
+class Scratch:
+    def __init__(self) -> None:
+        self.name = "scratch"
+
+    def describe(self) -> str:
+        return self.name
+
+
+def make_scratch() -> Scratch:
+    return Scratch()
+
+
+def name_of_temporary() -> str:
+    return make_scratch().name.upper()
+
+
+def method_on_temporary() -> str:
+    return make_scratch().describe()
+
+
+def part_of_literal() -> str:
+    return ("scratch", 1)[0]

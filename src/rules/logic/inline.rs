@@ -373,7 +373,7 @@ fn is_tight(kind: TokenKind, next: TokenKind) -> bool {
 }
 
 // Built-ins that read the locals by name, so a variable they read cannot be inlined away.
-const LOCALS_READERS: [&str; 4] = ["eval", "exec", "locals", "vars"];
+pub(super) const LOCALS_READERS: [&str; 4] = ["eval", "exec", "locals", "vars"];
 
 // Every mention of each name in a function, found in one walk of its body, so a function with many assignments is
 // walked once rather than once per assignment.
