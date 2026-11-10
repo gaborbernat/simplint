@@ -40,6 +40,23 @@ def test_assemble_consumes_the_fragments(release_tree: Path) -> None:
     assert not fragment.exists()
 
 
+def test_assemble_relocates_rule_source_links(release_tree: Path) -> None:
+    (release_tree / "changelog.d" / "+fix.bugfix.md").write_text(
+        "Fix [`all-format`](../src/rules/api/all_format.md).\n"
+    )
+
+    assemble(release_tree, "1.1.0", "2026-10-21")
+
+    assert "[`all-format`](src/rules/api/all_format.md)" in (release_tree / "CHANGELOG.md").read_text()
+
+
+def test_assemble_rejects_mismatched_rule_source_link(release_tree: Path) -> None:
+    (release_tree / "changelog.d" / "+fix.bugfix.md").write_text("Fix [`all-format`](../src/rules/api/other.md).\n")
+
+    with pytest.raises(ValueError, match="rule source link for all-format points to"):
+        assemble(release_tree, "1.1.0", "2026-10-21")
+
+
 @pytest.mark.parametrize(
     ("filename", "content", "message"),
     [

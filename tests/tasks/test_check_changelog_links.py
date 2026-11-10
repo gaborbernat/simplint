@@ -24,6 +24,10 @@ if TYPE_CHECKING:
             id="versioned_rule_link",
         ),
         pytest.param("`module-variable-prefix`", 0, id="bare_rule_name"),
+        pytest.param("[`all-format`](src/rules/api/all_format.md)", 0, id="relative_source_link"),
+        pytest.param("[`all-format`](src/rules/api/missing_from_all.md)", 1, id="mismatched_source_link"),
+        pytest.param("[`all-format`](src/rules/other/all_format.md)", 1, id="missing_source_link"),
+        pytest.param("[`missing-from-all`](src/rules/api/missing_from_all.md)", 1, id="unknown_rule"),
         pytest.param(
             "[configuration](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html)",
             0,
@@ -33,8 +37,36 @@ if TYPE_CHECKING:
     ],
 )
 def test_changelog_rule_links(tmp_path: Path, capsys: pytest.CaptureFixture[str], line: str, expected: int) -> None:
+    (tmp_path / "src" / "rules" / "api").mkdir(parents=True)
+    (tmp_path / "src" / "rules" / "api" / "all_format.md").touch()
+    (tmp_path / "src" / "rules" / "api" / "missing_from_all.md").touch()
+    (tmp_path / "docs" / "_data").mkdir(parents=True)
+    (tmp_path / "docs" / "_data" / "rules.json").write_text('[{"name": "all-format"}]', encoding="utf-8")
     path = tmp_path / "CHANGELOG.md"
     path.write_text(f"# Changelog\n{line}\n", encoding="utf-8")
 
     assert main([str(path)]) == expected
-    assert ("use a bare backticked long rule name" in capsys.readouterr().err) == bool(expected)
+    assert bool(capsys.readouterr().err) == bool(expected)
+
+
+def test_fragment_rule_link(tmp_path: Path) -> None:
+    (tmp_path / "changelog.d").mkdir()
+    (tmp_path / "src" / "rules" / "api").mkdir(parents=True)
+    (tmp_path / "src" / "rules" / "api" / "all_format.md").touch()
+    (tmp_path / "docs" / "_data").mkdir(parents=True)
+    (tmp_path / "docs" / "_data" / "rules.json").write_text('[{"name": "all-format"}]', encoding="utf-8")
+    fragment = tmp_path / "changelog.d" / "+rule.bugfix.md"
+    fragment.write_text("[`all-format`](../src/rules/api/all_format.md)\n", encoding="utf-8")
+
+    assert main([str(fragment)]) == 0
+
+
+def test_multiple_rule_links_read_the_registry_once(tmp_path: Path) -> None:
+    (tmp_path / "src" / "rules" / "api").mkdir(parents=True)
+    (tmp_path / "src" / "rules" / "api" / "all_format.md").touch()
+    (tmp_path / "docs" / "_data").mkdir(parents=True)
+    (tmp_path / "docs" / "_data" / "rules.json").write_text('[{"name": "all-format"}]', encoding="utf-8")
+    path = tmp_path / "CHANGELOG.md"
+    path.write_text("[`all-format`](src/rules/api/all_format.md) twice: [`all-format`](src/rules/api/all_format.md)\n")
+
+    assert main([str(path)]) == 0

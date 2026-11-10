@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pypandoc
 
-from tasks.assemble_release import ANCHOR, TITLE, release_section
+from tasks.assemble_release import ANCHOR, RULE_SOURCE_LINK, TITLE, release_section, rule_source_name
 
 
 def main(root: Path, rules: dict[str, str]) -> None:
@@ -60,6 +60,15 @@ def _anchor_heading(lines: list[str], index: int) -> int | None:
 def link_rules(markdown: str, rules: dict[str, str], *, codes: bool) -> str:
     # Link each backticked rule name to its page, and each code too when `codes` is set.
     by_name = {name: code for code, name in rules.items()}
+
+    def source_link(match: re.Match[str]) -> str:
+        name = rule_source_name(match)
+        if name not in by_name:
+            msg = f"unknown rule source link: {name}"
+            raise ValueError(msg)
+        return f"`{name}`"
+
+    markdown = RULE_SOURCE_LINK.sub(source_link, markdown)
 
     # A raw `:doc:` role lets Sphinx resolve the page and fail the build when it is missing; a Markdown link would turn
     # into an external URL that neither Sphinx nor linkcheck can follow.

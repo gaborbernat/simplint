@@ -15,6 +15,26 @@ if TYPE_CHECKING:
 TITLE: Final[str] = "# Changelog"
 #: The anchor line release_section writes above each release and category; generate_changelog reads them back.
 ANCHOR: Final[re.Pattern[str]] = re.compile(r'<a name="(?P<name>[^"]+)"></a>')
+RULE_SOURCE_LINK: Final[re.Pattern[str]] = re.compile(
+    r"""
+    \[`(?P<name>[a-z0-9-]+)`\]  # long rule name
+    \(                            # Markdown link target
+    (?P<path>                     # path from the changelog source
+        (?:\.\./)?                # fragment files sit one directory below the root
+        src/rules/                 # rule source directory
+        [a-z0-9_/]+\.md           # rule source file
+    )
+    \)                            # end of target
+    """,
+    re.VERBOSE,
+)
+
+
+def rule_source_name(match: re.Match[str]) -> str:
+    if Path(match["path"]).stem != match["name"].replace("-", "_"):
+        msg = f"rule source link for {match['name']} points to {match['path']}"
+        raise ValueError(msg)
+    return match["name"]
 
 
 def main(argv: Sequence[str] | None = None) -> None:
@@ -43,6 +63,12 @@ def assemble(root: Path, version: str, date: str) -> None:
         raise ValueError(msg)
     fragments = sorted((root / "changelog.d").glob("*.md"))
     entry = "\n".join(release_section(fragments, f"{version} ({date})", f"release-{version.replace('.', '-')}"))
+
+    def relocate(match: re.Match[str]) -> str:
+        rule_source_name(match)
+        return match[0].replace("(../src/rules/", "(src/rules/")
+
+    entry = RULE_SOURCE_LINK.sub(relocate, entry)
     changelog.write_text(f"{heading}\n{entry}{history.removeprefix(heading)}", encoding="utf-8")
     for fragment in fragments:
         fragment.unlink()
@@ -109,8 +135,10 @@ if __name__ == "__main__":
 
 __all__ = [
     "ANCHOR",
+    "RULE_SOURCE_LINK",
     "TITLE",
     "assemble",
     "main",
     "release_section",
+    "rule_source_name",
 ]
