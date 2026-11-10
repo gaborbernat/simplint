@@ -4,7 +4,6 @@ use std::path::{Path, PathBuf};
 
 use ruff_db::diagnostic::{Annotation, Diagnostic, DiagnosticId, LintName, SecondaryCode, Severity, Span};
 use ruff_diagnostics::{Edit, Fix};
-use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::parenthesize::parenthesized_range;
 use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::{self as ast, AnyNodeRef, Expr, ModModule, Stmt};
@@ -336,10 +335,6 @@ impl<'a> Checker<'a> {
     // The directory of the package the file sits in, which Ruff compares the top-level names of imports against.
     pub fn package_path(&self) -> Option<&'a Path> {
         self.linter.ruff.package_path()
-    }
-
-    pub fn ruff_reports(&self, rule: RuffRule, source: &str) -> bool {
-        self.linter.ruff.reports(self.path, rule, source)
     }
 
     // Whether the file's directory holds an `__init__.py`, which a package-relative rule checks.

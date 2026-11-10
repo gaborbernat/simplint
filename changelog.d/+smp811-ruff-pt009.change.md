@@ -1,2 +1,3 @@
-`up-unittest-assert-helper` reports nothing on a file where Ruff's `pytest-unittest-assertion` is on, instead of
-stopping the run with a conflict error.
+Removed `up-unittest-assert-helper`: Ruff's
+[`pytest-unittest-assertion`](https://docs.astral.sh/ruff/rules/pytest-unittest-assertion/) reports every assertion it
+covered when Ruff rules are all enabled.

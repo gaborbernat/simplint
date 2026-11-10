@@ -328,7 +328,6 @@ rules! {
     SplitCompositeAssert => ("SMP807", "split-composite-assert", "Consecutive asserts comparing fields of one object", Sometimes, testing::split_composite_assert { module }),
     SleepInTest => ("SMP808", "sleep-in-test", "`time.sleep` and `asyncio.sleep` calls in tests", None, testing::sleep_in_test { module }),
     StdlibMock => ("SMP809", "stdlib-mock", "`unittest.mock` imports in projects that depend on pytest-mock", None, testing::stdlib_mock { module }),
-    UnittestAssertHelper => ("SMP811", "up-unittest-assert-helper", "`assertTrue` and `assertFalse` on checks that `TestCase` has a helper for", Sometimes, testing::up_unittest_assert_helper { expression } since PY314),
     UnittestEnterContext => ("SMP812", "up-unittest-enter-context", "Patches started and stopped by hand in `TestCase` methods", Sometimes, testing::up_unittest_enter_context { module } since PY311),
     LoopInTest => ("SMP813", "loop-in-test", "Loops in tests that assert over a table of cases", None, testing::loop_in_test { module }),
     MockAssertionTypo => ("SMP814", "mock-assertion-typo", "Mock assertion methods misspelled or missing their `assert_` prefix", Always, testing::mock_assertion_typo { module } reads [cross_file]),

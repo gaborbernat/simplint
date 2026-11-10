@@ -53,10 +53,6 @@ fn test_class_generic_before_3_13() {
     common::assert_rule_snapshot("test-class", "tests/test_class_generic.py", "py312");
 }
 
-#[test_case("up-unittest-assert-helper", "up_unittest_assert_helper.py", "py314" ; "unittest_assert_helper")]
-#[test_case("up-unittest-assert-helper", "up_unittest_assert_helper.py", "py313" ; "unittest_assert_helper_py313")]
-#[test_case("up-unittest-assert-helper", "up_unittest_assert_helper_base.py", "py314" ; "unittest_assert_helper_base")]
-#[test_case("up-unittest-assert-helper", "up_unittest_assert_helper_comment.py", "py314" ; "unittest_assert_helper_comment")]
 #[test_case("up-unittest-enter-context", "up_unittest_enter_context.py", "py311" ; "unittest_enter_context")]
 #[test_case("up-unittest-enter-context", "up_unittest_enter_context.py", "py310" ; "unittest_enter_context_py310")]
 #[test_case("up-unittest-enter-context", "up_unittest_enter_context_used.py", "py311" ; "unittest_enter_context_used")]
@@ -120,29 +116,6 @@ fn mock_assertion_typo_follows_ruff_pgh005(pyproject: &str, statement: &str, rep
     let (_, stdout, _) =
         common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP814", "--output-format", "concise"]);
     assert_eq!(stdout.contains("`not_called`"), reported, "{stdout}");
-}
-
-// Ruff's PT009 rewrites `self.assertTrue` and `self.assertFalse` to a bare `assert`, which supersedes SMP811's
-// helper, so SMP811 leaves those calls alone wherever PT009 applies to the file, per-file ignores included.
-#[test_case("[tool.ruff.lint]\nselect = [\"PT009\"]\n", false ; "selected")]
-#[test_case("[tool.ruff.lint]\nselect = []\n", true ; "unselected")]
-#[test_case(
-    "[tool.ruff.lint]\nselect = [\"PT009\"]\nper-file-ignores = { \"test_name.py\" = [\"PT009\"] }\n",
-    true
-    ; "selected_but_ignored_for_the_file"
-)]
-fn unittest_assert_helper_follows_ruff_pt009(settings: &str, reported: bool) {
-    let root = common::project(&[
-        ("pyproject.toml", &format!("[project]\nrequires-python = \">=3.14\"\n{settings}")),
-        (
-            "test_name.py",
-            "from unittest import TestCase\n\n\nclass ConfigTest(TestCase):\n    def test_name(self):\n        \
-             self.assertTrue(name.startswith(\"demo\"))\n",
-        ),
-    ]);
-    let (_, stdout, _) =
-        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP811", "--output-format", "concise"]);
-    assert_eq!(stdout.contains("`self.assertStartsWith`"), reported, "{stdout}");
 }
 
 // Ruff's assert-tuple reports a non-empty tuple in an assert, which SMP804 leaves to it while F631 runs. A tuple of

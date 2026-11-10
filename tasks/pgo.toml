@@ -4,6 +4,5 @@ target-version = "py314"
 line-length = 120
 lint.select = [ "ALL" ]
 lint.preview = true
-# simplint refuses to run while Ruff asks for the docstrings its SMP901 and SMP902 remove, or for the bare assert
-# its SMP811 rewrites into a TestCase helper (PT009).
-lint.ignore = [ "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107", "PT009" ]
+# simplint refuses to run while Ruff asks for the docstrings its SMP901 and SMP902 remove.
+lint.ignore = [ "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107" ]

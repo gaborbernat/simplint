@@ -1,5 +1,0 @@
----
-source: tests/common/mod.rs
-expression: "lint_fixture(rule, fixture, target_version)"
----
-6:9 SMP811 `self.assertStartsWith` reports both operands on failure, which the boolean assert hides
