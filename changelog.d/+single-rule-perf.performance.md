@@ -15,4 +15,6 @@ helper in a map of the file's functions instead of scanning them, and checks the
 loops, so 64,000 helpers take 0.31 seconds instead of 2.9 and a caller with 32,000 calls to helpers takes 0.14 seconds
 instead of 8.8. [walrus-candidate](../src/rules/logic/walrus_candidate.md) reads the names a function declares `global`
 or `nonlocal` once per function instead of once per assignment it checks, so 32,000 assignment and `if` pairs in one
-function take 0.45 seconds instead of 4.7.
+function take 0.45 seconds instead of 4.7. [early-assignment](../src/rules/logic/early_assignment.md) searches the
+string tokens and the statements of a block by position instead of scanning them for each constant, so 32,000 constants
+assigned above their uses take 0.05 seconds instead of 1.8.
