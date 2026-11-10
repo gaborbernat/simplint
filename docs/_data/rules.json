@@ -16259,7 +16259,7 @@
     "name": "up-re-error-alias",
     "summary": "`re.error` references",
     "fix": "Always",
-    "explanation": "Flags `re.error` references, which `re.PatternError` names from Python 3.13.\n\n## Why is this bad?\n\n`re.PatternError` is the name the standard library documents for the exception `re` raises on an invalid pattern. From\nPython 3.13 it is the same class as `re.error`, so the new name says what the exception is. `re.error` is not deprecated\nand keeps working.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.13\"\n```\n\n```python report\nimport re\n\n\ndef compile_pattern(text):\n    try:\n        return re.compile(text)\n    except re.error:\n        return None\n```\n\nUse instead:\n\n```python ok\nimport re\n\n\ndef compile_pattern(text):\n    try:\n        return re.compile(text)\n    except re.PatternError:\n        return None\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py313\"\n  ```\n\n  ```python report\n  import re\n\n\n  def compile_pattern(text):\n      try:\n          return re.compile(text)\n      except re.error:\n          return None\n  ```\n\n## What it does\n\n### Active on\n\n- **`re.error` references**, where `re` is the module. **Safe fix:** the attribute is renamed to `PatternError`.\n  `re.PatternError is re.error` on Python 3.13 and later, so the rename keeps the behavior. A name imported from `re`,\n  such as `from re import error`, is not reported.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python report\n  import re\n\n\n  def compile_pattern(text):\n      try:\n          return re.compile(text)\n      except re.error:\n          return None\n  ```\n\n  ```python fixed\n  import re\n\n\n  def compile_pattern(text):\n      try:\n          return re.compile(text)\n      except re.PatternError:\n          return None\n  ```\n\n### Exceptions\n\n- **Targets before Python 3.13**: `re.PatternError` does not exist there.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py312\"\n  ```\n\n  ```python ok\n  import re\n\n\n  def compile_pattern(text):\n      try:\n          return re.compile(text)\n      except re.error:\n          return None\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags `re.error` references, which `re.PatternError` names from Python 3.13.\n\n## Why is this bad?\n\n`re.PatternError` is the name the standard library documents for the exception `re` raises on an invalid pattern. From\nPython 3.13 it is the same class as `re.error`, so the new name says what the exception is. `re.error` is not deprecated\nand keeps working.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.13\"\n```\n\n```python report\nimport re\n\n\ndef compile_pattern(text):\n    try:\n        return re.compile(text)\n    except re.error:\n        return None\n```\n\nUse instead:\n\n```python ok\nimport re\n\n\ndef compile_pattern(text):\n    try:\n        return re.compile(text)\n    except re.PatternError:\n        return None\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py313\"\n  ```\n\n  ```python report\n  import re\n\n\n  def compile_pattern(text):\n      try:\n          return re.compile(text)\n      except re.error:\n          return None\n  ```\n\n## What it does\n\n### Active on\n\n- **`re.error` references**, where `re` is the module. **Safe fix:** the attribute is renamed to `PatternError`.\n  `re.PatternError is re.error` on Python 3.13 and later, so the rename keeps the behavior. A name imported from `re`,\n  such as `from re import error`, is not reported.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python report\n  import re\n\n\n  def compile_pattern(text):\n      try:\n          return re.compile(text)\n      except re.error:\n          return None\n  ```\n\n  ```python fixed\n  import re\n\n\n  def compile_pattern(text):\n      try:\n          return re.compile(text)\n      except re.PatternError:\n          return None\n  ```\n\n### Exceptions\n\n- **An assignment or `del`**: it patches the module, and renamed it would patch `re.PatternError` while code that reads\n  `re.error` keeps the original.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  import re\n\n\n  class LoggedError(re.PatternError):\n      pass\n\n\n  re.error = LoggedError\n  ```\n\n- **Targets before Python 3.13**: `re.PatternError` does not exist there.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py312\"\n  ```\n\n  ```python ok\n  import re\n\n\n  def compile_pattern(text):\n      try:\n          return re.compile(text)\n      except re.error:\n          return None\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -16357,11 +16357,32 @@
         },
         {
           "section": "What it does",
-          "line": 102,
-          "end_line": 116,
+          "line": 103,
+          "end_line": 117,
           "config": {
-            "line": 102,
-            "end_line": 105,
+            "line": 103,
+            "end_line": 106,
+            "source": "[project]\nrequires-python = \">=3.13\"\n"
+          },
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 108,
+              "end_line": 117,
+              "source": "import re\n\n\nclass LoggedError(re.PatternError):\n    pass\n\n\nre.error = LoggedError\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 121,
+          "end_line": 135,
+          "config": {
+            "line": 121,
+            "end_line": 124,
             "source": "[tool.ruff]\ntarget-version = \"py312\"\n"
           },
           "blocks": [
@@ -16370,8 +16391,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 107,
-              "end_line": 116,
+              "line": 126,
+              "end_line": 135,
               "source": "import re\n\n\ndef compile_pattern(text):\n    try:\n        return re.compile(text)\n    except re.error:\n        return None\n"
             }
           ]
