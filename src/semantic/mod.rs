@@ -16,7 +16,7 @@ use ruff_python_semantic::analyze::typing::{
     is_mutable_func,
 };
 use ruff_python_semantic::{
-    Binding as RuffBinding, BindingId, BindingKind as RuffBindingKind, ExecutionContext, ScopeKind, SemanticModel,
+    Binding as RuffBinding, BindingId, BindingKind as RuffBindingKind, ScopeKind, SemanticModel,
 };
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -364,8 +364,6 @@ impl<'a> Index<'a> {
                 Evaluation::Runtime
             },
             function,
-            typing: matches!(model.execution_context(), ExecutionContext::Typing)
-                || model.in_runtime_evaluated_annotation(),
         });
     }
 }
@@ -397,8 +395,6 @@ pub struct Reference<'a> {
     pub statement: usize,
     pub evaluation: Evaluation,
     pub function: Option<TextRange>,
-    // Whether Ruff's import-private-name exempts the read: a typing context or a runtime-evaluated annotation.
-    pub typing: bool,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

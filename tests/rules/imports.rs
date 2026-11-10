@@ -81,6 +81,66 @@ fn rule(rule: &str, fixture: &str, target_version: &str) {
 const PROJECT: &str = "[project]\nname = \"x\"\nversion = \"0\"\n";
 const HOOK: &str = "repos:\n  - repo: https://github.com/henryiii/flake8-lazy\n    hooks:\n      - id: flake8-lazy\n";
 
+#[test_case("from ._api import API\n", 0 ; "direct_private_sibling")]
+#[test_case("from . import _api\n", 1 ; "direct_private_module_object")]
+#[test_case("from .public import _helper\n", 0 ; "direct_private_symbol")]
+#[test_case("from .public.deep import API\n", 0 ; "deep_public_path")]
+#[test_case("from package import API\n", 0 ; "public_import")]
+#[test_case("from package import __version__\n", 0 ; "dunder_import")]
+#[test_case("from os import _exit\n", 0 ; "public_underscore_name")]
+#[test_case("from ._api import _helper\n", 1 ; "two_private_names")]
+#[test_case("from ._api._helpers import API\n", 1 ; "two_private_modules")]
+#[test_case("from ._api.helpers import API\n", 1 ; "private_module_below_sibling")]
+#[test_case("from .._api import API\n", 1 ; "private_parent_module")]
+#[test_case("from .. import _api\n", 1 ; "private_parent_member")]
+#[test_case("from package._api import API, Other\n", 1 ; "absolute_private_module_names")]
+#[test_case("from package._api import _helper\n", 1 ; "absolute_private_module_and_name")]
+#[test_case("from package._api.helpers import API\n", 1 ; "absolute_private_parent_module")]
+#[test_case("from package import _api\n", 1 ; "absolute_private_member")]
+#[test_case("import package._api\n", 1 ; "absolute_private_import")]
+#[test_case("import package._api as api\nprint(api.make())\n", 1 ; "aliased_private_module")]
+#[test_case("def load():\n    from .._api import API\n    return API\n", 1 ; "function_import")]
+fn private_import_path(source: &str, expected: usize) {
+    let root = common::project(&[("package/__init__.py", ""), ("package/module.py", source)]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP310"]);
+    assert_eq!(stdout.matches("SMP310").count(), expected, "{stdout}");
+}
+
+#[test_case("tests/a/b/test_x.py", "from a.b._x import Name\n", 0 ; "paired_mirrored")]
+#[test_case("tests/test_x.py", "from _x import Name\n", 0 ; "paired_root")]
+#[test_case("a/b/test_x.py", "from a.b._x import Name\n", 0 ; "paired_colocated")]
+#[test_case("a/b/test_x.py", "from ._x import Name\n", 0 ; "paired_colocated_relative")]
+#[test_case("tests/a/b/test_x.py", "from ._x import Name\n", 1 ; "mirrored_relative")]
+#[test_case("tests/a/b/test_x.py", "from a.b._x import _Name\n", 0 ; "paired_private_name")]
+#[test_case("tests/a/b/test_x.py", "from a.b._other import Name\n", 1 ; "other_private_module")]
+#[test_case("tests/a/b/test_x.py", "from ._other import Name\n", 1 ; "other_relative_module")]
+#[test_case("tests/a/b/test_x.py", "from a.c._x import Name\n", 1 ; "other_package")]
+#[test_case("tests/a/b/test_x.py", "from .._x import Name\n", 1 ; "parent_relative")]
+#[test_case("tests/a/b/test_x.py", "from a.b._x.deep import Name\n", 1 ; "nested_private_module")]
+#[test_case("tests/a/b/test_x.py", "from a.b import _x\n", 1 ; "private_module_object")]
+#[test_case("tests/a/b/test_x.py", "import a.b._x\n", 1 ; "absolute_module_object")]
+#[test_case("tests/a/b/test_y.py", "from a.b._x import Name\n", 1 ; "unpaired_test")]
+#[test_case("tests/a/b/conftest.py", "from a.b._x import Name\n", 1 ; "fixture_module")]
+#[test_case("a/b/consumer.py", "from a.b._x import Name\n", 1 ; "production_absolute")]
+fn private_import_path_in_tests(file: &str, source: &str, expected: usize) {
+    let root = common::project(&[("a/b/_x.py", "Name = object()\n"), ("_x.py", "Name = object()\n"), (file, source)]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP310"]);
+    assert_eq!(stdout.matches("SMP310").count(), expected, "{stdout}");
+}
+
+#[test]
+fn private_module_object_import_reports_both_import_and_attribute() {
+    let root = common::project(&[
+        ("package/__init__.py", ""),
+        ("package/_api.py", "def make() -> object:\n    return object()\n"),
+        ("package/consumer.py", "import package._api as api\n\nvalue = api.make()\n"),
+    ]);
+    let stdout = common::check(root.path(), &["--no-cache", "--unsafe-fixes", "--select", "SMP304,SMP310"]).1;
+    assert!(stdout.contains("SMP310 Private import `package._api`"), "{stdout}");
+    assert!(stdout.contains("SMP304 Import `make` from `package._api`"), "{stdout}");
+    assert!(!stdout.contains("unsafe fix available"), "{stdout}");
+}
+
 // The package whose module imports its sibling absolutely, under `prefix`.
 fn sibling_package(prefix: &str) -> Vec<(String, &'static str)> {
     [
@@ -349,11 +409,8 @@ fn module_attribute_import_leaves_aliased_top_level_package_reads_alone() {
     }
 }
 
-// Ruff's import-private-name (PLC2701) flags the import a fix would write for a private name read across packages, so
-// SMP304 leaves those reads to Ruff while it runs the rule. A read from the importer's own package, a name only an
-// annotation reads, and a public name stay reported.
 #[test]
-fn module_attribute_import_leaves_private_names_across_packages_to_ruff() {
+fn module_attribute_import_reports_private_module_attributes_with_ruff_selected() {
     for selected in [false, true] {
         let select = if selected { "\"PLC2701\"" } else { "" };
         let root = common::project(&[
@@ -385,20 +442,22 @@ fn module_attribute_import_leaves_private_names_across_packages_to_ruff() {
             ),
         ]);
         let stdout = common::check(root.path(), &["--select", "SMP304"]).1;
-        for location in ["tests/test_main.py:5:12:", "tests/test_mixed.py:4:18:", "tests/test_mixed.py:5:30:"] {
-            assert_eq!(stdout.contains(&common::native(location)), !selected, "{stdout}");
-        }
-        for location in
-            ["pkg/cli.py:5:12:", "pkg/commands.py:5:12:", "tests/test_main.py:6:12:", "tests/test_types.py:4:18:"]
-        {
+        for location in [
+            "pkg/cli.py:5:12:",
+            "pkg/commands.py:5:12:",
+            "tests/test_main.py:5:12:",
+            "tests/test_main.py:6:12:",
+            "tests/test_mixed.py:4:18:",
+            "tests/test_mixed.py:5:30:",
+            "tests/test_types.py:4:18:",
+        ] {
             assert!(stdout.contains(&common::native(location)), "{stdout}");
         }
     }
 }
 
-// A private module is a private name of its own, so Ruff's import-private-name flags a public name imported from it.
 #[test]
-fn module_attribute_import_leaves_public_names_of_private_modules_to_ruff() {
+fn module_attribute_import_reports_public_names_of_private_modules() {
     for selected in [false, true] {
         let select = if selected { "\"PLC2701\"" } else { "" };
         let root = common::project(&[
@@ -411,14 +470,12 @@ fn module_attribute_import_leaves_public_names_of_private_modules_to_ruff() {
             ),
         ]);
         let stdout = common::check(root.path(), &["--select", "SMP304"]).1;
-        assert_eq!(stdout.contains(&common::native("tests/test_store.py:5:12:")), !selected, "{stdout}");
+        assert!(stdout.contains(&common::native("tests/test_store.py:5:12:")), "{stdout}");
     }
 }
 
-// Ruff exempts a read in a typing context or a runtime-evaluated annotation, so SMP304 reports those. A class base listed
-// as runtime-required makes its annotations runtime-required, which Ruff flags, so SMP304 leaves that read to it.
 #[test]
-fn module_attribute_import_follows_ruff_typing_contexts() {
+fn module_attribute_import_reports_private_names_in_typing_contexts() {
     let root = common::project(&[
         (
             "pyproject.toml",
@@ -446,18 +503,16 @@ fn module_attribute_import_follows_ruff_typing_contexts() {
         "pkg/sub/use.py:5:12:",
         "tests/test_a.py:6:13:",
         "tests/test_b.py:4:14:",
+        "tests/test_c.py:7:12:",
         "tests/test_d.py:4:18:",
         "tests/test_e.py:3:14:",
     ] {
         assert!(stdout.contains(&common::native(location)), "{stdout}");
     }
-    assert!(!stdout.contains(&common::native("tests/test_c.py:7:12:")), "{stdout}");
 }
 
-// A decorator or base class that Ruff's `flake8-type-checking` settings list as runtime-required or ambiguous makes the
-// annotations of its function or class runtime-required or ambiguous, which Ruff flags, so SMP304 leaves them to it.
 #[test]
-fn module_attribute_import_follows_ruff_runtime_evaluated_annotations() {
+fn module_attribute_import_reports_private_names_with_runtime_evaluation_settings() {
     for configured in [false, true] {
         let settings = if configured {
             "lint.flake8-type-checking.runtime-evaluated-decorators = { \"fastapi.FastAPI.get\" = \"required\", \
@@ -491,7 +546,7 @@ fn module_attribute_import_follows_ruff_runtime_evaluated_annotations() {
         ]);
         let stdout = common::check(root.path(), &["--select", "SMP304"]).1;
         for location in ["tests/test_routes.py:9:18:", "tests/test_routes.py:14:19:", "tests/test_models.py:7:12:"] {
-            assert_eq!(stdout.contains(&common::native(location)), !configured, "{stdout}");
+            assert!(stdout.contains(&common::native(location)), "{stdout}");
         }
         for location in ["tests/test_unlisted.py:9:20:", "tests/test_other.py:5:12:"] {
             assert!(stdout.contains(&common::native(location)), "{stdout}");
