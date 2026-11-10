@@ -63,7 +63,8 @@ pub(crate) fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Re
 }
 
 // Ruff quotes the text of an `extend`ed file it cannot load. The repository may point `extend` anywhere, so such a file
-// outside the project root is reported by name alone; inside the root it is part of the run, and Ruff's report stays.
+// outside the project root is reported by name alone; inside the root it is part of the run, and Ruff's report stays. Ruff
+// only normalizes the path, so a link in the repository could otherwise pass a file outside it as one inside.
 pub(crate) fn redact_extended(error: anyhow::Error, project_root: &Path) -> anyhow::Error {
     let extended = error.chain().find_map(|cause| {
         let message = cause.to_string();
@@ -71,9 +72,22 @@ pub(crate) fn redact_extended(error: anyhow::Error, project_root: &Path) -> anyh
         Some(PathBuf::from(path))
     });
     match extended {
-        Some(path) if !path.starts_with(project_root) => anyhow!("`{}` is not valid configuration", path.display()),
+        Some(path) if !within(&path, project_root) => anyhow!("`{}` is not valid configuration", path.display()),
         _ => error,
     }
+}
+
+// Whether `path` lies inside `root` once the links in it resolve, so a link in the repository cannot point out of it.
+pub(crate) fn within(path: &Path, root: &Path) -> bool {
+    resolve_links(path).zip(fs::canonicalize(root).ok()).is_some_and(|(resolved, root)| resolved.starts_with(root))
+}
+
+// `path` with the links in its longest existing prefix resolved, as it may not exist yet.
+fn resolve_links(path: &Path) -> Option<PathBuf> {
+    path.ancestors().find_map(|ancestor| {
+        let existing = fs::canonicalize(ancestor).ok()?;
+        Some(existing.join(path.strip_prefix(ancestor).ok()?))
+    })
 }
 
 // The paths a run lints, canonical, so a file under them is one the run may read and write.

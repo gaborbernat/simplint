@@ -31,7 +31,7 @@ use crate::fix::{Fixer, FixerResult, Withdrawn, add_fixes};
 use crate::lint::Linter;
 use crate::settings::SettingsResolver;
 
-pub(crate) use discover::{Discovered, discover, linted_roots, redact_extended};
+pub(crate) use discover::{Discovered, discover, linted_roots, redact_extended, within};
 pub(crate) use rounds::{add_suppressions, check_files, check_stdin};
 
 // Ruff's configuration and simplint's, from the same command line, as a run reads them.

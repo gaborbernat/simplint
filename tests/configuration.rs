@@ -825,6 +825,20 @@ fn nested_extend_outside_the_project_is_named_without_its_text() {
     assert_eq!((code, stderr.contains("hunter2"), stderr.contains("is not valid configuration")), (2, false, true));
 }
 
+// A link inside the project does not make a file outside it part of the run.
+#[cfg(unix)]
+#[test]
+fn extend_through_a_link_outside_the_project_is_named_without_its_text() {
+    let root = project(&[
+        ("repo/pyproject.toml", "[tool.ruff]\nextend = \"link/notes.txt\"\n"),
+        ("repo/module.py", "VALUE = 1\n"),
+        ("outside/notes.txt", "API_TOKEN = \"hunter2\"\n"),
+    ]);
+    std::os::unix::fs::symlink(root.path().join("outside"), root.path().join("repo/link")).expect("symlink");
+    let (code, _, stderr) = check(&root.path().join("repo"), &["--select", "SMP101"]);
+    assert_eq!((code, stderr.contains("hunter2"), stderr.contains("is not valid configuration")), (2, false, true));
+}
+
 // An `extend`ed file inside the project is part of the run, so Ruff's report of it stays.
 #[test]
 fn extend_inside_the_project_keeps_ruffs_report() {

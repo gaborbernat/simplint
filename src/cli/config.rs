@@ -1,11 +1,10 @@
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
 use ruff_workspace::resolver::PyprojectConfig;
 
 use crate::cli::args::{CheckCommand, GlobalConfigArgs};
-use crate::run::{Resolved, redact_extended};
+use crate::run::{Resolved, redact_extended, within};
 use crate::settings::SettingsResolver;
 
 // The configurations come from the command line, which names the configuration file and the cache directory, so they
@@ -32,18 +31,4 @@ fn choose_cache_dir(cli: &CheckCommand, config: &PyprojectConfig) -> PathBuf {
         Some(root) if cli.cache_dir.is_none() && !within(configured, root) => ruff_cache::cache_dir(root),
         _ => configured.clone(),
     }
-}
-
-// Whether `path` lies inside `root` once the links in it resolve, so a link in the repository cannot point the cache
-// out of it.
-fn within(path: &Path, root: &Path) -> bool {
-    resolve_links(path).zip(fs::canonicalize(root).ok()).is_some_and(|(resolved, root)| resolved.starts_with(root))
-}
-
-// `path` with the links in its longest existing prefix resolved, as the cache directory may not exist yet.
-fn resolve_links(path: &Path) -> Option<PathBuf> {
-    path.ancestors().find_map(|ancestor| {
-        let existing = fs::canonicalize(ancestor).ok()?;
-        Some(existing.join(path.strip_prefix(ancestor).ok()?))
-    })
 }
