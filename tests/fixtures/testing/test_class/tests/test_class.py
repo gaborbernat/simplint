@@ -112,3 +112,30 @@ class TestBase:
 class TestDerived(TestBase):
     def test_more(self) -> None:
         assert True
+
+
+class TestCommented:
+    # Shared setup lives in conftest.
+    def test_first(self) -> None:
+        assert True  # trailing
+
+    # Regression for issue 12: zero must fail.
+    @pytest.mark.slow
+    def test_zero(self) -> None:
+        # inside
+        assert True
+
+
+class TestDetached:
+    def test_first(self) -> None:
+        assert True
+
+    # A note apart from any method.
+
+    def test_second(self) -> None:
+        assert True
+
+
+class TestHeader:  # grouped for the report
+    def test_first(self) -> None:
+        assert True

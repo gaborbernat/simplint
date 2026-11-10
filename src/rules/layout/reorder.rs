@@ -1,12 +1,12 @@
 use std::ops::RangeInclusive;
 
 use ruff_diagnostics::{Edit, Fix};
-use ruff_python_ast::{self as ast, Stmt};
-use ruff_source_file::LineRanges;
-use ruff_text_size::{Ranged, TextRange, TextSize};
+use ruff_python_ast::Stmt;
+use ruff_text_size::{Ranged, TextRange};
 
 use super::definition_time::calls_at_definition;
 use crate::lint::checker::Checker;
+use crate::rules::edits::statement_block;
 use crate::syntax::last_segment;
 
 pub(super) struct Suite<'a> {
@@ -59,26 +59,6 @@ pub(super) fn reorder_fix(
         .any(|position| shifts_unsafely(&suite.body[expected[position]]));
     let edit = Edit::range_replacement(replacement, region);
     Some(if moved_unsafe { Fix::unsafe_edit(edit) } else { Fix::safe_edit(edit) })
-}
-
-fn statement_block(source: &str, stmt: &Stmt) -> TextRange {
-    let start = match stmt {
-        Stmt::FunctionDef(ast::StmtFunctionDef { decorator_list, .. })
-        | Stmt::ClassDef(ast::StmtClassDef { decorator_list, .. }) => {
-            decorator_list.first().map_or(stmt.start(), Ranged::start)
-        }
-        _ => stmt.start(),
-    };
-    let mut line_start = source.line_start(start);
-    // A byte order mark is not a line to step back into.
-    while line_start > source.bom_start_offset() {
-        let previous = source.line_start(line_start - TextSize::from(1));
-        if !source[TextRange::new(previous, line_start)].trim_start().starts_with('#') {
-            break;
-        }
-        line_start = previous;
-    }
-    TextRange::new(line_start, source.full_line_end(stmt.end()))
 }
 
 // Decorators with no effect of their own, so moving a decorated method past another only changes the order of

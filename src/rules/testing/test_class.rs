@@ -11,6 +11,7 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::lint::noqa::{ruff_ignores, suppresses};
 use crate::lint::registry::Rule;
+use crate::rules::edits::statement_block;
 use crate::rules::testing::is_test_function;
 use crate::rules::{docstring, expr_mentions};
 use crate::syntax::{is_name, names_in};
@@ -51,12 +52,23 @@ fn flatten_class(checker: &Checker, class: &ast::StmtClassDef) -> Option<String>
     }
     let type_params = class.type_params.as_deref().map_or(&[][..], |params| params.type_params.as_slice());
     let prefix = snake_case(class.name.as_str().strip_prefix("Test").unwrap_or_default());
+    let blocks: Vec<TextRange> = class.body.iter().map(|stmt| statement_block(checker.source, stmt)).collect();
+    // A comment that is neither in a method nor on the lines directly above one, such as one on the class line or apart
+    // from the method below it by a blank line, has no place among the functions.
+    if checker
+        .comment_ranges()
+        .comments_in_range(TextRange::new(class.start(), class.end()))
+        .iter()
+        .any(|comment| !blocks.iter().any(|block| block.contains(comment.start())))
+    {
+        return None;
+    }
     let mut functions = Vec::new();
-    for stmt in &class.body {
+    for (stmt, block) in class.body.iter().zip(blocks) {
         let Stmt::FunctionDef(function) = stmt else {
             return None;
         };
-        functions.push(flatten_method(checker, (function, type_params, &prefix))?);
+        functions.push(flatten_method(checker, (function, type_params, &prefix), block)?);
     }
     (!functions.is_empty()).then(|| functions.join("\n\n"))
 }
@@ -103,6 +115,7 @@ fn can_flatten(checker: &Checker, class: &ast::StmtClassDef) -> bool {
 fn flatten_method(
     checker: &Checker,
     (function, type_params, prefix): (&ast::StmtFunctionDef, &[ast::TypeParam], &str),
+    block: TextRange,
 ) -> Option<String> {
     let source = checker.source;
     let name = function.name.as_str();
@@ -136,10 +149,6 @@ fn flatten_method(
         return None;
     }
     let header: Vec<&str> = used.into_iter().map(|param| &source[param.range()]).collect();
-    let block = source.full_lines_range(TextRange::new(
-        function.decorator_list.first().map_or(function.start(), Ranged::start),
-        function.end(),
-    ));
     let following = checker.parsed.tokens().after(self_parameter.end());
     let removal_end = match following.first() {
         Some(comma) if comma.kind() == TokenKind::Comma => following
