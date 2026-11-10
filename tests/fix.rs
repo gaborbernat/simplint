@@ -750,3 +750,14 @@ fn fix_keeps_the_import_cycle_report_of_a_rewritten_file() {
     let (code, stdout, _) = check(root.path(), &["--fix", "--select", "SMP308,SMP502"]);
     assert_eq!((code, stdout.matches("SMP308").count()), (1, 2));
 }
+
+// Ruff warns about a `noqa` comment each time it lints a source, and the fix loop lints sources the disk does not hold, so
+// the warning shows once, with the line the comment has on disk.
+#[test]
+fn fix_warns_about_a_noqa_comment_once_with_its_line_on_disk() {
+    let source =
+        "import os\n\n# --- section one ---\nVALUE = os.sep\n# --- section two ---\nOTHER = os.linesep  # noqa: 401\n";
+    let root = project(&[("a.py", source)]);
+    let (code, _, stderr) = check(root.path(), &["--diff", "--select", "SMP001"]);
+    assert_eq!((code, stderr.matches("Invalid `# noqa` directive").count(), stderr.contains("a.py:6:")), (1, 1, true));
+}

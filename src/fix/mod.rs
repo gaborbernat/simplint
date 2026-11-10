@@ -4,6 +4,7 @@ mod errors;
 
 use std::collections::BTreeSet;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use anyhow::Result;
@@ -42,6 +43,8 @@ pub struct Fixer<'l, 'a> {
     sources: Sources,
     lints: Memo<Lint>,
     checks: Memo<Arc<Checked>>,
+    // Whether Ruff has checked a source yet: the first check is of the source as read, whose warnings are shown.
+    checked: AtomicBool,
     failing: Memo<Arc<FxHashSet<&'static str>>>,
     cleanups: Mutex<FxHashMap<CleanupKey, Arc<str>>>,
 }
@@ -56,6 +59,7 @@ impl<'l, 'a> Fixer<'l, 'a> {
             sources: Sources::default(),
             lints: Memo::default(),
             checks: Memo::default(),
+            checked: AtomicBool::new(false),
             failing: Memo::default(),
             cleanups: Mutex::default(),
         }
@@ -309,7 +313,8 @@ impl<'l, 'a> Fixer<'l, 'a> {
 
     fn check(&self, source: &str) -> Arc<Checked> {
         self.checks.get_or(&self.sources, source, || {
-            Arc::new(self.linter.ruff.check(self.path, source, &self.linter.settings.from_ruff))
+            let first = !self.checked.swap(true, Ordering::Relaxed);
+            Arc::new(self.linter.ruff.check(self.path, source, &self.linter.settings.from_ruff, first))
         })
     }
 }

@@ -125,7 +125,11 @@ fn set_up_logging(level: LogLevel) -> Result<()> {
         .level_for("globset", log::LevelFilter::Warn)
         .level_for("ty_python_semantic", log::LevelFilter::Warn)
         .level_for("salsa", log::LevelFilter::Warn)
-        .filter(|metadata| metadata.level() != log::Level::Warn || !metadata.target().starts_with("ruff_workspace"))
+        .filter(|metadata| {
+            metadata.level() != log::Level::Warn
+                || (!metadata.target().starts_with("ruff_workspace")
+                    && (metadata.target() != "ruff_linter::noqa" || lint::ruff::directive_warnings_shown()))
+        })
         .chain(std::io::stderr())
         .apply()?;
     Ok(())
