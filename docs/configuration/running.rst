@@ -24,9 +24,9 @@ Cache
 Like Ruff, simplint caches which files had nothing to report, keyed by each file's modification time and
 permissions, and also by its size. With a :ref:`cross-file rule <cross-file-rules>` enabled, a cached result also
 depends on the names other files use from that file, so editing an importer checks the files it imports again. A file
-only per-file rules check keeps its cached result. A file whose fixes cannot be written is not cached, because whether its
-directory lets it be written is not part of its key, and a file that ``--diff`` fixes is not cached either, because its
-reports are those of the fixed source.
+only per-file rules check keeps its cached result. A file whose fixes cannot be written is not cached, because whether
+its directory lets it be written is not part of its key, and a file that ``--diff`` fixes is not cached either, because
+its reports are those of the fixed source.
 
 .. mermaid::
 
