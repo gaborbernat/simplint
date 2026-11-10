@@ -19232,7 +19232,7 @@
     "name": "unnamed-regex-group",
     "summary": "Regular expressions with unnamed capture groups",
     "fix": "Sometimes",
-    "explanation": "Flags regular expression patterns with two or more unnamed capturing groups, or with one that the code reads by its\nnumber, so the groups are named with `(?P<name>...)`.\n\n## Why is this bad?\n\nA reader of `match.group(1)` and `match.group(2)` counts parentheses to learn which part of the text each group holds. A\nnamed group says what the part is in the pattern, and `match[\"text\"]` says it again where the code reads it. The numbers\nalso shift when a group is added or moved, which a name survives.\n\n## Example\n\n```python report\nimport re\n\nLINE = re.compile(r\"^(.*?)\\s*\\{([^}]+)\\}\\s*$\")\n\n\ndef parse(line):\n    match = LINE.match(line)\n    return match.group(1), match.group(2)\n```\n\nUse instead:\n\n```python ok\nimport re\n\nLINE = re.compile(r\"^(?P<text>.*?)\\s*\\{(?P<tag>[^}]+)\\}\\s*$\")\n\n\ndef parse(line):\n    match = LINE.match(line)\n    return match[\"text\"], match[\"tag\"]\n```\n\nSimplint does not invent the names, so it offers no fix for a group the code reads. A group the code never reads has no\nname to be read by, and the fix turns it into a non-capturing group instead, as described below.\n\n## What it does\n\n### Active on\n\n- **Patterns of `re` and `regex` calls**, where the pattern is a string or bytes literal, including implicit\n  concatenation. The calls are `compile`, `match`, `search`, `fullmatch`, `finditer`, `findall`, `split`, `sub` and\n  `subn`, and the methods of a compiled pattern with the same names. The rule counts the unnamed groups of the pattern,\n  reading the verbose flag from `re.VERBOSE`, `re.X` or an inline `(?x)`. A `flags` argument that is a name or other\n  expression not resolving to a `re` flag leaves the pattern unchecked, since its value may turn verbose mode on.\n\n  - **Two or more unnamed groups** are reported at the pattern.\n  - **One unnamed group** is reported when the code reads it by its number: a `group`, `start`, `end` or `span` call\n    with a number from 1 on, a subscript with such a number, or a `groups()` call. The tracking follows a name bound\n    once in its function, or at module level, to the call's result, to a match of a compiled pattern, or to the loop\n    variable of a `finditer` loop. A pattern with a named group is not reported for one unnamed group, since the number\n    the code reads may belong to the named group. A group in a `split`, `findall` or `sub` call is left alone, since\n    returning the group's text there is the normal use.\n\n  ```python report\n  import re\n\n\n  def is_version(text):\n      return bool(re.match(r\"(\\d+)\\.(\\d+)\", text))\n  ```\n\n  ```python fixed\n  import re\n\n\n  def is_version(text):\n      return bool(re.match(r\"(?:\\d+)\\.(?:\\d+)\", text))\n  ```\n\n- **Unsafe fix:** the groups the code never reads become non-capturing, `(` becomes `(?:`. The fix runs only when the\n  pattern and its match objects are all tested for truth, compared to `None`, or discarded, with no group read from\n  them. A match object that leaves the code that made it, by being returned, stored or passed on, may have its\n  `groups()` read somewhere else, and a compiled pattern shared with another module can do the same, so the fix is\n  unsafe. A `split` or `findall` call is left unfixed for that reason too: its result holds the groups' text. A name\n  bound more than once in its function is not followed, so its pattern keeps its groups. Neither is a pattern bound in a\n  class body, a name declared `global` or `nonlocal`, or a module name another module imports or `__all__` lists, since\n  the reads of those can come from code the rule does not see.\n\n  - **A pattern in a class body**: reported, with no fix.\n\n    ```python report\n    import re\n\n\n    class Parser:\n        LINE = re.compile(r\"(\\d+)-(\\d+)\")\n    ```\n\n    ```python fixed\n    import re\n\n\n    class Parser:\n        LINE = re.compile(r\"(\\d+)-(\\d+)\")\n    ```\n\n  - **A name a function declares `global`**: the pattern the function binds to it is reported, with no fix.\n\n    ```python report\n    import re\n\n\n    def reset():\n        global PATTERN\n        PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n    ```\n\n    ```python fixed\n    import re\n\n\n    def reset():\n        global PATTERN\n        PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n    ```\n\n  - **A name a function declares `nonlocal`**: the pattern bound to it is reported, with no fix.\n\n    ```python report\n    import re\n\n\n    def outer():\n        pattern = None\n\n        def reset():\n            nonlocal pattern\n            pattern = re.compile(r\"(\\d+)-(\\d+)\")\n\n        reset()\n        return pattern\n    ```\n\n    ```python fixed\n    import re\n\n\n    def outer():\n        pattern = None\n\n        def reset():\n            nonlocal pattern\n            pattern = re.compile(r\"(\\d+)-(\\d+)\")\n\n        reset()\n        return pattern\n    ```\n\n  - **A module name another module imports**: reported, with no fix.\n\n    ```python report file=example.py\n    import re\n\n    PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n    ```\n\n    ```python fixed file=example.py\n    import re\n\n    PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n    ```\n\n    ```python context file=main.py\n    from example import PATTERN\n    ```\n\n  - **A module name `__all__` lists**: reported, with no fix.\n\n    ```python report\n    import re\n\n    __all__ = [\"PATTERN\"]\n    PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n    ```\n\n    ```python fixed\n    import re\n\n    __all__ = [\"PATTERN\"]\n    PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n    ```\n\n### Exceptions\n\n- **A single unnamed group that the code does not read by number**, such as a lone group in `split` or a match tested\n  for truth.\n\n  ```python ok\n  import re\n\n\n  def words(text):\n      return re.split(r\"(\\s+)\", text)\n  ```\n\n- **Named groups** are what the rule asks for.\n\n  ```python ok\n  import re\n\n\n  def is_version(text):\n      return bool(re.match(r\"(?P<major>\\d+)\\.(?P<minor>\\d+)\", text))\n  ```\n\n- **Non-capturing groups, lookarounds and inline flags** do not capture, so they are not counted.\n\n  ```python ok\n  import re\n\n\n  def is_version(text):\n      return bool(re.match(r\"(?:\\d+)\\.(?=\\d)(?i:\\d+)\", text))\n  ```\n\n- **A parenthesis in a character class or escaped with a backslash** is text, not a group.\n\n  ```python ok\n  import re\n\n\n  def is_call(text):\n      return bool(re.match(r\"[(]\\(\\d+\\)\", text))\n  ```\n\n- **A parenthesis in a verbose comment** is ignored when the verbose flag is on.\n\n  ```python ok\n  import re\n\n\n  def is_version(text):\n      return bool(\n          re.match(\n              r\"\"\"\\d+  # the major (or the minor) number\n          \\.\\d+\"\"\",\n              text,\n              re.VERBOSE,\n          )\n      )\n  ```\n\n- **A pattern that is not a literal**, such as an f-string or a name, is not read.\n\n  ```python ok\n  import re\n\n\n  def is_version(text, prefix):\n      return bool(re.match(f\"{prefix}(\\\\d+)\\\\.(\\\\d+)\", text))\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** no rule reports unnamed capture groups. Open issue\n  [#4935](https://github.com/astral-sh/ruff/issues/4935) asks for a port of Sonar's Python checks in general, which does\n  not name this one.\n",
+    "explanation": "Flags regular expression patterns with two or more unnamed capturing groups, or with one that the code reads by its\nnumber, so the groups are named with `(?P<name>...)`.\n\n## Why is this bad?\n\nA reader of `match.group(1)` and `match.group(2)` counts parentheses to learn which part of the text each group holds. A\nnamed group says what the part is in the pattern, and `match[\"text\"]` says it again where the code reads it. The numbers\nalso shift when a group is added or moved, which a name survives.\n\n## Example\n\n```python report\nimport re\n\nLINE = re.compile(r\"^(.*?)\\s*\\{([^}]+)\\}\\s*$\")\n\n\ndef parse(line):\n    match = LINE.match(line)\n    return match.group(1), match.group(2)\n```\n\nUse instead:\n\n```python ok\nimport re\n\nLINE = re.compile(r\"^(?P<text>.*?)\\s*\\{(?P<tag>[^}]+)\\}\\s*$\")\n\n\ndef parse(line):\n    match = LINE.match(line)\n    return match[\"text\"], match[\"tag\"]\n```\n\nSimplint does not invent the names, so it offers no fix for a group the code reads. A group the code never reads has no\nname to be read by, and the fix turns it into a non-capturing group instead, as described below.\n\n## What it does\n\n### Active on\n\n- **Patterns of `re` and `regex` calls**, where the pattern is a string or bytes literal, including implicit\n  concatenation. The calls are `compile`, `match`, `search`, `fullmatch`, `finditer`, `findall`, `split`, `sub` and\n  `subn`, and the methods of a compiled pattern with the same names. The rule counts the unnamed groups of the pattern,\n  reading the verbose flag from `re.VERBOSE`, `re.X` or an inline `(?x)`. A `flags` argument that is a name or other\n  expression not resolving to a `re` flag leaves the pattern unchecked, since its value may turn verbose mode on.\n\n  - **Two or more unnamed groups** are reported at the pattern.\n  - **One unnamed group** is reported when the code reads it by its number: a `group`, `start`, `end` or `span` call\n    with a number from 1 on, a subscript with such a number, or a `groups()` call. The tracking follows a name bound\n    once in its function, or at module level, to the call's result, to a match of a compiled pattern, or to the loop\n    variable of a `finditer` loop. A pattern with a named group is not reported for one unnamed group, since the number\n    the code reads may belong to the named group. A group in a `split`, `findall` or `sub` call is left alone, since\n    returning the group's text there is the normal use.\n\n  ```python report\n  import re\n\n\n  def is_version(text):\n      return bool(re.match(r\"(\\d+)\\.(\\d+)\", text))\n  ```\n\n  ```python fixed\n  import re\n\n\n  def is_version(text):\n      return bool(re.match(r\"(?:\\d+)\\.(?:\\d+)\", text))\n  ```\n\n- **Unsafe fix:** the groups the code never reads become non-capturing, `(` becomes `(?:`. The fix runs only when the\n  pattern and its match objects are all tested for truth, compared to `None`, or discarded, with no group read from\n  them. A match object that leaves the code that made it, by being returned, stored or passed on, may have its\n  `groups()` read somewhere else, and a compiled pattern shared with another module can do the same, so the fix is\n  unsafe. A `split` or `findall` call is left unfixed for that reason too: its result holds the groups' text. A name\n  bound more than once in its function is not followed, so its pattern keeps its groups. Neither is a pattern bound in a\n  class body, a name declared `global` or `nonlocal`, or a module name another module imports or `__all__` lists, since\n  the reads of those can come from code the rule does not see.\n\n  - **A pattern in a class body**: reported, with no fix.\n\n    ```python report\n    import re\n\n\n    class Parser:\n        LINE = re.compile(r\"(\\d+)-(\\d+)\")\n    ```\n\n    ```python fixed\n    import re\n\n\n    class Parser:\n        LINE = re.compile(r\"(\\d+)-(\\d+)\")\n    ```\n\n  - **A name a function declares `global`**: a pattern bound to it, in the function or at module level, is reported,\n    with no fix.\n\n    ```python report\n    import re\n\n    PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n\n\n    def reset():\n        global PATTERN\n        PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n    ```\n\n    ```python fixed\n    import re\n\n    PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n\n\n    def reset():\n        global PATTERN\n        PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n    ```\n\n  - **A name a function declares `nonlocal`**: the pattern bound to it is reported, with no fix.\n\n    ```python report\n    import re\n\n\n    def outer():\n        pattern = None\n\n        def reset():\n            nonlocal pattern\n            pattern = re.compile(r\"(\\d+)-(\\d+)\")\n\n        reset()\n        return pattern\n    ```\n\n    ```python fixed\n    import re\n\n\n    def outer():\n        pattern = None\n\n        def reset():\n            nonlocal pattern\n            pattern = re.compile(r\"(\\d+)-(\\d+)\")\n\n        reset()\n        return pattern\n    ```\n\n  - **A module name another module imports**: reported, with no fix.\n\n    ```python report file=example.py\n    import re\n\n    PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n    ```\n\n    ```python fixed file=example.py\n    import re\n\n    PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n    ```\n\n    ```python context file=main.py\n    from example import PATTERN\n    ```\n\n  - **A module name `__all__` lists**: reported, with no fix.\n\n    ```python report\n    import re\n\n    __all__ = [\"PATTERN\"]\n    PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n    ```\n\n    ```python fixed\n    import re\n\n    __all__ = [\"PATTERN\"]\n    PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n    ```\n\n### Exceptions\n\n- **A single unnamed group that the code does not read by number**, such as a lone group in `split` or a match tested\n  for truth.\n\n  ```python ok\n  import re\n\n\n  def words(text):\n      return re.split(r\"(\\s+)\", text)\n  ```\n\n- **Named groups** are what the rule asks for.\n\n  ```python ok\n  import re\n\n\n  def is_version(text):\n      return bool(re.match(r\"(?P<major>\\d+)\\.(?P<minor>\\d+)\", text))\n  ```\n\n- **Non-capturing groups, lookarounds and inline flags** do not capture, so they are not counted.\n\n  ```python ok\n  import re\n\n\n  def is_version(text):\n      return bool(re.match(r\"(?:\\d+)\\.(?=\\d)(?i:\\d+)\", text))\n  ```\n\n- **A parenthesis in a character class or escaped with a backslash** is text, not a group.\n\n  ```python ok\n  import re\n\n\n  def is_call(text):\n      return bool(re.match(r\"[(]\\(\\d+\\)\", text))\n  ```\n\n- **A parenthesis in a verbose comment** is ignored when the verbose flag is on.\n\n  ```python ok\n  import re\n\n\n  def is_version(text):\n      return bool(\n          re.match(\n              r\"\"\"\\d+  # the major (or the minor) number\n          \\.\\d+\"\"\",\n              text,\n              re.VERBOSE,\n          )\n      )\n  ```\n\n- **A pattern that is not a literal**, such as an f-string or a name, is not read.\n\n  ```python ok\n  import re\n\n\n  def is_version(text, prefix):\n      return bool(re.match(f\"{prefix}(\\\\d+)\\\\.(\\\\d+)\", text))\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** no rule reports unnamed capture groups. Open issue\n  [#4935](https://github.com/astral-sh/ruff/issues/4935) asks for a port of Sonar's Python checks in general, which does\n  not name this one.\n",
     "examples": {
       "parsed": [
         {
@@ -19323,8 +19323,8 @@
         },
         {
           "section": "What it does",
-          "line": 102,
-          "end_line": 118,
+          "line": 103,
+          "end_line": 123,
           "config": null,
           "blocks": [
             {
@@ -19332,25 +19332,25 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 102,
-              "end_line": 109,
-              "source": "import re\n\n\ndef reset():\n    global PATTERN\n    PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n"
+              "line": 103,
+              "end_line": 112,
+              "source": "import re\n\nPATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n\n\ndef reset():\n    global PATTERN\n    PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n"
             },
             {
               "role": "fixed",
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 111,
-              "end_line": 118,
-              "source": "import re\n\n\ndef reset():\n    global PATTERN\n    PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n"
+              "line": 114,
+              "end_line": 123,
+              "source": "import re\n\nPATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n\n\ndef reset():\n    global PATTERN\n    PATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 122,
-          "end_line": 150,
+          "line": 127,
+          "end_line": 155,
           "config": null,
           "blocks": [
             {
@@ -19358,8 +19358,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 122,
-              "end_line": 135,
+              "line": 127,
+              "end_line": 140,
               "source": "import re\n\n\ndef outer():\n    pattern = None\n\n    def reset():\n        nonlocal pattern\n        pattern = re.compile(r\"(\\d+)-(\\d+)\")\n\n    reset()\n    return pattern\n"
             },
             {
@@ -19367,16 +19367,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 137,
-              "end_line": 150,
+              "line": 142,
+              "end_line": 155,
               "source": "import re\n\n\ndef outer():\n    pattern = None\n\n    def reset():\n        nonlocal pattern\n        pattern = re.compile(r\"(\\d+)-(\\d+)\")\n\n    reset()\n    return pattern\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 154,
-          "end_line": 168,
+          "line": 159,
+          "end_line": 173,
           "config": null,
           "blocks": [
             {
@@ -19384,8 +19384,8 @@
               "language": "python",
               "file": "example.py",
               "named": true,
-              "line": 154,
-              "end_line": 158,
+              "line": 159,
+              "end_line": 163,
               "source": "import re\n\nPATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n"
             },
             {
@@ -19393,8 +19393,8 @@
               "language": "python",
               "file": "example.py",
               "named": true,
-              "line": 160,
-              "end_line": 164,
+              "line": 165,
+              "end_line": 169,
               "source": "import re\n\nPATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n"
             },
             {
@@ -19402,16 +19402,16 @@
               "language": "python",
               "file": "main.py",
               "named": true,
-              "line": 166,
-              "end_line": 168,
+              "line": 171,
+              "end_line": 173,
               "source": "from example import PATTERN\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 172,
-          "end_line": 184,
+          "line": 177,
+          "end_line": 189,
           "config": null,
           "blocks": [
             {
@@ -19419,8 +19419,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 172,
-              "end_line": 177,
+              "line": 177,
+              "end_line": 182,
               "source": "import re\n\n__all__ = [\"PATTERN\"]\nPATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n"
             },
             {
@@ -19428,16 +19428,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 179,
-              "end_line": 184,
+              "line": 184,
+              "end_line": 189,
               "source": "import re\n\n__all__ = [\"PATTERN\"]\nPATTERN = re.compile(r\"(\\d+)-(\\d+)\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 191,
-          "end_line": 197,
+          "line": 196,
+          "end_line": 202,
           "config": null,
           "blocks": [
             {
@@ -19445,16 +19445,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 191,
-              "end_line": 197,
+              "line": 196,
+              "end_line": 202,
               "source": "import re\n\n\ndef words(text):\n    return re.split(r\"(\\s+)\", text)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 201,
-          "end_line": 207,
+          "line": 206,
+          "end_line": 212,
           "config": null,
           "blocks": [
             {
@@ -19462,16 +19462,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 201,
-              "end_line": 207,
+              "line": 206,
+              "end_line": 212,
               "source": "import re\n\n\ndef is_version(text):\n    return bool(re.match(r\"(?P<major>\\d+)\\.(?P<minor>\\d+)\", text))\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 211,
-          "end_line": 217,
+          "line": 216,
+          "end_line": 222,
           "config": null,
           "blocks": [
             {
@@ -19479,16 +19479,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 211,
-              "end_line": 217,
+              "line": 216,
+              "end_line": 222,
               "source": "import re\n\n\ndef is_version(text):\n    return bool(re.match(r\"(?:\\d+)\\.(?=\\d)(?i:\\d+)\", text))\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 221,
-          "end_line": 227,
+          "line": 226,
+          "end_line": 232,
           "config": null,
           "blocks": [
             {
@@ -19496,16 +19496,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 221,
-              "end_line": 227,
+              "line": 226,
+              "end_line": 232,
               "source": "import re\n\n\ndef is_call(text):\n    return bool(re.match(r\"[(]\\(\\d+\\)\", text))\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 231,
-          "end_line": 244,
+          "line": 236,
+          "end_line": 249,
           "config": null,
           "blocks": [
             {
@@ -19513,16 +19513,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 231,
-              "end_line": 244,
+              "line": 236,
+              "end_line": 249,
               "source": "import re\n\n\ndef is_version(text):\n    return bool(\n        re.match(\n            r\"\"\"\\d+  # the major (or the minor) number\n        \\.\\d+\"\"\",\n            text,\n            re.VERBOSE,\n        )\n    )\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 248,
-          "end_line": 254,
+          "line": 253,
+          "end_line": 259,
           "config": null,
           "blocks": [
             {
@@ -19530,8 +19530,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 248,
-              "end_line": 254,
+              "line": 253,
+              "end_line": 259,
               "source": "import re\n\n\ndef is_version(text, prefix):\n    return bool(re.match(f\"{prefix}(\\\\d+)\\\\.(\\\\d+)\", text))\n"
             }
           ]

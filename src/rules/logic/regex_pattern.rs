@@ -200,9 +200,16 @@ impl<'a> Visitor<'a> for Facts<'_, 'a> {
                 visitor::walk_stmt(self, stmt);
                 self.class_body = class_body;
             }
-            Stmt::Global(ast::StmtGlobal { names, .. }) | Stmt::Nonlocal(ast::StmtNonlocal { names, .. }) => {
+            // The declared name is shared with the module, or with an enclosing function, so a pattern bound there
+            // escapes too.
+            Stmt::Global(ast::StmtGlobal { names, .. }) => {
                 let scope = self.scope();
-                self.escaping.extend(names.iter().map(|name| (scope, name.as_str())));
+                self.escaping.extend(names.iter().flat_map(|name| [(scope, name.as_str()), (None, name.as_str())]));
+            }
+            Stmt::Nonlocal(ast::StmtNonlocal { names, .. }) => {
+                for range in self.scopes.iter().flatten() {
+                    self.escaping.extend(names.iter().map(|name| (Some(*range), name.as_str())));
+                }
             }
             Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
                 for alias in names {

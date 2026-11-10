@@ -97,10 +97,13 @@ name to be read by, and the fix turns it into a non-capturing group instead, as 
         LINE = re.compile(r"(\d+)-(\d+)")
     ```
 
-  - **A name a function declares `global`**: the pattern the function binds to it is reported, with no fix.
+  - **A name a function declares `global`**: a pattern bound to it, in the function or at module level, is reported,
+    with no fix.
 
     ```python report
     import re
+
+    PATTERN = re.compile(r"(\d+)-(\d+)")
 
 
     def reset():
@@ -110,6 +113,8 @@ name to be read by, and the fix turns it into a non-capturing group instead, as 
 
     ```python fixed
     import re
+
+    PATTERN = re.compile(r"(\d+)-(\d+)")
 
 
     def reset():

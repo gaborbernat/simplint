@@ -1,12 +1,16 @@
 ---
 source: tests/common/mod.rs
+assertion_line: 137
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
 5:21 SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses
 9:23 SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses
 17:23 SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses
-25:26 SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses [unsafe fix: Make the unnamed groups non-capturing]
---- fixed (1 applied, 3 remaining) ---
+24:21 SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses
+29:25 SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses
+37:32 SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses
+48:26 SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not count parentheses [unsafe fix: Make the unnamed groups non-capturing]
+--- fixed (1 applied, 6 remaining) ---
 import re
 
 __all__ = ["LISTED"]
@@ -28,6 +32,29 @@ def setup():
 
 def pair_value(text):
     return PAIR.match(text).group(2)
+
+
+SHARED = re.compile(r"(\w+)/(\w+)")
+
+
+def reset():
+    global SHARED
+    SHARED = re.compile(r"(\w+)/(\w+)/")
+
+
+def shared_value(text):
+    return SHARED.match(text).group(2)
+
+
+def outer(text):
+    inner_pattern = re.compile(r"(\w+)!(\w+)")
+
+    def swap():
+        nonlocal inner_pattern
+        inner_pattern = re.compile(r"(\w+)!")
+
+    swap()
+    return inner_pattern.match(text).group(2)
 
 
 def control(text):
