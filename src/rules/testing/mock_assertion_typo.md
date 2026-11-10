@@ -119,7 +119,7 @@ Reports an attribute, read or called, whose name is one of these:
 ### Fix
 
 The fix renames the attribute to the assertion it stands for. **Unsafe fix:** the call becomes a check, so a test that
-passed without checking may now fail. Every report offers the fix, since each one names a single assertion to rename to.
+passed without checking may now fail.
 
 ```python report
 def test_save(save: MagicMock) -> None:
@@ -131,6 +131,35 @@ def test_save(save: MagicMock) -> None:
 def test_save(save: MagicMock) -> None:
     run_save()
     save.assert_called_once_with("out.json")
+```
+
+An assertion method returns `None`, so when the call is the whole test of an `assert` without a message, the fix drops
+the `assert` too.
+
+```toml config
+[tool.ruff.lint]
+select = []
+```
+
+```python report
+def test_save(save: MagicMock) -> None:
+    run_save()
+    assert save.not_called()
+```
+
+```python fixed
+def test_save(save: MagicMock) -> None:
+    run_save()
+    save.assert_not_called()
+```
+
+Only a call on a line of its own, or the whole test of such an `assert`, gets the fix. Renamed anywhere else, the name
+would be a bound method that is always true, or the `None` the method returns, which the code then goes on to use.
+
+```python report
+def test_save(save: MagicMock) -> None:
+    run_save()
+    assert not save.called_once
 ```
 
 ## Ruff overlap

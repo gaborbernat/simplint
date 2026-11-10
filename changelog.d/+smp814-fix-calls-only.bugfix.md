@@ -1,0 +1,3 @@
+[mock-assertion-typo](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP814.html) only fixes a misspelled
+assertion called on a line of its own or as the whole test of an `assert`, and drops that `assert`. Elsewhere the rename
+left a bound method that is always true, or a `None` the code went on to use.
