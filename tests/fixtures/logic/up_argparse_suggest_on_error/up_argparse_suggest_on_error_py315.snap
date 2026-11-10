@@ -8,7 +8,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 7:46 SMP519 `suggest_on_error=True` is the default from Python 3.15 [fix: Drop `suggest_on_error=True`]
 9:5 SMP519 `suggest_on_error=True` is the default from Python 3.15 [fix: Drop `suggest_on_error=True`]
 12:40 SMP519 `suggest_on_error=True` is the default from Python 3.15 [fix: Drop `suggest_on_error=True`]
---- fixed (6 applied, 0 remaining) ---
+15:51 SMP519 `suggest_on_error=True` is the default from Python 3.15 [fix: Drop `suggest_on_error=True`]
+--- fixed (7 applied, 0 remaining) ---
 import argparse
 from argparse import ArgumentParser
 
@@ -22,6 +23,7 @@ multiline = argparse.ArgumentParser(
 imported = ArgumentParser(prog="tool")
 disabled = argparse.ArgumentParser(prog="tool", suggest_on_error=False)
 dynamic = argparse.ArgumentParser(prog="tool", suggest_on_error=flag)
+parenthesized = argparse.ArgumentParser(("prog"))
 
 
 def build_other(parser_class):

@@ -121,7 +121,7 @@ pub fn keyword_removal(checker: &Checker, call: &ast::ExprCall, keyword: &ast::K
         .arguments
         .args
         .iter()
-        .map(Ranged::range)
+        .map(|argument| checker.parenthesized_range(argument, (&call.arguments).into()))
         .chain(call.arguments.keywords.iter().map(Ranged::range))
         .collect();
     arguments.sort_by_key(Ranged::start);
