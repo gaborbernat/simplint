@@ -436,16 +436,15 @@ fn fix_keys(source: &str, diagnostics: &[Diagnostic]) -> Vec<(usize, FixKey)> {
         .filter_map(|(index, diagnostic)| Some((index, rule_of(diagnostic)?)))
         .collect();
     reports.sort_by_key(|&(index, _)| diagnostics[index].range().map(TextRange::start));
-    let mut occurrences = FxHashMap::<(Rule, String, String), usize>::default();
+    let mut occurrences = FxHashMap::<(Rule, &str, &str), usize>::default();
     reports
         .into_iter()
         .map(|(index, rule)| {
             let diagnostic = &diagnostics[index];
             let range = diagnostic.range().expect("a simplint report has a range");
-            let message = diagnostic.headline_message().to_owned();
-            let text = source[range].to_owned();
-            let seen = occurrences.entry((rule, message.clone(), text.clone())).or_default();
-            let key = (rule, message, text, *seen);
+            let (message, text) = (diagnostic.headline_message(), &source[range]);
+            let seen = occurrences.entry((rule, message, text)).or_default();
+            let key = (rule, message.to_owned(), text.to_owned(), *seen);
             *seen += 1;
             (index, key)
         })
