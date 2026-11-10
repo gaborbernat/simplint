@@ -162,6 +162,18 @@ fn check_fix_writes_through_a_symlink() {
     assert_eq!((link.is_symlink(), read(root.path(), "source.txt")), (true, "VALUE = 1\n".to_owned()));
 }
 
+#[cfg(unix)]
+#[test]
+fn check_fix_keeps_the_file_and_its_hard_links() {
+    use std::os::unix::fs::MetadataExt;
+    let root = project(&[("module.py", "# --- helpers ---\nVALUE = 1\n")]);
+    std::fs::hard_link(root.path().join("module.py"), root.path().join("link.txt")).expect("hard link");
+    let inode = std::fs::metadata(root.path().join("module.py")).expect("metadata").ino();
+    check(root.path(), &["--fix", "--select", "SMP001", "module.py"]);
+    let after = std::fs::metadata(root.path().join("module.py")).expect("metadata").ino();
+    assert_eq!((after, read(root.path(), "link.txt")), (inode, "VALUE = 1\n".to_owned()));
+}
+
 #[test_case(&[], true ; "fixable_by_default")]
 #[test_case(&["--unfixable", "SMP001"], false ; "unfixable")]
 #[test_case(&["--extend-unfixable", "SMP001"], false ; "extend_unfixable")]

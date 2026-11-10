@@ -1,11 +1,13 @@
-use std::fs;
+use std::env;
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
+use ruff_linter::warn_user;
 use ruff_workspace::resolver::PyprojectConfig;
 
 use crate::cli::args::{CheckCommand, GlobalConfigArgs};
-use crate::run::{Resolved, redact_extended};
+use crate::project::cache;
+use crate::run::{Resolved, redact_extended, within};
 use crate::settings::SettingsResolver;
 
 // The configurations come from the command line, which names the configuration file and the cache directory, so they
@@ -22,28 +24,26 @@ impl Resolved {
     }
 }
 
-// Ruff's cache directory, where simplint keeps its cache. A `cache-dir` in a configuration file comes from the
-// repository being linted, so it must stay inside the project root, the directory of that file; one that leaves it
-// falls back to Ruff's default there. A path from the command line or `RUFF_CACHE_DIR` is the user's choice and stands
-// wherever it points.
-fn choose_cache_dir(cli: &CheckCommand, config: &PyprojectConfig) -> PathBuf {
+// Ruff's cache directory, where simplint keeps its cache. A path from the command line or `RUFF_CACHE_DIR` is the user's
+// choice and stands wherever it points. Otherwise the repository being linted picks it, through `cache-dir` or a link
+// committed in place of the default, so it must stay inside the project root: the directory of the configuration file,
+// or the working directory without one. A `cache-dir` that leaves the root falls back to Ruff's default there, and a
+// default that leaves it too turns the cache off.
+fn choose_cache_dir(cli: &CheckCommand, config: &PyprojectConfig) -> Option<PathBuf> {
     let configured = &config.settings.cache_dir;
-    match config.path.as_deref().and_then(Path::parent) {
-        Some(root) if cli.cache_dir.is_none() && !within(configured, root) => ruff_cache::cache_dir(root),
-        _ => configured.clone(),
+    if cli.cache_dir.is_some() {
+        return Some(configured.clone());
     }
-}
-
-// Whether `path` lies inside `root` once the links in it resolve, so a link in the repository cannot point the cache
-// out of it.
-fn within(path: &Path, root: &Path) -> bool {
-    resolve_links(path).zip(fs::canonicalize(root).ok()).is_some_and(|(resolved, root)| resolved.starts_with(root))
-}
-
-// `path` with the links in its longest existing prefix resolved, as the cache directory may not exist yet.
-fn resolve_links(path: &Path) -> Option<PathBuf> {
-    path.ancestors().find_map(|ancestor| {
-        let existing = fs::canonicalize(ancestor).ok()?;
-        Some(existing.join(path.strip_prefix(ancestor).ok()?))
-    })
+    let root = match config.path.as_deref().and_then(Path::parent) {
+        Some(parent) => parent.to_path_buf(),
+        None => env::current_dir().ok()?,
+    };
+    let chosen = if within(configured, &root) { configured.clone() } else { ruff_cache::cache_dir(&root) };
+    // The directory of this build is the deepest the cache creates, so checking it covers a link at any level above.
+    let build = cache::documentation_file(&chosen, &root);
+    if build.parent().is_some_and(|build| within(build, &root)) {
+        return Some(chosen);
+    }
+    warn_user!("Not caching: the cache directory `{}` leads outside the project", chosen.display());
+    None
 }

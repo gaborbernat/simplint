@@ -5,6 +5,7 @@ use anyhow::{Result, anyhow};
 use colored::Colorize;
 use log::warn;
 use ruff_workspace::resolver::{Resolver, match_exclusion, project_files_in_path};
+use rustc_hash::FxHashSet;
 
 use super::Resolved;
 
@@ -58,12 +59,22 @@ pub(crate) fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Re
         }
         python.push(path.to_path_buf());
     }
+    Ok(Discovered { python: distinct(python), unlinted, resolver })
+}
+
+// The files sorted, with each file the links in the run reach kept once, by its own path when the run found it: files
+// lint in parallel, so a fix applied through two paths to one file would race, and its reports would show twice.
+fn distinct(mut python: Vec<PathBuf>) -> Vec<PathBuf> {
+    python.sort_by_cached_key(|path| (path.is_symlink(), path.clone()));
+    let mut seen = FxHashSet::default();
+    python.retain(|path| fs::canonicalize(path).map_or(true, |target| seen.insert(target)));
     python.sort();
-    Ok(Discovered { python, unlinted, resolver })
+    python
 }
 
 // Ruff quotes the text of an `extend`ed file it cannot load. The repository may point `extend` anywhere, so such a file
-// outside the project root is reported by name alone; inside the root it is part of the run, and Ruff's report stays.
+// outside the project root is reported by name alone; inside the root it is part of the run, and Ruff's report stays. Ruff
+// only normalizes the path, so a link in the repository could otherwise pass a file outside it as one inside.
 pub(crate) fn redact_extended(error: anyhow::Error, project_root: &Path) -> anyhow::Error {
     let extended = error.chain().find_map(|cause| {
         let message = cause.to_string();
@@ -71,9 +82,22 @@ pub(crate) fn redact_extended(error: anyhow::Error, project_root: &Path) -> anyh
         Some(PathBuf::from(path))
     });
     match extended {
-        Some(path) if !path.starts_with(project_root) => anyhow!("`{}` is not valid configuration", path.display()),
+        Some(path) if !within(&path, project_root) => anyhow!("`{}` is not valid configuration", path.display()),
         _ => error,
     }
+}
+
+// Whether `path` lies inside `root` once the links in it resolve, so a link in the repository cannot point out of it.
+pub(crate) fn within(path: &Path, root: &Path) -> bool {
+    resolve_links(path).zip(fs::canonicalize(root).ok()).is_some_and(|(resolved, root)| resolved.starts_with(root))
+}
+
+// `path` with the links in its longest existing prefix resolved, as it may not exist yet.
+fn resolve_links(path: &Path) -> Option<PathBuf> {
+    path.ancestors().find_map(|ancestor| {
+        let existing = fs::canonicalize(ancestor).ok()?;
+        Some(existing.join(path.strip_prefix(ancestor).ok()?))
+    })
 }
 
 // The paths a run lints, canonical, so a file under them is one the run may read and write.

@@ -22,14 +22,14 @@ Cache
 -----
 
 Like Ruff, simplint caches which files had nothing to report, keyed by each file's modification time and
-permissions. With a :ref:`cross-file rule <cross-file-rules>` enabled, a cached result also depends on the names other
-files use from that file, so editing an importer checks the files it imports again. A file only per-file rules check
-keeps its cached result.
+permissions, and also by its size. With a :ref:`cross-file rule <cross-file-rules>` enabled, a cached result also
+depends on the names other files use from that file, so editing an importer checks the files it imports again. A file
+only per-file rules check keeps its cached result.
 
 .. mermaid::
 
     flowchart TD
-        file["File in the run"] --> same{"mtime or permissions<br/>changed?"}
+        file["File in the run"] --> same{"mtime, permissions<br/>or size changed?"}
         same -->|yes| lint["Lint it"]
         same -->|no| clean{"Cached clean under the<br/>same settings and, for<br/>cross-file rules, index?"}
         clean -->|yes| skip["Skip it"]
@@ -47,6 +47,9 @@ Where the cache lives:
 
 - In a ``simplint`` directory inside Ruff's cache directory: ``.ruff_cache`` unless Ruff's ``cache-dir`` setting,
   ``--cache-dir`` or ``RUFF_CACHE_DIR`` names another. It never touches Ruff's own files there.
+- Inside the project, when the project picks it. A ``cache-dir`` setting that leads outside falls back to
+  ``.ruff_cache``, and a run whose ``.ruff_cache`` links outside does not cache. ``--cache-dir`` and
+  ``RUFF_CACHE_DIR`` may point anywhere.
 - ``--no-cache`` skips it.
 - Each simplint build keeps its own subdirectory there. A run removes the subdirectories of other builds that no run
   has written to for 30 days.

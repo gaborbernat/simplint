@@ -109,6 +109,17 @@ fn unreadable_cache_is_replaced() {
 }
 
 #[test]
+fn file_rewritten_under_the_same_modified_time_is_checked_again() {
+    let root = project(&[("module.py", "# a comment that pads the file\nx = 1\n")]);
+    let path = root.path().join("module.py");
+    check(root.path(), &["--select", "SMP101"]);
+    let modified = filetime::FileTime::from_last_modification_time(&fs::metadata(&path).expect("metadata"));
+    fs::write(&path, "VALUE = 1\n").expect("write");
+    filetime::set_file_mtime(&path, modified).expect("set modified time");
+    assert_eq!(check(root.path(), &["--select", "SMP101"]), (0, "All checks passed!\n".to_owned(), String::new()));
+}
+
+#[test]
 fn cache_directory_that_cannot_be_created_fails_the_run() {
     let root = project(&[("module.py", "VALUE = 1\n"), ("blocked", "")]);
     let (code, _, stderr) = check(root.path(), &["--select", "SMP101", "--cache-dir", "blocked"]);
@@ -126,7 +137,7 @@ fn cache_keeps_files_other_runs_checked() {
     let modified = fs::metadata(&path).expect("metadata").modified().expect("modified time");
     check(root.path(), &["--select", "SMP101", "module.py"]);
     check(root.path(), &["--select", "SMP101", "other.py"]);
-    fs::write(&path, "x = 1\n").expect("write");
+    fs::write(&path, "x = 12345\n").expect("write");
     fs::File::options().write(true).open(&path).expect("open").set_modified(modified).expect("set modified time");
     assert_eq!(check(root.path(), &["--select", "SMP101", "module.py"]).0, 0);
 }
@@ -241,12 +252,12 @@ fn cached_hatch_hook_is_checked_again_once_hatch_toml_configures_it() {
 #[test_case("SMP101", 0 ; "per_file_rule_keeps_the_cached_result")]
 #[test_case("SMP401", 1 ; "cross_file_rule_checks_the_file_again")]
 fn other_file_edit_invalidates_only_cross_file_selections(select: &str, expected: i32) {
-    let root = project(&[("module.py", "VALUE = 1\n"), ("other.py", "OTHER = 1\n")]);
+    let root = project(&[("module.py", "VALUE = 1\nNAME = 1\n"), ("other.py", "OTHER = 1\n")]);
     let path = root.path().join("module.py");
     let modified = fs::metadata(&path).expect("metadata").modified().expect("modified time");
     assert_eq!(check(root.path(), &["--select", select]).0, 0);
     fs::write(root.path().join("other.py"), "from module import VALUE\n").expect("write");
-    fs::write(&path, "VALUE = 1\nx = 1\n").expect("write");
+    fs::write(&path, "VALUE = 1\nx = 1234\n").expect("write");
     fs::File::options().write(true).open(&path).expect("open").set_modified(modified).expect("set modified time");
     assert_eq!(check(root.path(), &["--select", select]).0, expected);
 }
@@ -352,7 +363,7 @@ fn cached_clean_file_is_checked_again_once_edited() {
     assert_eq!((first, check(root.path(), &["--select", "SMP101"]).0), (0, 1));
 }
 
-// Like Ruff's, the cache trusts the modification time: an edit that keeps it goes unseen, which shows the run reused the
+// The cache trusts the modification time and size: an edit that keeps both goes unseen, which shows the run reused the
 // cached result instead of linting again.
 #[test]
 fn cached_clean_result_is_reused() {
@@ -360,7 +371,7 @@ fn cached_clean_result_is_reused() {
     let path = root.path().join("module.py");
     let modified = fs::metadata(&path).expect("metadata").modified().expect("modified time");
     check(root.path(), &["--select", "SMP101"]);
-    fs::write(&path, "x = 1\n").expect("write");
+    fs::write(&path, "x = 12345\n").expect("write");
     fs::File::options().write(true).open(&path).expect("open").set_modified(modified).expect("set modified time");
     let cached = check(root.path(), &["--select", "SMP101"]).0;
     assert_eq!((cached, check(root.path(), &["--select", "SMP101", "--no-cache"]).0), (0, 1));
@@ -387,7 +398,7 @@ fn cache_tracks_skip_magic_trailing_comma() {
 // Ruff's PLR2004 would report the value inlined into a comparison, so the fix loop withdraws SMP202's fix.
 const RUFF_PLR2004: (&str, &str) = ("pyproject.toml", "[tool.ruff.lint]\nselect = [\"PLR2004\"]\n");
 const COMPARED: &str = "_LIMIT = 3\n\n\ndef over(value: int) -> bool:\n    return value > _LIMIT\n";
-const ADDED: &str = "_LIMIT = 3\n\n\ndef over(value: int) -> int:\n    return value + _LIMIT\n";
+const ADDED: &str = "_LIMIT = 3\n\n\ndef over(value: int) -> bool:\n    return value + _LIMIT\n";
 
 #[test_case(&["--fix", "--unsafe-fixes"] ; "fix")]
 #[test_case(&["--fix"] ; "unsafe_fix_hint")]
@@ -402,7 +413,7 @@ fn settled_file_reports_the_same_from_the_cache(flags: &[&str]) {
     assert_eq!((&first, &cached), (&check(root.path(), &[&args[..], &["--no-cache"]].concat()), &first));
 }
 
-// An edit that keeps the modification time goes unseen, so the cached withdrawal holds back a fix the loop would apply.
+// An edit that keeps the modification time and size goes unseen, so the cached withdrawal holds back a fix the loop would apply.
 #[test]
 fn settled_file_reuses_the_withdrawn_fixes() {
     let root = project(&[RUFF_PLR2004, ("module.py", COMPARED)]);
@@ -529,6 +540,32 @@ fn cache_dir_through_a_link_outside_the_project_falls_back_to_the_default() {
         (root.path().join(".ruff_cache/simplint").is_dir(), fs::read_dir(outside.path()).expect("read").count()),
         (true, 0)
     );
+}
+
+// A link committed in place of the default cache directory, or of simplint's directory in it, cannot point the cache
+// out of the project either; with no directory inside it left, the run does not cache.
+#[cfg(unix)]
+#[test_case(&[], ".ruff_cache" ; "default_without_configuration")]
+#[test_case(&[("pyproject.toml", "[tool.ruff]\n")], ".ruff_cache" ; "default")]
+#[test_case(&[("pyproject.toml", "[tool.ruff]\n"), (".ruff_cache/keep", "")], ".ruff_cache/simplint" ; "simplint")]
+fn cache_directory_linked_outside_the_project_is_not_used(extra: &[(&str, &str)], link: &str) {
+    let outside = tempfile::TempDir::new().expect("temporary directory");
+    let root = project(&[extra, &[("module.py", "VALUE = 1\n")]].concat());
+    std::os::unix::fs::symlink(outside.path(), root.path().join(link)).expect("symlink");
+    let (code, _, stderr) = check(root.path(), &["--select", "SMP101"]);
+    assert_eq!(
+        (code, stderr.contains("Not caching"), fs::read_dir(outside.path()).expect("read").count()),
+        (0, true, 0)
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn show_settings_names_no_cache_directory_when_it_leads_outside_the_project() {
+    let outside = tempfile::TempDir::new().expect("temporary directory");
+    let root = project(&[("module.py", "VALUE = 1\n")]);
+    std::os::unix::fs::symlink(outside.path(), root.path().join(".ruff_cache")).expect("symlink");
+    assert!(check(root.path(), &["--show-settings"]).1.contains("\ncache_dir = none\n"));
 }
 
 // The command line and `RUFF_CACHE_DIR` name the directory the user chose, so they may point anywhere.

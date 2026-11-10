@@ -68,7 +68,7 @@ pub(crate) fn check_files(
     full: Option<&FullDisplay>,
     ending: Ending,
 ) -> Result<Diagnostics> {
-    let cache_dir = use_cache.then_some(resolved.cache_dir.as_path());
+    let cache_dir = resolved.cache_dir.as_deref().filter(|_| use_cache);
     let fingerprints = Fingerprints::default();
     // Only applied fixes reach the disk, where other files' facts come from.
     let rewrote = |diagnostics: &Diagnostics| !diagnostics.fixed.is_empty();

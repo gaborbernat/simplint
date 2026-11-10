@@ -5,7 +5,7 @@ mod discover;
 mod rounds;
 
 use std::fs::OpenOptions;
-use std::io::Write;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::ops::{Add, AddAssign};
 use std::path::{Path, PathBuf};
 
@@ -25,13 +25,12 @@ use ruff_source_file::SourceFileBuilder;
 use ruff_text_size::{TextRange, TextSize};
 use ruff_workspace::resolver::PyprojectConfig;
 use rustc_hash::FxHashMap;
-use tempfile::NamedTempFile;
 
 use crate::fix::{Fixer, FixerResult, Withdrawn, add_fixes};
 use crate::lint::Linter;
 use crate::settings::SettingsResolver;
 
-pub(crate) use discover::{Discovered, discover, linted_roots, redact_extended};
+pub(crate) use discover::{Discovered, discover, linted_roots, redact_extended, within};
 pub(crate) use rounds::{add_suppressions, check_files, check_stdin};
 
 // Ruff's configuration and simplint's, from the same command line, as a run reads them.
@@ -39,7 +38,7 @@ pub(crate) struct Resolved {
     pub(crate) config_arguments: ConfigArguments,
     pub(crate) settings_resolver: SettingsResolver,
     pub(crate) pyproject_config: PyprojectConfig,
-    pub(crate) cache_dir: PathBuf,
+    pub(crate) cache_dir: Option<PathBuf>,
 }
 
 impl Resolved {
@@ -177,19 +176,20 @@ fn fix_path(path: &Path, linter: &Linter, mode: &Mode, settled: Option<Withdrawn
     })
 }
 
-// Replaces a file read as `original` with `fixed`. Writing a temporary file next to it and renaming that over it never
-// leaves a cut-short source behind, and a file edited since it was read keeps the edit. A symlink keeps pointing at the
-// file it names, which gets the new source with its permissions, as long as that file lies under a root of the run.
+// Replaces a file read as `original` with `fixed`, in place as Ruff writes it, so the file keeps its owner, hard
+// links and extended attributes. A file edited since it was read keeps the edit. A symlink keeps pointing at the file
+// it names, which gets the new source, as long as that file lies under a root of the run.
 pub(crate) fn write_source(path: &Path, roots: &[PathBuf], original: &str, fixed: &str) -> Result<()> {
     let target = std::fs::canonicalize(path)?;
     ensure!(roots.iter().any(|root| target.starts_with(root)), "{} lies outside the linted paths", path.display());
-    // The rename would replace a file the user cannot write, so opening it for writing checks that first.
-    let permissions = OpenOptions::new().write(true).open(&target)?.metadata()?.permissions();
-    ensure!(std::fs::read_to_string(&target)? == original, "{} changed while simplint fixed it", path.display());
-    let mut temporary = NamedTempFile::new_in(target.parent().expect("a file sits in a directory"))?;
-    temporary.write_all(fixed.as_bytes())?;
-    temporary.as_file().set_permissions(permissions)?;
-    temporary.persist(&target)?;
+    let mut file = OpenOptions::new().read(true).write(true).open(&target)?;
+    let mut current = String::new();
+    file.read_to_string(&mut current)?;
+    ensure!(current == original, "{} changed while simplint fixed it", path.display());
+    file.seek(SeekFrom::Start(0))?;
+    file.set_len(0)?;
+    file.write_all(fixed.as_bytes())?;
+    file.sync_all()?;
     Ok(())
 }
 

@@ -150,6 +150,15 @@ impl ImportSite {
 }
 
 impl FileFacts {
+    // Whether every range of the facts lies in a source of `length` bytes, and the statements of each body follow one
+    // another, which facts a cache file holds may not when it was damaged or edited by hand.
+    pub fn fits(&self, length: u64) -> bool {
+        let sites = self.runtime_imports.iter().map(|site| (site.start, site.end));
+        let statements = self.statements.iter().map(|statement| (statement.start, statement.end));
+        sites.chain(statements).all(|(start, end)| start <= end && u64::from(end) <= length)
+            && self.statements.windows(2).all(|pair| pair[0].body != pair[1].body || pair[0].end <= pair[1].start)
+    }
+
     // The module path, such as `["package", "module"]`, is what relative imports resolve against. A file outside any
     // package has none, and resolves them against `importable`, the module path under its search root, if it has one.
     pub fn collect(
@@ -420,5 +429,32 @@ impl FileFacts {
             .flat_map(|(_, names)| names.iter().map(String::as_str))
             .chain(self.module_reads.iter().map(String::as_str))
             .chain(self.constructors.attribute_loads.keys().map(String::as_str))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use test_case::test_case;
+
+    use super::{FileFacts, Parts};
+
+    const SOURCE: &str = "import os\n\nif True:\n    VALUE = 1\n    OTHER = 2\n";
+
+    fn collected() -> FileFacts {
+        let parts = Parts::default().with(Parts::RUNTIME_IMPORTS).with(Parts::STATEMENTS);
+        FileFacts::collect(Path::new("module.py"), SOURCE, None, None, &|_| false, parts).expect("facts")
+    }
+
+    #[test_case(&|_| {}, true ; "as_collected")]
+    #[test_case(&|facts| facts.runtime_imports[0].end = 50, false ; "import_past_the_source")]
+    #[test_case(&|facts| facts.runtime_imports[0].start = 20, false ; "import_ending_before_it_starts")]
+    #[test_case(&|facts| facts.statements[1].start = 99, false ; "statement_ending_before_it_starts")]
+    #[test_case(&|facts| facts.statements.swap(1, 2), false ; "statements_out_of_order")]
+    fn facts_fit_the_source_they_came_from(damage: &dyn Fn(&mut FileFacts), fits: bool) {
+        let mut facts = collected();
+        damage(&mut facts);
+        assert_eq!(facts.fits(SOURCE.len() as u64), fits);
     }
 }
