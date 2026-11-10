@@ -329,13 +329,21 @@ fn with_reason(after: &str, reason: Option<&str>) -> String {
     let Some(reason) = reason else {
         return after.to_owned();
     };
-    let (old, tail) = after.split_at(after.find('#').unwrap_or(after.len()));
+    let (old, tail) = after.split_at(comment_start(after).unwrap_or(after.len()));
     let gap = match &old[old.trim_end().len()..] {
         _ if tail.is_empty() => "",
         "" => "  ",
         gap => gap,
     };
     format!(" {reason}{gap}{tail}")
+}
+
+// The `#` of a comment after a directive, which a `#` followed by a space or the end of the text starts, so an issue
+// number such as `#12` in a reason is not one.
+fn comment_start(text: &str) -> Option<usize> {
+    text.match_indices('#')
+        .map(|(index, _)| index)
+        .find(|index| matches!(text[index + 1..].chars().next(), None | Some(' ')))
 }
 
 fn remove_ignore_selector(source: &str, start: TextSize, selector: &str) -> Option<(TextRange, String)> {
@@ -350,12 +358,21 @@ fn remove_ignore_selector(source: &str, start: TextSize, selector: &str) -> Opti
     }
     let line_start = source.line_start(start);
     let prefix = &source[TextRange::new(line_start, start)];
+    let directive_end = start + offset + TextSize::of(contents) + TextSize::from(1);
+    // A comment after the directive stays with its line, so only the directive and its reason go.
+    let rest = &source[TextRange::new(directive_end, source.line_end(start))];
+    let next = comment_start(rest).map(|index| directive_end + TextSize::of(&rest[..index]));
     if prefix.trim().is_empty() {
-        Some((TextRange::new(line_start, source.full_line_end(start)), String::new()))
-    } else {
-        let trimmed = line_start + TextSize::of(prefix.trim_end());
-        Some((TextRange::new(trimmed, source.line_end(start)), String::new()))
+        return Some(match next {
+            Some(next) => (TextRange::new(start, next), String::new()),
+            None => (TextRange::new(line_start, source.full_line_end(start)), String::new()),
+        });
     }
+    let code_end = line_start + TextSize::of(prefix.trim_end());
+    Some(match next {
+        Some(next) => (TextRange::new(code_end, next), "  ".to_owned()),
+        None => (TextRange::new(code_end, source.line_end(start)), String::new()),
+    })
 }
 
 fn changed_region(before: &str, after: &str) -> (TextRange, String) {
