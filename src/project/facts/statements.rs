@@ -27,19 +27,19 @@ pub(super) fn statements(parsed: &Parsed<ModModule>, source: &str) -> Vec<Statem
     // Any odd multiplier works modulo 2^64; the windows that hash alike are compared by their texts after.
     const BASE: u64 = 0x9E37_79B9_7F4A_7C15;
     let lines = LineIndex::from_source_text(source);
-    let tokens: Vec<(TextSize, u64)> = compared_tokens(parsed.tokens())
+    let tokens: Vec<(TextSize, bool, u64)> = compared_tokens(parsed.tokens())
         .map(|token| {
-            let text = &source[token.range()];
+            let text = compared_text(token, source);
             let mut hasher = FxHasher::default();
             hasher.write_usize(text.len());
             hasher.write(text.as_bytes());
-            (token.start(), hasher.finish())
+            (token.start(), token.kind() == TokenKind::Dedent, hasher.finish())
         })
         .collect();
     let mut prefix = Vec::with_capacity(tokens.len() + 1);
     let mut powers = Vec::with_capacity(tokens.len() + 1);
     let (mut hash, mut power) = (0u64, 1u64);
-    for (_, token) in &tokens {
+    for (_, _, token) in &tokens {
         prefix.push(hash);
         powers.push(power);
         hash = hash.wrapping_mul(BASE).wrapping_add(*token);
@@ -49,8 +49,10 @@ pub(super) fn statements(parsed: &Parsed<ModModule>, source: &str) -> Vec<Statem
     powers.push(power);
     let mut statements = Vec::new();
     compared_statements(&parsed.syntax().body, &mut |body, stmt| {
-        let first = tokens.partition_point(|(start, _)| *start < stmt.start());
-        let end = tokens.partition_point(|(start, _)| *start < stmt.end());
+        let first = tokens.partition_point(|(start, ..)| *start < stmt.start());
+        let first =
+            first + tokens[first..].iter().take_while(|(start, dedent, _)| *dedent && *start == stmt.start()).count();
+        let end = tokens.partition_point(|(start, ..)| *start < stmt.end());
         let hash = prefix[end].wrapping_sub(prefix[first].wrapping_mul(powers[end - first]));
         statements.push(Statement {
             hash,
@@ -115,19 +117,26 @@ fn statement_tokens<'s>(
     source: &'s str,
     range: TextRange,
 ) -> impl Iterator<Item = &'s str> {
-    compared_tokens(parsed.tokens().in_range(range)).map(|token| &source[token.range()])
+    compared_tokens(parsed.tokens().in_range(range))
+        .skip_while(move |token| token.kind() == TokenKind::Dedent && token.start() == range.start())
+        .map(|token| compared_text(token, source))
 }
 
-// The tokens that make up a statement's text: those other than layout and comments.
+// The tokens that make up a statement's text: those other than layout and comments. Indents and dedents stay, as they
+// are what nests a statement under another, but a dedent on a statement's first token closes the block before it, so a
+// statement's text leaves it out.
 fn compared_tokens(tokens: &[Token]) -> impl Iterator<Item = &Token> {
-    tokens.iter().filter(|token| {
-        !matches!(
-            token.kind(),
-            TokenKind::Comment
-                | TokenKind::NonLogicalNewline
-                | TokenKind::Newline
-                | TokenKind::Indent
-                | TokenKind::Dedent
-        )
-    })
+    tokens
+        .iter()
+        .filter(|token| !matches!(token.kind(), TokenKind::Comment | TokenKind::NonLogicalNewline | TokenKind::Newline))
+}
+
+// The text a token compares by. An indent or a dedent compares by a marker, as its text is the width of the indentation,
+// which must not decide a match while the nesting it marks does.
+fn compared_text<'s>(token: &Token, source: &'s str) -> &'s str {
+    match token.kind() {
+        TokenKind::Indent => "<indent>",
+        TokenKind::Dedent => "<dedent>",
+        _ => &source[token.range()],
+    }
 }

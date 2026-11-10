@@ -7025,7 +7025,7 @@
     "name": "import-cycle",
     "summary": "Runtime imports that close a cycle between modules",
     "fix": "None",
-    "explanation": "Flags a runtime import that closes a cycle of modules which import each other when they load.\n\n## Why is this bad?\n\nA module runs its imports before its own body. When two modules import each other at load time, whichever loads first\nsees the other half-built: a name it imports from the other may not exist yet, and the failure depends on which module\nthe program imports first. The cycle also ties the two modules together, so neither can be read, tested or moved on its\nown.\n\nIn the example below, `orders.py` and `cart.py` import each other at the top of their files.\n\n## Example\n\n```python report file=orders.py\nfrom cart import total\n\n\ndef place(items):\n    return total(items)\n```\n\n```python report file=cart.py\nfrom orders import place\n\n\ndef total(items):\n    return sum(items)\n\n\ndef checkout(items):\n    return place(items)\n```\n\nImport `place` inside `checkout` instead, where it runs after both modules have loaded:\n\n```python context file=orders.py\nfrom cart import total\n\n\ndef place(items):\n    return total(items)\n```\n\n```python ok file=cart.py\ndef total(items):\n    return sum(items)\n\n\ndef checkout(items):\n    from orders import place\n\n    return place(items)\n```\n\n## Conflicts with Ruff\n\nRuff has no lint rule for import cycles, so the two do not overlap.\n\n## What it does\n\nsimplint builds a graph of the modules of the run whose imports run when the module loads. A module reports once, on its\nfirst import into a cycle of the graph, and the report names the cycle: a cycle of two modules gives two reports, one in\neach module, each on the import that closes the cycle from that module. A cycle of more than eight modules names its\nfirst eight, then how many it leaves out, before the module it closes on.\n\n### Active on\n\n- **`import` and `from ... import` statements at module level**, including those in a top-level `if` or `try` block and\n  in a class body, which also run when the module loads.\n\n  ```python report file=a.py\n  import b\n  ```\n\n  ```python report file=b.py\n  import a\n  ```\n\n- **A submodule's import of a name its package's `__init__.py` defines**, when the `__init__.py` imports the submodule:\n  the package's `__init__.py` has not finished when the submodule runs. A `from . import name` that names a submodule\n  imports that submodule instead.\n\n  ```python report file=pkg/__init__.py\n  from .core import run\n\n  VERSION = \"1\"\n  ```\n\n  ```python report file=pkg/core.py\n  from . import VERSION\n\n\n  def run():\n      return VERSION\n  ```\n\n- **Imports under a platform check**, such as `if sys.platform == \"win32\":`, since the cycle breaks the program on that\n  platform.\n\n  ```python report file=a.py\n  import b\n  ```\n\n  ```python report file=b.py\n  import sys\n\n  if sys.platform == \"win32\":\n      import a\n  ```\n\n### Exceptions\n\n- **Imports inside a function**, which run when the function is called, and not when the module loads.\n\n  ```python context file=a.py\n  VALUE = 1\n  ```\n\n  ```python ok file=b.py\n  def load():\n      import a\n\n      return a.VALUE\n  ```\n\n- **Imports under `if TYPE_CHECKING:`**, which a type checker reads but the interpreter never runs.\n\n  ```python context file=a.py\n  VALUE = 1\n  ```\n\n  ```python ok file=b.py\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      import a\n  ```\n\n- **Imports under a [`__main__` guard](https://docs.python.org/3/library/__main__.html#name-main)**, such as\n  `if __name__ == \"__main__\":`, which run only when the file is executed as a script.\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  VALUE = 1\n\n  if __name__ == \"__main__\":\n      import a\n  ```\n\n- **Imports under an `if` whose test is false at run time**: a false constant such as `False`, `0` or `None`, or a\n  module-level name the module binds once to one, as `_false = 0` does to keep an import that only tools read.\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  _false = 0\n  if _false:\n      import a\n  ```\n\n- **Imports under a `sys.version_info` check that only older Pythons than the project's target pass**, such as\n  `if sys.version_info < (3, 8):` for a project that targets Python 3.11, or the `else` of\n  `if sys.version_info >= (3, 8):`. A check of the first item, as `sys.version_info[0] == 2` or\n  `sys.version_info.major < 3`, counts too.\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  import sys\n\n  if sys.version_info < (3, 8):\n      import a\n  ```\n\n- **Imports in an `except ImportError:` or `except ModuleNotFoundError:` clause**, a fallback that runs only when the\n  import its `try` attempts fails, as when a pure Python module stands in for a missing C accelerator.\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  try:\n      from _speedups import parse\n  except ImportError:\n      from a import parse\n  ```\n\n- **Test modules**, which the run tells by their names and the `tests` and `test` directories of the project. Tests\n  import each other as fixtures, and the tests of an import system build cycles on purpose.\n\n  ```python context file=tests/helpers.py\n  import tests.test_load\n  ```\n\n  ```python ok file=tests/test_load.py\n  import tests.helpers\n  ```\n\n- **`lazy` imports**, which Python 3.15 binds on first use.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.15\"\n  ```\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  lazy import a\n  ```\n\n### Undetected cases\n\nImports that a program runs by name, such as `importlib.import_module(\"a\")`, are not in the graph, and neither is the\nimport of a package's `__init__.py` that Python runs before a submodule.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#2914](https://github.com/astral-sh/ruff/issues/2914) and\n  [#970](https://github.com/astral-sh/ruff/issues/970) (pylint `cyclic-import`); pull request\n  [#3880](https://github.com/astral-sh/ruff/pull/3880) was closed unmerged.\n- [pylint](https://github.com/pylint-dev/pylint) reports the same cycles as\n  [cyclic-import](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/cyclic-import.html), with no fix.\n",
+    "explanation": "Flags a runtime import that closes a cycle of modules which import each other when they load.\n\n## Why is this bad?\n\nA module runs its imports before its own body. When two modules import each other at load time, whichever loads first\nsees the other half-built: a name it imports from the other may not exist yet, and the failure depends on which module\nthe program imports first. The cycle also ties the two modules together, so neither can be read, tested or moved on its\nown.\n\nIn the example below, `orders.py` and `cart.py` import each other at the top of their files.\n\n## Example\n\n```python report file=orders.py\nfrom cart import total\n\n\ndef place(items):\n    return total(items)\n```\n\n```python report file=cart.py\nfrom orders import place\n\n\ndef total(items):\n    return sum(items)\n\n\ndef checkout(items):\n    return place(items)\n```\n\nImport `place` inside `checkout` instead, where it runs after both modules have loaded:\n\n```python context file=orders.py\nfrom cart import total\n\n\ndef place(items):\n    return total(items)\n```\n\n```python ok file=cart.py\ndef total(items):\n    return sum(items)\n\n\ndef checkout(items):\n    from orders import place\n\n    return place(items)\n```\n\n## Conflicts with Ruff\n\nRuff has no lint rule for import cycles, so the two do not overlap.\n\n## What it does\n\nsimplint builds a graph of the modules of the run whose imports run when the module loads. A module reports once, on its\nfirst import into a cycle of the graph, and the report names the cycle: a cycle of two modules gives two reports, one in\neach module, each on the import that closes the cycle from that module. A cycle of more than eight modules names its\nfirst eight, then how many it leaves out, before the module it closes on.\n\n### Active on\n\n- **`import` and `from ... import` statements at module level**, including those in a top-level `if` or `try` block and\n  in a class body, which also run when the module loads.\n\n  ```python report file=a.py\n  import b\n  ```\n\n  ```python report file=b.py\n  import a\n  ```\n\n- **A submodule's import of a name its package's `__init__.py` defines**, when the `__init__.py` imports the submodule:\n  the package's `__init__.py` has not finished when the submodule runs. A `from . import name` that names a submodule\n  imports that submodule instead.\n\n  ```python report file=pkg/__init__.py\n  from .core import run\n\n  VERSION = \"1\"\n  ```\n\n  ```python report file=pkg/core.py\n  from . import VERSION\n\n\n  def run():\n      return VERSION\n  ```\n\n- **Imports under a platform check**, such as `if sys.platform == \"win32\":`, since the cycle breaks the program on that\n  platform.\n\n  ```python report file=a.py\n  import b\n  ```\n\n  ```python report file=b.py\n  import sys\n\n  if sys.platform == \"win32\":\n      import a\n  ```\n\n### Exceptions\n\n- **Imports inside a function**, which run when the function is called, and not when the module loads.\n\n  ```python context file=a.py\n  VALUE = 1\n  ```\n\n  ```python ok file=b.py\n  def load():\n      import a\n\n      return a.VALUE\n  ```\n\n- **Imports under `if TYPE_CHECKING:`**, which a type checker reads but the interpreter never runs.\n\n  ```python context file=a.py\n  VALUE = 1\n  ```\n\n  ```python ok file=b.py\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      import a\n  ```\n\n- **Imports under a [`__main__` guard](https://docs.python.org/3/library/__main__.html#name-main)**, such as\n  `if __name__ == \"__main__\":`, which run only when the file is executed as a script.\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  VALUE = 1\n\n  if __name__ == \"__main__\":\n      import a\n  ```\n\n- **Imports under an `if` whose test is false at run time**: a false constant such as `False`, `0` or `None`, or a\n  module-level name the module binds once to one, as `_false = 0` does to keep an import that only tools read. A second\n  binding of the name, in any block of the module or in a `global` declaration in a function, makes it an ordinary flag.\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  _false = 0\n  if _false:\n      import a\n  ```\n\n  A second binding in a `try` makes the same name an ordinary flag, so the import under it counts:\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python report file=b.py\n  HAS_JSON = False\n  try:\n      import json\n\n      HAS_JSON = True\n  except ImportError:\n      pass\n\n  if HAS_JSON:\n      import a\n  ```\n\n- **Imports under a `sys.version_info` check that only older Pythons than the project's target pass**, such as\n  `if sys.version_info < (3, 8):` for a project that targets Python 3.11, or the `else` of\n  `if sys.version_info >= (3, 8):`. A check of the first item, as `sys.version_info[0] == 2` or\n  `sys.version_info.major < 3`, counts too.\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  import sys\n\n  if sys.version_info < (3, 8):\n      import a\n  ```\n\n- **Imports in an `except ImportError:` or `except ModuleNotFoundError:` clause**, a fallback that runs only when the\n  import its `try` attempts fails, as when a pure Python module stands in for a missing C accelerator.\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  try:\n      from _speedups import parse\n  except ImportError:\n      from a import parse\n  ```\n\n- **Test modules**, which the run tells by their names and the `tests` and `test` directories of the project. Tests\n  import each other as fixtures, and the tests of an import system build cycles on purpose.\n\n  ```python context file=tests/helpers.py\n  import tests.test_load\n  ```\n\n  ```python ok file=tests/test_load.py\n  import tests.helpers\n  ```\n\n- **`lazy` imports**, which Python 3.15 binds on first use.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.15\"\n  ```\n\n  ```python context file=a.py\n  import b\n  ```\n\n  ```python ok file=b.py\n  lazy import a\n  ```\n\n### Undetected cases\n\nImports that a program runs by name, such as `importlib.import_module(\"a\")`, are not in the graph, and neither is the\nimport of a package's `__init__.py` that Python runs before a submodule.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#2914](https://github.com/astral-sh/ruff/issues/2914) and\n  [#970](https://github.com/astral-sh/ruff/issues/970) (pylint `cyclic-import`); pull request\n  [#3880](https://github.com/astral-sh/ruff/pull/3880) was closed unmerged.\n- [pylint](https://github.com/pylint-dev/pylint) reports the same cycles as\n  [cyclic-import](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/cyclic-import.html), with no fix.\n",
     "examples": {
       "parsed": [
         {
@@ -7238,8 +7238,8 @@
         },
         {
           "section": "What it does",
-          "line": 156,
-          "end_line": 164,
+          "line": 157,
+          "end_line": 165,
           "config": null,
           "blocks": [
             {
@@ -7247,8 +7247,8 @@
               "language": "python",
               "file": "a.py",
               "named": true,
-              "line": 156,
-              "end_line": 158,
+              "line": 157,
+              "end_line": 159,
               "source": "import b\n"
             },
             {
@@ -7256,16 +7256,16 @@
               "language": "python",
               "file": "b.py",
               "named": true,
-              "line": 160,
-              "end_line": 164,
+              "line": 161,
+              "end_line": 165,
               "source": "_false = 0\nif _false:\n    import a\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 171,
-          "end_line": 180,
+          "line": 169,
+          "end_line": 184,
           "config": null,
           "blocks": [
             {
@@ -7273,8 +7273,34 @@
               "language": "python",
               "file": "a.py",
               "named": true,
-              "line": 171,
-              "end_line": 173,
+              "line": 169,
+              "end_line": 171,
+              "source": "import b\n"
+            },
+            {
+              "role": "report",
+              "language": "python",
+              "file": "b.py",
+              "named": true,
+              "line": 173,
+              "end_line": 184,
+              "source": "HAS_JSON = False\ntry:\n    import json\n\n    HAS_JSON = True\nexcept ImportError:\n    pass\n\nif HAS_JSON:\n    import a\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 191,
+          "end_line": 200,
+          "config": null,
+          "blocks": [
+            {
+              "role": "context",
+              "language": "python",
+              "file": "a.py",
+              "named": true,
+              "line": 191,
+              "end_line": 193,
               "source": "import b\n"
             },
             {
@@ -7282,16 +7308,16 @@
               "language": "python",
               "file": "b.py",
               "named": true,
-              "line": 175,
-              "end_line": 180,
+              "line": 195,
+              "end_line": 200,
               "source": "import sys\n\nif sys.version_info < (3, 8):\n    import a\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 185,
-          "end_line": 194,
+          "line": 205,
+          "end_line": 214,
           "config": null,
           "blocks": [
             {
@@ -7299,8 +7325,8 @@
               "language": "python",
               "file": "a.py",
               "named": true,
-              "line": 185,
-              "end_line": 187,
+              "line": 205,
+              "end_line": 207,
               "source": "import b\n"
             },
             {
@@ -7308,16 +7334,16 @@
               "language": "python",
               "file": "b.py",
               "named": true,
-              "line": 189,
-              "end_line": 194,
+              "line": 209,
+              "end_line": 214,
               "source": "try:\n    from _speedups import parse\nexcept ImportError:\n    from a import parse\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 199,
-          "end_line": 205,
+          "line": 219,
+          "end_line": 225,
           "config": null,
           "blocks": [
             {
@@ -7325,8 +7351,8 @@
               "language": "python",
               "file": "tests/helpers.py",
               "named": true,
-              "line": 199,
-              "end_line": 201,
+              "line": 219,
+              "end_line": 221,
               "source": "import tests.test_load\n"
             },
             {
@@ -7334,19 +7360,19 @@
               "language": "python",
               "file": "tests/test_load.py",
               "named": true,
-              "line": 203,
-              "end_line": 205,
+              "line": 223,
+              "end_line": 225,
               "source": "import tests.helpers\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 209,
-          "end_line": 221,
+          "line": 229,
+          "end_line": 241,
           "config": {
-            "line": 209,
-            "end_line": 213,
+            "line": 229,
+            "end_line": 233,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n"
           },
           "blocks": [
@@ -7355,8 +7381,8 @@
               "language": "python",
               "file": "a.py",
               "named": true,
-              "line": 215,
-              "end_line": 217,
+              "line": 235,
+              "end_line": 237,
               "source": "import b\n"
             },
             {
@@ -7364,8 +7390,8 @@
               "language": "python",
               "file": "b.py",
               "named": true,
-              "line": 219,
-              "end_line": 221,
+              "line": 239,
+              "end_line": 241,
               "source": "lazy import a\n"
             }
           ]
@@ -8184,7 +8210,7 @@
     "name": "unused-export",
     "summary": "`__all__` entries no other module imports",
     "fix": "Sometimes",
-    "explanation": "Flags names in `__all__` that no other module of the run imports. A name nothing imports is not part of any interface,\nso listing it makes the module look larger than it is.\n\n## Why is this bad?\n\n`__all__` tells readers, and tools such as type checkers and documentation generators, which names a module offers. A\nname nothing imports is not part of any interface; listing it makes the module look larger than it is, and keeps a stale\nentry after its last user is gone.\n\n## Example\n\n```python context file=cli.py\nfrom parser import parse\n\nparse(\"\")\n```\n\n```python report file=parser.py\ndef parse(text: str) -> list[str]:\n    return tokenize(text)\n\n\ndef tokenize(text: str) -> list[str]:\n    return text.split()\n\n\n__all__ = [\"parse\", \"tokenize\"]  # only `parse` is imported elsewhere\n```\n\nUse instead:\n\n```python context file=cli.py\nfrom parser import parse\n\nparse(\"\")\n```\n\n```python ok file=parser.py\ndef parse(text: str) -> list[str]:\n    return _tokenize(text)\n\n\ndef _tokenize(text: str) -> list[str]:\n    return text.split()\n\n\n__all__ = [\"parse\"]\n```\n\n## Configuration\n\n- [`project-kind`](https://simplint.readthedocs.io/en/latest/configuration/project.html#library-or-application) in\n  `[tool.simplint]`: whether the project is a library or an application\n\n  ```toml config\n  [build-system]\n  requires = [\"setuptools\"]\n  build-backend = \"setuptools.build_meta\"\n\n  [project]\n  name = \"demo\"\n\n  [tool.simplint]\n  project-kind = \"application\"\n  ```\n\n  ```python report file=demo/core.py\n  def run() -> int:\n      return 1\n\n\n  __all__ = [\"run\"]\n  ```\n\n## What it does\n\n### Active on\n\n- **Names in [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package) that no other module\n  of the run imports**. Whether the fix is safe depends on who else may import the name:\n\n  - in an application, the fix is safe: nothing outside the run imports it\n\n    ```python report file=config.py\n    LIMIT = 3\n\n\n    def local() -> int:\n        return 1\n\n\n    __all__ = [\"LIMIT\", \"local\"]\n    ```\n\n    ```python context file=cli.py\n    from config import LIMIT\n\n    print(LIMIT)\n    ```\n\n  - in a library (`project-kind` is `library`), the fix is **unsafe**: code outside the run may import it. The `__all__`\n    of a public module is the interface users import, so the rule leaves it alone; it checks the private modules of the\n    library\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python report file=demo/_core.py\n    def run() -> int:\n        return 1\n\n\n    __all__ = [\"run\"]\n    ```\n\n    ```python ok file=demo/core.py\n    def run() -> int:\n        return 1\n\n\n    __all__ = [\"run\"]\n    ```\n\n  These count as imports, as for [missing-from-all](SMP401.html):\n\n  - `from module import name`\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=cli.py\n    from config import LIMIT\n\n    print(LIMIT)\n    ```\n\n  - `module.name` after `import module`\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=cli.py\n    import config\n\n    print(config.LIMIT)\n    ```\n\n  - `module.name` read off a module loaded from a file path with `importlib.util.spec_from_file_location` and\n    `module_from_spec`, when the path names a project module\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=cli.py\n    import importlib.util\n    from pathlib import Path\n\n    spec = importlib.util.spec_from_file_location(\"config\", Path(__file__).parent / \"config.py\")\n    assert spec is not None\n    module = importlib.util.module_from_spec(spec)\n    print(module.LIMIT)\n    ```\n\n  - a string key read off the globals `runpy.run_module` returns, or `runpy.run_path` of a path that names a project\n    module\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=cli.py\n    import runpy\n\n    print(runpy.run_module(\"config\")[\"LIMIT\"])\n    ```\n\n  - a dotted path a test patches, as `mock.patch(\"config.LIMIT\")`\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=test_cli.py\n    from unittest import mock\n\n\n    def test_limit() -> None:\n        with mock.patch(\"config.LIMIT\", 5):\n            pass\n    ```\n\n  - the entry points `pyproject.toml` declares\n\n    ```toml config\n    [project]\n    name = \"demo\"\n\n    [project.scripts]\n    run = \"config:main\"\n    ```\n\n    ```python ok file=config.py\n    def main() -> None:\n        pass\n\n\n    __all__ = [\"main\"]\n    ```\n\n  - `module:attribute` strings passed to `pkgutil.resolve_name` or stored as an argparse `handler` with `set_defaults`\n\n  - setuptools dynamic `attr` values and command classes, mypy and Pylint plugins, pytest plugins loaded by `addopts`,\n    and legacy Poetry plugin entry points declared in `pyproject.toml`\n\n  - local PDM build hooks in `pdm_build.py` or the file named by `[tool.pdm.build] custom-hook`\n\n  - the coverage plugin `pyproject.toml` lists under `[tool.coverage.run] plugins`, whose `coverage_init` coverage\n    calls; the module is found in the project's directory or in a `pythonpath` or `extra-paths` directory of pytest or\n    ty\n\n    ```toml config\n    [tool.coverage.run]\n    plugins = [\"tasks.coverage_pragmas\"]\n    ```\n\n    ```python ok file=tasks/coverage_pragmas.py\n    def coverage_init(reg: object, options: dict[str, str]) -> None:\n        pass\n\n\n    __all__ = [\"coverage_init\"]\n    ```\n\n  - the declarations of the module's `.pyi` stub\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=config.pyi\n    LIMIT: int\n    ```\n\n### Exceptions\n\n- **Public modules of a library**: their `__all__` declares the interface users outside the project import, so no name\n  in it needs an importer in the run.\n\n  ```toml config\n  [build-system]\n  requires = [\"setuptools\"]\n  build-backend = \"setuptools.build_meta\"\n\n  [project]\n  name = \"demo\"\n  ```\n\n  ```python ok file=demo/core.py\n  def run() -> int:\n      return 1\n\n\n  __all__ = [\"run\"]\n  ```\n\n- **Modules another file star-imports**: `import *` hands every listed name to the importing module, which may use it\n  there.\n\n  ```python ok file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"LIMIT\", \"local\"]\n  ```\n\n  ```python context file=cli.py\n  from config import *\n\n  print(LIMIT, local())\n  ```\n\n- **Package `__init__.py` files**: they list what the package re-exports, and Ruff, which counts their imports as\n  re-exports, puts any name left out back into `__all__`.\n\n  ```python ok file=pkg/__init__.py\n  from pkg.core import run\n\n  __all__ = [\"run\"]\n  ```\n\n  ```python context file=pkg/core.py\n  def run() -> int:\n      return 1\n  ```\n\n- **Modules with a module-level `__getattr__`**: it serves names `__all__` lists without the module binding them, as a\n  deprecation shim or a lazy loader does, so whether anything imports them shows only outside the run.\n\n  ```python ok file=config.py\n  __all__ = [\"LIMIT\"]\n\n\n  def __getattr__(name: str) -> int:\n      return 1\n  ```\n\n- **Types in the signature of another exported name**: a class or alias that an exported function's annotations, or an\n  exported class's bases and fields, refer to is public API, so `__all__` may list it without any file importing it.\n  Types reached this way follow the same rule.\n\n  ```python ok file=parser.py\n  Tokens = list[str]\n\n\n  def parse(text: str) -> Tokens:\n      return text.split()\n\n\n  __all__ = [\"Tokens\", \"parse\"]\n  ```\n\n  ```python context file=cli.py\n  from parser import parse\n\n  parse(\"\")\n  ```\n\n- **Test modules**, as defined in [test-class](SMP801.html): these are not checked.\n\n  ```python ok file=test_config.py\n  __all__ = [\"check\"]\n\n\n  def check() -> None:\n      pass\n  ```\n\n- **Modules that build `__all__` dynamically**, such as with `list(...)`: the listed names are not known.\n\n  ```python ok\n  LIMIT = 3\n  __all__ = list([\"LIMIT\"])\n  ```\n\n### Fix\n\nThe fix removes the names from `__all__`: their lines when each name has a line of its own, or the names from a list\nwritten on one line.\n\n```python report file=config.py\nLIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"LIMIT\",\n    \"local\",\n]\n```\n\n```python fixed file=config.py\nLIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"LIMIT\",\n]\n```\n\n```python context file=cli.py\nfrom config import LIMIT\n\nprint(LIMIT)\n```\n\nA name in parentheses goes with its parentheses:\n\n```python context file=cli.py\nfrom config import ZETA, GAMMA\n\nprint(ZETA, GAMMA)\n```\n\n```python report file=config.py\nZETA = 1\nBETA = 2\nGAMMA = 3\n\n__all__ = \"ZETA\", (\"BETA\"), \"GAMMA\"\n```\n\n```python fixed file=config.py\nZETA = 1\nBETA = 2\nGAMMA = 3\n\n__all__ = \"ZETA\", \"GAMMA\"\n```\n\n```python report\ndef parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n__all__ = [\"parse\", \"tokenize\"]\n```\n\n```python fixed\ndef parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n__all__ = []\n```\n\nNo fix is offered when:\n\n- the list holds a comment and its names share lines, since the comment may belong to a removed name\n\n  ```python report\n  def parse() -> int:\n      return 1\n\n\n  def tokenize() -> int:\n      return 2\n\n\n  # fmt: off\n  __all__ = [\n      \"parse\", \"tokenize\",  # the entry points\n  ]\n  # fmt: on\n  ```\n\n  ```python fixed\n  def parse() -> int:\n      return 1\n\n\n  def tokenize() -> int:\n      return 2\n\n\n  # fmt: off\n  __all__ = [\n      \"parse\", \"tokenize\",  # the entry points\n  ]\n  # fmt: on\n  ```\n\n- more than one statement builds `__all__`, such as `__all__ += [...]`, since there is no one place to remove a name\n  from\n\n  ```python report\n  def parse() -> int:\n      return 1\n\n\n  def tokenize() -> int:\n      return 2\n\n\n  __all__ = [\"parse\"]\n  __all__ += [\"tokenize\"]\n  ```\n\n  ```python fixed\n  def parse() -> int:\n      return 1\n\n\n  def tokenize() -> int:\n      return 2\n\n\n  __all__ = [\"parse\"]\n  __all__ += [\"tokenize\"]\n  ```\n\n### Related rules\n\n[missing-from-all](SMP401.html) is the counterpart, adding the names other modules import: together they keep `__all__`\nto the names the rest of the project uses. Once a name leaves `__all__`, [unexported-public-name](SMP403.html) asks for\na leading underscore, so what looks public is what other modules use.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#12962](https://github.com/astral-sh/ruff/issues/12962)\n  (item 2: `__all__` entries nothing uses).\n",
+    "explanation": "Flags names in `__all__` that no other module of the run imports. A name nothing imports is not part of any interface,\nso listing it makes the module look larger than it is.\n\n## Why is this bad?\n\n`__all__` tells readers, and tools such as type checkers and documentation generators, which names a module offers. A\nname nothing imports is not part of any interface; listing it makes the module look larger than it is, and keeps a stale\nentry after its last user is gone.\n\n## Example\n\n```python context file=cli.py\nfrom parser import parse\n\nparse(\"\")\n```\n\n```python report file=parser.py\ndef parse(text: str) -> list[str]:\n    return tokenize(text)\n\n\ndef tokenize(text: str) -> list[str]:\n    return text.split()\n\n\n__all__ = [\"parse\", \"tokenize\"]  # only `parse` is imported elsewhere\n```\n\nUse instead:\n\n```python context file=cli.py\nfrom parser import parse\n\nparse(\"\")\n```\n\n```python ok file=parser.py\ndef parse(text: str) -> list[str]:\n    return _tokenize(text)\n\n\ndef _tokenize(text: str) -> list[str]:\n    return text.split()\n\n\n__all__ = [\"parse\"]\n```\n\n## Configuration\n\n- [`project-kind`](https://simplint.readthedocs.io/en/latest/configuration/project.html#library-or-application) in\n  `[tool.simplint]`: whether the project is a library or an application\n\n  ```toml config\n  [build-system]\n  requires = [\"setuptools\"]\n  build-backend = \"setuptools.build_meta\"\n\n  [project]\n  name = \"demo\"\n\n  [tool.simplint]\n  project-kind = \"application\"\n  ```\n\n  ```python report file=demo/core.py\n  def run() -> int:\n      return 1\n\n\n  __all__ = [\"run\"]\n  ```\n\n## What it does\n\n### Active on\n\n- **Names in [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package) that no other module\n  of the run imports**. Whether the fix is safe depends on who else may import the name:\n\n  - in an application, the fix is safe: nothing outside the run imports it\n\n    ```python report file=config.py\n    LIMIT = 3\n\n\n    def local() -> int:\n        return 1\n\n\n    __all__ = [\"LIMIT\", \"local\"]\n    ```\n\n    ```python context file=cli.py\n    from config import LIMIT\n\n    print(LIMIT)\n    ```\n\n  - in a library (`project-kind` is `library`), the fix is **unsafe**: code outside the run may import it. The `__all__`\n    of a public module is the interface users import, so the rule leaves it alone; it checks the private modules of the\n    library\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python report file=demo/_core.py\n    def run() -> int:\n        return 1\n\n\n    __all__ = [\"run\"]\n    ```\n\n    ```python ok file=demo/core.py\n    def run() -> int:\n        return 1\n\n\n    __all__ = [\"run\"]\n    ```\n\n  These count as imports, as for [missing-from-all](SMP401.html):\n\n  - `from module import name`\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=cli.py\n    from config import LIMIT\n\n    print(LIMIT)\n    ```\n\n  - `module.name` after `import module`\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=cli.py\n    import config\n\n    print(config.LIMIT)\n    ```\n\n  - `module.name` read off a module loaded from a file path with `importlib.util.spec_from_file_location` and\n    `module_from_spec`, when the path names a project module\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=cli.py\n    import importlib.util\n    from pathlib import Path\n\n    spec = importlib.util.spec_from_file_location(\"config\", Path(__file__).parent / \"config.py\")\n    assert spec is not None\n    module = importlib.util.module_from_spec(spec)\n    print(module.LIMIT)\n    ```\n\n  - a string key read off the globals `runpy.run_module` returns, or `runpy.run_path` of a path that names a project\n    module\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=cli.py\n    import runpy\n\n    print(runpy.run_module(\"config\")[\"LIMIT\"])\n    ```\n\n  - a dotted path a test patches, as `mock.patch(\"config.LIMIT\")`\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=test_cli.py\n    from unittest import mock\n\n\n    def test_limit() -> None:\n        with mock.patch(\"config.LIMIT\", 5):\n            pass\n    ```\n\n  - the entry points `pyproject.toml` declares\n\n    ```toml config\n    [project]\n    name = \"demo\"\n\n    [project.scripts]\n    run = \"config:main\"\n    ```\n\n    ```python ok file=config.py\n    def main() -> None:\n        pass\n\n\n    __all__ = [\"main\"]\n    ```\n\n  - `module:attribute` strings passed to `pkgutil.resolve_name` or stored as an argparse `handler` with `set_defaults`\n\n  - setuptools dynamic `attr` values and command classes, mypy and Pylint plugins, pytest plugins loaded by `addopts`,\n    and legacy Poetry plugin entry points declared in `pyproject.toml`\n\n  - local PDM build hooks in `pdm_build.py` or the file named by `[tool.pdm.build] custom-hook`\n\n  - the coverage plugin `pyproject.toml` lists under `[tool.coverage.run] plugins`, whose `coverage_init` coverage\n    calls; the module is found in the project's directory or in a `pythonpath` or `extra-paths` directory of pytest or\n    ty\n\n    ```toml config\n    [tool.coverage.run]\n    plugins = [\"tasks.coverage_pragmas\"]\n    ```\n\n    ```python ok file=tasks/coverage_pragmas.py\n    def coverage_init(reg: object, options: dict[str, str]) -> None:\n        pass\n\n\n    __all__ = [\"coverage_init\"]\n    ```\n\n  - the declarations of the module's `.pyi` stub\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=config.pyi\n    LIMIT: int\n    ```\n\n### Exceptions\n\n- **Public modules of a library**: their `__all__` declares the interface users outside the project import, so no name\n  in it needs an importer in the run.\n\n  ```toml config\n  [build-system]\n  requires = [\"setuptools\"]\n  build-backend = \"setuptools.build_meta\"\n\n  [project]\n  name = \"demo\"\n  ```\n\n  ```python ok file=demo/core.py\n  def run() -> int:\n      return 1\n\n\n  __all__ = [\"run\"]\n  ```\n\n- **Modules another file star-imports**: `import *` hands every listed name to the importing module, which may use it\n  there.\n\n  ```python ok file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"LIMIT\", \"local\"]\n  ```\n\n  ```python context file=cli.py\n  from config import *\n\n  print(LIMIT, local())\n  ```\n\n- **Modules whose `__all__` another file reads**: an import of `__all__`, or `module.__all__` read off an import of the\n  module, uses every name the list holds, as an `import *` does.\n\n  ```python ok file=config.py\n  LIMIT = 3\n  local = 1\n\n\n  __all__ = [\"LIMIT\", \"local\"]\n  ```\n\n  ```python context file=cli.py\n  import config\n\n  print([getattr(config, name) for name in config.__all__])\n  ```\n\n- **Package `__init__.py` files**: they list what the package re-exports, and Ruff, which counts their imports as\n  re-exports, puts any name left out back into `__all__`.\n\n  ```python ok file=pkg/__init__.py\n  from pkg.core import run\n\n  __all__ = [\"run\"]\n  ```\n\n  ```python context file=pkg/core.py\n  def run() -> int:\n      return 1\n  ```\n\n- **Modules with a module-level `__getattr__`**: it serves names `__all__` lists without the module binding them, as a\n  deprecation shim or a lazy loader does, so whether anything imports them shows only outside the run.\n\n  ```python ok file=config.py\n  __all__ = [\"LIMIT\"]\n\n\n  def __getattr__(name: str) -> int:\n      return 1\n  ```\n\n- **Types in the signature of another exported name**: a class or alias that an exported function's annotations, or an\n  exported class's bases and fields, refer to is public API, so `__all__` may list it without any file importing it.\n  Types reached this way follow the same rule.\n\n  ```python ok file=parser.py\n  Tokens = list[str]\n\n\n  def parse(text: str) -> Tokens:\n      return text.split()\n\n\n  __all__ = [\"Tokens\", \"parse\"]\n  ```\n\n  ```python context file=cli.py\n  from parser import parse\n\n  parse(\"\")\n  ```\n\n- **Test modules**, as defined in [test-class](SMP801.html): these are not checked.\n\n  ```python ok file=test_config.py\n  __all__ = [\"check\"]\n\n\n  def check() -> None:\n      pass\n  ```\n\n- **Modules that build `__all__` dynamically**, such as with `list(...)`: the listed names are not known.\n\n  ```python ok\n  LIMIT = 3\n  __all__ = list([\"LIMIT\"])\n  ```\n\n### Fix\n\nThe fix removes the names from `__all__`: their lines when each name has a line of its own, or the names from a list\nwritten on one line.\n\n```python report file=config.py\nLIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"LIMIT\",\n    \"local\",\n]\n```\n\n```python fixed file=config.py\nLIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"LIMIT\",\n]\n```\n\n```python context file=cli.py\nfrom config import LIMIT\n\nprint(LIMIT)\n```\n\nA name in parentheses goes with its parentheses:\n\n```python context file=cli.py\nfrom config import ZETA, GAMMA\n\nprint(ZETA, GAMMA)\n```\n\n```python report file=config.py\nZETA = 1\nBETA = 2\nGAMMA = 3\n\n__all__ = \"ZETA\", (\"BETA\"), \"GAMMA\"\n```\n\n```python fixed file=config.py\nZETA = 1\nBETA = 2\nGAMMA = 3\n\n__all__ = \"ZETA\", \"GAMMA\"\n```\n\n```python report\ndef parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n__all__ = [\"parse\", \"tokenize\"]\n```\n\n```python fixed\ndef parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n__all__ = []\n```\n\nNo fix is offered when:\n\n- the list holds a comment and its names share lines, since the comment may belong to a removed name\n\n  ```python report\n  def parse() -> int:\n      return 1\n\n\n  def tokenize() -> int:\n      return 2\n\n\n  # fmt: off\n  __all__ = [\n      \"parse\", \"tokenize\",  # the entry points\n  ]\n  # fmt: on\n  ```\n\n  ```python fixed\n  def parse() -> int:\n      return 1\n\n\n  def tokenize() -> int:\n      return 2\n\n\n  # fmt: off\n  __all__ = [\n      \"parse\", \"tokenize\",  # the entry points\n  ]\n  # fmt: on\n  ```\n\n- more than one statement builds `__all__`, such as `__all__ += [...]`, since there is no one place to remove a name\n  from\n\n  ```python report\n  def parse() -> int:\n      return 1\n\n\n  def tokenize() -> int:\n      return 2\n\n\n  __all__ = [\"parse\"]\n  __all__ += [\"tokenize\"]\n  ```\n\n  ```python fixed\n  def parse() -> int:\n      return 1\n\n\n  def tokenize() -> int:\n      return 2\n\n\n  __all__ = [\"parse\"]\n  __all__ += [\"tokenize\"]\n  ```\n\n### Related rules\n\n[missing-from-all](SMP401.html) is the counterpart, adding the names other modules import: together they keep `__all__`\nto the names the rest of the project uses. Once a name leaves `__all__`, [unexported-public-name](SMP403.html) asks for\na leading underscore, so what looks public is what other modules use.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#12962](https://github.com/astral-sh/ruff/issues/12962)\n  (item 2: `__all__` entries nothing uses).\n",
     "examples": {
       "parsed": [
         {
@@ -8564,7 +8590,33 @@
         {
           "section": "What it does",
           "line": 304,
-          "end_line": 313,
+          "end_line": 316,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "config.py",
+              "named": true,
+              "line": 304,
+              "end_line": 310,
+              "source": "LIMIT = 3\nlocal = 1\n\n\n__all__ = [\"LIMIT\", \"local\"]\n"
+            },
+            {
+              "role": "context",
+              "language": "python",
+              "file": "cli.py",
+              "named": true,
+              "line": 312,
+              "end_line": 316,
+              "source": "import config\n\nprint([getattr(config, name) for name in config.__all__])\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 321,
+          "end_line": 330,
           "config": null,
           "blocks": [
             {
@@ -8572,8 +8624,8 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 304,
-              "end_line": 308,
+              "line": 321,
+              "end_line": 325,
               "source": "from pkg.core import run\n\n__all__ = [\"run\"]\n"
             },
             {
@@ -8581,16 +8633,16 @@
               "language": "python",
               "file": "pkg/core.py",
               "named": true,
-              "line": 310,
-              "end_line": 313,
+              "line": 327,
+              "end_line": 330,
               "source": "def run() -> int:\n    return 1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 318,
-          "end_line": 324,
+          "line": 335,
+          "end_line": 341,
           "config": null,
           "blocks": [
             {
@@ -8598,16 +8650,16 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 318,
-              "end_line": 324,
+              "line": 335,
+              "end_line": 341,
               "source": "__all__ = [\"LIMIT\"]\n\n\ndef __getattr__(name: str) -> int:\n    return 1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 330,
-          "end_line": 345,
+          "line": 347,
+          "end_line": 362,
           "config": null,
           "blocks": [
             {
@@ -8615,8 +8667,8 @@
               "language": "python",
               "file": "parser.py",
               "named": true,
-              "line": 330,
-              "end_line": 339,
+              "line": 347,
+              "end_line": 356,
               "source": "Tokens = list[str]\n\n\ndef parse(text: str) -> Tokens:\n    return text.split()\n\n\n__all__ = [\"Tokens\", \"parse\"]\n"
             },
             {
@@ -8624,16 +8676,16 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 341,
-              "end_line": 345,
+              "line": 358,
+              "end_line": 362,
               "source": "from parser import parse\n\nparse(\"\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 349,
-          "end_line": 355,
+          "line": 366,
+          "end_line": 372,
           "config": null,
           "blocks": [
             {
@@ -8641,16 +8693,16 @@
               "language": "python",
               "file": "test_config.py",
               "named": true,
-              "line": 349,
-              "end_line": 355,
+              "line": 366,
+              "end_line": 372,
               "source": "__all__ = [\"check\"]\n\n\ndef check() -> None:\n    pass\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 359,
-          "end_line": 362,
+          "line": 376,
+          "end_line": 379,
           "config": null,
           "blocks": [
             {
@@ -8658,16 +8710,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 359,
-              "end_line": 362,
+              "line": 376,
+              "end_line": 379,
               "source": "LIMIT = 3\n__all__ = list([\"LIMIT\"])\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 369,
-          "end_line": 400,
+          "line": 386,
+          "end_line": 417,
           "config": null,
           "blocks": [
             {
@@ -8675,8 +8727,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 369,
-              "end_line": 381,
+              "line": 386,
+              "end_line": 398,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"LIMIT\",\n    \"local\",\n]\n"
             },
             {
@@ -8684,8 +8736,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 383,
-              "end_line": 394,
+              "line": 400,
+              "end_line": 411,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"LIMIT\",\n]\n"
             },
             {
@@ -8693,16 +8745,16 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 396,
-              "end_line": 400,
+              "line": 413,
+              "end_line": 417,
               "source": "from config import LIMIT\n\nprint(LIMIT)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 404,
-          "end_line": 424,
+          "line": 421,
+          "end_line": 441,
           "config": null,
           "blocks": [
             {
@@ -8710,8 +8762,8 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 404,
-              "end_line": 408,
+              "line": 421,
+              "end_line": 425,
               "source": "from config import ZETA, GAMMA\n\nprint(ZETA, GAMMA)\n"
             },
             {
@@ -8719,8 +8771,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 410,
-              "end_line": 416,
+              "line": 427,
+              "end_line": 433,
               "source": "ZETA = 1\nBETA = 2\nGAMMA = 3\n\n__all__ = \"ZETA\", (\"BETA\"), \"GAMMA\"\n"
             },
             {
@@ -8728,16 +8780,16 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 418,
-              "end_line": 424,
+              "line": 435,
+              "end_line": 441,
               "source": "ZETA = 1\nBETA = 2\nGAMMA = 3\n\n__all__ = \"ZETA\", \"GAMMA\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 426,
-          "end_line": 448,
+          "line": 443,
+          "end_line": 465,
           "config": null,
           "blocks": [
             {
@@ -8745,8 +8797,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 426,
-              "end_line": 436,
+              "line": 443,
+              "end_line": 453,
               "source": "def parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n__all__ = [\"parse\", \"tokenize\"]\n"
             },
             {
@@ -8754,16 +8806,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 438,
-              "end_line": 448,
+              "line": 455,
+              "end_line": 465,
               "source": "def parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n__all__ = []\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 454,
-          "end_line": 484,
+          "line": 471,
+          "end_line": 501,
           "config": null,
           "blocks": [
             {
@@ -8771,8 +8823,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 454,
-              "end_line": 468,
+              "line": 471,
+              "end_line": 485,
               "source": "def parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n# fmt: off\n__all__ = [\n    \"parse\", \"tokenize\",  # the entry points\n]\n# fmt: on\n"
             },
             {
@@ -8780,16 +8832,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 470,
-              "end_line": 484,
+              "line": 487,
+              "end_line": 501,
               "source": "def parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n# fmt: off\n__all__ = [\n    \"parse\", \"tokenize\",  # the entry points\n]\n# fmt: on\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 489,
-          "end_line": 513,
+          "line": 506,
+          "end_line": 530,
           "config": null,
           "blocks": [
             {
@@ -8797,8 +8849,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 489,
-              "end_line": 500,
+              "line": 506,
+              "end_line": 517,
               "source": "def parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n__all__ = [\"parse\"]\n__all__ += [\"tokenize\"]\n"
             },
             {
@@ -8806,8 +8858,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 502,
-              "end_line": 513,
+              "line": 519,
+              "end_line": 530,
               "source": "def parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n__all__ = [\"parse\"]\n__all__ += [\"tokenize\"]\n"
             }
           ]
@@ -10807,7 +10859,7 @@
     "name": "test-only-code",
     "summary": "Module-level functions and classes only test modules use",
     "fix": "None",
-    "explanation": "Flags module-level functions and classes that only test modules use, since they belong in the tests.\n\n## Why is this bad?\n\nCode that only tests call is test support, and it ships with the product. Readers take it for part of the package, and\nit outlives the tests that needed it. Moving it into the tests, or into a test helper module, keeps the package to what\nthe program runs.\n\n## Example\n\n```python context file=tests/test_builders.py\nfrom app.builders import build_fixture\n\n\ndef test_build() -> None:\n    assert build_fixture() == {\"id\": 1}\n```\n\n```python report file=app/builders.py\ndef build_fixture() -> dict[str, int]:  # only tests call it\n    return {\"id\": 1}\n```\n\nUse instead:\n\n```python context file=tests/test_builders.py\nfrom app.builders import build_fixture\n\n\ndef test_build() -> None:\n    assert build_fixture() == {\"id\": 1}\n```\n\n```python ok file=tests/helpers.py\ndef build_fixture() -> dict[str, int]:\n    return {\"id\": 1}\n```\n\n## What it does\n\n### Active on\n\n- **Module-level functions and classes** whose every reference in the run comes from a test module. A reference is an\n  import, a call, an attribute read through the module, or a dotted string the index records. Methods are not covered\n  yet, so a method used only by tests is not reported.\n\n  ```python report file=app/builders.py\n  def build_fixture() -> int:\n      return 1\n  ```\n\n  ```python context file=tests/test_builders.py\n  from app.builders import build_fixture\n\n\n  def test_build() -> None:\n      assert build_fixture() == 1\n  ```\n\n- **References through the module or a dotted string**: `module.name` in a test and a `\"pkg.module.name\"` string, such\n  as the target of `mock.patch`, count as references to `name`.\n\n  ```python report file=app/builders.py\n  def build_fixture() -> int:\n      return 1\n  ```\n\n  ```python context file=tests/test_builders.py\n  from unittest import mock\n\n  import app.builders as builders\n\n\n  def test_build() -> None:\n      assert builders.build_fixture() == 1\n      with mock.patch(\"app.builders.build_fixture\"):\n          pass\n  ```\n\n- **Classes**: a class with no reference outside the tests is reported under the same condition.\n\n  ```python report file=app/records.py\n  class Record:\n      pass\n  ```\n\n  ```python context file=tests/test_records.py\n  from app.records import Record\n\n\n  def test_record() -> None:\n      assert Record()\n  ```\n\n### Exceptions\n\n- **Names the run uses outside the tests**: a single use from application code keeps the name.\n\n  ```python ok file=app/shared.py\n  def shared() -> int:\n      return 1\n  ```\n\n  ```python context file=app/service.py\n  from app.shared import shared\n\n\n  def run() -> int:\n      return shared()\n  ```\n\n  ```python context file=tests/test_shared.py\n  from app.shared import shared\n\n\n  def test_shared() -> None:\n      assert shared() == 1\n  ```\n\n- **A library's public API**: a name a public module offers, or that a user of the library may import, is public even\n  when the tests are its only importers. The docstring rules decide what is public, so this rule reuses that decision.\n\n  ```toml config\n  [build-system]\n  requires = [\"setuptools\"]\n\n  [project]\n  name = \"mylib\"\n  ```\n\n  ```python ok file=mylib/api.py\n  def build_fixture() -> int:\n      return 1\n  ```\n\n  ```python context file=tests/test_api.py\n  from mylib.api import build_fixture\n\n\n  def test_build() -> None:\n      assert build_fixture() == 1\n  ```\n\n- **Names with no reference at all**: dead code is a different concern, so a function nothing calls is not reported\n  here.\n\n  ```python ok\n  def unused() -> int:\n      return 1\n  ```\n\n- **Entry points** named in `pyproject.toml`, which the program runs without any import.\n\n  ```toml config\n  [project]\n  name = \"tool\"\n\n  [project.scripts]\n  tool = \"app.cli:main\"\n  ```\n\n  ```python ok file=app/cli.py\n  def main() -> None:\n      pass\n  ```\n\n  ```python context file=tests/test_cli.py\n  from app.cli import main\n\n\n  def test_main() -> None:\n      main()\n  ```\n\n- **Modules a `.pth` file loads at startup**: the interpreter runs the `import` lines of a `.pth` file in a source\n  directory when it starts, so a name those lines read is kept. A path line runs nothing.\n\n  ```python ok file=app/hook.py\n  def _run() -> None:\n      print(\"hook\")\n  ```\n\n  ```python context file=app.pth\n  # fmt: off\n  import app.hook; app.hook._run()\n  # fmt: on\n  ```\n\n  ```python context file=tests/test_hook.py\n  from app.hook import _run\n\n\n  def test_run() -> None:\n      _run()\n  ```\n\n- **Decorated definitions**: a decorator may register the definition with something outside the run, such as a plugin\n  list or a framework, so any decorated function or class is kept.\n\n  ```python ok file=app/registry.py\n  from functools import cache\n\n\n  @cache\n  def build_fixture() -> int:\n      return 1\n  ```\n\n  ```python context file=tests/test_registry.py\n  from app.registry import build_fixture\n\n\n  def test_build() -> None:\n      assert build_fixture() == 1\n  ```\n\n- **Dunder names** such as `__getattr__`, which the interpreter reads without an import.\n\n  ```python ok file=app/lazy.py\n  def __getattr__(name: str) -> int:\n      return 1\n  ```\n\n  ```python context file=tests/test_lazy.py\n  from app.lazy import __getattr__\n\n\n  def test_lazy() -> None:\n      assert __getattr__(\"x\") == 1\n  ```\n\n- **Names the module uses itself**: a call from elsewhere in the module, or a name listed in `__all__`, keeps the\n  definition, since the module needs it whatever the tests do. A recursive call inside the definition does not count.\n\n  ```python ok file=app/tools.py\n  def normalize(text: str) -> str:\n      return text.strip()\n\n\n  def clean(text: str) -> str:\n      return normalize(text)\n  ```\n\n  ```python context file=tests/test_tools.py\n  from app.tools import normalize\n\n\n  def test_normalize() -> None:\n      assert normalize(\" a \") == \"a\"\n  ```\n\n- **Test modules**: a module that is itself a test module is not checked.\n\n  ```python ok file=tests/helpers.py\n  def make_user() -> str:\n      return \"alice\"\n  ```\n\nThe rule has no fix, because moving code into the tests changes the layout of the project, which the author decides.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags module-level functions and classes that only test modules use, since they belong in the tests.\n\n## Why is this bad?\n\nCode that only tests call is test support, and it ships with the product. Readers take it for part of the package, and\nit outlives the tests that needed it. Moving it into the tests, or into a test helper module, keeps the package to what\nthe program runs.\n\n## Example\n\n```python context file=tests/test_builders.py\nfrom app.builders import build_fixture\n\n\ndef test_build() -> None:\n    assert build_fixture() == {\"id\": 1}\n```\n\n```python report file=app/builders.py\ndef build_fixture() -> dict[str, int]:  # only tests call it\n    return {\"id\": 1}\n```\n\nUse instead:\n\n```python context file=tests/test_builders.py\nfrom app.builders import build_fixture\n\n\ndef test_build() -> None:\n    assert build_fixture() == {\"id\": 1}\n```\n\n```python ok file=tests/helpers.py\ndef build_fixture() -> dict[str, int]:\n    return {\"id\": 1}\n```\n\n## What it does\n\n### Active on\n\n- **Module-level functions and classes** whose every reference in the run comes from a test module. A reference is an\n  import, a call, an attribute read through the module, or a dotted string the index records. Methods are not covered\n  yet, so a method used only by tests is not reported.\n\n  ```python report file=app/builders.py\n  def build_fixture() -> int:\n      return 1\n  ```\n\n  ```python context file=tests/test_builders.py\n  from app.builders import build_fixture\n\n\n  def test_build() -> None:\n      assert build_fixture() == 1\n  ```\n\n- **References through the module or a dotted string**: `module.name` in a test and a `\"pkg.module.name\"` string, such\n  as the target of `mock.patch`, count as references to `name`.\n\n  ```python report file=app/builders.py\n  def build_fixture() -> int:\n      return 1\n  ```\n\n  ```python context file=tests/test_builders.py\n  from unittest import mock\n\n  import app.builders as builders\n\n\n  def test_build() -> None:\n      assert builders.build_fixture() == 1\n      with mock.patch(\"app.builders.build_fixture\"):\n          pass\n  ```\n\n- **Classes**: a class with no reference outside the tests is reported under the same condition.\n\n  ```python report file=app/records.py\n  class Record:\n      pass\n  ```\n\n  ```python context file=tests/test_records.py\n  from app.records import Record\n\n\n  def test_record() -> None:\n      assert Record()\n  ```\n\n### Exceptions\n\n- **Names the run uses outside the tests**: a single use from application code keeps the name.\n\n  ```python ok file=app/shared.py\n  def shared() -> int:\n      return 1\n  ```\n\n  ```python context file=app/service.py\n  from app.shared import shared\n\n\n  def run() -> int:\n      return shared()\n  ```\n\n  ```python context file=tests/test_shared.py\n  from app.shared import shared\n\n\n  def test_shared() -> None:\n      assert shared() == 1\n  ```\n\n- **Modules the run loads as a value**: a module that production code binds and passes on, as `CODEC = fast` does, may\n  have each of its functions called through that value, so none of its names is reported.\n\n  ```python ok file=app/fast.py\n  def decode(text: str) -> str:\n      return text\n  ```\n\n  ```python context file=app/service.py\n  from app import fast\n\n  CODEC = fast\n  ```\n\n  ```python context file=tests/test_fast.py\n  from app import fast\n\n\n  def test_decode() -> None:\n      assert fast.decode(\"1\") == \"1\"\n  ```\n\n- **A library's public API**: a name a public module offers, or that a user of the library may import, is public even\n  when the tests are its only importers. The docstring rules decide what is public, so this rule reuses that decision.\n\n  ```toml config\n  [build-system]\n  requires = [\"setuptools\"]\n\n  [project]\n  name = \"mylib\"\n  ```\n\n  ```python ok file=mylib/api.py\n  def build_fixture() -> int:\n      return 1\n  ```\n\n  ```python context file=tests/test_api.py\n  from mylib.api import build_fixture\n\n\n  def test_build() -> None:\n      assert build_fixture() == 1\n  ```\n\n- **Names with no reference at all**: dead code is a different concern, so a function nothing calls is not reported\n  here.\n\n  ```python ok\n  def unused() -> int:\n      return 1\n  ```\n\n- **Entry points** named in `pyproject.toml`, which the program runs without any import.\n\n  ```toml config\n  [project]\n  name = \"tool\"\n\n  [project.scripts]\n  tool = \"app.cli:main\"\n  ```\n\n  ```python ok file=app/cli.py\n  def main() -> None:\n      pass\n  ```\n\n  ```python context file=tests/test_cli.py\n  from app.cli import main\n\n\n  def test_main() -> None:\n      main()\n  ```\n\n- **Modules a `.pth` file loads at startup**: the interpreter runs the `import` lines of a `.pth` file in a source\n  directory when it starts, so a name those lines read is kept. A path line runs nothing.\n\n  ```python ok file=app/hook.py\n  def _run() -> None:\n      print(\"hook\")\n  ```\n\n  ```python context file=app.pth\n  # fmt: off\n  import app.hook; app.hook._run()\n  # fmt: on\n  ```\n\n  ```python context file=tests/test_hook.py\n  from app.hook import _run\n\n\n  def test_run() -> None:\n      _run()\n  ```\n\n- **Decorated definitions**: a decorator may register the definition with something outside the run, such as a plugin\n  list or a framework, so any decorated function or class is kept.\n\n  ```python ok file=app/registry.py\n  from functools import cache\n\n\n  @cache\n  def build_fixture() -> int:\n      return 1\n  ```\n\n  ```python context file=tests/test_registry.py\n  from app.registry import build_fixture\n\n\n  def test_build() -> None:\n      assert build_fixture() == 1\n  ```\n\n- **Dunder names** such as `__getattr__`, which the interpreter reads without an import.\n\n  ```python ok file=app/lazy.py\n  def __getattr__(name: str) -> int:\n      return 1\n  ```\n\n  ```python context file=tests/test_lazy.py\n  from app.lazy import __getattr__\n\n\n  def test_lazy() -> None:\n      assert __getattr__(\"x\") == 1\n  ```\n\n- **Names the module uses itself**: a call from elsewhere in the module, or a name listed in `__all__`, keeps the\n  definition, since the module needs it whatever the tests do. A recursive call inside the definition does not count.\n\n  ```python ok file=app/tools.py\n  def normalize(text: str) -> str:\n      return text.strip()\n\n\n  def clean(text: str) -> str:\n      return normalize(text)\n  ```\n\n  ```python context file=tests/test_tools.py\n  from app.tools import normalize\n\n\n  def test_normalize() -> None:\n      assert normalize(\" a \") == \"a\"\n  ```\n\n- **Test modules**: a module that is itself a test module is not checked.\n\n  ```python ok file=tests/helpers.py\n  def make_user() -> str:\n      return \"alice\"\n  ```\n\nThe rule has no fix, because moving code into the tests changes the layout of the project, which the author decides.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -10978,10 +11030,45 @@
         {
           "section": "What it does",
           "line": 123,
-          "end_line": 142,
+          "end_line": 140,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "app/fast.py",
+              "named": true,
+              "line": 123,
+              "end_line": 126,
+              "source": "def decode(text: str) -> str:\n    return text\n"
+            },
+            {
+              "role": "context",
+              "language": "python",
+              "file": "app/service.py",
+              "named": true,
+              "line": 128,
+              "end_line": 132,
+              "source": "from app import fast\n\nCODEC = fast\n"
+            },
+            {
+              "role": "context",
+              "language": "python",
+              "file": "tests/test_fast.py",
+              "named": true,
+              "line": 134,
+              "end_line": 140,
+              "source": "from app import fast\n\n\ndef test_decode() -> None:\n    assert fast.decode(\"1\") == \"1\"\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 145,
+          "end_line": 164,
           "config": {
-            "line": 123,
-            "end_line": 129,
+            "line": 145,
+            "end_line": 151,
             "source": "[build-system]\nrequires = [\"setuptools\"]\n\n[project]\nname = \"mylib\"\n"
           },
           "blocks": [
@@ -10990,8 +11077,8 @@
               "language": "python",
               "file": "mylib/api.py",
               "named": true,
-              "line": 131,
-              "end_line": 134,
+              "line": 153,
+              "end_line": 156,
               "source": "def build_fixture() -> int:\n    return 1\n"
             },
             {
@@ -10999,16 +11086,16 @@
               "language": "python",
               "file": "tests/test_api.py",
               "named": true,
-              "line": 136,
-              "end_line": 142,
+              "line": 158,
+              "end_line": 164,
               "source": "from mylib.api import build_fixture\n\n\ndef test_build() -> None:\n    assert build_fixture() == 1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 147,
-          "end_line": 150,
+          "line": 169,
+          "end_line": 172,
           "config": null,
           "blocks": [
             {
@@ -11016,19 +11103,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 147,
-              "end_line": 150,
+              "line": 169,
+              "end_line": 172,
               "source": "def unused() -> int:\n    return 1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 154,
-          "end_line": 173,
+          "line": 176,
+          "end_line": 195,
           "config": {
-            "line": 154,
-            "end_line": 160,
+            "line": 176,
+            "end_line": 182,
             "source": "[project]\nname = \"tool\"\n\n[project.scripts]\ntool = \"app.cli:main\"\n"
           },
           "blocks": [
@@ -11037,8 +11124,8 @@
               "language": "python",
               "file": "app/cli.py",
               "named": true,
-              "line": 162,
-              "end_line": 165,
+              "line": 184,
+              "end_line": 187,
               "source": "def main() -> None:\n    pass\n"
             },
             {
@@ -11046,16 +11133,16 @@
               "language": "python",
               "file": "tests/test_cli.py",
               "named": true,
-              "line": 167,
-              "end_line": 173,
+              "line": 189,
+              "end_line": 195,
               "source": "from app.cli import main\n\n\ndef test_main() -> None:\n    main()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 178,
-          "end_line": 195,
+          "line": 200,
+          "end_line": 217,
           "config": null,
           "blocks": [
             {
@@ -11063,8 +11150,8 @@
               "language": "python",
               "file": "app/hook.py",
               "named": true,
-              "line": 178,
-              "end_line": 181,
+              "line": 200,
+              "end_line": 203,
               "source": "def _run() -> None:\n    print(\"hook\")\n"
             },
             {
@@ -11072,8 +11159,8 @@
               "language": "python",
               "file": "app.pth",
               "named": true,
-              "line": 183,
-              "end_line": 187,
+              "line": 205,
+              "end_line": 209,
               "source": "# fmt: off\nimport app.hook; app.hook._run()\n# fmt: on\n"
             },
             {
@@ -11081,16 +11168,16 @@
               "language": "python",
               "file": "tests/test_hook.py",
               "named": true,
-              "line": 189,
-              "end_line": 195,
+              "line": 211,
+              "end_line": 217,
               "source": "from app.hook import _run\n\n\ndef test_run() -> None:\n    _run()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 200,
-          "end_line": 215,
+          "line": 222,
+          "end_line": 237,
           "config": null,
           "blocks": [
             {
@@ -11098,8 +11185,8 @@
               "language": "python",
               "file": "app/registry.py",
               "named": true,
-              "line": 200,
-              "end_line": 207,
+              "line": 222,
+              "end_line": 229,
               "source": "from functools import cache\n\n\n@cache\ndef build_fixture() -> int:\n    return 1\n"
             },
             {
@@ -11107,16 +11194,16 @@
               "language": "python",
               "file": "tests/test_registry.py",
               "named": true,
-              "line": 209,
-              "end_line": 215,
+              "line": 231,
+              "end_line": 237,
               "source": "from app.registry import build_fixture\n\n\ndef test_build() -> None:\n    assert build_fixture() == 1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 219,
-          "end_line": 230,
+          "line": 241,
+          "end_line": 252,
           "config": null,
           "blocks": [
             {
@@ -11124,8 +11211,8 @@
               "language": "python",
               "file": "app/lazy.py",
               "named": true,
-              "line": 219,
-              "end_line": 222,
+              "line": 241,
+              "end_line": 244,
               "source": "def __getattr__(name: str) -> int:\n    return 1\n"
             },
             {
@@ -11133,16 +11220,16 @@
               "language": "python",
               "file": "tests/test_lazy.py",
               "named": true,
-              "line": 224,
-              "end_line": 230,
+              "line": 246,
+              "end_line": 252,
               "source": "from app.lazy import __getattr__\n\n\ndef test_lazy() -> None:\n    assert __getattr__(\"x\") == 1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 235,
-          "end_line": 250,
+          "line": 257,
+          "end_line": 272,
           "config": null,
           "blocks": [
             {
@@ -11150,8 +11237,8 @@
               "language": "python",
               "file": "app/tools.py",
               "named": true,
-              "line": 235,
-              "end_line": 242,
+              "line": 257,
+              "end_line": 264,
               "source": "def normalize(text: str) -> str:\n    return text.strip()\n\n\ndef clean(text: str) -> str:\n    return normalize(text)\n"
             },
             {
@@ -11159,16 +11246,16 @@
               "language": "python",
               "file": "tests/test_tools.py",
               "named": true,
-              "line": 244,
-              "end_line": 250,
+              "line": 266,
+              "end_line": 272,
               "source": "from app.tools import normalize\n\n\ndef test_normalize() -> None:\n    assert normalize(\" a \") == \"a\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 254,
-          "end_line": 257,
+          "line": 276,
+          "end_line": 279,
           "config": null,
           "blocks": [
             {
@@ -11176,8 +11263,8 @@
               "language": "python",
               "file": "tests/helpers.py",
               "named": true,
-              "line": 254,
-              "end_line": 257,
+              "line": 276,
+              "end_line": 279,
               "source": "def make_user() -> str:\n    return \"alice\"\n"
             }
           ]
@@ -19369,7 +19456,7 @@
     "name": "duplicate-code",
     "summary": "Statements that another module repeats",
     "fix": "None",
-    "explanation": "Flags six or more statements in a row that another module repeats.\n\n## Why is this bad?\n\nCopied code drifts. A fix or a change lands in one copy and not the other, and nothing says the two were ever the same.\nOne definition that both modules call keeps a single place to change.\n\nIn the example below, `reader.py` and `writer.py` each define the same six statements.\n\n## Example\n\n```python report file=reader.py\ndef parse_lines(text):\n    lines = text.splitlines()\n    values = {}\n    for line in lines:\n        key, _, value = line.partition(\"=\")\n        values[key] = value\n    count = len(values)\n    if count == 0:\n        raise ValueError(\"no values\")\n    return values, count\n```\n\n```python report file=writer.py\ndef parse_lines(text):\n    lines = text.splitlines()\n    values = {}\n    for line in lines:\n        key, _, value = line.partition(\"=\")\n        values[key] = value\n    count = len(values)\n    if count == 0:\n        raise ValueError(\"no values\")\n    return values, count\n```\n\nMove the parser into one module that both import:\n\n```python context file=parsing.py\ndef parse_lines(text):\n    lines = text.splitlines()\n    values = {}\n    for line in lines:\n        key, _, value = line.partition(\"=\")\n        values[key] = value\n    count = len(values)\n    if count == 0:\n        raise ValueError(\"no values\")\n    return values, count\n```\n\n```python ok file=reader.py\nfrom parsing import parse_lines\n```\n\n## Configuration\n\n- [`logic.min-duplicate-statements`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#logic)\n  in `[tool.simplint]`: the fewest statements in a row another module must repeat, 6 by default, such as\n  `min-duplicate-statements = 4` under `[tool.simplint.logic]`\n\n  ```toml config\n  [tool.simplint.logic]\n  min-duplicate-statements = 4\n  ```\n\n  ```python context file=first.py\n  def run(items):\n      total = sum(items)\n      count = len(items)\n      log(total)\n      return total, count\n  ```\n\n  ```python report file=second.py\n  def run(items):\n      total = sum(items)\n      count = len(items)\n      log(total)\n      return total, count\n  ```\n\n  Six is where the copies on CPython's standard library turn from boilerplate to code worth sharing: at four and five\n  statements most reports are the generated codec classes of `encodings`, and at eight the copied file classes of `bz2`\n  and `lzma` go unreported.\n\n## Conflicts with Ruff\n\nRuff has no rule for repeated code, so the two do not overlap.\n\n## What it does\n\nsimplint compares the statements of every body of every module of the run, and reports a run of\n`min-duplicate-statements` statements or more that another module holds too. Overlapping copies make one block, reported\nonce in each module on its first statement, and a block inside another one, as the body of a function the outer block\nholds, is left to the outer one. The report names the other modules where their copy starts: up to three, then a count\nof the rest.\n\nStatements match when their tokens match. Comments, layout, imports and docstrings do not count. Identifiers and\nliterals must match exactly, so a copy with a renamed variable does not match. Statements are compared by a hash of\ntheir tokens first and by the tokens themselves before a report, so two different statements whose hashes collide never\nmatch.\n\n### Active on\n\n- **Six consecutive statements of one body** that another module repeats, at any depth, such as the body of a function,\n  a method or an `if` block. A nested block, such as a `for` loop, counts as one statement.\n\n  ```python context file=first.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n  ```python report file=second.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n### Exceptions\n\n- **Separate distributions in one repository**: files are compared within the distribution identified by their nearest\n  project metadata. For example, code repeated in two workspace members with separate `[project]` tables is not reported\n  across those members. Repeats within either member are still reported.\n\n- **Repeats inside one module**, which pylint's duplicate check does not compare either.\n\n  ```python ok file=twice.py\n  def first(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n\n\n  def second(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n- **Test modules**, which the run tells by their names and the `tests` and `test` directories of the project. Tests\n  repeat their setup and checks so each test reads on its own, and copy the code they test to compare against it. Stub\n  files are not compared either, since stubs repeat each other's signatures by design.\n\n  ```python context file=tests/test_first.py\n  def test_run():\n      total = 0\n      for item in ITEMS:\n          total += item\n      count = len(ITEMS)\n      log(total)\n      log(count)\n      assert total\n  ```\n\n  ```python ok file=tests/test_second.py\n  def test_run():\n      total = 0\n      for item in ITEMS:\n          total += item\n      count = len(ITEMS)\n      log(total)\n      log(count)\n      assert total\n  ```\n\n- **Nested test projects**, which are directories named `test*`, or inside one, that hold a project of their own with a\n  `conf.py`, `pyproject.toml`, `setup.py` or `setup.cfg`, such as each `roots/test-*` project of Sphinx's test suite. A\n  nested project repeats code by design, so its modules are compared with each other only, never with another nested\n  project or the rest of the run. Repeats within one nested project are still reported.\n\n  ```python context file=roots/test-first/conf.py\n  project = \"first\"\n  ```\n\n  ```python context file=roots/test-first/parser.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n  ```python context file=roots/test-second/conf.py\n  project = \"second\"\n  ```\n\n  ```python ok file=roots/test-second/parser.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n- **Runs shorter than `min-duplicate-statements`**, which are too short to report.\n\n  ```python context file=short_first.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      return total, count\n  ```\n\n  ```python ok file=short_second.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      return total, count\n  ```\n\n### Undetected cases\n\nCode repeated with renamed identifiers, changed literals or reordered statements does not match.\n\n### Fix\n\nsimplint offers no fix: the right shared definition depends on the code around the copies.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#17724](https://github.com/astral-sh/ruff/issues/17724).\n- [pylint](https://github.com/pylint-dev/pylint) reports similar lines repeated across modules as\n  [duplicate-code](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/duplicate-code.html), with no\n  fix.\n",
+    "explanation": "Flags six or more statements in a row that another module repeats.\n\n## Why is this bad?\n\nCopied code drifts. A fix or a change lands in one copy and not the other, and nothing says the two were ever the same.\nOne definition that both modules call keeps a single place to change.\n\nIn the example below, `reader.py` and `writer.py` each define the same six statements.\n\n## Example\n\n```python report file=reader.py\ndef parse_lines(text):\n    lines = text.splitlines()\n    values = {}\n    for line in lines:\n        key, _, value = line.partition(\"=\")\n        values[key] = value\n    count = len(values)\n    if count == 0:\n        raise ValueError(\"no values\")\n    return values, count\n```\n\n```python report file=writer.py\ndef parse_lines(text):\n    lines = text.splitlines()\n    values = {}\n    for line in lines:\n        key, _, value = line.partition(\"=\")\n        values[key] = value\n    count = len(values)\n    if count == 0:\n        raise ValueError(\"no values\")\n    return values, count\n```\n\nMove the parser into one module that both import:\n\n```python context file=parsing.py\ndef parse_lines(text):\n    lines = text.splitlines()\n    values = {}\n    for line in lines:\n        key, _, value = line.partition(\"=\")\n        values[key] = value\n    count = len(values)\n    if count == 0:\n        raise ValueError(\"no values\")\n    return values, count\n```\n\n```python ok file=reader.py\nfrom parsing import parse_lines\n```\n\n## Configuration\n\n- [`logic.min-duplicate-statements`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#logic)\n  in `[tool.simplint]`: the fewest statements in a row another module must repeat, 6 by default, such as\n  `min-duplicate-statements = 4` under `[tool.simplint.logic]`\n\n  ```toml config\n  [tool.simplint.logic]\n  min-duplicate-statements = 4\n  ```\n\n  ```python context file=first.py\n  def run(items):\n      total = sum(items)\n      count = len(items)\n      log(total)\n      return total, count\n  ```\n\n  ```python report file=second.py\n  def run(items):\n      total = sum(items)\n      count = len(items)\n      log(total)\n      return total, count\n  ```\n\n  Six is where the copies on CPython's standard library turn from boilerplate to code worth sharing: at four and five\n  statements most reports are the generated codec classes of `encodings`, and at eight the copied file classes of `bz2`\n  and `lzma` go unreported.\n\n## Conflicts with Ruff\n\nRuff has no rule for repeated code, so the two do not overlap.\n\n## What it does\n\nsimplint compares the statements of every body of every module of the run, and reports a run of\n`min-duplicate-statements` statements or more that another module holds too. Overlapping copies make one block, reported\nonce in each module on its first statement, and a block inside another one, as the body of a function the outer block\nholds, is left to the outer one. The report names the other modules where their copy starts: up to three, then a count\nof the rest.\n\nStatements match when their tokens match, and the blocks they nest in match too, so the same statements under another\n`if` do not. Comments, layout, indentation width, imports and docstrings do not count. Identifiers and literals must\nmatch exactly, so a copy with a renamed variable does not match. Statements are compared by a hash of their tokens first\nand by the tokens themselves before a report, so two different statements whose hashes collide never match.\n\n### Active on\n\n- **Six consecutive statements of one body** that another module repeats, at any depth, such as the body of a function,\n  a method or an `if` block. A nested block, such as a `for` loop, counts as one statement.\n\n  ```python context file=first.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n  ```python report file=second.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n### Exceptions\n\n- **Separate distributions in one repository**: files are compared within the distribution identified by their nearest\n  project metadata. For example, code repeated in two workspace members with separate `[project]` tables is not reported\n  across those members. Repeats within either member are still reported.\n\n- **Repeats inside one module**, which pylint's duplicate check does not compare either.\n\n  ```python ok file=twice.py\n  def first(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n\n\n  def second(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n- **Test modules**, which the run tells by their names and the `tests` and `test` directories of the project. Tests\n  repeat their setup and checks so each test reads on its own, and copy the code they test to compare against it. Stub\n  files are not compared either, since stubs repeat each other's signatures by design.\n\n  ```python context file=tests/test_first.py\n  def test_run():\n      total = 0\n      for item in ITEMS:\n          total += item\n      count = len(ITEMS)\n      log(total)\n      log(count)\n      assert total\n  ```\n\n  ```python ok file=tests/test_second.py\n  def test_run():\n      total = 0\n      for item in ITEMS:\n          total += item\n      count = len(ITEMS)\n      log(total)\n      log(count)\n      assert total\n  ```\n\n- **Nested test projects**, which are directories named `test*`, or inside one, that hold a project of their own with a\n  `conf.py`, `pyproject.toml`, `setup.py` or `setup.cfg`, such as each `roots/test-*` project of Sphinx's test suite. A\n  nested project repeats code by design, so its modules are compared with each other only, never with another nested\n  project or the rest of the run. Repeats within one nested project are still reported.\n\n  ```python context file=roots/test-first/conf.py\n  project = \"first\"\n  ```\n\n  ```python context file=roots/test-first/parser.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n  ```python context file=roots/test-second/conf.py\n  project = \"second\"\n  ```\n\n  ```python ok file=roots/test-second/parser.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n- **Runs shorter than `min-duplicate-statements`**, which are too short to report.\n\n  ```python context file=short_first.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      return total, count\n  ```\n\n  ```python ok file=short_second.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      return total, count\n  ```\n\n### Undetected cases\n\nCode repeated with renamed identifiers, changed literals or reordered statements does not match.\n\n### Fix\n\nsimplint offers no fix: the right shared definition depends on the code around the copies.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#17724](https://github.com/astral-sh/ruff/issues/17724).\n- [pylint](https://github.com/pylint-dev/pylint) reports similar lines repeated across modules as\n  [duplicate-code](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/duplicate-code.html), with no\n  fix.\n",
     "examples": {
       "parsed": [
         {

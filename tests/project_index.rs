@@ -1818,6 +1818,18 @@ fn public_module_all_is_the_declared_api(module: &str, stdout: &str) {
     );
 }
 
+#[test_case("from a import __all__ as base\n\n__all__ = [*base, \"Z\"]\n" ; "imported")]
+#[test_case("import a\n\n__all__ = [*a.__all__, \"Z\"]\n" ; "read_through_module")]
+#[test_case("import a\n\nprint([name for name in a.__all__])\n" ; "iterated_through_module")]
+fn names_another_module_reads_from_all_are_used(consumer: &str) {
+    let root = project(&[
+        ("pyproject.toml", DEMO),
+        ("a.py", "X = 1\nY = 2\n\n__all__ = [\"X\", \"Y\"]\n"),
+        ("b.py", consumer),
+    ]);
+    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, "All checks passed!\n");
+}
+
 #[test_case("import pkgutil\n\nHANDLER = pkgutil.resolve_name(\"pkg._cli._validate:run\")\n", true ; "direct_resolve_name")]
 #[test_case("from pkgutil import resolve_name\n\nHANDLER = resolve_name(\"pkg._cli._validate:run\")\n", true ; "imported_resolve_name")]
 #[test_case("def build_parser(parser):\n    parser.set_defaults(handler=\"pkg._cli._validate:run\")\n", true ; "argparse_handler")]
@@ -2249,6 +2261,78 @@ fn startup_pth_under_src_keeps_the_name() {
     assert_eq!(check(root.path(), &["--select", "SMP408"]).1, "All checks passed!\n");
 }
 
+// A production module that passes another module on as a value calls that module's functions through the value, which
+// no import of a name shows, so they are not used only by tests. Only such a load counts: a module that production only
+// imports still reports the functions the tests alone call.
+#[test_case(
+    "from pkg import fast\n\nCODEC = fast if CHOSEN else None\n",
+    "All checks passed!\n" ; "conditional_alias"
+)]
+#[test_case(
+    "from pkg import fast\n\n\ndef parse(text, backend=fast):\n    return backend.decode(text)\n",
+    "All checks passed!\n" ; "default_argument"
+)]
+#[test_case(
+    "from pkg import fast\n\n\nclass Service:\n    def __init__(self):\n        self.backend = fast\n",
+    "All checks passed!\n" ; "instance_attribute"
+)]
+#[test_case("from pkg import fast\n\nBACKENDS = {\"fast\": fast}\n", "All checks passed!\n" ; "dict_value")]
+#[test_case(
+    "from pkg import fast\n",
+    "pkg/fast.py:1:5: SMP408 `decode` is used only by tests; move it into the tests or a test helper \
+     module\nFound 1 error.\n" ;
+    "import_alone_is_not_a_value"
+)]
+fn module_loaded_as_value_has_no_test_only_names(service: &str, stdout: &str) {
+    let root = project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/fast.py", "def decode(text: str) -> str:\n    return text\n"),
+        ("pkg/service.py", service),
+        (
+            "tests/test_fast.py",
+            "from pkg import fast\n\n\ndef test_decode() -> None:\n    assert fast.decode(\"1\") == \"1\"\n",
+        ),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP408"]).1,
+        stdout.replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+    );
+}
+
+// A flag bound false at module level keeps the imports under it out of the cycle check, unless some binding of it in the
+// module's blocks, or a `global` declaration of it, may make it true. A binding inside a function is local to it.
+#[test_case("", false ; "unrebound")]
+#[test_case("def enable() -> None:\n    HAS_JSON = True\n\n", false ; "local_in_function")]
+#[test_case("try:\n    import json\n    HAS_JSON = True\nexcept ImportError:\n    pass\n", true ; "try_body")]
+#[test_case("try:\n    import json\nexcept ImportError:\n    HAS_JSON = True\n", true ; "except_handler")]
+#[test_case("try:\n    pass\nfinally:\n    HAS_JSON = True\n", true ; "finally_block")]
+#[test_case("if SCALE:\n    HAS_JSON = True\n", true ; "if_block")]
+#[test_case("if SCALE > 5:\n    pass\nelse:\n    HAS_JSON = True\n", true ; "else_block")]
+#[test_case("while SCALE:\n    break\nelse:\n    HAS_JSON = True\n", true ; "while_else")]
+#[test_case("for HAS_JSON in [True]:\n    pass\n", true ; "for_target")]
+#[test_case("with open(__file__) as HAS_JSON:\n    pass\n", true ; "with_target")]
+#[test_case("try:\n    pass\nexcept ValueError as HAS_JSON:\n    pass\n", true ; "except_name")]
+#[test_case("match SCALE:\n    case HAS_JSON:\n        pass\n", true ; "match_capture")]
+#[test_case("match SCALE:\n    case [*HAS_JSON]:\n        pass\n", true ; "match_star")]
+#[test_case("match SCALE:\n    case {**HAS_JSON}:\n        pass\n", true ; "match_mapping_rest")]
+#[test_case("if (HAS_JSON := True):\n    pass\n", true ; "walrus")]
+#[test_case("if SCALE:\n    HAS_JSON: bool = True\n", true ; "annotated_assignment")]
+#[test_case("if SCALE:\n    HAS_JSON += 1\n", true ; "augmented_assignment")]
+#[test_case("HAS_JSON, OTHER = True, 1\n", true ; "tuple_target")]
+#[test_case("import json as HAS_JSON\n", true ; "import_alias")]
+#[test_case("from json import dumps as HAS_JSON\n", true ; "from_import_alias")]
+#[test_case("def HAS_JSON() -> None:\n    pass\n", true ; "function_name")]
+#[test_case("class HAS_JSON:\n    pass\n", true ; "class_name")]
+#[test_case("def enable() -> None:\n    global HAS_JSON\n    HAS_JSON = True\n", true ; "global_declaration")]
+fn module_flag_rebound_in_a_block_keeps_its_imports(rebinding: &str, reported: bool) {
+    let root = project(&[
+        ("a.py", "import b\n\nVALUE = b.SCALE + 1\n"),
+        ("b.py", &format!("HAS_JSON = False\n{rebinding}\nif HAS_JSON:\n    from a import VALUE\n\nSCALE = 2\n")),
+    ]);
+    let report = check(root.path(), &["--select", "SMP308"]).1;
+    assert_eq!(report.contains("SMP308"), reported, "{report}");
+}
+
 // The names a `.pth` file reads are used like an entry point's, so no rule that asks whether a name is used, listed or
 // unlisted reports them.
 #[test_case("__all__ = [\"_run\"]\n\n\n", "_run", "SMP402" ; "unused_export")]
@@ -2382,6 +2466,21 @@ fn separate_distributions_are_not_compared_for_duplicate_code() {
         ]),
         ["first/src/first/a.py", "first/src/first/b.py"]
     );
+}
+
+// The same statements under a different `if` are no repeat: the nesting of the code differs, though its text does not.
+const NESTED_FIRST: &str = "def run(x, y):\n    a = 1\n    b = 2\n    if x:\n        a += 1\n        if y:\n            b += 1\n        b += 10\n    c = a + b\n    d = c * 2\n    return d\n";
+const NESTED_SECOND: &str = "def run(x, y):\n    a = 1\n    b = 2\n    if x:\n        a += 1\n        if y:\n            b += 1\n            b += 10\n    c = a + b\n    d = c * 2\n    return d\n";
+
+// Six repeated statements, one copy right after the end of an `if` block, whose dedent is not part of the repeat.
+const AFTER_BLOCK: &str = "def run(x, y):\n    if x:\n        log(x)\n    a = 1\n    b = 2\n    c = a + b\n    d = c * 2\n    log(d)\n    return d\n";
+const AFTER_STATEMENT: &str = "def run(x, y):\n    log(y)\n    a = 1\n    b = 2\n    c = a + b\n    d = c * 2\n    log(d)\n    return d\n";
+
+#[test_case(NESTED_FIRST, NESTED_SECOND, &[] ; "nesting_differs")]
+#[test_case(NESTED_FIRST, NESTED_FIRST, &["first.py", "second.py"] ; "nesting_repeats")]
+#[test_case(AFTER_BLOCK, AFTER_STATEMENT, &["first.py", "second.py"] ; "repeat_after_a_block")]
+fn statements_nested_differently_are_not_repeats(first: &str, second: &str, reported: &[&str]) {
+    assert_eq!(duplicate_code_reports(&[("first.py", first), ("second.py", second)]), reported);
 }
 
 // A test-named directory without a marker is not a project of its own.

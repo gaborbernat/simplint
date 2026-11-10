@@ -117,6 +117,28 @@ def build_fixture() -> dict[str, int]:
       assert shared() == 1
   ```
 
+- **Modules the run loads as a value**: a module that production code binds and passes on, as `CODEC = fast` does, may
+  have each of its functions called through that value, so none of its names is reported.
+
+  ```python ok file=app/fast.py
+  def decode(text: str) -> str:
+      return text
+  ```
+
+  ```python context file=app/service.py
+  from app import fast
+
+  CODEC = fast
+  ```
+
+  ```python context file=tests/test_fast.py
+  from app import fast
+
+
+  def test_decode() -> None:
+      assert fast.decode("1") == "1"
+  ```
+
 - **A library's public API**: a name a public module offers, or that a user of the library may import, is public even
   when the tests are its only importers. The docstring rules decide what is public, so this rule reuses that decision.
 

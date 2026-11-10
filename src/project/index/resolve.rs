@@ -352,6 +352,8 @@ pub(super) struct ModuleFacts<F> {
     pub(super) unresolved_names: Vec<String>,
     // The name each module binds, the absolute dotted module it stands for, and the file that module resolves to.
     pub(super) modules: Vec<(String, String, F)>,
+    // The files of the modules the file loads as values, as `modules` gives them.
+    pub(super) values: Vec<F>,
     pub(super) caught: Vec<(F, String)>,
     // Each class with the bases it lists and the names of the methods it defines.
     pub(super) classes: Vec<(String, Vec<ClassBase<F>>, Vec<String>)>,
@@ -382,6 +384,7 @@ impl<F> ModuleFacts<F> {
             unreached_doctests: self.unreached_doctests,
             unresolved_names: self.unresolved_names,
             modules: self.modules.into_iter().map(|(bound, module, file)| (bound, module, to(file))).collect(),
+            values: self.values.into_iter().map(&mut to).collect(),
             caught: self.caught.into_iter().map(|(file, name)| (to(file), name)).collect(),
             classes: self
                 .classes
@@ -474,6 +477,8 @@ impl ModuleFacts<PathBuf> {
             .filter(|(file, _)| *file != own)
             .collect();
         let modules = named_modules(&facts.module_names, &resolved, &own);
+        let values =
+            facts.module_values.iter().filter_map(|module| resolved(module)).filter(|file| *file != own).collect();
         let caught = facts.caught.iter().filter_map(|(module, name)| Some((resolved(module)?, name.clone()))).collect();
         let runtime = runtime_targets(&facts.runtime_imports, python_version, &resolved, &own);
         // A module may write its own names under a computed name too, so its own file stays.
@@ -499,6 +504,7 @@ impl ModuleFacts<PathBuf> {
             unreached_doctests: unreached_names(&facts.doctest_references, &resolved, run, &own),
             unresolved_names,
             modules,
+            values,
             caught,
             classes,
             functions: facts.functions.clone(),

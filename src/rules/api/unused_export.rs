@@ -10,15 +10,17 @@ use crate::syntax::{Exports, alias_binding, all_binding, all_literal, all_mutati
 pub fn unused_export(checker: &Checker) {
     let project = checker.project();
     // The `__all__` of a public module of a library declares what users outside the run import, so no name in it needs
-    // an importer in the run. An `import *` of the module hands every listed name to the importing module, which may use
-    // it there. A package's `__init__.py` lists what it re-exports, and Ruff, which counts its imports as re-exports,
-    // puts any it leaves out back into `__all__`.
-    // A module-level `__getattr__` serves names `__all__` lists without the module binding them, as a deprecation shim or
-    // a lazy loader does, so whether anything imports them shows only outside the run.
+    // an importer in the run. An `import *` of the module hands every listed name to the importing module, which may
+    // use it there, and so does a module that imports `__all__` from it or reads it off the module, as it iterates the
+    // list. A package's `__init__.py` lists what it re-exports, and Ruff, which counts its imports as re-exports, puts
+    // any it leaves out back into `__all__`.
+    // A module-level `__getattr__` serves names `__all__` lists without the module binding them, as a deprecation shim
+    // or a lazy loader does, so whether anything imports them shows only outside the run.
     if checker.is_test_module()
         || checker.is_init_module()
         || project.role().public
         || project.is_star_import_source()
+        || project.is_referenced("__all__")
         || module_statements(checker.body())
             .any(|stmt| stmt.as_function_def_stmt().is_some_and(|def| def.name.as_str() == "__getattr__"))
     {

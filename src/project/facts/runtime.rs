@@ -1,6 +1,7 @@
 use ruff_python_ast::helpers::Truthiness;
 use ruff_python_ast::name::UnqualifiedName;
-use ruff_python_ast::{self as ast, Expr, Stmt};
+use ruff_python_ast::visitor::{self, Visitor};
+use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::visitor::FactVisitor;
@@ -112,28 +113,124 @@ pub(super) fn catches_import_error(type_: &Expr) -> bool {
     }
 }
 
-// The names the module binds exactly once at its top level, to a constant that is false, as `_false = 0` does.
+// The names the module binds exactly once, to a constant that is false, as `_false = 0` does. A binding anywhere in the
+// module's blocks rebinds a name, as does a function's `global` declaration of it, which keeps the name out.
 pub(super) fn falsy_constants(body: &[Stmt]) -> FxHashSet<&str> {
-    let mut bound: FxHashMap<&str, bool> = FxHashMap::default();
-    for stmt in body {
-        let (targets, value): (&[Expr], Option<&Expr>) = match stmt {
-            Stmt::Assign(ast::StmtAssign { targets, value, .. }) => (targets, Some(value)),
-            Stmt::AnnAssign(ast::StmtAnnAssign { target, value, .. }) => {
-                (std::slice::from_ref(target), value.as_deref())
-            }
-            Stmt::AugAssign(ast::StmtAugAssign { target, .. }) => (std::slice::from_ref(target), None),
-            _ => continue,
-        };
-        let falsy = value.is_some_and(|value| {
-            value.is_literal_expr()
-                && matches!(
-                    Truthiness::from_expr(value, |_| false),
-                    Truthiness::False | Truthiness::Falsey | Truthiness::None
-                )
-        });
-        for target in targets.iter().filter_map(Expr::as_name_expr) {
-            bound.entry(target.id.as_str()).and_modify(|once| *once = false).or_insert(falsy);
+    let mut bindings = Bindings::default();
+    bindings.visit_body(body);
+    let mut globals = Globals::default();
+    globals.visit_body(body);
+    for name in globals.names {
+        bindings.bind(name, false);
+    }
+    bindings.bound.into_iter().filter(|(_, falsy)| *falsy).map(|(name, _)| name).collect()
+}
+
+// The names the module binds in its own scope, each with whether its only binding is a false constant. A function or a
+// class binds its own name only, as what its body binds is local to it.
+#[derive(Default)]
+struct Bindings<'a> {
+    bound: FxHashMap<&'a str, bool>,
+}
+
+impl<'a> Bindings<'a> {
+    fn bind(&mut self, name: &'a str, falsy: bool) {
+        self.bound.entry(name).and_modify(|once| *once = false).or_insert(falsy);
+    }
+
+    fn bind_target(&mut self, target: &'a Expr, falsy: bool) {
+        match target.as_name_expr() {
+            Some(name) => self.bind(name.id.as_str(), falsy),
+            None => self.visit_expr(target),
         }
     }
-    bound.into_iter().filter(|(_, falsy)| *falsy).map(|(name, _)| name).collect()
+}
+
+impl<'a> Visitor<'a> for Bindings<'a> {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        match stmt {
+            Stmt::Assign(ast::StmtAssign { targets, value, .. }) => {
+                let falsy = is_false_constant(value);
+                for target in targets {
+                    self.bind_target(target, falsy);
+                }
+                self.visit_expr(value);
+            }
+            Stmt::AnnAssign(ast::StmtAnnAssign { target, value, .. }) => {
+                self.bind_target(target, value.as_deref().is_some_and(is_false_constant));
+                if let Some(value) = value {
+                    self.visit_expr(value);
+                }
+            }
+            Stmt::FunctionDef(function) => self.bind(function.name.as_str(), false),
+            Stmt::ClassDef(class) => self.bind(class.name.as_str(), false),
+            Stmt::Import(ast::StmtImport { names, .. }) => {
+                for alias in names {
+                    self.bind(bound_name(alias), false);
+                }
+            }
+            Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
+                for alias in names.iter().filter(|alias| alias.name.as_str() != "*") {
+                    self.bind(bound_name(alias), false);
+                }
+            }
+            _ => visitor::walk_stmt(self, stmt),
+        }
+    }
+
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        if let Expr::Name(ast::ExprName { id, ctx: ExprContext::Store, .. }) = expr {
+            self.bind(id.as_str(), false);
+        }
+        visitor::walk_expr(self, expr);
+    }
+
+    fn visit_except_handler(&mut self, handler: &'a ast::ExceptHandler) {
+        let ast::ExceptHandler::ExceptHandler(ast::ExceptHandlerExceptHandler { name, .. }) = handler;
+        if let Some(name) = name {
+            self.bind(name.as_str(), false);
+        }
+        visitor::walk_except_handler(self, handler);
+    }
+
+    fn visit_pattern(&mut self, pattern: &'a ast::Pattern) {
+        match pattern {
+            ast::Pattern::MatchAs(ast::PatternMatchAs { name: Some(name), .. })
+            | ast::Pattern::MatchStar(ast::PatternMatchStar { name: Some(name), .. })
+            | ast::Pattern::MatchMapping(ast::PatternMatchMapping { rest: Some(name), .. }) => {
+                self.bind(name.as_str(), false);
+            }
+            _ => {}
+        }
+        visitor::walk_pattern(self, pattern);
+    }
+}
+
+// The names some function declares `global`, which rebinds them while the module runs.
+#[derive(Default)]
+struct Globals<'a> {
+    names: FxHashSet<&'a str>,
+}
+
+impl<'a> Visitor<'a> for Globals<'a> {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        if let Stmt::Global(ast::StmtGlobal { names, .. }) = stmt {
+            self.names.extend(names.iter().map(ast::Identifier::as_str));
+        }
+        visitor::walk_stmt(self, stmt);
+    }
+}
+
+// The name an import alias binds: its `as` name, or for `import pkg.module` the first part of the module's name.
+fn bound_name(alias: &ast::Alias) -> &str {
+    match &alias.asname {
+        Some(asname) => asname.as_str(),
+        None => alias.name.as_str().split('.').next().unwrap_or_default(),
+    }
+}
+
+// Whether a value is a literal that is false, as `0` or `False` is.
+fn is_false_constant(value: &Expr) -> bool {
+    value.is_literal_expr()
+        && matches!(Truthiness::from_expr(value, |_| false), Truthiness::False | Truthiness::Falsey | Truthiness::None)
 }

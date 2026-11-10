@@ -97,10 +97,10 @@ once in each module on its first statement, and a block inside another one, as t
 holds, is left to the outer one. The report names the other modules where their copy starts: up to three, then a count
 of the rest.
 
-Statements match when their tokens match. Comments, layout, imports and docstrings do not count. Identifiers and
-literals must match exactly, so a copy with a renamed variable does not match. Statements are compared by a hash of
-their tokens first and by the tokens themselves before a report, so two different statements whose hashes collide never
-match.
+Statements match when their tokens match, and the blocks they nest in match too, so the same statements under another
+`if` do not. Comments, layout, indentation width, imports and docstrings do not count. Identifiers and literals must
+match exactly, so a copy with a renamed variable does not match. Statements are compared by a hash of their tokens first
+and by the tokens themselves before a report, so two different statements whose hashes collide never match.
 
 ### Active on
 

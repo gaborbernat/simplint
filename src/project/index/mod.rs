@@ -357,6 +357,7 @@ impl Project {
             mut opaque_names,
             computed_writes,
             written,
+            module_values,
         } = Gathered::of(&indexed, resolver, &test_modules, &test_support);
         for (file, name) in plugin_names {
             referenced.entry(file).or_default().insert(name.clone());
@@ -461,7 +462,7 @@ impl Project {
             star_sources,
             roles,
             library_api,
-            test_only: only_tests(from_tests, &from_others),
+            test_only: only_tests(from_tests, &from_others, &module_values),
             uncaught_exceptions,
             exception_types,
             hook_classes,
@@ -588,6 +589,7 @@ struct Gathered<'r> {
     runtime: RuntimeGraph,
     computed_writes: FxHashSet<FileId>,
     written: FxHashMap<FileId, FxHashSet<String>>,
+    module_values: FxHashSet<FileId>,
 }
 
 impl<'r> Gathered<'r> {
@@ -609,6 +611,9 @@ impl<'r> Gathered<'r> {
             }
             let uses = module.constructors.iter().map(|(file, uses)| (*file, uses.as_slice())).collect();
             let production = !test_modules.contains(&id) && !test_support.contains(&id);
+            if production {
+                gathered.module_values.extend(module.values.iter().copied());
+            }
             gathered.constructor_uses.push(FileUses {
                 caller: id,
                 path: resolver.files.path(id).to_path_buf(),
@@ -1086,16 +1091,21 @@ fn method_loads(calls: &mut RunCalls, files: &[(FileId, &FileFacts)]) {
     }
 }
 
-// The names each file's test modules use that no other file uses, so only tests use them.
+// The names each file's test modules use that no other file uses, so only tests use them. A production file that loads
+// a module as a value calls the module's functions through that value, which no import of a name shows, so none of the
+// module's names is used only by tests.
 fn only_tests(
     from_tests: FxHashMap<FileId, FxHashSet<String>>,
     from_others: &FxHashMap<FileId, FxHashSet<String>>,
+    module_values: &FxHashSet<FileId>,
 ) -> FxHashMap<FileId, FxHashSet<String>> {
     from_tests
         .into_iter()
         .map(|(file, names)| {
             let others = from_others.get(&file);
-            let names = names.into_iter().filter(|name| !others.is_some_and(|others| others.contains(name)));
+            let used_as_value = module_values.contains(&file);
+            let names =
+                names.into_iter().filter(|name| !used_as_value && !others.is_some_and(|others| others.contains(name)));
             (file, names.collect())
         })
         .collect()

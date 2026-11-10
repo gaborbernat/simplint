@@ -166,6 +166,10 @@ pub(super) struct FactVisitor<'a> {
     // The module-level names bound once to a false constant, as `_false = 0`, whose `if` bodies never run.
     pub(super) falsy_constants: FxHashSet<&'a str>,
     pub(super) runtime_sites: Vec<ImportSite>,
+    // The names the file loads other than as the object of an attribute, as `fast` in `codec = fast` is.
+    pub(super) value_loads: FxHashSet<&'a str>,
+    // The ranges of the objects of the attributes the file reads, which are not loads as a value.
+    attribute_values: FxHashSet<TextRange>,
     // The facts only some rules read that the run collects.
     pub(super) parts: Parts,
 }
@@ -220,11 +224,25 @@ impl<'a> FactVisitor<'a> {
             root,
             parts,
             runtime_sites: Vec::new(),
+            value_loads: FxHashSet::default(),
+            attribute_values: FxHashSet::default(),
         }
     }
 }
 
 impl<'a> FactVisitor<'a> {
+    // The object of an attribute is read through the attribute's name, which an import shows, so only other loads count
+    // as values.
+    fn record_value_load(&mut self, expr: &'a Expr) {
+        if let Expr::Attribute(ast::ExprAttribute { value, .. }) = expr {
+            self.attribute_values.insert(value.range());
+        } else if let Expr::Name(ast::ExprName { id, ctx: ExprContext::Load, range, .. }) = expr
+            && !self.attribute_values.contains(range)
+        {
+            self.value_loads.insert(id.as_str());
+        }
+    }
+
     // Records what a `from` import binds and the import sites the index follows.
     fn import_from(&mut self, stmt: &'a Stmt, import: &'a ast::StmtImportFrom, top_level: bool) {
         let ast::StmtImportFrom { module, names, level, is_lazy, .. } = import;
@@ -759,6 +777,7 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
         {
             self.catch(classes);
         }
+        self.record_value_load(expr);
         match expr {
             Expr::Attribute(ast::ExprAttribute { value, attr, ctx: ExprContext::Store | ExprContext::Del, .. }) => {
                 self.assigned_attributes.push(attr.as_str().to_owned());
