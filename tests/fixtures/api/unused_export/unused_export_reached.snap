@@ -3,9 +3,9 @@ source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
 34:38 SMP402 `Tree` is in `__all__`, yet no other module imports it; list only what other modules use [unsafe fix: Remove `Tree`, `run`, `scan` from `__all__`]
-34:56 SMP402 `run` is in `__all__`, yet no other module imports it; list only what other modules use [unsafe fix: Remove `Tree`, `run`, `scan` from `__all__`]
-34:63 SMP402 `scan` is in `__all__`, yet no other module imports it; list only what other modules use [unsafe fix: Remove `Tree`, `run`, `scan` from `__all__`]
---- fixed (7 applied, 0 remaining) ---
+34:56 SMP402 `run` is in `__all__`, yet no other module imports it; list only what other modules use
+34:63 SMP402 `scan` is in `__all__`, yet no other module imports it; list only what other modules use
+--- fixed (5 applied, 0 remaining) ---
 from typing import Callable, TypeAlias
 
 

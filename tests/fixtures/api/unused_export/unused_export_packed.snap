@@ -3,8 +3,8 @@ source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
 11:5 SMP402 `spare_packed` is in `__all__`, yet no other module imports it; list only what other modules use [unsafe fix: Remove `spare_packed`, `other_packed` from `__all__`]
-11:36 SMP402 `other_packed` is in `__all__`, yet no other module imports it; list only what other modules use [unsafe fix: Remove `spare_packed`, `other_packed` from `__all__`]
---- fixed (2 applied, 0 remaining) ---
+11:36 SMP402 `other_packed` is in `__all__`, yet no other module imports it; list only what other modules use
+--- fixed (1 applied, 0 remaining) ---
 def used_packed() -> None: ...
 
 

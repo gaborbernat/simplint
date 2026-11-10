@@ -1,6 +1,7 @@
 use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
@@ -45,24 +46,34 @@ pub fn unused_export(checker: &Checker) {
     let elements = literal.map_or(&[][..], |(_, elements)| elements);
     // Ruff's fix for the import this leaves unused drops every binding of a name imported twice from one module, as in
     // `from .question import Question, Question as Alias`, the one still in use included.
+    let doubled = doubled_bindings(checker);
+    let unused_set: FxHashSet<&str> = unused.iter().copied().collect();
     let fix = literal
-        .filter(|_| !unused.iter().any(|name| is_double_import(checker, name) || project.is_read_opaquely(name)))
-        .and_then(|(value, elements)| removal(checker, statements.first()?, value, elements, &unused));
+        .filter(|_| !unused.iter().any(|name| doubled.contains(name) || project.is_read_opaquely(name)))
+        .and_then(|(value, elements)| removal(checker, statements.first()?, value, elements, &unused_set));
     let title = format!(
         "Remove {} from `__all__`",
         unused.iter().map(|name| format!("`{name}`")).collect::<Vec<_>>().join(", ")
     );
+    let mut ranges: FxHashMap<&str, TextRange> = FxHashMap::default();
+    for element in elements {
+        if let Some(text) = element.as_string_literal_expr() {
+            ranges.entry(text.value.to_str()).or_insert(element.range());
+        }
+    }
+    let mut offer = fix.map(|fix| (fix, title));
     for name in unused {
-        let range = elements
-            .iter()
-            .find(|element| element.as_string_literal_expr().is_some_and(|text| text.value.to_str() == name))
-            .map_or_else(|| statements.first().map_or_else(TextRange::default, Ranged::range), Ranged::range);
+        let range = ranges
+            .get(name)
+            .copied()
+            .unwrap_or_else(|| statements.first().map_or_else(TextRange::default, Ranged::range));
+        let (fix, title) = offer.take().map_or((None, String::new()), |(fix, title)| (Some(fix), title));
         checker.report_fix(
             Rule::UnusedExport,
             range,
             format!("`{name}` is in `__all__`, yet no other module imports it; list only what other modules use"),
-            fix.clone(),
-            title.clone(),
+            fix,
+            title,
         );
     }
 }
@@ -74,10 +85,16 @@ fn builds_all(stmt: &Stmt) -> bool {
 // Each run of unused names goes with the separator after it, or, at the end of the list, with the separator before it,
 // so the layout and comments around the names kept stay as they are, whatever the layout. A comment inside a run may
 // belong to a removed name, so the fix leaves such a list alone.
-fn removal(checker: &Checker, statement: &Stmt, value: TextRange, elements: &[Expr], unused: &[&str]) -> Option<Fix> {
+fn removal(
+    checker: &Checker,
+    statement: &Stmt,
+    value: TextRange,
+    elements: &[Expr],
+    unused: &FxHashSet<&str>,
+) -> Option<Fix> {
     let source = checker.source;
     let is_unused =
-        |element: &Expr| element.as_string_literal_expr().is_some_and(|text| unused.contains(&text.value.to_str()));
+        |element: &Expr| element.as_string_literal_expr().is_some_and(|text| unused.contains(text.value.to_str()));
     let (open, close) = if source[value].starts_with('[') { ("[", "]") } else { ("(", ")") };
     let kept = elements.iter().filter(|element| !is_unused(element)).count();
     if kept == 0 {
@@ -138,21 +155,21 @@ fn applicability(checker: &Checker) -> Applicability {
     }
 }
 
-// Whether `name` is bound by importing a name the module also imports under another binding from the same module.
-fn is_double_import(checker: &Checker, name: &str) -> bool {
+// The names bound by importing a name the module also imports under another binding from the same module.
+fn doubled_bindings<'a>(checker: &Checker<'a>) -> FxHashSet<&'a str> {
     let imports: Vec<&ast::StmtImportFrom> = checker.body().iter().filter_map(Stmt::as_import_from_stmt).collect();
-    imports.iter().any(|import| {
-        import.names.iter().any(|alias| {
-            alias_binding(alias) == name
-                && imports
-                    .iter()
-                    .filter(|other| import_source(other) == import_source(import))
-                    .flat_map(|other| &other.names)
-                    .filter(|other| other.name.as_str() == alias.name.as_str())
-                    .count()
-                    > 1
-        })
-    })
+    let mut counts: FxHashMap<((u32, Option<&str>), &str), usize> = FxHashMap::default();
+    for import in &imports {
+        for alias in &import.names {
+            *counts.entry((import_source(import), alias.name.as_str())).or_default() += 1;
+        }
+    }
+    imports
+        .iter()
+        .flat_map(|import| import.names.iter().map(move |alias| (import_source(import), alias)))
+        .filter(|(source, alias)| counts[&(*source, alias.name.as_str())] > 1)
+        .map(|(_, alias)| alias_binding(alias))
+        .collect()
 }
 
 fn import_source(import: &ast::StmtImportFrom) -> (u32, Option<&str>) {

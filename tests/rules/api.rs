@@ -206,6 +206,18 @@ fn missing_from_all_keeps_a_noqa_another_name_on_its_line_needs() {
     );
 }
 
+// Each report of a listing shows the whole fix in the full output, so a module with many missing names shows it once.
+#[test]
+fn missing_from_all_shows_the_fix_once_for_many_names() {
+    let names: Vec<String> = (0..200).map(|index| format!("f{index}")).collect();
+    let module =
+        (0..200).map(|index| format!("def f{index}() -> int:\n    return {index}\n\n\n")).collect::<Vec<_>>().concat();
+    let root = common::project(&[("enc.py", &module), ("use.py", &format!("from enc import {}\n", names.join(", ")))]);
+    let (_, stdout, _) =
+        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP401", "--output-format", "full"]);
+    assert_eq!(stdout.matches("help: Add ").count(), 1, "{stdout}");
+}
+
 // A name bound only under `if TYPE_CHECKING:` exists for type checkers alone, so listing it would make `import *` fail,
 // while a name the module also binds at run time is still reported.
 #[test]
