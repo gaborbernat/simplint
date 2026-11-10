@@ -612,6 +612,7 @@ pub(crate) fn init_fields(
     }
     let keyword_only = keyword_is_true(decorator, "kw_only");
     let mut rest_keyword_only = false;
+    let mut seen: FxHashSet<String> = fields.iter().cloned().collect();
     let declared = class.body.iter().filter_map(|stmt| {
         let field = stmt.as_ann_assign_stmt()?;
         Some((field.target.as_name_expr()?.id.as_str(), field))
@@ -651,7 +652,7 @@ pub(crate) fn init_fields(
         }
         let in_init = flag("init", true)?;
         let by_keyword = flag("kw_only", keyword_only || rest_keyword_only)?;
-        if in_init && !by_keyword && !fields.iter().any(|field| field == name) {
+        if in_init && !by_keyword && seen.insert(name.to_owned()) {
             fields.push(name.to_owned());
         }
     }
