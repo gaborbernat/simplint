@@ -275,7 +275,7 @@ impl<'a> FileIndex<'a> {
 
     // The index as it holds for `source`. The cycle and repeated statements it keeps for the file are ranges
     // of the source it read, so a source that fixes have changed since, which the fix loop lints, has none of them;
-    // the next round indexes the fixed file again.
+    // a fix round lints the fixed file again, when it reports one.
     pub fn at(self, source: &str) -> Self {
         if self.source == Some(source_digest(source)) { self } else { Self { cycle: None, duplicates: &[], ..self } }
     }

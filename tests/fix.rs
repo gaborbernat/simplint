@@ -730,3 +730,23 @@ fn import_cycle_survives_a_fix_before_the_import() {
     let (code, stdout, _) = check(root.path(), &["--fix", "--select", "SMP308,SMP504"]);
     assert_eq!((code, stdout.contains("a.py:5:1: SMP308")), (1, true));
 }
+
+// Each module's walrus fix leaves the cycle that closes through the other module standing, so the rewritten modules
+// are linted again and keep their import-cycle reports.
+#[test]
+fn fix_keeps_the_import_cycle_report_of_a_rewritten_file() {
+    let root = project(&[
+        (
+            "alpha.py",
+            "from beta import beta_value\n\n\ndef alpha_value(source):\n    found = source.get(\"alpha\")\n    if found is not \
+             None:\n        return found\n    return beta_value()\n",
+        ),
+        (
+            "beta.py",
+            "from alpha import alpha_value\n\n\ndef beta_value():\n    found = alpha_value({})\n    if found is not None:\n        \
+             return found\n    return 0\n",
+        ),
+    ]);
+    let (code, stdout, _) = check(root.path(), &["--fix", "--select", "SMP308,SMP502"]);
+    assert_eq!((code, stdout.matches("SMP308").count()), (1, 2));
+}
