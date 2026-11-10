@@ -2750,8 +2750,7 @@ fn patched_module_attribute_keeps_module_reads(test: &str) {
     "pkg/setup.py",
     "from pkg import exc\n\nexc._version_token = 1\n",
     "pkg/use.py:5:12: SMP304 Import `Error` from `pkg.exc` instead of reaching it through the module\npkg/use.py:5:23: \
-     SMP304 Import `Other` from `pkg.exc` instead of reaching it through the module\nFound 2 errors.\n2 unsafe fixes \
-     available with `--fix --unsafe-fixes`.\n" ; "store"
+     SMP304 Import `Other` from `pkg.exc` instead of reaching it through the module\nFound 2 errors.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ; "store"
 )]
 #[test_case(
     "pkg/test_use.py",

@@ -1,0 +1,14 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:24 SMP301 Annotations are evaluated lazily from Python 3.14; drop `from __future__ import annotations` [unsafe fix: Remove the `annotations` future import]
+--- fixed (1 applied, 0 remaining) ---
+
+MYPY = False
+if MYPY:
+    from decimal import Decimal
+
+
+def price(amount: Decimal) -> Decimal:
+    return amount

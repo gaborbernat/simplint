@@ -5,6 +5,7 @@ use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::helpers::is_dunder;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
+use ruff_python_stdlib::builtins::is_python_builtin;
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::FxHashMap;
 
@@ -47,8 +48,12 @@ pub fn module_attribute_import(checker: &Checker) {
         attributes.sort_unstable_by_key(|attribute| attribute.range.start());
         let path = module_path(statement, alias);
         // The fix replaces the import, so it is offered only when every use of the module is convertible: a single
-        // import, no stores, no computed write the import would miss, and each name importable from the module.
-        let mut convertible = aliases(statement).len() == 1 && !module.computed_written;
+        // import, no stores, no computed write the import would miss, each name importable from the module, and no
+        // other module that imports or reads the bound name, which the replaced import would no longer bind.
+        let mut convertible = aliases(statement).len() == 1
+            && !module.computed_written
+            && !checker.project().is_referenced(&module.bound)
+            && !checker.dunder_all().may_list(&module.bound);
         let private_path = path.split('.').any(|part| Visibility::of(part) == Visibility::Private);
         let mut reports = Vec::new();
         for attribute in attributes {
@@ -62,14 +67,16 @@ pub fn module_attribute_import(checker: &Checker) {
             // attribute after the import would have bound it.
             let rebound =
                 module.rebound.contains(attribute.name) || checker.project().is_attribute_assigned(attribute.name);
+            // A builtin's name would shadow the builtin the module may still call once the name is imported.
             convertible &= !private_path
                 && Visibility::of(attribute.name) != Visibility::Private
                 && module.defined.contains(attribute.name)
                 && !is_shadowed(checker, attribute)
-                && !rebound;
+                && !rebound
+                && !is_python_builtin(attribute.name, checker.settings.from_ruff.target_version.minor, false);
             reports.push(attribute);
         }
-        let fix = convertible.then(|| {
+        let mut fix = convertible.then(|| {
             let names: Vec<&str> = reports.iter().map(|attribute| attribute.name).unique().collect();
             let import = Edit::range_replacement(
                 format!("{}from {path} import {}", lazy_prefix(statement), names.join(", ")),
@@ -79,19 +86,18 @@ pub fn module_attribute_import(checker: &Checker) {
                 reports.iter().map(|attribute| Edit::range_replacement(attribute.name.to_owned(), attribute.range));
             Fix::unsafe_edits(import, accesses)
         });
+        // The fix rewrites the import and every access, so only the first report carries it: Ruff renders a report's
+        // fix in full, and repeating it on every access made output slow on modules with many accesses.
         for attribute in reports {
             let message =
                 format!("Import `{}` from `{path}` instead of reaching it through the module", attribute.name);
-            match &fix {
-                Some(fix) => checker.report_fix(
-                    Rule::ModuleAttributeImport,
-                    attribute.range,
-                    message,
-                    Some(fix.clone()),
-                    format!("Import the names from `{path}`"),
-                ),
-                None => checker.report(Rule::ModuleAttributeImport, attribute.range, message),
-            }
+            checker.report_fix(
+                Rule::ModuleAttributeImport,
+                attribute.range,
+                message,
+                fix.take(),
+                format!("Import the names from `{path}`"),
+            );
         }
     }
 }

@@ -314,8 +314,10 @@ writer = DbWriter()
 
 **Unsafe fix:** the fix rewrites the import to bind the names, so the object is bound when the module loads. A test that
 patches the module attribute later no longer reaches the name. The fix replaces the import and every `findings.Name`
-access in the file, and it is offered only when every use of the module is such an access to a name the module defines
-and no computed write, such as `setattr(module, name, value)`, may set a name of the module.
+access in the file, and it is offered only when every use of the module is such an access to a name the module defines,
+no computed write, such as `setattr(module, name, value)`, may set a name of the module, no other module of the run
+imports or reads the module's name, and `__all__` does not list it, since the replaced import would no longer bind it.
+The fix is attached to the first report only, since it covers all of them.
 
 ```python context file=pkg/__init__.py
 # A package.
@@ -336,6 +338,35 @@ writer = findings.DbWriter()
 from .findings import DbWriter
 
 writer = DbWriter()
+```
+
+The fix rewrites every access in the file, so only the first report below carries it, and the second has none.
+
+```python context file=pkg/__init__.py
+# A package.
+```
+
+```python context file=pkg/findings.py
+class DbWriter:
+    pass
+
+
+class Reader:
+    pass
+```
+
+```python report file=pkg/consumer.py
+from . import findings
+
+writer = findings.DbWriter()
+reader = findings.Reader()
+```
+
+```python fixed file=pkg/consumer.py
+from .findings import DbWriter, Reader
+
+writer = DbWriter()
+reader = Reader()
 ```
 
 A use the fix cannot rewrite keeps the report without a fix. Here `findings.__name__` is a module dunder, so `DbWriter`
@@ -381,6 +412,89 @@ from . import findings
 
 def make[Item](kind: type[Item]) -> object:
     return findings.Item()
+```
+
+A name that is a Python builtin keeps the report without a fix, since the bare name would shadow the builtin that the
+module may still call. Here `set` is the attribute reached through `findings`, and the module also calls the builtin
+`set`.
+
+```python context file=pkg/__init__.py
+# A package.
+```
+
+```python context file=pkg/findings.py
+def set(key, value):
+    return key, value
+```
+
+```python report file=pkg/consumer.py
+from . import findings
+
+configured = findings.set("a", 1)
+values = set([1, 2])
+```
+
+```python fixed file=pkg/consumer.py
+from . import findings
+
+configured = findings.set("a", 1)
+values = set([1, 2])
+```
+
+A name that another file of the run imports from this module keeps the report without a fix, since the replaced import
+would no longer bind it here. Here `pkg/other.py` imports `findings` from `pkg.consumer`.
+
+```python context file=pkg/__init__.py
+# A package.
+```
+
+```python context file=pkg/findings.py
+class DbWriter:
+    pass
+```
+
+```python context file=pkg/other.py
+from .consumer import findings
+```
+
+```python report file=pkg/consumer.py
+from . import findings
+
+writer = findings.DbWriter()
+```
+
+```python fixed file=pkg/consumer.py
+from . import findings
+
+writer = findings.DbWriter()
+```
+
+A module name that the file lists in `__all__` keeps the report without a fix, since the replaced import would stop
+binding the name the file exports. Here `pkg/api.py` re-exports `findings`.
+
+```python context file=pkg/__init__.py
+# A package.
+```
+
+```python context file=pkg/findings.py
+class DbWriter:
+    pass
+```
+
+```python report file=pkg/api.py
+from . import findings
+
+__all__ = ["findings"]
+
+writer = findings.DbWriter()
+```
+
+```python fixed file=pkg/api.py
+from . import findings
+
+__all__ = ["findings"]
+
+writer = findings.DbWriter()
 ```
 
 A `lazy` import stays lazy after the fix, so the module still loads on first use of a name.
