@@ -23,6 +23,8 @@ use crate::common::{self, check, read};
 #[test_case("walrus-candidate", "walrus_candidate_dynamic.py", "py314" ; "walrus_candidate_computed_all")]
 #[test_case("walrus-candidate", "walrus_candidate_listed.py", "py314" ; "walrus_candidate_listed_in_all")]
 #[test_case("walrus-candidate", "walrus_candidate_width.py", "py314" ; "walrus_candidate_header_width")]
+#[test_case("walrus-candidate", "walrus_candidate_locals.py", "py314" ; "walrus_candidate_locals")]
+#[test_case("walrus-candidate", "walrus_candidate_globals.py", "py314" ; "walrus_candidate_globals")]
 #[test_case("single-caller-helper", "single_caller_helper.py", "py314" ; "single_caller_helper")]
 #[test_case("single-caller-helper", "single_caller_helper_dynamic.py", "py314" ; "single_caller_helper_computed_all")]
 #[test_case("single-caller-helper", "tests/test_single_caller_helper_from_test.py", "py314" ; "single_caller_helper_from_test")]

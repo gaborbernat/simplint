@@ -10,7 +10,9 @@ use crate::layout::joined_width;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::statement_deletion;
-use crate::rules::logic::inline::{declared_outer, fits_line, for_each_scoped_body, inlined_text, leading_name};
+use crate::rules::logic::inline::{
+    LOCALS_READERS, declared_outer, fits_line, for_each_scoped_body, inlined_text, leading_name,
+};
 use crate::rules::{expr_mentions, has_version_gate, needs_parentheses};
 
 pub fn walrus_candidate(checker: &Checker) {
@@ -171,7 +173,12 @@ fn candidate<'a>(
         ),
     };
     let mentions = mentions.get_or_init(|| Mentions::of(checker.body()));
+    // `globals()` reads the module's names, so it keeps only a module-level name alive.
     if shared
+        || LOCALS_READERS
+            .into_iter()
+            .chain(matches!(scope, Scope::Module).then_some("globals"))
+            .any(|reader| mentions.within(reader, scope_range))
         || mentions.within(name, TextRange::new(scope_range.start(), assign.start()))
         || mentions.within(name, TextRange::new(if_stmt.end(), scope_range.end()))
     {
