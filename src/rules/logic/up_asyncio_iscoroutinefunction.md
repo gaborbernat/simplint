@@ -100,6 +100,35 @@ is offered when:
       return asyncio.iscoroutinefunction(task)
   ```
 
+- the module docstring shares its line with code, since an import above it would leave `__doc__` as `None`.
+
+  ```toml config
+  [project]
+  requires-python = ">=3.10"
+  ```
+
+  ```python report
+  # fmt: off
+  """Task checks."""; import sys
+  # fmt: on
+  import asyncio
+
+
+  def check(task):
+      return asyncio.iscoroutinefunction(task)
+  ```
+
+  ```python fixed
+  # fmt: off
+  """Task checks."""; import sys
+  # fmt: on
+  import asyncio
+
+
+  def check(task):
+      return asyncio.iscoroutinefunction(task)
+  ```
+
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

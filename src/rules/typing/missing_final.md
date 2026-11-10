@@ -467,6 +467,18 @@ To make `Final` available, the fix picks the first of these that applies:
 A statement that shares the docstring's line keeps the report without a fix, since an import above the docstring would
 leave `__doc__` as `None`.
 
+```python report
+# fmt: off
+"""Settings."""; TIMEOUT = 30
+# fmt: on
+```
+
+```python fixed
+# fmt: off
+"""Settings."""; TIMEOUT = 30
+# fmt: on
+```
+
 A `Final` imported only under [`if TYPE_CHECKING:`](https://docs.python.org/3/library/typing.html#typing.TYPE_CHECKING)
 does not count as bound when annotations are evaluated eagerly, which is before Python 3.14 without
 `from __future__ import annotations`. In that case the fix adds a runtime import.
