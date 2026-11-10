@@ -1,5 +1,103 @@
 # Changelog
 
+## 0.10.1 (2026-11-10)
+
+<a name="release-0-10-1"></a>
+
+<a name="release-0-10-1-fixed"></a>
+
+### Fixed
+
+- `--add-ignore` no longer adds `numeric-ignore` to a comment whose numeric codes it renames, which left a selector that
+  [`unused-ignore`](src/rules/comments/unused_ignore.md) (SMP009) then reported
+  ([#83](https://github.com/gaborbernat/simplint/pull/83)) by [@gaborbernat](https://github.com/gaborbernat).
+- `--add-noqa` and `--add-ignore` keep what follows the codes of a comment they merge into: its reason and any later
+  comment, such as `# type: ignore[import]` or `# pragma: no cover`. A reason passed to the flag replaces only the old
+  reason ([#83](https://github.com/gaborbernat/simplint/pull/83)) by [@gaborbernat](https://github.com/gaborbernat).
+- A `.ruff_cache` directory, or the `simplint` directory in it, that a link in the repository points outside the project
+  no longer receives simplint's cache, its `CACHEDIR.TAG` or its `.gitignore`; the run warns and does not cache
+  ([#85](https://github.com/gaborbernat/simplint/pull/85)) by [@gaborbernat](https://github.com/gaborbernat).
+- The cache keys each file by its size as well as its modification time and permissions, so a file rewritten within one
+  tick of a coarse clock, or copied with its modification time kept (`cp -p`, `rsync -t`), is checked again instead of
+  reported from its old cached result ([#85](https://github.com/gaborbernat/simplint/pull/85)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- A cache file that was damaged or edited by hand, holding a range that ends before it starts or past the end of its
+  file, is treated as a cache miss instead of crashing the run ([#85](https://github.com/gaborbernat/simplint/pull/85))
+  by [@gaborbernat](https://github.com/gaborbernat).
+- Cached import facts are collected again when a file's module path changes, as when Ruff's `src` setting moves the
+  search roots, instead of resolving relative imports against the old path until the file changes
+  ([#83](https://github.com/gaborbernat/simplint/pull/83)) by [@gaborbernat](https://github.com/gaborbernat).
+- Fixes that insert lines, such as moving definitions, adding `__all__` or imports, flattening test classes and moving
+  constants into functions, write CRLF line endings in files that use them instead of bare LF
+  ([#83](https://github.com/gaborbernat/simplint/pull/83)) by [@gaborbernat](https://github.com/gaborbernat).
+- An `extend`ed configuration that a link in the repository points outside the project is now named without its text
+  when Ruff cannot load it, as one outside the project by path already was
+  ([#85](https://github.com/gaborbernat/simplint/pull/85)) by [@gaborbernat](https://github.com/gaborbernat).
+- A `# ruff: file-ignore[...]` comment suppresses simplint rules by name, such as `single-letter-name`, as a line's
+  `# ruff: ignore[...]` already did; before, only codes matched ([#83](https://github.com/gaborbernat/simplint/pull/83))
+  by [@gaborbernat](https://github.com/gaborbernat).
+- When a fix breaks syntax or does not converge only in combination with other withdrawn fixes, simplint drops that
+  combination and keeps fixing the file, instead of reverting every fix in it and printing the bug report once per
+  attempt ([#83](https://github.com/gaborbernat/simplint/pull/83)) by [@gaborbernat](https://github.com/gaborbernat).
+- `--fix` writes the fixed source into the file in place, as Ruff does, so the file keeps its owner, hard links, ACLs
+  and extended attributes instead of being replaced by a new file owned by whoever ran simplint
+  ([#85](https://github.com/gaborbernat/simplint/pull/85)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`absolute-sibling-import`](src/rules/imports/absolute_sibling_import.md) (SMP302) looks for a flake8-lazy hook only
+  up to the linted project when no repository holds it, so a `.pre-commit-config.yaml` or `prek.toml` in the home
+  directory no longer turns the rule off. A hook configuration or a `hatch.toml` that cannot be read or parsed counts as
+  absent, with a warning, instead of stopping the run ([#83](https://github.com/gaborbernat/simplint/pull/83)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- A file the run finds both by its own path and through a link inside the project is linted and fixed once, by its own
+  path, instead of twice in parallel, where the second write failed and the reports showed twice
+  ([#85](https://github.com/gaborbernat/simplint/pull/85)) by [@gaborbernat](https://github.com/gaborbernat).
+- The fixes of [`up-context-var-token-reset`](src/rules/logic/up_context_var_token_reset.md),
+  [`up-chdir-restore`](src/rules/logic/up_chdir_restore.md),
+  [`up-warnings-deprecated`](src/rules/logic/up_warnings_deprecated.md) and
+  [`early-assignment`](src/rules/logic/early_assignment.md) write the file's own line ending, so a CRLF file no longer
+  gets LF lines mixed in ([#83](https://github.com/gaborbernat/simplint/pull/83)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`single-user-constant`](src/rules/layout/single_user_constant.md) keeps a list, set or dict at module level when the
+  function returns it, passes it to another function or binds another name to it, since a fresh copy on each call would
+  lose the state other code changed ([#83](https://github.com/gaborbernat/simplint/pull/83)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `private-import-path` accepts imports from a matching source file when the test mirrors a private package path or
+  lives in a test subtree named after that module. The test tree may omit the top-level package directory; a `.pyi` can
+  identify a compiled module ([#81](https://github.com/gaborbernat/simplint/pull/81)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `missing-from-all` leaves names used only by tests out of `__all__`, so testing a private implementation does not make
+  it public ([#81](https://github.com/gaborbernat/simplint/pull/81)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`single-use-variable`](src/rules/logic/single_use_variable.md) marks its fix unsafe when the value calls something
+  and the next statement first formats or unpacks a name, or reads a name declared `global` or `nonlocal`, since the
+  call could change what that read sees ([#83](https://github.com/gaborbernat/simplint/pull/83)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`up-context-var-token-reset`](src/rules/logic/up_context_var_token_reset.md) only reports a `set`/`reset` pair on a
+  name assigned a `contextvars.ContextVar` or a parameter annotated as one, so another class's `set` is no longer
+  rewritten into a `with` block that raises `TypeError` ([#83](https://github.com/gaborbernat/simplint/pull/83)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`up-re-error-alias`](src/rules/logic/up_re_error_alias.md) leaves `re.error = ...` and `del re.error` alone, which
+  patch the module rather than read the exception ([#83](https://github.com/gaborbernat/simplint/pull/83)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`test-class`](src/rules/testing/test_class.md) keeps the comment lines directly above each method when it flattens a
+  class, and offers no fix when a comment in the class belongs to no method. The fix used to drop them
+  ([#83](https://github.com/gaborbernat/simplint/pull/83)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`mock-assertion-typo`](src/rules/testing/mock_assertion_typo.md) only fixes a misspelled assertion called on a line
+  of its own or as the whole test of an `assert`, and drops that `assert`. Elsewhere the rename left a bound method that
+  is always true, or a `None` the code went on to use ([#83](https://github.com/gaborbernat/simplint/pull/83)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- `module-variable-prefix` keeps the declared name of a matching `TypeVar`, `TypeVarTuple` or `ParamSpec` assignment
+  ([#84](https://github.com/gaborbernat/simplint/pull/84)) by [@gaborbernat](https://github.com/gaborbernat).
+- `single-letter-name` accepts conventional type parameter names in PEP 695 declarations and matching `TypeVar`,
+  `TypeVarTuple` and `ParamSpec` assignments ([#84](https://github.com/gaborbernat/simplint/pull/84)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`module-variable-case`](src/rules/naming/module_variable_case.md) and
+  [`single-user-constant`](src/rules/layout/single_user_constant.md) change the case of non-ASCII letters too, so
+  `café_rate` becomes `CAFÉ_RATE` instead of `CAFé_RATE` ([#83](https://github.com/gaborbernat/simplint/pull/83)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`unused-ignore`](src/rules/comments/unused_ignore.md) (SMP009) reports unused numeric selectors while
+  `numeric-ignore` (SMP008) is on. SMP008 reports on the codes each removal edits, which kept every numeric selector
+  until SMP008's fix renamed it ([#83](https://github.com/gaborbernat/simplint/pull/83)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+
 ## 0.10.0 (2026-11-10)
 
 <a name="release-0-10-0"></a>
