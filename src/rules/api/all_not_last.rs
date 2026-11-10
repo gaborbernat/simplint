@@ -1,4 +1,6 @@
 use ruff_diagnostics::{Edit, Fix};
+use ruff_python_ast::helpers::any_over_body;
+use ruff_python_ast::{self as ast, Expr};
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange};
 
@@ -7,7 +9,7 @@ use crate::lint::registry::Rule;
 use crate::rules::edits::lines_with_trailing_blanks;
 use crate::rules::is_alone_on_lines;
 use crate::syntax::is_main_guard;
-use crate::syntax::{all_binding, all_mutation};
+use crate::syntax::{all_binding, all_mutation, is_name};
 
 pub fn all_not_last(checker: &Checker) {
     let body = checker.body();
@@ -25,8 +27,10 @@ pub fn all_not_last(checker: &Checker) {
     let source = checker.source;
     // A later `__all__ += [...]` inside a block extends the list, so it must still find it bound above.
     let semantic = checker.semantic();
+    // A module that reads `__all__` at run time, by attribute, string or `globals()`, needs the list bound above it.
     let referenced_later = semantic.references_to("__all__").iter().any(|reference| reference.statement > last)
-        || semantic.bindings("__all__").iter().any(|binding| binding.range.start() > stmt.end());
+        || semantic.bindings("__all__").iter().any(|binding| binding.range.start() > stmt.end())
+        || any_over_body(&body[last + 1..], reads_all_dynamically);
     let fix = (positions.len() == 1 && !referenced_later && is_alone_on_lines(source, stmt.range())).then(|| {
         // A `# fmt: off` / `# fmt: on` pair around `__all__` keeps `ruff format` off its layout, which can hold a
         // suppression comment for several names on one line, so the pair moves with it.
@@ -53,4 +57,15 @@ pub fn all_not_last(checker: &Checker) {
         fix,
         "Move `__all__` to the end of the module",
     );
+}
+
+fn reads_all_dynamically(expr: &Expr) -> bool {
+    match expr {
+        Expr::Attribute(ast::ExprAttribute { attr, ctx, .. }) => attr.as_str() == "__all__" && ctx.is_load(),
+        Expr::StringLiteral(literal) => literal.value.to_str() == "__all__",
+        Expr::Call(ast::ExprCall { func, .. }) => {
+            ["globals", "vars", "dir"].into_iter().any(|name| is_name(func, name))
+        }
+        _ => false,
+    }
 }

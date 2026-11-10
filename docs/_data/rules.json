@@ -9680,7 +9680,7 @@
     "name": "all-not-last",
     "summary": "`__all__` not at the end of the module",
     "fix": "Sometimes",
-    "explanation": "Flags modules where the last top-level statement that binds `__all__` is not the last statement. At the end of the\nmodule the export list comes after every definition it names, so it reads as a summary of what the module provides.\n\n## Why is this bad?\n\nReaders look for the export list in one place. At the end of the module it comes after every definition it names, so it\nreads as a summary of what the module provides. [missing-from-all](SMP401.html) and [all-format](SMP405.html) also check\n`__all__`.\n\n## Example\n\n```python report\n__all__ = [\"main\"]\n\n\ndef main() -> None:\n    run()\n\n\nif __name__ == \"__main__\":\n    main()\n```\n\nUse instead:\n\n```python ok\ndef main() -> None:\n    run()\n\n\n__all__ = [\"main\"]\n\n\nif __name__ == \"__main__\":\n    main()\n```\n\n## What it does\n\n### Active on\n\n- **Bindings of [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package) followed by other\n  statements**: the last top-level statement that binds `__all__` is reported when a statement comes after it, other\n  than a call on `__all__` (see Exceptions). An assignment, an annotated assignment or an augmented assignment binds it.\n\n  - an assignment, followed by a call:\n\n    ```python report\n    __all__ = [\"main\"]\n\n\n    def main() -> None:\n        pass\n\n\n    main()\n    ```\n\n  - an annotated assignment, followed by a call:\n\n    ```python report\n    __all__: list[str] = [\"main\"]\n\n\n    def main() -> None:\n        pass\n\n\n    main()\n    ```\n\n  - an augmented assignment such as `+=`, followed by a `def`:\n\n    ```python report\n    __all__ = []\n    __all__ += [\"main\"]\n\n\n    def main() -> None:\n        pass\n    ```\n\n  - a trailing `if` other than a `__main__` block, such as `if __name__ != \"__main__\":`, which counts as a regular\n    statement:\n\n    ```python report\n    __all__ = [\"main\"]\n\n\n    def main() -> None:\n        pass\n\n\n    if __name__ != \"__main__\":\n        main()\n    ```\n\n### Exceptions\n\n- **A trailing [`if __name__ == \"__main__\":`](https://docs.python.org/3/library/__main__.html#idiomatic-usage) block**:\n  it may follow `__all__`, since it runs the module as a script once everything above it is defined.\n\n  - written as `if __name__ == \"__main__\":`:\n\n    ```python ok\n    def main() -> None:\n        pass\n\n\n    __all__ = [\"main\"]\n\n\n    if __name__ == \"__main__\":\n        main()\n    ```\n\n  - with the operands swapped, as `if \"__main__\" == __name__:`:\n\n    ```python ok\n    def main() -> None:\n        pass\n\n\n    __all__ = [\"main\"]\n\n\n    if \"__main__\" == __name__:\n        main()\n    ```\n\n- **Calls on `__all__` after its binding**, such as `__all__.extend(...)` or `__all__.append(...)`: a call changes the\n  list the binding made, so the calls stay with it. The binding and its calls form one block, which must still be last.\n\n  ```python ok\n  def main() -> None:\n      pass\n\n\n  __all__ = [\"main\"]\n  __all__.extend([\"stop\"])\n  __all__.append(\"halt\")\n  ```\n\n  ```python report\n  __all__ = [\"main\"]\n  __all__.append(\"stop\")\n\n\n  def main() -> None:\n      pass\n  ```\n\n### Fix\n\nThe fix is safe. It moves the statement to the end of the module, before a trailing `__main__` block, with two blank\nlines before it, also when the file has no trailing newline. Comments on the lines above the statement stay where they\nare.\n\n```python report\n__all__ = [\"main\"]\n\n\ndef main() -> None:\n    run()\n\n\nif __name__ == \"__main__\":\n    main()\n```\n\n```python fixed\ndef main() -> None:\n    run()\n\n\n__all__ = [\"main\"]\n\n\nif __name__ == \"__main__\":\n    main()\n```\n\nThe fix is offered only when:\n\n- a single statement binds `__all__`\n- no later statement reads `__all__` or calls a method on it\n- the statement shares no line with other code\n\nWith several bindings or a later reader, moving the statement could change the value of `__all__` or what that reader\nsees.\n\n```python report\n__all__ = [\"main\"]\n__all__ += [\"stop\"]\n\n\ndef main() -> None:\n    pass\n```\n\n```python fixed\n__all__ = [\"main\"]\n__all__ += [\"stop\"]\n\n\ndef main() -> None:\n    pass\n```\n\n```python report\n__all__ = [\"main\"]\n\n\ndef main() -> None:\n    pass\n\n\nprint(__all__)\n```\n\n```python fixed\n__all__ = [\"main\"]\n\n\ndef main() -> None:\n    pass\n\n\nprint(__all__)\n```\n\n```python report\n# fmt: off\n__all__ = [\"main\"]; VERSION = \"1\"\n# fmt: on\n\n\ndef main() -> None:\n    pass\n```\n\n```python fixed\n# fmt: off\n__all__ = [\"main\"]; VERSION = \"1\"\n# fmt: on\n\n\ndef main() -> None:\n    pass\n```\n\n### Related rules\n\n[all-format](SMP405.html) checks the shape of `__all__` itself: a list, not a tuple, with a trailing comma.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags modules where the last top-level statement that binds `__all__` is not the last statement. At the end of the\nmodule the export list comes after every definition it names, so it reads as a summary of what the module provides.\n\n## Why is this bad?\n\nReaders look for the export list in one place. At the end of the module it comes after every definition it names, so it\nreads as a summary of what the module provides. [missing-from-all](SMP401.html) and [all-format](SMP405.html) also check\n`__all__`.\n\n## Example\n\n```python report\n__all__ = [\"main\"]\n\n\ndef main() -> None:\n    run()\n\n\nif __name__ == \"__main__\":\n    main()\n```\n\nUse instead:\n\n```python ok\ndef main() -> None:\n    run()\n\n\n__all__ = [\"main\"]\n\n\nif __name__ == \"__main__\":\n    main()\n```\n\n## What it does\n\n### Active on\n\n- **Bindings of [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package) followed by other\n  statements**: the last top-level statement that binds `__all__` is reported when a statement comes after it, other\n  than a call on `__all__` (see Exceptions). An assignment, an annotated assignment or an augmented assignment binds it.\n\n  - an assignment, followed by a call:\n\n    ```python report\n    __all__ = [\"main\"]\n\n\n    def main() -> None:\n        pass\n\n\n    main()\n    ```\n\n  - an annotated assignment, followed by a call:\n\n    ```python report\n    __all__: list[str] = [\"main\"]\n\n\n    def main() -> None:\n        pass\n\n\n    main()\n    ```\n\n  - an augmented assignment such as `+=`, followed by a `def`:\n\n    ```python report\n    __all__ = []\n    __all__ += [\"main\"]\n\n\n    def main() -> None:\n        pass\n    ```\n\n  - a trailing `if` other than a `__main__` block, such as `if __name__ != \"__main__\":`, which counts as a regular\n    statement:\n\n    ```python report\n    __all__ = [\"main\"]\n\n\n    def main() -> None:\n        pass\n\n\n    if __name__ != \"__main__\":\n        main()\n    ```\n\n### Exceptions\n\n- **A trailing [`if __name__ == \"__main__\":`](https://docs.python.org/3/library/__main__.html#idiomatic-usage) block**:\n  it may follow `__all__`, since it runs the module as a script once everything above it is defined.\n\n  - written as `if __name__ == \"__main__\":`:\n\n    ```python ok\n    def main() -> None:\n        pass\n\n\n    __all__ = [\"main\"]\n\n\n    if __name__ == \"__main__\":\n        main()\n    ```\n\n  - with the operands swapped, as `if \"__main__\" == __name__:`:\n\n    ```python ok\n    def main() -> None:\n        pass\n\n\n    __all__ = [\"main\"]\n\n\n    if \"__main__\" == __name__:\n        main()\n    ```\n\n- **Calls on `__all__` after its binding**, such as `__all__.extend(...)` or `__all__.append(...)`: a call changes the\n  list the binding made, so the calls stay with it. The binding and its calls form one block, which must still be last.\n\n  ```python ok\n  def main() -> None:\n      pass\n\n\n  __all__ = [\"main\"]\n  __all__.extend([\"stop\"])\n  __all__.append(\"halt\")\n  ```\n\n  ```python report\n  __all__ = [\"main\"]\n  __all__.append(\"stop\")\n\n\n  def main() -> None:\n      pass\n  ```\n\n### Fix\n\nThe fix is safe. It moves the statement to the end of the module, before a trailing `__main__` block, with two blank\nlines before it, also when the file has no trailing newline. Comments on the lines above the statement stay where they\nare.\n\n```python report\n__all__ = [\"main\"]\n\n\ndef main() -> None:\n    run()\n\n\nif __name__ == \"__main__\":\n    main()\n```\n\n```python fixed\ndef main() -> None:\n    run()\n\n\n__all__ = [\"main\"]\n\n\nif __name__ == \"__main__\":\n    main()\n```\n\nThe fix is offered only when:\n\n- a single statement binds `__all__`\n- no later statement reads `__all__` or calls a method on it\n- no later statement reads `__all__` at run time, through an attribute such as `sys.modules[__name__].__all__`, a\n  `\"__all__\"` string or a call to `globals()`, `vars()` or `dir()`\n- the statement shares no line with other code\n\nWith several bindings or a later reader, moving the statement could change the value of `__all__` or what that reader\nsees. A module that reads `__all__` at run time still needs it bound above, so the statement is reported without a fix.\n\n```python report\nimport sys\n\n__all__ = [\"main\"]\n\n\ndef main() -> None:\n    pass\n\n\nprint(sys.modules[__name__].__all__)\n```\n\n```python report\n__all__ = [\"main\"]\n__all__ += [\"stop\"]\n\n\ndef main() -> None:\n    pass\n```\n\n```python fixed\n__all__ = [\"main\"]\n__all__ += [\"stop\"]\n\n\ndef main() -> None:\n    pass\n```\n\n```python report\n__all__ = [\"main\"]\n\n\ndef main() -> None:\n    pass\n\n\nprint(__all__)\n```\n\n```python fixed\n__all__ = [\"main\"]\n\n\ndef main() -> None:\n    pass\n\n\nprint(__all__)\n```\n\n```python report\n# fmt: off\n__all__ = [\"main\"]; VERSION = \"1\"\n# fmt: on\n\n\ndef main() -> None:\n    pass\n```\n\n```python fixed\n# fmt: off\n__all__ = [\"main\"]; VERSION = \"1\"\n# fmt: on\n\n\ndef main() -> None:\n    pass\n```\n\n### Related rules\n\n[all-format](SMP405.html) checks the shape of `__all__` itself: a list, not a tuple, with a trailing comma.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -9881,8 +9881,8 @@
         },
         {
           "section": "What it does",
-          "line": 192,
-          "end_line": 208,
+          "line": 194,
+          "end_line": 205,
           "config": null,
           "blocks": [
             {
@@ -9890,8 +9890,25 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 192,
-              "end_line": 199,
+              "line": 194,
+              "end_line": 205,
+              "source": "import sys\n\n__all__ = [\"main\"]\n\n\ndef main() -> None:\n    pass\n\n\nprint(sys.modules[__name__].__all__)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 207,
+          "end_line": 223,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 207,
+              "end_line": 214,
               "source": "__all__ = [\"main\"]\n__all__ += [\"stop\"]\n\n\ndef main() -> None:\n    pass\n"
             },
             {
@@ -9899,16 +9916,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 201,
-              "end_line": 208,
+              "line": 216,
+              "end_line": 223,
               "source": "__all__ = [\"main\"]\n__all__ += [\"stop\"]\n\n\ndef main() -> None:\n    pass\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 210,
-          "end_line": 230,
+          "line": 225,
+          "end_line": 245,
           "config": null,
           "blocks": [
             {
@@ -9916,8 +9933,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 210,
-              "end_line": 219,
+              "line": 225,
+              "end_line": 234,
               "source": "__all__ = [\"main\"]\n\n\ndef main() -> None:\n    pass\n\n\nprint(__all__)\n"
             },
             {
@@ -9925,16 +9942,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 221,
-              "end_line": 230,
+              "line": 236,
+              "end_line": 245,
               "source": "__all__ = [\"main\"]\n\n\ndef main() -> None:\n    pass\n\n\nprint(__all__)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 232,
-          "end_line": 250,
+          "line": 247,
+          "end_line": 265,
           "config": null,
           "blocks": [
             {
@@ -9942,8 +9959,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 232,
-              "end_line": 240,
+              "line": 247,
+              "end_line": 255,
               "source": "# fmt: off\n__all__ = [\"main\"]; VERSION = \"1\"\n# fmt: on\n\n\ndef main() -> None:\n    pass\n"
             },
             {
@@ -9951,8 +9968,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 242,
-              "end_line": 250,
+              "line": 257,
+              "end_line": 265,
               "source": "# fmt: off\n__all__ = [\"main\"]; VERSION = \"1\"\n# fmt: on\n\n\ndef main() -> None:\n    pass\n"
             }
           ]
