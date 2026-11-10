@@ -106,6 +106,28 @@ fn private_import_path(source: &str, expected: usize) {
     assert_eq!(stdout.matches("SMP310").count(), expected, "{stdout}");
 }
 
+#[test_case("tests/a/b/test_x.py", "from a.b._x import Name\n", 0 ; "paired_mirrored")]
+#[test_case("tests/test_x.py", "from _x import Name\n", 0 ; "paired_root")]
+#[test_case("a/b/test_x.py", "from a.b._x import Name\n", 0 ; "paired_colocated")]
+#[test_case("a/b/test_x.py", "from ._x import Name\n", 0 ; "paired_colocated_relative")]
+#[test_case("tests/a/b/test_x.py", "from ._x import Name\n", 1 ; "mirrored_relative")]
+#[test_case("tests/a/b/test_x.py", "from a.b._x import _Name\n", 0 ; "paired_private_name")]
+#[test_case("tests/a/b/test_x.py", "from a.b._other import Name\n", 1 ; "other_private_module")]
+#[test_case("tests/a/b/test_x.py", "from ._other import Name\n", 1 ; "other_relative_module")]
+#[test_case("tests/a/b/test_x.py", "from a.c._x import Name\n", 1 ; "other_package")]
+#[test_case("tests/a/b/test_x.py", "from .._x import Name\n", 1 ; "parent_relative")]
+#[test_case("tests/a/b/test_x.py", "from a.b._x.deep import Name\n", 1 ; "nested_private_module")]
+#[test_case("tests/a/b/test_x.py", "from a.b import _x\n", 1 ; "private_module_object")]
+#[test_case("tests/a/b/test_x.py", "import a.b._x\n", 1 ; "absolute_module_object")]
+#[test_case("tests/a/b/test_y.py", "from a.b._x import Name\n", 1 ; "unpaired_test")]
+#[test_case("tests/a/b/conftest.py", "from a.b._x import Name\n", 1 ; "fixture_module")]
+#[test_case("a/b/consumer.py", "from a.b._x import Name\n", 1 ; "production_absolute")]
+fn private_import_path_in_tests(file: &str, source: &str, expected: usize) {
+    let root = common::project(&[("a/b/_x.py", "Name = object()\n"), ("_x.py", "Name = object()\n"), (file, source)]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP310"]);
+    assert_eq!(stdout.matches("SMP310").count(), expected, "{stdout}");
+}
+
 #[test]
 fn private_module_object_import_reports_both_import_and_attribute() {
     let root = common::project(&[

@@ -1,4 +1,5 @@
 Flags private imports that reach beyond one direct relative module, and imports that bind a private module as an object.
+In tests, imports from private modules must match the test's path and name.
 
 ## Why is this bad?
 
@@ -46,10 +47,18 @@ re-export or replacing uses of a module object may require changes elsewhere.
 
 - **Private modules below a sibling**, such as `from ._api.helpers import API`.
 
+- **Unpaired test imports**, such as `tests/package/test_api.py` importing from `package._other`. A test of a private
+  module may import from the matching module only; other behavior should be reached through public interfaces.
+
 ### Exceptions
 
 - **One private name in a direct relative import**: `from ._api import API` lets the package use a private sibling to
-  build an API. `from .public import _helper` also stays within the same package level.
+  build an API outside tests. `from .public import _helper` also stays within the same package level.
+
+- **A paired test and private module**: `tests/package/test_api.py` may import names from `package._api`, and a
+  colocated `package/test_api.py` may import names from `package._api` or `._api`. The package path and the stem after
+  `test_` must match. A relative import from the mirrored test tree resolves inside that tree, so it is not paired with
+  the source module. Importing the private module as an object remains disallowed.
 
 - **Dunder names**: `__future__` and `__version__` do not count as private names.
 

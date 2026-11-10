@@ -416,8 +416,7 @@ writer = DbWriter()
 
 The rule reports `module._name` when `module` resolves to a file in this project. It does not check attributes of
 classes, functions or other values. Private names and private module paths receive no automatic fix: a replacement
-import can cross a package boundary or violate
-[private-import-path](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP310.html). Ruff's
+import can cross a package boundary or violate [private-import-path](SMP310.html). Ruff's
 [import-private-name](https://docs.astral.sh/ruff/rules/import-private-name/) (PLC2701) checks imports, not attribute
 access, so selecting it does not suppress this report.
 
