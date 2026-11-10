@@ -219,8 +219,9 @@ impl<'a> Suppressions<'a> {
     }
 
     // Ruff's `add_suppression_inner`: one comment per line naming every code reported there, merged into the line's
-    // comment of the same kind. A line with a blanket `# noqa` is left alone. Returns the number of lines changed and
-    // the new source.
+    // comment of the same kind. A blanket `# noqa` takes no codes, so a line with one gets no `# noqa`, while an ignore
+    // comment beside it still silences the reports the blanket one leaves. Returns the number of lines changed and the
+    // new source.
     pub fn add(
         &self,
         pending: &[(Diagnostic, TextSize)],
@@ -230,7 +231,9 @@ impl<'a> Suppressions<'a> {
         let mut codes: BTreeMap<TextSize, BTreeSet<String>> = BTreeMap::new();
         for (diagnostic, line) in pending {
             let directives = self.lines.get(line);
-            if directives.is_some_and(|directives| directives.noqa.as_ref().is_some_and(|(_, noqa)| noqa.is_blanket()))
+            if matches!(kind, SuppressionKind::Noqa)
+                && directives
+                    .is_some_and(|directives| directives.noqa.as_ref().is_some_and(|(_, noqa)| noqa.is_blanket()))
             {
                 continue;
             }
