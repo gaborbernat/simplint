@@ -434,6 +434,13 @@ configured = findings.set("a", 1)
 values = set([1, 2])
 ```
 
+```python fixed file=pkg/consumer.py
+from . import findings
+
+configured = findings.set("a", 1)
+values = set([1, 2])
+```
+
 A name that another file of the run imports from this module keeps the report without a fix, since the replaced import
 would no longer bind it here. Here `pkg/other.py` imports `findings` from `pkg.consumer`.
 

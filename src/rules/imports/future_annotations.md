@@ -337,6 +337,12 @@ The fix removes `annotations` from the import:
   VALUE = 1
   ```
 
+  ```python fixed
+  from __future__ import annotations  # kept for the docs build
+
+  VALUE = 1
+  ```
+
 After the fix, code that reads `__annotations__` and expects strings gets evaluated objects
 ([annotations best practices](https://docs.python.org/3/howto/annotations.html)).
 
