@@ -485,3 +485,20 @@ fn indistinct_error_class_counts_the_classes_a_tuple_or_suppress_catches(errors_
     assert!(stdout.contains("`PlainError`"), "{stdout}");
     assert!(!stdout.contains("`AError`") && !stdout.contains("`BError`"), "{stdout}");
 }
+
+// A base imported under another name is the class it names, so `frozen` would break its subclass, as it does for the
+// name itself. A base of another class keeps the fix.
+#[test_case("Release", "from models import Release", false ; "imported_base")]
+#[test_case("Base", "from models import Release as Base", false ; "aliased_base")]
+#[test_case("Base", "from models import Other as Base", true ; "aliased_other_class")]
+fn subclass_through_an_import_keeps_frozen_unset(base: &str, import: &str, fixed: bool) {
+    let root = common::project(&[
+        (
+            "models.py",
+            "from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n\n\nclass Other:\n    pass\n",
+        ),
+        ("main.py", &format!("{import}\n\n\nclass Tagged({base}):\n    pass\n")),
+    ]);
+    common::fix_unsafe(root.path(), "dataclass-frozen");
+    assert_eq!(common::read(root.path(), "models.py").contains("frozen=True"), fixed);
+}

@@ -831,10 +831,8 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
                 visitor::walk_stmt(self, stmt);
             }
             Stmt::ClassDef(class) => {
-                self.base_classes.extend(class.bases().iter().filter_map(|base| {
-                    UnqualifiedName::from_expr(base)
-                        .and_then(|name| name.segments().last().map(|last| (*last).to_owned()))
-                }));
+                let bases: Vec<String> = class.bases().iter().filter_map(|base| self.base_class(base)).collect();
+                self.base_classes.extend(bases);
                 self.walk_body(stmt, Body::Class);
             }
             Stmt::If(ast::StmtIf { test, body, elif_else_clauses, .. }) => {
@@ -1173,6 +1171,13 @@ pub(crate) fn qualified(segments: &[&str], aliases: &FxHashMap<&str, String>) ->
 impl FactVisitor<'_> {
     fn qualified(&self, expr: &Expr) -> Option<String> {
         qualified(UnqualifiedName::from_expr(expr)?.segments(), &self.aliases)
+    }
+
+    // The name a base class is known by, `Release` for `Base` in `from models import Release as Base`.
+    fn base_class(&self, base: &Expr) -> Option<String> {
+        let written = UnqualifiedName::from_expr(base)?;
+        let bound = self.qualified(base).unwrap_or_else(|| written.segments().join("."));
+        bound.rsplit('.').next().map(str::to_owned)
     }
 
     // The module and name a class expression names: the qualified name an import gives, or a bare name no import binds,

@@ -287,6 +287,26 @@ class Release:
       pass
   ```
 
+- any class in the checked files inherits from a class under its name in another module, whatever the import calls it,
+  such as `from app.models import Release as Base`
+
+  ```python report file=app/models.py
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Release:
+      version: str
+  ```
+
+  ```python context file=app/extra.py
+  from app.models import Release as Base
+
+
+  class Tagged(Base):
+      pass
+  ```
+
 - the class defines `__setattr__` or `__delattr__`
 
   ```python report
