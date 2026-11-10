@@ -16,6 +16,7 @@ use crate::common;
 #[test_case("missing-final", "missing_final.py", "py37" ; "missing_final_before_python38")]
 #[test_case("missing-final", "missing_final_gate.py", "py314" ; "missing_final_version_gate")]
 #[test_case("missing-final", "missing_final_branch.py", "py314" ; "missing_final_version_branch")]
+#[test_case("missing-final", "missing_final_globals.py", "py314" ; "missing_final_globals_written")]
 #[test_case("missing-final", "docs/conf.py", "py314" ; "missing_final_sphinx_conf")]
 #[test_case("imprecise-annotation", "imprecise_annotation.py", "py314" ; "imprecise_annotation")]
 #[test_case("imprecise-annotation", "imprecise_annotation_type_params.py", "py314" ; "imprecise_annotation_type_params")]
@@ -27,6 +28,29 @@ use crate::common;
 #[test_case("vars-call", "vars_call_mapping.py", "py314" ; "vars_call_mapping")]
 fn rule(rule: &str, fixture: &str, target_version: &str) {
     common::assert_rule_snapshot(rule, fixture, target_version);
+}
+
+// A write through `globals()` under a name the code cannot read may set any name of the module, as a computed
+// `setattr` does, so no name is final.
+#[test_case("globals()[name] = 3" ; "computed_key")]
+#[test_case("globals().update(LIMIT=3)" ; "update")]
+#[test_case("globals().setdefault(name, 3)" ; "setdefault")]
+#[test_case("globals().pop(name)" ; "pop")]
+fn missing_final_skips_every_name_a_computed_globals_write_may_set(body: &str) {
+    let root = common::project(&[("module.py", &format!("LIMIT = 1\nRATE = 2\n\n\ndef write(name):\n    {body}\n"))]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP601"]);
+    assert_eq!(stdout.matches("SMP601").count(), 0, "{stdout}");
+}
+
+// A `globals` the module defines is not the builtin, so its calls write no module name and `LIMIT` stays reported.
+#[test]
+fn missing_final_ignores_a_globals_the_module_defines() {
+    let root = common::project(&[(
+        "module.py",
+        "LIMIT = 1\n\n\ndef globals():\n    return {}\n\n\ndef write(name):\n    globals()[name] = 3\n",
+    )]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP601"]);
+    assert_eq!(stdout.matches("SMP601").count(), 1, "{stdout}");
 }
 
 #[test_case("assert inspect.signature(callback)", 0 ; "inspected_not_called")]

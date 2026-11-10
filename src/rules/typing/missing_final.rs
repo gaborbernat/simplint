@@ -2,8 +2,10 @@ use std::cell::OnceCell;
 
 use ruff_diagnostics::{Edit, Fix, IsolationLevel};
 use ruff_python_ast::helpers::is_dunder;
-use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
+use ruff_python_ast::visitor::{self, Visitor};
+use ruff_python_ast::{self as ast, Expr, ExprContext, PythonVersion, Stmt};
 use ruff_text_size::{Ranged, TextRange};
+use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
@@ -24,6 +26,7 @@ pub fn missing_final(checker: &Checker) {
         return;
     }
     let spelling = OnceCell::new();
+    let globals_writes = OnceCell::new();
     for stmt in checker.body() {
         let Some((target, annotation, value)) = single_assignment(stmt) else {
             continue;
@@ -49,6 +52,7 @@ pub fn missing_final(checker: &Checker) {
             || checker.project().is_module_written(name)
             // A computed write may set any name of the module, as `setattr(module, name, value)` does.
             || checker.project().is_computed_written()
+            || globals_writes.get_or_init(|| GlobalsWrites::of(checker)).writes(name)
             || checker.semantic().is_rebound(name)
             || annotation.is_some_and(is_qualifier)
             || is_type_construct(checker.semantic(), value)
@@ -65,6 +69,53 @@ pub fn missing_final(checker: &Checker) {
             fix,
             format!("Annotate `{name}` with `Final`"),
         );
+    }
+}
+
+// The names a module writes through `globals()`, and whether a write may set any name: a computed key, or the `update`,
+// `setdefault` or `pop` of the dict, names the module cannot list.
+struct GlobalsWrites<'a, 'c> {
+    checker: &'c Checker<'a>,
+    names: FxHashSet<&'a str>,
+    any: bool,
+}
+
+impl<'a, 'c> GlobalsWrites<'a, 'c> {
+    fn of(checker: &'c Checker<'a>) -> Self {
+        let mut writes = Self { checker, names: FxHashSet::default(), any: false };
+        writes.visit_body(checker.body());
+        writes
+    }
+
+    fn writes(&self, name: &str) -> bool {
+        self.any || self.names.contains(name)
+    }
+
+    fn is_globals_call(&self, expr: &Expr) -> bool {
+        expr.as_call_expr().is_some_and(|call| self.checker.semantic().is_builtin(&call.func, "globals"))
+    }
+}
+
+impl<'a> Visitor<'a> for GlobalsWrites<'a, '_> {
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        match expr {
+            Expr::Subscript(ast::ExprSubscript {
+                value, slice, ctx: ExprContext::Store | ExprContext::Del, ..
+            }) if self.is_globals_call(value) => match slice.as_string_literal_expr() {
+                Some(key) => _ = self.names.insert(key.value.to_str()),
+                None => self.any = true,
+            },
+            Expr::Call(ast::ExprCall { func, .. }) => {
+                if let Expr::Attribute(ast::ExprAttribute { value, attr, .. }) = func.as_ref()
+                    && matches!(attr.as_str(), "update" | "setdefault" | "pop")
+                    && self.is_globals_call(value)
+                {
+                    self.any = true;
+                }
+            }
+            _ => {}
+        }
+        visitor::walk_expr(self, expr);
     }
 }
 
