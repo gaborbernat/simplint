@@ -6675,7 +6675,7 @@
     "name": "up-backport-import",
     "summary": "Imports of backports that the standard library replaces",
     "fix": "Sometimes",
-    "explanation": "Flags imports of a backport package whose standard library module every supported Python version ships. Importing the\nstandard library module instead lets the project drop the backport from its dependencies.\n\n## Why is this bad?\n\nA backport exists for the versions that lack a standard library module. Once the lowest supported version has that\nmodule, the backport only adds an install and a second implementation that can drift from the first. `tomli`, for\nexample, is `tomllib` from Python 3.11 on.\n\n## Example\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.11\"\n```\n\n```python report\nfrom tomli import loads\n\nprint(loads(\"name = 'demo'\"))\n```\n\n```python fixed\nfrom tomllib import loads\n\nprint(loads(\"name = 'demo'\"))\n```\n\n## Configuration\n\n- The Python version the code targets, taken from\n  [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) in `[tool.ruff]`, falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py310\"\n  ```\n\n  ```python report\n  from importlib_metadata import version\n\n  print(version(\"simplint\"))\n  ```\n\n## What it does\n\n### Active on\n\n- **`tomli`, `exceptiongroup`, `async_timeout` and `taskgroup`** from Python 3.11, and **`importlib_metadata` and\n  `importlib_resources`** from Python 3.10, when the target version is at least the version listed. A backport the\n  target version still needs is left alone.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python report\n  from taskgroup import TaskGroup\n\n  VALUE = TaskGroup\n  ```\n\n- **`exceptiongroup` imports of `ExceptionGroup` and `BaseExceptionGroup`**, which the builtins define from Python 3.11.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python report\n  # Demo module.\n  from exceptiongroup import ExceptionGroup\n\n  VALUE = ExceptionGroup(\"failed\", [ValueError()])\n  ```\n\n  ```python fixed\n  # Demo module.\n\n  VALUE = ExceptionGroup(\"failed\", [ValueError()])\n  ```\n\n### Exceptions\n\n- **`import tomli` without an alias**: the module binds a different name, so every use of `tomli` would need renaming.\n  The rule reports the import without a fix.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python report\n  import tomli\n\n  print(tomli.loads(\"name = 'demo'\"))\n  ```\n\n- **Imports under `try`**: a guarded import is a fallback that [dependency-import-guard](SMP303.html) reviews.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  try:\n      from tomli import loads\n  except ImportError:\n      from tomllib import loads\n  ```\n\n- **`exceptiongroup` imports that name anything else**, such as `from exceptiongroup import catch`: the other names\n  still come from the backport.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  from exceptiongroup import catch\n\n  VALUE = catch\n  ```\n\n### Fix\n\n- **`tomli`**: the module name changes to `tomllib` in `from tomli import loads` and `import tomli as toml`, keeping the\n  imported names and the alias. The fix is safe.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python report\n  import tomli as toml\n\n  print(toml.loads(\"name = 'demo'\"))\n  ```\n\n  ```python fixed\n  import tomllib as toml\n\n  print(toml.loads(\"name = 'demo'\"))\n  ```\n\n- **`exceptiongroup`**: an import of only `ExceptionGroup` and `BaseExceptionGroup`, without aliases and alone on its\n  line, is deleted. The fix is safe because the builtins define both names. When the statement is the only one in its\n  block, the fix replaces it with `pass`.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python report\n  # Demo module.\n  from exceptiongroup import BaseExceptionGroup\n\n  VALUE = BaseExceptionGroup\n  ```\n\n  ```python fixed\n  # Demo module.\n\n  VALUE = BaseExceptionGroup\n  ```\n\nThe fix leaves `pyproject.toml` alone. The message names the dependency, which can go once nothing imports the backport.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n  [UP026](https://docs.astral.sh/ruff/rules/deprecated-mock-import/) and\n  [UP035](https://docs.astral.sh/ruff/rules/deprecated-import/) do the same for `mock` and `typing_extensions`;\n  [A004](https://docs.astral.sh/ruff/rules/builtin-import-shadowing/) reports an unaliased `exceptiongroup` import as\n  shadowing a builtin, without dropping it.\n",
+    "explanation": "Flags imports of a backport package whose standard library module every supported Python version ships. Importing the\nstandard library module instead lets the project drop the backport from its dependencies.\n\n## Why is this bad?\n\nA backport exists for the versions that lack a standard library module. Once the lowest supported version has that\nmodule, the backport only adds an install and a second implementation that can drift from the first. `tomli`, for\nexample, is `tomllib` from Python 3.11 on.\n\n## Example\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.11\"\n```\n\n```python report\nfrom tomli import loads\n\nprint(loads(\"name = 'demo'\"))\n```\n\n```python fixed\nfrom tomllib import loads\n\nprint(loads(\"name = 'demo'\"))\n```\n\n## Configuration\n\n- The Python version the code targets, taken from\n  [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) in `[tool.ruff]`, falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py310\"\n  ```\n\n  ```python report\n  from importlib_metadata import version\n\n  print(version(\"simplint\"))\n  ```\n\n## What it does\n\n### Active on\n\n- **`tomli`, `exceptiongroup`, `async_timeout` and `taskgroup`** from Python 3.11, and **`importlib_metadata` and\n  `importlib_resources`** from Python 3.10, when the target version is at least the version listed. A backport the\n  target version still needs is left alone.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python report\n  from taskgroup import TaskGroup\n\n  VALUE = TaskGroup\n  ```\n\n- **`exceptiongroup` imports of `ExceptionGroup` and `BaseExceptionGroup`**, which the builtins define from Python 3.11.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python report\n  # Demo module.\n  from exceptiongroup import ExceptionGroup\n\n  VALUE = ExceptionGroup(\"failed\", [ValueError()])\n  ```\n\n  ```python fixed\n  # Demo module.\n\n  VALUE = ExceptionGroup(\"failed\", [ValueError()])\n  ```\n\n### Exceptions\n\n- **`import tomli` without an alias**: the module binds a different name, so every use of `tomli` would need renaming.\n  The rule reports the import without a fix.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python report\n  import tomli\n\n  print(tomli.loads(\"name = 'demo'\"))\n  ```\n\n- **Imports under `try`**: a guarded import is a fallback that [dependency-import-guard](SMP303.html) reviews.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  try:\n      from tomli import loads\n  except ImportError:\n      from tomllib import loads\n  ```\n\n- **`exceptiongroup` imports that name anything else**, such as `from exceptiongroup import catch`: the other names\n  still come from the backport.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  from exceptiongroup import catch\n\n  VALUE = catch\n  ```\n\n- **`exceptiongroup` names another module of the run imports from this one, or `__all__` lists**: deleting the import\n  would break that module. The rule reports the import without a fix.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python context file=pkg/consumer.py\n  from pkg.compat import ExceptionGroup\n\n  VALUE = ExceptionGroup(\"failed\", [ValueError()])\n  ```\n\n  ```python report file=pkg/compat.py\n  from exceptiongroup import ExceptionGroup\n\n  __all__ = [\"ExceptionGroup\"]\n  ```\n\n  ```python fixed file=pkg/compat.py\n  from exceptiongroup import ExceptionGroup\n\n  __all__ = [\"ExceptionGroup\"]\n  ```\n\n### Fix\n\n- **`tomli`**: the module name changes to `tomllib` in `from tomli import loads` and `import tomli as toml`, keeping the\n  imported names and the alias. The fix is safe.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python report\n  import tomli as toml\n\n  print(toml.loads(\"name = 'demo'\"))\n  ```\n\n  ```python fixed\n  import tomllib as toml\n\n  print(toml.loads(\"name = 'demo'\"))\n  ```\n\n- **`exceptiongroup`**: an import of only `ExceptionGroup` and `BaseExceptionGroup`, without aliases and alone on its\n  line, is deleted. The fix is safe because the builtins define both names. When the statement is the only one in its\n  block, the fix replaces it with `pass`. Names another module imports from this one, or `__all__` lists, keep the\n  import and get no fix.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python report\n  # Demo module.\n  from exceptiongroup import BaseExceptionGroup\n\n  VALUE = BaseExceptionGroup\n  ```\n\n  ```python fixed\n  # Demo module.\n\n  VALUE = BaseExceptionGroup\n  ```\n\nThe fix leaves `pyproject.toml` alone. The message names the dependency, which can go once nothing imports the backport.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n  [UP026](https://docs.astral.sh/ruff/rules/deprecated-mock-import/) and\n  [UP035](https://docs.astral.sh/ruff/rules/deprecated-import/) do the same for `mock` and `typing_extensions`;\n  [A004](https://docs.astral.sh/ruff/rules/builtin-import-shadowing/) reports an unaliased `exceptiongroup` import as\n  shadowing a builtin, without dropping it.\n",
     "examples": {
       "parsed": [
         {
@@ -6845,11 +6845,50 @@
         },
         {
           "section": "What it does",
-          "line": 141,
-          "end_line": 157,
+          "line": 139,
+          "end_line": 161,
           "config": {
-            "line": 141,
-            "end_line": 145,
+            "line": 139,
+            "end_line": 143,
+            "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.11\"\n"
+          },
+          "blocks": [
+            {
+              "role": "context",
+              "language": "python",
+              "file": "pkg/consumer.py",
+              "named": true,
+              "line": 145,
+              "end_line": 149,
+              "source": "from pkg.compat import ExceptionGroup\n\nVALUE = ExceptionGroup(\"failed\", [ValueError()])\n"
+            },
+            {
+              "role": "report",
+              "language": "python",
+              "file": "pkg/compat.py",
+              "named": true,
+              "line": 151,
+              "end_line": 155,
+              "source": "from exceptiongroup import ExceptionGroup\n\n__all__ = [\"ExceptionGroup\"]\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "pkg/compat.py",
+              "named": true,
+              "line": 157,
+              "end_line": 161,
+              "source": "from exceptiongroup import ExceptionGroup\n\n__all__ = [\"ExceptionGroup\"]\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 168,
+          "end_line": 184,
+          "config": {
+            "line": 168,
+            "end_line": 172,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.11\"\n"
           },
           "blocks": [
@@ -6858,8 +6897,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 147,
-              "end_line": 151,
+              "line": 174,
+              "end_line": 178,
               "source": "import tomli as toml\n\nprint(toml.loads(\"name = 'demo'\"))\n"
             },
             {
@@ -6867,19 +6906,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 153,
-              "end_line": 157,
+              "line": 180,
+              "end_line": 184,
               "source": "import tomllib as toml\n\nprint(toml.loads(\"name = 'demo'\"))\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 163,
-          "end_line": 180,
+          "line": 191,
+          "end_line": 208,
           "config": {
-            "line": 163,
-            "end_line": 167,
+            "line": 191,
+            "end_line": 195,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.11\"\n"
           },
           "blocks": [
@@ -6888,8 +6927,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 169,
-              "end_line": 174,
+              "line": 197,
+              "end_line": 202,
               "source": "# Demo module.\nfrom exceptiongroup import BaseExceptionGroup\n\nVALUE = BaseExceptionGroup\n"
             },
             {
@@ -6897,8 +6936,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 176,
-              "end_line": 180,
+              "line": 204,
+              "end_line": 208,
               "source": "# Demo module.\n\nVALUE = BaseExceptionGroup\n"
             }
           ]
@@ -6908,7 +6947,7 @@
     "family": "imports",
     "group": "Imports and dependencies",
     "short_group": "Imports",
-    "cross_file": false
+    "cross_file": true
   },
   {
     "code": "SMP306",

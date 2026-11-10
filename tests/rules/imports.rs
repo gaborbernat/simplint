@@ -629,3 +629,23 @@ fn module_attribute_import_reports_private_names_with_runtime_evaluation_setting
         }
     }
 }
+
+// The builtins define these names, so their import goes, unless another module takes the name from this one or
+// `__all__` lists it: the backport is reported either way.
+#[test_case("from exceptiongroup import ExceptionGroup\n", "from pkg.compat import ExceptionGroup\n", true ; "imported_by_another_module")]
+#[test_case("from exceptiongroup import ExceptionGroup\n__all__ = [\"ExceptionGroup\"]\n", "", true ; "listed_in_all")]
+#[test_case("from exceptiongroup import ExceptionGroup\n", "from pkg.other import ExceptionGroup\n", false ; "imported_from_another_module")]
+#[test_case("from exceptiongroup import ExceptionGroup\n", "from pkg import compat\n", false ; "module_imported")]
+fn backport_import_keeps_builtin_name_another_module_takes(compat: &str, consumer: &str, kept: bool) {
+    let root = common::project(&[
+        ("pyproject.toml", "[project]\nname = \"x\"\nversion = \"0\"\nrequires-python = \">=3.11\"\n"),
+        ("pkg/__init__.py", ""),
+        ("pkg/compat.py", compat),
+        ("pkg/other.py", "ExceptionGroup = object()\n"),
+        ("pkg/run.py", consumer),
+    ]);
+    let reported = common::check(root.path(), &["--select", "SMP305", "pkg"]).1;
+    assert!(reported.contains(&common::native("pkg/compat.py:1:1: SMP305")), "{reported}");
+    common::fix_unsafe(root.path(), "SMP305");
+    assert_eq!(common::read(root.path(), "pkg/compat.py").contains("from exceptiongroup"), kept);
+}

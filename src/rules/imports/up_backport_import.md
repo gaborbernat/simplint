@@ -133,6 +133,33 @@ print(loads("name = 'demo'"))
   VALUE = catch
   ```
 
+- **`exceptiongroup` names another module of the run imports from this one, or `__all__` lists**: deleting the import
+  would break that module. The rule reports the import without a fix.
+
+  ```toml config
+  [project]
+  name = "demo"
+  requires-python = ">=3.11"
+  ```
+
+  ```python context file=pkg/consumer.py
+  from pkg.compat import ExceptionGroup
+
+  VALUE = ExceptionGroup("failed", [ValueError()])
+  ```
+
+  ```python report file=pkg/compat.py
+  from exceptiongroup import ExceptionGroup
+
+  __all__ = ["ExceptionGroup"]
+  ```
+
+  ```python fixed file=pkg/compat.py
+  from exceptiongroup import ExceptionGroup
+
+  __all__ = ["ExceptionGroup"]
+  ```
+
 ### Fix
 
 - **`tomli`**: the module name changes to `tomllib` in `from tomli import loads` and `import tomli as toml`, keeping the
@@ -158,7 +185,8 @@ print(loads("name = 'demo'"))
 
 - **`exceptiongroup`**: an import of only `ExceptionGroup` and `BaseExceptionGroup`, without aliases and alone on its
   line, is deleted. The fix is safe because the builtins define both names. When the statement is the only one in its
-  block, the fix replaces it with `pass`.
+  block, the fix replaces it with `pass`. Names another module imports from this one, or `__all__` lists, keep the
+  import and get no fix.
 
   ```toml config
   [project]
