@@ -31,7 +31,7 @@ jobs:
           fi
       - name: 📥 Check out code
         if: steps.gate.outputs.skip != 'true'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -102,14 +102,14 @@ jobs:
           exit 1
       - name: 🐍 Install uv
         if: steps.gate.outputs.skip != 'true'
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@v10.3.3
         with:
           version: latest-known
           python-version: '3.15'
           enable-cache: false
       - name: 🔒 Check the release lock
         if: steps.gate.outputs.skip != 'true' && steps.release-lock.outputs.changed == 'true'
-        uses: tox-dev/github-workflows/refresh-release-lock@13381289334b15375958be7f7438f3c3d860e575 # 6.5.5
+        uses: tox-dev/github-workflows/refresh-release-lock@6.8.1
         with:
           mode: check
       - name: 🔍 Check assembled news

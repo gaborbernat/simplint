@@ -15,12 +15,12 @@ jobs:
       changed: ${{ steps.diff.outputs.changed }}
     steps:
       - name: 📥 Check out code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
       # Only trees are read, so a blobless clone keeps every tag and branch without downloading the sources.
       - name: 📥 Check out CPython
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           repository: python/cpython
           path: ${{ runner.temp }}/cpython
@@ -28,13 +28,13 @@ jobs:
           filter: blob:none
           persist-credentials: false
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@v10.3.3
         with:
           version: latest-known
           python-version: "3.15"
           enable-cache: false
       - name: 🦀 Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        uses: actions-rust-lang/setup-rust-toolchain@v2.0.0
         with:
           components: rustfmt
       - name: ⚙️ Regenerate the table
@@ -52,7 +52,7 @@ jobs:
       - name: 📤 Upload maintenance patch
         id: upload
         if: steps.diff.outputs.changed == 'true'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: maintenance-patch
           path: ${{ runner.temp }}/maintenance.patch
@@ -61,7 +61,7 @@ jobs:
     name: 🔀 Open stdlib submodules PR
     needs: regenerate
     if: needs.regenerate.outputs.changed == 'true'
-    uses: tox-dev/github-workflows/.github/workflows/open-maintenance-pr.yaml@13381289334b15375958be7f7438f3c3d860e575 # 6.5.5
+    uses: tox-dev/github-workflows/.github/workflows/open-maintenance-pr.yaml@81a3fc661be49ecdc4ea4af99a69fa3879b3d7a1 # 6.8.1
     with:
       artifact-id: ${{ needs.regenerate.outputs.artifact-id }}
       allowed-paths: src/rules/imports/stdlib_submodules.rs

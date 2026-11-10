@@ -17,12 +17,12 @@ jobs:
       run: ${{ github.event_name != 'pull_request' || steps.filter.outputs.run == 'true' }}
     steps:
       - name: 📥 Check out code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           persist-credentials: false
       - name: 🧭 Detect changed paths
         if: github.event_name == 'pull_request'
-        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        uses: dorny/paths-filter@v4.0.3
         id: filter
         with:
           filters: |
@@ -46,12 +46,12 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - name: 📥 Check out code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@v10.3.3
         with:
           version: latest-known
           python-version: "3.15"
@@ -59,7 +59,7 @@ jobs:
       - name: 📦 Install prek
         run: uv tool install prek
       - name: 🧹 Run the hooks as the release installs them
-        uses: tox-dev/github-workflows/cooled-prek@13381289334b15375958be7f7438f3c3d860e575 # 6.5.5
+        uses: tox-dev/github-workflows/cooled-prek@6.8.1
         env:
           # builds the linter from this checkout, which the lint jobs cover
           SKIP: simplint
@@ -72,12 +72,12 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - name: 📥 Check out code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
       - name: 🦀 Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        uses: actions-rust-lang/setup-rust-toolchain@v2.0.0
         with:
           components: clippy
       - name: 🧹 Run Clippy
@@ -89,12 +89,12 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - name: 📥 Check out code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
       - name: 🦀 Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        uses: actions-rust-lang/setup-rust-toolchain@v2.0.0
         with:
           components: rustfmt
       - name: 🧹 Check formatting
@@ -107,22 +107,22 @@ jobs:
     environment: test
     steps:
       - name: 📥 Check out code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
       - name: 🦀 Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        uses: actions-rust-lang/setup-rust-toolchain@v2.0.0
         with:
           components: llvm-tools-preview
       - name: 🦀 Install cargo-llvm-cov and cargo-nextest
-        uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2.88.0
+        uses: taiki-e/install-action@v2.88.0
         with:
           tool: cargo-llvm-cov,cargo-nextest
       - name: 🧪 Run tests with coverage
         run: cargo llvm-cov nextest --locked --ignore-filename-regex 'fix/errors\.rs' --fail-uncovered-lines 0 --show-missing-lines --codecov --output-path coverage.json
       - name: 📊 Upload coverage
-        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        uses: codecov/codecov-action@v7.1.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.json
@@ -137,19 +137,19 @@ jobs:
         os: [ubuntu-26.04, windows-2025, macos-26]
     steps:
       - name: 📥 Check out code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@v10.3.3
         with:
           version: latest-known
           python-version: "3.15"
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
       - name: 🦀 Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        uses: actions-rust-lang/setup-rust-toolchain@v2.0.0
       # The wheel build reuses this binary from target/, so a Rust error shows in its own step.
       - name: 🏗️ Build the binary
         run: cargo build --release --locked
@@ -157,7 +157,7 @@ jobs:
       - name: 📦 Build the wheel
         run: uv build --python 3.15 --wheel --out-dir dist
       - name: 📤 Upload the wheel
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: wheel-${{ matrix.os }}
           path: dist/*.whl
@@ -178,12 +178,12 @@ jobs:
           - {py: "3.15", os: macos-26}
     steps:
       - name: 📥 Check out code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@v10.3.3
         with:
           version: latest-known
           python-version: "3.15"
@@ -195,7 +195,7 @@ jobs:
         if: matrix.py != '3.15'
         run: uv python install --python-preference only-managed ${{ matrix.py }}
       - name: 📥 Download the wheel
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        uses: actions/download-artifact@v8.0.2
         with:
           name: wheel-${{ matrix.os }}
           path: dist
@@ -215,12 +215,12 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: 📥 Check out code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@v10.3.3
         with:
           version: latest-known
           python-version: "3.15"
@@ -229,13 +229,13 @@ jobs:
       - name: 📦 Install tox
         run: uv tool install --python-preference only-managed --python 3.15 tox --with tox-uv
       - name: 📥 Download the wheel
-        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        uses: actions/download-artifact@v8.0.2
         with:
           name: wheel-ubuntu-26.04
           path: dist
       # The archives are pinned by hash in the task, so they only change with it and the run needs no network for them.
       - name: 📦 Restore the pinned projects
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache@v6.1.0
         with:
           path: .tox/ecosystem-cache
           key: ecosystem-${{ hashFiles('tasks/ecosystem.py') }}
@@ -255,12 +255,12 @@ jobs:
         env: [type, dev, docs, pkg_meta, pkg_sdist, tasks]
     steps:
       - name: 📥 Check out code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@v10.3.3
         with:
           version: latest-known
           python-version: "3.15"
@@ -270,16 +270,16 @@ jobs:
       - name: 📦 Install tox
         run: uv tool install --python-preference only-managed --python 3.15 tox --with tox-uv
       - name: 🦀 Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        uses: actions-rust-lang/setup-rust-toolchain@v2.0.0
       - name: 🟢 Install Node.js, which draws the documentation diagrams
         if: matrix.env == 'docs'
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "24"
       # docs/conf.py pins mermaid-cli, which npx fetches together with the browser its puppeteer downloads
       - name: 📦 Restore mermaid-cli and its browser
         if: matrix.env == 'docs'
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        uses: actions/cache@v6.1.0
         with:
           path: |
             ~/.npm/_npx
@@ -298,12 +298,12 @@ jobs:
     runs-on: ubuntu-26.04
     steps:
       - name: 📥 Check out code
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 1
           persist-credentials: false
       - name: 🐍 Install uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        uses: astral-sh/setup-uv@v10.3.3
         with:
           version: latest-known
           python-version: "3.15"
@@ -314,7 +314,7 @@ jobs:
       - name: 📦 Install tox
         run: uv tool install --python-preference only-managed --python 3.15 tox --with tox-uv
       - name: 🦀 Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@ecabd13d1c56bd1345c230e542e9144811ad706f # v2.0.0
+        uses: actions-rust-lang/setup-rust-toolchain@v2.0.0
       - name: 🧪 Compile the rule examples
         run: tox run -e examples
   all-pass:
