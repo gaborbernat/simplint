@@ -49,7 +49,9 @@ pub fn missing_from_all(checker: &Checker) {
                 // relying on an export; an import the module never uses is there for its importers, a re-export.
                 && (!bindings.iter().any(|binding| binding.kind == BindingKind::Import)
                     || checker.semantic().references_to(name).is_empty())
-                && (checker.project().is_imported_by_others(name) || checker.project().is_api_reached(name))
+                && ((checker.project().is_imported_by_others(name)
+                    && !checker.project().is_used_only_by_tests(name))
+                    || checker.project().is_api_reached(name))
                 && !shadows_module(name)
         })
         .map(|(name, bindings)| (name, bindings[0].range, checker.project().is_imported_by_others(name)))

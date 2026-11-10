@@ -92,6 +92,22 @@ fn rule(rule: &str, fixture: &str) {
     common::assert_rule_snapshot(rule, fixture, "py314");
 }
 
+#[test_case("", "", 0 ; "paired_test_only_without_all")]
+#[test_case("__all__ = []\n", "", 0 ; "paired_test_only_with_all")]
+#[test_case("", "from pkg._render.intersphinx import Hint\n", 1 ; "production_import_without_all")]
+#[test_case("__all__ = []\n", "from pkg._render.intersphinx import Hint\n", 1 ; "production_import_with_all")]
+fn missing_from_all_ignores_test_only_imports(exports: &str, production: &str, expected: usize) {
+    let root = common::project(&[
+        ("src/pkg/__init__.py", ""),
+        ("src/pkg/_render/__init__.py", ""),
+        ("src/pkg/_render/intersphinx.py", &format!("class Hint:\n    pass\n\n{exports}")),
+        ("src/pkg/use.py", production),
+        ("tests/_render/test_intersphinx.py", "from pkg._render.intersphinx import Hint\n"),
+    ]);
+    let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP401"]).1;
+    assert_eq!(stdout.matches("SMP401").count(), expected, "{stdout}");
+}
+
 #[test]
 fn init_module_content_allows_test_packages_and_pep_562_hooks() {
     let root = common::project(&[

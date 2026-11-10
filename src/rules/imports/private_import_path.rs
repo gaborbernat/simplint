@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use ruff_python_ast::{self as ast, Stmt};
 use ruff_text_size::{Ranged, TextRange};
@@ -44,11 +44,10 @@ fn paired_test_module(walker: &Walker<'_, '_>, path: &str, level: u32) -> bool {
         return false;
     };
     let (package, module) = path.rsplit_once('.').unwrap_or(("", path));
-    if module != format!("_{stem}") {
-        return false;
-    }
+    let same_stem = module == stem || module == format!("_{stem}");
     if level == 1 {
-        return package.is_empty()
+        return same_stem
+            && package.is_empty()
             && walker
                 .checker
                 .path
@@ -58,8 +57,24 @@ fn paired_test_module(walker: &Walker<'_, '_>, path: &str, level: u32) -> bool {
     if level != 0 {
         return false;
     }
-    let package = PathBuf::from_iter(package.split('.'));
-    walker.checker.path.parent().is_some_and(|parent| parent.ends_with(package))
+    let root = &walker.checker.settings.project.root;
+    let Some(relative) = walker.checker.path.strip_prefix(root).ok().and_then(Path::parent) else {
+        return false;
+    };
+    let relative = relative.strip_prefix("tests").or_else(|_| relative.strip_prefix("test")).unwrap_or(relative);
+    let relative = relative.strip_prefix("src").unwrap_or(relative);
+    let package = PathBuf::from_iter(package.split('.').filter(|part| !part.is_empty()));
+    let source = package.join(module);
+    let mirrored = (same_stem && relative == package) || relative.starts_with(&source);
+    let without_top = package.components().skip(1).collect::<PathBuf>();
+    let mirrored_without_top = package.components().count() > 0
+        && ((same_stem && relative == without_top) || relative.starts_with(without_top.join(module)));
+    if !mirrored && !mirrored_without_top {
+        return false;
+    }
+    [root.join(&source), root.join("src").join(source)]
+        .iter()
+        .any(|file| file.with_extension("py").is_file() || file.with_extension("pyi").is_file())
 }
 
 fn private_count(path: &str) -> usize {
@@ -68,7 +83,7 @@ fn private_count(path: &str) -> usize {
 
 fn report(walker: &Walker<'_, '_>, path: &str, range: TextRange) {
     let message = if walker.checker.is_test_module() {
-        format!("Private import `{path}` in a test; only `test_x.py` may import from its matching `_x.py`")
+        format!("Private import `{path}` in a test; only a test mirroring its private source file may import names")
     } else {
         format!("Private import `{path}`; import names from one private module with a direct relative path")
     };

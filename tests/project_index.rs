@@ -38,21 +38,13 @@ fn package_outside_the_source_roots_resolves_from_its_parent() {
 }
 
 #[test]
-fn src_layout_imports_resolve() {
+fn src_layout_test_imports_do_not_require_exports() {
     let root = project(&[
         ("src/pkg/__init__.py", ""),
         ("src/pkg/helpers.py", "def helper() -> None:\n    pass\n"),
         ("tests/test_helpers.py", "from pkg.helpers import helper\n"),
     ]);
-    assert_eq!(
-        check(root.path(), &["--select", "SMP401"]).1.lines().next(),
-        Some(
-            common::native(
-                "src/pkg/helpers.py:1:5: SMP401 `helper` is imported by other modules; list it in `__all__`"
-            )
-            .as_str()
-        )
-    );
+    assert_eq!(check(root.path(), &["--select", "SMP401"]).1, "All checks passed!\n");
 }
 
 // An entry point names a module in the directory its `pyproject.toml` is in, which a flat layout keeps its modules in,
@@ -178,20 +170,12 @@ fn stub_only_module_attribute_is_not_reported() {
 
 // A namespace package under `src` has no `__init__.py` at any level, and its modules import by their dotted path.
 #[test]
-fn namespace_package_under_src_resolves_its_modules() {
+fn namespace_package_test_imports_do_not_require_exports() {
     let root = project(&[
         ("src/outer/inner/helpers.py", "def helper() -> None:\n    pass\n"),
         ("tests/test_helpers.py", "from outer.inner.helpers import helper\n"),
     ]);
-    assert_eq!(
-        check(root.path(), &["--select", "SMP401"]).1.lines().next(),
-        Some(
-            common::native(
-                "src/outer/inner/helpers.py:1:5: SMP401 `helper` is imported by other modules; list it in `__all__`"
-            )
-            .as_str()
-        )
-    );
+    assert_eq!(check(root.path(), &["--select", "SMP401"]).1, "All checks passed!\n");
 }
 
 // A stub for another module declares nothing about `backend.py`.

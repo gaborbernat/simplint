@@ -230,6 +230,21 @@ signature reaches it:
 
 - **`__main__.py` files**: these are entry points, so imports by tests or runners do not make their names a public API.
 
+- **Names used only by tests**: a test of a module may inspect its implementation without making that name part of the
+  module's public interface. A production importer still makes the name reportable.
+
+  ```python ok file=config.py
+  class Parser:
+      pass
+
+
+  __all__ = []
+  ```
+
+  ```python context file=test_config.py
+  from config import Parser
+  ```
+
 - **Names starting with `_`**: the underscore already marks them as internal.
 
   ```python ok file=config.py
