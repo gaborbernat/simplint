@@ -79,7 +79,7 @@ fn permissions(metadata: &fs::Metadata) -> u32 {
 }
 
 // The caches of a run, one per package root, or per directory for files outside a package, as Ruff keeps them. Their
-// bytes are read up front and checked once by `views`, which read the archives in place.
+// bytes are read up front and checked once by `views`, a package per thread, and read in place.
 pub struct Caches(FxHashMap<PathBuf, Stored>);
 
 // A package's cache file as read, with the root it is kept for.
@@ -109,7 +109,7 @@ impl Caches {
     }
 
     pub fn views(&self, run: u64) -> FxHashMap<&Path, Cache<'_>> {
-        self.0.iter().map(|(root, stored)| (root.as_path(), Cache::new(root, stored, run))).collect()
+        self.0.par_iter().map(|(root, stored)| (root.as_path(), Cache::new(root, stored, run))).collect()
     }
 }
 
@@ -301,15 +301,19 @@ impl<'a> Cache<'a> {
 
     // The import facts of a file that has not changed since they were cached, unless their ranges do not fit the file.
     pub fn facts(&self, path: &Path, key: FileKey) -> Option<FileFacts> {
-        let facts = self.get(path, key)?.facts.as_ref()?;
-        rkyv::deserialize::<FileFacts, rkyv::rancor::Error>(facts)
+        let stored = self.get(path, key)?.facts.as_ref()?;
+        // rkyv reads the archive in place, which needs its bytes aligned.
+        let mut bytes = AlignedVec::<16>::with_capacity(stored.len());
+        bytes.extend_from_slice(stored);
+        rkyv::from_bytes::<FileFacts, rkyv::rancor::Error>(&bytes)
             .inspect_err(|error| error!("Failed to read the facts of {}: {error}", path.display()))
             .ok()
             .filter(|facts| facts.fits(key.length))
     }
 
-    pub fn set_facts(&self, path: &Path, key: FileKey, facts: FileFacts) {
-        self.update(path, key, ChangeData::Facts(Box::new(facts)));
+    pub fn set_facts(&self, path: &Path, key: FileKey, facts: &FileFacts) {
+        let bytes = rkyv::to_bytes::<rkyv::rancor::Error>(facts).expect("facts archive into memory");
+        self.update(path, key, ChangeData::Facts(bytes.to_vec()));
     }
 
     // A file whose content, settings and slice of the project index, which `fingerprint` stands for, match a cached
@@ -497,7 +501,7 @@ impl<'a> Cache<'a> {
                 })
                 .or_insert_with(|| FileCache::new(key, now));
             match data {
-                ChangeData::Facts(facts) => file.facts = Some(*facts),
+                ChangeData::Facts(facts) => file.facts = Some(facts),
                 ChangeData::Clean(fingerprint, index) => {
                     file.clean = Some(fingerprint);
                     file.findings = None;
@@ -586,7 +590,9 @@ struct FileCache {
     // When a run last saw the file, in milliseconds since the Unix epoch.
     #[rkyv(with = rkyv::with::AtomicLoad<rkyv::with::Relaxed>)]
     last_seen: AtomicU64,
-    facts: Option<FileFacts>,
+    // The file's `FileFacts`, archived on their own: writing the cache reads back every file it keeps, and bytes copy
+    // where the facts' strings and lists would each be rebuilt.
+    facts: Option<Vec<u8>>,
     // The fingerprint the file last linted clean under.
     clean: Option<u64>,
     settled: Option<Settled>,
@@ -933,7 +939,7 @@ struct Change {
 }
 
 enum ChangeData {
-    Facts(Box<FileFacts>),
+    Facts(Vec<u8>),
     Clean(u64, IndexKey),
     Findings(u64, Vec<Report>, IndexKey),
     Settled(u64, Withdrawn),

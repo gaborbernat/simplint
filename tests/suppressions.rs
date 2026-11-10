@@ -173,6 +173,13 @@ fn add_ignore_does_not_name_the_numeric_codes_it_renames() {
 }
 
 #[test]
+fn add_ignore_keeps_a_code_no_rule_has() {
+    let root = project(&[("module.py", "x = 1  # simplint: ignore[SMP999] kept\n")]);
+    check(root.path(), &["--select", "SMP101", "--add-ignore"]);
+    assert_eq!(read(root.path(), "module.py"), "x = 1  # simplint: ignore[SMP999, single-letter-name] kept\n");
+}
+
+#[test]
 fn add_ignore_counts_one_comment() {
     let root = project(&[("module.py", "x = 1")]);
     let result = check(root.path(), &["--select", "SMP101", "--add-ignore=paper"]);
@@ -263,6 +270,16 @@ fn unused_ignore_rechecks_comment_sensitive_rules(config: &str, removed: bool) {
     assert_eq!(status == 1, removed);
     check(root.path(), &["--select", "SMP202,SMP009", "--fix"]);
     assert_eq!(read(root.path(), "module.py").contains("simplint: ignore"), !removed);
+}
+
+#[test]
+fn unused_ignore_removes_stale_selectors_beside_one_a_comment_needs() {
+    let needed = "_MESSAGE = '''hello\nworld'''  # simplint: ignore[SMP202]  # moving adds a local\n\n\ndef read() -> str:\n    first = 1\n    second = 2\n    return _MESSAGE + str(first + second)\n";
+    let stale = "\n\nvalue = 2  # simplint: ignore[SMP602]\nother = 3  # simplint: ignore[SMP603]\n";
+    let root =
+        project(&[("pyproject.toml", "[tool.ruff.lint]\nselect = []\n"), ("module.py", &format!("{needed}{stale}"))]);
+    check(root.path(), &["--select", "SMP202,SMP009", "--fix"]);
+    assert_eq!(read(root.path(), "module.py"), format!("{needed}\n\nvalue = 2\nother = 3\n"));
 }
 
 #[test]

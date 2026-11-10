@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::sync::Arc;
 
 use ruff_linter::registry::{Rule as RuffRule, RuleSet as RuffRuleSet};
 use ruff_linter::rules::pep8_naming::settings::IgnoreNames;
@@ -14,13 +13,13 @@ use crate::settings::Settings;
 #[derive(Clone)]
 pub struct FileSettings<'a> {
     pub project: &'a Settings,
-    pub from_ruff: FromRuff,
+    pub from_ruff: FromRuff<'a>,
     pub rules: RuleSet,
     pub is_test: bool,
 }
 
 impl<'a> FileSettings<'a> {
-    pub fn new(project: &'a Settings, ruff: &ruff_workspace::Settings, path: &Path) -> Self {
+    pub fn new(project: &'a Settings, ruff: &'a ruff_workspace::Settings, path: &Path) -> Self {
         let from_ruff = FromRuff::of(ruff, path);
         let rules = project.rules_for(path).for_target(from_ruff.target_version);
         let is_test = project.is_test_module(path);
@@ -28,10 +27,11 @@ impl<'a> FileSettings<'a> {
     }
 }
 
-// What Ruff's settings decide for a file: what simplint's rules follow, and how Ruff parses and formats it.
+// What Ruff's settings decide for a file: what simplint's rules follow, and how Ruff parses and formats it. What the
+// project's settings hold whole is borrowed, since every file of the project reads the same.
 #[derive(Clone, CacheKey)]
 #[expect(clippy::struct_excessive_bools, reason = "each flag is a Ruff setting that decides one rule's overlap")]
-pub struct FromRuff {
+pub struct FromRuff<'a> {
     pub target_version: PythonVersion,
     pub magic_trailing_comma: bool,
     // The version Ruff parses the file as: the latest when the project names none, unlike `target_version`.
@@ -47,15 +47,15 @@ pub struct FromRuff {
     // Whether Ruff's `strictly-empty-init-modules` setting bans all code in an `__init__.py`, as RUF067 reads it.
     pub strictly_empty_init_modules: bool,
     // The names pep8-naming leaves alone, which Ruff's N816 skips.
-    pub ignored_names: Arc<IgnoreNames>,
+    pub ignored_names: &'a IgnoreNames,
     // Whether Ruff's ISC003 leaves a concatenation across lines alone, and whether its ANN401 skips `*args` and
     // `**kwargs`, which decide what the rules that Ruff's checks overlap follow.
     pub allow_multiline: bool,
     pub allow_star_arg_any: bool,
     // The loggers beside the `logging` module that Ruff's logging rules look at, as its G003 does.
-    pub logger_objects: Vec<String>,
+    pub logger_objects: &'a [String],
     // The calls beyond Ruff's own list that its B008 leaves alone in a parameter default.
-    pub extend_immutable_calls: Vec<String>,
+    pub extend_immutable_calls: &'a [String],
     // The limits of Ruff's complexity and size rules, which an inlined helper can push a caller past.
     pub max_complexity: usize,
     pub max_branches: usize,
@@ -70,8 +70,8 @@ pub struct FromRuff {
     ruff_rules: RuffRuleSet,
 }
 
-impl FromRuff {
-    fn of(settings: &ruff_workspace::Settings, path: &Path) -> Self {
+impl<'a> FromRuff<'a> {
+    fn of(settings: &'a ruff_workspace::Settings, path: &Path) -> Self {
         let target_version = settings.linter.resolve_target_version(path);
         let formatter = &settings.formatter;
         let pycodestyle = &settings.linter.pycodestyle;
@@ -86,11 +86,11 @@ impl FromRuff {
                 .min(pycodestyle.max_doc_length.map_or(usize::MAX, |length| usize::from(length.value()))),
             preview: settings.linter.preview.is_enabled(),
             strictly_empty_init_modules: settings.linter.ruff.strictly_empty_init_modules,
-            ignored_names: Arc::new(settings.linter.pep8_naming.ignore_names.clone()),
+            ignored_names: &settings.linter.pep8_naming.ignore_names,
             allow_multiline: settings.linter.flake8_implicit_str_concat.allow_multiline,
             allow_star_arg_any: settings.linter.flake8_annotations.allow_star_arg_any,
-            logger_objects: settings.linter.logger_objects.clone(),
-            extend_immutable_calls: settings.linter.flake8_bugbear.extend_immutable_calls.clone(),
+            logger_objects: &settings.linter.logger_objects,
+            extend_immutable_calls: &settings.linter.flake8_bugbear.extend_immutable_calls,
             max_complexity: settings.linter.mccabe.max_complexity,
             max_branches: settings.linter.pylint.max_branches,
             max_statements: settings.linter.pylint.max_statements,

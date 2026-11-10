@@ -42,7 +42,7 @@ pub fn build<'a>(
     path: &'a Path,
     body: &'a [Stmt],
     target_version: PythonVersion,
-    settings: &LinterSettings,
+    settings: &'a LinterSettings,
 ) -> Model<'a> {
     let module = Module {
         kind: if path.ends_with("__init__.py") { ModuleKind::Package } else { ModuleKind::Module },
@@ -79,7 +79,7 @@ pub fn build<'a>(
 struct Builder<'a> {
     semantic: SemanticModel<'a>,
     target_version: PythonVersion,
-    runtime: Runtime,
+    runtime: Runtime<'a>,
     functions: Vec<(&'a ast::StmtFunctionDef, Snapshot)>,
     lambdas: Vec<(&'a ast::ExprLambda, Snapshot)>,
     loads: Vec<(&'a ast::ExprName, Snapshot)>,

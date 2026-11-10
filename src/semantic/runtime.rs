@@ -9,18 +9,15 @@ use rustc_hash::FxHashMap;
 
 // The runtime semantics `flake8-type-checking` gives annotations through the base classes and decorators it lists, which
 // decide whether Ruff's import-private-name exempts a read in an annotation.
-pub struct Runtime {
-    base_classes: FxHashMap<String, RuntimeSemantics>,
-    decorators: FxHashMap<String, RuntimeSemantics>,
+pub struct Runtime<'a> {
+    base_classes: &'a FxHashMap<String, RuntimeSemantics>,
+    decorators: &'a FxHashMap<String, RuntimeSemantics>,
 }
 
-impl Runtime {
-    pub fn new(settings: &LinterSettings) -> Self {
+impl<'a> Runtime<'a> {
+    pub fn new(settings: &'a LinterSettings) -> Self {
         let flake8 = &settings.flake8_type_checking;
-        Self {
-            base_classes: flake8.runtime_evaluated_base_classes.clone(),
-            decorators: flake8.runtime_evaluated_decorators.clone(),
-        }
+        Self { base_classes: &flake8.runtime_evaluated_base_classes, decorators: &flake8.runtime_evaluated_decorators }
     }
 
     pub fn class(&self, class_def: &ast::StmtClassDef, semantic: &SemanticModel) -> RuntimeSemantics {

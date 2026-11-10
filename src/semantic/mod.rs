@@ -36,7 +36,7 @@ pub struct Semantic<'a> {
 }
 
 impl<'a> Semantic<'a> {
-    pub fn new(path: &'a Path, body: &'a [Stmt], target_version: PythonVersion, settings: &LinterSettings) -> Self {
+    pub fn new(path: &'a Path, body: &'a [Stmt], target_version: PythonVersion, settings: &'a LinterSettings) -> Self {
         let builder::Model {
             semantic: mut model,
             loads,

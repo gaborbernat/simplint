@@ -69,6 +69,10 @@ impl<'a> Suppressions<'a> {
     // Each diagnostic no comment suppresses, with the line its suppression comment belongs on.
     pub fn pending(&self, mut diagnostics: Vec<Diagnostic>) -> Vec<(Diagnostic, TextSize)> {
         let lines = self.locate(&mut diagnostics);
+        self.unsuppressed(diagnostics, lines)
+    }
+
+    fn unsuppressed(&self, diagnostics: Vec<Diagnostic>, lines: Vec<TextSize>) -> Vec<(Diagnostic, TextSize)> {
         diagnostics
             .into_iter()
             .zip(lines)
@@ -80,16 +84,14 @@ impl<'a> Suppressions<'a> {
             .collect()
     }
 
-    pub fn ignore_candidates(&self, diagnostics: &[Diagnostic]) -> Vec<(TextSize, String)> {
-        let mut located = diagnostics.to_vec();
-        let rows = self.locate(&mut located);
+    fn ignore_candidates(&self, located: &[Diagnostic], rows: &[TextSize]) -> Vec<(TextSize, String)> {
         let mut used = FxHashSet::default();
         for (diagnostic, line) in located.iter().zip(rows) {
             let code = diagnostic.secondary_code().expect("a rule diagnostic has a code").as_str();
             if self.file.iter().any(|directive| directive.suppresses(code)) {
                 continue;
             }
-            let Some(directives) = self.lines.get(&line) else { continue };
+            let Some(directives) = self.lines.get(line) else { continue };
             if directives.noqa.as_ref().is_some_and(|(_, directive)| directive.suppresses(code)) {
                 continue;
             }
@@ -113,49 +115,70 @@ impl<'a> Suppressions<'a> {
             .collect()
     }
 
+    // The selectors whose removal leaves no report that was not there before. Each lint of a proposed source costs a
+    // pass over the whole file, so the selectors are tried all at once, and a set whose removal adds a report is split
+    // in halves until the selectors that add one stand alone.
     pub fn unused_ignores(
         &self,
-        diagnostics: Vec<Diagnostic>,
+        mut diagnostics: Vec<Diagnostic>,
         relint: impl Fn(&str) -> Vec<Diagnostic>,
     ) -> Option<UnusedIgnore> {
-        let candidates = self.ignore_candidates(&diagnostics);
+        let rows = self.locate(&mut diagnostics);
+        let candidates = self.ignore_candidates(&diagnostics, &rows);
         if candidates.is_empty() {
             return None;
         }
-        let mut baseline: Vec<Diagnostic> =
-            self.pending(diagnostics).into_iter().map(|(diagnostic, _)| diagnostic).collect();
-        let mut groups: BTreeMap<TextSize, Vec<String>> = BTreeMap::new();
-        for (start, selector) in candidates {
-            groups.entry(start).or_default().push(selector);
+        let baseline: Vec<Diagnostic> =
+            self.unsuppressed(diagnostics, rows).into_iter().map(|(diagnostic, _)| diagnostic).collect();
+        let mut removed = Vec::new();
+        self.remove_unused(&candidates, &mut removed, &baseline, &relint);
+        let first = removed.iter().map(|(start, _)| *start).min()?;
+        let count = removed.len();
+        let mut edits = self.removal_edits(&removed);
+        edits.reverse();
+        Some(UnusedIgnore { start: first, count, edits })
+    }
+
+    fn remove_unused<'c>(
+        &self,
+        candidates: &'c [(TextSize, String)],
+        removed: &mut Vec<&'c (TextSize, String)>,
+        baseline: &[Diagnostic],
+        relint: &impl Fn(&str) -> Vec<Diagnostic>,
+    ) {
+        let mut trial = removed.clone();
+        trial.extend(candidates);
+        let edits = self.removal_edits(&trial);
+        if no_new_reports(baseline, &relint(&apply(self.source, &edits)), &edits) {
+            *removed = trial;
+        } else if candidates.len() > 1 {
+            let (head, tail) = candidates.split_at(candidates.len() / 2);
+            self.remove_unused(head, removed, baseline, relint);
+            self.remove_unused(tail, removed, baseline, relint);
         }
-        let mut current = self.source.to_owned();
-        let mut edits = Vec::new();
-        let mut count = 0;
-        let mut first = TextSize::default();
-        for (start, selectors) in groups.into_iter().rev() {
-            let before = current.clone();
-            for selector in selectors.into_iter().rev() {
-                let (edit, replacement) = remove_ignore_selector(&current, start, &selector)
-                    .expect("a parsed selector exists in its comment");
-                let mut proposed = current.clone();
-                proposed.replace_range(usize::from(edit.start())..usize::from(edit.end()), &replacement);
-                let next = relint(&proposed);
-                if !same_or_fewer_reports(&baseline, &next, edit, replacement.len()) {
-                    continue;
-                }
-                current = proposed;
-                baseline = next;
-                count += 1;
-                first = start;
-                if replacement.is_empty() {
-                    break;
-                }
-            }
-            if current != before {
-                edits.push(changed_region(&before, &current));
-            }
+    }
+
+    // The edit of each comment that loses selectors, in source order.
+    fn removal_edits(&self, removed: &[&(TextSize, String)]) -> Vec<(TextRange, String)> {
+        let mut by_comment: BTreeMap<TextSize, Vec<&str>> = BTreeMap::new();
+        for (start, selector) in removed {
+            by_comment.entry(*start).or_default().push(selector);
         }
-        (count > 0).then_some(UnusedIgnore { start: first, count, edits })
+        by_comment
+            .into_iter()
+            .map(|(start, selectors)| {
+                let line = self.source.full_line_range(start);
+                let before = &self.source[line];
+                let mut after = before.to_owned();
+                for selector in selectors {
+                    let (edit, replacement) = remove_ignore_selector(&after, start - line.start(), selector)
+                        .expect("a parsed selector exists in its comment");
+                    after.replace_range(usize::from(edit.start())..usize::from(edit.end()), &replacement);
+                }
+                let (range, replacement) = changed_region(before, &after);
+                (range + line.start(), replacement)
+            })
+            .collect()
     }
 
     // Ruff expects a `noqa` comment on the diagnostic's line, or on the last line of the multi-line string or
@@ -356,29 +379,53 @@ fn changed_region(before: &str, after: &str) -> (TextRange, String) {
     (range, after[prefix..after.len() - suffix].to_owned())
 }
 
-// Whether the edit leaves no report that was not there before. A report inside the edited span, such as SMP008 on the
-// codes of the comment it edits, has no position to map back, so it matches any report of the same rule and message
-// that started inside the span before.
-fn same_or_fewer_reports(before: &[Diagnostic], after: &[Diagnostic], edit: TextRange, new_len: usize) -> bool {
-    let start = edit.start().to_usize();
-    let old_len = edit.len().to_usize();
+// The source with sorted, disjoint edits applied.
+fn apply(source: &str, edits: &[(TextRange, String)]) -> String {
+    let mut output = String::with_capacity(source.len());
+    let mut last = 0;
+    for (range, replacement) in edits {
+        output.push_str(&source[last..range.start().to_usize()]);
+        output.push_str(replacement);
+        last = range.end().to_usize();
+    }
+    output.push_str(&source[last..]);
+    output
+}
+
+// Whether the edits, sorted and each shortening the source, leave no report that was not there before. A report inside
+// an edited span, such as SMP008 on the codes of the comment it edits, has no position to map back, so it matches any
+// report of the same rule and message that started inside that span before.
+fn no_new_reports(before: &[Diagnostic], after: &[Diagnostic], edits: &[(TextRange, String)]) -> bool {
     let mut known: FxHashMap<(&str, &str, usize), usize> = FxHashMap::default();
     for report in before {
         let Some(range) = report.range() else { return false };
-        let position = range.start().to_usize();
-        let mapped = if (start..start + old_len).contains(&position) { start } else { position };
-        *known.entry((report.secondary_code_or_id(), report.headline_message(), mapped)).or_default() += 1;
+        let position = range.start();
+        let index = edits.partition_point(|(edit, _)| edit.end() <= position);
+        let mapped =
+            edits.get(index).filter(|(edit, _)| edit.contains(position)).map_or(position, |(edit, _)| edit.start());
+        *known.entry((report.secondary_code_or_id(), report.headline_message(), mapped.to_usize())).or_default() += 1;
     }
+    // Where each edit's replacement starts and ends in the edited source, where the edit starts in the source, and how
+    // much the edits up to it shortened the source.
+    let mut shortened = 0;
+    let shifted: Vec<(usize, usize, usize, usize)> = edits
+        .iter()
+        .map(|(edit, replacement)| {
+            let start = edit.start().to_usize();
+            let new_start = start - shortened;
+            shortened += edit.len().to_usize() - replacement.len();
+            (new_start, new_start + replacement.len(), start, shortened)
+        })
+        .collect();
     let mut observed = FxHashMap::default();
     after.iter().all(|report| {
         let Some(range) = report.range() else { return false };
         let position = range.start().to_usize();
-        let mapped = if position < start {
-            position
-        } else if position < start + new_len {
-            start
-        } else {
-            position + old_len - new_len
+        let index = shifted.partition_point(|(new_start, ..)| *new_start <= position);
+        let mapped = match index.checked_sub(1).map(|index| shifted[index]) {
+            None => position,
+            Some((_, new_end, start, _)) if position < new_end => start,
+            Some((.., shortened)) => position + shortened,
         };
         let key = (report.secondary_code_or_id(), report.headline_message(), mapped);
         let count = observed.entry(key).or_insert(0);

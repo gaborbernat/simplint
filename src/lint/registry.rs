@@ -54,15 +54,21 @@ macro_rules! rules {
             }
 
             pub fn from_code(code: &str) -> Option<Self> {
-                Self::ALL.iter().copied().find(|rule| rule.code() == code)
+                Self::from_code_or_name(code).filter(|rule| rule.code() == code)
             }
 
             pub fn from_code_or_name(value: &str) -> Option<Self> {
-                Self::ALL.iter().copied().find(|rule| rule.code() == value || rule.name() == value)
+                match value {
+                    $($code | $name => Some(Rule::$variant),)*
+                    _ => None,
+                }
             }
 
             pub fn url(self) -> String {
-                format!("https://simplint.readthedocs.io/en/latest/_generated/rules/{}.html", self.code())
+                let url = match self {
+                    $(Rule::$variant => concat!("https://simplint.readthedocs.io/en/latest/_generated/rules/", $code, ".html"),)*
+                };
+                url.to_owned()
             }
 
             // The directory under `src/rules` the rule lives in, which names its group.

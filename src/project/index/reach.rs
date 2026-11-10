@@ -97,6 +97,10 @@ pub(super) fn library_api(
             (*source, exported)
         })
         .collect();
+    let mut by_importer: FxHashMap<FileId, Vec<FileId>> = FxHashMap::default();
+    for (importer, source) in stars {
+        by_importer.entry(*importer).or_default().push(*source);
+    }
     let mut loaded: FxHashMap<FileId, FxHashSet<&str>> = FxHashMap::default();
     for (file, name) in entries {
         loaded.entry(*file).or_default().insert(name.as_str());
@@ -123,7 +127,7 @@ pub(super) fn library_api(
             if unknown == ExportsUnknown::No {
                 let redundant = facts.bindings.iter().filter(|binding| binding.redundant).map(|binding| &binding.bound);
                 redundant.map(String::as_str).filter(starred).for_each(&mut add);
-                for (_, source) in stars.iter().filter(|(importer, _)| importer == path) {
+                for source in by_importer.get(path).into_iter().flatten() {
                     star_exports[source].iter().copied().for_each(&mut add);
                 }
             }
@@ -180,23 +184,32 @@ pub(super) fn reexport(
     stars: &[(FileId, FileId)],
     sources: &FxHashMap<FileId, &FileFacts>,
 ) {
-    loop {
-        let mut spread = false;
-        for (importer, source) in stars {
-            let listed = sources.get(source).and_then(|facts| facts.exports.as_deref());
+    let listed: FxHashMap<FileId, FxHashSet<&str>> = stars
+        .iter()
+        .filter_map(|(_, source)| {
+            let exports = sources.get(source)?.exports.as_ref()?;
+            Some((*source, exports.iter().map(String::as_str).collect()))
+        })
+        .collect();
+    let mut by_importer: FxHashMap<FileId, Vec<FileId>> = FxHashMap::default();
+    for (importer, source) in stars {
+        by_importer.entry(*importer).or_default().push(*source);
+    }
+    let mut pending: Vec<FileId> = by_importer.keys().copied().collect();
+    while let Some(importer) = pending.pop() {
+        for source in by_importer.get(&importer).into_iter().flatten() {
             let reached: Vec<String> = names
-                .get(importer)
+                .get(&importer)
                 .into_iter()
                 .flatten()
-                .filter(|name| listed.is_none_or(|listed| listed.contains(name)))
+                .filter(|name| listed.get(source).is_none_or(|listed| listed.contains(name.as_str())))
                 .filter(|name| !names.get(source).is_some_and(|known| known.contains(*name)))
                 .cloned()
                 .collect();
-            spread |= !reached.is_empty();
-            names.entry(*source).or_default().extend(reached);
-        }
-        if !spread {
-            return;
+            if !reached.is_empty() {
+                names.entry(*source).or_default().extend(reached);
+                pending.push(*source);
+            }
         }
     }
 }

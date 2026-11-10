@@ -54,6 +54,8 @@ pub struct Checker<'a> {
     name_tokens: OnceCell<FxHashMap<&'a str, usize>>,
     string_values: OnceCell<Vec<(TextRange, Cow<'a, str>)>>,
     project: OnceCell<FileIndex<'a>>,
+    // The other files that reports point into, read once each, so their lines are indexed once for rendering.
+    related_files: RefCell<FxHashMap<PathBuf, Option<SourceFile>>>,
     state: FileState<'a>,
     // Rules report while they read the checker, as in Ruff's own `Checker`.
     diagnostics: RefCell<Vec<(Rule, Diagnostic)>>,
@@ -86,13 +88,15 @@ impl<'a> Checker<'a> {
             name_tokens: OnceCell::new(),
             string_values: OnceCell::new(),
             project: OnceCell::new(),
+            related_files: RefCell::default(),
             state: FileState::default(),
             diagnostics: RefCell::default(),
             rule: Cell::new(None),
         }
     }
 
-    pub fn run(self, include_unused_ignore: bool) -> Vec<Diagnostic> {
+    // With the file's suppression comments, the unused selectors of its ignore comments are reported too.
+    pub fn run(self, unused_ignores_of: Option<&Suppressions>) -> Vec<Diagnostic> {
         let rules = self.settings.rules;
         for rule in rules.iter() {
             self.enter(rule);
@@ -102,8 +106,10 @@ impl<'a> Checker<'a> {
         if rules.iter().any(Rule::walks) {
             Walker::run(&self, rules);
         }
-        if include_unused_ignore && rules.contains(Rule::UnusedIgnore) {
-            self.report_unused_ignores();
+        if let Some(suppressions) = unused_ignores_of
+            && rules.contains(Rule::UnusedIgnore)
+        {
+            self.report_unused_ignores(suppressions);
         }
         let mut diagnostics = self.diagnostics.into_inner();
         // Reports at the same position keep the order of the rules, as when each rule ran alone; the sort is stable.
@@ -111,10 +117,8 @@ impl<'a> Checker<'a> {
         diagnostics.into_iter().map(|(_, diagnostic)| diagnostic).collect()
     }
 
-    fn report_unused_ignores(&self) {
-        let suppressions = Suppressions::new(self.path, self.source, self.parsed, self.indexer, self.stylist);
-        let diagnostics: Vec<Diagnostic> =
-            self.diagnostics.borrow().iter().map(|(_, diagnostic)| diagnostic.clone()).collect();
+    fn report_unused_ignores(&self, suppressions: &Suppressions) {
+        let diagnostics = self.diagnostics.borrow().iter().map(|(_, diagnostic)| diagnostic.clone()).collect();
         let Some(unused) = suppressions.unused_ignores(diagnostics, |proposed| {
             self.linter.lint_without_unused_ignore(self.path, proposed).diagnostics
         }) else {
@@ -168,8 +172,12 @@ impl<'a> Checker<'a> {
     ) {
         let mut diagnostic = self.diagnostic(rule, range, message);
         for location in related {
-            let file =
-                if location.path == self.path { Some(self.file.clone()) } else { source_file_at(&location.path) };
+            let file = if location.path == self.path {
+                Some(self.file.clone())
+            } else {
+                let mut files = self.related_files.borrow_mut();
+                files.entry(location.path).or_insert_with_key(|path| source_file_at(path)).clone()
+            };
             if let Some(file) = file {
                 let span = Span::from(file).with_range(location.range);
                 diagnostic.annotate(Annotation::secondary(span).message(location.message));
