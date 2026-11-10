@@ -1,4 +1,5 @@
 use ruff_python_ast::{self as ast, Expr, Stmt};
+use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
 use crate::rules::docstrings::{is_documented_variable, module_statements_with_next};
@@ -18,15 +19,16 @@ pub(crate) struct Attribute<'a> {
 
 pub(crate) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) -> Vec<Attribute<'a>> {
     let mut found: Vec<Attribute> = Vec::new();
-    let mut add = |name: &'a str, class_var: bool, documented: bool| match found
-        .iter_mut()
-        .find(|attribute| attribute.name == name)
-    {
-        Some(attribute) => {
+    let mut index: FxHashMap<&'a str, usize> = FxHashMap::default();
+    let mut add = |name: &'a str, class_var: bool, documented: bool| {
+        if let Some(&position) = index.get(name) {
+            let attribute = &mut found[position];
             attribute.documented |= documented;
             attribute.on_instance |= !class_var;
+        } else {
+            index.insert(name, found.len());
+            found.push(Attribute { name, class_var, on_instance: !class_var, documented });
         }
-        None => found.push(Attribute { name, class_var, on_instance: !class_var, documented }),
     };
     for (stmt, next) in module_statements_with_next(&class.body) {
         let documented = is_documented_variable(checker, stmt, next);

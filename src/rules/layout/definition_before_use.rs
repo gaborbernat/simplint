@@ -6,7 +6,7 @@ use ruff_python_ast::visitor::{Visitor, walk_expr, walk_stmt};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
-use super::class_order::{Arrangement, class_order};
+use super::class_order::Arrangement;
 use super::definition_time::{class_runtime_names, definition_name, definition_time_exprs, signature_annotations};
 use super::reorder::{Suite, moved_span, moves_definition_unsafely, reorder_fix};
 use crate::lint::checker::Checker;
@@ -21,8 +21,9 @@ pub fn definition_before_use(checker: &Checker) {
     let owners = owners(body.len(), &uses);
     let expected = expected_order(body.len(), &owners, &uses);
     report_misplaced(checker, &Suite { body, blank_lines: 2 }, &expected, &owners);
+    let orders = checker.state().class_orders(checker);
     for class in checker.class_defs() {
-        let order = class_order(checker, class);
+        let order = &orders[&class.range];
         let expected = order.expected(Arrangement::Helpers);
         report_misplaced(checker, &Suite { body: &class.body, blank_lines: 1 }, &expected, &order.helper_owners());
     }
@@ -37,14 +38,19 @@ struct Uses {
 fn module_uses(checker: &Checker, body: &[Stmt], runtime_names: &FxHashMap<TextRange, FxHashSet<&str>>) -> Uses {
     let semantic = checker.semantic();
     let lazy = semantic.annotations_are_lazy();
-    let eager = eager_annotations(checker);
+    let mut eager = eager_annotations(checker);
+    eager.sort_unstable_by_key(Ranged::start);
     let import_time = import_time_functions(body, runtime_names);
     // Decorators such as FastAPI routes, pydantic's `validate_call` or `dataclass` read the annotations they decorate
     // while the module loads, even when Python defers them. Without lazy annotations, a `def` evaluates its own
     // signature's annotations when it runs. A name a function only annotates with is not a helper it calls.
     let evaluation = |reference: &Reference| match reference.evaluation {
-        Evaluation::Annotation if eager.iter().any(|range| range.contains_range(reference.range)) => {
-            if reference.function.is_none() { Evaluation::Runtime } else { Evaluation::Deferred }
+        Evaluation::Annotation if in_ranges(&eager, reference.range) => {
+            if reference.function.is_none() {
+                Evaluation::Runtime
+            } else {
+                Evaluation::Deferred
+            }
         }
         Evaluation::Annotation if !lazy && reference.function.is_none() => Evaluation::Runtime,
         Evaluation::Deferred if reference.function.is_some_and(|function| import_time.contains(&function)) => {
@@ -106,6 +112,13 @@ fn eager_annotations(checker: &Checker) -> Vec<TextRange> {
             class.body.iter().filter_map(Stmt::as_ann_assign_stmt).map(|field| field.annotation.range())
         });
     signatures.chain(fields).collect()
+}
+
+// Whether a range lies in one of the annotations, sorted by start. Annotations never overlap, so the last one that
+// starts at or before the range is the only one that can hold it.
+fn in_ranges(ranges: &[TextRange], range: TextRange) -> bool {
+    let next = ranges.partition_point(|candidate| candidate.start() <= range.start());
+    next > 0 && ranges[next - 1].contains_range(range)
 }
 
 // The functions and lambdas that may run while the module loads, so what they read must already exist: a lambda in

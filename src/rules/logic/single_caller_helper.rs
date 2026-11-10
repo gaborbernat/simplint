@@ -1,9 +1,12 @@
+use std::cell::OnceCell;
+
 use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::helpers::{RaiseStatementVisitor, ReturnStatementVisitor, body_without_leading_docstring};
 use ruff_python_ast::statement_visitor::StatementVisitor;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, ExceptHandler, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
+use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
@@ -12,15 +15,20 @@ use crate::rules::logic::forwarding_function::forward_target;
 use crate::rules::testing::{conditionals, is_test_module_function};
 use crate::syntax::{Visibility, is_repeating_expr, last_segment};
 
-pub fn single_caller_helper(checker: &Checker) {
+pub fn single_caller_helper(checker: &Checker<'_>) {
+    let defs = OnceCell::new();
     for stmt in checker.body() {
         if let Stmt::FunctionDef(helper) = stmt {
-            check_helper(checker, helper);
+            check_helper(checker, helper, &defs);
         }
     }
 }
 
-fn check_helper(checker: &Checker, helper: &ast::StmtFunctionDef) {
+fn check_helper<'a>(
+    checker: &Checker<'a>,
+    helper: &ast::StmtFunctionDef,
+    defs: &OnceCell<FxHashMap<TextRange, &'a ast::StmtFunctionDef>>,
+) {
     let name = helper.name.as_str();
     if Visibility::of(name) != Visibility::Private
         || !helper.decorator_list.is_empty()
@@ -43,14 +51,13 @@ fn check_helper(checker: &Checker, helper: &ast::StmtFunctionDef) {
     if forward_target(checker, helper, &[reference.range]).is_some() {
         return;
     }
-    let Some(caller) = reference
-        .function
-        .and_then(|range| checker.function_defs().iter().copied().find(|function| function.range == range))
-    else {
+    let defs =
+        defs.get_or_init(|| checker.function_defs().iter().map(|function| (function.range, *function)).collect());
+    let Some(caller) = reference.function.and_then(|range| defs.get(&range).copied()) else {
         return;
     };
     // A recursive helper calls itself, which inlining cannot remove.
-    if caller.range == helper.range || in_repeat(&caller.body, reference.range) {
+    if caller.range == helper.range {
         return;
     }
     // Inlining a branching helper into a test would make conditional-in-test's (SMP803) report fire there.
@@ -64,6 +71,10 @@ fn check_helper(checker: &Checker, helper: &ast::StmtFunctionDef) {
     if helper_statements >= knobs.max_helper_statements
         || caller_statements + helper_statements > knobs.max_caller_statements
     {
+        return;
+    }
+    // The loop walk waits for the size limits, so a long caller with many helpers is not walked once per helper.
+    if in_repeat(&caller.body, reference.range) {
         return;
     }
     // Inlining at the call site adds the helper's nesting-sensitive increments, so a caller that would pass the limit

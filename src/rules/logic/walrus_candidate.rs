@@ -1,10 +1,10 @@
-use std::cell::OnceCell;
+use std::cell::{OnceCell, RefCell};
 
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
 use ruff_text_size::{Ranged, TextLen, TextRange};
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::layout::joined_width;
 use crate::lint::checker::Checker;
@@ -21,6 +21,7 @@ pub fn walrus_candidate(checker: &Checker) {
         return;
     }
     let mentions = OnceCell::new();
+    let declared = RefCell::new(FxHashMap::default());
     for_each_scoped_body(
         checker.body(),
         Block { scope: Scope::Module, owner: None },
@@ -29,7 +30,8 @@ pub fn walrus_candidate(checker: &Checker) {
         &mut |body, block, depth| {
             for pair in body.windows(2) {
                 if let [Stmt::Assign(assign), if_stmt @ Stmt::If(ast::StmtIf { test, .. })] = pair
-                    && let Some(candidate) = candidate(checker, &mentions, block.scope, assign, if_stmt, test)
+                    && let Some(candidate) =
+                        candidate(checker, &mentions, &declared, block.scope, assign, if_stmt, test)
                 {
                     report(checker, &candidate, depth, !collapse_blocked(checker, body, block.owner, if_stmt));
                 }
@@ -135,6 +137,7 @@ struct Candidate<'a> {
 fn candidate<'a>(
     checker: &Checker<'a>,
     mentions: &OnceCell<Mentions<'a>>,
+    declared: &RefCell<FxHashMap<TextRange, FxHashSet<&'a str>>>,
     scope: Scope<'a>,
     assign: &'a ast::StmtAssign,
     if_stmt: &'a Stmt,
@@ -165,7 +168,13 @@ fn candidate<'a>(
         Scope::Class => return None,
         Scope::Function(function) => (
             function.range(),
-            function.as_function_def_stmt().is_some_and(|function| declared_outer(&function.body).contains(name)),
+            function.as_function_def_stmt().is_some_and(|definition| {
+                declared
+                    .borrow_mut()
+                    .entry(function.range())
+                    .or_insert_with(|| declared_outer(&definition.body))
+                    .contains(name)
+            }),
         ),
         Scope::Module => (
             TextRange::up_to(checker.source.text_len()),

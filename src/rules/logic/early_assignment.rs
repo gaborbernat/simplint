@@ -1,3 +1,5 @@
+use std::cell::OnceCell;
+
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::helpers::is_dunder;
 use ruff_python_ast::token::TokenKind;
@@ -16,6 +18,7 @@ use crate::rules::logic::inline::{Names, enter_function, for_each_scoped_body, i
 pub fn early_assignment(checker: &Checker) {
     // A function's scope is walked once, and only when one of its blocks assigns a constant to a name.
     let mut scopes: FxHashMap<TextRange, Scope> = FxHashMap::default();
+    let strings = OnceCell::new();
     for_each_scoped_body(checker.body(), None, 0, &enter_function, &mut |body, function, _depth| {
         let Some(function) = function else {
             return;
@@ -25,10 +28,22 @@ pub fn early_assignment(checker: &Checker) {
                 && let Some(target) = candidate(assign)
             {
                 let scope = scopes.entry(function.range).or_insert_with(|| Scope::of(&function.body));
-                check_assign(checker, scope, body, index, (assign, target));
+                let strings = strings.get_or_init(|| string_tokens(checker));
+                check_assign(checker, scope, strings, body, index, (assign, target));
             }
         }
     });
+}
+
+// The ranges of the string tokens of the file in source order, which may hold a name the rule must not move past.
+fn string_tokens(checker: &Checker) -> Vec<TextRange> {
+    checker
+        .parsed
+        .tokens()
+        .iter()
+        .filter(|token| matches!(token.kind(), TokenKind::String | TokenKind::FStringMiddle))
+        .map(Ranged::range)
+        .collect()
 }
 
 // The name an assignment binds when it assigns a constant to that single local name, the only kind the rule moves.
@@ -98,6 +113,7 @@ fn spells(text: &str, name: &str) -> bool {
 fn check_assign<'a>(
     checker: &Checker<'a>,
     scope: &Scope<'a>,
+    strings: &[TextRange],
     body: &'a [Stmt],
     index: usize,
     (assign, target): (&'a ast::StmtAssign, &'a ast::ExprName),
@@ -131,15 +147,15 @@ fn check_assign<'a>(
         return;
     };
     // A string between the assignment and the use may be code that reads the name by its text, as `exec` runs one.
-    let between = checker.parsed.tokens().in_range(TextRange::new(assign.end(), first.start()));
-    if between.iter().any(|token| {
-        matches!(token.kind(), TokenKind::String | TokenKind::FStringMiddle)
-            && spells(checker.text(token.range()), name)
-    }) {
+    let from = strings.partition_point(|string| string.start() < assign.end());
+    let to = strings.partition_point(|string| string.end() <= first.start());
+    if strings[from..to].iter().any(|string| spells(checker.text(*string), name)) {
         return;
     }
-    let Some(offset) = body[index + 1..].iter().position(|stmt| stmt.range().contains_range(first)) else { return };
-    let next = &body[index + 1 + offset];
+    let after = &body[index + 1..];
+    let candidate = after.partition_point(|stmt| stmt.start() <= first.start()).checked_sub(1);
+    let Some(offset) = candidate.filter(|&offset| after[offset].range().contains_range(first)) else { return };
+    let next = &after[offset];
     // Only the statement directly after the assignment is SMP504's, which inlines a single use.
     if offset == 0 || checker.has_comment_in(TextRange::new(assign.start(), next.start())) {
         return;

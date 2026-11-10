@@ -27,6 +27,7 @@ use crate::common::{self, check, read};
 #[test_case("walrus-candidate", "walrus_candidate_globals.py", "py314" ; "walrus_candidate_globals")]
 #[test_case("single-caller-helper", "single_caller_helper.py", "py314" ; "single_caller_helper")]
 #[test_case("single-caller-helper", "single_caller_helper_dynamic.py", "py314" ; "single_caller_helper_computed_all")]
+#[test_case("single-caller-helper", "single_caller_helper_recursive.py", "py314" ; "single_caller_helper_recursive")]
 #[test_case("single-caller-helper", "tests/test_single_caller_helper_from_test.py", "py314" ; "single_caller_helper_from_test")]
 #[test_case("single-use-variable", "single_use_variable.py", "py314" ; "single_use_variable")]
 #[test_case("single-use-variable", "single_use_variable_width.py", "py314" ; "single_use_variable_width")]

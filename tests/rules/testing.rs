@@ -20,6 +20,7 @@ use crate::common;
 #[test_case("constant-assert", "constant_assert_all_rebound.py" ; "constant_assert_all_rebound")]
 #[test_case("constant-assert", "constant_assert_ruff_overlap.py" ; "constant_assert_ruff_overlap")]
 #[test_case("loop-in-test", "tests/test_loop_in_test.py" ; "loop_in_test")]
+#[test_case("loop-in-test", "tests/test_loop_in_test_shared.py" ; "loop_in_test_shared_name")]
 #[test_case("mock-assertion-typo", "mock_assertion_typo.py" ; "mock_assertion_typo")]
 #[test_case("mock-assertion-typo", "mock_assertion_typo_defined.py" ; "mock_assertion_typo_defined")]
 #[test_case("mock-assertion-typo", "mock_assertion_typo_parenthesized.py" ; "mock_assertion_typo_parenthesized")]
