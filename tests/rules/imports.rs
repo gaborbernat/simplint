@@ -128,6 +128,50 @@ fn private_import_path_in_tests(file: &str, source: &str, expected: usize) {
     assert_eq!(stdout.matches("SMP310").count(), expected, "{stdout}");
 }
 
+#[test_case(
+    "tests/_render/test_intersphinx.py", "pkg._render.intersphinx", "src/pkg/_render/intersphinx.py", 0
+    ; "private_parent_with_omitted_package"
+)]
+#[test_case(
+    "tests/_resolve/guards/test_run.py", "pkg._resolve.guards.run", "src/pkg/_resolve/guards/run.py", 0
+    ; "nested_private_parent"
+)]
+#[test_case(
+    "tests/pkg/_render/test_intersphinx.py", "pkg._render.intersphinx", "src/pkg/_render/intersphinx.py", 0
+    ; "private_parent_with_package"
+)]
+#[test_case("tests/_html/test_url.py", "pkg._html", "src/pkg/_html.pyi", 0 ; "paired_extension_suite")]
+#[test_case("tests/test__objects.py", "pkg._objects", "src/pkg/_objects.py", 0 ; "private_root_module")]
+#[test_case("tests/_html/url/test_url.py", "pkg._html", "src/pkg/_html.pyi", 0 ; "nested_extension_suite")]
+#[test_case("tests/pkg/_html/url/test_url.py", "pkg._html", "src/pkg/_html.pyi", 0 ; "extension_suite_with_package")]
+#[test_case("tests/_html/test_url.py", "pkg._other", "src/pkg/_other.py", 1 ; "different_suite_module")]
+#[test_case("tests/_other/test_url.py", "pkg._html", "src/pkg/_html.pyi", 1 ; "different_suite_path")]
+#[test_case("tests/_htmlish/test_url.py", "pkg._html", "src/pkg/_html.pyi", 1 ; "suite_path_prefix")]
+#[test_case("tests/_render/test_intersphinx.py", "pkg._render.other", "src/pkg/_render/other.py", 1 ; "different_stem")]
+#[test_case(
+    "tests/_resolve/guards/test_run.py", "pkg._resolve.other.run", "src/pkg/_resolve/other/run.py", 1
+    ; "different_package"
+)]
+#[test_case(
+    "tests/_render/test_intersphinx.py", "pkg._render.intersphinx", "src/other/_render/intersphinx.py", 1
+    ; "missing_imported_module"
+)]
+fn private_import_path_in_mirrored_tests(file: &str, module: &str, source_file: &str, expected: usize) {
+    let root = common::project(&[(source_file, "Name = object()\n"), (file, &format!("from {module} import Name\n"))]);
+    let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP310"]).1;
+    assert_eq!(stdout.matches("SMP310").count(), expected, "{stdout}");
+}
+
+#[test]
+fn private_module_object_remains_disallowed_in_paired_suite() {
+    let root = common::project(&[
+        ("src/pkg/_html.pyi", "Name: object\n"),
+        ("tests/_html/test_url.py", "from pkg import _html\n"),
+    ]);
+    let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP310"]).1;
+    assert_eq!(stdout.matches("SMP310").count(), 1, "{stdout}");
+}
+
 #[test]
 fn private_module_object_import_reports_both_import_and_attribute() {
     let root = common::project(&[

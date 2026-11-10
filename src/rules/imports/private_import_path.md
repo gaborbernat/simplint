@@ -55,10 +55,13 @@ re-export or replacing uses of a module object may require changes elsewhere.
 - **One private name in a direct relative import**: `from ._api import API` lets the package use a private sibling to
   build an API outside tests. `from .public import _helper` also stays within the same package level.
 
-- **A paired test and private module**: `tests/package/test_api.py` may import names from `package._api`, and a
-  colocated `package/test_api.py` may import names from `package._api` or `._api`. The package path and the stem after
-  `test_` must match. A relative import from the mirrored test tree resolves inside that tree, so it is not paired with
-  the source module. Importing the private module as an object remains disallowed.
+- **A paired test and private module**: `tests/package/test_api.py` may import names from `package._api`. The test
+  directory may omit the source package's top-level name: `tests/_render/test_intersphinx.py` may import names from
+  `package._render.intersphinx`. A colocated `package/test_api.py` may also import names from `._api`. The remaining
+  directories and the stem after `test_` must match an existing source file. A dedicated subtree may instead take the
+  module's name: `tests/_html/url/test_url.py` may import names from `package._html` when `_html.py` or `_html.pyi`
+  exists. A relative import from the mirrored test tree resolves inside that tree, so it is not paired with the source
+  module. Importing the private module as an object remains disallowed.
 
 - **Dunder names**: `__future__` and `__version__` do not count as private names.
 
