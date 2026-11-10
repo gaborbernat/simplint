@@ -189,20 +189,77 @@ The fix is offered only when:
 - the statement shares no line with other code
 
 With several bindings or a later reader, moving the statement could change the value of `__all__` or what that reader
-sees. A module that reads `__all__` at run time still needs it bound above, so the statement is reported without a fix.
+sees. A module that reads `__all__` at run time still needs it bound above, so the statement is reported without a fix
+when the module reads it through:
 
-```python report
-import sys
+- an attribute, such as `sys.modules[__name__].__all__`:
 
-__all__ = ["main"]
+  ```python report
+  import sys
 
-
-def main() -> None:
-    pass
+  __all__ = ["main"]
 
 
-print(sys.modules[__name__].__all__)
-```
+  def main() -> None:
+      pass
+
+
+  print(sys.modules[__name__].__all__)
+  ```
+
+- the string `"__all__"`, such as in `getattr(sys.modules[__name__], "__all__")`:
+
+  ```python report
+  import sys
+
+  __all__ = ["main"]
+
+
+  def main() -> None:
+      pass
+
+
+  print(getattr(sys.modules[__name__], "__all__"))
+  ```
+
+- a call to `globals()`:
+
+  ```python report
+  __all__ = ["main"]
+
+
+  def main() -> None:
+      pass
+
+
+  print(sorted(globals()))
+  ```
+
+- a call to `vars()`:
+
+  ```python report
+  __all__ = ["main"]
+
+
+  def main() -> None:
+      pass
+
+
+  print(sorted(vars()))
+  ```
+
+- a call to `dir()`:
+
+  ```python report
+  __all__ = ["main"]
+
+
+  def main() -> None:
+      pass
+
+
+  print(dir())
+  ```
 
 ```python report
 __all__ = ["main"]
