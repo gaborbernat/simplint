@@ -1,2 +1,2 @@
-[up-re-error-alias](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP518.html) leaves `re.error = ...` and
-`del re.error` alone, which patch the module rather than read the exception.
+[`up-re-error-alias`](../src/rules/logic/up_re_error_alias.md) leaves `re.error = ...` and `del re.error` alone, which
+patch the module rather than read the exception.

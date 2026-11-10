@@ -13,6 +13,12 @@ repos:
         entry: cargo run --quiet --locked -- check --fix
         types_or: [python, pyi]
         pass_filenames: false
+      - id: changelog-rule-links
+        name: use generated rule links in the changelog
+        language: system
+        entry: python3 -m tasks.check_changelog_links
+        files: ^(CHANGELOG\.md|changelog\.d/.*\.md)$
+        types: [markdown]
   - repo: https://github.com/tox-dev/pyproject-fmt
     rev: "50e0f3aee9dc5747a5f173f79a7417403c18dda6" # frozen: v2.30.3
     hooks:

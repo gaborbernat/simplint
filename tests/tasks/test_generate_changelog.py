@@ -101,6 +101,25 @@ def test_link_rules_leaves_codes_plain_without_codes() -> None:
     )
 
 
+@pytest.mark.parametrize("prefix", ["", "../"])
+def test_link_rules_resolves_relative_source_links(prefix: str) -> None:
+    markdown = f"[`all-format`]({prefix}src/rules/api/all_format.md) (SMP405)"
+
+    assert link_rules(markdown, {"SMP405": "all-format"}, codes=True) == (
+        "`` :doc:`all-format <_generated/rules/SMP405>` ``{=rst}"
+    )
+
+
+def test_link_rules_rejects_mismatched_source_link() -> None:
+    with pytest.raises(ValueError, match="rule source link for all-format points to"):
+        link_rules("[`all-format`](src/rules/api/missing_from_all.md)", {"SMP405": "all-format"}, codes=True)
+
+
+def test_link_rules_rejects_unknown_source_link() -> None:
+    with pytest.raises(ValueError, match="unknown rule source link: missing-from-all"):
+        link_rules("[`missing-from-all`](src/rules/api/missing_from_all.md)", {"SMP405": "all-format"}, codes=True)
+
+
 def test_rule_names_reads_the_docs_rule_list(tmp_path: Path) -> None:
     (tmp_path / "docs" / "_data").mkdir(parents=True)
     (tmp_path / "docs" / "_data" / "rules.json").write_text('[{"code": "SMP405", "name": "all-format"}]')

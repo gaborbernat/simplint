@@ -10,16 +10,16 @@
 
 - `unused-ignore` reports unused `simplint: ignore` selectors and removes them with a safe fix
   ([#72](https://github.com/gaborbernat/simplint/pull/72)) by [@gaborbernat](https://github.com/gaborbernat).
-- [`entrypoint-module-name`](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP105.html) reports command
-  entrypoints in `main.py` or `_main.py` so they can move to `__main__.py`
-  ([#76](https://github.com/gaborbernat/simplint/pull/76)) by [@gaborbernat](https://github.com/gaborbernat).
-- [`unguarded-entrypoint-call`](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP106.html) uses script
-  metadata, shebangs, executable bits, and `__main__.py` to report trailing entrypoint calls regardless of their name.
-  Single-line statements have an unsafe guard fix ([#78](https://github.com/gaborbernat/simplint/pull/78)) by
+- [`entrypoint-module-name`](src/rules/naming/entrypoint_module_name.md) reports command entrypoints in `main.py` or
+  `_main.py` so they can move to `__main__.py` ([#76](https://github.com/gaborbernat/simplint/pull/76)) by
   [@gaborbernat](https://github.com/gaborbernat).
-- [`private-import-path`](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP310.html) reports private
-  module-object imports and private imports outside a direct relative path, including nested names such as `._x._y`.
-  Tests may import names from a private module only when their package path and `test_` stem match the source module
+- [`unguarded-entrypoint-call`](src/rules/naming/unguarded_entrypoint_call.md) uses script metadata, shebangs,
+  executable bits, and `__main__.py` to report trailing entrypoint calls regardless of their name. Single-line
+  statements have an unsafe guard fix ([#78](https://github.com/gaborbernat/simplint/pull/78)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`private-import-path`](src/rules/imports/private_import_path.md) reports private module-object imports and private
+  imports outside a direct relative path, including nested names such as `._x._y`. Tests may import names from a private
+  module only when their package path and `test_` stem match the source module
   ([#74](https://github.com/gaborbernat/simplint/pull/74)) by [@gaborbernat](https://github.com/gaborbernat).
 
 <a name="release-0-10-0-changes"></a>
@@ -35,25 +35,25 @@
 
 ### Fixed
 
-- [constant-assert](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP804.html) leaves tuple and string
-  literal assertions to Ruff's F631 and PLW0129 even when simplint could fix them
-  ([#77](https://github.com/gaborbernat/simplint/pull/77)) by [@gaborbernat](https://github.com/gaborbernat).
-- [module-variable-case](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP102.html) leaves `mixedCase`
-  names to Ruff's N816 even when simplint could rename them ([#77](https://github.com/gaborbernat/simplint/pull/77)) by
+- [`constant-assert`](src/rules/testing/constant_assert.md) leaves tuple and string literal assertions to Ruff's F631
+  and PLW0129 even when simplint could fix them ([#77](https://github.com/gaborbernat/simplint/pull/77)) by
   [@gaborbernat](https://github.com/gaborbernat).
-- [single-use-variable](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP504.html) leaves `yield from`
-  assignments to Ruff's RUF070 even when Ruff's fix differs ([#77](https://github.com/gaborbernat/simplint/pull/77)) by
+- [`module-variable-case`](src/rules/naming/module_variable_case.md) leaves `mixedCase` names to Ruff's N816 even when
+  simplint could rename them ([#77](https://github.com/gaborbernat/simplint/pull/77)) by
+  [@gaborbernat](https://github.com/gaborbernat).
+- [`single-use-variable`](src/rules/logic/single_use_variable.md) leaves `yield from` assignments to Ruff's RUF070 even
+  when Ruff's fix differs ([#77](https://github.com/gaborbernat/simplint/pull/77)) by
   [@gaborbernat](https://github.com/gaborbernat).
 - `single-user-constant` respects Ruff's enabled local-variable limit before suggesting moving a constant into a
   function ([#72](https://github.com/gaborbernat/simplint/pull/72)) by [@gaborbernat](https://github.com/gaborbernat).
-- [`module-attribute-import`](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP304.html) reports private
-  module attribute access even when Ruff selects `PLC2701`, which checks imports rather than attribute access
+- [`module-attribute-import`](src/rules/imports/module_attribute_import.md) reports private module attribute access even
+  when Ruff selects `PLC2701`, which checks imports rather than attribute access
   ([#74](https://github.com/gaborbernat/simplint/pull/74)) by [@gaborbernat](https://github.com/gaborbernat).
 - `missing-from-all` leaves `__main__.py` out of the missing-export check
   ([#72](https://github.com/gaborbernat/simplint/pull/72)) by [@gaborbernat](https://github.com/gaborbernat).
-- [`init-module-content`](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP407.html) accepts package
-  re-exports listed in `__all__`, including in applications and private subpackages
-  ([#73](https://github.com/gaborbernat/simplint/pull/73)) by [@gaborbernat](https://github.com/gaborbernat).
+- [`init-module-content`](src/rules/api/init_module_content.md) accepts package re-exports listed in `__all__`,
+  including in applications and private subpackages ([#73](https://github.com/gaborbernat/simplint/pull/73)) by
+  [@gaborbernat](https://github.com/gaborbernat).
 - `init-module-content` allows test package initializers, PEP 562 hooks, and `TYPE_CHECKING` blocks
   ([#72](https://github.com/gaborbernat/simplint/pull/72)) by [@gaborbernat](https://github.com/gaborbernat).
 - `single-caller-helper` avoids suggesting inlining when it would cross enabled Ruff limits for nested blocks or try
