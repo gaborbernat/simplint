@@ -1,10 +1,12 @@
+use std::cell::OnceCell;
+
 use itertools::Itertools;
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::helpers::is_dunder;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 use ruff_text_size::{Ranged, TextRange};
-use rustc_hash::FxHashSet;
+use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
@@ -14,6 +16,7 @@ use crate::syntax::{Visibility, for_each_body};
 // without the module.
 pub fn module_attribute_import(checker: &Checker) {
     let semantic = checker.semantic();
+    let uses = OnceCell::new();
     for module in checker.project().modules() {
         if checker.settings.project.knobs.module_attributes.contains(&module.module) {
             continue;
@@ -29,19 +32,26 @@ pub fn module_attribute_import(checker: &Checker) {
         if module.top_level_package && alias.asname.as_ref().is_some_and(|asname| asname.as_str() != module.module) {
             continue;
         }
-        let loads = semantic.references_to(&module.bound).iter().map(|reference| reference.range).collect();
-        let mut uses = Uses { loads, attributes: Vec::new(), value: false };
-        uses.visit_body(checker.body());
-        if uses.value {
+        let uses = uses.get_or_init(|| Uses::of(checker.body()));
+        let mut attributes = Vec::new();
+        let mut value = false;
+        for used in semantic.references_to(&module.bound).iter().filter_map(|reference| uses.0.get(&reference.range)) {
+            match used {
+                Use::Attribute(attribute) => attributes.push(attribute),
+                Use::Value => value = true,
+            }
+        }
+        if value {
             continue;
         }
+        attributes.sort_unstable_by_key(|attribute| attribute.range.start());
         let path = module_path(statement, alias);
         // The fix replaces the import, so it is offered only when every use of the module is convertible: a single
         // import, no stores, no computed write the import would miss, and each name importable from the module.
         let mut convertible = aliases(statement).len() == 1 && !module.computed_written;
         let private_path = path.split('.').any(|part| Visibility::of(part) == Visibility::Private);
         let mut reports = Vec::new();
-        for attribute in &uses.attributes {
+        for attribute in attributes {
             let reportable = attribute.load && !is_dunder(attribute.name) && !semantic.is_bound(attribute.name);
             // Only a name another file patches or stores stays on the module; its other attributes still move.
             if !reportable || module.patched.contains(attribute.name) {
@@ -89,7 +99,9 @@ pub fn module_attribute_import(checker: &Checker) {
 // Whether a local binding of the attribute's name shares the top-level statement of the use, so the bare name may
 // resolve to it: a parameter, a local, a comprehension target, a match capture or a type parameter.
 fn is_shadowed(checker: &Checker, attribute: &Attribute) -> bool {
-    checker.body().iter().find(|stmt| stmt.range().contains_range(attribute.range)).is_some_and(|stmt| {
+    let body = checker.body();
+    let index = body.partition_point(|stmt| stmt.end() <= attribute.range.start());
+    body.get(index).filter(|stmt| stmt.range().contains_range(attribute.range)).is_some_and(|stmt| {
         checker.semantic().local_bindings(attribute.name).iter().any(|binding| stmt.range().contains_range(*binding))
     })
 }
@@ -136,12 +148,22 @@ fn module_path(stmt: &Stmt, alias: &ast::Alias) -> String {
     }
 }
 
-// Where a module binding is used in a file: its attribute accesses, and whether it is used as a value. Only the loads
-// the semantic model resolves to the module count, so a parameter or local of the same name is not a use of it.
-struct Uses<'a> {
-    loads: FxHashSet<TextRange>,
-    attributes: Vec<Attribute<'a>>,
-    value: bool,
+// How each name of a file is used, by the name's range: as the object of an attribute access, or as a value. One walk
+// serves every imported module, whose references the semantic model resolves, so a parameter or local of the same name
+// is not a use of it.
+struct Uses<'a>(FxHashMap<TextRange, Use<'a>>);
+
+impl<'a> Uses<'a> {
+    fn of(body: &'a [Stmt]) -> Self {
+        let mut uses = Self(FxHashMap::default());
+        uses.visit_body(body);
+        uses
+    }
+}
+
+enum Use<'a> {
+    Attribute(Attribute<'a>),
+    Value,
 }
 
 struct Attribute<'a> {
@@ -154,17 +176,15 @@ struct Attribute<'a> {
 impl<'a> Visitor<'a> for Uses<'a> {
     fn visit_expr(&mut self, expr: &'a Expr) {
         match expr {
-            Expr::Attribute(ast::ExprAttribute { value, attr, ctx, range, .. })
-                if value.as_name_expr().is_some_and(|name| self.loads.contains(&name.range)) =>
-            {
-                self.attributes.push(Attribute {
-                    range: *range,
-                    name: attr.as_str(),
-                    load: matches!(ctx, ExprContext::Load),
-                });
+            Expr::Attribute(ast::ExprAttribute { value, attr, ctx, range, .. }) if let Expr::Name(name) = &**value => {
+                let attribute =
+                    Attribute { range: *range, name: attr.as_str(), load: matches!(ctx, ExprContext::Load) };
+                self.0.insert(name.range, Use::Attribute(attribute));
                 return;
             }
-            Expr::Name(name) if self.loads.contains(&name.range) => self.value = true,
+            Expr::Name(name) => {
+                self.0.insert(name.range, Use::Value);
+            }
             _ => {}
         }
         visitor::walk_expr(self, expr);
