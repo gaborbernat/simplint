@@ -61,12 +61,11 @@ pub fn mock_assertion_typo(checker: &Checker) {
         preview: checker.settings.from_ruff.preview,
     };
     finder.visit_body(checker.body());
+    let defined: FxHashSet<&str> = checker.function_defs().iter().map(|function| function.name.as_str()).collect();
     for (attr, intended) in finder.found {
         // A name the file or the project defines is an attribute of some class, not a mock method.
         let name = attr.as_str();
-        if checker.project().is_attribute_assigned(name)
-            || checker.function_defs().iter().any(|function| function.name.as_str() == name)
-        {
+        if checker.project().is_attribute_assigned(name) || defined.contains(name) {
             continue;
         }
         let fix = finder.fixable.get(&attr.range()).map(|deletions| {
