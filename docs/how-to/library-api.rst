@@ -3,10 +3,10 @@ Tell simplint what your public API is
 
 The documentation rules treat a library's public API apart from its internal code:
 
-- :doc:`undocumented-public-api </_generated/rules/SMP903>` asks for docstrings on what users import.
-- :doc:`function-docstring </_generated/rules/SMP901>` removes them everywhere else.
-- :doc:`unused-export </_generated/rules/SMP402>` keeps ``__all__`` of the private modules to the names other modules
-  use, and :doc:`missing-from-all </_generated/rules/SMP401>` lists the types those signatures reach.
+- :doc:`undocumented-public-api </rules/SMP903>` asks for docstrings on what users import.
+- :doc:`function-docstring </rules/SMP901>` removes them everywhere else.
+- :doc:`unused-export </rules/SMP402>` keeps ``__all__`` of the private modules to the names other modules
+  use, and :doc:`missing-from-all </rules/SMP401>` lists the types those signatures reach.
 
 An application has no Python API, so all of its code is internal.
 

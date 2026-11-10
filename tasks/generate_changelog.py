@@ -74,7 +74,7 @@ def link_rules(markdown: str, rules: dict[str, str], *, codes: bool) -> str:
     # into an external URL that neither Sphinx nor linkcheck can follow.
     def link(match: re.Match[str]) -> str:
         code = match.groupdict().get("code") or by_name[match["name"]]
-        return f"`` :doc:`{rules[code]} <_generated/rules/{code}>` ``{{=rst}}"
+        return f"`` :doc:`{rules[code]} <rules/{code}>` ``{{=rst}}"
 
     named = f"`(?P<name>{'|'.join(re.escape(name) for name in sorted(by_name, key=len, reverse=True)) or '(?!)'})`"
     if not codes:

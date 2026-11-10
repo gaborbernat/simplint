@@ -14,12 +14,12 @@ if TYPE_CHECKING:
     ("line", "expected"),
     [
         pytest.param(
-            "[`module-variable-prefix`](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP404.html)",
+            "[`module-variable-prefix`](https://simplint.readthedocs.io/en/latest/rules/SMP404.html)",
             1,
             id="latest_rule_link",
         ),
         pytest.param(
-            "[rule](http://simplint.readthedocs.io/en/0.10.0/_generated/rules/SMP101.html)",
+            "[rule](http://simplint.readthedocs.io/en/0.10.0/rules/SMP101.html)",
             1,
             id="versioned_rule_link",
         ),

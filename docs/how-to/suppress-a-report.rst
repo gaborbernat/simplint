@@ -11,7 +11,7 @@ comment on the line where the report starts, and give a reason after the codes:
 - A report on a multi-line string or a line continued with ``\`` takes the comment on the last line of the string or
   continuation, as in Ruff.
 - A bare ``# noqa`` suppresses every simplint rule on its line, but
-  :doc:`suppression-without-reason </_generated/rules/SMP003>` reports it for giving no reason.
+  :doc:`suppression-without-reason </rules/SMP003>` reports it for giving no reason.
 - An invalid directive, such as ``# noqa: 401``, makes a fix run warn once, not once per rule it would suppress. Both
   ``--fix`` and ``--diff`` print that warning:
 
@@ -36,7 +36,7 @@ The suppression comments at a glance:
     * - ``# ruff: noqa: SMP101`` (or ``# flake8: noqa: SMP101``) on its own line
       - The listed rules in the whole file.
     * - ``# ruff: noqa`` on its own line
-      - Every rule but :doc:`suppression-without-reason </_generated/rules/SMP003>` in the whole file.
+      - Every rule but :doc:`suppression-without-reason </rules/SMP003>` in the whole file.
     * - ``# ruff: file-ignore[SMP101]`` at module scope
       - The listed rules in the whole file.
 
@@ -63,7 +63,7 @@ becomes
 
     x = 1  # noqa: E501, SMP101 why  # type: ignore[misc]
 
-The :doc:`unused-ignore </_generated/rules/SMP009>` rule reports obsolete selectors in ``# simplint: ignore[...]``
+The :doc:`unused-ignore </rules/SMP009>` rule reports obsolete selectors in ``# simplint: ignore[...]``
 comments. Run ``simplint check --extend-select SMP009 --fix`` to remove them. The fix re-lints uncertain removals so a
 comment that affects another rule stays in place. It leaves ``# noqa`` and configuration-level ignores alone.
 

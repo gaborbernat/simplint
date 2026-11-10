@@ -41,9 +41,9 @@ def test_main_links_codes_only_in_pending_news(tmp_path: Path, mocker: MockerFix
 
     assert convert.call_args.args[0] == (
         "# Changelog\n\n## Draft {#release-draft}\n\n\n\n### Fixed {#release-draft-fixed}\n\n"
-        "- `` :doc:`missing-final <_generated/rules/SMP601>` ``{=rst} and "
-        "`` :doc:`missing-final <_generated/rules/SMP601>` ``{=rst} now agree.\n\n\n"
-        "## 1.0.0 (2026-01-01)\n\n- SMP101 meant `` :doc:`missing-final <_generated/rules/SMP601>` ``{=rst}."
+        "- `` :doc:`missing-final <rules/SMP601>` ``{=rst} and "
+        "`` :doc:`missing-final <rules/SMP601>` ``{=rst} now agree.\n\n\n"
+        "## 1.0.0 (2026-01-01)\n\n- SMP101 meant `` :doc:`missing-final <rules/SMP601>` ``{=rst}."
     )
 
 
@@ -79,8 +79,8 @@ def test_link_rules_links_codes_and_names() -> None:
     rules = {"SMP405": "all-format", "SMP401": "missing-from-all"}
 
     assert link_rules("`all-format` fixes `__all__`, like SMP401.", rules, codes=True) == (
-        "`` :doc:`all-format <_generated/rules/SMP405>` ``{=rst} fixes `__all__`, like "
-        "`` :doc:`missing-from-all <_generated/rules/SMP401>` ``{=rst}."
+        "`` :doc:`all-format <rules/SMP405>` ``{=rst} fixes `__all__`, like "
+        "`` :doc:`missing-from-all <rules/SMP401>` ``{=rst}."
     )
 
 
@@ -88,8 +88,8 @@ def test_link_rules_drops_code_after_linked_name() -> None:
     rules = {"SMP405": "all-format", "SMP401": "missing-from-all"}
 
     assert link_rules("`all-format` (SMP405) fixes `__all__`, like SMP401.", rules, codes=True) == (
-        "`` :doc:`all-format <_generated/rules/SMP405>` ``{=rst} fixes `__all__`, like "
-        "`` :doc:`missing-from-all <_generated/rules/SMP401>` ``{=rst}."
+        "`` :doc:`all-format <rules/SMP405>` ``{=rst} fixes `__all__`, like "
+        "`` :doc:`missing-from-all <rules/SMP401>` ``{=rst}."
     )
 
 
@@ -97,7 +97,7 @@ def test_link_rules_leaves_codes_plain_without_codes() -> None:
     rules = {"SMP405": "all-format", "SMP401": "missing-from-all"}
 
     assert link_rules("`all-format` fixes `__all__`, like SMP401.", rules, codes=False) == (
-        "`` :doc:`all-format <_generated/rules/SMP405>` ``{=rst} fixes `__all__`, like SMP401."
+        "`` :doc:`all-format <rules/SMP405>` ``{=rst} fixes `__all__`, like SMP401."
     )
 
 
@@ -106,7 +106,7 @@ def test_link_rules_resolves_relative_source_links(prefix: str) -> None:
     markdown = f"[`all-format`]({prefix}src/rules/api/all_format.md) (SMP405)"
 
     assert link_rules(markdown, {"SMP405": "all-format"}, codes=True) == (
-        "`` :doc:`all-format <_generated/rules/SMP405>` ``{=rst}"
+        "`` :doc:`all-format <rules/SMP405>` ``{=rst}"
     )
 
 

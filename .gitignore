@@ -10,5 +10,7 @@ coverage.lcov
 coverage.json
 .coverage
 lcov.info
-docs/_generated
+docs/_derived
 docs/changelog.rst
+docs/groups
+docs/rules
