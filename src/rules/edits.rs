@@ -11,6 +11,7 @@ use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};
 use crate::lint::checker::Checker;
 use crate::rules::is_alone_on_lines;
 use crate::semantic::future_import;
+use crate::syntax::previous_line_start;
 
 pub fn delete_statement(source: &str, stmt: &Stmt, body: &[Stmt]) -> Edit {
     if body.len() == 1 {
@@ -55,8 +56,8 @@ fn lines_with_shared_blanks(source: &str, range: TextRange) -> TextRange {
     let limit = if leading_indentation(source.full_line_str(range.start())).is_empty() { 2 } else { 1 };
     let mut before: usize = 0;
     let mut start = lines.start();
-    while start > TextSize::default() && source.full_line_str(start - TextSize::from(1)).trim().is_empty() {
-        start = source.line_start(start - TextSize::from(1));
+    while start > TextSize::default() && source.full_line_str(previous_line_start(source, start)).trim().is_empty() {
+        start = previous_line_start(source, start);
         before += 1;
     }
     let mut after: usize = 0;
@@ -81,8 +82,9 @@ pub fn lines_with_trailing_blanks(source: &str, range: TextRange) -> TextRange {
     // At the end of the file the blank lines above go too: after a module left with comments only, `ruff format` keeps
     // them, and Ruff reports blank lines ending the file.
     if end.to_usize() == source.len() {
-        while start > TextSize::default() && source.full_line_str(start - TextSize::from(1)).trim().is_empty() {
-            start = source.line_start(start - TextSize::from(1));
+        while start > TextSize::default() && source.full_line_str(previous_line_start(source, start)).trim().is_empty()
+        {
+            start = previous_line_start(source, start);
         }
     }
     TextRange::new(start, end)
@@ -100,7 +102,7 @@ pub fn statement_block(source: &str, stmt: &Stmt) -> TextRange {
     let mut line_start = source.line_start(start);
     // A byte order mark is not a line to step back into.
     while line_start > source.bom_start_offset() {
-        let previous = source.line_start(line_start - TextSize::from(1));
+        let previous = previous_line_start(source, line_start);
         if !source[TextRange::new(previous, line_start)].trim_start().starts_with('#') {
             break;
         }

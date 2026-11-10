@@ -1,5 +1,5 @@
-// AST helpers that rules, the linter and the project index all read: walking statement bodies, what a name's
-// underscores say, and what a module's `__all__` and strings hold.
+// AST and source helpers that rules, the linter and the project index all read: walking statement bodies, what a
+// name's underscores say, what a module's `__all__` and strings hold, and where the line above a statement starts.
 use std::borrow::Cow;
 
 use ruff_python_ast::helpers::is_dunder;
@@ -7,7 +7,8 @@ use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_python_parser::parse_expression;
-use ruff_text_size::{Ranged, TextRange};
+use ruff_source_file::LineRanges;
+use ruff_text_size::{Ranged, TextRange, TextSize};
 
 pub fn for_each_body<'a>(body: &'a [Stmt], visit: &mut impl FnMut(&'a [Stmt], Option<&'a Stmt>)) {
     walk_bodies(body, None, visit);
@@ -58,6 +59,12 @@ pub fn for_each_child_body<'a>(stmt: &'a Stmt, visit: &mut impl FnMut(&'a [Stmt]
         }
         _ => {}
     }
+}
+
+// A `\r\n` terminator is stepped over whole: one byte back is a `\n`, which `line_start` reads as a line of its own.
+pub fn previous_line_start(source: &str, line_start: TextSize) -> TextSize {
+    let terminator = if source[..line_start.to_usize()].ends_with("\r\n") { 2 } else { 1 };
+    source.line_start(line_start - TextSize::from(terminator))
 }
 
 // What a name's leading underscores say about who may use it. The two readings of "public" differ on dunders:
