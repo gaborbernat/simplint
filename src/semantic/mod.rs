@@ -17,7 +17,6 @@ use ruff_python_semantic::analyze::typing::{
 };
 use ruff_python_semantic::{
     Binding as RuffBinding, BindingId, BindingKind as RuffBindingKind, ExecutionContext, ScopeKind, SemanticModel,
-    UnresolvedReference,
 };
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -210,12 +209,6 @@ impl<'a> Semantic<'a> {
     // version that defers them.
     pub fn annotations_are_lazy(&self) -> bool {
         self.annotations_are_lazy
-    }
-
-    // The ranges of the names the module reads that no binding in the file or builtin defines, which a `from module
-    // import *` may define.
-    pub fn unresolved_references(&self) -> impl Iterator<Item = TextRange> + '_ {
-        self.model.unresolved_references().map(UnresolvedReference::range)
     }
 
     pub fn bindings(&self, name: &str) -> &[Binding] {

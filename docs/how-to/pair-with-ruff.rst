@@ -1,15 +1,18 @@
 Pair simplint with Ruff
 #######################
 
-simplint mostly does not repeat what Ruff already checks. Four of its rules overlap with a Ruff rule, and each
-rule page names that rule under Ruff overlap; turn one side off to get a single report. To cover what its rules
-leave to Ruff:
+simplint leaves cases Ruff reports to Ruff when the corresponding rule runs. Each simplint rule page names any Ruff
+overlap. To cover those cases:
 
-- Run Ruff with every rule selected (``select = ["ALL"]``) but the undocumented-* rules (``D1``), which ask for
+- Run Ruff with every rule selected (``select = ["ALL"]``) and preview enabled, but the undocumented-* rules
+  (``D1``), which ask for
   the docstrings simplint removes (see :ref:`resolve-ruff-conflicts`): `undocumented-public-module <https://docs.astral.sh/ruff/rules/undocumented-public-module/>`__, `undocumented-public-package <https://docs.astral.sh/ruff/rules/undocumented-public-package/>`__, `undocumented-public-class <https://docs.astral.sh/ruff/rules/undocumented-public-class/>`__, `undocumented-public-method <https://docs.astral.sh/ruff/rules/undocumented-public-method/>`__, `undocumented-public-function <https://docs.astral.sh/ruff/rules/undocumented-public-function/>`__, `undocumented-magic-method <https://docs.astral.sh/ruff/rules/undocumented-magic-method/>`__, `undocumented-public-nested-class <https://docs.astral.sh/ruff/rules/undocumented-public-nested-class/>`__, `undocumented-public-init <https://docs.astral.sh/ruff/rules/undocumented-public-init/>`__.
 - Add these `flake8-tidy-imports <https://docs.astral.sh/ruff/settings/#lintflake8-tidy-imports>`__ settings.
 
 .. code-block:: toml
+
+    [tool.ruff]
+    preview = true
 
     [tool.ruff.lint]
     select = ["ALL"]

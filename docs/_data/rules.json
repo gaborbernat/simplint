@@ -1121,7 +1121,7 @@
     "name": "string-statement-comment",
     "summary": "Bare strings used as comments instead of `#` comments",
     "fix": "Sometimes",
-    "explanation": "Flags triple-quoted string statements used as comments: strings that are neither the docstring of a module, class or\nfunction nor an attribute docstring.\n\n## Why is this bad?\n\nPython evaluates a bare string and throws it away, so it documents nothing the way a docstring does, and no tool reads\nit as a comment either. Pylint reports it as a pointless statement. A `#` comment says the same thing where a reader\nlooks for it.\n\n## Example\n\n```python report\nimport math\n\n\"\"\"Area of the unit circle.\"\"\"\nAREA = math.pi\n```\n\nUse instead:\n\n```python ok\nimport math\n\n# Area of the unit circle.\nAREA = math.pi\n```\n\n## What it does\n\n### Active on\n\n- **Strings between statements**: a triple-quoted string that is not the first statement of its body, and does not\n  follow an assignment, is a comment in disguise.\n\n  ```python report\n  def run() -> None:\n      start()\n      \"\"\"Start the worker before waiting.\"\"\"\n      wait()\n  ```\n\n### Exceptions\n\n- **Docstrings**: the first statement of a module, class or function body is its docstring.\n\n  ```python ok\n  def run() -> None:\n      \"Start the worker and wait for it.\"\n      start()\n  ```\n\n- **Attribute docstrings**: a string right after an assignment documents the attribute it assigns, as Sphinx reads it.\n\n  ```python ok\n  class Config:\n      timeout = 3\n      \"Seconds to wait for the server.\"\n  ```\n\n- **Single-quoted strings**: a short quoted string often marks a line on purpose, such as a statement a tracer or a test\n  expects to run, while triple quotes mark a block of text.\n\n  ```python ok\n  def run() -> None:\n      start()\n      \"continued\"\n      wait()\n  ```\n\n### Fix\n\nThe fix writes each line of the string as a `#` comment at the statement's indentation, so the code after it keeps its\nline numbers. It is safe for the program: a string statement does nothing when it runs. The fix does not apply when:\n\n- every statement of its body is a string, since the body would be left empty\n- the string shares its line with other code or a trailing comment, or is an implicit concatenation of several strings\n- the text holds a backslash, since the compiler reads escapes and may warn or fail on them\n- the module has a `from __future__` import, which the compiler checks against the statements before it\n- a line of the text would start a tool directive, such as `# fmt: off`, or start with `!`\n- a comment line would run past the comment width, which [long-comment-line](SMP007.html) then reports\n\nTools that read the source text, such as `inspect.getsource`, see the comments where the string was.\n\n```python report\ndef run() -> None:\n    start()\n    \"\"\"Start the worker.\n    Then wait for it.\"\"\"\n    wait()\n```\n\n```python fixed\ndef run() -> None:\n    start()\n    # Start the worker.\n    # Then wait for it.\n    wait()\n```\n\n## Ruff overlap\n\nRuff's useless-expression rule (`B018`) skips string literals, so Ruff does not report these statements.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#11292](https://github.com/astral-sh/ruff/issues/11292).\n  Closed pull requests [#11302](https://github.com/astral-sh/ruff/pull/11302) and\n  [#27253](https://github.com/astral-sh/ruff/pull/27253) without a rule.\n- [pylint](https://github.com/pylint-dev/pylint) reports string statements that have no effect as\n  [pointless-string-statement](https://pylint.readthedocs.io/en/latest/user_guide/messages/warning/pointless-string-statement.html),\n  with no fix. Its message suggests disabling the check for strings used as documentation, where this rule's fix turns\n  the string into `#` comments.\n",
+    "explanation": "Flags triple-quoted string statements used as comments: strings that are neither the docstring of a module, class or\nfunction nor an attribute docstring.\n\n## Why is this bad?\n\nPython evaluates a bare string and throws it away, so it documents nothing the way a docstring does, and no tool reads\nit as a comment either. Pylint reports it as a pointless statement. A `#` comment says the same thing where a reader\nlooks for it.\n\n## Example\n\n```python report\nimport math\n\n\"\"\"Area of the unit circle.\"\"\"\nAREA = math.pi\n```\n\nUse instead:\n\n```python ok\nimport math\n\n# Area of the unit circle.\nAREA = math.pi\n```\n\n## What it does\n\n### Active on\n\n- **Strings between statements**: a triple-quoted string that is not the first statement of its body, and does not\n  follow an assignment, is a comment in disguise.\n\n  ```python report\n  def run() -> None:\n      start()\n      \"\"\"Start the worker before waiting.\"\"\"\n      wait()\n  ```\n\n### Exceptions\n\n- **Docstrings**: the first statement of a module, class or function body is its docstring.\n\n  ```python ok\n  def run() -> None:\n      \"Start the worker and wait for it.\"\n      start()\n  ```\n\n- **Attribute docstrings**: a string right after an assignment documents the attribute it assigns, as Sphinx reads it.\n\n  ```python ok\n  class Config:\n      timeout = 3\n      \"Seconds to wait for the server.\"\n  ```\n\n- **Single-quoted strings**: a short quoted string often marks a line on purpose, such as a statement a tracer or a test\n  expects to run, while triple quotes mark a block of text.\n\n  ```python ok\n  def run() -> None:\n      start()\n      \"continued\"\n      wait()\n  ```\n\n### Fix\n\nThe fix writes each line of the string as a `#` comment at the statement's indentation, so the code after it keeps its\nline numbers. It is safe for the program: a string statement does nothing when it runs. The fix does not apply when:\n\n- every statement of its body is a string, since the body would be left empty\n- the string shares its line with other code or a trailing comment, or is an implicit concatenation of several strings\n- the text holds a backslash, since the compiler reads escapes and may warn or fail on them\n- the module has a `from __future__` import, which the compiler checks against the statements before it\n- a line of the text would start a tool directive, such as `# fmt: off`, or start with `!`\n- a comment line would run past the comment width, which [Ruff E501](https://docs.astral.sh/ruff/rules/line-too-long/)\n  then reports\n\nTools that read the source text, such as `inspect.getsource`, see the comments where the string was.\n\n```python report\ndef run() -> None:\n    start()\n    \"\"\"Start the worker.\n    Then wait for it.\"\"\"\n    wait()\n```\n\n```python fixed\ndef run() -> None:\n    start()\n    # Start the worker.\n    # Then wait for it.\n    wait()\n```\n\n## Ruff overlap\n\nRuff's useless-expression rule (`B018`) skips string literals, so Ruff does not report these statements.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#11292](https://github.com/astral-sh/ruff/issues/11292).\n  Closed pull requests [#11302](https://github.com/astral-sh/ruff/pull/11302) and\n  [#27253](https://github.com/astral-sh/ruff/pull/27253) without a rule.\n- [pylint](https://github.com/pylint-dev/pylint) reports string statements that have no effect as\n  [pointless-string-statement](https://pylint.readthedocs.io/en/latest/user_guide/messages/warning/pointless-string-statement.html),\n  with no fix. Its message suggests disabling the check for strings used as documentation, where this rule's fix turns\n  the string into `#` comments.\n",
     "examples": {
       "parsed": [
         {
@@ -1228,8 +1228,8 @@
         },
         {
           "section": "What it does",
-          "line": 84,
-          "end_line": 98,
+          "line": 85,
+          "end_line": 99,
           "config": null,
           "blocks": [
             {
@@ -1237,8 +1237,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 84,
-              "end_line": 90,
+              "line": 85,
+              "end_line": 91,
               "source": "def run() -> None:\n    start()\n    \"\"\"Start the worker.\n    Then wait for it.\"\"\"\n    wait()\n"
             },
             {
@@ -1246,261 +1246,9 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 92,
-              "end_line": 98,
+              "line": 93,
+              "end_line": 99,
               "source": "def run() -> None:\n    start()\n    # Start the worker.\n    # Then wait for it.\n    wait()\n"
-            }
-          ]
-        }
-      ]
-    },
-    "family": "comments",
-    "group": "Comments",
-    "short_group": "Comments",
-    "cross_file": false
-  },
-  {
-    "code": "SMP007",
-    "name": "long-comment-line",
-    "summary": "Comment and docstring lines over the line length",
-    "fix": "Always",
-    "explanation": "Flags comment and docstring lines longer than the comment width, the stricter of Ruff's `line-length` and\n`pycodestyle.max-doc-length`, when it can reflow the paragraph they belong to.\n\n## Why is this bad?\n\nA line past the width scrolls sideways in an editor and breaks the column the rest of the file keeps. Ruff's\nline-too-long rule reports these lines but does not wrap them, and `ruff format` leaves comments and docstrings alone,\nso they stay long until someone wraps them by hand.\n\n## Example\n\n```toml config\n[tool.ruff]\nline-length = 60\n```\n\n```python report\n# Entries older than thirty days are removed on the next run, and a corrupt entry is discarded.\nVALUE = 1\n```\n\nUse instead:\n\n```toml config\n[tool.ruff]\nline-length = 60\n```\n\n```python ok\n# Entries older than thirty days are removed on the next\n# run, and a corrupt entry is discarded.\nVALUE = 1\n```\n\n## What it does\n\n### Active on\n\n- **Paragraphs of comments**: consecutive own-line comments at the same indentation, whose text is prose, form one\n  paragraph. A paragraph with a line past the width is reported once, at that line, and its fix rewraps the whole\n  paragraph at the width.\n\n  ```toml config\n  [tool.ruff]\n  line-length = 60\n  ```\n\n  ```python report\n  # Entries older than thirty days are removed on the next run, and a corrupt entry is discarded.\n  VALUE = 1\n  ```\n\n  ```python fixed\n  # Entries older than thirty days are removed on the next\n  # run, and a corrupt entry is discarded.\n  VALUE = 1\n  ```\n\n- **Paragraphs of docstrings**: the lines of a docstring form paragraphs the same way, split at blank lines. The first\n  line of a docstring starts after its opening quotes, so it gets the room that is left after them.\n\n  ```toml config\n  [tool.ruff]\n  line-length = 60\n  ```\n\n  ```python report\n  def fetch() -> None:\n      \"\"\"Fetch the manifest of the project, and keep it until the next run, which removes old entries.\"\"\"\n  ```\n\n  ```python fixed\n  def fetch() -> None:\n      \"\"\"Fetch the manifest of the project, and keep it until\n      the next run, which removes old entries.\"\"\"\n  ```\n\n- **Lines broken on purpose**: a line that had room for the first word of the line below it ends its paragraph, as a\n  label above a sentence does, so the fix keeps it on its own.\n\n  ```toml config\n  [tool.ruff]\n  line-length = 60\n  ```\n\n  ```python report\n  # Cleanup\n  # Entries older than thirty days are removed on the next run, and a corrupt entry is discarded.\n  VALUE = 1\n  ```\n\n  ```python fixed\n  # Cleanup\n  # Entries older than thirty days are removed on the next\n  # run, and a corrupt entry is discarded.\n  VALUE = 1\n  ```\n\n### Exceptions\n\n- **Lines it cannot reflow**: a list item, a doctest, a field list, a heading underline, a table whose columns are\n  aligned with runs of spaces, or a line indented past its paragraph stands alone, since rewrapping it could change its\n  meaning. Ruff's line-too-long rules report these lines, so this rule leaves them to Ruff, as it does a paragraph\n  holding a word wider than the room on a line or a single-quoted docstring.\n\n  ```toml config\n  [tool.ruff]\n  line-length = 60\n  ```\n\n  ```python ok\n  # - Entries older than thirty days are removed on the next run, and a corrupt entry is discarded.\n  VALUE = 1\n  ```\n\n  ```toml config\n  [tool.ruff]\n  line-length = 60\n  ```\n\n  ```python ok\n  # name                 kind               default    since version\n  VALUE = 1\n  ```\n\n- **Trailing comments**: a comment after code shares the line with the code, which Ruff's line length governs.\n\n  ```toml config\n  [tool.ruff]\n  line-length = 60\n  ```\n\n  ```python ok\n  VALUE = 1  # Entries older than thirty days are removed on the next run, and a corrupt entry is discarded.\n  ```\n\n- **Directives**: `# noqa`, `# type: ignore`, `# fmt: off` and the other directives of tools stay as they are, since\n  rewording them changes what the tool does.\n\n  ```toml config\n  [tool.ruff]\n  line-length = 60\n  ```\n\n  ```python ok\n  # Suppressed because the upstream name is fixed by the protocol it implements: # noqa: E501\n  VALUE = 1\n  ```\n\n- **A word or a URL that ends the line**: a single word, or a line ending in a URL that starts within the width, is left\n  alone, as Ruff's line-too-long rule leaves it.\n\n  ```toml config\n  [tool.ruff]\n  line-length = 60\n  ```\n\n  ```python ok\n  # https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.relative_to\n  VALUE = 1\n  ```\n\n- **Shebang lines**: `#!` lines name the interpreter, which the file needs in that form.\n\n### Fix\n\nThe fix changes only whitespace, so comment text keeps its meaning and it is safe. A docstring's words are its value,\nwhich the code reads as `__doc__`, so its fix is unsafe.\n\nLines are measured where `ruff format` puts them, so a run after the formatter finds nothing new: at the formatter's\nindentation, a comment inside brackets one level deeper for each bracket, the lines of a docstring shifted with its\nleast indented line, and the closing quotes of a docstring with one line of text after that text.\n\n## Ruff overlap\n\nRuff's line-too-long (`E501`) and doc-line-too-long (`W505`) rules report every line this rule reports, and more. Ruff\ndoes not wrap them, so this rule reports only the paragraphs it can reflow, for the sake of its fix. With `E501` or\n`W505` enabled, those lines are reported twice: once by Ruff, and once by this rule with the fix. The lines it cannot\nreflow are left to Ruff alone.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** released rules [E501](https://docs.astral.sh/ruff/rules/line-too-long/)\n  and [W505](https://docs.astral.sh/ruff/rules/doc-line-too-long/) report the same lines without a fix; this rule exists\n  for its rewrap fix, which open issue [#7414](https://github.com/astral-sh/ruff/issues/7414) asks Ruff for.\n- [pycodestyle](https://github.com/PyCQA/pycodestyle) reports the same lines as\n  [W505](https://pycodestyle.pycqa.org/en/latest/intro.html). The check is off by default and needs `max-doc-length`\n  set, and it does not fix the line.\n",
-    "examples": {
-      "parsed": [
-        {
-          "section": "Example",
-          "line": 12,
-          "end_line": 20,
-          "config": {
-            "line": 12,
-            "end_line": 15,
-            "source": "[tool.ruff]\nline-length = 60\n"
-          },
-          "blocks": [
-            {
-              "role": "report",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 17,
-              "end_line": 20,
-              "source": "# Entries older than thirty days are removed on the next run, and a corrupt entry is discarded.\nVALUE = 1\n"
-            }
-          ]
-        },
-        {
-          "section": "Example",
-          "line": 24,
-          "end_line": 33,
-          "config": {
-            "line": 24,
-            "end_line": 27,
-            "source": "[tool.ruff]\nline-length = 60\n"
-          },
-          "blocks": [
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 29,
-              "end_line": 33,
-              "source": "# Entries older than thirty days are removed on the next\n# run, and a corrupt entry is discarded.\nVALUE = 1\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 43,
-          "end_line": 57,
-          "config": {
-            "line": 43,
-            "end_line": 46,
-            "source": "[tool.ruff]\nline-length = 60\n"
-          },
-          "blocks": [
-            {
-              "role": "report",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 48,
-              "end_line": 51,
-              "source": "# Entries older than thirty days are removed on the next run, and a corrupt entry is discarded.\nVALUE = 1\n"
-            },
-            {
-              "role": "fixed",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 53,
-              "end_line": 57,
-              "source": "# Entries older than thirty days are removed on the next\n# run, and a corrupt entry is discarded.\nVALUE = 1\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 62,
-          "end_line": 76,
-          "config": {
-            "line": 62,
-            "end_line": 65,
-            "source": "[tool.ruff]\nline-length = 60\n"
-          },
-          "blocks": [
-            {
-              "role": "report",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 67,
-              "end_line": 70,
-              "source": "def fetch() -> None:\n    \"\"\"Fetch the manifest of the project, and keep it until the next run, which removes old entries.\"\"\"\n"
-            },
-            {
-              "role": "fixed",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 72,
-              "end_line": 76,
-              "source": "def fetch() -> None:\n    \"\"\"Fetch the manifest of the project, and keep it until\n    the next run, which removes old entries.\"\"\"\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 81,
-          "end_line": 97,
-          "config": {
-            "line": 81,
-            "end_line": 84,
-            "source": "[tool.ruff]\nline-length = 60\n"
-          },
-          "blocks": [
-            {
-              "role": "report",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 86,
-              "end_line": 90,
-              "source": "# Cleanup\n# Entries older than thirty days are removed on the next run, and a corrupt entry is discarded.\nVALUE = 1\n"
-            },
-            {
-              "role": "fixed",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 92,
-              "end_line": 97,
-              "source": "# Cleanup\n# Entries older than thirty days are removed on the next\n# run, and a corrupt entry is discarded.\nVALUE = 1\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 106,
-          "end_line": 114,
-          "config": {
-            "line": 106,
-            "end_line": 109,
-            "source": "[tool.ruff]\nline-length = 60\n"
-          },
-          "blocks": [
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 111,
-              "end_line": 114,
-              "source": "# - Entries older than thirty days are removed on the next run, and a corrupt entry is discarded.\nVALUE = 1\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 116,
-          "end_line": 124,
-          "config": {
-            "line": 116,
-            "end_line": 119,
-            "source": "[tool.ruff]\nline-length = 60\n"
-          },
-          "blocks": [
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 121,
-              "end_line": 124,
-              "source": "# name                 kind               default    since version\nVALUE = 1\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 128,
-          "end_line": 135,
-          "config": {
-            "line": 128,
-            "end_line": 131,
-            "source": "[tool.ruff]\nline-length = 60\n"
-          },
-          "blocks": [
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 133,
-              "end_line": 135,
-              "source": "VALUE = 1  # Entries older than thirty days are removed on the next run, and a corrupt entry is discarded.\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 140,
-          "end_line": 148,
-          "config": {
-            "line": 140,
-            "end_line": 143,
-            "source": "[tool.ruff]\nline-length = 60\n"
-          },
-          "blocks": [
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 145,
-              "end_line": 148,
-              "source": "# Suppressed because the upstream name is fixed by the protocol it implements: # noqa: E501\nVALUE = 1\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 153,
-          "end_line": 161,
-          "config": {
-            "line": 153,
-            "end_line": 156,
-            "source": "[tool.ruff]\nline-length = 60\n"
-          },
-          "blocks": [
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 158,
-              "end_line": 161,
-              "source": "# https://docs.python.org/3/library/pathlib.html#pathlib.PurePath.relative_to\nVALUE = 1\n"
             }
           ]
         }
@@ -1977,7 +1725,7 @@
     "name": "module-variable-case",
     "summary": "Module variables not `UPPER_CASE`",
     "fix": "Sometimes",
-    "explanation": "Flags module-scope variables whose name is not `UPPER_CASE`, such as `limit` or `logger`. A leading underscore stays as\nit is: [module-variable-prefix](SMP404.html) checks it.\n\n## Why is this bad?\n\nUpper case tells a reader the name is a module-level value rather than a local, as\n[PEP 8](https://peps.python.org/pep-0008/#constants) writes constants. A module that keeps the same case for all its\nconstants makes them easy to pick out at every use.\n\n## Example\n\n```python report\nlimit = 3\nlogger = logging.getLogger(__name__)\n\n__all__ = [\"logger\"]\n```\n\nUse instead:\n\n```python ok\nLIMIT = 3\nLOGGER = logging.getLogger(__name__)\n\n__all__ = [\"LOGGER\"]\n```\n\n## Configuration\n\n- [`naming.keep-names`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#naming) in\n  `[tool.simplint]`: module-scope names the rule leaves as they are, such as `keep-names = [\"urlpatterns\"]` under\n  `[tool.simplint.naming]`\n\n  ```toml config\n  [tool.simplint.naming]\n  keep-names = [\"limit\"]\n  ```\n\n  ```python ok\n  limit = 3\n  ```\n\n- The Python version the code targets, taken from the first of these that applies; see\n  [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version):\n\n  1. [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version) in `[tool.ruff]`: for\n     the files a pattern matches\n\n     ```toml config\n     [tool.ruff.per-file-target-version]\n     \"legacy/*.py\" = \"py37\"\n     ```\n\n     ```python report file=legacy/old.py\n     limit = 3\n     ```\n\n     ```python report file=new.py\n     limit = 3\n     ```\n\n  1. [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) in `[tool.ruff]`: for every other file\n\n     ```toml config\n     [tool.ruff]\n     target-version = \"py38\"\n     ```\n\n     ```python report\n     limit = 3\n     ```\n\n  1. [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python):\n     its lowest version, when Ruff sets neither\n\n     ```toml config\n     [project]\n     name = \"demo\"\n     requires-python = \">=3.8\"\n     ```\n\n     ```python report\n     limit = 3\n     ```\n\n## What it does\n\n### Active on\n\n- **Every module-scope variable**: whatever its visibility, its name should be `UPPER_CASE`. A leading underscore stays\n  as it is, so `_timeout` becomes `_TIMEOUT`.\n\n  ```python report\n  limit = 3\n  _timeout = 5\n  ```\n\n- **Names another module in the run imports**: only the case changes, and the leading underscore stays, since the\n  importer already depends on the name.\n\n  ```python report file=config.py\n  limit = 3\n  ```\n\n  ```python context file=consumer.py\n  from config import limit\n\n  print(limit)\n  ```\n\n- **Names bound with `:=`**: a walrus at module scope binds a module variable like any assignment.\n\n  ```python report\n  if (total := 3) > 2:\n      pass\n  ```\n\nsimplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append(\"name\")` with string literals.\n\n### Exceptions\n\n- **An `__all__` built any other way**: its contents depend on how the module runs, so the rule is skipped. This covers:\n\n  - A call, such as `list(...)` or `.remove(...)`:\n\n    ```python ok\n    limit = 3\n    __all__ = list([\"limit\"])\n    ```\n\n  - A binding inside a nested block, such as an `if`, `try` or function:\n\n    ```python ok\n    limit = 3\n\n    if FLAG:\n        __all__ = [\"limit\"]\n    ```\n\n- **Dunder names**: Python and its tools give these their meaning by their exact spelling.\n\n  ```python ok\n  __version__ = \"1.0\"\n  ```\n\n- **Class-like names**, such as the type alias `Alias = int`: they follow the `CapWords` convention of classes.\n\n  ```python ok\n  Alias = int\n  ```\n\n- **Type aliases from a `type` statement**: the statement binds a type, not a value, so the name follows the convention\n  of classes, whatever its case.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.12\"\n  ```\n\n  ```python ok\n  type vector = list[float]\n  ```\n\n- **Names bound and read only inside one module-level `if`, `try` or `with` block**: a block such as a version check\n  binds a name for its own use, and nothing outside the block reads it. A name that another file reads stays here.\n\n  ```python ok\n  import sys\n\n  if sys.version_info < (3, 10):\n      msg = \"requires Python 3.10\"\n      raise RuntimeError(msg)\n  ```\n\n- **Annotations alone under `if TYPE_CHECKING:`**: the rules no longer report a declaration with no value under\n  `if TYPE_CHECKING:`, which only types a name that a module's PEP 562 `__getattr__` serves at runtime. Renaming one\n  breaks the type checker's view of `module.log`, while `__getattr__` keeps serving it at runtime. An assigned name in\n  the same block is still checked.\n\n  ```python ok\n  import typing\n\n  if typing.TYPE_CHECKING:\n      log: typing.Callable[[str], None]\n  else:\n\n      def __getattr__(name: str) -> object: ...\n  ```\n\n- **Names also bound by an import, `def` or `class`**: this rule skips them. This covers:\n\n  - An import, such as `from json import dumps`: the import keeps the spelling of what it imports.\n\n    ```python ok\n    from json import dumps\n\n    dumps = dumps\n    ```\n\n  - A `def` or `class`, such as `def limit()`: [unexported-public-name](SMP403.html) applies the underscore convention\n    to functions and classes.\n\n    ```python ok\n    def limit() -> int:\n        return 3\n\n\n    limit = limit()\n    ```\n\n- **Aliases of a function the module defines**: an alias reads as the function, so it keeps the function's name, as a\n  class alias does. An alias of an imported name is not covered, as the rule cannot tell what an import binds.\n\n  ```python ok\n  def build_cli() -> str:\n      return \"cli\"\n\n\n  _build_cli = build_cli\n  ```\n\n- **Names bound only as `for`, `with`, `except` or `match` targets**: these hold whatever the statement produces, not a\n  value the module defines.\n\n  ```python ok\n  for item in range(3):\n      pass\n  ```\n\n- **`mixedCase` names Ruff reports without a fix**:\n  [Ruff](https://docs.astral.sh/ruff/rules/mixed-case-variable-in-global-scope/) reports a `mixedCase` module name at\n  its binding with no fix, unless its `ignore-names` lists the name. When this rule has no fix either, and the project's\n  Ruff configuration selects N816, the name is left to Ruff. A name this rule can rename stays here.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"N816\"]\n  ```\n\n  ```python ok\n  myValue = 3\n  MYVALUE = 4\n\n  print(myValue, MYVALUE)\n  ```\n\n- **`TYPE_CHECKING`**: type checkers recognize the guard by that name whatever its value.\n\n  ```python ok\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      pass\n  ```\n\nThe rule also skips names that a tool or framework looks up by their current spelling, since renaming them breaks the\nlookup:\n\n- **pytest's module variables**:\n  [`pytestmark`](https://docs.pytest.org/en/stable/example/markers.html#marking-whole-classes-or-modules),\n  [`pytest_plugins`](https://docs.pytest.org/en/stable/how-to/plugins.html#requiring-loading-plugins-in-a-test-module-or-conftest-file),\n  [`collect_ignore` and `collect_ignore_glob`](https://docs.pytest.org/en/stable/example/pythoncollection.html#customizing-test-collection).\n\n  ```python ok file=tests/test_api.py\n  import pytest\n\n  pytestmark = pytest.mark.slow\n  ```\n\n- **Every name in a `conf.py`**: [Sphinx](https://www.sphinx-doc.org/en/master/usage/configuration.html) reads its\n  settings by their lowercase names.\n\n  ```python ok file=conf.py\n  project = \"demo\"\n  ```\n\n- **`revision`, `down_revision`, `branch_labels` and `depends_on` in an\n  [Alembic](https://alembic.sqlalchemy.org/en/latest/tutorial.html#create-a-migration-script) revision file**: a module\n  that binds `revision` and `down_revision` and defines an `upgrade` function. The names place the file in the migration\n  graph.\n\n  ```python ok file=migrations/versions/abc123.py\n  revision = \"abc123\"\n  down_revision = None\n  branch_labels = None\n  depends_on = None\n\n\n  def upgrade() -> None:\n      pass\n  ```\n\n- **[gunicorn settings](https://gunicorn.org/reference/settings/)**, such as `bind`, `workers` or `timeout`, in a\n  gunicorn configuration file: gunicorn reads them by these exact names.\n\n  A configuration file is one whose name contains `gunicorn`, such as `gunicorn.conf.py`, or a module that binds at\n  least three settings, one of them `bind`, `workers` or `worker_class`. Any file can be one, so the second test tells\n  it from a module that happens to define a `timeout`.\n\n  ```python ok file=gunicorn.conf.py\n  bind = \"0.0.0.0:8000\"\n  workers = 4\n  ```\n\n- **`version`, `version_tuple` and `commit_id` in a module that also binds `__version__`**: the names of the version\n  file [setuptools-scm](https://setuptools-scm.readthedocs.io/latest/usage/#version-files) writes.\n\n  ```python ok\n  __version__ = \"1.0\"\n  version = \"1.0\"\n  version_tuple = (1, 0, 0)\n  commit_id = None\n  ```\n\n- **`apilevel`, `threadsafety` and `paramstyle` in a module that binds all three**: the\n  [PEP 249](https://peps.python.org/pep-0249/#globals) globals of a database driver.\n\n  ```python ok\n  apilevel = \"2.0\"\n  threadsafety = 1\n  paramstyle = \"qmark\"\n  ```\n\n- **PLY grammar names**: in a module that imports [PLY](https://github.com/dabeaz/ply)'s `lex` or `yacc`, including a\n  vendored copy such as `pkg._ply.yacc`, the names `tokens`, `literals`, `precedence`, `states`, `start` and the `t_`\n  and `p_` rules, which PLY reads off the module by name.\n\n  ```python ok\n  from ply import lex\n\n  tokens = (\"NUMBER\",)\n  ```\n\n- **Every name in a PLY table module**, one that binds `_tabversion`: PLY reads its tables back by name.\n\n  ```python ok\n  _tabversion = \"3.10\"\n  limit = 3\n  ```\n\n- **`app` and `application` bound to a WSGI, ASGI or [Typer](https://typer.tiangolo.com/tutorial/typer-command/)\n  application**: servers and the `typer` command load the application by this name.\n\n  The name must be assigned at the top level of the module from one of these calls: `aiohttp.web.Application`,\n  `bottle.Bottle`, Django's `get_wsgi_application` and `get_asgi_application`, `falcon.App`, `falcon.API` and\n  `falcon.asgi.App`, `fastapi.FastAPI`, `flask.Flask`, `litestar.Litestar`, `quart.Quart`, `sanic.Sanic`,\n  `starlette.applications.Starlette`, `typer.Typer`, and Pyramid's `make_wsgi_app()`; the call is resolved through the\n  module's imports.\n\n  ```python ok\n  from fastapi import FastAPI\n\n  app = FastAPI()\n  ```\n\n- **The names listed in `naming.keep-names`**, under Configuration above: for any other framework that reads a module\n  variable by name.\n\n### Fix\n\nThe fix renames every use in the file, including the `__all__` entry, and keeps the leading underscore of the name.\n**Unsafe fix:** always, as importers outside the run keep the old name, and so do string references in unchecked files,\nsuch as [`mocker.patch`](https://pytest-mock.readthedocs.io/en/latest/usage.html) targets. Code that loads a module\nunder a name no file of the run defines, such as a test that copies a file's text into a module and reads its names off\nthe copy, keeps the old name too.\n\n```python report\nlimit = 3\nprint(limit)\n```\n\n```python fixed\nLIMIT = 3\nprint(LIMIT)\n```\n\nA name read in an f-string field with a [`=`](https://docs.python.org/3/reference/lexical_analysis.html#f-strings) debug\nspecifier keeps its printed text: the field prints the old name, then the value in a plain field.\n\n```python report\nlimit = 3\nprint(f\"{limit=}\")\n```\n\n```python fixed\nLIMIT = 3\nprint(f\"limit={LIMIT!r}\")\n```\n\nNo fix is offered when:\n\n- a public module of a library offers the name, as a public name or one `__all__` lists: its users import it, so the\n  report stays and the author renames it by hand\n\n- code the index cannot follow may read the name: a module the run cannot resolve binds it, such as a stdlib or\n  third-party import, or a doctest spells it. The report stays, since such a read does not show what it reads\n\n- another module in the run imports the name, reaches it by a dotted string, such as a `mocker.patch` target, or assigns\n  it as an attribute of its module, as `module.NAME = value` or `setattr(module, \"NAME\", value)` does, since the rename\n  would leave that write pointing at the old name\n\n  ```python report file=config.py\n  limit = 3\n  ```\n\n  ```python context file=consumer.py\n  from config import limit\n\n  print(limit)\n  ```\n\n- a file of the run reads an attribute by that name off a module it loads by a computed name: the result of\n  `importlib.import_module`, `__import__` or `sys.modules[...]`, a parameter annotated `ModuleType`, or a pytest fixture\n  that returns such a module\n\n  ```python report file=loader.py\n  limit = 3\n  ```\n\n  ```python context file=reader.py\n  import importlib\n\n  value = importlib.import_module(\"loader\").limit\n  ```\n\n- a file of the run sets an attribute of the module under a computed name, as `setattr(module, name, value)` or\n  `mock.patch(f\"module.{name}\")` does\n\n- the new name is already used as a name in the file\n\n  ```python report\n  limit = 3\n  LIMIT = 4\n  print(limit, LIMIT)\n  ```\n\n- the name shadows a builtin, as in `zip = zip`, where the value reads the builtin under the same name\n\n  ```python report\n  zip = zip\n  ```\n\n- the old name appears in the text of a string of any file in the run, as written or through an escape such as\n  `\\N{LATIN SMALL LETTER X}`, other than an entry of an `__all__` list assigned with `=` or `+=`\n\n  ```python report\n  limit = 3\n  NAME = \"limit\"\n  ```\n\n- the old name is read in a t-string, which keeps the source text of its expressions\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  limit = 3\n  template = t\"{limit}\"\n  print(template.interpolations[0].expression)\n  ```\n\n- the old name also names something a text rename cannot tell apart: a parameter, a local variable, a class attribute, a\n  keyword argument or an attribute access\n\n  ```python report\n  limit = 3\n\n\n  def scale(limit: int) -> int:\n      return limit\n  ```\n\n### Related rules\n\n[module-variable-prefix](SMP404.html) checks the leading underscore of the same variables.\n[unexported-public-name](SMP403.html) applies the underscore convention to functions and classes.\n\n## Ruff overlap\n\nRuff's [mixed-case-variable-in-global-scope](https://docs.astral.sh/ruff/rules/mixed-case-variable-in-global-scope/)\nflags only `mixedCase` names, and never offers a fix. This rule also flags `lower_case` names, and offers a fix for the\n`mixedCase` names it can rename. Where it offers no fix for a `mixedCase` name, Ruff's report stands, so this rule\nleaves that name out, but only when the project's Ruff configuration selects N816. Ruff's own suppressions of it,\nthrough `per-file-ignores` or `noqa`, are respected too.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule\n  [N816](https://docs.astral.sh/ruff/rules/mixed-case-variable-in-global-scope/), which reports only `mixedCase` names,\n  without a fix; this rule leaves unfixable ones to it, keeps those it can rename for the fix, and also reports\n  `lower_case` names and renames them to `UPPER_CASE`.\n- [pylint](https://github.com/pylint-dev/pylint) reports module-level assignments that do not match `const-naming-style`\n  as [invalid-name](https://pylint.readthedocs.io/en/latest/user_guide/messages/convention/invalid-name.html). It\n  defaults to `UPPER_CASE` and only reports, where this rule renames the uses in the file.\n",
+    "explanation": "Flags module-scope variables whose name is not `UPPER_CASE`, such as `limit` or `logger`. A leading underscore stays as\nit is: [module-variable-prefix](SMP404.html) checks it.\n\n## Why is this bad?\n\nUpper case tells a reader the name is a module-level value rather than a local, as\n[PEP 8](https://peps.python.org/pep-0008/#constants) writes constants. A module that keeps the same case for all its\nconstants makes them easy to pick out at every use.\n\n## Example\n\n```python report\nlimit = 3\nlogger = logging.getLogger(__name__)\n\n__all__ = [\"logger\"]\n```\n\nUse instead:\n\n```python ok\nLIMIT = 3\nLOGGER = logging.getLogger(__name__)\n\n__all__ = [\"LOGGER\"]\n```\n\n## Configuration\n\n- [`naming.keep-names`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#naming) in\n  `[tool.simplint]`: module-scope names the rule leaves as they are, such as `keep-names = [\"urlpatterns\"]` under\n  `[tool.simplint.naming]`\n\n  ```toml config\n  [tool.simplint.naming]\n  keep-names = [\"limit\"]\n  ```\n\n  ```python ok\n  limit = 3\n  ```\n\n- The Python version the code targets, taken from the first of these that applies; see\n  [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version):\n\n  1. [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version) in `[tool.ruff]`: for\n     the files a pattern matches\n\n     ```toml config\n     [tool.ruff.per-file-target-version]\n     \"legacy/*.py\" = \"py37\"\n     ```\n\n     ```python report file=legacy/old.py\n     limit = 3\n     ```\n\n     ```python report file=new.py\n     limit = 3\n     ```\n\n  1. [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) in `[tool.ruff]`: for every other file\n\n     ```toml config\n     [tool.ruff]\n     target-version = \"py38\"\n     ```\n\n     ```python report\n     limit = 3\n     ```\n\n  1. [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python):\n     its lowest version, when Ruff sets neither\n\n     ```toml config\n     [project]\n     name = \"demo\"\n     requires-python = \">=3.8\"\n     ```\n\n     ```python report\n     limit = 3\n     ```\n\n## What it does\n\n### Active on\n\n- **Every module-scope variable**: whatever its visibility, its name should be `UPPER_CASE`. A leading underscore stays\n  as it is, so `_timeout` becomes `_TIMEOUT`.\n\n  ```python report\n  limit = 3\n  _timeout = 5\n  ```\n\n- **Names another module in the run imports**: only the case changes, and the leading underscore stays, since the\n  importer already depends on the name.\n\n  ```python report file=config.py\n  limit = 3\n  ```\n\n  ```python context file=consumer.py\n  from config import limit\n\n  print(limit)\n  ```\n\n- **Names bound with `:=`**: a walrus at module scope binds a module variable like any assignment.\n\n  ```python report\n  if (total := 3) > 2:\n      pass\n  ```\n\nsimplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append(\"name\")` with string literals.\n\n### Exceptions\n\n- **An `__all__` built any other way**: its contents depend on how the module runs, so the rule is skipped. This covers:\n\n  - A call, such as `list(...)` or `.remove(...)`:\n\n    ```python ok\n    limit = 3\n    __all__ = list([\"limit\"])\n    ```\n\n  - A binding inside a nested block, such as an `if`, `try` or function:\n\n    ```python ok\n    limit = 3\n\n    if FLAG:\n        __all__ = [\"limit\"]\n    ```\n\n- **Dunder names**: Python and its tools give these their meaning by their exact spelling.\n\n  ```python ok\n  __version__ = \"1.0\"\n  ```\n\n- **Class-like names**, such as the type alias `Alias = int`: they follow the `CapWords` convention of classes.\n\n  ```python ok\n  Alias = int\n  ```\n\n- **Type aliases from a `type` statement**: the statement binds a type, not a value, so the name follows the convention\n  of classes, whatever its case.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.12\"\n  ```\n\n  ```python ok\n  type vector = list[float]\n  ```\n\n- **Names bound and read only inside one module-level `if`, `try` or `with` block**: a block such as a version check\n  binds a name for its own use, and nothing outside the block reads it. A name that another file reads stays here.\n\n  ```python ok\n  import sys\n\n  if sys.version_info < (3, 10):\n      msg = \"requires Python 3.10\"\n      raise RuntimeError(msg)\n  ```\n\n- **Annotations alone under `if TYPE_CHECKING:`**: the rules no longer report a declaration with no value under\n  `if TYPE_CHECKING:`, which only types a name that a module's PEP 562 `__getattr__` serves at runtime. Renaming one\n  breaks the type checker's view of `module.log`, while `__getattr__` keeps serving it at runtime. An assigned name in\n  the same block is still checked.\n\n  ```python ok\n  import typing\n\n  if typing.TYPE_CHECKING:\n      log: typing.Callable[[str], None]\n  else:\n\n      def __getattr__(name: str) -> object: ...\n  ```\n\n- **Names also bound by an import, `def` or `class`**: this rule skips them. This covers:\n\n  - An import, such as `from json import dumps`: the import keeps the spelling of what it imports.\n\n    ```python ok\n    from json import dumps\n\n    dumps = dumps\n    ```\n\n  - A `def` or `class`, such as `def limit()`: [unexported-public-name](SMP403.html) applies the underscore convention\n    to functions and classes.\n\n    ```python ok\n    def limit() -> int:\n        return 3\n\n\n    limit = limit()\n    ```\n\n- **Aliases of a function the module defines**: an alias reads as the function, so it keeps the function's name, as a\n  class alias does. An alias of an imported name is not covered, as the rule cannot tell what an import binds.\n\n  ```python ok\n  def build_cli() -> str:\n      return \"cli\"\n\n\n  _build_cli = build_cli\n  ```\n\n- **Names bound only as `for`, `with`, `except` or `match` targets**: these hold whatever the statement produces, not a\n  value the module defines.\n\n  ```python ok\n  for item in range(3):\n      pass\n  ```\n\n- **`mixedCase` names Ruff reports**: [Ruff](https://docs.astral.sh/ruff/rules/mixed-case-variable-in-global-scope/)\n  reports a `mixedCase` module name at its binding, unless its `ignore-names` lists the name. When the project's Ruff\n  configuration selects N816, the name is left to Ruff, even if this rule could rename it.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"N816\"]\n  ```\n\n  ```python ok file=_module.py\n  myValue = 3\n  print(myValue)\n  ```\n\n- **`TYPE_CHECKING`**: type checkers recognize the guard by that name whatever its value.\n\n  ```python ok\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      pass\n  ```\n\nThe rule also skips names that a tool or framework looks up by their current spelling, since renaming them breaks the\nlookup:\n\n- **pytest's module variables**:\n  [`pytestmark`](https://docs.pytest.org/en/stable/example/markers.html#marking-whole-classes-or-modules),\n  [`pytest_plugins`](https://docs.pytest.org/en/stable/how-to/plugins.html#requiring-loading-plugins-in-a-test-module-or-conftest-file),\n  [`collect_ignore` and `collect_ignore_glob`](https://docs.pytest.org/en/stable/example/pythoncollection.html#customizing-test-collection).\n\n  ```python ok file=tests/test_api.py\n  import pytest\n\n  pytestmark = pytest.mark.slow\n  ```\n\n- **Every name in a `conf.py`**: [Sphinx](https://www.sphinx-doc.org/en/master/usage/configuration.html) reads its\n  settings by their lowercase names.\n\n  ```python ok file=conf.py\n  project = \"demo\"\n  ```\n\n- **`revision`, `down_revision`, `branch_labels` and `depends_on` in an\n  [Alembic](https://alembic.sqlalchemy.org/en/latest/tutorial.html#create-a-migration-script) revision file**: a module\n  that binds `revision` and `down_revision` and defines an `upgrade` function. The names place the file in the migration\n  graph.\n\n  ```python ok file=migrations/versions/abc123.py\n  revision = \"abc123\"\n  down_revision = None\n  branch_labels = None\n  depends_on = None\n\n\n  def upgrade() -> None:\n      pass\n  ```\n\n- **[gunicorn settings](https://gunicorn.org/reference/settings/)**, such as `bind`, `workers` or `timeout`, in a\n  gunicorn configuration file: gunicorn reads them by these exact names.\n\n  A configuration file is one whose name contains `gunicorn`, such as `gunicorn.conf.py`, or a module that binds at\n  least three settings, one of them `bind`, `workers` or `worker_class`. Any file can be one, so the second test tells\n  it from a module that happens to define a `timeout`.\n\n  ```python ok file=gunicorn.conf.py\n  bind = \"0.0.0.0:8000\"\n  workers = 4\n  ```\n\n- **`version`, `version_tuple` and `commit_id` in a module that also binds `__version__`**: the names of the version\n  file [setuptools-scm](https://setuptools-scm.readthedocs.io/latest/usage/#version-files) writes.\n\n  ```python ok\n  __version__ = \"1.0\"\n  version = \"1.0\"\n  version_tuple = (1, 0, 0)\n  commit_id = None\n  ```\n\n- **`apilevel`, `threadsafety` and `paramstyle` in a module that binds all three**: the\n  [PEP 249](https://peps.python.org/pep-0249/#globals) globals of a database driver.\n\n  ```python ok\n  apilevel = \"2.0\"\n  threadsafety = 1\n  paramstyle = \"qmark\"\n  ```\n\n- **PLY grammar names**: in a module that imports [PLY](https://github.com/dabeaz/ply)'s `lex` or `yacc`, including a\n  vendored copy such as `pkg._ply.yacc`, the names `tokens`, `literals`, `precedence`, `states`, `start` and the `t_`\n  and `p_` rules, which PLY reads off the module by name.\n\n  ```python ok\n  from ply import lex\n\n  tokens = (\"NUMBER\",)\n  ```\n\n- **Every name in a PLY table module**, one that binds `_tabversion`: PLY reads its tables back by name.\n\n  ```python ok\n  _tabversion = \"3.10\"\n  limit = 3\n  ```\n\n- **`app` and `application` bound to a WSGI, ASGI or [Typer](https://typer.tiangolo.com/tutorial/typer-command/)\n  application**: servers and the `typer` command load the application by this name.\n\n  The name must be assigned at the top level of the module from one of these calls: `aiohttp.web.Application`,\n  `bottle.Bottle`, Django's `get_wsgi_application` and `get_asgi_application`, `falcon.App`, `falcon.API` and\n  `falcon.asgi.App`, `fastapi.FastAPI`, `flask.Flask`, `litestar.Litestar`, `quart.Quart`, `sanic.Sanic`,\n  `starlette.applications.Starlette`, `typer.Typer`, and Pyramid's `make_wsgi_app()`; the call is resolved through the\n  module's imports.\n\n  ```python ok\n  from fastapi import FastAPI\n\n  app = FastAPI()\n  ```\n\n- **The names listed in `naming.keep-names`**, under Configuration above: for any other framework that reads a module\n  variable by name.\n\n### Fix\n\nThe fix renames every use in the file, including the `__all__` entry, and keeps the leading underscore of the name.\n**Unsafe fix:** always, as importers outside the run keep the old name, and so do string references in unchecked files,\nsuch as [`mocker.patch`](https://pytest-mock.readthedocs.io/en/latest/usage.html) targets. Code that loads a module\nunder a name no file of the run defines, such as a test that copies a file's text into a module and reads its names off\nthe copy, keeps the old name too.\n\n```python report\nlimit = 3\nprint(limit)\n```\n\n```python fixed\nLIMIT = 3\nprint(LIMIT)\n```\n\nA name read in an f-string field with a [`=`](https://docs.python.org/3/reference/lexical_analysis.html#f-strings) debug\nspecifier keeps its printed text: the field prints the old name, then the value in a plain field.\n\n```python report\nlimit = 3\nprint(f\"{limit=}\")\n```\n\n```python fixed\nLIMIT = 3\nprint(f\"limit={LIMIT!r}\")\n```\n\nNo fix is offered when:\n\n- a public module of a library offers the name, as a public name or one `__all__` lists: its users import it, so the\n  report stays and the author renames it by hand\n\n- code the index cannot follow may read the name: a module the run cannot resolve binds it, such as a stdlib or\n  third-party import, or a doctest spells it. The report stays, since such a read does not show what it reads\n\n- another module in the run imports the name, reaches it by a dotted string, such as a `mocker.patch` target, or assigns\n  it as an attribute of its module, as `module.NAME = value` or `setattr(module, \"NAME\", value)` does, since the rename\n  would leave that write pointing at the old name\n\n  ```python report file=config.py\n  limit = 3\n  ```\n\n  ```python context file=consumer.py\n  from config import limit\n\n  print(limit)\n  ```\n\n- a file of the run reads an attribute by that name off a module it loads by a computed name: the result of\n  `importlib.import_module`, `__import__` or `sys.modules[...]`, a parameter annotated `ModuleType`, or a pytest fixture\n  that returns such a module\n\n  ```python report file=loader.py\n  limit = 3\n  ```\n\n  ```python context file=reader.py\n  import importlib\n\n  value = importlib.import_module(\"loader\").limit\n  ```\n\n- a file of the run sets an attribute of the module under a computed name, as `setattr(module, name, value)` or\n  `mock.patch(f\"module.{name}\")` does\n\n- the new name is already used as a name in the file\n\n  ```python report\n  limit = 3\n  LIMIT = 4\n  print(limit, LIMIT)\n  ```\n\n- the name shadows a builtin, as in `zip = zip`, where the value reads the builtin under the same name\n\n  ```python report\n  zip = zip\n  ```\n\n- the old name appears in the text of a string of any file in the run, as written or through an escape such as\n  `\\N{LATIN SMALL LETTER X}`, other than an entry of an `__all__` list assigned with `=` or `+=`\n\n  ```python report\n  limit = 3\n  NAME = \"limit\"\n  ```\n\n- the old name is read in a t-string, which keeps the source text of its expressions\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  limit = 3\n  template = t\"{limit}\"\n  print(template.interpolations[0].expression)\n  ```\n\n- the old name also names something a text rename cannot tell apart: a parameter, a local variable, a class attribute, a\n  keyword argument or an attribute access\n\n  ```python report\n  limit = 3\n\n\n  def scale(limit: int) -> int:\n      return limit\n  ```\n\n### Related rules\n\n[module-variable-prefix](SMP404.html) checks the leading underscore of the same variables.\n[unexported-public-name](SMP403.html) applies the underscore convention to functions and classes.\n\n## Ruff overlap\n\nRuff's [mixed-case-variable-in-global-scope](https://docs.astral.sh/ruff/rules/mixed-case-variable-in-global-scope/)\nflags only `mixedCase` names. This rule flags `lower_case` names and leaves `mixedCase` names to Ruff whenever the\nproject's Ruff configuration selects N816. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are\nrespected too.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule\n  [N816](https://docs.astral.sh/ruff/rules/mixed-case-variable-in-global-scope/), which reports only `mixedCase` names,\n  without a fix; this rule leaves those names to Ruff and reports `lower_case` names, which it can rename to\n  `UPPER_CASE`.\n- [pylint](https://github.com/pylint-dev/pylint) reports module-level assignments that do not match `const-naming-style`\n  as [invalid-name](https://pylint.readthedocs.io/en/latest/user_guide/messages/convention/invalid-name.html). It\n  defaults to `UPPER_CASE` and only reports, where this rule renames the uses in the file.\n",
     "examples": {
       "parsed": [
         {
@@ -2360,29 +2108,29 @@
         },
         {
           "section": "What it does",
-          "line": 235,
-          "end_line": 245,
+          "line": 234,
+          "end_line": 242,
           "config": {
-            "line": 235,
-            "end_line": 238,
+            "line": 234,
+            "end_line": 237,
             "source": "[tool.ruff.lint]\nselect = [\"N816\"]\n"
           },
           "blocks": [
             {
               "role": "ok",
               "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 240,
-              "end_line": 245,
-              "source": "myValue = 3\nMYVALUE = 4\n\nprint(myValue, MYVALUE)\n"
+              "file": "_module.py",
+              "named": true,
+              "line": 239,
+              "end_line": 242,
+              "source": "myValue = 3\nprint(myValue)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 249,
-          "end_line": 254,
+          "line": 246,
+          "end_line": 251,
           "config": null,
           "blocks": [
             {
@@ -2390,16 +2138,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 249,
-              "end_line": 254,
+              "line": 246,
+              "end_line": 251,
               "source": "from typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    pass\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 264,
-          "end_line": 268,
+          "line": 261,
+          "end_line": 265,
           "config": null,
           "blocks": [
             {
@@ -2407,16 +2155,16 @@
               "language": "python",
               "file": "tests/test_api.py",
               "named": true,
-              "line": 264,
-              "end_line": 268,
+              "line": 261,
+              "end_line": 265,
               "source": "import pytest\n\npytestmark = pytest.mark.slow\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 273,
-          "end_line": 275,
+          "line": 270,
+          "end_line": 272,
           "config": null,
           "blocks": [
             {
@@ -2424,16 +2172,16 @@
               "language": "python",
               "file": "conf.py",
               "named": true,
-              "line": 273,
-              "end_line": 275,
+              "line": 270,
+              "end_line": 272,
               "source": "project = \"demo\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 282,
-          "end_line": 291,
+          "line": 279,
+          "end_line": 288,
           "config": null,
           "blocks": [
             {
@@ -2441,16 +2189,16 @@
               "language": "python",
               "file": "migrations/versions/abc123.py",
               "named": true,
-              "line": 282,
-              "end_line": 291,
+              "line": 279,
+              "end_line": 288,
               "source": "revision = \"abc123\"\ndown_revision = None\nbranch_labels = None\ndepends_on = None\n\n\ndef upgrade() -> None:\n    pass\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 300,
-          "end_line": 303,
+          "line": 297,
+          "end_line": 300,
           "config": null,
           "blocks": [
             {
@@ -2458,16 +2206,16 @@
               "language": "python",
               "file": "gunicorn.conf.py",
               "named": true,
-              "line": 300,
-              "end_line": 303,
+              "line": 297,
+              "end_line": 300,
               "source": "bind = \"0.0.0.0:8000\"\nworkers = 4\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 308,
-          "end_line": 313,
+          "line": 305,
+          "end_line": 310,
           "config": null,
           "blocks": [
             {
@@ -2475,16 +2223,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 308,
-              "end_line": 313,
+              "line": 305,
+              "end_line": 310,
               "source": "__version__ = \"1.0\"\nversion = \"1.0\"\nversion_tuple = (1, 0, 0)\ncommit_id = None\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 318,
-          "end_line": 322,
+          "line": 315,
+          "end_line": 319,
           "config": null,
           "blocks": [
             {
@@ -2492,16 +2240,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 318,
-              "end_line": 322,
+              "line": 315,
+              "end_line": 319,
               "source": "apilevel = \"2.0\"\nthreadsafety = 1\nparamstyle = \"qmark\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 328,
-          "end_line": 332,
+          "line": 325,
+          "end_line": 329,
           "config": null,
           "blocks": [
             {
@@ -2509,16 +2257,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 328,
-              "end_line": 332,
+              "line": 325,
+              "end_line": 329,
               "source": "from ply import lex\n\ntokens = (\"NUMBER\",)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 336,
-          "end_line": 339,
+          "line": 333,
+          "end_line": 336,
           "config": null,
           "blocks": [
             {
@@ -2526,16 +2274,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 336,
-              "end_line": 339,
+              "line": 333,
+              "end_line": 336,
               "source": "_tabversion = \"3.10\"\nlimit = 3\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 350,
-          "end_line": 354,
+          "line": 347,
+          "end_line": 351,
           "config": null,
           "blocks": [
             {
@@ -2543,16 +2291,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 350,
-              "end_line": 354,
+              "line": 347,
+              "end_line": 351,
               "source": "from fastapi import FastAPI\n\napp = FastAPI()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 367,
-          "end_line": 375,
+          "line": 364,
+          "end_line": 372,
           "config": null,
           "blocks": [
             {
@@ -2560,8 +2308,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 367,
-              "end_line": 370,
+              "line": 364,
+              "end_line": 367,
               "source": "limit = 3\nprint(limit)\n"
             },
             {
@@ -2569,16 +2317,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 372,
-              "end_line": 375,
+              "line": 369,
+              "end_line": 372,
               "source": "LIMIT = 3\nprint(LIMIT)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 380,
-          "end_line": 388,
+          "line": 377,
+          "end_line": 385,
           "config": null,
           "blocks": [
             {
@@ -2586,8 +2334,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 380,
-              "end_line": 383,
+              "line": 377,
+              "end_line": 380,
               "source": "limit = 3\nprint(f\"{limit=}\")\n"
             },
             {
@@ -2595,16 +2343,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 385,
-              "end_line": 388,
+              "line": 382,
+              "end_line": 385,
               "source": "LIMIT = 3\nprint(f\"limit={LIMIT!r}\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 402,
-          "end_line": 410,
+          "line": 399,
+          "end_line": 407,
           "config": null,
           "blocks": [
             {
@@ -2612,8 +2360,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 402,
-              "end_line": 404,
+              "line": 399,
+              "end_line": 401,
               "source": "limit = 3\n"
             },
             {
@@ -2621,16 +2369,16 @@
               "language": "python",
               "file": "consumer.py",
               "named": true,
-              "line": 406,
-              "end_line": 410,
+              "line": 403,
+              "end_line": 407,
               "source": "from config import limit\n\nprint(limit)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 416,
-          "end_line": 424,
+          "line": 413,
+          "end_line": 421,
           "config": null,
           "blocks": [
             {
@@ -2638,8 +2386,8 @@
               "language": "python",
               "file": "loader.py",
               "named": true,
-              "line": 416,
-              "end_line": 418,
+              "line": 413,
+              "end_line": 415,
               "source": "limit = 3\n"
             },
             {
@@ -2647,16 +2395,16 @@
               "language": "python",
               "file": "reader.py",
               "named": true,
-              "line": 420,
-              "end_line": 424,
+              "line": 417,
+              "end_line": 421,
               "source": "import importlib\n\nvalue = importlib.import_module(\"loader\").limit\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 431,
-          "end_line": 435,
+          "line": 428,
+          "end_line": 432,
           "config": null,
           "blocks": [
             {
@@ -2664,16 +2412,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 431,
-              "end_line": 435,
+              "line": 428,
+              "end_line": 432,
               "source": "limit = 3\nLIMIT = 4\nprint(limit, LIMIT)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 439,
-          "end_line": 441,
+          "line": 436,
+          "end_line": 438,
           "config": null,
           "blocks": [
             {
@@ -2681,16 +2429,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 439,
-              "end_line": 441,
+              "line": 436,
+              "end_line": 438,
               "source": "zip = zip\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 446,
-          "end_line": 449,
+          "line": 443,
+          "end_line": 446,
           "config": null,
           "blocks": [
             {
@@ -2698,19 +2446,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 446,
-              "end_line": 449,
+              "line": 443,
+              "end_line": 446,
               "source": "limit = 3\nNAME = \"limit\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 453,
-          "end_line": 462,
+          "line": 450,
+          "end_line": 459,
           "config": {
-            "line": 453,
-            "end_line": 456,
+            "line": 450,
+            "end_line": 453,
             "source": "[project]\nrequires-python = \">=3.14\"\n"
           },
           "blocks": [
@@ -2719,16 +2467,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 458,
-              "end_line": 462,
+              "line": 455,
+              "end_line": 459,
               "source": "limit = 3\ntemplate = t\"{limit}\"\nprint(template.interpolations[0].expression)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 467,
-          "end_line": 473,
+          "line": 464,
+          "end_line": 470,
           "config": null,
           "blocks": [
             {
@@ -2736,8 +2484,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 467,
-              "end_line": 473,
+              "line": 464,
+              "end_line": 470,
               "source": "limit = 3\n\n\ndef scale(limit: int) -> int:\n    return limit\n"
             }
           ]
@@ -7101,268 +6849,6 @@
               "line": 218,
               "end_line": 220,
               "source": "lazy import a\n"
-            }
-          ]
-        }
-      ]
-    },
-    "family": "imports",
-    "group": "Imports and dependencies",
-    "short_group": "Imports",
-    "cross_file": true
-  },
-  {
-    "code": "SMP309",
-    "name": "star-import",
-    "summary": "`import *` of a module the project defines, which names can be imported one by one",
-    "fix": "Sometimes",
-    "explanation": "Flags `from module import *` when the project defines `module` and the fix can name the names the file uses, and fixes\nit to import them.\n\n## Why is this bad?\n\nA star import binds every public name of the module, so a reader cannot tell where a name comes from. A name the module\nadds later can shadow one the file defines, and a linter cannot tell a name that is undefined from one the star import\nprovides. When the module lists its exports, the file can name the ones it uses and leave the rest out.\n\nIn the example below, `app.py` reads `area` from `geometry.py`, but the reader has to open `geometry.py` to learn that.\n\n## Example\n\n```python context file=geometry.py\n__all__ = [\"area\", \"perimeter\"]\n\n\ndef area(side):\n    return side * side\n\n\ndef perimeter(side):\n    return 4 * side\n```\n\n```python report file=app.py\nfrom geometry import *\n\nprint(area(2))\n```\n\n```python fixed file=app.py\nfrom geometry import area\n\nprint(area(2))\n```\n\n## Conflicts with Ruff\n\nRuff's [F403](https://docs.astral.sh/ruff/rules/undefined-local-with-import-star/) reports every star import, and\n[F405](https://docs.astral.sh/ruff/rules/undefined-local-with-import-star-usage/) reports each name it cannot place,\nboth without a fix. This rule reports a star import only when it can fix it, so F403 and this rule both report that\nimport, and the fix is what this rule adds. Where the fix declines, only F403 reports the import, and only when the\nproject's Ruff configuration selects it; otherwise this rule reports the import without a fix. Both may stay on; F405\ngoes quiet once the import names the file's names.\n\n## What it does\n\nsimplint looks the module up in the index of the run, so a star import of a module outside the project stays as it is.\n\n### Active on\n\n- **`from module import *` at module level**, including one inside a top-level `if` or `try` block, of a module the run\n  lints, when the file reads a name the module defines or lists, or lists one in its own `__all__`.\n\n  ```python context file=geometry.py\n  VALUE = 1\n  ```\n\n  ```python report file=app.py\n  from geometry import *\n\n  print(VALUE)\n  ```\n\n### Exceptions\n\n- **Star imports the fix declines**: the rule reports nothing without a fix while the project's Ruff configuration\n  selects [F403](https://docs.astral.sh/ruff/rules/undefined-local-with-import-star/), which reports them instead. Here\n  the file reads `perimeter`, which the module does not list. Ruff's own suppressions of it, through `per-file-ignores`\n  or `noqa`, are respected too.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"F403\"]\n  ```\n\n  ```python context file=geometry.py\n  __all__ = [\"area\"]\n\n\n  def area(side):\n      return side * side\n\n\n  def perimeter(side):\n      return 4 * side\n  ```\n\n  ```python ok file=app.py\n  from geometry import *\n\n  print(area(2), perimeter(2))\n  ```\n\n- **Star imports of modules outside the project**, such as the standard library, which the index does not know.\n\n  ```python ok file=app.py\n  from os.path import *\n  ```\n\n- **Re-exports**: a star import the file reads nothing from and whose names its own `__all__` does not list, which is\n  there to pass the module's names on, and any star import of a module whose own `__all__` is computed, often from the\n  imported module's.\n\n  ```python context file=geometry.py\n  VALUE = 1\n  ```\n\n  ```python ok file=shapes.py\n  from geometry import *\n  ```\n\n- **Fallbacks in an `except` clause**, which must take the same names as the import the `try` attempts, as when a pure\n  Python module stands in for a C accelerator.\n\n  ```python context file=_pygeometry.py\n  def area(side):\n      return side * side\n  ```\n\n  ```python ok file=geometry.py\n  try:\n      from _geometry import *\n  except ImportError:\n      from _pygeometry import *\n  ```\n\n### Fix\n\nThe fix replaces the `*` with the names the file reads from the module, in alphabetical order. It applies only to a file\nwith one star import and no other file star-imports it.\n\nA name is kept when the file reads it, that is it uses it and no binding of the file or builtin defines it, or when the\nfile lists it in its own `__all__`. The fix declines when other files or a library's users reach a name through this\nfile that the file does not read, since the import it would need is unused, and Ruff's F401 removes unused imports.\n\nThe fix is safe when the module lists its exports in a static `__all__`, since then every name the star import could\nprovide is known. Without an `__all__`, the module's public names are only those it defines, and the module may export\nnames it imports, so the fix is unsafe. Either way it declines when the file reads a name the module does not list or\ndefine, as that name may come from one of the module's imports, or from an `__all__.append()` inside an `if` block that\nsimplint cannot read:\n\n```toml config\n[tool.ruff.lint]\nselect = [\"F403\"]\n```\n\n```python context file=geometry.py\nimport sys\n\n__all__ = [\"area\"]\n\n\ndef area(side):\n    return side * side\n\n\nif sys.platform == \"win32\":\n\n    def native_area(side):\n        return side * side\n\n    __all__.append(\"native_area\")\n```\n\n```python ok file=app.py\nimport sys\n\nfrom geometry import *\n\nprint(area(2))\nif sys.platform == \"win32\":\n    print(native_area(2))\n```\n\n```python context file=helpers.py\ndef double(value):\n    return 2 * value\n```\n\n```python report file=tools.py\nfrom helpers import *\n\nprint(double(2))\n```\n\n```python fixed file=tools.py\nfrom helpers import double\n\nprint(double(2))\n```\n\nThe fix stays off when the module's exports cannot be read statically, as for a dynamic `__all__` or a module-level\n`__getattr__`, and when a comment sits on the import or on the line above it, since the comment may say why the star\nimport is there. It also stays off in an `__init__.py` without a static `__all__` of its own: there the star import\nmakes up the package's names, which its users may reach as `package.name`. Without a fix the rule does not report the\nimport while F403 is selected, and F403 does.\n\n```toml config\n[tool.ruff.lint]\nselect = [\"F403\"]\n```\n\n```python context file=geometry.py\n__all__ = [\"area\", \"perimeter\"]\n\n\ndef area(side):\n    return side * side\n\n\ndef perimeter(side):\n    return 4 * side\n```\n\n```python ok file=shapes/__init__.py\nfrom geometry import *\n\nUNIT = area(1)\n```\n\n### Undetected cases\n\nA star import whose module lives outside the project is not reported, since its names are unknown. Neither is one whose\nmodule defines the names the file reads in a way simplint cannot see, as through `globals()` or `exec`, since the file\nthen reads nothing the module is known to define.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** released rule\n  [F403](https://docs.astral.sh/ruff/rules/undefined-local-with-import-star/) reports every star import without a fix;\n  this rule leaves unfixable ones to it and keeps those it can expand, the fix open issue\n  [#8149](https://github.com/astral-sh/ruff/issues/8149) asks Ruff for.\n- [pylint](https://github.com/pylint-dev/pylint) reports every\n  [wildcard-import](https://pylint.readthedocs.io/en/latest/user_guide/messages/warning/wildcard-import.html), including\n  modules outside the project. This rule reports only modules the project defines, and its fix names the imported names.\n- [autoflake](https://github.com/PyCQA/autoflake) expands the same star imports with\n  [`--expand-star-imports`](https://github.com/PyCQA/autoflake), and it only applies to files with a single star import.\n",
-    "examples": {
-      "parsed": [
-        {
-          "section": "Example",
-          "line": 14,
-          "end_line": 36,
-          "config": null,
-          "blocks": [
-            {
-              "role": "context",
-              "language": "python",
-              "file": "geometry.py",
-              "named": true,
-              "line": 14,
-              "end_line": 24,
-              "source": "__all__ = [\"area\", \"perimeter\"]\n\n\ndef area(side):\n    return side * side\n\n\ndef perimeter(side):\n    return 4 * side\n"
-            },
-            {
-              "role": "report",
-              "language": "python",
-              "file": "app.py",
-              "named": true,
-              "line": 26,
-              "end_line": 30,
-              "source": "from geometry import *\n\nprint(area(2))\n"
-            },
-            {
-              "role": "fixed",
-              "language": "python",
-              "file": "app.py",
-              "named": true,
-              "line": 32,
-              "end_line": 36,
-              "source": "from geometry import area\n\nprint(area(2))\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 56,
-          "end_line": 64,
-          "config": null,
-          "blocks": [
-            {
-              "role": "context",
-              "language": "python",
-              "file": "geometry.py",
-              "named": true,
-              "line": 56,
-              "end_line": 58,
-              "source": "VALUE = 1\n"
-            },
-            {
-              "role": "report",
-              "language": "python",
-              "file": "app.py",
-              "named": true,
-              "line": 60,
-              "end_line": 64,
-              "source": "from geometry import *\n\nprint(VALUE)\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 73,
-          "end_line": 94,
-          "config": {
-            "line": 73,
-            "end_line": 76,
-            "source": "[tool.ruff.lint]\nselect = [\"F403\"]\n"
-          },
-          "blocks": [
-            {
-              "role": "context",
-              "language": "python",
-              "file": "geometry.py",
-              "named": true,
-              "line": 78,
-              "end_line": 88,
-              "source": "__all__ = [\"area\"]\n\n\ndef area(side):\n    return side * side\n\n\ndef perimeter(side):\n    return 4 * side\n"
-            },
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "app.py",
-              "named": true,
-              "line": 90,
-              "end_line": 94,
-              "source": "from geometry import *\n\nprint(area(2), perimeter(2))\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 98,
-          "end_line": 100,
-          "config": null,
-          "blocks": [
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "app.py",
-              "named": true,
-              "line": 98,
-              "end_line": 100,
-              "source": "from os.path import *\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 106,
-          "end_line": 112,
-          "config": null,
-          "blocks": [
-            {
-              "role": "context",
-              "language": "python",
-              "file": "geometry.py",
-              "named": true,
-              "line": 106,
-              "end_line": 108,
-              "source": "VALUE = 1\n"
-            },
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "shapes.py",
-              "named": true,
-              "line": 110,
-              "end_line": 112,
-              "source": "from geometry import *\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 117,
-          "end_line": 127,
-          "config": null,
-          "blocks": [
-            {
-              "role": "context",
-              "language": "python",
-              "file": "_pygeometry.py",
-              "named": true,
-              "line": 117,
-              "end_line": 120,
-              "source": "def area(side):\n    return side * side\n"
-            },
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "geometry.py",
-              "named": true,
-              "line": 122,
-              "end_line": 127,
-              "source": "try:\n    from _geometry import *\nexcept ImportError:\n    from _pygeometry import *\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 144,
-          "end_line": 192,
-          "config": {
-            "line": 144,
-            "end_line": 147,
-            "source": "[tool.ruff.lint]\nselect = [\"F403\"]\n"
-          },
-          "blocks": [
-            {
-              "role": "context",
-              "language": "python",
-              "file": "geometry.py",
-              "named": true,
-              "line": 149,
-              "end_line": 165,
-              "source": "import sys\n\n__all__ = [\"area\"]\n\n\ndef area(side):\n    return side * side\n\n\nif sys.platform == \"win32\":\n\n    def native_area(side):\n        return side * side\n\n    __all__.append(\"native_area\")\n"
-            },
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "app.py",
-              "named": true,
-              "line": 167,
-              "end_line": 175,
-              "source": "import sys\n\nfrom geometry import *\n\nprint(area(2))\nif sys.platform == \"win32\":\n    print(native_area(2))\n"
-            },
-            {
-              "role": "context",
-              "language": "python",
-              "file": "helpers.py",
-              "named": true,
-              "line": 177,
-              "end_line": 180,
-              "source": "def double(value):\n    return 2 * value\n"
-            },
-            {
-              "role": "report",
-              "language": "python",
-              "file": "tools.py",
-              "named": true,
-              "line": 182,
-              "end_line": 186,
-              "source": "from helpers import *\n\nprint(double(2))\n"
-            },
-            {
-              "role": "fixed",
-              "language": "python",
-              "file": "tools.py",
-              "named": true,
-              "line": 188,
-              "end_line": 192,
-              "source": "from helpers import double\n\nprint(double(2))\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 200,
-          "end_line": 221,
-          "config": {
-            "line": 200,
-            "end_line": 203,
-            "source": "[tool.ruff.lint]\nselect = [\"F403\"]\n"
-          },
-          "blocks": [
-            {
-              "role": "context",
-              "language": "python",
-              "file": "geometry.py",
-              "named": true,
-              "line": 205,
-              "end_line": 215,
-              "source": "__all__ = [\"area\", \"perimeter\"]\n\n\ndef area(side):\n    return side * side\n\n\ndef perimeter(side):\n    return 4 * side\n"
-            },
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "shapes/__init__.py",
-              "named": true,
-              "line": 217,
-              "end_line": 221,
-              "source": "from geometry import *\n\nUNIT = area(1)\n"
             }
           ]
         }
@@ -13332,7 +12818,7 @@
     "name": "single-use-variable",
     "summary": "Variables read once, right below their assignment",
     "fix": "Always",
-    "explanation": "Flags a local variable that is assigned once and read once, in the statement right after the assignment. Inlining its\nvalue removes the name and keeps the value next to the code that uses it.\n\n## Why is this bad?\n\nA name that exists only to be read on the next line adds a step to follow without adding meaning. The reader has to find\nthe assignment, remember the value, and then reach the line that uses it. Inlining the value keeps the decision in one\nplace.\n\n## Example\n\n```python report\ndef total_price(prices: list[float]) -> str:\n    total = sum(prices)\n    return f\"{total:.2f}\"\n```\n\nUse instead:\n\n```python ok\ndef total_price(prices: list[float]) -> str:\n    return f\"{sum(prices):.2f}\"\n```\n\n## Configuration\n\n- [`line-length`](https://docs.astral.sh/ruff/settings/#line-length) and\n  [`indent-width`](https://docs.astral.sh/ruff/settings/#indent-width), which give the width a statement must fit after\n  the value is inlined; see\n  [Settings shared with Ruff](https://simplint.readthedocs.io/en/latest/configuration/project.html#settings-shared-with-ruff)\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python),\n  which decide the f-strings that cannot hold a backslash or their own quote before Python 3.12, and the decorators that\n  must be dotted names before Python 3.9; see\n  [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py312\"\n  ```\n\n  ```python report\n  def lines(rows: list[bytes]) -> str:\n      joined = b\"\\n\".join(rows)\n      return f\"{joined}\"\n  ```\n\n- [`extend-immutable-calls`](https://docs.astral.sh/ruff/settings/#lint_flake8-bugbear_extend-immutable-calls) in\n  `[tool.ruff.lint.flake8-bugbear]`, which adds calls to the ones B008 takes as immutable, so a value calling one of\n  them is inlined into a default; see the read in a parameter's default above\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"B008\"]\n\n  [tool.ruff.lint.flake8-bugbear]\n  extend-immutable-calls = [\"frozen.freeze\"]\n  ```\n\n  ```python report\n  from frozen import freeze\n\n\n  def run(items: list[str]) -> None:\n      frozen = freeze(items)\n\n      def show(held=frozen) -> None:\n          print(held)\n  ```\n\n  ```python fixed\n  from frozen import freeze\n\n\n  def run(items: list[str]) -> None:\n\n      def show(held=freeze(items)) -> None:\n          print(held)\n  ```\n\n- [`preview`](https://docs.astral.sh/ruff/settings/#preview) in `[tool.ruff]`, which makes B006 also report a generator\n  and a tuple that holds a mutable value, so such a value is not inlined into a default either\n\n  ```toml config\n  [tool.ruff]\n  preview = true\n\n  [tool.ruff.lint]\n  select = [\"B006\"]\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      rows = (item for item in items)\n\n      def show(held=rows) -> None:\n          print(held)\n\n      show()\n  ```\n\n## What it does\n\n### Active on\n\n- **A plain assignment to one name whose only other mention is the next statement's read**: the name is bound once in\n  the function, and read once, in the statement directly after the assignment, in the same block.\n\n  ```python report\n  def price(prices: list[float]) -> str:\n      total = sum(prices)\n      return f\"{total:.2f}\"\n\n\n  def show(items: list[str]) -> None:\n      count = len(items)\n      print(count)\n  ```\n\n  ```python fixed\n  def price(prices: list[float]) -> str:\n      return f\"{sum(prices):.2f}\"\n\n\n  def show(items: list[str]) -> None:\n      print(len(items))\n  ```\n\n- **A dict or set display inlined right after an f-string field's `{`**: the value gets a space inside the braces,\n  because `{{` would be read as an escaped brace.\n\n  ```python report\n  def show(key: str) -> None:\n      mapping = {key: 2}\n      print(f\"{mapping}\")\n  ```\n\n  ```python fixed\n  def show(key: str) -> None:\n      print(f\"{ {key: 2} }\")\n  ```\n\n- **A read in an f-string field with a [`=`](https://docs.python.org/3/reference/lexical_analysis.html#f-strings) debug\n  specifier**, such as `{total=}`: the field prints the text of its expression, so the text stays as written and the\n  value moves into a plain field after it. The printed text does not change.\n\n  ```python report\n  def show(items: list[str]) -> None:\n      total = len(items)\n      print(f\"{total=}\")\n  ```\n\n  ```python fixed\n  def show(items: list[str]) -> None:\n      print(f\"total={len(items)!r}\")\n  ```\n\n- **A string or f-string value inlined into a bare field of an f-string**: its text joins the enclosing f-string, so\n  `f\"[{inner}]\"` with `inner = f\"<{value}>\"` becomes `f\"[<{value}>]\"` rather than a nested f-string.\n\n- **Before Python 3.12, a value whose strings use the f-string's quote**: a string in the value takes the other quote,\n  which the field can hold. A value spread over lines goes in on one line, as `ruff format` joins it, since the field\n  cannot hold a line break either.\n\n  ```python report\n  def wrap(value: str) -> str:\n      inner = f\"<{value}>\"\n      return f\"[{inner!r}]\"\n  ```\n\n  ```python fixed\n  def wrap(value: str) -> str:\n      return f\"[{f'<{value}>'!r}]\"\n  ```\n\n### Exceptions\n\n- **A name that is `_`, or a dunder such as `__all__`**: `_` is a placeholder, and a dunder has a meaning to Python.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      _ = len(items)\n      print(_)\n  ```\n\n- **A name the function declares [`global`](https://docs.python.org/3/reference/simple_stmts.html#the-global-statement)\n  or [`nonlocal`](https://docs.python.org/3/reference/simple_stmts.html#the-nonlocal-statement)**: code outside the\n  function reads the binding too.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      global count\n      count = len(items)\n      print(count)\n  ```\n\n- **A value that is a `yield`, `await` or `:=` expression**: these run or bind in a way that moving them changes.\n\n  ```python ok\n  async def run(source: Source) -> None:\n      data = await source.read()\n      print(data)\n  ```\n\n- **A read as the argument of [`next`](https://docs.python.org/3/library/functions.html#next) or\n  [`anext`](https://docs.python.org/3/library/functions.html#anext), or as the receiver of `send`, `throw`, `close` or\n  `__next__`**: the call steps or closes the object the name holds. Without the name, the call would be the only holder\n  of the object, so the object would be released as soon as the call returns, which runs a generator's `finally` early.\n  Keeping the name is the only way to leave the object alone, so the variable is not reported.\n\n  ```python ok\n  def run(rows: list[int]) -> None:\n      stream = produce(rows)\n      print(next(stream))\n  ```\n\n- **A next statement that is `return name` or `yield name`**: Ruff's\n  [unnecessary-assign](https://docs.astral.sh/ruff/rules/unnecessary-assign/) covers the `return` case while the\n  project's Ruff configuration selects it, and `yield` keeps the same shape. The inline is skipped whenever Ruff selects\n  the rule, even where `per-file-ignores` or `noqa` silence it.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"RET504\"]\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> int:\n      count = len(items)\n      return count\n  ```\n\n- **A next statement that is `yield from name`, while Ruff's preview mode is on**: Ruff's preview rule\n  [unnecessary-assign-before-yield](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/) covers it when\n  the value goes in as written. With preview off, or for a value that Ruff would write differently, such as a tuple, the\n  report stays: Ruff's fix writes `yield from a, b`, a syntax error, so this rule keeps the tuple for its own fix. The\n  pair is left to Ruff only when the project's Ruff configuration selects the rule. The inline is skipped whenever Ruff\n  selects the rule, even where `per-file-ignores` or `noqa` silence it.\n\n- **A read in a parameter's default, while Ruff's\n  [mutable-argument-default](https://docs.astral.sh/ruff/rules/mutable-argument-default/) (B006) or\n  [function-call-in-argument-default](https://docs.astral.sh/ruff/rules/function-call-in-argument-default/) (B008)\n  runs**: the default is evaluated once, when the function is defined, and inlining a value that one of them reports\n  would make Ruff report it, so the variable stays. B006 reports a mutable display, a comprehension, or a call of a\n  mutable type such as `list()` or `collections.Counter()`. B008 reports a call, except one of an immutable type such as\n  `tuple()`, a [`NewType`](https://docs.python.org/3/library/typing.html#newtype) of an immutable type, or a callee\n  listed in `extend-immutable-calls` (see Configuration). A call inside a lambda is not reported. A parameter annotated\n  with an immutable type is not reported by either, so the value is still inlined. The inline is skipped whenever Ruff\n  runs the rule, even where `per-file-ignores` or `noqa` silence it. The variable is reported when the project's Ruff\n  configuration runs neither rule.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"B006\", \"B008\"]\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n\n      def show(size=count) -> None:\n          print(size)\n\n      show()\n  ```\n\n- **A read inside a loop body, a comprehension, a lambda or a nested function**: inlining would compute the value once\n  per pass instead of once.\n\n  ```python ok\n  def run(rows: list[list[int]]) -> list[int]:\n      total = sum(rows[0])\n      return [total + value for value in rows[1]]\n  ```\n\n- **A read in a nested block of the next statement**, such as the body of an `if`: the value would run only when the\n  block does, so inlining would skip it when the block is not taken.\n\n  ```python ok\n  def run(items: list[str], verbose: bool) -> None:\n      count = len(items)\n      if verbose:\n          print(count)\n  ```\n\n- **A read after `and` or `or`**, or in a branch of a conditional expression, a later link of a chained comparison, an\n  `assert`, a `case` or the type of an `except` clause: each runs only when the code before it does not decide the\n  outcome, or when an exception or a match reaches it.\n\n  ```python ok\n  def run(items: list[str], flag: bool) -> None:\n      count = len(items)\n      print(flag and count)\n  ```\n\n  ```python ok\n  def run(items: list[str], flag: bool) -> None:\n      count = len(items)\n      print(count if flag else 0)\n  ```\n\n  ```python ok\n  def run(items: list[str], low: int) -> None:\n      count = len(items)\n      print(low < 0 < count)\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n      assert count, \"no items\"\n  ```\n\n  ```python ok\n  def run(command: str, items: list[str]) -> None:\n      count = len(items)\n      match command:\n          case \"count\":\n              print(count)\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      error = ValueError\n      try:\n          print(items[0])\n      except error:\n          print(\"empty\")\n  ```\n\n- **A read in an annotation, a `type` statement or a type parameter**: an annotation in a function body is never\n  evaluated, and the others are evaluated lazily, so the value would not run where the name was read.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      kind = list[str]\n      values: kind = items\n      print(values)\n  ```\n\n- **A conditional expression, or a value with a string literal in it, read inside an f-string field**: the field would\n  hold the conditional or the literal inside its braces, which reads worse than the two statements. A value that is a\n  string or an f-string on its own is still inlined.\n\n  ```python ok\n  def run(items: list[str], flag: bool) -> str:\n      sep = \" \" if flag else \"\"\n      return f\"[{sep}{items[0]}]\"\n  ```\n\n- **Before Python 3.12, a value with a backslash, or whose strings hold the other quote**: a replacement field cannot\n  hold a backslash or the f-string's own quote until [PEP 701](https://peps.python.org/pep-0701/), and a string that\n  holds the other quote cannot take it, so the inlined code would not parse.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py311\"\n  ```\n\n  ```python ok\n  def quote(value: str) -> str:\n      quoted = value.replace(\"'\", \"''\")\n      return f\"'{quoted}'\"\n  ```\n\n- **An assignment with a comment on its line, or between it and the read**: inlining would lose the comment.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)  # the number of rows\n      print(count)\n  ```\n\n- **A name read in an `if` test that starts with it**: [walrus-candidate](SMP502.html) covers those, and writes the\n  value into the test.\n\n  ```python ok\n  def run(text: str) -> None:\n      found = text.find(\"x\")\n      if found:\n          print(found)\n  ```\n\n- **A name read again elsewhere in the function**, or bound again: the name is needed after the read, or the read is not\n  the only one.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n      print(count)\n      print(count)\n  ```\n\n- **Functions that read their locals by name, such as `locals()` or `eval`**: a removed name would vanish from what they\n  see.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n      print(locals())\n  ```\n\n- **A next statement that is a `while` loop**: its test runs again on every pass.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      limit = len(items)\n      while limit:\n          limit -= 1\n  ```\n\n- **An inlined header that would no longer fit [`line-length`](https://docs.astral.sh/ruff/settings/#line-length)**:\n  `ruff format` would split the statement over several lines, which reads worse than the two statements. The header is\n  measured joined on one line at its block's indentation, with the value in place of the name.\n\n  ```toml config\n  [tool.ruff]\n  line-length = 40\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items) + len(items) + len(items)\n      print(count + 1000000)\n  ```\n\n- **A message bound for an exception call in a `raise`**: Ruff's\n  [raw-string-in-exception](https://docs.astral.sh/ruff/rules/raw-string-in-exception/) and\n  [f-string-in-exception](https://docs.astral.sh/ruff/rules/f-string-in-exception/) ask for an exception's message to be\n  a variable, so inlining it would bring back the report those rules remove.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      msg = f\"{len(items)} items\"\n      raise ValueError(msg)\n  ```\n\n- **A name bound another way in the function**, such as by an `import`, a `def`, a `class`, an `except` clause or a\n  `match` capture: the other binding is a second assignment the walk does not follow, so the name is not single-use.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n      from os import count\n\n      print(count)\n  ```\n\n### Fix\n\nThe fix deletes the assignment and writes the value where the name was, in parentheses when its precedence requires\nthem.\n\n**Unsafe fix:** the next statement calls something, awaits, or reads an attribute or a subscript before the read, so the\nvalue would run after it instead of before.\n\n```python report\ndef run(items: list[str], log: Log) -> None:\n    count = len(items)\n    log.write(count)\n```\n\n```python fixed\ndef run(items: list[str], log: Log) -> None:\n    log.write(len(items))\n```\n\nHere `log.write` is looked up before `len(items)` runs, which differs only when that lookup has side effects.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules\n  [RET504](https://docs.astral.sh/ruff/rules/unnecessary-assign/) and preview\n  [RUF070](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/), which cover a value returned or yielded\n  on the next line and which this rule leaves to them, except the `yield from` of a tuple, which it keeps because\n  RUF070's fix breaks it; every other single read is open issue\n  [#10108](https://github.com/astral-sh/ruff/issues/10108).\n- [Sourcery](https://sourcery.ai) inlines a variable that is used once anywhere in its block through\n  [inline-variable](https://docs.sourcery.ai/reference/refactorings/python/inline-variable/). This rule only inlines a\n  value read on the line right below its assignment.\n",
+    "explanation": "Flags a local variable that is assigned once and read once, in the statement right after the assignment. Inlining its\nvalue removes the name and keeps the value next to the code that uses it.\n\n## Why is this bad?\n\nA name that exists only to be read on the next line adds a step to follow without adding meaning. The reader has to find\nthe assignment, remember the value, and then reach the line that uses it. Inlining the value keeps the decision in one\nplace.\n\n## Example\n\n```python report\ndef total_price(prices: list[float]) -> str:\n    total = sum(prices)\n    return f\"{total:.2f}\"\n```\n\nUse instead:\n\n```python ok\ndef total_price(prices: list[float]) -> str:\n    return f\"{sum(prices):.2f}\"\n```\n\n## Configuration\n\n- [`line-length`](https://docs.astral.sh/ruff/settings/#line-length) and\n  [`indent-width`](https://docs.astral.sh/ruff/settings/#indent-width), which give the width a statement must fit after\n  the value is inlined; see\n  [Settings shared with Ruff](https://simplint.readthedocs.io/en/latest/configuration/project.html#settings-shared-with-ruff)\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python),\n  which decide the f-strings that cannot hold a backslash or their own quote before Python 3.12, and the decorators that\n  must be dotted names before Python 3.9; see\n  [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py312\"\n  ```\n\n  ```python report\n  def lines(rows: list[bytes]) -> str:\n      joined = b\"\\n\".join(rows)\n      return f\"{joined}\"\n  ```\n\n- [`extend-immutable-calls`](https://docs.astral.sh/ruff/settings/#lint_flake8-bugbear_extend-immutable-calls) in\n  `[tool.ruff.lint.flake8-bugbear]`, which adds calls to the ones B008 takes as immutable, so a value calling one of\n  them is inlined into a default; see the read in a parameter's default above\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"B008\"]\n\n  [tool.ruff.lint.flake8-bugbear]\n  extend-immutable-calls = [\"frozen.freeze\"]\n  ```\n\n  ```python report\n  from frozen import freeze\n\n\n  def run(items: list[str]) -> None:\n      frozen = freeze(items)\n\n      def show(held=frozen) -> None:\n          print(held)\n  ```\n\n  ```python fixed\n  from frozen import freeze\n\n\n  def run(items: list[str]) -> None:\n\n      def show(held=freeze(items)) -> None:\n          print(held)\n  ```\n\n- [`preview`](https://docs.astral.sh/ruff/settings/#preview) in `[tool.ruff]`, which makes B006 also report a generator\n  and a tuple that holds a mutable value, so such a value is not inlined into a default either\n\n  ```toml config\n  [tool.ruff]\n  preview = true\n\n  [tool.ruff.lint]\n  select = [\"B006\"]\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      rows = (item for item in items)\n\n      def show(held=rows) -> None:\n          print(held)\n\n      show()\n  ```\n\n## What it does\n\n### Active on\n\n- **A plain assignment to one name whose only other mention is the next statement's read**: the name is bound once in\n  the function, and read once, in the statement directly after the assignment, in the same block.\n\n  ```python report\n  def price(prices: list[float]) -> str:\n      total = sum(prices)\n      return f\"{total:.2f}\"\n\n\n  def show(items: list[str]) -> None:\n      count = len(items)\n      print(count)\n  ```\n\n  ```python fixed\n  def price(prices: list[float]) -> str:\n      return f\"{sum(prices):.2f}\"\n\n\n  def show(items: list[str]) -> None:\n      print(len(items))\n  ```\n\n- **A dict or set display inlined right after an f-string field's `{`**: the value gets a space inside the braces,\n  because `{{` would be read as an escaped brace.\n\n  ```python report\n  def show(key: str) -> None:\n      mapping = {key: 2}\n      print(f\"{mapping}\")\n  ```\n\n  ```python fixed\n  def show(key: str) -> None:\n      print(f\"{ {key: 2} }\")\n  ```\n\n- **A read in an f-string field with a [`=`](https://docs.python.org/3/reference/lexical_analysis.html#f-strings) debug\n  specifier**, such as `{total=}`: the field prints the text of its expression, so the text stays as written and the\n  value moves into a plain field after it. The printed text does not change.\n\n  ```python report\n  def show(items: list[str]) -> None:\n      total = len(items)\n      print(f\"{total=}\")\n  ```\n\n  ```python fixed\n  def show(items: list[str]) -> None:\n      print(f\"total={len(items)!r}\")\n  ```\n\n- **A string or f-string value inlined into a bare field of an f-string**: its text joins the enclosing f-string, so\n  `f\"[{inner}]\"` with `inner = f\"<{value}>\"` becomes `f\"[<{value}>]\"` rather than a nested f-string.\n\n- **Before Python 3.12, a value whose strings use the f-string's quote**: a string in the value takes the other quote,\n  which the field can hold. A value spread over lines goes in on one line, as `ruff format` joins it, since the field\n  cannot hold a line break either.\n\n  ```python report\n  def wrap(value: str) -> str:\n      inner = f\"<{value}>\"\n      return f\"[{inner!r}]\"\n  ```\n\n  ```python fixed\n  def wrap(value: str) -> str:\n      return f\"[{f'<{value}>'!r}]\"\n  ```\n\n### Exceptions\n\n- **A name that is `_`, or a dunder such as `__all__`**: `_` is a placeholder, and a dunder has a meaning to Python.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      _ = len(items)\n      print(_)\n  ```\n\n- **A name the function declares [`global`](https://docs.python.org/3/reference/simple_stmts.html#the-global-statement)\n  or [`nonlocal`](https://docs.python.org/3/reference/simple_stmts.html#the-nonlocal-statement)**: code outside the\n  function reads the binding too.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      global count\n      count = len(items)\n      print(count)\n  ```\n\n- **A value that is a `yield`, `await` or `:=` expression**: these run or bind in a way that moving them changes.\n\n  ```python ok\n  async def run(source: Source) -> None:\n      data = await source.read()\n      print(data)\n  ```\n\n- **A read as the argument of [`next`](https://docs.python.org/3/library/functions.html#next) or\n  [`anext`](https://docs.python.org/3/library/functions.html#anext), or as the receiver of `send`, `throw`, `close` or\n  `__next__`**: the call steps or closes the object the name holds. Without the name, the call would be the only holder\n  of the object, so the object would be released as soon as the call returns, which runs a generator's `finally` early.\n  Keeping the name is the only way to leave the object alone, so the variable is not reported.\n\n  ```python ok\n  def run(rows: list[int]) -> None:\n      stream = produce(rows)\n      print(next(stream))\n  ```\n\n- **A next statement that is `return name` or `yield name`**: Ruff's\n  [unnecessary-assign](https://docs.astral.sh/ruff/rules/unnecessary-assign/) covers the `return` case while the\n  project's Ruff configuration selects it, and `yield` keeps the same shape. The inline is skipped whenever Ruff selects\n  the rule, even where `per-file-ignores` or `noqa` silence it.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"RET504\"]\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> int:\n      count = len(items)\n      return count\n  ```\n\n- **A next statement that is `yield from name`, while Ruff's preview mode is on**: Ruff's preview rule\n  [unnecessary-assign-before-yield](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/) covers it when\n  the project's Ruff configuration selects it, even when this rule's fix would differ. With preview off, or without\n  RUF070, this rule reports the pair. The inline is skipped whenever Ruff selects the rule, even where\n  `per-file-ignores` or `noqa` silence it.\n\n- **A read in a parameter's default, while Ruff's\n  [mutable-argument-default](https://docs.astral.sh/ruff/rules/mutable-argument-default/) (B006) or\n  [function-call-in-argument-default](https://docs.astral.sh/ruff/rules/function-call-in-argument-default/) (B008)\n  runs**: the default is evaluated once, when the function is defined, and inlining a value that one of them reports\n  would make Ruff report it, so the variable stays. B006 reports a mutable display, a comprehension, or a call of a\n  mutable type such as `list()` or `collections.Counter()`. B008 reports a call, except one of an immutable type such as\n  `tuple()`, a [`NewType`](https://docs.python.org/3/library/typing.html#newtype) of an immutable type, or a callee\n  listed in `extend-immutable-calls` (see Configuration). A call inside a lambda is not reported. A parameter annotated\n  with an immutable type is not reported by either, so the value is still inlined. The inline is skipped whenever Ruff\n  runs the rule, even where `per-file-ignores` or `noqa` silence it. The variable is reported when the project's Ruff\n  configuration runs neither rule.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"B006\", \"B008\"]\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n\n      def show(size=count) -> None:\n          print(size)\n\n      show()\n  ```\n\n- **A read inside a loop body, a comprehension, a lambda or a nested function**: inlining would compute the value once\n  per pass instead of once.\n\n  ```python ok\n  def run(rows: list[list[int]]) -> list[int]:\n      total = sum(rows[0])\n      return [total + value for value in rows[1]]\n  ```\n\n- **A read in a nested block of the next statement**, such as the body of an `if`: the value would run only when the\n  block does, so inlining would skip it when the block is not taken.\n\n  ```python ok\n  def run(items: list[str], verbose: bool) -> None:\n      count = len(items)\n      if verbose:\n          print(count)\n  ```\n\n- **A read after `and` or `or`**, or in a branch of a conditional expression, a later link of a chained comparison, an\n  `assert`, a `case` or the type of an `except` clause: each runs only when the code before it does not decide the\n  outcome, or when an exception or a match reaches it.\n\n  ```python ok\n  def run(items: list[str], flag: bool) -> None:\n      count = len(items)\n      print(flag and count)\n  ```\n\n  ```python ok\n  def run(items: list[str], flag: bool) -> None:\n      count = len(items)\n      print(count if flag else 0)\n  ```\n\n  ```python ok\n  def run(items: list[str], low: int) -> None:\n      count = len(items)\n      print(low < 0 < count)\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n      assert count, \"no items\"\n  ```\n\n  ```python ok\n  def run(command: str, items: list[str]) -> None:\n      count = len(items)\n      match command:\n          case \"count\":\n              print(count)\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      error = ValueError\n      try:\n          print(items[0])\n      except error:\n          print(\"empty\")\n  ```\n\n- **A read in an annotation, a `type` statement or a type parameter**: an annotation in a function body is never\n  evaluated, and the others are evaluated lazily, so the value would not run where the name was read.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      kind = list[str]\n      values: kind = items\n      print(values)\n  ```\n\n- **A conditional expression, or a value with a string literal in it, read inside an f-string field**: the field would\n  hold the conditional or the literal inside its braces, which reads worse than the two statements. A value that is a\n  string or an f-string on its own is still inlined.\n\n  ```python ok\n  def run(items: list[str], flag: bool) -> str:\n      sep = \" \" if flag else \"\"\n      return f\"[{sep}{items[0]}]\"\n  ```\n\n- **Before Python 3.12, a value with a backslash, or whose strings hold the other quote**: a replacement field cannot\n  hold a backslash or the f-string's own quote until [PEP 701](https://peps.python.org/pep-0701/), and a string that\n  holds the other quote cannot take it, so the inlined code would not parse.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py311\"\n  ```\n\n  ```python ok\n  def quote(value: str) -> str:\n      quoted = value.replace(\"'\", \"''\")\n      return f\"'{quoted}'\"\n  ```\n\n- **An assignment with a comment on its line, or between it and the read**: inlining would lose the comment.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)  # the number of rows\n      print(count)\n  ```\n\n- **A name read in an `if` test that starts with it**: [walrus-candidate](SMP502.html) covers those, and writes the\n  value into the test.\n\n  ```python ok\n  def run(text: str) -> None:\n      found = text.find(\"x\")\n      if found:\n          print(found)\n  ```\n\n- **A name read again elsewhere in the function**, or bound again: the name is needed after the read, or the read is not\n  the only one.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n      print(count)\n      print(count)\n  ```\n\n- **Functions that read their locals by name, such as `locals()` or `eval`**: a removed name would vanish from what they\n  see.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n      print(locals())\n  ```\n\n- **A next statement that is a `while` loop**: its test runs again on every pass.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      limit = len(items)\n      while limit:\n          limit -= 1\n  ```\n\n- **An inlined header that would no longer fit [`line-length`](https://docs.astral.sh/ruff/settings/#line-length)**:\n  `ruff format` would split the statement over several lines, which reads worse than the two statements. The header is\n  measured joined on one line at its block's indentation, with the value in place of the name.\n\n  ```toml config\n  [tool.ruff]\n  line-length = 40\n  ```\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items) + len(items) + len(items)\n      print(count + 1000000)\n  ```\n\n- **A message bound for an exception call in a `raise`**: Ruff's\n  [raw-string-in-exception](https://docs.astral.sh/ruff/rules/raw-string-in-exception/) and\n  [f-string-in-exception](https://docs.astral.sh/ruff/rules/f-string-in-exception/) ask for an exception's message to be\n  a variable, so inlining it would bring back the report those rules remove.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      msg = f\"{len(items)} items\"\n      raise ValueError(msg)\n  ```\n\n- **A name bound another way in the function**, such as by an `import`, a `def`, a `class`, an `except` clause or a\n  `match` capture: the other binding is a second assignment the walk does not follow, so the name is not single-use.\n\n  ```python ok\n  def run(items: list[str]) -> None:\n      count = len(items)\n      from os import count\n\n      print(count)\n  ```\n\n### Fix\n\nThe fix deletes the assignment and writes the value where the name was, in parentheses when its precedence requires\nthem.\n\n**Unsafe fix:** the next statement calls something, awaits, or reads an attribute or a subscript before the read, so the\nvalue would run after it instead of before.\n\n```python report\ndef run(items: list[str], log: Log) -> None:\n    count = len(items)\n    log.write(count)\n```\n\n```python fixed\ndef run(items: list[str], log: Log) -> None:\n    log.write(len(items))\n```\n\nHere `log.write` is looked up before `len(items)` runs, which differs only when that lookup has side effects.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules\n  [RET504](https://docs.astral.sh/ruff/rules/unnecessary-assign/) and preview\n  [RUF070](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/), which cover a value returned or yielded\n  on the next line and which this rule leaves to them; every other single read is open issue\n  [#10108](https://github.com/astral-sh/ruff/issues/10108).\n- [Sourcery](https://sourcery.ai) inlines a variable that is used once anywhere in its block through\n  [inline-variable](https://docs.sourcery.ai/reference/refactorings/python/inline-variable/). This rule only inlines a\n  value read on the line right below its assignment.\n",
     "examples": {
       "parsed": [
         {
@@ -13636,11 +13122,11 @@
         },
         {
           "section": "What it does",
-          "line": 254,
-          "end_line": 267,
+          "line": 253,
+          "end_line": 266,
           "config": {
-            "line": 254,
-            "end_line": 257,
+            "line": 253,
+            "end_line": 256,
             "source": "[tool.ruff.lint]\nselect = [\"B006\", \"B008\"]\n"
           },
           "blocks": [
@@ -13649,16 +13135,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 259,
-              "end_line": 267,
+              "line": 258,
+              "end_line": 266,
               "source": "def run(items: list[str]) -> None:\n    count = len(items)\n\n    def show(size=count) -> None:\n        print(size)\n\n    show()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 272,
-          "end_line": 276,
+          "line": 271,
+          "end_line": 275,
           "config": null,
           "blocks": [
             {
@@ -13666,16 +13152,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 272,
-              "end_line": 276,
+              "line": 271,
+              "end_line": 275,
               "source": "def run(rows: list[list[int]]) -> list[int]:\n    total = sum(rows[0])\n    return [total + value for value in rows[1]]\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 281,
-          "end_line": 286,
+          "line": 280,
+          "end_line": 285,
           "config": null,
           "blocks": [
             {
@@ -13683,16 +13169,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 281,
-              "end_line": 286,
+              "line": 280,
+              "end_line": 285,
               "source": "def run(items: list[str], verbose: bool) -> None:\n    count = len(items)\n    if verbose:\n        print(count)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 292,
-          "end_line": 296,
+          "line": 291,
+          "end_line": 295,
           "config": null,
           "blocks": [
             {
@@ -13700,16 +13186,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 292,
-              "end_line": 296,
+              "line": 291,
+              "end_line": 295,
               "source": "def run(items: list[str], flag: bool) -> None:\n    count = len(items)\n    print(flag and count)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 298,
-          "end_line": 302,
+          "line": 297,
+          "end_line": 301,
           "config": null,
           "blocks": [
             {
@@ -13717,16 +13203,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 298,
-              "end_line": 302,
+              "line": 297,
+              "end_line": 301,
               "source": "def run(items: list[str], flag: bool) -> None:\n    count = len(items)\n    print(count if flag else 0)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 304,
-          "end_line": 308,
+          "line": 303,
+          "end_line": 307,
           "config": null,
           "blocks": [
             {
@@ -13734,16 +13220,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 304,
-              "end_line": 308,
+              "line": 303,
+              "end_line": 307,
               "source": "def run(items: list[str], low: int) -> None:\n    count = len(items)\n    print(low < 0 < count)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 310,
-          "end_line": 314,
+          "line": 309,
+          "end_line": 313,
           "config": null,
           "blocks": [
             {
@@ -13751,16 +13237,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 310,
-              "end_line": 314,
+              "line": 309,
+              "end_line": 313,
               "source": "def run(items: list[str]) -> None:\n    count = len(items)\n    assert count, \"no items\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 316,
-          "end_line": 322,
+          "line": 315,
+          "end_line": 321,
           "config": null,
           "blocks": [
             {
@@ -13768,16 +13254,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 316,
-              "end_line": 322,
+              "line": 315,
+              "end_line": 321,
               "source": "def run(command: str, items: list[str]) -> None:\n    count = len(items)\n    match command:\n        case \"count\":\n            print(count)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 324,
-          "end_line": 331,
+          "line": 323,
+          "end_line": 330,
           "config": null,
           "blocks": [
             {
@@ -13785,16 +13271,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 324,
-              "end_line": 331,
+              "line": 323,
+              "end_line": 330,
               "source": "def run(items: list[str]) -> None:\n    error = ValueError\n    try:\n        print(items[0])\n    except error:\n        print(\"empty\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 336,
-          "end_line": 341,
+          "line": 335,
+          "end_line": 340,
           "config": null,
           "blocks": [
             {
@@ -13802,16 +13288,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 336,
-              "end_line": 341,
+              "line": 335,
+              "end_line": 340,
               "source": "def run(items: list[str]) -> None:\n    kind = list[str]\n    values: kind = items\n    print(values)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 347,
-          "end_line": 351,
+          "line": 346,
+          "end_line": 350,
           "config": null,
           "blocks": [
             {
@@ -13819,19 +13305,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 347,
-              "end_line": 351,
+              "line": 346,
+              "end_line": 350,
               "source": "def run(items: list[str], flag: bool) -> str:\n    sep = \" \" if flag else \"\"\n    return f\"[{sep}{items[0]}]\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 357,
-          "end_line": 366,
+          "line": 356,
+          "end_line": 365,
           "config": {
-            "line": 357,
-            "end_line": 360,
+            "line": 356,
+            "end_line": 359,
             "source": "[tool.ruff]\ntarget-version = \"py311\"\n"
           },
           "blocks": [
@@ -13840,16 +13326,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 362,
-              "end_line": 366,
+              "line": 361,
+              "end_line": 365,
               "source": "def quote(value: str) -> str:\n    quoted = value.replace(\"'\", \"''\")\n    return f\"'{quoted}'\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 370,
-          "end_line": 374,
+          "line": 369,
+          "end_line": 373,
           "config": null,
           "blocks": [
             {
@@ -13857,16 +13343,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 370,
-              "end_line": 374,
+              "line": 369,
+              "end_line": 373,
               "source": "def run(items: list[str]) -> None:\n    count = len(items)  # the number of rows\n    print(count)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 379,
-          "end_line": 384,
+          "line": 378,
+          "end_line": 383,
           "config": null,
           "blocks": [
             {
@@ -13874,16 +13360,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 379,
-              "end_line": 384,
+              "line": 378,
+              "end_line": 383,
               "source": "def run(text: str) -> None:\n    found = text.find(\"x\")\n    if found:\n        print(found)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 389,
-          "end_line": 394,
+          "line": 388,
+          "end_line": 393,
           "config": null,
           "blocks": [
             {
@@ -13891,16 +13377,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 389,
-              "end_line": 394,
+              "line": 388,
+              "end_line": 393,
               "source": "def run(items: list[str]) -> None:\n    count = len(items)\n    print(count)\n    print(count)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 399,
-          "end_line": 403,
+          "line": 398,
+          "end_line": 402,
           "config": null,
           "blocks": [
             {
@@ -13908,16 +13394,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 399,
-              "end_line": 403,
+              "line": 398,
+              "end_line": 402,
               "source": "def run(items: list[str]) -> None:\n    count = len(items)\n    print(locals())\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 407,
-          "end_line": 412,
+          "line": 406,
+          "end_line": 411,
           "config": null,
           "blocks": [
             {
@@ -13925,19 +13411,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 407,
-              "end_line": 412,
+              "line": 406,
+              "end_line": 411,
               "source": "def run(items: list[str]) -> None:\n    limit = len(items)\n    while limit:\n        limit -= 1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 418,
-          "end_line": 427,
+          "line": 417,
+          "end_line": 426,
           "config": {
-            "line": 418,
-            "end_line": 421,
+            "line": 417,
+            "end_line": 420,
             "source": "[tool.ruff]\nline-length = 40\n"
           },
           "blocks": [
@@ -13946,16 +13432,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 423,
-              "end_line": 427,
+              "line": 422,
+              "end_line": 426,
               "source": "def run(items: list[str]) -> None:\n    count = len(items) + len(items) + len(items)\n    print(count + 1000000)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 434,
-          "end_line": 438,
+          "line": 433,
+          "end_line": 437,
           "config": null,
           "blocks": [
             {
@@ -13963,16 +13449,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 434,
-              "end_line": 438,
+              "line": 433,
+              "end_line": 437,
               "source": "def run(items: list[str]) -> None:\n    msg = f\"{len(items)} items\"\n    raise ValueError(msg)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 443,
-          "end_line": 449,
+          "line": 442,
+          "end_line": 448,
           "config": null,
           "blocks": [
             {
@@ -13980,16 +13466,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 443,
-              "end_line": 449,
+              "line": 442,
+              "end_line": 448,
               "source": "def run(items: list[str]) -> None:\n    count = len(items)\n    from os import count\n\n    print(count)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 459,
-          "end_line": 468,
+          "line": 458,
+          "end_line": 467,
           "config": null,
           "blocks": [
             {
@@ -13997,8 +13483,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 459,
-              "end_line": 463,
+              "line": 458,
+              "end_line": 462,
               "source": "def run(items: list[str], log: Log) -> None:\n    count = len(items)\n    log.write(count)\n"
             },
             {
@@ -14006,8 +13492,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 465,
-              "end_line": 468,
+              "line": 464,
+              "end_line": 467,
               "source": "def run(items: list[str], log: Log) -> None:\n    log.write(len(items))\n"
             }
           ]
@@ -23399,13 +22885,13 @@
     "name": "constant-assert",
     "summary": "Assertions on a truthy constant",
     "fix": "Sometimes",
-    "explanation": "Flags `assert` statements whose test is a truthy constant. Such an assertion can never fail, so it checks nothing and\nmakes a test look like it verifies more than it does.\n\n## Why is this bad?\n\nAn assertion on a truthy constant can never fail, so it checks nothing and makes a test look like it verifies more than\nit does. A parenthesized `assert (check, \"message\")` is a non-empty tuple and falls in the same trap. Ruff reports every\nnon-empty tuple as [assert-tuple](https://docs.astral.sh/ruff/rules/assert-tuple/); this rule reports only the\ntwo-element tuple without a message that it can rewrite, and leaves the others to Ruff when the project's Ruff\nconfiguration selects assert-tuple. Ruff's\n[assert-on-string-literal](https://docs.astral.sh/ruff/rules/assert-on-string-literal/) reports a string, bytes or\nf-string literal without a fix, so while it runs this rule keeps only the ones it can delete.\n\n## Example\n\n```python report\ndef test_save(tmp_path: Path) -> None:\n    save(tmp_path / \"out.json\")\n    assert True\n```\n\nUse instead:\n\n```python ok\ndef test_save(tmp_path: Path) -> None:\n    save(tmp_path / \"out.json\")\n    assert (tmp_path / \"out.json\").exists()\n```\n\n## What it does\n\n### Active on\n\n[`assert`](https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement) statements whose test is a\n[truthy](https://docs.python.org/3/builtins/stdtypes.html#truth-value-testing) constant, in every file, not only tests.\nTruthiness is judged the way Ruff judges it. These are truthy constants:\n\n- **`True`**: truthy by definition.\n\n  ```python report\n  assert True\n  ```\n\n- **A non-zero number**: only zero is falsy.\n\n  ```python report\n  assert 1\n  ```\n\n- **A non-empty string, bytes or f-string literal**: only an empty one is falsy.\n\n  ```python report\n  assert \"ready\"\n  ```\n\n- **`...`**: `Ellipsis` is always truthy.\n\n  ```python report\n  assert ...\n  ```\n\n- **A lambda**: a function object is always truthy.\n\n  ```python report\n  assert lambda: None\n  ```\n\n- **A non-empty tuple, list, set or dict literal** such as `[value]`: a container with items is truthy.\n\n  ```python report\n  value = 1\n  assert [value]\n  ```\n\n- **A generator expression**: a generator object is truthy even when it yields nothing, so the assertion can never fail.\n  Ruff does not implement bugbear's B044, which flags it.\n\n  ```python report\n  values = [1, 2]\n  assert (value for value in values)\n  ```\n\n- **A `format` call or a `%` expression on a string literal whose text has characters outside its fields**: the literal\n  text is in every result, so the result is never empty.\n\n  ```python report\n  state = \"ready\"\n  assert \"state: {}\".format(state)\n  ```\n\n  ```python report\n  state = \"ready\"\n  assert \"state: %s\" % state\n  ```\n\n- **A computation on literals**: arithmetic, string concatenation and repetition, comparisons, `not`, and `and` and `or`\n  over numbers, strings, booleans and `None`, when the result is truthy. The rule computes the value the way Python\n  does, so `1 + 1 == 2` and `\"a\" * 3` are constant, while a computation on integers past 64 bits, or a repetition or\n  concatenation that builds a string longer than 4096 bytes, is left alone.\n\n  ```python report\n  assert 1 + 1 == 2\n  ```\n\n  ```python report\n  assert \"a\" * 3\n  ```\n\n### Exceptions\n\n- **A string, bytes or f-string literal this rule cannot delete**, such as one whose f-string calls a function: Ruff's\n  [assert-on-string-literal](https://docs.astral.sh/ruff/rules/assert-on-string-literal/) reports it while the project's\n  Ruff configuration selects it, so this rule leaves it to Ruff. One it can delete stays here for the fix, which Ruff\n  does not offer. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are respected too.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"PLW0129\"]\n  ```\n\n  ```python ok\n  def compute() -> str:\n      return \"\"\n\n\n  assert f\"ready {compute()}\"\n  ```\n\n- **A container holding only starred elements**, such as `[*values]`: it may be empty.\n\n  ```python ok\n  values = []\n  assert [*values]\n  ```\n\n- **A malformed template**, such as `\"x{\"` or `\"x%y\"`: Python raises on it rather than passing.\n\n  ```python ok\n  assert \"x{\".format()\n  ```\n\n- **A format or `%` template with text only inside its fields**, such as `\"{}\"` or `\"%s\"`: the field may hold an empty\n  string, so the result may be empty too.\n\n  ```python ok\n  value = \"\"\n  assert \"{}\".format(value)\n  ```\n\n  ```python ok\n  value = \"\"\n  assert \"%s\" % value\n  ```\n\n- **An f-string made only of fields**, such as `f\"{value}\"`: it is empty when `value` is.\n\n  ```python ok\n  value = \"\"\n  assert f\"{value}\"\n  ```\n\n- **A tuple test that is not a two-element tuple without a message**, such as `(1, 2, 3)` or `(True, *values)`: Ruff's\n  [assert-tuple](https://docs.astral.sh/ruff/rules/assert-tuple/) reports every non-empty tuple, and this rule has no\n  fix for the others. It leaves them to Ruff only when the project's Ruff configuration selects assert-tuple. Ruff's own\n  suppressions of it, through `per-file-ignores` or `noqa`, are respected too.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"F631\"]\n  ```\n\n  ```python ok\n  assert (1, 2, 3)\n  ```\n\n- **A computation that reads a name or calls a function**, such as `assert value + 1 == 2`: the value can change, so the\n  rule evaluates only literals.\n\n  ```python ok\n  value = 1\n  assert value + 1 == 2\n  ```\n\n### Fix\n\nThe fix depends on the constant:\n\n- A two-element tuple without a message, such as `assert (check, \"message\")`, becomes `assert check, \"message\"`, since\n  deleting it would drop the check it meant. **Unsafe fix:** the restored check may now fail.\n\n  ```python report\n  check = False\n  assert (check, \"message\")\n  ```\n\n  ```python fixed\n  check = False\n  assert check, \"message\"\n  ```\n\n  A walrus check gets parentheses, since `:=` cannot stand alone before the comma.\n\n  ```python report\n  assert (ready := True, \"message\")\n  ```\n\n  ```python fixed\n  assert (ready := True), \"message\"\n  ```\n\n- A generator becomes `all(...)` around the same expression. **Unsafe fix:** the restored check may now fail. Its first\n  iterable is evaluated when the generator is built, so deleting the assertion would also drop that evaluation and any\n  error it raises.\n\n  ```python report\n  values = [1, 2]\n  assert (value for value in values)\n  ```\n\n  ```python fixed\n  values = [1, 2]\n  assert all(value for value in values)\n  ```\n\n  No fix is offered for an asynchronous generator, one with `async for` or `await`, since `all()` cannot iterate it, nor\n  where the file binds `all` to something other than the builtin.\n\n  ```python report\n  async def check(values: AsyncIterator[int]) -> None:\n      assert (value async for value in values)\n  ```\n\n  ```python fixed\n  async def check(values: AsyncIterator[int]) -> None:\n      assert (value async for value in values)\n  ```\n\n- Other tuples get no fix, so they are left to Ruff's assert-tuple when it runs; see the exceptions above.\n\n- For a `format` or `%` template the fix deletes the assertion **unsafely**: its fields may not fit its arguments, and\n  the deletion would hide the error that raises. Any other constant is deleted safely, since its assertion never fails.\n  The block keeps a `pass` only when the assertion was its only statement:\n\n  - An assertion with other statements in its block: the fix deletes it.\n\n    ```python report\n    def test_save() -> None:\n        save()\n        assert True\n    ```\n\n    ```python fixed\n    def test_save() -> None:\n        save()\n    ```\n\n  - An assertion that is the only statement in its block: the fix leaves `pass` in its place.\n\n    ```python report\n    def test_empty() -> None:\n        assert True\n    ```\n\n    ```python fixed\n    def test_empty() -> None:\n        pass\n    ```\n\nFor a constant that is not a tuple, no fix is offered when:\n\n- the assertion shares a line with another statement;\n\n- its test calls something, as in `assert [compute()]` or `assert \"value {}\".format(compute())`, since deleting it would\n  skip that call.\n\n  ```python report\n  def compute() -> int:\n      return 1\n\n\n  assert [compute()]\n  ```\n\n  ```python report\n  def compute() -> int:\n      return 1\n\n\n  assert \"value {}\".format(compute())\n  ```\n\n```mermaid\nflowchart TD\n    assertion[\"assert on a<br/>truthy constant\"] --> tuple{\"a tuple?\"}\n    tuple -->|yes| pair{\"two elements,<br/>no message?\"}\n    pair -->|yes| unwrap[\"unsafe: assert check, message\"]\n    pair -->|no| runs{\"assert-tuple<br/>selected?\"}\n    runs -->|yes| left[\"left to Ruff\"]\n    runs -->|no| none\n    tuple -->|no| generator{\"a generator?\"}\n    generator -->|yes| asynchronous{\"asynchronous, or<br/>all rebound?\"}\n    asynchronous -->|yes| none\n    asynchronous -->|no| wrap[\"unsafe: assert all(...)\"]\n    generator -->|no| blocked{\"shares a line or<br/>calls something?\"}\n    blocked -->|yes| none\n    blocked -->|no| template{\"a format or<br/>% template?\"}\n    template -->|yes| unsafe[\"unsafe: delete it\"]\n    template -->|no| delete[\"safe: delete it\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class assertion blue\n    class blocked,tuple,pair,generator,asynchronous,template yellow\n    class delete green\n    class unsafe orange\n    class unwrap,wrap teal\n    class none,left orange\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules\n  [F631](https://docs.astral.sh/ruff/rules/assert-tuple/) and\n  [PLW0129](https://docs.astral.sh/ruff/rules/assert-on-string-literal/), which cover tuples and string literals; this\n  rule leaves them to Ruff, but keeps the two-element tuple and the string literals it can delete for the fix Ruff\n  lacks, and covers other truthy constants.\n- [flake8-useless-assert](https://github.com/decorator-factory/flake8-useless-assert) reports an assert with a truthy\n  literal, such as `assert True`, as [ULA001](https://github.com/decorator-factory/flake8-useless-assert), with no fix.\n- [Sourcery](https://sourcery.ai) removes `assert True` statements through\n  [remove-assert-true](https://docs.sourcery.ai/reference/refactorings/python/remove-assert-true/). It covers\n  `assert True` only, where this rule also covers other truthy constants.\n",
+    "explanation": "Flags `assert` statements whose test is a truthy constant. Such an assertion can never fail, so it checks nothing and\nmakes a test look like it verifies more than it does.\n\n## Why is this bad?\n\nAn assertion on a truthy constant can never fail, so it checks nothing and makes a test look like it verifies more than\nit does. A parenthesized `assert (check, \"message\")` is a non-empty tuple and falls in the same trap. Ruff reports every\nnon-empty tuple as [assert-tuple](https://docs.astral.sh/ruff/rules/assert-tuple/), and\n[assert-on-string-literal](https://docs.astral.sh/ruff/rules/assert-on-string-literal/) reports a string, bytes or\nf-string literal. This rule leaves those cases to Ruff when the corresponding rule runs.\n\n## Example\n\n```python report\ndef test_save(tmp_path: Path) -> None:\n    save(tmp_path / \"out.json\")\n    assert True\n```\n\nUse instead:\n\n```python ok\ndef test_save(tmp_path: Path) -> None:\n    save(tmp_path / \"out.json\")\n    assert (tmp_path / \"out.json\").exists()\n```\n\n## What it does\n\n### Active on\n\n[`assert`](https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement) statements whose test is a\n[truthy](https://docs.python.org/3/builtins/stdtypes.html#truth-value-testing) constant, in every file, not only tests.\nTruthiness is judged the way Ruff judges it. These are truthy constants:\n\n- **`True`**: truthy by definition.\n\n  ```python report\n  assert True\n  ```\n\n- **A non-zero number**: only zero is falsy.\n\n  ```python report\n  assert 1\n  ```\n\n- **A non-empty string, bytes or f-string literal**: only an empty one is falsy.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = []\n  ```\n\n  ```python report\n  assert \"ready\"\n  ```\n\n- **`...`**: `Ellipsis` is always truthy.\n\n  ```python report\n  assert ...\n  ```\n\n- **A lambda**: a function object is always truthy.\n\n  ```python report\n  assert lambda: None\n  ```\n\n- **A non-empty tuple, list, set or dict literal** such as `[value]`: a container with items is truthy.\n\n  ```python report\n  value = 1\n  assert [value]\n  ```\n\n- **A generator expression**: a generator object is truthy even when it yields nothing, so the assertion can never fail.\n  Ruff does not implement bugbear's B044, which flags it.\n\n  ```python report\n  values = [1, 2]\n  assert (value for value in values)\n  ```\n\n- **A `format` call or a `%` expression on a string literal whose text has characters outside its fields**: the literal\n  text is in every result, so the result is never empty.\n\n  ```python report\n  state = \"ready\"\n  assert \"state: {}\".format(state)\n  ```\n\n  ```python report\n  state = \"ready\"\n  assert \"state: %s\" % state\n  ```\n\n- **A computation on literals**: arithmetic, string concatenation and repetition, comparisons, `not`, and `and` and `or`\n  over numbers, strings, booleans and `None`, when the result is truthy. The rule computes the value the way Python\n  does, so `1 + 1 == 2` and `\"a\" * 3` are constant, while a computation on integers past 64 bits, or a repetition or\n  concatenation that builds a string longer than 4096 bytes, is left alone.\n\n  ```python report\n  assert 1 + 1 == 2\n  ```\n\n  ```python report\n  assert \"a\" * 3\n  ```\n\n### Exceptions\n\n- **A string, bytes or f-string literal**, such as one whose f-string calls a function: Ruff's\n  [assert-on-string-literal](https://docs.astral.sh/ruff/rules/assert-on-string-literal/) reports it while the project's\n  Ruff configuration selects it, so this rule leaves it to Ruff, including cases it could fix. Ruff's own suppressions\n  of it, through `per-file-ignores` or `noqa`, are respected too.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"PLW0129\"]\n  ```\n\n  ```python ok\n  def compute() -> str:\n      return \"\"\n\n\n  assert f\"ready {compute()}\"\n  ```\n\n- **A container holding only starred elements**, such as `[*values]`: it may be empty.\n\n  ```python ok\n  values = []\n  assert [*values]\n  ```\n\n- **A malformed template**, such as `\"x{\"` or `\"x%y\"`: Python raises on it rather than passing.\n\n  ```python ok\n  assert \"x{\".format()\n  ```\n\n- **A format or `%` template with text only inside its fields**, such as `\"{}\"` or `\"%s\"`: the field may hold an empty\n  string, so the result may be empty too.\n\n  ```python ok\n  value = \"\"\n  assert \"{}\".format(value)\n  ```\n\n  ```python ok\n  value = \"\"\n  assert \"%s\" % value\n  ```\n\n- **An f-string made only of fields**, such as `f\"{value}\"`: it is empty when `value` is.\n\n  ```python ok\n  value = \"\"\n  assert f\"{value}\"\n  ```\n\n- **Any non-empty tuple test while Ruff runs F631**: Ruff's\n  [assert-tuple](https://docs.astral.sh/ruff/rules/assert-tuple/) reports them, including two-element tuples this rule\n  could fix. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are respected too.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"F631\"]\n  ```\n\n  ```python ok\n  assert (1, 2, 3)\n  ```\n\n- **A computation that reads a name or calls a function**, such as `assert value + 1 == 2`: the value can change, so the\n  rule evaluates only literals.\n\n  ```python ok\n  value = 1\n  assert value + 1 == 2\n  ```\n\n### Fix\n\nThe fix depends on the constant:\n\n- A two-element tuple without a message, such as `assert (check, \"message\")`, becomes `assert check, \"message\"`, since\n  deleting it would drop the check it meant. **Unsafe fix:** the restored check may now fail.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = []\n  ```\n\n  ```python report\n  check = False\n  assert (check, \"message\")\n  ```\n\n  ```python fixed\n  check = False\n  assert check, \"message\"\n  ```\n\n  A walrus check gets parentheses, since `:=` cannot stand alone before the comma.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = []\n  ```\n\n  ```python report\n  assert (ready := True, \"message\")\n  ```\n\n  ```python fixed\n  assert (ready := True), \"message\"\n  ```\n\n- A generator becomes `all(...)` around the same expression. **Unsafe fix:** the restored check may now fail. Its first\n  iterable is evaluated when the generator is built, so deleting the assertion would also drop that evaluation and any\n  error it raises.\n\n  ```python report\n  values = [1, 2]\n  assert (value for value in values)\n  ```\n\n  ```python fixed\n  values = [1, 2]\n  assert all(value for value in values)\n  ```\n\n  No fix is offered for an asynchronous generator, one with `async for` or `await`, since `all()` cannot iterate it, nor\n  where the file binds `all` to something other than the builtin.\n\n  ```python report\n  async def check(values: AsyncIterator[int]) -> None:\n      assert (value async for value in values)\n  ```\n\n  ```python fixed\n  async def check(values: AsyncIterator[int]) -> None:\n      assert (value async for value in values)\n  ```\n\n- Other tuples get no fix. When Ruff's F631 runs, every non-empty tuple is left to it.\n\n- For a `format` or `%` template the fix deletes the assertion **unsafely**: its fields may not fit its arguments, and\n  the deletion would hide the error that raises. Any other constant is deleted safely, since its assertion never fails.\n  The block keeps a `pass` only when the assertion was its only statement:\n\n  - An assertion with other statements in its block: the fix deletes it.\n\n    ```python report\n    def test_save() -> None:\n        save()\n        assert True\n    ```\n\n    ```python fixed\n    def test_save() -> None:\n        save()\n    ```\n\n  - An assertion that is the only statement in its block: the fix leaves `pass` in its place.\n\n    ```python report\n    def test_empty() -> None:\n        assert True\n    ```\n\n    ```python fixed\n    def test_empty() -> None:\n        pass\n    ```\n\nFor a constant that is not a tuple, no fix is offered when:\n\n- the assertion shares a line with another statement;\n\n- its test calls something, as in `assert [compute()]` or `assert \"value {}\".format(compute())`, since deleting it would\n  skip that call.\n\n  ```python report\n  def compute() -> int:\n      return 1\n\n\n  assert [compute()]\n  ```\n\n  ```python report\n  def compute() -> int:\n      return 1\n\n\n  assert \"value {}\".format(compute())\n  ```\n\n```mermaid\nflowchart TD\n    assertion[\"assert on a<br/>truthy constant\"] --> tuple{\"a tuple?\"}\n    tuple -->|yes| runs{\"assert-tuple<br/>selected?\"}\n    runs -->|yes| left[\"left to Ruff\"]\n    runs -->|no| pair{\"two elements,<br/>no message?\"}\n    pair -->|yes| unwrap[\"unsafe: assert check, message\"]\n    pair -->|no| none\n    tuple -->|no| generator{\"a generator?\"}\n    generator -->|yes| asynchronous{\"asynchronous, or<br/>all rebound?\"}\n    asynchronous -->|yes| none\n    asynchronous -->|no| wrap[\"unsafe: assert all(...)\"]\n    generator -->|no| blocked{\"shares a line or<br/>calls something?\"}\n    blocked -->|yes| none\n    blocked -->|no| template{\"a format or<br/>% template?\"}\n    template -->|yes| unsafe[\"unsafe: delete it\"]\n    template -->|no| delete[\"safe: delete it\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class assertion blue\n    class blocked,tuple,pair,generator,asynchronous,template yellow\n    class delete green\n    class unsafe orange\n    class unwrap,wrap teal\n    class none,left orange\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules\n  [F631](https://docs.astral.sh/ruff/rules/assert-tuple/) and\n  [PLW0129](https://docs.astral.sh/ruff/rules/assert-on-string-literal/), which cover tuples and string literals; this\n  rule leaves every covered case to Ruff when the corresponding rule runs and covers other truthy constants.\n- [flake8-useless-assert](https://github.com/decorator-factory/flake8-useless-assert) reports an assert with a truthy\n  literal, such as `assert True`, as [ULA001](https://github.com/decorator-factory/flake8-useless-assert), with no fix.\n- [Sourcery](https://sourcery.ai) removes `assert True` statements through\n  [remove-assert-true](https://docs.sourcery.ai/reference/refactorings/python/remove-assert-true/). It covers\n  `assert True` only, where this rule also covers other truthy constants.\n",
     "examples": {
       "parsed": [
         {
           "section": "Example",
-          "line": 16,
-          "end_line": 20,
+          "line": 14,
+          "end_line": 18,
           "config": null,
           "blocks": [
             {
@@ -23413,16 +22899,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 16,
-              "end_line": 20,
+              "line": 14,
+              "end_line": 18,
               "source": "def test_save(tmp_path: Path) -> None:\n    save(tmp_path / \"out.json\")\n    assert True\n"
             }
           ]
         },
         {
           "section": "Example",
-          "line": 24,
-          "end_line": 28,
+          "line": 22,
+          "end_line": 26,
           "config": null,
           "blocks": [
             {
@@ -23430,16 +22916,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 24,
-              "end_line": 28,
+              "line": 22,
+              "end_line": 26,
               "source": "def test_save(tmp_path: Path) -> None:\n    save(tmp_path / \"out.json\")\n    assert (tmp_path / \"out.json\").exists()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 40,
-          "end_line": 42,
+          "line": 38,
+          "end_line": 40,
           "config": null,
           "blocks": [
             {
@@ -23447,16 +22933,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 40,
-              "end_line": 42,
+              "line": 38,
+              "end_line": 40,
               "source": "assert True\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 46,
-          "end_line": 48,
+          "line": 44,
+          "end_line": 46,
           "config": null,
           "blocks": [
             {
@@ -23464,33 +22950,37 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 46,
-              "end_line": 48,
+              "line": 44,
+              "end_line": 46,
               "source": "assert 1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 52,
-          "end_line": 54,
-          "config": null,
+          "line": 50,
+          "end_line": 57,
+          "config": {
+            "line": 50,
+            "end_line": 53,
+            "source": "[tool.ruff.lint]\nselect = []\n"
+          },
           "blocks": [
             {
               "role": "report",
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 52,
-              "end_line": 54,
+              "line": 55,
+              "end_line": 57,
               "source": "assert \"ready\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 58,
-          "end_line": 60,
+          "line": 61,
+          "end_line": 63,
           "config": null,
           "blocks": [
             {
@@ -23498,16 +22988,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 58,
-              "end_line": 60,
+              "line": 61,
+              "end_line": 63,
               "source": "assert ...\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 64,
-          "end_line": 66,
+          "line": 67,
+          "end_line": 69,
           "config": null,
           "blocks": [
             {
@@ -23515,16 +23005,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 64,
-              "end_line": 66,
+              "line": 67,
+              "end_line": 69,
               "source": "assert lambda: None\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 70,
-          "end_line": 73,
+          "line": 73,
+          "end_line": 76,
           "config": null,
           "blocks": [
             {
@@ -23532,16 +23022,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 70,
-              "end_line": 73,
+              "line": 73,
+              "end_line": 76,
               "source": "value = 1\nassert [value]\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 78,
-          "end_line": 81,
+          "line": 81,
+          "end_line": 84,
           "config": null,
           "blocks": [
             {
@@ -23549,16 +23039,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 78,
-              "end_line": 81,
+              "line": 81,
+              "end_line": 84,
               "source": "values = [1, 2]\nassert (value for value in values)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 86,
-          "end_line": 89,
+          "line": 89,
+          "end_line": 92,
           "config": null,
           "blocks": [
             {
@@ -23566,16 +23056,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 86,
-              "end_line": 89,
+              "line": 89,
+              "end_line": 92,
               "source": "state = \"ready\"\nassert \"state: {}\".format(state)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 91,
-          "end_line": 94,
+          "line": 94,
+          "end_line": 97,
           "config": null,
           "blocks": [
             {
@@ -23583,16 +23073,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 91,
-              "end_line": 94,
+              "line": 94,
+              "end_line": 97,
               "source": "state = \"ready\"\nassert \"state: %s\" % state\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 101,
-          "end_line": 103,
+          "line": 104,
+          "end_line": 106,
           "config": null,
           "blocks": [
             {
@@ -23600,16 +23090,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 101,
-              "end_line": 103,
+              "line": 104,
+              "end_line": 106,
               "source": "assert 1 + 1 == 2\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 105,
-          "end_line": 107,
+          "line": 108,
+          "end_line": 110,
           "config": null,
           "blocks": [
             {
@@ -23617,19 +23107,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 105,
-              "end_line": 107,
+              "line": 108,
+              "end_line": 110,
               "source": "assert \"a\" * 3\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 116,
-          "end_line": 127,
+          "line": 119,
+          "end_line": 130,
           "config": {
-            "line": 116,
-            "end_line": 119,
+            "line": 119,
+            "end_line": 122,
             "source": "[tool.ruff.lint]\nselect = [\"PLW0129\"]\n"
           },
           "blocks": [
@@ -23638,16 +23128,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 121,
-              "end_line": 127,
+              "line": 124,
+              "end_line": 130,
               "source": "def compute() -> str:\n    return \"\"\n\n\nassert f\"ready {compute()}\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 131,
-          "end_line": 134,
+          "line": 134,
+          "end_line": 137,
           "config": null,
           "blocks": [
             {
@@ -23655,16 +23145,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 131,
-              "end_line": 134,
+              "line": 134,
+              "end_line": 137,
               "source": "values = []\nassert [*values]\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 138,
-          "end_line": 140,
+          "line": 141,
+          "end_line": 143,
           "config": null,
           "blocks": [
             {
@@ -23672,16 +23162,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 138,
-              "end_line": 140,
+              "line": 141,
+              "end_line": 143,
               "source": "assert \"x{\".format()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 145,
-          "end_line": 148,
+          "line": 148,
+          "end_line": 151,
           "config": null,
           "blocks": [
             {
@@ -23689,16 +23179,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 145,
-              "end_line": 148,
+              "line": 148,
+              "end_line": 151,
               "source": "value = \"\"\nassert \"{}\".format(value)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 150,
-          "end_line": 153,
+          "line": 153,
+          "end_line": 156,
           "config": null,
           "blocks": [
             {
@@ -23706,16 +23196,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 150,
-              "end_line": 153,
+              "line": 153,
+              "end_line": 156,
               "source": "value = \"\"\nassert \"%s\" % value\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 157,
-          "end_line": 160,
+          "line": 160,
+          "end_line": 163,
           "config": null,
           "blocks": [
             {
@@ -23723,19 +23213,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 157,
-              "end_line": 160,
+              "line": 160,
+              "end_line": 163,
               "source": "value = \"\"\nassert f\"{value}\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 167,
-          "end_line": 174,
+          "line": 169,
+          "end_line": 176,
           "config": {
-            "line": 167,
-            "end_line": 170,
+            "line": 169,
+            "end_line": 172,
             "source": "[tool.ruff.lint]\nselect = [\"F631\"]\n"
           },
           "blocks": [
@@ -23744,16 +23234,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 172,
-              "end_line": 174,
+              "line": 174,
+              "end_line": 176,
               "source": "assert (1, 2, 3)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 179,
-          "end_line": 182,
+          "line": 181,
+          "end_line": 184,
           "config": null,
           "blocks": [
             {
@@ -23761,25 +23251,29 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 179,
-              "end_line": 182,
+              "line": 181,
+              "end_line": 184,
               "source": "value = 1\nassert value + 1 == 2\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 191,
-          "end_line": 199,
-          "config": null,
+          "line": 193,
+          "end_line": 206,
+          "config": {
+            "line": 193,
+            "end_line": 196,
+            "source": "[tool.ruff.lint]\nselect = []\n"
+          },
           "blocks": [
             {
               "role": "report",
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 191,
-              "end_line": 194,
+              "line": 198,
+              "end_line": 201,
               "source": "check = False\nassert (check, \"message\")\n"
             },
             {
@@ -23787,43 +23281,21 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 196,
-              "end_line": 199,
+              "line": 203,
+              "end_line": 206,
               "source": "check = False\nassert check, \"message\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 203,
-          "end_line": 209,
-          "config": null,
-          "blocks": [
-            {
-              "role": "report",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 203,
-              "end_line": 205,
-              "source": "assert (ready := True, \"message\")\n"
-            },
-            {
-              "role": "fixed",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 207,
-              "end_line": 209,
-              "source": "assert (ready := True), \"message\"\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 215,
-          "end_line": 223,
-          "config": null,
+          "line": 210,
+          "end_line": 221,
+          "config": {
+            "line": 210,
+            "end_line": 213,
+            "source": "[tool.ruff.lint]\nselect = []\n"
+          },
           "blocks": [
             {
               "role": "report",
@@ -23831,7 +23303,33 @@
               "file": "example.py",
               "named": false,
               "line": 215,
-              "end_line": 218,
+              "end_line": 217,
+              "source": "assert (ready := True, \"message\")\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 219,
+              "end_line": 221,
+              "source": "assert (ready := True), \"message\"\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 227,
+          "end_line": 235,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 227,
+              "end_line": 230,
               "source": "values = [1, 2]\nassert (value for value in values)\n"
             },
             {
@@ -23839,16 +23337,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 220,
-              "end_line": 223,
+              "line": 232,
+              "end_line": 235,
               "source": "values = [1, 2]\nassert all(value for value in values)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 228,
-          "end_line": 236,
+          "line": 240,
+          "end_line": 248,
           "config": null,
           "blocks": [
             {
@@ -23856,8 +23354,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 228,
-              "end_line": 231,
+              "line": 240,
+              "end_line": 243,
               "source": "async def check(values: AsyncIterator[int]) -> None:\n    assert (value async for value in values)\n"
             },
             {
@@ -23865,41 +23363,15 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 233,
-              "end_line": 236,
+              "line": 245,
+              "end_line": 248,
               "source": "async def check(values: AsyncIterator[int]) -> None:\n    assert (value async for value in values)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 246,
-          "end_line": 255,
-          "config": null,
-          "blocks": [
-            {
-              "role": "report",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 246,
-              "end_line": 250,
-              "source": "def test_save() -> None:\n    save()\n    assert True\n"
-            },
-            {
-              "role": "fixed",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 252,
-              "end_line": 255,
-              "source": "def test_save() -> None:\n    save()\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 259,
+          "line": 258,
           "end_line": 267,
           "config": null,
           "blocks": [
@@ -23908,9 +23380,9 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 259,
+              "line": 258,
               "end_line": 262,
-              "source": "def test_empty() -> None:\n    assert True\n"
+              "source": "def test_save() -> None:\n    save()\n    assert True\n"
             },
             {
               "role": "fixed",
@@ -23919,14 +23391,40 @@
               "named": false,
               "line": 264,
               "end_line": 267,
+              "source": "def test_save() -> None:\n    save()\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 271,
+          "end_line": 279,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 271,
+              "end_line": 274,
+              "source": "def test_empty() -> None:\n    assert True\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 276,
+              "end_line": 279,
               "source": "def test_empty() -> None:\n    pass\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 276,
-          "end_line": 282,
+          "line": 288,
+          "end_line": 294,
           "config": null,
           "blocks": [
             {
@@ -23934,16 +23432,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 276,
-              "end_line": 282,
+              "line": 288,
+              "end_line": 294,
               "source": "def compute() -> int:\n    return 1\n\n\nassert [compute()]\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 284,
-          "end_line": 290,
+          "line": 296,
+          "end_line": 302,
           "config": null,
           "blocks": [
             {
@@ -23951,8 +23449,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 284,
-              "end_line": 290,
+              "line": 296,
+              "end_line": 302,
               "source": "def compute() -> int:\n    return 1\n\n\nassert \"value {}\".format(compute())\n"
             }
           ]
@@ -24460,7 +23958,7 @@
     "name": "split-composite-assert",
     "summary": "Consecutive asserts comparing fields of one object",
     "fix": "Sometimes",
-    "explanation": "Flags consecutive `assert` statements in a test that each compare one field of the same object with `==`, which one\nassert over a tuple would compare together.\n\n## Why is this bad?\n\nEach assert stops the test at its first mismatch, so a failing run shows one field and hides the others. Comparing the\nfields as one tuple checks them in the same order and shows every value on both sides when they differ. The repeated\nobject name also adds noise that the tuple does not have.\n\n## Example\n\n```python report file=tests/test_user.py\ndef test_user(result):\n    assert result.name == \"x\"\n    assert result.size == 3\n```\n\nUse instead:\n\n```python ok\ndef test_user(result):\n    assert (result.name, result.size) == (\"x\", 3)\n```\n\n## What it does\n\n### Active on\n\n- **Two or more consecutive asserts on fields of one object**: each assert has no message, compares with `==` an\n  attribute or a key of an object, and the object is written the same way in each. A test function is a `test*` function\n  in a test module, as pytest collects it.\n\n  ```python report file=tests/test_fields.py\n  def test_attributes(result):\n      assert result.name == \"x\"\n      assert result.size == 3\n\n\n  def test_keys(data):\n      assert data[\"a\"] == 1\n      assert data[\"b\"] == 2\n  ```\n\n  ```python fixed file=tests/test_fields.py\n  def test_attributes(result):\n      assert (result.name, result.size) == (\"x\", 3)\n\n\n  def test_keys(data):\n      assert (data[\"a\"], data[\"b\"]) == (1, 2)\n  ```\n\n  ```python report file=tests/test_three_fields.py\n  def test_three(result):\n      assert result.name == \"x\"\n      assert result.size == 3\n      assert result.color == \"red\"\n  ```\n\n### Exceptions\n\n- **Asserts with a message**: the message says which check failed, which a tuple cannot.\n\n  ```python ok file=tests/test_message.py\n  def test_message(result):\n      assert result.name == \"x\", \"name\"\n      assert result.size == 3\n  ```\n\n- **Comparisons other than `==`**: `!=`, `<`, `in` and the rest do not compare a value to an expected one.\n\n  ```python ok file=tests/test_comparison.py\n  def test_other_comparison(result):\n      assert result.name != \"x\"\n      assert result.size > 3\n  ```\n\n- **A single assert**: there is nothing to join.\n\n  ```python ok file=tests/test_single.py\n  def test_single(result):\n      assert result.name == \"x\"\n  ```\n\n- **Asserts separated by another statement**: the statement in between may change the object, so the asserts are not one\n  check.\n\n  ```python ok file=tests/test_separated.py\n  def test_separated(result):\n      assert result.name == \"x\"\n      print(result)\n      assert result.size == 3\n  ```\n\n- **Asserts on different objects**: `result` and `other` are not one object.\n\n  ```python ok file=tests/test_objects.py\n  def test_other_objects(result, other):\n      assert result.name == \"x\"\n      assert other.size == 3\n  ```\n\n### Fix\n\n**Unsafe fix:** the failure message changes, since the tuple reports both sides of the whole comparison instead of the\nfirst failing field. The outcome can change too:\n\n- A tuple `==` compares items by identity before equality, so a NaN field that fails `x == x` in its own assert passes\n  inside the tuple.\n- The merged assert evaluates every operand, where separate asserts stop at the first failure, so a field that raises\n  stops the test even where an earlier assert would have failed.\n\nThe fix replaces the run with one assert that keeps the original order of the fields, as in the example above.\n\nNo fix is offered when:\n\n- the joined assert would be wider than the line length, measured as the formatter measures a joined line;\n\n  ```python report file=tests/test_long_line.py\n  def test_long_line(result):\n      assert result.some_really_long_attribute_name_here == \"a value that is long enough to exceed\"\n      assert result.another_really_long_attribute_name == \"another value that makes it too long\"\n  ```\n\n- a comment sits on one of the asserts, which the replacement would drop.\n\n  ```python report file=tests/test_comment.py\n  def test_comment(result):\n      assert result.name == \"x\"  # the name\n      assert result.size == 3\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags consecutive `assert` statements in a test that each compare one field of the same object with `==`, which one\nassert over a tuple would compare together.\n\n## Why is this bad?\n\nEach assert stops the test at its first mismatch, so a failing run shows one field and hides the others. Comparing the\nfields as one tuple checks them in the same order and shows every value on both sides when they differ. The repeated\nobject name also adds noise that the tuple does not have.\n\n## Example\n\n```python report file=tests/test_user.py\ndef test_user(result):\n    assert result.name == \"x\"\n    assert result.size == 3\n```\n\nUse instead:\n\n```python ok\ndef test_user(result):\n    assert (result.name, result.size) == (\"x\", 3)\n```\n\n## What it does\n\n### Active on\n\n- **Two or more consecutive asserts on fields of one object**: each assert has no message, compares with `==` an\n  attribute or a key of an object, and the object is written the same way in each. A test function is a `test*` function\n  in a test module, as pytest collects it.\n\n  ```python report file=tests/test_fields.py\n  def test_attributes(result):\n      assert result.name == \"x\"\n      assert result.size == 3\n\n\n  def test_keys(data):\n      assert data[\"a\"] == 1\n      assert data[\"b\"] == 2\n  ```\n\n  ```python fixed file=tests/test_fields.py\n  def test_attributes(result):\n      assert (result.name, result.size) == (\"x\", 3)\n\n\n  def test_keys(data):\n      assert (data[\"a\"], data[\"b\"]) == (1, 2)\n  ```\n\n  ```python report file=tests/test_three_fields.py\n  def test_three(result):\n      assert result.name == \"x\"\n      assert result.size == 3\n      assert result.color == \"red\"\n  ```\n\n### Exceptions\n\n- **Asserts with a message**: the message says which check failed, which a tuple cannot.\n\n  ```python ok file=tests/test_message.py\n  def test_message(result):\n      assert result.name == \"x\", \"name\"\n      assert result.size == 3\n  ```\n\n- **Comparisons other than `==`**: `!=`, `<`, `in` and the rest do not compare a value to an expected one.\n\n  ```python ok file=tests/test_comparison.py\n  def test_other_comparison(result):\n      assert result.name != \"x\"\n      assert result.size > 3\n  ```\n\n- **A single assert**: there is nothing to join.\n\n  ```python ok file=tests/test_single.py\n  def test_single(result):\n      assert result.name == \"x\"\n  ```\n\n- **Asserts separated by another statement**: the statement in between may change the object, so the asserts are not one\n  check.\n\n  ```python ok file=tests/test_separated.py\n  def test_separated(result):\n      assert result.name == \"x\"\n      print(result)\n      assert result.size == 3\n  ```\n\n- **Asserts on different objects**: `result` and `other` are not one object.\n\n  ```python ok file=tests/test_objects.py\n  def test_other_objects(result, other):\n      assert result.name == \"x\"\n      assert other.size == 3\n  ```\n\n### Fix\n\n**Unsafe fix:** the failure message changes, since the tuple reports both sides of the whole comparison instead of the\nfirst failing field. The outcome can change too:\n\n- A tuple `==` compares items by identity before equality, so a NaN field that fails `x == x` in its own assert passes\n  inside the tuple.\n- The merged assert evaluates every operand, where separate asserts stop at the first failure, so a field that raises\n  stops the test even where an earlier assert would have failed.\n\nThe fix replaces the run with one assert that keeps the original order of the fields, as in the example above.\n\nNo fix is offered when:\n\n- the joined assert would be wider than the line length, measured as the formatter measures a joined line;\n\n  ```python report file=tests/test_long_line.py\n  def test_long_line(result):\n      assert result.some_really_long_attribute_name_here == \"a value that is long enough to exceed\"\n      assert result.another_really_long_attribute_name == \"another value that makes it too long\"\n  ```\n\n- a comment sits on one of the asserts, which the replacement would drop.\n\n  ```python report file=tests/test_comment.py\n  def test_comment(result):\n      assert result.name == \"x\"  # the name\n      assert result.size == 3\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** released rule\n  [PT018](https://docs.astral.sh/ruff/rules/pytest-composite-assertion/) splits one assertion joined by `and` or `or`;\n  this rule combines consecutive field comparisons into one tuple comparison. Neither reports the other's cases.\n",
     "examples": {
       "parsed": [
         {

@@ -1,6 +1,5 @@
 mod blanket_ignore;
 mod directive;
-mod long_comment_line;
 mod long_paragraph;
 mod numeric_ignore;
 mod restating_comment;
@@ -17,7 +16,6 @@ use crate::lint::checker::Checker;
 
 pub(crate) use blanket_ignore::blanket_ignore;
 pub(crate) use directive::{Comment, is_tool_directive};
-pub(crate) use long_comment_line::long_comment_line;
 pub(crate) use long_paragraph::long_paragraph;
 pub(crate) use numeric_ignore::numeric_ignore;
 pub(crate) use restating_comment::restating_comment;

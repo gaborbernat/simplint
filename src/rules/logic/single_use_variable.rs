@@ -6,7 +6,6 @@ use ruff_python_ast::str::Quote;
 use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, OperatorPrecedence, PythonVersion, Stmt, StringFlags};
-use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::FxHashMap;
 
@@ -18,7 +17,7 @@ use crate::rules::logic::inline::{
     Names, enter_function, fits, for_each_scoped_body, fstring_body_parts, inlined_text, joined, leading_name,
     requoted_text,
 };
-use crate::rules::{is_alone_on_lines, needs_parentheses};
+use crate::rules::needs_parentheses;
 use crate::syntax::{is_name, is_repeating_expr, last_segment};
 
 pub fn single_use_variable(checker: &Checker) {
@@ -54,7 +53,7 @@ fn check_pair<'a>(
     let Some((range, replacement)) = inlined_replacement(checker, assign, next, (use_range, &reading)) else {
         return;
     };
-    if ruff_writes_same(checker, (assign, target), next, &replacement) {
+    if ruff_reports_yield_from(checker, target, next) {
         return;
     }
     let deletion = statement_deletion(checker, assign.range, Some(next.range()), false)
@@ -357,15 +356,8 @@ fn in_brackets(checker: &Checker, next: &Stmt, use_range: TextRange) -> bool {
     opened.count() > closed.count()
 }
 
-// Ruff's RUF070 reports the same pair as a `yield from` of the assigned name, and writes the same code when the value
-// goes in as written and both statements stand alone on their lines, so the pair is left to it. Only the preview rule
-// does, so the pair is left to it only when preview is on and the rule runs.
-fn ruff_writes_same(
-    checker: &Checker,
-    (assign, target): (&ast::StmtAssign, &ast::ExprName),
-    next: &Stmt,
-    replacement: &str,
-) -> bool {
+// Ruff's RUF070 reports the same pair even when its fix writes a different expression.
+fn ruff_reports_yield_from(checker: &Checker, target: &ast::ExprName, next: &Stmt) -> bool {
     if !checker.settings.from_ruff.preview
         || !checker.settings.from_ruff.ruff_runs(RuffRule::UnnecessaryAssignBeforeYield)
     {
@@ -377,18 +369,7 @@ fn ruff_writes_same(
     let Expr::YieldFrom(ast::ExprYieldFrom { value: yielded, .. }) = value.as_ref() else {
         return false;
     };
-    let source = checker.source;
-    // Ruff keeps the source between `=` and the value only when it is one space or none, and writes the value as it is.
-    // It also writes one space after the keyword, which this rule keeps only when the source has one.
-    let between = checker.text(TextRange::new(target.range().end(), assign.value.start()));
     is_name(yielded, target.id.as_str())
-        && checker.text(TextRange::new(next.start(), yielded.start())) == "yield from "
-        && (between.ends_with('=') || between.ends_with("= "))
-        && replacement == checker.text(assign.value.range())
-        && is_alone_on_lines(source, assign.range())
-        && is_alone_on_lines(source, next.range())
-        && !checker.has_comment_in(TextRange::new(next.start(), source.full_line_end(next.end())))
-        && source.full_line_end(assign.end()) == source.line_start(next.start())
 }
 
 // Ruff's EM101 and EM102 ask for the message of an exception to be a variable, so the `raise` keeps it.

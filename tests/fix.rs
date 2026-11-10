@@ -682,46 +682,10 @@ fn early_assignment_splits_a_shared_line() {
     "class TestBox:\n    def test_value(self) -> None:\n        value = 1  # ruff: ignore[E501]\n        assert value\n",
     1 ; "test_class_with_ruff_ignore_on_a_long_line"
 )]
-#[test_case(
-    "module.py",
-    "SMP007",
-    "def run() -> None:\n    \"\"\"Run the job, which keeps every step of a long procedure in one docstring that is wider than the limit.\"\"\"  # noqa: E501\n    print()\n",
-    0 ; "docstring_with_noqa"
-)]
-#[test_case(
-    "module.py",
-    "SMP007",
-    "def run() -> None:\n    \"\"\"Run the job, which keeps every step of a long procedure in one docstring that is wider than the limit.\"\"\"  # ruff: ignore[line-too-long]\n    print()\n",
-    0 ; "docstring_with_ruff_ignore"
-)]
-#[test_case(
-    "module.py",
-    "SMP007",
-    "# ruff: noqa: E501\n\n\ndef run() -> None:\n    \"\"\"``{v}`` satisfies ``t`` iff ``v in t``; trichotomy collapses on singletons, and the values it covers are every version in the pool.\"\"\"\n    print()\n",
-    0 ; "docstring_under_file_noqa"
-)]
-#[test_case(
-    "module.py",
-    "SMP007",
-    "# ruff: file-ignore[E501]\n\n\ndef run() -> None:\n    \"\"\"``{v}`` satisfies ``t`` iff ``v in t``; trichotomy collapses on singletons, and the values it covers are every version in the pool.\"\"\"\n    print()\n",
-    0 ; "docstring_under_file_ignore"
-)]
 fn fix_leaves_a_file_its_noqa_directive_depends_on(path: &str, select: &str, source: &str, code: i32) {
     let root = project(&[(path, source)]);
     let (actual, _, _) = fix_unsafe(root.path(), select);
     assert_eq!((actual, read(root.path(), path)), (code, source.to_owned()));
-}
-
-// A file indented by two spaces gets four from `ruff format`, so a comment that fits at its two-space indentation is
-// too long once formatted, and the fix reflows it.
-#[test]
-fn long_comment_line_judges_the_formatted_indentation() {
-    let text = "word ".repeat(15) + "end";
-    let source =
-        format!("class Box:\n  def run(self):\n    if self:\n      if self:\n        # {text}\n        return 1\n");
-    let root = project(&[("module.py", &source)]);
-    let (code, stdout, _) = fix_unsafe(root.path(), "SMP007");
-    assert_eq!((code, stdout.contains("1 fixed")), (0, true));
 }
 
 // The statement that uses the constant shares its line with one after it, which the fix splits off as well.
@@ -733,17 +697,6 @@ fn early_assignment_splits_a_line_the_use_shares_with_a_later_statement() {
     let fixed =
         "def build(ffi):\n    ffi.reset()\n    name = \"struct ab\"\n    ffi.cdef(name)\n    ffi.verify(name)\n";
     assert_eq!((code, read(root.path(), "module.py")), (0, fixed.to_owned()));
-}
-
-// A file indented by tabs gets spaces from `ruff format`, four to a level, so the comment is too long once formatted.
-#[test]
-fn long_comment_line_judges_tab_indentation_as_formatted() {
-    let text = "word ".repeat(15) + "end";
-    let source =
-        format!("class Box:\n\tdef run(self):\n\t\tif self:\n\t\t\tif self:\n\t\t\t\t# {text}\n\t\t\t\treturn 1\n");
-    let root = project(&[("module.py", &source)]);
-    let (code, stdout, _) = fix_unsafe(root.path(), "SMP007");
-    assert_eq!((code, stdout.contains("1 fixed")), (0, true));
 }
 
 // The words of a statement that spans lines count whole, since `ruff format` joins such a statement onto one line.

@@ -1,9 +1,9 @@
 simplint and Ruff
 #################
 
-simplint is a companion to Ruff. It adds checks that make Python code easier to read and review, and most of its
-rules leave what Ruff already checks to Ruff. A few overlap with a Ruff rule, and the rule page names it under Ruff
-overlap. Until one side is turned off, a project running both sees both reports.
+simplint is a companion to Ruff. It adds checks that make Python code easier to read and review. When a Ruff rule
+reports the same code, simplint leaves that case to Ruff, even if simplint could offer a different fix. A simplint
+rule stays when it reports cases Ruff misses. Each rule page names any Ruff overlap.
 
 simplint is a separate program. It ships as one binary inside a Python wheel, like Ruff, and you install it as a tool
 apart from the project it lints.

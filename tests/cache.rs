@@ -261,13 +261,6 @@ fn nested_project_marker_added_is_checked_again() {
     assert_eq!((first, check(root.path(), &["--select", "SMP530"]).0), (1, 0));
 }
 
-#[test]
-fn cached_star_import_report_is_reused() {
-    let root = project(&[("module.py", "from other import *\n\nprint(VALUE)\n"), ("other.py", "VALUE = 1\n")]);
-    let first = check(root.path(), &["--select", "SMP309"]).0;
-    assert_eq!((first, check(root.path(), &["--select", "SMP309"]).0), (1, 1));
-}
-
 // A run without `duplicate-code` caches the facts without the statements it compares, so a later run that selects it
 // collects them again.
 #[test]

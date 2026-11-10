@@ -289,8 +289,6 @@ pub(super) struct ModuleFacts<F> {
     pub(super) plain_modules: Vec<(String, String, F)>,
     // The files the import statements that run when the module loads import, and the range of each statement.
     pub(super) runtime: Vec<(F, TextRange)>,
-    // The files each `import *` statement of the module imports, and the range of each statement.
-    pub(super) star_sites: Vec<(F, TextRange)>,
     // The files a write under a computed name reaches, whose names any of them may be set by it.
     pub(super) computed_writes: Vec<F>,
     // The names a `setattr` call of the file sets on each module that resolves to a file of the run.
@@ -329,7 +327,6 @@ impl<F> ModuleFacts<F> {
                 .map(|(bound, module, file)| (bound, module, to(file)))
                 .collect(),
             runtime: self.runtime.into_iter().map(|(file, range)| (to(file), range)).collect(),
-            star_sites: self.star_sites.into_iter().map(|(file, range)| (to(file), range)).collect(),
             computed_writes: self.computed_writes.into_iter().map(&mut to).collect(),
             written: self.written.into_iter().map(|(file, names)| (to(file), names)).collect(),
         }
@@ -408,12 +405,6 @@ impl ModuleFacts<PathBuf> {
         let modules = named_modules(&facts.module_names, &resolved, &own);
         let caught = facts.caught.iter().filter_map(|(module, name)| Some((resolved(module)?, name.clone()))).collect();
         let runtime = runtime_targets(&facts.runtime_imports, python_version, &resolved, &own);
-        let star_sites = facts
-            .star_sites
-            .iter()
-            .filter_map(|site| Some((resolved(&site.module)?, site.range())))
-            .filter(|(file, _)| *file != own)
-            .collect();
         // A module may write its own names under a computed name too, so its own file stays.
         let computed_writes = facts.computed_writes.iter().filter_map(|module| resolved(module)).collect();
         let classes = facts
@@ -442,7 +433,6 @@ impl ModuleFacts<PathBuf> {
             functions: facts.functions.clone(),
             plain_modules: named_modules(&facts.plain_modules, &resolved, &own),
             runtime,
-            star_sites,
             computed_writes,
             written,
         }

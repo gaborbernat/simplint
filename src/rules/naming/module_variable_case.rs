@@ -19,13 +19,12 @@ pub fn module_variable_case(checker: &Checker) {
         if expected == variable.name {
             continue;
         }
-        let fix = rename_fix(checker, variable.name, &expected);
-        if fix.is_none()
-            && checker.settings.from_ruff.ruff_runs(RuffRule::MixedCaseVariableInGlobalScope)
+        if checker.settings.from_ruff.ruff_runs(RuffRule::MixedCaseVariableInGlobalScope)
             && ruff_reports(checker, variable, &named_tuples)
         {
             continue;
         }
+        let fix = rename_fix(checker, variable.name, &expected);
         checker.report_fix(
             Rule::ModuleVariableCase,
             variable.range,
@@ -36,9 +35,8 @@ pub fn module_variable_case(checker: &Checker) {
     }
 }
 
-// Ruff's mixed-case-variable-in-global-scope (N816) reports a mixedCase module name at its binding and never offers a
-// fix. Where this rule has no fix and N816 does not run, this rule reports the name itself, so the checks N816 makes
-// are repeated here to decide whether N816 reports it.
+// Ruff's mixed-case-variable-in-global-scope (N816) reports a mixedCase module name at its binding. The checks N816
+// makes are repeated here to leave those names to Ruff while it runs.
 fn ruff_reports(checker: &Checker, variable: &ModuleVariable, named_tuples: &OnceCell<FxHashSet<TextRange>>) -> bool {
     let first = checker.semantic().bindings(variable.name).first();
     is_mixed_case(variable.name)

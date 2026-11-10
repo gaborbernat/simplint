@@ -334,14 +334,13 @@ fn single_use_fstring_quote(target: &str, source: &str, inlined: Option<&str>) {
     assert_eq!(read(root.path(), "module.py"), inlined.unwrap_or(source));
 }
 
-// `yield name` is never reported. Ruff's preview rule for a `yield from` of the assigned name covers the same pair when
-// its fix is the same, so that pair is left to it with preview on, and reported otherwise. The other next statements are
-// inlined in both modes.
+// `yield name` is never reported. Ruff's preview rule covers a `yield from` of the assigned name, so that pair is left
+// to it with preview on. The other next statements are inlined in both modes.
 #[test_case(false, "def run(items):\n    count = len(items)\n    yield count\n", "def run(items):\n    count = len(items)\n    yield count\n" ; "yield_never_reported")]
 #[test_case(true, "def run(items):\n    count = len(items)\n    yield count\n", "def run(items):\n    count = len(items)\n    yield count\n" ; "preview_on_yield_never_reported")]
 #[test_case(false, "def run(items):\n    count = len(items)\n    yield from count\n", "def run(items):\n    yield from len(items)\n" ; "preview_off_inlines_yield_from")]
 #[test_case(true, "def run(items):\n    count = len(items)\n    yield from count\n", "def run(items):\n    count = len(items)\n    yield from count\n" ; "preview_on_leaves_yield_from_to_ruff")]
-#[test_case(true, "def run(first, second):\n    pair = first, second\n    yield from pair\n", "def run(first, second):\n    yield from (first, second)\n" ; "preview_on_inlines_tuple_yield_from")]
+#[test_case(true, "def run(first, second):\n    pair = first, second\n    yield from pair\n", "def run(first, second):\n    pair = first, second\n    yield from pair\n" ; "preview_on_leaves_tuple_yield_from_to_ruff")]
 #[test_case(true, "def run(first, second):\n    pair = first, second\n    yield pair\n", "def run(first, second):\n    pair = first, second\n    yield pair\n" ; "preview_on_tuple_yield_never_reported")]
 #[test_case(true, "def run(items):\n    count = len(items)\n    print(count)\n", "def run(items):\n    print(len(items))\n" ; "preview_on_inlines_into_call")]
 #[test_case(true, "def run(items):\n    count = len(items)\n    total = count\n    return total\n", "def run(items):\n    total = len(items)\n    return total\n" ; "preview_on_inlines_into_assignment")]

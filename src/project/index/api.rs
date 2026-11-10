@@ -3,8 +3,6 @@ use std::path::{Path, PathBuf};
 
 use ruff_cache::{CacheKey, CacheKeyHasher};
 
-use ruff_text_size::TextRange;
-
 use crate::project::FileFacts;
 use crate::project::computed_reads::ComputedReads;
 use crate::project::constructors::FileCalls;
@@ -14,7 +12,7 @@ use crate::syntax::Visibility;
 
 use super::cycles::Cycle;
 use super::duplicates::DuplicateRun;
-use super::reach::{StarSite, unqualified};
+use super::reach::unqualified;
 use super::{FileId, FileIds, Project};
 
 // A module a file binds at its top level, as `from pkg import module` and `import pkg.module as module` do, and the
@@ -97,7 +95,6 @@ pub struct FileIndex<'a> {
     pub(super) library_reached: Option<&'a FxHashSet<String>>,
     pub(super) inherited: Option<&'a FxHashMap<String, FxHashSet<String>>>,
     pub(super) cycle: Option<&'a Cycle>,
-    pub(super) star_sites: &'a [StarSite],
     pub(super) duplicates: &'a [DuplicateRun],
     pub(super) source: Option<u64>,
     pub(super) calls: FileCalls<'a>,
@@ -139,7 +136,7 @@ impl FileIndex<'_> {
                 self.calls,
                 (&self.project.reads, &self.project.computed_reads),
             ),
-            (self.api_reached, self.library_reached, self.inherited, self.cycle, self.star_sites, self.duplicates),
+            (self.api_reached, self.library_reached, self.inherited, self.cycle, self.duplicates),
         )
     }
 }
@@ -170,7 +167,6 @@ impl CacheKey for FileIndex<'_> {
         self.library_reached.cache_key(state);
         self.inherited.cache_key(state);
         self.cycle.cache_key(state);
-        self.star_sites.cache_key(state);
         self.duplicates.cache_key(state);
         self.calls.cache_key(state);
     }
@@ -277,25 +273,16 @@ impl<'a> FileIndex<'a> {
         self.id.and_then(|id| self.project.written.get(&id))
     }
 
-    // The index as it holds for `source`. The cycle, `import *` and repeated statements it keeps for the file are ranges
+    // The index as it holds for `source`. The cycle and repeated statements it keeps for the file are ranges
     // of the source it read, so a source that fixes have changed since, which the fix loop lints, has none of them;
     // the next round indexes the fixed file again.
     pub fn at(self, source: &str) -> Self {
-        if self.source == Some(source_digest(source)) {
-            self
-        } else {
-            Self { cycle: None, star_sites: &[], duplicates: &[], ..self }
-        }
+        if self.source == Some(source_digest(source)) { self } else { Self { cycle: None, duplicates: &[], ..self } }
     }
 
     // The statement that closes a cycle of runtime imports this file takes part in, if it is the file that reports it.
     pub fn import_cycle(&self) -> Option<&'a Cycle> {
         self.cycle
-    }
-
-    // The `import *` statement of this file at `range`, with the names it takes from the module it imports.
-    pub fn star_site(&self, range: TextRange) -> Option<&'a StarSite> {
-        self.star_sites.iter().find(|site| site.range() == range)
     }
 
     // The runs of statements of this file that another file repeats.
