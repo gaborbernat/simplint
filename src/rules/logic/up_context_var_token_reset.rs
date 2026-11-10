@@ -52,7 +52,7 @@ fn report_reset(checker: &Checker, assign: &ast::StmtAssign, try_stmt: &ast::Stm
     if uses != 2 {
         return;
     }
-    let header = format!("with {}:\n", checker.text(set));
+    let header = format!("with {}:", checker.text(set));
     let fix = wrap_edits(checker, assign.range(), try_stmt, &header).map(|[head, tail]| Fix::safe_edits(head, [tail]));
     checker.report_fix(
         Rule::ContextVarTokenReset,
