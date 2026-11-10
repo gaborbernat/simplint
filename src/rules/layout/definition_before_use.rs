@@ -38,14 +38,18 @@ struct Uses {
 fn module_uses(checker: &Checker, body: &[Stmt], runtime_names: &FxHashMap<TextRange, FxHashSet<&str>>) -> Uses {
     let semantic = checker.semantic();
     let lazy = semantic.annotations_are_lazy();
-    let eager = eager_annotations(checker);
+    let eager = disjoint(eager_annotations(checker));
     let import_time = import_time_functions(body, runtime_names);
     // Decorators such as FastAPI routes, pydantic's `validate_call` or `dataclass` read the annotations they decorate
     // while the module loads, even when Python defers them. Without lazy annotations, a `def` evaluates its own
     // signature's annotations when it runs. A name a function only annotates with is not a helper it calls.
     let evaluation = |reference: &Reference| match reference.evaluation {
-        Evaluation::Annotation if eager.iter().any(|range| range.contains_range(reference.range)) => {
-            if reference.function.is_none() { Evaluation::Runtime } else { Evaluation::Deferred }
+        Evaluation::Annotation if in_ranges(&eager, reference.range) => {
+            if reference.function.is_none() {
+                Evaluation::Runtime
+            } else {
+                Evaluation::Deferred
+            }
         }
         Evaluation::Annotation if !lazy && reference.function.is_none() => Evaluation::Runtime,
         Evaluation::Deferred if reference.function.is_some_and(|function| import_time.contains(&function)) => {
@@ -107,6 +111,29 @@ fn eager_annotations(checker: &Checker) -> Vec<TextRange> {
             class.body.iter().filter_map(Stmt::as_ann_assign_stmt).map(|field| field.annotation.range())
         });
     signatures.chain(fields).collect()
+}
+
+// Sorts the ranges and merges the ones that overlap. Annotations nest or stay apart, so a merged range is one of the
+// originals and a range lies in one of the merged ones exactly when it lies in one of the originals.
+fn disjoint(mut ranges: Vec<TextRange>) -> Vec<TextRange> {
+    ranges.sort_unstable_by_key(Ranged::start);
+    let mut merged: Vec<TextRange> = Vec::with_capacity(ranges.len());
+    for range in ranges {
+        match merged.last_mut() {
+            Some(last) if range.start() < last.end() => {
+                *last = TextRange::new(last.start(), last.end().max(range.end()));
+            }
+            _ => merged.push(range),
+        }
+    }
+    merged
+}
+
+// Whether a range lies in one of the sorted, disjoint ranges. Only the last range that starts at or before it can hold
+// it, since the ranges do not overlap.
+fn in_ranges(ranges: &[TextRange], range: TextRange) -> bool {
+    let next = ranges.partition_point(|candidate| candidate.start() <= range.start());
+    next > 0 && ranges[next - 1].contains_range(range)
 }
 
 // The functions and lambdas that may run while the module loads, so what they read must already exist: a lambda in

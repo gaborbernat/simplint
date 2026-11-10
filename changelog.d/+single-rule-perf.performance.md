@@ -8,3 +8,6 @@ suppressions take 0.05 seconds instead of 4.8. [definition-before-use](../src/ru
 [class-member-order](../src/rules/layout/class_member_order.md) compare each class statement with the others by name
 instead of with every statement, and share one build of each class order, so a class of 64,000 attributes takes 0.05
 seconds under SMP201 instead of 2.8 and 0.06 under SMP203 instead of 2.6.
+[definition-before-use](../src/rules/layout/definition_before_use.md) finds the annotations that a decorator reads with
+a binary search over the sorted annotation ranges instead of a scan of all of them, so 32,000 decorated functions take
+0.12 seconds instead of 4.2.
