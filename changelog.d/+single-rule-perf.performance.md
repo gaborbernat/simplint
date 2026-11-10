@@ -10,4 +10,7 @@ instead of with every statement, and share one build of each class order, so a c
 seconds under SMP201 instead of 2.8 and 0.06 under SMP203 instead of 2.6.
 [definition-before-use](../src/rules/layout/definition_before_use.md) finds the annotations that a decorator reads with
 a binary search over the sorted annotation ranges instead of a scan of all of them, so 32,000 decorated functions take
-0.12 seconds instead of 4.2.
+0.12 seconds instead of 4.2. [single-caller-helper](../src/rules/logic/single_caller_helper.md) finds the caller of each
+helper in a map of the file's functions instead of scanning them, and checks the size of a caller before walking it for
+loops, so 64,000 helpers take 0.31 seconds instead of 2.9 and a caller with 32,000 calls to helpers takes 0.14 seconds
+instead of 8.8.
