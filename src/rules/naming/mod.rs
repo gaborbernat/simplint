@@ -3,6 +3,7 @@ mod entrypoint_module_name;
 pub(crate) mod meaningless_name;
 mod module_variable_case;
 pub(crate) mod single_letter_name;
+mod unguarded_main_call;
 
 use std::cell::RefCell;
 
@@ -16,6 +17,7 @@ use crate::syntax::last_segment;
 pub(crate) use catch_all_module::catch_all_module;
 pub(crate) use entrypoint_module_name::entrypoint_module_name;
 pub(crate) use module_variable_case::module_variable_case;
+pub(crate) use unguarded_main_call::unguarded_main_call;
 
 // The names the naming rules reported in each def, class or lambda, by its range, the module's an empty one: each name
 // is reported once per scope, at its first binding.

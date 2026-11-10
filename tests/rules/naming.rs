@@ -19,6 +19,28 @@ fn entrypoint_module_name(file: &str, metadata: &str, source: &str, expected: us
     assert_eq!(stdout.matches("SMP105").count(), expected, "{stdout}");
 }
 
+#[test_case("main()", 1 ; "direct")]
+#[test_case("sys.exit(main())", 1 ; "sys_exit")]
+#[test_case("raise SystemExit(main())", 1 ; "system_exit")]
+#[test_case("run(result=main())", 1 ; "keyword_argument")]
+#[test_case("if __name__ == \"__main__\":\n    main()", 0 ; "guarded")]
+#[test_case("if \"__main__\" == __name__:\n    sys.exit(main())", 0 ; "reversed_guard")]
+#[test_case("runner.main()", 0 ; "attribute")]
+#[test_case("register(lambda: main())", 0 ; "deferred")]
+#[test_case("main()\nprint(\"done\")", 0 ; "not_last")]
+fn trailing_main_call_needs_guard(trailing: &str, expected: usize) {
+    let root = common::project(&[("command.py", &format!("def main() -> None:\n    pass\n\n\n{trailing}\n"))]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP106"]);
+    assert_eq!(stdout.matches("SMP106").count(), expected, "{stdout}");
+}
+
+#[test]
+fn package_main_can_call_main_without_a_guard() {
+    let root = common::project(&[("pkg/__main__.py", "def main() -> None:\n    pass\n\n\nmain()\n")]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP106"]);
+    assert_eq!(stdout, "All checks passed!\n");
+}
+
 #[test_case("single-letter-name", "single_letter_name.py" ; "single_letter_name")]
 #[test_case("meaningless-name", "meaningless_name.py" ; "meaningless_name")]
 #[test_case("catch-all-module", "utils/__init__.py" ; "catch_all_module_package")]
