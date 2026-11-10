@@ -22,26 +22,6 @@ use crate::common;
 #[test_case("import-cycle", "import_cycle_platform.py", "py314" ; "import_cycle_platform")]
 #[test_case("import-cycle", "import_cycle_platform_partner.py", "py314" ; "import_cycle_platform_partner")]
 #[test_case("import-cycle", "test_import_cycle_fixture.py", "py314" ; "import_cycle_test_module")]
-#[test_case("star-import", "star_import_listed.py", "py314" ; "star_import_listed")]
-#[test_case("star-import", "star_import_unlisted.py", "py314" ; "star_import_unlisted")]
-#[test_case("star-import", "star_import_unlisted_import.py", "py314" ; "star_import_unlisted_import")]
-#[test_case("star-import", "star_import_own_all.py", "py314" ; "star_import_own_all")]
-#[test_case("star-import", "star_import_multiple.py", "py314" ; "star_import_multiple")]
-#[test_case("star-import", "star_import_dynamic.py", "py314" ; "star_import_dynamic")]
-#[test_case("star-import", "star_import_unread.py", "py314" ; "star_import_unread")]
-#[test_case("star-import", "star_import_external.py", "py314" ; "star_import_external")]
-#[test_case("star-import", "star_pkg/consumer.py", "py314" ; "star_import_package")]
-#[test_case("star-import", "star_import_reexport.py", "py314" ; "star_import_reexport")]
-#[test_case("star-import", "star_import_reexporter.py", "py314" ; "star_import_reexporter")]
-#[test_case("star-import", "star_import_builtin.py", "py314" ; "star_import_builtin")]
-#[test_case("star-import", "star_import_undefined.py", "py314" ; "star_import_undefined")]
-#[test_case("star-import", "star_import_conditional.py", "py314" ; "star_import_conditional")]
-#[test_case("star-import", "star_import_dynamic_all.py", "py314" ; "star_import_dynamic_all")]
-#[test_case("star-import", "star_import_fallback.py", "py314" ; "star_import_fallback")]
-#[test_case("star-import", "star_import_comment.py", "py314" ; "star_import_comment")]
-#[test_case("star-import", "star_reexport_pkg/__init__.py", "py314" ; "star_import_init")]
-#[test_case("star-import", "star_import_hidden.py", "py314" ; "star_import_hidden")]
-#[test_case("star-import", "star_import_partial.py", "py314" ; "star_import_partial")]
 #[test_case("absolute-sibling-import", "package/sub/module.py", "py314" ; "absolute_sibling_import")]
 #[test_case("absolute-sibling-import", "package/__init__.py", "py314" ; "absolute_sibling_import_init")]
 #[test_case("absolute-sibling-import", "package/sub/script.py", "py314" ; "absolute_sibling_import_script")]
@@ -516,22 +496,5 @@ fn module_attribute_import_follows_ruff_runtime_evaluated_annotations() {
         for location in ["tests/test_unlisted.py:9:20:", "tests/test_other.py:5:12:"] {
             assert!(stdout.contains(&common::native(location)), "{stdout}");
         }
-    }
-}
-
-// Ruff's F403 reports every star import, so SMP309 leaves the ones it cannot fix to it while the project's Ruff
-// configuration runs F403. A file with two star imports fixes neither.
-#[test_case("F403", "`from star_a import *` hides" ; "unfixable")]
-fn star_import_follows_ruff_f403(code: &str, fragment: &str) {
-    for selected in [false, true] {
-        let select = if selected { format!("\"{code}\"") } else { String::new() };
-        let root = common::project(&[
-            ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [{select}]\n")),
-            ("star_a.py", "def area(size: int) -> int:\n    return size\n"),
-            ("star_b.py", "def double(size: int) -> int:\n    return 2 * size\n"),
-            ("module.py", "from star_a import *\nfrom star_b import *\nprint(area(2), double(2))\n"),
-        ]);
-        let stdout = common::check(root.path(), &["--select", "SMP309"]).1;
-        assert_eq!(stdout.contains(fragment), !selected, "{stdout}");
     }
 }

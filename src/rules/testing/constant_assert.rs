@@ -35,6 +35,12 @@ fn is_truthy_constant(test: &Expr, is_builtin: impl Fn(&str) -> bool) -> bool {
 
 fn report_constant_assert(checker: &Checker, stmt: &Stmt, assert: &ast::StmtAssert, statements: &[Stmt]) {
     let ast::StmtAssert { test, msg, .. } = assert;
+    if matches!(test.as_ref(), Expr::Tuple(_)) && checker.settings.from_ruff.ruff_runs(RuffRule::AssertTuple)
+        || matches!(test.as_ref(), Expr::StringLiteral(_) | Expr::BytesLiteral(_) | Expr::FString(_))
+            && checker.settings.from_ruff.ruff_runs(RuffRule::AssertOnStringLiteral)
+    {
+        return;
+    }
     let fix = match (test.as_ref(), msg) {
         // `assert (check, "message")` meant `assert check, "message"`; deleting it would drop the check.
         // A starred element has no meaning outside the tuple, so there is no single-argument form to restore.
@@ -53,21 +59,7 @@ fn report_constant_assert(checker: &Checker, stmt: &Stmt, assert: &ast::StmtAsse
             let replacement = format!("assert {check}, {message}");
             Some(Fix::unsafe_edit(Edit::range_replacement(replacement, stmt.range())))
         }
-        // Ruff's assert-tuple reports every other non-empty tuple while it runs, and this rule has no fix to offer for it.
-        (Expr::Tuple(_), _) => {
-            if checker.settings.from_ruff.ruff_runs(RuffRule::AssertTuple) {
-                return;
-            }
-            None
-        }
-        // Ruff's PLW0129 reports a string, bytes or f-string test whatever its text, but without a fix, so this rule
-        // keeps the assertions it can delete.
-        (Expr::StringLiteral(_) | Expr::BytesLiteral(_) | Expr::FString(_), _)
-            if checker.settings.from_ruff.ruff_runs(RuffRule::AssertOnStringLiteral)
-                && !is_deletable(checker, stmt, test) =>
-        {
-            return;
-        }
+        (Expr::Tuple(_), _) => None,
         // `assert (x for x in xs)` meant `assert all(x for x in xs)`: the generator is always truthy, and its first
         // iterable is evaluated when it is built, so deleting it could hide an error.
         // An `async for` or an `await` makes it an asynchronous generator, which `all()` cannot iterate, and a

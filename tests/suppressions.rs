@@ -83,12 +83,6 @@ fn file_level_suppression(source: &str, reports: usize) {
 }
 
 #[test]
-fn file_level_noqa_with_space_before_colon_silences_long_comment() {
-    let root = project(&[("module.py", &format!("# ruff : noqa: E501\n# {}\nx = 1\n", "word ".repeat(40)))]);
-    assert_eq!(check(root.path(), &["--select", "SMP007"]).0, 0);
-}
-
-#[test]
 fn blanket_file_level_noqa_keeps_its_reason_report() {
     let root = project(&[
         ("pyproject.toml", "[tool.ruff.lint]\nselect = [\"PGH004\"]\n"),

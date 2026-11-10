@@ -118,9 +118,9 @@ fn mock_assertion_typo_follows_ruff_pgh005(pyproject: &str, statement: &str, rep
     assert_eq!(stdout.contains("`not_called`"), reported, "{stdout}");
 }
 
-// Ruff's assert-tuple reports a non-empty tuple in an assert, which SMP804 leaves to it while F631 runs. A tuple of
-// three elements has no fix for SMP804 to offer.
+// Ruff's assert-tuple reports a non-empty tuple in an assert, which SMP804 leaves to it while F631 runs.
 #[test_case("def check() -> None:\n    assert (True, 1, 2)\n", "F631", "Assertion on a constant always passes" ; "assert_tuple")]
+#[test_case("def check() -> None:\n    assert (True, \"message\")\n", "F631", "Assertion on a constant always passes" ; "assert_tuple_with_fix")]
 fn constant_assert_follows_ruff_assert_tuple(source: &str, code: &str, fragment: &str) {
     for selected in [false, true] {
         let select = if selected { format!("\"{code}\"") } else { String::new() };
@@ -133,10 +133,9 @@ fn constant_assert_follows_ruff_assert_tuple(source: &str, code: &str, fragment:
     }
 }
 
-// Ruff's PLW0129 reports an assert on a string, bytes or f-string literal without a fix, which SMP804 leaves to it while
-// the project's Ruff configuration selects it, unless SMP804 can delete the assertion. A concatenation is not a literal,
-// so SMP804 keeps it.
-#[test_case("PLW0129", "assert \"ready\"", true ; "deletable_string")]
+// Ruff's PLW0129 reports an assert on a string, bytes or f-string literal, which SMP804 leaves to it. A concatenation
+// is not a literal, so SMP804 keeps it.
+#[test_case("PLW0129", "assert \"ready\"", false ; "deletable_string")]
 #[test_case("PLW0129", "check(); assert \"ready\"", false ; "string_sharing_its_line")]
 #[test_case("PLW0129", "check(); assert \"ready\", \"message\"", false ; "string_with_message")]
 #[test_case("PLW0129", "check(); assert \"ready\" \"set\"", false ; "implicit_concatenation")]

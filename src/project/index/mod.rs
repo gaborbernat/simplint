@@ -10,7 +10,6 @@ mod run_imports;
 mod startup;
 
 pub use api::{Exposure, FileIndex, ModuleUse};
-pub use reach::StarSite;
 pub use resolve::ImportResolver;
 
 use rayon::prelude::*;
@@ -232,12 +231,9 @@ pub struct Project {
     pub(super) opaque_names: FxHashSet<String>,
     // The statement each file's runtime imports close a cycle with, keyed by the file that reports it.
     pub(super) cycles: FxHashMap<FileId, Cycle>,
-    // The `import *` statements of each file, with what each takes from the module it imports.
-    pub(super) star_sites: FxHashMap<FileId, Vec<StarSite>>,
     // The statements each file shares with another file, which `duplicate-code` reports.
     pub(super) duplicates: FxHashMap<FileId, Vec<DuplicateRun>>,
-    // The digest of each file's source the index read, whose offsets the ranges of `cycles`, `star_sites` and
-    // `duplicates` are.
+    // The digest of each file's source the index read, whose offsets the ranges of `cycles` and `duplicates` are.
     pub(super) sources: FxHashMap<FileId, u64>,
     // The modules each file binds at its top level, keyed by that file.
     pub(super) module_uses: FxHashMap<FileId, Vec<ModuleUse>>,
@@ -338,7 +334,6 @@ impl Project {
             bindings,
             module_names,
             runtime,
-            star_pairs,
             mut opaque_names,
             computed_writes,
             written,
@@ -463,7 +458,6 @@ impl Project {
             opaque_names,
             docs: docs.clone(),
             cycles: cycle_reports,
-            star_sites: reach::star_site_map(star_pairs, &sources),
             duplicates: duplicate_reports,
             sources: indexed.iter().map(|(id, facts)| (*id, facts.source_digest)).collect(),
             module_uses,
@@ -543,7 +537,6 @@ impl Project {
             library_reached: entry(&self.library_reached, id),
             inherited: entry(&self.inherited, id),
             cycle: entry(&self.cycles, id),
-            star_sites: entry(&self.star_sites, id).map_or(&[], Vec::as_slice),
             duplicates: entry(&self.duplicates, id).map_or(&[], Vec::as_slice),
             source: entry(&self.sources, id).copied(),
             calls: self.calls.file(id),
@@ -572,7 +565,6 @@ struct Gathered<'r> {
     bindings: Vec<(FileId, FileId, &'r ImportBinding)>,
     module_names: Vec<(FileId, String, String, FileId)>,
     runtime: RuntimeGraph,
-    star_pairs: Vec<(FileId, TextRange, FileId)>,
     computed_writes: FxHashSet<FileId>,
     written: FxHashMap<FileId, FxHashSet<String>>,
 }
@@ -590,7 +582,6 @@ impl<'r> Gathered<'r> {
                 .module_names
                 .extend(module.modules.iter().map(|(bound, name, target)| (id, bound.clone(), name.clone(), *target)));
             gathered.runtime.entry(id).or_default().extend(module.runtime.iter().copied());
-            gathered.star_pairs.extend(module.star_sites.iter().map(|(target, range)| (id, *range, *target)));
             gathered.computed_writes.extend(module.computed_writes.iter().copied());
             for (file, names) in &module.written {
                 gathered.written.entry(*file).or_default().extend(names.iter().cloned());

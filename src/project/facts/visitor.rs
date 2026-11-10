@@ -166,7 +166,6 @@ pub(super) struct FactVisitor<'a> {
     // The module-level names bound once to a false constant, as `_false = 0`, whose `if` bodies never run.
     pub(super) falsy_constants: FxHashSet<&'a str>,
     pub(super) runtime_sites: Vec<ImportSite>,
-    pub(super) star_sites: Vec<ImportSite>,
     // The facts only some rules read that the run collects.
     pub(super) parts: Parts,
 }
@@ -221,7 +220,6 @@ impl<'a> FactVisitor<'a> {
             root,
             parts,
             runtime_sites: Vec::new(),
-            star_sites: Vec::new(),
         }
     }
 }
@@ -237,9 +235,6 @@ impl<'a> FactVisitor<'a> {
             let star = names.iter().any(|alias| alias.name.as_str() == "*");
             if star {
                 self.stars.insert(resolved.clone());
-                if self.parts.has(Parts::STAR_SITES) {
-                    self.star_sites.push(ImportSite::new(resolved.clone(), Vec::new(), stmt.range(), runtime));
-                }
             }
             if runs && !is_lazy && self.parts.has(Parts::RUNTIME_IMPORTS) {
                 let submodules = names

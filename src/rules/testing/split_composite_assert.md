@@ -132,4 +132,6 @@ No fix is offered when:
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+- **[Ruff](https://github.com/astral-sh/ruff):** released rule
+  [PT018](https://docs.astral.sh/ruff/rules/pytest-composite-assertion/) splits one assertion joined by `and` or `or`;
+  this rule combines consecutive field comparisons into one tuple comparison. Neither reports the other's cases.

@@ -108,8 +108,6 @@ pub struct FileFacts {
     pub(super) interface: Vec<Definition>,
     // The import statements that run when the module loads, each with the module it imports.
     pub(super) runtime_imports: Vec<ImportSite>,
-    // The `import *` statements of the module, each with the module it imports.
-    pub(super) star_sites: Vec<ImportSite>,
     // The statements of every body that `duplicate-code` compares across files, each body's in a row.
     pub(super) statements: Vec<Statement>,
     // The facts above only some rules read that were collected.
@@ -254,7 +252,6 @@ impl FileFacts {
             pytest_requests: imports.pytest_requests.into_iter().collect(),
             doctest_names: imports.doctest_names.into_iter().collect(),
             runtime_imports: imports.runtime_sites,
-            star_sites: imports.star_sites,
             statements: if parts.has(Parts::STATEMENTS) { statements(&parsed, source) } else { Vec::new() },
             parts,
             string_words: string_words(scan.words),
@@ -315,8 +312,6 @@ impl Parts {
     pub const CAUGHT: Self = Self(1 << 5);
     // The imports that run when the module loads, whose cycles `import-cycle` reports.
     pub const RUNTIME_IMPORTS: Self = Self(1 << 6);
-    // The `import *` statements `star-import` rewrites.
-    pub const STAR_SITES: Self = Self(1 << 7);
     // The words of the file's string literals, which a rename of a module variable must leave to the strings naming it.
     pub const STRING_WORDS: Self = Self(1 << 8);
     // The names a `global` statement declares, which a function may rebind while the module runs.

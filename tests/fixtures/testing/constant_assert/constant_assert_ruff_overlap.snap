@@ -2,9 +2,9 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-4:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
 5:5 SMP804 Assertion on a constant always passes; assert on the result under test [fix: Remove the assertion]
---- fixed (2 applied, 0 remaining) ---
+--- fixed (1 applied, 0 remaining) ---
 def check(name: str) -> None:
     print(name); assert "ready"
     assert f"ready {name.upper()}"
+    assert "deletable"

@@ -1,9 +1,0 @@
----
-source: tests/common/mod.rs
-expression: "lint_fixture(rule, fixture, target_version)"
----
-1:1 SMP309 `from star_listed_source import *` hides which names this file takes from `star_listed_source`; import them by name [fix: Import the names this file uses from `star_listed_source`]
---- fixed (1 applied, 0 remaining) ---
-from star_listed_source import LISTED_UNITS, listed_area, listed_perimeter
-
-print(len(listed_area(2) * []), listed_perimeter(LISTED_UNITS))

@@ -1,9 +1,0 @@
----
-source: tests/common/mod.rs
-expression: "lint_fixture(rule, fixture, target_version)"
----
-1:1 SMP309 `from .sibling import *` hides which names this file takes from `.sibling`; import them by name [fix: Import the names this file uses from `.sibling`]
---- fixed (1 applied, 0 remaining) ---
-from .sibling import sibling_value
-
-print(sibling_value())

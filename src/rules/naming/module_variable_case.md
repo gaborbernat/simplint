@@ -227,21 +227,18 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
       pass
   ```
 
-- **`mixedCase` names Ruff reports without a fix**:
-  [Ruff](https://docs.astral.sh/ruff/rules/mixed-case-variable-in-global-scope/) reports a `mixedCase` module name at
-  its binding with no fix, unless its `ignore-names` lists the name. When this rule has no fix either, and the project's
-  Ruff configuration selects N816, the name is left to Ruff. A name this rule can rename stays here.
+- **`mixedCase` names Ruff reports**: [Ruff](https://docs.astral.sh/ruff/rules/mixed-case-variable-in-global-scope/)
+  reports a `mixedCase` module name at its binding, unless its `ignore-names` lists the name. When the project's Ruff
+  configuration selects N816, the name is left to Ruff, even if this rule could rename it.
 
   ```toml config
   [tool.ruff.lint]
   select = ["N816"]
   ```
 
-  ```python ok
+  ```python ok file=_module.py
   myValue = 3
-  MYVALUE = 4
-
-  print(myValue, MYVALUE)
+  print(myValue)
   ```
 
 - **`TYPE_CHECKING`**: type checkers recognize the guard by that name whatever its value.
@@ -480,17 +477,16 @@ No fix is offered when:
 ## Ruff overlap
 
 Ruff's [mixed-case-variable-in-global-scope](https://docs.astral.sh/ruff/rules/mixed-case-variable-in-global-scope/)
-flags only `mixedCase` names, and never offers a fix. This rule also flags `lower_case` names, and offers a fix for the
-`mixedCase` names it can rename. Where it offers no fix for a `mixedCase` name, Ruff's report stands, so this rule
-leaves that name out, but only when the project's Ruff configuration selects N816. Ruff's own suppressions of it,
-through `per-file-ignores` or `noqa`, are respected too.
+flags only `mixedCase` names. This rule flags `lower_case` names and leaves `mixedCase` names to Ruff whenever the
+project's Ruff configuration selects N816. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are
+respected too.
 
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
   [N816](https://docs.astral.sh/ruff/rules/mixed-case-variable-in-global-scope/), which reports only `mixedCase` names,
-  without a fix; this rule leaves unfixable ones to it, keeps those it can rename for the fix, and also reports
-  `lower_case` names and renames them to `UPPER_CASE`.
+  without a fix; this rule leaves those names to Ruff and reports `lower_case` names, which it can rename to
+  `UPPER_CASE`.
 - [pylint](https://github.com/pylint-dev/pylint) reports module-level assignments that do not match `const-naming-style`
   as [invalid-name](https://pylint.readthedocs.io/en/latest/user_guide/messages/convention/invalid-name.html). It
   defaults to `UPPER_CASE` and only reports, where this rule renames the uses in the file.

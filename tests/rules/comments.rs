@@ -9,7 +9,6 @@ use crate::common;
 #[test_case("blanket-ignore", "blanket_ignore.py" ; "blanket_ignore")]
 #[test_case("restating-comment", "restating_comment.py" ; "restating_comment")]
 #[test_case("string-statement-comment", "string_statement_comment.py" ; "string_statement_comment")]
-#[test_case("long-comment-line", "long_comment_line.py" ; "long_comment_line")]
 fn rule(rule: &str, fixture: &str) {
     common::assert_rule_snapshot(rule, fixture, "py314");
 }

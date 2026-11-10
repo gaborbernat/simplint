@@ -77,7 +77,8 @@ line numbers. It is safe for the program: a string statement does nothing when i
 - the text holds a backslash, since the compiler reads escapes and may warn or fail on them
 - the module has a `from __future__` import, which the compiler checks against the statements before it
 - a line of the text would start a tool directive, such as `# fmt: off`, or start with `!`
-- a comment line would run past the comment width, which [long-comment-line](SMP007.html) then reports
+- a comment line would run past the comment width, which [Ruff E501](https://docs.astral.sh/ruff/rules/line-too-long/)
+  then reports
 
 Tools that read the source text, such as `inspect.getsource`, see the comments where the string was.
 
