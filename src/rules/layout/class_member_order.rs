@@ -3,7 +3,7 @@ use ruff_python_ast::helpers::any_over_body;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::Ranged;
 
-use super::class_order::{Arrangement, Inversion, Section, class_order};
+use super::class_order::{Arrangement, ClassOrder, Inversion, Section};
 use super::reorder::{Suite, moved_span, moves_definition_unsafely, reorder_fix};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
@@ -17,13 +17,13 @@ pub(crate) fn leaves_django_order_to_ruff(settings: &FileSettings) -> bool {
 }
 
 pub fn class_member_order(checker: &Checker) {
+    let orders = checker.state().class_orders(checker);
     for class in checker.class_defs() {
-        check_class(checker, class);
+        check_class(checker, class, &orders[&class.range]);
     }
 }
 
-fn check_class(checker: &Checker, class: &ast::StmtClassDef) {
-    let order = class_order(checker, class);
+fn check_class(checker: &Checker, class: &ast::StmtClassDef, order: &ClassOrder<'_>) {
     let inversions = order.inversions();
     if inversions.is_empty() {
         return;

@@ -1,3 +1,6 @@
+use std::collections::BTreeMap;
+use std::ops::Bound;
+
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use ruff_python_ast::visitor::Visitor;
@@ -105,7 +108,7 @@ impl Unit<'_> {
     }
 }
 
-pub(super) struct ClassOrder<'a> {
+pub(crate) struct ClassOrder<'a> {
     units: Vec<Unit<'a>>,
     unit_of: Vec<usize>,
     // The range each statement reports at: its name, or the statement itself when it has none.
@@ -118,13 +121,13 @@ pub(super) struct ClassOrder<'a> {
 // report. Entry points are sorted into sections, and each helper follows its first caller. A statement that is not a
 // definition is an entry point of its own, in section 2. Two statements keep their order when one reads or binds a
 // name the other binds, so a constructor never moves past a statement that its defaults or decorators read.
-pub(super) fn class_order<'a>(checker: &Checker, class: &'a ast::StmtClassDef) -> ClassOrder<'a> {
+pub(crate) fn class_order<'a>(checker: &Checker, class: &'a ast::StmtClassDef) -> ClassOrder<'a> {
     let body = &class.body;
     let lazy = checker.semantic().annotations_are_lazy();
     let reads: Vec<FxHashSet<&str>> = body.iter().map(|stmt| creation_reads(stmt, lazy)).collect();
     let binds: Vec<FxHashSet<&str>> = body.iter().map(|stmt| bound_names(stmt).into_iter().collect()).collect();
     let (mut units, unit_of, by_name) = units_of(class, &alternative_constructors(class));
-    let swaps = Swaps { reads: &reads, binds: &binds, unit_of: &unit_of };
+    let swaps = Swaps::new(&reads, &binds, &unit_of);
     pin(&mut units, &swaps, &by_name, body);
     let users = users(checker, class, &units, &unit_of);
     let owner = owners_of_pinned(&mut units, &swaps, &users);
@@ -182,15 +185,18 @@ fn pin(units: &mut [Unit], swaps: &Swaps, by_name: &FxHashMap<&str, usize>, body
     }
     // A statement that is not a definition is fixed when it conflicts with a definition, and otherwise moves freely
     // among the entry points of its stretch.
+    let mut defined_binds = FxHashSet::default();
+    let mut defined_names = FxHashSet::default();
+    for other in (0..body.len()).filter(|&other| units[swaps.unit_of[other]].is_definition()) {
+        defined_binds.extend(&swaps.binds[other]);
+        defined_names.extend(&swaps.reads[other]);
+        defined_names.extend(&swaps.binds[other]);
+    }
     let conflicting: Vec<usize> = (0..units.len())
         .filter(|&unit| {
             !units[unit].is_definition()
                 && units[unit].members.iter().any(|&member| {
-                    (0..body.len()).any(|other| {
-                        units[swaps.unit_of[other]].is_definition()
-                            && swaps.unit_of[other] != unit
-                            && !swaps.commutes(member, other)
-                    })
+                    !swaps.reads[member].is_disjoint(&defined_binds) || !swaps.binds[member].is_disjoint(&defined_names)
                 })
         })
         .collect();
@@ -333,16 +339,47 @@ struct Swaps<'r, 'a> {
     reads: &'r [FxHashSet<&'a str>],
     binds: &'r [FxHashSet<&'a str>],
     unit_of: &'r [usize],
+    binders: FxHashMap<&'a str, Vec<usize>>,
+    readers: FxHashMap<&'a str, Vec<usize>>,
 }
 
-impl Swaps<'_, '_> {
+impl<'r, 'a> Swaps<'r, 'a> {
+    fn new(reads: &'r [FxHashSet<&'a str>], binds: &'r [FxHashSet<&'a str>], unit_of: &'r [usize]) -> Self {
+        let mut binders: FxHashMap<&str, Vec<usize>> = FxHashMap::default();
+        let mut readers: FxHashMap<&str, Vec<usize>> = FxHashMap::default();
+        for (statement, (reads, binds)) in reads.iter().zip(binds).enumerate() {
+            for &name in binds {
+                binders.entry(name).or_default().push(statement);
+            }
+            for &name in reads {
+                readers.entry(name).or_default().push(statement);
+            }
+        }
+        Self { reads, binds, unit_of, binders, readers }
+    }
+
+    // The statements that do not commute with some member of a unit: those binding a name a member reads or binds, and
+    // those reading a name a member binds.
+    fn conflicts(&self, info: &Unit) -> FxHashSet<usize> {
+        let mut others = FxHashSet::default();
+        for &member in &info.members {
+            for name in &self.reads[member] {
+                others.extend(self.binders.get(name).into_iter().flatten());
+            }
+            for name in &self.binds[member] {
+                others.extend(self.binders.get(name).into_iter().flatten());
+                others.extend(self.readers.get(name).into_iter().flatten());
+            }
+        }
+        others
+    }
+
     // Whether a helper can take its owner's place: no statement between them conflicts with it.
     fn can_move(&self, units: &[Unit], unit: usize, owner: usize) -> bool {
         let info = &units[unit];
         let low = info.first().min(units[owner].first());
         let high = info.last().max(units[owner].last());
-        (low..=high)
-            .all(|other| self.unit_of[other] == unit || info.members.iter().all(|&member| self.commutes(member, other)))
+        !self.conflicts(info).into_iter().any(|other| (low..=high).contains(&other) && self.unit_of[other] != unit)
     }
 
     // Whether a definition's members cannot be contiguous: a statement among them is fixed, or conflicts with a member.
@@ -387,14 +424,24 @@ impl<'a> ClassOrder<'a> {
             })
             .collect();
         let mut inversions = Vec::new();
+        let mut first_method = None;
+        let mut first_of_rank = BTreeMap::new();
         for (position, &(unit, name, section)) in entries.iter().enumerate() {
-            let Some(section) = section else { continue };
-            let Some(&(anchor, anchor_name, anchor_section)) = entries[..position]
-                .iter()
-                .find(|(_, _, earlier)| earlier.is_none_or(|earlier| earlier.rank() > section.rank()))
-            else {
+            let Some(section) = section else {
+                first_method.get_or_insert(position);
                 continue;
             };
+            let earlier = first_method
+                .into_iter()
+                .chain(
+                    first_of_rank
+                        .range((Bound::Excluded(section.rank()), Bound::Unbounded))
+                        .map(|(_, &earlier)| earlier),
+                )
+                .min();
+            first_of_rank.entry(section.rank()).or_insert(position);
+            let Some(earlier) = earlier else { continue };
+            let (anchor, anchor_name, anchor_section) = entries[earlier];
             for &member in &self.units[unit].members {
                 inversions.push(Inversion {
                     statement: member,

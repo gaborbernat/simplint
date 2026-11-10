@@ -6,7 +6,7 @@ use ruff_python_ast::visitor::{Visitor, walk_expr, walk_stmt};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
-use super::class_order::{Arrangement, class_order};
+use super::class_order::Arrangement;
 use super::definition_time::{class_runtime_names, definition_name, definition_time_exprs, signature_annotations};
 use super::reorder::{Suite, moved_span, moves_definition_unsafely, reorder_fix};
 use crate::lint::checker::Checker;
@@ -21,8 +21,9 @@ pub fn definition_before_use(checker: &Checker) {
     let owners = owners(body.len(), &uses);
     let expected = expected_order(body.len(), &owners, &uses);
     report_misplaced(checker, &Suite { body, blank_lines: 2 }, &expected, &owners);
+    let orders = checker.state().class_orders(checker);
     for class in checker.class_defs() {
-        let order = class_order(checker, class);
+        let order = &orders[&class.range];
         let expected = order.expected(Arrangement::Helpers);
         report_misplaced(checker, &Suite { body: &class.body, blank_lines: 1 }, &expected, &order.helper_owners());
     }

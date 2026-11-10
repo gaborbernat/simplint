@@ -21,7 +21,7 @@ use ruff_python_ast::{self as ast, Expr, OperatorPrecedence, Stmt};
 use ruff_python_trivia::{has_leading_content, has_trailing_content, leading_indentation};
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
 use crate::lint::noqa;
@@ -29,6 +29,7 @@ use crate::project::doctest_code;
 use crate::rules::comments::Comment;
 use crate::rules::docstrings::PublicApi;
 use crate::rules::docstrings::rst::{Target, collect_targets};
+use crate::rules::layout::{ClassOrder, class_order};
 use crate::rules::logic::KindsCache;
 use crate::rules::module_variable::{ModuleVariable, module_variables};
 use crate::rules::naming::ReportedNames;
@@ -46,6 +47,7 @@ pub(crate) struct FileState<'a> {
     export_strings: OnceCell<Vec<&'a ast::ExprStringLiteral>>,
     string_words: OnceCell<rename::StringWords>,
     doctest_words: OnceCell<FxHashSet<String>>,
+    class_orders: OnceCell<FxHashMap<TextRange, ClassOrder<'a>>>,
     // Every comment of the file with the directives it holds, which the comment rules read.
     comments: OnceCell<Vec<(TextRange, Comment)>>,
     source_spans: OnceCell<Vec<TextRange>>,
@@ -116,6 +118,13 @@ impl<'a> FileState<'a> {
                 .flat_map(|code| code.split(|char: char| !(char.is_alphanumeric() || char == '_')))
                 .map(str::to_owned)
                 .collect()
+        })
+    }
+
+    // The order each class body must keep, which SMP201 and SMP203 both check against, so it is built once per class.
+    pub(crate) fn class_orders(&self, checker: &Checker<'a>) -> &FxHashMap<TextRange, ClassOrder<'a>> {
+        self.class_orders.get_or_init(|| {
+            checker.class_defs().iter().map(|class| (class.range, class_order(checker, class))).collect()
         })
     }
 
