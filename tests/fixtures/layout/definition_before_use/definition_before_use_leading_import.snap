@@ -1,0 +1,19 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+12:5 SMP201 `_load` should directly follow `main`, its first user [fix: Move `_load` right after `main`]
+--- fixed (1 applied, 0 remaining) ---
+import json
+
+
+def main():
+    return _load("{}")
+
+
+def _load(text, loads=json.loads):
+    return loads(text)
+
+
+def other():
+    return 1

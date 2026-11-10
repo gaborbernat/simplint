@@ -1,0 +1,24 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:5 SMP201 `_label` is defined before its first use in the statement on line 5; move it below the statement on line 5 [fix: Move `_label` below the statement on line 5]
+--- fixed (1 applied, 0 remaining) ---
+if __name__ == "__main__":
+
+    class Printer:
+        def show(self) -> str:
+            return _label(1)
+
+    Printer().show()
+
+
+def _label(value: int) -> str:
+    return str(value)
+
+
+class Shown:
+    if DEBUG:
+
+        def show(self) -> str:
+            return _label(2)

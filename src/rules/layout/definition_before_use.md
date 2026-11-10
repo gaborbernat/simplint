@@ -147,6 +147,41 @@ would leave the name unbound when it is read:
         tokens = [state(1)]
     ```
 
+  - a `def` in a block of module-level code, such as the body of an `if`, `try`, `with`, `for`, `while` or `match`
+    statement, which the block may call while the module loads
+
+    ```python ok
+    def _render(value: int) -> str:
+        return str(value)
+
+
+    if __name__ == "__main__":
+
+        def main() -> None:
+            print(_render(1))
+
+        main()
+    ```
+
+- **Names read from an import placed below the first definition**, such as a default value: the import is bound only
+  where it sits, so the definition reading it and the helpers it calls stay where they are.
+
+  ```python ok
+  def main() -> object:
+      return _load("{}")
+
+
+  def _check(text: str) -> str:
+      return text.strip()
+
+
+  import json
+
+
+  def _load(text: str, loads=json.loads) -> object:
+      return loads(_check(text))
+  ```
+
 - **Names bound more than once**, such as a [property](https://docs.python.org/3/builtins/functions.html#property) and
   its setter: each later binding builds on or replaces the earlier one, so their order matters.
 
