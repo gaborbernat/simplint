@@ -79,7 +79,7 @@ fn permissions(metadata: &fs::Metadata) -> u32 {
 }
 
 // The caches of a run, one per package root, or per directory for files outside a package, as Ruff keeps them. Their
-// bytes are read up front and checked once by `views`, which read the archives in place.
+// bytes are read up front and checked once by `views`, a package per thread, and read in place.
 pub struct Caches(FxHashMap<PathBuf, Stored>);
 
 // A package's cache file as read, with the root it is kept for.
@@ -109,7 +109,7 @@ impl Caches {
     }
 
     pub fn views(&self, run: u64) -> FxHashMap<&Path, Cache<'_>> {
-        self.0.iter().map(|(root, stored)| (root.as_path(), Cache::new(root, stored, run))).collect()
+        self.0.par_iter().map(|(root, stored)| (root.as_path(), Cache::new(root, stored, run))).collect()
     }
 }
 
