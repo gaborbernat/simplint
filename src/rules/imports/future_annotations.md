@@ -91,7 +91,9 @@ the import from `required-imports` once the project targets Python 3.14, or turn
   the name `TYPE_CHECKING` in code; a mention in a comment or string does not count. Lazy annotations are still
   evaluated on access, and an annotation that names something imported only under
   [`if TYPE_CHECKING:`](https://docs.python.org/3/library/typing.html#typing.TYPE_CHECKING) raises `NameError` there.
-  Otherwise the fix is safe.
+  The fix is also unsafe when an annotation unions a string with a type, such as `"Node" | None`, which raises once
+  evaluated, or when an import sits under a module-level `if`, which may leave its name unbound. Otherwise the fix is
+  safe.
 
   ```toml config
   [project]
@@ -257,6 +259,20 @@ The fix removes `annotations` from the import:
 
   ```python report
   from __future__ import annotations
+
+  VALUE = 1
+  ```
+
+- No fix is offered when a comment sits on the statement's lines, since the fix would delete it.
+
+  ```toml config
+  [project]
+  name = "demo"
+  requires-python = ">=3.14"
+  ```
+
+  ```python report
+  from __future__ import annotations  # kept for the docs build
 
   VALUE = 1
   ```

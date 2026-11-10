@@ -1,6 +1,8 @@
 use ruff_diagnostics::{Applicability, Edit, Fix};
+use ruff_python_ast::helpers::any_over_expr;
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, AnyParameterRef, Expr, Stmt};
+use ruff_python_ast::{self as ast, AnyParameterRef, Expr, Operator, Stmt};
+use ruff_source_file::LineRanges;
 use ruff_text_size::Ranged;
 use rustc_hash::FxHashSet;
 
@@ -25,7 +27,10 @@ pub fn future_annotations(checker: &Checker) {
         if class_shadows_annotation(body) {
             return;
         }
-        let edit = if import.names.len() > 1 {
+        // The edit rewrites or deletes the whole line, so a comment on it would go with the import.
+        let edit = if checker.has_comment_in(checker.source.full_lines_range(stmt.range())) {
+            None
+        } else if import.names.len() > 1 {
             let kept: Vec<&str> = import
                 .names
                 .iter()
@@ -36,9 +41,16 @@ pub fn future_annotations(checker: &Checker) {
         } else {
             is_alone_on_lines(checker.source, stmt.range()).then(|| delete_statement(checker.source, stmt, body))
         };
-        // Lazy annotations still evaluate on access, so a name imported only for type checking raises there.
-        let applicability =
-            if checker.name_token_count("TYPE_CHECKING") > 0 { Applicability::Unsafe } else { Applicability::Safe };
+        // Lazy annotations still evaluate on access, so a name imported only for type checking raises there, and so
+        // does a quoted union or an import under an `if` that may be false.
+        let applicability = if checker.name_token_count("TYPE_CHECKING") > 0
+            || has_partly_quoted_union(body)
+            || has_guarded_import(body)
+        {
+            Applicability::Unsafe
+        } else {
+            Applicability::Safe
+        };
         checker.report_fix(
             Rule::FutureAnnotations,
             alias.range(),
@@ -47,6 +59,36 @@ pub fn future_annotations(checker: &Checker) {
             "Remove the `annotations` future import",
         );
     }
+}
+
+// Evaluated, `"Node" | None` applies `|` to a str and raises, as `@dataclass` does when it reads the annotations.
+fn has_partly_quoted_union(body: &[Stmt]) -> bool {
+    let mut finder = QuotedUnion(false);
+    finder.visit_body(body);
+    finder.0
+}
+
+struct QuotedUnion(bool);
+
+impl<'a> Visitor<'a> for QuotedUnion {
+    fn visit_annotation(&mut self, expr: &'a Expr) {
+        self.0 = self.0 || any_over_expr(expr, &is_quoted_union);
+    }
+}
+
+fn is_quoted_union(expr: &Expr) -> bool {
+    matches!(
+        expr,
+        Expr::BinOp(ast::ExprBinOp { left, op: Operator::BitOr, right, .. })
+            if left.is_string_literal_expr() || right.is_string_literal_expr()
+    )
+}
+
+// A module-level `if` such as `if MYPY:` may skip the import, so the annotations read a name that is never bound.
+fn has_guarded_import(body: &[Stmt]) -> bool {
+    body.iter().filter(|stmt| stmt.is_if_stmt()).any(|guard| {
+        module_statements(std::slice::from_ref(guard)).any(|stmt| matches!(stmt, Stmt::Import(_) | Stmt::ImportFrom(_)))
+    })
 }
 
 // Whether a class binds a name that one of its annotations reads, such as `def list(self) -> list[str]`.

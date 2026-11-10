@@ -4121,7 +4121,7 @@
     "name": "future-annotations",
     "summary": "`from __future__ import annotations` on Python 3.14+",
     "fix": "Sometimes",
-    "explanation": "Flags `from __future__ import annotations` when the target version is Python 3.14 or newer. Annotations are evaluated\nlazily there by default, so the import no longer does what it was added for.\n\n## Why is this bad?\n\nSince Python 3.14, annotations are\n[evaluated lazily](https://docs.python.org/3/whatsnew/3.14.html#whatsnew314-deferred-annotations) by default\n([PEP 649](https://peps.python.org/pep-0649/), [PEP 749](https://peps.python.org/pep-0749/)). The import no longer\navoids forward-reference errors or the cost of evaluating annotations at import time. Its only remaining effect is to\nturn annotations into strings for code that inspects them at runtime.\n\n## Example\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.14\"\n```\n\n```python report\nfrom __future__ import annotations, generator_stop\n```\n\nUse instead:\n\n```python ok\nfrom __future__ import generator_stop\n```\n\n## Conflicts with Ruff\n\nWhen Ruff's isort setting [`required-imports`](https://docs.astral.sh/ruff/settings/#lint_isort_required-imports) lists\n`from __future__ import annotations`,\n[missing-required-import](https://docs.astral.sh/ruff/rules/missing-required-import/) adds back the import this rule\nremoves. simplint stops with an error before linting while both apply to a file that targets Python 3.14 or newer; drop\nthe import from `required-imports` once the project targets Python 3.14, or turn this rule off.\n\n## Configuration\n\n- The Python version the code targets, taken from the first of these that applies; see\n  [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version):\n\n  1. [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version) in `[tool.ruff]`: for\n     the files a pattern matches\n\n     ```toml config\n     [tool.ruff.per-file-target-version]\n     \"new/*.py\" = \"py314\"\n     ```\n\n     ```python report file=new/module.py\n     from __future__ import annotations\n\n     VALUE = 1\n     ```\n\n  1. [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) in `[tool.ruff]`: for every other file\n\n     ```toml config\n     [tool.ruff]\n     target-version = \"py313\"\n     ```\n\n     ```python ok\n     from __future__ import annotations\n\n     VALUE = 1\n     ```\n\n  1. [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python):\n     its lowest version, when Ruff sets neither\n\n     ```toml config\n     [project]\n     name = \"demo\"\n     requires-python = \">=3.14\"\n     ```\n\n     ```python report\n     from __future__ import annotations\n\n     VALUE = 1\n     ```\n\n## What it does\n\n### Active on\n\n- **Module-level `from __future__ import annotations`** ([PEP 563](https://peps.python.org/pep-0563/)) in a file that\n  targets Python 3.14 or newer, where lazy evaluation is already the default. **Unsafe fix** when the module refers to\n  the name `TYPE_CHECKING` in code; a mention in a comment or string does not count. Lazy annotations are still\n  evaluated on access, and an annotation that names something imported only under\n  [`if TYPE_CHECKING:`](https://docs.python.org/3/library/typing.html#typing.TYPE_CHECKING) raises `NameError` there.\n  Otherwise the fix is safe.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  from __future__ import annotations\n\n  VALUE = 1\n  ```\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  # Demo module.\n  from __future__ import annotations\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      from os import PathLike\n\n\n  def path(value: PathLike) -> None:\n      pass\n  ```\n\n  ```python fixed\n  # Demo module.\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      from os import PathLike\n\n\n  def path(value: PathLike) -> None:\n      pass\n  ```\n\n- **Annotations that name the class itself or a later module-level name**: the class body binds neither, so the rule\n  still reports the module.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  from __future__ import annotations\n\n\n  class Node:\n      def add(self, other: Node) -> Tree:\n          return self\n\n\n  class Tree:\n      pass\n  ```\n\n### Exceptions\n\n- **Classes whose annotations read a name their body binds**: lazily evaluated annotations see the class namespace, so a\n  method named `list` makes `list[str]` mean the method. The import keeps annotations resolving in the module globals,\n  so the rule reports nothing in the module while any class does this.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  from __future__ import annotations\n\n\n  class Repo:\n      def list(self) -> list[str]:\n          return []\n\n\n  class Point:\n      float: float = 0.0\n  ```\n\n- **Files that target a version before Python 3.14**: there the import still defers evaluation, which annotations do not\n  do by default.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py313\"\n  ```\n\n  ```python ok\n  from __future__ import annotations\n\n  VALUE = 1\n  ```\n\n### Target version\n\nsimplint reads the target version from Ruff's configuration, as `ruff check` does, taking the first that is set:\n\n1. [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) or\n   [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version)\n1. `project.requires-python`\n1. Ruff's default\n\n### Fix\n\nThe fix removes `annotations` from the import:\n\n- When `annotations` is the statement's only name, the fix deletes the statement.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  # Demo module.\n  from __future__ import annotations\n\n  VALUE = 1\n  ```\n\n  ```python fixed\n  # Demo module.\n\n  VALUE = 1\n  ```\n\n- If that statement is the only one in the module, the fix replaces it with `pass`.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  from __future__ import annotations\n  ```\n\n  ```python fixed\n  pass\n  ```\n\n- No fix is offered when a statement that imports only `annotations` shares its line with other code.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  from __future__ import annotations\n\n  VALUE = 1\n  ```\n\nAfter the fix, code that reads `__annotations__` and expects strings gets evaluated objects\n([annotations best practices](https://docs.python.org/3/howto/annotations.html)).\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#20739](https://github.com/astral-sh/ruff/issues/20739).\n",
+    "explanation": "Flags `from __future__ import annotations` when the target version is Python 3.14 or newer. Annotations are evaluated\nlazily there by default, so the import no longer does what it was added for.\n\n## Why is this bad?\n\nSince Python 3.14, annotations are\n[evaluated lazily](https://docs.python.org/3/whatsnew/3.14.html#whatsnew314-deferred-annotations) by default\n([PEP 649](https://peps.python.org/pep-0649/), [PEP 749](https://peps.python.org/pep-0749/)). The import no longer\navoids forward-reference errors or the cost of evaluating annotations at import time. Its only remaining effect is to\nturn annotations into strings for code that inspects them at runtime.\n\n## Example\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.14\"\n```\n\n```python report\nfrom __future__ import annotations, generator_stop\n```\n\nUse instead:\n\n```python ok\nfrom __future__ import generator_stop\n```\n\n## Conflicts with Ruff\n\nWhen Ruff's isort setting [`required-imports`](https://docs.astral.sh/ruff/settings/#lint_isort_required-imports) lists\n`from __future__ import annotations`,\n[missing-required-import](https://docs.astral.sh/ruff/rules/missing-required-import/) adds back the import this rule\nremoves. simplint stops with an error before linting while both apply to a file that targets Python 3.14 or newer; drop\nthe import from `required-imports` once the project targets Python 3.14, or turn this rule off.\n\n## Configuration\n\n- The Python version the code targets, taken from the first of these that applies; see\n  [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version):\n\n  1. [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version) in `[tool.ruff]`: for\n     the files a pattern matches\n\n     ```toml config\n     [tool.ruff.per-file-target-version]\n     \"new/*.py\" = \"py314\"\n     ```\n\n     ```python report file=new/module.py\n     from __future__ import annotations\n\n     VALUE = 1\n     ```\n\n  1. [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) in `[tool.ruff]`: for every other file\n\n     ```toml config\n     [tool.ruff]\n     target-version = \"py313\"\n     ```\n\n     ```python ok\n     from __future__ import annotations\n\n     VALUE = 1\n     ```\n\n  1. [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python):\n     its lowest version, when Ruff sets neither\n\n     ```toml config\n     [project]\n     name = \"demo\"\n     requires-python = \">=3.14\"\n     ```\n\n     ```python report\n     from __future__ import annotations\n\n     VALUE = 1\n     ```\n\n## What it does\n\n### Active on\n\n- **Module-level `from __future__ import annotations`** ([PEP 563](https://peps.python.org/pep-0563/)) in a file that\n  targets Python 3.14 or newer, where lazy evaluation is already the default. **Unsafe fix** when the module refers to\n  the name `TYPE_CHECKING` in code; a mention in a comment or string does not count. Lazy annotations are still\n  evaluated on access, and an annotation that names something imported only under\n  [`if TYPE_CHECKING:`](https://docs.python.org/3/library/typing.html#typing.TYPE_CHECKING) raises `NameError` there.\n  The fix is also unsafe when an annotation unions a string with a type, such as `\"Node\" | None`, which raises once\n  evaluated, or when an import sits under a module-level `if`, which may leave its name unbound. Otherwise the fix is\n  safe.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  from __future__ import annotations\n\n  VALUE = 1\n  ```\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  # Demo module.\n  from __future__ import annotations\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      from os import PathLike\n\n\n  def path(value: PathLike) -> None:\n      pass\n  ```\n\n  ```python fixed\n  # Demo module.\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      from os import PathLike\n\n\n  def path(value: PathLike) -> None:\n      pass\n  ```\n\n- **Annotations that name the class itself or a later module-level name**: the class body binds neither, so the rule\n  still reports the module.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  from __future__ import annotations\n\n\n  class Node:\n      def add(self, other: Node) -> Tree:\n          return self\n\n\n  class Tree:\n      pass\n  ```\n\n### Exceptions\n\n- **Classes whose annotations read a name their body binds**: lazily evaluated annotations see the class namespace, so a\n  method named `list` makes `list[str]` mean the method. The import keeps annotations resolving in the module globals,\n  so the rule reports nothing in the module while any class does this.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  from __future__ import annotations\n\n\n  class Repo:\n      def list(self) -> list[str]:\n          return []\n\n\n  class Point:\n      float: float = 0.0\n  ```\n\n- **Files that target a version before Python 3.14**: there the import still defers evaluation, which annotations do not\n  do by default.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py313\"\n  ```\n\n  ```python ok\n  from __future__ import annotations\n\n  VALUE = 1\n  ```\n\n### Target version\n\nsimplint reads the target version from Ruff's configuration, as `ruff check` does, taking the first that is set:\n\n1. [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) or\n   [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version)\n1. `project.requires-python`\n1. Ruff's default\n\n### Fix\n\nThe fix removes `annotations` from the import:\n\n- When `annotations` is the statement's only name, the fix deletes the statement.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  # Demo module.\n  from __future__ import annotations\n\n  VALUE = 1\n  ```\n\n  ```python fixed\n  # Demo module.\n\n  VALUE = 1\n  ```\n\n- If that statement is the only one in the module, the fix replaces it with `pass`.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  from __future__ import annotations\n  ```\n\n  ```python fixed\n  pass\n  ```\n\n- No fix is offered when a statement that imports only `annotations` shares its line with other code.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  from __future__ import annotations\n\n  VALUE = 1\n  ```\n\n- No fix is offered when a comment sits on the statement's lines, since the fix would delete it.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  from __future__ import annotations  # kept for the docs build\n\n  VALUE = 1\n  ```\n\nAfter the fix, code that reads `__annotations__` and expects strings gets evaluated objects\n([annotations best practices](https://docs.python.org/3/howto/annotations.html)).\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#20739](https://github.com/astral-sh/ruff/issues/20739).\n",
     "examples": {
       "parsed": [
         {
@@ -4231,11 +4231,11 @@
         },
         {
           "section": "What it does",
-          "line": 96,
-          "end_line": 106,
+          "line": 98,
+          "end_line": 108,
           "config": {
-            "line": 96,
-            "end_line": 100,
+            "line": 98,
+            "end_line": 102,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.14\"\n"
           },
           "blocks": [
@@ -4244,19 +4244,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 102,
-              "end_line": 106,
+              "line": 104,
+              "end_line": 108,
               "source": "from __future__ import annotations\n\nVALUE = 1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 108,
-          "end_line": 137,
+          "line": 110,
+          "end_line": 139,
           "config": {
-            "line": 108,
-            "end_line": 112,
+            "line": 110,
+            "end_line": 114,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.14\"\n"
           },
           "blocks": [
@@ -4265,8 +4265,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 114,
-              "end_line": 125,
+              "line": 116,
+              "end_line": 127,
               "source": "# Demo module.\nfrom __future__ import annotations\nfrom typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from os import PathLike\n\n\ndef path(value: PathLike) -> None:\n    pass\n"
             },
             {
@@ -4274,19 +4274,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 127,
-              "end_line": 137,
+              "line": 129,
+              "end_line": 139,
               "source": "# Demo module.\nfrom typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from os import PathLike\n\n\ndef path(value: PathLike) -> None:\n    pass\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 142,
-          "end_line": 159,
+          "line": 144,
+          "end_line": 161,
           "config": {
-            "line": 142,
-            "end_line": 146,
+            "line": 144,
+            "end_line": 148,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.14\"\n"
           },
           "blocks": [
@@ -4295,19 +4295,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 148,
-              "end_line": 159,
+              "line": 150,
+              "end_line": 161,
               "source": "from __future__ import annotations\n\n\nclass Node:\n    def add(self, other: Node) -> Tree:\n        return self\n\n\nclass Tree:\n    pass\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 167,
-          "end_line": 184,
+          "line": 169,
+          "end_line": 186,
           "config": {
-            "line": 167,
-            "end_line": 171,
+            "line": 169,
+            "end_line": 173,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.14\"\n"
           },
           "blocks": [
@@ -4316,19 +4316,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 173,
-              "end_line": 184,
+              "line": 175,
+              "end_line": 186,
               "source": "from __future__ import annotations\n\n\nclass Repo:\n    def list(self) -> list[str]:\n        return []\n\n\nclass Point:\n    float: float = 0.0\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 189,
-          "end_line": 198,
+          "line": 191,
+          "end_line": 200,
           "config": {
-            "line": 189,
-            "end_line": 192,
+            "line": 191,
+            "end_line": 194,
             "source": "[tool.ruff]\ntarget-version = \"py313\"\n"
           },
           "blocks": [
@@ -4337,19 +4337,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 194,
-              "end_line": 198,
+              "line": 196,
+              "end_line": 200,
               "source": "from __future__ import annotations\n\nVALUE = 1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 215,
-          "end_line": 232,
+          "line": 217,
+          "end_line": 234,
           "config": {
-            "line": 215,
-            "end_line": 219,
+            "line": 217,
+            "end_line": 221,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.14\"\n"
           },
           "blocks": [
@@ -4358,8 +4358,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 221,
-              "end_line": 226,
+              "line": 223,
+              "end_line": 228,
               "source": "# Demo module.\nfrom __future__ import annotations\n\nVALUE = 1\n"
             },
             {
@@ -4367,19 +4367,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 228,
-              "end_line": 232,
+              "line": 230,
+              "end_line": 234,
               "source": "# Demo module.\n\nVALUE = 1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 236,
-          "end_line": 248,
+          "line": 238,
+          "end_line": 250,
           "config": {
-            "line": 236,
-            "end_line": 240,
+            "line": 238,
+            "end_line": 242,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.14\"\n"
           },
           "blocks": [
@@ -4388,8 +4388,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 242,
-              "end_line": 244,
+              "line": 244,
+              "end_line": 246,
               "source": "from __future__ import annotations\n"
             },
             {
@@ -4397,19 +4397,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 246,
-              "end_line": 248,
+              "line": 248,
+              "end_line": 250,
               "source": "pass\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 252,
-          "end_line": 262,
+          "line": 254,
+          "end_line": 264,
           "config": {
-            "line": 252,
-            "end_line": 256,
+            "line": 254,
+            "end_line": 258,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.14\"\n"
           },
           "blocks": [
@@ -4418,9 +4418,30 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 258,
-              "end_line": 262,
+              "line": 260,
+              "end_line": 264,
               "source": "from __future__ import annotations\n\nVALUE = 1\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 268,
+          "end_line": 278,
+          "config": {
+            "line": 268,
+            "end_line": 272,
+            "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.14\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 274,
+              "end_line": 278,
+              "source": "from __future__ import annotations  # kept for the docs build\n\nVALUE = 1\n"
             }
           ]
         }
