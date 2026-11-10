@@ -324,6 +324,7 @@ fn unused_ignore_removes_a_selector_already_covered_by_noqa() {
 #[test_case("def f():\n    # simplint: ignore[SMP101]  # wire order\n    return 1\n", "def f():\n    # wire order\n    return 1\n" ; "own_line_directive_keeps_later_comment")]
 #[test_case("value = 1  # simplint: ignore[SMP101]# noqa: E501\n", "value = 1  # noqa: E501\n" ; "directive_joined_to_later_comment")]
 #[test_case("x = 1  # simplint: ignore[SMP602] # noqa: SMP101\n", "x = 1  # noqa: SMP101\n" ; "stale_directive_keeps_noqa_of_its_line")]
+#[test_case("def f():\n    # simplint: ignore[SMP101]\n    return 1\n", "def f():\n    return 1\n" ; "standalone_directive_leaves_no_line")]
 fn unused_ignore_removes_only_the_directive_and_its_reason(source: &str, expected: &str) {
     let root = project(&[("module.py", source)]);
     check(root.path(), &["--select", "SMP101,SMP009", "--fix"]);
