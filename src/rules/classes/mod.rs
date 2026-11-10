@@ -41,6 +41,9 @@ struct Decorated<'a> {
     class: &'a ast::StmtClassDef,
     keywords: &'a [ast::Keyword],
     splat: &'a [(&'a str, &'a Expr)],
+    // A decorator below `@dataclass` runs first, and `slots=True` makes the dataclass return a new class, which the
+    // decorator below never saw.
+    wrapped: bool,
 }
 
 impl<'a> Decorated<'a> {
@@ -97,7 +100,12 @@ fn require_options(
         let Some(splat) = splatted_options(checker, keywords) else {
             continue;
         };
-        let decorated = Decorated { class, keywords, splat: &splat };
+        let decorated = Decorated {
+            class,
+            keywords,
+            splat: &splat,
+            wrapped: class.decorator_list.iter().any(|other| other.start() > decorator.end()),
+        };
         let missing: Vec<&'static str> =
             options.iter().copied().filter(|option| !decorated.option(option).is_some_and(is_true_literal)).collect();
         if missing.is_empty() {

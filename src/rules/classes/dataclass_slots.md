@@ -260,6 +260,62 @@ class Release:
           self.marked = True
   ```
 
+- code sets an attribute of an instance known to be of the class through `monkeypatch.setattr`, `mock.patch.object` or
+  `obj.__setattr__(...)`, or under a name computed at run time through `setattr`, which may name any attribute
+
+  ```python report
+  from dataclasses import dataclass
+  from unittest import mock
+
+
+  @dataclass(frozen=True)
+  class Release:
+      version: str
+
+      def send(self) -> str:
+          return self.version
+
+
+  def stub() -> None:
+      release = Release("1")
+      with mock.patch.object(release, "send", return_value="x"):
+          print(release.send())
+  ```
+
+- a weak reference to an instance, from `weakref.ref`, `weakref.proxy` or `weakref.finalize`, which needs a
+  `__weakref__` slot the class does not have
+
+  ```python report
+  import weakref
+  from dataclasses import dataclass
+
+
+  @dataclass(frozen=True)
+  class Release:
+      version: str
+
+
+  release = Release("1")
+  reference = weakref.ref(release)
+  ```
+
+- a decorator listed below `@dataclass`, which runs first: `slots=True` makes the dataclass return a new class, which
+  the decorator never saw
+
+  ```python report
+  from dataclasses import dataclass
+
+
+  def register(cls: type) -> type:
+      return cls
+
+
+  @dataclass(frozen=True)
+  @register
+  class Release:
+      version: str
+  ```
+
 - code reaches the instance `__dict__`, as `self.__dict__.update(...)` or `vars(config)` do
 
   ```python report

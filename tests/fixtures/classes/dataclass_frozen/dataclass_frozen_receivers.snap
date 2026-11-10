@@ -2,7 +2,7 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-9:2 SMP701 Dataclass is missing frozen; set `frozen=True` [fix: Pass `frozen=True` to `@dataclass`]
+9:2 SMP701 Dataclass is missing frozen; set `frozen=True`
 14:2 SMP701 Dataclass is missing frozen; set `frozen=True`
 19:2 SMP701 Dataclass is missing frozen; set `frozen=True`
 24:2 SMP701 Dataclass is missing frozen; set `frozen=True`
@@ -11,7 +11,7 @@ expression: "lint_fixture(rule, fixture, target_version)"
 80:2 SMP701 Dataclass is missing frozen; set `frozen=True`
 88:2 SMP701 Dataclass is missing frozen; set `frozen=True`
 121:2 SMP701 Dataclass is missing frozen; set `frozen=True`
---- fixed (2 applied, 7 remaining) ---
+--- fixed (1 applied, 8 remaining) ---
 import functools
 import threading
 from typing import Optional
@@ -20,7 +20,7 @@ from unittest import mock
 from unittest.mock import MagicMock, create_autospec
 
 
-@dataclass(frozen=True)
+@dataclass
 class Record:
     uuid: str
 

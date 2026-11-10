@@ -332,6 +332,23 @@ class Release:
       result.status = "done"
   ```
 
+- other code sets or deletes an attribute of an instance known to be of the class under a name computed at run time, or
+  through `monkeypatch.setattr`, `mock.patch.object` or `obj.__setattr__(...)`, such as the `setattr(self, key, value)`
+  of a method that updates its fields from a dict
+
+  ```python report
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Release:
+      version: str
+
+      def update(self, **changes: str) -> None:
+          for key, value in changes.items():
+              setattr(self, key, value)
+  ```
+
 - other code sets or deletes an attribute named like one of the fields or `ClassVar` attributes on an object of unknown
   class, such as `envs[name].active = True`, directly or through `setattr`
 
