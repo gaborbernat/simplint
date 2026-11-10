@@ -38,7 +38,8 @@ struct Uses {
 fn module_uses(checker: &Checker, body: &[Stmt], runtime_names: &FxHashMap<TextRange, FxHashSet<&str>>) -> Uses {
     let semantic = checker.semantic();
     let lazy = semantic.annotations_are_lazy();
-    let eager = disjoint(eager_annotations(checker));
+    let mut eager = eager_annotations(checker);
+    eager.sort_unstable_by_key(Ranged::start);
     let import_time = import_time_functions(body, runtime_names);
     // Decorators such as FastAPI routes, pydantic's `validate_call` or `dataclass` read the annotations they decorate
     // while the module loads, even when Python defers them. Without lazy annotations, a `def` evaluates its own
@@ -113,24 +114,8 @@ fn eager_annotations(checker: &Checker) -> Vec<TextRange> {
     signatures.chain(fields).collect()
 }
 
-// Sorts the ranges and merges the ones that overlap. Annotations nest or stay apart, so a merged range is one of the
-// originals and a range lies in one of the merged ones exactly when it lies in one of the originals.
-fn disjoint(mut ranges: Vec<TextRange>) -> Vec<TextRange> {
-    ranges.sort_unstable_by_key(Ranged::start);
-    let mut merged: Vec<TextRange> = Vec::with_capacity(ranges.len());
-    for range in ranges {
-        match merged.last_mut() {
-            Some(last) if range.start() < last.end() => {
-                *last = TextRange::new(last.start(), last.end().max(range.end()));
-            }
-            _ => merged.push(range),
-        }
-    }
-    merged
-}
-
-// Whether a range lies in one of the sorted, disjoint ranges. Only the last range that starts at or before it can hold
-// it, since the ranges do not overlap.
+// Whether a range lies in one of the annotations, sorted by start. Annotations never overlap, so the last one that
+// starts at or before the range is the only one that can hold it.
 fn in_ranges(ranges: &[TextRange], range: TextRange) -> bool {
     let next = ranges.partition_point(|candidate| candidate.start() <= range.start());
     next > 0 && ranges[next - 1].contains_range(range)
