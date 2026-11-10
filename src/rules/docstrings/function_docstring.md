@@ -418,6 +418,20 @@ Around the docstring, both fixes do the following:
       print()
   ```
 
+- When other code follows the docstring, a comment after it stays on a line of its own, as the deletion keeps it.
+
+  ```python report
+  def _acquire() -> int:
+      """Take the lock."""  # callers must already hold the registry mutex
+      return 1
+  ```
+
+  ```python fixed
+  def _acquire() -> int:
+      # callers must already hold the registry mutex
+      return 1
+  ```
+
 - Like the deletion, the comment takes the blank lines after the docstring.
 
 - A comment cannot share a line with code before it. The comment for a docstring on the `def` line, or sharing its line

@@ -73,6 +73,35 @@ fn test_module_docstring_removal_leaves_no_blank_lines_ending_the_file() {
     assert_eq!(common::read(root.path(), "tests/__init__.py"), "# Licensed under the license.\n#\n");
 }
 
+// A comment after a docstring that other code follows stays on a line of its own, unless it is a pragma, which goes
+// with the docstring's line.
+#[test_case(
+    "module.py",
+    "def _acquire() -> int:\n    \"\"\"Take the lock.\"\"\"  # callers must already hold the registry mutex\n    return 1\n",
+    "SMP901",
+    "def _acquire() -> int:\n    # callers must already hold the registry mutex\n    return 1\n" ;
+    "function"
+)]
+#[test_case(
+    "tests/test_net.py",
+    "\"\"\"Network tests.\"\"\"  # these need the staging VPN\nimport os\n",
+    "SMP902",
+    "# these need the staging VPN\nimport os\n" ;
+    "test_module"
+)]
+#[test_case(
+    "module.py",
+    "def _run() -> None:\n    \"\"\"Run the job.\"\"\"  # noqa: E501\n    print()\n",
+    "SMP901",
+    "def _run() -> None:\n    print()\n" ;
+    "pragma"
+)]
+fn docstring_comment_stays_after_removal(file: &str, source: &str, select: &str, fixed: &str) {
+    let root = common::project(&[("pyproject.toml", ""), (file, source)]);
+    common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", select]);
+    assert_eq!(common::read(root.path(), file), fixed);
+}
+
 // The comment wraps to the shorter of Ruff's line and doc line limits at the indentation `ruff format` gives the body,
 // so a body indented by two spaces wraps the same.
 #[test_case("    " ; "formatted")]

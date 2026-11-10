@@ -1,10 +1,10 @@
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::Fix;
 use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::docstring;
-use crate::rules::edits::statement_deletion;
+use crate::rules::docstrings::docstring_deletion;
 
 pub fn test_module_docstring(checker: &Checker) {
     if !checker.is_test_module() {
@@ -16,9 +16,9 @@ pub fn test_module_docstring(checker: &Checker) {
     };
     // A file-level `ruff: noqa` may name codes that only the docstring triggers, so the docstring stays.
     let fix = (!checker.state().has_file_noqa(checker))
-        .then(|| statement_deletion(checker, body[0].range(), body.get(1).map(Ranged::range), true))
+        .then(|| docstring_deletion(checker, body))
         .flatten()
-        .map(|deletion| Fix::unsafe_edit(Edit::range_deletion(deletion)));
+        .map(Fix::unsafe_edit);
     checker.report_fix(
         Rule::TestModuleDocstring,
         literal.range(),

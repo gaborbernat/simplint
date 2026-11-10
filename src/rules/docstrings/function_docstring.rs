@@ -12,9 +12,9 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::comments::is_tool_directive;
-use crate::rules::docstrings::Need;
 use crate::rules::docstrings::rst::{SIGNATURE_SECTIONS, field_marker};
-use crate::rules::edits::{lines_with_trailing_blanks, statement_deletion};
+use crate::rules::docstrings::{Need, docstring_deletion};
+use crate::rules::edits::lines_with_trailing_blanks;
 use crate::rules::{docstring, indentation};
 
 pub fn function_docstring(checker: &Checker) {
@@ -142,7 +142,7 @@ fn removal(checker: &Checker, stmt: &Stmt, owner_body: &[Stmt]) -> Option<Edit> 
     if owner_body.len() == 1 {
         return Some(Edit::range_replacement("...".to_owned(), with_pragma(checker, stmt)));
     }
-    statement_deletion(checker, stmt.range(), owner_body.get(1).map(Ranged::range), true).map(Edit::range_deletion)
+    docstring_deletion(checker, owner_body)
 }
 
 // The comment goes where the docstring was, on lines of its own as `ruff format` would leave the body, wrapped to the

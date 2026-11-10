@@ -41,12 +41,16 @@ pub(crate) use undocumented_public_api::undocumented_public_api;
 
 use std::path::Path;
 
+use ruff_diagnostics::Edit;
 use ruff_python_ast::{self as ast, Expr, Stmt};
+use ruff_python_trivia::is_pragma_comment;
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
 use crate::project::{Exposure, FileIndex};
+use crate::rules::edits::statement_deletion;
+use crate::rules::{indentation, is_alone_on_lines};
 use crate::syntax::{Exports, Visibility, decorator_names, is_overload, module_statements};
 
 enum ApiKind {
@@ -360,4 +364,20 @@ fn is_documented_variable(checker: &Checker, stmt: &Stmt, next: Option<&Stmt>) -
     docstring_below
         || checker.comment_above(stmt).is_some_and(is_doc_comment)
         || checker.trailing_comment(stmt).is_some_and(is_doc_comment)
+}
+
+// Deletes the docstring that starts a body. A comment after it stays on a line of its own, unless it is a pragma,
+// which covers the docstring's line only.
+pub(crate) fn docstring_deletion(checker: &Checker, body: &[Stmt]) -> Option<Edit> {
+    let stmt = &body[0];
+    let deletion = statement_deletion(checker, stmt.range(), body.get(1).map(Ranged::range), true)?;
+    let comment = checker.trailing_comment(stmt).filter(|comment| !is_pragma_comment(checker.text(*comment)));
+    match comment {
+        Some(comment) if is_alone_on_lines(checker.source, stmt.range()) => {
+            let newline = checker.stylist.line_ending().as_str();
+            let line = format!("{}{}{newline}", indentation(checker.source, stmt), checker.text(comment));
+            Some(Edit::range_replacement(line, deletion))
+        }
+        _ => Some(Edit::range_deletion(deletion)),
+    }
 }
