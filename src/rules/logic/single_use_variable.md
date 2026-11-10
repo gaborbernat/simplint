@@ -240,7 +240,7 @@ def total_price(prices: list[float]) -> str:
 
 - **A read in a parameter's default, while Ruff's
   [mutable-argument-default](https://docs.astral.sh/ruff/rules/mutable-argument-default/) (B006) or
-  [function-call-in-argument-default](https://docs.astral.sh/ruff/rules/function-call-in-argument-default/) (B008)
+  [function-call-in-default-argument](https://docs.astral.sh/ruff/rules/function-call-in-default-argument/) (B008)
   runs**: the default is evaluated once, when the function is defined, and inlining a value that one of them reports
   would make Ruff report it, so the variable stays. B006 reports a mutable display, a comprehension, or a call of a
   mutable type such as `list()` or `collections.Counter()`. B008 reports a call, except one of an immutable type such as
