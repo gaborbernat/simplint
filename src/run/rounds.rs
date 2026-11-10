@@ -673,7 +673,7 @@ fn lint_rounds<'f, T: Send>(
     };
     let mut rewritten: Vec<usize> = (0..passes.len()).filter(|&at| passes[at].iter().any(rewrote)).collect();
     // Each file's words, read when a round first needs them and again once a round rewrites the file.
-    let mut words: Vec<Option<FxHashSet<String>>> = vec![None; files.len()];
+    let mut words: Vec<Option<Words>> = vec![None; files.len()];
     let parts = index.parts;
     for _ in 1..ROUNDS {
         if rewritten.is_empty() {
@@ -739,7 +739,7 @@ fn reindex(
     rewritten: &[usize],
     collect: impl Fn(usize) -> Option<FileFacts> + Sync,
     files: &[RunFile],
-    words: &mut [Option<FxHashSet<String>>],
+    words: &mut [Option<Words>],
     project: &Project,
 ) -> (Project, Vec<usize>) {
     // A fix never leaves a file that does not parse, so a rewritten file keeps having facts.
@@ -754,14 +754,14 @@ fn reindex(
     let changed = next.changed_names(project);
     if !changed.is_empty() {
         words.par_iter_mut().zip(files).filter(|(known, _)| known.is_none()).for_each(|(known, file)| {
-            *known = Some(words_of(file.path));
+            *known = Some(Words::of(file.path));
         });
     }
     let dependents = (0..files.len())
         .into_par_iter()
         .filter(|&at| {
             let path = files[at].absolute.as_path();
-            let mentions = || words[at].as_ref().is_some_and(|held| changed.iter().any(|name| held.contains(*name)));
+            let mentions = || words[at].as_ref().is_some_and(|held| changed.iter().any(|name| held.holds(name)));
             next.file(path) != project.file(path) || mentions()
         })
         .collect();
@@ -782,10 +782,30 @@ fn index_project(
 
 // The names a file holds, to tell whether it names any of the attribute or base class names whose answers changed; the
 // rules ask about names the file itself holds, such as its dataclass fields, so a file without one gets the same
-// answers.
-fn words_of(path: &Path) -> FxHashSet<String> {
-    let source = std::fs::read_to_string(path).unwrap_or_default();
-    source.split(|char: char| !(char.is_alphanumeric() || char == '_')).map(str::to_owned).collect()
+// answers. Each run keeps these for every file through its rounds, so it holds their hashes, sorted: a hash two words
+// share only lints a file again that did not need it.
+#[derive(Clone)]
+struct Words(Vec<u64>);
+
+impl Words {
+    fn of(path: &Path) -> Self {
+        let source = std::fs::read_to_string(path).unwrap_or_default();
+        let mut hashes: Vec<u64> =
+            source.split(|char: char| !(char.is_alphanumeric() || char == '_')).map(word_hash).collect();
+        hashes.sort_unstable();
+        hashes.dedup();
+        Self(hashes)
+    }
+
+    fn holds(&self, word: &str) -> bool {
+        self.0.binary_search(&word_hash(word)).is_ok()
+    }
+}
+
+fn word_hash(word: &str) -> u64 {
+    let mut hasher = rustc_hash::FxHasher::default();
+    hasher.write(word.as_bytes());
+    hasher.finish()
 }
 
 // A file's linter, from simplint's settings and Ruff's for it and the package it sits in.
