@@ -197,9 +197,13 @@ pub fn fixture_project() -> TempDir {
         let below_rule: PathBuf =
             entry.path().strip_prefix(&fixtures).expect("below the fixtures").components().skip(2).collect();
         let target = root.path().join(below_rule);
+        // Insta deletes a stale `.snap.new` or `.pending-snap` while other tests walk the fixtures, so no snapshot file
+        // is copied.
+        let name = entry.file_name().to_string_lossy();
+        let snapshot = [".snap", ".snap.new", ".pending-snap"].iter().any(|suffix| name.ends_with(suffix));
         if entry.file_type().is_dir() {
             fs::create_dir_all(target).expect("create fixture directory");
-        } else if entry.path().extension().is_none_or(|extension| extension != "snap") {
+        } else if !snapshot {
             fs::copy(entry.path(), target).expect("copy fixture");
         }
     }
