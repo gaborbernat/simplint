@@ -1,7 +1,10 @@
+use std::cell::RefCell;
+
 use ruff_python_ast::helpers::{any_over_body, any_over_expr};
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
+use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
@@ -12,7 +15,8 @@ pub fn loop_in_test(checker: &Checker) {
     let mut found = Vec::new();
     for function in checker.function_defs() {
         if is_test_module_function(checker, function) {
-            Loops { cases: Cases { checker, function }, found: &mut found }.visit_body(&function.body);
+            Loops { cases: Cases { checker, function, known: RefCell::default() }, found: &mut found }
+                .visit_body(&function.body);
         }
     }
     found.sort_by_key(Ranged::start);
@@ -108,6 +112,9 @@ const MAX_NAME_DEPTH: usize = 8;
 struct Cases<'c, 'a> {
     checker: &'c Checker<'a>,
     function: &'a ast::StmtFunctionDef,
+    // Whether a local name is known, by its binding, whether a table is asked and the depth it is asked at, so each
+    // chain of names is followed once rather than once per path to it.
+    known: RefCell<FxHashMap<(TextRange, bool, usize), bool>>,
 }
 
 impl<'a> Cases<'_, 'a> {
@@ -192,12 +199,18 @@ impl<'a> Cases<'_, 'a> {
         let Some(&binding) = bindings.next() else {
             return true;
         };
-        bindings.next().is_none()
+        let key = (binding, table, depth);
+        if let Some(&known) = self.known.borrow().get(&key) {
+            return known;
+        }
+        let known = bindings.next().is_none()
             && depth < MAX_NAME_DEPTH
             && !is_mutated(&self.function.body, name.id.as_str())
             && assigned_value(&self.function.body, binding).is_some_and(|value| {
                 if table { self.is_table(value, depth + 1) } else { self.is_known(value, depth + 1) }
-            })
+            });
+        self.known.borrow_mut().insert(key, known);
+        known
     }
 }
 
