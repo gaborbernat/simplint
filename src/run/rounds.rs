@@ -702,11 +702,11 @@ fn lint_rounds<'f, T: Send>(
     // Two files whose fixes keep changing each other's facts would not settle; past this many rounds, the last
     // reports stand.
     const ROUNDS: usize = 8;
-    // A file an applied fix rewrote has a new key. A diff run's fixes leave the disk as it was, and the reports of a
-    // file it fixed are not its source's, so such a file is not cached.
+    // A file an applied fix rewrote has a new key. A diff run's fixes leave the disk as it was, so every file a later
+    // round lints sees an index the disk does not hold, and nothing such a round reports is cached.
     let overlay = index.overlay;
     let recache = |at: usize| {
-        if overlay.holds(files[at].path) {
+        if !overlay.is_empty() {
             return None;
         }
         Some((file_caches[at]?.0, FileKey::of(files[at].path)?))

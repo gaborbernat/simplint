@@ -25,8 +25,9 @@ Like Ruff, simplint caches which files had nothing to report, keyed by each file
 permissions, and also by its size. With a :ref:`cross-file rule <cross-file-rules>` enabled, a cached result also
 depends on the names other files use from that file, so editing an importer checks the files it imports again. A file
 only per-file rules check keeps its cached result. A file whose fixes cannot be written is not cached, because whether
-its directory lets it be written is not part of its key, and a file that ``--diff`` fixes is not cached either, because
-its reports are those of the fixed source.
+its directory lets it be written is not part of its key. A ``--diff`` run caches nothing computed from a fix it keeps in
+memory, neither for the file it fixes nor for another file linted after that fix, because those reports describe the
+fixed source, not the disk.
 
 Without fixes, a file that does not parse, or cannot be read because it is not UTF-8, keeps its syntax error or read
 error too, so a warm run reports it again without building the project index.

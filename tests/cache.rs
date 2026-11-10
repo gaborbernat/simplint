@@ -939,6 +939,32 @@ fn unwritten_fix_is_not_cached_as_clean() {
     );
 }
 
+// A `--diff` run keeps its fixes in memory. A file linted after a fix in another file sees that fix, so its reports are
+// not the disk's and a later run must not reuse them: `writer.py` repeats `reader.py` only until `reader.py`'s fix
+// changes its statements.
+#[test]
+fn diff_run_does_not_cache_reports_computed_from_fixes_it_kept_in_memory() {
+    let body = r#"def parse_lines(text):
+    lines = text.splitlines()
+    values = {}
+    for line in lines:
+        key, _, value = line.partition("=")
+        values[key] = value
+"#;
+    let tail =
+        "    count = len(values)\n    if count == 0:\n        raise ValueError(\"no values\")\n    return values\n";
+    let root = project(&[
+        ("reader.py", &[body, tail].concat()),
+        ("writer.py", &[body, tail].concat().replace("len(values)\n", "len(values)  # noqa: SMP502\n")),
+    ]);
+    let args = ["--select", "SMP502,SMP530"];
+    check(root.path(), &args);
+    check(root.path(), &[&args[..], &["--diff"]].concat());
+    let warm = check(root.path(), &args);
+    let fresh = check(root.path(), &[&args[..], &["--no-cache"]].concat());
+    assert_eq!((warm.1.matches("SMP530").count(), warm.1.contains("SMP502"), warm), (2, true, fresh));
+}
+
 // A private import in a test is judged by the source file the test mirrors, which is on disk, so a clean result of an
 // earlier run does not stand once that file is gone.
 #[test]
