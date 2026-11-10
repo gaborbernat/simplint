@@ -1055,8 +1055,8 @@ fn loops_over_unknown_iterables_name_no_attribute(body: &str) {
         check(root.path(), &["--select", "SMP402"]).1,
         common::native(
             "docs/tutorial.py:1:12: SMP402 [*] `client` is in `__all__`, yet no other module imports it; list only what \
-             other modules use\ndocs/tutorial.py:1:22: SMP402 [*] `engine` is in `__all__`, yet no other module imports \
-             it; list only what other modules use\nFound 2 errors.\n[*] 2 fixable with `--fix`.\n"
+             other modules use\ndocs/tutorial.py:1:22: SMP402 `engine` is in `__all__`, yet no other module imports \
+             it; list only what other modules use\nFound 2 errors.\n[*] 1 fixable with `--fix`.\n"
         )
     );
 }
@@ -2015,8 +2015,8 @@ fn unlisted_build_hooks_are_listed_like_entry_points() {
     assert_eq!(
         check(root.path(), &["--select", "SMP401,SMP403,SMP409"]).1,
         "build_backend.py:1:5: SMP401 [*] `build_wheel` is imported by other modules; list it in `__all__`\n\
-         build_backend.py:5:5: SMP401 [*] `get_requires_for_build_wheel` is imported by other modules; list it in \
-         `__all__`\nFound 2 errors.\n[*] 2 fixable with `--fix`.\n"
+         build_backend.py:5:5: SMP401 `get_requires_for_build_wheel` is imported by other modules; list it in \
+         `__all__`\nFound 2 errors.\n[*] 1 fixable with `--fix`.\n"
     );
 }
 
