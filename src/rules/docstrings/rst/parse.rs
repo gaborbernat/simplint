@@ -223,7 +223,7 @@ impl<'a> Docstring<'a> {
 
 // The text between the colons of a field, as `param count` in `:param count: How many.`. A role such as `:class:`Name``
 // starting a line of prose has a backtick after its colon, not a space.
-fn field_marker(line: &str) -> Option<&str> {
+pub(crate) fn field_marker(line: &str) -> Option<&str> {
     let rest = line.strip_prefix(':')?;
     let end = rest.find(':')?;
     let marker = &rest[..end];
@@ -235,7 +235,8 @@ fn field_marker(line: &str) -> Option<&str> {
     .then_some(marker)
 }
 
-const SECTIONS: &[&str] = &[
+// The Google and numpydoc sections documenting a function's parameters and results.
+pub(crate) const SIGNATURE_SECTIONS: &[&str] = &[
     "Args",
     "Arguments",
     "Parameters",
@@ -248,19 +249,22 @@ const SECTIONS: &[&str] = &[
     "Yields",
     "Yield",
     "Raises",
-    "Attributes",
 ];
+
+fn is_section(heading: &str) -> bool {
+    heading == "Attributes" || SIGNATURE_SECTIONS.contains(&heading)
+}
 
 // `Args:` over indented lines, as Google style writes a section, or `Parameters` over a line of dashes, as numpydoc does.
 fn section(line: &str, next: Option<&str>, level: usize) -> Option<Section> {
     let next = next.filter(|next| !next.is_empty())?;
     let next_level = next.len() - next.trim_start().len();
-    if let Some(heading) = line.strip_suffix(':').filter(|heading| SECTIONS.contains(heading))
+    if let Some(heading) = line.strip_suffix(':').filter(|heading| is_section(heading))
         && next_level > level
     {
         return Some(Section { heading: heading.to_owned(), numpy: false });
     }
     let underline = next.trim();
-    (SECTIONS.contains(&line) && underline.len() >= 3 && underline.chars().all(|char| char == '-'))
+    (is_section(line) && underline.len() >= 3 && underline.chars().all(|char| char == '-'))
         .then(|| Section { heading: line.to_owned(), numpy: true })
 }

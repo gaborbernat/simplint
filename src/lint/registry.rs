@@ -469,15 +469,31 @@ pub const GROUPS: [(&str, &str, &str); 10] = [
 ];
 
 impl Rule {
-    fn group_entry(self) -> Option<(&'static str, &'static str, &'static str)> {
-        GROUPS.iter().copied().find(|(family, _, _)| *family == self.family())
+    // `--select SMP6` picks rules by this digit, so the listing groups them by it too.
+    fn group_entry(self) -> (&'static str, &'static str, &'static str) {
+        GROUPS[usize::from(self.code().as_bytes()["SMP".len()] - b'0')]
     }
 
     pub fn group(self) -> &'static str {
-        self.group_entry().map_or("", |(_, name, _)| name)
+        self.group_entry().1
     }
 
     pub fn short_group(self) -> &'static str {
-        self.group_entry().map_or("", |(_, _, short)| short)
+        self.group_entry().2
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Rule;
+
+    #[test]
+    fn code_digit_names_the_family_group() {
+        let misplaced: Vec<_> = Rule::ALL
+            .iter()
+            .filter(|rule| rule.group_entry().0 != rule.family())
+            .map(|rule| (rule.code(), rule.family(), rule.group_entry().0))
+            .collect();
+        assert_eq!(misplaced, Vec::new());
     }
 }

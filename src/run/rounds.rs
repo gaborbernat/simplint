@@ -18,14 +18,13 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use super::conflicts::{self, Scope};
 use super::discover::{Discovered, discover, linted_roots};
 use super::{Diagnostics, Mode, Resolved, StdinLint, lint_path, lint_stdin, write_source};
-use crate::cli::printer::FullDisplay;
 use crate::lint::Linter;
 use crate::lint::registry::{Rule, RuleSet};
-use crate::project::cache::{Cache, Caches, FileKey, Fingerprints};
+use crate::project::cache::{self, FileKey};
 use crate::project::{
     DocReferences, Ending, External, FileFacts, ImportResolver, IndexInputs, Parts, Project, SearchRoots,
 };
-use crate::rules::classes::dataclass_kw_only::suppresses_rewrite;
+use crate::run::cache::{Cache, Caches, Fingerprints, FullDisplay};
 use crate::settings::{FileSettings, ModuleRole, Settings};
 
 // Ruff's `add_noqa`: a file that cannot be read or written is logged and left as it is.
@@ -119,14 +118,8 @@ pub(crate) fn check_stdin(path: &Path, source: &str, resolved: &Resolved, mode: 
         .remove(&files[0].nested)
         .unwrap_or_default();
     let parts = wanted_parts(rules);
-    let facts = FileFacts::collect(
-        &absolute,
-        source,
-        files[0].module_path.as_deref(),
-        files[0].importable.as_deref(),
-        &suppresses_rewrite,
-        parts,
-    );
+    let facts =
+        FileFacts::collect(&absolute, source, files[0].module_path.as_deref(), files[0].importable.as_deref(), parts);
     let mut passes = index_and_lint(
         &files,
         (parts, &inputs, &startup),
@@ -188,7 +181,7 @@ fn for_each_file<T: Send>(
     let rules = rules_of(&linted);
     let parts = wanted_parts(rules);
     if let Some(cache_dir) = cache_dir {
-        Caches::prepare(cache_dir);
+        cache::prepare(cache_dir);
     }
     // The documentation walk reads files of its own, so it runs while the caches open and the facts are collected,
     // which on a warm run is most of what comes before the index.
@@ -727,7 +720,7 @@ fn file_facts(file: &RunFile, cache: Option<(&Cache<'_>, FileKey)>, parts: Parts
         None => parts,
     };
     let source = std::fs::read_to_string(file.path).ok()?;
-    let facts = FileFacts::collect(file.path, &source, module_path, importable, &suppresses_rewrite, parts)?;
+    let facts = FileFacts::collect(file.path, &source, module_path, importable, parts)?;
     if let Some((cache, key)) = cache {
         cache.set_facts(file.path, key, &facts);
     }

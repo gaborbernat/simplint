@@ -426,6 +426,19 @@ fn unused_default_counts_calls_from_other_files() {
     );
 }
 
+// A call that suppresses `dataclass-kw-only` still passes its arguments, so it counts like any other call.
+#[test_case("connect(\"a\", 1)  # noqa: SMP703\n" ; "noqa")]
+#[test_case("connect(\"a\", 1)  # simplint: ignore[dataclass-kw-only] positional on purpose\n" ; "ignore")]
+fn unused_default_counts_calls_that_suppress_dataclass_kw_only(call: &str) {
+    let caller = format!("from core import connect\n\n{call}");
+    let root = common::project(&[
+        ("core.py", "def connect(host, timeout=30):\n    return host, timeout\n"),
+        ("main.py", caller.as_str()),
+    ]);
+    let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP506"]);
+    assert!(stdout.contains("SMP506 Every call to `connect` passes `timeout`"), "{stdout}");
+}
+
 // A library's public functions may be called by outside code that omits the argument.
 #[test]
 fn unused_default_leaves_the_public_api_alone() {
@@ -966,6 +979,10 @@ fn string_concatenation_before_python312(target: &str, source: &str, reported: u
 #[test_case("preview = true\nselect = [\"FURB113\"]\n", "xs = []\nxs.append(1)\nxs.append(2)\nxs = []\nxs.append(3)\nxs.append(4)\n", 1 ; "rebound_second_run_kept")]
 #[test_case("preview = true\nselect = [\"FURB113\"]\n", "def build() -> list[int]:\n    xs = []\n    xs.append(1)\n    xs.append(2)\n    return xs\n", 0 ; "function_scope")]
 #[test_case("preview = true\nselect = [\"FURB113\"]\n", "def build(xs: list[int]) -> None:\n    xs = []\n    xs.append(1)\n    xs.append(2)\n", 1 ; "parameter_rebound_kept")]
+#[test_case("preview = true\nselect = [\"FURB113\"]\n", "xs = []\nxs.append(1)\nprint(xs)\nxs.append(2)\n", 1 ; "call_between")]
+#[test_case("preview = true\nselect = [\"FURB113\"]\n", "xs = []\nxs.append(1)\nxs\nxs.append(2)\n", 1 ; "expression_between")]
+#[test_case("preview = true\nselect = [\"FURB113\"]\n", "xs = []\nxs.append(1)\nxs.copy().append(0)\nxs.append(2)\n", 1 ; "append_on_call_between")]
+#[test_case("preview = true\nselect = [\"FURB113\"]\n", "xs = []\nxs.append(1)\nxs.insert(0, 0)\nxs.append(2)\n", 1 ; "insert_between")]
 fn collection_built_by_statements_leaves_repeated_appends_to_ruff(config: &str, source: &str, reported: usize) {
     let ruff = format!("[tool.ruff.lint]\n{config}");
     let root = common::project(&[("pyproject.toml", ruff.as_str()), ("module.py", source)]);

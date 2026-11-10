@@ -297,7 +297,7 @@ pub struct SimplintOptions {
         value_type = "list[RuleSelector]",
         example = r#"
             # Only enable the test rules.
-            select = ["SMP2"]
+            select = ["SMP8"]
         "#
     )]
     #[schemars(with = "Vec<RuleSelectorSchema>")]
@@ -309,7 +309,7 @@ pub struct SimplintOptions {
         value_type = "list[RuleSelector]",
         example = r#"
             # On top of `select`, enable the test rules.
-            extend-select = ["SMP2"]
+            extend-select = ["SMP8"]
         "#
     )]
     #[schemars(with = "Vec<RuleSelectorSchema>")]
@@ -334,7 +334,7 @@ pub struct SimplintOptions {
         value_type = "list[RuleSelector]",
         example = r#"
             # Only allow fix behavior for the test rules.
-            fixable = ["SMP2"]
+            fixable = ["SMP8"]
         "#
     )]
     #[schemars(with = "Vec<RuleSelectorSchema>")]
@@ -347,7 +347,7 @@ pub struct SimplintOptions {
         value_type = "list[RuleSelector]",
         example = r#"
             # Enable fix for the test rules, on top of any rules specified by `fixable`.
-            extend-fixable = ["SMP2"]
+            extend-fixable = ["SMP8"]
         "#
     )]
     #[schemars(with = "Vec<RuleSelectorSchema>")]
@@ -463,7 +463,7 @@ pub struct SimplintOptions {
     )]
     pub api_packages: Option<Vec<String>>,
 
-    /// The markup of docstrings, which the reStructuredText rules, `SMP910` to `SMP925`, check: `"rst"` for
+    /// The markup of docstrings, which the reStructuredText rules, `SMP910` to `SMP924`, check: `"rst"` for
     /// reStructuredText field lists, such as `:param name:`, `:returns:` and `:raises Error:`. Unset, those rules do not
     /// report.
     #[option(
@@ -604,8 +604,8 @@ pub struct LogicOptions {
         default = "2",
         value_type = "int",
         example = r#"
-            # Three-element tuples are records too.
-            max-tuple-elements = 2
+            # Allow three-element tuples, such as `(x, y, z)`.
+            max-tuple-elements = 3
         "#
     )]
     pub max_tuple_elements: Option<usize>,

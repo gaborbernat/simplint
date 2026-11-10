@@ -166,7 +166,6 @@ impl FileFacts {
         source: &str,
         module_path: Option<&[String]>,
         importable: Option<&[String]>,
-        suppresses_rewrite: &dyn Fn(&str) -> bool,
         parts: Parts,
     ) -> Option<Self> {
         let parsed = parse_module(source).ok()?;
@@ -201,7 +200,7 @@ impl FileFacts {
         let attribute_writes =
             AttributeWrites::collect(&parsed.syntax().body, &imports.aliases, &module_name(module_path, path));
         let mut scan = Scan::of(&parsed.syntax().body, parts);
-        let constructors = constructors(path, (source, &parsed), &imports, suppresses_rewrite, parts, &mut scan);
+        let constructors = constructors(path, (source, &parsed), &imports, parts, &mut scan);
         // A module whose spec no static path resolves reads names of any module, as a computed import does.
         let mut modules = scan.modules;
         modules.extend(imports.unknown_modules.iter().cloned());
@@ -368,7 +367,6 @@ fn constructors(
     path: &Path,
     (source, parsed): (&str, &Parsed<ModModule>),
     imports: &FactVisitor,
-    suppresses_rewrite: &dyn Fn(&str) -> bool,
     parts: Parts,
     scan: &mut Scan<'_>,
 ) -> Constructors {
@@ -378,15 +376,8 @@ fn constructors(
     } else {
         CallContexts::default()
     };
-    let mut constructors = Constructors::collect(
-        source,
-        parsed.tokens(),
-        body,
-        &imports.aliases,
-        &imports.from_statements,
-        suppresses_rewrite,
-        &contexts,
-    );
+    let mut constructors =
+        Constructors::collect(source, parsed.tokens(), body, &imports.aliases, &imports.from_statements, &contexts);
     constructors.attribute_loads = take(&mut scan.attribute_loads);
     constructors.computed_reads = take(&mut scan.computed_reads);
     constructors
@@ -448,7 +439,7 @@ mod tests {
 
     fn collected() -> FileFacts {
         let parts = Parts::default().with(Parts::RUNTIME_IMPORTS).with(Parts::STATEMENTS);
-        FileFacts::collect(Path::new("module.py"), SOURCE, None, None, &|_| false, parts).expect("facts")
+        FileFacts::collect(Path::new("module.py"), SOURCE, None, None, parts).expect("facts")
     }
 
     #[test_case(&|_| {}, true ; "as_collected")]

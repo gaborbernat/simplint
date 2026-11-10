@@ -22,6 +22,7 @@ use ruff_python_semantic::{
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::FxHashSet;
 
+use super::RuffMatches;
 use super::append::is_list_append;
 use super::django::unordered_model_statements;
 use super::runtime::Runtime;
@@ -43,6 +44,7 @@ pub fn build<'a>(
     body: &'a [Stmt],
     target_version: PythonVersion,
     settings: &'a LinterSettings,
+    matches: RuffMatches,
 ) -> Model<'a> {
     let module = Module {
         kind: if path.ends_with("__init__.py") { ModuleKind::Package } else { ModuleKind::Module },
@@ -54,6 +56,7 @@ pub fn build<'a>(
         semantic: SemanticModel::new(&[], &[], target_version, PySourceType::Python, path, module),
         target_version,
         runtime: Runtime::new(settings),
+        matches,
         functions: Vec::new(),
         lambdas: Vec::new(),
         loads: Vec::new(),
@@ -80,6 +83,7 @@ struct Builder<'a> {
     semantic: SemanticModel<'a>,
     target_version: PythonVersion,
     runtime: Runtime<'a>,
+    matches: RuffMatches,
     functions: Vec<(&'a ast::StmtFunctionDef, Snapshot)>,
     lambdas: Vec<(&'a ast::ExprLambda, Snapshot)>,
     loads: Vec<(&'a ast::ExprName, Snapshot)>,
@@ -91,7 +95,7 @@ struct Builder<'a> {
 impl Builder<'_> {
     // The appends on a list that Ruff's FURB113 matches, recorded where the scope reads as Ruff reads it.
     fn note_list_append(&mut self, stmt: &Stmt) {
-        if is_list_append(&self.semantic, stmt) {
+        if self.matches.list_appends && is_list_append(&self.semantic, stmt) {
             self.list_appends.insert(stmt.range());
         }
     }
@@ -179,7 +183,9 @@ impl<'a> Visitor<'a> for Builder<'a> {
                 }
                 self.semantic.push_scope(ScopeKind::Class(class_def));
                 self.visit_body(&class_def.body);
-                self.django_reports.extend(unordered_model_statements(&self.semantic, class_def));
+                if self.matches.django_reports {
+                    self.django_reports.extend(unordered_model_statements(&self.semantic, class_def));
+                }
                 let scope_id = self.semantic.scope_id;
                 self.semantic.pop_scope();
                 self.semantic.pop_scope();

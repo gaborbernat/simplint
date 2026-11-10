@@ -23,6 +23,15 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::syntax::{first_positional, is_name, receiver};
 
+// The statements of a file whose Ruff reports a rule mirrors, collected only when an enabled rule reads them.
+#[derive(Clone, Copy, Default)]
+pub struct RuffMatches {
+    // The appends on a list that Ruff's FURB113 counts.
+    pub list_appends: bool,
+    // The statements of Django models that Ruff's DJ012 reports.
+    pub django_reports: bool,
+}
+
 pub struct Semantic<'a> {
     model: SemanticModel<'a>,
     annotations_are_lazy: bool,
@@ -36,7 +45,13 @@ pub struct Semantic<'a> {
 }
 
 impl<'a> Semantic<'a> {
-    pub fn new(path: &'a Path, body: &'a [Stmt], target_version: PythonVersion, settings: &'a LinterSettings) -> Self {
+    pub fn new(
+        path: &'a Path,
+        body: &'a [Stmt],
+        target_version: PythonVersion,
+        settings: &'a LinterSettings,
+        matches: RuffMatches,
+    ) -> Self {
         let builder::Model {
             semantic: mut model,
             loads,
@@ -45,7 +60,7 @@ impl<'a> Semantic<'a> {
             django_reports,
             list_appends,
             type_checking_stubs,
-        } = builder::build(path, body, target_version, settings);
+        } = builder::build(path, body, target_version, settings, matches);
         let mut index = Index::default();
         let module_bindings = index.collect_bindings(&model);
         for (name, snapshot) in loads {
@@ -60,12 +75,14 @@ impl<'a> Semantic<'a> {
         Self { model, annotations_are_lazy, index, django_reports, list_appends, type_checking_stubs }
     }
 
-    // Whether Ruff's DJ012 reports the statement at `range`, a statement of a Django model's body.
+    // Whether Ruff's DJ012 reports the statement at `range`, a statement of a Django model's body; only answered when
+    // `RuffMatches::django_reports` asked for it.
     pub fn reported_by_dj012(&self, range: TextRange) -> bool {
         self.django_reports.contains(&range)
     }
 
-    // Whether the statement at `range` is an append on a list, as FURB113 matches it.
+    // Whether the statement at `range` is an append on a list, as FURB113 matches it; only answered when
+    // `RuffMatches::list_appends` asked for it.
     pub fn is_list_append(&self, range: TextRange) -> bool {
         self.list_appends.contains(&range)
     }

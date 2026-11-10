@@ -1,6 +1,5 @@
 ---
 source: tests/common/mod.rs
-assertion_line: 137
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
 2:5 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
@@ -10,7 +9,9 @@ expression: "lint_fixture(rule, fixture, target_version)"
 47:5 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
 58:5 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
 66:5 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Remove the docstring]
---- fixed (7 applied, 0 remaining) ---
+74:5 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
+85:5 SMP901 Function docstring on internal code; let the name, signature and types document it [unsafe fix: Turn the docstring into a comment]
+--- fixed (9 applied, 0 remaining) ---
 def _run(args: list[str] | None = None) -> int:
     # Run the formatter.
     return 0
@@ -45,4 +46,16 @@ def _role(name: str) -> None:
 
 
 def _sections_only(name: str) -> None:
+    print(name)
+
+
+def _short_sections(name: str) -> None:
+    # Store the entry under a name.
+    print(name)
+
+
+def _spaced_colon(name: str) -> None:
+    # Store the entry under a name.
+    #
+    # : name: is how the caller spells the key.
     print(name)

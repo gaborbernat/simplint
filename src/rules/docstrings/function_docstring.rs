@@ -13,6 +13,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::comments::is_tool_directive;
 use crate::rules::docstrings::Need;
+use crate::rules::docstrings::rst::{SIGNATURE_SECTIONS, field_marker};
 use crate::rules::edits::{lines_with_trailing_blanks, statement_deletion};
 use crate::rules::{docstring, indentation};
 
@@ -258,20 +259,6 @@ fn is_underline(line: &str) -> bool {
     trimmed.len() >= 3 && trimmed.chars().all(|char| matches!(char, '-' | '=' | '~' | '^' | '*' | '+' | '#' | '_'))
 }
 
-// The sections documenting parameters and results, in Google style with a colon and in numpydoc without one.
-const SECTIONS: [&str; 10] = [
-    "Args",
-    "Arguments",
-    "Keyword Args",
-    "Keyword Arguments",
-    "Parameters",
-    "Other Parameters",
-    "Returns",
-    "Return",
-    "Yields",
-    "Raises",
-];
-
 // Drops the reST fields and the sections that document the signature, with their bodies, and the blank lines that
 // would be left separating nothing.
 fn drop_fields(lines: &[String]) -> Vec<String> {
@@ -299,14 +286,14 @@ fn field_block_end(lines: &[String], start: usize) -> Option<usize> {
     let line = &lines[start];
     let trimmed = line.trim();
     let lead = indent_width(line);
-    if is_field(trimmed) {
+    if field_marker(trimmed).is_some() {
         return Some(indented_end(lines, start, lead));
     }
     let (name, colon) = match trimmed.strip_suffix(':') {
         Some(name) => (name, true),
         None => (trimmed, false),
     };
-    if !SECTIONS.contains(&name) {
+    if !SIGNATURE_SECTIONS.contains(&name) {
         return None;
     }
     if colon {
@@ -316,7 +303,7 @@ fn field_block_end(lines: &[String], start: usize) -> Option<usize> {
     // next section.
     let body = lines[start + 1..]
         .iter()
-        .position(|line| line.trim().is_empty() || SECTIONS.contains(&line.trim()))
+        .position(|line| line.trim().is_empty() || SIGNATURE_SECTIONS.contains(&line.trim()))
         .unwrap_or(lines.len() - start - 1);
     Some(start + 1 + body)
 }
@@ -334,15 +321,6 @@ fn indented_end(lines: &[String], start: usize, lead: usize) -> usize {
         end = start + 2 + offset;
     }
     end
-}
-
-// A reST field such as `:param name: text` or `:return:`, not a role such as `:py:func:` that opens a sentence.
-fn is_field(trimmed: &str) -> bool {
-    trimmed.strip_prefix(':').is_some_and(|rest| {
-        rest.split_once(':').is_some_and(|(name, tail)| {
-            !name.is_empty() && !name.contains('`') && (tail.is_empty() || tail.starts_with(char::is_whitespace))
-        })
-    })
 }
 
 fn indent_width(line: &str) -> usize {

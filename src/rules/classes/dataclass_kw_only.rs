@@ -9,7 +9,7 @@ use rustc_hash::FxHashMap;
 use crate::lint::checker::{Checker, Related};
 use crate::lint::noqa;
 use crate::lint::registry::Rule;
-use crate::project::constructors::{CallKind, Use, Uses, init_fields};
+use crate::project::constructors::{CallKind, CallSite, Use, Uses, init_fields};
 use crate::rules::classes::{Offer, require_options, splatted_options};
 use crate::rules::edits::keep_debug_text;
 use crate::syntax::ExprCollector;
@@ -17,12 +17,6 @@ use crate::syntax::{dataclass_decorator, is_name};
 
 // `slots=`, `kw_only=` and the keyword calls the rule writes arrived in Python 3.10.
 pub(crate) const SINCE: PythonVersion = PythonVersion::PY310;
-
-// Whether a comment on a positional call withholds the class's fix, since the rewrite would pass that call by keyword
-// anyway, against the comment's wish.
-pub(crate) fn suppresses_rewrite(comment: &str) -> bool {
-    noqa::suppresses(comment, Rule::DataclassKwOnly.code())
-}
 
 pub fn dataclass_kw_only(checker: &Checker) {
     let module = OnceCell::new();
@@ -36,7 +30,13 @@ pub fn dataclass_kw_only(checker: &Checker) {
             .into_iter()
             .map(|range| Related { path: checker.path.to_path_buf(), range, message: CALL_MESSAGE.to_owned() })
             .collect();
-        let others = checker.project().calls().positional_calls(name);
+        let calls = checker.project().calls().positional_calls(name);
+        // A call that suppresses this rule leaves the report, but still withholds the fix, which would pass that call
+        // by keyword anyway, against the comment's wish.
+        let others: Vec<&CallSite> = calls
+            .iter()
+            .filter(|site| !site.comments.iter().any(|comment| noqa::suppresses(comment, Rule::DataclassKwOnly.code())))
+            .collect();
         related.extend(others.iter().map(|site| Related {
             path: site.caller.clone(),
             range: TextRange::new(TextSize::new(site.start), TextSize::new(site.end)),
@@ -47,7 +47,7 @@ pub fn dataclass_kw_only(checker: &Checker) {
             1 => "; 1 positional call in another file needs keyword arguments by hand".to_owned(),
             count => format!("; {count} positional calls in other files need keyword arguments by hand"),
         };
-        let edits = if others.is_empty() { keyword_calls(checker, module, class) } else { None };
+        let edits = if calls.is_empty() { keyword_calls(checker, module, class) } else { None };
         let options = if edits.is_some() { missing.to_vec() } else { Vec::new() };
         Some(Offer {
             options,

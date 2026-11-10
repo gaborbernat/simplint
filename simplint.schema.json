@@ -15,7 +15,7 @@
       }
     },
     "docstring-style": {
-      "description": "The markup of docstrings, which the reStructuredText rules, `SMP910` to `SMP925`, check: `\"rst\"` for\nreStructuredText field lists, such as `:param name:`, `:returns:` and `:raises Error:`. Unset, those rules do not\nreport.",
+      "description": "The markup of docstrings, which the reStructuredText rules, `SMP910` to `SMP924`, check: `\"rst\"` for\nreStructuredText field lists, such as `:param name:`, `:returns:` and `:raises Error:`. Unset, those rules do not\nreport.",
       "anyOf": [
         {
           "$ref": "#/definitions/DocstringStyle"

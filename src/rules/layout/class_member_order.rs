@@ -7,6 +7,14 @@ use super::class_order::{Arrangement, Inversion, Section, class_order};
 use super::reorder::{Suite, moved_span, moves_definition_unsafely, reorder_fix};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::settings::FileSettings;
+
+// Whether the rule runs on a file where Ruff's DJ012 reports Django model statements out of order, which the rule leaves
+// to Ruff and reads from the semantic model.
+pub(crate) fn leaves_django_order_to_ruff(settings: &FileSettings) -> bool {
+    settings.rules.contains(Rule::ClassMemberOrder)
+        && settings.from_ruff.ruff_runs(RuffRule::DjangoUnorderedBodyContentInModel)
+}
 
 pub fn class_member_order(checker: &Checker) {
     for class in checker.class_defs() {
@@ -33,7 +41,7 @@ fn check_class(checker: &Checker, class: &ast::StmtClassDef) {
     let resolved = |inversion: &Inversion| position[inversion.statement] < position[inversion.anchor];
     // Ruff's DJ012 reports a statement of a Django model that is out of the style guide order, without a fix, so the
     // layout leaves that report to Ruff unless it is the one that carries the class's fix.
-    let dj012 = checker.settings.from_ruff.ruff_runs(RuffRule::DjangoUnorderedBodyContentInModel);
+    let dj012 = leaves_django_order_to_ruff(checker.settings);
     let left_to_ruff =
         |inversion: &Inversion| dj012 && checker.semantic().reported_by_dj012(class.body[inversion.statement].range());
     let carrier = pending.as_ref().and_then(|_| {

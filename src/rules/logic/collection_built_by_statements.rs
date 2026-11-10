@@ -9,6 +9,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::expr_mentions;
 use crate::rules::logic::inline::{is_constant, is_hashable};
+use crate::settings::FileSettings;
 use crate::syntax::{for_each_body, is_name};
 
 pub fn collection_built_by_statements(checker: &Checker) {
@@ -134,13 +135,19 @@ fn check_run(checker: &Checker, assign: &Stmt, name: &str, kind: Kind, rest: &[S
     );
 }
 
+// Whether the rule runs on a file where Ruff's FURB113 counts list appends, which the rule then reads from the semantic
+// model.
+pub(crate) fn counts_ruff_appends(settings: &FileSettings) -> bool {
+    settings.rules.contains(Rule::CollectionBuiltByStatements)
+        && settings.from_ruff.preview
+        && settings.from_ruff.ruff_runs(RuffRule::RepeatedAppend)
+}
+
 // Ruff's FURB113 reports two or more appends to a list in a run of consecutive appends, when preview mode is on and the
 // project selects it. The run counts every append to the list in the appends that follow the literal, not only the
 // ones that enter it here.
 fn ruff_repeats_append(checker: &Checker, name: &str, rest: &[Stmt]) -> bool {
-    let from_ruff = &checker.settings.from_ruff;
-    from_ruff.preview
-        && from_ruff.ruff_runs(RuffRule::RepeatedAppend)
+    counts_ruff_appends(checker.settings)
         && rest
             .iter()
             .take_while(|stmt| checker.semantic().is_list_append(stmt.range()))
