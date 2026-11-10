@@ -28,7 +28,7 @@ use ruff_text_size::TextRange;
 
 use crate::project::computed_reads::ComputedReads;
 use crate::project::constructors::{FileUses, RunCalls};
-use crate::project::docs::{Module, stat_key};
+use crate::project::docs::{Module, Stat, stat};
 use crate::project::facts::ImportBinding;
 use crate::project::receivers::module_parts;
 use crate::project::{DocReferences, FileFacts};
@@ -66,8 +66,8 @@ impl SearchRoots {
     // is added, removed or renamed. Below those it walks only directories an import can name, `name-stubs` providing
     // `name`, and follows links as the resolver does, each directory once.
     pub fn layout_key<'a>(&self, files: impl Iterator<Item = &'a Path>, hasher: &mut CacheKeyHasher) {
-        let mut pending: Vec<PathBuf> = self.roots.clone();
-        pending.extend(files.filter_map(Path::parent).flat_map(|directory| {
+        let mut level: Vec<PathBuf> = self.roots.clone();
+        level.extend(files.filter_map(Path::parent).flat_map(|directory| {
             let root = self.roots.iter().find(|root| directory.starts_with(root));
             directory
                 .ancestors()
@@ -76,31 +76,23 @@ impl SearchRoots {
         }));
         let mut walked: FxHashSet<PathBuf> = FxHashSet::default();
         // Only a link can lead back to a directory already walked, so only a link's target is resolved to stop a loop.
+        // Each level is listed on all threads and its links are taken in order, so the same tree gives the same key.
         let mut linked: FxHashSet<PathBuf> = FxHashSet::default();
-        while let Some(directory) = pending.pop() {
-            if walked.contains(&directory) {
-                continue;
-            }
-            for entry in fs::read_dir(&directory).into_iter().flatten().filter_map(Result::ok) {
-                let name = entry.file_name();
-                if !name.to_str().is_some_and(|name| is_identifier(name.strip_suffix("-stubs").unwrap_or(name))) {
-                    continue;
-                }
-                let Ok(kind) = entry.file_type() else { continue };
-                let path = entry.path();
-                let followed = kind.is_symlink()
-                    && path.is_dir()
-                    && fs::canonicalize(&path).is_ok_and(|target| linked.insert(target));
-                if kind.is_dir() || followed {
-                    pending.push(path);
-                }
-            }
-            walked.insert(directory);
+        while !level.is_empty() {
+            level.retain(|directory| walked.insert(directory.clone()));
+            let below: Vec<(PathBuf, Option<PathBuf>)> =
+                level.par_iter().flat_map_iter(|directory| importable_directories(directory)).collect();
+            level = below
+                .into_iter()
+                .filter_map(|(path, target)| target.is_none_or(|target| linked.insert(target)).then_some(path))
+                .collect();
         }
         let mut walked: Vec<PathBuf> = walked.into_iter().collect();
         walked.sort_unstable();
-        for directory in walked {
-            stat_key(&directory, hasher);
+        let stats: Vec<Option<Stat>> = walked.par_iter().map(|directory| stat(directory)).collect();
+        for (directory, stat) in walked.iter().zip(stats) {
+            directory.cache_key(hasher);
+            stat.cache_key(hasher);
         }
     }
 
@@ -142,6 +134,32 @@ impl SearchRoots {
             })
             .collect()
     }
+}
+
+// The directories in `directory` an import can name, `name-stubs` providing `name`, each with the target it resolves
+// to when it is a link to a directory, which the resolver follows.
+fn importable_directories(directory: &Path) -> Vec<(PathBuf, Option<PathBuf>)> {
+    fs::read_dir(directory)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            let name = entry.file_name();
+            name.to_str().is_some_and(|name| is_identifier(name.strip_suffix("-stubs").unwrap_or(name)))
+        })
+        .filter_map(|entry| {
+            let kind = entry.file_type().ok()?;
+            let path = entry.path();
+            if kind.is_dir() {
+                Some((path, None))
+            } else if kind.is_symlink() && path.is_dir() {
+                let target = fs::canonicalize(&path).ok()?;
+                Some((path, Some(target)))
+            } else {
+                None
+            }
+        })
+        .collect()
 }
 
 // A run file by a number, so the index keys its maps by copies of it instead of hashing its path.

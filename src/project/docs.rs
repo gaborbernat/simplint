@@ -9,6 +9,7 @@ use filetime::FileTime;
 use rkyv::util::AlignedVec;
 
 use ignore::WalkBuilder;
+use rayon::prelude::*;
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_workspace::resolver::match_exclusion;
 use rustc_hash::FxHashSet;
@@ -231,7 +232,8 @@ fn is_page(path: &Path) -> bool {
 // added, removed or renamed entry moves, the modification time and size of each page and each ignore file, whose edits
 // leave their directory's time as it was, those of the ignore files above the root and the global one, which the walk
 // reads too, and the walk's settings. A directory an ignore file hides is listed all the same, so the key covers at
-// least what the walk reads.
+// least what the walk reads. Each level of the tree is listed on all threads, as a gitignored build tree can hold tens
+// of thousands of directories.
 fn tree_key(root: &Path, settings: &ruff_workspace::Settings, main: &Path) -> u64 {
     let resolver = &settings.file_resolver;
     let mut hasher = CacheKeyHasher::new();
@@ -244,40 +246,69 @@ fn tree_key(root: &Path, settings: &ruff_workspace::Settings, main: &Path) -> u6
     if let Some(global) = ignore::gitignore::gitconfig_excludes_path() {
         stat_key(&global, &mut hasher);
     }
-    let mut pending = vec![root.to_path_buf()];
-    while let Some(directory) = pending.pop() {
-        stat_key(&directory, &mut hasher);
-        let mut entries: Vec<fs::DirEntry> =
-            fs::read_dir(&directory).into_iter().flatten().filter_map(Result::ok).collect();
-        entries.sort_by_key(fs::DirEntry::file_name);
-        for entry in entries {
-            let (path, name) = (entry.path(), entry.file_name());
-            let Ok(file_type) = entry.file_type() else { continue };
-            if file_type.is_dir() {
-                let hidden = name.to_str().is_some_and(|name| name.starts_with('.'));
-                if !hidden
-                    && !match_exclusion(&path, &name, &resolver.exclude)
-                    && !match_exclusion(&path, &name, &resolver.extend_exclude)
-                    && !is_nested_root(main, &path)
-                {
-                    pending.push(path);
-                }
-            } else if file_type.is_file() && (is_page(&path) || name == ".gitignore" || name == ".ignore") {
-                stat_key(&path, &mut hasher);
-            }
+    let mut stats = Vec::new();
+    let mut level = vec![root.to_path_buf()];
+    while !level.is_empty() {
+        let listed: Vec<Listing> = level.par_iter().map(|directory| list(directory, settings, main)).collect();
+        level = Vec::new();
+        for Listing { stats: found, below } in listed {
+            stats.extend(found);
+            level.extend(below);
         }
     }
+    stats.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+    for (path, stat) in stats {
+        path.cache_key(&mut hasher);
+        stat.cache_key(&mut hasher);
+    }
     hasher.finish()
+}
+
+// What `tree_key` reads from one directory: its own stat and those of the pages and ignore files in it, and the
+// directories below it the walk may enter.
+struct Listing {
+    stats: Vec<(PathBuf, Option<Stat>)>,
+    below: Vec<PathBuf>,
+}
+
+fn list(directory: &Path, settings: &ruff_workspace::Settings, main: &Path) -> Listing {
+    let resolver = &settings.file_resolver;
+    let mut stats = vec![(directory.to_path_buf(), stat(directory))];
+    let mut below = Vec::new();
+    for entry in fs::read_dir(directory).into_iter().flatten().filter_map(Result::ok) {
+        let (path, name) = (entry.path(), entry.file_name());
+        let Ok(file_type) = entry.file_type() else { continue };
+        if file_type.is_dir() {
+            let hidden = name.to_str().is_some_and(|name| name.starts_with('.'));
+            if !hidden
+                && !match_exclusion(&path, &name, &resolver.exclude)
+                && !match_exclusion(&path, &name, &resolver.extend_exclude)
+                && !is_nested_root(main, &path)
+            {
+                below.push(path);
+            }
+        } else if file_type.is_file() && (is_page(&path) || name == ".gitignore" || name == ".ignore") {
+            let stat = stat(&path);
+            stats.push((path, stat));
+        }
+    }
+    Listing { stats, below }
+}
+
+// A path's modification time, in seconds and nanoseconds, and its size.
+pub(crate) type Stat = (i64, u32, u64);
+
+pub(crate) fn stat(path: &Path) -> Option<Stat> {
+    fs::metadata(path).ok().map(|metadata| {
+        let modified = FileTime::from_last_modification_time(&metadata);
+        (modified.unix_seconds(), modified.nanoseconds(), metadata.len())
+    })
 }
 
 // A path with its modification time and size, or with neither when it does not exist.
 pub(crate) fn stat_key(path: &Path, hasher: &mut CacheKeyHasher) {
     path.cache_key(hasher);
-    let stat = fs::metadata(path).ok().map(|metadata| {
-        let modified = FileTime::from_last_modification_time(&metadata);
-        (modified.unix_seconds(), modified.nanoseconds(), metadata.len())
-    });
-    stat.cache_key(hasher);
+    stat(path).cache_key(hasher);
 }
 
 impl CacheKey for DocReferences {
