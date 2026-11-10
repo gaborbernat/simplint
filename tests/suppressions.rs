@@ -369,12 +369,18 @@ fn unused_ignore_handles_file_level_suppression() {
     assert_eq!(read(root.path(), "module.py"), "# ruff: noqa: SMP101\nx = 1\n");
 }
 
+// SMP008 reports on the codes each removal edits, which leaves the stale numeric selectors no less unused.
 #[test]
-fn unused_ignore_keeps_selector_when_replacement_moves_a_report() {
-    let source = "x = 1  # simplint: ignore[SMP602,SMP101]\n";
-    let root = project(&[("module.py", source)]);
-    let (status, output, _) = check(root.path(), &["--select", "SMP008,SMP009"]);
-    assert_eq!(status, 1);
-    assert!(!output.contains("SMP009"), "{output}");
-    assert_eq!(read(root.path(), "module.py"), source);
+fn unused_ignore_reports_numeric_selectors_next_to_numeric_ignore() {
+    let root = project(&[("module.py", "x = 1  # simplint: ignore[SMP602,SMP101]\n")]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP008,SMP009"]),
+        (
+            1,
+            "module.py:1:8: SMP009 [*] 2 unused simplint ignore selectors\nmodule.py:1:27: SMP008 [*] Numeric simplint \
+             ignore; use rule names\nFound 2 errors.\n[*] 2 fixable with `--fix`.\n"
+                .to_owned(),
+            String::new()
+        )
+    );
 }

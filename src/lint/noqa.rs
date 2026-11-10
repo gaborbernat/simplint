@@ -356,26 +356,29 @@ fn changed_region(before: &str, after: &str) -> (TextRange, String) {
     (range, after[prefix..after.len() - suffix].to_owned())
 }
 
+// Whether the edit leaves no report that was not there before. A report inside the edited span, such as SMP008 on the
+// codes of the comment it edits, has no position to map back, so it matches any report of the same rule and message
+// that started inside the span before.
 fn same_or_fewer_reports(before: &[Diagnostic], after: &[Diagnostic], edit: TextRange, new_len: usize) -> bool {
+    let start = edit.start().to_usize();
+    let old_len = edit.len().to_usize();
     let mut known: FxHashMap<(&str, &str, usize), usize> = FxHashMap::default();
     for report in before {
         let Some(range) = report.range() else { return false };
-        *known
-            .entry((report.secondary_code_or_id(), report.headline_message(), range.start().to_usize()))
-            .or_default() += 1;
+        let position = range.start().to_usize();
+        let mapped = if (start..start + old_len).contains(&position) { start } else { position };
+        *known.entry((report.secondary_code_or_id(), report.headline_message(), mapped)).or_default() += 1;
     }
-    let start = edit.start().to_usize();
-    let old_len = edit.len().to_usize();
     let mut observed = FxHashMap::default();
     after.iter().all(|report| {
         let Some(range) = report.range() else { return false };
         let position = range.start().to_usize();
         let mapped = if position < start {
             position
-        } else if position >= start + new_len {
-            position + old_len - new_len
+        } else if position < start + new_len {
+            start
         } else {
-            return false;
+            position + old_len - new_len
         };
         let key = (report.secondary_code_or_id(), report.headline_message(), mapped);
         let count = observed.entry(key).or_insert(0);
