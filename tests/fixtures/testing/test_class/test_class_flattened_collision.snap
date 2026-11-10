@@ -1,0 +1,23 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:7 SMP801 Test class `TestParse`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `TestParse` into module-level functions]
+10:7 SMP801 Test class `TestParseError`; use module-level test functions with a name prefix
+15:7 SMP801 Test class `TestParseWarning`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `TestParseWarning` into module-level functions]
+--- fixed (2 applied, 1 remaining) ---
+def parse(text: str) -> int:
+    return int(text)
+
+
+def test_parse_error_value() -> None:
+    assert parse("1") == 1
+
+
+class TestParseError:
+    def test_value(self) -> None:
+        assert parse("2") == 3
+
+
+def test_parse_warning_value() -> None:
+    assert parse("3") == 4

@@ -20,6 +20,7 @@ pub fn test_class(checker: &Checker) {
     if !checker.is_test_module() {
         return;
     }
+    let mut new_names = HashSet::new();
     for stmt in checker.body() {
         // pytest only collects classes named `Test*`; any other class holding a `test*` method is a helper.
         let Stmt::ClassDef(class) = stmt else {
@@ -33,7 +34,7 @@ pub fn test_class(checker: &Checker) {
         // A class another class extends or code refers to must stay a class.
         let name = class.name.as_str();
         let referenced = !checker.semantic().references_to(name).is_empty() || checker.project().is_base_class(name);
-        let fix = (!referenced).then(|| flatten_class(checker, class)).flatten().map(|text| {
+        let fix = (!referenced).then(|| flatten_class(checker, class, &mut new_names)).flatten().map(|text| {
             Fix::unsafe_edit(Edit::range_replacement(text, checker.source.full_lines_range(class.range())))
         });
         checker.report_fix(
@@ -46,7 +47,7 @@ pub fn test_class(checker: &Checker) {
     }
 }
 
-fn flatten_class(checker: &Checker, class: &ast::StmtClassDef) -> Option<String> {
+fn flatten_class(checker: &Checker, class: &ast::StmtClassDef, new_names: &mut HashSet<String>) -> Option<String> {
     if !can_flatten(checker, class) {
         return None;
     }
@@ -64,12 +65,16 @@ fn flatten_class(checker: &Checker, class: &ast::StmtClassDef) -> Option<String>
         return None;
     }
     let mut functions = Vec::new();
+    let mut names = Vec::new();
     for (stmt, block) in class.body.iter().zip(blocks) {
         let Stmt::FunctionDef(function) = stmt else {
             return None;
         };
-        functions.push(flatten_method(checker, (function, type_params, &prefix), block)?);
+        let (text, name) = flatten_method(checker, (function, type_params, &prefix), block, new_names)?;
+        functions.push(text);
+        names.push(name);
     }
+    new_names.extend(names);
     (!functions.is_empty()).then(|| functions.join(&checker.stylist.line_ending().as_str().repeat(2)))
 }
 
@@ -111,12 +116,14 @@ fn can_flatten(checker: &Checker, class: &ast::StmtClassDef) -> bool {
     true
 }
 
-// Turns a test method of a test class into a module-level function, named for the class, dropping `self`.
+// Turns a test method of a test class into a module-level function, named for the class, dropping `self`. Returns the
+// function's text and its name.
 fn flatten_method(
     checker: &Checker,
     (function, type_params, prefix): (&ast::StmtFunctionDef, &[ast::TypeParam], &str),
     block: TextRange,
-) -> Option<String> {
+    new_names: &HashSet<String>,
+) -> Option<(String, String)> {
     let source = checker.source;
     let name = function.name.as_str();
     let rest = name.strip_prefix("test")?;
@@ -125,12 +132,14 @@ fn flatten_method(
         (false, true) => format!("test_{prefix}{rest}"),
         (false, false) => format!("test_{prefix}_{rest}"),
     };
-    // An unchanged name is the method's own token too, so only a module-level binding of it counts as a collision.
-    let collides = if renamed == name {
-        checker.semantic().bindings(name).iter().any(|binding| binding.module_scope)
-    } else {
-        checker.name_token_count(&renamed) > 0
-    };
+    // An unchanged name is the method's own token too, so only a module-level binding of it counts as a collision. The
+    // names of earlier classes are not in the file yet, so the token count misses them.
+    let collides = new_names.contains(&renamed)
+        || if renamed == name {
+            checker.semantic().bindings(name).iter().any(|binding| binding.module_scope)
+        } else {
+            checker.name_token_count(&renamed) > 0
+        };
     if collides {
         return None;
     }
@@ -174,7 +183,7 @@ fn flatten_method(
     }
     text.push_str(&source[TextRange::new(function.name.end(), self_parameter.start())]);
     text.push_str(&source[TextRange::new(removal_end, block.end())]);
-    Some(dedent_block(&text, indentation(source, function)))
+    Some((dedent_block(&text, indentation(source, function)), renamed))
 }
 
 // The class's type parameters that a method's signature, body or nested type aliases name, plus those that their bounds

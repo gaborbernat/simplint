@@ -7,6 +7,7 @@ use crate::common;
 #[test_case("test-class", "tests/test_class_generic.py" ; "test_class_generic")]
 #[test_case("test-class", "tests/test_class_indent.py" ; "test_class_indent")]
 #[test_case("test-class", "tests/test_class_shadow.py" ; "test_class_shadow")]
+#[test_case("test-class", "tests/test_class_flattened_collision.py" ; "test_class_flattened_collision")]
 #[test_case("parametrize-without-id", "tests/test_parametrize_without_id.py" ; "parametrize_without_id")]
 #[test_case("parametrize-without-id", "tests/test_parametrize_scalar_ids.py" ; "parametrize_scalar_ids")]
 #[test_case("parametrize-without-id", "tests/test_parametrize_starred.py" ; "parametrize_starred")]
