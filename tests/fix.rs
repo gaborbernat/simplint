@@ -342,6 +342,27 @@ fn fix_withholds_a_bad_fix_among_identical_valid_ones() {
     );
 }
 
+// Every inline here is withdrawn, so each fix keeps its report and the second run over the file gives the same output.
+#[test]
+fn fix_keeps_every_report_of_many_withdrawn_fixes_and_is_stable() {
+    let mut source = String::new();
+    for index in 0..80 {
+        write!(
+            source,
+            "def func_{index}(value: int) -> bool:\n    limit = {}\n    return value > limit\n\n\n",
+            1000 + index
+        )
+        .expect("write source");
+    }
+    let root = project(&[RUFF_PLR2004_WIDE, ("module.py", &source)]);
+    let first = fix_unsafe(root.path(), "SMP504");
+    let second = fix_unsafe(root.path(), "SMP504");
+    assert_eq!(
+        (first.1.ends_with("Found 80 errors.\n"), read(root.path(), "module.py") == source, second.1 == first.1),
+        (true, true, true)
+    );
+}
+
 const UNCONTENDED: &str = "def _compared(value):\n    limit = 5\n\n    if value > limit:\n        print(value)\n";
 const COLLIDING: &str = "def _compared(value):\n    limit = 5\n\n    if value > limit:\n        print(value)\n\n\ndef _printed():\n    limit = 5\n    print(limit)\n";
 
