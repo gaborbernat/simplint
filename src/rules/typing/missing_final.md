@@ -465,7 +465,8 @@ To make `Final` available, the fix picks the first of these that applies:
    ```
 
 A statement that shares the docstring's line keeps the report without a fix, since an import above the docstring would
-leave `__doc__` as `None`.
+leave `__doc__` as `None`. A `from __future__` import that shares its line with code does the same, since an import
+above it is a syntax error.
 
 ```python report
 # fmt: off

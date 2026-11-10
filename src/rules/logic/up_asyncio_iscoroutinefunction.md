@@ -129,6 +129,8 @@ is offered when:
       return asyncio.iscoroutinefunction(task)
   ```
 
+- a `from __future__` import shares its line with code, since an import above it is a syntax error.
+
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

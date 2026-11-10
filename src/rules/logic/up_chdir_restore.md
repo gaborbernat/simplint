@@ -203,7 +203,8 @@ def run(target):
 ```
 
 A module docstring that shares its line with code keeps the report without a fix, since an import above it would leave
-`__doc__` as `None`.
+`__doc__` as `None`. A `from __future__` import that shares its line with code does the same, since an import above it
+is a syntax error.
 
 ```toml config
 [project]

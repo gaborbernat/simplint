@@ -115,6 +115,25 @@ parser = argparse.ArgumentParser(
 )
 ```
 
+A parenthesized positional argument stays a valid call when the keyword after it is removed.
+
+```toml config
+[project]
+requires-python = ">=3.15"
+```
+
+```python report
+import argparse
+
+parser = argparse.ArgumentParser(("prog"), suggest_on_error=True)
+```
+
+```python fixed
+import argparse
+
+parser = argparse.ArgumentParser("prog")
+```
+
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
