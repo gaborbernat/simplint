@@ -726,7 +726,7 @@ fn file_facts(file: &RunFile, cache: Option<(&Cache<'_>, FileKey)>, parts: Parts
     let source = std::fs::read_to_string(file.path).ok()?;
     let facts = FileFacts::collect(file.path, &source, module_path, importable, &suppresses_rewrite, parts)?;
     if let Some((cache, key)) = cache {
-        cache.set_facts(file.path, key, facts.clone());
+        cache.set_facts(file.path, key, &facts);
     }
     Some(facts)
 }
