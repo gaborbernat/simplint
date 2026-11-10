@@ -1818,6 +1818,18 @@ fn public_module_all_is_the_declared_api(module: &str, stdout: &str) {
     );
 }
 
+#[test_case("from a import __all__ as base\n\n__all__ = [*base, \"Z\"]\n" ; "imported")]
+#[test_case("import a\n\n__all__ = [*a.__all__, \"Z\"]\n" ; "read_through_module")]
+#[test_case("import a\n\nprint([name for name in a.__all__])\n" ; "iterated_through_module")]
+fn names_another_module_reads_from_all_are_used(consumer: &str) {
+    let root = project(&[
+        ("pyproject.toml", DEMO),
+        ("a.py", "X = 1\nY = 2\n\n__all__ = [\"X\", \"Y\"]\n"),
+        ("b.py", consumer),
+    ]);
+    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, "All checks passed!\n");
+}
+
 #[test_case("import pkgutil\n\nHANDLER = pkgutil.resolve_name(\"pkg._cli._validate:run\")\n", true ; "direct_resolve_name")]
 #[test_case("from pkgutil import resolve_name\n\nHANDLER = resolve_name(\"pkg._cli._validate:run\")\n", true ; "imported_resolve_name")]
 #[test_case("def build_parser(parser):\n    parser.set_defaults(handler=\"pkg._cli._validate:run\")\n", true ; "argparse_handler")]

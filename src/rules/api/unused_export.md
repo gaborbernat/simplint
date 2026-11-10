@@ -298,6 +298,23 @@ __all__ = ["parse"]
   print(LIMIT, local())
   ```
 
+- **Modules whose `__all__` another file reads**: an import of `__all__`, or `module.__all__` read off an import of the
+  module, uses every name the list holds, as an `import *` does.
+
+  ```python ok file=config.py
+  LIMIT = 3
+  local = 1
+
+
+  __all__ = ["LIMIT", "local"]
+  ```
+
+  ```python context file=cli.py
+  import config
+
+  print([getattr(config, name) for name in config.__all__])
+  ```
+
 - **Package `__init__.py` files**: they list what the package re-exports, and Ruff, which counts their imports as
   re-exports, puts any name left out back into `__all__`.
 
