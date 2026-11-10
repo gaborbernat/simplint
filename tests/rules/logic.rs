@@ -35,6 +35,8 @@ use crate::common::{self, check, read};
 #[test_case("single-use-variable", "single_use_variable_requote.py", "py311" ; "single_use_variable_requote")]
 #[test_case("single-use-variable", "single_use_variable_splice.py", "py314" ; "single_use_variable_splice")]
 #[test_case("single-use-variable", "single_use_variable_splice.py", "py311" ; "single_use_variable_splice_before_python312")]
+#[test_case("single-use-variable", "single_use_variable_nested_fstring.py", "py314" ; "single_use_variable_nested_fstring")]
+#[test_case("single-use-variable", "single_use_variable_nested_fstring.py", "py311" ; "single_use_variable_nested_fstring_before_python312")]
 #[test_case("single-use-variable", "single_use_variable_parens.py", "py314" ; "single_use_variable_parens")]
 #[test_case("single-use-variable", "single_use_variable_field.py", "py314" ; "single_use_variable_field")]
 #[test_case("single-use-variable", "single_use_variable_lifetime.py", "py314" ; "single_use_variable_lifetime")]

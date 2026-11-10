@@ -364,6 +364,21 @@ def total_price(prices: list[float]) -> str:
       return f"'{quoted}'"
   ```
 
+- **Before Python 3.12, a value whose strings hold the quote of any f-string around the field**: the inlined text joins
+  the field's own f-string and each one that encloses it, and Python before 3.12 rejects a quote that an enclosing
+  f-string already uses inside a replacement field. From 3.12 on, the same value is inlined.
+
+  ```toml config
+  [tool.ruff]
+  target-version = "py311"
+  ```
+
+  ```python ok
+  def quoted(suffix: str) -> str:
+      label = 'say "hi"'
+      return f"{f'{label}'}" + suffix
+  ```
+
 - **An assignment with a comment on its line, or between it and the read**: inlining would lose the comment.
 
   ```python ok
