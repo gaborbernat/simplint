@@ -2299,6 +2299,40 @@ fn module_loaded_as_value_has_no_test_only_names(service: &str, stdout: &str) {
     );
 }
 
+// A flag bound false at module level keeps the imports under it out of the cycle check, unless some binding of it in the
+// module's blocks, or a `global` declaration of it, may make it true. A binding inside a function is local to it.
+#[test_case("", false ; "unrebound")]
+#[test_case("def enable() -> None:\n    HAS_JSON = True\n\n", false ; "local_in_function")]
+#[test_case("try:\n    import json\n    HAS_JSON = True\nexcept ImportError:\n    pass\n", true ; "try_body")]
+#[test_case("try:\n    import json\nexcept ImportError:\n    HAS_JSON = True\n", true ; "except_handler")]
+#[test_case("try:\n    pass\nfinally:\n    HAS_JSON = True\n", true ; "finally_block")]
+#[test_case("if SCALE:\n    HAS_JSON = True\n", true ; "if_block")]
+#[test_case("if SCALE > 5:\n    pass\nelse:\n    HAS_JSON = True\n", true ; "else_block")]
+#[test_case("while SCALE:\n    break\nelse:\n    HAS_JSON = True\n", true ; "while_else")]
+#[test_case("for HAS_JSON in [True]:\n    pass\n", true ; "for_target")]
+#[test_case("with open(__file__) as HAS_JSON:\n    pass\n", true ; "with_target")]
+#[test_case("try:\n    pass\nexcept ValueError as HAS_JSON:\n    pass\n", true ; "except_name")]
+#[test_case("match SCALE:\n    case HAS_JSON:\n        pass\n", true ; "match_capture")]
+#[test_case("match SCALE:\n    case [*HAS_JSON]:\n        pass\n", true ; "match_star")]
+#[test_case("match SCALE:\n    case {**HAS_JSON}:\n        pass\n", true ; "match_mapping_rest")]
+#[test_case("if (HAS_JSON := True):\n    pass\n", true ; "walrus")]
+#[test_case("if SCALE:\n    HAS_JSON: bool = True\n", true ; "annotated_assignment")]
+#[test_case("if SCALE:\n    HAS_JSON += 1\n", true ; "augmented_assignment")]
+#[test_case("HAS_JSON, OTHER = True, 1\n", true ; "tuple_target")]
+#[test_case("import json as HAS_JSON\n", true ; "import_alias")]
+#[test_case("from json import dumps as HAS_JSON\n", true ; "from_import_alias")]
+#[test_case("def HAS_JSON() -> None:\n    pass\n", true ; "function_name")]
+#[test_case("class HAS_JSON:\n    pass\n", true ; "class_name")]
+#[test_case("def enable() -> None:\n    global HAS_JSON\n    HAS_JSON = True\n", true ; "global_declaration")]
+fn module_flag_rebound_in_a_block_keeps_its_imports(rebinding: &str, reported: bool) {
+    let root = project(&[
+        ("a.py", "import b\n\nVALUE = b.SCALE + 1\n"),
+        ("b.py", &format!("HAS_JSON = False\n{rebinding}\nif HAS_JSON:\n    from a import VALUE\n\nSCALE = 2\n")),
+    ]);
+    let report = check(root.path(), &["--select", "SMP308"]).1;
+    assert_eq!(report.contains("SMP308"), reported, "{report}");
+}
+
 // The names a `.pth` file reads are used like an entry point's, so no rule that asks whether a name is used, listed or
 // unlisted reports them.
 #[test_case("__all__ = [\"_run\"]\n\n\n", "_run", "SMP402" ; "unused_export")]

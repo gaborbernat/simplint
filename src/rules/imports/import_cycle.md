@@ -151,7 +151,8 @@ first eight, then how many it leaves out, before the module it closes on.
   ```
 
 - **Imports under an `if` whose test is false at run time**: a false constant such as `False`, `0` or `None`, or a
-  module-level name the module binds once to one, as `_false = 0` does to keep an import that only tools read.
+  module-level name the module binds once to one, as `_false = 0` does to keep an import that only tools read. A second
+  binding of the name, in any block of the module or in a `global` declaration in a function, makes it an ordinary flag.
 
   ```python context file=a.py
   import b
@@ -160,6 +161,25 @@ first eight, then how many it leaves out, before the module it closes on.
   ```python ok file=b.py
   _false = 0
   if _false:
+      import a
+  ```
+
+  A second binding in a `try` makes the same name an ordinary flag, so the import under it counts:
+
+  ```python context file=a.py
+  import b
+  ```
+
+  ```python report file=b.py
+  HAS_JSON = False
+  try:
+      import json
+
+      HAS_JSON = True
+  except ImportError:
+      pass
+
+  if HAS_JSON:
       import a
   ```
 
