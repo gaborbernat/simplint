@@ -28,6 +28,7 @@ pub fn test_only_code(checker: &Checker) {
             || Visibility::of(name) == Visibility::Dunder
             || api.is_public(stmt.range(), Need::Any)
             || listed.contains(&name)
+            || project.is_loaded_as_value()
             || !project.is_used_only_by_tests(name)
             || references_outside(checker, name, stmt.range())
         {

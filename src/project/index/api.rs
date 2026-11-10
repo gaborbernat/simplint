@@ -130,6 +130,7 @@ impl FileIndex<'_> {
             ),
             (
                 self.test_only,
+                self.is_loaded_as_value(),
                 self.uncaught_exceptions,
                 self.exception_types,
                 self.hook_classes,
@@ -160,6 +161,7 @@ impl CacheKey for FileIndex<'_> {
         self.library_api.cache_key(state);
         self.modules.iter().for_each(|module| module.cache_key(state));
         self.test_only.cache_key(state);
+        self.is_loaded_as_value().cache_key(state);
         self.uncaught_exceptions.cache_key(state);
         self.exception_types.cache_key(state);
         self.hook_classes.cache_key(state);
@@ -259,6 +261,12 @@ impl<'a> FileIndex<'a> {
     // without overriding it, so users reach the member through that public class.
     pub fn is_inherited_api(&self, class: &str, member: &str) -> bool {
         self.inherited.and_then(|classes| classes.get(class)).is_some_and(|members| members.contains(member))
+    }
+
+    // Whether production code of the run loads the file as a value, so a call through that value reaches its names, and
+    // no import of a name shows the use.
+    pub fn is_loaded_as_value(&self) -> bool {
+        self.id.is_some_and(|id| self.project.loaded_as_value.contains(&id))
     }
 
     // Whether every use of the name in the run comes from a test module. An `import *` that may read a public name, or

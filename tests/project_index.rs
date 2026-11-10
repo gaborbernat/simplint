@@ -2299,6 +2299,27 @@ fn module_loaded_as_value_has_no_test_only_names(service: &str, stdout: &str) {
     );
 }
 
+// The value load only hides the module's test-only names from SMP408. SMP401 still lists a name that production imports.
+#[test_case("from pkg import fast\n\nCODEC = fast\n", "All checks passed!\n" ; "module_loaded_as_value")]
+#[test_case(
+    "from pkg.fast import LIMIT\n\nCODEC = LIMIT\n",
+    "pkg/fast.py:1:1: SMP401 `LIMIT` is imported by other modules; list it in `__all__`\nFound 1 error.\n1 unsafe fix \
+     available with `--fix --unsafe-fixes`.\n" ;
+    "imported_by_production"
+)]
+fn module_loaded_as_value_has_no_test_only_names_for_all(service: &str, stdout: &str) {
+    let root = project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/fast.py", "LIMIT = 1\nMODE = 2\n"),
+        ("pkg/service.py", service),
+        ("tests/test_fast.py", "from pkg.fast import LIMIT\n\n\ndef test_limit() -> None:\n    assert LIMIT == 1\n"),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP401"]).1,
+        stdout.replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+    );
+}
+
 // A flag bound false at module level keeps the imports under it out of the cycle check, unless some binding of it in the
 // module's blocks, or a `global` declaration of it, may make it true. A binding inside a function is local to it.
 #[test_case("", false ; "unrebound")]

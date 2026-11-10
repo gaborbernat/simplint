@@ -221,6 +221,8 @@ pub struct Project {
     pub(super) library_api: FxHashMap<FileId, FxHashMap<String, Option<PathBuf>>>,
     // The names a file uses from other files only when they are test modules, which no other file uses.
     pub(super) test_only: FxHashMap<FileId, FxHashSet<String>>,
+    // The files production code loads as a value, whose functions a call through the value reaches with no import.
+    pub(super) loaded_as_value: FxHashSet<FileId>,
     // The exception classes each file defines that no handler of the run names by name, or through a subclass.
     pub(super) uncaught_exceptions: FxHashMap<FileId, FxHashSet<String>>,
     // The names each file gives to an exception class of the run, defined there or imported from there.
@@ -462,7 +464,8 @@ impl Project {
             star_sources,
             roles,
             library_api,
-            test_only: only_tests(from_tests, &from_others, &module_values),
+            test_only: only_tests(from_tests, &from_others),
+            loaded_as_value: module_values,
             uncaught_exceptions,
             exception_types,
             hook_classes,
@@ -1091,21 +1094,16 @@ fn method_loads(calls: &mut RunCalls, files: &[(FileId, &FileFacts)]) {
     }
 }
 
-// The names each file's test modules use that no other file uses, so only tests use them. A production file that loads
-// a module as a value calls the module's functions through that value, which no import of a name shows, so none of the
-// module's names is used only by tests.
+// The names each file's test modules use that no other file uses, so only tests use them.
 fn only_tests(
     from_tests: FxHashMap<FileId, FxHashSet<String>>,
     from_others: &FxHashMap<FileId, FxHashSet<String>>,
-    module_values: &FxHashSet<FileId>,
 ) -> FxHashMap<FileId, FxHashSet<String>> {
     from_tests
         .into_iter()
         .map(|(file, names)| {
             let others = from_others.get(&file);
-            let used_as_value = module_values.contains(&file);
-            let names =
-                names.into_iter().filter(|name| !used_as_value && !others.is_some_and(|others| others.contains(name)));
+            let names = names.into_iter().filter(|name| !others.is_some_and(|others| others.contains(name)));
             (file, names.collect())
         })
         .collect()
