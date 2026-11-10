@@ -650,9 +650,9 @@ fn cached_findings_are_reported_again_under_other_settings() {
 #[test_case(b"def broken(:\n", &["--output-format", "concise"] ; "syntax_error_concise")]
 #[test_case(b"def broken(:\n", &["--output-format", "full"] ; "syntax_error_full")]
 #[test_case(b"def broken(:\n", &["--output-format", "json"] ; "syntax_error_json")]
-#[test_case(b"name = \"caf\xe9\"\n", &["--output-format", "concise"] ; "not_utf_8_concise")]
-#[test_case(b"name = \"caf\xe9\"\n", &["--output-format", "full"] ; "not_utf_8_full")]
-#[test_case(b"name = \"caf\xe9\"\n", &["--output-format", "json"] ; "not_utf_8_json")]
+#[test_case(b"name = \"\xff\"\n", &["--output-format", "concise"] ; "not_utf_8_concise")]
+#[test_case(b"name = \"\xff\"\n", &["--output-format", "full"] ; "not_utf_8_full")]
+#[test_case(b"name = \"\xff\"\n", &["--output-format", "json"] ; "not_utf_8_json")]
 fn warm_run_reuses_the_reports_of_a_file_no_rule_reports(source: &[u8], flags: &[&str]) {
     let root = project(&[("module.py", "VALUE = 1\n")]);
     fs::write(root.path().join("broken.py"), source).expect("write");
