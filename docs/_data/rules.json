@@ -6954,7 +6954,7 @@
     "name": "up-type-checking-lazy-import",
     "summary": "`if TYPE_CHECKING:` imports that can be `lazy` imports",
     "fix": "Sometimes",
-    "explanation": "Flags an `if TYPE_CHECKING:` block that holds only imports and no `else`, where Python 3.15 can spell each import as a\n`lazy` import. The guard is then only needed for names that are not imported at runtime, which `lazy` covers.\n\n## Why is this bad?\n\nThe guard keeps the imports out of the running program, so the names they bind exist only for type checkers, and code\nthat reads them at runtime fails. A `lazy` import binds the name at module level and runs the import on first use\n([PEP 810](https://peps.python.org/pep-0810/)), so the guard is no longer needed and a name used at runtime resolves.\n\n## Example\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n```\n\n```python report\n# Demo module.\nfrom typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from collections.abc import Sequence\n\n\ndef first(values: Sequence[int]) -> int:\n    return values[0]\n```\n\n```python fixed\n# Demo module.\n\nlazy from collections.abc import Sequence\n\n\ndef first(values: Sequence[int]) -> int:\n    return values[0]\n```\n\n## Configuration\n\n- The Python version the code targets, taken from\n  [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) in `[tool.ruff]`, falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py314\"\n  ```\n\n  ```python ok\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      from collections.abc import Sequence\n  ```\n\n## What it does\n\n### Active on\n\n- **`if TYPE_CHECKING:` (or `typing.TYPE_CHECKING`) at module level**, with a body of `import` and `from ... import`\n  statements only and no `else` or `elif`. The report sits on the condition. The fix is unsafe: a `lazy` import loads\n  the module on first use, so a name a program never touches costs nothing, while a name it does touch runs the import\n  then. An import cycle or a module missing at runtime, such as `_typeshed`, then surfaces at that point instead of\n  never.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.15\"\n  ```\n\n  ```python report\n  # Demo module.\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      from os import PathLike\n\n\n  def path(value: PathLike) -> None:\n      pass\n  ```\n\n  ```python fixed\n  # Demo module.\n\n  lazy from os import PathLike\n\n\n  def path(value: PathLike) -> None:\n      pass\n  ```\n\n### Exceptions\n\n- **Blocks with an `else`, an `elif`, or other statements**: the rule needs a block that only imports.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      from os import PathLike\n  else:\n      PathLike = str\n  ```\n\n- **Imports of `from __future__` and `from x import *`**: `lazy` has no form for them.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      from os import *\n  ```\n\n- **Blocks inside another statement**, such as a `try` or a function: `lazy` imports are not allowed there, so the rule\n  does not look at them.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  from typing import TYPE_CHECKING\n\n  try:\n      if TYPE_CHECKING:\n          from os import PathLike\n  except ImportError:\n      pass\n  ```\n\n### Fix\n\nThe fix is unsafe, as described under \"Active on\" above. It replaces the block with one `lazy` import per statement,\nand, when `TYPE_CHECKING` is then unused, removes its `from typing import TYPE_CHECKING` line. A block with a comment in\nit is reported without a fix, because the fix would drop the comment. A block importing `_typeshed` is too.\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n```\n\n```python report\n# Demo module.\nfrom typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from os import PathLike\n```\n\n```python fixed\n# Demo module.\n\nlazy from os import PathLike\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#29378](https://github.com/astral-sh/ruff/issues/29378).\n  [TID254](https://docs.astral.sh/ruff/rules/lazy-import-mismatch/), with `require-lazy` set, adds `lazy` to the imports\n  in the block but keeps the `if TYPE_CHECKING:` guard this rule removes.\n",
+    "explanation": "Flags an `if TYPE_CHECKING:` block that holds only imports and no `else`, where Python 3.15 can spell each import as a\n`lazy` import. The guard is then only needed for names that are not imported at runtime, which `lazy` covers.\n\n## Why is this bad?\n\nThe guard keeps the imports out of the running program, so the names they bind exist only for type checkers, and code\nthat reads them at runtime fails. A `lazy` import binds the name at module level and runs the import on first use\n([PEP 810](https://peps.python.org/pep-0810/)), so the guard is no longer needed and a name used at runtime resolves.\n\n## Example\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n```\n\n```python report\n# Demo module.\nfrom typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from collections.abc import Sequence\n\n\ndef first(values: Sequence[int]) -> int:\n    return values[0]\n```\n\n```python fixed\n# Demo module.\n\nlazy from collections.abc import Sequence\n\n\ndef first(values: Sequence[int]) -> int:\n    return values[0]\n```\n\n## Configuration\n\n- The Python version the code targets, taken from\n  [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) in `[tool.ruff]`, falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py314\"\n  ```\n\n  ```python ok\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      from collections.abc import Sequence\n  ```\n\n## What it does\n\n### Active on\n\n- **`if TYPE_CHECKING:` (or `typing.TYPE_CHECKING`) at module level**, with a body of `import` and `from ... import`\n  statements only and no `else` or `elif`. The report sits on the condition. The fix is unsafe: a `lazy` import loads\n  the module on first use, so a name a program never touches costs nothing, while a name it does touch runs the import\n  then. An import cycle or a module missing at runtime, such as `_typeshed`, then surfaces at that point instead of\n  never.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.15\"\n  ```\n\n  ```python report\n  # Demo module.\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      from os import PathLike\n\n\n  def path(value: PathLike) -> None:\n      pass\n  ```\n\n  ```python fixed\n  # Demo module.\n\n  lazy from os import PathLike\n\n\n  def path(value: PathLike) -> None:\n      pass\n  ```\n\n### Exceptions\n\n- **Blocks with an `else`, an `elif`, or other statements**: the rule needs a block that only imports.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      from os import PathLike\n  else:\n      PathLike = str\n  ```\n\n- **Imports of `from __future__` and `from x import *`**: `lazy` has no form for them.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n      from os import *\n  ```\n\n- **Blocks inside another statement**, such as a `try` or a function: `lazy` imports are not allowed there, so the rule\n  does not look at them.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  from typing import TYPE_CHECKING\n\n  try:\n      if TYPE_CHECKING:\n          from os import PathLike\n  except ImportError:\n      pass\n  ```\n\n### Fix\n\nThe fix is unsafe, as described under \"Active on\" above. It replaces the block with one `lazy` import per statement,\nleaving a statement that is `lazy` already as it is, and, when `TYPE_CHECKING` is then unused, removes its\n`from typing import TYPE_CHECKING` line. A block with a comment in it is reported without a fix, because the fix would\ndrop the comment. A block importing `_typeshed` is too.\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n```\n\n```python report\n# Demo module.\nfrom typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    lazy import json\n```\n\n```python fixed\n# Demo module.\n\nlazy import json\n```\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n```\n\n```python report\n# Demo module.\nfrom typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from os import PathLike\n```\n\n```python fixed\n# Demo module.\n\nlazy from os import PathLike\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#29378](https://github.com/astral-sh/ruff/issues/29378).\n  [TID254](https://docs.astral.sh/ruff/rules/lazy-import-mismatch/), with `require-lazy` set, adds `lazy` to the imports\n  in the block but keeps the `if TYPE_CHECKING:` guard this rule removes.\n",
     "examples": {
       "parsed": [
         {
@@ -7103,11 +7103,11 @@
         },
         {
           "section": "What it does",
-          "line": 156,
-          "end_line": 174,
+          "line": 157,
+          "end_line": 175,
           "config": {
-            "line": 156,
-            "end_line": 160,
+            "line": 157,
+            "end_line": 161,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n"
           },
           "blocks": [
@@ -7116,8 +7116,38 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 162,
-              "end_line": 168,
+              "line": 163,
+              "end_line": 169,
+              "source": "# Demo module.\nfrom typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    lazy import json\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 171,
+              "end_line": 175,
+              "source": "# Demo module.\n\nlazy import json\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 177,
+          "end_line": 195,
+          "config": {
+            "line": 177,
+            "end_line": 181,
+            "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 183,
+              "end_line": 189,
               "source": "# Demo module.\nfrom typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from os import PathLike\n"
             },
             {
@@ -7125,8 +7155,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 170,
-              "end_line": 174,
+              "line": 191,
+              "end_line": 195,
               "source": "# Demo module.\n\nlazy from os import PathLike\n"
             }
           ]

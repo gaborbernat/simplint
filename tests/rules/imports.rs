@@ -72,6 +72,7 @@ use crate::common;
 #[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_ignored.py", "py315" ; "type_checking_lazy_import_ignored")]
 #[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_module.py", "py315" ; "type_checking_lazy_import_module")]
 #[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_typeshed_module.py", "py315" ; "type_checking_lazy_import_typeshed_module")]
+#[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_already_lazy.py", "py315" ; "type_checking_lazy_import_already_lazy")]
 #[test_case("up-lazy-modules-list", "up_lazy_modules_list.py", "py315" ; "lazy_modules_list")]
 #[test_case("up-lazy-modules-list", "up_lazy_modules_list.py", "py314" ; "lazy_modules_list_py314")]
 #[test_case("up-lazy-modules-list", "up_lazy_modules_list_partial.py", "py315" ; "lazy_modules_list_partial")]

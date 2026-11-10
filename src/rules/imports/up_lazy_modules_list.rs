@@ -6,7 +6,7 @@ use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::is_alone_on_lines;
+use crate::rules::{is_alone_on_lines, is_lazy};
 
 pub fn up_lazy_modules_list(checker: &Checker) {
     let body = checker.body();
@@ -107,15 +107,6 @@ fn stays_eager(checker: &Checker, body: &[Stmt], nested: bool, modules: &[&str])
         }
         _ => false,
     })
-}
-
-// Whether the statement is a `lazy` import already, which needs no `lazy` of its own.
-fn is_lazy(stmt: &Stmt) -> bool {
-    matches!(
-        stmt,
-        Stmt::Import(ast::StmtImport { is_lazy: true, .. })
-            | Stmt::ImportFrom(ast::StmtImportFrom { is_lazy: true, .. })
-    )
 }
 
 // The module names of an import that `lazy` can apply to, which are every name it binds. A relative import has no
