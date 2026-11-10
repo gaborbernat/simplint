@@ -191,8 +191,8 @@ be a plain `def` taking the same parameters under the same names, without defaul
           return super().load()
   ```
 
-- **A method with a comment on the line above it or in its body**: the comment says why the method is there, such as a
-  workaround for a type checker, so deleting it would undo that.
+- **A method with a comment on the line above it**: the comment says why the method is there, such as a workaround for a
+  type checker, so deleting it would undo that.
 
   ```python ok
   class Base:
@@ -203,6 +203,20 @@ be a plain `def` taking the same parameters under the same names, without defaul
   class Store(Base):
       # Keeps the type checker from reporting the parent's loader.
       def load(self, name):
+          return super().load(name)
+  ```
+
+- **A method with a comment in its body**: deleting the method would delete the comment with it.
+
+  ```python ok
+  class Base:
+      def load(self, name):
+          return name.encode()
+
+
+  class Store(Base):
+      def load(self, name):
+          # Keeps the type checker from reporting the parent's loader.
           return super().load(name)
   ```
 

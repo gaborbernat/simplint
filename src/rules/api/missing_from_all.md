@@ -542,6 +542,104 @@ listed.
   print(LIMIT)
   ```
 
+- An empty literal that holds a comment gets no fix, since the rewrite would drop the comment:
+
+  ```python report file=config.py
+  LIMIT = 3
+
+
+  __all__ = [  # filled in by the release script
+  ]
+  ```
+
+  ```python fixed file=config.py
+  LIMIT = 3
+
+
+  __all__ = [  # filled in by the release script
+  ]
+  ```
+
+  ```python context file=cli.py
+  from config import LIMIT
+
+  print(LIMIT)
+  ```
+
+- A comment ending the last element's line stays with that element: the new names go on the lines after it.
+
+  ```python report file=config.py
+  LIMIT = 3
+
+
+  def local() -> int:
+      return 1
+
+
+  __all__ = [
+      "LIMIT",  # the limit
+  ]
+  ```
+
+  ```python fixed file=config.py
+  LIMIT = 3
+
+
+  def local() -> int:
+      return 1
+
+
+  __all__ = [
+      "LIMIT",  # the limit
+      "local",
+  ]
+  ```
+
+  ```python context file=cli.py
+  from config import local
+
+  print(local())
+  ```
+
+- A `# noqa: F401` on an import stays while a name the import binds is left out of the listing, since that name still
+  needs it:
+
+  ```python report file=config.py
+  from math import pi, tau  # noqa: F401
+
+
+  def area(radius: float) -> float:
+      return 3.14 * radius**2
+
+
+  __all__ = [
+      "area",
+  ]
+  ```
+
+  ```python fixed file=config.py
+  from math import pi, tau  # noqa: F401
+
+
+  def area(radius: float) -> float:
+      return 3.14 * radius**2
+
+
+  __all__ = [
+      "area",
+      "pi",
+  ]
+  ```
+
+  ```python context file=cli.py
+  from config import pi
+
+  print(pi)
+  ```
+
+When several names are missing, only the first report carries the fix, since it adds all of them at once; the others
+have none.
+
 **Creating a new `__all__`**: a module without `__all__` gets a new one, sorted and one name per line, as its last
 statement, or above a closing `if __name__ == "__main__":` block. **Unsafe fix:** it narrows what `from module import *`
 exports.
