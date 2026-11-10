@@ -171,7 +171,9 @@ impl DocReferences {
     pub fn covers(&self, qualified: &str, anchored: bool) -> bool {
         let mut suffixes =
             std::iter::once(qualified).chain(qualified.match_indices('.').map(|(at, _)| &qualified[at + 1..]));
-        let below = |outer: &str, inner: &str| outer == inner || outer.ends_with(&format!(".{inner}"));
+        let below = |outer: &str, inner: &str| {
+            outer.strip_suffix(inner).is_some_and(|rest| rest.is_empty() || rest.ends_with('.'))
+        };
         suffixes.any(|suffix| {
             self.names.contains(suffix) || self.scopes.iter().any(|scope| suffix.starts_with(scope.as_str()))
         }) || (!anchored
