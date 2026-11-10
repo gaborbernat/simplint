@@ -277,6 +277,10 @@ impl FileFacts {
     pub fn covers(&self, wanted: Parts, module_path: Option<&[String]>, importable: Option<&[String]>) -> bool {
         self.parts.has(wanted) && self.module_digest == module_digest(module_path, importable)
     }
+
+    pub fn parts(&self) -> Parts {
+        self.parts
+    }
 }
 
 fn module_digest(module_path: Option<&[String]>, importable: Option<&[String]>) -> u64 {

@@ -716,13 +716,16 @@ fn module_roles<'s>(files: &'s [RunFile<'_>], roots: &SearchRoots) -> FxHashMap<
 
 // A file's import facts: those its cache holds while the file is unchanged, and otherwise freshly collected and stored
 // there. Cached facts without a part the run's rules read, or resolved against other module paths, as when the search
-// roots changed, are collected again.
+// roots changed, are collected again, keeping the parts they had, so runs with rules that read different parts, as a
+// hook and a full run, do not each collect the file again.
 fn file_facts(file: &RunFile, cache: Option<(&Cache<'_>, FileKey)>, parts: Parts) -> Option<FileFacts> {
     let (module_path, importable) = (file.module_path.as_deref(), file.importable.as_deref());
     let cached = cache.and_then(|(cache, key)| cache.facts(file.path, key));
-    if let Some(facts) = cached.filter(|facts| facts.covers(parts, module_path, importable)) {
-        return Some(facts);
-    }
+    let parts = match cached {
+        Some(facts) if facts.covers(parts, module_path, importable) => return Some(facts),
+        Some(facts) => parts.with(facts.parts()),
+        None => parts,
+    };
     let source = std::fs::read_to_string(file.path).ok()?;
     let facts = FileFacts::collect(file.path, &source, module_path, importable, &suppresses_rewrite, parts)?;
     if let Some((cache, key)) = cache {
