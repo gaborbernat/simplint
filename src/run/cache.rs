@@ -19,9 +19,12 @@ use rayon::prelude::*;
 use rkyv::util::AlignedVec;
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_db::diagnostic::{
-    Annotation, Diagnostic, DiagnosticId, LintName, SecondaryCode, Severity, Span, SubDiagnosticSeverity, UnifiedFile,
+    Annotation, Diagnostic, DiagnosticId, DisplayDiagnosticConfig, LintName, SecondaryCode, Severity, Span,
+    SubDiagnosticSeverity, UnifiedFile,
 };
 use ruff_diagnostics::{Applicability, Edit, Fix, IsolationLevel};
+use ruff_linter::message::{RenderContext, render_diagnostics};
+use ruff_linter::settings::types::OutputFormat;
 use ruff_linter::warn_user;
 use ruff_source_file::{SourceFile, SourceFileBuilder};
 use ruff_text_size::{Ranged, TextRange, TextSize};
@@ -29,7 +32,6 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use ruff_linter::settings::LinterSettings;
 
-use crate::cli::printer::FullDisplay;
 use crate::fix::Withdrawn;
 use crate::lint::Linter;
 use crate::lint::checker::source_file_at;
@@ -38,6 +40,42 @@ use crate::project::cache::{FileKey, MAX_LAST_SEEN, build_directory, read_aligne
 use crate::project::{Ending, FileFacts};
 use crate::run::{Diagnostics, Linting, Mode};
 use crate::settings::FileSettings;
+
+// The `full` settings a file's text is valid under: the display config and a digest of what else the text depends on.
+// A file's text needs no run-wide state: the fix marker shows only on a diagnostic whose fix applies, and the run has
+// such a fix only when one of its files does.
+pub struct FullDisplay {
+    config: DisplayDiagnosticConfig,
+    base: u64,
+}
+
+impl FullDisplay {
+    pub fn new(config: DisplayDiagnosticConfig, base: u64) -> Self {
+        Self { config, base }
+    }
+
+    // The key a file's text is stored under, given the name the output shows the file by.
+    pub fn key(&self, name: &str) -> u64 {
+        let mut hasher = CacheKeyHasher::new();
+        self.base.cache_key(&mut hasher);
+        name.cache_key(&mut hasher);
+        hasher.finish()
+    }
+
+    // The `full` text of one file's diagnostics, in the order the report sorts them.
+    pub fn render(&self, diagnostics: &[Diagnostic]) -> Vec<u8> {
+        let mut sorted = diagnostics.to_vec();
+        sorted.sort_by(Diagnostic::ruff_start_ordering);
+        let fixable = sorted.iter().any(|diagnostic| diagnostic.has_applicable_fix(self.config.fix_applicability()));
+        let config = self.config.clone().with_show_fix_status(fixable);
+        let notebooks = FxHashMap::default();
+        let context = RenderContext::new(&notebooks);
+        let mut buffer = Vec::new();
+        render_diagnostics(&mut buffer, OutputFormat::Full, &config, &context, &sorted)
+            .expect("writing to a vector cannot fail");
+        buffer
+    }
+}
 
 // The caches of a run, one per package root, or per directory for files outside a package, as Ruff keeps them. Their
 // bytes are read up front and checked once by `views`, a package per thread, and read in place.

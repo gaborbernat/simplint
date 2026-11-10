@@ -28,7 +28,7 @@ use serde::Serialize;
 use supports_hyperlinks::supports_hyperlinks;
 
 use crate::lint::registry::Rule;
-use crate::run::{Diagnostics, FixMap, Mode};
+use crate::run::{Diagnostics, FixMap, FullDisplay, Mode};
 
 bitflags! {
     #[derive(Default, Copy, Clone)]
@@ -120,7 +120,7 @@ impl Printer<'_> {
         (color && supports_hyperlinks()).cache_key(&mut hasher);
         format!("{required:?}").cache_key(&mut hasher);
         cwd.to_string_lossy().cache_key(&mut hasher);
-        Some(FullDisplay { config: self.display_config(false), base: hasher.finish() })
+        Some(FullDisplay::new(self.display_config(false), hasher.finish()))
     }
 
     fn render(
@@ -391,38 +391,6 @@ fn render_chunks<'a>(
             .collect::<Vec<_>>()
             .into_iter()
     })
-}
-
-// The `full` settings a file's text is valid under: the display config and a digest of what else the text depends on.
-// A file's text needs no run-wide state: the fix marker shows only on a diagnostic whose fix applies, and the run has
-// such a fix only when one of its files does.
-pub struct FullDisplay {
-    config: DisplayDiagnosticConfig,
-    base: u64,
-}
-
-impl FullDisplay {
-    // The key a file's text is stored under, given the name the output shows the file by.
-    pub fn key(&self, name: &str) -> u64 {
-        let mut hasher = CacheKeyHasher::new();
-        self.base.cache_key(&mut hasher);
-        name.cache_key(&mut hasher);
-        hasher.finish()
-    }
-
-    // The `full` text of one file's diagnostics, in the order the report sorts them.
-    pub fn render(&self, diagnostics: &[Diagnostic]) -> Vec<u8> {
-        let mut sorted = diagnostics.to_vec();
-        sorted.sort_by(Diagnostic::ruff_start_ordering);
-        let fixable = sorted.iter().any(|diagnostic| diagnostic.has_applicable_fix(self.config.fix_applicability()));
-        let config = self.config.clone().with_show_fix_status(fixable);
-        let notebooks = FxHashMap::default();
-        let context = RenderContext::new(&notebooks);
-        let mut buffer = Vec::new();
-        render_diagnostics(&mut buffer, OutputFormat::Full, &config, &context, &sorted)
-            .expect("writing to a vector cannot fail");
-        buffer
-    }
 }
 
 // Writes the diagnostics in order. A file whose text is known is written as it is, the others render in parallel

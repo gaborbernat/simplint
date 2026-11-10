@@ -18,7 +18,6 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use super::conflicts::{self, Scope};
 use super::discover::{Discovered, discover, linted_roots};
 use super::{Diagnostics, Mode, Resolved, StdinLint, lint_path, lint_stdin, write_source};
-use crate::cli::printer::FullDisplay;
 use crate::lint::Linter;
 use crate::lint::registry::{Rule, RuleSet};
 use crate::project::cache::{self, FileKey};
@@ -26,7 +25,7 @@ use crate::project::{
     DocReferences, Ending, External, FileFacts, ImportResolver, IndexInputs, Parts, Project, SearchRoots,
 };
 use crate::rules::classes::dataclass_kw_only::suppresses_rewrite;
-use crate::run::cache::{Cache, Caches, Fingerprints};
+use crate::run::cache::{Cache, Caches, Fingerprints, FullDisplay};
 use crate::settings::{FileSettings, ModuleRole, Settings};
 
 // Ruff's `add_noqa`: a file that cannot be read or written is logged and left as it is.

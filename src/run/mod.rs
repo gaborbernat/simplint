@@ -31,6 +31,7 @@ use crate::fix::{Fixer, FixerResult, Withdrawn, add_fixes};
 use crate::lint::Linter;
 use crate::settings::SettingsResolver;
 
+pub(crate) use cache::FullDisplay;
 pub(crate) use discover::{Discovered, discover, linted_roots, redact_extended, within};
 pub(crate) use rounds::{add_suppressions, check_files, check_stdin};
 
