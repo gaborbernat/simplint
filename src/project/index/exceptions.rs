@@ -83,16 +83,53 @@ pub(super) fn exception_classes(
     }
     let mut types: FxHashMap<FileId, FxHashSet<String>> = FxHashMap::default();
     let exception_names: FxHashSet<&str> = exceptions.iter().map(|key| key.1.as_str()).collect();
-    let candidates = files
+    let mut declared: FxHashMap<FileId, Vec<&str>> = FxHashMap::default();
+    for (file, name) in classes.keys() {
+        if exception_names.contains(name.as_str()) {
+            declared.entry(*file).or_default().push(name.as_str());
+        }
+    }
+    for (importer, _, binding) in bindings {
+        if exception_names.contains(binding.bound.as_str()) {
+            declared.entry(*importer).or_default().push(binding.bound.as_str());
+        }
+    }
+    let mut starred: FxHashMap<FileId, Vec<FileId>> = FxHashMap::default();
+    for (importer, source) in stars {
+        starred.entry(*importer).or_default().push(*source);
+    }
+    let candidates = exceptions
         .iter()
-        .flat_map(|(file, _)| exception_names.iter().map(move |name| (*file, *name)))
-        .chain(bindings.iter().map(|(importer, _, binding)| (*importer, binding.bound.as_str())));
+        .map(|key| (key.0, key.1.as_str()))
+        .chain(bindings.iter().map(|(importer, _, binding)| (*importer, binding.bound.as_str())))
+        .chain(starred.keys().flat_map(|importer| {
+            starred_exception_names(*importer, &starred, &declared).into_iter().map(move |name| (*importer, name))
+        }));
     for (file, name) in candidates {
         if home(file, name).is_some_and(|key| exceptions.contains(&key)) {
             types.entry(file).or_default().insert(name.to_owned());
         }
     }
     (uncaught, types)
+}
+
+// The exception names a file's star imports bring in: those each star-imported file defines or binds, and those of the
+// files it star-imports in turn.
+fn starred_exception_names<'a>(
+    file: FileId,
+    starred: &FxHashMap<FileId, Vec<FileId>>,
+    declared: &FxHashMap<FileId, Vec<&'a str>>,
+) -> FxHashSet<&'a str> {
+    let mut names = FxHashSet::default();
+    let mut seen = FxHashSet::from_iter([file]);
+    let mut pending: Vec<FileId> = starred.get(&file).into_iter().flatten().copied().collect();
+    while let Some(source) = pending.pop() {
+        if seen.insert(source) {
+            names.extend(declared.get(&source).into_iter().flatten().copied());
+            pending.extend(starred.get(&source).into_iter().flatten().copied());
+        }
+    }
+    names
 }
 
 // Whether a base class a run does not define is an exception: a builtin one, or a standard-library one, which by its
