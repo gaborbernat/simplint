@@ -7,15 +7,15 @@ use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, OperatorPrecedence, PythonVersion, Stmt, StringFlags};
 use ruff_text_size::{Ranged, TextRange};
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::keep_debug_text;
 use crate::rules::edits::statement_deletion;
 use crate::rules::logic::inline::{
-    Names, enter_function, fits, for_each_scoped_body, fstring_body_parts, inlined_text, joined, leading_name,
-    requoted_text,
+    Names, declared_outer, enter_function, fits, for_each_scoped_body, fstring_body_parts, inlined_text, joined,
+    leading_name, requoted_text,
 };
 use crate::rules::needs_parentheses;
 use crate::syntax::{is_name, is_repeating_expr, last_segment};
@@ -23,6 +23,8 @@ use crate::syntax::{is_name, is_repeating_expr, last_segment};
 pub fn single_use_variable(checker: &Checker) {
     // A function's names are walked once, and only when one of its blocks assigns a single name.
     let mut names: FxHashMap<TextRange, Names> = FxHashMap::default();
+    // A call rebinds only a name some function declares `global` or `nonlocal`.
+    let rebindable = declared_outer(checker.body());
     for_each_scoped_body(checker.body(), None, 0, &enter_function, &mut |body, function, depth| {
         let Some(function) = function else {
             return;
@@ -32,7 +34,7 @@ pub fn single_use_variable(checker: &Checker) {
                 && let [Expr::Name(target)] = assign.targets.as_slice()
             {
                 let names = names.entry(function.range).or_insert_with(|| Names::of(&function.body));
-                check_pair(checker, names, (assign, target), next, depth);
+                check_pair(checker, (names, &rebindable), (assign, target), next, depth);
             }
         }
     });
@@ -41,7 +43,7 @@ pub fn single_use_variable(checker: &Checker) {
 // `assign` binds `target`, its only target.
 fn check_pair<'a>(
     checker: &Checker<'a>,
-    names: &Names<'a>,
+    (names, rebindable): (&Names<'a>, &FxHashSet<&str>),
     (assign, target): (&'a ast::StmtAssign, &'a ast::ExprName),
     next: &'a Stmt,
     depth: usize,
@@ -70,7 +72,11 @@ fn check_pair<'a>(
             if !fits(checker, next, replace, depth) {
                 return;
             }
-            Some(if reading.effects { Fix::unsafe_edits(deletion, edits) } else { Fix::safe_edits(deletion, edits) })
+            Some(if reorders(rebindable, assign, &reading) {
+                Fix::unsafe_edits(deletion, edits)
+            } else {
+                Fix::safe_edits(deletion, edits)
+            })
         }
         // A debug field that cannot be rewritten keeps the report, as the variable is still used once.
         None => None,
@@ -450,6 +456,14 @@ struct Reading<'a> {
     consumes: bool,
     // The parameter whose default holds the read.
     default_parameter: Option<&'a ast::ParameterWithDefault>,
+    // The names read before the read, other than the callee of a call, whose binding a call in the value could change.
+    names_before: Vec<&'a str>,
+    // How many f-string fields, `*` and `**` unpackings the walk is in, outside the read.
+    takes_state: usize,
+    // A name read before the read is formatted or unpacked there, which takes the state of its object at that point.
+    state_before: bool,
+    // The callee of the call the walk is in, which names the function rather than reading state.
+    callee: Option<TextRange>,
 }
 
 impl<'a> Reading<'a> {
@@ -471,6 +485,10 @@ impl<'a> Reading<'a> {
             short_circuits: false,
             consumes: false,
             default_parameter: None,
+            names_before: Vec::new(),
+            takes_state: 0,
+            state_before: false,
+            callee: None,
         };
         reading.visit_stmt(next);
         reading
@@ -480,6 +498,14 @@ impl<'a> Reading<'a> {
         self.branches += 1;
         visit(self);
         self.branches -= 1;
+    }
+
+    // Visits an expression whose value is formatted or unpacked as soon as it is evaluated.
+    fn taking_state(&mut self, expr: &'a Expr) {
+        let outside = !expr.range().contains_range(self.reference);
+        self.takes_state += usize::from(outside);
+        self.visit_expr(expr);
+        self.takes_state -= usize::from(outside);
     }
 }
 
@@ -562,10 +588,20 @@ impl<'a> Visitor<'a> for Reading<'a> {
         visitor::walk_decorator(self, decorator);
     }
 
+    fn visit_keyword(&mut self, keyword: &'a ast::Keyword) {
+        if keyword.arg.is_none() {
+            self.taking_state(&keyword.value);
+        } else {
+            visitor::walk_keyword(self, keyword);
+        }
+    }
+
     fn visit_interpolated_string_element(&mut self, element: &'a ast::InterpolatedStringElement) {
-        if let ast::InterpolatedStringElement::Interpolation(interpolation) = element
-            && interpolation.range.contains_range(self.reference)
-        {
+        let ast::InterpolatedStringElement::Interpolation(interpolation) = element else {
+            return;
+        };
+        let formats = !interpolation.range.contains_range(self.reference);
+        if !formats {
             self.field_start |= interpolation.expression.range().start() == self.reference.start();
             let bare = matches!(interpolation.conversion, ast::ConversionFlag::None)
                 && interpolation.debug_text.is_none()
@@ -573,7 +609,9 @@ impl<'a> Visitor<'a> for Reading<'a> {
             self.bare_field =
                 (bare && interpolation.expression.range() == self.reference).then_some(interpolation.range);
         }
+        self.takes_state += usize::from(formats);
         visitor::walk_interpolated_string_element(self, element);
+        self.takes_state -= usize::from(formats);
     }
 
     fn visit_expr(&mut self, expr: &'a Expr) {
@@ -587,7 +625,15 @@ impl<'a> Visitor<'a> for Reading<'a> {
         if expr.range().contains_range(self.reference) {
             self.slot = operand_precedence(expr, self.reference);
         }
+        if let Expr::Name(name) = expr
+            && name.ctx.is_load()
+            && self.callee != Some(name.range)
+        {
+            self.state_before |= self.takes_state > 0;
+            self.names_before.push(name.id.as_str());
+        }
         if let Expr::Call(ast::ExprCall { func, arguments, .. }) = expr {
+            self.callee = func.is_name_expr().then(|| func.range());
             let arguments = arguments.args.iter().chain(arguments.keywords.iter().map(|keyword| &keyword.value));
             let read_argument = arguments.into_iter().any(|argument| argument.range() == self.reference);
             self.whole |= read_argument;
@@ -648,10 +694,31 @@ impl<'a> Visitor<'a> for Reading<'a> {
                     self.in_branch(|reading| reading.visit_expr(operand));
                 }
             }
+            Expr::Starred(ast::ExprStarred { value, .. }) => self.taking_state(value),
+            Expr::Dict(ast::ExprDict { items, .. }) => {
+                for item in items {
+                    match &item.key {
+                        Some(key) => {
+                            self.visit_expr(key);
+                            self.visit_expr(&item.value);
+                        }
+                        None => self.taking_state(&item.value),
+                    }
+                }
+            }
             _ => visitor::walk_expr(self, expr),
         }
         self.repeats -= usize::from(repeats);
     }
+}
+
+// Whether inlining moves the value's evaluation past code that observes what the value changes: a call, lookup or
+// await before the read, or, when the value itself calls or looks something up, a name read before the read that is
+// formatted or unpacked there, or that a call can rebind.
+fn reorders(rebindable: &FxHashSet<&str>, assign: &ast::StmtAssign, reading: &Reading) -> bool {
+    reading.effects
+        || (any_over_expr(&assign.value, &is_effect)
+            && (reading.state_before || reading.names_before.iter().any(|name| rebindable.contains(name))))
 }
 
 // Before Python 3.9 a decorator takes a dotted name, optionally called, so only the callee of a call is in its head.
