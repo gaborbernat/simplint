@@ -110,7 +110,7 @@ fn simplint_ignore_comment_suppresses_its_codes() {
     );
 }
 
-#[test_case(&["--add-noqa"], "x = 1  # noqa: E501, SMP101\ny = \"\"\"a\nb\"\"\"  # noqa: SMP101\nz = 1  # noqa\n# --- helpers ---  # noqa: SMP001\n" ; "codes")]
+#[test_case(&["--add-noqa"], "x = 1  # noqa: E501, SMP101 long\ny = \"\"\"a\nb\"\"\"  # noqa: SMP101\nz = 1  # noqa\n# --- helpers ---  # noqa: SMP001\n" ; "codes")]
 #[test_case(&["--add-noqa=why"], "x = 1  # noqa: E501, SMP101 why\ny = \"\"\"a\nb\"\"\"  # noqa: SMP101 why\nz = 1  # noqa\n# --- helpers ---  # noqa: SMP001 why\n" ; "reason")]
 fn add_noqa_adds_directives(flags: &[&str], expected: &str) {
     let root = project(&[("module.py", NOQA_SOURCE)]);
@@ -136,9 +136,22 @@ fn add_ignore_merges_into_ignore_comments() {
         (result, read(root.path(), "module.py")),
         (
             (0, String::new(), "Added 3 ignore comments.\n".to_owned()),
-            "x = 1  # simplint: ignore[missing-final, single-letter-name]\n# simplint: ignore[long-paragraph, suppression-without-reason]\ny = 1  # noqa: SMP601  # simplint: ignore[single-letter-name, suppression-without-reason]\n".to_owned()
+            "x = 1  # simplint: ignore[missing-final, single-letter-name] kept\n# simplint: ignore[long-paragraph, suppression-without-reason]\ny = 1  # noqa: SMP601  # simplint: ignore[single-letter-name, suppression-without-reason]\n".to_owned()
         )
     );
+}
+
+// The reason after the codes and any comment after it stay, unless a new reason replaces the old one.
+#[test_case("--add-noqa", "x = 1  # noqa: E501 long  # type: ignore[misc]\n", "x = 1  # noqa: E501, SMP101 long  # type: ignore[misc]\n" ; "noqa_keeps_reason_and_comment")]
+#[test_case("--add-noqa=why", "x = 1  # noqa: E501 long  # type: ignore[misc]\n", "x = 1  # noqa: E501, SMP101 why  # type: ignore[misc]\n" ; "noqa_replaces_reason")]
+#[test_case("--add-noqa=why", "x = 1  # noqa: E501# type: ignore[misc]\n", "x = 1  # noqa: E501, SMP101 why  # type: ignore[misc]\n" ; "noqa_reason_before_joined_comment")]
+#[test_case("--add-noqa=why", "x = 1  # noqa: E501 long\n", "x = 1  # noqa: E501, SMP101 why\n" ; "noqa_replaces_reason_without_comment")]
+#[test_case("--add-ignore", "x = 1  # simplint: ignore[SMP601] kept  # pragma: no cover\n", "x = 1  # simplint: ignore[missing-final, single-letter-name] kept  # pragma: no cover\n" ; "ignore_keeps_reason_and_comment")]
+#[test_case("--add-ignore=paper", "x = 1  # simplint: ignore[SMP601] kept  # pragma: no cover\n", "x = 1  # simplint: ignore[missing-final, single-letter-name] paper  # pragma: no cover\n" ; "ignore_replaces_reason")]
+fn add_suppression_keeps_what_follows_the_codes(flag: &str, source: &str, expected: &str) {
+    let root = project(&[("module.py", source)]);
+    check(root.path(), &["--select", "SMP101", flag]);
+    assert_eq!(read(root.path(), "module.py"), expected);
 }
 
 #[test]
