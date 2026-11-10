@@ -134,7 +134,7 @@ def test_save(save: MagicMock) -> None:
 ```
 
 An assertion method returns `None`, so when the call is the whole test of an `assert` without a message, the fix drops
-the `assert` too.
+the `assert` and any parentheses around the call.
 
 ```toml config
 [tool.ruff.lint]

@@ -1,4 +1,5 @@
 use ruff_diagnostics::{Edit, Fix};
+use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
@@ -91,7 +92,7 @@ fn report_assignments(checker: &Checker, call: &ast::ExprCall, assignments: &[As
         if !keywords.is_empty() {
             let separator = if call.arguments.is_empty() {
                 ""
-            } else if checker.text(TextRange::new(call.arguments.start(), close)).trim_end().ends_with(',') {
+            } else if ends_with_comma(checker, TextRange::new(call.arguments.start(), close)) {
                 " "
             } else {
                 ", "
@@ -117,4 +118,16 @@ fn report_assignments(checker: &Checker, call: &ast::ExprCall, assignments: &[As
         fix,
         format!("Pass {} to the mock constructor", names.join(", ")),
     );
+}
+
+// Comments and line breaks after the last argument hide its comma from the text, so the tokens decide.
+fn ends_with_comma(checker: &Checker, arguments: TextRange) -> bool {
+    checker
+        .parsed
+        .tokens()
+        .in_range(arguments)
+        .iter()
+        .rev()
+        .find(|token| !matches!(token.kind(), TokenKind::Comment | TokenKind::NonLogicalNewline | TokenKind::Newline))
+        .is_some_and(|token| token.kind() == TokenKind::Comma)
 }

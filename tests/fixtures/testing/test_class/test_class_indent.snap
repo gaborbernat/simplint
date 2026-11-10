@@ -1,0 +1,12 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:7 SMP801 Test class `TestThing`; use module-level test functions with a name prefix [unsafe fix: Turn the methods of `TestThing` into module-level functions]
+--- fixed (1 applied, 0 remaining) ---
+def helper():
+  return 1
+
+
+def test_thing_one():
+    assert helper() == 2

@@ -113,6 +113,9 @@ No fix is offered when:
 
 - another class extends it, or the file refers to it by name, so it must stay a class;
 
+- a method keeps its name, as in `class Test`, and the module already binds that name, so the flattened function would
+  replace it;
+
 - the class contains a string that spans several lines, other than a method's docstring, whose indentation `ruff format`
   rewrites anyway;
 
