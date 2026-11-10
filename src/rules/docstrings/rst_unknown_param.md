@@ -123,6 +123,42 @@ parameter the signature does not take.
           self.source = source
   ```
 
+- **Fields of an attrs class**: attrs names the parameter of a private field without its leading underscore, or by its
+  `alias`, so `_x` takes `x`.
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python ok file=point.py
+  from attrs import define
+
+
+  @define
+  class Point:
+      """A point on the horizontal axis.
+
+      :param x: Where it sits.
+      """
+
+      _x: int
+  ```
+
+  ```python report file=alias.py
+  from attrs import define, field
+
+
+  @define
+  class Point:
+      """A point on the horizontal axis.
+
+      :param x: Where it sits.
+      """
+
+      _x: int = field(alias="pos")
+  ```
+
 ### Exceptions
 
 - **A class that takes its constructor from a base class**: the base's signature is not in the class, so its parameters

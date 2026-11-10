@@ -30730,7 +30730,7 @@
     "name": "rst-missing-param",
     "summary": "Public API docstrings that leave a parameter undocumented",
     "fix": "None",
-    "explanation": "Flags parameters that a public API docstring leaves without a `:param name:` field, when the project uses\nreStructuredText docstrings. Without the field, the reference shows only the parameter's name and type.\n\n## Why is this bad?\n\nUsers read a parameter's meaning in the rendered reference or their editor's hover help. A parameter the docstring skips\nshows with its name and type only, leaving its units, defaults and constraints unsaid.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\nproject-kind = \"library\"\n```\n\n```python report\ndef copy(source: str, target: str) -> None:\n    \"\"\"Copy a file.\n\n    :param source: Where from.\n    \"\"\"\n```\n\nUse instead:\n\n```python ok\ndef copy(source: str, target: str) -> None:\n    \"\"\"Copy a file.\n\n    :param source: Where from.\n    :param target: Where to.\n    \"\"\"\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def copy(source: str, target: str) -> None:\n      \"\"\"Copy a file.\n\n      :param source: Where from.\n      \"\"\"\n  ```\n\n## What it does\n\nChecks the docstrings of a library's public API (see [undocumented-public-api](SMP903.html)), when\n`docstring-style = \"rst\"`, for parameters without a `:param name:` field.\n\nNo fix is offered: the description is for the author to write, and [rst-empty-field](SMP914.html) reports the empty\nfield until they do.\n\n### Active on\n\n- **Parameters of public functions and methods**: each needs a `:param name:` field.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def copy(source: str, target: str) -> None:\n      \"\"\"Copy a file.\n\n      :param source: Where from.\n      \"\"\"\n  ```\n\n- **Constructor parameters of a public class**: they may be documented in the class docstring or in its `__init__`\n  docstring.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Reader:\n      \"\"\"Read files.\n\n      :param source: Where to read from.\n      \"\"\"\n\n      def __init__(self, source: str, encoding: str) -> None:\n          \"\"\"Set up.\"\"\"\n  ```\n\n- **`*args` and `**kwargs`**: they count as `args` and `kwargs`, written with or without their stars, as\n  `:param \\*args:`.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def copy(source: str, *args: str, **kwargs: str) -> None:\n      \"\"\"Copy a file.\n\n      :param source: Where from.\n      \"\"\"\n  ```\n\n- **Parameters named with two leading underscores, such as `__obj`**: the double underscore marks the parameter\n  positional-only rather than internal, so it is checked.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def wrap(__obj: int) -> int:\n      \"\"\"Wrap a value.\"\"\"\n      return __obj\n  ```\n\n### Exceptions\n\n- **The instance or class a method receives first**: callers do not pass it, so there is nothing to document.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Reader:\n      \"\"\"Read files.\"\"\"\n\n      def read(self, size: int) -> str:\n          \"\"\"Read the file.\n\n          :param size: Bytes to read.\n          \"\"\"\n          return \"\"\n  ```\n\n- **Parameters named with one leading underscore**: they are internal, a knob the documentation leaves out;\n  [rst-private-field](SMP915.html) reports documentation of them in the public API.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def fetch(url: str, _retries: int = 3) -> bytes:\n      \"\"\"Download a resource.\n\n      :param url: Address of the resource.\n      \"\"\"\n      return b\"\"\n  ```\n\n- **Docstrings outside the public API**: [function-docstring](SMP901.html) asks for no docstring there.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok file=demo/_core.py\n  def copy(source: str, target: str) -> None:\n      \"\"\"Copy a file.\n\n      :param source: Where from.\n      \"\"\"\n  ```\n\n- **Class variables of a generated class**: a `ClassVar` field is no constructor parameter, whether its annotation is\n  written as `ClassVar[int]` or as the quoted string `\"ClassVar[int]\"`.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  from dataclasses import dataclass\n  from typing import ClassVar\n\n\n  @dataclass\n  class Reader:\n      \"\"\"Read files.\n\n      :param source: Where to read from.\n      \"\"\"\n\n      source: str\n      count: \"ClassVar[int]\" = 0\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#12434](https://github.com/astral-sh/ruff/issues/12434)\n  (DOC101) and [#6606](https://github.com/astral-sh/ruff/issues/6606) (Sphinx style). Released rule\n  [D417](https://docs.astral.sh/ruff/rules/undocumented-param/) and open pull request\n  [#21076](https://github.com/astral-sh/ruff/pull/21076) check only Google and NumPy sections, not `:param` fields.\n- [pydoclint](https://github.com/jsh9/pydoclint) reports a docstring with fewer parameters than the signature as\n  [DOC101](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.\n- [darglint](https://github.com/terrencepreilly/darglint) reports a missing parameter as\n  [DAR101](https://github.com/terrencepreilly/darglint), with no fix.\n",
+    "explanation": "Flags parameters that a public API docstring leaves without a `:param name:` field, when the project uses\nreStructuredText docstrings. Without the field, the reference shows only the parameter's name and type.\n\n## Why is this bad?\n\nUsers read a parameter's meaning in the rendered reference or their editor's hover help. A parameter the docstring skips\nshows with its name and type only, leaving its units, defaults and constraints unsaid.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\nproject-kind = \"library\"\n```\n\n```python report\ndef copy(source: str, target: str) -> None:\n    \"\"\"Copy a file.\n\n    :param source: Where from.\n    \"\"\"\n```\n\nUse instead:\n\n```python ok\ndef copy(source: str, target: str) -> None:\n    \"\"\"Copy a file.\n\n    :param source: Where from.\n    :param target: Where to.\n    \"\"\"\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def copy(source: str, target: str) -> None:\n      \"\"\"Copy a file.\n\n      :param source: Where from.\n      \"\"\"\n  ```\n\n## What it does\n\nChecks the docstrings of a library's public API (see [undocumented-public-api](SMP903.html)), when\n`docstring-style = \"rst\"`, for parameters without a `:param name:` field.\n\nNo fix is offered: the description is for the author to write, and [rst-empty-field](SMP914.html) reports the empty\nfield until they do.\n\n### Active on\n\n- **Parameters of public functions and methods**: each needs a `:param name:` field.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def copy(source: str, target: str) -> None:\n      \"\"\"Copy a file.\n\n      :param source: Where from.\n      \"\"\"\n  ```\n\n- **Constructor parameters of a public class**: they may be documented in the class docstring or in its `__init__`\n  docstring.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Reader:\n      \"\"\"Read files.\n\n      :param source: Where to read from.\n      \"\"\"\n\n      def __init__(self, source: str, encoding: str) -> None:\n          \"\"\"Set up.\"\"\"\n  ```\n\n- **Fields of an attrs class**: attrs names the constructor parameter of a private field without its leading underscore,\n  or by its `alias`, so the docstring documents that name.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  from attrs import define\n\n\n  @define\n  class Point:\n      \"\"\"A point on the horizontal axis.\"\"\"\n\n      _x: int\n  ```\n\n- **`*args` and `**kwargs`**: they count as `args` and `kwargs`, written with or without their stars, as\n  `:param \\*args:`.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def copy(source: str, *args: str, **kwargs: str) -> None:\n      \"\"\"Copy a file.\n\n      :param source: Where from.\n      \"\"\"\n  ```\n\n- **Parameters named with two leading underscores, such as `__obj`**: the double underscore marks the parameter\n  positional-only rather than internal, so it is checked.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def wrap(__obj: int) -> int:\n      \"\"\"Wrap a value.\"\"\"\n      return __obj\n  ```\n\n### Exceptions\n\n- **The instance or class a method receives first**: callers do not pass it, so there is nothing to document.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Reader:\n      \"\"\"Read files.\"\"\"\n\n      def read(self, size: int) -> str:\n          \"\"\"Read the file.\n\n          :param size: Bytes to read.\n          \"\"\"\n          return \"\"\n  ```\n\n- **Parameters named with one leading underscore**: they are internal, a knob the documentation leaves out;\n  [rst-private-field](SMP915.html) reports documentation of them in the public API.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def fetch(url: str, _retries: int = 3) -> bytes:\n      \"\"\"Download a resource.\n\n      :param url: Address of the resource.\n      \"\"\"\n      return b\"\"\n  ```\n\n- **Docstrings outside the public API**: [function-docstring](SMP901.html) asks for no docstring there.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok file=demo/_core.py\n  def copy(source: str, target: str) -> None:\n      \"\"\"Copy a file.\n\n      :param source: Where from.\n      \"\"\"\n  ```\n\n- **Class variables of a generated class**: a `ClassVar` field is no constructor parameter, whether its annotation is\n  written as `ClassVar[int]` or as the quoted string `\"ClassVar[int]\"`.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  from dataclasses import dataclass\n  from typing import ClassVar\n\n\n  @dataclass\n  class Reader:\n      \"\"\"Read files.\n\n      :param source: Where to read from.\n      \"\"\"\n\n      source: str\n      count: \"ClassVar[int]\" = 0\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#12434](https://github.com/astral-sh/ruff/issues/12434)\n  (DOC101) and [#6606](https://github.com/astral-sh/ruff/issues/6606) (Sphinx style). Released rule\n  [D417](https://docs.astral.sh/ruff/rules/undocumented-param/) and open pull request\n  [#21076](https://github.com/astral-sh/ruff/pull/21076) check only Google and NumPy sections, not `:param` fields.\n- [pydoclint](https://github.com/jsh9/pydoclint) reports a docstring with fewer parameters than the signature as\n  [DOC101](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.\n- [darglint](https://github.com/terrencepreilly/darglint) reports a missing parameter as\n  [DAR101](https://github.com/terrencepreilly/darglint), with no fix.\n",
     "examples": {
       "parsed": [
         {
@@ -30841,7 +30841,7 @@
         {
           "section": "What it does",
           "line": 119,
-          "end_line": 136,
+          "end_line": 139,
           "config": {
             "line": 119,
             "end_line": 128,
@@ -30854,18 +30854,18 @@
               "file": "example.py",
               "named": false,
               "line": 130,
-              "end_line": 136,
-              "source": "def copy(source: str, *args: str, **kwargs: str) -> None:\n    \"\"\"Copy a file.\n\n    :param source: Where from.\n    \"\"\"\n"
+              "end_line": 139,
+              "source": "from attrs import define\n\n\n@define\nclass Point:\n    \"\"\"A point on the horizontal axis.\"\"\"\n\n    _x: int\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 141,
-          "end_line": 156,
+          "line": 144,
+          "end_line": 161,
           "config": {
-            "line": 141,
-            "end_line": 150,
+            "line": 144,
+            "end_line": 153,
             "source": "[project]\nname = \"demo\"\n\n[build-system]\nrequires = []\n\n[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -30874,19 +30874,40 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 152,
-              "end_line": 156,
+              "line": 155,
+              "end_line": 161,
+              "source": "def copy(source: str, *args: str, **kwargs: str) -> None:\n    \"\"\"Copy a file.\n\n    :param source: Where from.\n    \"\"\"\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 166,
+          "end_line": 181,
+          "config": {
+            "line": 166,
+            "end_line": 175,
+            "source": "[project]\nname = \"demo\"\n\n[build-system]\nrequires = []\n\n[tool.simplint]\ndocstring-style = \"rst\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 177,
+              "end_line": 181,
               "source": "def wrap(__obj: int) -> int:\n    \"\"\"Wrap a value.\"\"\"\n    return __obj\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 162,
-          "end_line": 183,
+          "line": 187,
+          "end_line": 208,
           "config": {
-            "line": 162,
-            "end_line": 171,
+            "line": 187,
+            "end_line": 196,
             "source": "[project]\nname = \"demo\"\n\n[build-system]\nrequires = []\n\n[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -30895,19 +30916,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 173,
-              "end_line": 183,
+              "line": 198,
+              "end_line": 208,
               "source": "class Reader:\n    \"\"\"Read files.\"\"\"\n\n    def read(self, size: int) -> str:\n        \"\"\"Read the file.\n\n        :param size: Bytes to read.\n        \"\"\"\n        return \"\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 188,
-          "end_line": 206,
+          "line": 213,
+          "end_line": 231,
           "config": {
-            "line": 188,
-            "end_line": 197,
+            "line": 213,
+            "end_line": 222,
             "source": "[project]\nname = \"demo\"\n\n[build-system]\nrequires = []\n\n[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -30916,19 +30937,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 199,
-              "end_line": 206,
+              "line": 224,
+              "end_line": 231,
               "source": "def fetch(url: str, _retries: int = 3) -> bytes:\n    \"\"\"Download a resource.\n\n    :param url: Address of the resource.\n    \"\"\"\n    return b\"\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 210,
-          "end_line": 227,
+          "line": 235,
+          "end_line": 252,
           "config": {
-            "line": 210,
-            "end_line": 219,
+            "line": 235,
+            "end_line": 244,
             "source": "[project]\nname = \"demo\"\n\n[build-system]\nrequires = []\n\n[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -30937,19 +30958,19 @@
               "language": "python",
               "file": "demo/_core.py",
               "named": true,
-              "line": 221,
-              "end_line": 227,
+              "line": 246,
+              "end_line": 252,
               "source": "def copy(source: str, target: str) -> None:\n    \"\"\"Copy a file.\n\n    :param source: Where from.\n    \"\"\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 232,
-          "end_line": 257,
+          "line": 257,
+          "end_line": 282,
           "config": {
-            "line": 232,
-            "end_line": 241,
+            "line": 257,
+            "end_line": 266,
             "source": "[project]\nname = \"demo\"\n\n[build-system]\nrequires = []\n\n[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -30958,8 +30979,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 243,
-              "end_line": 257,
+              "line": 268,
+              "end_line": 282,
               "source": "from dataclasses import dataclass\nfrom typing import ClassVar\n\n\n@dataclass\nclass Reader:\n    \"\"\"Read files.\n\n    :param source: Where to read from.\n    \"\"\"\n\n    source: str\n    count: \"ClassVar[int]\" = 0\n"
             }
           ]
@@ -30976,7 +30997,7 @@
     "name": "rst-unknown-param",
     "summary": "`:param:` and `:type:` fields for parameters the signature lacks",
     "fix": "Sometimes",
-    "explanation": "Flags `:param name:` and `:type name:` fields in reStructuredText docstrings that name a parameter the signature does\nnot take. Such a field, often left behind by a rename or removal, documents a call that no longer works.\n\n## Why is this bad?\n\nA field for a parameter that is gone, often renamed or removed in a later change, documents a call that no longer works.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\ndef load(path: str) -> str:\n    \"\"\"Load a file.\n\n    :param path: Where it is.\n    :param mode: How to open it.\n    \"\"\"\n```\n\nUse instead:\n\n```python ok\ndef load(path: str) -> str:\n    \"\"\"Load a file.\n\n    :param path: Where it is.\n    \"\"\"\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def load(path: str) -> str:\n      \"\"\"Load a file.\n\n      :param path: Where it is.\n      :param mode: How to open it.\n      \"\"\"\n      return path\n  ```\n\n## What it does\n\nChecks reStructuredText docstrings, when `docstring-style = \"rst\"`, for `:param name:` and `:type name:` fields naming a\nparameter the signature does not take.\n\n### Active on\n\n- **Function and method docstrings**: fields are matched against the signature. The instance or class a method receives\n  first does not count as a parameter.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def load(path: str) -> str:\n      \"\"\"Load a file.\n\n      :param path: Where it is.\n      :param mode: How to open it.\n      \"\"\"\n      return path\n  ```\n\n  ```python fixed\n  def load(path: str) -> str:\n      \"\"\"Load a file.\n\n      :param path: Where it is.\n      \"\"\"\n      return path\n  ```\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Reader:\n      \"\"\"Read files.\"\"\"\n\n      def read(self, size: int) -> str:\n          \"\"\"Read the file.\n\n          :param self: The reader.\n          :param size: Bytes to read.\n          \"\"\"\n          return \"\"\n  ```\n\n- **Class docstrings**: a class's docstring documents the parameters of its `__init__`, or of the fields a dataclass or\n  attrs class turns into them.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Reader:\n      \"\"\"Read files.\n\n      :param source: Where to read from.\n      :param mode: How to open it.\n      \"\"\"\n\n      def __init__(self, source: str) -> None:\n          self.source = source\n  ```\n\n### Exceptions\n\n- **A class that takes its constructor from a base class**: the base's signature is not in the class, so its parameters\n  are not known.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Reader(Base):\n      \"\"\"Read files.\n\n      :param mode: How to open it.\n      \"\"\"\n  ```\n\n- **A function with `**kwargs`**: it takes any keyword, which such fields may document.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def load(path: str, **kwargs: str) -> str:\n      \"\"\"Load a file.\n\n      :param path: Where it is.\n      :param mode: How to open it.\n      \"\"\"\n      return path\n  ```\n\n### Fix\n\nThe fix deletes the field with the lines that continue it.\n\n**Unsafe fix:** code may read the docstring through `__doc__`.\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\ndef load(path: str) -> str:\n    \"\"\"Load a file.\n\n    :param path: Where it is.\n    :param mode: How to open it.\n    \"\"\"\n    return path\n```\n\n```python fixed\ndef load(path: str) -> str:\n    \"\"\"Load a file.\n\n    :param path: Where it is.\n    \"\"\"\n    return path\n```\n\nWhen the text left before the field ends in a quote or a backslash, the closing quotes go on a line of their own, since\non the same line they would end or escape the string.\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\n# fmt: off\ndef load(path: str) -> str:\n    \"\"\"Load \"path\"\n\n    :param mode: How to open it.\n    \"\"\"\n    return path\n# fmt: on\n```\n\n```python fixed\n# fmt: off\ndef load(path: str) -> str:\n    \"\"\"Load \"path\"\n    \"\"\"\n    return path\n# fmt: on\n```\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\ndef split(text: str) -> list[str]:\n    r\"\"\"Split on \\\n\n    :param sep: Where to cut.\n    \"\"\"\n    return text.split()\n```\n\n```python fixed\ndef split(text: str) -> list[str]:\n    r\"\"\"Split on \\\n    \"\"\"\n    return text.split()\n```\n\nNo fix is offered when escapes in the docstring make its text differ from the source.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rule\n  [DOC102](https://docs.astral.sh/ruff/rules/docstring-extraneous-parameter/), which checks Google and NumPy sections\n  but not reST fields; open pull request [#13286](https://github.com/astral-sh/ruff/pull/13286) would add them.\n- [pydoclint](https://github.com/jsh9/pydoclint) reports a docstring with more parameters than the signature as\n  [DOC102](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.\n- [darglint](https://github.com/terrencepreilly/darglint) reports a docstring parameter the signature lacks as\n  [DAR102](https://github.com/terrencepreilly/darglint), with no fix.\n",
+    "explanation": "Flags `:param name:` and `:type name:` fields in reStructuredText docstrings that name a parameter the signature does\nnot take. Such a field, often left behind by a rename or removal, documents a call that no longer works.\n\n## Why is this bad?\n\nA field for a parameter that is gone, often renamed or removed in a later change, documents a call that no longer works.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\ndef load(path: str) -> str:\n    \"\"\"Load a file.\n\n    :param path: Where it is.\n    :param mode: How to open it.\n    \"\"\"\n```\n\nUse instead:\n\n```python ok\ndef load(path: str) -> str:\n    \"\"\"Load a file.\n\n    :param path: Where it is.\n    \"\"\"\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def load(path: str) -> str:\n      \"\"\"Load a file.\n\n      :param path: Where it is.\n      :param mode: How to open it.\n      \"\"\"\n      return path\n  ```\n\n## What it does\n\nChecks reStructuredText docstrings, when `docstring-style = \"rst\"`, for `:param name:` and `:type name:` fields naming a\nparameter the signature does not take.\n\n### Active on\n\n- **Function and method docstrings**: fields are matched against the signature. The instance or class a method receives\n  first does not count as a parameter.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def load(path: str) -> str:\n      \"\"\"Load a file.\n\n      :param path: Where it is.\n      :param mode: How to open it.\n      \"\"\"\n      return path\n  ```\n\n  ```python fixed\n  def load(path: str) -> str:\n      \"\"\"Load a file.\n\n      :param path: Where it is.\n      \"\"\"\n      return path\n  ```\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Reader:\n      \"\"\"Read files.\"\"\"\n\n      def read(self, size: int) -> str:\n          \"\"\"Read the file.\n\n          :param self: The reader.\n          :param size: Bytes to read.\n          \"\"\"\n          return \"\"\n  ```\n\n- **Class docstrings**: a class's docstring documents the parameters of its `__init__`, or of the fields a dataclass or\n  attrs class turns into them.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Reader:\n      \"\"\"Read files.\n\n      :param source: Where to read from.\n      :param mode: How to open it.\n      \"\"\"\n\n      def __init__(self, source: str) -> None:\n          self.source = source\n  ```\n\n- **Fields of an attrs class**: attrs names the parameter of a private field without its leading underscore, or by its\n  `alias`, so `_x` takes `x`.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok file=point.py\n  from attrs import define\n\n\n  @define\n  class Point:\n      \"\"\"A point on the horizontal axis.\n\n      :param x: Where it sits.\n      \"\"\"\n\n      _x: int\n  ```\n\n  ```python report file=alias.py\n  from attrs import define, field\n\n\n  @define\n  class Point:\n      \"\"\"A point on the horizontal axis.\n\n      :param x: Where it sits.\n      \"\"\"\n\n      _x: int = field(alias=\"pos\")\n  ```\n\n### Exceptions\n\n- **A class that takes its constructor from a base class**: the base's signature is not in the class, so its parameters\n  are not known.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Reader(Base):\n      \"\"\"Read files.\n\n      :param mode: How to open it.\n      \"\"\"\n  ```\n\n- **A function with `**kwargs`**: it takes any keyword, which such fields may document.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def load(path: str, **kwargs: str) -> str:\n      \"\"\"Load a file.\n\n      :param path: Where it is.\n      :param mode: How to open it.\n      \"\"\"\n      return path\n  ```\n\n### Fix\n\nThe fix deletes the field with the lines that continue it.\n\n**Unsafe fix:** code may read the docstring through `__doc__`.\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\ndef load(path: str) -> str:\n    \"\"\"Load a file.\n\n    :param path: Where it is.\n    :param mode: How to open it.\n    \"\"\"\n    return path\n```\n\n```python fixed\ndef load(path: str) -> str:\n    \"\"\"Load a file.\n\n    :param path: Where it is.\n    \"\"\"\n    return path\n```\n\nWhen the text left before the field ends in a quote or a backslash, the closing quotes go on a line of their own, since\non the same line they would end or escape the string.\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\n# fmt: off\ndef load(path: str) -> str:\n    \"\"\"Load \"path\"\n\n    :param mode: How to open it.\n    \"\"\"\n    return path\n# fmt: on\n```\n\n```python fixed\n# fmt: off\ndef load(path: str) -> str:\n    \"\"\"Load \"path\"\n    \"\"\"\n    return path\n# fmt: on\n```\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\ndef split(text: str) -> list[str]:\n    r\"\"\"Split on \\\n\n    :param sep: Where to cut.\n    \"\"\"\n    return text.split()\n```\n\n```python fixed\ndef split(text: str) -> list[str]:\n    r\"\"\"Split on \\\n    \"\"\"\n    return text.split()\n```\n\nNo fix is offered when escapes in the docstring make its text differ from the source.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rule\n  [DOC102](https://docs.astral.sh/ruff/rules/docstring-extraneous-parameter/), which checks Google and NumPy sections\n  but not reST fields; open pull request [#13286](https://github.com/astral-sh/ruff/pull/13286) would add them.\n- [pydoclint](https://github.com/jsh9/pydoclint) reports a docstring with more parameters than the signature as\n  [DOC102](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.\n- [darglint](https://github.com/terrencepreilly/darglint) reports a docstring parameter the signature lacks as\n  [DAR102](https://github.com/terrencepreilly/darglint), with no fix.\n",
     "examples": {
       "parsed": [
         {
@@ -31116,50 +31137,38 @@
         },
         {
           "section": "What it does",
-          "line": 131,
-          "end_line": 142,
+          "line": 129,
+          "end_line": 160,
           "config": {
-            "line": 131,
-            "end_line": 134,
+            "line": 129,
+            "end_line": 132,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
             {
               "role": "ok",
               "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 136,
-              "end_line": 142,
-              "source": "class Reader(Base):\n    \"\"\"Read files.\n\n    :param mode: How to open it.\n    \"\"\"\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 146,
-          "end_line": 159,
-          "config": {
-            "line": 146,
-            "end_line": 149,
-            "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
-          },
-          "blocks": [
+              "file": "point.py",
+              "named": true,
+              "line": 134,
+              "end_line": 146,
+              "source": "from attrs import define\n\n\n@define\nclass Point:\n    \"\"\"A point on the horizontal axis.\n\n    :param x: Where it sits.\n    \"\"\"\n\n    _x: int\n"
+            },
             {
-              "role": "ok",
+              "role": "report",
               "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 151,
-              "end_line": 159,
-              "source": "def load(path: str, **kwargs: str) -> str:\n    \"\"\"Load a file.\n\n    :param path: Where it is.\n    :param mode: How to open it.\n    \"\"\"\n    return path\n"
+              "file": "alias.py",
+              "named": true,
+              "line": 148,
+              "end_line": 160,
+              "source": "from attrs import define, field\n\n\n@define\nclass Point:\n    \"\"\"A point on the horizontal axis.\n\n    :param x: Where it sits.\n    \"\"\"\n\n    _x: int = field(alias=\"pos\")\n"
             }
           ]
         },
         {
           "section": "What it does",
           "line": 167,
-          "end_line": 189,
+          "end_line": 178,
           "config": {
             "line": 167,
             "end_line": 170,
@@ -31167,12 +31176,54 @@
           },
           "blocks": [
             {
-              "role": "report",
+              "role": "ok",
               "language": "python",
               "file": "example.py",
               "named": false,
               "line": 172,
-              "end_line": 180,
+              "end_line": 178,
+              "source": "class Reader(Base):\n    \"\"\"Read files.\n\n    :param mode: How to open it.\n    \"\"\"\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 182,
+          "end_line": 195,
+          "config": {
+            "line": 182,
+            "end_line": 185,
+            "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
+          },
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 187,
+              "end_line": 195,
+              "source": "def load(path: str, **kwargs: str) -> str:\n    \"\"\"Load a file.\n\n    :param path: Where it is.\n    :param mode: How to open it.\n    \"\"\"\n    return path\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 203,
+          "end_line": 225,
+          "config": {
+            "line": 203,
+            "end_line": 206,
+            "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 208,
+              "end_line": 216,
               "source": "def load(path: str) -> str:\n    \"\"\"Load a file.\n\n    :param path: Where it is.\n    :param mode: How to open it.\n    \"\"\"\n    return path\n"
             },
             {
@@ -31180,19 +31231,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 182,
-              "end_line": 189,
+              "line": 218,
+              "end_line": 225,
               "source": "def load(path: str) -> str:\n    \"\"\"Load a file.\n\n    :param path: Where it is.\n    \"\"\"\n    return path\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 194,
-          "end_line": 217,
+          "line": 230,
+          "end_line": 253,
           "config": {
-            "line": 194,
-            "end_line": 197,
+            "line": 230,
+            "end_line": 233,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -31201,8 +31252,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 199,
-              "end_line": 208,
+              "line": 235,
+              "end_line": 244,
               "source": "# fmt: off\ndef load(path: str) -> str:\n    \"\"\"Load \"path\"\n\n    :param mode: How to open it.\n    \"\"\"\n    return path\n# fmt: on\n"
             },
             {
@@ -31210,19 +31261,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 210,
-              "end_line": 217,
+              "line": 246,
+              "end_line": 253,
               "source": "# fmt: off\ndef load(path: str) -> str:\n    \"\"\"Load \"path\"\n    \"\"\"\n    return path\n# fmt: on\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 219,
-          "end_line": 238,
+          "line": 255,
+          "end_line": 274,
           "config": {
-            "line": 219,
-            "end_line": 222,
+            "line": 255,
+            "end_line": 258,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -31231,8 +31282,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 224,
-              "end_line": 231,
+              "line": 260,
+              "end_line": 267,
               "source": "def split(text: str) -> list[str]:\n    r\"\"\"Split on \\\n\n    :param sep: Where to cut.\n    \"\"\"\n    return text.split()\n"
             },
             {
@@ -31240,8 +31291,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 233,
-              "end_line": 238,
+              "line": 269,
+              "end_line": 274,
               "source": "def split(text: str) -> list[str]:\n    r\"\"\"Split on \\\n    \"\"\"\n    return text.split()\n"
             }
           ]

@@ -177,6 +177,54 @@ fn function_docstring_comment_waits_for_a_removed_statement() {
     );
 }
 
+// attrs names a field's constructor parameter by its `alias`, or by its name without the leading underscores, where a
+// dataclass keeps the name.
+#[test_case(
+    "from attrs import define\n\n@define\nclass Point:\n    \"\"\"A point.\n\n    :param x: Where it sits.\n    \"\"\"\n\n    _x: int\n",
+    "All checks passed!\n" ;
+    "attrs_without_underscores"
+)]
+#[test_case(
+    "from attrs import define, field\n\n@define\nclass Point:\n    \"\"\"A point.\n\n    :param pos: Where it sits.\n    \"\"\"\n\n    _x: int = field(alias=\"pos\")\n",
+    "All checks passed!\n" ;
+    "attrs_alias"
+)]
+#[test_case(
+    "from dataclasses import dataclass\n\n@dataclass\nclass Point:\n    \"\"\"A point.\n\n    :param _x: Where it sits.\n    \"\"\"\n\n    _x: int\n",
+    "All checks passed!\n" ;
+    "dataclass_keeps_name"
+)]
+#[test_case(
+    "from attrs import define, field\n\n@define\nclass Point:\n    \"\"\"A point.\n\n    :param x: Where it sits.\n    \"\"\"\n\n    _x: int = field(alias=\"pos\")\n",
+    "model.py:7:6: SMP917 `:param x:` documents `x`, which `Point` does not take\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    "attrs_alias_replaces_name"
+)]
+fn constructor_parameters_follow_the_generator(source: &str, stdout: &str) {
+    let root =
+        common::project(&[("pyproject.toml", "[tool.simplint]\ndocstring-style = \"rst\"\n"), ("model.py", source)]);
+    assert_eq!(common::check(root.path(), &["--select", "SMP916,SMP917"]).1, stdout);
+}
+
+// attrs gives the `__init__` parameter of a private field the name without its underscore, so a public class documents
+// that name.
+#[test]
+fn attrs_private_field_is_a_documented_parameter() {
+    let root = common::project(&[
+        (
+            "pyproject.toml",
+            "[project]\nname = \"demo\"\n\n[tool.simplint]\nproject-kind = \"library\"\ndocstring-style = \"rst\"\n",
+        ),
+        (
+            "model.py",
+            "from attrs import define\n\n__all__ = [\"Point\"]\n\n\n@define\nclass Point:\n    \"\"\"A point on the horizontal axis.\"\"\"\n\n    _x: int\n",
+        ),
+    ]);
+    assert_eq!(
+        common::check(root.path(), &["--select", "SMP916"]).1,
+        "model.py:8:5: SMP916 Docstring of `Point` does not document parameter `x`; add `:param x:`\nFound 1 error.\n"
+    );
+}
+
 // Without `docstring-style`, the field lists of a project's docstrings are not known to be reStructuredText.
 #[test]
 fn rst_rules_need_the_docstring_style() {

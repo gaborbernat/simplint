@@ -113,6 +113,31 @@ field until they do.
           """Set up."""
   ```
 
+- **Fields of an attrs class**: attrs names the constructor parameter of a private field without its leading underscore,
+  or by its `alias`, so the docstring documents that name.
+
+  ```toml config
+  [project]
+  name = "demo"
+
+  [build-system]
+  requires = []
+
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python report
+  from attrs import define
+
+
+  @define
+  class Point:
+      """A point on the horizontal axis."""
+
+      _x: int
+  ```
+
 - **`*args` and `**kwargs`**: they count as `args` and `kwargs`, written with or without their stars, as
   `:param \*args:`.
 
