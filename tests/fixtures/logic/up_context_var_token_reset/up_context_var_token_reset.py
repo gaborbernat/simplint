@@ -1,7 +1,22 @@
 import contextvars
+from contextvars import ContextVar
 
 request_id = contextvars.ContextVar("request_id")
 user = contextvars.ContextVar("user")
+tenant: ContextVar[str] = ContextVar("tenant")
+
+
+class Settings:
+    def set(self, value):
+        old = self.value
+        self.value = value
+        return old
+
+    def reset(self, old):
+        self.value = old
+
+
+settings = Settings()
 
 
 def simple(value):
@@ -161,3 +176,43 @@ def bare_finally(value):
         return process()
     finally:
         token
+
+
+def annotated_module_variable(value):
+    token = tenant.set(value)
+    try:
+        return process()
+    finally:
+        tenant.reset(token)
+
+
+def annotated_parameter(variable: ContextVar[str], value):
+    token = variable.set(value)
+    try:
+        return process()
+    finally:
+        variable.reset(token)
+
+
+def unannotated_parameter(variable, value):
+    token = variable.set(value)
+    try:
+        return process()
+    finally:
+        variable.reset(token)
+
+
+def other_class(value):
+    token = settings.set(value)
+    try:
+        return process()
+    finally:
+        settings.reset(token)
+
+
+def attribute_receiver(holder, value):
+    token = holder.variable.set(value)
+    try:
+        return process()
+    finally:
+        holder.variable.reset(token)
