@@ -57,3 +57,12 @@ class Table:
 
     entries = {}
     entries["key"] = 1
+
+
+class Annotated:
+    """Annotated slots.
+
+    :ivar size: The size.
+    """
+
+    __slots__: tuple[str, ...] = ("size",)

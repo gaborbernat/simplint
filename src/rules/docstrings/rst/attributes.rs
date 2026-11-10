@@ -40,6 +40,11 @@ pub(crate) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) ->
                 for name in std::iter::once(target.as_ref()).filter_map(Expr::as_name_expr) {
                     add(name.id.as_str(), class_var, documented);
                 }
+                if let Some(value) = value.as_deref().filter(|_| is_name(target, "__slots__")) {
+                    for name in slot_names(value) {
+                        add(name, false, false);
+                    }
+                }
             }
             Stmt::Assign(ast::StmtAssign { targets, value, .. }) => {
                 // An attrs or dataclass field declared by a call holds a value per instance.
