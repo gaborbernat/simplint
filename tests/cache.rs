@@ -894,3 +894,24 @@ fn cached_facts_follow_a_changed_search_root() {
     fs::write(root.path().join("pyproject.toml"), pyproject.replace("{root}", "src")).expect("write");
     assert_eq!((before, check(root.path(), &["--select", "SMP409"]).0), (1, 0));
 }
+
+// A fix the read-only file cannot take leaves the file as it is, so the file keeps its reports, and a later run reports
+// them instead of reusing a clean result.
+#[test]
+fn unwritten_fix_is_not_cached_as_clean() {
+    let source = "__all__ = (\"f\",)\n\n\ndef f() -> None:\n    \"\"\"Do.\"\"\"\n";
+    let root = project(&[("pyproject.toml", "[tool.ruff.lint]\nselect = [\"F\"]\n"), ("mod.py", source)]);
+    common::make_read_only(&root.path().join("mod.py"));
+    let (code, stdout, stderr) = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP405"]);
+    let (warm, warm_stdout, _) = check(root.path(), &["--select", "SMP405"]);
+    assert_eq!(
+        (
+            code,
+            stdout.contains("SMP405"),
+            stderr.contains("Failed to lint mod.py: writing"),
+            warm,
+            warm_stdout.contains("SMP405")
+        ),
+        (1, true, true, 1, true)
+    );
+}
