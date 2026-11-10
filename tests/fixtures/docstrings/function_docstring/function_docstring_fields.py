@@ -68,3 +68,22 @@ def _sections_only(name: str) -> None:
         name: the key the entry is stored under
     """
     print(name)
+
+
+def _short_sections(name: str) -> None:
+    """Store the entry under a name.
+
+    Params:
+        name: the key the entry is stored under
+    Yield:
+        the stored entry
+    """
+    print(name)
+
+
+def _spaced_colon(name: str) -> None:
+    """Store the entry under a name.
+
+    : name: is how the caller spells the key.
+    """
+    print(name)
