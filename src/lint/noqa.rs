@@ -458,12 +458,13 @@ impl Directive {
         self.codes.is_empty()
     }
 
-    // A blanket `# noqa` is itself what SMP003 and SMP004 report, so it cannot silence those reports.
+    // A blanket `# noqa` is itself what SMP003 and SMP004 report, so it cannot silence those reports. A `file-ignore`
+    // takes rule names as well as codes, as a line's `ruff: ignore` does.
     fn suppresses(&self, code: &str) -> bool {
         if self.is_blanket() {
             code != Rule::SuppressionWithoutReason.code() && code != Rule::BlanketIgnore.code()
         } else {
-            self.codes.iter().any(|candidate| candidate == code)
+            self.codes.iter().any(|candidate| matches_ignore(candidate, code))
         }
     }
 }
