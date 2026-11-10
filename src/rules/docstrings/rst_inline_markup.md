@@ -114,7 +114,9 @@ Checks reStructuredText docstrings, when `docstring-style = "rst"`, for inline m
 
 ### Exceptions
 
-- **Literal blocks indented under a paragraph ending in `::`**: their content is code, which holds no inline markup.
+- **Literal blocks indented under a paragraph ending in `::`**: their content is code, which holds no inline markup. The
+  first line of a docstring follows its opening quotes, so it is measured against the body's indentation in the lines
+  after it, and a summary ending in `::` opens a block only for lines indented past that body.
 
   ```toml config
   [tool.simplint]

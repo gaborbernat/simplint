@@ -5,7 +5,7 @@ use std::rc::Rc;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::TextRange;
 
-use super::attributes::{Attribute, attributes, is_field_call, skips_init, unsubscripted};
+use super::attributes::{Attribute, annotation_name, attributes, is_field_call, skips_init};
 use super::{Docstring, has_attribute_bases};
 use crate::lint::checker::Checker;
 use crate::rules::docstring;
@@ -175,7 +175,7 @@ fn class_parameters(class: &ast::StmtClassDef) -> Option<Vec<Parameter<'_>>> {
     }
     let fields = module_statements(&class.body).filter_map(|stmt| match stmt {
         Stmt::AnnAssign(ast::StmtAnnAssign { target, annotation, value, .. }) => {
-            let marker = matches!(last_segment(unsubscripted(annotation)), Some("ClassVar" | "KW_ONLY"));
+            let marker = matches!(annotation_name(annotation), Some("ClassVar" | "KW_ONLY"));
             let skipped = value.as_deref().and_then(Expr::as_call_expr).is_some_and(skips_init);
             target.as_name_expr().filter(|_| !marker && !skipped).map(|name| (name, true))
         }

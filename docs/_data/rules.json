@@ -27216,7 +27216,7 @@
     "name": "rst-inline-markup",
     "summary": "Roles without backticks and unclosed inline literals",
     "fix": "Sometimes",
-    "explanation": "Flags Sphinx roles whose target lacks backticks and inline literals left unclosed in reStructuredText docstrings. Such\nmarkup renders as plain text, or turns the rest of the paragraph into code.\n\n## Why is this bad?\n\nWithout backticks a role is plain text: the reference shows `:class:Path` instead of a link. An unclosed inline literal\nturns the rest of the paragraph into code, or makes Sphinx warn and show the markup as written.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\ndef open_file(path: str) -> None:\n    \"\"\"Open the file at :class:Path, as ``open does.\"\"\"\n```\n\nUse instead:\n\n```python ok\ndef open_file(path: str) -> None:\n    \"\"\"Open the file at :class:`Path`, as ``open`` does.\"\"\"\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def open_file(path: str) -> None:\n      \"\"\"Open the file at :class:Path.\"\"\"\n  ```\n\n  ```python ok\n  def open_file(path: str) -> None:\n      \"\"\"Open the file at :class:Path.\"\"\"\n  ```\n\n## What it does\n\nChecks reStructuredText docstrings, when `docstring-style = \"rst\"`, for inline markup that does not render as meant.\n\n### Active on\n\n- **Roles without backticks**: a\n  [Sphinx role](https://www.sphinx-doc.org/en/master/usage/domains/python.html#cross-referencing-python-objects), such\n  as `:class:`, `:func:`, `:meth:`, `:attr:`, `:mod:`, `:exc:` or `:ref:`, whose target lacks backticks, as\n  `:class:Path`. A role's target runs to the next whitespace, without the punctuation that ends a sentence. The fix puts\n  the target in backticks. **Unsafe fix:** code may read the docstring through `__doc__`. No fix is offered when the\n  target holds a character a reference cannot, as the `=` of `:attr:debug=True`, since where the target ends is then for\n  the author to say.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def open_file(path: str) -> None:\n      \"\"\"Open the file at :class:Path.\"\"\"\n  ```\n\n  ```python fixed\n  def open_file(path: str) -> None:\n      \"\"\"Open the file at :class:`Path`.\"\"\"\n  ```\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def open_file(path: str) -> None:\n      \"\"\"Open the file at :attr:debug=True.\"\"\"\n  ```\n\n- **Unclosed inline literals**: an inline literal opened with double backticks that no later pair closes within its\n  paragraph. No fix is offered, since where it should end is for the author to say.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def open_file(path: str) -> None:\n      \"\"\"Open the file, as ``open does.\"\"\"\n  ```\n\n- **Prose directives, such as `.. note::`**: their content is prose, so it is checked.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def open_file(path: str) -> None:\n      \"\"\"Open the file.\n\n      .. note:: Use :class:Path here.\n      \"\"\"\n  ```\n\n### Exceptions\n\n- **Literal blocks indented under a paragraph ending in `::`**: their content is code, which holds no inline markup.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def open_file(path: str) -> None:\n      \"\"\"Open the file.\n\n      Example::\n\n          x = ``open\n      \"\"\"\n  ```\n\n- **The content of a code directive such as `.. code-block::`**: the directive shows code, which holds no inline markup.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def open_file(path: str) -> None:\n      \"\"\"Open the file.\n\n      .. code-block:: python\n\n          x = ``open\n      \"\"\"\n  ```\n\n- **Doctest blocks, from a `>>>` line to the next blank line**: they are code, which holds no inline markup.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def open_file(path: str) -> None:\n      \"\"\"Open the file.\n\n      >>> open_file(\"a\") ``b\n      \"\"\"\n  ```\n\n- **Docstrings whose escapes make their text differ from the source**: positions in the source hold only for a docstring\n  whose text is its source, so the rule does not check them and offers no fix.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def open_file(path: str) -> None:\n      \"\"\"Open the file at \\x3aclass:Path.\"\"\"\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Open issue\n  [#283](https://github.com/astral-sh/ruff/issues/283) names flake8-rst-docstrings only as a plugin candidate.\n- [flake8-rst-docstrings](https://github.com/peterjc/flake8-rst-docstrings) reports an inline literal with no closing\n  backticks as [RST214](https://github.com/peterjc/flake8-rst-docstrings), with no fix.\n",
+    "explanation": "Flags Sphinx roles whose target lacks backticks and inline literals left unclosed in reStructuredText docstrings. Such\nmarkup renders as plain text, or turns the rest of the paragraph into code.\n\n## Why is this bad?\n\nWithout backticks a role is plain text: the reference shows `:class:Path` instead of a link. An unclosed inline literal\nturns the rest of the paragraph into code, or makes Sphinx warn and show the markup as written.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\ndef open_file(path: str) -> None:\n    \"\"\"Open the file at :class:Path, as ``open does.\"\"\"\n```\n\nUse instead:\n\n```python ok\ndef open_file(path: str) -> None:\n    \"\"\"Open the file at :class:`Path`, as ``open`` does.\"\"\"\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def open_file(path: str) -> None:\n      \"\"\"Open the file at :class:Path.\"\"\"\n  ```\n\n  ```python ok\n  def open_file(path: str) -> None:\n      \"\"\"Open the file at :class:Path.\"\"\"\n  ```\n\n## What it does\n\nChecks reStructuredText docstrings, when `docstring-style = \"rst\"`, for inline markup that does not render as meant.\n\n### Active on\n\n- **Roles without backticks**: a\n  [Sphinx role](https://www.sphinx-doc.org/en/master/usage/domains/python.html#cross-referencing-python-objects), such\n  as `:class:`, `:func:`, `:meth:`, `:attr:`, `:mod:`, `:exc:` or `:ref:`, whose target lacks backticks, as\n  `:class:Path`. A role's target runs to the next whitespace, without the punctuation that ends a sentence. The fix puts\n  the target in backticks. **Unsafe fix:** code may read the docstring through `__doc__`. No fix is offered when the\n  target holds a character a reference cannot, as the `=` of `:attr:debug=True`, since where the target ends is then for\n  the author to say.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def open_file(path: str) -> None:\n      \"\"\"Open the file at :class:Path.\"\"\"\n  ```\n\n  ```python fixed\n  def open_file(path: str) -> None:\n      \"\"\"Open the file at :class:`Path`.\"\"\"\n  ```\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def open_file(path: str) -> None:\n      \"\"\"Open the file at :attr:debug=True.\"\"\"\n  ```\n\n- **Unclosed inline literals**: an inline literal opened with double backticks that no later pair closes within its\n  paragraph. No fix is offered, since where it should end is for the author to say.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def open_file(path: str) -> None:\n      \"\"\"Open the file, as ``open does.\"\"\"\n  ```\n\n- **Prose directives, such as `.. note::`**: their content is prose, so it is checked.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def open_file(path: str) -> None:\n      \"\"\"Open the file.\n\n      .. note:: Use :class:Path here.\n      \"\"\"\n  ```\n\n### Exceptions\n\n- **Literal blocks indented under a paragraph ending in `::`**: their content is code, which holds no inline markup. The\n  first line of a docstring follows its opening quotes, so it is measured against the body's indentation in the lines\n  after it, and a summary ending in `::` opens a block only for lines indented past that body.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def open_file(path: str) -> None:\n      \"\"\"Open the file.\n\n      Example::\n\n          x = ``open\n      \"\"\"\n  ```\n\n- **The content of a code directive such as `.. code-block::`**: the directive shows code, which holds no inline markup.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def open_file(path: str) -> None:\n      \"\"\"Open the file.\n\n      .. code-block:: python\n\n          x = ``open\n      \"\"\"\n  ```\n\n- **Doctest blocks, from a `>>>` line to the next blank line**: they are code, which holds no inline markup.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def open_file(path: str) -> None:\n      \"\"\"Open the file.\n\n      >>> open_file(\"a\") ``b\n      \"\"\"\n  ```\n\n- **Docstrings whose escapes make their text differ from the source**: positions in the source hold only for a docstring\n  whose text is its source, so the rule does not check them and offers no fix.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def open_file(path: str) -> None:\n      \"\"\"Open the file at \\x3aclass:Path.\"\"\"\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Open issue\n  [#283](https://github.com/astral-sh/ruff/issues/283) names flake8-rst-docstrings only as a plugin candidate.\n- [flake8-rst-docstrings](https://github.com/peterjc/flake8-rst-docstrings) reports an inline literal with no closing\n  backticks as [RST214](https://github.com/peterjc/flake8-rst-docstrings), with no fix.\n",
     "examples": {
       "parsed": [
         {
@@ -27394,11 +27394,11 @@
         },
         {
           "section": "What it does",
-          "line": 119,
-          "end_line": 132,
+          "line": 121,
+          "end_line": 134,
           "config": {
-            "line": 119,
-            "end_line": 122,
+            "line": 121,
+            "end_line": 124,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -27407,19 +27407,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 124,
-              "end_line": 132,
+              "line": 126,
+              "end_line": 134,
               "source": "def open_file(path: str) -> None:\n    \"\"\"Open the file.\n\n    Example::\n\n        x = ``open\n    \"\"\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 136,
-          "end_line": 149,
+          "line": 138,
+          "end_line": 151,
           "config": {
-            "line": 136,
-            "end_line": 139,
+            "line": 138,
+            "end_line": 141,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -27428,19 +27428,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 141,
-              "end_line": 149,
+              "line": 143,
+              "end_line": 151,
               "source": "def open_file(path: str) -> None:\n    \"\"\"Open the file.\n\n    .. code-block:: python\n\n        x = ``open\n    \"\"\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 153,
-          "end_line": 164,
+          "line": 155,
+          "end_line": 166,
           "config": {
-            "line": 153,
-            "end_line": 156,
+            "line": 155,
+            "end_line": 158,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -27449,19 +27449,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 158,
-              "end_line": 164,
+              "line": 160,
+              "end_line": 166,
               "source": "def open_file(path: str) -> None:\n    \"\"\"Open the file.\n\n    >>> open_file(\"a\") ``b\n    \"\"\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 169,
-          "end_line": 177,
+          "line": 171,
+          "end_line": 179,
           "config": {
-            "line": 169,
-            "end_line": 172,
+            "line": 171,
+            "end_line": 174,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -27470,8 +27470,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 174,
-              "end_line": 177,
+              "line": 176,
+              "end_line": 179,
               "source": "def open_file(path: str) -> None:\n    \"\"\"Open the file at \\x3aclass:Path.\"\"\"\n"
             }
           ]
@@ -29063,7 +29063,7 @@
     "name": "rst-unknown-attribute",
     "summary": "`:ivar:`, `:cvar:` and `:var:` fields for attributes the class lacks",
     "fix": "Sometimes",
-    "explanation": "Flags `:ivar:`, `:cvar:`, `:var:` and `:vartype:` fields in a reStructuredText class docstring that name an attribute\nthe class does not have. Such a field, often left behind by a rename or removal, documents state no instance has.\n\n## Why is this bad?\n\nA field for an attribute that is gone, often renamed or removed in a later change, documents state no instance has.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    :ivar queue: The jobs waiting.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n```\n\nUse instead:\n\n```python ok\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :cvar limit: The most jobs it runs at once.\n      \"\"\"\n\n      state = \"idle\"\n  ```\n\n## What it does\n\nChecks the docstrings of classes, when `docstring-style = \"rst\"`, for `:ivar name:`, `:cvar name:`, `:var name:` and\n`:vartype name:` fields naming an attribute the class does not have.\n\n### Active on\n\n- **Attribute fields in a class docstring**: reported when the name is none of the attributes the class has: those its\n  body assigns, those its methods set on `self`, and its methods and properties, which autodoc can render as attributes.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar state: What it is doing.\n      :ivar queue: The jobs waiting.\n      \"\"\"\n\n      def __init__(self) -> None:\n          self.state = \"idle\"\n  ```\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar run: The entry point.\n      \"\"\"\n\n      def run(self) -> None:\n          print()\n  ```\n\n- **Type aliases in the class body**: a `type` statement there is a class attribute, so a `:cvar` field may document it.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.12\"\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\n\n      :cvar Point: The pair of coordinates.\n      \"\"\"\n\n      type Point = tuple[int, int]\n  ```\n\n### Exceptions\n\n- **A class with a base class other than `object`, `ABC`, `Protocol`, `Generic`, `NamedTuple` or `TypedDict`**: the base\n  may define the attribute.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine(Base):\n      \"\"\"Run jobs.\n\n      :ivar queue: The jobs waiting.\n      \"\"\"\n  ```\n\n### Fix\n\nThe fix deletes the field with the lines that continue it.\n\n**Unsafe fix:** code may read the docstring through `__doc__`.\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    :ivar queue: The jobs waiting.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n```\n\n```python fixed\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n```\n\nNo fix is offered when escapes in the docstring make its text differ from the source.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#12434](https://github.com/astral-sh/ruff/issues/12434).\n- [pydoclint](https://github.com/jsh9/pydoclint) reports a class docstring that lists more attributes than the class has\n  as [DOC602](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.\n",
+    "explanation": "Flags `:ivar:`, `:cvar:`, `:var:` and `:vartype:` fields in a reStructuredText class docstring that name an attribute\nthe class does not have. Such a field, often left behind by a rename or removal, documents state no instance has.\n\n## Why is this bad?\n\nA field for an attribute that is gone, often renamed or removed in a later change, documents state no instance has.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    :ivar queue: The jobs waiting.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n```\n\nUse instead:\n\n```python ok\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :cvar limit: The most jobs it runs at once.\n      \"\"\"\n\n      state = \"idle\"\n  ```\n\n## What it does\n\nChecks the docstrings of classes, when `docstring-style = \"rst\"`, for `:ivar name:`, `:cvar name:`, `:var name:` and\n`:vartype name:` fields naming an attribute the class does not have.\n\n### Active on\n\n- **Attribute fields in a class docstring**: reported when the name is none of the attributes the class has: those its\n  body assigns, including names unpacked from a tuple and the strings of a `__slots__`, those its methods set on `self`,\n  and its methods and properties, which autodoc can render as attributes.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar state: What it is doing.\n      :ivar queue: The jobs waiting.\n      \"\"\"\n\n      def __init__(self) -> None:\n          self.state = \"idle\"\n  ```\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar run: The entry point.\n      \"\"\"\n\n      def run(self) -> None:\n          print()\n  ```\n\n- **Type aliases in the class body**: a `type` statement there is a class attribute, so a `:cvar` field may document it.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.12\"\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\n\n      :cvar Point: The pair of coordinates.\n      \"\"\"\n\n      type Point = tuple[int, int]\n  ```\n\n### Exceptions\n\n- **A class with a base class other than `object`, `ABC`, `Protocol`, `Generic`, `NamedTuple` or `TypedDict`**: the base\n  may define the attribute.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine(Base):\n      \"\"\"Run jobs.\n\n      :ivar queue: The jobs waiting.\n      \"\"\"\n  ```\n\n### Fix\n\nThe fix deletes the field with the lines that continue it.\n\n**Unsafe fix:** code may read the docstring through `__doc__`.\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    :ivar queue: The jobs waiting.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n```\n\n```python fixed\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n```\n\nNo fix is offered when escapes in the docstring make its text differ from the source.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#12434](https://github.com/astral-sh/ruff/issues/12434).\n- [pydoclint](https://github.com/jsh9/pydoclint) reports a class docstring that lists more attributes than the class has\n  as [DOC602](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.\n",
     "examples": {
       "parsed": [
         {
@@ -29131,11 +29131,11 @@
         },
         {
           "section": "What it does",
-          "line": 70,
-          "end_line": 85,
+          "line": 71,
+          "end_line": 86,
           "config": {
-            "line": 70,
-            "end_line": 73,
+            "line": 71,
+            "end_line": 74,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -29144,19 +29144,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 75,
-              "end_line": 85,
+              "line": 76,
+              "end_line": 86,
               "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    :ivar queue: The jobs waiting.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 87,
-          "end_line": 101,
+          "line": 88,
+          "end_line": 102,
           "config": {
-            "line": 87,
-            "end_line": 90,
+            "line": 88,
+            "end_line": 91,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -29165,19 +29165,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 92,
-              "end_line": 101,
+              "line": 93,
+              "end_line": 102,
               "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :ivar run: The entry point.\n    \"\"\"\n\n    def run(self) -> None:\n        print()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 105,
-          "end_line": 121,
+          "line": 106,
+          "end_line": 122,
           "config": {
-            "line": 105,
-            "end_line": 111,
+            "line": 106,
+            "end_line": 112,
             "source": "[project]\nrequires-python = \">=3.12\"\n\n[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -29186,19 +29186,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 113,
-              "end_line": 121,
+              "line": 114,
+              "end_line": 122,
               "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :cvar Point: The pair of coordinates.\n    \"\"\"\n\n    type Point = tuple[int, int]\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 128,
-          "end_line": 139,
+          "line": 129,
+          "end_line": 140,
           "config": {
-            "line": 128,
-            "end_line": 131,
+            "line": 129,
+            "end_line": 132,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -29207,19 +29207,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 133,
-              "end_line": 139,
+              "line": 134,
+              "end_line": 140,
               "source": "class Engine(Base):\n    \"\"\"Run jobs.\n\n    :ivar queue: The jobs waiting.\n    \"\"\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 147,
-          "end_line": 173,
+          "line": 148,
+          "end_line": 174,
           "config": {
-            "line": 147,
-            "end_line": 150,
+            "line": 148,
+            "end_line": 151,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -29228,8 +29228,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 152,
-              "end_line": 162,
+              "line": 153,
+              "end_line": 163,
               "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    :ivar queue: The jobs waiting.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n"
             },
             {
@@ -29237,8 +29237,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 164,
-              "end_line": 173,
+              "line": 165,
+              "end_line": 174,
               "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n"
             }
           ]
@@ -29447,7 +29447,7 @@
     "name": "rst-returns",
     "summary": "Missing, extraneous or misused `:returns:` and `:yields:` fields",
     "fix": "Sometimes",
-    "explanation": "Flags missing, extraneous and misused `:returns:` and `:yields:` fields in reStructuredText docstrings. What a function\nhands back is half of its contract, so a missing field leaves it unsaid and a wrong one describes a value no caller\nreceives.\n\n## Why is this bad?\n\nWhat a function hands back is half of its contract. A missing field leaves it to the annotation alone; a `:returns:` on\na function that returns nothing, or on a generator, describes a value no caller receives.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\nproject-kind = \"library\"\n```\n\n```python report\ndef total(values: list[int]) -> int:\n    \"\"\"Add the values.\n\n    :param values: The values.\n    \"\"\"\n    return sum(values)\n```\n\nUse instead:\n\n```python ok\ndef total(values: list[int]) -> int:\n    \"\"\"Add the values.\n\n    :param values: The values.\n    :returns: Their sum.\n    \"\"\"\n    return sum(values)\n```\n\n## Conflicts with Ruff\n\nRuff's [docstring-missing-returns](https://docs.astral.sh/ruff/rules/docstring-missing-returns/) and\n[docstring-missing-yields](https://docs.astral.sh/ruff/rules/docstring-missing-yields/) read Google and numpydoc\nsections only, so they report the `:returns:` and `:yields:` fields this rule asks for as missing sections. simplint\nstops with an error before linting while either applies to a file this rule checks; turn them off in Ruff, or turn this\nrule off.\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def total(values: list[int]) -> int:\n      \"\"\"Add the values.\n\n      :param values: The values.\n      :yields: Each value.\n      \"\"\"\n      return sum(values)\n  ```\n\n## What it does\n\nChecks the `:returns:` and `:yields:` fields of reStructuredText docstrings, when `docstring-style = \"rst\"`. A\n**missing** field is reported in a docstring of a library's public API (see [undocumented-public-api](SMP903.html)); a\n**wrong** field is reported in any docstring.\n\n### Active on\n\n- **Public functions that return a value without a `:returns:` field**: the return annotation is not `None`, `NoReturn`\n  or `Never`, or, without one, the function returns something other than `None`. No fix is offered: the description is\n  for the author to write, and [rst-empty-field](SMP914.html) reports an empty `:returns:` until they do.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def total(values: list[int]) -> int:\n      \"\"\"Add the values.\n\n      :param values: The values.\n      \"\"\"\n      return sum(values)\n  ```\n\n- **Public generators without a `:yields:` field**: no fix is offered, for the same reason.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def numbers(count: int):\n      \"\"\"Count up.\n\n      :param count: How far.\n      \"\"\"\n      yield from range(count)\n  ```\n\n- **`:returns:` on a function that returns nothing**: its annotation says so, or, without one, it has no `return` with a\n  value and its body is more than a placeholder such as `...`, as in an abstract method. The fix deletes the `:returns:`\n  and `:rtype:` fields with the lines that continue them.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def log(message: str) -> None:\n      \"\"\"Write the message.\n\n      :param message: The text.\n      :returns: Nothing.\n      \"\"\"\n      print(message)\n  ```\n\n  ```python fixed\n  def log(message: str) -> None:\n      \"\"\"Write the message.\n\n      :param message: The text.\n      \"\"\"\n      print(message)\n  ```\n\n  A quoted annotation, such as `-> \"None\"`, counts the same as its unquoted form:\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def log(message: str) -> \"None\":\n      \"\"\"Write the message.\n\n      :param message: The text.\n      :returns: Nothing.\n      \"\"\"\n      print(message)\n  ```\n\n- **`:returns:` and no `:yields:` on a generator**: the fix renames the field to `:yields:`, keeping its description.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def numbers(count: int):\n      \"\"\"Count up.\n\n      :param count: How far.\n      :returns: Each number.\n      \"\"\"\n      yield from range(count)\n  ```\n\n  ```python fixed\n  def numbers(count: int):\n      \"\"\"Count up.\n\n      :param count: How far.\n      :yields: Each number.\n      \"\"\"\n      yield from range(count)\n  ```\n\n- **`:yields:` on a function that is not a generator**: the fix deletes the `:yields:` and `:ytype:` fields.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def total(values: list[int]) -> int:\n      \"\"\"Add the values.\n\n      :param values: The values.\n      :returns: The sum.\n      :yields: Each value.\n      \"\"\"\n      return sum(values)\n  ```\n\n  ```python fixed\n  def total(values: list[int]) -> int:\n      \"\"\"Add the values.\n\n      :param values: The values.\n      :returns: The sum.\n      \"\"\"\n      return sum(values)\n  ```\n\n- **A `:returns:`, `:rtype:`, `:yields:` or `:ytype:` field in the docstring of a class or a property**: no fix is\n  offered, since that text belongs in the description, and moving it there is for the author.\n\n  - The docstring of a class, which describes the class\n\n    ```toml config\n    [project]\n    name = \"demo\"\n\n    [build-system]\n    requires = []\n\n    [tool.simplint]\n    docstring-style = \"rst\"\n    ```\n\n    ```python report\n    class Engine:\n        \"\"\"Run jobs.\n\n        :returns: The engine.\n        \"\"\"\n    ```\n\n  - The docstring of a property, whose text describes the value it holds\n\n    ```toml config\n    [project]\n    name = \"demo\"\n\n    [build-system]\n    requires = []\n\n    [tool.simplint]\n    docstring-style = \"rst\"\n    ```\n\n    ```python report\n    class Engine:\n        \"\"\"Run jobs.\"\"\"\n\n        @property\n        def speed(self) -> int:\n            \"\"\"The speed.\n\n            :returns: Units per second.\n            \"\"\"\n            return 1\n    ```\n\n### Exceptions\n\n- **`__init__`**: a constructor returns nothing to document.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\"\"\"\n\n      def __init__(self, speed: int) -> None:\n          \"\"\"Set up.\n\n          :param speed: How fast it runs.\n          \"\"\"\n          self.speed = speed\n  ```\n\n- **A body that is only a placeholder, without a return annotation**: a body such as `...`, `pass` or\n  `raise NotImplementedError`, as in an abstract method, says nothing of the return, so its `:returns:` is not reported.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def total(values: list[int]):\n      \"\"\"Add the values.\n\n      :param values: The values.\n      \"\"\"\n      ...\n  ```\n\n### Fix\n\n**Unsafe fix:** each fix changes the docstring, and code may read it through `__doc__`.\n\nNo fix is offered when escapes in the docstring make its text differ from the source.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rules\n  [DOC201](https://docs.astral.sh/ruff/rules/docstring-missing-returns/) and\n  [DOC402](https://docs.astral.sh/ruff/rules/docstring-missing-yields/), which cannot read `:returns:` and `:yields:`\n  fields, so simplint refuses to run with them on reST docstrings; open pull request\n  [#13286](https://github.com/astral-sh/ruff/pull/13286) adds Sphinx support.\n- [pydoclint](https://github.com/jsh9/pydoclint) reports missing or extra return and yield sections as\n  [DOC201](https://jsh9.github.io/pydoclint/violation_codes.html),\n  [DOC202](https://jsh9.github.io/pydoclint/violation_codes.html),\n  [DOC402](https://jsh9.github.io/pydoclint/violation_codes.html) and\n  [DOC403](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.\n- [darglint](https://github.com/terrencepreilly/darglint) reports the same return sections as\n  [DAR201](https://github.com/terrencepreilly/darglint) and [DAR202](https://github.com/terrencepreilly/darglint), with\n  no fix.\n",
+    "explanation": "Flags missing, extraneous and misused `:returns:` and `:yields:` fields in reStructuredText docstrings. What a function\nhands back is half of its contract, so a missing field leaves it unsaid and a wrong one describes a value no caller\nreceives.\n\n## Why is this bad?\n\nWhat a function hands back is half of its contract. A missing field leaves it to the annotation alone; a `:returns:` on\na function that returns nothing, or on a generator, describes a value no caller receives.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\nproject-kind = \"library\"\n```\n\n```python report\ndef total(values: list[int]) -> int:\n    \"\"\"Add the values.\n\n    :param values: The values.\n    \"\"\"\n    return sum(values)\n```\n\nUse instead:\n\n```python ok\ndef total(values: list[int]) -> int:\n    \"\"\"Add the values.\n\n    :param values: The values.\n    :returns: Their sum.\n    \"\"\"\n    return sum(values)\n```\n\n## Conflicts with Ruff\n\nRuff's [docstring-missing-returns](https://docs.astral.sh/ruff/rules/docstring-missing-returns/) and\n[docstring-missing-yields](https://docs.astral.sh/ruff/rules/docstring-missing-yields/) read Google and numpydoc\nsections only, so they report the `:returns:` and `:yields:` fields this rule asks for as missing sections. simplint\nstops with an error before linting while either applies to a file this rule checks; turn them off in Ruff, or turn this\nrule off.\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def total(values: list[int]) -> int:\n      \"\"\"Add the values.\n\n      :param values: The values.\n      :yields: Each value.\n      \"\"\"\n      return sum(values)\n  ```\n\n## What it does\n\nChecks the `:returns:` and `:yields:` fields of reStructuredText docstrings, when `docstring-style = \"rst\"`. A\n**missing** field is reported in a docstring of a library's public API (see [undocumented-public-api](SMP903.html)); a\n**wrong** field is reported in any docstring.\n\n### Active on\n\n- **Public functions that return a value without a `:returns:` field**: the return annotation is not `None`, `NoReturn`\n  or `Never`, or, without one, the function returns something other than `None`. No fix is offered: the description is\n  for the author to write, and [rst-empty-field](SMP914.html) reports an empty `:returns:` until they do.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def total(values: list[int]) -> int:\n      \"\"\"Add the values.\n\n      :param values: The values.\n      \"\"\"\n      return sum(values)\n  ```\n\n- **Public generators without a `:yields:` field**: no fix is offered, for the same reason.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def numbers(count: int):\n      \"\"\"Count up.\n\n      :param count: How far.\n      \"\"\"\n      yield from range(count)\n  ```\n\n- **`:returns:` on a function that returns nothing**: its annotation says so, or, without one, it has no `return` with a\n  value and its body is more than a placeholder such as `...`, as in an abstract method. The fix deletes the `:returns:`\n  and `:rtype:` fields with the lines that continue them.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def log(message: str) -> None:\n      \"\"\"Write the message.\n\n      :param message: The text.\n      :returns: Nothing.\n      \"\"\"\n      print(message)\n  ```\n\n  ```python fixed\n  def log(message: str) -> None:\n      \"\"\"Write the message.\n\n      :param message: The text.\n      \"\"\"\n      print(message)\n  ```\n\n  A quoted annotation, such as `-> \"None\"`, counts the same as its unquoted form:\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def log(message: str) -> \"None\":\n      \"\"\"Write the message.\n\n      :param message: The text.\n      :returns: Nothing.\n      \"\"\"\n      print(message)\n  ```\n\n- **`:returns:` and no `:yields:` on a generator**: the fix renames the field to `:yields:`, keeping its description.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def numbers(count: int):\n      \"\"\"Count up.\n\n      :param count: How far.\n      :returns: Each number.\n      \"\"\"\n      yield from range(count)\n  ```\n\n  ```python fixed\n  def numbers(count: int):\n      \"\"\"Count up.\n\n      :param count: How far.\n      :yields: Each number.\n      \"\"\"\n      yield from range(count)\n  ```\n\n- **`:yields:` on a function that is not a generator**: the fix deletes the `:yields:` and `:ytype:` fields.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def total(values: list[int]) -> int:\n      \"\"\"Add the values.\n\n      :param values: The values.\n      :returns: The sum.\n      :yields: Each value.\n      \"\"\"\n      return sum(values)\n  ```\n\n  ```python fixed\n  def total(values: list[int]) -> int:\n      \"\"\"Add the values.\n\n      :param values: The values.\n      :returns: The sum.\n      \"\"\"\n      return sum(values)\n  ```\n\n- **A `:returns:`, `:rtype:`, `:yields:` or `:ytype:` field in the docstring of a class or a property**: no fix is\n  offered, since that text belongs in the description, and moving it there is for the author.\n\n  - The docstring of a class, which describes the class\n\n    ```toml config\n    [project]\n    name = \"demo\"\n\n    [build-system]\n    requires = []\n\n    [tool.simplint]\n    docstring-style = \"rst\"\n    ```\n\n    ```python report\n    class Engine:\n        \"\"\"Run jobs.\n\n        :returns: The engine.\n        \"\"\"\n    ```\n\n  - The docstring of a property, whose text describes the value it holds\n\n    ```toml config\n    [project]\n    name = \"demo\"\n\n    [build-system]\n    requires = []\n\n    [tool.simplint]\n    docstring-style = \"rst\"\n    ```\n\n    ```python report\n    class Engine:\n        \"\"\"Run jobs.\"\"\"\n\n        @property\n        def speed(self) -> int:\n            \"\"\"The speed.\n\n            :returns: Units per second.\n            \"\"\"\n            return 1\n    ```\n\n### Exceptions\n\n- **`__init__`**: a constructor returns nothing to document.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\"\"\"\n\n      def __init__(self, speed: int) -> None:\n          \"\"\"Set up.\n\n          :param speed: How fast it runs.\n          \"\"\"\n          self.speed = speed\n  ```\n\n- **A `yield` inside a lambda**: the lambda is a generator of its own, so the function around it is not one.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def count(values: list[int]) -> int:\n      \"\"\"Count the values.\n\n      :param values: The inputs.\n      :returns: How many there are.\n      \"\"\"\n      probe = lambda: (yield)  # noqa: E731\n      return len(values) + bool(probe)\n  ```\n\n- **A body that is only a placeholder, without a return annotation**: a body such as `...`, `pass` or\n  `raise NotImplementedError`, as in an abstract method, says nothing of the return, so its `:returns:` is not reported.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [build-system]\n  requires = []\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def total(values: list[int]):\n      \"\"\"Add the values.\n\n      :param values: The values.\n      \"\"\"\n      ...\n  ```\n\n### Fix\n\n**Unsafe fix:** each fix changes the docstring, and code may read it through `__doc__`.\n\nNo fix is offered when escapes in the docstring make its text differ from the source.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rules\n  [DOC201](https://docs.astral.sh/ruff/rules/docstring-missing-returns/) and\n  [DOC402](https://docs.astral.sh/ruff/rules/docstring-missing-yields/), which cannot read `:returns:` and `:yields:`\n  fields, so simplint refuses to run with them on reST docstrings; open pull request\n  [#13286](https://github.com/astral-sh/ruff/pull/13286) adds Sphinx support.\n- [pydoclint](https://github.com/jsh9/pydoclint) reports missing or extra return and yield sections as\n  [DOC201](https://jsh9.github.io/pydoclint/violation_codes.html),\n  [DOC202](https://jsh9.github.io/pydoclint/violation_codes.html),\n  [DOC402](https://jsh9.github.io/pydoclint/violation_codes.html) and\n  [DOC403](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.\n- [darglint](https://github.com/terrencepreilly/darglint) reports the same return sections as\n  [DAR201](https://github.com/terrencepreilly/darglint) and [DAR202](https://github.com/terrencepreilly/darglint), with\n  no fix.\n",
     "examples": {
       "parsed": [
         {
@@ -29731,11 +29731,32 @@
         },
         {
           "section": "What it does",
-          "line": 325,
-          "end_line": 343,
+          "line": 324,
+          "end_line": 338,
           "config": {
-            "line": 325,
-            "end_line": 334,
+            "line": 324,
+            "end_line": 327,
+            "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
+          },
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 329,
+              "end_line": 338,
+              "source": "def count(values: list[int]) -> int:\n    \"\"\"Count the values.\n\n    :param values: The inputs.\n    :returns: How many there are.\n    \"\"\"\n    probe = lambda: (yield)  # noqa: E731\n    return len(values) + bool(probe)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 343,
+          "end_line": 361,
+          "config": {
+            "line": 343,
+            "end_line": 352,
             "source": "[project]\nname = \"demo\"\n\n[build-system]\nrequires = []\n\n[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -29744,8 +29765,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 336,
-              "end_line": 343,
+              "line": 354,
+              "end_line": 361,
               "source": "def total(values: list[int]):\n    \"\"\"Add the values.\n\n    :param values: The values.\n    \"\"\"\n    ...\n"
             }
           ]

@@ -65,7 +65,8 @@ Checks the docstrings of classes, when `docstring-style = "rst"`, for `:ivar nam
 ### Active on
 
 - **Attribute fields in a class docstring**: reported when the name is none of the attributes the class has: those its
-  body assigns, those its methods set on `self`, and its methods and properties, which autodoc can render as attributes.
+  body assigns, including names unpacked from a tuple and the strings of a `__slots__`, those its methods set on `self`,
+  and its methods and properties, which autodoc can render as attributes.
 
   ```toml config
   [tool.simplint]

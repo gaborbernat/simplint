@@ -1,0 +1,16 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+7:6 SMP922 `:ivar count:` documents a class variable, `count`; write `:cvar count:` [unsafe fix: Write `:cvar count:`]
+--- fixed (1 applied, 0 remaining) ---
+from typing import ClassVar
+
+
+class Engine:
+    """Run jobs.
+
+    :cvar count: How many runs.
+    """
+
+    count: "ClassVar[int]" = 0

@@ -495,10 +495,11 @@ impl<'a> Visitor<'a> for ReturnVisitor<'a> {
     }
 
     fn visit_expr(&mut self, expr: &'a Expr) {
-        if let Expr::Yield(_) | Expr::YieldFrom(_) = expr {
-            self.is_generator = true;
-        } else {
-            visitor::walk_expr(self, expr);
+        match expr {
+            Expr::Yield(_) | Expr::YieldFrom(_) => self.is_generator = true,
+            // A lambda that yields is a generator of its own, so the function around it is not one.
+            Expr::Lambda(_) => {}
+            _ => visitor::walk_expr(self, expr),
         }
     }
 }
