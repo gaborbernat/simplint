@@ -7143,7 +7143,7 @@
     "name": "up-lazy-modules-list",
     "summary": "`__lazy_modules__` lists that `lazy` imports replace",
     "fix": "Sometimes",
-    "explanation": "Flags a module-level `__lazy_modules__` list whose entries are plain imports in the same module, which Python 3.15\nspells as `lazy import` on each import.\n\n## Why is this bad?\n\n`__lazy_modules__` is the compatibility spelling of lazy imports for code that still supports older versions, where the\nlist is the only way to ask for lazy loading without a syntax error. A project that targets Python 3.15 has the `lazy`\nkeyword, which puts the request on each import where a reader sees it. The list then only tells readers which imports\nare lazy, one line away from the imports it governs.\n\n## Example\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n```\n\n```python report\n# Demo module.\n__lazy_modules__ = [\"json\", \"pathlib\"]\n\nimport json\nimport pathlib\n\nprint(json.dumps([1]), pathlib.Path(\"demo\").name)\n```\n\n```python fixed\n# Demo module.\n\nlazy import json\nlazy import pathlib\n\nprint(json.dumps([1]), pathlib.Path(\"demo\").name)\n```\n\n## Configuration\n\n- The Python version the code targets, taken from\n  [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) in `[tool.ruff]`, falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py314\"\n  ```\n\n  ```python ok\n  __lazy_modules__ = [\"json\"]\n\n  import json\n\n  print(json.dumps([1]))\n  ```\n\n## What it does\n\n### Active on\n\n- **A module-level `__lazy_modules__` assigned a list, tuple or set of string literals**, when some `import` at module\n  level names one of its entries. The report sits on the list.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.15\"\n  ```\n\n  ```python report\n  __lazy_modules__ = [\"json\"]\n\n  import json\n\n  print(json.dumps([1]))\n  ```\n\n### Exceptions\n\n- **Values that are not literals**, such as a list built from a comprehension or a name: the rule cannot read the\n  entries, so it does not report them.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  __lazy_modules__ = [name for name in (\"json\",)]\n\n  import json\n  ```\n\n- **Imports inside a `try`, a function or a class**: they are not module-level imports, so the rule does not look at\n  them.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  __lazy_modules__ = [\"json\"]\n\n  try:\n      import json\n  except ImportError:\n      json = None\n  ```\n\n### Fix\n\nThe fix is safe. It puts `lazy` in front of each matching import and deletes the list. It is offered only when every\nentry has a matching import that can take `lazy`, and the list is alone on its lines.\n\nAn import that names a listed module together with other modules, such as `import json, os`, is reported with no fix:\n`lazy` would make the other modules lazy too. A statement that is not `lazy`-able keeps its entry, so the fix does not\napply.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Open issue\n  [#29175](https://github.com/astral-sh/ruff/issues/29175) asks for the reverse, adding `__lazy_modules__` for Python\n  before 3.15.\n",
+    "explanation": "Flags a module-level `__lazy_modules__` list whose entries are plain imports in the same module, which Python 3.15\nspells as `lazy import` on each import.\n\n## Why is this bad?\n\n`__lazy_modules__` is the compatibility spelling of lazy imports for code that still supports older versions, where the\nlist is the only way to ask for lazy loading without a syntax error. A project that targets Python 3.15 has the `lazy`\nkeyword, which puts the request on each import where a reader sees it. The list then only tells readers which imports\nare lazy, one line away from the imports it governs.\n\n## Example\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n```\n\n```python report\n# Demo module.\n__lazy_modules__ = [\"json\", \"pathlib\"]\n\nimport json\nimport pathlib\n\nprint(json.dumps([1]), pathlib.Path(\"demo\").name)\n```\n\n```python fixed\n# Demo module.\n\nlazy import json\nlazy import pathlib\n\nprint(json.dumps([1]), pathlib.Path(\"demo\").name)\n```\n\n## Configuration\n\n- The Python version the code targets, taken from\n  [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) in `[tool.ruff]`, falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py314\"\n  ```\n\n  ```python ok\n  __lazy_modules__ = [\"json\"]\n\n  import json\n\n  print(json.dumps([1]))\n  ```\n\n## What it does\n\n### Active on\n\n- **A module-level `__lazy_modules__` assigned a list, tuple or set of string literals**, when some `import` at module\n  level names one of its entries. The report sits on the list.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.15\"\n  ```\n\n  ```python report\n  __lazy_modules__ = [\"json\"]\n\n  import json\n\n  print(json.dumps([1]))\n  ```\n\n### Exceptions\n\n- **Values that are not literals**, such as a list built from a comprehension or a name: the rule cannot read the\n  entries, so it does not report them.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  __lazy_modules__ = [name for name in (\"json\",)]\n\n  import json\n  ```\n\n- **Imports inside a `try`, a function or a class**: they are not module-level imports, so the rule does not look at\n  them.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  __lazy_modules__ = [\"json\"]\n\n  try:\n      import json\n  except ImportError:\n      json = None\n  ```\n\n### Fix\n\nThe fix is safe. It puts `lazy` in front of each matching import and deletes the list. It is offered only when every\nentry has a matching import that can take `lazy`, and the list is alone on its lines. An import that is `lazy` already\nneeds no second `lazy`, and counts as matching.\n\nAn import that names a listed module together with other modules, such as `import json, os`, is reported with no fix:\n`lazy` would make the other modules lazy too. A statement that is not `lazy`-able keeps its entry, so the fix does not\napply.\n\nThe fix is also withheld when a listed module is imported again under an `if`, `with`, `for`, `while` or `match` at\nmodule level, or by a relative import. The list is what keeps those imports lazy, and deleting it would make them eager.\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n```\n\n```python report\n# Demo module.\n__lazy_modules__ = [\"json\"]\n\nimport json\n\nif __name__ == \"__main__\":\n    import json as parser\n```\n\n```python fixed\n# Demo module.\n__lazy_modules__ = [\"json\"]\n\nimport json\n\nif __name__ == \"__main__\":\n    import json as parser\n```\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n```\n\n```python report\n# Demo module.\n__lazy_modules__ = [\"json\"]\n\nlazy import json\n\nprint(json.dumps([1]))\n```\n\n```python fixed\n# Demo module.\n\nlazy import json\n\nprint(json.dumps([1]))\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Open issue\n  [#29175](https://github.com/astral-sh/ruff/issues/29175) asks for the reverse, adding `__lazy_modules__` for Python\n  before 3.15.\n",
     "examples": {
       "parsed": [
         {
@@ -7257,6 +7257,66 @@
               "line": 105,
               "end_line": 112,
               "source": "__lazy_modules__ = [\"json\"]\n\ntry:\n    import json\nexcept ImportError:\n    json = None\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 127,
+          "end_line": 151,
+          "config": {
+            "line": 127,
+            "end_line": 131,
+            "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 133,
+              "end_line": 141,
+              "source": "# Demo module.\n__lazy_modules__ = [\"json\"]\n\nimport json\n\nif __name__ == \"__main__\":\n    import json as parser\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 143,
+              "end_line": 151,
+              "source": "# Demo module.\n__lazy_modules__ = [\"json\"]\n\nimport json\n\nif __name__ == \"__main__\":\n    import json as parser\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 153,
+          "end_line": 174,
+          "config": {
+            "line": 153,
+            "end_line": 157,
+            "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 159,
+              "end_line": 166,
+              "source": "# Demo module.\n__lazy_modules__ = [\"json\"]\n\nlazy import json\n\nprint(json.dumps([1]))\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 168,
+              "end_line": 174,
+              "source": "# Demo module.\n\nlazy import json\n\nprint(json.dumps([1]))\n"
             }
           ]
         }

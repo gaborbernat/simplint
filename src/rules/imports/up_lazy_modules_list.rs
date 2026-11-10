@@ -1,4 +1,5 @@
 use ruff_diagnostics::{Applicability, Edit, Fix};
+use ruff_python_ast::helpers::resolve_imported_module_path;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_source_file::LineRanges;
 use ruff_text_size::Ranged;
@@ -23,7 +24,9 @@ pub fn up_lazy_modules_list(checker: &Checker) {
         let listed: Vec<&str> = names.iter().copied().filter(|name| modules.contains(name)).collect();
         matched |= !listed.is_empty();
         // `lazy` covers the whole statement, so a statement mixing listed and unlisted modules keeps its entries.
-        if !listed.is_empty() && listed.len() == names.len() {
+        if is_lazy(stmt) {
+            converted.extend(listed);
+        } else if !listed.is_empty() && listed.len() == names.len() {
             lazy_imports.push(Edit::insertion("lazy ".to_owned(), stmt.start()));
             converted.extend(listed);
         }
@@ -32,13 +35,15 @@ pub fn up_lazy_modules_list(checker: &Checker) {
         return;
     }
     let source = checker.source;
-    let fix = (modules.iter().all(|module| converted.contains(module)) && is_alone_on_lines(source, list_stmt.range()))
-        .then(|| {
-            let mut edits = lazy_imports;
-            edits.push(Edit::range_deletion(source.full_lines_range(list_stmt.range())));
-            let rest = edits.split_off(1);
-            Fix::applicable_edits(edits.remove(0), rest, Applicability::Safe)
-        });
+    let fix = (modules.iter().all(|module| converted.contains(module))
+        && !stays_eager(checker, body, false, &modules)
+        && is_alone_on_lines(source, list_stmt.range()))
+    .then(|| {
+        let mut edits = lazy_imports;
+        edits.push(Edit::range_deletion(source.full_lines_range(list_stmt.range())));
+        let rest = edits.split_off(1);
+        Fix::applicable_edits(edits.remove(0), rest, Applicability::Safe)
+    });
     checker.report_fix(
         Rule::LazyModulesList,
         list_stmt.range(),
@@ -66,6 +71,51 @@ fn lazy_modules(stmt: &Stmt) -> Option<Vec<&str>> {
         _ => return None,
     };
     elements.iter().map(|element| element.as_string_literal_expr().map(|literal| literal.value.to_str())).collect()
+}
+
+// Whether an import of a listed module stays eager once the list goes, which the fix must not allow. CPython keeps an
+// import lazy under the list unless it is compiled inside a `try`, so the imports the fix leaves lazy are the ones under
+// an `if`, `with`, `for`, `while` or `match`, the `else` of a `try` without a `finally`, and the `finally` of a `try`,
+// which runs lazily on its normal path. The body and the handlers of a `try` are eager, and so is a function body.
+fn stays_eager(checker: &Checker, body: &[Stmt], nested: bool, modules: &[&str]) -> bool {
+    body.iter().any(|stmt| match stmt {
+        Stmt::Import(ast::StmtImport { names, .. }) => {
+            nested && names.iter().any(|alias| modules.contains(&alias.name.as_str()))
+        }
+        Stmt::ImportFrom(ast::StmtImportFrom { module: Some(module), level: 0, .. }) => {
+            nested && modules.contains(&module.as_str())
+        }
+        // A relative import names the module after `from`, whatever it imports, so only that module is matched.
+        Stmt::ImportFrom(ast::StmtImportFrom { module, level, .. }) => {
+            resolve_imported_module_path(*level, module.as_ref().map(ast::Identifier::as_str), checker.module_path())
+                .is_some_and(|base| modules.contains(&base.as_ref()))
+        }
+        Stmt::If(ast::StmtIf { body, elif_else_clauses, .. }) => {
+            stays_eager(checker, body, true, modules)
+                || elif_else_clauses.iter().any(|clause| stays_eager(checker, &clause.body, true, modules))
+        }
+        Stmt::With(ast::StmtWith { body, .. }) => stays_eager(checker, body, true, modules),
+        Stmt::For(ast::StmtFor { body, orelse, .. }) | Stmt::While(ast::StmtWhile { body, orelse, .. }) => {
+            stays_eager(checker, body, true, modules) || stays_eager(checker, orelse, true, modules)
+        }
+        Stmt::Match(ast::StmtMatch { cases, .. }) => {
+            cases.iter().any(|case| stays_eager(checker, &case.body, true, modules))
+        }
+        Stmt::Try(ast::StmtTry { orelse, finalbody, .. }) => {
+            (finalbody.is_empty() && stays_eager(checker, orelse, true, modules))
+                || stays_eager(checker, finalbody, true, modules)
+        }
+        _ => false,
+    })
+}
+
+// Whether the statement is a `lazy` import already, which needs no `lazy` of its own.
+fn is_lazy(stmt: &Stmt) -> bool {
+    matches!(
+        stmt,
+        Stmt::Import(ast::StmtImport { is_lazy: true, .. })
+            | Stmt::ImportFrom(ast::StmtImportFrom { is_lazy: true, .. })
+    )
 }
 
 // The module names of an import that `lazy` can apply to, which are every name it binds. A relative import has no

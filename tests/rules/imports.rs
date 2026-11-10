@@ -82,6 +82,8 @@ use crate::common;
 #[test_case("up-lazy-modules-list", "up_lazy_modules_list_inline.py", "py315" ; "lazy_modules_list_inline")]
 #[test_case("up-lazy-modules-list", "up_lazy_modules_list_tuple.py", "py315" ; "lazy_modules_list_tuple")]
 #[test_case("up-lazy-modules-list", "up_lazy_modules_list_set.py", "py315" ; "lazy_modules_list_set")]
+#[test_case("up-lazy-modules-list", "up_lazy_modules_list_nested.py", "py315" ; "lazy_modules_list_nested")]
+#[test_case("up-lazy-modules-list", "up_lazy_modules_list_lazy.py", "py315" ; "lazy_modules_list_already_lazy")]
 fn rule(rule: &str, fixture: &str, target_version: &str) {
     common::assert_rule_snapshot(rule, fixture, target_version);
 }
@@ -648,4 +650,55 @@ fn backport_import_keeps_builtin_name_another_module_takes(compat: &str, consume
     assert!(reported.contains(&common::native("pkg/compat.py:1:1: SMP305")), "{reported}");
     common::fix_unsafe(root.path(), "SMP305");
     assert_eq!(common::read(root.path(), "pkg/compat.py").contains("from exceptiongroup"), kept);
+}
+
+// A listed import that the list keeps lazy stays eager once the list goes, so the list stays. CPython compiles the body
+// and the handlers of a `try` eagerly, but the `else` of a `try` without a `finally` and the `finally` lazily.
+#[test_case("import json\n\nif FLAG:\n    import json as nested\n", false ; "nested_in_if")]
+#[test_case("import json\n\nif FLAG:\n    pass\nelse:\n    import json as fallback\n", false ; "nested_in_else")]
+#[test_case("import json\n\nwith LOCK:\n    from json import dumps\n", false ; "nested_in_with")]
+#[test_case("import json\n\nfor _ in range(1):\n    import json as loop\n", false ; "nested_in_for")]
+#[test_case("import json\n\nwhile FLAG:\n    from json import dumps\n", false ; "nested_in_while")]
+#[test_case("import json\n\nmatch FLAG:\n    case 1:\n        import json as matched\n", false ; "nested_in_match")]
+#[test_case("import json\n\ntry:\n    pass\nexcept ImportError:\n    pass\nelse:\n    import json as fallback\n", false ; "try_else")]
+#[test_case("import json\n\ntry:\n    pass\nfinally:\n    import json as cleanup\n", false ; "try_finally")]
+#[test_case("import json\n\ntry:\n    pass\nexcept ImportError:\n    pass\nelse:\n    import json as fallback\nfinally:\n    pass\n", true ; "try_else_with_finally")]
+#[test_case("import json\n\ntry:\n    if FLAG:\n        import json as guarded\nexcept ImportError:\n    pass\n", true ; "try_body")]
+#[test_case("import json\n\ntry:\n    pass\nexcept ImportError:\n    import json as fallback\n", true ; "try_handler")]
+#[test_case("import json\n\nfrom . import helper\n", true ; "relative_import_without_a_package")]
+#[test_case("import json\n\ndef load():\n    import json as local\n    return local\n", true ; "function_body")]
+fn lazy_modules_list_keeps_list_for_an_import_the_fix_leaves_eager(body: &str, fixable: bool) {
+    let source = format!("__lazy_modules__ = [\"json\"]\n\n{body}");
+    let root = common::project(&[
+        ("pyproject.toml", "[project]\nname = \"x\"\nversion = \"0\"\nrequires-python = \">=3.15\"\n"),
+        ("consumer.py", &source),
+    ]);
+    common::fix_unsafe(root.path(), "SMP307");
+    assert_eq!(common::read(root.path(), "consumer.py").contains("__lazy_modules__"), !fixable);
+}
+
+// A relative import names the module after `from`, so `from . import helper` is held by a list of `pkg`, not by one of
+// `pkg.helper`, and `from .helper import VALUE` is held by `pkg.helper`.
+#[test_case("pkg.helper", "import pkg.helper", "from . import helper\n", true ; "relative_name_of_listed_submodule")]
+#[test_case("pkg.helper", "import pkg.helper", "from .helper import VALUE\n", false ; "relative_module_of_listed_module")]
+#[test_case("pkg.helper", "import pkg.helper", "from . import other\n", true ; "relative_import_of_another_module")]
+#[test_case("pkg", "import pkg", "from . import helper\n", false ; "relative_name_under_listed_package")]
+fn lazy_modules_list_matches_a_relative_import_by_its_module(
+    listed: &str,
+    import: &str,
+    relative: &str,
+    fixable: bool,
+) {
+    let root = common::project(&[
+        ("pyproject.toml", "[project]\nname = \"x\"\nversion = \"0\"\nrequires-python = \">=3.15\"\n"),
+        ("pkg/__init__.py", ""),
+        ("pkg/helper.py", "VALUE = 1\n"),
+        ("pkg/other.py", "VALUE = 2\n"),
+        (
+            "pkg/consumer.py",
+            &format!("__lazy_modules__ = [\"{listed}\"]\n\n{import}\n{relative}\nprint(pkg.helper.VALUE)\n"),
+        ),
+    ]);
+    common::fix_unsafe(root.path(), "SMP307");
+    assert_eq!(common::read(root.path(), "pkg/consumer.py").contains("__lazy_modules__"), !fixable);
 }
