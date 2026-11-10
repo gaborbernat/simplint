@@ -113,8 +113,7 @@ impl<'a> Checker<'a> {
 
     fn report_unused_ignores(&self) {
         let suppressions = Suppressions::new(self.path, self.source, self.parsed, self.indexer, self.stylist);
-        let diagnostics: Vec<Diagnostic> =
-            self.diagnostics.borrow().iter().map(|(_, diagnostic)| diagnostic.clone()).collect();
+        let diagnostics = self.diagnostics.borrow().iter().map(|(_, diagnostic)| diagnostic.clone()).collect();
         let Some(unused) = suppressions.unused_ignores(diagnostics, |proposed| {
             self.linter.lint_without_unused_ignore(self.path, proposed).diagnostics
         }) else {
