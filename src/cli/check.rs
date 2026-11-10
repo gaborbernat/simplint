@@ -27,8 +27,7 @@ use crate::settings::{FileSettings, Settings};
 pub(crate) fn check(cli: &CheckCommand, global_options: &GlobalConfigArgs) -> Result<ExitStatus> {
     let log_level = global_options.log_level();
     let resolved = Resolved::new(cli, global_options)?;
-    let is_stdin = cli.files.first().is_some_and(|file| file == Path::new("-"))
-        || (cli.files.is_empty() && cli.stdin_filename.is_some());
+    let is_stdin = reads_stdin(cli);
     let files = if cli.files.is_empty() || is_stdin { vec![PathBuf::from(".")] } else { cli.files.clone() };
     let mut writer: Box<dyn Write> = match &cli.output_file {
         Some(path) if !cli.watch => {
@@ -64,6 +63,9 @@ pub(crate) fn check(cli: &CheckCommand, global_options: &GlobalConfigArgs) -> Re
     };
     if let Some((reason, kind)) = cli.suppression() {
         let flag = suppression_flag(kind);
+        if is_stdin {
+            bail!("{flag} cannot be used with standard input");
+        }
         if !mode.fix.is_generate() {
             warn_user!("--fix is incompatible with {flag}.");
         }
@@ -128,6 +130,17 @@ pub(crate) fn check(cli: &CheckCommand, global_options: &GlobalConfigArgs) -> Re
     // The output is out, so the run's results go to the exit rather than being freed one by one.
     Ending::Exit.end(diagnostics);
     Ok(status)
+}
+
+// Ruff's `is_stdin`, so one command line reads the same source under both tools.
+fn reads_stdin(cli: &CheckCommand) -> bool {
+    if cli.stdin_filename.is_none() {
+        return matches!(cli.files.as_slice(), [file] if file == Path::new("-"));
+    }
+    if let Some(file) = cli.files.iter().find(|file| file.as_path() != Path::new("-")) {
+        warn_user_once!("Ignoring file {} in favor of standard input.", file.display());
+    }
+    true
 }
 
 // The source comes from standard input, which is linted as the file it stands for, and whatever the fixes or the diff
