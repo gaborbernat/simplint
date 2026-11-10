@@ -136,13 +136,14 @@ fn new_all(checker: &Checker, names: &[&str]) -> Option<Fix> {
         return None;
     }
     let items: Vec<String> = names.iter().map(|name| quoted(checker, name)).collect();
-    let declaration = format!("__all__ = {}\n", exploded(checker, "", &items));
+    let eol = checker.stylist.line_ending().as_str();
+    let declaration = format!("__all__ = {}{eol}", exploded(checker, "", &items));
     // A module without `__all__` exports every public name to `from module import *`; adding one narrows that.
     let edit = if let Some(guard) = checker.body().last().filter(|stmt| is_main_guard(stmt)) {
-        Edit::insertion(format!("{declaration}\n\n"), source.line_start(guard.start()))
+        Edit::insertion(format!("{declaration}{eol}{eol}"), source.line_start(guard.start()))
     } else {
-        let separator = if source.ends_with('\n') { "\n\n" } else { "\n\n\n" };
-        Edit::insertion(format!("{separator}{declaration}"), TextSize::try_from(source.len()).ok()?)
+        let blank_lines = if source.ends_with('\n') { 2 } else { 3 };
+        Edit::insertion(format!("{}{declaration}", eol.repeat(blank_lines)), TextSize::try_from(source.len()).ok()?)
     };
     Some(Fix::unsafe_edit(edit))
 }
@@ -164,12 +165,13 @@ fn lines_insertion(checker: &Checker, (elts, one_per_line): (&[Expr], bool), nam
             _ => groups.push((at, vec![quoted(checker, name)])),
         }
     }
+    let separator = format!(",{}{indent}", checker.stylist.line_ending().as_str());
     let mut edits = groups.into_iter().map(|(at, group)| match elts.get(at) {
         Some(next) => {
-            Edit::insertion(group.iter().fold(String::new(), |text, name| text + name + ",\n" + indent), next.start())
+            Edit::insertion(group.iter().fold(String::new(), |text, name| text + name + &separator), next.start())
         }
         None => Edit::insertion(
-            group.iter().fold(String::new(), |text, name| text + ",\n" + indent + name),
+            group.iter().fold(String::new(), |text, name| text + &separator + name),
             elts[elts.len() - 1].end(),
         ),
     });

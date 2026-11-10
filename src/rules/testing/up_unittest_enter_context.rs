@@ -59,8 +59,12 @@ fn check_sequence(checker: &Checker, method: TextRange, start: &Stmt, bind: &Stm
         && !checker.has_comment_in(range)
         && [start, bind, cleanup].iter().all(|stmt| is_alone_on_lines(source, stmt.range())))
     .then(|| {
-        let replacement =
-            format!("{}{value} = self.enterContext({})\n", indentation(source, start), checker.text(call.range()));
+        let replacement = format!(
+            "{}{value} = self.enterContext({}){}",
+            indentation(source, start),
+            checker.text(call.range()),
+            checker.stylist.line_ending().as_str()
+        );
         Fix::safe_edit(Edit::range_replacement(replacement, source.full_lines_range(range)))
     });
     checker.report_fix(

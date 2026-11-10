@@ -335,21 +335,22 @@ fn local_fix(checker: &Checker, constant: &Constant, value_text: &str, deletion:
     let declared = local_annotation(checker, constant)
         .map_or_else(|| local.clone(), |annotation| format!("{local}: {annotation}"));
     let declaration = format!("{declared} = {value_text}");
+    let eol = checker.stylist.line_ending().as_str();
     let placements = if on_header {
         let mut gap_start = TextSize::of(source[..function.body[0].start().to_usize()].trim_end());
         let mut placements = Vec::new();
         for stmt in &function.body {
             let declared_here =
-                if std::ptr::eq(stmt, anchor) { format!("{declaration}\n{indent}") } else { String::new() };
+                if std::ptr::eq(stmt, anchor) { format!("{declaration}{eol}{indent}") } else { String::new() };
             placements.push(Edit::range_replacement(
-                format!("\n{indent}{declared_here}"),
+                format!("{eol}{indent}{declared_here}"),
                 TextRange::new(gap_start, stmt.start()),
             ));
             gap_start = stmt.end();
         }
         placements
     } else {
-        vec![Edit::insertion(format!("{indent}{declaration}\n"), source.line_start(anchor.start()))]
+        vec![Edit::insertion(format!("{indent}{declaration}{eol}"), source.line_start(anchor.start()))]
     };
     let renames = constant.references.iter().map(|range| Edit::range_replacement(local.clone(), *range));
     let edits = std::iter::once(deletion).chain(placements).chain(renames).collect();
@@ -361,7 +362,7 @@ fn local_fix(checker: &Checker, constant: &Constant, value_text: &str, deletion:
 fn deletion_keeping_separation(source: &str, range: TextRange) -> TextRange {
     let lines = source.full_lines_range(range);
     let before = &source[..lines.start().to_usize()];
-    let leading_text = before.trim_end_matches([' ', '\t', '\n']);
+    let leading_text = before.trim_end_matches([' ', '\t', '\r', '\n']);
     let leading = before[leading_text.len()..].matches('\n').count().saturating_sub(1);
     let with_trailing = lines_with_trailing_blanks(source, range);
     let trailing = source[lines.end().to_usize()..with_trailing.end().to_usize()].matches('\n').count();

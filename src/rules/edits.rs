@@ -234,9 +234,10 @@ fn has_import(body: &[Stmt], module: &str, member: Option<&str>) -> bool {
 fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Edit {
     let body = checker.body();
     let source = checker.source;
+    let eol = checker.stylist.line_ending().as_str();
     let text = match member {
-        Some(member) => format!("from {module} import {member}\n"),
-        None => format!("import {module}\n"),
+        Some(member) => format!("from {module} import {member}{eol}"),
+        None => format!("import {module}{eol}"),
     };
     let key = (member.is_some(), module.to_ascii_lowercase());
     let preamble = body.iter().take_while(|stmt| future_import(stmt).is_some() || is_docstring_stmt(stmt)).count();
@@ -262,7 +263,7 @@ fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Ed
         return Edit::insertion(text, source.full_line_end(last.end()));
     }
     // The statement the import goes before follows the preamble, so the body has one there.
-    Edit::insertion(format!("{text}\n"), source.line_start(body[preamble].start()))
+    Edit::insertion(format!("{text}{eol}"), source.line_start(body[preamble].start()))
 }
 
 // The `=` debug fields of a module, each with its quote and the text of its debug specifier.

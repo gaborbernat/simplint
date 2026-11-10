@@ -25,7 +25,7 @@ fn check_class(checker: &Checker, class: &ast::StmtClassDef) {
     for (place, &index) in expected.iter().enumerate() {
         position[index] = place;
     }
-    let suite = Suite { body: &class.body, separator: "\n" };
+    let suite = Suite { body: &class.body, blank_lines: 1 };
     let mut pending =
         moved_span(&expected).and_then(|span| reorder_fix(checker, &suite, &expected, span, shifts_unsafely));
     // The layout resolves an inversion when it puts the member above its anchor. Otherwise the member is pinned behind

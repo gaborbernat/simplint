@@ -57,7 +57,7 @@ fn flatten_class(checker: &Checker, class: &ast::StmtClassDef) -> Option<String>
     // from the method below it by a blank line, has no place among the functions.
     if checker
         .comment_ranges()
-        .comments_in_range(TextRange::new(class.start(), class.end()))
+        .comments_in_range(class.range())
         .iter()
         .any(|comment| !blocks.iter().any(|block| block.contains(comment.start())))
     {
@@ -70,7 +70,7 @@ fn flatten_class(checker: &Checker, class: &ast::StmtClassDef) -> Option<String>
         };
         functions.push(flatten_method(checker, (function, type_params, &prefix), block)?);
     }
-    (!functions.is_empty()).then(|| functions.join("\n\n"))
+    (!functions.is_empty()).then(|| functions.join(&checker.stylist.line_ending().as_str().repeat(2)))
 }
 
 // Whether the class can become module-level functions without its text changing: it has no bases, decorators or
