@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime};
 
 use test_case::test_case;
 
-use common::{check, command, fix_unsafe, project, quoted, read, simplint_with};
+use common::{check, command, fix_unsafe, project, quoted, read, simplint, simplint_with};
 
 #[test]
 fn cache_is_kept_in_ruffs_cache_directory() {
@@ -916,4 +916,45 @@ fn cached_facts_follow_a_changed_search_root() {
     let before = check(root.path(), &["--select", "SMP409"]).0;
     fs::write(root.path().join("pyproject.toml"), pyproject.replace("{root}", "src")).expect("write");
     assert_eq!((before, check(root.path(), &["--select", "SMP409"]).0), (1, 0));
+}
+
+// A fix the read-only file cannot take leaves the file as it is, so the file keeps its reports, and a later run reports
+// them instead of reusing a clean result.
+#[test]
+fn unwritten_fix_is_not_cached_as_clean() {
+    let source = "__all__ = (\"f\",)\n\n\ndef f() -> None:\n    \"\"\"Do.\"\"\"\n";
+    let root = project(&[("pyproject.toml", "[tool.ruff.lint]\nselect = [\"F\"]\n"), ("mod.py", source)]);
+    common::make_read_only(&root.path().join("mod.py"));
+    let (code, stdout, stderr) = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP405"]);
+    let (warm, warm_stdout, _) = check(root.path(), &["--select", "SMP405"]);
+    assert_eq!(
+        (
+            code,
+            stdout.contains("SMP405"),
+            stderr.contains("Failed to lint mod.py: writing"),
+            warm,
+            warm_stdout.contains("SMP405")
+        ),
+        (1, true, true, 1, true)
+    );
+}
+
+// A private import in a test is judged by the source file the test mirrors, which is on disk, so a clean result of an
+// earlier run does not stand once that file is gone.
+#[test]
+fn private_import_is_checked_again_once_its_mirrored_module_is_deleted() {
+    let root = project(&[
+        ("src/pkg/__init__.py", ""),
+        ("src/pkg/_helper.py", "VALUE = 1\n"),
+        (
+            "tests/pkg/test_helper.py",
+            "from pkg._helper import VALUE\n\n\ndef test_value() -> None:\n    assert VALUE == 1\n",
+        ),
+    ]);
+    let select = ["check", "--select", "SMP310", "src", "tests"];
+    let cold = simplint(root.path(), &select).0;
+    fs::remove_file(root.path().join("src/pkg/_helper.py")).expect("remove");
+    let warm = simplint(root.path(), &select);
+    let fresh = simplint(root.path(), &[&select[..], &["--no-cache"]].concat());
+    assert_eq!((cold, warm), (0, fresh));
 }

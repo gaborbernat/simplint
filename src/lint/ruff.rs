@@ -1,5 +1,6 @@
 use memchr::memchr2_iter;
 use rustc_hash::{FxHashMap, FxHashSet};
+use std::cell::Cell;
 use std::ops::Deref;
 use std::path::Path;
 use std::sync::OnceLock;
@@ -20,6 +21,23 @@ use ruff_source_file::LineRanges;
 use crate::layout::{Layout, Widths};
 use crate::settings::FromRuff;
 
+thread_local! {
+    static DIRECTIVE_WARNINGS: Cell<bool> = const { Cell::new(true) };
+}
+
+// Runs `lint` with the warnings Ruff logs about `noqa` directives shown or hidden. They name lines of the source Ruff
+// lints, which only the source as read from disk has in common with the reports.
+pub fn with_directive_warnings<T>(shown: bool, lint: impl FnOnce() -> T) -> T {
+    let outer = DIRECTIVE_WARNINGS.replace(shown);
+    let result = lint();
+    DIRECTIVE_WARNINGS.set(outer);
+    result
+}
+
+pub fn directive_warnings_shown() -> bool {
+    DIRECTIVE_WARNINGS.get()
+}
+
 // The file as Ruff sees it: the project's Ruff settings for it and the package it belongs to.
 pub struct RuffFile<'a> {
     pub settings: &'a LinterSettings,
@@ -39,21 +57,23 @@ impl<'a> RuffFile<'a> {
     // Ruff's report on the source at no line length limit. Layout is `ruff format`'s job, as it runs after simplint: a
     // finding about whitespace, blank lines or line length may come or go when it formats the code, so it does not
     // count either way, save a line too long for any layout.
-    pub fn check(&self, path: &Path, source: &str, file: &FromRuff) -> Checked {
+    pub fn check(&self, path: &Path, source: &str, file: &FromRuff, directives_shown: bool) -> Checked {
         let (source_kind, parsed) = Self::parse(source, file.parser_version);
         let valid_syntax = parsed.has_valid_syntax();
         let limit = usize::from(self.settings.pycodestyle.max_line_length.value());
         let widths = Widths { limit, line: file.line_width, indent: file.indent_width };
         let layout = Layout::of(source, parsed.tokens(), widths, file.formatted);
-        let diagnostics = lint_only(
-            path,
-            self.package,
-            Self::skipping_layout(source, self.unbounded(), &self.lean_unbounded),
-            flags::Noqa::Enabled,
-            &source_kind,
-            PySourceType::Python,
-            ParseSource::Precomputed(parsed),
-        )
+        let diagnostics = with_directive_warnings(directives_shown, || {
+            lint_only(
+                path,
+                self.package,
+                Self::skipping_layout(source, self.unbounded(), &self.lean_unbounded),
+                flags::Noqa::Enabled,
+                &source_kind,
+                PySourceType::Python,
+                ParseSource::Precomputed(parsed),
+            )
+        })
         .diagnostics;
         let mut findings = Findings::default();
         for diagnostic in diagnostics.iter().filter(|diagnostic| {
@@ -111,15 +131,17 @@ impl<'a> RuffFile<'a> {
     // The rules with findings Ruff would fix at the project's line length. `ruff check --fix` ran at that length before
     // simplint, so a fix it offers yet left in place is one that fails, such as one that breaks the syntax.
     pub fn fixable_at_limit(&self, path: &Path, source: &str) -> FxHashSet<&'static str> {
-        lint_only(
-            path,
-            self.package,
-            Self::skipping_layout(source, self.settings, &self.lean),
-            flags::Noqa::Enabled,
-            &SourceKind::Python { code: source.to_owned(), is_stub: false },
-            PySourceType::Python,
-            ParseSource::None,
-        )
+        with_directive_warnings(false, || {
+            lint_only(
+                path,
+                self.package,
+                Self::skipping_layout(source, self.settings, &self.lean),
+                flags::Noqa::Enabled,
+                &SourceKind::Python { code: source.to_owned(), is_stub: false },
+                PySourceType::Python,
+                ParseSource::None,
+            )
+        })
         .diagnostics
         .iter()
         .filter(|diagnostic| diagnostic.fix().is_some_and(|fix| fix.applies(Applicability::Unsafe)))

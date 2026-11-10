@@ -99,7 +99,7 @@ Fix rounds
 A fix can change what the index records. Folding ``user.uuid = 7`` into ``MagicMock(uuid=7)`` leaves no assignment to
 a ``uuid`` attribute, which lets the dataclass with that field freeze.
 
-With ``--fix``, simplint therefore works in rounds, so **one run is final**:
+With ``--fix`` or ``--diff``, simplint therefore works in rounds, so **one run is final**:
 
 #. Lint and fix every file.
 #. If a round rewrote a file, collect that file's facts again, then lint and fix the files whose index answers changed.

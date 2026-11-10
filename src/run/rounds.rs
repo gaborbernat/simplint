@@ -11,13 +11,16 @@ use std::hash::Hasher;
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_linter::package::PackageRoot;
 use ruff_linter::packaging::detect_package_root;
+use ruff_linter::registry::Rule as RuffRule;
 use ruff_linter::{SuppressionKind, warn_user_once};
 use ruff_python_ast::helpers::to_module_path;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::conflicts::{self, Scope};
 use super::discover::{Discovered, discover, linted_roots};
-use super::{Diagnostics, Mode, Resolved, StdinLint, lint_path, lint_stdin, write_source};
+use super::{
+    Diagnostics, Mode, Overlay, Resolved, StdinLint, io_error, lint_path, lint_stdin, warn_missing, write_source,
+};
 use crate::lint::Linter;
 use crate::lint::registry::{Rule, RuleSet};
 use crate::project::cache::{self, FileKey};
@@ -36,8 +39,15 @@ pub(crate) fn add_suppressions(
 ) -> Result<usize> {
     // A suppression comment changes no file's facts, so one round is final.
     let roots = linted_roots(files);
-    let counts =
-        for_each_file(files, resolved, None, None, None, Ending::Drop, |DiscoveredFile { path, linter, .. }| {
+    let (counts, missing) = for_each_file(
+        files,
+        resolved,
+        None,
+        None,
+        None,
+        Ending::Drop,
+        &Overlay::default(),
+        |DiscoveredFile { path, linter, .. }| {
             let source = match std::fs::read_to_string(path) {
                 Ok(source) => source,
                 Err(error) => {
@@ -53,7 +63,9 @@ pub(crate) fn add_suppressions(
                 return 0;
             }
             count
-        })?;
+        },
+    )?;
+    warn_missing(&missing);
     Ok(counts.into_iter().flatten().flatten().sum())
 }
 
@@ -69,7 +81,9 @@ pub(crate) fn check_files(
 ) -> Result<Diagnostics> {
     let cache_dir = resolved.cache_dir.as_deref().filter(|_| use_cache);
     let fingerprints = Fingerprints::default();
-    // Only applied fixes reach the disk, where other files' facts come from.
+    let overlay = Overlay::default();
+    // Applied fixes reach the disk, and a diff run keeps its fixes in the overlay; either way other files' facts come
+    // from them.
     let rewrote = |diagnostics: &Diagnostics| !diagnostics.fixed.is_empty();
     // Without fixes a file's reports need no index once the run's digest matches the one they were stored under.
     let reuse = |file: &RunFile, cache: &Cache, key: FileKey| {
@@ -78,23 +92,47 @@ pub(crate) fn check_files(
     };
     let reuse =
         mode.fix.is_generate().then_some(&reuse as &(dyn Fn(&RunFile, &Cache, FileKey) -> Option<Diagnostics> + Sync));
-    let results =
-        for_each_file(files, resolved, cache_dir, mode.fix.is_apply().then_some(&rewrote), reuse, ending, |file| {
-            let lint = |settled| lint_path(file.path, &file.linter, mode, settled);
+    let (results, missing) = for_each_file(
+        files,
+        resolved,
+        cache_dir,
+        (!mode.fix.is_generate()).then_some(&rewrote),
+        reuse,
+        ending,
+        &overlay,
+        |file| {
+            let lint = |settled| lint_path(file.path, &file.linter, mode, settled, &overlay);
             let Some((cache, key)) = file.cache else {
                 return lint(None).diagnostics;
             };
             cache.lint_or_reuse(file.path, key, fingerprints.of(&file.linter, mode), full, lint)
-        })?;
-    // A later pass over a file replaces its reports, while the fixes of every pass count.
+        },
+    )?;
+    // A later pass over a file replaces its reports, while the fixes of every pass count. Each pass's diff is from the
+    // source as read, so the last pass that has one holds all of the file's fixes.
     let file_results = results.into_iter().flatten().filter_map(|passes| {
         passes.into_iter().reduce(|mut earlier, later| {
             earlier.inner = later.inner;
             earlier.fixed += later.fixed;
+            if !later.diffs.is_empty() {
+                earlier.diffs = later.diffs;
+            }
             earlier
         })
     });
-    Ok(file_results.fold(Diagnostics::default(), |left, right| left + right))
+    Ok(file_results.fold(Diagnostics::default(), |left, right| left + right) + missing_diagnostics(missing, resolved))
+}
+
+// Ruff's `io-error` for each path the run names that does not exist, or a warning each while that rule is off.
+fn missing_diagnostics(missing: Vec<(PathBuf, String)>, resolved: &Resolved) -> Diagnostics {
+    if !resolved.pyproject_config.settings.linter.rules.enabled(RuffRule::IOError) {
+        warn_missing(&missing);
+        return Diagnostics::default();
+    }
+    Diagnostics {
+        inner: missing.into_iter().map(|(path, message)| io_error(&path, message)).collect(),
+        ..Diagnostics::default()
+    }
 }
 
 // Ruff's `check_stdin`: the source comes from standard input, and nothing else is indexed. Otherwise it is linted as
@@ -130,14 +168,21 @@ pub(crate) fn check_stdin(path: &Path, source: &str, resolved: &Resolved, mode: 
         &[None],
         None,
         Ending::Drop,
+        &Overlay::default(),
         &|file| lint_stdin(path, source, &file.linter, mode),
     )?;
     Ok(passes.pop().and_then(|mut file| file.pop()).expect("the standard input is linted once"))
 }
 
+// The passes of a run's files, which are `None` when there is no Python file to check, and the paths the run names that
+// do not exist, with the message each reports.
+type Walked<T> = (Option<Vec<Vec<T>>>, Vec<(PathBuf, String)>);
+
 // Ruff's per-file loop over the discovered files, with the import index of the whole run built first, and the caches
 // in `cache_dir` read before and written after. With `rewrote` set, the files a round rewrites are indexed and linted
-// again, as `lint_rounds` tells. `None` when there is no Python file to check.
+// again, as `lint_rounds` tells. The paths the run names that do not exist come back with the passes, for the caller
+// to report.
+#[expect(clippy::too_many_arguments, reason = "the run's inputs, which each stage passes on")]
 fn for_each_file<T: Send>(
     files: &[PathBuf],
     resolved: &Resolved,
@@ -145,14 +190,15 @@ fn for_each_file<T: Send>(
     rewrote: Option<&(dyn Fn(&T) -> bool + Sync)>,
     reuse: Option<&Reuse<'_, T>>,
     ending: Ending,
+    overlay: &Overlay,
     work: impl Fn(&DiscoveredFile) -> T + Sync,
-) -> Result<Option<Vec<Vec<T>>>> {
+) -> Result<Walked<T>> {
     let start = Instant::now();
-    let Discovered { python, unlinted, resolver } = discover(files, resolved)?;
+    let Discovered { python, unlinted, resolver, missing } = discover(files, resolved)?;
     debug!("Identified files to lint in: {:?}", start.elapsed());
     if python.is_empty() {
         warn_user_once!("No Python files found under the given path(s)");
-        return Ok(None);
+        return Ok((None, missing));
     }
     let paths: Vec<&Path> = python.iter().chain(&unlinted).map(PathBuf::as_path).collect();
     let settings: Vec<Arc<Settings>> =
@@ -185,11 +231,12 @@ fn for_each_file<T: Send>(
     }
     // The documentation walk reads files of its own, so it runs while the caches open and the facts are collected,
     // which on a warm run is most of what comes before the index.
-    std::thread::scope(|scope| {
+    let passes = std::thread::scope(|scope| {
         let docs = scope.spawn(|| documentation(&linted, &resolved.settings_resolver.root.root, rules, cache_dir));
         let joined = || docs.join().unwrap_or_else(|panic| std::panic::resume_unwind(panic));
-        index_cached(&indexed, parts, (&roots, &packages), cache_dir, joined, (rewrote, reuse), ending, work)
-    })
+        index_cached(&indexed, parts, (&roots, &packages), cache_dir, joined, (rewrote, reuse), ending, overlay, work)
+    })?;
+    Ok((passes, missing))
 }
 
 // A check of a file's cached reports, given the file, its cache and its key, from which the run skips the index.
@@ -210,6 +257,7 @@ fn index_cached<'f, T: Send>(
     docs: impl FnOnce() -> Documentation,
     (rewrote, reuse): (Option<&Rewrite<'_, T>>, Option<&Reuse<'_, T>>),
     ending: Ending,
+    overlay: &Overlay,
     work: impl Fn(&DiscoveredFile) -> T + Sync,
 ) -> Result<Option<Vec<Vec<T>>>> {
     let caches = cache_dir.map(|cache_dir| {
@@ -257,7 +305,7 @@ fn index_cached<'f, T: Send>(
         }
     }
     let mut facts: Vec<Option<FileFacts>> =
-        indexed.par_iter().zip(&file_caches).map(|(file, cached)| file_facts(file, *cached, parts)).collect();
+        indexed.par_iter().zip(&file_caches).map(|(file, cached)| file_facts(file, *cached, parts, overlay)).collect();
     let mut passes: Vec<(usize, Vec<T>)> = Vec::new();
     let no_docs = DocReferences::default();
     let no_external = External::default();
@@ -282,6 +330,7 @@ fn index_cached<'f, T: Send>(
             project_caches,
             rewrote,
             ending,
+            overlay,
             &work,
         )?;
         passes.extend(linted_at.zip(project_passes));
@@ -531,6 +580,7 @@ fn index_and_lint<'f, T: Send>(
     file_caches: &[Option<(&'f Cache, FileKey)>],
     rewrote: Option<&(dyn Fn(&T) -> bool + Sync)>,
     ending: Ending,
+    overlay: &Overlay,
     work: &(dyn Fn(&DiscoveredFile) -> T + Sync),
 ) -> Result<Vec<Vec<T>>> {
     let start = Instant::now();
@@ -557,7 +607,7 @@ fn index_and_lint<'f, T: Send>(
     debug!("Indexed {} files in: {:?}", facts.iter().flatten().count(), start.elapsed());
     let start = Instant::now();
     let linted_files = &files[..linted.len()];
-    let index = Index { facts: &mut facts, paths: &paths, resolver: &mut imports, inputs: &inputs, parts };
+    let index = Index { facts: &mut facts, paths: &paths, resolver: &mut imports, inputs: &inputs, parts, overlay };
     let passes = lint_rounds(linted_files, index, indexed, file_caches, rewrote, ending, work);
     debug!("Checked {:?} files in: {:?}", passes.len(), start.elapsed());
     ending.end(facts);
@@ -630,12 +680,16 @@ struct Index<'i, 'f> {
     resolver: &'i mut ImportResolver,
     inputs: &'i IndexInputs<'i>,
     parts: Parts,
+    // The fixes of a diff run, whose sources the rounds read in place of the disk's.
+    overlay: &'i Overlay,
 }
 
 // Each file's passes, in order. A fix in one file can change what another learns from the index, as folding
 // `mock.uuid = 7` into the mock's constructor leaves no assignment to stop a dataclass with a `uuid` field from
 // freezing. So with `rewrote` set, the files a round rewrites have their facts collected again, and each file whose
-// answers from the index change is linted again, until a round rewrites nothing.
+// answers from the index change is linted again, until a round rewrites nothing. A rewritten file's cycle and repeated
+// statements are ranges of the source it had before, so a rewritten file that reports one is linted again even when
+// its answers did not change.
 fn lint_rounds<'f, T: Send>(
     files: &'f [RunFile<'f>],
     mut index: Index<'_, 'f>,
@@ -648,8 +702,15 @@ fn lint_rounds<'f, T: Send>(
     // Two files whose fixes keep changing each other's facts would not settle; past this many rounds, the last
     // reports stand.
     const ROUNDS: usize = 8;
-    // A file a fix rewrote has a new key.
-    let recache = |at: usize| Some((file_caches[at]?.0, FileKey::of(files[at].path)?));
+    // A file an applied fix rewrote has a new key. A diff run's fixes leave the disk as it was, and the reports of a
+    // file it fixed are not its source's, so such a file is not cached.
+    let overlay = index.overlay;
+    let recache = |at: usize| {
+        if overlay.holds(files[at].path) {
+            return None;
+        }
+        Some((file_caches[at]?.0, FileKey::of(files[at].path)?))
+    };
     // Without rewrites nothing indexes again, so the facts and resolved module names go before the files are linted.
     if rewrote.is_none() {
         ending.end(std::mem::take(index.facts));
@@ -675,7 +736,7 @@ fn lint_rounds<'f, T: Send>(
         for &at in &rewritten {
             words[at] = None;
         }
-        let collect = |at: usize| file_facts(&files[at], recache(at), parts);
+        let collect = |at: usize| file_facts(&files[at], recache(at), parts, overlay);
         let (next, dependents) = reindex(&mut index, &rewritten, collect, files, &mut words, &project);
         project = next;
         let relinted: Vec<(usize, T)> =
@@ -711,7 +772,12 @@ fn module_roles<'s>(files: &'s [RunFile<'_>], roots: &SearchRoots) -> FxHashMap<
 // there. Cached facts without a part the run's rules read, or resolved against other module paths, as when the search
 // roots changed, are collected again, keeping the parts they had, so runs with rules that read different parts, as a
 // hook and a full run, do not each collect the file again.
-fn file_facts(file: &RunFile, cache: Option<(&Cache<'_>, FileKey)>, parts: Parts) -> Option<FileFacts> {
+fn file_facts(
+    file: &RunFile,
+    cache: Option<(&Cache<'_>, FileKey)>,
+    parts: Parts,
+    overlay: &Overlay,
+) -> Option<FileFacts> {
     let (module_path, importable) = (file.module_path.as_deref(), file.importable.as_deref());
     let cached = cache.and_then(|(cache, key)| cache.facts(file.path, key));
     let parts = match cached {
@@ -719,7 +785,10 @@ fn file_facts(file: &RunFile, cache: Option<(&Cache<'_>, FileKey)>, parts: Parts
         Some(facts) => parts.with(facts.parts()),
         None => parts,
     };
-    let source = std::fs::read_to_string(file.path).ok()?;
+    let source = match overlay.current(file.path) {
+        Some(current) => current,
+        None => std::fs::read_to_string(file.path).ok()?,
+    };
     let facts = FileFacts::collect(file.path, &source, module_path, importable, parts)?;
     if let Some((cache, key)) = cache {
         cache.set_facts(file.path, key, &facts);
@@ -728,8 +797,8 @@ fn file_facts(file: &RunFile, cache: Option<(&Cache<'_>, FileKey)>, parts: Parts
 }
 
 // The index once the `rewritten` files have their facts collected and their module names resolved again, and the
-// positions of the files whose answers from it differ from those of `project`. Each file's `words` are read the first
-// time a changed name needs them.
+// positions of the files whose answers from it differ from those of `project`, or that a rewrite left with a cycle or
+// repeated statements to report. Each file's `words` are read the first time a changed name needs them.
 fn reindex(
     index: &mut Index<'_, '_>,
     rewritten: &[usize],
@@ -749,16 +818,19 @@ fn reindex(
     let next = index_project(index.paths, index.facts, index.resolver, index.inputs);
     let changed = next.changed_names(project);
     if !changed.is_empty() {
+        let overlay = index.overlay;
         words.par_iter_mut().zip(files).filter(|(known, _)| known.is_none()).for_each(|(known, file)| {
-            *known = Some(Words::of(file.path));
+            *known = Some(Words::of(file.path, overlay));
         });
     }
     let dependents = (0..files.len())
         .into_par_iter()
         .filter(|&at| {
             let path = files[at].absolute.as_path();
+            let answers = next.file(path);
             let mentions = || words[at].as_ref().is_some_and(|held| changed.iter().any(|name| held.holds(name)));
-            next.file(path) != project.file(path) || mentions()
+            let reports = answers.import_cycle().is_some() || !answers.duplicate_runs().is_empty();
+            answers != project.file(path) || mentions() || (reports && rewritten.contains(&at))
         })
         .collect();
     (next, dependents)
@@ -784,8 +856,8 @@ fn index_project(
 struct Words(Vec<u64>);
 
 impl Words {
-    fn of(path: &Path) -> Self {
-        let source = std::fs::read_to_string(path).unwrap_or_default();
+    fn of(path: &Path, overlay: &Overlay) -> Self {
+        let source = overlay.current(path).unwrap_or_else(|| std::fs::read_to_string(path).unwrap_or_default());
         let mut hashes: Vec<u64> =
             source.split(|char: char| !(char.is_alphanumeric() || char == '_')).map(word_hash).collect();
         hashes.sort_unstable();

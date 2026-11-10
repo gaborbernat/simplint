@@ -5,9 +5,7 @@ use std::fs;
 
 use test_case::test_case;
 
-#[cfg(unix)]
-use common::read;
-use common::{check, project};
+use common::{check, check_with_stdin, project, read};
 
 // Nesting this deep overflowed the stack of the parser and of every visitor before the work got a larger one.
 const DEPTH: usize = 10_000;
@@ -73,4 +71,46 @@ fn file_reached_through_a_link_is_fixed_once() {
         (code, stdout.contains("Found 1 error (1 fixed, 0 remaining)"), read(root.path(), "module.py")),
         (0, true, "VALUE = 1\n".to_owned())
     );
+}
+
+// Standard input names no file, so `--add-noqa` and `--add-ignore` have nothing to edit and must not edit the files
+// under the working directory instead.
+#[test_case("--add-noqa" ; "noqa")]
+#[test_case("--add-ignore" ; "ignore")]
+fn suppression_refuses_standard_input(flag: &str) {
+    let source = "def run(x):\n    return x\n";
+    let root = project(&[("module.py", source)]);
+    let (code, _, stderr) = check_with_stdin(root.path(), &["--select", "SMP101", flag, "-"], "VALUE = 1\n");
+    assert_eq!(
+        (code, stderr.contains(&format!("{flag} cannot be used with standard input")), read(root.path(), "module.py")),
+        (2, true, source.to_owned())
+    );
+}
+
+// `--stdin-filename` reads standard input whatever paths come with it, and reports it under that name.
+#[test]
+fn stdin_filename_reads_standard_input_over_the_paths() {
+    let root = project(&[("on_disk.py", "def zed(q):\n    return q\n")]);
+    let (code, stdout, stderr) = check_with_stdin(
+        root.path(),
+        &["--select", "SMP101", "--stdin-filename", "x.py", "on_disk.py"],
+        "def other(w):\n    return w\n",
+    );
+    assert_eq!(
+        (code, stdout, stderr),
+        (
+            1,
+            "x.py:1:11: SMP101 Single-letter name `w`; use a descriptive name\nFound 1 error.\n".to_owned(),
+            "warning: Ignoring file on_disk.py in favor of standard input.\n".to_owned()
+        )
+    );
+}
+
+// Standard input is read only for a lone `-`, so a `-` beside other paths leaves the run to lint those paths.
+#[test]
+fn dash_beside_paths_is_not_standard_input() {
+    let root = project(&[("on_disk.py", "def zed(q):\n    return q\n")]);
+    let (_, stdout, _) =
+        check_with_stdin(root.path(), &["--select", "SMP101", "-", "on_disk.py"], "def other(w):\n    return w\n");
+    assert_eq!((stdout.contains("`q`"), stdout.contains("`w`")), (true, false));
 }

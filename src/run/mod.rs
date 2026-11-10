@@ -3,6 +3,7 @@
 mod cache;
 mod conflicts;
 mod discover;
+mod overlay;
 mod rounds;
 
 use std::fs::OpenOptions;
@@ -10,7 +11,7 @@ use std::io::{Read, Seek, SeekFrom, Write};
 use std::ops::{Add, AddAssign};
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, ensure};
+use anyhow::{Result, ensure};
 use colored::Colorize;
 use log::warn;
 use ruff::args::ConfigArguments;
@@ -32,7 +33,8 @@ use crate::lint::Linter;
 use crate::settings::SettingsResolver;
 
 pub(crate) use cache::FullDisplay;
-pub(crate) use discover::{Discovered, discover, linted_roots, redact_extended, within};
+pub(crate) use discover::{Discovered, discover, linted_roots, redact_extended, warn_missing, within};
+pub(crate) use overlay::Overlay;
 pub(crate) use rounds::{add_suppressions, check_files, check_stdin};
 
 // Ruff's configuration and simplint's, from the same command line, as a run reads them.
@@ -71,10 +73,14 @@ impl Diagnostics {
             warn!("{}{}{} {message}", "Failed to lint ".bold(), relativize_path(path).bold(), ":".bold());
             return Self::default();
         }
-        let file = SourceFileBuilder::new(path.to_string_lossy(), "").finish();
-        let diagnostic = IOError { message }.into_diagnostic(TextRange::default(), &file);
-        Self { inner: vec![diagnostic], ..Self::default() }
+        Self { inner: vec![io_error(path, message)], ..Self::default() }
     }
+}
+
+// Ruff's `io-error` diagnostic for a path that cannot be read, written or found.
+pub(crate) fn io_error(path: &Path, message: String) -> Diagnostic {
+    let file = SourceFileBuilder::new(path.to_string_lossy(), "").finish();
+    IOError { message }.into_diagnostic(TextRange::default(), &file)
 }
 
 impl Add for Diagnostics {
@@ -136,37 +142,54 @@ pub struct Mode {
 }
 
 // A file's lint: its diagnostics and fixes, the fixes a settled fix loop withdrew, and, without fixes, the line each
-// diagnostic's suppression comment belongs on, which the cache stores with the reports.
+// diagnostic's suppression comment belongs on, which the cache stores with the reports. A file whose fixes cannot be
+// written is not cacheable: the cache keys a file by its metadata, not by whether its directory and the run's roots let
+// it be written, so its reports would outlive what they depend on. A file that cannot be read fails the same way for
+// the same key, so its report is stored.
 pub struct Linting {
     pub diagnostics: Diagnostics,
     pub settled: Option<Withdrawn>,
     pub noqa_rows: Vec<TextSize>,
+    pub cacheable: bool,
 }
 
 // Ruff's `lint_path`: lint a file, and with `--fix` or `--diff` fix it and write the result back or keep the diff for
-// the caller to print. Files are linted in parallel, so the diff waits for the caller to print it in file order. A file
-// that cannot be read or written is reported in place of its diagnostics, as Ruff reports `io-error`. Both `settled`
-// sets name the fixes the fix loop withdrew from a file it left as it was: the one passed from an earlier run, which
-// spares running the loop, the one returned from this run.
-pub fn lint_path(path: &Path, linter: &Linter, mode: &Mode, settled: Option<Withdrawn>) -> Linting {
-    fix_path(path, linter, mode, settled).unwrap_or_else(|error| Linting {
+// the caller to print. A `--diff` run keeps the fixed source in `overlay` instead of writing it, so the next fix round
+// lints what the fixes made. Files are linted in parallel, so the diff waits for the caller to print it in file order.
+// A file that cannot be read is reported in place of its diagnostics, as Ruff reports `io-error`; one whose fixes
+// cannot be written keeps its diagnostics, with the error reported beside them. Both `settled` sets name the fixes the
+// fix loop withdrew from a file it left as it was: the one passed from an earlier run, which spares running the loop,
+// the one returned from this run.
+pub fn lint_path(path: &Path, linter: &Linter, mode: &Mode, settled: Option<Withdrawn>, overlay: &Overlay) -> Linting {
+    fix_path(path, linter, mode, settled, overlay).unwrap_or_else(|error| Linting {
         diagnostics: Diagnostics::from_error(path, format!("{error:#}"), linter),
         settled: None,
         noqa_rows: Vec::new(),
+        cacheable: true,
     })
 }
 
-fn fix_path(path: &Path, linter: &Linter, mode: &Mode, settled: Option<Withdrawn>) -> Result<Linting> {
-    let source = std::fs::read_to_string(path)?;
+fn fix_path(
+    path: &Path,
+    linter: &Linter,
+    mode: &Mode,
+    settled: Option<Withdrawn>,
+    overlay: &Overlay,
+) -> Result<Linting> {
+    let source = match overlay.current(path) {
+        Some(current) => current,
+        None => std::fs::read_to_string(path)?,
+    };
     let Linted { diagnostics, transformed, fixed, settled, noqa_rows } =
         lint_source(path, &source, linter, mode, settled);
     let mut diffs = Vec::new();
     if let Some(transformed) = transformed.filter(|_| !fixed.is_empty()) {
         if mode.fix.is_apply() {
-            write_source(path, &mode.roots, &source, &transformed)
-                .with_context(|| format!("writing {}", path.display()))?;
+            if let Err(error) = write_source(path, &mode.roots, &source, &transformed) {
+                return Ok(unwritten(path, &source, linter, mode, &error));
+            }
         } else {
-            let diff = SourceKindDiff::from_text(&source, &transformed, Some(path)).to_string();
+            let diff = overlay.record(path, &source, &transformed);
             diffs.push((path.to_string_lossy().into_owned(), diff));
         }
     }
@@ -175,7 +198,17 @@ fn fix_path(path: &Path, linter: &Linter, mode: &Mode, settled: Option<Withdrawn
         diagnostics: Diagnostics { inner: diagnostics, fixed, diffs, ..Diagnostics::default() },
         settled,
         noqa_rows,
+        cacheable: true,
     })
+}
+
+// A fix that cannot be written leaves the file as it is, so its reports are those of the source as read, with the
+// write's error reported beside them and no fix counted.
+fn unwritten(path: &Path, source: &str, linter: &Linter, mode: &Mode, error: &anyhow::Error) -> Linting {
+    let lint = linter.lint(path, source, mode.noqa);
+    let mut diagnostics = Diagnostics::from_error(path, format!("writing {}: {error:#}", path.display()), linter);
+    diagnostics.inner.extend(lint.diagnostics);
+    Linting { diagnostics, settled: None, noqa_rows: Vec::new(), cacheable: false }
 }
 
 // Replaces a file read as `original` with `fixed`, in place as Ruff writes it, so the file keeps its owner, hard

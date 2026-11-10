@@ -19,6 +19,7 @@ use crate::lint::registry::RuleSet;
 use crate::project::{Ending, cache};
 use crate::run::{
     Diagnostics, Discovered, Mode, Resolved, add_suppressions, check_files, check_stdin, discover, linted_roots,
+    warn_missing,
 };
 use crate::settings::{FileSettings, Settings};
 
@@ -27,8 +28,7 @@ use crate::settings::{FileSettings, Settings};
 pub(crate) fn check(cli: &CheckCommand, global_options: &GlobalConfigArgs) -> Result<ExitStatus> {
     let log_level = global_options.log_level();
     let resolved = Resolved::new(cli, global_options)?;
-    let is_stdin = cli.files.first().is_some_and(|file| file == Path::new("-"))
-        || (cli.files.is_empty() && cli.stdin_filename.is_some());
+    let is_stdin = reads_stdin(cli);
     let files = if cli.files.is_empty() || is_stdin { vec![PathBuf::from(".")] } else { cli.files.clone() };
     let mut writer: Box<dyn Write> = match &cli.output_file {
         Some(path) if !cli.watch => {
@@ -64,6 +64,9 @@ pub(crate) fn check(cli: &CheckCommand, global_options: &GlobalConfigArgs) -> Re
     };
     if let Some((reason, kind)) = cli.suppression() {
         let flag = suppression_flag(kind);
+        if is_stdin {
+            bail!("{flag} cannot be used with standard input");
+        }
         if !mode.fix.is_generate() {
             warn_user!("--fix is incompatible with {flag}.");
         }
@@ -130,6 +133,17 @@ pub(crate) fn check(cli: &CheckCommand, global_options: &GlobalConfigArgs) -> Re
     Ok(status)
 }
 
+// Ruff's `is_stdin`, so one command line reads the same source under both tools.
+fn reads_stdin(cli: &CheckCommand) -> bool {
+    if cli.stdin_filename.is_none() {
+        return matches!(cli.files.as_slice(), [file] if file == Path::new("-"));
+    }
+    if let Some(file) = cli.files.iter().find(|file| file.as_path() != Path::new("-")) {
+        warn_user_once!("Ignoring file {} in favor of standard input.", file.display());
+    }
+    true
+}
+
 // The source comes from standard input, which is linted as the file it stands for, and whatever the fixes or the diff
 // write goes to standard output.
 fn check_standard_input(cli: &CheckCommand, resolved: &Resolved, mode: &Mode) -> Result<Diagnostics> {
@@ -144,7 +158,8 @@ fn check_standard_input(cli: &CheckCommand, resolved: &Resolved, mode: &Mode) ->
 }
 
 fn show_settings(files: &[PathBuf], resolved: &Resolved, writer: &mut dyn Write) -> Result<()> {
-    let Discovered { python, resolver, .. } = discover(files, resolved)?;
+    let Discovered { python, resolver, missing, .. } = discover(files, resolved)?;
+    warn_missing(&missing);
     let Some(path) = python.first() else {
         bail!("No files found under the given path");
     };
@@ -226,6 +241,7 @@ fn write_list(writer: &mut dyn Write, name: &str, items: &[String]) -> std::io::
 
 fn show_files(files: &[PathBuf], resolved: &Resolved, writer: &mut dyn Write) -> Result<()> {
     let discovered = discover(files, resolved)?;
+    warn_missing(&discovered.missing);
     if discovered.python.is_empty() {
         warn_user_once!("No Python files found under the given path(s)");
     }

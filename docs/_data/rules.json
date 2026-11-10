@@ -7026,7 +7026,7 @@
     "family": "imports",
     "group": "Imports and dependencies",
     "short_group": "Imports",
-    "cross_file": false
+    "cross_file": true
   },
   {
     "code": "SMP401",

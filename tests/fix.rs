@@ -751,3 +751,64 @@ fn import_cycle_survives_a_fix_before_the_import() {
     let (code, stdout, _) = check(root.path(), &["--fix", "--select", "SMP308,SMP504"]);
     assert_eq!((code, stdout.contains("a.py:5:1: SMP308")), (1, true));
 }
+
+// Each module's walrus fix leaves the cycle that closes through the other module standing, so the rewritten modules
+// are linted again and keep their import-cycle reports.
+#[test]
+fn fix_keeps_the_import_cycle_report_of_a_rewritten_file() {
+    let root = project(&[
+        (
+            "alpha.py",
+            "from beta import beta_value\n\n\ndef alpha_value(source):\n    found = source.get(\"alpha\")\n    if found is not \
+             None:\n        return found\n    return beta_value()\n",
+        ),
+        (
+            "beta.py",
+            "from alpha import alpha_value\n\n\ndef beta_value():\n    found = alpha_value({})\n    if found is not None:\n        \
+             return found\n    return 0\n",
+        ),
+    ]);
+    let (code, stdout, _) = check(root.path(), &["--fix", "--select", "SMP308,SMP502"]);
+    assert_eq!((code, stdout.matches("SMP308").count()), (1, 2));
+}
+
+// Ruff warns about a `noqa` comment each time it lints a source, and the fix loop lints sources the disk does not hold, so
+// the warning shows once, with the line the comment has on disk.
+#[test]
+fn fix_warns_about_a_noqa_comment_once_with_its_line_on_disk() {
+    let source =
+        "import os\n\n# --- section one ---\nVALUE = os.sep\n# --- section two ---\nOTHER = os.linesep  # noqa: 401\n";
+    let root = project(&[("a.py", source)]);
+    let (code, _, stderr) = check(root.path(), &["--diff", "--select", "SMP001"]);
+    assert_eq!((code, stderr.matches("Invalid `# noqa` directive").count(), stderr.contains("a.py:6:")), (1, 1, true));
+}
+
+// Renaming `Lit` to `_Lit` leaves the dataclass no namesake, so its `frozen` and `slots` fixes become safe in a second
+// round. A `--diff` run runs that round too, so its diff holds the change `--fix` writes.
+#[test]
+fn diff_shows_the_changes_of_a_later_fix_round() {
+    let files = [
+        ("pyproject.toml", "[tool.simplint]\nextend-safe-fixes = [\"SMP403\"]\n"),
+        ("models.py", "from dataclasses import dataclass\n\n\n@dataclass(kw_only=True)\nclass Lit:\n    value: int\n"),
+        (
+            "other.py",
+            "class Lit:\n    def __init__(self) -> None:\n        self.extra = 1\n\n\ndef run() -> int:\n    return \
+             Lit().extra\n\n\n__all__ = [\n    \"run\",\n]\n",
+        ),
+    ];
+    let select = ["--select", "SMP403,SMP701,SMP702", "--target-version", "py314"];
+    let root = project(&files);
+    let (code, diff, _) = check(root.path(), &[&["--diff"], &select[..]].concat());
+    let fixed = project(&files);
+    check(fixed.path(), &[&["--fix"], &select[..]].concat());
+    assert_eq!(
+        (
+            code,
+            diff.contains("+@dataclass(kw_only=True, frozen=True, slots=True)\n"),
+            diff.ends_with("Would fix 3 errors.\n"),
+            read(fixed.path(), "models.py").contains("@dataclass(kw_only=True, frozen=True, slots=True)\n"),
+            read(root.path(), "models.py"),
+        ),
+        (1, true, true, true, files[1].1.to_owned())
+    );
+}

@@ -12,6 +12,14 @@ comment on the line where the report starts, and give a reason after the codes:
   continuation, as in Ruff.
 - A bare ``# noqa`` suppresses every simplint rule on its line, but
   :doc:`suppression-without-reason </_generated/rules/SMP003>` reports it for giving no reason.
+- An invalid directive, such as ``# noqa: 401``, makes a fix run warn once, not once per rule it would suppress. Both
+  ``--fix`` and ``--diff`` print that warning:
+
+  .. code-block:: console
+
+      $ simplint check --fix --output-format concise --select SMP001 a.py
+      warning: Invalid `# noqa` directive on a.py:6: expected a comma-separated list of codes (e.g., `# noqa: F401, F841`).
+      Found 2 errors (2 fixed, 0 remaining).
 
 The suppression comments at a glance:
 
@@ -40,6 +48,7 @@ To silence every remaining report at once:
   ``# noqa`` comment.
 - ``--add-ignore`` writes ``# simplint: ignore`` comments the same way.
 - Both take a reason to write after the codes: ``--add-noqa="matches the paper's notation"``.
+- Neither takes standard input: ``simplint check --add-noqa -`` fails with an error.
 
 The :doc:`unused-ignore </_generated/rules/SMP009>` rule reports obsolete selectors in ``# simplint: ignore[...]``
 comments. Run ``simplint check --extend-select SMP009 --fix`` to remove them. The fix re-lints uncertain removals so a

@@ -1,8 +1,10 @@
 use std::fs;
+use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Result, anyhow};
 use colored::Colorize;
+use ignore::Error as WalkError;
 use log::warn;
 use ruff_workspace::resolver::{Resolver, match_exclusion, project_files_in_path};
 use rustc_hash::FxHashSet;
@@ -17,6 +19,8 @@ pub(crate) struct Discovered<'a> {
     pub(crate) python: Vec<PathBuf>,
     pub(crate) unlinted: Vec<PathBuf>,
     pub(crate) resolver: Resolver<'a>,
+    // The paths the run names that do not exist, each with the message Ruff reports for it.
+    pub(crate) missing: Vec<(PathBuf, String)>,
 }
 
 pub(crate) fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Result<Discovered<'a>> {
@@ -26,11 +30,15 @@ pub(crate) fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Re
     let roots = linted_roots(files);
     let mut python = Vec::new();
     let mut unlinted = Vec::new();
+    let mut missing = Vec::new();
     for file in found {
         let file = match file {
             Ok(file) => file,
             Err(error) => {
-                warn!("{} {error}", "Encountered error:".bold());
+                match missing_path(&error) {
+                    Some(path) => missing.push(path),
+                    None => warn!("{} {error}", "Encountered error:".bold()),
+                }
                 continue;
             }
         };
@@ -59,7 +67,23 @@ pub(crate) fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Re
         }
         python.push(path.to_path_buf());
     }
-    Ok(Discovered { python: distinct(python), unlinted, resolver })
+    Ok(Discovered { python: distinct(python), unlinted, resolver, missing })
+}
+
+// The path and message of a walk error for a path the run names that does not exist, which Ruff reports as `io-error`.
+fn missing_path(error: &WalkError) -> Option<(PathBuf, String)> {
+    let WalkError::WithPath { path, err } = error else {
+        return None;
+    };
+    let io = err.io_error().filter(|io| io.kind() == ErrorKind::NotFound)?;
+    Some((path.clone(), io.to_string()))
+}
+
+// Warns of the paths the run names that do not exist, for the commands that report no diagnostics of their own.
+pub(crate) fn warn_missing(missing: &[(PathBuf, String)]) {
+    for (_, message) in missing {
+        warn!("{} {message}", "Encountered error:".bold());
+    }
 }
 
 // The files sorted, with each file the links in the run reach kept once, by its own path when the run found it: files

@@ -240,7 +240,10 @@ impl<'a> Cache<'a> {
             .filter(|settled| fingerprint.settled == Some(settled.fingerprint.to_native()))
             .map(withdrawn);
         let fresh = known.is_none();
-        let Linting { mut diagnostics, settled, noqa_rows } = lint(known);
+        let Linting { mut diagnostics, settled, noqa_rows, cacheable } = lint(known);
+        if !cacheable {
+            return diagnostics;
+        }
         // Text is kept only for a file the cache already held reports for, so a first run that has nothing to reuse
         // renders the output as it did before, and the next run reuses the text.
         let held = file.is_some_and(|file| file.findings.is_some());
