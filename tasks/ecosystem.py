@@ -532,7 +532,14 @@ def _failures(completed: subprocess.CompletedProcess[str], unreadable: set[str])
 
 
 def _stranded_pragmas(root: Path) -> dict[str, int]:
-    pattern = re.compile(r"^\s*[)\]}]+[,:]?\s*#\s*(noqa|type:|pyright:|ruff:|simplint:)", re.MULTILINE)
+    pattern = re.compile(
+        r"""
+        ^\s*[)\]}]+[,:]?  # closing syntax at the start of a line
+        \s*\#\s*          # comment marker
+        (?:noqa|type:|pyright:|ruff:|simplint:)  # suppression directive
+        """,
+        re.MULTILINE | re.VERBOSE,
+    )
     return {
         path.relative_to(root).as_posix(): len(pattern.findall(path.read_text(errors="replace")))
         for path in root.rglob("*.py")
