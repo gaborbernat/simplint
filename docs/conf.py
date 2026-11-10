@@ -743,7 +743,7 @@ def _point_generated_pages_at_their_source(pagename: str, context: _PageContext)
 def _mark_sidebar_link(pagename: str, match: re.Match[str]) -> str:
     # The stylesheet gives each sidebar entry the icon of the page it names. Rule pages lead with their code and take
     # none; Furo links the current page as `#`.
-    classes, href = match[1].split(), match[2]
+    classes, href = match["classes"].split(), match["href"]
     if "internal" not in classes:
         return match[0]
     path = href.split("#", 1)[0]
@@ -766,14 +766,14 @@ def _split_code_lines(match: re.Match[str]) -> str:
     # The highlighter writes a numbered snippet as one run of text with the numbers inline, so a wrapped line would
     # continue under the numbers. One block per line lets the stylesheet hang each continuation under its code; each
     # keeps its newline, so copied code keeps its lines.
-    if '<span class="linenos">' not in (code := match[2]):
+    if '<span class="linenos">' not in (code := match["code"]):
         return match[0]
     lines = code.splitlines(keepends=True)
     # Pygments closes every token at the end of its line, so each line is whole markup on its own
     if unbalanced := [line for line in lines if line.count("<span") != line.count("</span>")]:
         msg = f"a highlighted line leaves a token open: {unbalanced[0]!r}"
         raise ValueError(msg)
-    return match[1] + "".join(f'<span class="code-line">{line}</span>' for line in lines) + match[3]
+    return match["open"] + "".join(f'<span class="code-line">{line}</span>' for line in lines) + match["close"]
 
 
 def _inline_assets(app: Sphinx, exception: Exception | None) -> None:
@@ -808,10 +808,25 @@ _EXAMPLE_TOGGLES: Final[dict[str, tuple[str, str]]] = {
 }
 
 
-_SIDEBAR_LINK: Final[re.Pattern[str]] = re.compile(r'<a class="([^"]*)" href="([^"]*)"')
+_SIDEBAR_LINK: Final[re.Pattern[str]] = re.compile(
+    r"""
+    <a[ ]class="       # opening link and class attribute
+    (?P<classes>[^"]*)  # class names
+    "[ ]href="         # href attribute
+    (?P<href>[^"]*)"    # target and closing quote
+    """,
+    re.VERBOSE,
+)
 
 
-_NUMBERED_CODE: Final[re.Pattern[str]] = re.compile(r'(<div class="highlight"><pre>)(.*?)(</pre>)', re.DOTALL)
+_NUMBERED_CODE: Final[re.Pattern[str]] = re.compile(
+    r"""
+    (?P<open><div[ ]class="highlight"><pre>)  # code block opening
+    (?P<code>.*?)                           # highlighted code
+    (?P<close></pre>)                       # code block closing
+    """,
+    re.DOTALL | re.VERBOSE,
+)
 
 
 _DIAGRAM: Final[re.Pattern[str]] = re.compile(
@@ -820,8 +835,16 @@ _DIAGRAM: Final[re.Pattern[str]] = re.compile(
 
 
 _ASSET: Final[re.Pattern[str]] = re.compile(
-    r'<link rel="stylesheet" type="text/css" href="(?P<css>[^"?]*_static/[^"?]+)(?:\?[^"]*)?" />'
-    r'|<script src="(?P<js>[^"?]*_static/[^"?]+)(?:\?[^"]*)?"></script>'
+    r"""
+    <link[ ]rel="stylesheet"[ ]type="text/css"[ ]href="  # stylesheet link
+    (?P<css>[^"?]*_static/[^"?]+)                     # stylesheet path
+    (?:\?[^"]*)?"[ ]/>                               # optional query and closing tag
+    |
+    <script[ ]src="                                   # script tag
+    (?P<js>[^"?]*_static/[^"?]+)                      # script path
+    (?:\?[^"]*)?"></script>                           # optional query and closing tag
+    """,
+    re.VERBOSE,
 )
 
 

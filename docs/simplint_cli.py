@@ -6,10 +6,7 @@ import json
 import re
 from argparse import ArgumentParser, RawDescriptionHelpFormatter
 from pathlib import Path
-from typing import TYPE_CHECKING, NotRequired, TypedDict
-
-if TYPE_CHECKING:
-    from argparse import _SubParsersAction
+from typing import NotRequired, TypedDict
 
 
 class _Argument(TypedDict):
@@ -45,7 +42,7 @@ def _add_arguments(parser: ArgumentParser, command: _Command) -> None:
     for argument in command["arguments"]:
         _add_argument(parser, argument)
     if command["subcommands"]:
-        subparsers: _SubParsersAction[ArgumentParser] = parser.add_subparsers(dest="command", required=True)
+        subparsers = parser.add_subparsers(dest="command", required=True)
         for subcommand in command["subcommands"]:
             child = subparsers.add_parser(subcommand["name"], help=subcommand["about"], description=subcommand["about"])
             _add_arguments(child, subcommand)

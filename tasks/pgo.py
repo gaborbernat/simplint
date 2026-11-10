@@ -34,12 +34,23 @@ _PYTHON: Final[tuple[str, ...]] = (".py", ".pyi")
 #: counts for, or counts of other code. Cargo hides the warnings of dependencies, so they all come from simplint's own
 #: codegen units, which also hold the instances of its dependencies' generic functions.
 _PGO_WARNING: Final[re.Pattern[str]] = re.compile(
-    r"^warning: \S+: (no profile data available for function|function [a-z ]+ change detected \([a-z ]+\)) (\S+)",
-    re.MULTILINE,
+    r"""
+    ^warning:[ ]\S+:[ ]  # Rust warning prefix
+    (?P<kind>no[ ]profile[ ]data[ ]available[ ]for[ ]function|function[ ][a-z ]+[ ]change[ ]detected[ ]\([a-z ]+\))
+    [ ](?P<symbol>\S+)   # mangled function name
+    """,
+    re.MULTILINE | re.VERBOSE,
 )
 #: The first crate root of a v0 mangled symbol, the crate defining the function: ``C``, an optional ``s<base62>_``
 #: disambiguator, and the length of the name that follows.
-_CRATE_ROOT: Final[re.Pattern[str]] = re.compile(r"C(?:s[0-9A-Za-z]*_)?(\d+)_?")
+_CRATE_ROOT: Final[re.Pattern[str]] = re.compile(
+    r"""
+    C                    # v0 crate root marker
+    (?:s[0-9A-Za-z]*_)?  # optional disambiguator
+    (?P<length>\d+)_?     # byte length of the crate name
+    """,
+    re.VERBOSE,
+)
 #: Cargo colors its output when the toolchain action sets CARGO_TERM_COLOR.
 _ANSI: Final[re.Pattern[str]] = re.compile(r"\x1b\[[0-9;]*m")
 #: The crates of the hot path. With a matching profile none of their functions lack data; cold startup code, such as
@@ -212,13 +223,13 @@ def _unmatched(roots: set[str], profile: Path) -> set[str]:
 # not v0 mangled stands for itself.
 def _crate_root(symbol: str) -> str:
     if root := _CRATE_ROOT.search(symbol):
-        return symbol[root.start() : root.end() + int(root[1])]
+        return symbol[root.start() : root.end() + int(root["length"])]
     return symbol
 
 
 def _crate(root: str) -> str:
     if found := _CRATE_ROOT.match(root):
-        return root[found.end() : found.end() + int(found[1])]
+        return root[found.end() : found.end() + int(found["length"])]
     return root
 
 
