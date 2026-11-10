@@ -1,10 +1,12 @@
 use std::collections::BTreeSet;
 
 use ruff_diagnostics::{Edit, Fix};
-use ruff_python_ast::Expr;
+use ruff_python_ast::token::TokenKind;
+use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_python_trivia::leading_indentation;
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
+use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::noqa::is_noqa_for_only;
@@ -13,7 +15,7 @@ use crate::rules::api::{exploded, is_type_checking};
 use crate::rules::{export_key, indentation};
 use crate::semantic::BindingKind;
 use crate::syntax::is_main_guard;
-use crate::syntax::{Exports, Visibility, all_binding, all_literal};
+use crate::syntax::{Exports, Visibility, alias_binding, all_binding, all_literal};
 
 pub fn missing_from_all(checker: &Checker) {
     if checker.is_init_module()
@@ -87,11 +89,13 @@ pub fn missing_from_all(checker: &Checker) {
 // reports as RUF100. The fix drops those comments with the listing.
 fn with_unused_noqas_removed(checker: &Checker, fix: Fix, missing: &[(&str, TextRange, bool)]) -> Option<Fix> {
     let applicability = fix.applicability();
+    let listed: FxHashSet<&str> = missing.iter().map(|(name, _, _)| *name).collect();
     // Names on one line share its comment, which is removed once: two deletions of it would overlap.
     let comments: BTreeSet<(TextSize, TextSize)> = missing
         .iter()
         .filter_map(|(_, range, _)| checker.trailing_comment(*range))
         .filter(|comment| is_noqa_for_only(checker.text(*comment), "F401"))
+        .filter(|comment| binds_only_listed(checker, *comment, &listed))
         .map(|comment| (comment.start(), comment.end()))
         .collect();
     let unused = comments.into_iter().filter_map(|(start, end)| {
@@ -107,6 +111,23 @@ fn with_unused_noqas_removed(checker: &Checker, fix: Fix, missing: &[(&str, Text
     Some(Fix::applicable_edits(first, sorted, applicability))
 }
 
+// Whether every name the imports on the comment's line bind is listed, so no import left unused needs the comment.
+fn binds_only_listed(checker: &Checker, comment: TextRange, listed: &FxHashSet<&str>) -> bool {
+    let line = checker.source.full_line_range(comment.start());
+    checker
+        .body()
+        .iter()
+        .filter_map(|stmt| match stmt {
+            Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
+                Some(names)
+            }
+            _ => None,
+        })
+        .flatten()
+        .filter(|alias| line.contains_range(alias.range()))
+        .all(|alias| listed.contains(alias_binding(alias)))
+}
+
 fn all_insertion<'a>(checker: &Checker, names: impl Iterator<Item = &'a str>) -> Option<Fix> {
     let mut names: Vec<&str> = names.collect();
     names.sort_by_key(|name| export_key(name));
@@ -118,6 +139,9 @@ fn all_insertion<'a>(checker: &Checker, names: impl Iterator<Item = &'a str>) ->
     let one_per_line =
         elts.iter().all(|elt| source[TextRange::new(source.line_start(elt.start()), elt.start())].trim().is_empty());
     let has_comment = checker.has_comment_in(value);
+    if has_comment && elts.is_empty() {
+        return None;
+    }
     if source.contains_line_break(value) && !elts.is_empty() && (one_per_line || has_comment) {
         return lines_insertion(checker, (elts, one_per_line), &names);
     }
@@ -153,10 +177,22 @@ fn new_all(checker: &Checker, names: &[&str]) -> Option<Fix> {
 // Names one to a line, or after the last one when a comment pins the layout, as the `__all__` already lays them out.
 fn lines_insertion(checker: &Checker, (elts, one_per_line): (&[Expr], bool), names: &[&str]) -> Option<Fix> {
     let source = checker.source;
+    let tail = &elts[elts.len() - 1];
     let indent = if one_per_line {
         indentation(source, &elts[0])
     } else {
-        leading_indentation(source.full_line_str(elts[elts.len() - 1].start()))
+        leading_indentation(source.full_line_str(tail.start()))
+    };
+    // A comment ending the last element's line stays with that element only when the names go on the lines after it,
+    // so nothing but a comma may come between them, and the closing bracket must follow the line.
+    let line_comment = match checker
+        .trailing_comment(tail)
+        .map(|comment| source[TextRange::new(tail.end(), comment.start())].trim())
+    {
+        None => None,
+        Some(",") => Some(false),
+        Some("") if closes_after(checker, tail) => Some(true),
+        Some(_) => return None,
     };
     // Names sort in the same order as their positions, so the ones sharing a position form one insertion.
     let mut groups: Vec<(usize, Vec<String>)> = Vec::new();
@@ -167,18 +203,41 @@ fn lines_insertion(checker: &Checker, (elts, one_per_line): (&[Expr], bool), nam
             _ => groups.push((at, vec![quoted(checker, name)])),
         }
     }
-    let separator = format!(",{}{indent}", checker.stylist.line_ending().as_str());
-    let mut edits = groups.into_iter().map(|(at, group)| match elts.get(at) {
-        Some(next) => {
-            Edit::insertion(group.iter().fold(String::new(), |text, name| text + name + &separator), next.start())
-        }
-        None => Edit::insertion(
-            group.iter().fold(String::new(), |text, name| text + &separator + name),
-            elts[elts.len() - 1].end(),
-        ),
-    });
+    let eol = checker.stylist.line_ending().as_str();
+    let separator = format!(",{eol}{indent}");
+    let mut edits: Vec<Edit> = groups
+        .into_iter()
+        .map(|(at, group)| match elts.get(at) {
+            Some(next) => {
+                Edit::insertion(group.iter().fold(String::new(), |text, name| text + name + &separator), next.start())
+            }
+            None if line_comment.is_some() => Edit::insertion(
+                group.iter().fold(String::new(), |text, name| text + indent + name + "," + eol),
+                source.full_line_end(tail.end()),
+            ),
+            None => {
+                Edit::insertion(group.iter().fold(String::new(), |text, name| text + &separator + name), tail.end())
+            }
+        })
+        .collect();
+    if line_comment == Some(true) {
+        edits.push(Edit::insertion(",".to_owned(), tail.end()));
+    }
+    edits.sort_by_key(Ranged::start);
+    let mut edits = edits.into_iter();
     let first = edits.next()?;
     Some(Fix::safe_edits(first, edits))
+}
+
+// Whether the closing bracket of the list is the next token after `elt`, past any comment or line break.
+fn closes_after(checker: &Checker, elt: &Expr) -> bool {
+    checker
+        .parsed
+        .tokens()
+        .after(elt.end())
+        .iter()
+        .find(|token| !matches!(token.kind(), TokenKind::NonLogicalNewline | TokenKind::Comment))
+        .is_some_and(|token| token.kind() == TokenKind::Rsqb)
 }
 
 fn quoted(checker: &Checker, name: &str) -> String {

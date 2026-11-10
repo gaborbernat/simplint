@@ -456,7 +456,11 @@ What the fix does depends on whether the module already has an `__all__`, and on
   `import *` binds; the author decides.
 
 **Adding to an existing `__all__`**: the fix adds the missing names to the list or tuple literal of the last `=`,
-annotated or `+=` assignment to `__all__`. Adding names is safe.
+annotated or `+=` assignment to `__all__`. Adding names is safe. No fix is offered when the empty list holds a comment,
+since the rewrite would drop it. When a comment ends the last element's line, the new names go on the lines after it, so
+the comment stays with its element; no fix is offered when that line holds other code, such as the closing bracket. A
+`# noqa: F401` comment on an import is removed with its names only when every name the import binds on that line is
+listed.
 
 - Each name goes before the first listed name that Ruff's
   [unsorted-dunder-all](https://docs.astral.sh/ruff/rules/unsorted-dunder-all/) sorts after it, so a sorted `__all__`
