@@ -6,7 +6,7 @@ Rule settings
 Paragraph length
 ================
 
-:doc:`long-paragraph </_generated/rules/SMP002>` reports a comment paragraph, and :doc:`long-docstring-paragraph </_generated/rules/SMP904>` a docstring paragraph, longer than ``max-paragraph-words`` words:
+:doc:`long-paragraph </rules/SMP002>` reports a comment paragraph, and :doc:`long-docstring-paragraph </rules/SMP904>` a docstring paragraph, longer than ``max-paragraph-words`` words:
 
 .. code-block:: toml
 
@@ -21,8 +21,8 @@ Paragraph length
 Naming
 ======
 
-Some frameworks read a module variable by its exact name, so renaming it, to the ``UPPER_CASE`` form that :doc:`module-variable-case </_generated/rules/SMP102>`
-asks for or to the underscore prefix that :doc:`module-variable-prefix </_generated/rules/SMP404>` asks for, breaks the program. Both rules already leave alone
+Some frameworks read a module variable by its exact name, so renaming it, to the ``UPPER_CASE`` form that :doc:`module-variable-case </rules/SMP102>`
+asks for or to the underscore prefix that :doc:`module-variable-prefix </rules/SMP404>` asks for, breaks the program. Both rules already leave alone
 the names Sphinx, Alembic, gunicorn and WSGI or ASGI servers read. List any other in ``naming.keep-names``:
 
 .. code-block:: toml
@@ -33,9 +33,9 @@ the names Sphinx, Alembic, gunicorn and WSGI or ASGI servers read. List any othe
 ``--config "naming.keep-names = ['urlpatterns']"`` replaces the list, and ``--show-settings`` prints it as
 ``linter.naming.keep_names``.
 
-``naming.meaningless-names`` holds the words that :doc:`meaningless-name </_generated/rules/SMP103>` reports, such as
+``naming.meaningless-names`` holds the words that :doc:`meaningless-name </rules/SMP103>` reports, such as
 ``foo`` and ``baz``. ``naming.catch-all-modules`` holds the module and package names that
-:doc:`catch-all-module </_generated/rules/SMP104>` reports, such as ``utils`` and ``helpers``. Both lists replace their
+:doc:`catch-all-module </rules/SMP104>` reports, such as ``utils`` and ``helpers``. Both lists replace their
 defaults when set, and ``--show-settings`` prints them as ``linter.naming.meaningless_names`` and
 ``linter.naming.catch_all_modules``.
 
@@ -50,7 +50,7 @@ defaults when set, and ``--show-settings`` prints them as ``linter.naming.meanin
 Module attributes
 =================
 
-:doc:`module-attribute-import </_generated/rules/SMP304>` asks for a name imported from its module rather than reached through the module, as
+:doc:`module-attribute-import </rules/SMP304>` asks for a name imported from its module rather than reached through the module, as
 ``findings.DbWriter`` after ``from . import findings``. A module that tests patch attribute by attribute must stay
 reached through the module, so list it, by its absolute dotted name, in ``imports.module-attributes``:
 
@@ -67,11 +67,11 @@ reached through the module, so list it, by its absolute dotted name, in ``import
 Logic
 =====
 
-:doc:`single-caller-helper </_generated/rules/SMP505>` suggests inlining a private helper that one function calls, when the helper is short and its caller stays
-short. Two limits set how short. :doc:`duplicate-code </_generated/rules/SMP530>` reports statements another module
+:doc:`single-caller-helper </rules/SMP505>` suggests inlining a private helper that one function calls, when the helper is short and its caller stays
+short. Two limits set how short. :doc:`duplicate-code </rules/SMP530>` reports statements another module
 repeats, once the copy is long enough. Statements count as the top-level statements of a body, each nested block
-counting as one, and a docstring does not count. :doc:`long-tuple-return </_generated/rules/SMP528>` reports a returned
-tuple with more elements than its limit, and :doc:`cognitive-complexity </_generated/rules/SMP529>` a function whose
+counting as one, and a docstring does not count. :doc:`long-tuple-return </rules/SMP528>` reports a returned
+tuple with more elements than its limit, and :doc:`cognitive-complexity </rules/SMP529>` a function whose
 score is over its limit:
 
 .. code-block:: toml
@@ -93,7 +93,7 @@ score is over its limit:
 Docstring markup
 ================
 
-The :doc:`reStructuredText rules </_generated/groups/docstrings>` check the field lists of `reStructuredText docstrings
+The :doc:`reStructuredText rules </groups/docstrings>` check the field lists of `reStructuredText docstrings
 <https://www.sphinx-doc.org/en/master/usage/domains/python.html#info-field-lists>`__, as Sphinx renders them:
 
 .. code-block:: toml

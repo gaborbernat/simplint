@@ -7,7 +7,7 @@ exit code 1
   "diagnostics": [
     {
       "code": {
-        "url": "https://simplint.readthedocs.io/en/latest/_generated/rules/SMP001.html",
+        "url": "https://simplint.readthedocs.io/en/latest/rules/SMP001.html",
         "value": "SMP001"
       },
       "location": {
@@ -42,7 +42,7 @@ exit code 1
     },
     {
       "code": {
-        "url": "https://simplint.readthedocs.io/en/latest/_generated/rules/SMP101.html",
+        "url": "https://simplint.readthedocs.io/en/latest/rules/SMP101.html",
         "value": "SMP101"
       },
       "location": {

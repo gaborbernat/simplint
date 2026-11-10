@@ -20,10 +20,10 @@
 simplint is a companion linter for [Ruff](https://docs.astral.sh/ruff/), written in [Rust](https://www.rust-lang.org/).
 It adds checks that make Python code easier to read and review:
 
-- [definitions ordered like a book](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP201.html)
-- [explicit exports](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP403.html)
-- [Final constants](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP601.html)
-- [flat test modules](https://simplint.readthedocs.io/en/latest/_generated/rules/SMP801.html)
+- [definitions ordered like a book](https://simplint.readthedocs.io/en/latest/rules/SMP201.html)
+- [explicit exports](https://simplint.readthedocs.io/en/latest/rules/SMP403.html)
+- [Final constants](https://simplint.readthedocs.io/en/latest/rules/SMP601.html)
+- [flat test modules](https://simplint.readthedocs.io/en/latest/rules/SMP801.html)
 - and more
 
 Most rules rewrite the code for you; fixes that could change behavior run only with `--unsafe-fixes`. An import index

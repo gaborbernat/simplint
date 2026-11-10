@@ -93,7 +93,7 @@ exit code 1
               "help": {
                 "text": "Comments used as dividers or section headers"
               },
-              "helpUri": "https://simplint.readthedocs.io/en/latest/_generated/rules/SMP001.html",
+              "helpUri": "https://simplint.readthedocs.io/en/latest/rules/SMP001.html",
               "id": "SMP001",
               "properties": {
                 "id": "SMP001",
@@ -116,7 +116,7 @@ exit code 1
               "help": {
                 "text": "Single-letter names outside comprehensions and conventional type parameters"
               },
-              "helpUri": "https://simplint.readthedocs.io/en/latest/_generated/rules/SMP101.html",
+              "helpUri": "https://simplint.readthedocs.io/en/latest/rules/SMP101.html",
               "id": "SMP101",
               "properties": {
                 "id": "SMP101",

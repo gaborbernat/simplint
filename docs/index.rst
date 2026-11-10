@@ -18,10 +18,10 @@ simplint
 ``simplint`` is a companion linter for `Ruff <https://docs.astral.sh/ruff/>`__. It adds checks that make Python code
 easier to read and review:
 
-- :doc:`definitions ordered like a book <_generated/rules/SMP201>`
-- :doc:`explicit exports <_generated/rules/SMP403>`
-- :doc:`Final constants <_generated/rules/SMP601>`
-- :doc:`flat test modules <_generated/rules/SMP801>`
+- :doc:`definitions ordered like a book <rules/SMP201>`
+- :doc:`explicit exports <rules/SMP403>`
+- :doc:`Final constants <rules/SMP601>`
+- :doc:`flat test modules <rules/SMP801>`
 - and more
 
 The rules are opinionated. They reflect the maintainer's preferences while aiming to be as objective as possible, so

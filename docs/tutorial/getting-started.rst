@@ -113,7 +113,7 @@ Turn a rule off
 ===============
 
 Every rule runs by default. To turn one off, list it in the ``[tool.simplint]`` table of ``pyproject.toml``. This
-example turns off :doc:`missing-final </_generated/rules/SMP601>`, the rule behind the ``Final`` report above:
+example turns off :doc:`missing-final </rules/SMP601>`, the rule behind the ``Final`` report above:
 
 .. code-block:: toml
 

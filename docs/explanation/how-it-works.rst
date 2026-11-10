@@ -59,10 +59,10 @@ The index also records every attribute name any file assigns and every base clas
 
 A class or alias that the annotations, bases or bounds of an exported name refer to is public too, though no file
 imports it. Such names count through the same places of every class and alias they reach, so ``__all__`` may list them,
-and :doc:`unused-export </_generated/rules/SMP402>` leaves them alone.
+and :doc:`unused-export </rules/SMP402>` leaves them alone.
 
 Fixes never rename or move a name another module imports or an exported signature reaches, and
-:doc:`missing-from-all </_generated/rules/SMP401>` reports such a public name when ``__all__`` leaves it out.
+:doc:`missing-from-all </rules/SMP401>` reports such a public name when ``__all__`` leaves it out.
 
 .. warning::
 

@@ -110,7 +110,7 @@ extensions: Final[list[str]] = [
 if shutil.which("npx") is None:
     msg = "the docs draw their diagrams with mermaid-cli, run through npx: install Node.js and put npx on PATH"
     raise RuntimeError(msg)
-_DIAGRAMS: Final[Path] = Path(__file__).parent / "_generated" / "mermaid"
+_DIAGRAMS: Final[Path] = Path(__file__).parent / "_derived" / "mermaid"
 # the labels use a face every viewer has, or one with its widths, so the text fits the boxes drawn around it
 _DIAGRAM_FONT: Final[dict[str, str]] = {
     "fontFamily": "Arial, 'Liberation Sans', Helvetica, sans-serif",
@@ -215,9 +215,7 @@ class _RuleEntry(TypedDict):
 def _generate(docs: Path) -> dict[str, str]:
     # `simplint rules --output-format json`, committed and kept equal to the binary's by `tests/docs_data.rs`, so the
     # pages and `simplint rule` cannot drift
-    generated = docs / "_generated"
-    (generated / "rules").mkdir(parents=True, exist_ok=True)
-    _DIAGRAMS.mkdir(exist_ok=True)
+    _DIAGRAMS.mkdir(parents=True, exist_ok=True)
     _write(Path(mermaid_sequence_config), _DIAGRAM_CONFIG)
     # The browser renders only the diagrams of these pages, so it needs no sandbox, which containers often cannot give
     # it. Read the Docs builds in a small container: its /dev/shm is too small for Chrome, and a slow start there can
@@ -228,14 +226,16 @@ def _generate(docs: Path) -> dict[str, str]:
     # each group's title and short title by its family, the directory its rules live in, which names its pages since
     # titles have spaces; the binary lists rules by code, so each group appears where its first rule does
     groups = {rule["family"]: (rule["group"], rule["short_group"]) for rule in rules}
-    (generated / "groups").mkdir(exist_ok=True)
-    _write(generated / "rules-table.inc", _rules_index(rules, groups))
+    rules_dir, groups_dir = docs / "rules", docs / "groups"
+    rules_dir.mkdir(exist_ok=True)
+    groups_dir.mkdir(exist_ok=True)
+    _write(docs / "_derived" / "rules-table.inc", _rules_index(rules, groups))
     for family, (title, _) in groups.items():
-        _write(generated / "groups" / f"{family}.rst", _group_page(title, rules))
+        _write(groups_dir / f"{family}.rst", _group_page(title, rules))
     for rule in rules:
-        _write(generated / "rules" / f"{rule['code']}.md", _rule_page(rule))
-    _remove_stale(generated / "rules", {f"{rule['code']}.md" for rule in rules})
-    _remove_stale(generated / "groups", {f"{family}.rst" for family in groups})
+        _write(rules_dir / f"{rule['code']}.md", _rule_page(rule))
+    _remove_stale(rules_dir, {f"{rule['code']}.md" for rule in rules})
+    _remove_stale(groups_dir, {f"{family}.rst" for family in groups})
     _remove_stale(_DIAGRAMS, {Path(mermaid_sequence_config).name, "puppeteer.json"})
     # each explanation sits next to its rule, in the directory of the rule's family
     root = docs.parent
@@ -294,7 +294,7 @@ def _rules_index(rules: list[_RuleEntry], groups: dict[str, tuple[str, str]]) ->
     )
     # the sidebar shows this hidden tree, so a rule page lists its siblings for switching between rules; it has room
     # for one line per entry, so each group shows its short title there
-    groups_tree = "\n".join(f"   {short} <_generated/groups/{family}>" for family, (_, short) in groups.items())
+    groups_tree = "\n".join(f"   {short} <groups/{family}>" for family, (_, short) in groups.items())
     return f".. raw:: html\n\n{textwrap.indent(markup, '   ')}\n\n.. toctree::\n   :hidden:\n\n{groups_tree}\n"
 
 
@@ -313,7 +313,7 @@ def _rule_row(rule: _RuleEntry) -> str:
         f' data-scope="{"cross-file" if rule["cross_file"] else "single-file"}"'
         f' data-text="{searchable}">'
         f'<td class="rule-code" id="{rule["code"]}">'
-        f'<a href="_generated/rules/{rule["code"]}.html">{rule["code"]}</a></td>'
+        f'<a href="rules/{rule["code"]}.html">{rule["code"]}</a></td>'
         f'<td class="rule-name">{rule["name"]}</td>'
         f'<td class="rule-summary">{summary}</td>'
         f'<td class="rule-fix">{fix}</td>'
@@ -337,7 +337,7 @@ def _rule_page(rule: _RuleEntry) -> str:
     badge_class, badge_text = _FIX_BADGES[rule["fix"]]
     # links to the page that explains what reading other files means for a rule
     cross_file = (
-        '<a class="badge cross-file" href="../../explanation/how-it-works.html#cross-file-rules"'
+        '<a class="badge cross-file" href="../explanation/how-it-works.html#cross-file-rules"'
         ' title="Other files of the run can change what this rule reports">🔗 Cross-file</a>'
         if rule["cross_file"]
         else ""
@@ -346,7 +346,7 @@ def _rule_page(rule: _RuleEntry) -> str:
         f'<div class="badges"><span class="badge code">{rule["code"]}</span>'
         f'<span class="badge {badge_class}">{badge_text}</span><span class="badge">{html.escape(rule["group"])}</span>'
         f"{cross_file}"
-        '<a class="badge" href="../../rules.html">All rules</a></div>'
+        '<a class="badge" href="../rules.html">All rules</a></div>'
     )
     explanation = re.sub(r"\]\((SMP\d+)\.html\)", r"](\1.md)", rule["explanation"])
     # links to the settings and how-to pages stay absolute in the binary, for `simplint rule`; built, they resolve to
@@ -730,9 +730,9 @@ def _settle_page(
 def _point_generated_pages_at_their_source(pagename: str, context: _PageContext) -> None:
     # Generated pages have no file under docs/, so the theme's view and edit icons would point nowhere: a rule page
     # comes from its explanation in the crate, the group pages from this configuration.
-    if pagename.startswith("_generated/rules/"):
+    if pagename.startswith("rules/"):
         source = context["rule_sources"][pagename.rsplit("/", 1)[1]]
-    elif pagename.startswith("_generated/"):
+    elif pagename.startswith("groups/"):
         source = "docs/conf.py"
     else:
         return
@@ -748,7 +748,7 @@ def _mark_sidebar_link(pagename: str, match: re.Match[str]) -> str:
         return match[0]
     path = href.split("#", 1)[0]
     target = pagename if not path else posixpath.normpath(posixpath.join(posixpath.dirname(pagename), path))
-    if target.startswith("_generated/rules/"):
+    if target.startswith("rules/"):
         return match[0]
     # a folder's own index page is named after the folder, so it does not take the home page's icon
     *folders, page = target.removesuffix(".html").split("/")
