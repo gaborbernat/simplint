@@ -8,11 +8,11 @@ const NAMED: usize = 3;
 pub fn duplicate_code(checker: &Checker) {
     let shortest = checker.settings.project.knobs.min_duplicate_statements;
     for run in checker.project().duplicate_runs().iter().filter(|run| run.statements() >= shortest) {
-        let others = run.others();
         let mut places: Vec<String> =
-            others.iter().take(NAMED).map(|(path, line)| format!("`{}:{line}`", relative_path(path))).collect();
-        if others.len() > NAMED {
-            places.push(format!("and {} more", others.len() - NAMED));
+            run.others().iter().take(NAMED).map(|(path, line)| format!("`{}:{line}`", relative_path(path))).collect();
+        let more = run.sharers() - places.len();
+        if more > 0 {
+            places.push(format!("and {more} more"));
         }
         checker.report(
             Rule::DuplicateCode,

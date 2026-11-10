@@ -33,6 +33,30 @@ fn long_import_cycle_names_its_first_files_and_counts_the_rest() {
 }
 
 #[test]
+fn duplicate_block_shared_by_five_files_counts_the_ones_it_does_not_name() {
+    let body = "def run(log):\n    log(1)\n    log(2)\n    log(3)\n    log(4)\n    log(5)\n    log(6)\n";
+    let names: Vec<String> = (0..5).map(|index| format!("copy{index}.py")).collect();
+    let files: Vec<(&str, &str)> = names.iter().map(|name| (name.as_str(), body)).collect();
+    let root = project(&files);
+    assert!(check(root.path(), &["--select", "SMP530"]).1.contains(
+        "copy0.py:2:5: SMP530 These statements repeat in `copy1.py:2`, `copy2.py:2`, `copy3.py:2`, and 1 more; move \
+             them into one definition the modules share"
+    ));
+}
+
+#[test]
+fn duplicate_block_repeated_in_pieces_names_each_repeating_file_once() {
+    let whole = "def run(log):\n    log(1)\n    log(2)\n    log(3)\n    log(4)\n    log(5)\n    log(6)\n    log(7)\n    log(8)\n";
+    let head = "def run(log):\n    log(1)\n    log(2)\n    log(3)\n    log(4)\n    log(5)\n    log(6)\n";
+    let tail = "def run(log):\n    log(3)\n    log(4)\n    log(5)\n    log(6)\n    log(7)\n    log(8)\n";
+    let root = project(&[("a.py", whole), ("b.py", whole), ("c.py", head), ("d.py", tail)]);
+    assert!(check(root.path(), &["--select", "SMP530"]).1.contains(
+        "a.py:2:5: SMP530 These statements repeat in `b.py:2`, `c.py:2`, `d.py:2`; move them into one definition the \
+             modules share"
+    ));
+}
+
+#[test]
 fn package_outside_the_source_roots_resolves_from_its_parent() {
     let root = project(&[
         ("lib/pkg/__init__.py", ""),
