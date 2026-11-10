@@ -102,6 +102,7 @@ use crate::common::{self, check, read};
 #[test_case("unnamed-regex-group", "unnamed_regex_group.py", "py314" ; "unnamed_regex_group")]
 #[test_case("unnamed-regex-group", "unnamed_regex_group_unknown_flags.py", "py314" ; "unnamed_regex_group_unknown_flags")]
 #[test_case("unnamed-regex-group", "unnamed_regex_group_default_scope.py", "py314" ; "unnamed_regex_group_default_scope")]
+#[test_case("unnamed-regex-group", "unnamed_regex_group_escaping.py", "py314" ; "unnamed_regex_group_escaping")]
 #[test_case("unexplained-regex", "unexplained_regex.py", "py314" ; "unexplained_regex")]
 #[test_case("unexplained-regex", "unexplained_regex_unknown_flags.py", "py314" ; "unexplained_regex_unknown_flags")]
 #[test_case("up-utf8-encoding-default", "up_utf8_encoding_default.py", "py315" ; "utf8_encoding_default")]
@@ -1087,4 +1088,22 @@ fn logic_fix_keeps_crlf_line_endings(select: &str, target: &str, source: &str) {
     let fixed = fix(source);
     assert_ne!(fixed, source);
     assert_eq!(fix(&source.replace('\n', "\r\n")), fixed.replace('\n', "\r\n"));
+}
+
+// A pattern another module imports may be read by number there, so its groups keep their numbers.
+#[test]
+fn unnamed_regex_group_keeps_a_pattern_another_module_imports() {
+    let root = common::project(&[
+        ("core.py", "import re\n\nPAIR = re.compile(r\"(a)(b)\")\n"),
+        ("main.py", "from core import PAIR\n\n\ndef use(text):\n    return PAIR.match(text).group(2)\n"),
+    ]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP532"]);
+    assert_eq!(
+        (code, stdout.as_str()),
+        (
+            1,
+            "core.py:3:19: SMP532 regex has 2 unnamed capture groups; name them with `(?P<name>...)` so readers do not \
+             count parentheses\nFound 1 error.\n"
+        )
+    );
 }

@@ -1,0 +1,35 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+6:9 SMP911 Role `:func:other` has no backticks around its target, so it renders as plain text [unsafe fix: Put the target in backticks]
+6:39 SMP911 Inline literal opened with ``` `` ``` is not closed in its paragraph, so the rest renders as code
+21:9 SMP911 Role `:func:other` has no backticks around its target, so it renders as plain text [unsafe fix: Put the target in backticks]
+21:39 SMP911 Inline literal opened with ``` `` ``` is not closed in its paragraph, so the rest renders as code
+--- fixed (2 applied, 2 remaining) ---
+def first_line(value: int) -> int:
+    """Double a value, for example::
+
+        double(2)
+
+    Use :func:`other` for more, with an ``unclosed literal.
+
+    :param value: The input.
+    :returns: The double.
+    """
+    return value * 2
+
+
+def later_line(value: int) -> int:
+    """Double a value.
+
+    For example::
+
+        double(2)
+
+    Use :func:`other` for more, with an ``unclosed literal.
+
+    :param value: The input.
+    :returns: The double.
+    """
+    return value * 2

@@ -1,0 +1,28 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:1 SMP601 `RATE` is never reassigned; annotate it `Final` [unsafe fix: Annotate `RATE` with `Final`]
+--- fixed (1 applied, 0 remaining) ---
+from typing import Final
+
+LIMIT = 1
+RATE: Final[int] = 2
+DEPTH = 0
+GONE = 3
+
+
+def raise_limit():
+    globals()["LIMIT"] = 2
+
+
+def read_rate():
+    return globals()["RATE"]
+
+
+def deepen():
+    globals()["DEPTH"] += 1
+
+
+def clear():
+    del globals()["GONE"]

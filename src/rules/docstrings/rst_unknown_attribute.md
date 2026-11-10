@@ -65,7 +65,8 @@ Checks the docstrings of classes, when `docstring-style = "rst"`, for `:ivar nam
 ### Active on
 
 - **Attribute fields in a class docstring**: reported when the name is none of the attributes the class has: those its
-  body assigns, those its methods set on `self`, and its methods and properties, which autodoc can render as attributes.
+  body assigns, including names unpacked from a tuple and the strings of a `__slots__`, those its methods set on `self`,
+  and its methods and properties, which autodoc can render as attributes.
 
   ```toml config
   [tool.simplint]
@@ -136,6 +137,91 @@ Checks the docstrings of classes, when `docstring-style = "rst"`, for `:ivar nam
 
       :ivar queue: The jobs waiting.
       """
+  ```
+
+- **Names a `__slots__` declares**: the strings of a string, tuple, list or set, and the keys of a dict, whether the
+  assignment is annotated or not.
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python ok
+  class Named:
+      """A name.
+
+      :ivar text: The text.
+      """
+
+      __slots__ = "text"
+
+
+  class Pair:
+      """Two names.
+
+      :ivar first: The first.
+      :ivar second: The second.
+      """
+
+      __slots__ = ("first", "second")
+
+
+  class Listed:
+      """A list of names.
+
+      :ivar third: The third.
+      """
+
+      __slots__ = ["third"]
+
+
+  class Stored:
+      """A set of names.
+
+      :ivar fourth: The fourth.
+      """
+
+      __slots__ = {"fourth"}
+
+
+  class Keyed:
+      """Keys.
+
+      :ivar key: The key.
+      """
+
+      __slots__ = {"key": "The key."}
+
+
+  class Annotated:
+      """Annotated slots.
+
+      :ivar size: The size.
+      """
+
+      __slots__: tuple[str, ...] = ("size",)
+  ```
+
+- **Names unpacked into the class body**: each name a tuple or starred target binds, such as `low` and `high` in
+  `low, high = 0, 10`, or `tail` in `head, *tail = values`.
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python ok
+  class Bounds:
+      """Limits of a range.
+
+      :cvar low: The lower limit.
+      :cvar high: The upper limit.
+      :cvar tail: The rest.
+      """
+
+      low, high = 0, 10
+      head, *tail = 1, 2, 3
   ```
 
 ### Fix

@@ -112,9 +112,27 @@ Checks reStructuredText docstrings, when `docstring-style = "rst"`, for inline m
       """
   ```
 
+- **A summary ending in `::`**: the lines after it are prose, unless they are indented past the docstring's body. Here
+  the line sits at the body's indentation, so its unclosed inline literal is reported.
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python report
+  def open_file(path: str) -> None:
+      """Open the file::
+
+      Use ``open here.
+      """
+  ```
+
 ### Exceptions
 
-- **Literal blocks indented under a paragraph ending in `::`**: their content is code, which holds no inline markup.
+- **Literal blocks indented under a paragraph ending in `::`**: their content is code, which holds no inline markup. The
+  first line of a docstring follows its opening quotes, so it is measured against the body's indentation in the lines
+  after it, and a summary ending in `::` opens a block only for lines indented past that body.
 
   ```toml config
   [tool.simplint]
@@ -128,6 +146,21 @@ Checks reStructuredText docstrings, when `docstring-style = "rst"`, for inline m
       Example::
 
           x = ``open
+      """
+  ```
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python ok
+  def open_file(path: str) -> None:
+      """Open the file::
+
+          handle = ``open(path)
+
+      Close it when done.
       """
   ```
 

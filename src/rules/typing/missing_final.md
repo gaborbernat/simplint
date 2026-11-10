@@ -256,6 +256,37 @@ LIMIT: Final[int] = 10
       monkeypatch.setattr(config, name, 5)
   ```
 
+- **Names a module writes through `globals()`**, such as `globals()["LIMIT"] = 2` in a function: that write sets the
+  name. A write under a computed key, or through `globals().update`, `setdefault` or `pop`, may set any name, so none of
+  the module's names is reported.
+
+  ```python ok
+  LIMIT = 1
+
+
+  def raise_limit() -> None:
+      globals()["LIMIT"] = 2
+  ```
+
+  ```python ok
+  LIMIT = 1
+  RATE = 2
+
+
+  def set_name(name: str) -> None:
+      globals()[name] = 3
+  ```
+
+  ```python ok
+  LIMIT = 1
+
+
+  def reset() -> None:
+      globals().update({"LIMIT": 2})
+      globals().setdefault("LIMIT", 3)
+      globals().pop("LIMIT")
+  ```
+
 - **`TYPE_CHECKING = False`**: an idiom that avoids importing `typing` at runtime, which adding `Final` would defeat.
 
   ```python ok

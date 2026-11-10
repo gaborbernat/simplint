@@ -319,6 +319,24 @@ Checks the `:returns:` and `:yields:` fields of reStructuredText docstrings, whe
           self.speed = speed
   ```
 
+- **A `yield` inside a lambda**: the lambda is a generator of its own, so the function around it is not one.
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python ok
+  def count(values: list[int]) -> int:
+      """Count the values.
+
+      :param values: The inputs.
+      :returns: How many there are.
+      """
+      probe = lambda: (yield)  # noqa: E731
+      return len(values) + bool(probe)
+  ```
+
 - **A body that is only a placeholder, without a return annotation**: a body such as `...`, `pass` or
   `raise NotImplementedError`, as in an abstract method, says nothing of the return, so its `:returns:` is not reported.
 

@@ -57,7 +57,7 @@ class Config:
 
 ```python fixed
 class Config:
-    SENTINEL = sentinel("SENTINEL")
+    SENTINEL = sentinel("Config.SENTINEL")
 ```
 
 ### Exceptions
@@ -113,8 +113,30 @@ class Config:
 ### Fix
 
 The fix is unsafe. The repr changes from an address to the name, which a program can read, and a pickled `sentinel`
-loads only when the module has an attribute of the same name, so the name must match the module attribute the value is
-stored under.
+loads only from the attribute it is stored under, so a class attribute is named with its classes, as
+`sentinel("Config.SENTINEL")`. A placeholder in a class inside a function is reported without a fix, since no qualified
+name reaches it.
+
+```toml config
+[project]
+requires-python = ">=3.15"
+```
+
+```python report
+def build():
+    class Config:
+        SENTINEL = object()
+
+    return Config
+```
+
+```python fixed
+def build():
+    class Config:
+        SENTINEL = object()
+
+    return Config
+```
 
 ## Other tools
 

@@ -75,7 +75,118 @@ name to be read by, and the fix turns it into a non-capturing group instead, as 
   them. A match object that leaves the code that made it, by being returned, stored or passed on, may have its
   `groups()` read somewhere else, and a compiled pattern shared with another module can do the same, so the fix is
   unsafe. A `split` or `findall` call is left unfixed for that reason too: its result holds the groups' text. A name
-  bound more than once in its function is not followed, so its pattern keeps its groups.
+  bound more than once in its function is not followed, so its pattern keeps its groups. Neither is a pattern bound in a
+  class body, a name declared `global` or `nonlocal`, or a module name another module imports or `__all__` lists, since
+  the reads of those can come from code the rule does not see.
+
+  - **A pattern in a class body**: reported, with no fix.
+
+    ```python report
+    import re
+
+
+    class Parser:
+        LINE = re.compile(r"(\d+)-(\d+)")
+    ```
+
+    ```python fixed
+    import re
+
+
+    class Parser:
+        LINE = re.compile(r"(\d+)-(\d+)")
+    ```
+
+  - **A name a function declares `global`**: a pattern bound to it, in the function or at module level, is reported,
+    with no fix.
+
+    ```python report
+    import re
+
+    PATTERN = re.compile(r"(\d+)-(\d+)")
+
+
+    def reset():
+        global PATTERN
+        PATTERN = re.compile(r"(\d+)-(\d+)")
+    ```
+
+    ```python fixed
+    import re
+
+    PATTERN = re.compile(r"(\d+)-(\d+)")
+
+
+    def reset():
+        global PATTERN
+        PATTERN = re.compile(r"(\d+)-(\d+)")
+    ```
+
+  - **A name a function declares `nonlocal`**: the pattern bound to it is reported, with no fix.
+
+    ```python report
+    import re
+
+
+    def outer():
+        pattern = None
+
+        def reset():
+            nonlocal pattern
+            pattern = re.compile(r"(\d+)-(\d+)")
+
+        reset()
+        return pattern
+    ```
+
+    ```python fixed
+    import re
+
+
+    def outer():
+        pattern = None
+
+        def reset():
+            nonlocal pattern
+            pattern = re.compile(r"(\d+)-(\d+)")
+
+        reset()
+        return pattern
+    ```
+
+  - **A module name another module imports**: reported, with no fix.
+
+    ```python report file=example.py
+    import re
+
+    PATTERN = re.compile(r"(\d+)-(\d+)")
+    ```
+
+    ```python fixed file=example.py
+    import re
+
+    PATTERN = re.compile(r"(\d+)-(\d+)")
+    ```
+
+    ```python context file=main.py
+    from example import PATTERN
+    ```
+
+  - **A module name `__all__` lists**: reported, with no fix.
+
+    ```python report
+    import re
+
+    __all__ = ["PATTERN"]
+    PATTERN = re.compile(r"(\d+)-(\d+)")
+    ```
+
+    ```python fixed
+    import re
+
+    __all__ = ["PATTERN"]
+    PATTERN = re.compile(r"(\d+)-(\d+)")
+    ```
 
 ### Exceptions
 

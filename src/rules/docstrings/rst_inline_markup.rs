@@ -59,15 +59,24 @@ struct Line<'a> {
 }
 
 fn lines(text: &str) -> Vec<Line<'_>> {
+    // The first line follows the opening quotes, so its own indentation is none; the body's comes from the lines after
+    // it, as `inspect.cleandoc` takes it.
+    let body = text
+        .lines()
+        .skip(1)
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| line.len() - line.trim_start().len())
+        .min()
+        .unwrap_or(0);
     let mut lines = Vec::new();
     let mut block: Option<usize> = None;
     let mut doctest = false;
     let mut start = 0;
-    for raw in text.split_inclusive('\n') {
+    for (number, raw) in text.split_inclusive('\n').enumerate() {
         let line_start = start;
         start += raw.len();
         let content = raw.trim_end();
-        let indent = content.len() - content.trim_start().len();
+        let indent = if number == 0 { body } else { content.len() - content.trim_start().len() };
         let mut push = |code: bool| lines.push(Line { start: line_start, text: content, code });
         if content.is_empty() {
             doctest = false;

@@ -1,0 +1,26 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+15:5 SMP923 `numbers` is a generator; document what it yields with `:yields:` instead of `:returns:` [unsafe fix: Rename the field to `:yields:`]
+--- fixed (1 applied, 0 remaining) ---
+from collections.abc import Iterator
+
+
+def count(values: list[int]) -> int:
+    """Count the values.
+
+    :param values: The inputs.
+    :returns: How many there are.
+    """
+    probe = lambda: (yield)  # noqa: E731
+    return len(values) + bool(probe)
+
+
+def numbers(limit: int) -> Iterator[int]:
+    """Count up.
+
+    :yields: The numbers.
+    """
+    probe = lambda: (yield)  # noqa: E731
+    yield from range(limit) if probe else ()

@@ -6,10 +6,11 @@ expression: "lint_fixture(rule, fixture, target_version)"
 10:12 SMP514 Parse the time with `time.strptime`, not `datetime.strptime(...).time()` [fix: Call `time.strptime`]
 14:12 SMP514 Parse the time with `time.strptime`, not `datetime.strptime(...).time()` [unsafe fix: Call `time.strptime`]
 18:12 SMP514 Parse the time with `time.strptime`, not `datetime.strptime(...).time()` [unsafe fix: Call `time.strptime`]
-22:13 SMP514 Parse the date with `date.strptime`, not `datetime.strptime(...).date()` [fix: Call `date.strptime`]
-50:12 SMP514 Parse the date with `date.strptime`, not `datetime.strptime(...).date()` [fix: Call `date.strptime`]
-58:12 SMP514 Parse the date with `date.strptime`, not `datetime.strptime(...).date()` [fix: Call `date.strptime`]
---- fixed (7 applied, 0 remaining) ---
+22:12 SMP514 Parse the time with `time.strptime`, not `datetime.strptime(...).time()` [unsafe fix: Call `time.strptime`]
+26:13 SMP514 Parse the date with `date.strptime`, not `datetime.strptime(...).date()` [fix: Call `date.strptime`]
+54:12 SMP514 Parse the date with `date.strptime`, not `datetime.strptime(...).date()` [fix: Call `date.strptime`]
+62:12 SMP514 Parse the date with `date.strptime`, not `datetime.strptime(...).date()` [fix: Call `date.strptime`]
+--- fixed (8 applied, 0 remaining) ---
 import datetime
 from datetime import time, date, datetime as moment
 
@@ -24,6 +25,10 @@ def named_form(text):
 
 def zone_form(text):
     return time.strptime(text, "%H:%M %z")
+
+
+def colon_zone_form(text):
+    return datetime.time.strptime(text, "%H:%M %:z")
 
 
 def variable_format(text, fmt):
