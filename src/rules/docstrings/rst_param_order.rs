@@ -1,3 +1,5 @@
+use rustc_hash::FxHashMap;
+
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::docstrings::rst::FieldKind;
@@ -7,13 +9,16 @@ pub fn rst_param_order(checker: &Checker) {
         let Some(parameters) = target.parameters() else {
             continue;
         };
-        let position = |name: &str| parameters.iter().position(|parameter| parameter.name == name);
+        let mut positions = FxHashMap::default();
+        for (index, parameter) in parameters.iter().enumerate() {
+            positions.entry(parameter.name).or_insert(index);
+        }
         let documented: Vec<(usize, &str, &_)> = target
             .docstring
             .fields(&[FieldKind::Param])
             .filter_map(|field| {
                 let subject = field.subject()?;
-                Some((position(subject)?, subject, field))
+                Some((*positions.get(subject)?, subject, field))
             })
             .collect();
         let Some(pair) = documented.windows(2).find(|pair| pair[1].0 < pair[0].0) else {
