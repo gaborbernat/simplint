@@ -54,6 +54,8 @@ pub struct Checker<'a> {
     name_tokens: OnceCell<FxHashMap<&'a str, usize>>,
     string_values: OnceCell<Vec<(TextRange, Cow<'a, str>)>>,
     project: OnceCell<FileIndex<'a>>,
+    // The other files that reports point into, read once each, so their lines are indexed once for rendering.
+    related_files: RefCell<FxHashMap<PathBuf, Option<SourceFile>>>,
     state: FileState<'a>,
     // Rules report while they read the checker, as in Ruff's own `Checker`.
     diagnostics: RefCell<Vec<(Rule, Diagnostic)>>,
@@ -86,6 +88,7 @@ impl<'a> Checker<'a> {
             name_tokens: OnceCell::new(),
             string_values: OnceCell::new(),
             project: OnceCell::new(),
+            related_files: RefCell::default(),
             state: FileState::default(),
             diagnostics: RefCell::default(),
             rule: Cell::new(None),
@@ -167,8 +170,12 @@ impl<'a> Checker<'a> {
     ) {
         let mut diagnostic = self.diagnostic(rule, range, message);
         for location in related {
-            let file =
-                if location.path == self.path { Some(self.file.clone()) } else { source_file_at(&location.path) };
+            let file = if location.path == self.path {
+                Some(self.file.clone())
+            } else {
+                let mut files = self.related_files.borrow_mut();
+                files.entry(location.path).or_insert_with_key(|path| source_file_at(path)).clone()
+            };
             if let Some(file) = file {
                 let span = Span::from(file).with_range(location.range);
                 diagnostic.annotate(Annotation::secondary(span).message(location.message));
