@@ -24,8 +24,9 @@ use ruff_db::diagnostic::{
 };
 use ruff_diagnostics::{Applicability, Edit, Fix, IsolationLevel};
 use ruff_linter::message::{RenderContext, render_diagnostics};
+use ruff_linter::registry::Rule as RuffRule;
 use ruff_linter::settings::types::OutputFormat;
-use ruff_linter::warn_user;
+use ruff_linter::{IOError, Violation, warn_user};
 use ruff_source_file::{SourceFile, SourceFileBuilder};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -522,7 +523,12 @@ impl Findings {
     // the entry, so a run that shows other output never reads it.
     fn diagnostics(archived: &ArchivedFindings, path: &Path) -> Option<Diagnostics> {
         let reports: Vec<Report> = rkyv::deserialize::<_, rkyv::rancor::Error>(&archived.reports).ok()?;
-        let source = fs::read_to_string(path).ok()?;
+        // A file that cannot be read has no source to read back, and its report is built from none.
+        let source = if reports.iter().all(|report| matches!(report.kind, ReportKind::IoError)) {
+            String::new()
+        } else {
+            fs::read_to_string(path).ok()?
+        };
         let file = SourceFileBuilder::new(path.to_string_lossy(), source.as_str()).finish();
         let inner = reports.iter().map(|report| report.diagnostic(&file)).collect::<Option<_>>()?;
         Some(Diagnostics { inner, ..Diagnostics::default() })
@@ -535,20 +541,28 @@ fn rule_by_code(code: &str) -> Option<Rule> {
     RULES.get_or_init(|| Rule::ALL.iter().map(|rule| (rule.code(), *rule)).collect()).get(code).copied()
 }
 
-// A diagnostic a rule reported, with the fields the output shows. `Report::of` takes only a diagnostic the checker
-// builds, so `Report::diagnostic` gives back the same one.
+// A diagnostic a rule reported, or one of the two a file gets that no rule reports, with the fields the output shows.
+// `Report::of` takes only a diagnostic the checker builds, so `Report::diagnostic` gives back the same one.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 struct Report {
-    code: String,
+    kind: ReportKind,
     message: String,
     start: u32,
     end: u32,
-    // The line of the suppression comment, as `Suppressions::locate` sets it.
-    noqa_offset: u32,
     help: Vec<String>,
     fix: Option<StoredFix>,
     // The other locations the report points at, in the order the checker gave them.
     related: Vec<StoredRelated>,
+}
+
+#[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+enum ReportKind {
+    // The rule's code, and the line of its suppression comment, as `Suppressions::locate` sets it.
+    Rule { code: String, noqa_offset: u32 },
+    // A file that does not parse, whose syntax error `Linter::check` builds from its message and range alone.
+    InvalidSyntax,
+    // A file that cannot be read, which `Diagnostics::from_error` builds from its message alone.
+    IoError,
 }
 
 // A location a report points at besides its primary one, as the file it is in, its byte range and its message.
@@ -577,20 +591,37 @@ impl StoredRelated {
 }
 
 impl Report {
-    // All of the reports, or `None` when a diagnostic is one `of` cannot store, such as a parse error.
+    // All of the reports, or `None` when a diagnostic is one `of` cannot store. Only a rule's diagnostic has a
+    // suppression line, so a file's syntax error or unreadable file takes none.
     fn all(diagnostics: &[Diagnostic], noqa_rows: &[TextSize]) -> Option<Vec<Self>> {
-        let reports: Option<Vec<Self>> =
-            diagnostics.iter().zip(noqa_rows).map(|(diagnostic, row)| Self::of(diagnostic, *row)).collect();
-        reports.filter(|reports| reports.len() == diagnostics.len())
+        let mut rows = noqa_rows.iter().copied();
+        diagnostics.iter().map(|diagnostic| Self::of(diagnostic, rows.next())).collect()
     }
 
-    // The report of a rule's diagnostic. Only what the checker sets is stored: a diagnostic with more than its one
+    // The report of a diagnostic. Only what the checker sets is stored: a rule's diagnostic with more than its one
     // primary annotation, a parent, a severity other than error, or a sub-diagnostic other than a help note is not.
-    fn of(diagnostic: &Diagnostic, noqa_row: TextSize) -> Option<Self> {
-        let rule = rule_by_code(diagnostic.secondary_code()?.as_str())?;
-        let url = rule.url();
+    fn of(diagnostic: &Diagnostic, noqa_row: Option<TextSize>) -> Option<Self> {
         let primary = diagnostic.annotations().first()?;
         let range = primary.get_span().range()?;
+        let unruled = |kind| {
+            Some(Self {
+                kind,
+                message: diagnostic.headline_message().to_owned(),
+                start: range.start().to_u32(),
+                end: range.end().to_u32(),
+                help: Vec::new(),
+                fix: None,
+                related: Vec::new(),
+            })
+        };
+        if diagnostic.is_invalid_syntax() {
+            return unruled(ReportKind::InvalidSyntax);
+        }
+        if diagnostic.id() == DiagnosticId::Lint(RuffRule::IOError.name()) {
+            return unruled(ReportKind::IoError);
+        }
+        let rule = rule_by_code(diagnostic.secondary_code()?.as_str())?;
+        let url = rule.url();
         let related: Vec<StoredRelated> =
             diagnostic.secondary_annotations().map(StoredRelated::of).collect::<Option<_>>()?;
         let help: Vec<String> = diagnostic
@@ -610,12 +641,12 @@ impl Report {
             && diagnostic.documentation_url() == Some(url.as_str())
             && diagnostic.parent().is_none();
         let fix = diagnostic.fix().map(StoredFix::of);
+        let noqa_offset = noqa_row?.to_u32();
         plain.then(|| Self {
-            code: rule.code().to_owned(),
+            kind: ReportKind::Rule { code: rule.code().to_owned(), noqa_offset },
             message: diagnostic.headline_message().to_owned(),
             start: range.start().to_u32(),
             end: range.end().to_u32(),
-            noqa_offset: noqa_row.to_u32(),
             help,
             fix,
             related,
@@ -625,10 +656,18 @@ impl Report {
     // The diagnostic `of` took the report from, given the file it reports on, or `None` when a range does not fit the
     // file as it now reads.
     fn diagnostic(&self, file: &SourceFile) -> Option<Diagnostic> {
-        let rule = rule_by_code(&self.code)?;
         let length = file.source_text().len();
         let range = stored_range(self.start, self.end, length)?;
-        stored_range(self.noqa_offset, self.noqa_offset, length)?;
+        let (rule, noqa_offset) = match &self.kind {
+            ReportKind::InvalidSyntax => {
+                return Some(Diagnostic::invalid_syntax(Span::from(file.clone()), self.message.as_str(), range));
+            }
+            ReportKind::IoError => {
+                return Some(IOError { message: self.message.clone() }.into_diagnostic(range, file));
+            }
+            ReportKind::Rule { code, noqa_offset } => (rule_by_code(code)?, *noqa_offset),
+        };
+        stored_range(noqa_offset, noqa_offset, length)?;
         let mut diagnostic =
             Diagnostic::new(DiagnosticId::Lint(LintName::of(rule.name())), Severity::Error, self.message.as_str());
         diagnostic.annotate(Annotation::primary(Span::from(file.clone()).with_range(range)));
@@ -646,7 +685,7 @@ impl Report {
         if let Some(fix) = &self.fix {
             diagnostic.set_fix(fix.fix(length)?);
         }
-        diagnostic.set_noqa_offset(TextSize::new(self.noqa_offset));
+        diagnostic.set_noqa_offset(TextSize::new(noqa_offset));
         Some(diagnostic)
     }
 }
@@ -891,7 +930,7 @@ mod tests {
 
     use ruff_source_file::SourceFileBuilder;
 
-    use super::{Report, StoredApplicability, StoredEdit, StoredFix, StoredIsolation};
+    use super::{Report, ReportKind, StoredApplicability, StoredEdit, StoredFix, StoredIsolation};
 
     const SOURCE_LENGTH: usize = 30;
 
@@ -935,11 +974,10 @@ mod tests {
     fn report_is_restored_only_inside_the_source(start: u32, end: u32, noqa_offset: u32, restored: bool) {
         let file = SourceFileBuilder::new("module.py", "x = 1\ny = 2").finish();
         let report = Report {
-            code: "SMP101".to_owned(),
+            kind: ReportKind::Rule { code: "SMP101".to_owned(), noqa_offset },
             message: "Single-letter name".to_owned(),
             start,
             end,
-            noqa_offset,
             help: Vec::new(),
             fix: None,
             related: Vec::new(),

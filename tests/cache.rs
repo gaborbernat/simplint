@@ -645,6 +645,29 @@ fn cached_findings_are_reported_again_under_other_settings() {
     assert_eq!(cached, check(root.path(), &[&args[..], &["--no-cache"]].concat()));
 }
 
+// A file with a syntax error or bytes that are not UTF-8 gets no rule report, yet its reports are cached, so a warm run
+// answers every file from the cache and does not index the project again.
+#[test_case(b"def broken(:\n", &["--output-format", "concise"] ; "syntax_error_concise")]
+#[test_case(b"def broken(:\n", &["--output-format", "full"] ; "syntax_error_full")]
+#[test_case(b"def broken(:\n", &["--output-format", "json"] ; "syntax_error_json")]
+#[test_case(b"name = \"caf\xe9\"\n", &["--output-format", "concise"] ; "not_utf_8_concise")]
+#[test_case(b"name = \"caf\xe9\"\n", &["--output-format", "full"] ; "not_utf_8_full")]
+#[test_case(b"name = \"caf\xe9\"\n", &["--output-format", "json"] ; "not_utf_8_json")]
+fn warm_run_reuses_the_reports_of_a_file_no_rule_reports(source: &[u8], flags: &[&str]) {
+    let root = project(&[("module.py", "VALUE = 1\n")]);
+    fs::write(root.path().join("broken.py"), source).expect("write");
+    let run = |extra: &[&str]| {
+        simplint_with(root.path(), &[&["check", "--select", "SMP401"], flags, extra].concat(), "", &[])
+    };
+    let fresh = run(&["--no-cache"]);
+    let first = run(&["-v"]);
+    let warm = run(&["-v"]);
+    assert_eq!(
+        (first.2.contains("Indexed "), warm.2.contains("Indexed "), first.1 == fresh.1, warm.1 == fresh.1),
+        (true, false, true, true)
+    );
+}
+
 const HELPER: &str = "def helper() -> None:\n    pass\n";
 const CLIENT: &str = "from helpers import helper\n";
 
