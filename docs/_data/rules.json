@@ -5367,7 +5367,7 @@
     "name": "module-attribute-import",
     "summary": "Module attributes reached as `module.Name` instead of imported",
     "fix": "Sometimes",
-    "explanation": "Flags `module.Name` attribute access on a module of this project, where `from module import Name` would bind the same\nobject.\n\n## Why is this bad?\n\nReaching a name through its module makes the reader trace where the module came from at every use, and it repeats the\nmodule name in each line. Importing the name once states the dependency at the top of the file.\n\n## Example\n\n```python context file=pkg/__init__.py\n\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\n```\n\nUse instead:\n\n```python context file=pkg/__init__.py\n\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python ok file=pkg/consumer.py\nfrom .findings import DbWriter\n\nwriter = DbWriter()\n```\n\n## Configuration\n\n- [`module-attributes`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#module-attributes):\n  modules whose attributes the code reaches as `module.Name`, by absolute dotted name, such as a module that tests patch\n  attribute by attribute. The default is `[]`.\n\n  ```toml config\n  [tool.simplint.imports]\n  module-attributes = [\"pkg.findings\"]\n  ```\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  writer = findings.DbWriter()\n  ```\n\n## What it does\n\n### Active on\n\n- **Attribute access on a module of this project bound by `from . import module` or `from package import module`**: the\n  module must resolve to a file of the run, so the attribute reads a name the file defines.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python report file=pkg/consumer.py\n  from . import findings\n\n  writer = findings.DbWriter()\n  ```\n\n- **Attribute access on a module bound by `import package.module as name`**, which binds the module like the form above.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python report file=pkg/consumer.py\n  import pkg.findings as findings\n\n  writer = findings.DbWriter()\n  ```\n\n- **Private attributes of imported modules**, such as `main._compute`, including when Ruff selects `PLC2701`. Only a\n  module that resolves to a file of this project is checked.\n\n  ```python context file=pkg/main.py\n  def _compute() -> int:\n      return 1\n  ```\n\n  ```python report file=pkg/consumer.py\n  from . import main\n\n  result = main._compute()\n  ```\n\n### Exceptions\n\n- **Third-party and standard-library modules**: only modules that resolve to a file of the run count, so `json` stays as\n  it is.\n\n  ```python ok\n  import json as jsonlib\n\n  text = jsonlib.dumps([])\n  ```\n\n- **The project's own top-level package under another name**: `import pkg as pd` reads the package's names through its\n  alias, as `pd.NAT` does, which is how the package is meant to be used. A read through a submodule, such as\n  `import pkg.core.common as com`, is still reported, and so is an alias equal to the package name, `import pkg as pkg`.\n\n  ```python context file=pkg/__init__.py\n  NAT = object()\n  ```\n\n  ```python ok file=pkg/consumer.py\n  import pkg as pd\n\n  writer = pd.NAT\n  ```\n\n- **Modules listed in\n  [`module-attributes`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#module-attributes)**:\n  the listed module is left alone, as in the configuration example above.\n\n  ```toml config\n  [tool.simplint.imports]\n  module-attributes = [\"pkg.findings\"]\n  ```\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  writer = findings.DbWriter()\n  ```\n\n- **A module used as a value**: passed to a function, assigned or returned, as in `getattr(findings, \"DbWriter\")` or\n  `importlib.reload(findings)`, the module is an object of its own, so the file keeps it.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  writer = getattr(findings, \"DbWriter\")\n  ```\n\n- **Attributes stored or deleted**: `findings.DEBUG = True` and `del findings.OLD` change the module, which an import\n  cannot do. A store in any file of the run patches that attribute the way `setattr` over a literal does, so the\n  attribute is left alone while the module's other attributes are still reported. A name a function of the module\n  rebinds through `global` changes it after the import has bound the value it had at load, so that name is not converted\n  either.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  DEBUG = False\n\n\n  def enable() -> None:\n      global DEBUG\n      DEBUG = True\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  print(findings.DEBUG)\n  ```\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  findings.DEBUG = True\n  del findings.OLD\n  ```\n\n- **Names the file binds itself**: when the file already binds the attribute name to something else, importing it would\n  clash with that binding.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  DbWriter = object\n  writer = findings.DbWriter()\n  ```\n\n- **A name the module's own name shadows**: a parameter, local, loop or comprehension variable named like the module is\n  that variable's value, so an attribute read off it does not reach the module. The real reads of the module are still\n  reported.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n\n  def write(findings: object) -> object:\n      return findings.DbWriter()\n  ```\n\n- **Module dunders such as `__name__`**: they describe the module they are read from, so importing them would read the\n  wrong module.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  NAME = findings.__name__\n  ```\n\n- **Modules that tests patch by attribute**: a dotted string such as `mocker.patch(\"pkg.findings.DbWriter\")` names the\n  attribute in the module, so the code keeps reaching it through the module, where the patch takes effect. The module's\n  other attributes are still reported. A `setattr` in a loop over a literal tuple or list of modules patches the name on\n  each of them the same way, until a statement rebinds the loop's name or a function's parameter shadows it.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  writer = findings.DbWriter()\n  ```\n\n  ```python context file=tests/test_writer.py\n  def test_writer(mocker):\n      mocker.patch(\"pkg.findings.DbWriter\")\n  ```\n\n### Fix\n\n**Unsafe fix:** the fix rewrites the import to bind the names, so the object is bound when the module loads. A test that\npatches the module attribute later no longer reaches the name. The fix replaces the import and every `findings.Name`\naccess in the file, and it is offered only when every use of the module is such an access to a name the module defines\nand no computed write, such as `setattr(module, name, value)`, may set a name of the module.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\n```\n\n```python fixed file=pkg/consumer.py\nfrom .findings import DbWriter\n\nwriter = DbWriter()\n```\n\nA use the fix cannot rewrite keeps the report without a fix. Here `findings.__name__` is a module dunder, so `DbWriter`\nis reported without a fix.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\nlabel = findings.__name__\n```\n\nA use that a local binding of the same name shadows keeps the report without a fix, since the bare name would resolve to\nthat binding. Here the type parameter `Item` shadows the module's `Item`.\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.12\"\n```\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass Item:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\n\ndef make[Item](kind: type[Item]) -> object:\n    return findings.Item()\n```\n\nA `lazy` import stays lazy after the fix, so the module still loads on first use of a name.\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n```\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/consumer.py\nlazy from . import findings\n\nwriter = findings.DbWriter()\n```\n\n```python fixed file=pkg/consumer.py\nlazy from .findings import DbWriter\n\nwriter = DbWriter()\n```\n\n## Private module attributes\n\nThe rule reports `module._name` when `module` resolves to a file in this project. It does not check attributes of\nclasses, functions or other values. Private names and private module paths receive no automatic fix: a replacement\nimport can cross a package boundary or violate [private-import-path](SMP310.html). Ruff's\n[import-private-name](https://docs.astral.sh/ruff/rules/import-private-name/) (PLC2701) checks imports, not attribute\naccess, so selecting it does not suppress this report.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#21025](https://github.com/astral-sh/ruff/issues/21025)\n  and [#14070](https://github.com/astral-sh/ruff/issues/14070).\n",
+    "explanation": "Flags `module.Name` attribute access on a module of this project, where `from module import Name` would bind the same\nobject.\n\n## Why is this bad?\n\nReaching a name through its module makes the reader trace where the module came from at every use, and it repeats the\nmodule name in each line. Importing the name once states the dependency at the top of the file.\n\n## Example\n\n```python context file=pkg/__init__.py\n\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\n```\n\nUse instead:\n\n```python context file=pkg/__init__.py\n\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python ok file=pkg/consumer.py\nfrom .findings import DbWriter\n\nwriter = DbWriter()\n```\n\n## Configuration\n\n- [`module-attributes`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#module-attributes):\n  modules whose attributes the code reaches as `module.Name`, by absolute dotted name, such as a module that tests patch\n  attribute by attribute. The default is `[]`.\n\n  ```toml config\n  [tool.simplint.imports]\n  module-attributes = [\"pkg.findings\"]\n  ```\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  writer = findings.DbWriter()\n  ```\n\n## What it does\n\n### Active on\n\n- **Attribute access on a module of this project bound by `from . import module` or `from package import module`**: the\n  module must resolve to a file of the run, so the attribute reads a name the file defines.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python report file=pkg/consumer.py\n  from . import findings\n\n  writer = findings.DbWriter()\n  ```\n\n- **Attribute access on a module bound by `import package.module as name`**, which binds the module like the form above.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python report file=pkg/consumer.py\n  import pkg.findings as findings\n\n  writer = findings.DbWriter()\n  ```\n\n- **Private attributes of imported modules**, such as `main._compute`, including when Ruff selects `PLC2701`. Only a\n  module that resolves to a file of this project is checked.\n\n  ```python context file=pkg/main.py\n  def _compute() -> int:\n      return 1\n  ```\n\n  ```python report file=pkg/consumer.py\n  from . import main\n\n  result = main._compute()\n  ```\n\n### Exceptions\n\n- **Third-party and standard-library modules**: only modules that resolve to a file of the run count, so `json` stays as\n  it is.\n\n  ```python ok\n  import json as jsonlib\n\n  text = jsonlib.dumps([])\n  ```\n\n- **The project's own top-level package under another name**: `import pkg as pd` reads the package's names through its\n  alias, as `pd.NAT` does, which is how the package is meant to be used. A read through a submodule, such as\n  `import pkg.core.common as com`, is still reported, and so is an alias equal to the package name, `import pkg as pkg`.\n\n  ```python context file=pkg/__init__.py\n  NAT = object()\n  ```\n\n  ```python ok file=pkg/consumer.py\n  import pkg as pd\n\n  writer = pd.NAT\n  ```\n\n- **Modules listed in\n  [`module-attributes`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#module-attributes)**:\n  the listed module is left alone, as in the configuration example above.\n\n  ```toml config\n  [tool.simplint.imports]\n  module-attributes = [\"pkg.findings\"]\n  ```\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  writer = findings.DbWriter()\n  ```\n\n- **A module used as a value**: passed to a function, assigned or returned, as in `getattr(findings, \"DbWriter\")` or\n  `importlib.reload(findings)`, the module is an object of its own, so the file keeps it.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  writer = getattr(findings, \"DbWriter\")\n  ```\n\n- **Attributes stored or deleted**: `findings.DEBUG = True` and `del findings.OLD` change the module, which an import\n  cannot do. A store in any file of the run patches that attribute the way `setattr` over a literal does, so the\n  attribute is left alone while the module's other attributes are still reported. A name a function of the module\n  rebinds through `global` changes it after the import has bound the value it had at load, so that name is not converted\n  either.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  DEBUG = False\n\n\n  def enable() -> None:\n      global DEBUG\n      DEBUG = True\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  print(findings.DEBUG)\n  ```\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  findings.DEBUG = True\n  del findings.OLD\n  ```\n\n- **Names the file binds itself**: when the file already binds the attribute name to something else, importing it would\n  clash with that binding.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  DbWriter = object\n  writer = findings.DbWriter()\n  ```\n\n- **A name the module's own name shadows**: a parameter, local, loop or comprehension variable named like the module is\n  that variable's value, so an attribute read off it does not reach the module. The real reads of the module are still\n  reported.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n\n  def write(findings: object) -> object:\n      return findings.DbWriter()\n  ```\n\n- **Module dunders such as `__name__`**: they describe the module they are read from, so importing them would read the\n  wrong module.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  NAME = findings.__name__\n  ```\n\n- **Modules that tests patch by attribute**: a dotted string such as `mocker.patch(\"pkg.findings.DbWriter\")` names the\n  attribute in the module, so the code keeps reaching it through the module, where the patch takes effect. The module's\n  other attributes are still reported. A `setattr` in a loop over a literal tuple or list of modules patches the name on\n  each of them the same way, until a statement rebinds the loop's name or a function's parameter shadows it.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  writer = findings.DbWriter()\n  ```\n\n  ```python context file=tests/test_writer.py\n  def test_writer(mocker):\n      mocker.patch(\"pkg.findings.DbWriter\")\n  ```\n\n### Fix\n\n**Unsafe fix:** the fix rewrites the import to bind the names, so the object is bound when the module loads. A test that\npatches the module attribute later no longer reaches the name. The fix replaces the import and every `findings.Name`\naccess in the file, and it is offered only when every use of the module is such an access to a name the module defines,\nno computed write, such as `setattr(module, name, value)`, may set a name of the module, and no other module of the run\nimports or reads the module's name, which the replaced import would no longer bind. The fix is attached to the first\nreport only, since it covers all of them.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\n```\n\n```python fixed file=pkg/consumer.py\nfrom .findings import DbWriter\n\nwriter = DbWriter()\n```\n\nA use the fix cannot rewrite keeps the report without a fix. Here `findings.__name__` is a module dunder, so `DbWriter`\nis reported without a fix.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\nlabel = findings.__name__\n```\n\nA use that a local binding of the same name shadows keeps the report without a fix, since the bare name would resolve to\nthat binding. Here the type parameter `Item` shadows the module's `Item`.\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.12\"\n```\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass Item:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\n\ndef make[Item](kind: type[Item]) -> object:\n    return findings.Item()\n```\n\nA name that is a Python builtin keeps the report without a fix, since the bare name would shadow the builtin that the\nmodule may still call. Here `set` is the attribute reached through `findings`, and the module also calls the builtin\n`set`.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\ndef set(key, value):\n    return key, value\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nconfigured = findings.set(\"a\", 1)\nvalues = set([1, 2])\n```\n\nA `lazy` import stays lazy after the fix, so the module still loads on first use of a name.\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n```\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/consumer.py\nlazy from . import findings\n\nwriter = findings.DbWriter()\n```\n\n```python fixed file=pkg/consumer.py\nlazy from .findings import DbWriter\n\nwriter = DbWriter()\n```\n\n## Private module attributes\n\nThe rule reports `module._name` when `module` resolves to a file in this project. It does not check attributes of\nclasses, functions or other values. Private names and private module paths receive no automatic fix: a replacement\nimport can cross a package boundary or violate [private-import-path](SMP310.html). Ruff's\n[import-private-name](https://docs.astral.sh/ruff/rules/import-private-name/) (PLC2701) checks imports, not attribute\naccess, so selecting it does not suppress this report.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#21025](https://github.com/astral-sh/ruff/issues/21025)\n  and [#14070](https://github.com/astral-sh/ruff/issues/14070).\n",
     "examples": {
       "parsed": [
         {
@@ -5905,8 +5905,8 @@
         },
         {
           "section": "What it does",
-          "line": 320,
-          "end_line": 339,
+          "line": 322,
+          "end_line": 341,
           "config": null,
           "blocks": [
             {
@@ -5914,8 +5914,8 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 320,
-              "end_line": 322,
+              "line": 322,
+              "end_line": 324,
               "source": "# A package.\n"
             },
             {
@@ -5923,8 +5923,8 @@
               "language": "python",
               "file": "pkg/findings.py",
               "named": true,
-              "line": 324,
-              "end_line": 327,
+              "line": 326,
+              "end_line": 329,
               "source": "class DbWriter:\n    pass\n"
             },
             {
@@ -5932,8 +5932,8 @@
               "language": "python",
               "file": "pkg/consumer.py",
               "named": true,
-              "line": 329,
-              "end_line": 333,
+              "line": 331,
+              "end_line": 335,
               "source": "from . import findings\n\nwriter = findings.DbWriter()\n"
             },
             {
@@ -5941,16 +5941,16 @@
               "language": "python",
               "file": "pkg/consumer.py",
               "named": true,
-              "line": 335,
-              "end_line": 339,
+              "line": 337,
+              "end_line": 341,
               "source": "from .findings import DbWriter\n\nwriter = DbWriter()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 344,
-          "end_line": 358,
+          "line": 346,
+          "end_line": 360,
           "config": null,
           "blocks": [
             {
@@ -5958,8 +5958,8 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 344,
-              "end_line": 346,
+              "line": 346,
+              "end_line": 348,
               "source": "# A package.\n"
             },
             {
@@ -5967,8 +5967,8 @@
               "language": "python",
               "file": "pkg/findings.py",
               "named": true,
-              "line": 348,
-              "end_line": 351,
+              "line": 350,
+              "end_line": 353,
               "source": "class DbWriter:\n    pass\n"
             },
             {
@@ -5976,19 +5976,19 @@
               "language": "python",
               "file": "pkg/consumer.py",
               "named": true,
-              "line": 353,
-              "end_line": 358,
+              "line": 355,
+              "end_line": 360,
               "source": "from . import findings\n\nwriter = findings.DbWriter()\nlabel = findings.__name__\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 363,
-          "end_line": 384,
+          "line": 365,
+          "end_line": 386,
           "config": {
-            "line": 363,
-            "end_line": 367,
+            "line": 365,
+            "end_line": 369,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.12\"\n"
           },
           "blocks": [
@@ -5997,8 +5997,8 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 369,
-              "end_line": 371,
+              "line": 371,
+              "end_line": 373,
               "source": "# A package.\n"
             },
             {
@@ -6006,8 +6006,8 @@
               "language": "python",
               "file": "pkg/findings.py",
               "named": true,
-              "line": 373,
-              "end_line": 376,
+              "line": 375,
+              "end_line": 378,
               "source": "class Item:\n    pass\n"
             },
             {
@@ -6015,19 +6015,54 @@
               "language": "python",
               "file": "pkg/consumer.py",
               "named": true,
-              "line": 378,
-              "end_line": 384,
+              "line": 380,
+              "end_line": 386,
               "source": "from . import findings\n\n\ndef make[Item](kind: type[Item]) -> object:\n    return findings.Item()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 388,
-          "end_line": 413,
+          "line": 392,
+          "end_line": 406,
+          "config": null,
+          "blocks": [
+            {
+              "role": "context",
+              "language": "python",
+              "file": "pkg/__init__.py",
+              "named": true,
+              "line": 392,
+              "end_line": 394,
+              "source": "# A package.\n"
+            },
+            {
+              "role": "context",
+              "language": "python",
+              "file": "pkg/findings.py",
+              "named": true,
+              "line": 396,
+              "end_line": 399,
+              "source": "def set(key, value):\n    return key, value\n"
+            },
+            {
+              "role": "report",
+              "language": "python",
+              "file": "pkg/consumer.py",
+              "named": true,
+              "line": 401,
+              "end_line": 406,
+              "source": "from . import findings\n\nconfigured = findings.set(\"a\", 1)\nvalues = set([1, 2])\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 410,
+          "end_line": 435,
           "config": {
-            "line": 388,
-            "end_line": 392,
+            "line": 410,
+            "end_line": 414,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n"
           },
           "blocks": [
@@ -6036,8 +6071,8 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 394,
-              "end_line": 396,
+              "line": 416,
+              "end_line": 418,
               "source": "# A package.\n"
             },
             {
@@ -6045,8 +6080,8 @@
               "language": "python",
               "file": "pkg/findings.py",
               "named": true,
-              "line": 398,
-              "end_line": 401,
+              "line": 420,
+              "end_line": 423,
               "source": "class DbWriter:\n    pass\n"
             },
             {
@@ -6054,8 +6089,8 @@
               "language": "python",
               "file": "pkg/consumer.py",
               "named": true,
-              "line": 403,
-              "end_line": 407,
+              "line": 425,
+              "end_line": 429,
               "source": "lazy from . import findings\n\nwriter = findings.DbWriter()\n"
             },
             {
@@ -6063,8 +6098,8 @@
               "language": "python",
               "file": "pkg/consumer.py",
               "named": true,
-              "line": 409,
-              "end_line": 413,
+              "line": 431,
+              "end_line": 435,
               "source": "lazy from .findings import DbWriter\n\nwriter = DbWriter()\n"
             }
           ]

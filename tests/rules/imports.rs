@@ -52,6 +52,8 @@ use crate::common;
 #[test_case("module-attribute-import", "writers/module_computed.py", "py314" ; "module_attribute_import_computed_write")]
 #[test_case("module-attribute-import", "writers/module_function_import.py", "py314" ; "module_attribute_import_function_import")]
 #[test_case("module-attribute-import", "writers/module_branch_imports.py", "py314" ; "module_attribute_import_branch_imports")]
+#[test_case("module-attribute-import", "writers/module_bound_elsewhere.py", "py314" ; "module_attribute_import_bound_elsewhere")]
+#[test_case("module-attribute-import", "writers/module_builtin_name.py", "py314" ; "module_attribute_import_builtin_name")]
 #[test_case("dependency-import-guard", "dependency_import_guard.py", "py314" ; "dependency_import_guard")]
 #[test_case("dependency-import-guard", "dependency_import_guard.py", "py310" ; "dependency_import_guard_py310")]
 #[test_case("up-backport-import", "up_backport_import.py", "py311" ; "backport_import")]
