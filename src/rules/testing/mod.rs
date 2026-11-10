@@ -10,7 +10,6 @@ mod split_composite_assert;
 mod stdlib_mock;
 mod test_class;
 mod unused_fixture;
-pub(crate) mod up_unittest_assert_helper;
 mod up_unittest_enter_context;
 
 pub(crate) use conditional_in_test::{conditional_in_test, conditionals};
@@ -26,10 +25,8 @@ pub(crate) use test_class::test_class;
 pub(crate) use unused_fixture::unused_fixture;
 pub(crate) use up_unittest_enter_context::up_unittest_enter_context;
 
-use ruff_python_ast as ast;
-use ruff_text_size::{Ranged, TextRange};
-
 use crate::lint::checker::Checker;
+use ruff_python_ast as ast;
 
 // pytest collects the functions whose name starts with `test`.
 fn is_test_function(function: &ast::StmtFunctionDef) -> bool {
@@ -46,8 +43,4 @@ pub(crate) fn is_test_case(checker: &Checker, class: &ast::StmtClassDef) -> bool
     class.arguments.as_ref().is_some_and(|arguments| {
         arguments.args.iter().any(|base| checker.semantic().resolves_to(base, &["unittest", "TestCase"]))
     })
-}
-
-pub(crate) fn in_test_case(checker: &Checker, range: TextRange) -> bool {
-    checker.class_defs().iter().any(|class| class.range().contains_range(range) && is_test_case(checker, class))
 }

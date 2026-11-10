@@ -50,10 +50,6 @@ The pairs are:
       - `unspecified-encoding <https://docs.astral.sh/ruff/rules/unspecified-encoding/>`__
       - :doc:`up-utf8-encoding-default </_generated/rules/SMP521>` removes ``encoding="utf-8"`` on Python 3.15 and newer, which `unspecified-encoding <https://docs.astral.sh/ruff/rules/unspecified-encoding/>`__ adds back.
         Ignore one of the two.
-    * - :doc:`up-unittest-assert-helper </_generated/rules/SMP811>`
-      - `pytest-unittest-assertion <https://docs.astral.sh/ruff/rules/pytest-unittest-assertion/>`__
-      - :doc:`up-unittest-assert-helper </_generated/rules/SMP811>` rewrites ``self.assertTrue`` and ``self.assertFalse`` into a ``TestCase`` helper, while `pytest-unittest-assertion <https://docs.astral.sh/ruff/rules/pytest-unittest-assertion/>`__ asks for a bare ``assert``.
-        Ignore one of the two.
     * - :doc:`absolute-sibling-import </_generated/rules/SMP302>`
       - `relative-imports <https://docs.astral.sh/ruff/rules/relative-imports/>`__
       - :doc:`absolute-sibling-import </_generated/rules/SMP302>` makes imports from the file's own package relative, which `relative-imports <https://docs.astral.sh/ruff/rules/relative-imports/>`__ turns back when

@@ -53,10 +53,6 @@ fn test_class_generic_before_3_13() {
     common::assert_rule_snapshot("test-class", "tests/test_class_generic.py", "py312");
 }
 
-#[test_case("up-unittest-assert-helper", "up_unittest_assert_helper.py", "py314" ; "unittest_assert_helper")]
-#[test_case("up-unittest-assert-helper", "up_unittest_assert_helper.py", "py313" ; "unittest_assert_helper_py313")]
-#[test_case("up-unittest-assert-helper", "up_unittest_assert_helper_base.py", "py314" ; "unittest_assert_helper_base")]
-#[test_case("up-unittest-assert-helper", "up_unittest_assert_helper_comment.py", "py314" ; "unittest_assert_helper_comment")]
 #[test_case("up-unittest-enter-context", "up_unittest_enter_context.py", "py311" ; "unittest_enter_context")]
 #[test_case("up-unittest-enter-context", "up_unittest_enter_context.py", "py310" ; "unittest_enter_context_py310")]
 #[test_case("up-unittest-enter-context", "up_unittest_enter_context_used.py", "py311" ; "unittest_enter_context_used")]

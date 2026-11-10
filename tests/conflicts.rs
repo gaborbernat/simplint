@@ -29,15 +29,6 @@ const BOTH_IN_PYPROJECT: &str = "simplint settings: <root>/pyproject.toml; Ruff 
          up-utf8-encoding-default in `[tool.simplint]`.\n    {BOTH_IN_PYPROJECT}; first file: module.py"
     ) ; "utf8_encoding_default")]
 #[test_case(
-    "[project]\nrequires-python = \">=3.14\"\n[tool.ruff]\nlint.select = [\"PT009\"]\n",
-    "module.py",
-    &format!(
-        "SMP811 (up-unittest-assert-helper) and Ruff's PT009 (pytest-unittest-assertion) work against each other.\n    \
-         Why: SMP811 rewrites `self.assertTrue` and `self.assertFalse` into the `TestCase` helper that reports both \
-         operands; PT009 asks for a bare `assert` in their place.\n    Fix: ignore PT009 in Ruff's `lint.ignore`, or \
-         ignore SMP811 in `[tool.simplint]`.\n    {BOTH_IN_PYPROJECT}; first file: module.py"
-    ) ; "unittest_assert_helper")]
-#[test_case(
     "[tool.ruff]\nlint.select = [\"TID252\"]\nlint.flake8-tidy-imports.ban-relative-imports = \"all\"\n",
     "module.py",
     &format!(
@@ -97,8 +88,6 @@ fn conflict_fails_before_linting(pyproject: &str, file: &str, conflict: &str) {
 #[test_case(&format!("{SIMPLINT_314}[tool.ruff]\nlint.select = [\"I002\"]\nlint.isort.required-imports = [\"import os\"]\n"), "module.py" ; "other_required_import")]
 #[test_case(&format!("{SIMPLINT_314}[tool.ruff]\nlint.select = [\"I002\"]\n{FUTURE}[tool.simplint]\nper-file-ignores = {{ \"module.py\" = [\"SMP301\"] }}\n"), "module.py" ; "simplint_rule_ignored_for_the_file")]
 #[test_case("[project]\nrequires-python = \">=3.14\"\n[tool.ruff]\nlint.preview = true\nlint.select = [\"PLW1514\"]\n", "module.py" ; "target_before_utf8_default")]
-#[test_case("[project]\nrequires-python = \">=3.13\"\n[tool.ruff]\nlint.select = [\"PT009\"]\n", "module.py" ; "target_before_unittest_helper")]
-#[test_case("[project]\nrequires-python = \">=3.14\"\n[tool.ruff]\nlint.select = [\"PT009\"]\n[tool.simplint]\nper-file-ignores = { \"module.py\" = [\"SMP811\"] }\n", "module.py" ; "simplint_rule_ignored_for_unittest_helper")]
 #[test_case("[tool.ruff]\nlint.select = [\"TID252\"]\n", "module.py" ; "parent_relative_imports_banned")]
 #[test_case("[tool.ruff]\nlint.select = [\"TID252\"]\nlint.flake8-tidy-imports.ban-relative-imports = \"all\"\n[tool.flake8-lazy]\n", "module.py" ; "flake8_lazy_leaves_relative_imports_alone")]
 #[test_case("[tool.ruff]\nlint.select = [\"D103\"]\n", "_private.py" ; "private_module")]
@@ -108,7 +97,7 @@ fn conflict_fails_before_linting(pyproject: &str, file: &str, conflict: &str) {
 fn combination_without_conflict_lints(pyproject: &str, file: &str) {
     let root = project(&[("pyproject.toml", pyproject), (file, "value = 1\n")]);
     assert_eq!(
-        check(root.path(), &["--select", "SMP901,SMP902,SMP301,SMP302,SMP521,SMP811,SMP923"]),
+        check(root.path(), &["--select", "SMP901,SMP902,SMP301,SMP302,SMP521,SMP923"]),
         (0, "All checks passed!\n".to_owned(), String::new())
     );
 }
