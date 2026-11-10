@@ -1,4 +1,4 @@
-Flags single-letter names outside comprehensions.
+Flags single-letter names outside comprehensions and conventional type parameter declarations.
 
 ## Why is this bad?
 
@@ -117,19 +117,6 @@ No fix is offered, since a meaningful name cannot be derived from the code.
           print(r)
   ```
 
-- **[Type parameters](https://docs.python.org/3/reference/compound_stmts.html#type-params)** such as `T`: they appear
-  throughout the signature and body of the generic definition.
-
-  ```toml config
-  [project]
-  requires-python = ">=3.12"
-  ```
-
-  ```python report
-  def first[T](items: list[T]) -> T:
-      return items[0]
-  ```
-
 - **`for` loop targets**, such as `i` in `for i in range(3)`: a loop body can run for many lines, far from the `for`
   line that says what the name holds.
 
@@ -157,6 +144,27 @@ No fix is offered, since a meaningful name cannot be derived from the code.
   for _ in range(3):
       pass
   ```
+
+- **Uppercase type parameters**: names such as `T` and `P` are conventional in generic signatures. This includes
+  parameters in [PEP 695 syntax](https://docs.python.org/3/reference/compound_stmts.html#type-params) and assignments to
+  `typing.TypeVar`, `typing.TypeVarTuple` or `typing.ParamSpec` when the string argument matches the assigned name.
+
+  ```toml config
+  [project]
+  requires-python = ">=3.12"
+  ```
+
+  ```python ok
+  from typing import TypeVar
+
+  T = TypeVar("T")
+
+
+  def first[U](items: list[U]) -> U:
+      return items[0]
+  ```
+
+  A lowercase name, mismatched string or different function named `TypeVar` does not qualify.
 
 - **Parameters of a method decorated with
   [`@override`](https://docs.python.org/3/library/typing.html#typing.override)**: the method must keep the parameter
@@ -207,7 +215,7 @@ Ruff's E741, E742 and E743 report `l`, `I` and `O` on variables, parameters, exc
 no fix. This rule leaves those three letters to Ruff at those sites, and only while the project's Ruff configuration
 selects the rule of each kind. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are respected too.
 It keeps every other single letter, and the `l`, `I` and `O` that Ruff does not check: import aliases, `match` captures
-and type parameters.
+and lowercase type parameters.
 
 ## Other tools
 
@@ -219,7 +227,8 @@ and type parameters.
   as not planned.
 - [flake8-variables-names](https://github.com/best-doctor/flake8-variables-names) reports single-letter names as
   [VNE001](https://github.com/best-doctor/flake8-variables-names/blob/master/flake8_variables_names/checker.py), but
-  allows `i`, `_` and `T` by default. This rule flags `for i` loop targets and type parameters such as `T`.
+  allows `i`, `_` and `T` by default. This rule flags `for i` loop targets but allows `T` only when it declares a type
+  parameter.
 - [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports short names as
   [WPS111](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/naming.html#wemake_python_styleguide.violations.naming.TooShortNameViolation),
   with a configurable minimum length. It also checks module and attribute names, which this rule does not list.

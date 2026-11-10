@@ -16,7 +16,7 @@ exit code 1
             <properties>
                 <property name="severity" value="error"/>
             </properties>
-            <failure message="Single-letter name `x`; only comprehensions may use one">line 2, col 1, Single-letter name `x`; only comprehensions may use one</failure>
+            <failure message="Single-letter name `x`; use a descriptive name">line 2, col 1, Single-letter name `x`; use a descriptive name</failure>
         </testcase>
     </testsuite>
 </testsuites>

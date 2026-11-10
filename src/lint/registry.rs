@@ -148,6 +148,7 @@ macro_rules! rules {
         pub(crate) fn type_param<'a>(rules: RuleSet, walker: &mut Walker<'_, 'a>, type_param: &'a TypeParam) {
             $($(if rules.contains(Rule::$variant) { hook!(type_param, $hook, walker, Rule::$variant, $family::$check(walker, type_param)) })*)*
         }
+
     };
 }
 
@@ -250,7 +251,7 @@ rules! {
     StringStatementComment => ("SMP006", "string-statement-comment", "Bare strings used as comments instead of `#` comments", Sometimes, comments::string_statement_comment { module }),
     NumericIgnore => ("SMP008", "numeric-ignore", "Numeric codes in simplint ignore comments", Always, comments::numeric_ignore { module }),
     UnusedIgnore => ("SMP009", "unused-ignore", "Unused selectors in simplint ignore comments", Always, comments::unused_ignore {}),
-    SingleLetterName => ("SMP101", "single-letter-name", "Single-letter names outside comprehensions", None, naming::single_letter_name { statement, expression, scope, except_handler, pattern, type_param }),
+    SingleLetterName => ("SMP101", "single-letter-name", "Single-letter names outside comprehensions and conventional type parameters", None, naming::single_letter_name { statement, expression, scope, except_handler, pattern, type_param }),
     ModuleVariableCase => ("SMP102", "module-variable-case", "Module variables not `UPPER_CASE`", Sometimes, naming::module_variable_case { module } reads [cross_file, STRING_WORDS, COMPUTED_WRITES, DOCTESTS] skips [nested]),
     MeaninglessName => ("SMP103", "meaningless-name", "Variables, parameters and attributes named with a word that says nothing", None, naming::meaningless_name { expression, scope, except_handler, pattern }),
     CatchAllModule => ("SMP104", "catch-all-module", "Modules and packages named for a grab bag of code", None, naming::catch_all_module { module }),

@@ -13,7 +13,7 @@ use serde_json::Value;
 use tempfile::TempDir;
 
 pub const SECTION: &str = "SMP001 [*] Section comment groups code; extract a named function or class instead";
-pub const SINGLE_X: &str = "SMP101 Single-letter name `x`; only comprehensions may use one";
+pub const SINGLE_X: &str = "SMP101 Single-letter name `x`; use a descriptive name";
 
 pub fn project(files: &[(&str, &str)]) -> TempDir {
     let root = TempDir::new().expect("temporary directory");

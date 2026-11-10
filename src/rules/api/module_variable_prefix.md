@@ -95,6 +95,16 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
   Alias = int
   ```
 
+- **Conventional type parameters**: assignments to `typing.TypeVar`, `typing.TypeVarTuple` and `typing.ParamSpec` keep
+  the declared name when the string argument matches it. Changing `T = TypeVar("T")` to `_T = TypeVar("T")` would make
+  the declaration invalid for type checkers.
+
+  ```python ok
+  from typing import TypeVar
+
+  T = TypeVar("T")
+  ```
+
   ```toml config
   [project]
   requires-python = ">=3.12"
