@@ -67,7 +67,7 @@ pub fn single_user_constant(checker: &Checker) {
             continue;
         }
         let references: Vec<TextRange> = references.iter().map(|reference| reference.range).collect();
-        if is_mutated(&function.body, &references) {
+        if is_shared_state(checker, value, &function.body, &references) {
             continue;
         }
         let constant = Constant { stmt, name, annotation, value, function, references };
@@ -132,54 +132,118 @@ struct Constant<'a> {
     references: Vec<TextRange>,
 }
 
-// A container the function mutates is state that must outlive each call, such as a set of warnings already shown.
-fn is_mutated(body: &[Stmt], references: &[TextRange]) -> bool {
-    let mut finder = Mutation { references, mutated: false };
-    finder.visit_body(body);
-    finder.mutated
+// A mutable container is state shared between calls, which a fresh copy made on each call would lose, such as a set of
+// warnings already shown. Only reads that neither change it nor hand it to other code keep that unobservable: a
+// membership test and `len`, and, when its items are immutable, iterating, indexing, or a builtin or method that copies
+// or reduces it. Any other use, such as an argument to a function, a returned value or another name bound to it, lets
+// other code change or keep it.
+fn is_shared_state(checker: &Checker, value: &Expr, body: &[Stmt], references: &[TextRange]) -> bool {
+    if !is_mutable(value) {
+        return false;
+    }
+    let mut reads = Reads { checker, references, opaque: Vec::new(), items: Vec::new() };
+    reads.visit_body(body);
+    let items_shared = has_mutable_items(value);
+    references
+        .iter()
+        .any(|reference| !reads.opaque.contains(reference) && (items_shared || !reads.items.contains(reference)))
 }
 
-struct Mutation<'a> {
-    references: &'a [TextRange],
-    mutated: bool,
+fn is_mutable(expr: &Expr) -> bool {
+    match expr {
+        Expr::List(_) | Expr::Set(_) | Expr::Dict(_) => true,
+        Expr::Tuple(ast::ExprTuple { elts, .. }) => elts.iter().any(is_mutable),
+        Expr::BinOp(ast::ExprBinOp { left, right, .. }) => is_mutable(left) || is_mutable(right),
+        _ => false,
+    }
 }
 
-impl<'a> Visitor<'a> for Mutation<'_> {
+fn has_mutable_items(expr: &Expr) -> bool {
+    match expr {
+        Expr::List(ast::ExprList { elts, .. })
+        | Expr::Set(ast::ExprSet { elts, .. })
+        | Expr::Tuple(ast::ExprTuple { elts, .. }) => elts.iter().any(is_mutable),
+        Expr::Dict(dict) => dict.items.iter().any(|item| is_mutable(&item.value)),
+        Expr::BinOp(ast::ExprBinOp { left, right, .. }) => has_mutable_items(left) || has_mutable_items(right),
+        _ => false,
+    }
+}
+
+// The references read without exposing the container (`opaque`), and those that expose only its items (`items`).
+struct Reads<'c, 'a> {
+    checker: &'c Checker<'a>,
+    references: &'c [TextRange],
+    opaque: Vec<TextRange>,
+    items: Vec<TextRange>,
+}
+
+impl Reads<'_, '_> {
+    fn reference(&self, expr: &Expr) -> Option<TextRange> {
+        expr.as_name_expr().map(Ranged::range).filter(|range| self.references.contains(range))
+    }
+
+    fn exposes_items(&mut self, expr: &Expr) {
+        if let Some(range) = self.reference(expr) {
+            self.items.push(range);
+        }
+    }
+}
+
+impl<'a> Visitor<'a> for Reads<'_, '_> {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        if let Stmt::For(ast::StmtFor { iter, .. }) = stmt {
+            self.exposes_items(iter);
+        }
+        visitor::walk_stmt(self, stmt);
+    }
+
     fn visit_expr(&mut self, expr: &'a Expr) {
-        let target = match expr {
-            Expr::Call(ast::ExprCall { func, .. }) => func
-                .as_attribute_expr()
-                .filter(|attribute| {
-                    matches!(
-                        attribute.attr.as_str(),
-                        "add"
-                            | "append"
-                            | "appendleft"
-                            | "clear"
-                            | "discard"
-                            | "extend"
-                            | "extendleft"
-                            | "insert"
-                            | "pop"
-                            | "popitem"
-                            | "popleft"
-                            | "remove"
-                            | "reverse"
-                            | "setdefault"
-                            | "sort"
-                            | "update"
-                    )
-                })
-                .map(|attribute| attribute.value.as_ref()),
-            Expr::Subscript(ast::ExprSubscript {
-                value, ctx: ast::ExprContext::Store | ast::ExprContext::Del, ..
-            }) => Some(value.as_ref()),
-            _ => None,
-        };
-        if target.is_some_and(|target| self.references.contains(&target.range())) {
-            self.mutated = true;
+        match expr {
+            Expr::Compare(ast::ExprCompare { ops, operands, .. }) => {
+                for (op, comparator) in ops.iter().zip(&operands[1..]) {
+                    if (op.is_in() || op.is_not_in())
+                        && let Some(range) = self.reference(comparator)
+                    {
+                        self.opaque.push(range);
+                    }
+                }
+            }
+            Expr::Call(ast::ExprCall { func, arguments, .. }) => {
+                let semantic = self.checker.semantic();
+                if let [argument] = &*arguments.args
+                    && arguments.keywords.is_empty()
+                    && semantic.is_builtin(func, "len")
+                    && let Some(range) = self.reference(argument)
+                {
+                    self.opaque.push(range);
+                } else if ["all", "any", "dict", "frozenset", "list", "max", "min", "set", "sorted", "sum", "tuple"]
+                    .iter()
+                    .any(|name| semantic.is_builtin(func, name))
+                {
+                    for argument in &arguments.args {
+                        self.exposes_items(argument);
+                    }
+                } else if let Expr::Attribute(ast::ExprAttribute { value, attr, .. }) = func.as_ref()
+                    && matches!(attr.as_str(), "copy" | "count" | "get" | "index" | "items" | "keys" | "values")
+                {
+                    self.exposes_items(value);
+                }
+            }
+            Expr::Subscript(ast::ExprSubscript { value, ctx: ast::ExprContext::Load, .. })
+            | Expr::Starred(ast::ExprStarred { value, .. }) => self.exposes_items(value),
+            Expr::Dict(dict) => {
+                for item in dict.items.iter().filter(|item| item.key.is_none()) {
+                    self.exposes_items(&item.value);
+                }
+            }
+            _ => {}
         }
         visitor::walk_expr(self, expr);
+    }
+
+    fn visit_comprehension(&mut self, comprehension: &'a ast::Comprehension) {
+        self.exposes_items(&comprehension.iter);
+        visitor::walk_comprehension(self, comprehension);
     }
 }
 

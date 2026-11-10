@@ -12,8 +12,8 @@ from typing import Final
 _CODES: dict[str, int] = {"ok": 0}
 
 
-def lookup(text: str, expected: list[str]) -> list[str]:
-    pi_overrides: dict[str, list[str]] = {"<?namespace>": ["ProcessingInstruction"]}
+def lookup(text: str, expected: str) -> str:
+    pi_overrides: dict[str, str] = {"<?namespace>": "ProcessingInstruction"}
     if text.endswith(">"):
         return pi_overrides.get(text, expected)
     return expected

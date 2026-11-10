@@ -17,8 +17,6 @@ expression: "lint_fixture(rule, fixture, target_version)"
 116:1 SMP202 `_RAW` is used by one function only; define it there [unsafe fix: Move `_RAW` into `literals`]
 117:1 SMP202 `_NOTHING` is used by one function only; define it there [unsafe fix: Move `_NOTHING` into `literals`]
 118:1 SMP202 `_ENABLED` is used by one function only; define it there [unsafe fix: Move `_ENABLED` into `literals`]
-119:1 SMP202 `_TABLE_ROWS` is used by one function only; define it there [unsafe fix: Move `_TABLE_ROWS` into `literals`]
-120:1 SMP202 `_CODES` is used by one function only; define it there [unsafe fix: Move `_CODES` into `literals`]
 134:1 SMP202 `_LIMITS` is used by one function only; define it there [unsafe fix: Move `_LIMITS` into `bounds`]
 141:1 SMP202 `_SIZES` is used by one function only; define it there [unsafe fix: Move `_SIZES` into `size`]
 158:1 SMP202 `_5_SMOOTH` is used by one function only; define it there
@@ -28,7 +26,7 @@ expression: "lint_fixture(rule, fixture, target_version)"
 197:1 SMP202 `_ROOT` is used by one function only; define it there [unsafe fix: Move `_ROOT` into `render`]
 198:1 SMP202 `_HOST` is used by one function only; define it there [unsafe fix: Move `_HOST` into `prefixed`]
 207:1 SMP202 `_RESOURCE_PATTERN` is used by one function only; define it there [unsafe fix: Move `_RESOURCE_PATTERN` into `resource`]
---- fixed (23 applied, 3 remaining) ---
+--- fixed (21 applied, 3 remaining) ---
 from typing import Final
 
 _RETRIES = 3
@@ -133,8 +131,12 @@ def shadow(frozenset: type) -> object:
     return frozenset, _SHADOWED
 
 
+_TABLE_ROWS = [("a", 1.5), ("b", -2)]
+_CODES = {"ok": 0, "error": 1}
+
+
 def literals() -> tuple[object, ...]:
-    return (-1), (60 * 60), b"raw", None, True, [("a", 1.5), ("b", -2)], {"ok": 0, "error": 1}
+    return (-1), (60 * 60), b"raw", None, True, _TABLE_ROWS, _CODES
 
 
 _OPERATORS = {"==": operator.eq}

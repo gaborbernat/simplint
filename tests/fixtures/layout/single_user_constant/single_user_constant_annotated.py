@@ -1,12 +1,12 @@
 from typing import Final
 
-_PI_OVERRIDES: Final[dict[str, list[str]]] = {"<?namespace>": ["ProcessingInstruction"]}
+_PI_OVERRIDES: Final[dict[str, str]] = {"<?namespace>": "ProcessingInstruction"}
 _LIMIT: int = 30
 _MODE: Final = "fast"
 _CODES: dict[str, int] = {"ok": 0}
 
 
-def lookup(text: str, expected: list[str]) -> list[str]:
+def lookup(text: str, expected: str) -> str:
     if text.endswith(">"):
         return _PI_OVERRIDES.get(text, expected)
     return expected
