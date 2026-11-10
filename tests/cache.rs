@@ -843,3 +843,17 @@ fn full_text_is_kept_when_another_file_joins_the_run() {
     let warm = full_report(root.path(), &[], &[]);
     assert_eq!(warm, full_report(root.path(), &["--no-cache"], &[]));
 }
+
+// A relative import in a namespace package resolves under the search root, so a cached file's facts follow the roots.
+#[test]
+fn cached_facts_follow_a_changed_search_root() {
+    let pyproject = "[project]\nname = \"demo\"\n[tool.ruff]\nsrc = [\"{root}\"]\n";
+    let root = project(&[
+        ("pyproject.toml", &pyproject.replace("{root}", "lib")),
+        ("src/ns/helper.py", "def used() -> int:\n    return 1\n"),
+        ("src/ns/main.py", "from .helper import used\n\nprint(used())\n"),
+    ]);
+    let before = check(root.path(), &["--select", "SMP409"]).0;
+    fs::write(root.path().join("pyproject.toml"), pyproject.replace("{root}", "src")).expect("write");
+    assert_eq!((before, check(root.path(), &["--select", "SMP409"]).0), (1, 0));
+}

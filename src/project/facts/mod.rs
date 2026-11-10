@@ -119,6 +119,9 @@ pub struct FileFacts {
     pub(super) global_names: Vec<String>,
     // A digest of the source the facts come from, whose offsets the ranges above are.
     pub(super) source_digest: u64,
+    // A digest of the module paths the facts resolved relative imports and module names against, which change with
+    // the search roots while the file stays the same.
+    module_digest: u64,
 }
 
 // A module an import statement names, the `module.name` of each name a `from` import takes from it, the statement's
@@ -257,13 +260,21 @@ impl FileFacts {
             string_words: string_words(scan.words),
             global_names: scan.global_names.into_iter().collect(),
             source_digest: source_digest(source),
+            module_digest: module_digest(module_path, importable),
         })
     }
 
-    // Whether the facts hold every part a run's rules read.
-    pub fn covers(&self, wanted: Parts) -> bool {
-        self.parts.has(wanted)
+    // Whether the facts hold every part a run's rules read, resolved against the module paths the file has in the run.
+    pub fn covers(&self, wanted: Parts, module_path: Option<&[String]>, importable: Option<&[String]>) -> bool {
+        self.parts.has(wanted) && self.module_digest == module_digest(module_path, importable)
     }
+}
+
+fn module_digest(module_path: Option<&[String]>, importable: Option<&[String]>) -> u64 {
+    let mut hasher = CacheKeyHasher::new();
+    module_path.cache_key(&mut hasher);
+    importable.cache_key(&mut hasher);
+    hasher.finish()
 }
 
 fn module_functions(body: &[Stmt]) -> Vec<String> {
