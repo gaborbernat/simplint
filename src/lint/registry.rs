@@ -66,7 +66,7 @@ macro_rules! rules {
 
             pub fn url(self) -> String {
                 let url = match self {
-                    $(Rule::$variant => concat!("https://simplint.readthedocs.io/en/latest/_generated/rules/", $code, ".html"),)*
+                    $(Rule::$variant => concat!("https://simplint.readthedocs.io/en/latest/rules/", $code, ".html"),)*
                 };
                 url.to_owned()
             }
