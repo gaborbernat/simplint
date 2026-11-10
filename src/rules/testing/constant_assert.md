@@ -185,7 +185,8 @@ Truthiness is judged the way Ruff judges it. These are truthy constants:
 
 ### Fix
 
-The fix depends on the constant:
+The fix depends on the constant. No fix is offered when a comment lies within the statement, since rewriting or deleting
+it would drop the comment:
 
 - A two-element tuple without a message, such as `assert (check, "message")`, becomes `assert check, "message"`, since
   deleting it would drop the check it meant. **Unsafe fix:** the restored check may now fail.

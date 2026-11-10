@@ -24610,7 +24610,7 @@
     "name": "constant-assert",
     "summary": "Assertions on a truthy constant",
     "fix": "Sometimes",
-    "explanation": "Flags `assert` statements whose test is a truthy constant. Such an assertion can never fail, so it checks nothing and\nmakes a test look like it verifies more than it does.\n\n## Why is this bad?\n\nAn assertion on a truthy constant can never fail, so it checks nothing and makes a test look like it verifies more than\nit does. A parenthesized `assert (check, \"message\")` is a non-empty tuple and falls in the same trap. Ruff reports every\nnon-empty tuple as [assert-tuple](https://docs.astral.sh/ruff/rules/assert-tuple/), and\n[assert-on-string-literal](https://docs.astral.sh/ruff/rules/assert-on-string-literal/) reports a string, bytes or\nf-string literal. This rule leaves those cases to Ruff when the corresponding rule runs.\n\n## Example\n\n```python report\ndef test_save(tmp_path: Path) -> None:\n    save(tmp_path / \"out.json\")\n    assert True\n```\n\nUse instead:\n\n```python ok\ndef test_save(tmp_path: Path) -> None:\n    save(tmp_path / \"out.json\")\n    assert (tmp_path / \"out.json\").exists()\n```\n\n## What it does\n\n### Active on\n\n[`assert`](https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement) statements whose test is a\n[truthy](https://docs.python.org/3/builtins/stdtypes.html#truth-value-testing) constant, in every file, not only tests.\nTruthiness is judged the way Ruff judges it. These are truthy constants:\n\n- **`True`**: truthy by definition.\n\n  ```python report\n  assert True\n  ```\n\n- **A non-zero number**: only zero is falsy.\n\n  ```python report\n  assert 1\n  ```\n\n- **A non-empty string, bytes or f-string literal**: only an empty one is falsy.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = []\n  ```\n\n  ```python report\n  assert \"ready\"\n  ```\n\n- **`...`**: `Ellipsis` is always truthy.\n\n  ```python report\n  assert ...\n  ```\n\n- **A lambda**: a function object is always truthy.\n\n  ```python report\n  assert lambda: None\n  ```\n\n- **A non-empty tuple, list, set or dict literal** such as `[value]`: a container with items is truthy.\n\n  ```python report\n  value = 1\n  assert [value]\n  ```\n\n- **A generator expression**: a generator object is truthy even when it yields nothing, so the assertion can never fail.\n  Ruff does not implement bugbear's B044, which flags it.\n\n  ```python report\n  values = [1, 2]\n  assert (value for value in values)\n  ```\n\n- **A `format` call or a `%` expression on a string literal whose text has characters outside its fields**: the literal\n  text is in every result, so the result is never empty.\n\n  ```python report\n  state = \"ready\"\n  assert \"state: {}\".format(state)\n  ```\n\n  ```python report\n  state = \"ready\"\n  assert \"state: %s\" % state\n  ```\n\n- **A computation on literals**: arithmetic, string concatenation and repetition, comparisons, `not`, and `and` and `or`\n  over numbers, strings, booleans and `None`, when the result is truthy. The rule computes the value the way Python\n  does, so `1 + 1 == 2` and `\"a\" * 3` are constant, while a computation on integers past 64 bits, or a repetition or\n  concatenation that builds a string longer than 4096 bytes, is left alone.\n\n  ```python report\n  assert 1 + 1 == 2\n  ```\n\n  ```python report\n  assert \"a\" * 3\n  ```\n\n### Exceptions\n\n- **A string, bytes or f-string literal**, such as one whose f-string calls a function: Ruff's\n  [assert-on-string-literal](https://docs.astral.sh/ruff/rules/assert-on-string-literal/) reports it while the project's\n  Ruff configuration selects it, so this rule leaves it to Ruff, including cases it could fix. Ruff's own suppressions\n  of it, through `per-file-ignores` or `noqa`, are respected too.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"PLW0129\"]\n  ```\n\n  ```python ok\n  def compute() -> str:\n      return \"\"\n\n\n  assert f\"ready {compute()}\"\n  ```\n\n- **A container holding only starred elements**, such as `[*values]`: it may be empty.\n\n  ```python ok\n  values = []\n  assert [*values]\n  ```\n\n- **A malformed template**, such as `\"x{\"` or `\"x%y\"`: Python raises on it rather than passing.\n\n  ```python ok\n  assert \"x{\".format()\n  ```\n\n- **A format or `%` template with text only inside its fields**, such as `\"{}\"` or `\"%s\"`: the field may hold an empty\n  string, so the result may be empty too.\n\n  ```python ok\n  value = \"\"\n  assert \"{}\".format(value)\n  ```\n\n  ```python ok\n  value = \"\"\n  assert \"%s\" % value\n  ```\n\n- **An f-string made only of fields**, such as `f\"{value}\"`: it is empty when `value` is.\n\n  ```python ok\n  value = \"\"\n  assert f\"{value}\"\n  ```\n\n- **Any non-empty tuple test while Ruff runs F631**: Ruff's\n  [assert-tuple](https://docs.astral.sh/ruff/rules/assert-tuple/) reports them, including two-element tuples this rule\n  could fix. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are respected too.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"F631\"]\n  ```\n\n  ```python ok\n  assert (1, 2, 3)\n  ```\n\n- **A computation that reads a name or calls a function**, such as `assert value + 1 == 2`: the value can change, so the\n  rule evaluates only literals.\n\n  ```python ok\n  value = 1\n  assert value + 1 == 2\n  ```\n\n### Fix\n\nThe fix depends on the constant:\n\n- A two-element tuple without a message, such as `assert (check, \"message\")`, becomes `assert check, \"message\"`, since\n  deleting it would drop the check it meant. **Unsafe fix:** the restored check may now fail.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = []\n  ```\n\n  ```python report\n  check = False\n  assert (check, \"message\")\n  ```\n\n  ```python fixed\n  check = False\n  assert check, \"message\"\n  ```\n\n  A walrus check gets parentheses, since `:=` cannot stand alone before the comma.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = []\n  ```\n\n  ```python report\n  assert (ready := True, \"message\")\n  ```\n\n  ```python fixed\n  assert (ready := True), \"message\"\n  ```\n\n- A generator becomes `all(...)` around the same expression. **Unsafe fix:** the restored check may now fail. Its first\n  iterable is evaluated when the generator is built, so deleting the assertion would also drop that evaluation and any\n  error it raises.\n\n  ```python report\n  values = [1, 2]\n  assert (value for value in values)\n  ```\n\n  ```python fixed\n  values = [1, 2]\n  assert all(value for value in values)\n  ```\n\n  No fix is offered for an asynchronous generator, one with `async for` or `await`, since `all()` cannot iterate it, nor\n  where the file binds `all` to something other than the builtin.\n\n  ```python report\n  async def check(values: AsyncIterator[int]) -> None:\n      assert (value async for value in values)\n  ```\n\n  ```python fixed\n  async def check(values: AsyncIterator[int]) -> None:\n      assert (value async for value in values)\n  ```\n\n- Other tuples get no fix. When Ruff's F631 runs, every non-empty tuple is left to it.\n\n- For a `format` or `%` template the fix deletes the assertion **unsafely**: its fields may not fit its arguments, and\n  the deletion would hide the error that raises. Any other constant is deleted safely, since its assertion never fails.\n  The block keeps a `pass` only when the assertion was its only statement:\n\n  - An assertion with other statements in its block: the fix deletes it.\n\n    ```python report\n    def test_save() -> None:\n        save()\n        assert True\n    ```\n\n    ```python fixed\n    def test_save() -> None:\n        save()\n    ```\n\n  - An assertion that is the only statement in its block: the fix leaves `pass` in its place.\n\n    ```python report\n    def test_empty() -> None:\n        assert True\n    ```\n\n    ```python fixed\n    def test_empty() -> None:\n        pass\n    ```\n\nFor a constant that is not a tuple, no fix is offered when:\n\n- the assertion shares a line with another statement;\n\n- its test calls something, as in `assert [compute()]` or `assert \"value {}\".format(compute())`, since deleting it would\n  skip that call.\n\n  ```python report\n  def compute() -> int:\n      return 1\n\n\n  assert [compute()]\n  ```\n\n  ```python report\n  def compute() -> int:\n      return 1\n\n\n  assert \"value {}\".format(compute())\n  ```\n\n```mermaid\nflowchart TD\n    assertion[\"assert on a<br/>truthy constant\"] --> tuple{\"a tuple?\"}\n    tuple -->|yes| runs{\"assert-tuple<br/>selected?\"}\n    runs -->|yes| left[\"left to Ruff\"]\n    runs -->|no| pair{\"two elements,<br/>no message?\"}\n    pair -->|yes| unwrap[\"unsafe: assert check, message\"]\n    pair -->|no| none\n    tuple -->|no| generator{\"a generator?\"}\n    generator -->|yes| asynchronous{\"asynchronous, or<br/>all rebound?\"}\n    asynchronous -->|yes| none\n    asynchronous -->|no| wrap[\"unsafe: assert all(...)\"]\n    generator -->|no| blocked{\"shares a line or<br/>calls something?\"}\n    blocked -->|yes| none\n    blocked -->|no| template{\"a format or<br/>% template?\"}\n    template -->|yes| unsafe[\"unsafe: delete it\"]\n    template -->|no| delete[\"safe: delete it\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class assertion blue\n    class blocked,tuple,pair,generator,asynchronous,template yellow\n    class delete green\n    class unsafe orange\n    class unwrap,wrap teal\n    class none,left orange\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules\n  [F631](https://docs.astral.sh/ruff/rules/assert-tuple/) and\n  [PLW0129](https://docs.astral.sh/ruff/rules/assert-on-string-literal/), which cover tuples and string literals; this\n  rule leaves every covered case to Ruff when the corresponding rule runs and covers other truthy constants.\n- [flake8-useless-assert](https://github.com/decorator-factory/flake8-useless-assert) reports an assert with a truthy\n  literal, such as `assert True`, as [ULA001](https://github.com/decorator-factory/flake8-useless-assert), with no fix.\n- [Sourcery](https://sourcery.ai) removes `assert True` statements through\n  [remove-assert-true](https://docs.sourcery.ai/reference/refactorings/python/remove-assert-true/). It covers\n  `assert True` only, where this rule also covers other truthy constants.\n",
+    "explanation": "Flags `assert` statements whose test is a truthy constant. Such an assertion can never fail, so it checks nothing and\nmakes a test look like it verifies more than it does.\n\n## Why is this bad?\n\nAn assertion on a truthy constant can never fail, so it checks nothing and makes a test look like it verifies more than\nit does. A parenthesized `assert (check, \"message\")` is a non-empty tuple and falls in the same trap. Ruff reports every\nnon-empty tuple as [assert-tuple](https://docs.astral.sh/ruff/rules/assert-tuple/), and\n[assert-on-string-literal](https://docs.astral.sh/ruff/rules/assert-on-string-literal/) reports a string, bytes or\nf-string literal. This rule leaves those cases to Ruff when the corresponding rule runs.\n\n## Example\n\n```python report\ndef test_save(tmp_path: Path) -> None:\n    save(tmp_path / \"out.json\")\n    assert True\n```\n\nUse instead:\n\n```python ok\ndef test_save(tmp_path: Path) -> None:\n    save(tmp_path / \"out.json\")\n    assert (tmp_path / \"out.json\").exists()\n```\n\n## What it does\n\n### Active on\n\n[`assert`](https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement) statements whose test is a\n[truthy](https://docs.python.org/3/builtins/stdtypes.html#truth-value-testing) constant, in every file, not only tests.\nTruthiness is judged the way Ruff judges it. These are truthy constants:\n\n- **`True`**: truthy by definition.\n\n  ```python report\n  assert True\n  ```\n\n- **A non-zero number**: only zero is falsy.\n\n  ```python report\n  assert 1\n  ```\n\n- **A non-empty string, bytes or f-string literal**: only an empty one is falsy.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = []\n  ```\n\n  ```python report\n  assert \"ready\"\n  ```\n\n- **`...`**: `Ellipsis` is always truthy.\n\n  ```python report\n  assert ...\n  ```\n\n- **A lambda**: a function object is always truthy.\n\n  ```python report\n  assert lambda: None\n  ```\n\n- **A non-empty tuple, list, set or dict literal** such as `[value]`: a container with items is truthy.\n\n  ```python report\n  value = 1\n  assert [value]\n  ```\n\n- **A generator expression**: a generator object is truthy even when it yields nothing, so the assertion can never fail.\n  Ruff does not implement bugbear's B044, which flags it.\n\n  ```python report\n  values = [1, 2]\n  assert (value for value in values)\n  ```\n\n- **A `format` call or a `%` expression on a string literal whose text has characters outside its fields**: the literal\n  text is in every result, so the result is never empty.\n\n  ```python report\n  state = \"ready\"\n  assert \"state: {}\".format(state)\n  ```\n\n  ```python report\n  state = \"ready\"\n  assert \"state: %s\" % state\n  ```\n\n- **A computation on literals**: arithmetic, string concatenation and repetition, comparisons, `not`, and `and` and `or`\n  over numbers, strings, booleans and `None`, when the result is truthy. The rule computes the value the way Python\n  does, so `1 + 1 == 2` and `\"a\" * 3` are constant, while a computation on integers past 64 bits, or a repetition or\n  concatenation that builds a string longer than 4096 bytes, is left alone.\n\n  ```python report\n  assert 1 + 1 == 2\n  ```\n\n  ```python report\n  assert \"a\" * 3\n  ```\n\n### Exceptions\n\n- **A string, bytes or f-string literal**, such as one whose f-string calls a function: Ruff's\n  [assert-on-string-literal](https://docs.astral.sh/ruff/rules/assert-on-string-literal/) reports it while the project's\n  Ruff configuration selects it, so this rule leaves it to Ruff, including cases it could fix. Ruff's own suppressions\n  of it, through `per-file-ignores` or `noqa`, are respected too.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"PLW0129\"]\n  ```\n\n  ```python ok\n  def compute() -> str:\n      return \"\"\n\n\n  assert f\"ready {compute()}\"\n  ```\n\n- **A container holding only starred elements**, such as `[*values]`: it may be empty.\n\n  ```python ok\n  values = []\n  assert [*values]\n  ```\n\n- **A malformed template**, such as `\"x{\"` or `\"x%y\"`: Python raises on it rather than passing.\n\n  ```python ok\n  assert \"x{\".format()\n  ```\n\n- **A format or `%` template with text only inside its fields**, such as `\"{}\"` or `\"%s\"`: the field may hold an empty\n  string, so the result may be empty too.\n\n  ```python ok\n  value = \"\"\n  assert \"{}\".format(value)\n  ```\n\n  ```python ok\n  value = \"\"\n  assert \"%s\" % value\n  ```\n\n- **An f-string made only of fields**, such as `f\"{value}\"`: it is empty when `value` is.\n\n  ```python ok\n  value = \"\"\n  assert f\"{value}\"\n  ```\n\n- **Any non-empty tuple test while Ruff runs F631**: Ruff's\n  [assert-tuple](https://docs.astral.sh/ruff/rules/assert-tuple/) reports them, including two-element tuples this rule\n  could fix. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are respected too.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"F631\"]\n  ```\n\n  ```python ok\n  assert (1, 2, 3)\n  ```\n\n- **A computation that reads a name or calls a function**, such as `assert value + 1 == 2`: the value can change, so the\n  rule evaluates only literals.\n\n  ```python ok\n  value = 1\n  assert value + 1 == 2\n  ```\n\n### Fix\n\nThe fix depends on the constant. No fix is offered when a comment lies within the statement, since rewriting or deleting\nit would drop the comment:\n\n- A two-element tuple without a message, such as `assert (check, \"message\")`, becomes `assert check, \"message\"`, since\n  deleting it would drop the check it meant. **Unsafe fix:** the restored check may now fail.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = []\n  ```\n\n  ```python report\n  check = False\n  assert (check, \"message\")\n  ```\n\n  ```python fixed\n  check = False\n  assert check, \"message\"\n  ```\n\n  A walrus check gets parentheses, since `:=` cannot stand alone before the comma.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = []\n  ```\n\n  ```python report\n  assert (ready := True, \"message\")\n  ```\n\n  ```python fixed\n  assert (ready := True), \"message\"\n  ```\n\n- A generator becomes `all(...)` around the same expression. **Unsafe fix:** the restored check may now fail. Its first\n  iterable is evaluated when the generator is built, so deleting the assertion would also drop that evaluation and any\n  error it raises.\n\n  ```python report\n  values = [1, 2]\n  assert (value for value in values)\n  ```\n\n  ```python fixed\n  values = [1, 2]\n  assert all(value for value in values)\n  ```\n\n  No fix is offered for an asynchronous generator, one with `async for` or `await`, since `all()` cannot iterate it, nor\n  where the file binds `all` to something other than the builtin.\n\n  ```python report\n  async def check(values: AsyncIterator[int]) -> None:\n      assert (value async for value in values)\n  ```\n\n  ```python fixed\n  async def check(values: AsyncIterator[int]) -> None:\n      assert (value async for value in values)\n  ```\n\n- Other tuples get no fix. When Ruff's F631 runs, every non-empty tuple is left to it.\n\n- For a `format` or `%` template the fix deletes the assertion **unsafely**: its fields may not fit its arguments, and\n  the deletion would hide the error that raises. Any other constant is deleted safely, since its assertion never fails.\n  The block keeps a `pass` only when the assertion was its only statement:\n\n  - An assertion with other statements in its block: the fix deletes it.\n\n    ```python report\n    def test_save() -> None:\n        save()\n        assert True\n    ```\n\n    ```python fixed\n    def test_save() -> None:\n        save()\n    ```\n\n  - An assertion that is the only statement in its block: the fix leaves `pass` in its place.\n\n    ```python report\n    def test_empty() -> None:\n        assert True\n    ```\n\n    ```python fixed\n    def test_empty() -> None:\n        pass\n    ```\n\nFor a constant that is not a tuple, no fix is offered when:\n\n- the assertion shares a line with another statement;\n\n- its test calls something, as in `assert [compute()]` or `assert \"value {}\".format(compute())`, since deleting it would\n  skip that call.\n\n  ```python report\n  def compute() -> int:\n      return 1\n\n\n  assert [compute()]\n  ```\n\n  ```python report\n  def compute() -> int:\n      return 1\n\n\n  assert \"value {}\".format(compute())\n  ```\n\n```mermaid\nflowchart TD\n    assertion[\"assert on a<br/>truthy constant\"] --> tuple{\"a tuple?\"}\n    tuple -->|yes| runs{\"assert-tuple<br/>selected?\"}\n    runs -->|yes| left[\"left to Ruff\"]\n    runs -->|no| pair{\"two elements,<br/>no message?\"}\n    pair -->|yes| unwrap[\"unsafe: assert check, message\"]\n    pair -->|no| none\n    tuple -->|no| generator{\"a generator?\"}\n    generator -->|yes| asynchronous{\"asynchronous, or<br/>all rebound?\"}\n    asynchronous -->|yes| none\n    asynchronous -->|no| wrap[\"unsafe: assert all(...)\"]\n    generator -->|no| blocked{\"shares a line or<br/>calls something?\"}\n    blocked -->|yes| none\n    blocked -->|no| template{\"a format or<br/>% template?\"}\n    template -->|yes| unsafe[\"unsafe: delete it\"]\n    template -->|no| delete[\"safe: delete it\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class assertion blue\n    class blocked,tuple,pair,generator,asynchronous,template yellow\n    class delete green\n    class unsafe orange\n    class unwrap,wrap teal\n    class none,left orange\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules\n  [F631](https://docs.astral.sh/ruff/rules/assert-tuple/) and\n  [PLW0129](https://docs.astral.sh/ruff/rules/assert-on-string-literal/), which cover tuples and string literals; this\n  rule leaves every covered case to Ruff when the corresponding rule runs and covers other truthy constants.\n- [flake8-useless-assert](https://github.com/decorator-factory/flake8-useless-assert) reports an assert with a truthy\n  literal, such as `assert True`, as [ULA001](https://github.com/decorator-factory/flake8-useless-assert), with no fix.\n- [Sourcery](https://sourcery.ai) removes `assert True` statements through\n  [remove-assert-true](https://docs.sourcery.ai/reference/refactorings/python/remove-assert-true/). It covers\n  `assert True` only, where this rule also covers other truthy constants.\n",
     "examples": {
       "parsed": [
         {
@@ -24984,11 +24984,11 @@
         },
         {
           "section": "What it does",
-          "line": 193,
-          "end_line": 206,
+          "line": 194,
+          "end_line": 207,
           "config": {
-            "line": 193,
-            "end_line": 196,
+            "line": 194,
+            "end_line": 197,
             "source": "[tool.ruff.lint]\nselect = []\n"
           },
           "blocks": [
@@ -24997,8 +24997,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 198,
-              "end_line": 201,
+              "line": 199,
+              "end_line": 202,
               "source": "check = False\nassert (check, \"message\")\n"
             },
             {
@@ -25006,19 +25006,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 203,
-              "end_line": 206,
+              "line": 204,
+              "end_line": 207,
               "source": "check = False\nassert check, \"message\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 210,
-          "end_line": 221,
+          "line": 211,
+          "end_line": 222,
           "config": {
-            "line": 210,
-            "end_line": 213,
+            "line": 211,
+            "end_line": 214,
             "source": "[tool.ruff.lint]\nselect = []\n"
           },
           "blocks": [
@@ -25027,8 +25027,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 215,
-              "end_line": 217,
+              "line": 216,
+              "end_line": 218,
               "source": "assert (ready := True, \"message\")\n"
             },
             {
@@ -25036,16 +25036,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 219,
-              "end_line": 221,
+              "line": 220,
+              "end_line": 222,
               "source": "assert (ready := True), \"message\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 227,
-          "end_line": 235,
+          "line": 228,
+          "end_line": 236,
           "config": null,
           "blocks": [
             {
@@ -25053,8 +25053,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 227,
-              "end_line": 230,
+              "line": 228,
+              "end_line": 231,
               "source": "values = [1, 2]\nassert (value for value in values)\n"
             },
             {
@@ -25062,16 +25062,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 232,
-              "end_line": 235,
+              "line": 233,
+              "end_line": 236,
               "source": "values = [1, 2]\nassert all(value for value in values)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 240,
-          "end_line": 248,
+          "line": 241,
+          "end_line": 249,
           "config": null,
           "blocks": [
             {
@@ -25079,8 +25079,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 240,
-              "end_line": 243,
+              "line": 241,
+              "end_line": 244,
               "source": "async def check(values: AsyncIterator[int]) -> None:\n    assert (value async for value in values)\n"
             },
             {
@@ -25088,16 +25088,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 245,
-              "end_line": 248,
+              "line": 246,
+              "end_line": 249,
               "source": "async def check(values: AsyncIterator[int]) -> None:\n    assert (value async for value in values)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 258,
-          "end_line": 267,
+          "line": 259,
+          "end_line": 268,
           "config": null,
           "blocks": [
             {
@@ -25105,8 +25105,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 258,
-              "end_line": 262,
+              "line": 259,
+              "end_line": 263,
               "source": "def test_save() -> None:\n    save()\n    assert True\n"
             },
             {
@@ -25114,16 +25114,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 264,
-              "end_line": 267,
+              "line": 265,
+              "end_line": 268,
               "source": "def test_save() -> None:\n    save()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 271,
-          "end_line": 279,
+          "line": 272,
+          "end_line": 280,
           "config": null,
           "blocks": [
             {
@@ -25131,8 +25131,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 271,
-              "end_line": 274,
+              "line": 272,
+              "end_line": 275,
               "source": "def test_empty() -> None:\n    assert True\n"
             },
             {
@@ -25140,16 +25140,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 276,
-              "end_line": 279,
+              "line": 277,
+              "end_line": 280,
               "source": "def test_empty() -> None:\n    pass\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 288,
-          "end_line": 294,
+          "line": 289,
+          "end_line": 295,
           "config": null,
           "blocks": [
             {
@@ -25157,16 +25157,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 288,
-              "end_line": 294,
+              "line": 289,
+              "end_line": 295,
               "source": "def compute() -> int:\n    return 1\n\n\nassert [compute()]\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 296,
-          "end_line": 302,
+          "line": 297,
+          "end_line": 303,
           "config": null,
           "blocks": [
             {
@@ -25174,8 +25174,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 296,
-              "end_line": 302,
+              "line": 297,
+              "end_line": 303,
               "source": "def compute() -> int:\n    return 1\n\n\nassert \"value {}\".format(compute())\n"
             }
           ]
