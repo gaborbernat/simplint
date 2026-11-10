@@ -1,0 +1,14 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:5 SMP303 Import guard around a standard library module every supported Python ships; import it directly [unsafe fix: Remove the import guard]
+10:5 SMP303 Import guard around a standard library module every supported Python ships; import it directly [unsafe fix: Remove the import guard]
+--- fixed (2 applied, 0 remaining) ---
+def load():
+    import shlex
+    return shlex
+
+
+def unused():
+    import shlex  # noqa: F401  # fails when the module is missing

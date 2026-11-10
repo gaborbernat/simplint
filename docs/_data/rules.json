@@ -4837,7 +4837,7 @@
     "name": "dependency-import-guard",
     "summary": "`try`/`except ImportError` around a required dependency",
     "fix": "Sometimes",
-    "explanation": "Flags `try`/`except ImportError` guards around imports of modules that are always installed: the standard library and\nthe project's required dependencies. The fallback never runs in a working environment, and in a broken one the guard\nhides the import error.\n\n## Why is this bad?\n\nA required dependency is always installed, so the fallback never runs in a working environment. When the install is\nbroken, the guard hides the import error until something later fails with a less clear message.\n\n## Example\n\n```toml config\n[project]\nname = \"demo\"\ndependencies = [\"requests\"]\n```\n\n```python report\ntry:\n    import requests\nexcept ImportError:\n    requests = None\n```\n\nUse instead:\n\n```python ok\nimport requests\n```\n\n## Configuration\n\n- The Python version the code targets, taken from the first of these that applies; see\n  [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version):\n\n  1. [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version) in `[tool.ruff]`: for\n     the files a pattern matches\n\n     ```toml config\n     [tool.ruff.per-file-target-version]\n     \"legacy/*.py\" = \"py38\"\n     ```\n\n     ```python ok file=legacy/old.py\n     try:\n         import tomllib\n     except ImportError:\n         tomllib = None\n     ```\n\n     ```python report file=new.py\n     try:\n         import tomllib\n     except ImportError:\n         tomllib = None\n     ```\n\n  1. [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) in `[tool.ruff]`: for every other file\n\n     ```toml config\n     [tool.ruff]\n     target-version = \"py311\"\n     ```\n\n     ```python report\n     try:\n         import tomllib\n     except ImportError:\n         tomllib = None\n     ```\n\n  1. [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python):\n     its lowest version, when Ruff sets neither\n\n     ```toml config\n     [project]\n     name = \"demo\"\n     requires-python = \">=3.11\"\n     ```\n\n     ```python report\n     try:\n         import tomllib\n     except ImportError:\n         tomllib = None\n     ```\n\n- [`project.dependencies`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies); see\n  [Settings read from [project]](https://simplint.readthedocs.io/en/latest/configuration/project.html#settings-read-from-project)\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"requests\"]\n  ```\n\n  ```python report\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  ```\n\n## What it does\n\nThe rule checks `try` statements whose body holds only `import` statements of **required** modules and that have an\n`except` handler catching [`ImportError`](https://docs.python.org/3/builtins/exceptions.html#ImportError) or\n[`ModuleNotFoundError`](https://docs.python.org/3/builtins/exceptions.html#ModuleNotFoundError). The handler may catch\nthem alone or in a tuple, also when spelled `builtins.ImportError` or `builtins.ModuleNotFoundError`.\n\n### Active on\n\nA module is required when its top-level package is one of these:\n\n- **Standard library modules**: top-level modules and submodules of standard library packages, in the standard library\n  of every Python version from the target onward, set by Ruff's\n  [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) or\n  [`requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python). Every\n  supported interpreter ships them, so a module removed later, such as `distutils` in 3.12, does not count. A submodule\n  counts from the version that adds it, so `asyncio.taskgroups` counts from 3.11 and `string.templatelib` from 3.14.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python report\n  try:\n      import tomllib\n  except ImportError:\n      tomllib = None\n  ```\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python report\n  try:\n      import asyncio.taskgroups\n  except ImportError:\n      asyncio = None\n  ```\n\n- **Required dependencies**: listed in\n  [`project.dependencies`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies) of\n  `pyproject.toml`, which every install of the project brings along.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"requests\"]\n  ```\n\n  ```python report\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  ```\n\n### Exceptions\n\n- **Standard library modules that exist on one platform only**, such as `fcntl`, `msvcrt` or `winreg`: the import fails\n  on the other platforms.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  try:\n      import fcntl\n  except ImportError:\n      fcntl = None\n  ```\n\n- **Standard library modules that minimal and alternative builds may leave out**, such as `ctypes`, `ssl`, `sqlite3`,\n  `tkinter` or `_zstd`: the import can fail on such a build.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  try:\n      import ssl\n  except ImportError:\n      ssl = None\n  ```\n\n- **Submodules that a version from the target onward lacks**, such as `asyncio.taskgroups` on 3.10, or that a version\n  removes, such as `distutils.core` from 3.12: the import fails on that version. A submodule the rule does not know is\n  not counted either.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.10\"\n  ```\n\n  ```python ok\n  try:\n      import asyncio.taskgroups\n  except ImportError:\n      asyncio = None\n  ```\n\n- **Imports of the package the file belongs to**: guarding an optional compiled extension of your own package is not\n  reported.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python ok file=pkg/core.py\n  try:\n      import pkg._speedups\n  except ImportError:\n      pkg = None\n  ```\n\n- **`from` imports**: they also fail when the module lacks the name on some platform or version, such as\n  `from os import geteuid` outside POSIX or `from yaml import CSafeLoader` without libyaml.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  try:\n      from os import geteuid\n  except ImportError:\n      geteuid = None\n  ```\n\n- **Requirements with an [environment marker](https://peps.python.org/pep-0508/#environment-markers) (`;`)**: the\n  requirement is conditional, so the package may be missing.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"requests; sys_platform == 'win32'\"]\n  ```\n\n  ```python ok\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  ```\n\n- **Optional dependencies and dependency groups**: these are not read, as an install may leave them out.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = []\n\n  [project.optional-dependencies]\n  extra = [\"requests\"]\n  ```\n\n  ```python ok\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  ```\n\n```mermaid\nflowchart TD\n    from{\"A from import?\"}\n    from -->|yes| optional[\"Not required\"]\n    from -->|no| own{\"From the file's<br/>own package?\"}\n    own -->|yes| optional\n    own -->|no| stdlib{\"Standard library on every target<br/>version and platform?\"}\n    stdlib -->|yes| required[\"Required\"]\n    stdlib -->|no| deps{\"In project.dependencies<br/>without a marker?\"}\n    deps -->|yes| required\n    deps -->|no| optional\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class from,own,stdlib,deps yellow\n    class required orange\n    class optional green\n```\n\n### Matching dependency names\n\n- Dependencies are matched by their\n  [normalized name](https://packaging.python.org/en/latest/specifications/name-normalization/).\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"Requests\"]\n  ```\n\n  ```python report\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  ```\n\n- A short list of well-known distributions that import under another name also match that name, such as `PyYAML` as\n  `yaml`, `Pillow` as `PIL` or `beautifulsoup4` as `bs4`. Other renamed distributions are not recognized.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"PyYAML\"]\n  ```\n\n  ```python report\n  try:\n      import yaml\n  except ImportError:\n      yaml = None\n  ```\n\n### Fix\n\nThe fix replaces the `try` statement with its dedented body and drops every `except` handler. **Unsafe fix:** always,\nbecause the fallback code is removed and a failing import now raises.\n\nAn import the unwrapped body leaves unused keeps a suppression, `# noqa: F401  # fails when the module is missing`, so\nRuff's unused-import fix does not delete it. The import is there to fail when the module is missing.\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.11\"\n```\n\n```python report\ntry:\n    import tomllib\nexcept ImportError:\n    pass\n```\n\n```python fixed\nimport tomllib  # noqa: F401  # fails when the module is missing\n```\n\n```toml config\n[project]\nname = \"demo\"\ndependencies = [\"requests\"]\n\n[tool.ruff.lint]\nselect = []\n```\n\n```python report\ntry:\n    import requests\nexcept ImportError:\n    requests = None\n```\n\n```python fixed\nimport requests  # noqa: F401  # fails when the module is missing\n```\n\nNo fix is offered when the statement:\n\n- has an `else` or `finally` clause\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"requests\"]\n  ```\n\n  ```python report\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  else:\n      pass\n  ```\n\n- shares a line with other code\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"requests\"]\n  ```\n\n  ```python report\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  ```\n\n- holds an unused import on a line shared with another statement, as the suppression would then cover one import only\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python report\n  try:\n      import json\n      import tomllib\n  except ImportError:\n      pass\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags `try`/`except ImportError` guards around imports of modules that are always installed: the standard library and\nthe project's required dependencies. The fallback never runs in a working environment, and in a broken one the guard\nhides the import error.\n\n## Why is this bad?\n\nA required dependency is always installed, so the fallback never runs in a working environment. When the install is\nbroken, the guard hides the import error until something later fails with a less clear message.\n\n## Example\n\n```toml config\n[project]\nname = \"demo\"\ndependencies = [\"requests\"]\n```\n\n```python report\ntry:\n    import requests\nexcept ImportError:\n    requests = None\n```\n\nUse instead:\n\n```python ok\nimport requests\n```\n\n## Configuration\n\n- The Python version the code targets, taken from the first of these that applies; see\n  [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version):\n\n  1. [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version) in `[tool.ruff]`: for\n     the files a pattern matches\n\n     ```toml config\n     [tool.ruff.per-file-target-version]\n     \"legacy/*.py\" = \"py38\"\n     ```\n\n     ```python ok file=legacy/old.py\n     try:\n         import tomllib\n     except ImportError:\n         tomllib = None\n     ```\n\n     ```python report file=new.py\n     try:\n         import tomllib\n     except ImportError:\n         tomllib = None\n     ```\n\n  1. [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) in `[tool.ruff]`: for every other file\n\n     ```toml config\n     [tool.ruff]\n     target-version = \"py311\"\n     ```\n\n     ```python report\n     try:\n         import tomllib\n     except ImportError:\n         tomllib = None\n     ```\n\n  1. [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python):\n     its lowest version, when Ruff sets neither\n\n     ```toml config\n     [project]\n     name = \"demo\"\n     requires-python = \">=3.11\"\n     ```\n\n     ```python report\n     try:\n         import tomllib\n     except ImportError:\n         tomllib = None\n     ```\n\n- [`project.dependencies`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies); see\n  [Settings read from [project]](https://simplint.readthedocs.io/en/latest/configuration/project.html#settings-read-from-project)\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"requests\"]\n  ```\n\n  ```python report\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  ```\n\n## What it does\n\nThe rule checks `try` statements whose body holds only `import` statements of **required** modules and that have an\n`except` handler catching [`ImportError`](https://docs.python.org/3/builtins/exceptions.html#ImportError) or\n[`ModuleNotFoundError`](https://docs.python.org/3/builtins/exceptions.html#ModuleNotFoundError). The handler may catch\nthem alone or in a tuple, also when spelled `builtins.ImportError` or `builtins.ModuleNotFoundError`.\n\n### Active on\n\nA module is required when its top-level package is one of these:\n\n- **Standard library modules**: top-level modules and submodules of standard library packages, in the standard library\n  of every Python version from the target onward, set by Ruff's\n  [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) or\n  [`requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python). Every\n  supported interpreter ships them, so a module removed later, such as `distutils` in 3.12, does not count. A submodule\n  counts from the version that adds it, so `asyncio.taskgroups` counts from 3.11 and `string.templatelib` from 3.14.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python report\n  try:\n      import tomllib\n  except ImportError:\n      tomllib = None\n  ```\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python report\n  try:\n      import asyncio.taskgroups\n  except ImportError:\n      asyncio = None\n  ```\n\n- **Required dependencies**: listed in\n  [`project.dependencies`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies) of\n  `pyproject.toml`, which every install of the project brings along.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"requests\"]\n  ```\n\n  ```python report\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  ```\n\n### Exceptions\n\n- **Standard library modules that exist on one platform only**, such as `fcntl`, `msvcrt` or `winreg`: the import fails\n  on the other platforms.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  try:\n      import fcntl\n  except ImportError:\n      fcntl = None\n  ```\n\n- **Standard library modules that minimal and alternative builds may leave out**, such as `ctypes`, `ssl`, `sqlite3`,\n  `tkinter` or `_zstd`: the import can fail on such a build.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  try:\n      import ssl\n  except ImportError:\n      ssl = None\n  ```\n\n- **CPython's test extensions**, such as `_testcapi`: only builds made for CPython's own test suite include them, so the\n  import can fail on a release build.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  try:\n      import _testcapi\n  except ImportError:\n      _testcapi = None\n  ```\n\n- **Submodules that a version from the target onward lacks**, such as `asyncio.taskgroups` on 3.10, or that a version\n  removes, such as `distutils.core` from 3.12: the import fails on that version. A submodule the rule does not know is\n  not counted either.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.10\"\n  ```\n\n  ```python ok\n  try:\n      import asyncio.taskgroups\n  except ImportError:\n      asyncio = None\n  ```\n\n- **Imports of the package the file belongs to**: guarding an optional compiled extension of your own package is not\n  reported.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python ok file=pkg/core.py\n  try:\n      import pkg._speedups\n  except ImportError:\n      pkg = None\n  ```\n\n- **`from` imports**: they also fail when the module lacks the name on some platform or version, such as\n  `from os import geteuid` outside POSIX or `from yaml import CSafeLoader` without libyaml.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  try:\n      from os import geteuid\n  except ImportError:\n      geteuid = None\n  ```\n\n- **Requirements with an [environment marker](https://peps.python.org/pep-0508/#environment-markers) (`;`)**: the\n  requirement is conditional, so the package may be missing.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"requests; sys_platform == 'win32'\"]\n  ```\n\n  ```python ok\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  ```\n\n- **Optional dependencies and dependency groups**: these are not read, as an install may leave them out.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = []\n\n  [project.optional-dependencies]\n  extra = [\"requests\"]\n  ```\n\n  ```python ok\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  ```\n\n```mermaid\nflowchart TD\n    from{\"A from import?\"}\n    from -->|yes| optional[\"Not required\"]\n    from -->|no| own{\"From the file's<br/>own package?\"}\n    own -->|yes| optional\n    own -->|no| stdlib{\"Standard library on every target<br/>version and platform?\"}\n    stdlib -->|yes| required[\"Required\"]\n    stdlib -->|no| deps{\"In project.dependencies<br/>without a marker?\"}\n    deps -->|yes| required\n    deps -->|no| optional\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class from,own,stdlib,deps yellow\n    class required orange\n    class optional green\n```\n\n### Matching dependency names\n\n- Dependencies are matched by their\n  [normalized name](https://packaging.python.org/en/latest/specifications/name-normalization/).\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"Requests\"]\n  ```\n\n  ```python report\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  ```\n\n- A short list of well-known distributions that import under another name also match that name, such as `PyYAML` as\n  `yaml`, `Pillow` as `PIL` or `beautifulsoup4` as `bs4`. Other renamed distributions are not recognized.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"PyYAML\"]\n  ```\n\n  ```python report\n  try:\n      import yaml\n  except ImportError:\n      yaml = None\n  ```\n\n### Fix\n\nThe fix replaces the `try` statement with its dedented body and drops every `except` handler. **Unsafe fix:** always,\nbecause the fallback code is removed and a failing import now raises.\n\nAn import the unwrapped body leaves unused keeps a suppression, `# noqa: F401  # fails when the module is missing`, so\nRuff's unused-import fix does not delete it. The import is there to fail when the module is missing. In a function, an\nimport counts as used when the function loads its name, so an import the function returns gets no suppression.\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.11\"\n```\n\n```python report\ntry:\n    import tomllib\nexcept ImportError:\n    pass\n```\n\n```python fixed\nimport tomllib  # noqa: F401  # fails when the module is missing\n```\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.11\"\n```\n\n```python report\ndef load():\n    try:\n        import tomllib\n    except ImportError:\n        tomllib = None\n\n    return tomllib\n```\n\n```python fixed\ndef load():\n    import tomllib\n\n    return tomllib\n```\n\n```toml config\n[project]\nname = \"demo\"\ndependencies = [\"requests\"]\n\n[tool.ruff.lint]\nselect = []\n```\n\n```python report\ntry:\n    import requests\nexcept ImportError:\n    requests = None\n```\n\n```python fixed\nimport requests  # noqa: F401  # fails when the module is missing\n```\n\nNo fix is offered when the statement:\n\n- has an `else` or `finally` clause\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"requests\"]\n  ```\n\n  ```python report\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  else:\n      pass\n  ```\n\n- shares a line with other code\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  dependencies = [\"requests\"]\n  ```\n\n  ```python report\n  try:\n      import requests\n  except ImportError:\n      requests = None\n  ```\n\n- holds an unused import on a line shared with another statement, as the suppression would then cover one import only\n\n  ```toml config\n  [project]\n  name = \"demo\"\n  requires-python = \">=3.11\"\n  ```\n\n  ```python report\n  try:\n      import json\n      import tomllib\n  except ImportError:\n      pass\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -5082,58 +5082,11 @@
         },
         {
           "section": "What it does",
-          "line": 203,
-          "end_line": 214,
+          "line": 202,
+          "end_line": 213,
           "config": {
-            "line": 203,
-            "end_line": 207,
-            "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.10\"\n"
-          },
-          "blocks": [
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 209,
-              "end_line": 214,
-              "source": "try:\n    import asyncio.taskgroups\nexcept ImportError:\n    asyncio = None\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 219,
-          "end_line": 228,
-          "config": null,
-          "blocks": [
-            {
-              "role": "context",
-              "language": "python",
-              "file": "pkg/__init__.py",
-              "named": true,
-              "line": 219,
-              "end_line": 221,
-              "source": "# A package.\n"
-            },
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "pkg/core.py",
-              "named": true,
-              "line": 223,
-              "end_line": 228,
-              "source": "try:\n    import pkg._speedups\nexcept ImportError:\n    pkg = None\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 233,
-          "end_line": 244,
-          "config": {
-            "line": 233,
-            "end_line": 237,
+            "line": 202,
+            "end_line": 206,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.11\"\n"
           },
           "blocks": [
@@ -5142,9 +5095,56 @@
               "language": "python",
               "file": "example.py",
               "named": false,
+              "line": 208,
+              "end_line": 213,
+              "source": "try:\n    import _testcapi\nexcept ImportError:\n    _testcapi = None\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 219,
+          "end_line": 230,
+          "config": {
+            "line": 219,
+            "end_line": 223,
+            "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.10\"\n"
+          },
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 225,
+              "end_line": 230,
+              "source": "try:\n    import asyncio.taskgroups\nexcept ImportError:\n    asyncio = None\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 235,
+          "end_line": 244,
+          "config": null,
+          "blocks": [
+            {
+              "role": "context",
+              "language": "python",
+              "file": "pkg/__init__.py",
+              "named": true,
+              "line": 235,
+              "end_line": 237,
+              "source": "# A package.\n"
+            },
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "pkg/core.py",
+              "named": true,
               "line": 239,
               "end_line": 244,
-              "source": "try:\n    from os import geteuid\nexcept ImportError:\n    geteuid = None\n"
+              "source": "try:\n    import pkg._speedups\nexcept ImportError:\n    pkg = None\n"
             }
           ]
         },
@@ -5155,7 +5155,7 @@
           "config": {
             "line": 249,
             "end_line": 253,
-            "source": "[project]\nname = \"demo\"\ndependencies = [\"requests; sys_platform == 'win32'\"]\n"
+            "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.11\"\n"
           },
           "blocks": [
             {
@@ -5165,17 +5165,38 @@
               "named": false,
               "line": 255,
               "end_line": 260,
+              "source": "try:\n    from os import geteuid\nexcept ImportError:\n    geteuid = None\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 265,
+          "end_line": 276,
+          "config": {
+            "line": 265,
+            "end_line": 269,
+            "source": "[project]\nname = \"demo\"\ndependencies = [\"requests; sys_platform == 'win32'\"]\n"
+          },
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 271,
+              "end_line": 276,
               "source": "try:\n    import requests\nexcept ImportError:\n    requests = None\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 264,
-          "end_line": 278,
+          "line": 280,
+          "end_line": 294,
           "config": {
-            "line": 264,
-            "end_line": 271,
+            "line": 280,
+            "end_line": 287,
             "source": "[project]\nname = \"demo\"\ndependencies = []\n\n[project.optional-dependencies]\nextra = [\"requests\"]\n"
           },
           "blocks": [
@@ -5184,29 +5205,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 273,
-              "end_line": 278,
-              "source": "try:\n    import requests\nexcept ImportError:\n    requests = None\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 306,
-          "end_line": 317,
-          "config": {
-            "line": 306,
-            "end_line": 310,
-            "source": "[project]\nname = \"demo\"\ndependencies = [\"Requests\"]\n"
-          },
-          "blocks": [
-            {
-              "role": "report",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 312,
-              "end_line": 317,
+              "line": 289,
+              "end_line": 294,
               "source": "try:\n    import requests\nexcept ImportError:\n    requests = None\n"
             }
           ]
@@ -5218,7 +5218,7 @@
           "config": {
             "line": 322,
             "end_line": 326,
-            "source": "[project]\nname = \"demo\"\ndependencies = [\"PyYAML\"]\n"
+            "source": "[project]\nname = \"demo\"\ndependencies = [\"Requests\"]\n"
           },
           "blocks": [
             {
@@ -5228,17 +5228,38 @@
               "named": false,
               "line": 328,
               "end_line": 333,
+              "source": "try:\n    import requests\nexcept ImportError:\n    requests = None\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 338,
+          "end_line": 349,
+          "config": {
+            "line": 338,
+            "end_line": 342,
+            "source": "[project]\nname = \"demo\"\ndependencies = [\"PyYAML\"]\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 344,
+              "end_line": 349,
               "source": "try:\n    import yaml\nexcept ImportError:\n    yaml = None\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 343,
-          "end_line": 358,
+          "line": 360,
+          "end_line": 375,
           "config": {
-            "line": 343,
-            "end_line": 347,
+            "line": 360,
+            "end_line": 364,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.11\"\n"
           },
           "blocks": [
@@ -5247,8 +5268,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 349,
-              "end_line": 354,
+              "line": 366,
+              "end_line": 371,
               "source": "try:\n    import tomllib\nexcept ImportError:\n    pass\n"
             },
             {
@@ -5256,19 +5277,49 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 356,
-              "end_line": 358,
+              "line": 373,
+              "end_line": 375,
               "source": "import tomllib  # noqa: F401  # fails when the module is missing\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 360,
-          "end_line": 378,
+          "line": 377,
+          "end_line": 398,
           "config": {
-            "line": 360,
-            "end_line": 367,
+            "line": 377,
+            "end_line": 381,
+            "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.11\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 383,
+              "end_line": 391,
+              "source": "def load():\n    try:\n        import tomllib\n    except ImportError:\n        tomllib = None\n\n    return tomllib\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 393,
+              "end_line": 398,
+              "source": "def load():\n    import tomllib\n\n    return tomllib\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 400,
+          "end_line": 418,
+          "config": {
+            "line": 400,
+            "end_line": 407,
             "source": "[project]\nname = \"demo\"\ndependencies = [\"requests\"]\n\n[tool.ruff.lint]\nselect = []\n"
           },
           "blocks": [
@@ -5277,8 +5328,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 369,
-              "end_line": 374,
+              "line": 409,
+              "end_line": 414,
               "source": "try:\n    import requests\nexcept ImportError:\n    requests = None\n"
             },
             {
@@ -5286,19 +5337,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 376,
-              "end_line": 378,
+              "line": 416,
+              "end_line": 418,
               "source": "import requests  # noqa: F401  # fails when the module is missing\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 384,
-          "end_line": 397,
+          "line": 424,
+          "end_line": 437,
           "config": {
-            "line": 384,
-            "end_line": 388,
+            "line": 424,
+            "end_line": 428,
             "source": "[project]\nname = \"demo\"\ndependencies = [\"requests\"]\n"
           },
           "blocks": [
@@ -5307,19 +5358,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 390,
-              "end_line": 397,
+              "line": 430,
+              "end_line": 437,
               "source": "try:\n    import requests\nexcept ImportError:\n    requests = None\nelse:\n    pass\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 401,
-          "end_line": 412,
+          "line": 441,
+          "end_line": 452,
           "config": {
-            "line": 401,
-            "end_line": 405,
+            "line": 441,
+            "end_line": 445,
             "source": "[project]\nname = \"demo\"\ndependencies = [\"requests\"]\n"
           },
           "blocks": [
@@ -5328,19 +5379,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 407,
-              "end_line": 412,
+              "line": 447,
+              "end_line": 452,
               "source": "try:\n    import requests\nexcept ImportError:\n    requests = None\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 416,
-          "end_line": 428,
+          "line": 456,
+          "end_line": 468,
           "config": {
-            "line": 416,
-            "end_line": 420,
+            "line": 456,
+            "end_line": 460,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.11\"\n"
           },
           "blocks": [
@@ -5349,8 +5400,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 422,
-              "end_line": 428,
+              "line": 462,
+              "end_line": 468,
               "source": "try:\n    import json\n    import tomllib\nexcept ImportError:\n    pass\n"
             }
           ]

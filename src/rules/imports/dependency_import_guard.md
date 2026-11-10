@@ -196,6 +196,22 @@ A module is required when its top-level package is one of these:
       ssl = None
   ```
 
+- **CPython's test extensions**, such as `_testcapi`: only builds made for CPython's own test suite include them, so the
+  import can fail on a release build.
+
+  ```toml config
+  [project]
+  name = "demo"
+  requires-python = ">=3.11"
+  ```
+
+  ```python ok
+  try:
+      import _testcapi
+  except ImportError:
+      _testcapi = None
+  ```
+
 - **Submodules that a version from the target onward lacks**, such as `asyncio.taskgroups` on 3.10, or that a version
   removes, such as `distutils.core` from 3.12: the import fails on that version. A submodule the rule does not know is
   not counted either.
@@ -338,7 +354,8 @@ The fix replaces the `try` statement with its dedented body and drops every `exc
 because the fallback code is removed and a failing import now raises.
 
 An import the unwrapped body leaves unused keeps a suppression, `# noqa: F401  # fails when the module is missing`, so
-Ruff's unused-import fix does not delete it. The import is there to fail when the module is missing.
+Ruff's unused-import fix does not delete it. The import is there to fail when the module is missing. In a function, an
+import counts as used when the function loads its name, so an import the function returns gets no suppression.
 
 ```toml config
 [project]
@@ -355,6 +372,29 @@ except ImportError:
 
 ```python fixed
 import tomllib  # noqa: F401  # fails when the module is missing
+```
+
+```toml config
+[project]
+name = "demo"
+requires-python = ">=3.11"
+```
+
+```python report
+def load():
+    try:
+        import tomllib
+    except ImportError:
+        tomllib = None
+
+    return tomllib
+```
+
+```python fixed
+def load():
+    import tomllib
+
+    return tomllib
 ```
 
 ```toml config
