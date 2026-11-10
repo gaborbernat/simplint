@@ -33,9 +33,10 @@ async def run() -> asyncio.AbstractEventLoop:
 ### Active on
 
 - **`asyncio.get_event_loop()` with no arguments, called inside an `async def`**: a class body inside the coroutine
-  counts as part of it, while a nested `def` or `lambda` does not. **Safe fix:** the attribute is renamed to
-  `get_running_loop`. A call through a name imported from `asyncio`, such as `get_event_loop()`, is reported without a
-  fix.
+  counts as part of it, while the body of a nested `def` or `lambda` does not. Their decorators and defaults run in the
+  coroutine, so a call there is reported too, and so is a call in an annotation of a nested `def` unless the annotations
+  are lazy. **Safe fix:** the attribute is renamed to `get_running_loop`. A call through a name imported from `asyncio`,
+  such as `get_event_loop()`, is reported without a fix.
 
   ```python report
   import asyncio
@@ -53,7 +54,60 @@ async def run() -> asyncio.AbstractEventLoop:
       return asyncio.get_running_loop()
   ```
 
+  ```python report
+  import asyncio
+
+
+  async def run():
+      def later(loop=asyncio.get_event_loop()):
+          return loop
+
+      return later
+  ```
+
+  ```python fixed
+  import asyncio
+
+
+  async def run():
+      def later(loop=asyncio.get_running_loop()):
+          return loop
+
+      return later
+  ```
+
 ### Exceptions
+
+- **Decorators, defaults and annotations of an `async def`**: they run where the `def` statement runs, before any loop
+  is running, so a call there stays.
+
+  ```python ok
+  import asyncio
+
+
+  @register(asyncio.get_event_loop())
+  async def run(loop=asyncio.get_event_loop()):
+      return loop
+  ```
+
+- **Annotations of a nested `def` when annotations are lazy**: with `from __future__ import annotations`, or a target of
+  Python 3.14 or later, an annotation is not evaluated when the `def` runs.
+
+  ```toml config
+  [project]
+  requires-python = ">=3.14"
+  ```
+
+  ```python ok
+  import asyncio
+
+
+  async def run():
+      def later(loop: asyncio.get_event_loop()):
+          return loop
+
+      return later
+  ```
 
 - **Calls in plain functions**: such a function may run before any loop starts, where `get_running_loop()` raises.
 

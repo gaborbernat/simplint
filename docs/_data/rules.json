@@ -18496,7 +18496,7 @@
     "name": "up-event-loop-in-coroutine",
     "summary": "`asyncio.get_event_loop()` calls in coroutines",
     "fix": "Sometimes",
-    "explanation": "Flags `asyncio.get_event_loop()` calls inside coroutines, where `asyncio.get_running_loop()` returns the loop the\ncoroutine runs on.\n\n## Why is this bad?\n\nA coroutine runs on a loop that is always running, so `get_event_loop()` only has to return that loop.\n`get_running_loop()` returns it directly and raises `RuntimeError` when no loop runs, which surfaces a mistake that\n`get_event_loop()` would hide. `get_event_loop()` also serves code outside a loop, where Python 3.10 deprecated the\nimplicit loop creation and Python 3.14 made the call raise `RuntimeError`.\n\n## Example\n\n```python report\nimport asyncio\n\n\nasync def run() -> asyncio.AbstractEventLoop:\n    return asyncio.get_event_loop()\n```\n\nUse instead:\n\n```python ok\nimport asyncio\n\n\nasync def run() -> asyncio.AbstractEventLoop:\n    return asyncio.get_running_loop()\n```\n\n## What it does\n\n### Active on\n\n- **`asyncio.get_event_loop()` with no arguments, called inside an `async def`**: a class body inside the coroutine\n  counts as part of it, while a nested `def` or `lambda` does not. **Safe fix:** the attribute is renamed to\n  `get_running_loop`. A call through a name imported from `asyncio`, such as `get_event_loop()`, is reported without a\n  fix.\n\n  ```python report\n  import asyncio\n\n\n  async def run() -> asyncio.AbstractEventLoop:\n      return asyncio.get_event_loop()\n  ```\n\n  ```python fixed\n  import asyncio\n\n\n  async def run() -> asyncio.AbstractEventLoop:\n      return asyncio.get_running_loop()\n  ```\n\n### Exceptions\n\n- **Calls in plain functions**: such a function may run before any loop starts, where `get_running_loop()` raises.\n\n  ```python ok\n  import asyncio\n\n\n  def start() -> asyncio.AbstractEventLoop:\n      return asyncio.get_event_loop()\n  ```\n\n- **Calls in a nested `def` or `lambda` of a coroutine**: the nested function may run after the loop stops.\n\n  ```python ok\n  import asyncio\n\n\n  async def run():\n      def later() -> asyncio.AbstractEventLoop:\n          return asyncio.get_event_loop()\n\n      return later\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags `asyncio.get_event_loop()` calls inside coroutines, where `asyncio.get_running_loop()` returns the loop the\ncoroutine runs on.\n\n## Why is this bad?\n\nA coroutine runs on a loop that is always running, so `get_event_loop()` only has to return that loop.\n`get_running_loop()` returns it directly and raises `RuntimeError` when no loop runs, which surfaces a mistake that\n`get_event_loop()` would hide. `get_event_loop()` also serves code outside a loop, where Python 3.10 deprecated the\nimplicit loop creation and Python 3.14 made the call raise `RuntimeError`.\n\n## Example\n\n```python report\nimport asyncio\n\n\nasync def run() -> asyncio.AbstractEventLoop:\n    return asyncio.get_event_loop()\n```\n\nUse instead:\n\n```python ok\nimport asyncio\n\n\nasync def run() -> asyncio.AbstractEventLoop:\n    return asyncio.get_running_loop()\n```\n\n## What it does\n\n### Active on\n\n- **`asyncio.get_event_loop()` with no arguments, called inside an `async def`**: a class body inside the coroutine\n  counts as part of it, while the body of a nested `def` or `lambda` does not. Their decorators, defaults and\n  annotations do run in the coroutine, so a call there is reported too. **Safe fix:** the attribute is renamed to\n  `get_running_loop`. A call through a name imported from `asyncio`, such as `get_event_loop()`, is reported without a\n  fix.\n\n  ```python report\n  import asyncio\n\n\n  async def run() -> asyncio.AbstractEventLoop:\n      return asyncio.get_event_loop()\n  ```\n\n  ```python fixed\n  import asyncio\n\n\n  async def run() -> asyncio.AbstractEventLoop:\n      return asyncio.get_running_loop()\n  ```\n\n  ```python report\n  import asyncio\n\n\n  async def run():\n      def later(loop=asyncio.get_event_loop()):\n          return loop\n\n      return later\n  ```\n\n  ```python fixed\n  import asyncio\n\n\n  async def run():\n      def later(loop=asyncio.get_running_loop()):\n          return loop\n\n      return later\n  ```\n\n### Exceptions\n\n- **Decorators, defaults and annotations of an `async def`**: they run where the `def` statement runs, before any loop\n  is running, so a call there stays.\n\n  ```python ok\n  import asyncio\n\n\n  @register(asyncio.get_event_loop())\n  async def run(loop=asyncio.get_event_loop()):\n      return loop\n  ```\n\n- **Calls in plain functions**: such a function may run before any loop starts, where `get_running_loop()` raises.\n\n  ```python ok\n  import asyncio\n\n\n  def start() -> asyncio.AbstractEventLoop:\n      return asyncio.get_event_loop()\n  ```\n\n- **Calls in a nested `def` or `lambda` of a coroutine**: the nested function may run after the loop stops.\n\n  ```python ok\n  import asyncio\n\n\n  async def run():\n      def later() -> asyncio.AbstractEventLoop:\n          return asyncio.get_event_loop()\n\n      return later\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -18535,8 +18535,8 @@
         },
         {
           "section": "What it does",
-          "line": 40,
-          "end_line": 54,
+          "line": 41,
+          "end_line": 55,
           "config": null,
           "blocks": [
             {
@@ -18544,8 +18544,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 40,
-              "end_line": 46,
+              "line": 41,
+              "end_line": 47,
               "source": "import asyncio\n\n\nasync def run() -> asyncio.AbstractEventLoop:\n    return asyncio.get_event_loop()\n"
             },
             {
@@ -18553,16 +18553,42 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 48,
-              "end_line": 54,
+              "line": 49,
+              "end_line": 55,
               "source": "import asyncio\n\n\nasync def run() -> asyncio.AbstractEventLoop:\n    return asyncio.get_running_loop()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 60,
-          "end_line": 66,
+          "line": 57,
+          "end_line": 77,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 57,
+              "end_line": 66,
+              "source": "import asyncio\n\n\nasync def run():\n    def later(loop=asyncio.get_event_loop()):\n        return loop\n\n    return later\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 68,
+              "end_line": 77,
+              "source": "import asyncio\n\n\nasync def run():\n    def later(loop=asyncio.get_running_loop()):\n        return loop\n\n    return later\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 84,
+          "end_line": 91,
           "config": null,
           "blocks": [
             {
@@ -18570,16 +18596,33 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 60,
-              "end_line": 66,
+              "line": 84,
+              "end_line": 91,
+              "source": "import asyncio\n\n\n@register(asyncio.get_event_loop())\nasync def run(loop=asyncio.get_event_loop()):\n    return loop\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 95,
+          "end_line": 101,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 95,
+              "end_line": 101,
               "source": "import asyncio\n\n\ndef start() -> asyncio.AbstractEventLoop:\n    return asyncio.get_event_loop()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 70,
-          "end_line": 79,
+          "line": 105,
+          "end_line": 114,
           "config": null,
           "blocks": [
             {
@@ -18587,8 +18630,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 70,
-              "end_line": 79,
+              "line": 105,
+              "end_line": 114,
               "source": "import asyncio\n\n\nasync def run():\n    def later() -> asyncio.AbstractEventLoop:\n        return asyncio.get_event_loop()\n\n    return later\n"
             }
           ]

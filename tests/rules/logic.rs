@@ -93,6 +93,8 @@ use crate::common::{self, check, read};
 #[test_case("up-strptime-date", "up_strptime_date_no_class_import.py", "py314" ; "strptime_date_without_class_import")]
 #[test_case("up-strptime-date", "up_strptime_date.py", "py313" ; "strptime_date_before_python314")]
 #[test_case("up-event-loop-in-coroutine", "up_event_loop_in_coroutine.py", "py314" ; "event_loop_in_coroutine")]
+#[test_case("up-event-loop-in-coroutine", "up_event_loop_in_coroutine.py", "py313" ; "event_loop_in_coroutine_before_python314")]
+#[test_case("up-event-loop-in-coroutine", "up_event_loop_in_coroutine_future.py", "py313" ; "event_loop_in_coroutine_future_import")]
 #[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction.py", "py314" ; "asyncio_iscoroutinefunction")]
 #[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_inspect.py", "py314" ; "asyncio_iscoroutinefunction_imported")]
 #[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_bound.py", "py314" ; "asyncio_iscoroutinefunction_bound")]
