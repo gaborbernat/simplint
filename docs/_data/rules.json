@@ -16978,7 +16978,7 @@
     "name": "up-comprehension-unpacking",
     "summary": "Nested `for` clauses that only unpack their iterable into the element",
     "fix": "Always",
-    "explanation": "Flags a nested `for` clause that only unpacks its iterable, and moves the unpacking into the element, which Python 3.15\nallows.\n\n## Why is this bad?\n\nA second `for` clause that does nothing but unpack the outer item takes a loop to say what the element can say in one\nplace. [PEP 798](https://peps.python.org/pep-0798/) lets the element unpack with `*` for lists, sets and generators, and\nwith `**` for dicts.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\ngroups = [[1, 2], [3]]\nflat = [x for group in groups for x in group]\n```\n\nUse instead:\n\n```python ok\ngroups = [[1, 2], [3]]\nflat = [*group for group in groups]\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  groups = [[1, 2], [3]]\n  flat = [x for group in groups for x in group]\n  ```\n\n## What it does\n\nReports a list, set or generator comprehension with exactly two `for` clauses, or a dict comprehension whose inner\nclause unpacks `.items()`, when:\n\n- the outer clause binds a name, `group` here, and the inner clause iterates that name, with no `if` clause and no\n  `async` in either.\n- the element is the inner clause's target, a name other than `group`. For a dict, the key and value are the two names\n  of the inner target.\n\n### Active on\n\nThe list, set and generator comprehensions, which unpack with `*`:\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\ngroups = [[1, 2], [3]]\nflat_set = {x for group in groups for x in group}\nflat_gen = (x for group in groups for x in group)\n```\n\n```python fixed\ngroups = [[1, 2], [3]]\nflat_set = {*group for group in groups}\nflat_gen = (*group for group in groups)\n```\n\nThe dict comprehensions, which unpack with `**`:\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\npairs = [{\"a\": 1}, {\"b\": 2}]\nmerged = {key: value for entry in pairs for key, value in entry.items()}\n```\n\n```python fixed\npairs = [{\"a\": 1}, {\"b\": 2}]\nmerged = {**entry for entry in pairs}\n```\n\n### Exceptions\n\n- **A comprehension with an `if` clause or `async`**: the clauses no longer read as one unpacking.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  groups = [[1, 2], [3]]\n  flat = [x for group in groups for x in group if x]\n  ```\n\n- **An inner iterable other than the outer name**: the element comes from another source.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  groups = [[1, 2], [3]]\n  other = [[4]]\n  flat = [x for group in groups for x in other]\n  ```\n\n- **A dict over `.keys()`, or with a call that takes arguments**: the pairs do not come from `.items()` alone.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  pairs = [{\"a\": 1}, {\"b\": 2}]\n  keys = {key: value for entry in pairs for key, value in entry.keys()}\n  ```\n\n- **Target versions before 3.15**: the syntax is a `SyntaxError` there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  groups = [[1, 2], [3]]\n  flat = [x for group in groups for x in group]\n  ```\n\n### Fix\n\nThe fix is safe for lists, sets and generators. It rewrites the element and removes the inner `for` clause. The fix for\na dict is unsafe: `**` reads `keys()` and `__getitem__`, not `items()`, so the rewrite needs a real `dict`. No fix is\noffered when a comment lies in the element or the inner `for` clause, since the rewrite would drop it. A comment between\nthe clauses keeps the report without a fix:\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\ngroups = [[1, 2], [3]]\nflat = [\n    x\n    for group in groups  # one list per group\n    for x in group\n]\n```\n\n```python fixed\ngroups = [[1, 2], [3]]\nflat = [\n    x\n    for group in groups  # one list per group\n    for x in group\n]\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n  [RUF017](https://docs.astral.sh/ruff/rules/quadratic-list-summation/) writes the same unpacking when fixing\n  `sum(lists, [])`.\n",
+    "explanation": "Flags a nested `for` clause that only unpacks its iterable, and moves the unpacking into the element, which Python 3.15\nallows.\n\n## Why is this bad?\n\nA second `for` clause that does nothing but unpack the outer item takes a loop to say what the element can say in one\nplace. [PEP 798](https://peps.python.org/pep-0798/) lets the element unpack with `*` for lists, sets and generators, and\nwith `**` for dicts.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\ngroups = [[1, 2], [3]]\nflat = [x for group in groups for x in group]\n```\n\nUse instead:\n\n```python ok\ngroups = [[1, 2], [3]]\nflat = [*group for group in groups]\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  groups = [[1, 2], [3]]\n  flat = [x for group in groups for x in group]\n  ```\n\n## What it does\n\nReports a list, set or generator comprehension with exactly two `for` clauses, or a dict comprehension whose inner\nclause unpacks `.items()`, when:\n\n- the outer clause binds a name, `group` here, and the inner clause iterates that name, with no `if` clause and no\n  `async` in either.\n- the element is the inner clause's target, a name other than `group`. For a dict, the key and value are the two names\n  of the inner target.\n\n### Active on\n\nThe list, set and generator comprehensions, which unpack with `*`:\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\ngroups = [[1, 2], [3]]\nflat_set = {x for group in groups for x in group}\nflat_gen = (x for group in groups for x in group)\n```\n\n```python fixed\ngroups = [[1, 2], [3]]\nflat_set = {*group for group in groups}\nflat_gen = (*group for group in groups)\n```\n\nThe dict comprehensions, which unpack with `**`:\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\npairs = [{\"a\": 1}, {\"b\": 2}]\nmerged = {key: value for entry in pairs for key, value in entry.items()}\n```\n\n```python fixed\npairs = [{\"a\": 1}, {\"b\": 2}]\nmerged = {**entry for entry in pairs}\n```\n\nParentheses around the key and the value go with them:\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\npairs = [{\"a\": 1}, {\"b\": 2}]\nmerged = {(key): (value) for entry in pairs for key, value in entry.items()}\n```\n\n```python fixed\npairs = [{\"a\": 1}, {\"b\": 2}]\nmerged = {**entry for entry in pairs}\n```\n\n### Exceptions\n\n- **A comprehension with an `if` clause or `async`**: the clauses no longer read as one unpacking.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  groups = [[1, 2], [3]]\n  flat = [x for group in groups for x in group if x]\n  ```\n\n- **An inner iterable other than the outer name**: the element comes from another source.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  groups = [[1, 2], [3]]\n  other = [[4]]\n  flat = [x for group in groups for x in other]\n  ```\n\n- **A dict over `.keys()`, or with a call that takes arguments**: the pairs do not come from `.items()` alone.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  pairs = [{\"a\": 1}, {\"b\": 2}]\n  keys = {key: value for entry in pairs for key, value in entry.keys()}\n  ```\n\n- **Target versions before 3.15**: the syntax is a `SyntaxError` there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  groups = [[1, 2], [3]]\n  flat = [x for group in groups for x in group]\n  ```\n\n### Fix\n\nThe fix is safe for lists, sets and generators. It rewrites the element and removes the inner `for` clause. The fix for\na dict is unsafe: `**` reads `keys()` and `__getitem__`, not `items()`, so the rewrite needs a real `dict`. No fix is\noffered when a comment lies in the element or the inner `for` clause, since the rewrite would drop it. A comment between\nthe clauses keeps the report without a fix:\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\ngroups = [[1, 2], [3]]\nflat = [\n    x\n    for group in groups  # one list per group\n    for x in group\n]\n```\n\n```python fixed\ngroups = [[1, 2], [3]]\nflat = [\n    x\n    for group in groups  # one list per group\n    for x in group\n]\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n  [RUF017](https://docs.astral.sh/ruff/rules/quadratic-list-summation/) writes the same unpacking when fixing\n  `sum(lists, [])`.\n",
     "examples": {
       "parsed": [
         {
@@ -17106,95 +17106,11 @@
         },
         {
           "section": "What it does",
-          "line": 98,
-          "end_line": 106,
+          "line": 96,
+          "end_line": 109,
           "config": {
-            "line": 98,
-            "end_line": 101,
-            "source": "[project]\nrequires-python = \">=3.15\"\n"
-          },
-          "blocks": [
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 103,
-              "end_line": 106,
-              "source": "groups = [[1, 2], [3]]\nflat = [x for group in groups for x in group if x]\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 110,
-          "end_line": 119,
-          "config": {
-            "line": 110,
-            "end_line": 113,
-            "source": "[project]\nrequires-python = \">=3.15\"\n"
-          },
-          "blocks": [
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 115,
-              "end_line": 119,
-              "source": "groups = [[1, 2], [3]]\nother = [[4]]\nflat = [x for group in groups for x in other]\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 123,
-          "end_line": 131,
-          "config": {
-            "line": 123,
-            "end_line": 126,
-            "source": "[project]\nrequires-python = \">=3.15\"\n"
-          },
-          "blocks": [
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 128,
-              "end_line": 131,
-              "source": "pairs = [{\"a\": 1}, {\"b\": 2}]\nkeys = {key: value for entry in pairs for key, value in entry.keys()}\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 135,
-          "end_line": 143,
-          "config": {
-            "line": 135,
-            "end_line": 138,
-            "source": "[project]\nrequires-python = \">=3.14\"\n"
-          },
-          "blocks": [
-            {
-              "role": "ok",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 140,
-              "end_line": 143,
-              "source": "groups = [[1, 2], [3]]\nflat = [x for group in groups for x in group]\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 152,
-          "end_line": 173,
-          "config": {
-            "line": 152,
-            "end_line": 155,
+            "line": 96,
+            "end_line": 99,
             "source": "[project]\nrequires-python = \">=3.15\"\n"
           },
           "blocks": [
@@ -17203,8 +17119,122 @@
               "language": "python",
               "file": "example.py",
               "named": false,
+              "line": 101,
+              "end_line": 104,
+              "source": "pairs = [{\"a\": 1}, {\"b\": 2}]\nmerged = {(key): (value) for entry in pairs for key, value in entry.items()}\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 106,
+              "end_line": 109,
+              "source": "pairs = [{\"a\": 1}, {\"b\": 2}]\nmerged = {**entry for entry in pairs}\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 115,
+          "end_line": 123,
+          "config": {
+            "line": 115,
+            "end_line": 118,
+            "source": "[project]\nrequires-python = \">=3.15\"\n"
+          },
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 120,
+              "end_line": 123,
+              "source": "groups = [[1, 2], [3]]\nflat = [x for group in groups for x in group if x]\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 127,
+          "end_line": 136,
+          "config": {
+            "line": 127,
+            "end_line": 130,
+            "source": "[project]\nrequires-python = \">=3.15\"\n"
+          },
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 132,
+              "end_line": 136,
+              "source": "groups = [[1, 2], [3]]\nother = [[4]]\nflat = [x for group in groups for x in other]\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 140,
+          "end_line": 148,
+          "config": {
+            "line": 140,
+            "end_line": 143,
+            "source": "[project]\nrequires-python = \">=3.15\"\n"
+          },
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 145,
+              "end_line": 148,
+              "source": "pairs = [{\"a\": 1}, {\"b\": 2}]\nkeys = {key: value for entry in pairs for key, value in entry.keys()}\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 152,
+          "end_line": 160,
+          "config": {
+            "line": 152,
+            "end_line": 155,
+            "source": "[project]\nrequires-python = \">=3.14\"\n"
+          },
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
               "line": 157,
-              "end_line": 164,
+              "end_line": 160,
+              "source": "groups = [[1, 2], [3]]\nflat = [x for group in groups for x in group]\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 169,
+          "end_line": 190,
+          "config": {
+            "line": 169,
+            "end_line": 172,
+            "source": "[project]\nrequires-python = \">=3.15\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 174,
+              "end_line": 181,
               "source": "groups = [[1, 2], [3]]\nflat = [\n    x\n    for group in groups  # one list per group\n    for x in group\n]\n"
             },
             {
@@ -17212,8 +17242,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 166,
-              "end_line": 173,
+              "line": 183,
+              "end_line": 190,
               "source": "groups = [[1, 2], [3]]\nflat = [\n    x\n    for group in groups  # one list per group\n    for x in group\n]\n"
             }
           ]

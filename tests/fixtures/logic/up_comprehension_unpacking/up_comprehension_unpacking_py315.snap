@@ -13,7 +13,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 39:20 SMP508 `group` is unpacked by a nested `for`; unpack it in the element
 41:21 SMP508 `group` is unpacked by a nested `for`; unpack it in the element
 43:21 SMP508 `entry.items()` is unpacked by a nested `for`; unpack `entry` with `**` in the element
---- fixed (8 applied, 3 remaining) ---
+47:21 SMP508 `entry.items()` is unpacked by a nested `for`; unpack `entry` with `**` in the element [unsafe fix: Unpack `entry` with `**` in the element]
+--- fixed (9 applied, 3 remaining) ---
 groups = [[1, 2], [3]]
 pairs = [{"a": 1}, {"b": 2}]
 flat_list = [*group for group in groups]
@@ -58,3 +59,6 @@ commented_element = [(x  # keep the element
 ) for group in groups for x in group]
 commented_entries = {key:  # keep the value
     value for entry in pairs for key, value in entry.items()}
+
+
+parenthesized_key = {**entry for entry in pairs}
