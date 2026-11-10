@@ -2,7 +2,7 @@ use std::cell::OnceCell;
 
 use ruff_diagnostics::{Applicability, Edit};
 use ruff_python_ast::visitor::Visitor;
-use ruff_python_ast::{self as ast, Expr, PythonVersion};
+use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 use rustc_hash::FxHashMap;
 
@@ -13,7 +13,7 @@ use crate::project::constructors::{CallKind, CallSite, Use, Uses, init_fields};
 use crate::rules::classes::{Offer, require_options, splatted_options};
 use crate::rules::edits::keep_debug_text;
 use crate::syntax::ExprCollector;
-use crate::syntax::{dataclass_decorator, is_name};
+use crate::syntax::{dataclass_decorator, is_classmethod, is_name, receiver};
 
 // `slots=`, `kw_only=` and the keyword calls the rule writes arrived in Python 3.10.
 pub(crate) const SINCE: PythonVersion = PythonVersion::PY310;
@@ -63,19 +63,33 @@ pub fn dataclass_kw_only(checker: &Checker) {
 // The message of each positional call a dataclass report points at.
 const CALL_MESSAGE: &str = "positional arguments pass the fields by position";
 
-// The calls in this module that pass the class fields by position: the class's own calls, and `cls(...)` in its methods.
+// The calls in this module that pass the class fields by position: the class's own calls, and `cls(...)` in its
+// classmethods.
 fn positional_calls(module: &ModuleClasses, class: &ast::StmtClassDef) -> Vec<TextRange> {
-    let mut methods = Uses::new(|expr: &Expr| is_name(expr, "cls").then_some(()));
-    methods.visit_body(&class.body);
     let module_uses = module.uses.get(class.name.as_str()).map_or(&[][..], Vec::as_slice);
     module_uses
         .iter()
-        .chain(methods.found.iter().map(|((), found)| found))
+        .chain(&receiver_calls(class))
         .filter_map(|found| match found {
             Use::Call(call) if !call.arguments.args.is_empty() => Some(call.range()),
             _ => None,
         })
         .collect()
+}
+
+// The calls a classmethod makes of its first parameter, which is the class. A method's first parameter is the instance
+// or something else, so a `cls` there is not the class.
+fn receiver_calls(class: &ast::StmtClassDef) -> Vec<Use<'_>> {
+    let mut found = Vec::new();
+    for method in class.body.iter().filter_map(Stmt::as_function_def_stmt).filter(|method| is_classmethod(method)) {
+        let Some(cls) = receiver(method) else {
+            continue;
+        };
+        let mut calls = Uses::new(|expr: &Expr| is_name(expr, cls).then_some(()));
+        calls.visit_body(&method.body);
+        found.extend(calls.found.into_iter().map(|((), found)| found));
+    }
+    found
 }
 
 // The edits that pass every positional call of `class` in this module by keyword, or `None` when some use of the class
@@ -92,11 +106,9 @@ fn keyword_calls(checker: &Checker, module: &ModuleClasses, class: &ast::StmtCla
         return None;
     }
     let fields = positional_fields(checker, module, class)?;
-    let mut methods = Uses::new(|expr: &Expr| is_name(expr, "cls").then_some(()));
-    methods.visit_body(&class.body);
     let module_uses = module.uses.get(name).map_or(&[][..], Vec::as_slice);
     let mut edits = Vec::new();
-    for found in module_uses.iter().chain(methods.found.iter().map(|((), found)| found)) {
+    for found in module_uses.iter().chain(&receiver_calls(class)) {
         let Use::Call(call) = found else {
             return None;
         };

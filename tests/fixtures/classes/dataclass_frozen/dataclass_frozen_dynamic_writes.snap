@@ -1,0 +1,92 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+5:2 SMP701 Dataclass is missing frozen; set `frozen=True`
+15:2 SMP701 Dataclass is missing frozen; set `frozen=True`
+20:2 SMP701 Dataclass is missing frozen; set `frozen=True`
+25:2 SMP701 Dataclass is missing frozen; set `frozen=True`
+30:2 SMP701 Dataclass is missing frozen; set `frozen=True`
+35:2 SMP701 Dataclass is missing frozen; set `frozen=True` [unsafe fix: Pass `frozen=True` to `@dataclass`]
+43:2 SMP701 Dataclass is missing frozen; set `frozen=True`
+48:2 SMP701 Dataclass is missing frozen; set `frozen=True` [fix: Pass `frozen=True` to `@dataclass`]
+53:2 SMP701 Dataclass is missing frozen; set `frozen=True`
+--- fixed (2 applied, 7 remaining) ---
+from dataclasses import dataclass
+from unittest import mock
+
+
+@dataclass
+class Prefs:
+    retries: int = 0
+    timeout: int = 1
+
+    def update(self, **changes: object) -> None:
+        for key, value in changes.items():
+            setattr(self, key, value)
+
+
+@dataclass
+class Flags:
+    verbose: bool = False
+
+
+@dataclass
+class Vault:
+    depth: int = 1
+
+
+@dataclass
+class Dial:
+    host: str = "localhost"
+
+
+@dataclass
+class Sensor:
+    gain: int = 0
+
+
+@dataclass(frozen=True)
+class Ledger:
+    serial: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "serial", self.serial.upper())
+
+
+@dataclass
+class Gauge:
+    reading: int = 0
+
+
+@dataclass(frozen=True)
+class Control:
+    size: int = 0
+
+
+@dataclass
+class _Result:
+    status: str
+
+
+def configure(key: str) -> Flags:
+    flags = Flags()
+    setattr(flags, key, True)
+    return flags
+
+
+def stub(monkeypatch: object) -> None:
+    dial = Dial()
+    monkeypatch.setattr(dial, "host", "example")
+    sensor = Sensor()
+    sensor.__setattr__("gain", 1)
+    vault = Vault()
+    with mock.patch.object(vault, "depth", 5):
+        print(vault.depth)
+    monkeypatch.setattr("pkg.Gauge.reading", "size")
+
+
+def run() -> _Result:
+    result = _Result(status="ok")
+    result.log = "x"
+    return result

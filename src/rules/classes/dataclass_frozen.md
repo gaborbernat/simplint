@@ -332,10 +332,103 @@ class Release:
       result.status = "done"
   ```
 
+- other code sets or deletes an attribute of an instance known to be of the class under a name computed at run time,
+  such as the `setattr(self, key, value)` of a method that updates its fields from a dict, or
+  `setattr(release, key, value)` on an annotated parameter
+
+  ```python report
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Release:
+      version: str
+
+      def update(self, **changes: str) -> None:
+          for key, value in changes.items():
+              setattr(self, key, value)
+  ```
+
+  ```python report
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Release:
+      version: str
+
+
+  def apply(release: Release, key: str, value: str) -> None:
+      setattr(release, key, value)
+  ```
+
+  ```python fixed
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Release:
+      version: str
+
+
+  def apply(release: Release, key: str, value: str) -> None:
+      setattr(release, key, value)
+  ```
+
+- other code sets or deletes an attribute of an instance known to be of the class through `monkeypatch.setattr`,
+  `mock.patch.object`, `obj.__setattr__(...)` or `obj.__delattr__(...)`
+
+  ```python report
+  from dataclasses import dataclass
+  from unittest import mock
+
+
+  @dataclass
+  class Release:
+      version: str
+
+
+  def test_release(monkeypatch) -> None:
+      release = Release("1")
+      monkeypatch.setattr(release, "version", "2")
+      with mock.patch.object(release, "version", "3"):
+          release.__setattr__("version", "4")
+          release.__delattr__("version")
+  ```
+
+  ```python fixed
+  from dataclasses import dataclass
+  from unittest import mock
+
+
+  @dataclass
+  class Release:
+      version: str
+
+
+  def test_release(monkeypatch) -> None:
+      release = Release("1")
+      monkeypatch.setattr(release, "version", "2")
+      with mock.patch.object(release, "version", "3"):
+          release.__setattr__("version", "4")
+          release.__delattr__("version")
+  ```
+
 - other code sets or deletes an attribute named like one of the fields or `ClassVar` attributes on an object of unknown
-  class, such as `envs[name].active = True`, directly or through `setattr`
+  class, such as `envs[name].active = True`, directly or through `setattr`. `mock.patch.object(Env, "active")` and the
+  dotted string `monkeypatch.setattr("app.models.Env.active", True)` name the field on a class, an object of unknown
+  class to the rule, so they count too
 
   ```python report file=app/models.py
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Env:
+      active: bool = False
+  ```
+
+  ```python fixed file=app/models.py
   from dataclasses import dataclass
 
 
@@ -347,6 +440,18 @@ class Release:
   ```python context file=app/toggle.py
   def toggle(envs: dict[str, object], name: str) -> None:
       envs[name].active = True
+  ```
+
+  ```python context file=app/test_env.py
+  from unittest import mock
+
+  from app.models import Env
+
+
+  def test_active(monkeypatch) -> None:
+      monkeypatch.setattr("app.models.Env.active", True)
+      with mock.patch.object(Env, "active"):
+          pass
   ```
 
 ### Instances of the class
@@ -392,6 +497,62 @@ def record(result) -> None:
 
 
 record(Result("ok"))
+```
+
+A call of a class with a private name, such as `_Result(...)`, or with an all-caps name of three or more letters, such
+as `URL(...)`, makes its result known to be of that class. A one- or two-letter capital such as `T` does not, since it
+is more likely a type variable:
+
+```python report
+from dataclasses import dataclass
+
+
+@dataclass
+class _Result:
+    status: str
+
+
+result = _Result("ok")
+result.cached = True
+```
+
+```python fixed
+from dataclasses import dataclass
+
+
+@dataclass
+class _Result:
+    status: str
+
+
+result = _Result("ok")
+result.cached = True
+```
+
+```python report
+from dataclasses import dataclass
+
+
+@dataclass
+class URL:
+    value: str
+
+
+url = URL("https://example.com")
+url.cached = True
+```
+
+```python fixed
+from dataclasses import dataclass
+
+
+@dataclass
+class URL:
+    value: str
+
+
+url = URL("https://example.com")
+url.cached = True
 ```
 
 ### Unsafe fix
@@ -500,6 +661,39 @@ The fix is safe only when nothing else in the checked files might notice the cha
   class Release:
       version: str
       settings.flag = True
+  ```
+
+  `object.__setattr__(self, ...)` and `super().__setattr__(...)` are how a frozen class writes its own fields, so they
+  do not count as writes and keep the fix offered, but naming `__setattr__` or `super` still makes it unsafe:
+
+  ```python report
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Release:
+      version: str
+
+      def rename(self, version: str) -> None:
+          object.__setattr__(self, "version", version)
+
+      def relabel(self, version: str) -> None:
+          super().__setattr__("version", version)
+  ```
+
+  ```python fixed
+  from dataclasses import dataclass
+
+
+  @dataclass(frozen=True)
+  class Release:
+      version: str
+
+      def rename(self, version: str) -> None:
+          object.__setattr__(self, "version", version)
+
+      def relabel(self, version: str) -> None:
+          super().__setattr__("version", version)
   ```
 
 Code outside the checked files, and code that adds an attribute that is not a field to an object simplint cannot tie to

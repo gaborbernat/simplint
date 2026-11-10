@@ -196,7 +196,8 @@ Release(name="simplint", version="1.0.0")
 ### Fix
 
 The fix sets `kw_only=True` and rewrites the positional calls of the class in its own module, including `cls(...)` in
-its methods. A call that unpacks `**kwargs` passes those fields by keyword, so it keeps working.
+its classmethods. A `cls` parameter of an ordinary method is some other value, so its calls stay as they are. A call
+that unpacks `**kwargs` passes those fields by keyword, so it keeps working.
 
 A call that has positional arguments and a `**` splat is rewritten only when the splat is one simplint can read and it
 does not pass one of the fields the rewrite names, since the keyword would repeat it. The class gets no fix when one of
@@ -226,6 +227,32 @@ class Release:
     @classmethod
     def named(cls, name: str) -> "Release":
         return cls(name=name)
+```
+
+The `cls` of an ordinary method is left alone:
+
+```python report
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True)
+class Release:
+    name: str
+
+    def build(self, cls: type, name: str) -> object:
+        return cls(name)
+```
+
+```python fixed
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Release:
+    name: str
+
+    def build(self, cls: type, name: str) -> object:
+        return cls(name)
 ```
 
 The keywords follow the field order of the generated `__init__`:
@@ -320,6 +347,26 @@ No fix is offered while any use could still pass fields by position, or while a 
 
 
   make = partial(Release, "simplint")
+  ```
+
+- the class read by `getattr(module, "Name")` from another file, which calls it by position under a name no import
+  shows;
+
+  ```python report file=app/models.py
+  from dataclasses import dataclass
+
+
+  @dataclass(frozen=True, slots=True)
+  class Release:
+      name: str
+      version: str
+  ```
+
+  ```python context file=app/main.py
+  import app.models
+
+
+  Release = getattr(app.models, "Release")("simplint", "1")
   ```
 
 - a subclass, or a call through `type(self)(...)` or `self.__class__(...)`;

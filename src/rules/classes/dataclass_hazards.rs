@@ -77,12 +77,12 @@ pub(super) fn analyze<'a>(
     };
     hazards.visit_body(&class.body);
     for attribute in project.attributes_written_on(&qualified) {
-        // The index records `__dict__` for reads too, as `vars(obj)` or `obj.__dict__.update(...)`, which freezing does
-        // not stop; a store to it is recorded apart.
-        if attribute == "__dict__" {
-            hazards.slots = true;
-        } else {
-            hazards.written(attribute);
+        // The index records `__dict__` for reads too, as `vars(obj)` or `obj.__dict__.update(...)`, and `__weakref__`
+        // for weak references: a slotted instance has neither, though freezing stops neither. A store to `__dict__` is
+        // recorded apart.
+        match attribute {
+            "__dict__" | "__weakref__" => hazards.slots = true,
+            _ => hazards.written(attribute),
         }
     }
     if project.dict_stored_on(&qualified) {
@@ -100,6 +100,7 @@ pub(super) fn analyze<'a>(
         hazards.slots = true;
     }
     hazards.slots |= project.has_unslottable_subclass(&qualified);
+    hazards.slots |= decorated.wrapped;
     // Only a frozen slotted dataclass gets a `__getstate__`: without one, pickle protocols 0 and 1 refuse a slotted
     // instance, and with one, a pickled subclass instance keeps only the fields. The fixes of both options apply
     // together, so the state is the one after freezing, whichever fix goes first.

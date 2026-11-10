@@ -7,13 +7,14 @@ use ruff_python_ast::{self as ast, Expr, ExprContext, Pattern, Stmt};
 
 use super::facts::qualified;
 use crate::syntax::MOCK_CLASSES;
-use crate::syntax::{alias_binding, instance_writes, is_classmethod, last_segment, receiver};
+use crate::syntax::{alias_binding, instance_writes, is_classmethod, is_name, last_segment, receiver};
 
 // The attributes code sets or deletes on objects, keyed by the class of the object when parsing tells it: the receiver
 // is `self` in a method, or a name bound by a call to a class or annotated with one. A class goes by its qualified
-// name, such as `pkg.models.Result`, as two modules can each define a class with the same name. A mock accepts any attribute and
-// is never a real instance, so writes to one are left out; writes to anything else are untyped. Reaching the instance
-// `__dict__`, as `obj.__dict__` or `vars(obj)` do, counts as writing `__dict__`.
+// name, such as `pkg.models.Result`, as two modules can each define a class with the same name. A mock accepts any
+// attribute and is never a real instance, so writes to one are left out; writes to anything else are untyped. Reaching
+// the instance `__dict__`, as `obj.__dict__` or `vars(obj)` do, counts as writing `__dict__`. A write whose name is
+// computed at run time is recorded as `*`, and a weak reference to an instance as `__weakref__`.
 #[derive(Clone, Default, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct AttributeWrites {
     pub(super) typed: Vec<(String, String)>,
@@ -64,6 +65,10 @@ enum ScopeKind<'a> {
     Plain,
     Class { name: &'a str, members: FxHashMap<&'a str, Receiver> },
 }
+
+// The attribute a write with a computed name is recorded under: the name is decided at run time, so the write may hit
+// any field or none, and no field is named `*`.
+const ANY_ATTRIBUTE: &str = "*";
 
 struct Collector<'a, 'm> {
     aliases: &'m FxHashMap<&'a str, String>,
@@ -134,15 +139,17 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
             Expr::Call(call @ ast::ExprCall { func, arguments, .. }) => {
                 let builtin = func.as_name_expr().map(|name| name.id.as_str());
                 match (&*arguments.args, builtin) {
-                    ([target, Expr::StringLiteral(attribute), ..], Some("setattr" | "delattr")) => {
-                        let name = attribute.value.to_str();
-                        self.record(target, name);
-                        if name == "__dict__" {
-                            self.record_dict_store(target);
+                    ([target, attribute, ..], Some("setattr" | "delattr")) => self.record_write(target, attribute),
+                    ([target], Some("vars")) => self.record(target, "__dict__"),
+                    ([target, ..], _) if self.weakly_references(func) => self.record(target, "__weakref__"),
+                    // `monkeypatch.setattr("pkg.Class.name", value)` names the object and the attribute in one path.
+                    ([Expr::StringLiteral(path), ..], _) if is_patch_helper(func) => {
+                        if let Some((_, name)) = path.value.to_str().rsplit_once('.') {
+                            self.writes.untyped.push(name.to_owned());
                         }
                     }
-                    ([target], Some("vars")) => self.record(target, "__dict__"),
-                    _ => {}
+                    ([target, attribute, ..], _) if is_patch_helper(func) => self.record_write(target, attribute),
+                    _ => self.record_dunder_write(func, arguments),
                 }
                 self.writes.pickles_low_protocol |= self.pickles_low_protocol(call);
             }
@@ -183,6 +190,53 @@ impl<'a> Collector<'a, '_> {
             Receiver::Mock | Receiver::Unknown => return,
         };
         self.writes.dict_stores.push(class);
+    }
+
+    // The write of the attribute `attribute` names: a literal name is recorded as written, and a computed one may be any
+    // attribute of a typed receiver.
+    fn record_write(&mut self, receiver: &Expr, attribute: &Expr) {
+        let Expr::StringLiteral(name) = attribute else {
+            return self.record_computed(receiver);
+        };
+        let name = name.value.to_str();
+        self.record(receiver, name);
+        if name == "__dict__" {
+            self.record_dict_store(receiver);
+        }
+    }
+
+    // Computed names are left out of an untyped receiver: the untyped list matches by field name, which a computed
+    // name does not give.
+    fn record_computed(&mut self, receiver: &Expr) {
+        if matches!(self.receiver(receiver), Receiver::Instance(_) | Receiver::Own(_)) {
+            self.record(receiver, ANY_ATTRIBUTE);
+        }
+    }
+
+    // `obj.__setattr__(name, value)` and `obj.__delattr__(name)` write `name` on `obj`. `object.__setattr__` and
+    // `super().__setattr__` stay out: they are how a frozen dataclass writes its own fields.
+    fn record_dunder_write(&mut self, func: &Expr, arguments: &ast::Arguments) {
+        let Some(ast::ExprAttribute { value, attr, .. }) = func.as_attribute_expr() else {
+            return;
+        };
+        let object_write =
+            is_name(value, "object") || value.as_call_expr().is_some_and(|call| is_name(&call.func, "super"));
+        if let [attribute, ..] = &*arguments.args
+            && matches!(attr.as_str(), "__setattr__" | "__delattr__")
+            && !object_write
+        {
+            self.record_write(value, attribute);
+        }
+    }
+
+    // `weakref.ref(obj)`, `weakref.proxy(obj)` and `weakref.finalize(obj, ...)`, however the imports name them.
+    fn weakly_references(&self, func: &Expr) -> bool {
+        UnqualifiedName::from_expr(func).is_some_and(|written| {
+            matches!(
+                self.qualified(&written.segments().join(".")).as_str(),
+                "weakref.ref" | "weakref.proxy" | "weakref.finalize"
+            )
+        })
     }
 
     // `pickle.dumps(obj, protocol)`, `pickle.dump(obj, file, protocol)` or `pickle.Pickler(file, protocol)` with a
@@ -494,11 +548,22 @@ fn annotated(annotation: &Expr) -> Receiver {
     }
 }
 
-// Only a capitalized name is taken for a class; calling a lowercase factory says nothing about what it returns.
+// Only a capitalized name is taken for a class; calling a lowercase factory says nothing about what it returns. A
+// private class is taken without its leading underscores, and an all-caps name such as `URL` is a class too, while a
+// one- or two-letter capital is more likely a type variable such as `T` or `KT`.
 fn instance(name: &str) -> Receiver {
-    let is_class = name.starts_with(|first: char| first.is_ascii_uppercase())
-        && name.chars().any(|character| character.is_ascii_lowercase());
+    let bare = name.trim_start_matches('_');
+    let is_class = bare.starts_with(|first: char| first.is_ascii_uppercase())
+        && (bare.chars().any(|character| character.is_ascii_lowercase()) || bare.len() >= 3);
     if is_class { Receiver::Instance(name.to_owned()) } else { Receiver::Unknown }
+}
+
+// A patch helper writes an attribute of its first argument: `monkeypatch.setattr(obj, "name", value)`, or
+// `mock.patch.object(obj, "name")` however `patch` is imported.
+fn is_patch_helper(func: &Expr) -> bool {
+    let setter =
+        func.as_attribute_expr().is_some_and(|attribute| matches!(attribute.attr.as_str(), "setattr" | "delattr"));
+    setter || UnqualifiedName::from_expr(func).is_some_and(|name| name.segments().ends_with(&["patch", "object"]))
 }
 
 fn class_mentions(class: &ast::StmtClassDef, name: &str) -> bool {
