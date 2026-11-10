@@ -426,6 +426,19 @@ fn unused_default_counts_calls_from_other_files() {
     );
 }
 
+// A call that suppresses `dataclass-kw-only` still passes its arguments, so it counts like any other call.
+#[test_case("connect(\"a\", 1)  # noqa: SMP703\n" ; "noqa")]
+#[test_case("connect(\"a\", 1)  # simplint: ignore[dataclass-kw-only] positional on purpose\n" ; "ignore")]
+fn unused_default_counts_calls_that_suppress_dataclass_kw_only(call: &str) {
+    let caller = format!("from core import connect\n\n{call}");
+    let root = common::project(&[
+        ("core.py", "def connect(host, timeout=30):\n    return host, timeout\n"),
+        ("main.py", caller.as_str()),
+    ]);
+    let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP506"]);
+    assert!(stdout.contains("SMP506 Every call to `connect` passes `timeout`"), "{stdout}");
+}
+
 // A library's public functions may be called by outside code that omits the argument.
 #[test]
 fn unused_default_leaves_the_public_api_alone() {
