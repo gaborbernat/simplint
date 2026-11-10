@@ -2468,6 +2468,21 @@ fn separate_distributions_are_not_compared_for_duplicate_code() {
     );
 }
 
+// The same statements under a different `if` are no repeat: the nesting of the code differs, though its text does not.
+const NESTED_FIRST: &str = "def run(x, y):\n    a = 1\n    b = 2\n    if x:\n        a += 1\n        if y:\n            b += 1\n        b += 10\n    c = a + b\n    d = c * 2\n    return d\n";
+const NESTED_SECOND: &str = "def run(x, y):\n    a = 1\n    b = 2\n    if x:\n        a += 1\n        if y:\n            b += 1\n            b += 10\n    c = a + b\n    d = c * 2\n    return d\n";
+
+// Six repeated statements, one copy right after the end of an `if` block, whose dedent is not part of the repeat.
+const AFTER_BLOCK: &str = "def run(x, y):\n    if x:\n        log(x)\n    a = 1\n    b = 2\n    c = a + b\n    d = c * 2\n    log(d)\n    return d\n";
+const AFTER_STATEMENT: &str = "def run(x, y):\n    log(y)\n    a = 1\n    b = 2\n    c = a + b\n    d = c * 2\n    log(d)\n    return d\n";
+
+#[test_case(NESTED_FIRST, NESTED_SECOND, &[] ; "nesting_differs")]
+#[test_case(NESTED_FIRST, NESTED_FIRST, &["first.py", "second.py"] ; "nesting_repeats")]
+#[test_case(AFTER_BLOCK, AFTER_STATEMENT, &["first.py", "second.py"] ; "repeat_after_a_block")]
+fn statements_nested_differently_are_not_repeats(first: &str, second: &str, reported: &[&str]) {
+    assert_eq!(duplicate_code_reports(&[("first.py", first), ("second.py", second)]), reported);
+}
+
 // A test-named directory without a marker is not a project of its own.
 #[test]
 fn unmarked_test_directory_is_the_main_project() {
