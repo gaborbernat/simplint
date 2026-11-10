@@ -312,7 +312,7 @@ fn inline_fix(checker: &Checker, value: &Expr, value_text: &str, deletion: Edit,
 fn local_fix(checker: &Checker, constant: &Constant, value_text: &str, deletion: Edit) -> Option<Fix> {
     let source = checker.source;
     let function = constant.function;
-    let local = constant.name.trim_start_matches('_').to_ascii_lowercase();
+    let local = constant.name.trim_start_matches('_').to_lowercase();
     if !is_identifier(&local) || checker.name_token_count(&local) > 0 {
         return None;
     }

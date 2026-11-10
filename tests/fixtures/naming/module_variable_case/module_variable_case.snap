@@ -7,7 +7,9 @@ expression: "lint_fixture(rule, fixture, target_version)"
 6:1 SMP102 Module-scope variable `logger` should be named `LOGGER` [unsafe fix: Rename `logger` to `LOGGER`]
 24:5 SMP102 Module-scope variable `walrus_value` should be named `WALRUS_VALUE` [unsafe fix: Rename `walrus_value` to `WALRUS_VALUE`]
 28:1 SMP102 Module-scope variable `zip` should be named `ZIP`
---- fixed (3 applied, 2 remaining) ---
+30:1 SMP102 Module-scope variable `café_rate` should be named `CAFÉ_RATE` [unsafe fix: Rename `café_rate` to `CAFÉ_RATE`]
+31:1 SMP102 Module-scope variable `straße` should be named `STRASSE` [unsafe fix: Rename `straße` to `STRASSE`]
+--- fixed (5 applied, 2 remaining) ---
 import os
 
 limit = 3
@@ -37,3 +39,5 @@ if (WALRUS_VALUE := len(__name__)):
 TYPE_CHECKING = False
 zip = zip
 HANDLER_WALRUS = lambda: (inner := 1)
+CAFÉ_RATE = 2
+STRASSE = 3

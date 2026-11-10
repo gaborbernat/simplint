@@ -26,7 +26,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 197:1 SMP202 `_ROOT` is used by one function only; define it there [unsafe fix: Move `_ROOT` into `render`]
 198:1 SMP202 `_HOST` is used by one function only; define it there [unsafe fix: Move `_HOST` into `prefixed`]
 207:1 SMP202 `_RESOURCE_PATTERN` is used by one function only; define it there [unsafe fix: Move `_RESOURCE_PATTERN` into `resource`]
---- fixed (21 applied, 3 remaining) ---
+217:1 SMP202 `_ÉTAT` is used by one function only; define it there [unsafe fix: Move `_ÉTAT` into `twice`]
+--- fixed (22 applied, 3 remaining) ---
 from typing import Final
 
 _RETRIES = 3
@@ -215,3 +216,8 @@ def resource(project: str, location: str) -> str:
         project,
         location,
     )
+
+
+def twice() -> int:
+    état = 2
+    return état + état

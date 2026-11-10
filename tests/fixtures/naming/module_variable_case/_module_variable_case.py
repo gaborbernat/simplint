@@ -27,3 +27,5 @@ if (walrus_value := len(__name__)):
 TYPE_CHECKING = False
 zip = zip
 HANDLER_WALRUS = lambda: (inner := 1)
+café_rate = 2
+straße = 3
