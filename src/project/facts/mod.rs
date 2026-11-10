@@ -19,6 +19,7 @@ use ruff_python_ast::visitor::Visitor;
 use ruff_python_ast::{self as ast, Expr, ModModule, Stmt};
 use ruff_python_parser::{Parsed, parse_module};
 use ruff_text_size::{TextRange, TextSize};
+use rustc_hash::FxHashSet;
 
 use self::api_reached::interface;
 pub(crate) use self::api_reached::{Closure, Definition};
@@ -70,6 +71,9 @@ pub struct FileFacts {
     // The dotted module each name bound at the top level stands for, such as `pkg.findings` for `from . import findings`
     // in `pkg`, which resolves to a file only when the name is a module.
     pub(super) module_names: Vec<(String, String)>,
+    // The modules among those names the file loads as a value, as `fast` in `codec = fast` does, which a call through
+    // the value reaches with no attribute read of the module's names.
+    pub(super) module_values: Vec<String>,
     // The names the module's top-level statements define, which a module without `__all__` exports.
     pub(super) defined: Vec<String>,
     pub(super) attribute_writes: AttributeWrites,
@@ -224,7 +228,7 @@ impl FileFacts {
             defined.extend(declared_names(stmt));
         }
         let bindings = top_level_bindings(&imports.from_statements);
-        let module_names = bindings
+        let module_names: Vec<(String, String)> = bindings
             .iter()
             .map(|binding| (binding.bound.clone(), format!("{}.{}", binding.module, binding.name)))
             .chain(imports.module_aliases)
@@ -246,6 +250,7 @@ impl FileFacts {
                 (false, false) => ExportsUnknown::No,
             },
             bindings,
+            module_values: module_values(&module_names, &imports.value_loads),
             module_names,
             defined,
             attribute_writes,
@@ -280,6 +285,15 @@ impl FileFacts {
     pub fn parts(&self) -> Parts {
         self.parts
     }
+}
+
+// The modules among the names a file binds at its top level that the file loads as a value.
+fn module_values(module_names: &[(String, String)], value_loads: &FxHashSet<&str>) -> Vec<String> {
+    module_names
+        .iter()
+        .filter(|(bound, _)| value_loads.contains(bound.as_str()))
+        .map(|(_, module)| module.clone())
+        .collect()
 }
 
 fn module_digest(module_path: Option<&[String]>, importable: Option<&[String]>) -> u64 {

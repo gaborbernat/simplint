@@ -2261,6 +2261,44 @@ fn startup_pth_under_src_keeps_the_name() {
     assert_eq!(check(root.path(), &["--select", "SMP408"]).1, "All checks passed!\n");
 }
 
+// A production module that passes another module on as a value calls that module's functions through the value, which
+// no import of a name shows, so they are not used only by tests. Only such a load counts: a module that production only
+// imports still reports the functions the tests alone call.
+#[test_case(
+    "from pkg import fast\n\nCODEC = fast if CHOSEN else None\n",
+    "All checks passed!\n" ; "conditional_alias"
+)]
+#[test_case(
+    "from pkg import fast\n\n\ndef parse(text, backend=fast):\n    return backend.decode(text)\n",
+    "All checks passed!\n" ; "default_argument"
+)]
+#[test_case(
+    "from pkg import fast\n\n\nclass Service:\n    def __init__(self):\n        self.backend = fast\n",
+    "All checks passed!\n" ; "instance_attribute"
+)]
+#[test_case("from pkg import fast\n\nBACKENDS = {\"fast\": fast}\n", "All checks passed!\n" ; "dict_value")]
+#[test_case(
+    "from pkg import fast\n",
+    "pkg/fast.py:1:5: SMP408 `decode` is used only by tests; move it into the tests or a test helper \
+     module\nFound 1 error.\n" ;
+    "import_alone_is_not_a_value"
+)]
+fn module_loaded_as_value_has_no_test_only_names(service: &str, stdout: &str) {
+    let root = project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/fast.py", "def decode(text: str) -> str:\n    return text\n"),
+        ("pkg/service.py", service),
+        (
+            "tests/test_fast.py",
+            "from pkg import fast\n\n\ndef test_decode() -> None:\n    assert fast.decode(\"1\") == \"1\"\n",
+        ),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP408"]).1,
+        stdout.replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+    );
+}
+
 // The names a `.pth` file reads are used like an entry point's, so no rule that asks whether a name is used, listed or
 // unlisted reports them.
 #[test_case("__all__ = [\"_run\"]\n\n\n", "_run", "SMP402" ; "unused_export")]
