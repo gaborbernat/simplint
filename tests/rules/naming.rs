@@ -30,6 +30,7 @@ fn entrypoint_module_name(file: &str, metadata: &str, source: &str, expected: us
 #[test_case("#!/usr/bin/env python\n", "launch()\nvalue = 1", 0 ; "not_last")]
 #[test_case("#!/usr/bin/env python\n", "cache = populate_cache()", 0 ; "cache_assignment")]
 #[test_case("", "register(lambda: main())", 0 ; "deferred_in_ordinary_module")]
+#[test_case("#!/usr/bin/env python\n", "raise ValueError()", 0 ; "ordinary_raise")]
 fn trailing_entrypoint_call_needs_guard(prefix: &str, trailing: &str, expected: usize) {
     let root = common::project(&[(
         "command.py",
@@ -39,6 +40,21 @@ fn trailing_entrypoint_call_needs_guard(prefix: &str, trailing: &str, expected: 
     )]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP106"]);
     assert_eq!(stdout.matches("SMP106").count(), expected, "{stdout}");
+}
+
+#[cfg(unix)]
+#[test]
+fn non_utf8_script_path_has_no_target() {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
+    let root = common::project(&[(
+        "pyproject.toml",
+        "[project]\nname = \"pkg\"\nversion = \"1\"\n[project.scripts]\ncli = \"pkg.cli:run\"\n",
+    )]);
+    std::fs::write(root.path().join(OsString::from_vec(b"cli-\xff.py".to_vec())), "run()\n").unwrap();
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP106"]);
+    assert!(!stdout.contains("SMP106"), "{stdout}");
 }
 
 #[test_case("main()\n", "if __name__ == \"__main__\":\n    main()\n" ; "main")]
