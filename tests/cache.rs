@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime};
 
 use test_case::test_case;
 
-use common::{check, command, fix_unsafe, project, quoted, read, simplint_with};
+use common::{check, command, fix_unsafe, project, quoted, read, simplint, simplint_with};
 
 #[test]
 fn cache_is_kept_in_ruffs_cache_directory() {
@@ -914,4 +914,24 @@ fn unwritten_fix_is_not_cached_as_clean() {
         ),
         (1, true, true, 1, true)
     );
+}
+
+// A private import in a test is judged by the source file the test mirrors, which is on disk, so a clean result of an
+// earlier run does not stand once that file is gone.
+#[test]
+fn private_import_is_checked_again_once_its_mirrored_module_is_deleted() {
+    let root = project(&[
+        ("src/pkg/__init__.py", ""),
+        ("src/pkg/_helper.py", "VALUE = 1\n"),
+        (
+            "tests/pkg/test_helper.py",
+            "from pkg._helper import VALUE\n\n\ndef test_value() -> None:\n    assert VALUE == 1\n",
+        ),
+    ]);
+    let select = ["check", "--select", "SMP310", "src", "tests"];
+    let cold = simplint(root.path(), &select).0;
+    fs::remove_file(root.path().join("src/pkg/_helper.py")).expect("remove");
+    let warm = simplint(root.path(), &select);
+    let fresh = simplint(root.path(), &[&select[..], &["--no-cache"]].concat());
+    assert_eq!((cold, warm), (0, fresh));
 }
