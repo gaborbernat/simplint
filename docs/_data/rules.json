@@ -1339,7 +1339,7 @@
     "name": "unused-ignore",
     "summary": "Unused selectors in simplint ignore comments",
     "fix": "Always",
-    "explanation": "Reports selectors in `# simplint: ignore[...]` comments that no longer suppress a report under the active rule settings.\nEnable it with `--extend-select SMP009` when checking for obsolete ignores.\n\n## Why is this bad?\n\nAn obsolete ignore makes it harder to tell which exceptions still matter. It can also hide a new report if the same rule\nstarts applying to that line later.\n\n## Example\n\n```python report\nvalue = 1  # simplint: ignore[single-letter-name]\n```\n\nUse instead:\n\n```python ok\nvalue = 1\n```\n\n## What it does\n\nThe rule tests removals one selector at a time, then offers one safe fix for the file. It re-lints each proposed edit\nthat might be unused and keeps the selector if removing it exposes any report, including one from a different rule. When\na comment has several selectors, the fix keeps those that still suppress reports. A whole comment is removed when its\nlast selector is unused.\n\nThe rule checks the rules currently selected for the file. If you run a narrow `--select`, selectors for rules outside\nthat selection can appear unused. Use the project's normal settings when cleaning up ignores.\n",
+    "explanation": "Reports selectors in `# simplint: ignore[...]` comments that no longer suppress a report under the active rule settings.\nEnable it with `--extend-select SMP009` when checking for obsolete ignores.\n\n## Why is this bad?\n\nAn obsolete ignore makes it harder to tell which exceptions still matter. It can also hide a new report if the same rule\nstarts applying to that line later.\n\n## Example\n\n```python report\nvalue = 1  # simplint: ignore[single-letter-name]\n```\n\nUse instead:\n\n```python ok\nvalue = 1\n```\n\n## What it does\n\nThe rule tests removals one selector at a time, then offers one safe fix for the file. It re-lints each proposed edit\nthat might be unused and keeps the selector if removing it exposes any report, including one from a different rule. When\na comment has several selectors, the fix keeps those that still suppress reports. When its last selector is unused, the\ndirective and its reason are removed, and a comment after them on the same line stays:\n\n```python report\nvalue = 1  # simplint: ignore[single-letter-name]  # wire order\n```\n\n```python fixed\nvalue = 1  # wire order\n```\n\nThe rule checks the rules currently selected for the file. If you run a narrow `--select`, selectors for rules outside\nthat selection can appear unused. Use the project's normal settings when cleaning up ignores.\n",
     "examples": {
       "parsed": [
         {
@@ -1373,6 +1373,32 @@
               "line": 17,
               "end_line": 19,
               "source": "value = 1\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 28,
+          "end_line": 34,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 28,
+              "end_line": 30,
+              "source": "value = 1  # simplint: ignore[single-letter-name]  # wire order\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 32,
+              "end_line": 34,
+              "source": "value = 1  # wire order\n"
             }
           ]
         }
@@ -7466,7 +7492,7 @@
     "name": "missing-from-all",
     "summary": "Names other modules import that `__all__` omits",
     "fix": "Sometimes",
-    "explanation": "Flags public module-level names that another file in the same run imports but `__all__` does not list.\n\n## Why is this bad?\n\n`__all__` lists the names that make up a module's public interface\n([PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces)). A name other modules depend on but\n`__all__` omits looks private, so a later change can remove or rename it without anyone noticing the importers.\n\nIn the example below, `cli.py` imports `LIMIT` and `shared` from `config.py`, yet `config.py` lists neither, so nothing\nin `config.py` tells its next editor that `cli.py` relies on them.\n\n## Example\n\n```python context file=cli.py\nfrom config import LIMIT, local, shared\n\nprint(LIMIT, local(), shared())\n```\n\n```python report file=config.py\nLIMIT = 3\n\n\ndef shared() -> int:\n    return LIMIT\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\"local\"]  # cli.py also imports LIMIT and shared\n```\n\nUse instead:\n\n```python context file=cli.py\nfrom config import LIMIT, local, shared\n\nprint(LIMIT, local(), shared())\n```\n\n```python ok file=config.py\nLIMIT = 3\n\n\ndef shared() -> int:\n    return LIMIT\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\"LIMIT\", \"local\", \"shared\"]\n```\n\n## What it does\n\n### Active on\n\nA public module-level name that [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package)\ndoes not list is reported when another file in the same run imports it in one of these ways, or when a listed name's\nsignature reaches it:\n\n- **`from module import name`**, absolute or relative: the importer names the module and the name directly.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\n- **`module.name` access after `import module`**: the importer reads the name as an attribute of the module.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=cli.py\n  import config\n\n  print(config.LIMIT)\n  ```\n\n- **[Entry points](https://packaging.python.org/en/latest/specifications/pyproject-toml/#entry-points)** declared in\n  `pyproject.toml` under `[project.scripts]`, `[project.gui-scripts]` or `[project.entry-points]`: installers and plugin\n  hosts import the name from outside the code.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [project.scripts]\n  run = \"config:main\"\n  ```\n\n  ```python report file=config.py\n  def main() -> None:\n      pass\n\n\n  def helper() -> int:\n      return 1\n\n\n  __all__ = [\"helper\"]\n  ```\n\n- **String-named handlers** passed to `pkgutil.resolve_name` as `module:attribute`, or stored with\n  `parser.set_defaults(handler=\"module:attribute\")`: the dispatch reads the named attribute at runtime.\n\n- **Tool references in `pyproject.toml`**: setuptools reads `[tool.setuptools.dynamic]` `attr` values and\n  `[tool.setuptools.cmdclass]` classes; mypy calls the function named by `[tool.mypy] plugins` (`plugin` by default);\n  Pylint calls `register` in `[tool.pylint.main] load-plugins`. Legacy `[tool.poetry.plugins]` values are entry points.\n  A pytest plugin loaded with `-p` in `[tool.pytest.ini_options] addopts` or `[tool.pytest] addopts` exposes its public\n  hooks by name.\n\n- **Build backend hooks** of the module that `build-backend` names in `[build-system]`: a build frontend calls the PEP\n  517 and PEP 660 hooks by name, so the names are used from outside the code. When the backend is `pdm.backend`, its\n  local `pdm_build.py` hook functions are also called by name; `[tool.pdm.build] custom-hook` may name another file.\n\n  ```toml config\n  [build-system]\n  build-backend = \"build_backend\"\n  requires = [\"setuptools\"]\n  backend-path = [\".\"]\n  ```\n\n  ```python report file=build_backend.py\n  def build_wheel(wheel_directory: str) -> str:\n      return wheel_directory\n\n\n  __all__ = []\n  ```\n\n- **Declarations in the module's `.pyi` stub**: a stub publishes the names it lists.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=config.pyi\n  LIMIT: int\n  ```\n\n- **Imports the module never uses**: such an import is there for its importers, so it counts as a re-export and is\n  reported.\n\n  ```python report file=config.py\n  from os import sep\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=cli.py\n  from config import sep\n\n  print(sep)\n  ```\n\n- **Classes and aliases in the signature of a listed name**: the annotations, bases and bounds of an exported function,\n  or of a public class, that refer to a class or alias make it public API, though no file imports it. Such a name is\n  reached through the same places of every class and alias the signature reaches, and it counts only when its name is\n  public.\n\n  ```python report file=config.py\n  Level = int\n\n\n  def local() -> Level:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python fixed file=config.py\n  Level = int\n\n\n  def local() -> Level:\n      return 1\n\n\n  __all__ = [\n      \"Level\",\n      \"local\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import local\n\n  print(local())\n  ```\n\n### Exceptions\n\n- **`__main__.py` files**: these are entry points, so imports by tests or runners do not make their names a public API.\n\n- **Names used only by tests**: a test of a module may inspect its implementation without making that name part of the\n  module's public interface. A production importer still makes the name reportable.\n\n  ```python ok file=config.py\n  class Parser:\n      pass\n\n\n  __all__ = []\n  ```\n\n  ```python context file=test_config.py\n  from config import Parser\n  ```\n\n- **Names starting with `_`**: the underscore already marks them as internal.\n\n  ```python ok file=config.py\n  _LIMIT = 3\n  __all__ = []\n  ```\n\n  ```python context file=cli.py\n  from config import _LIMIT\n\n  print(_LIMIT)\n  ```\n\n- **`__init__.py` files**: these are not checked.\n\n  ```python ok file=pkg/__init__.py\n  LIMIT = 3\n  __all__ = []\n  ```\n\n  ```python context file=cli.py\n  from pkg import LIMIT\n\n  print(LIMIT)\n  ```\n\n- **Private names in the signature of an exported name**: a type a listed name's annotations refer to is public API only\n  when its name is public, and the underscore marks a private one as internal.\n\n  ```python ok file=config.py\n  _Level = int\n\n\n  def local() -> _Level:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=cli.py\n  from config import local\n\n  print(local())\n  ```\n\n- **Test modules**, as defined in [test-class](SMP801.html): these are not checked.\n\n  ```python ok file=test_config.py\n  LIMIT = 3\n  __all__ = []\n  ```\n\n  ```python context file=cli.py\n  from test_config import LIMIT\n\n  print(LIMIT)\n  ```\n\n- **Modules that import `__all__` from elsewhere**: `from ._impl import __all__` re-exports a list this module cannot\n  see.\n\n  ```python ok file=pkg/api.py\n  from ._impl import __all__\n  ```\n\n  ```python context file=pkg/_impl.py\n  LIMIT = 3\n  __all__ = [\"LIMIT\"]\n  ```\n\n- **Names bound only under `if TYPE_CHECKING:`**: such a name exists for type checkers alone, so listing it makes\n  `from module import *` raise `AttributeError` at run time.\n\n  ```python ok file=pkg/typed.py\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n\n      class Locked(dict): ...\n\n\n  def use(x: \"Locked\") -> None: ...\n\n\n  __all__ = [\"use\"]\n  ```\n\n- **A name equal to the module's own name, when the package's `__init__.py` star-imports the module**: listing it would\n  make the `import *` bind it over the package attribute that holds the submodule.\n\n  ```python ok file=pkg/shared.py\n  def shared() -> int:\n      return 1\n\n\n  __all__ = []\n  ```\n\n  ```python context file=pkg/__init__.py\n  from .shared import *\n  ```\n\n  ```python context file=cli.py\n  from pkg.shared import shared\n\n  print(shared())\n  ```\n\n- **Names the module imports and uses itself**: another module reaching `sys` as `app.sys` borrows a name `app` needs,\n  which is not part of its API.\n\n  ```python ok file=app.py\n  import sys\n\n  print(sys.argv)\n  ```\n\n  ```python context file=cli.py\n  import app\n\n  print(app.sys)\n  ```\n\n- **Dotted strings and attribute patches**, such as `mocker.patch(\"pkg.mod.name\")` and `patch.object(module, \"name\")`:\n  they reach into the module without making the name part of its API. Fixes that rename or move a name still leave names\n  reached this way alone.\n\n  ```python ok file=config.py\n  LIMIT = 3\n  __all__ = []\n  ```\n\n  ```python context file=cli.py\n  import config\n  from unittest import mock\n\n  with mock.patch(\"config.LIMIT\"), mock.patch.object(config, \"LIMIT\"):\n      pass\n  ```\n\n- **An `__all__` built any other way** than the forms listed under Reading `__all__` below, such as `list(...)` or\n  `.remove(...)`, or bound inside a nested block such as an `if`, `try` or function: its contents depend on how the\n  module runs, so nothing is reported.\n\n  - a call, such as `list(...)`\n\n    ```python ok file=config.py\n    LIMIT = 3\n\n\n    def local() -> int:\n        return 1\n\n\n    __all__ = list([\"local\"])\n    ```\n\n    ```python context file=cli.py\n    from config import LIMIT\n\n    print(LIMIT)\n    ```\n\n  - a binding in a nested block\n\n    ```python ok file=config.py\n    LIMIT = 3\n\n\n    def local() -> int:\n        return 1\n\n\n    if LIMIT:\n        __all__ = [\"local\"]\n    ```\n\n    ```python context file=cli.py\n    from config import LIMIT\n\n    print(LIMIT)\n    ```\n\n### Resolving modules\n\nModule names resolve to files the way Ruff's import graph resolves them, from Ruff's\n[`src`](https://docs.astral.sh/ruff/settings/#src) directories and the directory above each package. So a `src` layout\nworks, and `tests/helpers.py` imported as `tests.helpers` matches even when `tests` has no `__init__.py`.\n\nA module of a namespace package, a directory without `__init__.py`, is named from the search root above it, as Python\nnames it, so its relative imports count.\n\n### Reading `__all__`\n\nsimplint reads `__all__` from these forms, all holding string literals:\n\n- module-level `=`, annotated and `+=` assignments of list or tuple literals\n- `.extend([...])` and `.append(\"name\")` calls\n\n### Fix\n\nWhat the fix does depends on whether the module already has an `__all__`, and on who star-imports it:\n\n- **The module has an `__all__`**: the fix adds the names to it, and is safe.\n- **It has none, and no other file may star-import it**: the fix creates one, and is unsafe.\n- **It has none, and another file may star-import it**: no fix is offered.\n- **A public module of a library**: no fix is offered at all, since listing a name widens the library's API and what\n  `import *` binds; the author decides.\n\n**Adding to an existing `__all__`**: the fix adds the missing names to the list or tuple literal of the last `=`,\nannotated or `+=` assignment to `__all__`. Adding names is safe.\n\n- Each name goes before the first listed name that Ruff's\n  [unsorted-dunder-all](https://docs.astral.sh/ruff/rules/unsorted-dunder-all/) sorts after it, so a sorted `__all__`\n  stays sorted.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  def shared() -> int:\n      return LIMIT + local()\n\n\n  __all__ = [\n      \"LIMIT\",\n      \"shared\",\n  ]\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  def shared() -> int:\n      return LIMIT + local()\n\n\n  __all__ = [\n      \"LIMIT\",\n      \"local\",\n      \"shared\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import local\n\n  print(local())\n  ```\n\n- A literal written on one line is rewritten one name per line with a trailing comma, the layout `ruff format` gives it.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\n      \"LIMIT\",\n      \"local\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\n**Creating a new `__all__`**: a module without `__all__` gets a new one, sorted and one name per line, as its last\nstatement, or above a closing `if __name__ == \"__main__\":` block. **Unsafe fix:** it narrows what `from module import *`\nexports.\n\n- Last statement of the module:\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\n      \"LIMIT\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\n- Above a closing `__main__` block:\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def main() -> None:\n      print(LIMIT)\n\n\n  if __name__ == \"__main__\":\n      main()\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def main() -> None:\n      print(LIMIT)\n\n\n  __all__ = [\n      \"LIMIT\",\n  ]\n\n\n  if __name__ == \"__main__\":\n      main()\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\nA module another file of the run star-imports, or may star-import, gets no new `__all__`. `import *` takes every public\nname of it, and a name such as `ResourceType` that `pkg/__init__.py` re-exports with `from ._types import *` would\nvanish from `pkg`. A name imported from `pkg` counts as imported from `pkg/_types.py`. Importers outside the run are not\nseen.\n\n```python report file=config.py\nLIMIT = 3\n\n\ndef local() -> int:\n    return 1\n```\n\n```python fixed file=config.py\nLIMIT = 3\n\n\ndef local() -> int:\n    return 1\n```\n\n```python context file=cli.py\nfrom config import LIMIT\n\nprint(LIMIT)\n```\n\n```python context file=star.py\nfrom config import *\n\nprint(local())\n```\n\n### Related rules\n\n[unused-export](SMP402.html) removes the opposite: names `__all__` lists that no other module imports.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#167](https://github.com/astral-sh/ruff/issues/167)\n  (report importers of names `__all__` omits), [#2098](https://github.com/astral-sh/ruff/issues/2098) and\n  [#3482](https://github.com/astral-sh/ruff/issues/3482) (modules with no `__all__`).\n",
+    "explanation": "Flags public module-level names that another file in the same run imports but `__all__` does not list.\n\n## Why is this bad?\n\n`__all__` lists the names that make up a module's public interface\n([PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces)). A name other modules depend on but\n`__all__` omits looks private, so a later change can remove or rename it without anyone noticing the importers.\n\nIn the example below, `cli.py` imports `LIMIT` and `shared` from `config.py`, yet `config.py` lists neither, so nothing\nin `config.py` tells its next editor that `cli.py` relies on them.\n\n## Example\n\n```python context file=cli.py\nfrom config import LIMIT, local, shared\n\nprint(LIMIT, local(), shared())\n```\n\n```python report file=config.py\nLIMIT = 3\n\n\ndef shared() -> int:\n    return LIMIT\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\"local\"]  # cli.py also imports LIMIT and shared\n```\n\nUse instead:\n\n```python context file=cli.py\nfrom config import LIMIT, local, shared\n\nprint(LIMIT, local(), shared())\n```\n\n```python ok file=config.py\nLIMIT = 3\n\n\ndef shared() -> int:\n    return LIMIT\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\"LIMIT\", \"local\", \"shared\"]\n```\n\n## What it does\n\n### Active on\n\nA public module-level name that [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package)\ndoes not list is reported when another file in the same run imports it in one of these ways, or when a listed name's\nsignature reaches it:\n\n- **`from module import name`**, absolute or relative: the importer names the module and the name directly.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\n- **`module.name` access after `import module`**: the importer reads the name as an attribute of the module.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=cli.py\n  import config\n\n  print(config.LIMIT)\n  ```\n\n- **[Entry points](https://packaging.python.org/en/latest/specifications/pyproject-toml/#entry-points)** declared in\n  `pyproject.toml` under `[project.scripts]`, `[project.gui-scripts]` or `[project.entry-points]`: installers and plugin\n  hosts import the name from outside the code.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [project.scripts]\n  run = \"config:main\"\n  ```\n\n  ```python report file=config.py\n  def main() -> None:\n      pass\n\n\n  def helper() -> int:\n      return 1\n\n\n  __all__ = [\"helper\"]\n  ```\n\n- **String-named handlers** passed to `pkgutil.resolve_name` as `module:attribute`, or stored with\n  `parser.set_defaults(handler=\"module:attribute\")`: the dispatch reads the named attribute at runtime.\n\n- **Tool references in `pyproject.toml`**: setuptools reads `[tool.setuptools.dynamic]` `attr` values and\n  `[tool.setuptools.cmdclass]` classes; mypy calls the function named by `[tool.mypy] plugins` (`plugin` by default);\n  Pylint calls `register` in `[tool.pylint.main] load-plugins`. Legacy `[tool.poetry.plugins]` values are entry points.\n  A pytest plugin loaded with `-p` in `[tool.pytest.ini_options] addopts` or `[tool.pytest] addopts` exposes its public\n  hooks by name.\n\n- **Build backend hooks** of the module that `build-backend` names in `[build-system]`: a build frontend calls the PEP\n  517 and PEP 660 hooks by name, so the names are used from outside the code. When the backend is `pdm.backend`, its\n  local `pdm_build.py` hook functions are also called by name; `[tool.pdm.build] custom-hook` may name another file.\n\n  ```toml config\n  [build-system]\n  build-backend = \"build_backend\"\n  requires = [\"setuptools\"]\n  backend-path = [\".\"]\n  ```\n\n  ```python report file=build_backend.py\n  def build_wheel(wheel_directory: str) -> str:\n      return wheel_directory\n\n\n  __all__ = []\n  ```\n\n- **Declarations in the module's `.pyi` stub**: a stub publishes the names it lists.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=config.pyi\n  LIMIT: int\n  ```\n\n- **Imports the module never uses**: such an import is there for its importers, so it counts as a re-export and is\n  reported.\n\n  ```python report file=config.py\n  from os import sep\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=cli.py\n  from config import sep\n\n  print(sep)\n  ```\n\n- **Classes and aliases in the signature of a listed name**: the annotations, bases and bounds of an exported function,\n  or of a public class, that refer to a class or alias make it public API, though no file imports it. Such a name is\n  reached through the same places of every class and alias the signature reaches, and it counts only when its name is\n  public.\n\n  ```python report file=config.py\n  Level = int\n\n\n  def local() -> Level:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python fixed file=config.py\n  Level = int\n\n\n  def local() -> Level:\n      return 1\n\n\n  __all__ = [\n      \"Level\",\n      \"local\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import local\n\n  print(local())\n  ```\n\n### Exceptions\n\n- **`__main__.py` files**: these are entry points, so imports by tests or runners do not make their names a public API.\n\n- **Names used only by tests**: a test of a module may inspect its implementation without making that name part of the\n  module's public interface. A production importer still makes the name reportable.\n\n  ```python ok file=config.py\n  class Parser:\n      pass\n\n\n  __all__ = []\n  ```\n\n  ```python context file=test_config.py\n  from config import Parser\n  ```\n\n- **Names starting with `_`**: the underscore already marks them as internal.\n\n  ```python ok file=config.py\n  _LIMIT = 3\n  __all__ = []\n  ```\n\n  ```python context file=cli.py\n  from config import _LIMIT\n\n  print(_LIMIT)\n  ```\n\n- **`__init__.py` files**: these are not checked.\n\n  ```python ok file=pkg/__init__.py\n  LIMIT = 3\n  __all__ = []\n  ```\n\n  ```python context file=cli.py\n  from pkg import LIMIT\n\n  print(LIMIT)\n  ```\n\n- **Private names in the signature of an exported name**: a type a listed name's annotations refer to is public API only\n  when its name is public, and the underscore marks a private one as internal.\n\n  ```python ok file=config.py\n  _Level = int\n\n\n  def local() -> _Level:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=cli.py\n  from config import local\n\n  print(local())\n  ```\n\n- **Test modules**, as defined in [test-class](SMP801.html): these are not checked.\n\n  ```python ok file=test_config.py\n  LIMIT = 3\n  __all__ = []\n  ```\n\n  ```python context file=cli.py\n  from test_config import LIMIT\n\n  print(LIMIT)\n  ```\n\n- **Modules that import `__all__` from elsewhere**: `from ._impl import __all__` re-exports a list this module cannot\n  see.\n\n  ```python ok file=pkg/api.py\n  from ._impl import __all__\n  ```\n\n  ```python context file=pkg/_impl.py\n  LIMIT = 3\n  __all__ = [\"LIMIT\"]\n  ```\n\n- **Names bound only under `if TYPE_CHECKING:`**: such a name exists for type checkers alone, so listing it makes\n  `from module import *` raise `AttributeError` at run time.\n\n  ```python ok file=pkg/typed.py\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n\n      class Locked(dict): ...\n\n\n  def use(x: \"Locked\") -> None: ...\n\n\n  __all__ = [\"use\"]\n  ```\n\n- **A name equal to the module's own name, when the package's `__init__.py` star-imports the module**: listing it would\n  make the `import *` bind it over the package attribute that holds the submodule.\n\n  ```python ok file=pkg/shared.py\n  def shared() -> int:\n      return 1\n\n\n  __all__ = []\n  ```\n\n  ```python context file=pkg/__init__.py\n  from .shared import *\n  ```\n\n  ```python context file=cli.py\n  from pkg.shared import shared\n\n  print(shared())\n  ```\n\n- **Names the module imports and uses itself**: another module reaching `sys` as `app.sys` borrows a name `app` needs,\n  which is not part of its API.\n\n  ```python ok file=app.py\n  import sys\n\n  print(sys.argv)\n  ```\n\n  ```python context file=cli.py\n  import app\n\n  print(app.sys)\n  ```\n\n- **Dotted strings and attribute patches**, such as `mocker.patch(\"pkg.mod.name\")` and `patch.object(module, \"name\")`:\n  they reach into the module without making the name part of its API. Fixes that rename or move a name still leave names\n  reached this way alone.\n\n  ```python ok file=config.py\n  LIMIT = 3\n  __all__ = []\n  ```\n\n  ```python context file=cli.py\n  import config\n  from unittest import mock\n\n  with mock.patch(\"config.LIMIT\"), mock.patch.object(config, \"LIMIT\"):\n      pass\n  ```\n\n- **An `__all__` built any other way** than the forms listed under Reading `__all__` below, such as `list(...)` or\n  `.remove(...)`, or bound inside a nested block such as an `if`, `try` or function: its contents depend on how the\n  module runs, so nothing is reported.\n\n  - a call, such as `list(...)`\n\n    ```python ok file=config.py\n    LIMIT = 3\n\n\n    def local() -> int:\n        return 1\n\n\n    __all__ = list([\"local\"])\n    ```\n\n    ```python context file=cli.py\n    from config import LIMIT\n\n    print(LIMIT)\n    ```\n\n  - a binding in a nested block\n\n    ```python ok file=config.py\n    LIMIT = 3\n\n\n    def local() -> int:\n        return 1\n\n\n    if LIMIT:\n        __all__ = [\"local\"]\n    ```\n\n    ```python context file=cli.py\n    from config import LIMIT\n\n    print(LIMIT)\n    ```\n\n### Resolving modules\n\nModule names resolve to files the way Ruff's import graph resolves them, from Ruff's\n[`src`](https://docs.astral.sh/ruff/settings/#src) directories and the directory above each package. So a `src` layout\nworks, and `tests/helpers.py` imported as `tests.helpers` matches even when `tests` has no `__init__.py`.\n\nA module of a namespace package, a directory without `__init__.py`, is named from the search root above it, as Python\nnames it, so its relative imports count.\n\n### Reading `__all__`\n\nsimplint reads `__all__` from these forms, all holding string literals:\n\n- module-level `=`, annotated and `+=` assignments of list or tuple literals\n- `.extend([...])` and `.append(\"name\")` calls\n\n### Fix\n\nWhat the fix does depends on whether the module already has an `__all__`, and on who star-imports it:\n\n- **The module has an `__all__`**: the fix adds the names to it, and is safe.\n- **It has none, and no other file may star-import it**: the fix creates one, and is unsafe.\n- **It has none, and another file may star-import it**: no fix is offered.\n- **A public module of a library**: no fix is offered at all, since listing a name widens the library's API and what\n  `import *` binds; the author decides.\n\n**Adding to an existing `__all__`**: the fix adds the missing names to the list or tuple literal of the last `=`,\nannotated or `+=` assignment to `__all__`. Adding names is safe. No fix is offered when the empty list holds a comment,\nsince the rewrite would drop it. When a comment ends the last element's line, the new names go on the lines after it, so\nthe comment stays with its element; no fix is offered when that line holds other code, such as the closing bracket. A\n`# noqa: F401` comment on an import is removed with its names only when every name the import binds on that line is\nlisted.\n\n- Each name goes before the first listed name that Ruff's\n  [unsorted-dunder-all](https://docs.astral.sh/ruff/rules/unsorted-dunder-all/) sorts after it, so a sorted `__all__`\n  stays sorted.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  def shared() -> int:\n      return LIMIT + local()\n\n\n  __all__ = [\n      \"LIMIT\",\n      \"shared\",\n  ]\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  def shared() -> int:\n      return LIMIT + local()\n\n\n  __all__ = [\n      \"LIMIT\",\n      \"local\",\n      \"shared\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import local\n\n  print(local())\n  ```\n\n- A literal written on one line is rewritten one name per line with a trailing comma, the layout `ruff format` gives it.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\n      \"LIMIT\",\n      \"local\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\n- An empty literal that holds a comment gets no fix, since the rewrite would drop the comment:\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  __all__ = [  # filled in by the release script\n  ]\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  __all__ = [  # filled in by the release script\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\n- A comment ending the last element's line stays with that element: the new names go on the lines after it.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\n      \"LIMIT\",  # the limit\n  ]\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\n      \"LIMIT\",  # the limit\n      \"local\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import local\n\n  print(local())\n  ```\n\n- A `# noqa: F401` on an import stays while a name the import binds is left out of the listing, since that name still\n  needs it:\n\n  ```python report file=config.py\n  from math import pi, tau  # noqa: F401\n\n\n  def area(radius: float) -> float:\n      return 3.14 * radius**2\n\n\n  __all__ = [\n      \"area\",\n  ]\n  ```\n\n  ```python fixed file=config.py\n  from math import pi, tau  # noqa: F401\n\n\n  def area(radius: float) -> float:\n      return 3.14 * radius**2\n\n\n  __all__ = [\n      \"area\",\n      \"pi\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import pi\n\n  print(pi)\n  ```\n\nWhen several names are missing, only the first report carries the fix, since it adds all of them at once; the others\nhave none.\n\n**Creating a new `__all__`**: a module without `__all__` gets a new one, sorted and one name per line, as its last\nstatement, or above a closing `if __name__ == \"__main__\":` block. **Unsafe fix:** it narrows what `from module import *`\nexports.\n\n- Last statement of the module:\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\n      \"LIMIT\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\n- Above a closing `__main__` block:\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def main() -> None:\n      print(LIMIT)\n\n\n  if __name__ == \"__main__\":\n      main()\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def main() -> None:\n      print(LIMIT)\n\n\n  __all__ = [\n      \"LIMIT\",\n  ]\n\n\n  if __name__ == \"__main__\":\n      main()\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\nA module another file of the run star-imports, or may star-import, gets no new `__all__`. `import *` takes every public\nname of it, and a name such as `ResourceType` that `pkg/__init__.py` re-exports with `from ._types import *` would\nvanish from `pkg`. A name imported from `pkg` counts as imported from `pkg/_types.py`. Importers outside the run are not\nseen.\n\n```python report file=config.py\nLIMIT = 3\n\n\ndef local() -> int:\n    return 1\n```\n\n```python fixed file=config.py\nLIMIT = 3\n\n\ndef local() -> int:\n    return 1\n```\n\n```python context file=cli.py\nfrom config import LIMIT\n\nprint(LIMIT)\n```\n\n```python context file=star.py\nfrom config import *\n\nprint(local())\n```\n\n### Related rules\n\n[unused-export](SMP402.html) removes the opposite: names `__all__` lists that no other module imports.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#167](https://github.com/astral-sh/ruff/issues/167)\n  (report importers of names `__all__` omits), [#2098](https://github.com/astral-sh/ruff/issues/2098) and\n  [#3482](https://github.com/astral-sh/ruff/issues/3482) (modules with no `__all__`).\n",
     "examples": {
       "parsed": [
         {
@@ -8016,8 +8042,8 @@
         },
         {
           "section": "What it does",
-          "line": 465,
-          "end_line": 506,
+          "line": 469,
+          "end_line": 510,
           "config": null,
           "blocks": [
             {
@@ -8025,8 +8051,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 465,
-              "end_line": 481,
+              "line": 469,
+              "end_line": 485,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\ndef shared() -> int:\n    return LIMIT + local()\n\n\n__all__ = [\n    \"LIMIT\",\n    \"shared\",\n]\n"
             },
             {
@@ -8034,8 +8060,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 483,
-              "end_line": 500,
+              "line": 487,
+              "end_line": 504,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\ndef shared() -> int:\n    return LIMIT + local()\n\n\n__all__ = [\n    \"LIMIT\",\n    \"local\",\n    \"shared\",\n]\n"
             },
             {
@@ -8043,16 +8069,16 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 502,
-              "end_line": 506,
+              "line": 506,
+              "end_line": 510,
               "source": "from config import local\n\nprint(local())\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 510,
-          "end_line": 539,
+          "line": 514,
+          "end_line": 543,
           "config": null,
           "blocks": [
             {
@@ -8060,8 +8086,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 510,
-              "end_line": 519,
+              "line": 514,
+              "end_line": 523,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\"local\"]\n"
             },
             {
@@ -8069,8 +8095,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 521,
-              "end_line": 533,
+              "line": 525,
+              "end_line": 537,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"LIMIT\",\n    \"local\",\n]\n"
             },
             {
@@ -8078,8 +8104,8 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 535,
-              "end_line": 539,
+              "line": 539,
+              "end_line": 543,
               "source": "from config import LIMIT\n\nprint(LIMIT)\n"
             }
           ]
@@ -8087,7 +8113,7 @@
         {
           "section": "What it does",
           "line": 547,
-          "end_line": 572,
+          "end_line": 567,
           "config": null,
           "blocks": [
             {
@@ -8097,7 +8123,7 @@
               "named": true,
               "line": 547,
               "end_line": 553,
-              "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n"
+              "source": "LIMIT = 3\n\n\n__all__ = [  # filled in by the release script\n]\n"
             },
             {
               "role": "fixed",
@@ -8105,7 +8131,112 @@
               "file": "config.py",
               "named": true,
               "line": 555,
-              "end_line": 566,
+              "end_line": 561,
+              "source": "LIMIT = 3\n\n\n__all__ = [  # filled in by the release script\n]\n"
+            },
+            {
+              "role": "context",
+              "language": "python",
+              "file": "cli.py",
+              "named": true,
+              "line": 563,
+              "end_line": 567,
+              "source": "from config import LIMIT\n\nprint(LIMIT)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 571,
+          "end_line": 602,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "config.py",
+              "named": true,
+              "line": 571,
+              "end_line": 582,
+              "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"LIMIT\",  # the limit\n]\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "config.py",
+              "named": true,
+              "line": 584,
+              "end_line": 596,
+              "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"LIMIT\",  # the limit\n    \"local\",\n]\n"
+            },
+            {
+              "role": "context",
+              "language": "python",
+              "file": "cli.py",
+              "named": true,
+              "line": 598,
+              "end_line": 602,
+              "source": "from config import local\n\nprint(local())\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 607,
+          "end_line": 638,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "config.py",
+              "named": true,
+              "line": 607,
+              "end_line": 618,
+              "source": "from math import pi, tau  # noqa: F401\n\n\ndef area(radius: float) -> float:\n    return 3.14 * radius**2\n\n\n__all__ = [\n    \"area\",\n]\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "config.py",
+              "named": true,
+              "line": 620,
+              "end_line": 632,
+              "source": "from math import pi, tau  # noqa: F401\n\n\ndef area(radius: float) -> float:\n    return 3.14 * radius**2\n\n\n__all__ = [\n    \"area\",\n    \"pi\",\n]\n"
+            },
+            {
+              "role": "context",
+              "language": "python",
+              "file": "cli.py",
+              "named": true,
+              "line": 634,
+              "end_line": 638,
+              "source": "from config import pi\n\nprint(pi)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 649,
+          "end_line": 674,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "config.py",
+              "named": true,
+              "line": 649,
+              "end_line": 655,
+              "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "config.py",
+              "named": true,
+              "line": 657,
+              "end_line": 668,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"LIMIT\",\n]\n"
             },
             {
@@ -8113,16 +8244,16 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 568,
-              "end_line": 572,
+              "line": 670,
+              "end_line": 674,
               "source": "from config import LIMIT\n\nprint(LIMIT)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 576,
-          "end_line": 609,
+          "line": 678,
+          "end_line": 711,
           "config": null,
           "blocks": [
             {
@@ -8130,8 +8261,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 576,
-              "end_line": 586,
+              "line": 678,
+              "end_line": 688,
               "source": "LIMIT = 3\n\n\ndef main() -> None:\n    print(LIMIT)\n\n\nif __name__ == \"__main__\":\n    main()\n"
             },
             {
@@ -8139,8 +8270,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 588,
-              "end_line": 603,
+              "line": 690,
+              "end_line": 705,
               "source": "LIMIT = 3\n\n\ndef main() -> None:\n    print(LIMIT)\n\n\n__all__ = [\n    \"LIMIT\",\n]\n\n\nif __name__ == \"__main__\":\n    main()\n"
             },
             {
@@ -8148,16 +8279,16 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 605,
-              "end_line": 609,
+              "line": 707,
+              "end_line": 711,
               "source": "from config import LIMIT\n\nprint(LIMIT)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 616,
-          "end_line": 642,
+          "line": 718,
+          "end_line": 744,
           "config": null,
           "blocks": [
             {
@@ -8165,8 +8296,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 616,
-              "end_line": 622,
+              "line": 718,
+              "end_line": 724,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n"
             },
             {
@@ -8174,8 +8305,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 624,
-              "end_line": 630,
+              "line": 726,
+              "end_line": 732,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n"
             },
             {
@@ -8183,8 +8314,8 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 632,
-              "end_line": 636,
+              "line": 734,
+              "end_line": 738,
               "source": "from config import LIMIT\n\nprint(LIMIT)\n"
             },
             {
@@ -8192,8 +8323,8 @@
               "language": "python",
               "file": "star.py",
               "named": true,
-              "line": 638,
-              "end_line": 642,
+              "line": 740,
+              "end_line": 744,
               "source": "from config import *\n\nprint(local())\n"
             }
           ]
@@ -8210,7 +8341,7 @@
     "name": "unused-export",
     "summary": "`__all__` entries no other module imports",
     "fix": "Sometimes",
-    "explanation": "Flags names in `__all__` that no other module of the run imports. A name nothing imports is not part of any interface,\nso listing it makes the module look larger than it is.\n\n## Why is this bad?\n\n`__all__` tells readers, and tools such as type checkers and documentation generators, which names a module offers. A\nname nothing imports is not part of any interface; listing it makes the module look larger than it is, and keeps a stale\nentry after its last user is gone.\n\n## Example\n\n```python context file=cli.py\nfrom parser import parse\n\nparse(\"\")\n```\n\n```python report file=parser.py\ndef parse(text: str) -> list[str]:\n    return tokenize(text)\n\n\ndef tokenize(text: str) -> list[str]:\n    return text.split()\n\n\n__all__ = [\"parse\", \"tokenize\"]  # only `parse` is imported elsewhere\n```\n\nUse instead:\n\n```python context file=cli.py\nfrom parser import parse\n\nparse(\"\")\n```\n\n```python ok file=parser.py\ndef parse(text: str) -> list[str]:\n    return _tokenize(text)\n\n\ndef _tokenize(text: str) -> list[str]:\n    return text.split()\n\n\n__all__ = [\"parse\"]\n```\n\n## Configuration\n\n- [`project-kind`](https://simplint.readthedocs.io/en/latest/configuration/project.html#library-or-application) in\n  `[tool.simplint]`: whether the project is a library or an application\n\n  ```toml config\n  [build-system]\n  requires = [\"setuptools\"]\n  build-backend = \"setuptools.build_meta\"\n\n  [project]\n  name = \"demo\"\n\n  [tool.simplint]\n  project-kind = \"application\"\n  ```\n\n  ```python report file=demo/core.py\n  def run() -> int:\n      return 1\n\n\n  __all__ = [\"run\"]\n  ```\n\n## What it does\n\n### Active on\n\n- **Names in [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package) that no other module\n  of the run imports**. Whether the fix is safe depends on who else may import the name:\n\n  - in an application, the fix is safe: nothing outside the run imports it\n\n    ```python report file=config.py\n    LIMIT = 3\n\n\n    def local() -> int:\n        return 1\n\n\n    __all__ = [\"LIMIT\", \"local\"]\n    ```\n\n    ```python context file=cli.py\n    from config import LIMIT\n\n    print(LIMIT)\n    ```\n\n  - in a library (`project-kind` is `library`), the fix is **unsafe**: code outside the run may import it. The `__all__`\n    of a public module is the interface users import, so the rule leaves it alone; it checks the private modules of the\n    library\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python report file=demo/_core.py\n    def run() -> int:\n        return 1\n\n\n    __all__ = [\"run\"]\n    ```\n\n    ```python ok file=demo/core.py\n    def run() -> int:\n        return 1\n\n\n    __all__ = [\"run\"]\n    ```\n\n  These count as imports, as for [missing-from-all](SMP401.html):\n\n  - `from module import name`\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=cli.py\n    from config import LIMIT\n\n    print(LIMIT)\n    ```\n\n  - `module.name` after `import module`\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=cli.py\n    import config\n\n    print(config.LIMIT)\n    ```\n\n  - `module.name` read off a module loaded from a file path with `importlib.util.spec_from_file_location` and\n    `module_from_spec`, when the path names a project module\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=cli.py\n    import importlib.util\n    from pathlib import Path\n\n    spec = importlib.util.spec_from_file_location(\"config\", Path(__file__).parent / \"config.py\")\n    assert spec is not None\n    module = importlib.util.module_from_spec(spec)\n    print(module.LIMIT)\n    ```\n\n  - a string key read off the globals `runpy.run_module` returns, or `runpy.run_path` of a path that names a project\n    module\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=cli.py\n    import runpy\n\n    print(runpy.run_module(\"config\")[\"LIMIT\"])\n    ```\n\n  - a dotted path a test patches, as `mock.patch(\"config.LIMIT\")`\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=test_cli.py\n    from unittest import mock\n\n\n    def test_limit() -> None:\n        with mock.patch(\"config.LIMIT\", 5):\n            pass\n    ```\n\n  - the entry points `pyproject.toml` declares\n\n    ```toml config\n    [project]\n    name = \"demo\"\n\n    [project.scripts]\n    run = \"config:main\"\n    ```\n\n    ```python ok file=config.py\n    def main() -> None:\n        pass\n\n\n    __all__ = [\"main\"]\n    ```\n\n  - `module:attribute` strings passed to `pkgutil.resolve_name` or stored as an argparse `handler` with `set_defaults`\n\n  - setuptools dynamic `attr` values and command classes, mypy and Pylint plugins, pytest plugins loaded by `addopts`,\n    and legacy Poetry plugin entry points declared in `pyproject.toml`\n\n  - local PDM build hooks in `pdm_build.py` or the file named by `[tool.pdm.build] custom-hook`\n\n  - the coverage plugin `pyproject.toml` lists under `[tool.coverage.run] plugins`, whose `coverage_init` coverage\n    calls; the module is found in the project's directory or in a `pythonpath` or `extra-paths` directory of pytest or\n    ty\n\n    ```toml config\n    [tool.coverage.run]\n    plugins = [\"tasks.coverage_pragmas\"]\n    ```\n\n    ```python ok file=tasks/coverage_pragmas.py\n    def coverage_init(reg: object, options: dict[str, str]) -> None:\n        pass\n\n\n    __all__ = [\"coverage_init\"]\n    ```\n\n  - the declarations of the module's `.pyi` stub\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=config.pyi\n    LIMIT: int\n    ```\n\n### Exceptions\n\n- **Public modules of a library**: their `__all__` declares the interface users outside the project import, so no name\n  in it needs an importer in the run.\n\n  ```toml config\n  [build-system]\n  requires = [\"setuptools\"]\n  build-backend = \"setuptools.build_meta\"\n\n  [project]\n  name = \"demo\"\n  ```\n\n  ```python ok file=demo/core.py\n  def run() -> int:\n      return 1\n\n\n  __all__ = [\"run\"]\n  ```\n\n- **Modules another file star-imports**: `import *` hands every listed name to the importing module, which may use it\n  there.\n\n  ```python ok file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"LIMIT\", \"local\"]\n  ```\n\n  ```python context file=cli.py\n  from config import *\n\n  print(LIMIT, local())\n  ```\n\n- **Modules whose `__all__` another file reads**: an import of `__all__`, or `module.__all__` read off an import of the\n  module, uses every name the list holds, as an `import *` does.\n\n  ```python ok file=config.py\n  LIMIT = 3\n  local = 1\n\n\n  __all__ = [\"LIMIT\", \"local\"]\n  ```\n\n  ```python context file=cli.py\n  import config\n\n  print([getattr(config, name) for name in config.__all__])\n  ```\n\n- **Package `__init__.py` files**: they list what the package re-exports, and Ruff, which counts their imports as\n  re-exports, puts any name left out back into `__all__`.\n\n  ```python ok file=pkg/__init__.py\n  from pkg.core import run\n\n  __all__ = [\"run\"]\n  ```\n\n  ```python context file=pkg/core.py\n  def run() -> int:\n      return 1\n  ```\n\n- **Modules with a module-level `__getattr__`**: it serves names `__all__` lists without the module binding them, as a\n  deprecation shim or a lazy loader does, so whether anything imports them shows only outside the run.\n\n  ```python ok file=config.py\n  __all__ = [\"LIMIT\"]\n\n\n  def __getattr__(name: str) -> int:\n      return 1\n  ```\n\n- **Types in the signature of another exported name**: a class or alias that an exported function's annotations, or an\n  exported class's bases and fields, refer to is public API, so `__all__` may list it without any file importing it.\n  Types reached this way follow the same rule.\n\n  ```python ok file=parser.py\n  Tokens = list[str]\n\n\n  def parse(text: str) -> Tokens:\n      return text.split()\n\n\n  __all__ = [\"Tokens\", \"parse\"]\n  ```\n\n  ```python context file=cli.py\n  from parser import parse\n\n  parse(\"\")\n  ```\n\n- **Test modules**, as defined in [test-class](SMP801.html): these are not checked.\n\n  ```python ok file=test_config.py\n  __all__ = [\"check\"]\n\n\n  def check() -> None:\n      pass\n  ```\n\n- **Modules that build `__all__` dynamically**, such as with `list(...)`: the listed names are not known.\n\n  ```python ok\n  LIMIT = 3\n  __all__ = list([\"LIMIT\"])\n  ```\n\n### Fix\n\nThe fix removes the names from `__all__`: their lines when each name has a line of its own, or the names from a list\nwritten on one line.\n\n```python report file=config.py\nLIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"LIMIT\",\n    \"local\",\n]\n```\n\n```python fixed file=config.py\nLIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"LIMIT\",\n]\n```\n\n```python context file=cli.py\nfrom config import LIMIT\n\nprint(LIMIT)\n```\n\nA name in parentheses goes with its parentheses:\n\n```python context file=cli.py\nfrom config import ZETA, GAMMA\n\nprint(ZETA, GAMMA)\n```\n\n```python report file=config.py\nZETA = 1\nBETA = 2\nGAMMA = 3\n\n__all__ = \"ZETA\", (\"BETA\"), \"GAMMA\"\n```\n\n```python fixed file=config.py\nZETA = 1\nBETA = 2\nGAMMA = 3\n\n__all__ = \"ZETA\", \"GAMMA\"\n```\n\n```python report\ndef parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n__all__ = [\"parse\", \"tokenize\"]\n```\n\n```python fixed\ndef parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n__all__ = []\n```\n\nNo fix is offered when:\n\n- the list holds a comment and its names share lines, since the comment may belong to a removed name\n\n  ```python report\n  def parse() -> int:\n      return 1\n\n\n  def tokenize() -> int:\n      return 2\n\n\n  # fmt: off\n  __all__ = [\n      \"parse\", \"tokenize\",  # the entry points\n  ]\n  # fmt: on\n  ```\n\n  ```python fixed\n  def parse() -> int:\n      return 1\n\n\n  def tokenize() -> int:\n      return 2\n\n\n  # fmt: off\n  __all__ = [\n      \"parse\", \"tokenize\",  # the entry points\n  ]\n  # fmt: on\n  ```\n\n- more than one statement builds `__all__`, such as `__all__ += [...]`, since there is no one place to remove a name\n  from\n\n  ```python report\n  def parse() -> int:\n      return 1\n\n\n  def tokenize() -> int:\n      return 2\n\n\n  __all__ = [\"parse\"]\n  __all__ += [\"tokenize\"]\n  ```\n\n  ```python fixed\n  def parse() -> int:\n      return 1\n\n\n  def tokenize() -> int:\n      return 2\n\n\n  __all__ = [\"parse\"]\n  __all__ += [\"tokenize\"]\n  ```\n\n### Related rules\n\n[missing-from-all](SMP401.html) is the counterpart, adding the names other modules import: together they keep `__all__`\nto the names the rest of the project uses. Once a name leaves `__all__`, [unexported-public-name](SMP403.html) asks for\na leading underscore, so what looks public is what other modules use.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#12962](https://github.com/astral-sh/ruff/issues/12962)\n  (item 2: `__all__` entries nothing uses).\n",
+    "explanation": "Flags names in `__all__` that no other module of the run imports. A name nothing imports is not part of any interface,\nso listing it makes the module look larger than it is.\n\n## Why is this bad?\n\n`__all__` tells readers, and tools such as type checkers and documentation generators, which names a module offers. A\nname nothing imports is not part of any interface; listing it makes the module look larger than it is, and keeps a stale\nentry after its last user is gone.\n\n## Example\n\n```python context file=cli.py\nfrom parser import parse\n\nparse(\"\")\n```\n\n```python report file=parser.py\ndef parse(text: str) -> list[str]:\n    return tokenize(text)\n\n\ndef tokenize(text: str) -> list[str]:\n    return text.split()\n\n\n__all__ = [\"parse\", \"tokenize\"]  # only `parse` is imported elsewhere\n```\n\nUse instead:\n\n```python context file=cli.py\nfrom parser import parse\n\nparse(\"\")\n```\n\n```python ok file=parser.py\ndef parse(text: str) -> list[str]:\n    return _tokenize(text)\n\n\ndef _tokenize(text: str) -> list[str]:\n    return text.split()\n\n\n__all__ = [\"parse\"]\n```\n\n## Configuration\n\n- [`project-kind`](https://simplint.readthedocs.io/en/latest/configuration/project.html#library-or-application) in\n  `[tool.simplint]`: whether the project is a library or an application\n\n  ```toml config\n  [build-system]\n  requires = [\"setuptools\"]\n  build-backend = \"setuptools.build_meta\"\n\n  [project]\n  name = \"demo\"\n\n  [tool.simplint]\n  project-kind = \"application\"\n  ```\n\n  ```python report file=demo/core.py\n  def run() -> int:\n      return 1\n\n\n  __all__ = [\"run\"]\n  ```\n\n## What it does\n\n### Active on\n\n- **Names in [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package) that no other module\n  of the run imports**. Whether the fix is safe depends on who else may import the name:\n\n  - in an application, the fix is safe: nothing outside the run imports it\n\n    ```python report file=config.py\n    LIMIT = 3\n\n\n    def local() -> int:\n        return 1\n\n\n    __all__ = [\"LIMIT\", \"local\"]\n    ```\n\n    ```python context file=cli.py\n    from config import LIMIT\n\n    print(LIMIT)\n    ```\n\n  - in a library (`project-kind` is `library`), the fix is **unsafe**: code outside the run may import it. The `__all__`\n    of a public module is the interface users import, so the rule leaves it alone; it checks the private modules of the\n    library\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python report file=demo/_core.py\n    def run() -> int:\n        return 1\n\n\n    __all__ = [\"run\"]\n    ```\n\n    ```python ok file=demo/core.py\n    def run() -> int:\n        return 1\n\n\n    __all__ = [\"run\"]\n    ```\n\n  These count as imports, as for [missing-from-all](SMP401.html):\n\n  - `from module import name`\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=cli.py\n    from config import LIMIT\n\n    print(LIMIT)\n    ```\n\n  - `module.name` after `import module`\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=cli.py\n    import config\n\n    print(config.LIMIT)\n    ```\n\n  - `module.name` read off a module loaded from a file path with `importlib.util.spec_from_file_location` and\n    `module_from_spec`, when the path names a project module\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=cli.py\n    import importlib.util\n    from pathlib import Path\n\n    spec = importlib.util.spec_from_file_location(\"config\", Path(__file__).parent / \"config.py\")\n    assert spec is not None\n    module = importlib.util.module_from_spec(spec)\n    print(module.LIMIT)\n    ```\n\n  - a string key read off the globals `runpy.run_module` returns, or `runpy.run_path` of a path that names a project\n    module\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=cli.py\n    import runpy\n\n    print(runpy.run_module(\"config\")[\"LIMIT\"])\n    ```\n\n  - a dotted path a test patches, as `mock.patch(\"config.LIMIT\")`\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=test_cli.py\n    from unittest import mock\n\n\n    def test_limit() -> None:\n        with mock.patch(\"config.LIMIT\", 5):\n            pass\n    ```\n\n  - the entry points `pyproject.toml` declares\n\n    ```toml config\n    [project]\n    name = \"demo\"\n\n    [project.scripts]\n    run = \"config:main\"\n    ```\n\n    ```python ok file=config.py\n    def main() -> None:\n        pass\n\n\n    __all__ = [\"main\"]\n    ```\n\n  - `module:attribute` strings passed to `pkgutil.resolve_name` or stored as an argparse `handler` with `set_defaults`\n\n  - setuptools dynamic `attr` values and command classes, mypy and Pylint plugins, pytest plugins loaded by `addopts`,\n    and legacy Poetry plugin entry points declared in `pyproject.toml`\n\n  - local PDM build hooks in `pdm_build.py` or the file named by `[tool.pdm.build] custom-hook`\n\n  - the coverage plugin `pyproject.toml` lists under `[tool.coverage.run] plugins`, whose `coverage_init` coverage\n    calls; the module is found in the project's directory or in a `pythonpath` or `extra-paths` directory of pytest or\n    ty\n\n    ```toml config\n    [tool.coverage.run]\n    plugins = [\"tasks.coverage_pragmas\"]\n    ```\n\n    ```python ok file=tasks/coverage_pragmas.py\n    def coverage_init(reg: object, options: dict[str, str]) -> None:\n        pass\n\n\n    __all__ = [\"coverage_init\"]\n    ```\n\n  - the declarations of the module's `.pyi` stub\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=config.pyi\n    LIMIT: int\n    ```\n\n### Exceptions\n\n- **Public modules of a library**: their `__all__` declares the interface users outside the project import, so no name\n  in it needs an importer in the run.\n\n  ```toml config\n  [build-system]\n  requires = [\"setuptools\"]\n  build-backend = \"setuptools.build_meta\"\n\n  [project]\n  name = \"demo\"\n  ```\n\n  ```python ok file=demo/core.py\n  def run() -> int:\n      return 1\n\n\n  __all__ = [\"run\"]\n  ```\n\n- **Modules another file star-imports**: `import *` hands every listed name to the importing module, which may use it\n  there.\n\n  ```python ok file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"LIMIT\", \"local\"]\n  ```\n\n  ```python context file=cli.py\n  from config import *\n\n  print(LIMIT, local())\n  ```\n\n- **Modules whose `__all__` another file reads**: an import of `__all__`, or `module.__all__` read off an import of the\n  module, uses every name the list holds, as an `import *` does.\n\n  ```python ok file=config.py\n  LIMIT = 3\n  local = 1\n\n\n  __all__ = [\"LIMIT\", \"local\"]\n  ```\n\n  ```python context file=cli.py\n  import config\n\n  print([getattr(config, name) for name in config.__all__])\n  ```\n\n- **Package `__init__.py` files**: they list what the package re-exports, and Ruff, which counts their imports as\n  re-exports, puts any name left out back into `__all__`.\n\n  ```python ok file=pkg/__init__.py\n  from pkg.core import run\n\n  __all__ = [\"run\"]\n  ```\n\n  ```python context file=pkg/core.py\n  def run() -> int:\n      return 1\n  ```\n\n- **Modules with a module-level `__getattr__`**: it serves names `__all__` lists without the module binding them, as a\n  deprecation shim or a lazy loader does, so whether anything imports them shows only outside the run.\n\n  ```python ok file=config.py\n  __all__ = [\"LIMIT\"]\n\n\n  def __getattr__(name: str) -> int:\n      return 1\n  ```\n\n- **Types in the signature of another exported name**: a class or alias that an exported function's annotations, or an\n  exported class's bases and fields, refer to is public API, so `__all__` may list it without any file importing it.\n  Types reached this way follow the same rule.\n\n  ```python ok file=parser.py\n  Tokens = list[str]\n\n\n  def parse(text: str) -> Tokens:\n      return text.split()\n\n\n  __all__ = [\"Tokens\", \"parse\"]\n  ```\n\n  ```python context file=cli.py\n  from parser import parse\n\n  parse(\"\")\n  ```\n\n- **Test modules**, as defined in [test-class](SMP801.html): these are not checked.\n\n  ```python ok file=test_config.py\n  __all__ = [\"check\"]\n\n\n  def check() -> None:\n      pass\n  ```\n\n- **Modules that build `__all__` dynamically**, such as with `list(...)`: the listed names are not known.\n\n  ```python ok\n  LIMIT = 3\n  __all__ = list([\"LIMIT\"])\n  ```\n\n### Fix\n\nThe fix removes the names from `__all__`: their lines when each name has a line of its own, or the names from a list\nwritten on one line. When several names are unused, only the first report carries the fix, since it removes all of them\nat once; the others have none.\n\n```python report file=config.py\nLIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"LIMIT\",\n    \"local\",\n]\n```\n\n```python fixed file=config.py\nLIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"LIMIT\",\n]\n```\n\n```python context file=cli.py\nfrom config import LIMIT\n\nprint(LIMIT)\n```\n\nA name in parentheses goes with its parentheses:\n\n```python context file=cli.py\nfrom config import ZETA, GAMMA\n\nprint(ZETA, GAMMA)\n```\n\n```python report file=config.py\nZETA = 1\nBETA = 2\nGAMMA = 3\n\n__all__ = \"ZETA\", (\"BETA\"), \"GAMMA\"\n```\n\n```python fixed file=config.py\nZETA = 1\nBETA = 2\nGAMMA = 3\n\n__all__ = \"ZETA\", \"GAMMA\"\n```\n\n```python report\ndef parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n__all__ = [\"parse\", \"tokenize\"]\n```\n\n```python fixed\ndef parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n__all__ = []\n```\n\nNo fix is offered when:\n\n- the list holds a comment and its names share lines, since the comment may belong to a removed name\n\n  ```python report\n  def parse() -> int:\n      return 1\n\n\n  def tokenize() -> int:\n      return 2\n\n\n  # fmt: off\n  __all__ = [\n      \"parse\", \"tokenize\",  # the entry points\n  ]\n  # fmt: on\n  ```\n\n  ```python fixed\n  def parse() -> int:\n      return 1\n\n\n  def tokenize() -> int:\n      return 2\n\n\n  # fmt: off\n  __all__ = [\n      \"parse\", \"tokenize\",  # the entry points\n  ]\n  # fmt: on\n  ```\n\n- more than one statement builds `__all__`, such as `__all__ += [...]`, since there is no one place to remove a name\n  from\n\n  ```python report\n  def parse() -> int:\n      return 1\n\n\n  def tokenize() -> int:\n      return 2\n\n\n  __all__ = [\"parse\"]\n  __all__ += [\"tokenize\"]\n  ```\n\n  ```python fixed\n  def parse() -> int:\n      return 1\n\n\n  def tokenize() -> int:\n      return 2\n\n\n  __all__ = [\"parse\"]\n  __all__ += [\"tokenize\"]\n  ```\n\n### Related rules\n\n[missing-from-all](SMP401.html) is the counterpart, adding the names other modules import: together they keep `__all__`\nto the names the rest of the project uses. Once a name leaves `__all__`, [unexported-public-name](SMP403.html) asks for\na leading underscore, so what looks public is what other modules use.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#12962](https://github.com/astral-sh/ruff/issues/12962)\n  (item 2: `__all__` entries nothing uses).\n",
     "examples": {
       "parsed": [
         {
@@ -8718,8 +8849,8 @@
         },
         {
           "section": "What it does",
-          "line": 386,
-          "end_line": 417,
+          "line": 387,
+          "end_line": 418,
           "config": null,
           "blocks": [
             {
@@ -8727,8 +8858,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 386,
-              "end_line": 398,
+              "line": 387,
+              "end_line": 399,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"LIMIT\",\n    \"local\",\n]\n"
             },
             {
@@ -8736,8 +8867,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 400,
-              "end_line": 411,
+              "line": 401,
+              "end_line": 412,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"LIMIT\",\n]\n"
             },
             {
@@ -8745,16 +8876,16 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 413,
-              "end_line": 417,
+              "line": 414,
+              "end_line": 418,
               "source": "from config import LIMIT\n\nprint(LIMIT)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 421,
-          "end_line": 441,
+          "line": 422,
+          "end_line": 442,
           "config": null,
           "blocks": [
             {
@@ -8762,8 +8893,8 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 421,
-              "end_line": 425,
+              "line": 422,
+              "end_line": 426,
               "source": "from config import ZETA, GAMMA\n\nprint(ZETA, GAMMA)\n"
             },
             {
@@ -8771,8 +8902,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 427,
-              "end_line": 433,
+              "line": 428,
+              "end_line": 434,
               "source": "ZETA = 1\nBETA = 2\nGAMMA = 3\n\n__all__ = \"ZETA\", (\"BETA\"), \"GAMMA\"\n"
             },
             {
@@ -8780,16 +8911,16 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 435,
-              "end_line": 441,
+              "line": 436,
+              "end_line": 442,
               "source": "ZETA = 1\nBETA = 2\nGAMMA = 3\n\n__all__ = \"ZETA\", \"GAMMA\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 443,
-          "end_line": 465,
+          "line": 444,
+          "end_line": 466,
           "config": null,
           "blocks": [
             {
@@ -8797,8 +8928,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 443,
-              "end_line": 453,
+              "line": 444,
+              "end_line": 454,
               "source": "def parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n__all__ = [\"parse\", \"tokenize\"]\n"
             },
             {
@@ -8806,16 +8937,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 455,
-              "end_line": 465,
+              "line": 456,
+              "end_line": 466,
               "source": "def parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n__all__ = []\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 471,
-          "end_line": 501,
+          "line": 472,
+          "end_line": 502,
           "config": null,
           "blocks": [
             {
@@ -8823,8 +8954,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 471,
-              "end_line": 485,
+              "line": 472,
+              "end_line": 486,
               "source": "def parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n# fmt: off\n__all__ = [\n    \"parse\", \"tokenize\",  # the entry points\n]\n# fmt: on\n"
             },
             {
@@ -8832,16 +8963,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 487,
-              "end_line": 501,
+              "line": 488,
+              "end_line": 502,
               "source": "def parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n# fmt: off\n__all__ = [\n    \"parse\", \"tokenize\",  # the entry points\n]\n# fmt: on\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 506,
-          "end_line": 530,
+          "line": 507,
+          "end_line": 531,
           "config": null,
           "blocks": [
             {
@@ -8849,8 +8980,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 506,
-              "end_line": 517,
+              "line": 507,
+              "end_line": 518,
               "source": "def parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n__all__ = [\"parse\"]\n__all__ += [\"tokenize\"]\n"
             },
             {
@@ -8858,8 +8989,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 519,
-              "end_line": 530,
+              "line": 520,
+              "end_line": 531,
               "source": "def parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n__all__ = [\"parse\"]\n__all__ += [\"tokenize\"]\n"
             }
           ]
@@ -15363,7 +15494,7 @@
     "name": "up-comprehension-unpacking",
     "summary": "Nested `for` clauses that only unpack their iterable into the element",
     "fix": "Always",
-    "explanation": "Flags a nested `for` clause that only unpacks its iterable, and moves the unpacking into the element, which Python 3.15\nallows.\n\n## Why is this bad?\n\nA second `for` clause that does nothing but unpack the outer item takes a loop to say what the element can say in one\nplace. [PEP 798](https://peps.python.org/pep-0798/) lets the element unpack with `*` for lists, sets and generators, and\nwith `**` for dicts.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\ngroups = [[1, 2], [3]]\nflat = [x for group in groups for x in group]\n```\n\nUse instead:\n\n```python ok\ngroups = [[1, 2], [3]]\nflat = [*group for group in groups]\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  groups = [[1, 2], [3]]\n  flat = [x for group in groups for x in group]\n  ```\n\n## What it does\n\nReports a list, set or generator comprehension with exactly two `for` clauses, or a dict comprehension whose inner\nclause unpacks `.items()`, when:\n\n- the outer clause binds a name, `group` here, and the inner clause iterates that name, with no `if` clause and no\n  `async` in either.\n- the element is the inner clause's target, a name other than `group`. For a dict, the key and value are the two names\n  of the inner target.\n\n### Active on\n\nThe list, set and generator comprehensions, which unpack with `*`:\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\ngroups = [[1, 2], [3]]\nflat_set = {x for group in groups for x in group}\nflat_gen = (x for group in groups for x in group)\n```\n\n```python fixed\ngroups = [[1, 2], [3]]\nflat_set = {*group for group in groups}\nflat_gen = (*group for group in groups)\n```\n\nThe dict comprehensions, which unpack with `**`:\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\npairs = [{\"a\": 1}, {\"b\": 2}]\nmerged = {key: value for entry in pairs for key, value in entry.items()}\n```\n\n```python fixed\npairs = [{\"a\": 1}, {\"b\": 2}]\nmerged = {**entry for entry in pairs}\n```\n\n### Exceptions\n\n- **A comprehension with an `if` clause or `async`**: the clauses no longer read as one unpacking.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  groups = [[1, 2], [3]]\n  flat = [x for group in groups for x in group if x]\n  ```\n\n- **An inner iterable other than the outer name**: the element comes from another source.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  groups = [[1, 2], [3]]\n  other = [[4]]\n  flat = [x for group in groups for x in other]\n  ```\n\n- **A dict over `.keys()`, or with a call that takes arguments**: the pairs do not come from `.items()` alone.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  pairs = [{\"a\": 1}, {\"b\": 2}]\n  keys = {key: value for entry in pairs for key, value in entry.keys()}\n  ```\n\n- **Target versions before 3.15**: the syntax is a `SyntaxError` there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  groups = [[1, 2], [3]]\n  flat = [x for group in groups for x in group]\n  ```\n\n### Fix\n\nThe fix is safe for lists, sets and generators. It rewrites the element and removes the inner `for` clause. The fix for\na dict is unsafe: `**` reads `keys()` and `__getitem__`, not `items()`, so the rewrite needs a real `dict`.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n  [RUF017](https://docs.astral.sh/ruff/rules/quadratic-list-summation/) writes the same unpacking when fixing\n  `sum(lists, [])`.\n",
+    "explanation": "Flags a nested `for` clause that only unpacks its iterable, and moves the unpacking into the element, which Python 3.15\nallows.\n\n## Why is this bad?\n\nA second `for` clause that does nothing but unpack the outer item takes a loop to say what the element can say in one\nplace. [PEP 798](https://peps.python.org/pep-0798/) lets the element unpack with `*` for lists, sets and generators, and\nwith `**` for dicts.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\ngroups = [[1, 2], [3]]\nflat = [x for group in groups for x in group]\n```\n\nUse instead:\n\n```python ok\ngroups = [[1, 2], [3]]\nflat = [*group for group in groups]\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  groups = [[1, 2], [3]]\n  flat = [x for group in groups for x in group]\n  ```\n\n## What it does\n\nReports a list, set or generator comprehension with exactly two `for` clauses, or a dict comprehension whose inner\nclause unpacks `.items()`, when:\n\n- the outer clause binds a name, `group` here, and the inner clause iterates that name, with no `if` clause and no\n  `async` in either.\n- the element is the inner clause's target, a name other than `group`. For a dict, the key and value are the two names\n  of the inner target.\n\n### Active on\n\nThe list, set and generator comprehensions, which unpack with `*`:\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\ngroups = [[1, 2], [3]]\nflat_set = {x for group in groups for x in group}\nflat_gen = (x for group in groups for x in group)\n```\n\n```python fixed\ngroups = [[1, 2], [3]]\nflat_set = {*group for group in groups}\nflat_gen = (*group for group in groups)\n```\n\nThe dict comprehensions, which unpack with `**`:\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\npairs = [{\"a\": 1}, {\"b\": 2}]\nmerged = {key: value for entry in pairs for key, value in entry.items()}\n```\n\n```python fixed\npairs = [{\"a\": 1}, {\"b\": 2}]\nmerged = {**entry for entry in pairs}\n```\n\n### Exceptions\n\n- **A comprehension with an `if` clause or `async`**: the clauses no longer read as one unpacking.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  groups = [[1, 2], [3]]\n  flat = [x for group in groups for x in group if x]\n  ```\n\n- **An inner iterable other than the outer name**: the element comes from another source.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  groups = [[1, 2], [3]]\n  other = [[4]]\n  flat = [x for group in groups for x in other]\n  ```\n\n- **A dict over `.keys()`, or with a call that takes arguments**: the pairs do not come from `.items()` alone.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.15\"\n  ```\n\n  ```python ok\n  pairs = [{\"a\": 1}, {\"b\": 2}]\n  keys = {key: value for entry in pairs for key, value in entry.keys()}\n  ```\n\n- **Target versions before 3.15**: the syntax is a `SyntaxError` there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  groups = [[1, 2], [3]]\n  flat = [x for group in groups for x in group]\n  ```\n\n### Fix\n\nThe fix is safe for lists, sets and generators. It rewrites the element and removes the inner `for` clause. The fix for\na dict is unsafe: `**` reads `keys()` and `__getitem__`, not `items()`, so the rewrite needs a real `dict`. No fix is\noffered when a comment lies in the element or the inner `for` clause, since the rewrite would drop it. A comment between\nthe clauses keeps the report without a fix:\n\n```toml config\n[project]\nrequires-python = \">=3.15\"\n```\n\n```python report\ngroups = [[1, 2], [3]]\nflat = [\n    x\n    for group in groups  # one list per group\n    for x in group\n]\n```\n\n```python fixed\ngroups = [[1, 2], [3]]\nflat = [\n    x\n    for group in groups  # one list per group\n    for x in group\n]\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n  [RUF017](https://docs.astral.sh/ruff/rules/quadratic-list-summation/) writes the same unpacking when fixing\n  `sum(lists, [])`.\n",
     "examples": {
       "parsed": [
         {
@@ -15572,6 +15703,36 @@
               "source": "groups = [[1, 2], [3]]\nflat = [x for group in groups for x in group]\n"
             }
           ]
+        },
+        {
+          "section": "What it does",
+          "line": 152,
+          "end_line": 173,
+          "config": {
+            "line": 152,
+            "end_line": 155,
+            "source": "[project]\nrequires-python = \">=3.15\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 157,
+              "end_line": 164,
+              "source": "groups = [[1, 2], [3]]\nflat = [\n    x\n    for group in groups  # one list per group\n    for x in group\n]\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 166,
+              "end_line": 173,
+              "source": "groups = [[1, 2], [3]]\nflat = [\n    x\n    for group in groups  # one list per group\n    for x in group\n]\n"
+            }
+          ]
         }
       ]
     },
@@ -15585,7 +15746,7 @@
     "name": "up-traceback-exception-arguments",
     "summary": "`traceback` calls that pass an exception's type and traceback next to it",
     "fix": "Always",
-    "explanation": "Flags `traceback` calls that pass an exception's type and traceback next to the exception, which Python 3.10 reads from\nthe exception itself.\n\n## Why is this bad?\n\nSince Python 3.10 the `traceback` functions take the exception alone, and read its type and traceback from it. The\nthree-argument form repeats what the exception already carries, and makes the call longer to read.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.10\"\n```\n\n```python report\nimport traceback\n\n\ndef report(run):\n    try:\n        run()\n    except Exception as error:\n        traceback.print_exception(type(error), error, error.__traceback__)\n```\n\nUse instead:\n\n```python ok\nimport traceback\n\n\ndef report(run):\n    try:\n        run()\n    except Exception as error:\n        traceback.print_exception(error)\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.9\"\n  ```\n\n  ```python ok\n  import traceback\n\n\n  def report(run):\n      try:\n          run()\n      except Exception as error:\n          traceback.print_exception(type(error), error, error.__traceback__)\n  ```\n\n## What it does\n\nReports a call that resolves to `traceback.print_exception`, `traceback.format_exception` or\n`traceback.format_exception_only` and passes:\n\n- **Three positional arguments** to the first two functions: `type(error)` or `error.__class__`, then `error`, then\n  `error.__traceback__`, all for the same name.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import traceback\n\n\n  def report(error):\n      return traceback.format_exception(error.__class__, error, error.__traceback__, limit=2)\n  ```\n\n  ```python fixed\n  import traceback\n\n\n  def report(error):\n      return traceback.format_exception(error, limit=2)\n  ```\n\n- **Two positional arguments** to `format_exception_only`: `type(error)`, then `error`.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import traceback\n\n\n  def report(error):\n      return traceback.format_exception_only(type(error), error)\n  ```\n\n  ```python fixed\n  import traceback\n\n\n  def report(error):\n      return traceback.format_exception_only(error)\n  ```\n\n### Exceptions\n\n- **A traceback that is not the exception's own**: the call passes a different traceback, which the exception does not\n  carry.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python ok\n  import traceback\n\n\n  def report(error, saved):\n      return traceback.format_exception(type(error), error, saved)\n  ```\n\n- **Target versions before 3.10**: the single-argument form raises `TypeError` there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.9\"\n  ```\n\n  ```python ok\n  import traceback\n\n\n  def report(error):\n      return traceback.format_exception(type(error), error, error.__traceback__)\n  ```\n\n### Fix\n\nThe fix is safe. It replaces the first arguments with the exception and keeps the keyword arguments, such as `limit=`\nand `chain=`.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags `traceback` calls that pass an exception's type and traceback next to the exception, which Python 3.10 reads from\nthe exception itself.\n\n## Why is this bad?\n\nSince Python 3.10 the `traceback` functions take the exception alone, and read its type and traceback from it. The\nthree-argument form repeats what the exception already carries, and makes the call longer to read.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.10\"\n```\n\n```python report\nimport traceback\n\n\ndef report(run):\n    try:\n        run()\n    except Exception as error:\n        traceback.print_exception(type(error), error, error.__traceback__)\n```\n\nUse instead:\n\n```python ok\nimport traceback\n\n\ndef report(run):\n    try:\n        run()\n    except Exception as error:\n        traceback.print_exception(error)\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.9\"\n  ```\n\n  ```python ok\n  import traceback\n\n\n  def report(run):\n      try:\n          run()\n      except Exception as error:\n          traceback.print_exception(type(error), error, error.__traceback__)\n  ```\n\n## What it does\n\nReports a call that resolves to `traceback.print_exception`, `traceback.format_exception` or\n`traceback.format_exception_only` and passes:\n\n- **Three positional arguments** to the first two functions: `type(error)` or `error.__class__`, then `error`, then\n  `error.__traceback__`, all for the same name.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import traceback\n\n\n  def report(error):\n      return traceback.format_exception(error.__class__, error, error.__traceback__, limit=2)\n  ```\n\n  ```python fixed\n  import traceback\n\n\n  def report(error):\n      return traceback.format_exception(error, limit=2)\n  ```\n\n- **Two positional arguments** to `format_exception_only`: `type(error)`, then `error`.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python report\n  import traceback\n\n\n  def report(error):\n      return traceback.format_exception_only(type(error), error)\n  ```\n\n  ```python fixed\n  import traceback\n\n\n  def report(error):\n      return traceback.format_exception_only(error)\n  ```\n\n### Exceptions\n\n- **A traceback that is not the exception's own**: the call passes a different traceback, which the exception does not\n  carry.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python ok\n  import traceback\n\n\n  def report(error, saved):\n      return traceback.format_exception(type(error), error, saved)\n  ```\n\n- **Target versions before 3.10**: the single-argument form raises `TypeError` there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.9\"\n  ```\n\n  ```python ok\n  import traceback\n\n\n  def report(error):\n      return traceback.format_exception(type(error), error, error.__traceback__)\n  ```\n\n### Fix\n\nThe fix is safe. It replaces the first arguments with the exception and keeps the keyword arguments, such as `limit=`\nand `chain=`. No fix is offered when a comment lies in the arguments it replaces, since the rewrite would drop it. A\ncomment between those arguments keeps the report without a fix:\n\n```toml config\n[project]\nrequires-python = \">=3.10\"\n```\n\n```python report\nimport traceback\n\n\ndef report(error):\n    return traceback.format_exception(\n        type(error),  # the type, for readers of older code\n        error,\n        error.__traceback__,\n    )\n```\n\n```python fixed\nimport traceback\n\n\ndef report(error):\n    return traceback.format_exception(\n        type(error),  # the type, for readers of older code\n        error,\n        error.__traceback__,\n    )\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -15752,6 +15913,36 @@
               "source": "import traceback\n\n\ndef report(error):\n    return traceback.format_exception(type(error), error, error.__traceback__)\n"
             }
           ]
+        },
+        {
+          "section": "What it does",
+          "line": 154,
+          "end_line": 181,
+          "config": {
+            "line": 154,
+            "end_line": 157,
+            "source": "[project]\nrequires-python = \">=3.10\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 159,
+              "end_line": 169,
+              "source": "import traceback\n\n\ndef report(error):\n    return traceback.format_exception(\n        type(error),  # the type, for readers of older code\n        error,\n        error.__traceback__,\n    )\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 171,
+              "end_line": 181,
+              "source": "import traceback\n\n\ndef report(error):\n    return traceback.format_exception(\n        type(error),  # the type, for readers of older code\n        error,\n        error.__traceback__,\n    )\n"
+            }
+          ]
         }
       ]
     },
@@ -15765,7 +15956,7 @@
     "name": "up-exc-info-exception",
     "summary": "`sys.exc_info()` reads of the exception being handled",
     "fix": "Always",
-    "explanation": "Flags `sys.exc_info()` reads of the exception being handled, which `sys.exception()` returns directly from Python 3.11.\n\n## Why is this bad?\n\n`sys.exc_info()` returns a tuple of three values, and code that reads its second value, or unpacks all three into\n`traceback.print_exception`, only needs the exception. `sys.exception()` names that value and returns it alone.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.11\"\n```\n\n```python report\nimport sys\n\nerror = sys.exc_info()[1]\n```\n\nUse instead:\n\n```python ok\nimport sys\n\nerror = sys.exception()\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python ok\n  import sys\n\n  error = sys.exc_info()[1]\n  ```\n\n## What it does\n\nReports these forms, when the call resolves to `sys.exc_info`, so `import sys as system` counts:\n\n- **`sys.exc_info()[1]`**: a read of the second value.\n- **`traceback.print_exception(*sys.exc_info())`**: an unpacking of the whole tuple as the only argument.\n\n### Exceptions\n\n- **The first or third value**: `sys.exc_info()[0]` and `sys.exc_info()[2]` have no single call with the same result.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  import sys\n\n  kind = sys.exc_info()[0]\n  trace = sys.exc_info()[2]\n  ```\n\n- **A call imported by name**: `from sys import exc_info` gives a call the rule does not rewrite.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  from sys import exc_info\n\n  error = exc_info()[1]\n  ```\n\n- **Target versions before 3.11**: `sys.exception()` does not exist there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python ok\n  import sys\n\n  error = sys.exc_info()[1]\n  ```\n\n### Fix\n\nThe fix is safe. It replaces the subscript with `sys.exception()`, or the unpacked argument with it, which gives the\nsame value.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags `sys.exc_info()` reads of the exception being handled, which `sys.exception()` returns directly from Python 3.11.\n\n## Why is this bad?\n\n`sys.exc_info()` returns a tuple of three values, and code that reads its second value, or unpacks all three into\n`traceback.print_exception`, only needs the exception. `sys.exception()` names that value and returns it alone.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.11\"\n```\n\n```python report\nimport sys\n\nerror = sys.exc_info()[1]\n```\n\nUse instead:\n\n```python ok\nimport sys\n\nerror = sys.exception()\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python ok\n  import sys\n\n  error = sys.exc_info()[1]\n  ```\n\n## What it does\n\nReports these forms, when the call resolves to `sys.exc_info`, so `import sys as system` counts:\n\n- **`sys.exc_info()[1]`**: a read of the second value.\n- **`traceback.print_exception(*sys.exc_info())`**: an unpacking of the whole tuple as the only argument.\n\n### Exceptions\n\n- **The first or third value**: `sys.exc_info()[0]` and `sys.exc_info()[2]` have no single call with the same result.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  import sys\n\n  kind = sys.exc_info()[0]\n  trace = sys.exc_info()[2]\n  ```\n\n- **A call imported by name**: `from sys import exc_info` gives a call the rule does not rewrite.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  from sys import exc_info\n\n  error = exc_info()[1]\n  ```\n\n- **Target versions before 3.11**: `sys.exception()` does not exist there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python ok\n  import sys\n\n  error = sys.exc_info()[1]\n  ```\n\n### Fix\n\nThe fix is safe. It replaces the subscript with `sys.exception()`, or the unpacked argument with it, which gives the\nsame value. No fix is offered when a comment lies in the replaced code, since the rewrite would drop it. A comment in\nthe subscript keeps the report without a fix:\n\n```toml config\n[project]\nrequires-python = \">=3.11\"\n```\n\n```python report\nimport sys\n\nerror = sys.exc_info()[\n    1  # the exception being handled\n]\n```\n\n```python fixed\nimport sys\n\nerror = sys.exc_info()[\n    1  # the exception being handled\n]\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -15891,6 +16082,36 @@
               "line": 90,
               "end_line": 94,
               "source": "import sys\n\nerror = sys.exc_info()[1]\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 102,
+          "end_line": 121,
+          "config": {
+            "line": 102,
+            "end_line": 105,
+            "source": "[project]\nrequires-python = \">=3.11\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 107,
+              "end_line": 113,
+              "source": "import sys\n\nerror = sys.exc_info()[\n    1  # the exception being handled\n]\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 115,
+              "end_line": 121,
+              "source": "import sys\n\nerror = sys.exc_info()[\n    1  # the exception being handled\n]\n"
             }
           ]
         }
@@ -16602,7 +16823,7 @@
     "name": "up-strptime-date",
     "summary": "`datetime.strptime()` results narrowed to a `date` or `time`",
     "fix": "Sometimes",
-    "explanation": "Flags `datetime.strptime(...).date()` and `datetime.strptime(...).time()`, which Python 3.14 replaces with\n`date.strptime` and `time.strptime`.\n\n## Why is this bad?\n\n`datetime.strptime(text, format).date()` builds a full datetime to keep one part of it. From Python 3.14 `date` and\n`time` parse their own part, which says what the code reads and skips the intermediate value.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nfrom datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date()\n```\n\nUse instead:\n\n```python ok\nfrom datetime import date\n\n\ndef parse_day(text):\n    return date.strptime(text, \"%Y-%m-%d\")\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  from datetime import datetime\n\n\n  def parse_day(text):\n      return datetime.strptime(text, \"%Y-%m-%d\").date()\n  ```\n\n## What it does\n\nReports a call `.date()` or `.time()` with no arguments on a call that resolves to `datetime.datetime.strptime`, whether\nthe class is imported by name or reached through the `datetime` module.\n\n### Active on\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nimport datetime\n\n\ndef parse_day(text):\n    return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n```\n\n```python fixed\nimport datetime\n\n\ndef parse_day(text):\n    return datetime.date.strptime(text, \"%Y-%m-%d\")\n```\n\n- **`.time()` with a format that has `%:z`**: the fix is unsafe, since `time.strptime` reads the zone that `.time()`\n  drops. **Unsafe fix:** the call becomes `time.strptime`, which keeps the zone.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  import datetime\n\n\n  def parse_time(text):\n      return datetime.datetime.strptime(text, \"%H:%M:%:z\").time()\n  ```\n\n  ```python fixed\n  import datetime\n\n\n  def parse_time(text):\n      return datetime.time.strptime(text, \"%H:%M:%:z\")\n  ```\n\n### Exceptions\n\n- **Target versions before 3.14**: `date.strptime` does not exist there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  import datetime\n\n\n  def parse_day(text):\n      return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n  ```\n\n### Fix\n\nThe fix is safe for `.date()`. For `.time()` it is safe when the format is a string literal without `%z` or `%:z`, and\nunsafe otherwise: `time.strptime` keeps the zone that `.time()` drops, so the value changes with either directive. When\nthe class is imported by name, the fix adds `date` or `time` to that `from datetime import` line. It reports without a\nfix when the file already spells `date` or `time` outside an attribute, since the new name would take that binding's\nplace.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Released rule\n  [DTZ007](https://docs.astral.sh/ruff/rules/call-datetime-strptime-without-zone/) reports the same call for its missing\n  timezone, which open issue [#13359](https://github.com/astral-sh/ruff/issues/13359) calls a false positive before\n  `.date()`; this rule's fix clears both.\n",
+    "explanation": "Flags `datetime.strptime(...).date()` and `datetime.strptime(...).time()`, which Python 3.14 replaces with\n`date.strptime` and `time.strptime`.\n\n## Why is this bad?\n\n`datetime.strptime(text, format).date()` builds a full datetime to keep one part of it. From Python 3.14 `date` and\n`time` parse their own part, which says what the code reads and skips the intermediate value.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nfrom datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date()\n```\n\nUse instead:\n\n```python ok\nfrom datetime import date\n\n\ndef parse_day(text):\n    return date.strptime(text, \"%Y-%m-%d\")\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  from datetime import datetime\n\n\n  def parse_day(text):\n      return datetime.strptime(text, \"%Y-%m-%d\").date()\n  ```\n\n## What it does\n\nReports a call `.date()` or `.time()` with no arguments on a call that resolves to `datetime.datetime.strptime`, whether\nthe class is imported by name or reached through the `datetime` module.\n\n### Active on\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nimport datetime\n\n\ndef parse_day(text):\n    return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n```\n\n```python fixed\nimport datetime\n\n\ndef parse_day(text):\n    return datetime.date.strptime(text, \"%Y-%m-%d\")\n```\n\n- **`.time()` with a format that has `%:z`**: the fix is unsafe, since `time.strptime` reads the zone that `.time()`\n  drops. **Unsafe fix:** the call becomes `time.strptime`, which keeps the zone.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  import datetime\n\n\n  def parse_time(text):\n      return datetime.datetime.strptime(text, \"%H:%M:%:z\").time()\n  ```\n\n  ```python fixed\n  import datetime\n\n\n  def parse_time(text):\n      return datetime.time.strptime(text, \"%H:%M:%:z\")\n  ```\n\n### Exceptions\n\n- **Target versions before 3.14**: `date.strptime` does not exist there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  import datetime\n\n\n  def parse_day(text):\n      return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n  ```\n\n### Fix\n\nThe fix is safe for `.date()`. For `.time()` it is safe when the format is a string literal without `%z` or `%:z`, and\nunsafe otherwise: `time.strptime` keeps the zone that `.time()` drops, so the value changes with either directive. When\nthe class is imported by name, the fix adds `date` or `time` to that `from datetime import` line. It reports without a\nfix when the file already spells `date` or `time` outside an attribute, since the new name would take that binding's\nplace. No fix is offered when a comment lies in the class or in the `.date()` or `.time()` call it drops, since the\nrewrite would drop it. A comment inside the `.date()` call keeps the report without a fix:\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nfrom datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date(\n        # the calendar day\n    )\n```\n\n```python fixed\nfrom datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date(\n        # the calendar day\n    )\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Released rule\n  [DTZ007](https://docs.astral.sh/ruff/rules/call-datetime-strptime-without-zone/) reports the same call for its missing\n  timezone, which open issue [#13359](https://github.com/astral-sh/ruff/issues/13359) calls a false positive before\n  `.date()`; this rule's fix clears both.\n",
     "examples": {
       "parsed": [
         {
@@ -16746,6 +16967,36 @@
               "line": 115,
               "end_line": 121,
               "source": "import datetime\n\n\ndef parse_day(text):\n    return datetime.datetime.strptime(text, \"%Y-%m-%d\").date()\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 132,
+          "end_line": 155,
+          "config": {
+            "line": 132,
+            "end_line": 135,
+            "source": "[project]\nrequires-python = \">=3.14\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 137,
+              "end_line": 145,
+              "source": "from datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date(\n        # the calendar day\n    )\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 147,
+              "end_line": 155,
+              "source": "from datetime import datetime\n\n\ndef parse_day(text):\n    return datetime.strptime(text, \"%Y-%m-%d\").date(\n        # the calendar day\n    )\n"
             }
           ]
         }
@@ -18903,7 +19154,7 @@
     "name": "super-forwarding-method",
     "summary": "Methods that only return the parent's method called with their own arguments",
     "fix": "Sometimes",
-    "explanation": "Flags a method whose only statement returns the same method of `super()`, called with the method's own arguments. The\nparent's method already does that job, so the override adds only a name to read.\n\n## Why is this bad?\n\nA method that passes every argument on to the parent and returns the result changes nothing. A reader still has to check\nthat it does nothing else, and the class carries a second copy of the parent's signature that can drift from it.\nDeleting the method lets the subclass inherit the parent's method.\n\n## Example\n\n```python report\nclass Base:\n    def load(self, name):\n        return name.encode()\n\n\nclass Store(Base):\n    def load(self, name):\n        return super().load(name)\n```\n\nUse instead:\n\n```python ok\nclass Base:\n    def load(self, name):\n        return name.encode()\n\n\nclass Store(Base):\n    pass\n```\n\n## What it does\n\n### Active on\n\nA method of a module-level class is reported when its body, apart from a docstring, is a single\n`return super().name(...)` with the method's own name. The call must pass the parameters after the receiver as they were\ngiven: positional parameters in order, `*args` as `*args`, keyword-only parameters as `name=name`, and `**kwargs` as\n`**kwargs`.\n\nThe rule reads the method `super()` reaches, so the class must have a single base class that the module defines at its\ntop level. When that class does not define the method, its own single base is read the same way. The method found must\nbe a plain `def` taking the same parameters under the same names, without defaults.\n\n- **A method that forwards its whole signature**: positional, variadic and keyword-only parameters all pass on.\n\n  ```python report\n  class Base:\n      def save(self, name, *args, flag, **kwargs):\n          return name\n\n\n  class Store(Base):\n      def save(self, name, *args, flag, **kwargs):\n          return super().save(name, *args, flag=flag, **kwargs)\n  ```\n\n  ```python fixed\n  class Base:\n      def save(self, name, *args, flag, **kwargs):\n          return name\n\n\n  class Store(Base):\n      pass\n  ```\n\n- **A method the grandparent defines**: a base class without the method passes the lookup on to its own base.\n\n  ```python report\n  class Base:\n      def load(self, name):\n          return name.encode()\n\n\n  class Cache(Base):\n      pass\n\n\n  class Store(Cache):\n      def load(self, name):\n          return super().load(name)\n  ```\n\n- **A forwarder with an annotation**: reported, but not fixed, since the annotations are the types the subclass declares\n  for the method.\n\n  ```python report\n  class Base:\n      def load(self, name):\n          return name.encode()\n\n\n  class Store(Base):\n      def load(self, name: str) -> bytes:\n          return super().load(name)\n  ```\n\n### Exceptions\n\n- **A base class the module imports**, or more than one base class: the method `super()` reaches is not in the module,\n  and it may be abstract, which the forwarder overrides to make the class concrete.\n\n  ```python ok\n  from collections.abc import Iterable\n\n\n  class Items(Iterable):\n      def __iter__(self):\n          return super().__iter__()\n  ```\n\n- **A parent's method of another signature**: a forwarder that drops a parameter with a default, renames a parameter or\n  changes its kind rejects calls that the parent's method takes, so deleting it changes what callers may pass.\n\n  ```python ok\n  class Base:\n      def load(self, name, encoding=\"utf-8\"):\n          return name.encode(encoding)\n\n\n  class Store(Base):\n      def load(self, name):\n          return super().load(name)\n  ```\n\n- **A parent's method with a decorator**, such as `@abstractmethod`: the forwarder of an abstract method makes the class\n  concrete.\n\n  ```python ok\n  from abc import ABC, abstractmethod\n\n\n  class Base(ABC):\n      @abstractmethod\n      def load(self, name):\n          return name.encode()\n\n\n  class Store(Base):\n      def load(self, name):\n          return super().load(name)\n  ```\n\n- **`__eq__` and `__hash__`**: a class that defines `__eq__` without `__hash__` gets `__hash__ = None`, so a forwarder\n  of either keeps the pair the way the class wants it.\n\n  ```python ok\n  class Base:\n      def __eq__(self, other):\n          return self is other\n\n      def __hash__(self):\n          return id(self)\n\n\n  class Store(Base):\n      def __eq__(self, other):\n          return super().__eq__(other)\n  ```\n\n- **A method with a default value**: a call that leaves the argument out takes the default from the method, and deleting\n  the method would take the parent's default instead.\n\n  ```python ok\n  class Base:\n      def load(self, name):\n          return name.encode()\n\n\n  class Store(Base):\n      def load(self, name=\"cache\"):\n          return super().load(name)\n  ```\n\n- **A method with a decorator**: a decorator such as `@staticmethod`, `@property` or `@override` changes what the method\n  is or what it declares, so removing it changes behavior or typing.\n\n  ```python ok\n  class Base:\n      def load(self):\n          return b\"\"\n\n\n  class Store(Base):\n      @property\n      def load(self):\n          return super().load()\n  ```\n\n- **A method with a comment on the line above it**: the comment says why the method is there, such as a workaround for a\n  type checker, so deleting it would undo that.\n\n  ```python ok\n  class Base:\n      def load(self, name):\n          return name.encode()\n\n\n  class Store(Base):\n      # Keeps the type checker from reporting the parent's loader.\n      def load(self, name):\n          return super().load(name)\n  ```\n\n- **A call that renames, reorders or adds an argument**: the method does more than forward.\n\n  ```python ok\n  class Base:\n      def load(self, name):\n          return name.encode()\n\n\n  class Store(Base):\n      def load(self, name):\n          return super().load(name.strip())\n  ```\n\n- **A call whose result is discarded**: the method returns `None`, and the parent's result would be returned instead.\n\n  ```python ok\n  class Base:\n      def load(self, name):\n          return name.encode()\n\n\n  class Store(Base):\n      def load(self, name):\n          super().load(name)\n  ```\n\n- **A class with a decorator or a metaclass**, which may build or replace its methods.\n\n  ```python ok\n  from dataclasses import dataclass\n\n\n  class Base:\n      def load(self, name):\n          return name.encode()\n\n\n  @dataclass\n  class Store(Base):\n      def load(self, name):\n          return super().load(name)\n  ```\n\n- **A name bound more than once in the class body**: the method that counts is the last binding, and deleting one of the\n  others would change it.\n\n  ```python ok\n  class Base:\n      def load(self, name):\n          return name.encode()\n\n\n  class Store(Base):\n      def load(self, name):\n          return super().load(name)\n\n      load = None\n  ```\n\n- **A class nested in a function or another class**: its base name may refer to a local class rather than the module's.\n\n  ```python ok\n  class Base:\n      def load(self, name):\n          return name.encode()\n\n\n  def build():\n      class Store(Base):\n          def load(self, name):\n              return super().load(name)\n\n      return Store\n  ```\n\n- **An `async` method**: the parent's coroutine may differ from the one a forwarder returns, so the rule leaves it.\n\n### Fix\n\nThe fix deletes the method, along with the blank lines after it. A class left with no statement gets a `pass`. The fix\nis offered only for methods without annotations.\n\nThe fix is safe: the parent's method takes the same arguments under the same names and is not abstract, and Python looks\nup the deleted method's name in the same class order that `super()` follows, so every call reaches the same code.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#970](https://github.com/astral-sh/ruff/issues/970)\n  (pylint W0246 useless-parent-delegation) and [#3845](https://github.com/astral-sh/ruff/issues/3845) (WPS612).\n- [pylint](https://github.com/pylint-dev/pylint) reports the same forwarding overrides as\n  [useless-parent-delegation](https://pylint.readthedocs.io/en/latest/user_guide/messages/warning/useless-parent-delegation.html),\n  with no fix. This rule's fix deletes the method when it has no annotations.\n- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports overwritten methods\n  that only repeat the parent's as\n  [WPS612](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/oop.html#wemake_python_styleguide.violations.oop.UselessOverwrittenMethodViolation),\n  with no fix.\n",
+    "explanation": "Flags a method whose only statement returns the same method of `super()`, called with the method's own arguments. The\nparent's method already does that job, so the override adds only a name to read.\n\n## Why is this bad?\n\nA method that passes every argument on to the parent and returns the result changes nothing. A reader still has to check\nthat it does nothing else, and the class carries a second copy of the parent's signature that can drift from it.\nDeleting the method lets the subclass inherit the parent's method.\n\n## Example\n\n```python report\nclass Base:\n    def load(self, name):\n        return name.encode()\n\n\nclass Store(Base):\n    def load(self, name):\n        return super().load(name)\n```\n\nUse instead:\n\n```python ok\nclass Base:\n    def load(self, name):\n        return name.encode()\n\n\nclass Store(Base):\n    pass\n```\n\n## What it does\n\n### Active on\n\nA method of a module-level class is reported when its body, apart from a docstring, is a single\n`return super().name(...)` with the method's own name. The call must pass the parameters after the receiver as they were\ngiven: positional parameters in order, `*args` as `*args`, keyword-only parameters as `name=name`, and `**kwargs` as\n`**kwargs`.\n\nThe rule reads the method `super()` reaches, so the class must have a single base class that the module defines at its\ntop level. When that class does not define the method, its own single base is read the same way. The method found must\nbe a plain `def` taking the same parameters under the same names, without defaults.\n\n- **A method that forwards its whole signature**: positional, variadic and keyword-only parameters all pass on.\n\n  ```python report\n  class Base:\n      def save(self, name, *args, flag, **kwargs):\n          return name\n\n\n  class Store(Base):\n      def save(self, name, *args, flag, **kwargs):\n          return super().save(name, *args, flag=flag, **kwargs)\n  ```\n\n  ```python fixed\n  class Base:\n      def save(self, name, *args, flag, **kwargs):\n          return name\n\n\n  class Store(Base):\n      pass\n  ```\n\n- **A method the grandparent defines**: a base class without the method passes the lookup on to its own base.\n\n  ```python report\n  class Base:\n      def load(self, name):\n          return name.encode()\n\n\n  class Cache(Base):\n      pass\n\n\n  class Store(Cache):\n      def load(self, name):\n          return super().load(name)\n  ```\n\n- **A forwarder with an annotation**: reported, but not fixed, since the annotations are the types the subclass declares\n  for the method.\n\n  ```python report\n  class Base:\n      def load(self, name):\n          return name.encode()\n\n\n  class Store(Base):\n      def load(self, name: str) -> bytes:\n          return super().load(name)\n  ```\n\n### Exceptions\n\n- **A base class the module imports**, or more than one base class: the method `super()` reaches is not in the module,\n  and it may be abstract, which the forwarder overrides to make the class concrete.\n\n  ```python ok\n  from collections.abc import Iterable\n\n\n  class Items(Iterable):\n      def __iter__(self):\n          return super().__iter__()\n  ```\n\n- **A parent's method of another signature**: a forwarder that drops a parameter with a default, renames a parameter or\n  changes its kind rejects calls that the parent's method takes, so deleting it changes what callers may pass.\n\n  ```python ok\n  class Base:\n      def load(self, name, encoding=\"utf-8\"):\n          return name.encode(encoding)\n\n\n  class Store(Base):\n      def load(self, name):\n          return super().load(name)\n  ```\n\n- **A parent's method with a decorator**, such as `@abstractmethod`: the forwarder of an abstract method makes the class\n  concrete.\n\n  ```python ok\n  from abc import ABC, abstractmethod\n\n\n  class Base(ABC):\n      @abstractmethod\n      def load(self, name):\n          return name.encode()\n\n\n  class Store(Base):\n      def load(self, name):\n          return super().load(name)\n  ```\n\n- **`__eq__` and `__hash__`**: a class that defines `__eq__` without `__hash__` gets `__hash__ = None`, so a forwarder\n  of either keeps the pair the way the class wants it.\n\n  ```python ok\n  class Base:\n      def __eq__(self, other):\n          return self is other\n\n      def __hash__(self):\n          return id(self)\n\n\n  class Store(Base):\n      def __eq__(self, other):\n          return super().__eq__(other)\n  ```\n\n- **A method with a default value**: a call that leaves the argument out takes the default from the method, and deleting\n  the method would take the parent's default instead.\n\n  ```python ok\n  class Base:\n      def load(self, name):\n          return name.encode()\n\n\n  class Store(Base):\n      def load(self, name=\"cache\"):\n          return super().load(name)\n  ```\n\n- **A method with a decorator**: a decorator such as `@staticmethod`, `@property` or `@override` changes what the method\n  is or what it declares, so removing it changes behavior or typing.\n\n  ```python ok\n  class Base:\n      def load(self):\n          return b\"\"\n\n\n  class Store(Base):\n      @property\n      def load(self):\n          return super().load()\n  ```\n\n- **A method with a comment on the line above it**: the comment says why the method is there, such as a workaround for a\n  type checker, so deleting it would undo that.\n\n  ```python ok\n  class Base:\n      def load(self, name):\n          return name.encode()\n\n\n  class Store(Base):\n      # Keeps the type checker from reporting the parent's loader.\n      def load(self, name):\n          return super().load(name)\n  ```\n\n- **A method with a comment in its body**: deleting the method would delete the comment with it.\n\n  ```python ok\n  class Base:\n      def load(self, name):\n          return name.encode()\n\n\n  class Store(Base):\n      def load(self, name):\n          # Keeps the type checker from reporting the parent's loader.\n          return super().load(name)\n  ```\n\n- **A call that renames, reorders or adds an argument**: the method does more than forward.\n\n  ```python ok\n  class Base:\n      def load(self, name):\n          return name.encode()\n\n\n  class Store(Base):\n      def load(self, name):\n          return super().load(name.strip())\n  ```\n\n- **A call whose result is discarded**: the method returns `None`, and the parent's result would be returned instead.\n\n  ```python ok\n  class Base:\n      def load(self, name):\n          return name.encode()\n\n\n  class Store(Base):\n      def load(self, name):\n          super().load(name)\n  ```\n\n- **A class with a decorator or a metaclass**, which may build or replace its methods.\n\n  ```python ok\n  from dataclasses import dataclass\n\n\n  class Base:\n      def load(self, name):\n          return name.encode()\n\n\n  @dataclass\n  class Store(Base):\n      def load(self, name):\n          return super().load(name)\n  ```\n\n- **A name bound more than once in the class body**: the method that counts is the last binding, and deleting one of the\n  others would change it.\n\n  ```python ok\n  class Base:\n      def load(self, name):\n          return name.encode()\n\n\n  class Store(Base):\n      def load(self, name):\n          return super().load(name)\n\n      load = None\n  ```\n\n- **A class nested in a function or another class**: its base name may refer to a local class rather than the module's.\n\n  ```python ok\n  class Base:\n      def load(self, name):\n          return name.encode()\n\n\n  def build():\n      class Store(Base):\n          def load(self, name):\n              return super().load(name)\n\n      return Store\n  ```\n\n- **An `async` method**: the parent's coroutine may differ from the one a forwarder returns, so the rule leaves it.\n\n### Fix\n\nThe fix deletes the method, along with the blank lines after it. A class left with no statement gets a `pass`. The fix\nis offered only for methods without annotations.\n\nThe fix is safe: the parent's method takes the same arguments under the same names and is not abstract, and Python looks\nup the deleted method's name in the same class order that `super()` follows, so every call reaches the same code.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#970](https://github.com/astral-sh/ruff/issues/970)\n  (pylint W0246 useless-parent-delegation) and [#3845](https://github.com/astral-sh/ruff/issues/3845) (WPS612).\n- [pylint](https://github.com/pylint-dev/pylint) reports the same forwarding overrides as\n  [useless-parent-delegation](https://pylint.readthedocs.io/en/latest/user_guide/messages/warning/useless-parent-delegation.html),\n  with no fix. This rule's fix deletes the method when it has no annotations.\n- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports overwritten methods\n  that only repeat the parent's as\n  [WPS612](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/oop.html#wemake_python_styleguide.violations.oop.UselessOverwrittenMethodViolation),\n  with no fix.\n",
     "examples": {
       "parsed": [
         {
@@ -19122,7 +19373,7 @@
         {
           "section": "What it does",
           "line": 211,
-          "end_line": 220,
+          "end_line": 221,
           "config": null,
           "blocks": [
             {
@@ -19131,15 +19382,32 @@
               "file": "example.py",
               "named": false,
               "line": 211,
-              "end_line": 220,
+              "end_line": 221,
+              "source": "class Base:\n    def load(self, name):\n        return name.encode()\n\n\nclass Store(Base):\n    def load(self, name):\n        # Keeps the type checker from reporting the parent's loader.\n        return super().load(name)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 225,
+          "end_line": 234,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 225,
+              "end_line": 234,
               "source": "class Base:\n    def load(self, name):\n        return name.encode()\n\n\nclass Store(Base):\n    def load(self, name):\n        return super().load(name.strip())\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 224,
-          "end_line": 233,
+          "line": 238,
+          "end_line": 247,
           "config": null,
           "blocks": [
             {
@@ -19147,16 +19415,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 224,
-              "end_line": 233,
+              "line": 238,
+              "end_line": 247,
               "source": "class Base:\n    def load(self, name):\n        return name.encode()\n\n\nclass Store(Base):\n    def load(self, name):\n        super().load(name)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 237,
-          "end_line": 250,
+          "line": 251,
+          "end_line": 264,
           "config": null,
           "blocks": [
             {
@@ -19164,16 +19432,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 237,
-              "end_line": 250,
+              "line": 251,
+              "end_line": 264,
               "source": "from dataclasses import dataclass\n\n\nclass Base:\n    def load(self, name):\n        return name.encode()\n\n\n@dataclass\nclass Store(Base):\n    def load(self, name):\n        return super().load(name)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 255,
-          "end_line": 266,
+          "line": 269,
+          "end_line": 280,
           "config": null,
           "blocks": [
             {
@@ -19181,16 +19449,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 255,
-              "end_line": 266,
+              "line": 269,
+              "end_line": 280,
               "source": "class Base:\n    def load(self, name):\n        return name.encode()\n\n\nclass Store(Base):\n    def load(self, name):\n        return super().load(name)\n\n    load = None\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 270,
-          "end_line": 282,
+          "line": 284,
+          "end_line": 296,
           "config": null,
           "blocks": [
             {
@@ -19198,8 +19466,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 270,
-              "end_line": 282,
+              "line": 284,
+              "end_line": 296,
               "source": "class Base:\n    def load(self, name):\n        return name.encode()\n\n\ndef build():\n    class Store(Base):\n        def load(self, name):\n            return super().load(name)\n\n    return Store\n"
             }
           ]
@@ -24756,7 +25024,7 @@
     "name": "constant-assert",
     "summary": "Assertions on a truthy constant",
     "fix": "Sometimes",
-    "explanation": "Flags `assert` statements whose test is a truthy constant. Such an assertion can never fail, so it checks nothing and\nmakes a test look like it verifies more than it does.\n\n## Why is this bad?\n\nAn assertion on a truthy constant can never fail, so it checks nothing and makes a test look like it verifies more than\nit does. A parenthesized `assert (check, \"message\")` is a non-empty tuple and falls in the same trap. Ruff reports every\nnon-empty tuple as [assert-tuple](https://docs.astral.sh/ruff/rules/assert-tuple/), and\n[assert-on-string-literal](https://docs.astral.sh/ruff/rules/assert-on-string-literal/) reports a string, bytes or\nf-string literal. This rule leaves those cases to Ruff when the corresponding rule runs.\n\n## Example\n\n```python report\ndef test_save(tmp_path: Path) -> None:\n    save(tmp_path / \"out.json\")\n    assert True\n```\n\nUse instead:\n\n```python ok\ndef test_save(tmp_path: Path) -> None:\n    save(tmp_path / \"out.json\")\n    assert (tmp_path / \"out.json\").exists()\n```\n\n## What it does\n\n### Active on\n\n[`assert`](https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement) statements whose test is a\n[truthy](https://docs.python.org/3/builtins/stdtypes.html#truth-value-testing) constant, in every file, not only tests.\nTruthiness is judged the way Ruff judges it. These are truthy constants:\n\n- **`True`**: truthy by definition.\n\n  ```python report\n  assert True\n  ```\n\n- **A non-zero number**: only zero is falsy.\n\n  ```python report\n  assert 1\n  ```\n\n- **A non-empty string, bytes or f-string literal**: only an empty one is falsy.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = []\n  ```\n\n  ```python report\n  assert \"ready\"\n  ```\n\n- **`...`**: `Ellipsis` is always truthy.\n\n  ```python report\n  assert ...\n  ```\n\n- **A lambda**: a function object is always truthy.\n\n  ```python report\n  assert lambda: None\n  ```\n\n- **A non-empty tuple, list, set or dict literal** such as `[value]`: a container with items is truthy.\n\n  ```python report\n  value = 1\n  assert [value]\n  ```\n\n- **A generator expression**: a generator object is truthy even when it yields nothing, so the assertion can never fail.\n  Ruff does not implement bugbear's B044, which flags it.\n\n  ```python report\n  values = [1, 2]\n  assert (value for value in values)\n  ```\n\n- **A `format` call or a `%` expression on a string literal whose text has characters outside its fields**: the literal\n  text is in every result, so the result is never empty.\n\n  ```python report\n  state = \"ready\"\n  assert \"state: {}\".format(state)\n  ```\n\n  ```python report\n  state = \"ready\"\n  assert \"state: %s\" % state\n  ```\n\n- **A computation on literals**: arithmetic, string concatenation and repetition, comparisons, `not`, and `and` and `or`\n  over numbers, strings, booleans and `None`, when the result is truthy. The rule computes the value the way Python\n  does, so `1 + 1 == 2` and `\"a\" * 3` are constant, while a computation on integers past 64 bits, or a repetition or\n  concatenation that builds a string longer than 4096 bytes, is left alone.\n\n  ```python report\n  assert 1 + 1 == 2\n  ```\n\n  ```python report\n  assert \"a\" * 3\n  ```\n\n### Exceptions\n\n- **A string, bytes or f-string literal**, such as one whose f-string calls a function: Ruff's\n  [assert-on-string-literal](https://docs.astral.sh/ruff/rules/assert-on-string-literal/) reports it while the project's\n  Ruff configuration selects it, so this rule leaves it to Ruff, including cases it could fix. Ruff's own suppressions\n  of it, through `per-file-ignores` or `noqa`, are respected too.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"PLW0129\"]\n  ```\n\n  ```python ok\n  def compute() -> str:\n      return \"\"\n\n\n  assert f\"ready {compute()}\"\n  ```\n\n- **A container holding only starred elements**, such as `[*values]`: it may be empty.\n\n  ```python ok\n  values = []\n  assert [*values]\n  ```\n\n- **A malformed template**, such as `\"x{\"` or `\"x%y\"`: Python raises on it rather than passing.\n\n  ```python ok\n  assert \"x{\".format()\n  ```\n\n- **A format or `%` template with text only inside its fields**, such as `\"{}\"` or `\"%s\"`: the field may hold an empty\n  string, so the result may be empty too.\n\n  ```python ok\n  value = \"\"\n  assert \"{}\".format(value)\n  ```\n\n  ```python ok\n  value = \"\"\n  assert \"%s\" % value\n  ```\n\n- **An f-string made only of fields**, such as `f\"{value}\"`: it is empty when `value` is.\n\n  ```python ok\n  value = \"\"\n  assert f\"{value}\"\n  ```\n\n- **Any non-empty tuple test while Ruff runs F631**: Ruff's\n  [assert-tuple](https://docs.astral.sh/ruff/rules/assert-tuple/) reports them, including two-element tuples this rule\n  could fix. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are respected too.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"F631\"]\n  ```\n\n  ```python ok\n  assert (1, 2, 3)\n  ```\n\n- **A computation that reads a name or calls a function**, such as `assert value + 1 == 2`: the value can change, so the\n  rule evaluates only literals.\n\n  ```python ok\n  value = 1\n  assert value + 1 == 2\n  ```\n\n### Fix\n\nThe fix depends on the constant:\n\n- A two-element tuple without a message, such as `assert (check, \"message\")`, becomes `assert check, \"message\"`, since\n  deleting it would drop the check it meant. **Unsafe fix:** the restored check may now fail.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = []\n  ```\n\n  ```python report\n  check = False\n  assert (check, \"message\")\n  ```\n\n  ```python fixed\n  check = False\n  assert check, \"message\"\n  ```\n\n  A walrus check gets parentheses, since `:=` cannot stand alone before the comma.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = []\n  ```\n\n  ```python report\n  assert (ready := True, \"message\")\n  ```\n\n  ```python fixed\n  assert (ready := True), \"message\"\n  ```\n\n- A generator becomes `all(...)` around the same expression. **Unsafe fix:** the restored check may now fail. Its first\n  iterable is evaluated when the generator is built, so deleting the assertion would also drop that evaluation and any\n  error it raises.\n\n  ```python report\n  values = [1, 2]\n  assert (value for value in values)\n  ```\n\n  ```python fixed\n  values = [1, 2]\n  assert all(value for value in values)\n  ```\n\n  No fix is offered for an asynchronous generator, one with `async for` or `await`, since `all()` cannot iterate it, nor\n  where the file binds `all` to something other than the builtin.\n\n  ```python report\n  async def check(values: AsyncIterator[int]) -> None:\n      assert (value async for value in values)\n  ```\n\n  ```python fixed\n  async def check(values: AsyncIterator[int]) -> None:\n      assert (value async for value in values)\n  ```\n\n- Other tuples get no fix. When Ruff's F631 runs, every non-empty tuple is left to it.\n\n- For a `format` or `%` template the fix deletes the assertion **unsafely**: its fields may not fit its arguments, and\n  the deletion would hide the error that raises. Any other constant is deleted safely, since its assertion never fails.\n  The block keeps a `pass` only when the assertion was its only statement:\n\n  - An assertion with other statements in its block: the fix deletes it.\n\n    ```python report\n    def test_save() -> None:\n        save()\n        assert True\n    ```\n\n    ```python fixed\n    def test_save() -> None:\n        save()\n    ```\n\n  - An assertion that is the only statement in its block: the fix leaves `pass` in its place.\n\n    ```python report\n    def test_empty() -> None:\n        assert True\n    ```\n\n    ```python fixed\n    def test_empty() -> None:\n        pass\n    ```\n\nFor a constant that is not a tuple, no fix is offered when:\n\n- the assertion shares a line with another statement;\n\n- its test calls something, as in `assert [compute()]` or `assert \"value {}\".format(compute())`, since deleting it would\n  skip that call.\n\n  ```python report\n  def compute() -> int:\n      return 1\n\n\n  assert [compute()]\n  ```\n\n  ```python report\n  def compute() -> int:\n      return 1\n\n\n  assert \"value {}\".format(compute())\n  ```\n\n```mermaid\nflowchart TD\n    assertion[\"assert on a<br/>truthy constant\"] --> tuple{\"a tuple?\"}\n    tuple -->|yes| runs{\"assert-tuple<br/>selected?\"}\n    runs -->|yes| left[\"left to Ruff\"]\n    runs -->|no| pair{\"two elements,<br/>no message?\"}\n    pair -->|yes| unwrap[\"unsafe: assert check, message\"]\n    pair -->|no| none\n    tuple -->|no| generator{\"a generator?\"}\n    generator -->|yes| asynchronous{\"asynchronous, or<br/>all rebound?\"}\n    asynchronous -->|yes| none\n    asynchronous -->|no| wrap[\"unsafe: assert all(...)\"]\n    generator -->|no| blocked{\"shares a line or<br/>calls something?\"}\n    blocked -->|yes| none\n    blocked -->|no| template{\"a format or<br/>% template?\"}\n    template -->|yes| unsafe[\"unsafe: delete it\"]\n    template -->|no| delete[\"safe: delete it\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class assertion blue\n    class blocked,tuple,pair,generator,asynchronous,template yellow\n    class delete green\n    class unsafe orange\n    class unwrap,wrap teal\n    class none,left orange\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules\n  [F631](https://docs.astral.sh/ruff/rules/assert-tuple/) and\n  [PLW0129](https://docs.astral.sh/ruff/rules/assert-on-string-literal/), which cover tuples and string literals; this\n  rule leaves every covered case to Ruff when the corresponding rule runs and covers other truthy constants.\n- [flake8-useless-assert](https://github.com/decorator-factory/flake8-useless-assert) reports an assert with a truthy\n  literal, such as `assert True`, as [ULA001](https://github.com/decorator-factory/flake8-useless-assert), with no fix.\n- [Sourcery](https://sourcery.ai) removes `assert True` statements through\n  [remove-assert-true](https://docs.sourcery.ai/reference/refactorings/python/remove-assert-true/). It covers\n  `assert True` only, where this rule also covers other truthy constants.\n",
+    "explanation": "Flags `assert` statements whose test is a truthy constant. Such an assertion can never fail, so it checks nothing and\nmakes a test look like it verifies more than it does.\n\n## Why is this bad?\n\nAn assertion on a truthy constant can never fail, so it checks nothing and makes a test look like it verifies more than\nit does. A parenthesized `assert (check, \"message\")` is a non-empty tuple and falls in the same trap. Ruff reports every\nnon-empty tuple as [assert-tuple](https://docs.astral.sh/ruff/rules/assert-tuple/), and\n[assert-on-string-literal](https://docs.astral.sh/ruff/rules/assert-on-string-literal/) reports a string, bytes or\nf-string literal. This rule leaves those cases to Ruff when the corresponding rule runs.\n\n## Example\n\n```python report\ndef test_save(tmp_path: Path) -> None:\n    save(tmp_path / \"out.json\")\n    assert True\n```\n\nUse instead:\n\n```python ok\ndef test_save(tmp_path: Path) -> None:\n    save(tmp_path / \"out.json\")\n    assert (tmp_path / \"out.json\").exists()\n```\n\n## What it does\n\n### Active on\n\n[`assert`](https://docs.python.org/3/reference/simple_stmts.html#the-assert-statement) statements whose test is a\n[truthy](https://docs.python.org/3/builtins/stdtypes.html#truth-value-testing) constant, in every file, not only tests.\nTruthiness is judged the way Ruff judges it. These are truthy constants:\n\n- **`True`**: truthy by definition.\n\n  ```python report\n  assert True\n  ```\n\n- **A non-zero number**: only zero is falsy.\n\n  ```python report\n  assert 1\n  ```\n\n- **A non-empty string, bytes or f-string literal**: only an empty one is falsy.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = []\n  ```\n\n  ```python report\n  assert \"ready\"\n  ```\n\n- **`...`**: `Ellipsis` is always truthy.\n\n  ```python report\n  assert ...\n  ```\n\n- **A lambda**: a function object is always truthy.\n\n  ```python report\n  assert lambda: None\n  ```\n\n- **A non-empty tuple, list, set or dict literal** such as `[value]`: a container with items is truthy.\n\n  ```python report\n  value = 1\n  assert [value]\n  ```\n\n- **A generator expression**: a generator object is truthy even when it yields nothing, so the assertion can never fail.\n  Ruff does not implement bugbear's B044, which flags it.\n\n  ```python report\n  values = [1, 2]\n  assert (value for value in values)\n  ```\n\n- **A `format` call or a `%` expression on a string literal whose text has characters outside its fields**: the literal\n  text is in every result, so the result is never empty.\n\n  ```python report\n  state = \"ready\"\n  assert \"state: {}\".format(state)\n  ```\n\n  ```python report\n  state = \"ready\"\n  assert \"state: %s\" % state\n  ```\n\n- **A computation on literals**: arithmetic, string concatenation and repetition, comparisons, `not`, and `and` and `or`\n  over numbers, strings, booleans and `None`, when the result is truthy. The rule computes the value the way Python\n  does, so `1 + 1 == 2` and `\"a\" * 3` are constant, while a computation on integers past 64 bits, or a repetition or\n  concatenation that builds a string longer than 4096 bytes, is left alone.\n\n  ```python report\n  assert 1 + 1 == 2\n  ```\n\n  ```python report\n  assert \"a\" * 3\n  ```\n\n### Exceptions\n\n- **A string, bytes or f-string literal**, such as one whose f-string calls a function: Ruff's\n  [assert-on-string-literal](https://docs.astral.sh/ruff/rules/assert-on-string-literal/) reports it while the project's\n  Ruff configuration selects it, so this rule leaves it to Ruff, including cases it could fix. Ruff's own suppressions\n  of it, through `per-file-ignores` or `noqa`, are respected too.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"PLW0129\"]\n  ```\n\n  ```python ok\n  def compute() -> str:\n      return \"\"\n\n\n  assert f\"ready {compute()}\"\n  ```\n\n- **A container holding only starred elements**, such as `[*values]`: it may be empty.\n\n  ```python ok\n  values = []\n  assert [*values]\n  ```\n\n- **A malformed template**, such as `\"x{\"` or `\"x%y\"`: Python raises on it rather than passing.\n\n  ```python ok\n  assert \"x{\".format()\n  ```\n\n- **A format or `%` template with text only inside its fields**, such as `\"{}\"` or `\"%s\"`: the field may hold an empty\n  string, so the result may be empty too.\n\n  ```python ok\n  value = \"\"\n  assert \"{}\".format(value)\n  ```\n\n  ```python ok\n  value = \"\"\n  assert \"%s\" % value\n  ```\n\n- **An f-string made only of fields**, such as `f\"{value}\"`: it is empty when `value` is.\n\n  ```python ok\n  value = \"\"\n  assert f\"{value}\"\n  ```\n\n- **Any non-empty tuple test while Ruff runs F631**: Ruff's\n  [assert-tuple](https://docs.astral.sh/ruff/rules/assert-tuple/) reports them, including two-element tuples this rule\n  could fix. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are respected too.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"F631\"]\n  ```\n\n  ```python ok\n  assert (1, 2, 3)\n  ```\n\n- **A computation that reads a name or calls a function**, such as `assert value + 1 == 2`: the value can change, so the\n  rule evaluates only literals.\n\n  ```python ok\n  value = 1\n  assert value + 1 == 2\n  ```\n\n### Fix\n\nThe fix depends on the constant:\n\n- **A comment within the statement**: no fix is offered, since rewriting or deleting the statement would drop the\n  comment.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = []\n  ```\n\n  ```python report\n  check = False\n  assert (\n      check,  # still pending\n      \"message\",\n  )\n  ```\n\n  ```python fixed\n  check = False\n  assert (\n      check,  # still pending\n      \"message\",\n  )\n  ```\n\n- A two-element tuple without a message, such as `assert (check, \"message\")`, becomes `assert check, \"message\"`, since\n  deleting it would drop the check it meant. **Unsafe fix:** the restored check may now fail.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = []\n  ```\n\n  ```python report\n  check = False\n  assert (check, \"message\")\n  ```\n\n  ```python fixed\n  check = False\n  assert check, \"message\"\n  ```\n\n  A walrus check gets parentheses, since `:=` cannot stand alone before the comma.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = []\n  ```\n\n  ```python report\n  assert (ready := True, \"message\")\n  ```\n\n  ```python fixed\n  assert (ready := True), \"message\"\n  ```\n\n- A generator becomes `all(...)` around the same expression. **Unsafe fix:** the restored check may now fail. Its first\n  iterable is evaluated when the generator is built, so deleting the assertion would also drop that evaluation and any\n  error it raises.\n\n  ```python report\n  values = [1, 2]\n  assert (value for value in values)\n  ```\n\n  ```python fixed\n  values = [1, 2]\n  assert all(value for value in values)\n  ```\n\n  No fix is offered for an asynchronous generator, one with `async for` or `await`, since `all()` cannot iterate it, nor\n  where the file binds `all` to something other than the builtin.\n\n  ```python report\n  async def check(values: AsyncIterator[int]) -> None:\n      assert (value async for value in values)\n  ```\n\n  ```python fixed\n  async def check(values: AsyncIterator[int]) -> None:\n      assert (value async for value in values)\n  ```\n\n- Other tuples get no fix. When Ruff's F631 runs, every non-empty tuple is left to it.\n\n- For a `format` or `%` template the fix deletes the assertion **unsafely**: its fields may not fit its arguments, and\n  the deletion would hide the error that raises. Any other constant is deleted safely, since its assertion never fails.\n  The block keeps a `pass` only when the assertion was its only statement:\n\n  - An assertion with other statements in its block: the fix deletes it.\n\n    ```python report\n    def test_save() -> None:\n        save()\n        assert True\n    ```\n\n    ```python fixed\n    def test_save() -> None:\n        save()\n    ```\n\n  - An assertion that is the only statement in its block: the fix leaves `pass` in its place.\n\n    ```python report\n    def test_empty() -> None:\n        assert True\n    ```\n\n    ```python fixed\n    def test_empty() -> None:\n        pass\n    ```\n\nFor a constant that is not a tuple, no fix is offered when:\n\n- the assertion shares a line with another statement;\n\n- its test calls something, as in `assert [compute()]` or `assert \"value {}\".format(compute())`, since deleting it would\n  skip that call.\n\n  ```python report\n  def compute() -> int:\n      return 1\n\n\n  assert [compute()]\n  ```\n\n  ```python report\n  def compute() -> int:\n      return 1\n\n\n  assert \"value {}\".format(compute())\n  ```\n\n```mermaid\nflowchart TD\n    assertion[\"assert on a<br/>truthy constant\"] --> tuple{\"a tuple?\"}\n    tuple -->|yes| runs{\"assert-tuple<br/>selected?\"}\n    runs -->|yes| left[\"left to Ruff\"]\n    runs -->|no| pair{\"two elements,<br/>no message?\"}\n    pair -->|yes| unwrap[\"unsafe: assert check, message\"]\n    pair -->|no| none\n    tuple -->|no| generator{\"a generator?\"}\n    generator -->|yes| asynchronous{\"asynchronous, or<br/>all rebound?\"}\n    asynchronous -->|yes| none\n    asynchronous -->|no| wrap[\"unsafe: assert all(...)\"]\n    generator -->|no| blocked{\"shares a line or<br/>calls something?\"}\n    blocked -->|yes| none\n    blocked -->|no| template{\"a format or<br/>% template?\"}\n    template -->|yes| unsafe[\"unsafe: delete it\"]\n    template -->|no| delete[\"safe: delete it\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class assertion blue\n    class blocked,tuple,pair,generator,asynchronous,template yellow\n    class delete green\n    class unsafe orange\n    class unwrap,wrap teal\n    class none,left orange\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules\n  [F631](https://docs.astral.sh/ruff/rules/assert-tuple/) and\n  [PLW0129](https://docs.astral.sh/ruff/rules/assert-on-string-literal/), which cover tuples and string literals; this\n  rule leaves every covered case to Ruff when the corresponding rule runs and covers other truthy constants.\n- [flake8-useless-assert](https://github.com/decorator-factory/flake8-useless-assert) reports an assert with a truthy\n  literal, such as `assert True`, as [ULA001](https://github.com/decorator-factory/flake8-useless-assert), with no fix.\n- [Sourcery](https://sourcery.ai) removes `assert True` statements through\n  [remove-assert-true](https://docs.sourcery.ai/reference/refactorings/python/remove-assert-true/). It covers\n  `assert True` only, where this rule also covers other truthy constants.\n",
     "examples": {
       "parsed": [
         {
@@ -25131,7 +25399,7 @@
         {
           "section": "What it does",
           "line": 193,
-          "end_line": 206,
+          "end_line": 212,
           "config": {
             "line": 193,
             "end_line": 196,
@@ -25144,27 +25412,27 @@
               "file": "example.py",
               "named": false,
               "line": 198,
-              "end_line": 201,
-              "source": "check = False\nassert (check, \"message\")\n"
+              "end_line": 204,
+              "source": "check = False\nassert (\n    check,  # still pending\n    \"message\",\n)\n"
             },
             {
               "role": "fixed",
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 203,
-              "end_line": 206,
-              "source": "check = False\nassert check, \"message\"\n"
+              "line": 206,
+              "end_line": 212,
+              "source": "check = False\nassert (\n    check,  # still pending\n    \"message\",\n)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 210,
-          "end_line": 221,
+          "line": 217,
+          "end_line": 230,
           "config": {
-            "line": 210,
-            "end_line": 213,
+            "line": 217,
+            "end_line": 220,
             "source": "[tool.ruff.lint]\nselect = []\n"
           },
           "blocks": [
@@ -25173,8 +25441,38 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 215,
-              "end_line": 217,
+              "line": 222,
+              "end_line": 225,
+              "source": "check = False\nassert (check, \"message\")\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 227,
+              "end_line": 230,
+              "source": "check = False\nassert check, \"message\"\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 234,
+          "end_line": 245,
+          "config": {
+            "line": 234,
+            "end_line": 237,
+            "source": "[tool.ruff.lint]\nselect = []\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 239,
+              "end_line": 241,
               "source": "assert (ready := True, \"message\")\n"
             },
             {
@@ -25182,16 +25480,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 219,
-              "end_line": 221,
+              "line": 243,
+              "end_line": 245,
               "source": "assert (ready := True), \"message\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 227,
-          "end_line": 235,
+          "line": 251,
+          "end_line": 259,
           "config": null,
           "blocks": [
             {
@@ -25199,8 +25497,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 227,
-              "end_line": 230,
+              "line": 251,
+              "end_line": 254,
               "source": "values = [1, 2]\nassert (value for value in values)\n"
             },
             {
@@ -25208,16 +25506,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 232,
-              "end_line": 235,
+              "line": 256,
+              "end_line": 259,
               "source": "values = [1, 2]\nassert all(value for value in values)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 240,
-          "end_line": 248,
+          "line": 264,
+          "end_line": 272,
           "config": null,
           "blocks": [
             {
@@ -25225,8 +25523,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 240,
-              "end_line": 243,
+              "line": 264,
+              "end_line": 267,
               "source": "async def check(values: AsyncIterator[int]) -> None:\n    assert (value async for value in values)\n"
             },
             {
@@ -25234,16 +25532,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 245,
-              "end_line": 248,
+              "line": 269,
+              "end_line": 272,
               "source": "async def check(values: AsyncIterator[int]) -> None:\n    assert (value async for value in values)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 258,
-          "end_line": 267,
+          "line": 282,
+          "end_line": 291,
           "config": null,
           "blocks": [
             {
@@ -25251,8 +25549,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 258,
-              "end_line": 262,
+              "line": 282,
+              "end_line": 286,
               "source": "def test_save() -> None:\n    save()\n    assert True\n"
             },
             {
@@ -25260,16 +25558,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 264,
-              "end_line": 267,
+              "line": 288,
+              "end_line": 291,
               "source": "def test_save() -> None:\n    save()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 271,
-          "end_line": 279,
+          "line": 295,
+          "end_line": 303,
           "config": null,
           "blocks": [
             {
@@ -25277,8 +25575,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 271,
-              "end_line": 274,
+              "line": 295,
+              "end_line": 298,
               "source": "def test_empty() -> None:\n    assert True\n"
             },
             {
@@ -25286,16 +25584,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 276,
-              "end_line": 279,
+              "line": 300,
+              "end_line": 303,
               "source": "def test_empty() -> None:\n    pass\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 288,
-          "end_line": 294,
+          "line": 312,
+          "end_line": 318,
           "config": null,
           "blocks": [
             {
@@ -25303,16 +25601,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 288,
-              "end_line": 294,
+              "line": 312,
+              "end_line": 318,
               "source": "def compute() -> int:\n    return 1\n\n\nassert [compute()]\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 296,
-          "end_line": 302,
+          "line": 320,
+          "end_line": 326,
           "config": null,
           "blocks": [
             {
@@ -25320,8 +25618,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 296,
-              "end_line": 302,
+              "line": 320,
+              "end_line": 326,
               "source": "def compute() -> int:\n    return 1\n\n\nassert \"value {}\".format(compute())\n"
             }
           ]

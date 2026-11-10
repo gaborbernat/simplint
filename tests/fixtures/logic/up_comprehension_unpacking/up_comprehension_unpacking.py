@@ -36,3 +36,9 @@ async def gather(groups):
     flat = [x for group in groups for x in group]
     awaited = [x async for group in groups async for x in group]
     return flat, awaited
+commented_clause = [x for group in groups  # keep the outer loop
+    for x in group]
+commented_element = [(x  # keep the element
+) for group in groups for x in group]
+commented_entries = {key:  # keep the value
+    value for entry in pairs for key, value in entry.items()}

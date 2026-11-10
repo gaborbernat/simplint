@@ -1055,8 +1055,8 @@ fn loops_over_unknown_iterables_name_no_attribute(body: &str) {
         check(root.path(), &["--select", "SMP402"]).1,
         common::native(
             "docs/tutorial.py:1:12: SMP402 [*] `client` is in `__all__`, yet no other module imports it; list only what \
-             other modules use\ndocs/tutorial.py:1:22: SMP402 [*] `engine` is in `__all__`, yet no other module imports \
-             it; list only what other modules use\nFound 2 errors.\n[*] 2 fixable with `--fix`.\n"
+             other modules use\ndocs/tutorial.py:1:22: SMP402 `engine` is in `__all__`, yet no other module imports \
+             it; list only what other modules use\nFound 2 errors.\n[*] 1 fixable with `--fix`.\n"
         )
     );
 }
@@ -2015,8 +2015,8 @@ fn unlisted_build_hooks_are_listed_like_entry_points() {
     assert_eq!(
         check(root.path(), &["--select", "SMP401,SMP403,SMP409"]).1,
         "build_backend.py:1:5: SMP401 [*] `build_wheel` is imported by other modules; list it in `__all__`\n\
-         build_backend.py:5:5: SMP401 [*] `get_requires_for_build_wheel` is imported by other modules; list it in \
-         `__all__`\nFound 2 errors.\n[*] 2 fixable with `--fix`.\n"
+         build_backend.py:5:5: SMP401 `get_requires_for_build_wheel` is imported by other modules; list it in \
+         `__all__`\nFound 2 errors.\n[*] 1 fixable with `--fix`.\n"
     );
 }
 
@@ -2474,7 +2474,8 @@ const NESTED_SECOND: &str = "def run(x, y):\n    a = 1\n    b = 2\n    if x:\n  
 
 // Six repeated statements, one copy right after the end of an `if` block, whose dedent is not part of the repeat.
 const AFTER_BLOCK: &str = "def run(x, y):\n    if x:\n        log(x)\n    a = 1\n    b = 2\n    c = a + b\n    d = c * 2\n    log(d)\n    return d\n";
-const AFTER_STATEMENT: &str = "def run(x, y):\n    log(y)\n    a = 1\n    b = 2\n    c = a + b\n    d = c * 2\n    log(d)\n    return d\n";
+const AFTER_STATEMENT: &str =
+    "def run(x, y):\n    log(y)\n    a = 1\n    b = 2\n    c = a + b\n    d = c * 2\n    log(d)\n    return d\n";
 
 #[test_case(NESTED_FIRST, NESTED_SECOND, &[] ; "nesting_differs")]
 #[test_case(NESTED_FIRST, NESTED_FIRST, &["first.py", "second.py"] ; "nesting_repeats")]

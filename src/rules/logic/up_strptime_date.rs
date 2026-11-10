@@ -35,21 +35,20 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         .find_argument_value("format", 1)
         .and_then(Expr::as_string_literal_expr)
         .is_some_and(|format| !["%z", "%:z"].iter().any(|zone| format.value.to_str().contains(zone)));
-    let fix = class_replacement(checker, class, member).map(|(replacement, import)| {
-        let class_edit = Edit::range_replacement(replacement, class.range());
-        // Drops `.date()` or `.time()`, keeping the parentheses around the call when it has them.
-        let unwrap = Edit::range_deletion(TextRange::new(
-            checker.parenthesized_range(part.value.as_ref(), expr.into()).end(),
-            expr.end(),
-        ));
-        let mut rest = vec![unwrap];
-        rest.extend(import);
-        if member == "date" || plain_format {
-            Fix::safe_edits(class_edit, rest)
-        } else {
-            Fix::unsafe_edits(class_edit, rest)
-        }
-    });
+    // Drops `.date()` or `.time()`, keeping the parentheses around the call when it has them.
+    let unwrap = TextRange::new(checker.parenthesized_range(part.value.as_ref(), expr.into()).end(), expr.end());
+    let fix = class_replacement(checker, class, member)
+        .filter(|_| !checker.has_comment_in(class.range()) && !checker.has_comment_in(unwrap))
+        .map(|(replacement, import)| {
+            let class_edit = Edit::range_replacement(replacement, class.range());
+            let mut rest = vec![Edit::range_deletion(unwrap)];
+            rest.extend(import);
+            if member == "date" || plain_format {
+                Fix::safe_edits(class_edit, rest)
+            } else {
+                Fix::unsafe_edits(class_edit, rest)
+            }
+        });
     checker.report_fix(
         Rule::StrptimeDate,
         expr.range(),

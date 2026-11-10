@@ -147,6 +147,8 @@ fn add_ignore_merges_into_ignore_comments() {
 #[test_case("--add-noqa=why", "x = 1  # noqa: E501 long  # type: ignore[misc]\n", "x = 1  # noqa: E501, SMP101 why  # type: ignore[misc]\n" ; "noqa_replaces_reason")]
 #[test_case("--add-noqa=why", "x = 1  # noqa: E501# type: ignore[misc]\n", "x = 1  # noqa: E501, SMP101 why  # type: ignore[misc]\n" ; "noqa_reason_before_joined_comment")]
 #[test_case("--add-noqa=why", "x = 1  # noqa: E501 long\n", "x = 1  # noqa: E501, SMP101 why\n" ; "noqa_replaces_reason_without_comment")]
+#[test_case("--add-noqa=why", "x = 1  # noqa: E501 see issue #12 for why\n", "x = 1  # noqa: E501, SMP101 why\n" ; "noqa_reason_with_issue_number")]
+#[test_case("--add-noqa=why", "x = 1  # noqa: E501 see #12  # type: ignore[misc]\n", "x = 1  # noqa: E501, SMP101 why  # type: ignore[misc]\n" ; "noqa_reason_with_issue_number_before_comment")]
 #[test_case("--add-ignore", "x = 1  # simplint: ignore[SMP601] kept  # pragma: no cover\n", "x = 1  # simplint: ignore[missing-final, single-letter-name] kept  # pragma: no cover\n" ; "ignore_keeps_reason_and_comment")]
 #[test_case("--add-ignore=paper", "x = 1  # simplint: ignore[SMP601] kept  # pragma: no cover\n", "x = 1  # simplint: ignore[missing-final, single-letter-name] paper  # pragma: no cover\n" ; "ignore_replaces_reason")]
 fn add_suppression_keeps_what_follows_the_codes(flag: &str, source: &str, expected: &str) {
@@ -257,16 +259,19 @@ fn unused_ignore_reports_and_fixes_each_selector() {
     assert_eq!(output.matches(" SMP009 ").count(), 1);
     assert!(output.contains("2 unused simplint ignore selectors"), "{output}");
     assert_eq!(check(root.path(), &["--select", "SMP101,SMP009", "--fix"]).0, 0);
-    assert_eq!(read(root.path(), "module.py"), "x = 1  # simplint: ignore[SMP101]  # needed for x\nvalue = 2\n");
+    assert_eq!(
+        read(root.path(), "module.py"),
+        "x = 1  # simplint: ignore[SMP101]  # needed for x\nvalue = 2  # stale\n"
+    );
 }
 
 #[test_case("[tool.ruff.lint]\npreview = true\nselect = [\"PLR0914\"]\n[tool.ruff.lint.pylint]\nmax-locals = 2\n", true ; "local_limit_blocks_report")]
-#[test_case("[tool.ruff.lint]\nselect = []\n", false ; "comment_exposes_report")]
+#[test_case("[tool.ruff.lint]\nselect = []\n", true ; "comment_keeps_report_silent")]
 fn unused_ignore_rechecks_comment_sensitive_rules(config: &str, removed: bool) {
     let source = "_MESSAGE = '''hello\nworld'''  # simplint: ignore[SMP202]  # moving adds a local\n\n\ndef read() -> str:\n    first = 1\n    second = 2\n    return _MESSAGE + str(first + second)\n";
     let root = project(&[("pyproject.toml", config), ("module.py", source)]);
     let (status, output, _) = check(root.path(), &["--select", "SMP202,SMP009"]);
-    assert_eq!(output.contains("unused-ignore"), removed, "{output}");
+    assert_eq!(output.contains("unused simplint ignore selector"), removed, "{output}");
     assert_eq!(status == 1, removed);
     check(root.path(), &["--select", "SMP202,SMP009", "--fix"]);
     assert_eq!(read(root.path(), "module.py").contains("simplint: ignore"), !removed);
@@ -274,7 +279,7 @@ fn unused_ignore_rechecks_comment_sensitive_rules(config: &str, removed: bool) {
 
 #[test]
 fn unused_ignore_removes_stale_selectors_beside_one_a_comment_needs() {
-    let needed = "_MESSAGE = '''hello\nworld'''  # simplint: ignore[SMP202]  # moving adds a local\n\n\ndef read() -> str:\n    first = 1\n    second = 2\n    return _MESSAGE + str(first + second)\n";
+    let needed = "_MESSAGE = '''hello\nworld'''  # simplint: ignore[SMP202]\n\n\ndef read() -> str:\n    first = 1\n    second = 2\n    return _MESSAGE + str(first + second)\n";
     let stale = "\n\nvalue = 2  # simplint: ignore[SMP602]\nother = 3  # simplint: ignore[SMP603]\n";
     let root =
         project(&[("pyproject.toml", "[tool.ruff.lint]\nselect = []\n"), ("module.py", &format!("{needed}{stale}"))]);
@@ -301,10 +306,10 @@ fn unused_ignore_preserves_crlf() {
 }
 
 #[test]
-fn unused_ignore_drops_standalone_comment_without_hiding_later_reports() {
+fn unused_ignore_drops_standalone_directive_without_hiding_later_reports() {
     let root = project(&[("module.py", "# simplint: ignore[SMP602]  # stale\nx = 1\n")]);
     assert_eq!(check(root.path(), &["--select", "SMP101,SMP009", "--fix"]).0, 1);
-    assert_eq!(read(root.path(), "module.py"), "x = 1\n");
+    assert_eq!(read(root.path(), "module.py"), "# stale\nx = 1\n");
     assert_eq!(check(root.path(), &["--select", "SMP101"]).0, 1);
 }
 
@@ -313,6 +318,17 @@ fn unused_ignore_removes_a_selector_already_covered_by_noqa() {
     let root = project(&[("module.py", "x = 1  # noqa: SMP101  # simplint: ignore[SMP101]\n")]);
     assert_eq!(check(root.path(), &["--select", "SMP101,SMP009", "--fix"]).0, 0);
     assert_eq!(read(root.path(), "module.py"), "x = 1  # noqa: SMP101\n");
+}
+
+#[test_case("value = 1  # simplint: ignore[SMP101]  # wire order\n", "value = 1  # wire order\n" ; "trailing_directive_keeps_later_comment")]
+#[test_case("def f():\n    # simplint: ignore[SMP101]  # wire order\n    return 1\n", "def f():\n    # wire order\n    return 1\n" ; "own_line_directive_keeps_later_comment")]
+#[test_case("value = 1  # simplint: ignore[SMP101]# noqa: E501\n", "value = 1  # noqa: E501\n" ; "directive_joined_to_later_comment")]
+#[test_case("x = 1  # simplint: ignore[SMP602] # noqa: SMP101\n", "x = 1  # noqa: SMP101\n" ; "stale_directive_keeps_noqa_of_its_line")]
+#[test_case("def f():\n    # simplint: ignore[SMP101]\n    return 1\n", "def f():\n    return 1\n" ; "standalone_directive_leaves_no_line")]
+fn unused_ignore_removes_only_the_directive_and_its_reason(source: &str, expected: &str) {
+    let root = project(&[("module.py", source)]);
+    check(root.path(), &["--select", "SMP101,SMP009", "--fix"]);
+    assert_eq!(read(root.path(), "module.py"), expected);
 }
 
 #[test]

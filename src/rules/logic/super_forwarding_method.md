@@ -206,6 +206,20 @@ be a plain `def` taking the same parameters under the same names, without defaul
           return super().load(name)
   ```
 
+- **A method with a comment in its body**: deleting the method would delete the comment with it.
+
+  ```python ok
+  class Base:
+      def load(self, name):
+          return name.encode()
+
+
+  class Store(Base):
+      def load(self, name):
+          # Keeps the type checker from reporting the parent's loader.
+          return super().load(name)
+  ```
+
 - **A call that renames, reorders or adds an argument**: the method does more than forward.
 
   ```python ok

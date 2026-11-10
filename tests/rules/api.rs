@@ -15,6 +15,11 @@ use crate::common;
 #[test_case("missing-from-all", "_missing_from_all_call.py" ; "missing_from_all_dynamic")]
 #[test_case("missing-from-all", "_missing_from_all_nested.py" ; "missing_from_all_nested_all")]
 #[test_case("missing-from-all", "_missing_from_all_empty.py" ; "missing_from_all_empty")]
+#[test_case("missing-from-all", "_missing_from_all_empty_comment.py" ; "missing_from_all_empty_comment")]
+#[test_case("missing-from-all", "_missing_from_all_last_comment.py" ; "missing_from_all_last_comment")]
+#[test_case("missing-from-all", "_missing_from_all_last_no_comma.py" ; "missing_from_all_last_no_comma")]
+#[test_case("missing-from-all", "_missing_from_all_last_bracket.py" ; "missing_from_all_last_bracket")]
+#[test_case("missing-from-all", "_missing_from_all_last_comma_line.py" ; "missing_from_all_last_comma_line")]
 #[test_case("missing-from-all", "_missing_from_all_imported.py" ; "missing_from_all_imported_name")]
 #[test_case("missing-from-all", "_missing_from_all_reached.py" ; "missing_from_all_reached_types")]
 #[test_case("missing-from-all", "missing_from_all_scripts.py" ; "missing_from_all_entry_point")]
@@ -185,6 +190,32 @@ fn missing_from_all_drops_a_noqa_shared_by_names_on_one_line() {
     ]);
     let (code, _, stderr) = common::simplint(root.path(), &["check", "--select", "SMP401"]);
     assert_eq!((code, stderr.as_str()), (1, ""));
+}
+
+// A `noqa` for F401 stays while another name its import binds is left out of the listing, since that name still needs it.
+#[test]
+fn missing_from_all_keeps_a_noqa_another_name_on_its_line_needs() {
+    let root = common::project(&[
+        ("enc.py", "from os.path import join, sep  # noqa: F401\n\n\ndef run() -> int:\n    return 1\n"),
+        ("use.py", "from enc import join\n\nprint(join)\n"),
+    ]);
+    common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP401"]);
+    assert_eq!(
+        common::read(root.path(), "enc.py"),
+        "from os.path import join, sep  # noqa: F401\n\n\ndef run() -> int:\n    return 1\n\n\n__all__ = [\n    \"join\",\n]\n"
+    );
+}
+
+// Each report of a listing shows the whole fix in the full output, so a module with many missing names shows it once.
+#[test]
+fn missing_from_all_shows_the_fix_once_for_many_names() {
+    let names: Vec<String> = (0..200).map(|index| format!("f{index}")).collect();
+    let module =
+        (0..200).map(|index| format!("def f{index}() -> int:\n    return {index}\n\n\n")).collect::<Vec<_>>().concat();
+    let root = common::project(&[("enc.py", &module), ("use.py", &format!("from enc import {}\n", names.join(", ")))]);
+    let (_, stdout, _) =
+        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP401", "--output-format", "full"]);
+    assert_eq!(stdout.matches("help: Add ").count(), 1, "{stdout}");
 }
 
 // A name bound only under `if TYPE_CHECKING:` exists for type checkers alone, so listing it would make `import *` fail,

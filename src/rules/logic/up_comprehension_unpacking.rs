@@ -45,9 +45,11 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         Element::Single(elt) => checker.parenthesized_range(elt, expr.into()),
         Element::Pair(key, value) => key.range().cover(value.range()),
     };
-    let rewrite = Edit::range_replacement(unpacking.replacement(source), element_range);
-    let remove = Edit::range_deletion(clause);
-    let fix = if unpacking.safe { Fix::safe_edits(rewrite, [remove]) } else { Fix::unsafe_edits(rewrite, [remove]) };
+    let fix = (!checker.has_comment_in(element_range) && !checker.has_comment_in(clause)).then(|| {
+        let rewrite = Edit::range_replacement(unpacking.replacement(source), element_range);
+        let remove = Edit::range_deletion(clause);
+        if unpacking.safe { Fix::safe_edits(rewrite, [remove]) } else { Fix::unsafe_edits(rewrite, [remove]) }
+    });
     let (message, title) = match unpacking.kind {
         Kind::Elements => (
             format!("`{source}` is unpacked by a nested `for`; unpack it in the element"),
@@ -58,7 +60,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
             format!("Unpack `{source}` with `**` in the element"),
         ),
     };
-    checker.report_fix(Rule::ComprehensionUnpacking, expr.range(), message, Some(fix), title);
+    checker.report_fix(Rule::ComprehensionUnpacking, expr.range(), message, fix, title);
 }
 
 #[derive(Clone, Copy)]

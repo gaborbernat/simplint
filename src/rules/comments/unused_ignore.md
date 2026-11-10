@@ -22,8 +22,16 @@ value = 1
 
 The rule tests removals one selector at a time, then offers one safe fix for the file. It re-lints each proposed edit
 that might be unused and keeps the selector if removing it exposes any report, including one from a different rule. When
-a comment has several selectors, the fix keeps those that still suppress reports. A whole comment is removed when its
-last selector is unused.
+a comment has several selectors, the fix keeps those that still suppress reports. When its last selector is unused, the
+directive and its reason are removed, and a comment after them on the same line stays:
+
+```python report
+value = 1  # simplint: ignore[single-letter-name]  # wire order
+```
+
+```python fixed
+value = 1  # wire order
+```
 
 The rule checks the rules currently selected for the file. If you run a narrow `--select`, selectors for rules outside
 that selection can appear unused. Use the project's normal settings when cleaning up ignores.

@@ -145,7 +145,32 @@ merged = {**entry for entry in pairs}
 ### Fix
 
 The fix is safe for lists, sets and generators. It rewrites the element and removes the inner `for` clause. The fix for
-a dict is unsafe: `**` reads `keys()` and `__getitem__`, not `items()`, so the rewrite needs a real `dict`.
+a dict is unsafe: `**` reads `keys()` and `__getitem__`, not `items()`, so the rewrite needs a real `dict`. No fix is
+offered when a comment lies in the element or the inner `for` clause, since the rewrite would drop it. A comment between
+the clauses keeps the report without a fix:
+
+```toml config
+[project]
+requires-python = ">=3.15"
+```
+
+```python report
+groups = [[1, 2], [3]]
+flat = [
+    x
+    for group in groups  # one list per group
+    for x in group
+]
+```
+
+```python fixed
+groups = [[1, 2], [3]]
+flat = [
+    x
+    for group in groups  # one list per group
+    for x in group
+]
+```
 
 ## Other tools
 

@@ -9,7 +9,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 15:9 SMP509 `traceback.format_exception` reads the type and traceback from `error`; pass `error` alone [fix: Drop the type and traceback arguments]
 16:9 SMP509 `traceback.print_exception` reads the type and traceback from `error`; pass `error` alone [fix: Drop the type and traceback arguments]
 17:9 SMP509 `traceback.format_exception` reads the type and traceback from `error`; pass `error` alone [fix: Drop the type and traceback arguments]
---- fixed (7 applied, 0 remaining) ---
+54:9 SMP509 `traceback.print_exception` reads the type and traceback from `error`; pass `error` alone
+--- fixed (7 applied, 1 remaining) ---
 import sys
 import traceback
 import traceback as tb_module
@@ -57,3 +58,11 @@ def shadowed(error):
         raise ValueError
     except ValueError as error:
         return traceback.format_exception(type(error), error, error.__traceback__)
+
+
+def commented(run):
+    try:
+        run()
+    except Exception as error:
+        traceback.print_exception(type(error),  # keep the type
+                                  error, error.__traceback__)

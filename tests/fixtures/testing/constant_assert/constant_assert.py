@@ -142,3 +142,8 @@ def not_constant(value: int) -> None:
     assert "x{".format()
     assert "x}".format()
     assert "x%y" % ()
+
+
+def commented_tuple(value: int) -> None:
+    assert (value,  # keep the message
+            "value is set")

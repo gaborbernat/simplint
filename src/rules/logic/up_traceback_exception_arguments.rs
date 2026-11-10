@@ -38,12 +38,12 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         _ => return,
     };
     let range = TextRange::new(exc_type.start(), last.end());
-    let fix = Fix::safe_edit(Edit::range_replacement(name.to_owned(), range));
+    let fix = (!checker.has_comment_in(range)).then(|| Fix::safe_edit(Edit::range_replacement(name.to_owned(), range)));
     checker.report_fix(
         Rule::TracebackExceptionArguments,
         expr.range(),
         format!("`traceback.{function}` reads the type and traceback from `{name}`; pass `{name}` alone"),
-        Some(fix),
+        fix,
         "Drop the type and traceback arguments",
     );
 }

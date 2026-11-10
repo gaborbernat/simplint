@@ -96,7 +96,29 @@ Reports these forms, when the call resolves to `sys.exc_info`, so `import sys as
 ### Fix
 
 The fix is safe. It replaces the subscript with `sys.exception()`, or the unpacked argument with it, which gives the
-same value.
+same value. No fix is offered when a comment lies in the replaced code, since the rewrite would drop it. A comment in
+the subscript keeps the report without a fix:
+
+```toml config
+[project]
+requires-python = ">=3.11"
+```
+
+```python report
+import sys
+
+error = sys.exc_info()[
+    1  # the exception being handled
+]
+```
+
+```python fixed
+import sys
+
+error = sys.exc_info()[
+    1  # the exception being handled
+]
+```
 
 ## Other tools
 

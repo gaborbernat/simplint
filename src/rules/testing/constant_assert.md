@@ -187,6 +187,30 @@ Truthiness is judged the way Ruff judges it. These are truthy constants:
 
 The fix depends on the constant:
 
+- **A comment within the statement**: no fix is offered, since rewriting or deleting the statement would drop the
+  comment.
+
+  ```toml config
+  [tool.ruff.lint]
+  select = []
+  ```
+
+  ```python report
+  check = False
+  assert (
+      check,  # still pending
+      "message",
+  )
+  ```
+
+  ```python fixed
+  check = False
+  assert (
+      check,  # still pending
+      "message",
+  )
+  ```
+
 - A two-element tuple without a message, such as `assert (check, "message")`, becomes `assert check, "message"`, since
   deleting it would drop the check it meant. **Unsafe fix:** the restored check may now fail.
 

@@ -42,6 +42,8 @@ fn report_constant_assert(checker: &Checker, stmt: &Stmt, assert: &ast::StmtAsse
         return;
     }
     let fix = match (test.as_ref(), msg) {
+        // Rewriting or deleting the statement would drop a comment inside it.
+        _ if checker.has_comment_in(stmt.range()) => None,
         // `assert (check, "message")` meant `assert check, "message"`; deleting it would drop the check.
         // A starred element has no meaning outside the tuple, so there is no single-argument form to restore.
         (Expr::Tuple(tuple @ ast::ExprTuple { elts, .. }), None)

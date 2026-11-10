@@ -50,6 +50,19 @@ To silence every remaining report at once:
 - Both take a reason to write after the codes: ``--add-noqa="matches the paper's notation"``.
 - Neither takes standard input: ``simplint check --add-noqa -`` fails with an error.
 
+A reason replaces the one the comment already has, issue numbers such as ``#12`` included, and a comment after that
+reason stays. With ``--add-noqa=why`` on a line that reports SMP101:
+
+.. code-block:: python
+
+    x = 1  # noqa: E501 see issue #12 for why  # type: ignore[misc]
+
+becomes
+
+.. code-block:: python
+
+    x = 1  # noqa: E501, SMP101 why  # type: ignore[misc]
+
 The :doc:`unused-ignore </_generated/rules/SMP009>` rule reports obsolete selectors in ``# simplint: ignore[...]``
 comments. Run ``simplint check --extend-select SMP009 --fix`` to remove them. The fix re-lints uncertain removals so a
 comment that affects another rule stays in place. It leaves ``# noqa`` and configuration-level ignores alone.

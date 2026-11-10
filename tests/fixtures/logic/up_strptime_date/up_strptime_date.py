@@ -60,3 +60,8 @@ def name_only(text):
 
 def inherited(text):
     return moment.strptime(text, "%Y").date(), moment.strptime(text, "%Y")
+
+
+def commented_time(text):
+    return moment.strptime(text, "%H:%M").time(  # keep the call
+    )

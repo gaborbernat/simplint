@@ -381,7 +381,8 @@ __all__ = ["parse"]
 ### Fix
 
 The fix removes the names from `__all__`: their lines when each name has a line of its own, or the names from a list
-written on one line.
+written on one line. When several names are unused, only the first report carries the fix, since it removes all of them
+at once; the others have none.
 
 ```python report file=config.py
 LIMIT = 3

@@ -31,5 +31,10 @@ from _missing_from_all_reexport import helper as reexported_helper
 from _missing_from_all_sorted import Gamma, alpha, beta
 import _missing_from_all_imported
 from _missing_from_all_imported import Path, join, run
+from _missing_from_all_empty_comment import commented_shared
+from _missing_from_all_last_comment import gamma as last_gamma
+from _missing_from_all_last_no_comma import gamma as bare_last_gamma
+from _missing_from_all_last_bracket import gamma as bracket_gamma
+from _missing_from_all_last_comma_line import gamma as comma_line_gamma
 
 IMPORTED = (_missing_from_all_imported.sys, Path, join, run)

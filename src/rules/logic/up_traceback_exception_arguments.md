@@ -148,7 +148,37 @@ Reports a call that resolves to `traceback.print_exception`, `traceback.format_e
 ### Fix
 
 The fix is safe. It replaces the first arguments with the exception and keeps the keyword arguments, such as `limit=`
-and `chain=`.
+and `chain=`. No fix is offered when a comment lies in the arguments it replaces, since the rewrite would drop it. A
+comment between those arguments keeps the report without a fix:
+
+```toml config
+[project]
+requires-python = ">=3.10"
+```
+
+```python report
+import traceback
+
+
+def report(error):
+    return traceback.format_exception(
+        type(error),  # the type, for readers of older code
+        error,
+        error.__traceback__,
+    )
+```
+
+```python fixed
+import traceback
+
+
+def report(error):
+    return traceback.format_exception(
+        type(error),  # the type, for readers of older code
+        error,
+        error.__traceback__,
+    )
+```
 
 ## Other tools
 

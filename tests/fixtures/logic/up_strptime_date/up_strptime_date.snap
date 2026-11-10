@@ -10,7 +10,8 @@ expression: "lint_fixture(rule, fixture, target_version)"
 26:13 SMP514 Parse the date with `date.strptime`, not `datetime.strptime(...).date()` [fix: Call `date.strptime`]
 54:12 SMP514 Parse the date with `date.strptime`, not `datetime.strptime(...).date()` [fix: Call `date.strptime`]
 62:12 SMP514 Parse the date with `date.strptime`, not `datetime.strptime(...).date()` [fix: Call `date.strptime`]
---- fixed (8 applied, 0 remaining) ---
+66:12 SMP514 Parse the time with `time.strptime`, not `datetime.strptime(...).time()`
+--- fixed (8 applied, 1 remaining) ---
 import datetime
 from datetime import time, date, datetime as moment
 
@@ -73,3 +74,8 @@ def name_only(text):
 
 def inherited(text):
     return date.strptime(text, "%Y"), moment.strptime(text, "%Y")
+
+
+def commented_time(text):
+    return moment.strptime(text, "%H:%M").time(  # keep the call
+    )
