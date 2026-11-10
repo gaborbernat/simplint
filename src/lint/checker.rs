@@ -95,7 +95,8 @@ impl<'a> Checker<'a> {
         }
     }
 
-    pub fn run(self, include_unused_ignore: bool) -> Vec<Diagnostic> {
+    // With the file's suppression comments, the unused selectors of its ignore comments are reported too.
+    pub fn run(self, unused_ignores_of: Option<&Suppressions>) -> Vec<Diagnostic> {
         let rules = self.settings.rules;
         for rule in rules.iter() {
             self.enter(rule);
@@ -105,8 +106,10 @@ impl<'a> Checker<'a> {
         if rules.iter().any(Rule::walks) {
             Walker::run(&self, rules);
         }
-        if include_unused_ignore && rules.contains(Rule::UnusedIgnore) {
-            self.report_unused_ignores();
+        if let Some(suppressions) = unused_ignores_of
+            && rules.contains(Rule::UnusedIgnore)
+        {
+            self.report_unused_ignores(suppressions);
         }
         let mut diagnostics = self.diagnostics.into_inner();
         // Reports at the same position keep the order of the rules, as when each rule ran alone; the sort is stable.
@@ -114,8 +117,7 @@ impl<'a> Checker<'a> {
         diagnostics.into_iter().map(|(_, diagnostic)| diagnostic).collect()
     }
 
-    fn report_unused_ignores(&self) {
-        let suppressions = Suppressions::new(self.path, self.source, self.parsed, self.indexer, self.stylist);
+    fn report_unused_ignores(&self, suppressions: &Suppressions) {
         let diagnostics = self.diagnostics.borrow().iter().map(|(_, diagnostic)| diagnostic.clone()).collect();
         let Some(unused) = suppressions.unused_ignores(diagnostics, |proposed| {
             self.linter.lint_without_unused_ignore(self.path, proposed).diagnostics

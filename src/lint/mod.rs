@@ -123,8 +123,10 @@ impl<'a> Linter<'a> {
         }
         let indexer = Indexer::from_tokens(parsed.tokens(), source);
         let stylist = Stylist::from_tokens(parsed.tokens(), source);
-        let diagnostics = Checker::new(path, &file, &parsed, &indexer, &stylist, self).run(include_unused_ignore);
-        (unsupported, Ok(then(diagnostics, &Suppressions::new(path, source, &parsed, &indexer, &stylist))))
+        let suppressions = Suppressions::new(path, source, &parsed, &indexer, &stylist);
+        let diagnostics = Checker::new(path, &file, &parsed, &indexer, &stylist, self)
+            .run(include_unused_ignore.then_some(&suppressions));
+        (unsupported, Ok(then(diagnostics, &suppressions)))
     }
 }
 
