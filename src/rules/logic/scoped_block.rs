@@ -66,6 +66,10 @@ pub fn wrap_edits(checker: &Checker, first: TextRange, try_stmt: &ast::StmtTry, 
     if source.line_start(body_first.start()) <= try_stmt.start() {
         return None;
     }
+    // A statement that shares its line with an earlier one would keep that statement's text before the `with`.
+    if !checker.text(TextRange::new(source.line_start(first.start()), first.start())).trim().is_empty() {
+        return None;
+    }
     let head = TextRange::new(first.start(), source.line_start(body_first.start()));
     let tail = TextRange::new(source.full_line_end(body_last.end()), source.full_line_end(try_stmt.end()));
     if checker.has_comment_in(head) || checker.has_comment_in(tail) {

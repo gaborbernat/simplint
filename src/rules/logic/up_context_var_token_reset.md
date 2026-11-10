@@ -204,7 +204,7 @@ with request_id.set("one"):
 ### Fix
 
 The fix is safe and reports without a fix when a comment sits in the lines it would remove, which would lose the
-comment.
+comment, or when the assignment shares its line with an earlier statement.
 
 ## Other tools
 

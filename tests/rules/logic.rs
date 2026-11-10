@@ -65,6 +65,8 @@ use crate::common::{self, check, read};
 #[test_case("up-chdir-restore", "up_chdir_restore_imported.py", "py311" ; "chdir_restore_contextlib_imported")]
 #[test_case("up-chdir-restore", "up_chdir_restore_name.py", "py311" ; "chdir_restore_contextlib_name_taken")]
 #[test_case("up-chdir-restore", "up_chdir_restore.py", "py310" ; "chdir_restore_before_python311")]
+#[test_case("up-chdir-restore", "up_chdir_restore_shared_line.py", "py311" ; "chdir_restore_shared_line")]
+#[test_case("up-context-var-token-reset", "up_context_var_token_reset_shared_line.py", "py314" ; "context_var_token_reset_shared_line")]
 #[test_case("up-strptime-date", "up_strptime_date.py", "py314" ; "strptime_date")]
 #[test_case("up-strptime-date", "up_strptime_date_name.py", "py314" ; "strptime_date_class_name")]
 #[test_case("up-strptime-date", "up_strptime_date_spelled.py", "py314" ; "strptime_date_name_taken")]
