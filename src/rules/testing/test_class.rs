@@ -13,7 +13,7 @@ use crate::lint::noqa::{ruff_ignores, suppresses};
 use crate::lint::registry::Rule;
 use crate::rules::edits::statement_block;
 use crate::rules::testing::is_test_function;
-use crate::rules::{docstring, expr_mentions};
+use crate::rules::{docstring, expr_mentions, indentation};
 use crate::syntax::{is_name, names_in};
 
 pub fn test_class(checker: &Checker) {
@@ -125,7 +125,13 @@ fn flatten_method(
         (false, true) => format!("test_{prefix}{rest}"),
         (false, false) => format!("test_{prefix}_{rest}"),
     };
-    if renamed != name && checker.name_token_count(&renamed) > 0 {
+    // An unchanged name is the method's own token too, so only a module-level binding of it counts as a collision.
+    let collides = if renamed == name {
+        checker.semantic().bindings(name).iter().any(|binding| binding.module_scope)
+    } else {
+        checker.name_token_count(&renamed) > 0
+    };
+    if collides {
         return None;
     }
     let self_parameter = function.parameters.args.first().filter(|parameter| parameter.name().as_str() == "self")?;
@@ -168,7 +174,7 @@ fn flatten_method(
     }
     text.push_str(&source[TextRange::new(function.name.end(), self_parameter.start())]);
     text.push_str(&source[TextRange::new(removal_end, block.end())]);
-    Some(dedent_block(&text, checker.stylist.indentation().as_str()))
+    Some(dedent_block(&text, indentation(source, function)))
 }
 
 // The class's type parameters that a method's signature, body or nested type aliases name, plus those that their bounds

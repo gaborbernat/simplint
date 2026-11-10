@@ -69,12 +69,12 @@ pub fn mock_assertion_typo(checker: &Checker) {
         {
             continue;
         }
-        let fix = finder.fixable.get(&attr.range()).map(|prefix| {
+        let fix = finder.fixable.get(&attr.range()).map(|deletions| {
             let rename = Edit::range_replacement(intended.to_owned(), attr.range());
-            match prefix {
-                Some(prefix) => Fix::unsafe_edits(Edit::range_deletion(*prefix), [rename]),
-                None => Fix::unsafe_edit(rename),
-            }
+            let mut edits: Vec<Edit> = deletions.iter().map(|range| Edit::range_deletion(*range)).collect();
+            edits.push(rename);
+            let first = edits.remove(0);
+            Fix::unsafe_edits(first, edits)
         });
         checker.report_fix(
             Rule::MockAssertionTypo,
@@ -89,9 +89,10 @@ pub fn mock_assertion_typo(checker: &Checker) {
 struct Typos<'a> {
     found: Vec<(&'a ast::Identifier, &'static str)>,
     // The names called as a statement of their own, by their range, which the rename turns into a check. A call that is
-    // the whole test of an `assert` maps to the `assert ` prefix to drop, since an assertion method returns `None`.
-    // Renamed anywhere else, the name would be a bound method, which is always true, or a `None` the code goes on to use.
-    fixable: FxHashMap<TextRange, Option<TextRange>>,
+    // the whole test of an `assert` maps to the ranges to drop, the `assert ` prefix and the parentheses around the
+    // test, since an assertion method returns `None`. Renamed anywhere else, the name would be a bound method, which is
+    // always true, or a `None` the code goes on to use.
+    fixable: FxHashMap<TextRange, Vec<TextRange>>,
     // The names Ruff's PGH005 reports, by their range, so this rule leaves them to it when PGH005 runs.
     ruff_reported: FxHashSet<TextRange>,
     ruff_pgh005: bool,
@@ -104,12 +105,17 @@ impl<'a> Visitor<'a> for Typos<'a> {
         match stmt {
             Stmt::Expr(ast::StmtExpr { value, .. }) => {
                 if let Some(attr) = called_attribute(value) {
-                    self.fixable.insert(attr.range(), None);
+                    self.fixable.insert(attr.range(), Vec::new());
                 }
             }
             Stmt::Assert(ast::StmtAssert { test, msg: None, .. }) => {
                 if let Some(attr) = called_attribute(test) {
-                    self.fixable.insert(attr.range(), Some(TextRange::new(stmt.start(), test.start())));
+                    let mut deletions = vec![TextRange::new(stmt.start(), test.start())];
+                    // The statement's range includes the closing parenthesis of a parenthesized test.
+                    if stmt.end() > test.end() {
+                        deletions.push(TextRange::new(test.end(), stmt.end()));
+                    }
+                    self.fixable.insert(attr.range(), deletions);
                 }
             }
             _ => {}

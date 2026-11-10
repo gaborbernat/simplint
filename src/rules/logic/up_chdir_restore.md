@@ -164,7 +164,43 @@ def run(target):
 
 The fix is safe under those conditions. It adds `import contextlib` before the module's first import, unless the module
 imports `contextlib` already. When another binding holds the name `contextlib`, the rule reports without a fix. It also
-reports without a fix when a comment sits in the lines it would remove.
+reports without a fix when a comment sits in the lines it would remove, or when the assignment shares its line with an
+earlier statement.
+
+```toml config
+[project]
+requires-python = ">=3.11"
+```
+
+```python report
+import os
+
+
+def run(target):
+    # fmt: off
+    log("start"); old = os.getcwd()
+    # fmt: on
+    os.chdir(target)
+    try:
+        step()
+    finally:
+        os.chdir(old)
+```
+
+```python fixed
+import os
+
+
+def run(target):
+    # fmt: off
+    log("start"); old = os.getcwd()
+    # fmt: on
+    os.chdir(target)
+    try:
+        step()
+    finally:
+        os.chdir(old)
+```
 
 ## Other tools
 

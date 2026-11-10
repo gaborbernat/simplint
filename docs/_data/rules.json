@@ -3381,7 +3381,7 @@
     "name": "single-user-constant",
     "summary": "Module constants only one function uses",
     "fix": "Sometimes",
-    "explanation": "Flags module-level constants that only one function uses. Keeping the value next to its only use lets the reader follow\nthe function without scrolling away to find it.\n\n## Why is this bad?\n\nA module constant that only one function uses makes the code, and that function, harder to read for no benefit. Code\nlocality makes a function easy to read and reason about without scrolling around to find the value. In later pull\nrequests the constant may not even be in the diff, which makes reviews harder. Nothing pays for that: with one user,\nthere is no duplication the constant avoids, so such a constant is better inlined.\n\nA module-level constant also suggests the value is shared, so a reader has to search the module to learn that one\nfunction uses it. Defined in that function, its scope matches its use. A comment above the constant, such as one saying\nit is built once for speed, keeps it at module level.\n\n## Example\n\n```python report\n_TIMEOUT = 30\n\n\ndef connect(host: str) -> socket.socket:\n    return socket.create_connection((host, 443), timeout=_TIMEOUT)\n```\n\nUse instead:\n\n```python ok\ndef connect(host: str) -> socket.socket:\n    return socket.create_connection((host, 443), timeout=30)\n```\n\n## Conflicts with Ruff\n\nRuff's [magic-value-comparison](https://docs.astral.sh/ruff/rules/magic-value-comparison/) asks for a named constant\nwhere the inlined value lands in a comparison. When a fix would give it a new report, simplint withdraws the fix and\nkeeps the report.\n\n## What it does\n\n### Active on\n\nA constant here is a name assigned once, with `=` or an\n[annotated assignment](https://docs.python.org/3/reference/simple_stmts.html#annotated-assignment-statements), to a\nvalue written out in the source. Such a value is built the same way on every call, so it can move into the function. It\nis reported when every reference to it sits inside the body of a single top-level function or method, including\nfunctions nested in it. These values count:\n\n- **Literals**: a string, bytes, number, `True`, `False`, `None` or `...`, including strings joined by placing them side\n  by side.\n\n  ```python report\n  _TIMEOUT = 30\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=_TIMEOUT)\n  ```\n\n- **Negative numbers**, such as `-1`: a literal with a sign.\n\n  ```python report\n  _OFFSET = -1\n\n\n  def shift(value: int) -> int:\n      return value + _OFFSET\n  ```\n\n- **Binary operations between such values**, arithmetic or other, such as `60 * 60` or `\"-\" * 40`: the result follows\n  from the literals alone.\n\n  ```python report\n  _WINDOW = 60 * 60\n\n\n  def expired(age: int) -> bool:\n      return age > _WINDOW\n  ```\n\n- **Tuple, list, set or dict displays made only of such values**, such as `(\"a\", 1)` or `{\"ok\": 0}`: the container is\n  written out in full.\n\n  ```python report\n  _FIELDS = (\"name\", 1)\n\n\n  def describe() -> str:\n      return str(_FIELDS)\n  ```\n\n- **`frozenset()`, or `frozenset` called with one such value**, while the module does not bind the name `frozenset`, so\n  the call is the builtin.\n\n  ```python report\n  _KEYS = frozenset([\"a\", \"b\"])\n\n\n  def has(key: str) -> bool:\n      return key in _KEYS\n  ```\n\n### Exceptions\n\n- **Functions already at Ruff's local-variable limit**: when PLR0914 runs, moving a multiline or annotated constant into\n  a function can add a local and cause a new Ruff report. Such constants stay at module scope. The limit comes from\n  Ruff's `lint.pylint.max-locals` setting.\n\n- **Any other value**: built once at import, it may hold state every call shares or be the object a test patches, and\n  moving it into the function would build a new one on every call.\n\n  That covers a call result such as a cache, a logger from `logging.getLogger(__name__)`, a pattern from `re.compile`, a\n  `Path` or a client instance; a name or attribute such as `logging.INFO`; an f-string; and a display unpacking another\n  value with `*` or `**`.\n\n  ```python ok\n  import logging\n\n  _LOGGER = logging.getLogger(__name__)\n\n\n  def run() -> None:\n      _LOGGER.info(\"run\")\n  ```\n\n- **A constant used only inside a module-level lambda**: a constant cannot move into a lambda.\n\n  ```python ok\n  _LIMIT = 3\n  TAKE = lambda items: items[:_LIMIT]\n  ```\n\n- **Public names**: those listed in\n  [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package), or, when the module has no\n  `__all__`, builds it dynamically or binds it inside a nested block, names without a leading `_`. Other modules may use\n  them.\n\n  ```python ok\n  TIMEOUT = 30\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=TIMEOUT)\n  ```\n\n- **Names another file in the run imports, or a string in the run spells, such as the dotted path `\"config._TIMEOUT\"`\n  that a test patches with [`unittest.mock.patch`](https://docs.python.org/3/library/unittest.mock.html#patch)**: that\n  file needs the name to stay at module level, and a string that looks the name up would miss an inlined value. A\n  docstring that only mentions the name is prose, so it keeps nothing.\n\n  ```python ok file=config.py\n  _TIMEOUT = 30\n\n\n  def connect() -> int:\n      return _TIMEOUT\n  ```\n\n  ```python context file=main.py\n  from config import _TIMEOUT\n  ```\n\n- **Names a doctest of the module reads**: a `>>>` example in one of the module's docstrings runs in the module's\n  globals, so inlining the constant would leave the example reading a name that is gone.\n\n- **[Dunder](https://docs.python.org/3/reference/lexical_analysis.html#reserved-classes-of-identifiers) names and\n  class-like names such as `UserId`**: Python gives dunder names their meaning, and a class-like name stands for a type\n  rather than a value.\n\n  ```python ok\n  UserId = 5\n\n\n  def load() -> int:\n      return UserId\n  ```\n\n- **Constants with a comment on the line directly above or at the end of their line**: the comment may say why the value\n  lives at module level, such as being built once for speed.\n\n  ```python ok\n  _TIMEOUT = 30  # seconds\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=_TIMEOUT)\n  ```\n\n- **Names another module in the run assigns as an attribute**, such as `config._TIMEOUT = 5`: a local copy would ignore\n  the override.\n\n  ```python ok file=config.py\n  _TIMEOUT = 30\n\n\n  def connect() -> int:\n      return _TIMEOUT\n  ```\n\n  ```python context file=main.py\n  import config\n\n  config._TIMEOUT = 5\n  ```\n\n- **Containers other code can reach or change**: a list, set or dict, or a tuple holding one, is state that must outlive\n  each call. A function that calls a method on it such as `add`, returns it, passes it to another function or binds\n  another name to it lets that state be changed or kept. A container stays reportable only when the function tests\n  membership with `in` or calls `len` on it, or, when its items are immutable, iterates, indexes or unpacks it, calls\n  `copy`, `count`, `get`, `index`, `items`, `keys` or `values` on it, or passes it to a builtin that copies or reduces\n  it, such as `sorted` or `sum`.\n\n  ```python ok\n  _SEEN = {\"a\"}\n\n\n  def mark(item: str) -> None:\n      _SEEN.add(item)\n  ```\n\n  ```python ok\n  import heapq\n\n  _QUEUE = []\n\n\n  def push(item: int) -> int:\n      heapq.heappush(_QUEUE, item)\n      return len(_QUEUE)\n  ```\n\n- **Constants referenced at import time**, such as in a default value or decorator, or in any annotation: the value must\n  exist while the module loads, before any function runs.\n\n  ```python ok\n  _LIMIT = 3\n\n\n  def load(limit: int = _LIMIT) -> int:\n      return limit\n  ```\n\n```mermaid\nflowchart TD\n    constant[\"module-level name\"] --> literal{\"value written<br/>out in source?\"}\n    literal -->|no| stays[\"not reported\"]\n    literal -->|yes| single{\"one function<br/>uses it?\"}\n    single -->|no| stays\n    single -->|yes| skipped{\"listed under<br/>Exceptions?\"}\n    skipped -->|yes| stays\n    skipped -->|no| report[\"reported\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class constant blue\n    class literal,single,skipped yellow\n    class stays green\n    class report orange\n```\n\n### Fix\n\n**Unsafe fix:** always, as the value is rebuilt on every call, which costs time for expensive values and gives each call\na new object for mutable ones.\n\nThe fix moves the value in one of two ways:\n\n- **Inline**: when the constant is used once, outside any loop, nested function or class, lambda or comprehension, the\n  fix inlines the value at the use, adding parentheses when needed. A value with a comment inside it, or a triple-quoted\n  string, takes the local form instead. Some constants keep a name:\n\n  ```python report\n  _TIMEOUT = 30\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=_TIMEOUT)\n  ```\n\n  ```python fixed\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=30)\n  ```\n\n  A value the source spreads over several lines goes in on one line, written by Ruff's code generator. The layout and\n  trailing commas do not carry over, and each string keeps the quotes it was written with.\n\n  ```python report\n  _CHOICES = (\n      \"first\",\n      \"second\",\n  )\n\n\n  def pick() -> None:\n      print(_CHOICES)\n  ```\n\n  ```python fixed\n  def pick() -> None:\n      print((\"first\", \"second\"))\n  ```\n\n  - Inside an f-string it inlines only a number: a value with quotes there is a syntax error before Python 3.12, and a\n    longer one buries the text the f-string builds.\n\n    ```python report\n    _NAME = \"shop\"\n\n\n    def label() -> str:\n        return f\"name: {_NAME}\"\n    ```\n\n    ```python fixed\n    def label() -> str:\n        name = \"shop\"\n        return f\"name: {name}\"\n    ```\n\n  - A string that calls `format` keeps a name: as a literal it becomes Ruff's\n    [f-string](https://docs.astral.sh/ruff/rules/f-string/) candidate, which Ruff reports only while no argument spans\n    lines, so the result would depend on how `ruff format` lays out the call.\n\n    ```python report\n    _TEMPLATE = \"{} items\"\n\n\n    def describe(count: int) -> str:\n        return _TEMPLATE.format(count)\n    ```\n\n  - Inside an f-string `=` debug field the field keeps its printed text, so the value moves into a plain field after it.\n\n    ```python report\n    _LIMIT = 30\n\n\n    def show() -> str:\n        return f\"{_LIMIT=}\"\n    ```\n\n    ```python fixed\n    def show() -> str:\n        return f\"_LIMIT={30!r}\"\n    ```\n\n  - A constant with an annotation keeps its name, as the annotation types the value where an inlined literal would be\n    typed on its own. A dict literal under `Final[dict[str, list[str]]]` inlined into a `.get` call fails a type check\n    against the function's return annotation.\n\n    ```python report\n    _LIMIT: int = 30\n\n\n    def connect() -> int:\n        return _LIMIT\n    ```\n\n    ```python fixed\n    def connect() -> int:\n        limit: int = 30\n        return limit\n    ```\n\n- **Local**: otherwise it declares a local before the statement that first uses it and renames the uses. The local takes\n  the constant's name in lowercase, without leading underscores, and keeps its annotation, with `Final` taken off. An\n  annotated constant always takes this form.\n\n  ```python report\n  _LIMIT = 30\n\n\n  def connect(host: str) -> socket.socket:\n      if _LIMIT:\n          return socket.create_connection((host, 443), timeout=_LIMIT)\n      return socket.create_connection((host, 443))\n  ```\n\n  ```python fixed\n  def connect(host: str) -> socket.socket:\n      limit = 30\n      if limit:\n          return socket.create_connection((host, 443), timeout=limit)\n      return socket.create_connection((host, 443))\n  ```\n\n```mermaid\nflowchart TD\n    constant[\"reported constant\"] --> once{\"used once, outside loops<br/>and nested scopes?\"}\n    once -->|no| local[\"declare a local\"]\n    once -->|yes| line{\"value has a comment or<br/>a triple-quoted string?\"}\n    line -->|yes| local\n    line -->|no| place{\"an exception<br/>above applies?\"}\n    place -->|yes| local\n    place -->|no| inline[\"inline the value\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class constant blue\n    class once,line,place yellow\n    class local,inline green\n```\n\nOf the blank lines above and below the constant, the fix removes the shorter run, so the code around it keeps the wider\ngap. At the top of the file, the blank lines below go with it.\n\nNo fix is offered when:\n\n- the constant shares a line with other code;\n\n  ```python report\n  _TIMEOUT = 30\n  _RETRIES = 3\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=_TIMEOUT, retries=_RETRIES)\n  ```\n\n- the local name already appears in the file;\n\n  ```python report\n  _TIMEOUT = 30\n  timeout = 5\n\n\n  def connect(host: str) -> socket.socket:\n      if _TIMEOUT:\n          return socket.create_connection((host, 443), timeout=_TIMEOUT)\n      return socket.create_connection((host, 443), timeout=timeout)\n  ```\n\n- the value calls `frozenset` and the function has a parameter or local named `frozenset`.\n\n  ```python report\n  _KEYS = frozenset([\"a\", \"b\"])\n\n\n  def has(frozenset: set, key: str) -> bool:\n      return key in _KEYS\n  ```\n\n- the constant is read in a t-string, which keeps the source text of its expressions;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  _LIMIT = 30\n\n\n  def show() -> object:\n      return t\"{_LIMIT}\"\n  ```\n\n- a file of the run sets an attribute of the module under a computed name, as `setattr(module, name, value)` does\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags module-level constants that only one function uses. Keeping the value next to its only use lets the reader follow\nthe function without scrolling away to find it.\n\n## Why is this bad?\n\nA module constant that only one function uses makes the code, and that function, harder to read for no benefit. Code\nlocality makes a function easy to read and reason about without scrolling around to find the value. In later pull\nrequests the constant may not even be in the diff, which makes reviews harder. Nothing pays for that: with one user,\nthere is no duplication the constant avoids, so such a constant is better inlined.\n\nA module-level constant also suggests the value is shared, so a reader has to search the module to learn that one\nfunction uses it. Defined in that function, its scope matches its use. A comment above the constant, such as one saying\nit is built once for speed, keeps it at module level.\n\n## Example\n\n```python report\n_TIMEOUT = 30\n\n\ndef connect(host: str) -> socket.socket:\n    return socket.create_connection((host, 443), timeout=_TIMEOUT)\n```\n\nUse instead:\n\n```python ok\ndef connect(host: str) -> socket.socket:\n    return socket.create_connection((host, 443), timeout=30)\n```\n\n## Conflicts with Ruff\n\nRuff's [magic-value-comparison](https://docs.astral.sh/ruff/rules/magic-value-comparison/) asks for a named constant\nwhere the inlined value lands in a comparison. When a fix would give it a new report, simplint withdraws the fix and\nkeeps the report.\n\n## What it does\n\n### Active on\n\nA constant here is a name assigned once, with `=` or an\n[annotated assignment](https://docs.python.org/3/reference/simple_stmts.html#annotated-assignment-statements), to a\nvalue written out in the source. Such a value is built the same way on every call, so it can move into the function. It\nis reported when every reference to it sits inside the body of a single top-level function or method, including\nfunctions nested in it. These values count:\n\n- **Literals**: a string, bytes, number, `True`, `False`, `None` or `...`, including strings joined by placing them side\n  by side.\n\n  ```python report\n  _TIMEOUT = 30\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=_TIMEOUT)\n  ```\n\n- **Negative numbers**, such as `-1`: a literal with a sign.\n\n  ```python report\n  _OFFSET = -1\n\n\n  def shift(value: int) -> int:\n      return value + _OFFSET\n  ```\n\n- **Binary operations between such values**, arithmetic or other, such as `60 * 60` or `\"-\" * 40`: the result follows\n  from the literals alone.\n\n  ```python report\n  _WINDOW = 60 * 60\n\n\n  def expired(age: int) -> bool:\n      return age > _WINDOW\n  ```\n\n- **Tuple, list, set or dict displays made only of such values**, such as `(\"a\", 1)` or `{\"ok\": 0}`: the container is\n  written out in full.\n\n  ```python report\n  _FIELDS = (\"name\", 1)\n\n\n  def describe() -> str:\n      return str(_FIELDS)\n  ```\n\n- **`frozenset()`, or `frozenset` called with one such value**, while the module does not bind the name `frozenset`, so\n  the call is the builtin.\n\n  ```python report\n  _KEYS = frozenset([\"a\", \"b\"])\n\n\n  def has(key: str) -> bool:\n      return key in _KEYS\n  ```\n\n### Exceptions\n\n- **Functions already at Ruff's local-variable limit**: when PLR0914 runs, moving a multiline or annotated constant into\n  a function can add a local and cause a new Ruff report. Such constants stay at module scope. The limit comes from\n  Ruff's `lint.pylint.max-locals` setting.\n\n- **Any other value**: built once at import, it may hold state every call shares or be the object a test patches, and\n  moving it into the function would build a new one on every call.\n\n  That covers a call result such as a cache, a logger from `logging.getLogger(__name__)`, a pattern from `re.compile`, a\n  `Path` or a client instance; a name or attribute such as `logging.INFO`; an f-string; and a display unpacking another\n  value with `*` or `**`.\n\n  ```python ok\n  import logging\n\n  _LOGGER = logging.getLogger(__name__)\n\n\n  def run() -> None:\n      _LOGGER.info(\"run\")\n  ```\n\n- **A constant used only inside a module-level lambda**: a constant cannot move into a lambda.\n\n  ```python ok\n  _LIMIT = 3\n  TAKE = lambda items: items[:_LIMIT]\n  ```\n\n- **Public names**: those listed in\n  [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package), or, when the module has no\n  `__all__`, builds it dynamically or binds it inside a nested block, names without a leading `_`. Other modules may use\n  them.\n\n  ```python ok\n  TIMEOUT = 30\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=TIMEOUT)\n  ```\n\n- **Names another file in the run imports, or a string in the run spells, such as the dotted path `\"config._TIMEOUT\"`\n  that a test patches with [`unittest.mock.patch`](https://docs.python.org/3/library/unittest.mock.html#patch)**: that\n  file needs the name to stay at module level, and a string that looks the name up would miss an inlined value. A\n  docstring that only mentions the name is prose, so it keeps nothing.\n\n  ```python ok file=config.py\n  _TIMEOUT = 30\n\n\n  def connect() -> int:\n      return _TIMEOUT\n  ```\n\n  ```python context file=main.py\n  from config import _TIMEOUT\n  ```\n\n- **Names a doctest of the module reads**: a `>>>` example in one of the module's docstrings runs in the module's\n  globals, so inlining the constant would leave the example reading a name that is gone.\n\n- **[Dunder](https://docs.python.org/3/reference/lexical_analysis.html#reserved-classes-of-identifiers) names and\n  class-like names such as `UserId`**: Python gives dunder names their meaning, and a class-like name stands for a type\n  rather than a value.\n\n  ```python ok\n  UserId = 5\n\n\n  def load() -> int:\n      return UserId\n  ```\n\n- **Constants with a comment on the line directly above or at the end of their line**: the comment may say why the value\n  lives at module level, such as being built once for speed.\n\n  ```python ok\n  _TIMEOUT = 30  # seconds\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=_TIMEOUT)\n  ```\n\n- **Names another module in the run assigns as an attribute**, such as `config._TIMEOUT = 5`: a local copy would ignore\n  the override.\n\n  ```python ok file=config.py\n  _TIMEOUT = 30\n\n\n  def connect() -> int:\n      return _TIMEOUT\n  ```\n\n  ```python context file=main.py\n  import config\n\n  config._TIMEOUT = 5\n  ```\n\n- **Containers other code can reach or change**: a list, set or dict, or a tuple holding one, is state that must outlive\n  each call. A function that calls a method on it such as `add`, returns it, passes it to another function or binds\n  another name to it lets that state be changed or kept. A container stays reportable only when the function tests\n  membership with `in` or calls `len` on it, or, when its items are immutable, iterates, indexes or unpacks it, calls\n  `copy`, `count`, `get`, `index`, `items`, `keys` or `values` on it, or passes it to a builtin that copies or reduces\n  it, such as `sorted` or `sum`.\n\n  ```python ok\n  _SEEN = {\"a\"}\n\n\n  def mark(item: str) -> None:\n      _SEEN.add(item)\n  ```\n\n  ```python ok\n  import heapq\n\n  _QUEUE = []\n\n\n  def push(item: int) -> int:\n      heapq.heappush(_QUEUE, item)\n      return len(_QUEUE)\n  ```\n\n- **Constants referenced at import time**, such as in a default value or decorator, or in any annotation: the value must\n  exist while the module loads, before any function runs.\n\n  ```python ok\n  _LIMIT = 3\n\n\n  def load(limit: int = _LIMIT) -> int:\n      return limit\n  ```\n\n```mermaid\nflowchart TD\n    constant[\"module-level name\"] --> literal{\"value written<br/>out in source?\"}\n    literal -->|no| stays[\"not reported\"]\n    literal -->|yes| single{\"one function<br/>uses it?\"}\n    single -->|no| stays\n    single -->|yes| skipped{\"listed under<br/>Exceptions?\"}\n    skipped -->|yes| stays\n    skipped -->|no| report[\"reported\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class constant blue\n    class literal,single,skipped yellow\n    class stays green\n    class report orange\n```\n\n### Fix\n\n**Unsafe fix:** always, as the value is rebuilt on every call, which costs time for expensive values and gives each call\na new object for mutable ones.\n\nThe fix moves the value in one of two ways:\n\n- **Inline**: when the constant is used once, outside any loop, nested function or class, lambda or comprehension, the\n  fix inlines the value at the use, adding parentheses when needed. A value with a comment inside it, or a triple-quoted\n  string, takes the local form instead. Some constants keep a name:\n\n  ```python report\n  _TIMEOUT = 30\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=_TIMEOUT)\n  ```\n\n  ```python fixed\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=30)\n  ```\n\n  A value the source spreads over several lines goes in on one line, written by Ruff's code generator. The layout and\n  trailing commas do not carry over, and each string keeps the quotes it was written with.\n\n  ```python report\n  _CHOICES = (\n      \"first\",\n      \"second\",\n  )\n\n\n  def pick() -> None:\n      print(_CHOICES)\n  ```\n\n  ```python fixed\n  def pick() -> None:\n      print((\"first\", \"second\"))\n  ```\n\n  - Inside an f-string it inlines only a number: a value with quotes there is a syntax error before Python 3.12, and a\n    longer one buries the text the f-string builds.\n\n    ```python report\n    _NAME = \"shop\"\n\n\n    def label() -> str:\n        return f\"name: {_NAME}\"\n    ```\n\n    ```python fixed\n    def label() -> str:\n        name = \"shop\"\n        return f\"name: {name}\"\n    ```\n\n  - A string that calls `format` keeps a name: as a literal it becomes Ruff's\n    [f-string](https://docs.astral.sh/ruff/rules/f-string/) candidate, which Ruff reports only while no argument spans\n    lines, so the result would depend on how `ruff format` lays out the call.\n\n    ```python report\n    _TEMPLATE = \"{} items\"\n\n\n    def describe(count: int) -> str:\n        return _TEMPLATE.format(count)\n    ```\n\n  - Inside an f-string `=` debug field the field keeps its printed text, so the value moves into a plain field after it.\n\n    ```python report\n    _LIMIT = 30\n\n\n    def show() -> str:\n        return f\"{_LIMIT=}\"\n    ```\n\n    ```python fixed\n    def show() -> str:\n        return f\"_LIMIT={30!r}\"\n    ```\n\n  - A constant with an annotation keeps its name, as the annotation types the value where an inlined literal would be\n    typed on its own. A dict literal under `Final[dict[str, list[str]]]` inlined into a `.get` call fails a type check\n    against the function's return annotation.\n\n    ```python report\n    _LIMIT: int = 30\n\n\n    def connect() -> int:\n        return _LIMIT\n    ```\n\n    ```python fixed\n    def connect() -> int:\n        limit: int = 30\n        return limit\n    ```\n\n  - An integer followed by a `.` gets parentheses, since `30.bit_length()` reads the dot as a decimal point and does not\n    parse.\n\n    ```python report\n    _LIMIT = 30\n\n\n    def bits() -> int:\n        return _LIMIT.bit_length()\n    ```\n\n    ```python fixed\n    def bits() -> int:\n        return (30).bit_length()\n    ```\n\n- **Local**: otherwise it declares a local before the statement that first uses it and renames the uses. The local takes\n  the constant's name in lowercase, without leading underscores, and keeps its annotation, with `Final` taken off. An\n  annotated constant always takes this form.\n\n  ```python report\n  _LIMIT = 30\n\n\n  def connect(host: str) -> socket.socket:\n      if _LIMIT:\n          return socket.create_connection((host, 443), timeout=_LIMIT)\n      return socket.create_connection((host, 443))\n  ```\n\n  ```python fixed\n  def connect(host: str) -> socket.socket:\n      limit = 30\n      if limit:\n          return socket.create_connection((host, 443), timeout=limit)\n      return socket.create_connection((host, 443))\n  ```\n\n```mermaid\nflowchart TD\n    constant[\"reported constant\"] --> once{\"used once, outside loops<br/>and nested scopes?\"}\n    once -->|no| local[\"declare a local\"]\n    once -->|yes| line{\"value has a comment or<br/>a triple-quoted string?\"}\n    line -->|yes| local\n    line -->|no| place{\"an exception<br/>above applies?\"}\n    place -->|yes| local\n    place -->|no| inline[\"inline the value\"]\n    classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59\n    classDef yellow fill:#f2d27a,stroke:#6b5410,color:#062d59\n    classDef green fill:#93cfa9,stroke:#1d5e3a,color:#0b2e1a\n    classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28\n    classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606\n    class constant blue\n    class once,line,place yellow\n    class local,inline green\n```\n\nOf the blank lines above and below the constant, the fix removes the shorter run, so the code around it keeps the wider\ngap. At the top of the file, the blank lines below go with it.\n\nNo fix is offered when:\n\n- the constant shares a line with other code;\n\n  ```python report\n  _TIMEOUT = 30\n  _RETRIES = 3\n\n\n  def connect(host: str) -> socket.socket:\n      return socket.create_connection((host, 443), timeout=_TIMEOUT, retries=_RETRIES)\n  ```\n\n- the local name already appears in the file;\n\n  ```python report\n  _TIMEOUT = 30\n  timeout = 5\n\n\n  def connect(host: str) -> socket.socket:\n      if _TIMEOUT:\n          return socket.create_connection((host, 443), timeout=_TIMEOUT)\n      return socket.create_connection((host, 443), timeout=timeout)\n  ```\n\n- the value calls `frozenset` and the function has a parameter or local named `frozenset`.\n\n  ```python report\n  _KEYS = frozenset([\"a\", \"b\"])\n\n\n  def has(frozenset: set, key: str) -> bool:\n      return key in _KEYS\n  ```\n\n- the constant is read in a t-string, which keeps the source text of its expressions;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python report\n  _LIMIT = 30\n\n\n  def show() -> object:\n      return t\"{_LIMIT}\"\n  ```\n\n- a file of the run sets an attribute of the module under a computed name, as `setattr(module, name, value)` does\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -3840,8 +3840,8 @@
         },
         {
           "section": "What it does",
-          "line": 371,
-          "end_line": 387,
+          "line": 370,
+          "end_line": 381,
           "config": null,
           "blocks": [
             {
@@ -3849,8 +3849,34 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 371,
-              "end_line": 379,
+              "line": 370,
+              "end_line": 376,
+              "source": "_LIMIT = 30\n\n\ndef bits() -> int:\n    return _LIMIT.bit_length()\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 378,
+              "end_line": 381,
+              "source": "def bits() -> int:\n    return (30).bit_length()\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 387,
+          "end_line": 403,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 387,
+              "end_line": 395,
               "source": "_LIMIT = 30\n\n\ndef connect(host: str) -> socket.socket:\n    if _LIMIT:\n        return socket.create_connection((host, 443), timeout=_LIMIT)\n    return socket.create_connection((host, 443))\n"
             },
             {
@@ -3858,16 +3884,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 381,
-              "end_line": 387,
+              "line": 397,
+              "end_line": 403,
               "source": "def connect(host: str) -> socket.socket:\n    limit = 30\n    if limit:\n        return socket.create_connection((host, 443), timeout=limit)\n    return socket.create_connection((host, 443))\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 415,
-          "end_line": 422,
+          "line": 431,
+          "end_line": 438,
           "config": null,
           "blocks": [
             {
@@ -3875,16 +3901,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 415,
-              "end_line": 422,
+              "line": 431,
+              "end_line": 438,
               "source": "_TIMEOUT = 30\n_RETRIES = 3\n\n\ndef connect(host: str) -> socket.socket:\n    return socket.create_connection((host, 443), timeout=_TIMEOUT, retries=_RETRIES)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 426,
-          "end_line": 435,
+          "line": 442,
+          "end_line": 451,
           "config": null,
           "blocks": [
             {
@@ -3892,16 +3918,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 426,
-              "end_line": 435,
+              "line": 442,
+              "end_line": 451,
               "source": "_TIMEOUT = 30\ntimeout = 5\n\n\ndef connect(host: str) -> socket.socket:\n    if _TIMEOUT:\n        return socket.create_connection((host, 443), timeout=_TIMEOUT)\n    return socket.create_connection((host, 443), timeout=timeout)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 439,
-          "end_line": 445,
+          "line": 455,
+          "end_line": 461,
           "config": null,
           "blocks": [
             {
@@ -3909,19 +3935,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 439,
-              "end_line": 445,
+              "line": 455,
+              "end_line": 461,
               "source": "_KEYS = frozenset([\"a\", \"b\"])\n\n\ndef has(frozenset: set, key: str) -> bool:\n    return key in _KEYS\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 449,
-          "end_line": 460,
+          "line": 465,
+          "end_line": 476,
           "config": {
-            "line": 449,
-            "end_line": 452,
+            "line": 465,
+            "end_line": 468,
             "source": "[project]\nrequires-python = \">=3.14\"\n"
           },
           "blocks": [
@@ -3930,8 +3956,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 454,
-              "end_line": 460,
+              "line": 470,
+              "end_line": 476,
               "source": "_LIMIT = 30\n\n\ndef show() -> object:\n    return t\"{_LIMIT}\"\n"
             }
           ]
@@ -7811,7 +7837,7 @@
     "name": "unused-export",
     "summary": "`__all__` entries no other module imports",
     "fix": "Sometimes",
-    "explanation": "Flags names in `__all__` that no other module of the run imports. A name nothing imports is not part of any interface,\nso listing it makes the module look larger than it is.\n\n## Why is this bad?\n\n`__all__` tells readers, and tools such as type checkers and documentation generators, which names a module offers. A\nname nothing imports is not part of any interface; listing it makes the module look larger than it is, and keeps a stale\nentry after its last user is gone.\n\n## Example\n\n```python context file=cli.py\nfrom parser import parse\n\nparse(\"\")\n```\n\n```python report file=parser.py\ndef parse(text: str) -> list[str]:\n    return tokenize(text)\n\n\ndef tokenize(text: str) -> list[str]:\n    return text.split()\n\n\n__all__ = [\"parse\", \"tokenize\"]  # only `parse` is imported elsewhere\n```\n\nUse instead:\n\n```python context file=cli.py\nfrom parser import parse\n\nparse(\"\")\n```\n\n```python ok file=parser.py\ndef parse(text: str) -> list[str]:\n    return _tokenize(text)\n\n\ndef _tokenize(text: str) -> list[str]:\n    return text.split()\n\n\n__all__ = [\"parse\"]\n```\n\n## Configuration\n\n- [`project-kind`](https://simplint.readthedocs.io/en/latest/configuration/project.html#library-or-application) in\n  `[tool.simplint]`: whether the project is a library or an application\n\n  ```toml config\n  [build-system]\n  requires = [\"setuptools\"]\n  build-backend = \"setuptools.build_meta\"\n\n  [project]\n  name = \"demo\"\n\n  [tool.simplint]\n  project-kind = \"application\"\n  ```\n\n  ```python report file=demo/core.py\n  def run() -> int:\n      return 1\n\n\n  __all__ = [\"run\"]\n  ```\n\n## What it does\n\n### Active on\n\n- **Names in [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package) that no other module\n  of the run imports**. Whether the fix is safe depends on who else may import the name:\n\n  - in an application, the fix is safe: nothing outside the run imports it\n\n    ```python report file=config.py\n    LIMIT = 3\n\n\n    def local() -> int:\n        return 1\n\n\n    __all__ = [\"LIMIT\", \"local\"]\n    ```\n\n    ```python context file=cli.py\n    from config import LIMIT\n\n    print(LIMIT)\n    ```\n\n  - in a library (`project-kind` is `library`), the fix is **unsafe**: code outside the run may import it. The `__all__`\n    of a public module is the interface users import, so the rule leaves it alone; it checks the private modules of the\n    library\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python report file=demo/_core.py\n    def run() -> int:\n        return 1\n\n\n    __all__ = [\"run\"]\n    ```\n\n    ```python ok file=demo/core.py\n    def run() -> int:\n        return 1\n\n\n    __all__ = [\"run\"]\n    ```\n\n  These count as imports, as for [missing-from-all](SMP401.html):\n\n  - `from module import name`\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=cli.py\n    from config import LIMIT\n\n    print(LIMIT)\n    ```\n\n  - `module.name` after `import module`\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=cli.py\n    import config\n\n    print(config.LIMIT)\n    ```\n\n  - `module.name` read off a module loaded from a file path with `importlib.util.spec_from_file_location` and\n    `module_from_spec`, when the path names a project module\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=cli.py\n    import importlib.util\n    from pathlib import Path\n\n    spec = importlib.util.spec_from_file_location(\"config\", Path(__file__).parent / \"config.py\")\n    assert spec is not None\n    module = importlib.util.module_from_spec(spec)\n    print(module.LIMIT)\n    ```\n\n  - a string key read off the globals `runpy.run_module` returns, or `runpy.run_path` of a path that names a project\n    module\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=cli.py\n    import runpy\n\n    print(runpy.run_module(\"config\")[\"LIMIT\"])\n    ```\n\n  - a dotted path a test patches, as `mock.patch(\"config.LIMIT\")`\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=test_cli.py\n    from unittest import mock\n\n\n    def test_limit() -> None:\n        with mock.patch(\"config.LIMIT\", 5):\n            pass\n    ```\n\n  - the entry points `pyproject.toml` declares\n\n    ```toml config\n    [project]\n    name = \"demo\"\n\n    [project.scripts]\n    run = \"config:main\"\n    ```\n\n    ```python ok file=config.py\n    def main() -> None:\n        pass\n\n\n    __all__ = [\"main\"]\n    ```\n\n  - `module:attribute` strings passed to `pkgutil.resolve_name` or stored as an argparse `handler` with `set_defaults`\n\n  - setuptools dynamic `attr` values and command classes, mypy and Pylint plugins, pytest plugins loaded by `addopts`,\n    and legacy Poetry plugin entry points declared in `pyproject.toml`\n\n  - local PDM build hooks in `pdm_build.py` or the file named by `[tool.pdm.build] custom-hook`\n\n  - the coverage plugin `pyproject.toml` lists under `[tool.coverage.run] plugins`, whose `coverage_init` coverage\n    calls; the module is found in the project's directory or in a `pythonpath` or `extra-paths` directory of pytest or\n    ty\n\n    ```toml config\n    [tool.coverage.run]\n    plugins = [\"tasks.coverage_pragmas\"]\n    ```\n\n    ```python ok file=tasks/coverage_pragmas.py\n    def coverage_init(reg: object, options: dict[str, str]) -> None:\n        pass\n\n\n    __all__ = [\"coverage_init\"]\n    ```\n\n  - the declarations of the module's `.pyi` stub\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=config.pyi\n    LIMIT: int\n    ```\n\n### Exceptions\n\n- **Public modules of a library**: their `__all__` declares the interface users outside the project import, so no name\n  in it needs an importer in the run.\n\n  ```toml config\n  [build-system]\n  requires = [\"setuptools\"]\n  build-backend = \"setuptools.build_meta\"\n\n  [project]\n  name = \"demo\"\n  ```\n\n  ```python ok file=demo/core.py\n  def run() -> int:\n      return 1\n\n\n  __all__ = [\"run\"]\n  ```\n\n- **Modules another file star-imports**: `import *` hands every listed name to the importing module, which may use it\n  there.\n\n  ```python ok file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"LIMIT\", \"local\"]\n  ```\n\n  ```python context file=cli.py\n  from config import *\n\n  print(LIMIT, local())\n  ```\n\n- **Package `__init__.py` files**: they list what the package re-exports, and Ruff, which counts their imports as\n  re-exports, puts any name left out back into `__all__`.\n\n  ```python ok file=pkg/__init__.py\n  from pkg.core import run\n\n  __all__ = [\"run\"]\n  ```\n\n  ```python context file=pkg/core.py\n  def run() -> int:\n      return 1\n  ```\n\n- **Modules with a module-level `__getattr__`**: it serves names `__all__` lists without the module binding them, as a\n  deprecation shim or a lazy loader does, so whether anything imports them shows only outside the run.\n\n  ```python ok file=config.py\n  __all__ = [\"LIMIT\"]\n\n\n  def __getattr__(name: str) -> int:\n      return 1\n  ```\n\n- **Types in the signature of another exported name**: a class or alias that an exported function's annotations, or an\n  exported class's bases and fields, refer to is public API, so `__all__` may list it without any file importing it.\n  Types reached this way follow the same rule.\n\n  ```python ok file=parser.py\n  Tokens = list[str]\n\n\n  def parse(text: str) -> Tokens:\n      return text.split()\n\n\n  __all__ = [\"Tokens\", \"parse\"]\n  ```\n\n  ```python context file=cli.py\n  from parser import parse\n\n  parse(\"\")\n  ```\n\n- **Test modules**, as defined in [test-class](SMP801.html): these are not checked.\n\n  ```python ok file=test_config.py\n  __all__ = [\"check\"]\n\n\n  def check() -> None:\n      pass\n  ```\n\n- **Modules that build `__all__` dynamically**, such as with `list(...)`: the listed names are not known.\n\n  ```python ok\n  LIMIT = 3\n  __all__ = list([\"LIMIT\"])\n  ```\n\n### Fix\n\nThe fix removes the names from `__all__`: their lines when each name has a line of its own, or the names from a list\nwritten on one line.\n\n```python report file=config.py\nLIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"LIMIT\",\n    \"local\",\n]\n```\n\n```python fixed file=config.py\nLIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"LIMIT\",\n]\n```\n\n```python context file=cli.py\nfrom config import LIMIT\n\nprint(LIMIT)\n```\n\n```python report\ndef parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n__all__ = [\"parse\", \"tokenize\"]\n```\n\n```python fixed\ndef parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n__all__ = []\n```\n\nNo fix is offered when:\n\n- the list holds a comment and its names share lines, since the comment may belong to a removed name\n\n  ```python report\n  def parse() -> int:\n      return 1\n\n\n  def tokenize() -> int:\n      return 2\n\n\n  # fmt: off\n  __all__ = [\n      \"parse\", \"tokenize\",  # the entry points\n  ]\n  # fmt: on\n  ```\n\n  ```python fixed\n  def parse() -> int:\n      return 1\n\n\n  def tokenize() -> int:\n      return 2\n\n\n  # fmt: off\n  __all__ = [\n      \"parse\", \"tokenize\",  # the entry points\n  ]\n  # fmt: on\n  ```\n\n- more than one statement builds `__all__`, such as `__all__ += [...]`, since there is no one place to remove a name\n  from\n\n  ```python report\n  def parse() -> int:\n      return 1\n\n\n  def tokenize() -> int:\n      return 2\n\n\n  __all__ = [\"parse\"]\n  __all__ += [\"tokenize\"]\n  ```\n\n  ```python fixed\n  def parse() -> int:\n      return 1\n\n\n  def tokenize() -> int:\n      return 2\n\n\n  __all__ = [\"parse\"]\n  __all__ += [\"tokenize\"]\n  ```\n\n### Related rules\n\n[missing-from-all](SMP401.html) is the counterpart, adding the names other modules import: together they keep `__all__`\nto the names the rest of the project uses. Once a name leaves `__all__`, [unexported-public-name](SMP403.html) asks for\na leading underscore, so what looks public is what other modules use.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#12962](https://github.com/astral-sh/ruff/issues/12962)\n  (item 2: `__all__` entries nothing uses).\n",
+    "explanation": "Flags names in `__all__` that no other module of the run imports. A name nothing imports is not part of any interface,\nso listing it makes the module look larger than it is.\n\n## Why is this bad?\n\n`__all__` tells readers, and tools such as type checkers and documentation generators, which names a module offers. A\nname nothing imports is not part of any interface; listing it makes the module look larger than it is, and keeps a stale\nentry after its last user is gone.\n\n## Example\n\n```python context file=cli.py\nfrom parser import parse\n\nparse(\"\")\n```\n\n```python report file=parser.py\ndef parse(text: str) -> list[str]:\n    return tokenize(text)\n\n\ndef tokenize(text: str) -> list[str]:\n    return text.split()\n\n\n__all__ = [\"parse\", \"tokenize\"]  # only `parse` is imported elsewhere\n```\n\nUse instead:\n\n```python context file=cli.py\nfrom parser import parse\n\nparse(\"\")\n```\n\n```python ok file=parser.py\ndef parse(text: str) -> list[str]:\n    return _tokenize(text)\n\n\ndef _tokenize(text: str) -> list[str]:\n    return text.split()\n\n\n__all__ = [\"parse\"]\n```\n\n## Configuration\n\n- [`project-kind`](https://simplint.readthedocs.io/en/latest/configuration/project.html#library-or-application) in\n  `[tool.simplint]`: whether the project is a library or an application\n\n  ```toml config\n  [build-system]\n  requires = [\"setuptools\"]\n  build-backend = \"setuptools.build_meta\"\n\n  [project]\n  name = \"demo\"\n\n  [tool.simplint]\n  project-kind = \"application\"\n  ```\n\n  ```python report file=demo/core.py\n  def run() -> int:\n      return 1\n\n\n  __all__ = [\"run\"]\n  ```\n\n## What it does\n\n### Active on\n\n- **Names in [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package) that no other module\n  of the run imports**. Whether the fix is safe depends on who else may import the name:\n\n  - in an application, the fix is safe: nothing outside the run imports it\n\n    ```python report file=config.py\n    LIMIT = 3\n\n\n    def local() -> int:\n        return 1\n\n\n    __all__ = [\"LIMIT\", \"local\"]\n    ```\n\n    ```python context file=cli.py\n    from config import LIMIT\n\n    print(LIMIT)\n    ```\n\n  - in a library (`project-kind` is `library`), the fix is **unsafe**: code outside the run may import it. The `__all__`\n    of a public module is the interface users import, so the rule leaves it alone; it checks the private modules of the\n    library\n\n    ```toml config\n    [build-system]\n    requires = [\"setuptools\"]\n    build-backend = \"setuptools.build_meta\"\n\n    [project]\n    name = \"demo\"\n    ```\n\n    ```python report file=demo/_core.py\n    def run() -> int:\n        return 1\n\n\n    __all__ = [\"run\"]\n    ```\n\n    ```python ok file=demo/core.py\n    def run() -> int:\n        return 1\n\n\n    __all__ = [\"run\"]\n    ```\n\n  These count as imports, as for [missing-from-all](SMP401.html):\n\n  - `from module import name`\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=cli.py\n    from config import LIMIT\n\n    print(LIMIT)\n    ```\n\n  - `module.name` after `import module`\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=cli.py\n    import config\n\n    print(config.LIMIT)\n    ```\n\n  - `module.name` read off a module loaded from a file path with `importlib.util.spec_from_file_location` and\n    `module_from_spec`, when the path names a project module\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=cli.py\n    import importlib.util\n    from pathlib import Path\n\n    spec = importlib.util.spec_from_file_location(\"config\", Path(__file__).parent / \"config.py\")\n    assert spec is not None\n    module = importlib.util.module_from_spec(spec)\n    print(module.LIMIT)\n    ```\n\n  - a string key read off the globals `runpy.run_module` returns, or `runpy.run_path` of a path that names a project\n    module\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=cli.py\n    import runpy\n\n    print(runpy.run_module(\"config\")[\"LIMIT\"])\n    ```\n\n  - a dotted path a test patches, as `mock.patch(\"config.LIMIT\")`\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=test_cli.py\n    from unittest import mock\n\n\n    def test_limit() -> None:\n        with mock.patch(\"config.LIMIT\", 5):\n            pass\n    ```\n\n  - the entry points `pyproject.toml` declares\n\n    ```toml config\n    [project]\n    name = \"demo\"\n\n    [project.scripts]\n    run = \"config:main\"\n    ```\n\n    ```python ok file=config.py\n    def main() -> None:\n        pass\n\n\n    __all__ = [\"main\"]\n    ```\n\n  - `module:attribute` strings passed to `pkgutil.resolve_name` or stored as an argparse `handler` with `set_defaults`\n\n  - setuptools dynamic `attr` values and command classes, mypy and Pylint plugins, pytest plugins loaded by `addopts`,\n    and legacy Poetry plugin entry points declared in `pyproject.toml`\n\n  - local PDM build hooks in `pdm_build.py` or the file named by `[tool.pdm.build] custom-hook`\n\n  - the coverage plugin `pyproject.toml` lists under `[tool.coverage.run] plugins`, whose `coverage_init` coverage\n    calls; the module is found in the project's directory or in a `pythonpath` or `extra-paths` directory of pytest or\n    ty\n\n    ```toml config\n    [tool.coverage.run]\n    plugins = [\"tasks.coverage_pragmas\"]\n    ```\n\n    ```python ok file=tasks/coverage_pragmas.py\n    def coverage_init(reg: object, options: dict[str, str]) -> None:\n        pass\n\n\n    __all__ = [\"coverage_init\"]\n    ```\n\n  - the declarations of the module's `.pyi` stub\n\n    ```python ok file=config.py\n    LIMIT = 3\n    __all__ = [\"LIMIT\"]\n    ```\n\n    ```python context file=config.pyi\n    LIMIT: int\n    ```\n\n### Exceptions\n\n- **Public modules of a library**: their `__all__` declares the interface users outside the project import, so no name\n  in it needs an importer in the run.\n\n  ```toml config\n  [build-system]\n  requires = [\"setuptools\"]\n  build-backend = \"setuptools.build_meta\"\n\n  [project]\n  name = \"demo\"\n  ```\n\n  ```python ok file=demo/core.py\n  def run() -> int:\n      return 1\n\n\n  __all__ = [\"run\"]\n  ```\n\n- **Modules another file star-imports**: `import *` hands every listed name to the importing module, which may use it\n  there.\n\n  ```python ok file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"LIMIT\", \"local\"]\n  ```\n\n  ```python context file=cli.py\n  from config import *\n\n  print(LIMIT, local())\n  ```\n\n- **Package `__init__.py` files**: they list what the package re-exports, and Ruff, which counts their imports as\n  re-exports, puts any name left out back into `__all__`.\n\n  ```python ok file=pkg/__init__.py\n  from pkg.core import run\n\n  __all__ = [\"run\"]\n  ```\n\n  ```python context file=pkg/core.py\n  def run() -> int:\n      return 1\n  ```\n\n- **Modules with a module-level `__getattr__`**: it serves names `__all__` lists without the module binding them, as a\n  deprecation shim or a lazy loader does, so whether anything imports them shows only outside the run.\n\n  ```python ok file=config.py\n  __all__ = [\"LIMIT\"]\n\n\n  def __getattr__(name: str) -> int:\n      return 1\n  ```\n\n- **Types in the signature of another exported name**: a class or alias that an exported function's annotations, or an\n  exported class's bases and fields, refer to is public API, so `__all__` may list it without any file importing it.\n  Types reached this way follow the same rule.\n\n  ```python ok file=parser.py\n  Tokens = list[str]\n\n\n  def parse(text: str) -> Tokens:\n      return text.split()\n\n\n  __all__ = [\"Tokens\", \"parse\"]\n  ```\n\n  ```python context file=cli.py\n  from parser import parse\n\n  parse(\"\")\n  ```\n\n- **Test modules**, as defined in [test-class](SMP801.html): these are not checked.\n\n  ```python ok file=test_config.py\n  __all__ = [\"check\"]\n\n\n  def check() -> None:\n      pass\n  ```\n\n- **Modules that build `__all__` dynamically**, such as with `list(...)`: the listed names are not known.\n\n  ```python ok\n  LIMIT = 3\n  __all__ = list([\"LIMIT\"])\n  ```\n\n### Fix\n\nThe fix removes the names from `__all__`: their lines when each name has a line of its own, or the names from a list\nwritten on one line.\n\n```python report file=config.py\nLIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"LIMIT\",\n    \"local\",\n]\n```\n\n```python fixed file=config.py\nLIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"LIMIT\",\n]\n```\n\n```python context file=cli.py\nfrom config import LIMIT\n\nprint(LIMIT)\n```\n\nA name in parentheses goes with its parentheses:\n\n```python context file=cli.py\nfrom config import ZETA, GAMMA\n\nprint(ZETA, GAMMA)\n```\n\n```python report file=config.py\nZETA = 1\nBETA = 2\nGAMMA = 3\n\n__all__ = \"ZETA\", (\"BETA\"), \"GAMMA\"\n```\n\n```python fixed file=config.py\nZETA = 1\nBETA = 2\nGAMMA = 3\n\n__all__ = \"ZETA\", \"GAMMA\"\n```\n\n```python report\ndef parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n__all__ = [\"parse\", \"tokenize\"]\n```\n\n```python fixed\ndef parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n__all__ = []\n```\n\nNo fix is offered when:\n\n- the list holds a comment and its names share lines, since the comment may belong to a removed name\n\n  ```python report\n  def parse() -> int:\n      return 1\n\n\n  def tokenize() -> int:\n      return 2\n\n\n  # fmt: off\n  __all__ = [\n      \"parse\", \"tokenize\",  # the entry points\n  ]\n  # fmt: on\n  ```\n\n  ```python fixed\n  def parse() -> int:\n      return 1\n\n\n  def tokenize() -> int:\n      return 2\n\n\n  # fmt: off\n  __all__ = [\n      \"parse\", \"tokenize\",  # the entry points\n  ]\n  # fmt: on\n  ```\n\n- more than one statement builds `__all__`, such as `__all__ += [...]`, since there is no one place to remove a name\n  from\n\n  ```python report\n  def parse() -> int:\n      return 1\n\n\n  def tokenize() -> int:\n      return 2\n\n\n  __all__ = [\"parse\"]\n  __all__ += [\"tokenize\"]\n  ```\n\n  ```python fixed\n  def parse() -> int:\n      return 1\n\n\n  def tokenize() -> int:\n      return 2\n\n\n  __all__ = [\"parse\"]\n  __all__ += [\"tokenize\"]\n  ```\n\n### Related rules\n\n[missing-from-all](SMP401.html) is the counterpart, adding the names other modules import: together they keep `__all__`\nto the names the rest of the project uses. Once a name leaves `__all__`, [unexported-public-name](SMP403.html) asks for\na leading underscore, so what looks public is what other modules use.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#12962](https://github.com/astral-sh/ruff/issues/12962)\n  (item 2: `__all__` entries nothing uses).\n",
     "examples": {
       "parsed": [
         {
@@ -8328,8 +8354,43 @@
         },
         {
           "section": "What it does",
-          "line": 402,
+          "line": 404,
           "end_line": 424,
+          "config": null,
+          "blocks": [
+            {
+              "role": "context",
+              "language": "python",
+              "file": "cli.py",
+              "named": true,
+              "line": 404,
+              "end_line": 408,
+              "source": "from config import ZETA, GAMMA\n\nprint(ZETA, GAMMA)\n"
+            },
+            {
+              "role": "report",
+              "language": "python",
+              "file": "config.py",
+              "named": true,
+              "line": 410,
+              "end_line": 416,
+              "source": "ZETA = 1\nBETA = 2\nGAMMA = 3\n\n__all__ = \"ZETA\", (\"BETA\"), \"GAMMA\"\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "config.py",
+              "named": true,
+              "line": 418,
+              "end_line": 424,
+              "source": "ZETA = 1\nBETA = 2\nGAMMA = 3\n\n__all__ = \"ZETA\", \"GAMMA\"\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 426,
+          "end_line": 448,
           "config": null,
           "blocks": [
             {
@@ -8337,8 +8398,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 402,
-              "end_line": 412,
+              "line": 426,
+              "end_line": 436,
               "source": "def parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n__all__ = [\"parse\", \"tokenize\"]\n"
             },
             {
@@ -8346,16 +8407,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 414,
-              "end_line": 424,
+              "line": 438,
+              "end_line": 448,
               "source": "def parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n__all__ = []\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 430,
-          "end_line": 460,
+          "line": 454,
+          "end_line": 484,
           "config": null,
           "blocks": [
             {
@@ -8363,8 +8424,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 430,
-              "end_line": 444,
+              "line": 454,
+              "end_line": 468,
               "source": "def parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n# fmt: off\n__all__ = [\n    \"parse\", \"tokenize\",  # the entry points\n]\n# fmt: on\n"
             },
             {
@@ -8372,16 +8433,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 446,
-              "end_line": 460,
+              "line": 470,
+              "end_line": 484,
               "source": "def parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n# fmt: off\n__all__ = [\n    \"parse\", \"tokenize\",  # the entry points\n]\n# fmt: on\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 465,
-          "end_line": 489,
+          "line": 489,
+          "end_line": 513,
           "config": null,
           "blocks": [
             {
@@ -8389,8 +8450,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 465,
-              "end_line": 476,
+              "line": 489,
+              "end_line": 500,
               "source": "def parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n__all__ = [\"parse\"]\n__all__ += [\"tokenize\"]\n"
             },
             {
@@ -8398,8 +8459,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 478,
-              "end_line": 489,
+              "line": 502,
+              "end_line": 513,
               "source": "def parse() -> int:\n    return 1\n\n\ndef tokenize() -> int:\n    return 2\n\n\n__all__ = [\"parse\"]\n__all__ += [\"tokenize\"]\n"
             }
           ]
@@ -15603,7 +15664,7 @@
     "name": "up-context-var-token-reset",
     "summary": "`ContextVar.set()` tokens reset in a `finally` block",
     "fix": "Sometimes",
-    "explanation": "Flags a `ContextVar.set()` token that a `try` block resets in its `finally` clause, which a `with` block does on exit\nfrom Python 3.14.\n\n## Why is this bad?\n\nSince Python 3.14 the token `ContextVar.set()` returns is a context manager that resets the variable when the block\nends. The `try`/`finally` pair repeats that by hand, and leaves a name in scope that nothing else reads.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nimport contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    token = request_id.set(value)\n    try:\n        return process()\n    finally:\n        request_id.reset(token)\n```\n\nUse instead:\n\n```python ok\nimport contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    with request_id.set(value):\n        return process()\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  import contextvars\n\n  request_id = contextvars.ContextVar(\"request_id\")\n\n\n  def handle(value):\n      token = request_id.set(value)\n      try:\n          return process()\n      finally:\n          request_id.reset(token)\n  ```\n\n## What it does\n\nReports an assignment `token = variable.set(value)` followed directly by a `try` whose only clause is a `finally` that\nholds `variable.reset(token)`, with no `except` and no `else`. `variable` is a name the file assigns a\n`contextvars.ContextVar(...)` call to, or a parameter annotated as `ContextVar`.\n\n### Active on\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nimport contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\ntoken = request_id.set(\"one\")\ntry:\n    print(request_id.get())\nfinally:\n    request_id.reset(token)\n```\n\n```python fixed\nimport contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\nwith request_id.set(\"one\"):\n    print(request_id.get())\n```\n\n### Exceptions\n\n- **A token read outside the reset**: the block would take the name's last use away.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  import contextvars\n\n  request_id = contextvars.ContextVar(\"request_id\")\n  token = request_id.set(\"one\")\n  try:\n      print(request_id.get())\n  finally:\n      request_id.reset(token)\n  print(token)\n  ```\n\n- **A `finally` with more than the reset**: the statements after the reset would run inside the block.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  import contextvars\n\n  request_id = contextvars.ContextVar(\"request_id\")\n  token = request_id.set(\"one\")\n  try:\n      print(request_id.get())\n  finally:\n      request_id.reset(token)\n      print(\"done\")\n  ```\n\n- **A reset on another variable**: the token belongs to the variable it was set on.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  import contextvars\n\n  request_id = contextvars.ContextVar(\"request_id\")\n  user = contextvars.ContextVar(\"user\")\n  token = request_id.set(\"one\")\n  try:\n      print(request_id.get())\n  finally:\n      user.reset(token)\n  ```\n\n- **A receiver not known to be a `ContextVar`**: an attribute, an unannotated parameter, or an object of another class,\n  whose `set` may return something that is not a context manager.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  class Settings:\n      def set(self, value):\n          old, self.value = self.value, value\n          return old\n\n      def reset(self, old):\n          self.value = old\n\n\n  settings = Settings()\n  token = settings.set(\"one\")\n  try:\n      print(settings.value)\n  finally:\n      settings.reset(token)\n  ```\n\n- **Target versions before 3.14**: the token is not a context manager there, and `with` raises `TypeError`.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  import contextvars\n\n  request_id = contextvars.ContextVar(\"request_id\")\n  token = request_id.set(\"one\")\n  try:\n      print(request_id.get())\n  finally:\n      request_id.reset(token)\n  ```\n\n### Fix\n\nThe fix is safe and reports without a fix when a comment sits in the lines it would remove, which would lose the\ncomment.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags a `ContextVar.set()` token that a `try` block resets in its `finally` clause, which a `with` block does on exit\nfrom Python 3.14.\n\n## Why is this bad?\n\nSince Python 3.14 the token `ContextVar.set()` returns is a context manager that resets the variable when the block\nends. The `try`/`finally` pair repeats that by hand, and leaves a name in scope that nothing else reads.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nimport contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    token = request_id.set(value)\n    try:\n        return process()\n    finally:\n        request_id.reset(token)\n```\n\nUse instead:\n\n```python ok\nimport contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    with request_id.set(value):\n        return process()\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  import contextvars\n\n  request_id = contextvars.ContextVar(\"request_id\")\n\n\n  def handle(value):\n      token = request_id.set(value)\n      try:\n          return process()\n      finally:\n          request_id.reset(token)\n  ```\n\n## What it does\n\nReports an assignment `token = variable.set(value)` followed directly by a `try` whose only clause is a `finally` that\nholds `variable.reset(token)`, with no `except` and no `else`. `variable` is a name the file assigns a\n`contextvars.ContextVar(...)` call to, or a parameter annotated as `ContextVar`.\n\n### Active on\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nimport contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\ntoken = request_id.set(\"one\")\ntry:\n    print(request_id.get())\nfinally:\n    request_id.reset(token)\n```\n\n```python fixed\nimport contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\nwith request_id.set(\"one\"):\n    print(request_id.get())\n```\n\n### Exceptions\n\n- **A token read outside the reset**: the block would take the name's last use away.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  import contextvars\n\n  request_id = contextvars.ContextVar(\"request_id\")\n  token = request_id.set(\"one\")\n  try:\n      print(request_id.get())\n  finally:\n      request_id.reset(token)\n  print(token)\n  ```\n\n- **A `finally` with more than the reset**: the statements after the reset would run inside the block.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  import contextvars\n\n  request_id = contextvars.ContextVar(\"request_id\")\n  token = request_id.set(\"one\")\n  try:\n      print(request_id.get())\n  finally:\n      request_id.reset(token)\n      print(\"done\")\n  ```\n\n- **A reset on another variable**: the token belongs to the variable it was set on.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  import contextvars\n\n  request_id = contextvars.ContextVar(\"request_id\")\n  user = contextvars.ContextVar(\"user\")\n  token = request_id.set(\"one\")\n  try:\n      print(request_id.get())\n  finally:\n      user.reset(token)\n  ```\n\n- **A receiver not known to be a `ContextVar`**: an attribute, an unannotated parameter, or an object of another class,\n  whose `set` may return something that is not a context manager.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.14\"\n  ```\n\n  ```python ok\n  class Settings:\n      def set(self, value):\n          old, self.value = self.value, value\n          return old\n\n      def reset(self, old):\n          self.value = old\n\n\n  settings = Settings()\n  token = settings.set(\"one\")\n  try:\n      print(settings.value)\n  finally:\n      settings.reset(token)\n  ```\n\n- **Target versions before 3.14**: the token is not a context manager there, and `with` raises `TypeError`.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.13\"\n  ```\n\n  ```python ok\n  import contextvars\n\n  request_id = contextvars.ContextVar(\"request_id\")\n  token = request_id.set(\"one\")\n  try:\n      print(request_id.get())\n  finally:\n      request_id.reset(token)\n  ```\n\n### Fix\n\nThe fix is safe and reports without a fix when a comment sits in the lines it would remove, which would lose the\ncomment, or when the assignment shares its line with an earlier statement.\n\n```toml config\n[project]\nrequires-python = \">=3.14\"\n```\n\n```python report\nimport contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    # fmt: off\n    started = True; token = request_id.set(value)\n    # fmt: on\n    try:\n        return process()\n    finally:\n        request_id.reset(token)\n```\n\n```python fixed\nimport contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    # fmt: off\n    started = True; token = request_id.set(value)\n    # fmt: on\n    try:\n        return process()\n    finally:\n        request_id.reset(token)\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -15803,6 +15864,36 @@
               "source": "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\ntoken = request_id.set(\"one\")\ntry:\n    print(request_id.get())\nfinally:\n    request_id.reset(token)\n"
             }
           ]
+        },
+        {
+          "section": "What it does",
+          "line": 209,
+          "end_line": 244,
+          "config": {
+            "line": 209,
+            "end_line": 212,
+            "source": "[project]\nrequires-python = \">=3.14\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 214,
+              "end_line": 228,
+              "source": "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    # fmt: off\n    started = True; token = request_id.set(value)\n    # fmt: on\n    try:\n        return process()\n    finally:\n        request_id.reset(token)\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 230,
+              "end_line": 244,
+              "source": "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    # fmt: off\n    started = True; token = request_id.set(value)\n    # fmt: on\n    try:\n        return process()\n    finally:\n        request_id.reset(token)\n"
+            }
+          ]
         }
       ]
     },
@@ -15816,7 +15907,7 @@
     "name": "up-chdir-restore",
     "summary": "Working directories restored in a `finally` block",
     "fix": "Sometimes",
-    "explanation": "Flags a directory change that a `try` block undoes in its `finally` clause, which `contextlib.chdir` does from Python\n3.11.\n\n## Why is this bad?\n\nSaving the working directory, changing it and restoring it in a `finally` clause takes three statements and a `try`,\nwhere `contextlib.chdir` needs one `with` block. The block also cannot forget the restore.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.11\"\n```\n\n```python report\nimport os\n\n\ndef build(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return compile_project()\n    finally:\n        os.chdir(old)\n```\n\nUse instead:\n\n```python ok\nimport contextlib\n\n\ndef build(target):\n    with contextlib.chdir(target):\n        return compile_project()\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python ok\n  import os\n\n\n  def build(target):\n      old = os.getcwd()\n      os.chdir(target)\n      try:\n          return compile_project()\n      finally:\n          os.chdir(old)\n  ```\n\n## What it does\n\nReports three statements in one body: `old = os.getcwd()`, then `os.chdir(target)` with one argument, then a `try` whose\nonly clause is a `finally` that holds `os.chdir(old)`, with no `except` and no `else`. The name `old` must appear\nnowhere else in its function, or in the module at module level.\n\n### Active on\n\n```toml config\n[project]\nrequires-python = \">=3.11\"\n```\n\n```python report\nimport os\n\n\ndef run(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        step()\n    finally:\n        os.chdir(old)\n```\n\n```python fixed\nimport contextlib\n\n\ndef run(target):\n    with contextlib.chdir(target):\n        step()\n```\n\n### Exceptions\n\n- **The saved directory read after the block**: the name has another use.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  import os\n\n\n  def run(target):\n      old = os.getcwd()\n      os.chdir(target)\n      try:\n          step()\n      finally:\n          os.chdir(old)\n      print(old)\n  ```\n\n- **A `finally` that changes the directory to another place**: the restore does not return to the saved directory.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  import os\n\n\n  def run(target):\n      old = os.getcwd()\n      os.chdir(target)\n      try:\n          step()\n      finally:\n          os.chdir(target)\n  ```\n\n- **Target versions before 3.11**: `contextlib.chdir` does not exist there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python ok\n  import os\n\n\n  def run(target):\n      old = os.getcwd()\n      os.chdir(target)\n      try:\n          step()\n      finally:\n          os.chdir(old)\n  ```\n\n### Fix\n\nThe fix is safe under those conditions. It adds `import contextlib` before the module's first import, unless the module\nimports `contextlib` already. When another binding holds the name `contextlib`, the rule reports without a fix. It also\nreports without a fix when a comment sits in the lines it would remove.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags a directory change that a `try` block undoes in its `finally` clause, which `contextlib.chdir` does from Python\n3.11.\n\n## Why is this bad?\n\nSaving the working directory, changing it and restoring it in a `finally` clause takes three statements and a `try`,\nwhere `contextlib.chdir` needs one `with` block. The block also cannot forget the restore.\n\n## Example\n\n```toml config\n[project]\nrequires-python = \">=3.11\"\n```\n\n```python report\nimport os\n\n\ndef build(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return compile_project()\n    finally:\n        os.chdir(old)\n```\n\nUse instead:\n\n```python ok\nimport contextlib\n\n\ndef build(target):\n    with contextlib.chdir(target):\n        return compile_project()\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python ok\n  import os\n\n\n  def build(target):\n      old = os.getcwd()\n      os.chdir(target)\n      try:\n          return compile_project()\n      finally:\n          os.chdir(old)\n  ```\n\n## What it does\n\nReports three statements in one body: `old = os.getcwd()`, then `os.chdir(target)` with one argument, then a `try` whose\nonly clause is a `finally` that holds `os.chdir(old)`, with no `except` and no `else`. The name `old` must appear\nnowhere else in its function, or in the module at module level.\n\n### Active on\n\n```toml config\n[project]\nrequires-python = \">=3.11\"\n```\n\n```python report\nimport os\n\n\ndef run(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        step()\n    finally:\n        os.chdir(old)\n```\n\n```python fixed\nimport contextlib\n\n\ndef run(target):\n    with contextlib.chdir(target):\n        step()\n```\n\n### Exceptions\n\n- **The saved directory read after the block**: the name has another use.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  import os\n\n\n  def run(target):\n      old = os.getcwd()\n      os.chdir(target)\n      try:\n          step()\n      finally:\n          os.chdir(old)\n      print(old)\n  ```\n\n- **A `finally` that changes the directory to another place**: the restore does not return to the saved directory.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.11\"\n  ```\n\n  ```python ok\n  import os\n\n\n  def run(target):\n      old = os.getcwd()\n      os.chdir(target)\n      try:\n          step()\n      finally:\n          os.chdir(target)\n  ```\n\n- **Target versions before 3.11**: `contextlib.chdir` does not exist there.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.10\"\n  ```\n\n  ```python ok\n  import os\n\n\n  def run(target):\n      old = os.getcwd()\n      os.chdir(target)\n      try:\n          step()\n      finally:\n          os.chdir(old)\n  ```\n\n### Fix\n\nThe fix is safe under those conditions. It adds `import contextlib` before the module's first import, unless the module\nimports `contextlib` already. When another binding holds the name `contextlib`, the rule reports without a fix. It also\nreports without a fix when a comment sits in the lines it would remove, or when the assignment shares its line with an\nearlier statement.\n\n```toml config\n[project]\nrequires-python = \">=3.11\"\n```\n\n```python report\nimport os\n\n\ndef run(target):\n    # fmt: off\n    log(\"start\"); old = os.getcwd()\n    # fmt: on\n    os.chdir(target)\n    try:\n        step()\n    finally:\n        os.chdir(old)\n```\n\n```python fixed\nimport os\n\n\ndef run(target):\n    # fmt: off\n    log(\"start\"); old = os.getcwd()\n    # fmt: on\n    os.chdir(target)\n    try:\n        step()\n    finally:\n        os.chdir(old)\n```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -15972,6 +16063,36 @@
               "line": 150,
               "end_line": 161,
               "source": "import os\n\n\ndef run(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        step()\n    finally:\n        os.chdir(old)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 170,
+          "end_line": 203,
+          "config": {
+            "line": 170,
+            "end_line": 173,
+            "source": "[project]\nrequires-python = \">=3.11\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 175,
+              "end_line": 188,
+              "source": "import os\n\n\ndef run(target):\n    # fmt: off\n    log(\"start\"); old = os.getcwd()\n    # fmt: on\n    os.chdir(target)\n    try:\n        step()\n    finally:\n        os.chdir(old)\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 190,
+              "end_line": 203,
+              "source": "import os\n\n\ndef run(target):\n    # fmt: off\n    log(\"start\"); old = os.getcwd()\n    # fmt: on\n    os.chdir(target)\n    try:\n        step()\n    finally:\n        os.chdir(old)\n"
             }
           ]
         }
@@ -22806,7 +22927,7 @@
     "name": "test-class",
     "summary": "Test classes",
     "fix": "Sometimes",
-    "explanation": "Flags test classes in test modules: top-level `Test` classes with `test` methods. A test class adds a level of nesting\nand a `self` that most tests never use, and invites shared state.\n\n## Why is this bad?\n\nA test class adds a level of nesting and a `self` that most tests never use. It also invites shared state through\nattributes and [setup methods](https://docs.pytest.org/en/stable/how-to/xunit_setup.html). Module-level functions with\nthe class name folded into a prefix keep the grouping visible in the test name.\n\n## Example\n\n```python report file=tests/test_parser.py\nclass TestParser:\n    def test_handles_empty(self) -> None:\n        assert parse(\"\") == []\n```\n\nUse instead:\n\n```python ok file=tests/test_parser.py\ndef test_parser_handles_empty() -> None:\n    assert parse(\"\") == []\n```\n\n## What it does\n\n### Active on\n\n- **Top-level classes in a test module whose name starts with `Test` and that define a method whose name starts with\n  `test`**: with its default\n  [`python_classes`](https://docs.pytest.org/en/stable/reference/reference.html#confval-python_classes) and\n  [`python_functions`](https://docs.pytest.org/en/stable/reference/reference.html#confval-python_functions) settings,\n  these are the classes pytest collects tests from. A file is a test module when its name starts with `test_`, ends with\n  `_test.py` or is `conftest.py`, or when it sits under a `tests` or `test` directory. **Unsafe fix:** always, as it\n  renames every test, which changes its [node ID](https://docs.pytest.org/en/stable/how-to/usage.html#nodeids) and\n  breaks `-k` selections or deselect lists that name it.\n\n  ```python report file=tests/test_parser.py\n  class TestParser:\n      def test_handles_empty(self) -> None:\n          assert parse(\"\") == []\n  ```\n\n### Fix\n\nThe fix turns each method into a module-level function whose name carries a prefix: the class name with one leading\n`Test` removed, in snake case with acronyms kept together, so `TestHTTPClient.test_get` becomes `test_http_client_get`.\nA class named just `Test` keeps its method names.\n\n```python report file=tests/test_http.py\nclass TestHTTPClient:\n    def test_get(self) -> None:\n        assert get(\"/\") == 200\n```\n\n```python fixed file=tests/test_http.py\ndef test_http_client_get() -> None:\n    assert get(\"/\") == 200\n```\n\nA method that uses its class's type parameters gets them on its function, with their bounds, defaults and the other\nparameters they name. A method that names none gets none. Defaults on type parameters need Python 3.13, so below that\ntarget a method that uses a defaulted parameter gets no fix.\n\n```toml config\n[project]\nrequires-python = \">=3.12\"\n```\n\n```python report file=tests/test_box.py\nclass TestBox[T: int]:\n    def test_default(self, value: T | None = None) -> None:\n        assert value is None\n```\n\n```python fixed file=tests/test_box.py\ndef test_box_default[T: int](value: T | None = None) -> None:\n    assert value is None\n```\n\nNo fix is offered when:\n\n- the class has bases or decorators, or a docstring, which module-level functions have nowhere to keep;\n\n  ```python report file=tests/test_based.py\n  class TestParser(BaseParserTests):\n      def test_handles_empty(self) -> None:\n          assert parse(\"\") == []\n  ```\n\n- a comment in the class is neither inside a method nor on the lines directly above one, such as a comment on the class\n  line, which no function would carry;\n\n  ```python report file=tests/test_noted.py\n  class TestParser:  # grouped for the report\n      def test_handles_empty(self) -> None:\n          assert parse(\"\") == []\n  ```\n\n- a method's decorators or default values name a type parameter of its class, which is not bound where they are\n  evaluated;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.12\"\n  ```\n\n  ```python report file=tests/test_generic.py\n  class TestBox[T]:\n      def test_holds_value(self, kind: type = list[T]) -> None:\n          assert Box[int]().get(1) == 1\n  ```\n\n- another class extends it, or the file refers to it by name, so it must stay a class;\n\n- the class contains a string that spans several lines, other than a method's docstring, whose indentation `ruff format`\n  rewrites anyway;\n\n- the class body holds anything besides methods whose names start with `test`;\n\n- a method uses `self`, has no `self` as its first parameter, or takes positional-only parameters;\n\n  ```python report file=tests/test_uses_self.py\n  class TestParser:\n      def test_handles_empty(self) -> None:\n          assert self.parse(\"\") == []\n  ```\n\n- a new name is already used in the file.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags test classes in test modules: top-level `Test` classes with `test` methods. A test class adds a level of nesting\nand a `self` that most tests never use, and invites shared state.\n\n## Why is this bad?\n\nA test class adds a level of nesting and a `self` that most tests never use. It also invites shared state through\nattributes and [setup methods](https://docs.pytest.org/en/stable/how-to/xunit_setup.html). Module-level functions with\nthe class name folded into a prefix keep the grouping visible in the test name.\n\n## Example\n\n```python report file=tests/test_parser.py\nclass TestParser:\n    def test_handles_empty(self) -> None:\n        assert parse(\"\") == []\n```\n\nUse instead:\n\n```python ok file=tests/test_parser.py\ndef test_parser_handles_empty() -> None:\n    assert parse(\"\") == []\n```\n\n## What it does\n\n### Active on\n\n- **Top-level classes in a test module whose name starts with `Test` and that define a method whose name starts with\n  `test`**: with its default\n  [`python_classes`](https://docs.pytest.org/en/stable/reference/reference.html#confval-python_classes) and\n  [`python_functions`](https://docs.pytest.org/en/stable/reference/reference.html#confval-python_functions) settings,\n  these are the classes pytest collects tests from. A file is a test module when its name starts with `test_`, ends with\n  `_test.py` or is `conftest.py`, or when it sits under a `tests` or `test` directory. **Unsafe fix:** always, as it\n  renames every test, which changes its [node ID](https://docs.pytest.org/en/stable/how-to/usage.html#nodeids) and\n  breaks `-k` selections or deselect lists that name it.\n\n  ```python report file=tests/test_parser.py\n  class TestParser:\n      def test_handles_empty(self) -> None:\n          assert parse(\"\") == []\n  ```\n\n### Fix\n\nThe fix turns each method into a module-level function whose name carries a prefix: the class name with one leading\n`Test` removed, in snake case with acronyms kept together, so `TestHTTPClient.test_get` becomes `test_http_client_get`.\nA class named just `Test` keeps its method names.\n\n```python report file=tests/test_http.py\nclass TestHTTPClient:\n    def test_get(self) -> None:\n        assert get(\"/\") == 200\n```\n\n```python fixed file=tests/test_http.py\ndef test_http_client_get() -> None:\n    assert get(\"/\") == 200\n```\n\nEach method is dedented by its class body's indentation, not by the file's first indented block, so a file that indents\nanother block by a different width still gets valid code.\n\n```python report file=tests/test_thing.py\n# fmt: off\ndef helper():\n  return 1\n\n\nclass TestThing:\n    def test_one(self):\n        assert helper() == 2\n# fmt: on\n```\n\n```python fixed file=tests/test_thing.py\n# fmt: off\ndef helper():\n  return 1\n\n\ndef test_thing_one():\n    assert helper() == 2\n# fmt: on\n```\n\nA method that uses its class's type parameters gets them on its function, with their bounds, defaults and the other\nparameters they name. A method that names none gets none. Defaults on type parameters need Python 3.13, so below that\ntarget a method that uses a defaulted parameter gets no fix.\n\n```toml config\n[project]\nrequires-python = \">=3.12\"\n```\n\n```python report file=tests/test_box.py\nclass TestBox[T: int]:\n    def test_default(self, value: T | None = None) -> None:\n        assert value is None\n```\n\n```python fixed file=tests/test_box.py\ndef test_box_default[T: int](value: T | None = None) -> None:\n    assert value is None\n```\n\nNo fix is offered when:\n\n- the class has bases or decorators, or a docstring, which module-level functions have nowhere to keep;\n\n  ```python report file=tests/test_based.py\n  class TestParser(BaseParserTests):\n      def test_handles_empty(self) -> None:\n          assert parse(\"\") == []\n  ```\n\n- a comment in the class is neither inside a method nor on the lines directly above one, such as a comment on the class\n  line, which no function would carry;\n\n  ```python report file=tests/test_noted.py\n  class TestParser:  # grouped for the report\n      def test_handles_empty(self) -> None:\n          assert parse(\"\") == []\n  ```\n\n- a method's decorators or default values name a type parameter of its class, which is not bound where they are\n  evaluated;\n\n  ```toml config\n  [project]\n  requires-python = \">=3.12\"\n  ```\n\n  ```python report file=tests/test_generic.py\n  class TestBox[T]:\n      def test_holds_value(self, kind: type = list[T]) -> None:\n          assert Box[int]().get(1) == 1\n  ```\n\n- another class extends it, or the file refers to it by name, so it must stay a class;\n\n- a method keeps its name, as in `class Test`, and the module already binds that name, so the flattened function would\n  replace it;\n\n  ```python report file=tests/test_shadow.py\n  def test_value() -> None:\n      assert 1 == 2\n\n\n  class Test:\n      def test_value(self) -> None:\n          assert 1 == 1\n  ```\n\n  ```python fixed file=tests/test_shadow.py\n  def test_value() -> None:\n      assert 1 == 2\n\n\n  class Test:\n      def test_value(self) -> None:\n          assert 1 == 1\n  ```\n\n- the class contains a string that spans several lines, other than a method's docstring, whose indentation `ruff format`\n  rewrites anyway;\n\n- the class body holds anything besides methods whose names start with `test`;\n\n- a method uses `self`, has no `self` as its first parameter, or takes positional-only parameters;\n\n  ```python report file=tests/test_uses_self.py\n  class TestParser:\n      def test_handles_empty(self) -> None:\n          assert self.parse(\"\") == []\n  ```\n\n- a new name is already used in the file.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -22888,11 +23009,37 @@
         },
         {
           "section": "What it does",
-          "line": 65,
-          "end_line": 79,
+          "line": 64,
+          "end_line": 85,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "tests/test_thing.py",
+              "named": true,
+              "line": 64,
+              "end_line": 74,
+              "source": "# fmt: off\ndef helper():\n  return 1\n\n\nclass TestThing:\n    def test_one(self):\n        assert helper() == 2\n# fmt: on\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "tests/test_thing.py",
+              "named": true,
+              "line": 76,
+              "end_line": 85,
+              "source": "# fmt: off\ndef helper():\n  return 1\n\n\ndef test_thing_one():\n    assert helper() == 2\n# fmt: on\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 91,
+          "end_line": 105,
           "config": {
-            "line": 65,
-            "end_line": 68,
+            "line": 91,
+            "end_line": 94,
             "source": "[project]\nrequires-python = \">=3.12\"\n"
           },
           "blocks": [
@@ -22901,8 +23048,8 @@
               "language": "python",
               "file": "tests/test_box.py",
               "named": true,
-              "line": 70,
-              "end_line": 74,
+              "line": 96,
+              "end_line": 100,
               "source": "class TestBox[T: int]:\n    def test_default(self, value: T | None = None) -> None:\n        assert value is None\n"
             },
             {
@@ -22910,16 +23057,16 @@
               "language": "python",
               "file": "tests/test_box.py",
               "named": true,
-              "line": 76,
-              "end_line": 79,
+              "line": 102,
+              "end_line": 105,
               "source": "def test_box_default[T: int](value: T | None = None) -> None:\n    assert value is None\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 85,
-          "end_line": 89,
+          "line": 111,
+          "end_line": 115,
           "config": null,
           "blocks": [
             {
@@ -22927,16 +23074,16 @@
               "language": "python",
               "file": "tests/test_based.py",
               "named": true,
-              "line": 85,
-              "end_line": 89,
+              "line": 111,
+              "end_line": 115,
               "source": "class TestParser(BaseParserTests):\n    def test_handles_empty(self) -> None:\n        assert parse(\"\") == []\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 94,
-          "end_line": 98,
+          "line": 120,
+          "end_line": 124,
           "config": null,
           "blocks": [
             {
@@ -22944,19 +23091,19 @@
               "language": "python",
               "file": "tests/test_noted.py",
               "named": true,
-              "line": 94,
-              "end_line": 98,
+              "line": 120,
+              "end_line": 124,
               "source": "class TestParser:  # grouped for the report\n    def test_handles_empty(self) -> None:\n        assert parse(\"\") == []\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 103,
-          "end_line": 112,
+          "line": 129,
+          "end_line": 138,
           "config": {
-            "line": 103,
-            "end_line": 106,
+            "line": 129,
+            "end_line": 132,
             "source": "[project]\nrequires-python = \">=3.12\"\n"
           },
           "blocks": [
@@ -22965,16 +23112,42 @@
               "language": "python",
               "file": "tests/test_generic.py",
               "named": true,
-              "line": 108,
-              "end_line": 112,
+              "line": 134,
+              "end_line": 138,
               "source": "class TestBox[T]:\n    def test_holds_value(self, kind: type = list[T]) -> None:\n        assert Box[int]().get(1) == 1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 123,
-          "end_line": 127,
+          "line": 145,
+          "end_line": 163,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "tests/test_shadow.py",
+              "named": true,
+              "line": 145,
+              "end_line": 153,
+              "source": "def test_value() -> None:\n    assert 1 == 2\n\n\nclass Test:\n    def test_value(self) -> None:\n        assert 1 == 1\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "tests/test_shadow.py",
+              "named": true,
+              "line": 155,
+              "end_line": 163,
+              "source": "def test_value() -> None:\n    assert 1 == 2\n\n\nclass Test:\n    def test_value(self) -> None:\n        assert 1 == 1\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 172,
+          "end_line": 176,
           "config": null,
           "blocks": [
             {
@@ -22982,8 +23155,8 @@
               "language": "python",
               "file": "tests/test_uses_self.py",
               "named": true,
-              "line": 123,
-              "end_line": 127,
+              "line": 172,
+              "end_line": 176,
               "source": "class TestParser:\n    def test_handles_empty(self) -> None:\n        assert self.parse(\"\") == []\n"
             }
           ]
@@ -23928,7 +24101,7 @@
     "name": "mock-attribute-assignment",
     "summary": "Mock attributes assigned after construction",
     "fix": "Sometimes",
-    "explanation": "Flags attributes set on a mock right after it is created. The mock constructors take any attribute as a keyword\nargument, so the whole setup fits in one call.\n\n## Why is this bad?\n\nSetting attributes after construction spreads the mock's configuration over several statements. The mock constructors\ntake any attribute as a keyword argument and set it on the new mock, so the whole setup fits in one call.\n\n## Example\n\n```python report\nfetch = create_autospec(fetch_user)\nfetch.return_value = user\nfetch.side_effect = None\n```\n\nUse instead:\n\n```python ok\nfetch = create_autospec(fetch_user, return_value=user, side_effect=None)\n```\n\n## What it does\n\n### Active on\n\n- **`mock.attr = value` statements directly after the mock is created**: the mock must be assigned to a plain name, with\n  or without an annotation, from a call to\n  [`Mock`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.Mock), `MagicMock`, `AsyncMock`,\n  `NonCallableMock`, `NonCallableMagicMock` or\n  [`create_autospec`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.create_autospec). The call\n  matches by the last part of its name, so `mocker.MagicMock()` counts too. Only that run of statements is reported,\n  since each one could be a keyword argument of the call.\n\n  - A `create_autospec` call, with `return_value` and `side_effect` set on the following lines\n\n    ```python report\n    fetch = create_autospec(fetch_user)\n    fetch.return_value = user\n    fetch.side_effect = None\n    ```\n\n  - A `MagicMock` call assigned to a plain name\n\n    ```python report\n    client = MagicMock()\n    client.timeout = 5\n    ```\n\n  - An annotated assignment, here from `mocker.MagicMock()`\n\n    ```python report\n    client: MagicMock = mocker.MagicMock()\n    client.timeout = 5\n    ```\n\n### Exceptions\n\nThe run stops at:\n\n- **Any other statement, including `mock.child.attr = value`**: it is no longer a plain attribute of the new mock.\n\n  ```python ok\n  client = MagicMock()\n  client.child.attr = 1\n  ```\n\n- **An attribute the constructor treats specially**: `spec`, `spec_set`, `wraps`, `name`, `parent`, `unsafe`,\n  `instance`, `_name` or `_parent`. These constructor arguments configure the mock itself, so passing one differs from\n  setting the attribute.\n\n  ```python ok\n  client = MagicMock()\n  client.name = \"api\"\n  ```\n\n- **An attribute already set earlier in the run**: a call can pass each keyword only once, so the run stops at the\n  second assignment. A later round of fixes folds it in, replacing the keyword's value.\n\n  ```python report\n  client = MagicMock()\n  client.timeout = 5\n  client.timeout = 6\n  ```\n\n  ```python fixed\n  client = MagicMock(timeout=6)\n  ```\n\n- **A value that refers to the mock itself**: the mock does not exist yet while its constructor's arguments run.\n\n  ```python ok\n  client = MagicMock()\n  client.child = client.copy()\n  ```\n\n### Fix\n\nThe fix moves the assignments into the constructor call as keyword arguments and deletes them. An assignment to a\nkeyword the call already passes replaces that keyword's value.\n\n```python report\nfetch = create_autospec(fetch_user)\nfetch.return_value = user\nfetch.side_effect = None\n```\n\n```python fixed\nfetch = create_autospec(fetch_user, return_value=user, side_effect=None)\n```\n\n```python report\nclient = MagicMock(timeout=1)\nclient.timeout = 5\n```\n\n```python fixed\nclient = MagicMock(timeout=5)\n```\n\n**Unsafe fix** for a `create_autospec` call that sets an attribute other than `return_value` or `side_effect`: when the\nspec is a function, `create_autospec` returns a wrapper function and hands the other keywords to the mock inside it, so\nthe test no longer sees them on the object it holds.\n\n```python report\nfetch = create_autospec(fetch_user)\nfetch.call_count = 0\n```\n\n```python fixed\nfetch = create_autospec(fetch_user, call_count=0)\n```\n\nNo fix is offered when:\n\n- the call has a `**kwargs` argument, which may already carry any of the attributes, so the merged call could repeat a\n  keyword;\n\n  ```python report\n  client = MagicMock(**options)\n  client.timeout = 5\n  ```\n\n- an assignment shares a line with another statement;\n\n- a comment sits on its lines.\n\n  ```python report\n  client = MagicMock()\n  client.timeout = 5  # seconds\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags attributes set on a mock right after it is created. The mock constructors take any attribute as a keyword\nargument, so the whole setup fits in one call.\n\n## Why is this bad?\n\nSetting attributes after construction spreads the mock's configuration over several statements. The mock constructors\ntake any attribute as a keyword argument and set it on the new mock, so the whole setup fits in one call.\n\n## Example\n\n```python report\nfetch = create_autospec(fetch_user)\nfetch.return_value = user\nfetch.side_effect = None\n```\n\nUse instead:\n\n```python ok\nfetch = create_autospec(fetch_user, return_value=user, side_effect=None)\n```\n\n## What it does\n\n### Active on\n\n- **`mock.attr = value` statements directly after the mock is created**: the mock must be assigned to a plain name, with\n  or without an annotation, from a call to\n  [`Mock`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.Mock), `MagicMock`, `AsyncMock`,\n  `NonCallableMock`, `NonCallableMagicMock` or\n  [`create_autospec`](https://docs.python.org/3/library/unittest.mock.html#unittest.mock.create_autospec). The call\n  matches by the last part of its name, so `mocker.MagicMock()` counts too. Only that run of statements is reported,\n  since each one could be a keyword argument of the call.\n\n  - A `create_autospec` call, with `return_value` and `side_effect` set on the following lines\n\n    ```python report\n    fetch = create_autospec(fetch_user)\n    fetch.return_value = user\n    fetch.side_effect = None\n    ```\n\n  - A `MagicMock` call assigned to a plain name\n\n    ```python report\n    client = MagicMock()\n    client.timeout = 5\n    ```\n\n  - An annotated assignment, here from `mocker.MagicMock()`\n\n    ```python report\n    client: MagicMock = mocker.MagicMock()\n    client.timeout = 5\n    ```\n\n### Exceptions\n\nThe run stops at:\n\n- **Any other statement, including `mock.child.attr = value`**: it is no longer a plain attribute of the new mock.\n\n  ```python ok\n  client = MagicMock()\n  client.child.attr = 1\n  ```\n\n- **An attribute the constructor treats specially**: `spec`, `spec_set`, `wraps`, `name`, `parent`, `unsafe`,\n  `instance`, `_name` or `_parent`. These constructor arguments configure the mock itself, so passing one differs from\n  setting the attribute.\n\n  ```python ok\n  client = MagicMock()\n  client.name = \"api\"\n  ```\n\n- **An attribute already set earlier in the run**: a call can pass each keyword only once, so the run stops at the\n  second assignment. A later round of fixes folds it in, replacing the keyword's value.\n\n  ```python report\n  client = MagicMock()\n  client.timeout = 5\n  client.timeout = 6\n  ```\n\n  ```python fixed\n  client = MagicMock(timeout=6)\n  ```\n\n- **A value that refers to the mock itself**: the mock does not exist yet while its constructor's arguments run.\n\n  ```python ok\n  client = MagicMock()\n  client.child = client.copy()\n  ```\n\n### Fix\n\nThe fix moves the assignments into the constructor call as keyword arguments and deletes them. An assignment to a\nkeyword the call already passes replaces that keyword's value.\n\n```python report\nfetch = create_autospec(fetch_user)\nfetch.return_value = user\nfetch.side_effect = None\n```\n\n```python fixed\nfetch = create_autospec(fetch_user, return_value=user, side_effect=None)\n```\n\n```python report\nclient = MagicMock(timeout=1)\nclient.timeout = 5\n```\n\n```python fixed\nclient = MagicMock(timeout=5)\n```\n\nA comment after the last argument does not hide its comma, so no second comma is added:\n\n```python report\n# fmt: off\nclient = MagicMock(\n    spec=dict,  # the real type\n)\nclient.timeout = 3\n# fmt: on\n```\n\n```python fixed\n# fmt: off\nclient = MagicMock(\n    spec=dict,  # the real type\n timeout=3)\n# fmt: on\n```\n\n**Unsafe fix** for a `create_autospec` call that sets an attribute other than `return_value` or `side_effect`: when the\nspec is a function, `create_autospec` returns a wrapper function and hands the other keywords to the mock inside it, so\nthe test no longer sees them on the object it holds.\n\n```python report\nfetch = create_autospec(fetch_user)\nfetch.call_count = 0\n```\n\n```python fixed\nfetch = create_autospec(fetch_user, call_count=0)\n```\n\nNo fix is offered when:\n\n- the call has a `**kwargs` argument, which may already carry any of the attributes, so the merged call could repeat a\n  keyword;\n\n  ```python report\n  client = MagicMock(**options)\n  client.timeout = 5\n  ```\n\n- an assignment shares a line with another statement;\n\n- a comment sits on its lines.\n\n  ```python report\n  client = MagicMock()\n  client.timeout = 5  # seconds\n  ```\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -24147,8 +24320,8 @@
         },
         {
           "section": "What it does",
-          "line": 125,
-          "end_line": 132,
+          "line": 123,
+          "end_line": 138,
           "config": null,
           "blocks": [
             {
@@ -24156,41 +24329,24 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 125,
-              "end_line": 128,
-              "source": "fetch = create_autospec(fetch_user)\nfetch.call_count = 0\n"
+              "line": 123,
+              "end_line": 130,
+              "source": "# fmt: off\nclient = MagicMock(\n    spec=dict,  # the real type\n)\nclient.timeout = 3\n# fmt: on\n"
             },
             {
               "role": "fixed",
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 130,
-              "end_line": 132,
-              "source": "fetch = create_autospec(fetch_user, call_count=0)\n"
+              "line": 132,
+              "end_line": 138,
+              "source": "# fmt: off\nclient = MagicMock(\n    spec=dict,  # the real type\n timeout=3)\n# fmt: on\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 139,
-          "end_line": 142,
-          "config": null,
-          "blocks": [
-            {
-              "role": "report",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 139,
-              "end_line": 142,
-              "source": "client = MagicMock(**options)\nclient.timeout = 5\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 148,
+          "line": 144,
           "end_line": 151,
           "config": null,
           "blocks": [
@@ -24199,8 +24355,51 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 148,
+              "line": 144,
+              "end_line": 147,
+              "source": "fetch = create_autospec(fetch_user)\nfetch.call_count = 0\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 149,
               "end_line": 151,
+              "source": "fetch = create_autospec(fetch_user, call_count=0)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 158,
+          "end_line": 161,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 158,
+              "end_line": 161,
+              "source": "client = MagicMock(**options)\nclient.timeout = 5\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 167,
+          "end_line": 170,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 167,
+              "end_line": 170,
               "source": "client = MagicMock()\nclient.timeout = 5  # seconds\n"
             }
           ]
@@ -25260,7 +25459,7 @@
     "name": "mock-assertion-typo",
     "summary": "Mock assertion methods misspelled or missing their `assert_` prefix",
     "fix": "Always",
-    "explanation": "Flags attribute names that are mock assertion methods written without their `assert_` prefix, or misspelled.\n\n## Why is this bad?\n\n`unittest.mock` raises `AttributeError` for an unknown name that starts with `assert`, `assret`, `asert`, `aseert` or\n`assrt`, so a misspelled assertion with one of those prefixes fails the test. Other names are ordinary attributes to the\nmock: the call returns a child mock and checks nothing. Python 3.12 added the names of the `Mock` assertions without\ntheir prefix, such as `called_once_with`, to the names a mock rejects, but not those of the `AsyncMock` assertions, such\nas `awaited_once_with`. So `called_once_with` passes silently on Python 3.11 and older, and `awaited_once_with` or a\nmisspelling such as `asssert_called_once` passes silently on every version. The lint reports these before the test runs.\n\n## Example\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.called_once_with(\"out.json\")\n```\n\nUse instead:\n\n```python ok\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.assert_called_once_with(\"out.json\")\n```\n\n## What it does\n\nReports an attribute, read or called, whose name is one of these:\n\n- an assertion method without its `assert_` prefix, such as `called_with`, `has_calls` or `not_called`, but not\n  `called`, which every mock has as an attribute;\n- an assertion method with a misspelled name, such as `asssert_called_once` or `assetr_called_with`, that is within two\n  edits of exactly one assertion method. Only names that start with `as` are compared, since a misspelled prefix keeps\n  those two letters, and not those that start with a prefix the mock rejects.\n\n### Active on\n\n- **Assertion methods without their prefix**: the name is the assertion's name minus `assert_`.\n\n  ```python report\n  mock.called_once()\n  ```\n\n  ```python report\n  mock.has_calls([call(1)])\n  ```\n\n- **Misspelled assertion methods**: the nearest assertion method is the one meant, when it is the only nearest.\n\n  ```python report\n  mock.asssert_called_once()\n  ```\n\n  ```python report\n  mock.assetr_called_with(1)\n  ```\n\n### Exceptions\n\n- **`called`**: a mock attribute that records whether it was called, not an assertion.\n\n  ```python ok\n  assert mock.called\n  ```\n\n- **Names that are not close to an assertion**: `assert_equal` on a helper or a numeric library is left alone.\n\n  ```python ok\n  numbers.assert_equal(1)\n  ```\n\n- **Names with a prefix the mock rejects**: a mock raises `AttributeError` for `assert_called_ones_with`, so the test\n  already fails, and the same names are methods of other classes, such as `assert_failed` on a test helper.\n\n  ```python ok\n  outcome.assert_failed()\n  ```\n\n- **Names the file defines or the project assigns**: such a name is a class's own attribute, not a mock method. A name\n  the file defines as a function, or the project sets or deletes as an attribute anywhere, is left alone.\n\n  ```python ok\n  class Spec:\n      def called_once(self) -> None: ...\n\n\n  def test_spec(mock: MagicMock) -> None:\n      mock.called_once()\n  ```\n\n- **Code that expects the call to fail**: a `with` block of `pytest.raises` or `assertRaises...` checks the error, so\n  the misspelled name is the point.\n\n  ```python ok\n  def test_unsafe_name(mock: MagicMock) -> None:\n      with pytest.raises(AttributeError):\n          mock.called_once()\n  ```\n\n- **Names that Ruff's PGH005 reports**: [PGH005](https://docs.astral.sh/ruff/rules/invalid-mock-access/) reports these\n  names, so this rule leaves them to Ruff only when the project's Ruff configuration selects PGH005. With Ruff's preview\n  mode off, the test of an `assert` is the only place, bare or called. With preview on, a name on a line of its own is\n  one too. The set follows the project's preview setting. The operand of a `not` or `and`, or a comparison, is not\n  checked by Ruff, so this rule still reports a name there.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"PGH005\"]\n  ```\n\n  ```python ok\n  def test_save(save: MagicMock) -> None:\n      run_save()\n      assert save.not_called()\n  ```\n\n### Fix\n\nThe fix renames the attribute to the assertion it stands for. **Unsafe fix:** the call becomes a check, so a test that\npassed without checking may now fail.\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.called_once_with(\"out.json\")\n```\n\n```python fixed\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.assert_called_once_with(\"out.json\")\n```\n\nAn assertion method returns `None`, so when the call is the whole test of an `assert` without a message, the fix drops\nthe `assert` too.\n\n```toml config\n[tool.ruff.lint]\nselect = []\n```\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    assert save.not_called()\n```\n\n```python fixed\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.assert_not_called()\n```\n\nOnly a call on a line of its own, or the whole test of such an `assert`, gets the fix. Renamed anywhere else, the name\nwould be a bound method that is always true, or the `None` the method returns, which the code then goes on to use.\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    assert not save.called_once\n```\n\n## Ruff overlap\n\nThere is no overlap. Ruff's [invalid-mock-access](https://docs.astral.sh/ruff/rules/invalid-mock-access/) (PGH005)\nreports the prefix-less assertion names in the test of an `assert`, bare or called, such as `assert mock.not_called()`,\nand with Ruff's preview mode on, also those names on a line of their own. This rule follows the same preview setting: it\nleaves those names to Ruff only when the project's Ruff configuration selects PGH005, and reports the rest, which are\noperands of `not` and `and`, comparisons, names in call arguments, and every misspelling, since Ruff does not report\nthose. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are respected too.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule\n  [PGH005](https://docs.astral.sh/ruff/rules/invalid-mock-access/), which reports an assertion name missing its\n  `assert_` prefix and which this rule leaves to it; this rule covers misspellings and the rest.\n- [flake8-mock](https://github.com/zupo/flake8-mock) reports misspelled mock assertions, such as `called_once_with`, as\n  [M001](https://github.com/zupo/flake8-mock), with no fix. This rule's fix renames them to the assertion they stand\n  for.\n",
+    "explanation": "Flags attribute names that are mock assertion methods written without their `assert_` prefix, or misspelled.\n\n## Why is this bad?\n\n`unittest.mock` raises `AttributeError` for an unknown name that starts with `assert`, `assret`, `asert`, `aseert` or\n`assrt`, so a misspelled assertion with one of those prefixes fails the test. Other names are ordinary attributes to the\nmock: the call returns a child mock and checks nothing. Python 3.12 added the names of the `Mock` assertions without\ntheir prefix, such as `called_once_with`, to the names a mock rejects, but not those of the `AsyncMock` assertions, such\nas `awaited_once_with`. So `called_once_with` passes silently on Python 3.11 and older, and `awaited_once_with` or a\nmisspelling such as `asssert_called_once` passes silently on every version. The lint reports these before the test runs.\n\n## Example\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.called_once_with(\"out.json\")\n```\n\nUse instead:\n\n```python ok\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.assert_called_once_with(\"out.json\")\n```\n\n## What it does\n\nReports an attribute, read or called, whose name is one of these:\n\n- an assertion method without its `assert_` prefix, such as `called_with`, `has_calls` or `not_called`, but not\n  `called`, which every mock has as an attribute;\n- an assertion method with a misspelled name, such as `asssert_called_once` or `assetr_called_with`, that is within two\n  edits of exactly one assertion method. Only names that start with `as` are compared, since a misspelled prefix keeps\n  those two letters, and not those that start with a prefix the mock rejects.\n\n### Active on\n\n- **Assertion methods without their prefix**: the name is the assertion's name minus `assert_`.\n\n  ```python report\n  mock.called_once()\n  ```\n\n  ```python report\n  mock.has_calls([call(1)])\n  ```\n\n- **Misspelled assertion methods**: the nearest assertion method is the one meant, when it is the only nearest.\n\n  ```python report\n  mock.asssert_called_once()\n  ```\n\n  ```python report\n  mock.assetr_called_with(1)\n  ```\n\n### Exceptions\n\n- **`called`**: a mock attribute that records whether it was called, not an assertion.\n\n  ```python ok\n  assert mock.called\n  ```\n\n- **Names that are not close to an assertion**: `assert_equal` on a helper or a numeric library is left alone.\n\n  ```python ok\n  numbers.assert_equal(1)\n  ```\n\n- **Names with a prefix the mock rejects**: a mock raises `AttributeError` for `assert_called_ones_with`, so the test\n  already fails, and the same names are methods of other classes, such as `assert_failed` on a test helper.\n\n  ```python ok\n  outcome.assert_failed()\n  ```\n\n- **Names the file defines or the project assigns**: such a name is a class's own attribute, not a mock method. A name\n  the file defines as a function, or the project sets or deletes as an attribute anywhere, is left alone.\n\n  ```python ok\n  class Spec:\n      def called_once(self) -> None: ...\n\n\n  def test_spec(mock: MagicMock) -> None:\n      mock.called_once()\n  ```\n\n- **Code that expects the call to fail**: a `with` block of `pytest.raises` or `assertRaises...` checks the error, so\n  the misspelled name is the point.\n\n  ```python ok\n  def test_unsafe_name(mock: MagicMock) -> None:\n      with pytest.raises(AttributeError):\n          mock.called_once()\n  ```\n\n- **Names that Ruff's PGH005 reports**: [PGH005](https://docs.astral.sh/ruff/rules/invalid-mock-access/) reports these\n  names, so this rule leaves them to Ruff only when the project's Ruff configuration selects PGH005. With Ruff's preview\n  mode off, the test of an `assert` is the only place, bare or called. With preview on, a name on a line of its own is\n  one too. The set follows the project's preview setting. The operand of a `not` or `and`, or a comparison, is not\n  checked by Ruff, so this rule still reports a name there.\n\n  ```toml config\n  [tool.ruff.lint]\n  select = [\"PGH005\"]\n  ```\n\n  ```python ok\n  def test_save(save: MagicMock) -> None:\n      run_save()\n      assert save.not_called()\n  ```\n\n### Fix\n\nThe fix renames the attribute to the assertion it stands for. **Unsafe fix:** the call becomes a check, so a test that\npassed without checking may now fail.\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.called_once_with(\"out.json\")\n```\n\n```python fixed\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.assert_called_once_with(\"out.json\")\n```\n\nAn assertion method returns `None`, so when the call is the whole test of an `assert` without a message, the fix drops\nthe `assert` and any parentheses around the call.\n\n```toml config\n[tool.ruff.lint]\nselect = []\n```\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    # fmt: off\n    assert (save.not_called())\n    # fmt: on\n```\n\n```python fixed\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    # fmt: off\n    save.assert_not_called()\n    # fmt: on\n```\n\n```toml config\n[tool.ruff.lint]\nselect = []\n```\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    assert save.not_called()\n```\n\n```python fixed\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    save.assert_not_called()\n```\n\nOnly a call on a line of its own, or the whole test of such an `assert`, gets the fix. Renamed anywhere else, the name\nwould be a bound method that is always true, or the `None` the method returns, which the code then goes on to use.\n\n```python report\ndef test_save(save: MagicMock) -> None:\n    run_save()\n    assert not save.called_once\n```\n\n## Ruff overlap\n\nThere is no overlap. Ruff's [invalid-mock-access](https://docs.astral.sh/ruff/rules/invalid-mock-access/) (PGH005)\nreports the prefix-less assertion names in the test of an `assert`, bare or called, such as `assert mock.not_called()`,\nand with Ruff's preview mode on, also those names on a line of their own. This rule follows the same preview setting: it\nleaves those names to Ruff only when the project's Ruff configuration selects PGH005, and reports the rest, which are\noperands of `not` and `and`, comparisons, names in call arguments, and every misspelling, since Ruff does not report\nthose. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are respected too.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule\n  [PGH005](https://docs.astral.sh/ruff/rules/invalid-mock-access/), which reports an assertion name missing its\n  `assert_` prefix and which this rule leaves to it; this rule covers misspellings and the rest.\n- [flake8-mock](https://github.com/zupo/flake8-mock) reports misspelled mock assertions, such as `called_once_with`, as\n  [M001](https://github.com/zupo/flake8-mock), with no fix. This rule's fix renames them to the assertion they stand\n  for.\n",
     "examples": {
       "parsed": [
         {
@@ -25500,7 +25699,7 @@
         {
           "section": "What it does",
           "line": 139,
-          "end_line": 154,
+          "end_line": 158,
           "config": {
             "line": 139,
             "end_line": 142,
@@ -25513,7 +25712,37 @@
               "file": "example.py",
               "named": false,
               "line": 144,
-              "end_line": 148,
+              "end_line": 150,
+              "source": "def test_save(save: MagicMock) -> None:\n    run_save()\n    # fmt: off\n    assert (save.not_called())\n    # fmt: on\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 152,
+              "end_line": 158,
+              "source": "def test_save(save: MagicMock) -> None:\n    run_save()\n    # fmt: off\n    save.assert_not_called()\n    # fmt: on\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 160,
+          "end_line": 175,
+          "config": {
+            "line": 160,
+            "end_line": 163,
+            "source": "[tool.ruff.lint]\nselect = []\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 165,
+              "end_line": 169,
               "source": "def test_save(save: MagicMock) -> None:\n    run_save()\n    assert save.not_called()\n"
             },
             {
@@ -25521,16 +25750,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 150,
-              "end_line": 154,
+              "line": 171,
+              "end_line": 175,
               "source": "def test_save(save: MagicMock) -> None:\n    run_save()\n    save.assert_not_called()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 159,
-          "end_line": 163,
+          "line": 180,
+          "end_line": 184,
           "config": null,
           "blocks": [
             {
@@ -25538,8 +25767,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 159,
-              "end_line": 163,
+              "line": 180,
+              "end_line": 184,
               "source": "def test_save(save: MagicMock) -> None:\n    run_save()\n    assert not save.called_once\n"
             }
           ]
@@ -28514,7 +28743,7 @@
     "name": "rst-unknown-param",
     "summary": "`:param:` and `:type:` fields for parameters the signature lacks",
     "fix": "Sometimes",
-    "explanation": "Flags `:param name:` and `:type name:` fields in reStructuredText docstrings that name a parameter the signature does\nnot take. Such a field, often left behind by a rename or removal, documents a call that no longer works.\n\n## Why is this bad?\n\nA field for a parameter that is gone, often renamed or removed in a later change, documents a call that no longer works.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\ndef load(path: str) -> str:\n    \"\"\"Load a file.\n\n    :param path: Where it is.\n    :param mode: How to open it.\n    \"\"\"\n```\n\nUse instead:\n\n```python ok\ndef load(path: str) -> str:\n    \"\"\"Load a file.\n\n    :param path: Where it is.\n    \"\"\"\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def load(path: str) -> str:\n      \"\"\"Load a file.\n\n      :param path: Where it is.\n      :param mode: How to open it.\n      \"\"\"\n      return path\n  ```\n\n## What it does\n\nChecks reStructuredText docstrings, when `docstring-style = \"rst\"`, for `:param name:` and `:type name:` fields naming a\nparameter the signature does not take.\n\n### Active on\n\n- **Function and method docstrings**: fields are matched against the signature. The instance or class a method receives\n  first does not count as a parameter.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def load(path: str) -> str:\n      \"\"\"Load a file.\n\n      :param path: Where it is.\n      :param mode: How to open it.\n      \"\"\"\n      return path\n  ```\n\n  ```python fixed\n  def load(path: str) -> str:\n      \"\"\"Load a file.\n\n      :param path: Where it is.\n      \"\"\"\n      return path\n  ```\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Reader:\n      \"\"\"Read files.\"\"\"\n\n      def read(self, size: int) -> str:\n          \"\"\"Read the file.\n\n          :param self: The reader.\n          :param size: Bytes to read.\n          \"\"\"\n          return \"\"\n  ```\n\n- **Class docstrings**: a class's docstring documents the parameters of its `__init__`, or of the fields a dataclass or\n  attrs class turns into them.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Reader:\n      \"\"\"Read files.\n\n      :param source: Where to read from.\n      :param mode: How to open it.\n      \"\"\"\n\n      def __init__(self, source: str) -> None:\n          self.source = source\n  ```\n\n### Exceptions\n\n- **A class that takes its constructor from a base class**: the base's signature is not in the class, so its parameters\n  are not known.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Reader(Base):\n      \"\"\"Read files.\n\n      :param mode: How to open it.\n      \"\"\"\n  ```\n\n- **A function with `**kwargs`**: it takes any keyword, which such fields may document.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def load(path: str, **kwargs: str) -> str:\n      \"\"\"Load a file.\n\n      :param path: Where it is.\n      :param mode: How to open it.\n      \"\"\"\n      return path\n  ```\n\n### Fix\n\nThe fix deletes the field with the lines that continue it.\n\n**Unsafe fix:** code may read the docstring through `__doc__`.\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\ndef load(path: str) -> str:\n    \"\"\"Load a file.\n\n    :param path: Where it is.\n    :param mode: How to open it.\n    \"\"\"\n    return path\n```\n\n```python fixed\ndef load(path: str) -> str:\n    \"\"\"Load a file.\n\n    :param path: Where it is.\n    \"\"\"\n    return path\n```\n\nNo fix is offered when escapes in the docstring make its text differ from the source.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rule\n  [DOC102](https://docs.astral.sh/ruff/rules/docstring-extraneous-parameter/), which checks Google and NumPy sections\n  but not reST fields; open pull request [#13286](https://github.com/astral-sh/ruff/pull/13286) would add them.\n- [pydoclint](https://github.com/jsh9/pydoclint) reports a docstring with more parameters than the signature as\n  [DOC102](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.\n- [darglint](https://github.com/terrencepreilly/darglint) reports a docstring parameter the signature lacks as\n  [DAR102](https://github.com/terrencepreilly/darglint), with no fix.\n",
+    "explanation": "Flags `:param name:` and `:type name:` fields in reStructuredText docstrings that name a parameter the signature does\nnot take. Such a field, often left behind by a rename or removal, documents a call that no longer works.\n\n## Why is this bad?\n\nA field for a parameter that is gone, often renamed or removed in a later change, documents a call that no longer works.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\ndef load(path: str) -> str:\n    \"\"\"Load a file.\n\n    :param path: Where it is.\n    :param mode: How to open it.\n    \"\"\"\n```\n\nUse instead:\n\n```python ok\ndef load(path: str) -> str:\n    \"\"\"Load a file.\n\n    :param path: Where it is.\n    \"\"\"\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def load(path: str) -> str:\n      \"\"\"Load a file.\n\n      :param path: Where it is.\n      :param mode: How to open it.\n      \"\"\"\n      return path\n  ```\n\n## What it does\n\nChecks reStructuredText docstrings, when `docstring-style = \"rst\"`, for `:param name:` and `:type name:` fields naming a\nparameter the signature does not take.\n\n### Active on\n\n- **Function and method docstrings**: fields are matched against the signature. The instance or class a method receives\n  first does not count as a parameter.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def load(path: str) -> str:\n      \"\"\"Load a file.\n\n      :param path: Where it is.\n      :param mode: How to open it.\n      \"\"\"\n      return path\n  ```\n\n  ```python fixed\n  def load(path: str) -> str:\n      \"\"\"Load a file.\n\n      :param path: Where it is.\n      \"\"\"\n      return path\n  ```\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Reader:\n      \"\"\"Read files.\"\"\"\n\n      def read(self, size: int) -> str:\n          \"\"\"Read the file.\n\n          :param self: The reader.\n          :param size: Bytes to read.\n          \"\"\"\n          return \"\"\n  ```\n\n- **Class docstrings**: a class's docstring documents the parameters of its `__init__`, or of the fields a dataclass or\n  attrs class turns into them.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Reader:\n      \"\"\"Read files.\n\n      :param source: Where to read from.\n      :param mode: How to open it.\n      \"\"\"\n\n      def __init__(self, source: str) -> None:\n          self.source = source\n  ```\n\n### Exceptions\n\n- **A class that takes its constructor from a base class**: the base's signature is not in the class, so its parameters\n  are not known.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Reader(Base):\n      \"\"\"Read files.\n\n      :param mode: How to open it.\n      \"\"\"\n  ```\n\n- **A function with `**kwargs`**: it takes any keyword, which such fields may document.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  def load(path: str, **kwargs: str) -> str:\n      \"\"\"Load a file.\n\n      :param path: Where it is.\n      :param mode: How to open it.\n      \"\"\"\n      return path\n  ```\n\n### Fix\n\nThe fix deletes the field with the lines that continue it.\n\n**Unsafe fix:** code may read the docstring through `__doc__`.\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\ndef load(path: str) -> str:\n    \"\"\"Load a file.\n\n    :param path: Where it is.\n    :param mode: How to open it.\n    \"\"\"\n    return path\n```\n\n```python fixed\ndef load(path: str) -> str:\n    \"\"\"Load a file.\n\n    :param path: Where it is.\n    \"\"\"\n    return path\n```\n\nWhen the text left before the field ends in a quote or a backslash, the closing quotes go on a line of their own, since\non the same line they would end or escape the string.\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\n# fmt: off\ndef load(path: str) -> str:\n    \"\"\"Load \"path\"\n\n    :param mode: How to open it.\n    \"\"\"\n    return path\n# fmt: on\n```\n\n```python fixed\n# fmt: off\ndef load(path: str) -> str:\n    \"\"\"Load \"path\"\n    \"\"\"\n    return path\n# fmt: on\n```\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\ndef split(text: str) -> list[str]:\n    r\"\"\"Split on \\\n\n    :param sep: Where to cut.\n    \"\"\"\n    return text.split()\n```\n\n```python fixed\ndef split(text: str) -> list[str]:\n    r\"\"\"Split on \\\n    \"\"\"\n    return text.split()\n```\n\nNo fix is offered when escapes in the docstring make its text differ from the source.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rule\n  [DOC102](https://docs.astral.sh/ruff/rules/docstring-extraneous-parameter/), which checks Google and NumPy sections\n  but not reST fields; open pull request [#13286](https://github.com/astral-sh/ruff/pull/13286) would add them.\n- [pydoclint](https://github.com/jsh9/pydoclint) reports a docstring with more parameters than the signature as\n  [DOC102](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.\n- [darglint](https://github.com/terrencepreilly/darglint) reports a docstring parameter the signature lacks as\n  [DAR102](https://github.com/terrencepreilly/darglint), with no fix.\n",
     "examples": {
       "parsed": [
         {
@@ -28721,6 +28950,66 @@
               "line": 182,
               "end_line": 189,
               "source": "def load(path: str) -> str:\n    \"\"\"Load a file.\n\n    :param path: Where it is.\n    \"\"\"\n    return path\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 194,
+          "end_line": 217,
+          "config": {
+            "line": 194,
+            "end_line": 197,
+            "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 199,
+              "end_line": 208,
+              "source": "# fmt: off\ndef load(path: str) -> str:\n    \"\"\"Load \"path\"\n\n    :param mode: How to open it.\n    \"\"\"\n    return path\n# fmt: on\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 210,
+              "end_line": 217,
+              "source": "# fmt: off\ndef load(path: str) -> str:\n    \"\"\"Load \"path\"\n    \"\"\"\n    return path\n# fmt: on\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 219,
+          "end_line": 238,
+          "config": {
+            "line": 219,
+            "end_line": 222,
+            "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 224,
+              "end_line": 231,
+              "source": "def split(text: str) -> list[str]:\n    r\"\"\"Split on \\\n\n    :param sep: Where to cut.\n    \"\"\"\n    return text.split()\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 233,
+              "end_line": 238,
+              "source": "def split(text: str) -> list[str]:\n    r\"\"\"Split on \\\n    \"\"\"\n    return text.split()\n"
             }
           ]
         }

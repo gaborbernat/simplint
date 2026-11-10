@@ -1,0 +1,8 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+2:18 SMP814 `called_once_with` is not a mock assertion; it is `assert_called_once_with` [unsafe fix: Rename to `assert_called_once_with`]
+--- fixed (1 applied, 0 remaining) ---
+def test_parenthesized_typo(mock):
+    mock.assert_called_once_with(1)

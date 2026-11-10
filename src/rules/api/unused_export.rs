@@ -45,7 +45,7 @@ pub fn unused_export(checker: &Checker) {
     // `from .question import Question, Question as Alias`, the one still in use included.
     let fix = literal
         .filter(|_| !unused.iter().any(|name| is_double_import(checker, name) || project.is_read_opaquely(name)))
-        .and_then(|(value, elements)| removal(checker, value, elements, &unused));
+        .and_then(|(value, elements)| removal(checker, statements.first()?, value, elements, &unused));
     let title = format!(
         "Remove {} from `__all__`",
         unused.iter().map(|name| format!("`{name}`")).collect::<Vec<_>>().join(", ")
@@ -72,7 +72,7 @@ fn builds_all(stmt: &Stmt) -> bool {
 // Each run of unused names goes with the separator after it, or, at the end of the list, with the separator before it,
 // so the layout and comments around the names kept stay as they are, whatever the layout. A comment inside a run may
 // belong to a removed name, so the fix leaves such a list alone.
-fn removal(checker: &Checker, value: TextRange, elements: &[Expr], unused: &[&str]) -> Option<Fix> {
+fn removal(checker: &Checker, statement: &Stmt, value: TextRange, elements: &[Expr], unused: &[&str]) -> Option<Fix> {
     let source = checker.source;
     let is_unused =
         |element: &Expr| element.as_string_literal_expr().is_some_and(|text| unused.contains(&text.value.to_str()));
@@ -83,6 +83,9 @@ fn removal(checker: &Checker, value: TextRange, elements: &[Expr], unused: &[&st
             Fix::applicable_edit(Edit::range_replacement(format!("{open}{close}"), value), applicability(checker))
         });
     }
+    // A parenthesized element's range starts at its parenthesis, which the deletion must take with it.
+    let ranges: Vec<TextRange> =
+        elements.iter().map(|element| checker.parenthesized_range(element, statement.into())).collect();
     // A tuple left with one name needs a comma after it.
     let lone = open == "(" && kept == 1;
     let mut edits = Vec::new();
@@ -96,10 +99,10 @@ fn removal(checker: &Checker, value: TextRange, elements: &[Expr], unused: &[&st
         while index < elements.len() && is_unused(&elements[index]) {
             index += 1;
         }
-        let edit = if let Some(next) = elements.get(index) {
-            Edit::range_deletion(TextRange::new(elements[first].start(), next.start()))
+        let edit = if let Some(next) = ranges.get(index) {
+            Edit::range_deletion(TextRange::new(ranges[first].start(), next.start()))
         } else {
-            let range = TextRange::new(elements[first - 1].end(), elements[index - 1].end());
+            let range = TextRange::new(ranges[first - 1].end(), ranges[index - 1].end());
             let has_comma = source[range.end().to_usize()..].trim_start().starts_with(',');
             if lone && !has_comma {
                 Edit::range_replacement(",".to_owned(), range)
@@ -114,7 +117,7 @@ fn removal(checker: &Checker, value: TextRange, elements: &[Expr], unused: &[&st
     }
     if lone
         && !elements.last().is_some_and(is_unused)
-        && let Some(last) = elements.last()
+        && let Some(last) = ranges.last()
         && !source[last.end().to_usize()..].trim_start().starts_with(',')
     {
         edits.push(Edit::insertion(",".to_owned(), last.end()));

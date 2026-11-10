@@ -1,0 +1,14 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+8:5 SMP805 Pass timeout through the mock constructor instead of assigning after creation [fix: Pass timeout to the mock constructor]
+--- fixed (1 applied, 0 remaining) ---
+from unittest.mock import MagicMock
+
+
+def test_comment_after_trailing_comma() -> None:
+    client = MagicMock(
+        spec=dict,  # the real type
+     timeout=3)
+    assert client.timeout == 3

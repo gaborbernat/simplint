@@ -1,0 +1,20 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+13:11 SMP402 `spare_first` is in `__all__`, yet no other module imports it; list only what other modules use [unsafe fix: Remove `spare_first`, `spare_last` from `__all__`]
+13:56 SMP402 `spare_last` is in `__all__`, yet no other module imports it; list only what other modules use [unsafe fix: Remove `spare_first`, `spare_last` from `__all__`]
+--- fixed (2 applied, 0 remaining) ---
+def used_first() -> None: ...
+
+
+def spare_first() -> None: ...
+
+
+def used_last() -> None: ...
+
+
+def spare_last() -> None: ...
+
+
+__all__ = ("used_first"), "used_last"

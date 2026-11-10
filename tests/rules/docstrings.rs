@@ -41,6 +41,7 @@ use crate::common;
 #[test_case("rst-private-field", "rst_private_field.py" ; "rst_private_field")]
 #[test_case("rst-missing-param", "rst_missing_param.py" ; "rst_missing_param")]
 #[test_case("rst-unknown-param", "rst_unknown_param.py" ; "rst_unknown_param")]
+#[test_case("rst-unknown-param", "rst_unknown_param_quotes.py" ; "rst_unknown_param_quotes")]
 #[test_case("rst-duplicate-param", "rst_duplicate_param.py" ; "rst_duplicate_param")]
 #[test_case("rst-param-order", "rst_param_order.py" ; "rst_param_order")]
 #[test_case("rst-missing-attribute", "rst_missing_attribute.py" ; "rst_missing_attribute")]

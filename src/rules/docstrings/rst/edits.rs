@@ -1,4 +1,5 @@
 use ruff_diagnostics::{Edit, Fix};
+use ruff_python_ast::StringFlags;
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use super::{Docstring, Field};
@@ -6,8 +7,9 @@ use crate::lint::checker::Checker;
 use crate::rules::indentation;
 
 // Deletes whole fields, each with the lines that continue it. Fields that end the docstring take the blank lines before
-// them too, and the closing quotes go after the text left, on a line of their own at the docstring's indentation when
-// that text spans several lines, and on its last line otherwise.
+// them too, and the closing quotes go after the text left. They go on a line of their own at the docstring's
+// indentation when that text spans several lines or ends in a quote or backslash, which would end or escape the string,
+// and on its last line otherwise.
 pub(crate) fn field_deletion(checker: &Checker, docstring: &Docstring, fields: &[&Field]) -> Option<Fix> {
     let content = docstring.content?;
     let source = checker.source;
@@ -36,7 +38,8 @@ pub(crate) fn field_deletion(checker: &Checker, docstring: &Docstring, fields: &
             .1
             + &source[TextRange::new(ranges[..trailing].last().map_or(content.start(), Ranged::end), text_end)];
         let range = TextRange::new(text_end, content.end());
-        edits.push(if kept.contains('\n') {
+        let quote = docstring.literal.value.first_literal_flags().quote_style().as_char();
+        edits.push(if kept.contains('\n') || kept.ends_with([quote, '\\']) {
             let line_ending = checker.stylist.line_ending().as_str();
             Edit::range_replacement(format!("{line_ending}{}", indentation(source, docstring.literal)), range)
         } else {

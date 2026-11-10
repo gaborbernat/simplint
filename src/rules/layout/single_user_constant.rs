@@ -302,8 +302,12 @@ fn inline_fix(checker: &Checker, value: &Expr, value_text: &str, deletion: Edit,
     } else {
         (value_text.to_owned(), value_text != checker.text(value.range()))
     };
+    // An integer followed by `.` lexes as the point of a float, so the attribute needs parentheses around the number.
+    let int_attribute = matches!(value, Expr::NumberLiteral(ast::ExprNumberLiteral { value: ast::Number::Int(_), .. }))
+        && checker.source[reference.end().to_usize()..].trim_start_matches(' ').starts_with('.');
     // Ruff's code generator writes a tuple without the parentheses its source may have.
-    let wrap = !parenthesized && (needs_parentheses(value) || value_text.contains('\n') && value.is_tuple_expr());
+    let wrap = !parenthesized
+        && (needs_parentheses(value) || value_text.contains('\n') && value.is_tuple_expr() || int_attribute);
     let inlined = if wrap { format!("({text})") } else { text };
     let mut edits = keep_debug_text(checker, vec![deletion, Edit::range_replacement(inlined, reference)])?.into_iter();
     Some(Fix::unsafe_edits(edits.next()?, edits))

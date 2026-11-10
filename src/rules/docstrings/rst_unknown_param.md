@@ -188,6 +188,55 @@ def load(path: str) -> str:
     return path
 ```
 
+When the text left before the field ends in a quote or a backslash, the closing quotes go on a line of their own, since
+on the same line they would end or escape the string.
+
+```toml config
+[tool.simplint]
+docstring-style = "rst"
+```
+
+```python report
+# fmt: off
+def load(path: str) -> str:
+    """Load "path"
+
+    :param mode: How to open it.
+    """
+    return path
+# fmt: on
+```
+
+```python fixed
+# fmt: off
+def load(path: str) -> str:
+    """Load "path"
+    """
+    return path
+# fmt: on
+```
+
+```toml config
+[tool.simplint]
+docstring-style = "rst"
+```
+
+```python report
+def split(text: str) -> list[str]:
+    r"""Split on \
+
+    :param sep: Where to cut.
+    """
+    return text.split()
+```
+
+```python fixed
+def split(text: str) -> list[str]:
+    r"""Split on \
+    """
+    return text.split()
+```
+
 No fix is offered when escapes in the docstring make its text differ from the source.
 
 ## Other tools
