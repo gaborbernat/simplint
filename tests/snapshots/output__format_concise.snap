@@ -4,6 +4,6 @@ expression: "format!(\"exit code {code}\\n{report}\")"
 ---
 exit code 1
 module.py:1:1: SMP001 [*] Section comment groups code; extract a named function or class instead
-module.py:2:1: SMP101 Single-letter name `x`; only comprehensions may use one
+module.py:2:1: SMP101 Single-letter name `x`; use a descriptive name
 Found 2 errors.
 [*] 1 fixable with `--fix`.

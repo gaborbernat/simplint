@@ -25,7 +25,7 @@ exit code 1
   },
   {
     "check_name": "SMP101",
-    "description": "SMP101: Single-letter name `x`; only comprehensions may use one",
+    "description": "SMP101: Single-letter name `x`; use a descriptive name",
     "severity": "major",
     "fingerprint": "24265194e37d0b86",
     "location": {

@@ -11,7 +11,7 @@ fn check_noqa_suppresses_listed_code() {
     let root = project(&[("module.py", "x = 1  # noqa: SMP101\ny = 2  # noqa\nz = 3  # noqa: E501\n")]);
     assert_eq!(
         check(root.path(), &["--select", "SMP101"]).1,
-        "module.py:3:1: SMP101 Single-letter name `z`; only comprehensions may use one\nFound 1 \
+        "module.py:3:1: SMP101 Single-letter name `z`; use a descriptive name\nFound 1 \
          error.\n"
     );
 }
@@ -107,7 +107,7 @@ fn simplint_ignore_comment_suppresses_its_codes() {
         project(&[("module.py", "x = 1  # simplint: ignore[SMP101, SMP601]\ny = 2  # simplint:ignore[SMP601]\n")]);
     assert_eq!(
         check(root.path(), &["--select", "SMP101"]).1,
-        "module.py:2:1: SMP101 Single-letter name `y`; only comprehensions may use one\nFound 1 error.\n"
+        "module.py:2:1: SMP101 Single-letter name `y`; use a descriptive name\nFound 1 error.\n"
     );
 }
 

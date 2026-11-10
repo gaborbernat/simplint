@@ -5,6 +5,7 @@ use ruff_text_size::TextRange;
 use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
 use crate::rules::naming::{current, except_name, parameters, pattern_name};
+use crate::rules::typing::type_parameter_assignment;
 
 pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     match stmt {
@@ -25,6 +26,15 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     if let Expr::Name(ast::ExprName { id, ctx: ExprContext::Store, range, .. }) = expr {
+        if id.as_str().chars().count() == 1
+            && id.as_str().chars().all(char::is_uppercase)
+            && walker
+                .statement()
+                .and_then(|stmt| type_parameter_assignment(walker.checker, stmt))
+                .is_some_and(|target| target.range == *range)
+        {
+            return;
+        }
         variable(walker, current(walker), id.as_str(), *range);
     }
 }
@@ -43,7 +53,9 @@ pub fn pattern<'a>(walker: &mut Walker<'_, 'a>, pattern: &'a Pattern) {
 
 pub fn type_param<'a>(walker: &mut Walker<'_, 'a>, type_param: &'a TypeParam) {
     let name = type_param.name();
-    simplint_only(walker, current(walker), name.as_str(), name.range);
+    if !name.as_str().chars().all(char::is_uppercase) {
+        simplint_only(walker, current(walker), name.as_str(), name.range);
+    }
 }
 
 // Ruff's E741, E742 and E743 flag `l`, `I` and `O` on the bindings of their kind, except imports, patterns and type
@@ -74,7 +86,7 @@ fn report<'a>(walker: &Walker<'_, 'a>, scope: TextRange, name: &'a str, range: T
         walker.checker.report(
             Rule::SingleLetterName,
             range,
-            format!("Single-letter name `{name}`; only comprehensions may use one"),
+            format!("Single-letter name `{name}`; use a descriptive name"),
         );
     }
 }

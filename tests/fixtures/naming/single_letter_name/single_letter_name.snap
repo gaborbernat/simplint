@@ -2,38 +2,36 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-1:14 SMP101 Single-letter name `o`; only comprehensions may use one
-2:24 SMP101 Single-letter name `p`; only comprehensions may use one
-5:5 SMP101 Single-letter name `f`; only comprehensions may use one
-5:7 SMP101 Single-letter name `a`; only comprehensions may use one
-5:18 SMP101 Single-letter name `b`; only comprehensions may use one
-6:5 SMP101 Single-letter name `x`; only comprehensions may use one
-7:9 SMP101 Single-letter name `i`; only comprehensions may use one
-9:16 SMP101 Single-letter name `w`; only comprehensions may use one
-15:26 SMP101 Single-letter name `e`; only comprehensions may use one
-17:29 SMP101 Single-letter name `h`; only comprehensions may use one
-19:9 SMP101 Single-letter name `n`; only comprehensions may use one
-22:22 SMP101 Single-letter name `c`; only comprehensions may use one
-24:18 SMP101 Single-letter name `z`; only comprehensions may use one
-29:7 SMP101 Single-letter name `C`; only comprehensions may use one
-29:9 SMP101 Single-letter name `T`; only comprehensions may use one
-35:23 SMP101 Single-letter name `r`; only comprehensions may use one
-52:27 SMP101 Single-letter name `r`; only comprehensions may use one
-58:5 SMP101 Single-letter name `l`; only comprehensions may use one
-59:5 SMP101 Single-letter name `I`; only comprehensions may use one
-59:8 SMP101 Single-letter name `O`; only comprehensions may use one
-63:22 SMP101 Single-letter name `l`; only comprehensions may use one
-63:31 SMP101 Single-letter name `I`; only comprehensions may use one
-63:39 SMP101 Single-letter name `O`; only comprehensions may use one
-70:26 SMP101 Single-letter name `l`; only comprehensions may use one
-72:24 SMP101 Single-letter name `I`; only comprehensions may use one
-74:9 SMP101 Single-letter name `O`; only comprehensions may use one
-79:11 SMP101 Single-letter name `I`; only comprehensions may use one
-82:9 SMP101 Single-letter name `l`; only comprehensions may use one
-89:28 SMP101 Single-letter name `l`; only comprehensions may use one
-90:18 SMP101 Single-letter name `O`; only comprehensions may use one
-96:15 SMP101 Single-letter name `I`; only comprehensions may use one
-96:19 SMP101 Single-letter name `l`; only comprehensions may use one
-98:22 SMP101 Single-letter name `O`; only comprehensions may use one
-102:27 SMP101 Single-letter name `O`; only comprehensions may use one
-107:5 SMP101 Single-letter name `l`; only comprehensions may use one
+1:14 SMP101 Single-letter name `o`; use a descriptive name
+2:24 SMP101 Single-letter name `p`; use a descriptive name
+5:5 SMP101 Single-letter name `f`; use a descriptive name
+5:7 SMP101 Single-letter name `a`; use a descriptive name
+5:18 SMP101 Single-letter name `b`; use a descriptive name
+6:5 SMP101 Single-letter name `x`; use a descriptive name
+7:9 SMP101 Single-letter name `i`; use a descriptive name
+9:16 SMP101 Single-letter name `w`; use a descriptive name
+15:26 SMP101 Single-letter name `e`; use a descriptive name
+17:29 SMP101 Single-letter name `h`; use a descriptive name
+19:9 SMP101 Single-letter name `n`; use a descriptive name
+22:22 SMP101 Single-letter name `c`; use a descriptive name
+24:18 SMP101 Single-letter name `z`; use a descriptive name
+29:7 SMP101 Single-letter name `C`; use a descriptive name
+35:23 SMP101 Single-letter name `r`; use a descriptive name
+52:27 SMP101 Single-letter name `r`; use a descriptive name
+58:5 SMP101 Single-letter name `l`; use a descriptive name
+59:5 SMP101 Single-letter name `I`; use a descriptive name
+59:8 SMP101 Single-letter name `O`; use a descriptive name
+63:22 SMP101 Single-letter name `l`; use a descriptive name
+63:31 SMP101 Single-letter name `I`; use a descriptive name
+63:39 SMP101 Single-letter name `O`; use a descriptive name
+70:26 SMP101 Single-letter name `l`; use a descriptive name
+72:24 SMP101 Single-letter name `I`; use a descriptive name
+74:9 SMP101 Single-letter name `O`; use a descriptive name
+79:11 SMP101 Single-letter name `I`; use a descriptive name
+82:9 SMP101 Single-letter name `l`; use a descriptive name
+89:28 SMP101 Single-letter name `l`; use a descriptive name
+90:18 SMP101 Single-letter name `O`; use a descriptive name
+96:15 SMP101 Single-letter name `I`; use a descriptive name
+96:19 SMP101 Single-letter name `l`; use a descriptive name
+98:22 SMP101 Single-letter name `O`; use a descriptive name
+107:5 SMP101 Single-letter name `l`; use a descriptive name

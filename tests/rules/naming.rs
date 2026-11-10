@@ -280,3 +280,25 @@ fn single_letter_name_follows_ruff_ambiguous_names(source: &str, code: &str, fra
         assert_eq!(stdout.contains(fragment), !selected, "{stdout}");
     }
 }
+
+#[test_case("from typing import TypeVar\n\nT = TypeVar(\"T\")\n", 0, 0 ; "type_var")]
+#[test_case("from typing import ParamSpec\n\nP = ParamSpec(\"P\")\n", 0, 0 ; "param_spec")]
+#[test_case("from typing import TypeVarTuple\n\nTs = TypeVarTuple(\"Ts\")\n", 0, 0 ; "type_var_tuple")]
+#[test_case("import typing\n\nT = typing.TypeVar(\"T\")\n", 0, 0 ; "qualified_type_var")]
+#[test_case("from typing_extensions import TypeVar as TV\n\nT = TV(\"T\")\n", 0, 0 ; "typing_extensions_alias")]
+#[test_case("from typing import TypeVar\n\nT = TypeVar(name=\"T\")\n", 0, 0 ; "keyword_name")]
+#[test_case("class Box[T]:\n    pass\n", 0, 0 ; "pep_695_type_parameter")]
+#[test_case("class Box[x]:\n    pass\n", 1, 0 ; "lowercase_pep_695_parameter")]
+#[test_case("from typing import TypeVar\n\nx = TypeVar(\"x\")\n", 1, 0 ; "lowercase_type_var")]
+#[test_case("T = 1\n", 1, 1 ; "ordinary_variable")]
+#[test_case("from typing import TypeVar\n\nT = TypeVar(\"U\")\n", 1, 1 ; "mismatched_name")]
+#[test_case("from typing import TypeVar\n\n_NAME = \"T\"\nT = TypeVar(_NAME)\n", 1, 1 ; "nonliteral_name")]
+#[test_case("from typing import TypeVar\n\nT = TypeVar()\n", 1, 1 ; "missing_name")]
+#[test_case("from typing import TypeVar\n\nT = TypeVar(\"T\")\nT = 1\n", 1, 1 ; "reassigned_type_var")]
+#[test_case("def TypeVar(name: str) -> str:\n    return name\n\nT = TypeVar(\"T\")\n", 1, 1 ; "shadowed_constructor")]
+fn type_parameter_names(source: &str, single_letter: usize, variable_prefix: usize) {
+    let root = common::project(&[("module.py", source)]);
+    let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP101,SMP404"]).1;
+    assert_eq!(stdout.matches("SMP101").count(), single_letter, "{stdout}");
+    assert_eq!(stdout.matches("SMP404").count(), variable_prefix, "{stdout}");
+}

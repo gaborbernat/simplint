@@ -12,6 +12,8 @@ use crate::rules::{has_version_gate, is_class_like, is_sphinx_conf, isort_key, s
 use crate::semantic::Semantic;
 use crate::syntax::{alias_binding, last_segment};
 
+use super::is_type_parameter_constructor;
+
 pub fn missing_final(checker: &Checker) {
     // `typing.Final` arrived in Python 3.8.
     // Sphinx reads the module variables of `conf.py` by name, so a `Final` there would change nothing.
@@ -92,11 +94,11 @@ fn is_qualifier(annotation: &Expr) -> bool {
 
 // Type checkers reject `Final` on these, since they declare types rather than hold values.
 fn is_type_construct(semantic: &Semantic, value: &Expr) -> bool {
-    const CONSTRUCTS: &[&str] =
-        &["TypeVar", "ParamSpec", "TypeVarTuple", "NewType", "TypeAliasType", "NamedTuple", "TypedDict"];
-    value
-        .as_call_expr()
-        .is_some_and(|call| CONSTRUCTS.iter().any(|member| semantic.match_typing_expr(&call.func, member)))
+    const CONSTRUCTS: &[&str] = &["NewType", "TypeAliasType", "NamedTuple", "TypedDict"];
+    value.as_call_expr().is_some_and(|call| {
+        is_type_parameter_constructor(semantic, &call.func)
+            || CONSTRUCTS.iter().any(|member| semantic.match_typing_expr(&call.func, member))
+    })
 }
 
 // An unannotated assignment of a type, such as `JSON = dict[str, Any]` or `_PathLike = str | bytes`, is an implicit type

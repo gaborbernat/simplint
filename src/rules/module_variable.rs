@@ -7,6 +7,7 @@ use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
+use crate::rules::typing::type_parameter_assignment;
 use crate::rules::{is_class_like, is_sphinx_conf, single_assignment};
 use crate::semantic::{Binding, BindingKind};
 use crate::syntax::{Exports, Visibility};
@@ -32,6 +33,12 @@ pub fn module_variables<'a>(checker: &Checker<'a>) -> Vec<ModuleVariable<'a>> {
     };
     let read_by_name = framework_names(checker);
     let aliases = function_aliases(checker);
+    let type_parameters: FxHashSet<&str> = checker
+        .body()
+        .iter()
+        .filter_map(|stmt| type_parameter_assignment(checker, stmt))
+        .map(|target| target.id.as_str())
+        .collect();
     let kept = &checker.settings.project.knobs.keep_names;
     let mut variables = Vec::new();
     let stub = |binding: &Binding| checker.semantic().is_type_checking_stub(binding.range);
@@ -44,6 +51,8 @@ pub fn module_variables<'a>(checker: &Checker<'a>) -> Vec<ModuleVariable<'a>> {
             || MAGIC.contains(&name)
             || read_by_name.contains(name)
             || aliases.contains(name)
+            || (type_parameters.contains(name)
+                && bindings.iter().filter(|binding| !stub(binding)).all(|binding| binding.range == first.range))
             || kept.iter().any(|kept| kept == name)
             || bindings.iter().any(|binding| {
                 matches!(

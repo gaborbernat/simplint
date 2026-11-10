@@ -29,7 +29,7 @@ def test_check_reports_and_fails(simplint: str, tmp_path: Path) -> None:
     assert (completed.returncode, completed.stdout.splitlines()) == (
         1,
         [
-            "module.py:1:1: SMP101 Single-letter name `x`; only comprehensions may use one",
+            "module.py:1:1: SMP101 Single-letter name `x`; use a descriptive name",
             "Found 1 error.",
         ],
     )
