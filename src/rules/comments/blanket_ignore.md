@@ -90,11 +90,6 @@ No fix is offered: the comment does not say which codes it should name.
   reports a bare `type: ignore` or `pyright: ignore`. This rule leaves them to Ruff whether or not the project's Ruff
   configuration selects that rule.
 
-  ```toml config
-  [tool.ruff.lint]
-  select = ["PGH003", "PGH004"]
-  ```
-
   ```python ok
   import os  # noqa
 
@@ -105,11 +100,6 @@ No fix is offered: the comment does not say which codes it should name.
 - **`ruff: ignore` and `ruff: file-ignore` without codes**: Ruff's
   [invalid-suppression-comment](https://docs.astral.sh/ruff/rules/invalid-suppression-comment/) (RUF103) reports them,
   and this rule leaves them to Ruff whether or not the project's Ruff configuration selects it.
-
-  ```toml config
-  [tool.ruff.lint]
-  select = ["RUF103"]
-  ```
 
   ```python ok
   VALUE = 1  # ruff: ignore

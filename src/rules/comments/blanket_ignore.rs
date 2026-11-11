@@ -3,7 +3,6 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 
 pub fn blanket_ignore(checker: &Checker) {
-    // Ruff's PGH003, PGH004 and RUF103 report the blanket forms they cover, so those are left to Ruff.
     for (range, comment) in checker.state().comments(checker) {
         for directive in comment.directives.iter().filter(|d| d.missing_codes && d.ruff_rule.is_none()) {
             let scope = match directive.scope {

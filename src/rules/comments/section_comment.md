@@ -140,10 +140,10 @@ longer.
 ## Ruff overlap
 
 [E266](https://docs.astral.sh/ruff/rules/multiple-leading-hashes-for-block-comment/) and
-[E265](https://docs.astral.sh/ruff/rules/no-space-after-block-comment/), preview rules, report a plain comment of more
-than three words, such as `## Remove this return to update the cron job`, with its text kept. This rule leaves such a
-comment to them whether or not the project enables preview. E266 also reports `## Setup` and decorated comments; this
-rule keeps those, since its fixes differ from Ruff's.
+[E265](https://docs.astral.sh/ruff/rules/no-space-after-block-comment/), preview rules, report a prose heading such as
+`## Remove this return to update the cron job`, whose fix here would be the same, so this rule leaves it to them whether
+or not the project enables preview. Short headings such as `## Setup`, decorated dividers and regions stay with this
+rule, since they report a section divider to replace with a function or remove, not the hash count E266 reports.
 
 ## Other tools
 

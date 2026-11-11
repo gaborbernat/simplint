@@ -89,9 +89,8 @@ pub fn function_docstring(checker: &Checker) {
     }
 }
 
-// Ruff's D418 and D419 report the docstring of a definition this rule has no fix for, while the project's Ruff
-// configuration runs them. Ruff skips a definition that `ignore-decorators` lists, and it leaves a stub's `@overload`
-// docstrings alone.
+// Ruff's D418 and D419 report the docstring of a definition this rule has no fix for. Ruff skips a definition that
+// `ignore-decorators` lists, and it leaves a stub's `@overload` docstrings alone.
 fn left_to_ruff(
     checker: &Checker,
     decorators: &[Decorator],

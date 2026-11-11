@@ -56,10 +56,10 @@ withdraws the fix and keeps the report.
 ## Ruff overlap
 
 Ruff's [empty-docstring](https://docs.astral.sh/ruff/rules/empty-docstring/) (D419) and
-[overload-with-docstring](https://docs.astral.sh/ruff/rules/overload-with-docstring/) (D418) report a docstring that
-this rule has no fix for, which a file-level `# ruff: noqa` causes by withdrawing the fix. This rule leaves to them an
-empty docstring of a single string, and a non-empty one of a function decorated with `@overload`, whether or not the
-project selects them. A definition that `ignore-decorators` lists stays with this rule, since Ruff skips it.
+[overload-with-docstring](https://docs.astral.sh/ruff/rules/overload-with-docstring/) (D418) report a docstring this
+rule offers no fix for, such as under a file-level `# ruff: noqa`. This rule leaves to them an empty docstring of a
+single string, and a non-empty one of a function decorated with `@overload`, whether or not the project selects them. A
+definition that `ignore-decorators` lists stays with this rule, since Ruff skips it.
 
 ## What it does
 
