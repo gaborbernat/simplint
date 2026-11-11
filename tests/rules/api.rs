@@ -389,9 +389,8 @@ fn init_module_content_leaves_ruf067_to_ruff(config: &str, source: &str, reporte
     assert_eq!(stdout.matches("\"code\": \"SMP407\"").count(), reported, "{stdout}");
 }
 
-const PREVIEW: &str = "[tool.ruff]\npreview = true\n";
-// F401 reports an import of an `__init__.py` that nothing reads, so the rule leaves that statement to it while F401
-// runs. A statement keeps its report when one of its names is not one F401 reports.
+// F401 reports an import of an `__init__.py` that nothing reads, so the rule leaves that statement to it. A statement
+// keeps its report when one of its names is not one F401 reports.
 #[test_case("", "from json import dumps\n", &[] ; "unused_import_left_to_f401")]
 #[test_case("[tool.ruff.lint]\nselect = []\n", "from json import dumps\n", &[] ; "unused_import_skipped_without_f401")]
 #[test_case("", "from json import dumps, loads\nprint(dumps)\n", &[1] ; "partly_used_statement_kept")]
@@ -399,8 +398,8 @@ const PREVIEW: &str = "[tool.ruff]\npreview = true\n";
 #[test_case("", "from json import dumps\ndel dumps\n", &[1] ; "deleted_import_kept")]
 #[test_case("", "from json import dumps\n\n\ndef load(value: \"dumps\") -> None:\n    pass\n", &[1] ; "string_annotation_keeps_import")]
 #[test_case("", "from json import dumps as dumps\n__all__ = [\"loads\"]\n", &[1] ; "explicit_alias_kept")]
-#[test_case(PREVIEW, "import json.decoder\nimport json\nprint(json.decoder)\n", &[1] ; "shadowed_import_read_kept")]
-#[test_case(PREVIEW, "import json.decoder\nimport json\n", &[] ; "shadowed_unread_imports_left_to_f401")]
+#[test_case("", "import json.decoder\nimport json\nprint(json.decoder)\n", &[1] ; "shadowed_import_read_kept")]
+#[test_case("", "import json.decoder\nimport json\n", &[] ; "shadowed_unread_imports_left_to_f401")]
 #[test_case("", "import sys\nif sys.version_info >= (3, 8):\n    import json.decoder\nimport json.encoder\nprint(json.decoder)\n", &[1, 4] ; "branch_shadow_read_kept")]
 #[test_case("", "from typing import TYPE_CHECKING\nif TYPE_CHECKING:\n    import json.decoder\nimport json.encoder\nprint(json.decoder)\n", &[1, 4] ; "type_checking_shadow_read_kept")]
 #[test_case("", "try:\n    import json.decoder\nexcept ImportError:\n    pass\nimport json.encoder\nprint(json.decoder)\n", &[5] ; "try_shadow_read_kept")]
