@@ -91,7 +91,8 @@ pub fn lines_with_trailing_blanks(source: &str, range: TextRange) -> TextRange {
 }
 
 // The full lines of a statement with its decorators and the comment lines directly above it, which go wherever it goes.
-pub fn statement_block(source: &str, stmt: &Stmt) -> TextRange {
+pub fn statement_block(checker: &Checker, stmt: &Stmt) -> TextRange {
+    let source = checker.source;
     let start = match stmt {
         Stmt::FunctionDef(ast::StmtFunctionDef { decorator_list, .. })
         | Stmt::ClassDef(ast::StmtClassDef { decorator_list, .. }) => {
@@ -100,13 +101,9 @@ pub fn statement_block(source: &str, stmt: &Stmt) -> TextRange {
         _ => stmt.start(),
     };
     let mut line_start = source.line_start(start);
-    // A byte order mark is not a line to step back into.
-    while line_start > source.bom_start_offset() {
-        let previous = previous_line_start(source, line_start);
-        if !source[TextRange::new(previous, line_start)].trim_start().starts_with('#') {
-            break;
-        }
-        line_start = previous;
+    // A line inside a string may start with `#` too, so only a comment token above the statement counts.
+    while let Some(comment) = checker.comment_above(TextRange::empty(line_start)) {
+        line_start = source.line_start(comment.start());
     }
     TextRange::new(line_start, source.full_line_end(stmt.end()))
 }

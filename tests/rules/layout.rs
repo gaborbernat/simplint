@@ -57,6 +57,18 @@ use crate::common;
     "definition-before-use", "definition_before_use_leading_import.py", "py314"
     ; "definition_before_use_leading_import"
 )]
+#[test_case(
+    "definition-before-use", "definition_before_use_string_tail.py", "py314"
+    ; "definition_before_use_string_line_is_not_a_comment"
+)]
+#[test_case(
+    "definition-before-use", "definition_before_use_blank_lines.py", "py314"
+    ; "definition_before_use_keeps_blank_lines_of_adjacent_statements"
+)]
+#[test_case(
+    "class-member-order", "class_member_order_string_tail.py", "py314"
+    ; "class_member_order_string_line_is_not_a_comment"
+)]
 #[test_case("single-user-constant", "single_user_constant.py", "py314" ; "single_user_constant")]
 #[test_case(
     "definition-before-use", "definition_before_use_module_defaults.py", "py314"

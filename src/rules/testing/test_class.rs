@@ -52,7 +52,7 @@ fn flatten_class(checker: &Checker, class: &ast::StmtClassDef) -> Option<String>
     }
     let type_params = class.type_params.as_deref().map_or(&[][..], |params| params.type_params.as_slice());
     let prefix = snake_case(class.name.as_str().strip_prefix("Test").unwrap_or_default());
-    let blocks: Vec<TextRange> = class.body.iter().map(|stmt| statement_block(checker.source, stmt)).collect();
+    let blocks: Vec<TextRange> = class.body.iter().map(|stmt| statement_block(checker, stmt)).collect();
     // A comment that is neither in a method nor on the lines directly above one, such as one on the class line or apart
     // from the method below it by a blank line, has no place among the functions.
     if checker

@@ -351,7 +351,36 @@ The fix rewrites the span from the first to the last misplaced statement in the 
       return line.strip()
   ```
 
-- Statements are separated by two blank lines at module level and one in a class body.
+- A line of a string that starts with `#` is not a comment, so it stays with the string.
+
+  ```python report
+  MESSAGE = """
+  # not a comment"""
+
+
+  def _clean(line: str) -> str:
+      return line.strip()
+
+
+  def load(text: str) -> list[str]:
+      return [_clean(line) for line in text.splitlines()]
+  ```
+
+  ```python fixed
+  MESSAGE = """
+  # not a comment"""
+
+
+  def load(text: str) -> list[str]:
+      return [_clean(line) for line in text.splitlines()]
+
+
+  def _clean(line: str) -> str:
+      return line.strip()
+  ```
+
+- Statements are separated by two blank lines at module level and one in a class body. Two statements that stay adjacent
+  in the same order keep the blank lines they had.
 
   ```python report
   class Parser:
@@ -363,6 +392,34 @@ The fix rewrites the span from the first to the last misplaced statement in the 
 
       def load(self, text: str) -> list[str]:
           return [self._clean(line) for line in text.splitlines()]
+  ```
+
+  ```python report
+  def _clean(line: str) -> str:
+      return line.strip()
+
+
+  WIDTH = 1
+  HEIGHT = 2
+  DEPTH = 3
+
+
+  def load(text: str) -> list[str]:
+      return [_clean(line) for line in text.splitlines()]
+  ```
+
+  ```python fixed
+  WIDTH = 1
+  HEIGHT = 2
+  DEPTH = 3
+
+
+  def load(text: str) -> list[str]:
+      return [_clean(line) for line in text.splitlines()]
+
+
+  def _clean(line: str) -> str:
+      return line.strip()
   ```
 
 The fix is safe when every definition in the rewritten span is an undecorated function. **Unsafe fix:** a span holding a
