@@ -25,8 +25,7 @@ pub(super) struct Findings {
 }
 
 impl Findings {
-    // The diagnostics of an archived entry's reports, for the file that asks for them. The `full` text is kept beside
-    // the entry, so a run that shows other output never reads it.
+    // The `full` text is kept beside the entry, so a run that shows other output never reads it.
     pub(super) fn diagnostics(archived: &ArchivedFindings, path: &Path) -> Option<Diagnostics> {
         let reports: Vec<Report> = rkyv::deserialize::<_, rkyv::rancor::Error>(&archived.reports).ok()?;
         // A file that cannot be read has no source to read back, and its report is built from none.
@@ -69,7 +68,6 @@ enum ReportKind {
     IoError,
 }
 
-// A location a report points at besides its primary one, as the file it is in, its byte range and its message.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 struct StoredRelated {
     path: String,
@@ -122,7 +120,6 @@ impl Report {
             return unruled(ReportKind::IoError);
         }
         let rule = rule_by_code(diagnostic.secondary_code()?.as_str())?;
-        let url = rule.url();
         let related: Vec<StoredRelated> =
             diagnostic.secondary_annotations().map(StoredRelated::of).collect::<Option<_>>()?;
         let help: Vec<String> = diagnostic
@@ -139,7 +136,7 @@ impl Report {
             && diagnostic.primary_tags().is_none_or(<[_]>::is_empty)
             && diagnostic.id() == DiagnosticId::Lint(LintName::of(rule.name()))
             && diagnostic.severity() == Severity::Error
-            && diagnostic.documentation_url() == Some(url.as_str())
+            && diagnostic.documentation_url() == Some(rule.url().as_str())
             && diagnostic.parent().is_none();
         let fix = diagnostic.fix().map(StoredFix::of);
         let noqa_offset = noqa_row?.to_u32();
@@ -172,8 +169,8 @@ impl Report {
         for related in &self.related {
             let file = source_file_at(Path::new(&related.path))?;
             let range = stored_range(related.start, related.end, file.source_text().len())?;
-            let span = Span::from(file).with_range(range);
-            diagnostic.annotate(Annotation::secondary(span).message(related.message.as_str()));
+            diagnostic
+                .annotate(Annotation::secondary(Span::from(file).with_range(range)).message(related.message.as_str()));
         }
         diagnostic.set_secondary_code(SecondaryCode::new(rule.code().to_owned()));
         diagnostic.set_documentation_url(Some(rule.url()));
@@ -252,7 +249,6 @@ enum StoredIsolation {
     NonOverlapping,
 }
 
-// An edit's range, and its replacement content, `None` for a deletion.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 struct StoredEdit {
     start: u32,
