@@ -564,6 +564,42 @@ listed.
   print(LIMIT)
   ```
 
+- A parenthesized last name ends at its closing parenthesis: the new name goes after it, so the parentheses stay around
+  the name.
+
+  ```python report file=config.py
+  LIMIT = 3
+
+
+  def local() -> int:
+      return 1
+
+
+  __all__ = [  # the public names
+      ("LIMIT"),
+  ]
+  ```
+
+  ```python fixed file=config.py
+  LIMIT = 3
+
+
+  def local() -> int:
+      return 1
+
+
+  __all__ = [  # the public names
+      ("LIMIT"),
+      "local",
+  ]
+  ```
+
+  ```python context file=cli.py
+  from config import local
+
+  print(local())
+  ```
+
 - An empty literal that holds a comment gets no fix, since the rewrite would drop the comment:
 
   ```python report file=config.py

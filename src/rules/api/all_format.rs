@@ -9,13 +9,17 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::api::exploded;
-use crate::syntax::{AllBinding, all_binding};
+use crate::syntax::{AllBinding, all_binding, module_statements};
 
 pub fn all_format(checker: &Checker) {
     for stmt in checker.body() {
-        let Some(AllBinding { value: Some(value), .. }) = all_binding(stmt) else {
+        let Some(AllBinding { value: Some(value), operator }) = all_binding(stmt) else {
             continue;
         };
+        // `tuple += list` raises, so an augmented binding is left alone while a plain binding keeps `__all__` a tuple.
+        if operator.is_some() && keeps_a_tuple(checker) {
+            continue;
+        }
         let (elements, is_list) = match value {
             Expr::List(ast::ExprList { elts, .. }) => (elts, true),
             Expr::Tuple(ast::ExprTuple { elts, .. }) => (elts, false),
@@ -58,7 +62,7 @@ pub fn all_format(checker: &Checker) {
                     continue;
                 }
                 let edit = if multiline && closes_on_own_line || has_comment {
-                    Edit::insertion(",".to_owned(), last.end())
+                    Edit::insertion(",".to_owned(), checker.parenthesized_range(last, value.into()).end())
                 } else {
                     Edit::range_replacement(exploded(checker, base, &items), value.range())
                 };
@@ -81,7 +85,8 @@ pub fn all_format(checker: &Checker) {
                 "]".to_owned(),
                 TextRange::at(value.end() - TextSize::from(1), TextSize::from(1)),
             );
-            let edits = (comma.is_none() && magic).then(|| Edit::insertion(",".to_owned(), last.end()));
+            let edits = (comma.is_none() && magic)
+                .then(|| Edit::insertion(",".to_owned(), checker.parenthesized_range(last, value.into()).end()));
             Fix::unsafe_edits(open, std::iter::once(close).chain(edits))
         } else if magic {
             Fix::unsafe_edit(Edit::range_replacement(exploded(checker, base, &items), value.range()))
@@ -95,6 +100,22 @@ pub fn all_format(checker: &Checker) {
         };
         checker.report_fix(Rule::AllFormat, value.range(), message, Some(fix), "Convert `__all__` to a list");
     }
+}
+
+// Whether a plain binding of `__all__` stays a tuple after the rule: it converts only a tuple at the top level that no
+// `noqa` suppresses, so a tuple nested in a block or suppressed, and any value that is not a literal, keeps it one.
+fn keeps_a_tuple(checker: &Checker) -> bool {
+    module_statements(checker.body())
+        .filter_map(|stmt| Some((stmt, all_binding(stmt)?)))
+        .filter(|(_, binding)| binding.operator.is_none())
+        .any(|(stmt, binding)| match binding.value {
+            None | Some(Expr::List(_)) => false,
+            Some(value @ Expr::Tuple(_)) => {
+                let top_level = checker.body().iter().any(|top| top.range() == stmt.range());
+                !top_level || checker.is_suppressed(Rule::AllFormat, value.range())
+            }
+            Some(_) => true,
+        })
 }
 
 // Whether the last token before the closing bracket of a list is a line break, past any comment, as COM812 sees it.

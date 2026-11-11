@@ -1,0 +1,9 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:11 SMP405 `__all__` has no trailing comma; add one so the formatter keeps one name per line [fix: Add a trailing comma]
+--- fixed (1 applied, 0 remaining) ---
+__all__ = [  # the names
+    "run",
+    ("stop"),]
