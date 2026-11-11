@@ -237,9 +237,11 @@ list drifts.
 
 Edit the files under `docs/`. PyPI shows `README.md`, so keep its links absolute.
 
-The rule pages and the command line reference come from `docs/_data/`, the binary's `rules --output-format json` and
-`cli-schema` output, committed so Read the Docs builds without compiling Rust. When a rule, its Markdown page or a flag
-changes, `cargo test` fails once and rewrites those files; commit them.
+The rule pages come from the rule sources: `docs/rules_data.py` reads `src/lint/registry.rs` and each rule's Markdown
+page, so Read the Docs builds them without compiling Rust. `cargo test` checks that its list equals
+`simplint rules --output-format json`, running the script with `python3`, or with `python` when `python3` cannot run it,
+so Python 3.10 or later must be on `PATH`. The command line reference comes from `docs/_data/cli-schema.json`, committed
+for the same reason: when a flag changes, `cargo test` fails once and rewrites that file; commit it.
 
 Build the documentation with `tox run -e docs`, and check its external links with `tox run -e docs_links`. The link
 check reaches other sites, which go down and move pages on their own, so it runs daily instead of on pull requests; run

@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 
 import pypandoc
 
+from docs.rules_data import rule_entries
 from tasks.assemble_release import ANCHOR, RULE_SOURCE_LINK, TITLE, release_section, rule_source_name
 
 
@@ -85,12 +85,11 @@ def link_rules(markdown: str, rules: dict[str, str], *, codes: bool) -> str:
 
 
 def rule_names(root: Path) -> dict[str, str]:
-    # Read the rule names from the docs' copy of the binary's rule list.
+    # Read the rule names from the sources the binary's rule list is built from.
     #
     # :param root: the project root
     # :returns: rule names keyed by code
-    rules = json.loads((root / "docs" / "_data" / "rules.json").read_text(encoding="utf-8"))
-    return {rule["code"]: rule["name"] for rule in rules}
+    return {rule["code"]: rule["name"] for rule in rule_entries(root)}
 
 
 if __name__ == "__main__":

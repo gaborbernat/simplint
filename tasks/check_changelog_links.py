@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import re
 import sys
 from pathlib import Path
 from typing import Final
 
+from docs.rules_data import rule_entries
 from tasks.assemble_release import RULE_SOURCE_LINK, rule_source_name
 
 _RULE_PAGE: Final[re.Pattern[str]] = re.compile(r"https?://simplint\.readthedocs\.io/(?:en/[^/]+/)?rules/")
@@ -60,8 +60,7 @@ def _validate_source_link(match: re.Match[str], path: Path, known_names: dict[Pa
         raise ValueError(msg)
     root = path.parent if path.name == "CHANGELOG.md" else path.parent.parent
     if root not in known_names:
-        rules = json.loads((root / "docs" / "_data" / "rules.json").read_text(encoding="utf-8"))
-        known_names[root] = {rule["name"] for rule in rules}
+        known_names[root] = {rule["name"] for rule in rule_entries(root)}
     if name not in known_names[root]:
         msg = f"unknown rule source link: {name}"
         raise ValueError(msg)

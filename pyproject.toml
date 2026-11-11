@@ -171,6 +171,8 @@ write-changes = true
 count = true
 
 [tool.mypy]
+# conf.py imports the rule list from the module beside it, the way Sphinx runs it
+mypy_path = [ "docs" ]
 # the rule fixtures are linted, not run, and break type rules on purpose
 exclude = [ "^tests/fixtures/" ]
 # tasks/ and tests/ are directories of scripts; name their modules from the repository root
@@ -180,6 +182,7 @@ overrides = [ { module = [ "pypandoc", "sphinxcontrib.mermaid" ], follow_untyped
 show_error_codes = true
 
 [tool.coverage]
+run.omit = [ "docs/conf.py", "docs/simplint_cli.py" ]
 run.parallel = true
 run.plugins = [
   "covdefaults",

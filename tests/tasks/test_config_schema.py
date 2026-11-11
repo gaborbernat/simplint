@@ -8,6 +8,8 @@ from typing import Final, TypeAlias
 import jsonschema
 import pytest
 
+from docs.rules_data import rule_entries
+
 JsonValue: TypeAlias = "str | int | float | bool | list[JsonValue] | dict[str, JsonValue] | None"
 Table: TypeAlias = "dict[str, JsonValue]"
 
@@ -17,9 +19,8 @@ _VALIDATOR: Final[jsonschema.Draft7Validator] = jsonschema.Draft7Validator(_SCHE
 
 
 def _example_sources() -> list[str]:
-    rules = json.loads((_ROOT / "docs" / "_data" / "rules.json").read_text(encoding="utf-8"))
-    examples = [example for rule in rules for example in (rule["examples"] or {}).get("parsed", [])]
-    return [example["config"]["source"] for example in examples if example.get("config")]
+    examples = [example for rule in rule_entries() for example in rule["examples"].get("parsed", [])]
+    return [example["config"]["source"] for example in examples if example["config"] is not None]
 
 
 def _simplint_tables(sources: list[str]) -> list[Table]:
