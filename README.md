@@ -28,7 +28,7 @@ It adds checks that make Python code easier to read and review:
 
 Most rules rewrite the code for you; fixes that could change behavior run only with `--unsafe-fixes`. An import index
 across every file keeps fixes from renaming or moving a name another module uses. A whole project lints in milliseconds,
-few rules overlap with Ruff's, and both tools read the same `noqa` comments and `pyproject.toml`.
+simplint never reports what a Ruff rule reports, and both tools read the same `noqa` comments and `pyproject.toml`.
 
 The rules are opinionated. They reflect the maintainer's preferences while aiming to be as objective as possible.
 
