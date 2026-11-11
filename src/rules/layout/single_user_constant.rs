@@ -16,7 +16,9 @@ use crate::rules::edits::{Blanks, fix_of, keep_debug_text, statement_lines};
 use crate::rules::rename::appears_in_strings;
 use crate::rules::{is_class_like, is_named_by_doctest};
 use crate::semantic::{Binding, BindingKind, Evaluation};
-use crate::syntax::{Exports, Visibility, is_repeating_expr, last_segment, needs_parentheses, single_assignment};
+use crate::syntax::{
+    Exports, Visibility, is_repeating_expr, last_segment, needs_parentheses, single_assignment, sole_argument,
+};
 
 pub fn single_user_constant(checker: &Checker) {
     for stmt in checker.body() {
@@ -207,10 +209,9 @@ impl<'a> Visitor<'a> for Reads<'_, '_> {
                     }
                 }
             }
-            Expr::Call(ast::ExprCall { func, arguments, .. }) => {
+            Expr::Call(call @ ast::ExprCall { func, arguments, .. }) => {
                 let semantic = self.checker.semantic();
-                if let [argument] = &*arguments.args
-                    && arguments.keywords.is_empty()
+                if let Some(argument) = sole_argument(call)
                     && semantic.is_builtin(func, "len")
                     && let Some(range) = self.reference(argument)
                 {

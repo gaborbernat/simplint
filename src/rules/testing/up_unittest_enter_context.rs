@@ -10,7 +10,7 @@ use crate::lint::registry::Rule;
 use crate::rules::testing::is_test_case;
 use crate::rules::testing::recognize::is_patcher;
 use crate::semantic::Semantic;
-use crate::syntax::for_each_body;
+use crate::syntax::{for_each_body, sole_argument};
 
 pub fn up_unittest_enter_context(checker: &Checker) {
     let mut spellings = FxHashMap::default();
@@ -106,12 +106,10 @@ fn is_cleanup_of(stmt: &Stmt, patcher: &str) -> bool {
     let Expr::Call(call) = value.as_ref() else {
         return false;
     };
-    let [stop] = call.arguments.args.as_ref() else {
+    let Some(stop) = sole_argument(call) else {
         return false;
     };
-    call.arguments.keywords.is_empty()
-        && is_method_on(&call.func, "self", "addCleanup")
-        && is_method_on(stop, patcher, "stop")
+    is_method_on(&call.func, "self", "addCleanup") && is_method_on(stop, patcher, "stop")
 }
 
 fn single_name_assignment(stmt: &Stmt) -> Option<(&str, &Expr)> {
