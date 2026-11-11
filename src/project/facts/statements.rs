@@ -10,7 +10,6 @@ use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
 
 use crate::syntax::for_each_body;
 
-// A statement `duplicate-code` compares, hashed from its tokens, with the body it sits in, its range and its line.
 #[derive(Clone, Copy, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub(crate) struct Statement {
     pub(crate) hash: u64,
@@ -20,9 +19,9 @@ pub(crate) struct Statement {
     pub(crate) line: u32,
 }
 
-// The statements of every body that `duplicate-code` compares, each with the hash of its tokens. A statement's tokens
-// are those of the statements nested in it too, so each token is hashed once and a statement's hash is taken from the
-// running polynomial hash of the file's tokens, rather than hashing a deeply nested token once per statement around it.
+// A statement's tokens include those of the statements nested in it, so hashing each statement alone would hash every
+// nested token once per enclosing statement. One running polynomial hash over the file's tokens gives each statement's
+// hash from two prefix values.
 pub(super) fn statements(parsed: &Parsed<ModModule>, source: &str) -> Vec<Statement> {
     // Any odd multiplier works modulo 2^64; the windows that hash alike are compared by their texts after.
     const BASE: u64 = 0x9E37_79B9_7F4A_7C15;
@@ -66,9 +65,7 @@ pub(super) fn statements(parsed: &Parsed<ModModule>, source: &str) -> Vec<Statem
     statements
 }
 
-// The tokens of each statement of the file at `path` that `wanted` holds by its position among the compared
-// statements, written one after the other with their lengths, so two statements match when their texts are equal. None
-// when the file no longer holds the statements `expected` records.
+// None when the file no longer holds the statements `expected` records.
 pub(crate) fn statement_texts(
     path: &Path,
     wanted: &FxHashSet<usize>,
@@ -94,8 +91,7 @@ pub(crate) fn statement_texts(
     (same && at == expected.len()).then_some(texts)
 }
 
-// Each statement `duplicate-code` compares, with the number of the body it sits in. Imports and docstrings are left
-// out, as pylint's duplicate check leaves them out.
+// Imports and docstrings are left out, as pylint's duplicate check leaves them out.
 fn compared_statements<'a>(body: &'a [Stmt], visit: &mut impl FnMut(u32, &'a Stmt)) {
     let mut bodies = 0;
     for_each_body(body, &mut |statements, _| {
@@ -111,7 +107,6 @@ fn compared_statements<'a>(body: &'a [Stmt], visit: &mut impl FnMut(u32, &'a Stm
     });
 }
 
-// The text of a statement's tokens, without the layout and comment tokens, so layout and comments do not count.
 fn statement_tokens<'s>(
     parsed: &'s Parsed<ModModule>,
     source: &'s str,

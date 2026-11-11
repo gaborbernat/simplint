@@ -6,8 +6,7 @@ use std::sync::Arc;
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
 pub struct FileId(u32);
 
-// Every path the index has seen, numbered in the order they were first seen. Ids stay valid for the whole run, as a
-// fix round indexes the same files again.
+// Ids stay valid for the whole run, since a fix round indexes the same files again.
 #[derive(Clone, Default)]
 pub struct FileIds {
     pub(super) ids: FxHashMap<PathBuf, FileId>,
@@ -15,8 +14,7 @@ pub struct FileIds {
 }
 
 impl FileIds {
-    // Paths are absolute, as the run hands them over, so a lookup hashes the path as it is.
-    // A path that was never interned has no entries in the index.
+    // Paths arrive absolute, so a lookup hashes the path as it is.
     pub(super) fn get(&self, path: &Path) -> Option<FileId> {
         self.ids.get(path).copied()
     }

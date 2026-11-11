@@ -38,7 +38,6 @@ impl DocReferences {
     }
 }
 
-// A directive and the options read under it so far.
 struct Directive<'t> {
     name: &'t str,
     argument: &'t str,
@@ -46,15 +45,13 @@ struct Directive<'t> {
 }
 
 impl Directive<'_> {
-    // The names a directive documents. A name relative to the page's `currentmodule` needs no resolving, since names
-    // match by their dotted suffix.
+    // A name relative to the page's `currentmodule` needs no resolving, since names match by their dotted suffix.
     fn record(self, references: &mut DocReferences) {
         let value = |key: &str| self.options.iter().find(|(option, _)| *option == key).map(|(_, value)| *value);
         let target = self.argument.split(['(', ' ']).next().unwrap_or_default().to_owned();
         let name = self.name.strip_prefix("py:").unwrap_or(self.name);
         let object = name.strip_prefix("auto").unwrap_or(name);
         if matches!(object, "module" | "class" | "exception") && name.starts_with("auto") {
-            // `:members:` alone documents every member, and with a list only those it names.
             let exclude = listed(value("exclude-members").unwrap_or_default()).map(str::to_owned).collect();
             match value("members") {
                 Some("") if object == "module" => {
@@ -91,7 +88,6 @@ fn listed(value: &str) -> impl Iterator<Item = &str> {
     value.split(',').map(str::trim).filter(|member| !member.is_empty())
 }
 
-// `.. name:: argument` in reStructuredText, or ```` ```{name} argument ```` and `:::{name} argument` in MyST.
 fn directive(line: &str) -> Option<(&str, &str)> {
     if let Some(rest) = line.strip_prefix(".. ") {
         let (name, argument) = rest.split_once("::")?;
@@ -102,14 +98,12 @@ fn directive(line: &str) -> Option<(&str, &str)> {
     Some((name, argument.trim()))
 }
 
-// `:key: value`, the option lines under a directive.
 fn option(line: &str) -> Option<(&str, &str)> {
     let (key, value) = line.strip_prefix(':')?.split_once(':')?;
     (!key.is_empty() && !key.contains(' ')).then(|| (key, value.trim()))
 }
 
-// The targets of the line's Python roles: `:func:`name``, `:py:meth:`~pkg.Class.name``, `:class:`Title <pkg.Name>``,
-// and MyST's `{py:func}`name``. A leading `.` searches every module, which the relative match already does.
+// A leading `.` searches every module, which the relative match already does.
 fn role_targets(line: &str) -> Vec<String> {
     let parts: Vec<&str> = line.split('`').collect();
     (1..parts.len())
