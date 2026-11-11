@@ -51,8 +51,8 @@ impl<'a> Target<'a> {
         }
     }
 
-    // Whether the definition is part of the library's public API. Only the rules that ask for it pay for the public API,
-    // which reads the index of the whole run.
+    // Whether the definition is part of the library's public API. Only the rules that ask for it pay for the public
+    // API, which reads the index of the whole run.
     pub(crate) fn public(&self, checker: &Checker) -> bool {
         checker.state().public_api(checker).is_public(self.definition(), Need::Docs)
     }
@@ -215,8 +215,8 @@ fn init_name<'a>(name: &'a ast::ExprName, value: Option<&'a Expr>, attrs: bool) 
     }
 }
 
-// Whether a parameter or attribute name is internal. A leading underscore marks one, but not a dunder, as `__wrapped__`,
-// and not a parameter named with two underscores, which marks it positional-only, as in typeshed.
+// Whether a parameter or attribute name is internal. A leading underscore marks one, but not a dunder such as
+// `__wrapped__`, and not a parameter named with two underscores, which marks it positional-only, as in typeshed.
 pub(crate) fn is_internal(name: &str, parameter: bool) -> bool {
     Visibility::of(name) == Visibility::Private && !(parameter && name.starts_with("__"))
 }
