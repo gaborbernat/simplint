@@ -1,0 +1,51 @@
+from unittest.mock import MagicMock, NonCallableMock
+
+
+def test_cls_is_not_a_keyword() -> None:
+    request = MagicMock()
+    request.cls = int
+    assert request.cls is int
+
+
+def test_self_is_not_a_keyword() -> None:
+    client = NonCallableMock()
+    client.self = 1
+    assert client.self == 1
+
+
+def test_run_stops_before_reserved() -> None:
+    request = MagicMock()
+    request.timeout = 5
+    request.cls = int
+    request.retries = 2
+    assert request.timeout == 5 and request.retries == 2
+
+
+def test_spec_state_is_not_a_keyword() -> None:
+    client = MagicMock()
+    client._spec_state = None
+    assert client._spec_state is None
+
+
+def test_new_name_is_not_a_keyword() -> None:
+    client = MagicMock()
+    client._new_name = "other"
+    assert client._new_name == "other"
+
+
+def test_new_parent_is_not_a_keyword() -> None:
+    client = MagicMock()
+    client._new_parent = None
+    assert client._new_parent is None
+
+
+def test_spec_as_instance_is_not_a_keyword() -> None:
+    client = MagicMock()
+    client._spec_as_instance = True
+    assert client._spec_as_instance
+
+
+def test_eat_self_is_not_a_keyword() -> None:
+    client = MagicMock()
+    client._eat_self = False
+    assert client._eat_self is False

@@ -65,13 +65,30 @@ The run stops at:
   client.child.attr = 1
   ```
 
-- **An attribute the constructor treats specially**: `spec`, `spec_set`, `wraps`, `name`, `parent`, `unsafe`,
-  `instance`, `_name` or `_parent`. These constructor arguments configure the mock itself, so passing one differs from
-  setting the attribute.
+- **An attribute the constructor treats specially**: `cls`, `self`, `spec`, `spec_set`, `wraps`, `name`, `parent`,
+  `unsafe`, `instance`, `_name`, `_parent`, `_spec_state`, `_new_name`, `_new_parent`, `_spec_as_instance` or
+  `_eat_self`. These constructor arguments configure the mock itself, and `cls` and `self` are the constructor's own
+  parameters, so passing one differs from setting the attribute or fails.
 
   ```python ok
   client = MagicMock()
   client.name = "api"
+  ```
+
+  ```python ok
+  request = MagicMock()
+  request.cls = int
+  ```
+
+  ```python report
+  request = MagicMock()
+  request.timeout = 5
+  request.cls = int
+  ```
+
+  ```python fixed
+  request = MagicMock(timeout=5)
+  request.cls = int
   ```
 
 - **An attribute already set earlier in the run**: a call can pass each keyword only once, so the run stops at the

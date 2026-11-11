@@ -28,6 +28,7 @@ use crate::common;
 #[test_case("mock-assertion-typo", "mock_assertion_typo_comment.py" ; "mock_assertion_typo_comment")]
 #[test_case("mock-attribute-assignment", "tests/test_mock_attribute_assignment.py" ; "mock_attribute_assignment")]
 #[test_case("mock-attribute-assignment", "tests/test_mock_attribute_comment.py" ; "mock_attribute_assignment_comment")]
+#[test_case("mock-attribute-assignment", "tests/test_mock_reserved_attribute.py" ; "mock_attribute_assignment_reserved")]
 #[test_case("mock-without-spec", "tests/test_mock_without_spec.py" ; "mock_without_spec")]
 #[test_case("split-composite-assert", "tests/test_split_composite_assert.py" ; "split_composite_assert")]
 #[test_case("sleep-in-test", "tests/test_sleep_in_test.py" ; "sleep_in_test")]

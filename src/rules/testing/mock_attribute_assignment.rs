@@ -34,9 +34,27 @@ struct Assignment<'a> {
 }
 
 fn following_assignments<'a>(mock: &str, statements: &'a [Stmt]) -> Vec<Assignment<'a>> {
-    // These constructor arguments configure the mock itself, so passing one differs from setting the attribute.
-    const RESERVED_KEYWORDS: &[&str] =
-        &["spec", "spec_set", "wraps", "name", "parent", "unsafe", "instance", "_name", "_parent"];
+    // The constructors bind these parameters (`Lib/unittest/mock.py` lines 444, 463 and 1152), so passing one configures
+    // the mock or fails for `cls` and `self`, rather than setting the attribute. `return_value` and `side_effect` are
+    // left out, since passing them is the fix.
+    const RESERVED_KEYWORDS: &[&str] = &[
+        "cls",
+        "self",
+        "spec",
+        "spec_set",
+        "wraps",
+        "name",
+        "parent",
+        "unsafe",
+        "instance",
+        "_name",
+        "_parent",
+        "_spec_state",
+        "_new_name",
+        "_new_parent",
+        "_spec_as_instance",
+        "_eat_self",
+    ];
     let mut assignments: Vec<Assignment> = Vec::new();
     for stmt in statements {
         let Stmt::Assign(ast::StmtAssign { targets, value, .. }) = stmt else {
