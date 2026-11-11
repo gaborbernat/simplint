@@ -251,14 +251,14 @@ classes, at any nesting depth. What counts as internal depends on the project.
 
   ```python ok
   class Sync:
-      """Synchronise the mirror."""
+      """Synchronize the mirror."""
 
       help = __doc__
   ```
 
   ```python ok file=header.py
   class Sync:
-      """Synchronise the mirror."""
+      """Synchronize the mirror."""
 
       def run(self, text=__doc__):
           return text

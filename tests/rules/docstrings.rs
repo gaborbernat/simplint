@@ -133,52 +133,52 @@ fn docstring_comment_stays_after_removal(file: &str, source: &str, select: &str,
 // A class body that reads `__doc__` reads its own docstring, which a method does not: the method's `__doc__` is the
 // module's.
 #[test_case(
-    "class Sync:\n    \"\"\"Synchronise the mirror.\"\"\"\n\n    help = __doc__\n",
+    "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    help = __doc__\n",
     "All checks passed!\n" ;
     "class_body_reads_it"
 )]
 #[test_case(
-    "class Sync:\n    \"\"\"Synchronise the mirror.\"\"\"\n\n    def help(self) -> str:\n        return __doc__\n",
+    "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    def help(self) -> str:\n        return __doc__\n",
     "module.py:2:5: SMP901 Class docstring on internal code; let the name, signature and types document it\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
     "method_reads_module_doc"
 )]
 #[test_case(
-    "class Sync:\n    \"\"\"Synchronise the mirror.\"\"\"\n\n    fetch = lambda: 1\n",
+    "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    fetch = lambda: 1\n",
     "module.py:2:5: SMP901 Class docstring on internal code; let the name, signature and types document it\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
     "lambda_reads_nothing"
 )]
 #[test_case(
-    "class Sync:\n    \"\"\"Synchronise the mirror.\"\"\"\n\n    def run(self, text=__doc__):\n        return text\n",
+    "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    def run(self, text=__doc__):\n        return text\n",
     "All checks passed!\n" ;
     "method_default_reads_it"
 )]
 #[test_case(
-    "def show(text):\n    return lambda func: func\n\n\nclass Sync:\n    \"\"\"Synchronise the mirror.\"\"\"\n\n    @show(__doc__)\n    def run(self):\n        return 1\n",
+    "def show(text):\n    return lambda func: func\n\n\nclass Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    @show(__doc__)\n    def run(self):\n        return 1\n",
     "All checks passed!\n" ;
     "decorator_reads_it"
 )]
 #[test_case(
-    "class Sync:\n    \"\"\"Synchronise the mirror.\"\"\"\n\n    run = staticmethod(lambda text=__doc__: text)\n",
+    "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    run = staticmethod(lambda text=__doc__: text)\n",
     "All checks passed!\n" ;
     "lambda_default_reads_it"
 )]
 #[test_case(
-    "class Sync:\n    \"\"\"Synchronise the mirror.\"\"\"\n\n    class Inner(dict, doc=__doc__):\n        pass\n",
+    "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    class Inner(dict, doc=__doc__):\n        pass\n",
     "All checks passed!\n" ;
     "nested_class_header_reads_it"
 )]
 #[test_case(
-    "class Sync:\n    \"\"\"Synchronise the mirror.\"\"\"\n\n    fetch = lambda: __doc__\n",
+    "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    fetch = lambda: __doc__\n",
     "module.py:2:5: SMP901 Class docstring on internal code; let the name, signature and types document it\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
     "lambda_body_reads_module_doc"
 )]
 #[test_case(
-    "class Sync:\n    \"\"\"Synchronise the mirror.\"\"\"\n\n    class Inner:\n        help = __doc__\n",
+    "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    class Inner:\n        help = __doc__\n",
     "module.py:2:5: SMP901 Class docstring on internal code; let the name, signature and types document it\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
     "nested_class_body_reads_module_doc"
 )]
 #[test_case(
-    "def show(text):\n    return lambda func: func\n\n\nclass Sync:\n    \"\"\"Synchronise the mirror.\"\"\"\n\n    @show(__doc__)\n    class Inner:\n        pass\n",
+    "def show(text):\n    return lambda func: func\n\n\nclass Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    @show(__doc__)\n    class Inner:\n        pass\n",
     "All checks passed!\n" ;
     "nested_class_decorator_reads_it"
 )]
