@@ -68,7 +68,8 @@ message = f"Hello, {name}!"
 
 - **The message of a logging call**, such as `logger.info("Hello, " + name)`: Ruff's
   [logging-string-concat](https://docs.astral.sh/ruff/rules/logging-string-concat/) reports it, so this rule leaves it
-  to Ruff.
+  to Ruff. Its f-string fix would only trade that report for Ruff's
+  [logging-f-string](https://docs.astral.sh/ruff/rules/logging-f-string/) (G004).
 
   ```python ok
   import logging
