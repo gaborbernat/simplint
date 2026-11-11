@@ -69,6 +69,9 @@ def link_rules(markdown: str, rules: dict[str, str], *, codes: bool) -> str:
         return f"`{name}`"
 
     markdown = RULE_SOURCE_LINK.sub(source_link, markdown)
+    # The changelog links a documentation page on GitHub, at the release that added it; the page names the copy in
+    # these docs instead.
+    markdown = _DOC_PAGE_LINK.sub(lambda match: f"`` :doc:`{match['text']} </{match['page']}>` ``{{=rst}}", markdown)
 
     # A raw `:doc:` role lets Sphinx resolve the page and fail the build when it is missing; a Markdown link would turn
     # into an external URL that neither Sphinx nor linkcheck can follow.
@@ -82,6 +85,11 @@ def link_rules(markdown: str, rules: dict[str, str], *, codes: bool) -> str:
     # The link already names the rule, so a code right after it would link the same rule twice; the code goes.
     code_pattern = "|".join(rules) or "(?!)"
     return re.sub(rf"\b(?P<code>{code_pattern})\b|{named}(?: \((?:{code_pattern})\))?", link, markdown)
+
+
+_DOC_PAGE_LINK = re.compile(
+    r"\[(?P<text>[^]`]+)\]\((?:\.\./|https://github\.com/gaborbernat/simplint/blob/[^/)]+/)?docs/(?P<page>[^)#]+)\.(?:rst|md)\)"
+)
 
 
 def rule_names(root: Path) -> dict[str, str]:
