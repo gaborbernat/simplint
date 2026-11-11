@@ -191,7 +191,8 @@ impl<'a> Visitor<'a> for Builder<'a> {
         }
         let flags = self.semantic.flags;
         match stmt {
-            Stmt::Import(_) | Stmt::ImportFrom(_) => self.bind_import(stmt),
+            Stmt::Import(import) => self.bind_import(import),
+            Stmt::ImportFrom(import) => self.bind_import_from(import),
             Stmt::Global(ast::StmtGlobal { names, .. }) if !self.semantic.scope_id.is_global() => {
                 for name in names {
                     let global = self.semantic.global_binding(name);
@@ -350,54 +351,51 @@ impl<'a> Visitor<'a> for Builder<'a> {
 }
 
 impl<'a> Builder<'a> {
-    fn bind_import(&mut self, stmt: &'a Stmt) {
-        match stmt {
-            Stmt::Import(ast::StmtImport { names, .. }) => {
-                for alias in names {
-                    self.semantic.add_module(alias.name.split_once('.').map_or(alias.name.as_str(), |(top, _)| top));
-                    let qualified_name = Box::new(QualifiedName::user_defined(&alias.name));
-                    match (&alias.asname, alias.name.split_once('.')) {
-                        (None, Some((module, _))) => {
-                            let kind = BindingKind::SubmoduleImport(SubmoduleImport { qualified_name });
-                            self.add_binding(module, alias.identifier(), kind);
-                        }
-                        (asname, _) => {
-                            let name = asname.as_ref().unwrap_or(&alias.name);
-                            self.add_flagged_binding(
-                                name,
-                                alias.identifier(),
-                                BindingKind::Import(Import { qualified_name }),
-                                alias_flags(alias),
-                            );
-                        }
-                    }
+    fn bind_import(&mut self, import: &'a ast::StmtImport) {
+        for alias in &import.names {
+            self.semantic.add_module(alias.name.split_once('.').map_or(alias.name.as_str(), |(top, _)| top));
+            let qualified_name = Box::new(QualifiedName::user_defined(&alias.name));
+            match (&alias.asname, alias.name.split_once('.')) {
+                (None, Some((module, _))) => {
+                    let kind = BindingKind::SubmoduleImport(SubmoduleImport { qualified_name });
+                    self.add_binding(module, alias.identifier(), kind);
+                }
+                (asname, _) => {
+                    let name = asname.as_ref().unwrap_or(&alias.name);
+                    self.add_flagged_binding(
+                        name,
+                        alias.identifier(),
+                        BindingKind::Import(Import { qualified_name }),
+                        alias_flags(alias),
+                    );
                 }
             }
-            Stmt::ImportFrom(ast::StmtImportFrom { names, module, level, is_lazy, .. }) => {
-                let module = module.as_deref();
-                if *level == 0
-                    && let Some(module) = module
-                {
-                    self.semantic.add_module(module.split_once('.').map_or(module, |(top, _)| top));
-                }
-                for alias in names {
-                    let name = alias.asname.as_ref().unwrap_or(&alias.name);
-                    if !is_lazy && module == Some("__future__") {
-                        self.add_binding(name, alias.identifier(), BindingKind::FutureImport);
-                    } else if &alias.name == "*" {
-                        self.semantic.current_scope_mut().add_star_import(StarImport { level: *level, module });
-                    } else {
-                        let qualified_name = Box::new(collect_import_from_member(*level, module, &alias.name));
-                        self.add_flagged_binding(
-                            name,
-                            alias.identifier(),
-                            BindingKind::FromImport(FromImport { qualified_name }),
-                            alias_flags(alias),
-                        );
-                    }
-                }
+        }
+    }
+
+    fn bind_import_from(&mut self, import: &'a ast::StmtImportFrom) {
+        let ast::StmtImportFrom { names, module, level, is_lazy, .. } = import;
+        let module = module.as_deref();
+        if *level == 0
+            && let Some(module) = module
+        {
+            self.semantic.add_module(module.split_once('.').map_or(module, |(top, _)| top));
+        }
+        for alias in names {
+            let name = alias.asname.as_ref().unwrap_or(&alias.name);
+            if !is_lazy && module == Some("__future__") {
+                self.add_binding(name, alias.identifier(), BindingKind::FutureImport);
+            } else if &alias.name == "*" {
+                self.semantic.current_scope_mut().add_star_import(StarImport { level: *level, module });
+            } else {
+                let qualified_name = Box::new(collect_import_from_member(*level, module, &alias.name));
+                self.add_flagged_binding(
+                    name,
+                    alias.identifier(),
+                    BindingKind::FromImport(FromImport { qualified_name }),
+                    alias_flags(alias),
+                );
             }
-            _ => {}
         }
     }
 
