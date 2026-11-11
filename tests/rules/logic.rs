@@ -558,6 +558,20 @@ fn unused_default_leaves_star_imported_modules_alone() {
     assert_eq!((code, stdout.as_str()), (0, common::PASSED));
 }
 
+// PT028 reports every default of a pytest test function, with a display-only fix, so a default this rule cannot fix is
+// left to it there. A default it can fix is reported in a test as anywhere else.
+#[test_case("def test_connect(host, timeout=30):\n    return host, timeout\n\n\ntest_connect(\"db\", 5)\n", 1 ; "fixable_default_of_test")]
+#[test_case("def test_pair(first=1, second=2):\n    return first, second\n\n\ntest_pair(1, 2)\n", 1 ; "unfixable_default_of_test")]
+#[test_case("def pair(first=1, second=2):\n    return first, second\n\n\npair(1, 2)\n", 2 ; "unfixable_default_of_other_function")]
+#[test_case("class TestPair:\n    def test_pair(self, first=1, second=2):\n        return first, second\n\n    def run(self):\n        return self.test_pair(1, 2)\n", 1 ; "unfixable_default_of_test_method")]
+#[test_case("class TestPair:\n    def __init__(self) -> None:\n        pass\n\n    def test_pair(self, first=1, second=2):\n        return first, second\n\n    def run(self):\n        return self.test_pair(1, 2)\n", 2 ; "test_method_of_class_with_init")]
+#[test_case("class Pair:\n    def test_pair(self, first=1, second=2):\n        return first, second\n\n    def run(self):\n        return self.test_pair(1, 2)\n", 2 ; "test_method_of_class_not_named_test")]
+fn unused_default_leaves_unfixable_defaults_of_pytest_tests_to_pt028(source: &str, reports: usize) {
+    let root = common::project(&[("module.py", source)]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP506"]);
+    assert_eq!(stdout.matches("Every call to").count(), reports, "{stdout}");
+}
+
 // Test modules may assert on the messages their code raises.
 #[test]
 fn error_message_matching_leaves_test_modules_alone() {
