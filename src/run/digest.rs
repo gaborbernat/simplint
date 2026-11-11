@@ -11,10 +11,7 @@ use crate::project::cache::FileKey;
 use crate::project::{DocReferences, Parts, SearchRoots};
 use crate::settings::ModuleRole;
 
-// The digest of what an import index of a run is built from: the working directory, the search roots and the layout of
-// the directories its resolver reads, every run file with its key and where it sits, the index's own inputs, the
-// documentation and the facts the rules read. A cache entry stored under the same digest was computed from the same
-// index, which then need not be built.
+// A cache entry stored under the same digest was computed from the same index, which then need not be built.
 #[expect(clippy::too_many_arguments, reason = "the run's inputs, which the digest hashes")]
 pub(super) fn run_digest(
     files: &[RunFile],
@@ -64,9 +61,9 @@ pub(super) fn run_digest(
             role.cache_key(&mut hasher);
         }
     }
-    let mut projects: Vec<(&Option<PathBuf>, &DocReferences)> = docs.iter().collect();
-    projects.sort_unstable_by_key(|(project, _)| *project);
-    for (project, references) in projects {
+    let mut documented: Vec<(&Option<PathBuf>, &DocReferences)> = docs.iter().collect();
+    documented.sort_unstable_by_key(|(project, _)| *project);
+    for (project, references) in documented {
         project.cache_key(&mut hasher);
         references.cache_key(&mut hasher);
     }
@@ -74,8 +71,8 @@ pub(super) fn run_digest(
     hasher.finish()
 }
 
-// The layout beside each project whose files check for `private-import-path`, which that rule's paired-test lookup reads.
-// `None` when no linted file checks for it.
+// Read only by `private-import-path`, whose paired-test lookup needs the layout beside each project. `None` when no
+// linted file checks for it.
 pub(super) fn probed_layout_key(files: &[&RunFile]) -> Option<u64> {
     let mut roots: Vec<&Path> = files
         .iter()

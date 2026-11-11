@@ -17,9 +17,8 @@ use super::Resolved;
 // `__init__.py` excluded there still imports and re-exports the names of the modules it covers.
 pub(crate) struct Discovered<'a> {
     pub(crate) python: Vec<PathBuf>,
-    pub(crate) unlinted: Vec<PathBuf>,
+    pub(super) unlinted: Vec<PathBuf>,
     pub(crate) resolver: Resolver<'a>,
-    // The paths the run names that do not exist, each with the message Ruff reports for it.
     pub(crate) missing: Vec<(PathBuf, String)>,
 }
 
@@ -70,22 +69,9 @@ pub(crate) fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Re
     Ok(Discovered { python: distinct(python), unlinted, resolver, missing })
 }
 
-// Whether standard input, named by `--stdin-filename`, is linted as a file of that name on disk would be, except for a
-// stub, which is linted here although discovery only indexes a `.pyi` file on disk. A notebook, TOML or Markdown file is
-// not linted, and neither is a file Ruff's walk leaves out under `--force-exclude`. The name need not exist, so the walk
-// reports it as missing rather than as a file.
-pub(crate) fn lints_stdin(path: &Path, configuration: &Resolved) -> Result<bool> {
-    let extension = path.extension().and_then(|extension| extension.to_str());
-    if matches!(extension, Some("ipynb" | "toml" | "md")) {
-        return Ok(false);
-    }
-    let (found, resolver) =
-        project_files_in_path(&[path.to_path_buf()], &configuration.pyproject_config, &configuration.config_arguments)
-            .map_err(|error| redact_extended(error, &configuration.settings_resolver.root.root))?;
-    let settings = resolver.resolve(path);
-    let excluded = settings.file_resolver.force_exclude
-        && match_exclusion(path, path.file_name().unwrap_or_default(), &settings.linter.exclude);
-    Ok(!found.is_empty() && !excluded)
+// The paths a run lints, canonical, so a file under them is one the run may read and write.
+pub(crate) fn linted_roots(files: &[PathBuf]) -> Vec<PathBuf> {
+    files.iter().filter_map(|file| fs::canonicalize(file).ok()).collect()
 }
 
 // The path and message of a walk error for a path the run names that does not exist, which Ruff reports as `io-error`.
@@ -97,11 +83,11 @@ fn missing_path(error: &WalkError) -> Option<(PathBuf, String)> {
     Some((path.clone(), io.to_string()))
 }
 
-// Warns of the paths the run names that do not exist, for the commands that report no diagnostics of their own.
-pub(crate) fn warn_missing(missing: &[(PathBuf, String)]) {
-    for (_, message) in missing {
-        warn!("{} {message}", "Encountered error:".bold());
-    }
+// Whether a symlink points at a file outside the paths the run lints, which the run neither reads nor writes.
+fn escapes_roots(path: &Path, roots: &[PathBuf]) -> bool {
+    path.is_symlink()
+        && path.is_file()
+        && fs::canonicalize(path).is_ok_and(|target| !roots.iter().any(|root| target.starts_with(root)))
 }
 
 // The files sorted, with each file the links in the run reach kept once, by its own path when the run found it: files
@@ -126,9 +112,27 @@ fn identity(path: &Path) -> Option<PathBuf> {
     fs::canonicalize(path).ok()
 }
 
+// Whether standard input, named by `--stdin-filename`, is linted as a file of that name on disk would be, except for a
+// stub, which is linted here although discovery only indexes a `.pyi` file on disk. A notebook, TOML or Markdown file
+// is not linted, and neither is a file Ruff's walk leaves out under `--force-exclude`. The name need not exist, so the
+// walk reports it as missing rather than as a file.
+pub(super) fn lints_stdin(path: &Path, configuration: &Resolved) -> Result<bool> {
+    let extension = path.extension().and_then(|extension| extension.to_str());
+    if matches!(extension, Some("ipynb" | "toml" | "md")) {
+        return Ok(false);
+    }
+    let (found, resolver) =
+        project_files_in_path(&[path.to_path_buf()], &configuration.pyproject_config, &configuration.config_arguments)
+            .map_err(|error| redact_extended(error, &configuration.settings_resolver.root.root))?;
+    let settings = resolver.resolve(path);
+    let excluded = settings.file_resolver.force_exclude
+        && match_exclusion(path, path.file_name().unwrap_or_default(), &settings.linter.exclude);
+    Ok(!found.is_empty() && !excluded)
+}
+
 // Ruff quotes the text of an `extend`ed file it cannot load. The repository may point `extend` anywhere, so such a file
-// outside the project root is reported by name alone; inside the root it is part of the run, and Ruff's report stays. Ruff
-// only normalizes the path, so a link in the repository could otherwise pass a file outside it as one inside.
+// outside the project root is reported by name alone; inside the root it is part of the run, and Ruff's report stays.
+// Ruff only normalizes the path, so a link in the repository could otherwise pass a file outside it as one inside.
 pub(crate) fn redact_extended(error: anyhow::Error, project_root: &Path) -> anyhow::Error {
     let extended = error.chain().find_map(|cause| {
         let message = cause.to_string();
@@ -154,14 +158,9 @@ fn resolve_links(path: &Path) -> Option<PathBuf> {
     })
 }
 
-// The paths a run lints, canonical, so a file under them is one the run may read and write.
-pub(crate) fn linted_roots(files: &[PathBuf]) -> Vec<PathBuf> {
-    files.iter().filter_map(|file| fs::canonicalize(file).ok()).collect()
-}
-
-// Whether a symlink points at a file outside the paths the run lints, which the run neither reads nor writes.
-fn escapes_roots(path: &Path, roots: &[PathBuf]) -> bool {
-    path.is_symlink()
-        && path.is_file()
-        && fs::canonicalize(path).is_ok_and(|target| !roots.iter().any(|root| target.starts_with(root)))
+// Warns of the paths the run names that do not exist, for the commands that report no diagnostics of their own.
+pub(crate) fn warn_missing(missing: &[(PathBuf, String)]) {
+    for (_, message) in missing {
+        warn!("{} {message}", "Encountered error:".bold());
+    }
 }

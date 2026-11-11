@@ -1,5 +1,4 @@
-// A port of Ruff's `printer.rs`, which the `ruff` crate keeps private, so the summary lines, statistics and fix summary
-// read the same as `ruff check`'s.
+// A port of Ruff's `printer.rs`, which the `ruff` crate keeps private, so the output reads as `ruff check`'s does.
 use std::cmp::Reverse;
 use std::io::Write;
 
@@ -30,7 +29,7 @@ use crate::run::{Diagnostics, DisplayKey, FixMap, FullDisplay, Mode};
 
 bitflags! {
     #[derive(Default, Copy, Clone)]
-    pub struct Flags: u8 {
+    pub(crate) struct Flags: u8 {
         const SHOW_VIOLATIONS = 1 << 0;
         const SHOW_FIX_SUMMARY = 1 << 1;
     }
@@ -54,28 +53,27 @@ impl ExpandedStatistics<'_> {
     }
 }
 
-// Diagnostics are rendered in chunks of this many, in parallel.
-const FULL_CHUNK: usize = 64;
-const FULL_WINDOW: usize = FULL_CHUNK * 256;
-
-pub struct Printer<'a> {
-    pub format: OutputFormat,
-    pub log_level: LogLevel,
-    pub mode: &'a Mode,
-    pub flags: Flags,
-    pub preview: bool,
+pub(super) struct Printer<'a> {
+    pub(crate) format: OutputFormat,
+    pub(crate) log_level: LogLevel,
+    pub(crate) mode: &'a Mode,
+    pub(crate) flags: Flags,
+    pub(crate) preview: bool,
     // Ruff's `output-prefer-rule-codes`: in preview, rules show by name unless it is set.
-    pub prefer_rule_codes: bool,
+    pub(crate) prefer_rule_codes: bool,
 }
 
 impl Printer<'_> {
-    pub fn write_once(&self, diagnostics: &Diagnostics, writer: &mut dyn Write) -> Result<()> {
+    pub(super) fn write_once(&self, diagnostics: &Diagnostics, writer: &mut dyn Write) -> Result<()> {
         if matches!(self.log_level, LogLevel::Silent) {
             return Ok(());
         }
         if self.flags.intersects(Flags::SHOW_VIOLATIONS) {
-            let fixables = FixableStatistics::try_from(diagnostics, self.mode.unsafe_fixes);
-            self.render(diagnostics, fixables.as_ref(), writer)?;
+            self.render(
+                diagnostics,
+                FixableStatistics::try_from(diagnostics, self.mode.unsafe_fixes).as_ref(),
+                writer,
+            )?;
         }
         if self.format.is_human_readable() {
             let mut text = String::new();
@@ -91,19 +89,9 @@ impl Printer<'_> {
         Ok(())
     }
 
-    fn display_config(&self, show_fix_status: bool) -> DisplayDiagnosticConfig {
-        DisplayDiagnosticConfig::new("simplint")
-            .preview(self.preview)
-            .prefer_rule_codes(self.prefer_rule_codes)
-            .hide_severity(true)
-            .color(colored::control::SHOULD_COLORIZE.should_colorize())
-            .with_show_fix_status(show_fix_status)
-            .with_fix_applicability(self.mode.unsafe_fixes.required_applicability())
-    }
-
-    // The text of a file's diagnostics in `full` output, for the cache to keep, when the output is `full`. `None` when the
-    // working directory cannot be read, which leaves the text to the printer.
-    pub fn full_display(&self) -> Option<FullDisplay> {
+    // The text of a file's diagnostics in `full` output, for the cache to keep, when the output is `full`. `None` when
+    // the working directory cannot be read, which leaves the text to the printer.
+    pub(super) fn full_display(&self) -> Option<FullDisplay> {
         if self.format != OutputFormat::Full {
             return None;
         }
@@ -205,6 +193,16 @@ impl Printer<'_> {
         Self::write_as_simplint(self.format, &rendered, &diagnostics.inner, writer)
     }
 
+    fn display_config(&self, show_fix_status: bool) -> DisplayDiagnosticConfig {
+        DisplayDiagnosticConfig::new("simplint")
+            .preview(self.preview)
+            .prefer_rule_codes(self.prefer_rule_codes)
+            .hide_severity(true)
+            .color(colored::control::SHOULD_COLORIZE.should_colorize())
+            .with_show_fix_status(show_fix_status)
+            .with_fix_applicability(self.mode.unsafe_fixes.required_applicability())
+    }
+
     // Ruff's SARIF and rdjson renderers name Ruff, or link to it, as the tool behind the report. SARIF also gets the
     // related locations of the results, which Ruff's renderer leaves out.
     fn write_as_simplint(
@@ -250,7 +248,7 @@ impl Printer<'_> {
 
     // Ruff's watch mode output: a timestamped count on standard output, then the diagnostics without a summary.
     // Silent mode prints nothing at all.
-    pub fn write_continuously(&self, writer: &mut dyn Write, diagnostics: &Diagnostics) -> Result<()> {
+    pub(super) fn write_continuously(&self, writer: &mut dyn Write, diagnostics: &Diagnostics) -> Result<()> {
         if self.log_level >= LogLevel::Default {
             let count = diagnostics.inner.len();
             notify_user!("Found {count} error{}. Watching for file changes.", plural(count, "s"));
@@ -259,14 +257,17 @@ impl Printer<'_> {
             if self.log_level >= LogLevel::Default {
                 writeln!(writer)?;
             }
-            let fixables = FixableStatistics::try_from(diagnostics, self.mode.unsafe_fixes);
-            self.render(diagnostics, fixables.as_ref(), writer)?;
+            self.render(
+                diagnostics,
+                FixableStatistics::try_from(diagnostics, self.mode.unsafe_fixes).as_ref(),
+                writer,
+            )?;
         }
         writer.flush()?;
         Ok(())
     }
 
-    pub fn write_to_user(&self, message: &str) {
+    pub(super) fn write_to_user(&self, message: &str) {
         if self.log_level >= LogLevel::Default {
             notify_user!("{message}");
         }
@@ -303,8 +304,8 @@ impl Printer<'_> {
                     format!("{fix_prefix} {applicable} fixable with `--fix`.")
                 }
                 (true, applicable, unsafe_fixes) => format!(
-                    "{fix_prefix} {applicable} fixable with `--fix` ({unsafe_fixes} unsafe fix{unsafe_es} available with \
-                     `--fix --unsafe-fixes`)."
+                    "{fix_prefix} {applicable} fixable with `--fix` ({unsafe_fixes} unsafe fix{unsafe_es} available \
+                     with `--fix --unsafe-fixes`)."
                 ),
                 (false, ..) => return text,
             };
@@ -318,10 +319,11 @@ impl Printer<'_> {
             ("Would fix", "No errors would be fixed")
         };
         let errors = format!("{fixed} error{}", plural(fixed, "s"));
-        let available = format!("{unapplied} fix{}", plural(unapplied, "es"));
         let line = match (fixed, unapplied) {
             (0, 0) => return text,
-            (0, _) => format!("{nothing} ({available} available with `--unsafe-fixes`)."),
+            (0, _) => {
+                format!("{nothing} ({unapplied} fix{} available with `--unsafe-fixes`).", plural(unapplied, "es"))
+            }
             (_, 0) => format!("{fix} {errors}."),
             _ => format!(
                 "{fix} {errors} ({unapplied} additional fix{} available with `--unsafe-fixes`).",
@@ -332,7 +334,7 @@ impl Printer<'_> {
         text
     }
 
-    pub fn write_statistics(&self, diagnostics: &Diagnostics, writer: &mut dyn Write) -> Result<()> {
+    pub(super) fn write_statistics(&self, diagnostics: &Diagnostics, writer: &mut dyn Write) -> Result<()> {
         let required = self.mode.unsafe_fixes.required_applicability();
         let statistics: Vec<ExpandedStatistics> = diagnostics
             .inner
@@ -369,26 +371,6 @@ impl Printer<'_> {
     }
 }
 
-// Diagnostics render in parallel chunks, which come back in order, a window of them at a time: a window bounds the
-// rendered output held in memory, and each window is written before the next one renders.
-fn render_chunks<'a>(
-    format: OutputFormat,
-    config: &'a DisplayDiagnosticConfig,
-    context: &'a RenderContext<'a>,
-    diagnostics: &'a [Diagnostic],
-) -> impl Iterator<Item = std::io::Result<Vec<u8>>> + 'a {
-    diagnostics.chunks(FULL_WINDOW).flat_map(move |window| {
-        window
-            .par_chunks(FULL_CHUNK)
-            .map(|chunk| {
-                let mut buffer = Vec::new();
-                render_diagnostics(&mut buffer, format, config, context, chunk).map(|()| buffer)
-            })
-            .collect::<Vec<_>>()
-            .into_iter()
-    })
-}
-
 // Writes the diagnostics in order. A file whose text is known is written as it is, the others render in parallel
 // chunks, as they do when no text is known.
 fn write_full(
@@ -417,22 +399,33 @@ fn write_full(
     Ok(())
 }
 
-// The name a diagnostic's file is shown by, which the diagnostics of one file share.
+// Diagnostics render in parallel chunks, which come back in order, a window of them at a time: a window bounds the
+// rendered output held in memory, and each window is written before the next one renders.
+fn render_chunks<'a>(
+    format: OutputFormat,
+    config: &'a DisplayDiagnosticConfig,
+    context: &'a RenderContext<'a>,
+    diagnostics: &'a [Diagnostic],
+) -> impl Iterator<Item = std::io::Result<Vec<u8>>> + 'a {
+    const FULL_CHUNK: usize = 64;
+    diagnostics.chunks(FULL_CHUNK * 256).flat_map(move |window| {
+        window
+            .par_chunks(FULL_CHUNK)
+            .map(|chunk| {
+                let mut buffer = Vec::new();
+                render_diagnostics(&mut buffer, format, config, context, chunk).map(|()| buffer)
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+    })
+}
+
 fn file_name(diagnostic: &Diagnostic) -> &str {
     diagnostic
         .primary_annotation()
         .and_then(|annotation| annotation.get_span().as_ruff_file())
         .expect("simplint reports a diagnostic on a Ruff source file")
         .name()
-}
-
-fn plural(count: usize, suffix: &str) -> &str {
-    if count == 1 { "" } else { suffix }
-}
-
-fn push_line(text: &mut String, line: &str) {
-    text.push_str(line);
-    text.push('\n');
 }
 
 // Flake8's `--statistics` layout, as Ruff prints it: count, code, a fixability marker and the rule name.
@@ -488,10 +481,6 @@ fn rule_metadata() -> FxHashMap<LintName, RuleMetadata> {
         .collect()
 }
 
-fn num_digits(n: usize) -> usize {
-    iterate(n, |&n| n / 10).take_while(|&n| n > 0).count().max(1)
-}
-
 // With fixes applied, a violation left over was not fixable after all, so no fix marker is shown.
 fn show_fix_status(fix_mode: flags::FixMode, fixables: Option<&FixableStatistics>) -> bool {
     !fix_mode.is_apply() && fixables.is_some_and(|fixables| fixables.applicable > 0)
@@ -511,6 +500,19 @@ fn fix_summary(fixed: &FixMap, by_name: bool) -> String {
         }
     }
     text
+}
+
+fn plural(count: usize, suffix: &str) -> &str {
+    if count == 1 { "" } else { suffix }
+}
+
+fn push_line(text: &mut String, line: &str) {
+    text.push_str(line);
+    text.push('\n');
+}
+
+fn num_digits(n: usize) -> usize {
+    iterate(n, |&n| n / 10).take_while(|&n| n > 0).count().max(1)
 }
 
 struct FixableStatistics {
@@ -533,7 +535,6 @@ impl FixableStatistics {
     }
 }
 
-// Whether the diagnostic points at locations besides its primary one.
 fn has_related(diagnostic: &Diagnostic) -> bool {
     diagnostic.secondary_annotations().next().is_some()
 }

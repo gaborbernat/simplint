@@ -58,7 +58,6 @@ pub(crate) fn add_suppressions(
     Ok(counts.into_iter().flatten().flatten().sum())
 }
 
-// Whether a run reads and writes the cache, and the `full` text its reports keep with them.
 pub(crate) struct CacheUse {
     enabled: bool,
     full: Option<FullDisplay>,
@@ -74,8 +73,6 @@ impl CacheUse {
     }
 }
 
-// Lints the files of a run, reusing their cached reports when the run uses the cache. With `full` text kept, each file's
-// cached reports also keep the text the `full` output shows them as.
 pub(crate) fn check_files(
     files: &[PathBuf],
     resolved: &Resolved,
@@ -83,7 +80,6 @@ pub(crate) fn check_files(
     usage: &CacheUse,
     ending: Ending,
 ) -> Result<Diagnostics> {
-    let cache_dir = resolved.cache_dir.as_deref().filter(|_| usage.enabled);
     let full = usage.full.as_ref();
     let fingerprints = Fingerprints::default();
     let overlay = Overlay::default();
@@ -98,7 +94,7 @@ pub(crate) fn check_files(
     let reuse =
         mode.fix.is_generate().then_some(&reuse as &(dyn Fn(&RunFile, &Cache, FileKey) -> Option<Diagnostics> + Sync));
     let plumbing = Plumbing {
-        cache_dir,
+        cache_dir: resolved.cache_dir.as_deref().filter(|_| usage.enabled),
         rewrote: (!mode.fix.is_generate()).then_some(&rewrote),
         reuse,
         ending,
@@ -128,14 +124,16 @@ fn missing_diagnostics(missing: Vec<(PathBuf, String)>, resolved: &Resolved) -> 
 }
 
 // Ruff's `check_stdin`: the source comes from standard input, and nothing else is indexed. Otherwise it is linted as
-// the file it stands for would be, so its settings, package and search roots come from that file's absolute path. A name
-// the file filters leave out reports nothing, and with `--fix` its source goes out unchanged, as Ruff writes it.
+// the file it stands for would be, so its settings, package and search roots come from that file's absolute path. A
+// name the file filters leave out reports nothing, and with `--fix` its source goes out unchanged, as Ruff writes it.
 pub(crate) fn check_stdin(path: &Path, source: &str, resolved: &Resolved, mode: &Mode) -> Result<StdinLint> {
     let ruff = &resolved.pyproject_config.settings;
     let absolute = std::path::absolute(path)?;
     if !lints_stdin(&absolute, resolved)? {
-        let output = mode.fix.is_apply().then(|| source.to_owned());
-        return Ok(StdinLint { diagnostics: Diagnostics::default(), output });
+        return Ok(StdinLint {
+            diagnostics: Diagnostics::default(),
+            output: mode.fix.is_apply().then(|| source.to_owned()),
+        });
     }
     let settings = resolved.settings_resolver.for_file(&absolute)?;
     let package = absolute
@@ -146,8 +144,6 @@ pub(crate) fn check_stdin(path: &Path, source: &str, resolved: &Resolved, mode: 
     let files = [RunFile::new(&absolute, &settings, ruff, resolved.pyproject_config.path.as_deref(), package, &roots)];
     let linted: Vec<&RunFile> = files.iter().collect();
     let Plan { rules, parts } = Plan::of(&linted, resolved)?;
-    let inputs = ProjectInputs::of(&files, &roots);
-    let startup = roots.startup_names();
     let docs = documentation(&linted, &resolved.settings_resolver.root.root, rules, None)
         .remove(&files[0].nested)
         .unwrap_or_default();
@@ -155,7 +151,7 @@ pub(crate) fn check_stdin(path: &Path, source: &str, resolved: &Resolved, mode: 
         FileFacts::collect(&absolute, source, files[0].module_path.as_deref(), files[0].importable.as_deref(), parts);
     let mut passes = index_and_lint(
         &files,
-        (parts, &inputs, &startup),
+        (parts, &ProjectInputs::of(&files, &roots), &roots.startup_names()),
         &roots,
         vec![facts],
         &docs,
@@ -165,25 +161,6 @@ pub(crate) fn check_stdin(path: &Path, source: &str, resolved: &Resolved, mode: 
         &|file| lint_stdin(path, source, &file.linter, mode),
     )?;
     Ok(passes.pop().and_then(|mut file| file.pop()).expect("the standard input is linted once"))
-}
-
-// The passes of a run's files, which are `None` when there is no Python file to check, and the paths the run names that
-// do not exist, with the message each reports.
-type Walked<T> = (Option<Vec<Vec<T>>>, Vec<(PathBuf, String)>);
-
-// The inputs the stages of a run pass on unchanged, so each stage takes them as one argument.
-pub(super) struct Plumbing<'a, T> {
-    pub(super) cache_dir: Option<&'a Path>,
-    pub(super) rewrote: Option<&'a Rewrite<'a, T>>,
-    pub(super) reuse: Option<&'a Reuse<'a, T>>,
-    pub(super) ending: Ending,
-    pub(super) overlay: &'a Overlay,
-}
-
-impl<'a, T> Plumbing<'a, T> {
-    pub(super) fn plain(ending: Ending, overlay: &'a Overlay) -> Self {
-        Self { cache_dir: None, rewrote: None, reuse: None, ending, overlay }
-    }
 }
 
 // Ruff's per-file loop over the discovered files, with the import index of the whole run built first, and the caches
@@ -241,14 +218,8 @@ fn for_each_file<T: Send>(
     Ok((passes, missing))
 }
 
-// A check of a file's cached reports, given the file, its cache and its key, from which the run skips the index.
-type Reuse<'a, T> = dyn Fn(&RunFile, &Cache, FileKey) -> Option<T> + Sync + 'a;
-
-// Whether a pass rewrote a file, which a later round has to index again.
-type Rewrite<'a, T> = dyn Fn(&T) -> bool + Sync + 'a;
-
-// The caches of the run opened, then either every linted file answered from them under the run's digest, or the facts of
-// the files read from them or collected, and the files indexed and linted project by project. `docs` gives what the
+// The caches of the run opened, then either every linted file answered from them under the run's digest, or the facts
+// of the files read from them or collected, and the files indexed and linted project by project. `docs` gives what the
 // documentation names once the walk that runs alongside is done.
 fn index_cached<'f, T: Send>(
     indexed: &'f [RunFile<'f>],
@@ -319,23 +290,35 @@ fn index_cached<'f, T: Send>(
     for (project, project_inputs) in groups.iter().zip(&inputs) {
         let (project_caches, rest) = remaining.split_at(project.len());
         remaining = rest;
-        let project_facts: Vec<Option<FileFacts>> = facts.drain(..project.len()).collect();
-        let linted_at = project.iter().filter(|file| file.linted).map(|file| file.at);
         let project_passes = index_and_lint(
             project,
             (parts, project_inputs, &startup),
             roots,
-            project_facts,
+            facts.drain(..project.len()).collect(),
             docs.get(&project[0].nested).unwrap_or(&no_docs),
             if project[0].nested.is_some() { &external } else { &no_external },
             project_caches,
             plumbing,
             &work,
         )?;
-        passes.extend(linted_at.zip(project_passes));
+        passes.extend(project.iter().filter(|file| file.linted).map(|file| file.at).zip(project_passes));
     }
     persist_views(opened.map(|(views, _)| views), plumbing.ending)?;
     Ok(Some(in_file_order(passes)))
+}
+
+// Writes the caches the run changed, each package's on its own thread.
+fn persist_views(views: Option<FxHashMap<&Path, Cache>>, ending: Ending) -> Result<()> {
+    let Some(views) = views else {
+        return Ok(());
+    };
+    views.into_values().collect::<Vec<_>>().into_par_iter().try_for_each(|cache| cache.persist(ending))
+}
+
+// The passes of the linted files, in the order the run lists them.
+fn in_file_order<T>(mut passes: Vec<(usize, T)>) -> Vec<T> {
+    passes.sort_unstable_by_key(|(at, _)| *at);
+    passes.into_iter().map(|(_, pass)| pass).collect()
 }
 
 // What the files outside every nested project read, which the files of a nested project count as used by.
@@ -353,16 +336,27 @@ fn outer_names(indexed: &[RunFile], facts: &[Option<FileFacts>]) -> External {
     external
 }
 
-// The passes of the linted files, in the order the run lists them.
-fn in_file_order<T>(mut passes: Vec<(usize, T)>) -> Vec<T> {
-    passes.sort_unstable_by_key(|(at, _)| *at);
-    passes.into_iter().map(|(_, pass)| pass).collect()
+// The passes of a run's files, which are `None` when there is no Python file to check, and the paths the run names that
+// do not exist, with the message each reports.
+type Walked<T> = (Option<Vec<Vec<T>>>, Vec<(PathBuf, String)>);
+
+// The inputs the stages of a run pass on unchanged, so each stage takes them as one argument.
+pub(super) struct Plumbing<'a, T> {
+    pub(super) cache_dir: Option<&'a Path>,
+    pub(super) rewrote: Option<&'a Rewrite<'a, T>>,
+    pub(super) reuse: Option<&'a Reuse<'a, T>>,
+    pub(super) ending: Ending,
+    pub(super) overlay: &'a Overlay,
 }
 
-// Writes the caches the run changed, each package's on its own thread.
-fn persist_views(views: Option<FxHashMap<&Path, Cache>>, ending: Ending) -> Result<()> {
-    let Some(views) = views else {
-        return Ok(());
-    };
-    views.into_values().collect::<Vec<_>>().into_par_iter().try_for_each(|cache| cache.persist(ending))
+impl<'a, T> Plumbing<'a, T> {
+    pub(super) fn plain(ending: Ending, overlay: &'a Overlay) -> Self {
+        Self { cache_dir: None, rewrote: None, reuse: None, ending, overlay }
+    }
 }
+
+// A check of a file's cached reports, given the file, its cache and its key, from which the run skips the index.
+type Reuse<'a, T> = dyn Fn(&RunFile, &Cache, FileKey) -> Option<T> + Sync + 'a;
+
+// Whether a pass rewrote a file, which a later round has to index again.
+type Rewrite<'a, T> = dyn Fn(&T) -> bool + Sync + 'a;

@@ -1,9 +1,9 @@
 // Ruff's cache, adapted from the `ruff` crate's `cache.rs`: one file per package, keyed by the package root, remembers
-// per file, by its modification time, permissions and size, that it had nothing to report, so a later run skips it. Without
-// fixes, a file with reports keeps them too. simplint also keeps each file's import facts, so the project index does
-// not parse unchanged files, and a clean result counts only while the file's settings and its slice of the project
+// per file, by its modification time, permissions and size, that it had nothing to report, so a later run skips it.
+// Without fixes, a file with reports keeps them too. simplint also keeps each file's import facts, so the project index
+// does not parse unchanged files, and a clean result counts only while the file's settings and its slice of the project
 // index are what they were. With fixes on, a file the fix loop left as it was keeps the rules whose fixes the loop
-// withdrew, so a later run reproduces its reports from one lint. The files live where `project::cache` places them.
+// withdrew, so a later run reproduces its reports from one lint.
 mod fingerprint;
 mod rendered;
 mod report;
@@ -41,7 +41,6 @@ pub(crate) use rendered::{DisplayKey, FullDisplay};
 // bytes are read up front and checked once by `views`, a package per thread, and read in place.
 pub(super) struct Caches(FxHashMap<PathBuf, Stored>);
 
-// A package's cache file as read, with the root it is kept for.
 struct Stored {
     path: PathBuf,
     bytes: Option<AlignedVec<16>>,
@@ -110,14 +109,14 @@ impl<'a> Cache<'a> {
                 .ok()
                 .filter(|archived| Path::new(archived.package_root.as_str()) == package_root)
         });
-        let now = SystemTime::UNIX_EPOCH.elapsed().map_or(0, |elapsed| elapsed.as_millis());
         Self {
             path: stored.path.clone(),
             package_root,
             archived,
             seen: Mutex::new(FxHashSet::default()),
             changes: Mutex::new(Vec::new()),
-            now: u64::try_from(now).unwrap_or(u64::MAX),
+            now: u64::try_from(SystemTime::UNIX_EPOCH.elapsed().map_or(0, |elapsed| elapsed.as_millis()))
+                .unwrap_or(u64::MAX),
             run,
             rendered: OnceLock::new(),
             rendered_path: stored.rendered.clone(),
@@ -190,9 +189,8 @@ impl<'a> Cache<'a> {
         }
         // Text is kept only for a file the cache already held reports for, so a first run that has nothing to reuse
         // renders the output as it did before, and the next run reuses the text.
-        let held = file.is_some_and(|file| file.findings.is_some());
         let rendered = full
-            .filter(|_| held && !diagnostics.inner.is_empty())
+            .filter(|_| file.is_some_and(|file| file.findings.is_some()) && !diagnostics.inner.is_empty())
             .map(|full| text(full, &path.to_string_lossy(), &mut diagnostics, key.hash, fingerprint.clean));
         if diagnostics.inner.is_empty() && diagnostics.fixed.is_empty() {
             self.update(path, key, ChangeData::Clean(fingerprint.clean, index, unparsed));
@@ -229,7 +227,6 @@ impl<'a> Cache<'a> {
         self.stored_findings(path, key, file.findings.as_ref()?, full)
     }
 
-    // The diagnostics of a file's stored reports, with the `full` text the run shows, when the reports still read back.
     fn stored_findings(
         &self,
         path: &Path,
@@ -272,18 +269,12 @@ impl<'a> Cache<'a> {
         self.rendered.get_or_init(|| read_rendered(&self.rendered_path))
     }
 
-    // Keeps the `full` text a run rendered for a file, which the package holds once the run writes its cache.
     fn store_text(&self, path: &Path, rendered: Rendered) {
         if let Some(relative) = self.relative(path) {
             recorded(&self.texts).push((relative.to_owned(), rendered));
         }
     }
 
-    fn relative<'b>(&self, path: &'b Path) -> Option<&'b str> {
-        path.strip_prefix(self.package_root).ok()?.to_str()
-    }
-
-    // The archived entry of a file whose key matches, which is then remembered as seen.
     fn get(&self, path: &Path, key: FileKey) -> Option<&'a ArchivedFileCache> {
         let relative = self.relative(path)?;
         let file = self.archived?.files.get(relative)?;
@@ -299,6 +290,10 @@ impl<'a> Cache<'a> {
             let change = Change { path: relative.to_owned(), key: key.hash, data };
             recorded(&self.changes).push(change);
         }
+    }
+
+    fn relative<'b>(&self, path: &'b Path) -> Option<&'b str> {
+        path.strip_prefix(self.package_root).ok()?.to_str()
     }
 
     // Ruff's `persist`: files not seen for 30 days are dropped, and the cache goes to a temporary file renamed over the
@@ -439,7 +434,6 @@ struct FileCache {
     clean: Option<u64>,
     unparsed: bool,
     settled: Option<Settled>,
-    // The reports the file last had without fixes, under their fingerprint.
     findings: Option<Findings>,
     // The index and base settings the clean result or the reports were stored under.
     index: Option<IndexKey>,
@@ -460,7 +454,6 @@ impl FileCache {
     }
 }
 
-// The digest of the import index a result was computed under, and the file's settings without its index slice.
 #[derive(Clone, Copy, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 struct IndexKey {
     run: u64,
