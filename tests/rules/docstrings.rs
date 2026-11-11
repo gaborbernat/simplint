@@ -293,6 +293,28 @@ fn rst_rules_need_the_docstring_style() {
     assert_eq!(common::check(root.path(), &["--select", "SMP91,SMP92"]).1, "All checks passed!\n");
 }
 
+// Renaming an alias changes the docstring, which code may read through `__doc__`, so it is an unsafe fix like the rule's
+// others.
+#[test]
+fn alias_rename_is_an_unsafe_fix() {
+    let source = "def run(path: str) -> None:\n    \"\"\"Run.\n\n    :arg path: Where.\n    \"\"\"\n    print(path)\n";
+    let root = common::project(&[
+        (
+            "pyproject.toml",
+            "[project]\nname = \"demo\"\n[build-system]\nrequires = []\n[tool.simplint]\ndocstring-style = \"rst\"\n",
+        ),
+        ("demo.py", source),
+    ]);
+    let stdout = common::check(root.path(), &["--fix", "--select", "SMP910"]).1;
+    assert_eq!(
+        (stdout, common::read(root.path(), "demo.py")),
+        (
+            "demo.py:4:6: SMP910 Field `:arg path:` uses the alias `arg`; write `param`\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n".to_owned(),
+            source.to_owned()
+        )
+    );
+}
+
 // Renaming an alias edits the field another rule's fix rewrites or removes, so one of the two waits for the next pass.
 #[test_case(
     "def run(path: str) -> None:\n    \"\"\"Run.\n\n    :param path: Where.\n    :arg gone: Removed.\n    \"\"\"\n    print(path)\n",

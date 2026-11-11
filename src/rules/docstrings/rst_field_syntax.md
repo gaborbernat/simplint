@@ -120,8 +120,8 @@ meant.
       return path
   ```
 
-- **Aliases of field names**: `:arg path:` and the other spellings in the table below. **Fix:** the fix renames the
-  field to its name in the table and keeps the rest of the line.
+- **Aliases of field names**: `:arg path:` and the other spellings in the table below. **Unsafe fix:** the fix renames
+  the field to its name in the table and keeps the rest of the line, and code may read the docstring through `__doc__`.
 
   ```toml config
   [tool.simplint]
