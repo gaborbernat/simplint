@@ -275,10 +275,6 @@ impl<'a> Cache<'a> {
         }
     }
 
-    fn relative<'b>(&self, path: &'b Path) -> Option<&'b str> {
-        path.strip_prefix(self.package_root).ok()?.to_str()
-    }
-
     fn get(&self, path: &Path, key: FileKey) -> Option<&'a ArchivedFileCache> {
         let relative = self.relative(path)?;
         let file = self.archived?.files.get(relative)?;
@@ -294,6 +290,10 @@ impl<'a> Cache<'a> {
             let change = Change { path: relative.to_owned(), key: key.hash, data };
             recorded(&self.changes).push(change);
         }
+    }
+
+    fn relative<'b>(&self, path: &'b Path) -> Option<&'b str> {
+        path.strip_prefix(self.package_root).ok()?.to_str()
     }
 
     // Ruff's `persist`: files not seen for 30 days are dropped, and the cache goes to a temporary file renamed over the

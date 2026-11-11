@@ -163,11 +163,6 @@ fn describe(found: BTreeMap<Conflict, &Path>, by_name: bool) -> String {
         .to_string()
 }
 
-// How a rule is shown in the message: by its name with its code, or by its code with its name.
-fn shown(by_name: bool, name: &str, code: &str) -> String {
-    if by_name { format!("{name} ({code})") } else { format!("{code} ({name})") }
-}
-
 // The selector a rule is turned off by: its name or its code.
 fn pick(by_name: bool, name: &str, code: &str) -> String {
     if by_name { name.to_owned() } else { code.to_owned() }
@@ -366,6 +361,11 @@ const CLASHES: [Clash; 7] = [
         fix: ignore_in_ruff_or_simplint,
     },
 ];
+
+// How a rule is shown in the message: by its name with its code, or by its code with its name.
+fn shown(by_name: bool, name: &str, code: &str) -> String {
+    if by_name { format!("{name} ({code})") } else { format!("{code} ({name})") }
+}
 
 // The way out of a clash that a Ruff rule's ignore and simplint's own ignore both offer.
 fn ignore_in_ruff_or_simplint(names: &Names) -> String {

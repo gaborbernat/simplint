@@ -40,12 +40,6 @@ impl Findings {
     }
 }
 
-// The rule of a code, looked up in a map since a warm run looks up every cached report.
-fn rule_by_code(code: &str) -> Option<Rule> {
-    static RULES: OnceLock<FxHashMap<&'static str, Rule>> = OnceLock::new();
-    RULES.get_or_init(|| Rule::ALL.iter().map(|rule| (rule.code(), *rule)).collect()).get(code).copied()
-}
-
 // A diagnostic a rule reported, or one of the two a file gets that no rule reports, with the fields the output shows.
 // `Report::of` takes only a diagnostic the checker builds, so `Report::diagnostic` gives back the same one.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
@@ -183,6 +177,12 @@ impl Report {
         diagnostic.set_noqa_offset(TextSize::new(noqa_offset));
         Some(diagnostic)
     }
+}
+
+// The rule of a code, looked up in a map since a warm run looks up every cached report.
+fn rule_by_code(code: &str) -> Option<Rule> {
+    static RULES: OnceLock<FxHashMap<&'static str, Rule>> = OnceLock::new();
+    RULES.get_or_init(|| Rule::ALL.iter().map(|rule| (rule.code(), *rule)).collect()).get(code).copied()
 }
 
 // A fix as rkyv data. Ruff's `Fix` keeps its fields private, so `fix` rebuilds it from its edits and levels, in the

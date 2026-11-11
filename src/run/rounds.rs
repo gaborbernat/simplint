@@ -74,17 +74,6 @@ pub(super) fn index_and_lint<'f, T: Send>(
     Ok(passes)
 }
 
-fn index_project(
-    paths: &[&Path],
-    facts: &[Option<FileFacts>],
-    resolver: &mut ImportResolver,
-    inputs: &IndexInputs,
-) -> Project {
-    let indexed: Vec<(&Path, &FileFacts)> =
-        paths.iter().zip(facts).filter_map(|(path, facts)| Some((*path, facts.as_ref()?))).collect();
-    Project::index(&indexed, resolver, inputs)
-}
-
 struct Index<'i, 'f> {
     // Each file's facts by its position in the run, which is also its position in `paths`.
     facts: &'i mut Vec<Option<FileFacts>>,
@@ -234,6 +223,17 @@ fn reindex(
         })
         .collect();
     (next, dependents)
+}
+
+fn index_project(
+    paths: &[&Path],
+    facts: &[Option<FileFacts>],
+    resolver: &mut ImportResolver,
+    inputs: &IndexInputs,
+) -> Project {
+    let indexed: Vec<(&Path, &FileFacts)> =
+        paths.iter().zip(facts).filter_map(|(path, facts)| Some((*path, facts.as_ref()?))).collect();
+    Project::index(&indexed, resolver, inputs)
 }
 
 // The names a file holds, to tell whether it names any of the attribute or base class names whose answers changed; the

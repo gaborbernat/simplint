@@ -97,10 +97,6 @@ fn duplicate_window(files: &[&RunFile], rules: RuleSet) -> Option<usize> {
     files.iter().map(|file| file.settings.project.knobs.min_duplicate_statements).min()
 }
 
-fn rules_of(files: &[&RunFile]) -> RuleSet {
-    files.iter().fold(RuleSet::default(), |rules, file| rules.union(file.settings.rules))
-}
-
 // Where each file sits in its library's public API, by the first of the names the file imports as, from its package or
 // from a search root, that an API package holds. Unlinted files count too: an `__init__.py` Ruff's `lint.exclude`
 // leaves out still re-exports public names.
@@ -195,6 +191,10 @@ impl Plan {
         let rules = rules_of(linted);
         Ok(Self { rules, parts: wanted_parts(rules) })
     }
+}
+
+fn rules_of(files: &[&RunFile]) -> RuleSet {
+    files.iter().fold(RuleSet::default(), |rules, file| rules.union(file.settings.rules))
 }
 
 fn ensure_compatible(files: &[&RunFile], resolved: &Resolved) -> Result<()> {

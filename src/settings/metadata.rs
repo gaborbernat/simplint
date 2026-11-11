@@ -198,6 +198,34 @@ impl BuildConfiguration {
     }
 }
 
+// hatchling reads a `hatch.toml` next to `pyproject.toml` over the `[tool.hatch]` table, so its tables replace the ones
+// of the same name.
+fn overlay(base: &mut toml::Table, over: &toml::Table) {
+    for (key, value) in over {
+        match (base.get_mut(key), value) {
+            (Some(toml::Value::Table(base_table)), toml::Value::Table(over_table)) => overlay(base_table, over_table),
+            _ => _ = base.insert(key.clone(), value.clone()),
+        }
+    }
+}
+
+// The `path` of each custom build or metadata hook of a hatch table, and of each target's build hook. A hook that names
+// no path loads `hatch_build.py` from the project's directory.
+fn hatch_hook_paths(hatch: &toml::Table) -> Vec<String> {
+    let build = hatch.get("build");
+    let targets = build
+        .and_then(|build| build.get("targets"))
+        .and_then(toml::Value::as_table)
+        .into_iter()
+        .flat_map(toml::Table::values);
+    [build, hatch.get("metadata")]
+        .into_iter()
+        .chain(targets.map(Some))
+        .filter_map(|table| table?.get("hooks")?.get("custom"))
+        .map(|hook| hook.get("path").and_then(toml::Value::as_str).unwrap_or("hatch_build.py").to_owned())
+        .collect()
+}
+
 // The modules coverage loads as plugins, which it calls `coverage_init` on by name, and the directories their import
 // path is searched in: the project's own, then the `pythonpath` of pytest and the `extra-paths` of ty, as the project
 // configures them. Without a plugin there is nothing to search for, so no directory is kept.
@@ -239,34 +267,6 @@ fn strings(value: Option<&toml::Value>) -> Vec<String> {
         Some(toml::Value::Array(items)) => items.iter().filter_map(|item| item.as_str().map(str::to_owned)).collect(),
         _ => Vec::new(),
     }
-}
-
-// hatchling reads a `hatch.toml` next to `pyproject.toml` over the `[tool.hatch]` table, so its tables replace the ones
-// of the same name.
-fn overlay(base: &mut toml::Table, over: &toml::Table) {
-    for (key, value) in over {
-        match (base.get_mut(key), value) {
-            (Some(toml::Value::Table(base_table)), toml::Value::Table(over_table)) => overlay(base_table, over_table),
-            _ => _ = base.insert(key.clone(), value.clone()),
-        }
-    }
-}
-
-// The `path` of each custom build or metadata hook of a hatch table, and of each target's build hook. A hook that names
-// no path loads `hatch_build.py` from the project's directory.
-fn hatch_hook_paths(hatch: &toml::Table) -> Vec<String> {
-    let build = hatch.get("build");
-    let targets = build
-        .and_then(|build| build.get("targets"))
-        .and_then(toml::Value::as_table)
-        .into_iter()
-        .flat_map(toml::Table::values);
-    [build, hatch.get("metadata")]
-        .into_iter()
-        .chain(targets.map(Some))
-        .filter_map(|table| table?.get("hooks")?.get("custom"))
-        .map(|hook| hook.get("path").and_then(toml::Value::as_str).unwrap_or("hatch_build.py").to_owned())
-        .collect()
 }
 
 // The files hatchling loads as its custom build and metadata hooks, each `path` relative to the project's directory.

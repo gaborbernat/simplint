@@ -414,25 +414,6 @@ impl CheckCommand {
     }
 }
 
-pub fn suppression_flag(kind: SuppressionKind) -> &'static str {
-    match kind {
-        SuppressionKind::Noqa => "--add-noqa",
-        SuppressionKind::Ignore => "--add-ignore",
-    }
-}
-
-pub struct SimplintArguments {
-    pub config_file: Option<PathBuf>,
-    pub isolated: bool,
-    pub overrides: Overrides,
-}
-
-#[derive(Parser)]
-struct RuffGlobalConfigArgs {
-    #[command(flatten)]
-    global_options: ruff::args::GlobalConfigArgs,
-}
-
 fn switch(flag: &str, yes: bool, no: bool) -> Option<OsString> {
     resolve_bool_arg(yes, no)
         .map(|value| OsString::from(if value { format!("--{flag}") } else { format!("--no-{flag}") }))
@@ -458,6 +439,25 @@ fn collect_per_file_ignores(pairs: &[PatternPrefixPair]) -> BTreeMap<String, Vec
             .push(selector.as_str().unwrap_or_default().to_owned());
     }
     per_file_ignores
+}
+
+pub fn suppression_flag(kind: SuppressionKind) -> &'static str {
+    match kind {
+        SuppressionKind::Noqa => "--add-noqa",
+        SuppressionKind::Ignore => "--add-ignore",
+    }
+}
+
+pub struct SimplintArguments {
+    pub config_file: Option<PathBuf>,
+    pub isolated: bool,
+    pub overrides: Overrides,
+}
+
+#[derive(Parser)]
+struct RuffGlobalConfigArgs {
+    #[command(flatten)]
+    global_options: ruff::args::GlobalConfigArgs,
 }
 
 #[derive(Clone)]

@@ -49,6 +49,28 @@ pub fn linter(format: HelpFormat) -> Result<()> {
     print(&groups.collect::<Vec<_>>(), format)
 }
 
+fn print<T: HelpOutput>(output: &T, format: HelpFormat) -> Result<()> {
+    let mut stdout = BufWriter::new(std::io::stdout().lock());
+    match format {
+        HelpFormat::Text => output.write_text(&mut stdout)?,
+        HelpFormat::Json => {
+            serde_json::to_writer_pretty(&mut stdout, output)?;
+            if T::JSON_NEWLINE {
+                writeln!(stdout)?;
+            }
+        }
+    }
+    stdout.flush()?;
+    Ok(())
+}
+
+trait HelpOutput: Serialize {
+    // Ruff ends some JSON outputs with a newline and others not.
+    const JSON_NEWLINE: bool;
+
+    fn write_text(&self, writer: &mut dyn Write) -> io::Result<()>;
+}
+
 // The documentation rebuilds this command line as an argparse parser for sphinx-argparse-cli, so its reference is
 // generated from the definition the binary parses with.
 pub fn cli_schema(command: &clap::Command) -> Result<()> {
@@ -62,28 +84,6 @@ pub fn cli_schema(command: &clap::Command) -> Result<()> {
 pub fn config_schema() -> Result<()> {
     let mut stdout = BufWriter::new(std::io::stdout().lock());
     writeln!(stdout, "{}", serde_json::to_string_pretty(&crate::settings::config_schema())?)?;
-    stdout.flush()?;
-    Ok(())
-}
-
-trait HelpOutput: Serialize {
-    // Ruff ends some JSON outputs with a newline and others not.
-    const JSON_NEWLINE: bool;
-
-    fn write_text(&self, writer: &mut dyn Write) -> io::Result<()>;
-}
-
-fn print<T: HelpOutput>(output: &T, format: HelpFormat) -> Result<()> {
-    let mut stdout = BufWriter::new(std::io::stdout().lock());
-    match format {
-        HelpFormat::Text => output.write_text(&mut stdout)?,
-        HelpFormat::Json => {
-            serde_json::to_writer_pretty(&mut stdout, output)?;
-            if T::JSON_NEWLINE {
-                writeln!(stdout)?;
-            }
-        }
-    }
     stdout.flush()?;
     Ok(())
 }

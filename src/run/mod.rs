@@ -262,48 +262,6 @@ fn fix_path(
     })
 }
 
-// A fix that fails leaves the file as it was, so its diagnostics come from the original source, with nothing fixed. A
-// source the fix loop already settled, whose withdrawn fixes `settled` names, gets the loop's reports from one lint.
-fn lint_source(path: &Path, source: &str, linter: &Linter, mode: &Mode, settled: Option<Withdrawn>) -> Linted {
-    let unfixed = || {
-        let lint = linter.lint(path, source, mode.noqa);
-        Linted {
-            diagnostics: lint.diagnostics,
-            transformed: None,
-            fixed: FixTable::default(),
-            settled: None,
-            noqa_rows: lint.noqa_rows,
-        }
-    };
-    if mode.fix.is_generate() {
-        return unfixed();
-    }
-    if let Some(withdrawn) = settled {
-        let mut linted = unfixed();
-        Fixer::withdraw(source, &mut linted.diagnostics, &withdrawn);
-        return Linted { settled: Some(withdrawn), ..linted };
-    }
-    let result = Fixer::new(linter, path, mode.unsafe_fixes, mode.noqa).fix(source);
-    let Ok((FixerResult { diagnostics, transformed, fixed }, withdrawn)) = result else { return unfixed() };
-    let settled = (fixed.is_empty() && transformed == source).then_some(withdrawn);
-    Linted { diagnostics, transformed: Some(transformed), fixed, settled, noqa_rows: Vec::new() }
-}
-
-// A file that does not parse has no reports, since Ruff reports its syntax errors and the rules need a valid tree. Its
-// warning comes from here and from a cached result alike, so each run shows it.
-fn skip_unparsed(path: &Path, diagnostics: &mut Vec<Diagnostic>) -> bool {
-    let unparsed = diagnostics.iter().any(Diagnostic::is_invalid_syntax);
-    if unparsed {
-        diagnostics.clear();
-        warn_unparsed(path);
-    }
-    unparsed
-}
-
-pub(crate) fn warn_unparsed(path: &Path) {
-    warn_user!("Skipped {}: it does not parse, so Ruff reports its syntax errors.", relativize_path(path));
-}
-
 // Replaces a file read as `original` with `fixed`, in place as Ruff writes it, so the file keeps its owner, hard
 // links and extended attributes. A file edited since it was read keeps the edit. A symlink keeps pointing at the file
 // it names, which gets the new source, as long as that file lies under a root of the run.
@@ -356,6 +314,48 @@ pub(crate) fn lint_stdin(path: &Path, source: &str, linter: &Linter, mode: &Mode
         },
         output,
     }
+}
+
+// A fix that fails leaves the file as it was, so its diagnostics come from the original source, with nothing fixed. A
+// source the fix loop already settled, whose withdrawn fixes `settled` names, gets the loop's reports from one lint.
+fn lint_source(path: &Path, source: &str, linter: &Linter, mode: &Mode, settled: Option<Withdrawn>) -> Linted {
+    let unfixed = || {
+        let lint = linter.lint(path, source, mode.noqa);
+        Linted {
+            diagnostics: lint.diagnostics,
+            transformed: None,
+            fixed: FixTable::default(),
+            settled: None,
+            noqa_rows: lint.noqa_rows,
+        }
+    };
+    if mode.fix.is_generate() {
+        return unfixed();
+    }
+    if let Some(withdrawn) = settled {
+        let mut linted = unfixed();
+        Fixer::withdraw(source, &mut linted.diagnostics, &withdrawn);
+        return Linted { settled: Some(withdrawn), ..linted };
+    }
+    let result = Fixer::new(linter, path, mode.unsafe_fixes, mode.noqa).fix(source);
+    let Ok((FixerResult { diagnostics, transformed, fixed }, withdrawn)) = result else { return unfixed() };
+    let settled = (fixed.is_empty() && transformed == source).then_some(withdrawn);
+    Linted { diagnostics, transformed: Some(transformed), fixed, settled, noqa_rows: Vec::new() }
+}
+
+// A file that does not parse has no reports, since Ruff reports its syntax errors and the rules need a valid tree. Its
+// warning comes from here and from a cached result alike, so each run shows it.
+fn skip_unparsed(path: &Path, diagnostics: &mut Vec<Diagnostic>) -> bool {
+    let unparsed = diagnostics.iter().any(Diagnostic::is_invalid_syntax);
+    if unparsed {
+        diagnostics.clear();
+        warn_unparsed(path);
+    }
+    unparsed
+}
+
+pub(crate) fn warn_unparsed(path: &Path) {
+    warn_user!("Skipped {}: it does not parse, so Ruff reports its syntax errors.", relativize_path(path));
 }
 
 struct Linted {

@@ -92,16 +92,6 @@ impl Printer<'_> {
         Ok(())
     }
 
-    fn display_config(&self, show_fix_status: bool) -> DisplayDiagnosticConfig {
-        DisplayDiagnosticConfig::new("simplint")
-            .preview(self.preview)
-            .prefer_rule_codes(self.prefer_rule_codes)
-            .hide_severity(true)
-            .color(colored::control::SHOULD_COLORIZE.should_colorize())
-            .with_show_fix_status(show_fix_status)
-            .with_fix_applicability(self.mode.unsafe_fixes.required_applicability())
-    }
-
     // The text of a file's diagnostics in `full` output, for the cache to keep, when the output is `full`. `None` when
     // the working directory cannot be read, which leaves the text to the printer.
     pub fn full_display(&self) -> Option<FullDisplay> {
@@ -204,6 +194,16 @@ impl Printer<'_> {
             }
         }
         Self::write_as_simplint(self.format, &rendered, &diagnostics.inner, writer)
+    }
+
+    fn display_config(&self, show_fix_status: bool) -> DisplayDiagnosticConfig {
+        DisplayDiagnosticConfig::new("simplint")
+            .preview(self.preview)
+            .prefer_rule_codes(self.prefer_rule_codes)
+            .hide_severity(true)
+            .color(colored::control::SHOULD_COLORIZE.should_colorize())
+            .with_show_fix_status(show_fix_status)
+            .with_fix_applicability(self.mode.unsafe_fixes.required_applicability())
     }
 
     // Ruff's SARIF and rdjson renderers name Ruff, or link to it, as the tool behind the report. SARIF also gets the
@@ -374,26 +374,6 @@ impl Printer<'_> {
     }
 }
 
-// Diagnostics render in parallel chunks, which come back in order, a window of them at a time: a window bounds the
-// rendered output held in memory, and each window is written before the next one renders.
-fn render_chunks<'a>(
-    format: OutputFormat,
-    config: &'a DisplayDiagnosticConfig,
-    context: &'a RenderContext<'a>,
-    diagnostics: &'a [Diagnostic],
-) -> impl Iterator<Item = std::io::Result<Vec<u8>>> + 'a {
-    diagnostics.chunks(FULL_WINDOW).flat_map(move |window| {
-        window
-            .par_chunks(FULL_CHUNK)
-            .map(|chunk| {
-                let mut buffer = Vec::new();
-                render_diagnostics(&mut buffer, format, config, context, chunk).map(|()| buffer)
-            })
-            .collect::<Vec<_>>()
-            .into_iter()
-    })
-}
-
 // Writes the diagnostics in order. A file whose text is known is written as it is, the others render in parallel
 // chunks, as they do when no text is known.
 fn write_full(
@@ -422,21 +402,32 @@ fn write_full(
     Ok(())
 }
 
+// Diagnostics render in parallel chunks, which come back in order, a window of them at a time: a window bounds the
+// rendered output held in memory, and each window is written before the next one renders.
+fn render_chunks<'a>(
+    format: OutputFormat,
+    config: &'a DisplayDiagnosticConfig,
+    context: &'a RenderContext<'a>,
+    diagnostics: &'a [Diagnostic],
+) -> impl Iterator<Item = std::io::Result<Vec<u8>>> + 'a {
+    diagnostics.chunks(FULL_WINDOW).flat_map(move |window| {
+        window
+            .par_chunks(FULL_CHUNK)
+            .map(|chunk| {
+                let mut buffer = Vec::new();
+                render_diagnostics(&mut buffer, format, config, context, chunk).map(|()| buffer)
+            })
+            .collect::<Vec<_>>()
+            .into_iter()
+    })
+}
+
 fn file_name(diagnostic: &Diagnostic) -> &str {
     diagnostic
         .primary_annotation()
         .and_then(|annotation| annotation.get_span().as_ruff_file())
         .expect("simplint reports a diagnostic on a Ruff source file")
         .name()
-}
-
-fn plural(count: usize, suffix: &str) -> &str {
-    if count == 1 { "" } else { suffix }
-}
-
-fn push_line(text: &mut String, line: &str) {
-    text.push_str(line);
-    text.push('\n');
 }
 
 // Flake8's `--statistics` layout, as Ruff prints it: count, code, a fixability marker and the rule name.
@@ -492,10 +483,6 @@ fn rule_metadata() -> FxHashMap<LintName, RuleMetadata> {
         .collect()
 }
 
-fn num_digits(n: usize) -> usize {
-    iterate(n, |&n| n / 10).take_while(|&n| n > 0).count().max(1)
-}
-
 // With fixes applied, a violation left over was not fixable after all, so no fix marker is shown.
 fn show_fix_status(fix_mode: flags::FixMode, fixables: Option<&FixableStatistics>) -> bool {
     !fix_mode.is_apply() && fixables.is_some_and(|fixables| fixables.applicable > 0)
@@ -515,6 +502,19 @@ fn fix_summary(fixed: &FixMap, by_name: bool) -> String {
         }
     }
     text
+}
+
+fn plural(count: usize, suffix: &str) -> &str {
+    if count == 1 { "" } else { suffix }
+}
+
+fn push_line(text: &mut String, line: &str) {
+    text.push_str(line);
+    text.push('\n');
+}
+
+fn num_digits(n: usize) -> usize {
+    iterate(n, |&n| n / 10).take_while(|&n| n > 0).count().max(1)
 }
 
 struct FixableStatistics {
