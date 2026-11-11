@@ -13,16 +13,16 @@ use crate::rules::{is_class_like, is_sphinx_conf};
 use crate::semantic::{Binding, BindingKind};
 use crate::syntax::{Exports, Visibility, single_assignment, statement_index};
 
-pub struct ModuleVariable<'a> {
-    pub name: &'a str,
-    pub range: TextRange,
+pub(crate) struct ModuleVariable<'a> {
+    pub(crate) name: &'a str,
+    pub(crate) range: TextRange,
     // Whether the name should have a leading underscore. An imported name keeps the underscore it has, and any other
     // name is private unless `__all__` lists it.
-    pub private: bool,
+    pub(crate) private: bool,
 }
 
 // Sorted by position, so the rules report them in the order they appear.
-pub fn module_variables<'a>(checker: &Checker<'a>) -> Vec<ModuleVariable<'a>> {
+pub(crate) fn module_variables<'a>(checker: &Checker<'a>) -> Vec<ModuleVariable<'a>> {
     const MAGIC: &[&str] = &["pytestmark", "pytest_plugins", "collect_ignore", "collect_ignore_glob", "TYPE_CHECKING"];
     if is_sphinx_conf(checker) {
         return Vec::new();
@@ -40,7 +40,6 @@ pub fn module_variables<'a>(checker: &Checker<'a>) -> Vec<ModuleVariable<'a>> {
         .filter_map(|stmt| type_parameter_assignment(checker, stmt))
         .map(|target| target.id.as_str())
         .collect();
-    let kept = &checker.settings.project.knobs.keep_names;
     let mut variables = Vec::new();
     let stub = |binding: &Binding| checker.semantic().is_type_checking_stub(binding.range);
     for (name, bindings) in checker.semantic().all_bindings() {
@@ -54,7 +53,7 @@ pub fn module_variables<'a>(checker: &Checker<'a>) -> Vec<ModuleVariable<'a>> {
             || aliases.contains(name)
             || (type_parameters.contains(name)
                 && bindings.iter().filter(|binding| !stub(binding)).all(|binding| binding.range == first.range))
-            || kept.iter().any(|kept| kept == name)
+            || checker.settings.project.knobs.keep_names.iter().any(|kept| kept == name)
             || bindings.iter().any(|binding| {
                 matches!(
                     binding.kind,
@@ -77,24 +76,9 @@ pub fn module_variables<'a>(checker: &Checker<'a>) -> Vec<ModuleVariable<'a>> {
     variables
 }
 
-// A name that one module-level `if`, `try` or `with` block binds and reads, and nothing outside the block reads, works as
-// a local of that block, as `msg` does before a `raise` in a version check. A name read by another file stays a module
-// variable.
-fn is_block_local(checker: &Checker, name: &str, bindings: &[Binding]) -> bool {
-    let body = checker.body();
-    let references = checker.semantic().references_to(name);
-    let Some(block) = references.first().map(|reference| reference.statement) else {
-        return false;
-    };
-    matches!(body.get(block), Some(Stmt::If(_) | Stmt::Try(_) | Stmt::With(_)))
-        && references.iter().all(|reference| reference.statement == block)
-        && bindings.iter().all(|binding| statement_index(body, binding.range.start()) == block)
-        && !checker.project().is_used_elsewhere(name)
-}
-
-// The module-scope names bound to a function the module defines, as `_build_cli = build_cli`. Such an alias reads as the
-// function, so it follows the function's name as a class alias does. An import is left out: the semantic model cannot
-// tell whether it binds a function.
+// The module-scope names bound to a function the module defines, as `_build_cli = build_cli`. Such an alias reads
+// as the function, so it follows the function's name as a class alias does. An import is left out: the semantic
+// model cannot tell whether it binds a function.
 fn function_aliases<'a>(checker: &Checker<'a>) -> FxHashSet<&'a str> {
     let semantic = checker.semantic();
     checker
@@ -109,4 +93,19 @@ fn function_aliases<'a>(checker: &Checker<'a>) -> FxHashSet<&'a str> {
         })
         .map(|(target, _, _)| target.id.as_str())
         .collect()
+}
+
+// A name that one module-level `if`, `try` or `with` block binds and reads, and nothing outside the block reads,
+// works as a local of that block, as `msg` does before a `raise` in a version check. A name read by another file
+// stays a module variable.
+fn is_block_local(checker: &Checker, name: &str, bindings: &[Binding]) -> bool {
+    let body = checker.body();
+    let references = checker.semantic().references_to(name);
+    let Some(block) = references.first().map(|reference| reference.statement) else {
+        return false;
+    };
+    matches!(body.get(block), Some(Stmt::If(_) | Stmt::Try(_) | Stmt::With(_)))
+        && references.iter().all(|reference| reference.statement == block)
+        && bindings.iter().all(|binding| statement_index(body, binding.range.start()) == block)
+        && !checker.project().is_used_elsewhere(name)
 }

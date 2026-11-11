@@ -12,8 +12,6 @@ use crate::lint::checker::Checker;
 use crate::rules::edits::{fix_of, keep_debug_text};
 use crate::syntax::{Visibility, identifier_words};
 
-// The report for a name a public module keeps: its users import it, so the author lists it or renames it by hand, or,
-// when `__all__` lists it already, renames it by hand.
 pub(crate) fn kept_message(name: &str, new: &str, listed: bool) -> String {
     if listed {
         format!("`{name}` is in `__all__`; rename it to `{new}` by hand")
@@ -22,13 +20,12 @@ pub(crate) fn kept_message(name: &str, new: &str, listed: bool) -> String {
     }
 }
 
-// A name a library's users reach: the library's API, or a public name of a public module.
 fn is_offered(checker: &Checker, name: &str) -> bool {
     let project = checker.project();
     project.is_library_api(name) || project.role().public && Visibility::of(name) == Visibility::Public
 }
 
-pub fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
+pub(crate) fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
     let ranges = checker.semantic().name_ranges(old);
     // A module name that shadows a builtin, as in `zip = zip`, shares its token with the builtin it reads.
     if is_offered(checker, old)
@@ -44,7 +41,6 @@ pub fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
     {
         return None;
     }
-    let exports = checker.state().export_strings(checker);
     if appears_in_strings(checker, old) {
         return None;
     }
@@ -52,6 +48,7 @@ pub fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
     if ranges.iter().any(|range| checker.state().in_source_text(checker, *range)) {
         return None;
     }
+    let exports = checker.state().export_strings(checker);
     let renamed_exports = exports
         .iter()
         .filter(|element| element.value.to_str() == old)

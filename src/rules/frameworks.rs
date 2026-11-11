@@ -7,6 +7,27 @@ use crate::syntax::single_assignment;
 
 // The module-scope names a framework reads off this module by their exact names, so renaming them breaks it.
 pub(super) fn framework_names<'a>(checker: &Checker<'a>) -> FxHashSet<&'a str> {
+    const DB_API_GLOBALS: [&str; 3] = ["apilevel", "threadsafety", "paramstyle"];
+
+    // The calls that build a WSGI, ASGI or Typer application; Pyramid's comes from `Configurator.make_wsgi_app()` instead.
+    const APPLICATIONS: &[&[&str]] = &[
+        &["aiohttp", "web", "Application"],
+        &["bottle", "Bottle"],
+        &["django", "core", "asgi", "get_asgi_application"],
+        &["django", "core", "wsgi", "get_wsgi_application"],
+        &["falcon", "API"],
+        &["falcon", "App"],
+        &["falcon", "asgi", "App"],
+        &["fastapi", "FastAPI"],
+        &["flask", "Flask"],
+        &["litestar", "Litestar"],
+        &["quart", "Quart"],
+        &["sanic", "Sanic"],
+        &["starlette", "applications", "Starlette"],
+        &["typer", "Typer"],
+        &["typer", "main", "Typer"],
+    ];
+
     let semantic = checker.semantic();
     let bound = |name: &str| !semantic.bindings(name).is_empty();
     let mut names = FxHashSet::default();
@@ -76,14 +97,11 @@ fn is_ply_module(module: &str) -> bool {
     parts.next().is_some_and(|last| matches!(last, "lex" | "yacc")) && parts.any(|part| part.contains("ply"))
 }
 
-// The token list, the `t_` lexer rules and `p_` grammar productions, and the settings PLY reads off a grammar module.
 pub(super) fn is_ply_name(name: &str) -> bool {
     name.starts_with("t_")
         || name.starts_with("p_")
         || matches!(name, "tokens" | "literals" | "precedence" | "states" | "start")
 }
-
-const DB_API_GLOBALS: [&str; 3] = ["apilevel", "threadsafety", "paramstyle"];
 
 // The setting names of gunicorn's configuration file, from its `gunicorn/config.py`.
 const GUNICORN_SETTINGS: &[&str] = &[
@@ -206,23 +224,4 @@ const GUNICORN_SETTINGS: &[&str] = &[
     "worker_tmp_dir",
     "workers",
     "wsgi_app",
-];
-
-// The calls that build a WSGI, ASGI or Typer application; Pyramid's comes from `Configurator.make_wsgi_app()` instead.
-const APPLICATIONS: &[&[&str]] = &[
-    &["aiohttp", "web", "Application"],
-    &["bottle", "Bottle"],
-    &["django", "core", "asgi", "get_asgi_application"],
-    &["django", "core", "wsgi", "get_wsgi_application"],
-    &["falcon", "API"],
-    &["falcon", "App"],
-    &["falcon", "asgi", "App"],
-    &["fastapi", "FastAPI"],
-    &["flask", "Flask"],
-    &["litestar", "Litestar"],
-    &["quart", "Quart"],
-    &["sanic", "Sanic"],
-    &["starlette", "applications", "Starlette"],
-    &["typer", "Typer"],
-    &["typer", "main", "Typer"],
 ];
