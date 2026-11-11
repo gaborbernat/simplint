@@ -273,16 +273,11 @@ Some members stay where they are, and some reports come without a fix:
           self.size = 1
   ```
 
-- **Django model statements Ruff reports**: when the file imports Django and the project selects
-  [DJ012](https://docs.astral.sh/ruff/rules/django-unordered-body-content-in-model/), Ruff reports a statement of a
-  model that the Django Style Guide places earlier, so this rule leaves that statement to Ruff. DJ012 has no fix, so the
-  one report that carries the fix for the class stays here, on a member DJ012 does not check when there is one. Below,
-  `__init__` is reported with the fix and `Meta` is left to Ruff:
-
-  ```toml config
-  [tool.ruff.lint]
-  select = ["DJ012"]
-  ```
+- **Django model statements Ruff reports**: in a file that imports Django,
+  [DJ012](https://docs.astral.sh/ruff/rules/django-unordered-body-content-in-model/) reports a statement of a model that
+  the Django Style Guide places earlier, so this rule leaves that statement to Ruff. DJ012 has no fix, so the one report
+  that carries the fix for the class stays here, on a member DJ012 does not check when there is one. Below, `__init__`
+  is reported with the fix and `Meta` is left to Ruff:
 
   ```python report
   from django.db import models

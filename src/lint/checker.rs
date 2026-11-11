@@ -251,7 +251,7 @@ impl<'a> Checker<'a> {
         self.semantic.get_or_init(|| {
             let matches = RuffMatches {
                 list_appends: counts_ruff_appends(self.settings),
-                django_reports: leaves_django_order_to_ruff(self.settings),
+                django_reports: self.settings.rules.contains(Rule::ClassMemberOrder),
             };
             Semantic::new(self.path, self.body(), self.target_version(), self.linter.ruff.settings, matches)
         })
@@ -454,13 +454,6 @@ impl<'a> Checker<'a> {
     pub fn line_number(&self, offset: TextSize) -> OneIndexed {
         self.file.index().line_index(offset)
     }
-}
-
-// Whether `class-member-order` runs on a file where Ruff's DJ012 reports Django model statements out of order, which
-// the rule leaves to Ruff and reads from the semantic model.
-pub(crate) fn leaves_django_order_to_ruff(settings: &FileSettings) -> bool {
-    settings.rules.contains(Rule::ClassMemberOrder)
-        && settings.from_ruff.ruff_runs(RuffRule::DjangoUnorderedBodyContentInModel)
 }
 
 // Whether `collection-built-by-statements` runs on a file where Ruff's FURB113 counts list appends, which the rule then
