@@ -62,7 +62,6 @@ fn lint_fix(
     Ok(transformed)
 }
 
-// The source with each `;` that ends an import statement replaced by a line break at the statement's indentation.
 fn split_import_lines(source: &str, tokens: &Tokens) -> String {
     let mut split = String::with_capacity(source.len());
     let mut copied = TextSize::default();
