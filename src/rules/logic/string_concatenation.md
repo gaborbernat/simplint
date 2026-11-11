@@ -1,5 +1,5 @@
-Flags `+` chains that join a string literal or f-string with other values. An f-string shows the final text in one
-piece, where a `+` chain scatters it across quotes and operators.
+Flags `+` chains that join a string literal or f-string with other values. An f-string builds the same text in a single
+expression, without `+`.
 
 ## Why is this bad?
 

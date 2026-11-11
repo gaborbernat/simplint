@@ -39,18 +39,18 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     // `+` calls an operand's own `__add__` or `__radd__`, and raises `TypeError` for one that is not text, where the
     // f-string formats any value: the two agree only when every operand is surely a `str`.
     let mut kinds = Kinds::new(walker, range);
-    // A class may override `+` on its own, as `markupsafe.Markup` escapes its operand, so the f-string would change what
-    // the code does. An import from outside the run does not say whether its name is a class, so it counts by its name.
+    // A class may override `+` on its own, as `markupsafe.Markup` escapes its operand, so the f-string would change
+    // what the code does. An import from outside the run does not say whether its name is a class, so it counts by
+    // its name.
     if operands.iter().any(|operand| kinds.is_class_instance(operand)) {
         return;
     }
-    let texts = operands.iter().all(|operand| kinds.is_str(operand));
     // A comment between the operands has no place in the f-string, so rewriting would drop it.
     let fix = match fstring(checker, &operands, walker.in_fstring()) {
         Err(Unwritable::Impossible) => return,
         written => written
             .ok()
-            .filter(|_| texts && !checker.has_comment_in(range))
+            .filter(|_| !checker.has_comment_in(range) && operands.iter().all(|operand| kinds.is_str(operand)))
             .map(|text| Fix::unsafe_edit(Edit::range_replacement(text, range))),
     };
     checker.report_fix(
@@ -62,16 +62,26 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     );
 }
 
+fn flatten<'a>(expr: &'a Expr, operands: &mut Vec<&'a Expr>) {
+    match expr {
+        Expr::BinOp(ast::ExprBinOp { left, op: Operator::Add, right, .. }) => {
+            flatten(left, operands);
+            operands.push(right);
+        }
+        other => operands.push(other),
+    }
+}
+
 // Ruff's G003 reports the `+` that is a logging call's message, and its ISC003 a concatenation of two literals across
-// lines that it can fix, so this rule leaves those to Ruff. A pair with a parenthesized operand gets no fix from ISC003,
-// so this rule keeps it.
+// lines that it can fix, so this rule leaves those to Ruff. A pair with a parenthesized operand gets no fix from
+// ISC003, so this rule keeps it.
 fn left_to_ruff(walker: &Walker, expr: &Expr) -> bool {
     is_logging_message(walker, expr)
         || (walker.checker.settings.from_ruff.allow_multiline && ruff_fixes_literal_pair_at_start(walker.checker, expr))
 }
 
-// Whether `expr` is the message argument of a logging call, as G003 finds it: the `msg` keyword or the argument at
-// the message's position, which `log` moves after the level.
+// As G003 finds the message: the `msg` keyword, or the argument at the message's position, which `log` moves after
+// the level.
 fn is_logging_message(walker: &Walker, expr: &Expr) -> bool {
     let Some(Expr::Call(call)) = walker.expression_parent() else {
         return false;
@@ -138,19 +148,9 @@ fn is_parenthesized(checker: &Checker, operand: &Expr, parent: &Expr) -> bool {
     checker.parenthesized_range(operand, parent.into()) != operand.range()
 }
 
-fn flatten<'a>(expr: &'a Expr, operands: &mut Vec<&'a Expr>) {
-    match expr {
-        Expr::BinOp(ast::ExprBinOp { left, op: Operator::Add, right, .. }) => {
-            flatten(left, operands);
-            operands.push(right);
-        }
-        other => operands.push(other),
-    }
-}
-
-// Why no f-string is written for a chain. Before Python 3.12 a replacement field cannot hold a backslash inside a string,
-// so such a chain has no f-string for that target (`Impossible`) and is not reported. Any other chain this rule does
-// not write is `Declined`, reported without a fix.
+// Why no f-string is written for a chain. Before Python 3.12 a replacement field cannot hold a backslash inside a
+// string, so such a chain has no f-string for that target (`Impossible`) and is not reported. Any other chain this rule
+// does not write is `Declined`, reported without a fix.
 enum Unwritable {
     Declined,
     Impossible,
@@ -162,8 +162,8 @@ fn fstring(checker: &Checker, operands: &[&Expr], nested: bool) -> Result<String
     // The f-string's text, with each interpolated expression, its source text and conversion still to place.
     let mut pieces = Vec::new();
     let mut interpolated = false;
-    // A part or an expression the rule does not write leaves the chain reported without a fix, but a later string with a
-    // backslash still makes it impossible, so the loop goes on.
+    // A part or an expression the rule does not write leaves the chain reported without a fix, but a later string with
+    // a backslash still makes it impossible, so the loop goes on.
     let mut declined = false;
     let before_312 = checker.target_version() < PythonVersion::PY312;
     for operand in operands {
@@ -181,8 +181,8 @@ fn fstring(checker: &Checker, operands: &[&Expr], nested: bool) -> Result<String
                 interpolated |= operand.is_f_string_expr();
             }
             other => {
-                // Before Python 3.12 a string inside a replacement field cannot hold a backslash, so a string with one in
-                // an expression leaves no f-string for the chain. A line continuation outside any string is not one.
+                // Before Python 3.12 a string inside a replacement field cannot hold a backslash, so a string with one
+                // in an expression leaves no f-string for the chain. A line continuation outside any string is not one.
                 if before_312
                     && any_over_expr(other, &|sub: &Expr| {
                         matches!(sub, Expr::StringLiteral(_) | Expr::BytesLiteral(_) | Expr::FString(_))
@@ -191,7 +191,8 @@ fn fstring(checker: &Checker, operands: &[&Expr], nested: bool) -> Result<String
                 {
                     return Err(Unwritable::Impossible);
                 }
-                // `str(x)`, `repr(x)` and `ascii(x)` become the conversions `!s`, `!r` and `!a`, as Ruff's RUF010 asks.
+                // Ruff's RUF010 asks for the conversions `!s`, `!r` and `!a` in place of `str(x)`, `repr(x)` and
+                // `ascii(x)`.
                 let (inner, conversion) = match *other {
                     Expr::Call(ast::ExprCall { func, arguments, .. })
                         if arguments.keywords.is_empty()
@@ -226,12 +227,11 @@ fn fstring(checker: &Checker, operands: &[&Expr], nested: bool) -> Result<String
     // there the parts keep the one quote they share and their expressions stay as written.
     let as_written = nested && before_312;
     let preferred = checker.stylist.quote();
-    let alternatives = if as_written { vec![] } else { vec![preferred, preferred.opposite()] };
     let delimiter = parts
         .first()
         .map(|(quote, _)| *quote)
         .into_iter()
-        .chain(alternatives)
+        .chain(if as_written { vec![] } else { vec![preferred, preferred.opposite()] })
         .find(|delimiter| {
             parts.iter().all(|(quote, text)| quote == delimiter || !as_written && !text.contains(delimiter.as_char()))
         })
@@ -253,9 +253,9 @@ fn fstring(checker: &Checker, operands: &[&Expr], nested: bool) -> Result<String
             }
         }
     }
-    let prefix = if interpolated { "f" } else { "" };
-    let text = if interpolated { content } else { content.replace("{{", "{").replace("}}", "}") };
     let delimiter = delimiter.as_char();
+    let (prefix, text) =
+        if interpolated { ("f", content) } else { ("", content.replace("{{", "{").replace("}}", "}")) };
     Ok(format!("{prefix}{delimiter}{text}{delimiter}"))
 }
 
@@ -268,19 +268,21 @@ fn expression_text(checker: &Checker, expr: &Expr, text: &str, delimiter: Quote,
     if requote && as_written {
         return None;
     }
-    // A replacement field takes only a yield or star expression unparenthesized, so a generator the call took bare
-    // gets the parentheses its own syntax would give it.
-    let bare_generator = matches!(expr, Expr::Generator(ast::ExprGenerator { parenthesized: false, .. }));
     // An expression the layout spreads over lines goes on one, as it would in a line long enough.
     if !requote && !text.contains('\n') {
-        return Some(if bare_generator { format!("({text})") } else { text.to_owned() });
+        // A replacement field takes only a yield or star expression unparenthesized, so a generator the call took bare
+        // gets the parentheses its own syntax would give it.
+        return Some(if matches!(expr, Expr::Generator(ast::ExprGenerator { parenthesized: false, .. })) {
+            format!("({text})")
+        } else {
+            text.to_owned()
+        });
     }
     let text =
         if requote { requoted_text(checker, expr, delimiter)? } else { Generator::from(checker.stylist).expr(expr) };
-    let unfit = text.contains(FORBIDDEN_IN_EXPRESSION) || before_312 && text.contains(delimiter.as_char());
-    (!unfit).then_some(text)
+    (!(text.contains(FORBIDDEN_IN_EXPRESSION) || before_312 && text.contains(delimiter.as_char()))).then_some(text)
 }
 
-// A comment, a backslash, a format spec or conversion, or nested braces in an expression would not survive the move into
-// a replacement field.
+// A comment, a backslash, a format spec or conversion, or nested braces in an expression would not survive the move
+// into a replacement field.
 const FORBIDDEN_IN_EXPRESSION: [char; 6] = ['\\', '#', ':', '!', '{', '}'];
