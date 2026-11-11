@@ -6,13 +6,12 @@ use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::layout::fits_line;
 use crate::layout::joined_width;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Blanks, statement_deletion};
-use crate::rules::logic::inline::{
-    LOCALS_READERS, declared_outer, fits_line, for_each_scoped_body, inlined_text, leading_name,
-};
+use crate::rules::logic::inline::{LOCALS_READERS, declared_outer, for_each_scoped_body, inlined_text, leading_name};
 use crate::rules::logic::sole_name_target;
 use crate::syntax::{expr_mentions, has_version_gate, needs_parentheses};
 

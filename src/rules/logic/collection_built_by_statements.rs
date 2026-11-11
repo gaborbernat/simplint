@@ -5,9 +5,9 @@ use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
+use crate::lint::checker::counts_ruff_appends;
 use crate::lint::registry::Rule;
 use crate::rules::logic::inline::{is_constant, is_hashable};
-use crate::semantic::counts_ruff_appends;
 use crate::syntax::{expr_mentions, for_each_body, is_name, sole_argument};
 
 pub fn collection_built_by_statements(checker: &Checker) {

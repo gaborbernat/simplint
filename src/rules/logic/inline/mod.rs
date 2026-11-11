@@ -12,7 +12,6 @@ use rustc_hash::FxHashSet;
 use crate::lint::checker::Checker;
 use crate::syntax::{for_each_body, for_each_child_body};
 
-pub(in crate::rules::logic) use crate::layout::{fits, fits_line, joined};
 pub(in crate::rules::logic) use fstring::{fstring_body_parts, requoted_text};
 pub(in crate::rules::logic) use literals::{is_constant, is_hashable};
 pub(in crate::rules::logic) use names::{LOCALS_READERS, Names};

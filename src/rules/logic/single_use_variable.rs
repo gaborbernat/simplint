@@ -4,10 +4,11 @@ use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::layout::fits;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Blanks, keep_debug_text, statement_deletion};
-use crate::rules::logic::inline::{Names, declared_outer, enter_function, fits, for_each_scoped_body};
+use crate::rules::logic::inline::{Names, declared_outer, enter_function, for_each_scoped_body};
 use crate::rules::logic::sole_name_target;
 
 mod reading;

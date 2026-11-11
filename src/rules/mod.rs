@@ -35,6 +35,8 @@ pub fn is_sphinx_conf(checker: &Checker) -> bool {
     checker.file_name() == "conf.py"
 }
 
+// A class name is CapWords, which starts with an uppercase letter once leading underscores are dropped, and is not all
+// caps, as PEP 8 spells classes.
 pub fn is_class_like(name: &str) -> bool {
     let trimmed = name.trim_start_matches('_');
     trimmed.chars().next().is_some_and(char::is_uppercase) && trimmed.chars().any(char::is_lowercase)

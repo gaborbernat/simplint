@@ -5,8 +5,8 @@ use ruff_text_size::Ranged;
 use super::class_order::{Arrangement, ClassOrder, Inversion, Section};
 use super::reorder::{Suite, moved_span, moves_definition_unsafely, reorder_fix};
 use crate::lint::checker::Checker;
+use crate::lint::checker::leaves_django_order_to_ruff;
 use crate::lint::registry::Rule;
-use crate::semantic::leaves_django_order_to_ruff;
 
 pub fn class_member_order(checker: &Checker) {
     let orders = checker.state().class_orders(checker);

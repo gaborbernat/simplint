@@ -82,7 +82,7 @@ fn splice(source: &str, from: usize, to: usize, edits: &mut [&Edit]) -> Option<S
 
 // The `=` debug fields of a module, each with its quote and the text of its debug specifier.
 #[derive(Default)]
-pub(crate) struct DebugFields<'a> {
+pub(in crate::rules) struct DebugFields<'a> {
     fields: Vec<DebugField<'a>>,
     // Where the fields lie, so that the edits of a field are found by a search.
     field_ranges: Nesting,

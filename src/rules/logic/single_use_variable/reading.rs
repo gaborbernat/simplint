@@ -59,7 +59,7 @@ fn operand_precedence(expr: &Expr, reference: TextRange) -> Option<OperatorPrece
 pub(super) struct ReadSite<'a> {
     // Whether the read is conditional, set once the walk reaches it.
     pub(super) read: Option<bool>,
-    pub(super) effects: bool,
+    effects: bool,
     // The read is a whole argument, keyword value, return value or assigned value, where no parentheses are needed.
     pub(super) whole: bool,
     // The read starts its f-string field, so a value that starts with `{` would follow the field's `{`.
@@ -69,7 +69,7 @@ pub(super) struct ReadSite<'a> {
     // The read is in a t-string, whose fields keep their source text.
     pub(super) in_tstring: bool,
     // The read is a part of its value, an attribute or a subscript that is not the callee of a call.
-    pub(super) reads_part: bool,
+    reads_part: bool,
     // The whole field the read fills, `{name}`, when it has no conversion, format spec or `=`, and the f-string around it.
     pub(super) bare_field: Option<TextRange>,
     pub(super) field_fstring: Option<ast::FStringFlags>,
@@ -86,9 +86,9 @@ pub(super) struct ReadSite<'a> {
     // The parameter whose default holds the read.
     pub(super) default_parameter: Option<&'a ast::ParameterWithDefault>,
     // The names read before the read, other than the callee of a call, whose binding a call in the value could change.
-    pub(super) names_before: Vec<&'a str>,
+    names_before: Vec<&'a str>,
     // A name read before the read is formatted or unpacked there, which takes the state of its object at that point.
-    pub(super) state_before: bool,
+    state_before: bool,
 }
 
 impl<'a> ReadSite<'a> {
@@ -155,7 +155,7 @@ impl<'a> ReadWalk<'a> {
         self.takes_state -= usize::from(outside);
     }
 
-    // ReadSite a part of the value lets its object die right after the read, and a t-string keeps its fields' source text.
+    // Reading a part of the value lets its object die right after the read, and a t-string keeps its fields' source text.
     fn places_read(&mut self, expr: &Expr) {
         match expr {
             Expr::Attribute(ast::ExprAttribute { value, .. })

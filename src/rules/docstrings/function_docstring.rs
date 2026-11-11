@@ -1,4 +1,5 @@
 mod edit;
+mod text;
 
 use std::cell::OnceCell;
 
@@ -9,10 +10,10 @@ use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::comment_text::{cleaned_lines, drop_fields};
 use crate::rules::public_api::Need;
 use crate::syntax::docstring;
 use edit::{block_levels, comment_replacement, removal};
+use text::{cleaned_lines, drop_fields};
 
 pub fn function_docstring(checker: &Checker) {
     // Code that reads docstrings off objects, such as a test asserting `func.__doc__` or a framework turning them into

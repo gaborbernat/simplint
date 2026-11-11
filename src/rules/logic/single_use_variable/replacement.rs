@@ -4,8 +4,9 @@ use ruff_python_ast::{self as ast, Expr, OperatorPrecedence, PythonVersion, Stmt
 use ruff_text_size::{Ranged, TextRange};
 
 use super::reading::ReadSite;
+use crate::layout::joined;
 use crate::lint::checker::Checker;
-use crate::rules::logic::inline::{fstring_body_parts, inlined_text, joined, requoted_text};
+use crate::rules::logic::inline::{fstring_body_parts, inlined_text, requoted_text};
 use crate::syntax::needs_parentheses;
 
 // The range the read replaces and the text that replaces it: the assigned value as the statement takes it,

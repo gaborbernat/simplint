@@ -6,7 +6,7 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::rules::comments::is_tool_directive;
-use crate::rules::docstrings::comment_text::comment_lines;
+use crate::rules::docstrings::function_docstring::text::comment_lines;
 use crate::rules::docstrings::{docstring_deletion, is_directive_comment};
 use crate::rules::edits::{Blanks, statement_lines};
 

@@ -23,7 +23,11 @@ pub(super) fn pages(root: &Path, settings: &ruff_workspace::Settings, main: &Pat
         .filter_entry(move |entry| {
             let path = entry.path();
             let name = path.file_name().unwrap_or_default();
-            enters(path, name, &exclude, &extend_exclude, &main)
+            if entry.file_type().is_some_and(|kind| kind.is_dir()) {
+                enters(path, name, &exclude, &extend_exclude, &main)
+            } else {
+                is_kept(path, name, &exclude, &extend_exclude)
+            }
         })
         .build();
     walk.filter_map(Result::ok)
@@ -39,11 +43,16 @@ fn is_page(path: &Path) -> bool {
     path.extension().is_some_and(|extension| extension == "rst" || extension == "md")
 }
 
+// Whether the walk goes into a directory: only a directory can be a nested project root, so a file skips that check
+// and its stats.
 fn enters(path: &Path, name: &OsStr, exclude: &FilePatternSet, extend_exclude: &FilePatternSet, main: &Path) -> bool {
+    is_kept(path, name, exclude, extend_exclude) && !is_nested_root(main, path)
+}
+
+fn is_kept(path: &Path, name: &OsStr, exclude: &FilePatternSet, extend_exclude: &FilePatternSet) -> bool {
     !name.to_str().is_some_and(|name| name.starts_with('.'))
         && !match_exclusion(path, name, exclude)
         && !match_exclusion(path, name, extend_exclude)
-        && !is_nested_root(main, path)
 }
 
 // A key of what the walk's outcome under a root depends on, read without building the matchers of its ignore files,
