@@ -1,4 +1,5 @@
 mod function_docstring;
+mod lines;
 mod long_docstring_paragraph;
 pub(crate) mod rst;
 mod rst_attribute_kind;

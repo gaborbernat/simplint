@@ -2,6 +2,7 @@ use ruff_python_ast::{self as ast, StringFlags};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
+use crate::rules::docstrings::lines::{doc_lines, indent_width};
 
 // What a field documents, by its name: the info fields of Sphinx's Python domain and their aliases, and the `yields` and
 // `ytype` fields documentation tools accept for generators.
@@ -138,34 +139,19 @@ impl<'a> Docstring<'a> {
             _ => None,
         };
         let start = content.map(TextRange::start);
-        let lines: Vec<(TextSize, &str)> = text
-            .split_inclusive('\n')
-            .scan(TextSize::default(), |offset, line| {
-                let at = *offset;
-                *offset += TextSize::of(line);
-                Some((at, line))
-            })
-            .collect();
-        let indent = |line: &str| line.len() - line.trim_start().len();
-        let base = lines
-            .iter()
-            .skip(1)
-            .map(|(_, line)| line.trim_end())
-            .filter(|line| !line.is_empty())
-            .map(indent)
-            .min()
-            .unwrap_or_default();
+        let lines = doc_lines(text);
+        let base = lines.first().map_or(0, |line| line.indent);
         let mut fields: Vec<Field> = Vec::new();
         let mut sections = Vec::new();
         // The position and indentation of the field whose body a deeper line continues.
         let mut open: Option<(usize, usize)> = None;
         let mut text_since_field = false;
-        for (index, (offset, line)) in lines.iter().enumerate() {
-            let content = line.trim_end();
+        for (index, line) in lines.iter().enumerate() {
+            let content = line.text;
             if content.is_empty() {
                 continue;
             }
-            let level = if index == 0 { base } else { indent(content) };
+            let level = line.indent;
             let trimmed = content.trim_start();
             if level == base
                 && let Some(marker) = field_marker(trimmed)
@@ -174,16 +160,16 @@ impl<'a> Docstring<'a> {
                 let in_source = start.filter(|_| index > 0);
                 let description = trimmed[marker.len() + 2..].trim().to_owned();
                 let described = !description.is_empty();
-                let joins_text = index > 0 && open.is_none() && !lines[index - 1].1.trim().is_empty();
+                let joins_text = index > 0 && open.is_none() && !lines[index - 1].text.is_empty();
                 let (kind, primary) = field_name(&words[0]);
                 fields.push(Field {
                     kind,
                     words,
                     primary,
-                    lines: in_source.map(|start| TextRange::at(start + offset, TextSize::of(*line))),
+                    lines: in_source.map(|start| TextRange::at(start + line.start, TextSize::of(line.raw))),
                     marker: in_source.map(|start| {
                         TextRange::at(
-                            start + offset + TextSize::try_from(level + 1).unwrap_or_default(),
+                            start + line.start + TextSize::try_from(level + 1).unwrap_or_default(),
                             TextSize::of(marker),
                         )
                     }),
@@ -202,14 +188,14 @@ impl<'a> Docstring<'a> {
                 field.description.push(' ');
                 field.description.push_str(trimmed);
                 if let (Some(start), Some(lines)) = (start, field.lines) {
-                    field.lines = Some(TextRange::new(lines.start(), start + offset + TextSize::of(*line)));
+                    field.lines = Some(TextRange::new(lines.start(), start + line.start + TextSize::of(line.raw)));
                 }
                 continue;
             }
             open = None;
             text_since_field = true;
             if level == base
-                && let Some(section) = section(trimmed, lines.get(index + 1).map(|(_, next)| next.trim_end()), level)
+                && let Some(section) = section(trimmed, lines.get(index + 1).map(|next| next.text), level)
             {
                 sections.push(section);
             }
@@ -272,7 +258,7 @@ fn is_section(heading: &str) -> bool {
 // `Args:` over indented lines, as Google style writes a section, or `Parameters` over a line of dashes, as numpydoc does.
 fn section(line: &str, next: Option<&str>, level: usize) -> Option<Section> {
     let next = next.filter(|next| !next.is_empty())?;
-    let next_level = next.len() - next.trim_start().len();
+    let next_level = indent_width(next);
     if let Some(heading) = line.strip_suffix(':').filter(|heading| is_section(heading))
         && next_level > level
     {

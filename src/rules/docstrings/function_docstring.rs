@@ -11,6 +11,7 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::comments::is_tool_directive;
+use crate::rules::docstrings::lines::indent_width;
 use crate::rules::docstrings::rst::{SIGNATURE_SECTIONS, field_marker};
 use crate::rules::docstrings::{Need, docstring_deletion, is_directive_comment};
 use crate::rules::edits::{Blanks, statement_lines};
@@ -373,17 +374,13 @@ fn indented_end(lines: &[String], start: usize, lead: usize) -> usize {
     end
 }
 
-fn indent_width(line: &str) -> usize {
-    line.len() - line.trim_start().len()
-}
-
 // Lines that fit are kept as written, so lists and indented blocks keep their shape. What a long line wraps over joins
 // the next line when that line goes on with the same sentence, rather than leaving a word on a line of its own.
 fn comment_lines(lines: &[String], room: usize) -> Vec<String> {
     let mut comments = Vec::new();
     let mut carry = String::new();
     for (index, line) in lines.iter().enumerate() {
-        let lead = &line[..line.len() - line.trim_start().len()];
+        let lead = &line[..indent_width(line)];
         let line = if carry.is_empty() { line.clone() } else { format!("{lead}{carry} {}", line.trim_start()) };
         let mut parts = wrapped(&line, room);
         carry = if parts.len() > 1 && lines.get(index + 1).is_some_and(|next| continues(next, lead)) {
@@ -410,7 +407,7 @@ fn wrapped(line: &str, room: usize) -> Vec<String> {
     if line.chars().count() <= room {
         return vec![line.to_owned()];
     }
-    let lead = &line[..line.len() - line.trim_start().len()];
+    let lead = &line[..indent_width(line)];
     let mut parts = Vec::new();
     let mut current = String::new();
     for word in line.split_whitespace() {
