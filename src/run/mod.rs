@@ -68,7 +68,7 @@ pub struct Diagnostics {
 
 // Whether Ruff's `io-error` rule is on, which reports a path that cannot be read, written or found as a diagnostic
 // rather than as a warning.
-pub(crate) fn reports_io_errors(settings: &LinterSettings) -> bool {
+pub(super) fn reports_io_errors(settings: &LinterSettings) -> bool {
     settings.rules.enabled(RuffRule::IOError)
 }
 

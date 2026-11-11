@@ -240,7 +240,7 @@ impl<'l, 'a> Fixer<'l, 'a> {
         let baseline = self.check(start);
         let failing = || {
             self.failing
-                .get_or(self.sources.intern(start), || Arc::new(self.linter.ruff.fixable_at_limit(self.path, start)))
+                .of_source(&self.sources, start, || Arc::new(self.linter.ruff.fixable_at_limit(self.path, start)))
         };
         let mut introduced = self.check(transformed).findings.introduced_since(&baseline.findings, failing);
         if introduced.is_empty() {
@@ -310,11 +310,11 @@ impl<'l, 'a> Fixer<'l, 'a> {
     }
 
     fn lint(&self, source: &str) -> Lint {
-        self.lints.get_or(self.sources.intern(source), || self.linter.lint(self.path, source, self.noqa))
+        self.lints.of_source(&self.sources, source, || self.linter.lint(self.path, source, self.noqa))
     }
 
     fn check(&self, source: &str) -> Arc<Checked> {
-        self.checks.get_or(self.sources.intern(source), || {
+        self.checks.of_source(&self.sources, source, || {
             let first = !self.checked.swap(true, Ordering::Relaxed);
             Arc::new(self.linter.ruff.check(self.path, source, &self.linter.settings.from_ruff, first))
         })
@@ -497,7 +497,10 @@ impl<K: Eq + Hash, T: Clone> Memo<K, T> {
         if let Some(known) = self.entries().get(&key) {
             return known.clone();
         }
-        let computed = compute();
+        self.keep(key, compute())
+    }
+
+    fn keep(&self, key: K, computed: T) -> T {
         let mut entries = self.entries();
         if entries.len() >= ENTRIES {
             entries.clear();
@@ -508,6 +511,16 @@ impl<K: Eq + Hash, T: Clone> Memo<K, T> {
 
     fn entries(&self) -> MutexGuard<'_, FxHashMap<K, T>> {
         self.0.lock().expect("no worker panics while computing")
+    }
+}
+
+impl<T: Clone> Memo<Arc<str>, T> {
+    // A hit borrows the source; only a miss interns it.
+    fn of_source(&self, sources: &Sources, source: &str, compute: impl FnOnce() -> T) -> T {
+        if let Some(known) = self.entries().get(source) {
+            return known.clone();
+        }
+        self.keep(sources.intern(source), compute())
     }
 }
 

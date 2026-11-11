@@ -108,7 +108,7 @@ pub(super) struct FactVisitor<'a> {
     pub(super) base_classes: Vec<String>,
     pub(super) stars: BTreeSet<String>,
     pub(super) from_statements: Vec<FromImport<'a>>,
-    // Whether the statement visited binds names at module scope: it sits at module level, or in a top-level `if` or
+    // Whether the statement visited runs when the module loads: it sits at module level, or in a top-level `if` or
     // `try` block.
     pub(super) top_level: bool,
     pub(super) reads_docstrings: bool,

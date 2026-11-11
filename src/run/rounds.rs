@@ -154,7 +154,7 @@ pub(crate) fn check_stdin(path: &Path, source: &str, resolved: &Resolved, mode: 
     let files = [RunFile::new(&absolute, &settings, ruff, resolved.pyproject_config.path.as_deref(), package, &roots)];
     let linted: Vec<&RunFile> = files.iter().collect();
     let Plan { rules, parts } = Plan::of(&linted, resolved)?;
-    let inputs = ProjectInputs::of(&files, &roots, rules);
+    let inputs = ProjectInputs::of(&files, &roots);
     let startup = roots.startup_names();
     let docs = documentation(&linted, &resolved.settings_resolver.root.root, rules, None)
         .remove(&files[0].nested)
@@ -267,13 +267,7 @@ fn index_cached<'f, T: Send>(
     let docs = docs();
     let startup = roots.startup_names();
     let groups: Vec<&[RunFile]> = indexed.chunk_by(|left, right| left.nested == right.nested).collect();
-    let inputs: Vec<ProjectInputs> = groups
-        .iter()
-        .map(|group| {
-            let linted: Vec<&RunFile> = group.iter().filter(|file| file.linted).collect();
-            ProjectInputs::of(group, roots, rules_of(&linted))
-        })
-        .collect();
+    let inputs: Vec<ProjectInputs> = groups.iter().map(|group| ProjectInputs::of(group, roots)).collect();
     let linted = indexed.iter().filter(|file| file.linted).count();
     // Only the cache reads the digest, which stats every file and walks every directory an import can name, so a run
     // without one skips it.
@@ -391,7 +385,7 @@ struct ProjectInputs<'f> {
 }
 
 impl<'f> ProjectInputs<'f> {
-    fn of(files: &'f [RunFile<'f>], roots: &SearchRoots, rules: RuleSet) -> Self {
+    fn of(files: &'f [RunFile<'f>], roots: &SearchRoots) -> Self {
         let linted: Vec<&RunFile> = files.iter().filter(|file| file.linted).collect();
         let settings: Vec<&Settings> = linted
             .iter()
@@ -433,7 +427,7 @@ impl<'f> ProjectInputs<'f> {
                 .sorted_unstable()
                 .dedup()
                 .collect(),
-            duplicate_statements: duplicate_window(&linted, rules),
+            duplicate_statements: duplicate_window(&linted, rules_of(&linted)),
             probed: probed_layout_key(&linted),
             roles: module_roles(files, roots),
             test_modules: files

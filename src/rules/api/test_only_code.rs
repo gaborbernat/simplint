@@ -14,7 +14,7 @@ pub fn test_only_code(checker: &Checker) {
     let api = checker.state().public_api(checker);
     for definition in definitions(module_statements(checker.body())) {
         let name = definition.name.as_str();
-        // A decorator may register the definition with something outside the run, such as a plugin list.
+        // A decorator may register the definition with something outside the run, such as a framework or a plugin list.
         if definition.decorated
             || Visibility::of(name) == Visibility::Dunder
             || api.is_public(definition.stmt.range(), Need::Any)
