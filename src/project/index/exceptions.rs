@@ -34,38 +34,31 @@ pub(super) fn exception_classes(
     }
     let home = class_home(|key| classes.contains_key(key), bindings, stars);
     let mut parents: FxHashMap<&ClassKey, Vec<ClassKey>> = FxHashMap::default();
+    let mut children: FxHashMap<ClassKey, Vec<&ClassKey>> = FxHashMap::default();
     let mut outside: FxHashMap<&ClassKey, Vec<(&str, &str)>> = FxHashMap::default();
     for (key, bases) in &classes {
         for (file, module, name) in bases {
             match file.and_then(|file| home(file, name)) {
-                Some(parent) => parents.entry(key).or_default().push(parent),
+                Some(parent) => {
+                    children.entry(parent.clone()).or_default().push(key);
+                    parents.entry(key).or_default().push(parent);
+                }
                 None => outside.entry(key).or_default().push((module, name)),
             }
         }
     }
-    let (mut exceptions, mut warnings): (FxHashSet<&ClassKey>, FxHashSet<&ClassKey>) =
-        (FxHashSet::default(), FxHashSet::default());
-    loop {
-        let mut grew = false;
-        for key in classes.keys() {
-            let bases = outside.get(key).map_or(&[][..], Vec::as_slice);
-            let from_parents = |set: &FxHashSet<&ClassKey>| {
-                parents.get(key).is_some_and(|found| found.iter().any(|parent| set.contains(parent)))
-            };
-            let raised = bases.iter().any(|(module, name)| is_exception_name(module, name, minor));
-            let warns =
-                bases.iter().any(|(module, name)| name.ends_with("Warning") && is_exception_name(module, name, minor));
-            if (raised || from_parents(&exceptions)) && exceptions.insert(key) {
-                grew = true;
-            }
-            if (warns || from_parents(&warnings)) && warnings.insert(key) {
-                grew = true;
-            }
+    let (mut raised, mut warned): (Vec<&ClassKey>, Vec<&ClassKey>) = (Vec::new(), Vec::new());
+    for key in classes.keys() {
+        let bases = outside.get(key).map_or(&[][..], Vec::as_slice);
+        if bases.iter().any(|(module, name)| is_exception_name(module, name, minor)) {
+            raised.push(key);
         }
-        if !grew {
-            break;
+        if bases.iter().any(|(module, name)| name.ends_with("Warning") && is_exception_name(module, name, minor)) {
+            warned.push(key);
         }
     }
+    let exceptions = with_subclasses(raised, &children);
+    let warnings = with_subclasses(warned, &children);
     // A handler catches its class and every base of it, so each base of a caught class is covered too.
     let mut covered: FxHashSet<ClassKey> = FxHashSet::default();
     let mut pending: Vec<ClassKey> = caught.iter().filter_map(|(file, name)| home(*file, name)).collect();
@@ -111,6 +104,21 @@ pub(super) fn exception_classes(
         }
     }
     (uncaught, types)
+}
+
+// A class that derives from one of the roots, or is one, through the classes that derive from each class.
+fn with_subclasses<'a>(
+    roots: Vec<&'a ClassKey>,
+    children: &FxHashMap<ClassKey, Vec<&'a ClassKey>>,
+) -> FxHashSet<&'a ClassKey> {
+    let mut found = FxHashSet::default();
+    let mut pending = roots;
+    while let Some(key) = pending.pop() {
+        if found.insert(key) {
+            pending.extend(children.get(key).into_iter().flatten().copied());
+        }
+    }
+    found
 }
 
 // The exception names a file's star imports bring in: those each star-imported file defines or binds, and those of the

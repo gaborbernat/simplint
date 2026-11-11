@@ -7,3 +7,4 @@ expression: "lint_fixture(rule, fixture, target_version)"
 16:7 SMP704 No handler catches `_IerrDerived` by name; raise a built-in exception such as `ValueError` instead
 20:7 SMP704 No handler catches `_IerrBroad` by name; raise a built-in exception such as `ValueError` instead
 24:7 SMP704 No handler catches `_IerrJson` by name; raise a built-in exception such as `ValueError` instead
+69:7 SMP704 No handler catches `_IerrMixed` by name; raise a built-in exception such as `ValueError` instead
