@@ -1,0 +1,21 @@
+---
+source: tests/common/mod.rs
+assertion_line: 137
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:1 SMP202 `_MSG` is used by one function only; define it there
+10:1 SMP202 `_DOC` is used by one function only; define it there [unsafe fix: Move `_DOC` into `describe`]
+--- fixed (1 applied, 1 remaining) ---
+_MSG = "hello \
+world"
+
+
+def show():
+    for _ in range(2):
+        print(_MSG)
+
+
+def describe():
+    doc = """hello
+world"""
+    return doc

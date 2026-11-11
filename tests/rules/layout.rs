@@ -69,6 +69,10 @@ use crate::common;
     "class-member-order", "class_member_order_string_tail.py", "py314"
     ; "class_member_order_string_line_is_not_a_comment"
 )]
+#[test_case(
+    "single-user-constant", "single_user_constant_continued_string.py", "py314"
+    ; "single_user_constant_continued_string_keeps_its_value"
+)]
 #[test_case("single-user-constant", "single_user_constant.py", "py314" ; "single_user_constant")]
 #[test_case(
     "definition-before-use", "definition_before_use_module_defaults.py", "py314"

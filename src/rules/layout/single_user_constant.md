@@ -475,6 +475,29 @@ No fix is offered when:
       return t"{_LIMIT}"
   ```
 
+- the constant becomes a local and its value holds a string that a backslash continues onto the next line, since
+  indenting that line would change the value;
+
+  ```python report
+  _MESSAGE = "hello \
+  world"
+
+
+  def show() -> None:
+      for _ in range(2):
+          print(_MESSAGE)
+  ```
+
+  ```python fixed
+  _MESSAGE = "hello \
+  world"
+
+
+  def show() -> None:
+      for _ in range(2):
+          print(_MESSAGE)
+  ```
+
 - a file of the run sets an attribute of the module under a computed name, as `setattr(module, name, value)` does
 
 ## Other tools
