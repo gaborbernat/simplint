@@ -20,11 +20,6 @@ pub(crate) fn kept_message(name: &str, new: &str, listed: bool) -> String {
     }
 }
 
-fn is_offered(checker: &Checker, name: &str) -> bool {
-    let project = checker.project();
-    project.is_library_api(name) || project.role().public && Visibility::of(name) == Visibility::Public
-}
-
 pub(crate) fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
     let ranges = checker.semantic().name_ranges(old);
     // A module name that shadows a builtin, as in `zip = zip`, shares its token with the builtin it reads.
@@ -57,6 +52,11 @@ pub(crate) fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix>
     fix_of(keep_debug_text(checker, edits.collect())?, Applicability::Unsafe)
 }
 
+fn is_offered(checker: &Checker, name: &str) -> bool {
+    let project = checker.project();
+    project.is_library_api(name) || project.role().public && Visibility::of(name) == Visibility::Public
+}
+
 // The text a string holds, not its source: `ruff format` rewrites escapes, as `\N{latin small letter x}` into
 // `\N{LATIN SMALL LETTER X}`, so a word in the source can come or go while the value stays.
 // The strings of other files count too, as a test or a generated template may look the name up by its spelling. A
@@ -68,6 +68,10 @@ pub(crate) fn appears_in_strings(checker: &Checker, name: &str) -> bool {
     name.chars().all(is_word_char)
         && (words.outside_exports.contains(name)
             || checker.project().string_word_count(name) > u32::from(words.all.contains(name)))
+}
+
+fn is_word_char(char: char) -> bool {
+    char.is_alphanumeric() || char == '_'
 }
 
 // The words of a file's strings, as runs of letters, digits and underscores, which is how a name appears in a string
@@ -94,8 +98,4 @@ impl StringWords {
         }
         words
     }
-}
-
-fn is_word_char(char: char) -> bool {
-    char.is_alphanumeric() || char == '_'
 }
