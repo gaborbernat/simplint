@@ -190,6 +190,9 @@ pub(super) type ClassBase<F = FileId> = (Option<F>, String, String);
 // A file and a name of it, as `class_home` walks the imports that re-export a class.
 type Node<'n> = (FileId, &'n str);
 
+// The imports each file binds, by the name it binds: the file and the name each one imports.
+type Reexports<'b> = FxHashMap<FileId, FxHashMap<&'b str, Vec<(FileId, &'b str)>>>;
+
 // The class a name of a file is, following the imports that re-export it from the file that defines it. `is_class`
 // tells the classes of the run apart from the names they bind.
 pub(super) fn class_home<'b>(
@@ -197,9 +200,14 @@ pub(super) fn class_home<'b>(
     bindings: &[(FileId, FileId, &'b ImportBinding)],
     stars: &[(FileId, FileId)],
 ) -> impl Fn(FileId, &str) -> Option<ClassKey> + 'b {
-    let mut reexports: FxHashMap<FileId, Vec<(&'b str, FileId, &'b str)>> = FxHashMap::default();
+    let mut reexports: Reexports<'b> = FxHashMap::default();
     for (importer, source, binding) in bindings {
-        reexports.entry(*importer).or_default().push((&binding.bound, *source, &binding.name));
+        reexports
+            .entry(*importer)
+            .or_default()
+            .entry(binding.bound.as_str())
+            .or_default()
+            .push((*source, binding.name.as_str()));
     }
     let mut starred: FxHashMap<FileId, Vec<FileId>> = FxHashMap::default();
     for (importer, source) in stars {
@@ -234,10 +242,8 @@ pub(super) fn class_home<'b>(
                 None => {}
             }
             let (file, name) = node;
-            for (bound, source, original) in reexports.get(&file).into_iter().flatten() {
-                if *bound == name {
-                    pending.push(((*source, *original), Some(node)));
-                }
+            for (source, original) in reexports.get(&file).and_then(|bound| bound.get(name)).into_iter().flatten() {
+                pending.push(((*source, *original), Some(node)));
             }
             pending.extend(starred.get(&file).into_iter().flatten().map(|source| ((*source, name), Some(node))));
         }
