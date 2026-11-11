@@ -381,13 +381,30 @@ The annotation the fix writes:
   LIMIT = -1
   ```
 
+- A parenthesized name without an annotation, such as `(LIMIT) = 3`, gets no fix, because `(LIMIT: Final[int]) = 3` is
+  not valid Python. The other names of the module still get theirs.
+
+  ```python report
+  (LIMIT) = 3
+  TIMEOUT = 30
+  ```
+
+  ```python fixed
+  from typing import Final
+
+  (LIMIT) = 3
+  TIMEOUT: Final[int] = 30
+  ```
+
 ```mermaid
 flowchart TD
     variable["reported variable"] --> annotated{"has an<br/>annotation?"}
     annotated -->|yes| bare{"bare Final?"}
     bare -->|no| wrap["wrap it in Final[...]"]
     bare -->|yes| literal
-    annotated -->|no| literal{"int, float, str,<br/>bytes or bool literal?"}
+    annotated -->|no| parenthesized{"parenthesized<br/>name?"}
+    parenthesized -->|yes| none
+    parenthesized -->|no| literal{"int, float, str,<br/>bytes or bool literal?"}
     literal -->|yes| typed["add or write Final[type]"]
     literal -->|no| none["no fix"]
     classDef blue fill:#9cc0e3,stroke:#1f4f7d,color:#062d59
@@ -396,7 +413,7 @@ flowchart TD
     classDef teal fill:#8ccbc3,stroke:#145c55,color:#072b28
     classDef orange fill:#f0b48c,stroke:#8a3d12,color:#3d1606
     class variable blue
-    class annotated,bare,literal yellow
+    class annotated,bare,literal,parenthesized yellow
     class wrap,typed green
     class none orange
 ```

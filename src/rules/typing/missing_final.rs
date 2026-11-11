@@ -2,6 +2,7 @@ use std::cell::OnceCell;
 
 use ruff_diagnostics::{Edit, Fix, IsolationLevel};
 use ruff_python_ast::helpers::is_dunder;
+use ruff_python_ast::parenthesize::parenthesized_range;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, PythonVersion, Stmt};
 use ruff_text_size::{Ranged, TextRange};
@@ -59,9 +60,16 @@ pub fn missing_final(checker: &Checker) {
         {
             continue;
         }
-        let fix = spelling.get_or_init(|| final_qualifier(checker)).as_ref().and_then(|(qualifier, import)| {
-            final_fix(checker, qualifier, import.as_ref(), target.range, annotation, value)
-        });
+        // `(LIMIT: Final[int]) = 3` is not valid Python, so a parenthesized name gets no annotation of its own.
+        let parenthesized = annotation.is_none()
+            && parenthesized_range(target.into(), stmt.into(), checker.comment_ranges(), checker.source).is_some();
+        let fix = (!parenthesized)
+            .then(|| {
+                spelling.get_or_init(|| final_qualifier(checker)).as_ref().and_then(|(qualifier, import)| {
+                    final_fix(checker, qualifier, import.as_ref(), target.range, annotation, value)
+                })
+            })
+            .flatten();
         checker.report_fix(
             Rule::MissingFinal,
             target.range,

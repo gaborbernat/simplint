@@ -55,6 +55,18 @@ fn missing_final_ignores_a_globals_the_module_defines() {
     assert_eq!(stdout.matches("SMP601").count(), 1, "{stdout}");
 }
 
+// The parenthesized name `(LIMIT)` takes no annotation of its own, as `(LIMIT: Final[int]) = 3` is not valid Python,
+// but the other names of the file still get theirs.
+#[test_case("(LIMIT) = 3\n", false ; "parenthesized_without_annotation")]
+#[test_case("(LIMIT): int = 3\n", true ; "parenthesized_with_annotation")]
+fn missing_final_fixes_a_parenthesized_name_only_when_annotated(source: &str, fixable: bool) {
+    let root = common::project(&[("module.py", &format!("{source}OTHER = 4\n\nprint(LIMIT, OTHER)\n"))]);
+    common::fix_unsafe(root.path(), "SMP601");
+    let fixed = common::read(root.path(), "module.py");
+    assert!(fixed.contains("OTHER: Final[int] = 4"), "{fixed}");
+    assert_eq!(fixed.contains("(LIMIT): Final[int] = 3"), fixable, "{fixed}");
+}
+
 #[test_case("assert inspect.signature(callback)", 0 ; "inspected_not_called")]
 #[test_case("assert callback(1)", 1 ; "called")]
 #[test_case("assert callback.__call__(1)", 1 ; "explicit_dunder_call")]
