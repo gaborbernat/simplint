@@ -245,3 +245,10 @@ print(pkg, helper.VALUE)
 - **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Open issue
   [#29175](https://github.com/astral-sh/ruff/issues/29175) asks for the reverse, adding `__lazy_modules__` for Python
   before 3.15.
+- **[Lifeguard](https://github.com/meta/Lifeguard):** Meta's analyzer for [PEP 810](https://peps.python.org/pep-0810/)
+  lazy imports works across a whole project. It follows imports, finds module-level side effects that break when a
+  module loads lazily, and writes the modules that are safe to load lazily as JSON for
+  [`sys.set_lazy_imports_filter()`](https://docs.python.org/3.15/library/sys.html#sys.set_lazy_imports_filter). Use it
+  when a large codebase starts adopting lazy imports. This rule stays within one file and judges no import's safety: it
+  rewrites a `__lazy_modules__` list the author already wrote as `lazy import` statements, which load the same modules
+  lazily.
