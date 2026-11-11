@@ -10,10 +10,10 @@ use crate::syntax::{is_name, sole_argument};
 
 // Since Python 3.10 the `traceback` functions read the exception's type and traceback from the exception itself.
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
-    let checker = walker.checker;
     let Expr::Call(call) = expr else {
         return;
     };
+    let checker = walker.checker;
     let Some(name) = checker.semantic().qualified_name(&call.func) else {
         return;
     };
@@ -28,31 +28,29 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let [exc_type, exc, rest @ ..] = call.arguments.args.as_ref() else {
         return;
     };
-    let Some(name) = exception_name(checker, exc_type).filter(|name| is_name(exc, name)) else {
+    let Some(exc_name) = exception_name(checker, exc_type).filter(|exception| is_name(exc, exception)) else {
         return;
     };
     // `format_exception_only` takes the exception alone, and the other functions also take its traceback, which the
     // exception carries, so only the exception's own traceback can go.
     let last = match rest {
         [] if function == "format_exception_only" => exc,
-        [traceback] if function != "format_exception_only" && is_traceback_of(traceback, name) => traceback,
+        [traceback] if function != "format_exception_only" && is_traceback_of(traceback, exc_name) => traceback,
         _ => return,
     };
     let range = TextRange::new(
         checker.parenthesized_range(exc_type, (&call.arguments).into()).start(),
         checker.parenthesized_range(last, (&call.arguments).into()).end(),
     );
-    let fix = replacement_unless_commented(checker, name.to_owned(), range).map(Fix::safe_edit);
     checker.report_fix(
         Rule::TracebackExceptionArguments,
         expr.range(),
-        format!("`traceback.{function}` reads the type and traceback from `{name}`; pass `{name}` alone"),
-        fix,
+        format!("`traceback.{function}` reads the type and traceback from `{exc_name}`; pass `{exc_name}` alone"),
+        replacement_unless_commented(checker, exc_name.to_owned(), range).map(Fix::safe_edit),
         "Drop the type and traceback arguments",
     );
 }
 
-// The name `X` of `type(X)` or `X.__class__`.
 fn exception_name<'e>(checker: &Checker, expr: &'e Expr) -> Option<&'e str> {
     match expr {
         Expr::Call(call) if checker.semantic().is_builtin(&call.func, "type") => {

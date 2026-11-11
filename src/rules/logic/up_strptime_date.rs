@@ -9,7 +9,6 @@ use crate::syntax::from_imports;
 
 // Since Python 3.14 `date` and `time` have their own `strptime`, which parse one part without building a datetime.
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
-    let checker = walker.checker;
     let Expr::Call(outer) = expr else {
         return;
     };
@@ -23,6 +22,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let Expr::Call(parse) = part.value.as_ref() else {
         return;
     };
+    let checker = walker.checker;
     if !checker.semantic().resolves_to(&parse.func, &["datetime", "datetime", "strptime"]) {
         return;
     }
@@ -41,13 +41,13 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         "date" => format.is_some_and(|format| !has_seconds(format)),
         _ => format.is_some_and(time_of_day),
     };
-    // Drops `.date()` or `.time()`, keeping the parentheses around the call when it has them.
-    let unwrap = TextRange::new(checker.parenthesized_range(part.value.as_ref(), expr.into()).end(), expr.end());
+    // Starts after the call's closing parenthesis, so a parenthesized call keeps its parentheses.
+    let suffix = TextRange::new(checker.parenthesized_range(part.value.as_ref(), expr.into()).end(), expr.end());
     let fix = class_replacement(checker, class, member)
-        .filter(|_| !checker.has_comment_in(class.range()) && !checker.has_comment_in(unwrap))
+        .filter(|_| !checker.has_comment_in(class.range()) && !checker.has_comment_in(suffix))
         .map(|(replacement, import)| {
             let class_edit = Edit::range_replacement(replacement, class.range());
-            let mut rest = vec![Edit::range_deletion(unwrap)];
+            let mut rest = vec![Edit::range_deletion(suffix)];
             rest.extend(import);
             Fix::applicable_edits(class_edit, rest, if safe { Applicability::Safe } else { Applicability::Unsafe })
         });
@@ -60,9 +60,29 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     );
 }
 
-// The text the class expression becomes, and the import it needs. `datetime.datetime` takes the module's `date` or
-// `time`. A class imported by name gets its own `date` or `time` from the import that binds it, which the file must
-// not already spell.
+fn has_seconds(format: &str) -> bool {
+    directives(format)
+        .is_none_or(|found| found.iter().any(|directive| matches!(directive, 'S' | 'X' | 'c' | 'T' | 'r')))
+}
+
+fn directives(format: &str) -> Option<Vec<char>> {
+    let mut chars = format.chars();
+    let mut found = Vec::new();
+    while let Some(character) = chars.next() {
+        if character == '%' {
+            found.push(chars.next()?);
+        }
+    }
+    Some(found)
+}
+
+fn time_of_day(format: &str) -> bool {
+    directives(format)
+        .is_some_and(|found| found.iter().all(|directive| matches!(directive, 'H' | 'I' | 'M' | 'f' | 'p' | '%')))
+}
+
+// A class imported by name gets `date` or `time` added to its import line, unless the file already spells `date` or
+// `time` outside an attribute.
 fn class_replacement(checker: &Checker, class: &Expr, member: &str) -> Option<(String, Option<Edit>)> {
     match class {
         Expr::Name(name) => {
@@ -76,31 +96,8 @@ fn class_replacement(checker: &Checker, class: &Expr, member: &str) -> Option<(S
     }
 }
 
-// The alias that imports `datetime.datetime` under the name `local` at module level.
 fn class_alias<'b>(body: &'b [Stmt], local: &str) -> Option<&'b ast::Alias> {
     from_imports(body, "datetime")
         .flat_map(|import| &import.names)
         .find(|alias| alias.name.as_str() == "datetime" && alias.asname.as_ref().unwrap_or(&alias.name) == local)
-}
-
-// The directives of a format, where `%%` is a literal percent sign; `None` when the format ends in a `%`.
-fn directives(format: &str) -> Option<Vec<char>> {
-    let mut chars = format.chars();
-    let mut found = Vec::new();
-    while let Some(c) = chars.next() {
-        if c == '%' {
-            found.push(chars.next()?);
-        }
-    }
-    Some(found)
-}
-
-// Whether a format has only the directives of the time of day, `%H`, `%I`, `%M`, `%f` and `%p`, and `%%`.
-fn time_of_day(format: &str) -> bool {
-    directives(format).is_some_and(|found| found.iter().all(|d| matches!(d, 'H' | 'I' | 'M' | 'f' | 'p' | '%')))
-}
-
-// Whether a format has a seconds directive, or a composite that includes seconds, or is malformed.
-fn has_seconds(format: &str) -> bool {
-    directives(format).is_none_or(|found| found.iter().any(|d| matches!(d, 'S' | 'X' | 'c' | 'T' | 'r')))
 }

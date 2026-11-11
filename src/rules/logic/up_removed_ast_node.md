@@ -41,8 +41,8 @@ def make_number():
 
 ## Configuration
 
-No setting changes the report. The aliases are gone from Python 3.14, and their deprecation covers every version
-simplint supports, so the rule reports on every target version.
+No setting changes the report. The aliases are gone from Python 3.14 and deprecated in each version simplint supports,
+so the rule reports them on all target versions.
 
 ## What it does
 
@@ -101,7 +101,7 @@ simplint supports, so the rule reports on every target version.
 
 - **`visit_Num`, `visit_Str`, `visit_Bytes`, `visit_NameConstant` and `visit_Ellipsis` methods** of a class that
   directly subclasses `ast.NodeVisitor` or `ast.NodeTransformer`. No fix is offered: the method has to become
-  `visit_Constant`, which takes over the values of every one of those classes.
+  `visit_Constant`, which takes over the values of all five classes.
 
   ```toml config
   [project]

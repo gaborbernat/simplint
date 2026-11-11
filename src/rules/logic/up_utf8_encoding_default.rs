@@ -6,21 +6,14 @@ use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
 use crate::rules::logic::modernize::report_redundant_keyword;
 
-// Text reads and writes that take an `encoding` argument, and the `pathlib` methods named like them. A method's
-// receiver is not typed, so an unrelated class with the same method name is reported too.
-const PATH_METHODS: [&str; 3] = ["open", "read_text", "write_text"];
-
-// The spellings of UTF-8 Python's codec lookup maps to `utf-8`, after its normalization of case, `-` and spaces.
-const UTF_8_NAMES: [&str; 7] = ["utf_8", "utf8", "u8", "utf", "utf8_ucs2", "utf8_ucs4", "cp65001"];
-
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
-    let checker = walker.checker;
     let Expr::Call(call) = expr else {
         return;
     };
     let Some(keyword) = call.arguments.find_keyword("encoding").filter(|keyword| is_utf_8(&keyword.value)) else {
         return;
     };
+    let checker = walker.checker;
     if !is_text_opener(checker, &call.func) {
         return;
     }
@@ -40,7 +33,8 @@ fn is_utf_8(value: &Expr) -> bool {
         return false;
     };
     let normalized = literal.value.to_str().to_ascii_lowercase().replace(['-', ' '], "_");
-    UTF_8_NAMES.contains(&normalized.as_str())
+    // The spellings Python's codec lookup maps to `utf-8`, once case, `-` and spaces are normalized.
+    ["utf_8", "utf8", "u8", "utf", "utf8_ucs2", "utf8_ucs4", "cp65001"].contains(&normalized.as_str())
 }
 
 fn is_text_opener(checker: &Checker, func: &Expr) -> bool {
@@ -55,5 +49,6 @@ fn is_text_opener(checker: &Checker, func: &Expr) -> bool {
     let Expr::Attribute(attribute) = func else {
         return false;
     };
-    PATH_METHODS.contains(&attribute.attr.as_str()) && semantic.qualified_name(func).is_none()
+    // A method's receiver is not typed, so a same-named method of an unrelated class is reported too.
+    ["open", "read_text", "write_text"].contains(&attribute.attr.as_str()) && semantic.qualified_name(func).is_none()
 }

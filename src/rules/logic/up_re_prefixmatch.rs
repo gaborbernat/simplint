@@ -17,12 +17,11 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     if left_to_ruff(walker, expr) {
         return;
     }
-    let fix = Fix::safe_edit(rename_attribute(attribute, "prefixmatch"));
     checker.report_fix(
         Rule::RePrefixMatch,
         expr.range(),
         "`re.match` is soft deprecated from Python 3.15; `re.prefixmatch` names the same function",
-        Some(fix),
+        Some(Fix::safe_edit(rename_attribute(attribute, "prefixmatch"))),
         "Use `re.prefixmatch`",
     );
 }
@@ -66,9 +65,7 @@ fn is_compared_to_none(parent: Option<&Expr>) -> bool {
         .is_some_and(|(_, op, right)| matches!(op, CmpOp::Is | CmpOp::IsNot) && right.is_none_literal_expr())
 }
 
-// Whether `expr` is a boolean test as Ruff's checker marks one: the test of an `if`, `elif`, `while`, `assert` or
-// conditional expression, a comprehension's condition, a match guard, the operand of `not` or the argument of `bool()`,
-// and the operands of `and` and `or` in such a test.
+// A boolean test as Ruff's checker marks one; RUF055 rewrites a call in such a test.
 fn is_boolean_test<'a>(walker: &Walker<'_, 'a>, outer: &[&'a Expr], expr: &'a Expr) -> bool {
     let mut child = expr;
     for &parent in outer.iter().rev() {
