@@ -122,6 +122,9 @@ No fix is offered when:
       return codecs.open(path, "rb", "utf-8").read()
   ```
 
+- a Ruff rule the project enables still flags the new `open()` call after Ruff's own fixes, such as PTH123
+  (`builtin-open`) under the default settings, so simplint withdraws the fix;
+
 - an argument is unpacked with `*` or `**`, or `open` is bound in the module, or by a parameter, local or loop variable
   of a function, lambda, class body or comprehension that encloses the call, which the new call would pick up;
 
