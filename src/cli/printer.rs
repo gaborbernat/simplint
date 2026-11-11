@@ -1,5 +1,4 @@
-// A port of Ruff's `printer.rs`, which the `ruff` crate keeps private, so the summary lines, statistics and fix summary
-// read the same as `ruff check`'s.
+// A port of Ruff's `printer.rs`, which the `ruff` crate keeps private, so the output reads as `ruff check`'s does.
 use std::cmp::Reverse;
 use std::io::Write;
 
@@ -54,7 +53,6 @@ impl ExpandedStatistics<'_> {
     }
 }
 
-// Diagnostics are rendered in chunks of this many, in parallel.
 const FULL_CHUNK: usize = 64;
 const FULL_WINDOW: usize = FULL_CHUNK * 256;
 
@@ -74,8 +72,11 @@ impl Printer<'_> {
             return Ok(());
         }
         if self.flags.intersects(Flags::SHOW_VIOLATIONS) {
-            let fixables = FixableStatistics::try_from(diagnostics, self.mode.unsafe_fixes);
-            self.render(diagnostics, fixables.as_ref(), writer)?;
+            self.render(
+                diagnostics,
+                FixableStatistics::try_from(diagnostics, self.mode.unsafe_fixes).as_ref(),
+                writer,
+            )?;
         }
         if self.format.is_human_readable() {
             let mut text = String::new();
@@ -101,8 +102,8 @@ impl Printer<'_> {
             .with_fix_applicability(self.mode.unsafe_fixes.required_applicability())
     }
 
-    // The text of a file's diagnostics in `full` output, for the cache to keep, when the output is `full`. `None` when the
-    // working directory cannot be read, which leaves the text to the printer.
+    // The text of a file's diagnostics in `full` output, for the cache to keep, when the output is `full`. `None` when
+    // the working directory cannot be read, which leaves the text to the printer.
     pub fn full_display(&self) -> Option<FullDisplay> {
         if self.format != OutputFormat::Full {
             return None;
@@ -259,8 +260,11 @@ impl Printer<'_> {
             if self.log_level >= LogLevel::Default {
                 writeln!(writer)?;
             }
-            let fixables = FixableStatistics::try_from(diagnostics, self.mode.unsafe_fixes);
-            self.render(diagnostics, fixables.as_ref(), writer)?;
+            self.render(
+                diagnostics,
+                FixableStatistics::try_from(diagnostics, self.mode.unsafe_fixes).as_ref(),
+                writer,
+            )?;
         }
         writer.flush()?;
         Ok(())
@@ -303,8 +307,8 @@ impl Printer<'_> {
                     format!("{fix_prefix} {applicable} fixable with `--fix`.")
                 }
                 (true, applicable, unsafe_fixes) => format!(
-                    "{fix_prefix} {applicable} fixable with `--fix` ({unsafe_fixes} unsafe fix{unsafe_es} available with \
-                     `--fix --unsafe-fixes`)."
+                    "{fix_prefix} {applicable} fixable with `--fix` ({unsafe_fixes} unsafe fix{unsafe_es} available \
+                     with `--fix --unsafe-fixes`)."
                 ),
                 (false, ..) => return text,
             };
@@ -318,10 +322,11 @@ impl Printer<'_> {
             ("Would fix", "No errors would be fixed")
         };
         let errors = format!("{fixed} error{}", plural(fixed, "s"));
-        let available = format!("{unapplied} fix{}", plural(unapplied, "es"));
         let line = match (fixed, unapplied) {
             (0, 0) => return text,
-            (0, _) => format!("{nothing} ({available} available with `--unsafe-fixes`)."),
+            (0, _) => {
+                format!("{nothing} ({unapplied} fix{} available with `--unsafe-fixes`).", plural(unapplied, "es"))
+            }
             (_, 0) => format!("{fix} {errors}."),
             _ => format!(
                 "{fix} {errors} ({unapplied} additional fix{} available with `--unsafe-fixes`).",
@@ -417,7 +422,6 @@ fn write_full(
     Ok(())
 }
 
-// The name a diagnostic's file is shown by, which the diagnostics of one file share.
 fn file_name(diagnostic: &Diagnostic) -> &str {
     diagnostic
         .primary_annotation()
@@ -533,7 +537,6 @@ impl FixableStatistics {
     }
 }
 
-// Whether the diagnostic points at locations besides its primary one.
 fn has_related(diagnostic: &Diagnostic) -> bool {
     diagnostic.secondary_annotations().next().is_some()
 }

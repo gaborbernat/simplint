@@ -368,13 +368,17 @@ impl CheckCommand {
         format.extend(switch("preview", self.preview, self.no_preview));
         let ruff_global = RuffGlobalConfigArgs::try_parse_from(ruff_global)?.global_options;
         let (_, config_arguments) = FormatCommand::try_parse_from(format)?.partition(ruff_global)?;
-        let overrides =
-            Overrides { inline, flags: Configuration::from_options(self.simplint_options(), &cwd, &Source::Cli) };
-        let arguments = SimplintArguments { config_file, isolated: global_options.isolated, overrides };
+        let arguments = SimplintArguments {
+            config_file,
+            isolated: global_options.isolated,
+            overrides: Overrides {
+                inline,
+                flags: Configuration::from_options(self.simplint_options(), &cwd, &Source::Cli),
+            },
+        };
         Ok((config_arguments, arguments))
     }
 
-    // The suppression comments `--add-noqa` or `--add-ignore` asks for: the reason and the kind.
     pub fn suppression(&self) -> Option<(&str, SuppressionKind)> {
         let noqa = self.add_noqa.as_deref().map(|reason| (reason, SuppressionKind::Noqa));
         noqa.or_else(|| self.add_ignore.as_deref().map(|reason| (reason, SuppressionKind::Ignore)))
@@ -410,7 +414,6 @@ impl CheckCommand {
     }
 }
 
-// The flag that asks for a kind of suppression comment.
 pub fn suppression_flag(kind: SuppressionKind) -> &'static str {
     match kind {
         SuppressionKind::Noqa => "--add-noqa",
@@ -418,7 +421,6 @@ pub fn suppression_flag(kind: SuppressionKind) -> &'static str {
     }
 }
 
-// What the command line says about `[tool.simplint]`: where to read it from, and what overrides it.
 pub struct SimplintArguments {
     pub config_file: Option<PathBuf>,
     pub isolated: bool,
@@ -458,7 +460,6 @@ fn collect_per_file_ignores(pairs: &[PatternPrefixPair]) -> BTreeMap<String, Vec
     per_file_ignores
 }
 
-// One `--config` value: a configuration file, or inline options split into simplint's and Ruff's.
 #[derive(Clone)]
 pub enum ConfigArgument {
     File(PathBuf),

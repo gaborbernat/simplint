@@ -36,7 +36,6 @@ pub fn rule_list(format: HelpFormat) -> Result<()> {
     print(&Rule::ALL.iter().copied().map(RuleEntry::from_rule).collect::<Vec<_>>(), format)
 }
 
-// An option, or every option when `key` names none.
 pub fn config(key: Option<&str>, format: HelpFormat) -> Result<()> {
     let metadata = SimplintOptions::metadata();
     print(&key.and_then(|key| metadata.find(key)).map_or(ConfigOutput::All(metadata), ConfigOutput::Entry), format)
@@ -67,7 +66,6 @@ pub fn config_schema() -> Result<()> {
     Ok(())
 }
 
-// An informational subcommand's output, which Ruff prints as text or as pretty JSON.
 trait HelpOutput: Serialize {
     // Ruff ends some JSON outputs with a newline and others not.
     const JSON_NEWLINE: bool;
@@ -359,8 +357,16 @@ fn command_schema(command: &clap::Command) -> serde_json::Value {
                 "flag": matches!(argument.get_action(), ArgAction::SetTrue),
                 "multiple": argument.get_num_args().is_some_and(|range| range.max_values() > 1),
                 "delimiter": argument.get_value_delimiter(),
-                "default": argument.get_default_values().iter().map(|value| value.to_string_lossy()).collect::<Vec<_>>(),
-                "choices": argument.get_possible_values().iter().map(|value| value.get_name().to_owned()).collect::<Vec<_>>(),
+                "default": argument
+                    .get_default_values()
+                    .iter()
+                    .map(|value| value.to_string_lossy())
+                    .collect::<Vec<_>>(),
+                "choices": argument
+                    .get_possible_values()
+                    .iter()
+                    .map(|value| value.get_name().to_owned())
+                    .collect::<Vec<_>>(),
                 "value_name": argument.get_value_names().and_then(|names| names.first()).map(ToString::to_string),
             })
         })
