@@ -1,5 +1,4 @@
-Flags modules where the last top-level statement that binds `__all__` is not the last statement. At the end of the
-module the export list comes after every definition it names, so it reads as a summary of what the module provides.
+Flags modules where the last top-level statement that binds `__all__` is not the last statement.
 
 ## Why is this bad?
 

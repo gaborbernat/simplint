@@ -1,5 +1,4 @@
-Flags an `__all__` written as a tuple, or as a list without a trailing comma after its last name. With the comma, Ruff's
-formatter puts each name on its own line, so adding or removing an export changes one line.
+Flags an `__all__` written as a tuple, or as a list without a trailing comma after its last name.
 
 ## Why is this bad?
 
