@@ -1,4 +1,3 @@
-use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::{self as ast, Expr, ExprContext, Pattern, Stmt, TypeParam};
 use ruff_text_size::TextRange;
 
@@ -10,11 +9,8 @@ use crate::syntax::import_aliases;
 
 pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     match stmt {
-        Stmt::FunctionDef(ast::StmtFunctionDef { name, .. }) => {
-            check(walker, current(walker), name.as_str(), name.range, RuffRule::AmbiguousFunctionName);
-        }
-        Stmt::ClassDef(ast::StmtClassDef { name, .. }) => {
-            check(walker, current(walker), name.as_str(), name.range, RuffRule::AmbiguousClassName);
+        Stmt::FunctionDef(ast::StmtFunctionDef { name, .. }) | Stmt::ClassDef(ast::StmtClassDef { name, .. }) => {
+            check(walker, current(walker), name.as_str(), name.range);
         }
         Stmt::Import(_) | Stmt::ImportFrom(_) => {
             for asname in import_aliases(stmt).iter().filter_map(|alias| alias.asname.as_ref()) {
@@ -59,15 +55,14 @@ pub fn type_param<'a>(walker: &mut Walker<'_, 'a>, type_param: &'a TypeParam) {
     }
 }
 
-// Ruff's E741, E742 and E743 flag `l`, `I` and `O` on the bindings of their kind, except imports, patterns and type
-// parameters. Those three letters are left to the Ruff rule of the binding's kind while it runs.
-fn check<'a>(walker: &Walker<'_, 'a>, scope: TextRange, name: &'a str, range: TextRange, ruff: RuffRule) {
-    let left_to_ruff = matches!(name, "l" | "I" | "O") && walker.checker.settings.from_ruff.ruff_runs(ruff);
-    report(walker, scope, name, range, !left_to_ruff);
+// Ruff's E741, E742 and E743 flag `l`, `I` and `O` on the variables, classes and functions of their kind, so those
+// letters are left to them. No Ruff rule checks imports, patterns or type parameters, which keep them.
+fn check<'a>(walker: &Walker<'_, 'a>, scope: TextRange, name: &'a str, range: TextRange) {
+    report(walker, scope, name, range, !matches!(name, "l" | "I" | "O"));
 }
 
 fn variable<'a>(walker: &Walker<'_, 'a>, scope: TextRange, name: &'a str, range: TextRange) {
-    check(walker, scope, name, range, RuffRule::AmbiguousVariableName);
+    check(walker, scope, name, range);
 }
 
 // Imports, patterns and type parameters, which no Ruff rule checks for these letters.
