@@ -10,8 +10,7 @@ use crate::syntax::{alias_root_binding, last_segment, pattern_capture};
 // Built-ins that read the locals by name, so a variable they read cannot be inlined away.
 pub(in crate::rules::logic) const LOCALS_READERS: [&str; 4] = ["eval", "exec", "locals", "vars"];
 
-// Every mention of each name in a function, found in one walk of its body, so a function with many assignments is
-// walked once rather than once per assignment.
+// Walked once per function, not once per assignment.
 pub(in crate::rules::logic) struct Names<'a> {
     pub(in crate::rules::logic) mentions: FxHashMap<&'a str, Vec<(TextRange, ExprContext)>>,
     // Names the function binds in a way the walk does not follow: a `def`, a `class`, an import, an `except` target or
@@ -107,7 +106,6 @@ impl Names<'_> {
     }
 }
 
-// The names an expression reads, as their own text spells them.
 #[derive(Default)]
 struct NameCollector {
     names: Vec<String>,

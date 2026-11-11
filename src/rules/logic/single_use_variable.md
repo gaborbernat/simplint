@@ -4,8 +4,7 @@ value removes the name and keeps the value next to the code that uses it.
 ## Why is this bad?
 
 A name that exists only to be read on the next line adds a step to follow without adding meaning. The reader has to find
-the assignment, remember the value, and then reach the line that uses it. Inlining the value keeps the decision in one
-place.
+the assignment, remember the value, and then reach the line that uses it. Inlining removes that step.
 
 ## Example
 
@@ -223,9 +222,9 @@ def total_price(prices: list[float]) -> str:
 
 - **A read as the argument of [`next`](https://docs.python.org/3/library/functions.html#next) or
   [`anext`](https://docs.python.org/3/library/functions.html#anext), or as the receiver of `send`, `throw`, `close` or
-  `__next__`**: the call steps or closes the object the name holds. Without the name, the call would be the only holder
-  of the object, so the object would be released as soon as the call returns, which runs a generator's `finally` early.
-  Keeping the name is the only way to leave the object alone, so the variable is not reported.
+  `__next__`**: the call steps or closes the object the name holds. Without the name, the call holds the last reference
+  to the object, so the object is released when the call returns, which runs a generator's `finally` early. Keeping the
+  name keeps the object alive, so the variable is not reported.
 
   ```python ok
   def run(rows: list[int]) -> None:
@@ -526,9 +525,9 @@ def run(stack: list[int]) -> str:
 
 Inlined, `stack` is formatted before `stack.pop()` runs, so the message shows the popped item still in the list.
 
-The fix is also unsafe when the value calls something and the next statement reads an attribute or a subscript of the
-name, such as `tmp.name`, because the call's object is dropped right after that read, so its finalizer runs early. A
-method call on the name, such as `tmp.describe()`, keeps the object alive while it runs, so that fix stays safe.
+A call in the value also makes the fix unsafe when the next statement reads an attribute or a subscript of the name,
+such as `tmp.name`, because the call's object is dropped right after that read, so its finalizer runs early. A method
+call on the name, such as `tmp.describe()`, keeps the object alive while it runs, so that fix stays safe.
 
 ```python report
 import tempfile
@@ -549,8 +548,8 @@ def make_note() -> None:
     Path(tempfile.TemporaryDirectory().name, "note").write_text("hi")
 ```
 
-The fix is also unsafe when the value calls something and the next statement reads a name in an operator before the
-read, such as `not queue`, because the operator takes the name's state before the call runs.
+A value that calls something is unsafe to inline when the next statement reads a name in an operator before the read,
+such as `not queue`, because the operator takes the name's state before the call runs.
 
 ```python report
 def pop_once(queue: list[int]) -> tuple[bool, int]:

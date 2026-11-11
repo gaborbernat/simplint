@@ -1,7 +1,5 @@
 use ruff_python_ast::{self as ast, Expr, UnaryOp};
 
-// A literal whose value is the same wherever it is evaluated and that cannot raise: a constant or a display of them.
-// A dict key or a set element is hashed when it is built, so a list or dict there is not a constant of that kind.
 pub(in crate::rules::logic) fn is_constant(expr: &Expr) -> bool {
     match expr {
         Expr::NumberLiteral(_)
@@ -18,6 +16,7 @@ pub(in crate::rules::logic) fn is_constant(expr: &Expr) -> bool {
         Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => {
             elts.iter().all(is_constant)
         }
+        // A set element or dict key is hashed when the display is built, so a list or dict there is not constant.
         Expr::Set(ast::ExprSet { elts, .. }) => elts.iter().all(is_hashable),
         Expr::Dict(ast::ExprDict { items, .. }) => {
             items.iter().all(|item| item.key.as_ref().is_some_and(is_hashable) && is_constant(&item.value))

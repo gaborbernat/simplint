@@ -10,9 +10,8 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::rules::edits::escape_braces;
 
-// The expression's text with every string in it in the other quote than `delimiter`, for a replacement field before
-// Python 3.12 that cannot hold `delimiter`. `None` when a string cannot change quote, or the text still holds
-// `delimiter` or a backslash.
+// A replacement field before Python 3.12 cannot hold the quote its f-string is written in, so every string in it must
+// take the other one.
 pub(in crate::rules::logic) fn requoted_text(checker: &Checker, expr: &Expr, delimiter: Quote) -> Option<String> {
     if any_over_expr(expr, &|sub: &Expr| unquotable(checker, sub)) {
         return None;
@@ -44,21 +43,8 @@ fn unquotable(checker: &Checker, expr: &Expr) -> bool {
     }
 }
 
-fn literal_part<'a>(checker: &Checker<'a>, literal: &ast::StringLiteral) -> Option<(Quote, Cow<'a, str>)> {
-    Some((literal.flags.quote_style(), Cow::Owned(escape_braces(literal_text(checker, literal)?))))
-}
-
-// A named escape such as `\N{BULLET}` keeps single braces in an f-string, where every other brace doubles.
-fn literal_text<'a>(checker: &Checker<'a>, literal: &ast::StringLiteral) -> Option<&'a str> {
-    let flags = literal.flags;
-    let text = checker.text(literal.content_range());
-    (!flags.is_triple_quoted() && !flags.prefix().is_raw() && !flags.prefix().is_unicode() && !text.contains("\\N{"))
-        .then_some(text)
-}
-
-// The parts of a string or f-string value as an f-string body takes them, each with its quote: a literal's text with its
-// braces doubled, and an f-string's text between its quotes as it stands. `None` when a part cannot move into an
-// f-string body, which is a literal `literal_text` refuses or a raw or triple-quoted f-string.
+// The parts of a string or f-string value as an f-string body takes them, each with its quote. `None` when a part
+// cannot move into an f-string body.
 pub(in crate::rules::logic) fn fstring_body_parts<'a>(
     checker: &Checker<'a>,
     value: &Expr,
@@ -83,6 +69,18 @@ pub(in crate::rules::logic) fn fstring_body_parts<'a>(
             .collect(),
         _ => None,
     }
+}
+
+fn literal_part<'a>(checker: &Checker<'a>, literal: &ast::StringLiteral) -> Option<(Quote, Cow<'a, str>)> {
+    Some((literal.flags.quote_style(), Cow::Owned(escape_braces(literal_text(checker, literal)?))))
+}
+
+// A named escape such as `\N{BULLET}` keeps single braces in an f-string, where every other brace doubles.
+fn literal_text<'a>(checker: &Checker<'a>, literal: &ast::StringLiteral) -> Option<&'a str> {
+    let flags = literal.flags;
+    let text = checker.text(literal.content_range());
+    (!flags.is_triple_quoted() && !flags.prefix().is_raw() && !flags.prefix().is_unicode() && !text.contains("\\N{"))
+        .then_some(text)
 }
 
 struct Requote(Quote);

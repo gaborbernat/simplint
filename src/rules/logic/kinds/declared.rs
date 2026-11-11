@@ -8,7 +8,6 @@ use crate::rules::is_class_like;
 use crate::semantic::BindingKind;
 use crate::syntax::{is_classmethod, is_name, receiver, target_leaves};
 
-// A class around the spot, with its index among the scopes.
 #[derive(Clone, Copy)]
 pub(super) struct Class<'a> {
     pub(super) def: &'a ast::StmtClassDef,
@@ -34,17 +33,14 @@ fn decorator_callee(decorator: &ast::Decorator) -> &Expr {
     }
 }
 
-// The name a method calls its instance, unless it is a static or class method.
 pub(super) fn self_parameter(method: &ast::StmtFunctionDef) -> Option<&str> {
     receiver(method).filter(|_| !is_classmethod(method))
 }
 
-pub(super) fn is_builtin_call(checker: &Checker, expr: &Expr, names: &[&str]) -> bool {
+fn is_builtin_call(checker: &Checker, expr: &Expr, names: &[&str]) -> bool {
     names.iter().any(|name| checker.semantic().is_builtin(expr, name))
 }
 
-// Whether a decorator hands back the function's own result: `staticmethod`, `classmethod`, a `functools` cache or
-// `typing.override`.
 pub(super) fn keeps_return(checker: &Checker, decorator: &ast::Decorator) -> bool {
     let expr = decorator_callee(decorator);
     is_builtin_call(checker, expr, &["staticmethod", "classmethod"])
@@ -64,7 +60,6 @@ pub(super) fn is_property(checker: &Checker, decorator: &ast::Decorator) -> bool
             .is_some_and(|name| name.segments() == ["functools", "cached_property"])
 }
 
-// The kind an annotation declares.
 pub(super) fn annotation(checker: &Checker, expr: &Expr) -> Option<Kind> {
     let semantic = checker.semantic();
     let simple = |name: &str| match name {
@@ -117,19 +112,35 @@ pub(super) fn annotation(checker: &Checker, expr: &Expr) -> Option<Kind> {
             if !CONTAINERS.contains(&container.as_str()) {
                 return None;
             }
-            let mut kinds = Vec::new();
-            for elt in elts.iter().filter(|elt| !elt.is_ellipsis_literal_expr()) {
-                kinds.push(annotation(checker, elt)?);
-            }
+            let kinds = elts
+                .iter()
+                .filter(|elt| !elt.is_ellipsis_literal_expr())
+                .map(|elt| annotation(checker, elt))
+                .collect::<Option<Vec<_>>>()?;
             shared(kinds).and_then(items)
         }
         _ => path_class(checker, expr).or_else(|| imported_class(checker, expr)),
     }
 }
 
-// An instance of an imported class that an annotation names: the class of the run, or else one spelled as a class,
-// which is not a typing alias.
-pub(super) fn imported_class(checker: &Checker, expr: &Expr) -> Option<Kind> {
+pub(in crate::rules::logic) fn class_named<'a>(checker: &Checker<'a>, name: &str) -> Option<&'a ast::StmtClassDef> {
+    let [binding] = checker.semantic().bindings(name) else {
+        return None;
+    };
+    if binding.kind != BindingKind::Class {
+        return None;
+    }
+    checker.module_classes().get(name).copied()
+}
+
+fn path_class(checker: &Checker, expr: &Expr) -> Option<Kind> {
+    checker.semantic().qualified_name(expr).and_then(|name| match name.segments() {
+        ["pathlib", class] if PATH_CLASSES.contains(class) => Some(Kind::Path),
+        _ => None,
+    })
+}
+
+fn imported_class(checker: &Checker, expr: &Expr) -> Option<Kind> {
     let semantic = checker.semantic();
     let name = semantic.qualified_name(expr)?;
     let root = attribute_root(expr).as_name_expr()?;
@@ -144,24 +155,6 @@ pub(super) fn imported_class(checker: &Checker, expr: &Expr) -> Option<Kind> {
     }
 }
 
-pub(super) fn path_class(checker: &Checker, expr: &Expr) -> Option<Kind> {
-    checker.semantic().qualified_name(expr).and_then(|name| match name.segments() {
-        ["pathlib", class] if PATH_CLASSES.contains(class) => Some(Kind::Path),
-        _ => None,
-    })
-}
-
-// The class the module defines once under `name`, at its top level.
-pub(in crate::rules::logic) fn class_named<'a>(checker: &Checker<'a>, name: &str) -> Option<&'a ast::StmtClassDef> {
-    let [binding] = checker.semantic().bindings(name) else {
-        return None;
-    };
-    if binding.kind != BindingKind::Class {
-        return None;
-    }
-    checker.module_classes().get(name).copied()
-}
-
 // Statements of a module body come in source order, so the class starting at `range` is found by a search.
 pub(super) fn class_at<'a>(checker: &Checker<'a>, range: TextRange) -> Option<&'a ast::StmtClassDef> {
     let body = checker.body();
@@ -169,8 +162,7 @@ pub(super) fn class_at<'a>(checker: &Checker<'a>, range: TextRange) -> Option<&'
     body[index].as_class_def_stmt().filter(|class| class.range == range)
 }
 
-// What calling the class gives: an instance, unless the class has a `__new__`, a metaclass or a decorator that may
-// return something else.
+// A metaclass, a `__new__` or another decorator may return something other than an instance.
 pub(super) fn instance_of(checker: &Checker, class: &ast::StmtClassDef) -> Option<Kind> {
     let plain = class.keywords().is_empty()
         && class.decorator_list.iter().all(|decorator| {

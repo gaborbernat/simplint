@@ -76,11 +76,13 @@ Statements are counted as the top-level statements of a body, each nested block 
 not count. A helper of `max-helper-statements` or more statements is not reported. The caller's statements plus the
 helper's must stay within `max-caller-statements` for the helper to be reported. The caller's cognitive complexity must
 also stay within `max-cognitive-complexity` once the helper's body is scored at the depth of its call site, so that
-[cognitive-complexity](SMP529.html) does not ask to split the caller again. The caller must also stay within the limits
-of the Ruff rules that run, which count the inlined statements: `lint.mccabe.max-complexity` for C901, and
-`lint.pylint.max-branches`, `lint.pylint.max-statements` and `lint.pylint.max-returns` for PLR0912, PLR0915 and PLR0911.
-It also checks PLR1702's nested-block limit, PLW0717's try-clause statement limit and TRY301 when a helper raises inside
-a caller's `try` block. These counts are conservative estimates, so a caller they might report is left as it is.
+[cognitive-complexity](SMP529.html) does not ask to split the caller again.
+
+The caller must also stay within the limits of the Ruff rules that run, which count the inlined statements:
+`lint.mccabe.max-complexity` for C901, and `lint.pylint.max-branches`, `lint.pylint.max-statements` and
+`lint.pylint.max-returns` for PLR0912, PLR0915 and PLR0911. It also checks PLR1702's nested-block limit, PLW0717's
+try-clause statement limit and TRY301 when a helper raises inside a caller's `try` block. These counts are conservative
+estimates, so a caller they might report is left as it is.
 
 ### Active on
 
@@ -229,7 +231,7 @@ a caller's `try` block. These counts are conservative estimates, so a caller the
       return first.strip()
   ```
 
-- **Helpers with `max-helper-statements` or more statements**: a longer helper is worth its name.
+- **Helpers with `max-helper-statements` or more statements**: a helper that long stays a named step.
 
   ```python ok
   def load(text: str) -> str:
