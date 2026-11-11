@@ -177,6 +177,30 @@ parameter the signature does not take.
       """
   ```
 
+- **An attrs class with a field whose `alias` is not a string literal**: the alias names the parameter, and simplint
+  does not evaluate it, so the class's parameters are not known.
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python ok
+  from attrs import define, field
+
+  POS = "pos"
+
+
+  @define
+  class Point:
+      """A point on the horizontal axis.
+
+      :param pos: Where it sits.
+      """
+
+      _x: int = field(alias=POS)
+  ```
+
 - **A function with `**kwargs`**: it takes any keyword, which such fields may document.
 
   ```toml config

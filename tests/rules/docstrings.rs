@@ -256,6 +256,11 @@ fn function_docstring_comment_waits_for_a_removed_statement() {
     "model.py:7:6: SMP917 `:param x:` documents `x`, which `Point` does not take\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
     "attrs_alias_replaces_name"
 )]
+#[test_case(
+    "from attrs import define, field\n\nPOS = \"pos\"\n\n\n@define\nclass Point:\n    \"\"\"A point.\n\n    :param pos: Where it sits.\n    \"\"\"\n\n    _x: int = field(alias=POS)\n",
+    "All checks passed!\n" ;
+    "attrs_alias_not_a_literal_is_unknown"
+)]
 fn constructor_parameters_follow_the_generator(source: &str, stdout: &str) {
     let root =
         common::project(&[("pyproject.toml", "[tool.simplint]\ndocstring-style = \"rst\"\n"), ("model.py", source)]);

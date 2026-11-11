@@ -189,25 +189,24 @@ fn class_parameters(class: &ast::StmtClassDef) -> Option<Vec<Parameter<'_>>> {
         },
         _ => None,
     });
-    Some(
-        fields
-            .filter(|(name, _, _)| !name.id.as_str().chars().all(|char| char == '_'))
-            .map(|(name, value, annotated)| Parameter { name: init_name(name, value, attrs), annotated })
-            .collect(),
-    )
+    fields
+        .filter(|(name, _, _)| !name.id.as_str().chars().all(|char| char == '_'))
+        .map(|(name, value, annotated)| Some(Parameter { name: init_name(name, value, attrs)?, annotated }))
+        .collect()
 }
 
 // The name of a field's constructor parameter: attrs takes it from the field's `alias`, or from the field's name
-// without its leading underscores; a dataclass keeps the field's name.
-fn init_name<'a>(name: &'a ast::ExprName, value: Option<&'a Expr>, attrs: bool) -> &'a str {
+// without its leading underscores; a dataclass keeps the field's name. An alias that is not a string literal names the
+// parameter in a way the class does not show, so the class's parameters are unknown.
+fn init_name<'a>(name: &'a ast::ExprName, value: Option<&'a Expr>, attrs: bool) -> Option<&'a str> {
     if !attrs {
-        return name.id.as_str();
+        return Some(name.id.as_str());
     }
-    let alias = value
-        .and_then(Expr::as_call_expr)
-        .and_then(|call| call.arguments.find_keyword("alias"))
-        .and_then(|keyword| keyword.value.as_string_literal_expr());
-    alias.map_or_else(|| name.id.trim_start_matches('_'), |literal| literal.value.to_str())
+    let alias = value.and_then(Expr::as_call_expr).and_then(|call| call.arguments.find_keyword("alias"));
+    match alias {
+        None => Some(name.id.trim_start_matches('_')),
+        Some(keyword) => keyword.value.as_string_literal_expr().map(|literal| literal.value.to_str()),
+    }
 }
 
 // Whether a parameter or attribute name is internal. A leading underscore marks one, but not a dunder, as `__wrapped__`,
