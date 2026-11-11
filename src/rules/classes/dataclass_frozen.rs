@@ -8,17 +8,20 @@ use crate::rules::classes::{Offer, require_options};
 use crate::syntax::Visibility;
 
 pub fn dataclass_frozen(checker: &Checker) {
-    let stub = checker.path.extension().is_some_and(|extension| extension == "pyi");
     require_options(checker, Rule::DataclassFrozen, &["frozen"], |decorated, missing| {
         let analysis = analyze(checker, decorated)?;
-        let options = if analysis.frozen_breaks { Vec::new() } else { missing.to_vec() };
         let from_ruff = &checker.settings.from_ruff;
         let plain_form_rejected = (from_ruff.ruff_runs(RuffRule::ClassAsDataStructure)
             && is_data_structure_shape(decorated.class))
             || (from_ruff.ruff_runs(RuffRule::TooManyArguments) && analysis.parameters > from_ruff.max_args);
         Some(Offer {
-            left_to_ruff: !stub && analysis.mutated && plain_form_rejected,
-            ..Offer::options(options, analysis.applicability())
+            left_to_ruff: checker.path.extension().is_none_or(|extension| extension != "pyi")
+                && analysis.mutated
+                && plain_form_rejected,
+            ..Offer::options(
+                if analysis.frozen_breaks { Vec::new() } else { missing.to_vec() },
+                analysis.applicability(),
+            )
         })
     });
 }

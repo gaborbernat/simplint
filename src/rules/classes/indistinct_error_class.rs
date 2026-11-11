@@ -30,8 +30,8 @@ pub fn indistinct_error_class(checker: &Checker) {
     }
 }
 
-// Whether the class stores attributes or takes arguments in `__init__`, so a handler may read them off the exception
-// and a built-in exception could not carry them. Any such class is kept, rather than following each attribute read.
+// Whether the class stores attributes or takes arguments in `__init__`: a handler may read them off the exception, and
+// a built-in exception could not carry them. Such a class is kept rather than following each attribute read.
 fn has_state(class: &ast::StmtClassDef) -> bool {
     let mut stores = ExprCollector::new(|expr: &Expr| {
         let attribute = expr.as_attribute_expr()?;
