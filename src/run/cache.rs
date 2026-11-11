@@ -209,10 +209,7 @@ impl<'a> Cache<'a> {
         // A result reused under the full fingerprint holds under this run's index too, so it is marked as such: a
         // later run with this index then reuses it without building the index, as it does results linted now.
         let relabel = |file: &ArchivedFileCache| {
-            let current = file
-                .index
-                .as_ref()
-                .is_some_and(|stored| stored.run.to_native() == index.run && stored.base.to_native() == index.base);
+            let current = file.index.as_ref().is_some_and(|stored| stored.is(index.run, index.base));
             if !current {
                 self.update(path, key, ChangeData::Index(index));
             }
@@ -227,12 +224,9 @@ impl<'a> Cache<'a> {
             && let Some(file) = file
             && let Some(found) =
                 file.findings.as_ref().filter(|found| found.fingerprint.to_native() == fingerprint.clean)
-            && let Some(mut diagnostics) = Findings::diagnostics(found, path)
+            && let Some(diagnostics) = self.stored_findings(path, key, found, full)
         {
             relabel(file);
-            if let Some(full) = full {
-                self.stored_text(path, key, found.fingerprint.to_native(), full, &mut diagnostics);
-            }
             return diagnostics;
         }
         let known = file
@@ -270,13 +264,23 @@ impl<'a> Cache<'a> {
     pub fn reused(&self, path: &Path, key: FileKey, base: u64, full: Option<&FullDisplay>) -> Option<Diagnostics> {
         let file = self.get(path, key)?;
         let index = file.index.as_ref()?;
-        if index.run.to_native() != self.run || index.base.to_native() != base {
+        if !index.is(self.run, base) {
             return None;
         }
         if file.clean.is_some() {
             return Some(Diagnostics::default());
         }
-        let found = file.findings.as_ref()?;
+        self.stored_findings(path, key, file.findings.as_ref()?, full)
+    }
+
+    // The diagnostics of a file's stored reports, with the `full` text the run shows, when the reports still read back.
+    fn stored_findings(
+        &self,
+        path: &Path,
+        key: FileKey,
+        found: &ArchivedFindings,
+        full: Option<&FullDisplay>,
+    ) -> Option<Diagnostics> {
         let mut diagnostics = Findings::diagnostics(found, path)?;
         if let Some(full) = full {
             self.stored_text(path, key, found.fingerprint.to_native(), full, &mut diagnostics);
@@ -325,7 +329,7 @@ impl<'a> Cache<'a> {
 
     // The archived entry of a file whose key matches, which is then remembered as seen.
     fn get(&self, path: &Path, key: FileKey) -> Option<&'a ArchivedFileCache> {
-        let relative = path.strip_prefix(self.package_root).ok()?.to_str()?;
+        let relative = self.relative(path)?;
         let file = self.archived?.files.get(relative)?;
         if file.key.to_native() != key.hash {
             return None;
@@ -335,7 +339,7 @@ impl<'a> Cache<'a> {
     }
 
     fn update(&self, path: &Path, key: FileKey, data: ChangeData) {
-        if let Some(relative) = path.strip_prefix(self.package_root).ok().and_then(Path::to_str) {
+        if let Some(relative) = self.relative(path) {
             let change = Change { path: relative.to_owned(), key: key.hash, data };
             self.changes.lock().expect("no worker panics while recording").push(change);
         }
@@ -488,6 +492,12 @@ impl FileCache {
 struct IndexKey {
     run: u64,
     base: u64,
+}
+
+impl ArchivedIndexKey {
+    fn is(&self, run: u64, base: u64) -> bool {
+        self.run.to_native() == run && self.base.to_native() == base
+    }
 }
 
 // The reports a file had without fixes, under the fingerprint they were reported under.
@@ -851,6 +861,27 @@ enum ChangeData {
     Index(IndexKey),
 }
 
+// The parts of a file that its fingerprint base covers: its settings, its Ruff settings, where it sits in its
+// package and whether its directory holds an `__init__.py`.
+#[derive(Clone, Copy)]
+pub struct FileIdentity<'a> {
+    pub settings: &'a FileSettings<'a>,
+    pub ruff: &'a LinterSettings,
+    pub module_path: Option<&'a Vec<String>>,
+    pub sibling_init: bool,
+}
+
+impl<'a> FileIdentity<'a> {
+    pub fn of(linter: &'a Linter<'a>) -> Self {
+        Self {
+            settings: &linter.settings,
+            ruff: linter.ruff.settings,
+            module_path: linter.module_path.as_ref(),
+            sibling_init: linter.sibling_init,
+        }
+    }
+}
+
 // A file's fingerprint: its settings, where it sits in its package, and its slice of the project index. Most files
 // share their project's settings and Ruff's, so those, Ruff's linter settings above all, are hashed once per pair.
 #[derive(Default)]
@@ -859,13 +890,8 @@ pub struct Fingerprints(Mutex<FxHashMap<(usize, usize), u64>>);
 impl Fingerprints {
     // A file's settings, where it sits in its package and its sibling `__init__.py`, which the index does not read.
     // The run's digest covers the index, so `base` with it says whether a stored result is still valid.
-    pub fn base(
-        &self,
-        settings: &FileSettings,
-        ruff: &LinterSettings,
-        module_path: Option<&Vec<String>>,
-        sibling_init: bool,
-    ) -> u64 {
+    pub fn base(&self, identity: &FileIdentity) -> u64 {
+        let FileIdentity { settings, ruff, module_path, sibling_init } = *identity;
         let shared = *self
             .0
             .lock()
@@ -897,7 +923,7 @@ impl Fingerprints {
 
     pub fn of(&self, linter: &Linter, mode: &Mode) -> Fingerprint {
         let rules = linter.settings.rules;
-        let base = self.base(&linter.settings, linter.ruff.settings, linter.module_path.as_ref(), linter.sibling_init);
+        let base = self.base(&FileIdentity::of(linter));
         // Only a rule that reads other files depends on the index of the run, so the others keep their results when
         // another file changes.
         let clean = if rules.overlaps(RuleSet::cross_file()) {

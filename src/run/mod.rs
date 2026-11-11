@@ -19,6 +19,7 @@ use ruff_db::diagnostic::Diagnostic;
 use ruff_linter::fs::relativize_path;
 use ruff_linter::linter::FixTable;
 use ruff_linter::registry::Rule as RuffRule;
+use ruff_linter::settings::LinterSettings;
 use ruff_linter::settings::flags;
 use ruff_linter::settings::types::UnsafeFixes;
 use ruff_linter::source_kind::SourceKindDiff;
@@ -65,11 +66,17 @@ pub struct Diagnostics {
     pub rendered: FxHashMap<String, Vec<u8>>,
 }
 
+// Whether Ruff's `io-error` rule is on, which reports a path that cannot be read, written or found as a diagnostic
+// rather than as a warning.
+pub(crate) fn reports_io_errors(settings: &LinterSettings) -> bool {
+    settings.rules.enabled(RuffRule::IOError)
+}
+
 impl Diagnostics {
     // As `ruff check` reports a file it cannot read or write: Ruff's own `io-error` diagnostic while that rule is on,
     // otherwise a warning.
     pub fn from_error(path: &Path, message: String, linter: &Linter) -> Self {
-        if !linter.ruff.settings.rules.enabled(RuffRule::IOError) {
+        if !reports_io_errors(linter.ruff.settings) {
             warn!("{}{}{} {message}", "Failed to lint ".bold(), relativize_path(path).bold(), ":".bold());
             return Self::default();
         }
@@ -175,10 +182,7 @@ fn fix_path(
     settled: Option<Withdrawn>,
     overlay: &Overlay,
 ) -> Result<Linting> {
-    let source = match overlay.current(path) {
-        Some(current) => current,
-        None => std::fs::read_to_string(path)?,
-    };
+    let source = overlay.source(path)?;
     let Linted { diagnostics, transformed, fixed, settled, noqa_rows } =
         lint_source(path, &source, linter, mode, settled);
     let mut diffs = Vec::new();

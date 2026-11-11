@@ -11,7 +11,6 @@ use std::hash::Hasher;
 use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_linter::package::PackageRoot;
 use ruff_linter::packaging::detect_package_root;
-use ruff_linter::registry::Rule as RuffRule;
 use ruff_linter::{SuppressionKind, warn_user_once};
 use ruff_python_ast::helpers::to_module_path;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -19,7 +18,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use super::conflicts::{self, Scope};
 use super::discover::{Discovered, discover, linted_roots, lints_stdin};
 use super::{
-    Diagnostics, Mode, Overlay, Resolved, StdinLint, io_error, lint_path, lint_stdin, warn_missing, write_source,
+    Diagnostics, Mode, Overlay, Resolved, StdinLint, io_error, lint_path, lint_stdin, reports_io_errors, warn_missing,
+    write_source,
 };
 use crate::lint::Linter;
 use crate::lint::registry::{Rule, RuleSet};
@@ -27,7 +27,7 @@ use crate::project::cache::{self, FileKey};
 use crate::project::{
     DocReferences, Ending, External, FileFacts, ImportResolver, IndexInputs, Parts, Project, SearchRoots,
 };
-use crate::run::cache::{Cache, Caches, Fingerprints, FullDisplay};
+use crate::run::cache::{Cache, Caches, FileIdentity, Fingerprints, FullDisplay};
 use crate::settings::{FileSettings, ModuleRole, Settings};
 
 // Ruff's `add_noqa`: a file that cannot be read or written is logged and left as it is.
@@ -87,7 +87,7 @@ pub(crate) fn check_files(
     let rewrote = |diagnostics: &Diagnostics| !diagnostics.fixed.is_empty();
     // Without fixes a file's reports need no index once the run's digest matches the one they were stored under.
     let reuse = |file: &RunFile, cache: &Cache, key: FileKey| {
-        let base = fingerprints.base(&file.settings, &file.ruff.linter, file.module_path.as_ref(), file.sibling_init);
+        let base = fingerprints.base(&file.identity());
         cache.reused(file.path, key, base, full)
     };
     let reuse =
@@ -125,7 +125,7 @@ pub(crate) fn check_files(
 
 // Ruff's `io-error` for each path the run names that does not exist, or a warning each while that rule is off.
 fn missing_diagnostics(missing: Vec<(PathBuf, String)>, resolved: &Resolved) -> Diagnostics {
-    if !resolved.pyproject_config.settings.linter.rules.enabled(RuffRule::IOError) {
+    if !reports_io_errors(&resolved.pyproject_config.settings.linter) {
         warn_missing(&missing);
         return Diagnostics::default();
     }
@@ -153,14 +153,12 @@ pub(crate) fn check_stdin(path: &Path, source: &str, resolved: &Resolved, mode: 
     let roots = SearchRoots::new(ruff, package);
     let files = [RunFile::new(&absolute, &settings, ruff, resolved.pyproject_config.path.as_deref(), package, &roots)];
     let linted: Vec<&RunFile> = files.iter().collect();
-    ensure_compatible(&linted, resolved)?;
-    let rules = rules_of(&linted);
-    let inputs = ProjectInputs::of(&files, &roots);
+    let Plan { rules, parts } = Plan::of(&linted, resolved)?;
+    let inputs = ProjectInputs::of(&files, &roots, rules);
     let startup = roots.startup_names();
     let docs = documentation(&linted, &resolved.settings_resolver.root.root, rules, None)
         .remove(&files[0].nested)
         .unwrap_or_default();
-    let parts = wanted_parts(rules);
     let facts =
         FileFacts::collect(&absolute, source, files[0].module_path.as_deref(), files[0].importable.as_deref(), parts);
     let mut passes = index_and_lint(
@@ -228,9 +226,7 @@ fn for_each_file<T: Send>(
         .collect();
     indexed.sort_by(|left, right| (&left.nested, left.at).cmp(&(&right.nested, right.at)));
     let linted: Vec<&RunFile> = indexed.iter().filter(|file| file.linted).collect();
-    ensure_compatible(&linted, resolved)?;
-    let rules = rules_of(&linted);
-    let parts = wanted_parts(rules);
+    let Plan { rules, parts } = Plan::of(&linted, resolved)?;
     if let Some(cache_dir) = cache_dir {
         cache::prepare(cache_dir);
     }
@@ -271,7 +267,13 @@ fn index_cached<'f, T: Send>(
     let docs = docs();
     let startup = roots.startup_names();
     let groups: Vec<&[RunFile]> = indexed.chunk_by(|left, right| left.nested == right.nested).collect();
-    let inputs: Vec<ProjectInputs> = groups.iter().map(|group| ProjectInputs::of(group, roots)).collect();
+    let inputs: Vec<ProjectInputs> = groups
+        .iter()
+        .map(|group| {
+            let linted: Vec<&RunFile> = group.iter().filter(|file| file.linted).collect();
+            ProjectInputs::of(group, roots, rules_of(&linted))
+        })
+        .collect();
     let linted = indexed.iter().filter(|file| file.linted).count();
     // Only the cache reads the digest, which stats every file and walks every directory an import can name, so a run
     // without one skips it.
@@ -389,7 +391,7 @@ struct ProjectInputs<'f> {
 }
 
 impl<'f> ProjectInputs<'f> {
-    fn of(files: &'f [RunFile<'f>], roots: &SearchRoots) -> Self {
+    fn of(files: &'f [RunFile<'f>], roots: &SearchRoots, rules: RuleSet) -> Self {
         let linted: Vec<&RunFile> = files.iter().filter(|file| file.linted).collect();
         let settings: Vec<&Settings> = linted
             .iter()
@@ -431,7 +433,7 @@ impl<'f> ProjectInputs<'f> {
                 .sorted_unstable()
                 .dedup()
                 .collect(),
-            duplicate_statements: duplicate_window(&linted, rules_of(&linted)),
+            duplicate_statements: duplicate_window(&linted, rules),
             probed: probed_layout_key(&linted),
             roles: module_roles(files, roots),
             test_modules: files
@@ -534,6 +536,15 @@ struct RunFile<'a> {
 }
 
 impl<'a> RunFile<'a> {
+    fn identity(&self) -> FileIdentity<'_> {
+        FileIdentity {
+            settings: &self.settings,
+            ruff: &self.ruff.linter,
+            module_path: self.module_path.as_ref(),
+            sibling_init: self.sibling_init,
+        }
+    }
+
     fn new(
         path: &'a Path,
         settings: &'a Settings,
@@ -632,6 +643,20 @@ fn rules_of(files: &[&RunFile]) -> RuleSet {
 // The facts the run's rules read, which only those rules' runs need collected.
 fn wanted_parts(rules: RuleSet) -> Parts {
     rules.iter().fold(Parts::default(), |parts, rule| parts.with(rule.fact_parts()))
+}
+
+// What the linted files of a run turn on: their rules, and the facts those rules read.
+struct Plan {
+    rules: RuleSet,
+    parts: Parts,
+}
+
+impl Plan {
+    fn of(linted: &[&RunFile], resolved: &Resolved) -> Result<Self> {
+        ensure_compatible(linted, resolved)?;
+        let rules = rules_of(linted);
+        Ok(Self { rules, parts: wanted_parts(rules) })
+    }
 }
 
 // The layout beside each project whose files check for `private-import-path`, which that rule's paired-test lookup reads.
@@ -814,10 +839,7 @@ fn file_facts(
         Some(facts) => parts.with(facts.parts()),
         None => parts,
     };
-    let source = match overlay.current(file.path) {
-        Some(current) => current,
-        None => std::fs::read_to_string(file.path).ok()?,
-    };
+    let source = overlay.source(file.path).ok()?;
     let facts = FileFacts::collect(file.path, &source, module_path, importable, parts)?;
     if let Some((cache, key)) = cache {
         cache.set_facts(file.path, key, &facts);
@@ -886,7 +908,7 @@ struct Words(Vec<u64>);
 
 impl Words {
     fn of(path: &Path, overlay: &Overlay) -> Self {
-        let source = overlay.current(path).unwrap_or_else(|| std::fs::read_to_string(path).unwrap_or_default());
+        let source = overlay.source(path).unwrap_or_default();
         let mut hashes: Vec<u64> =
             source.split(|char: char| !(char.is_alphanumeric() || char == '_')).map(word_hash).collect();
         hashes.sort_unstable();

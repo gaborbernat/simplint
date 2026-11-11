@@ -1,3 +1,4 @@
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -16,8 +17,15 @@ struct Fixed {
 }
 
 impl Overlay {
-    pub fn current(&self, path: &Path) -> Option<String> {
+    fn current(&self, path: &Path) -> Option<String> {
         self.0.lock().expect("no worker panics while fixing").get(path).map(|fixed| fixed.current.clone())
+    }
+
+    pub fn source(&self, path: &Path) -> io::Result<String> {
+        match self.current(path) {
+            Some(current) => Ok(current),
+            None => std::fs::read_to_string(path),
+        }
     }
 
     pub fn is_empty(&self) -> bool {
