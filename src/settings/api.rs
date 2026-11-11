@@ -99,7 +99,7 @@ impl ApiScope {
             Some((last, rest)) if last == "__init__" => rest,
             _ => module_path,
         };
-        // The API package a module belongs to, the most specific when one nests in another, by how many parts its name has.
+        // The most specific API package containing the module, so a nested package wins over its parent.
         let root = match &self.packages {
             Some(packages) => packages
                 .iter()

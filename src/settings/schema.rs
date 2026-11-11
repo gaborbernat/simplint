@@ -7,14 +7,14 @@ use serde_json::{Value, json};
 use crate::lint::registry::Rule;
 use crate::settings::SimplintOptions;
 
-// Where SchemaStore and editors find the schema, once the file is published on the default branch.
-const ID: &str = "https://raw.githubusercontent.com/gaborbernat/simplint/main/simplint.schema.json";
-
-// The schema of `[tool.simplint]`, which `simplint config-schema` prints and SchemaStore checks the table against.
-// Draft 7 is what SchemaStore and taplo read.
 pub fn config_schema() -> Schema {
+    // SchemaStore and taplo read draft 7.
     let mut schema = SchemaSettings::draft07().into_generator().into_root_schema_for::<SimplintOptions>();
-    schema.insert("$id".to_owned(), ID.into());
+    schema.insert(
+        "$id".to_owned(),
+        // Where SchemaStore and editors find the schema, once the file is published on the default branch.
+        "https://raw.githubusercontent.com/gaborbernat/simplint/main/simplint.schema.json".into(),
+    );
     schema.insert("title".to_owned(), "simplint configuration".into());
     schema.insert("description".to_owned(), "simplint configuration ([tool.simplint] in pyproject.toml)".into());
     schema.insert(
@@ -59,7 +59,8 @@ impl JsonSchema for RuleSelectorSchema {
         let mut selectors: Vec<&str> = vec!["ALL"];
         for rule in Rule::ALL {
             selectors.push(rule.name());
-            selectors.extend((3..=rule.code().len()).map(|length| &rule.code()[..length]));
+            let code = rule.code();
+            selectors.extend((3..=code.len()).map(|length| &code[..length]));
         }
         selectors.sort_unstable();
         selectors.dedup();

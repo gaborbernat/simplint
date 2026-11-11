@@ -13,7 +13,6 @@ use rustc_hash::FxHashMap;
 use crate::lint::registry::RuleSet;
 use crate::settings::Settings;
 
-// The settings a file is linted with: its project's, the rules left on for it, and what Ruff decides for it.
 #[derive(Clone)]
 pub struct FileSettings<'a> {
     pub project: &'a Settings,
@@ -26,13 +25,11 @@ impl<'a> FileSettings<'a> {
     pub fn new(project: &'a Settings, ruff: &'a ruff_workspace::Settings, path: &Path) -> Self {
         let from_ruff = FromRuff::of(ruff, path);
         let rules = project.rules_for(path).for_target(from_ruff.target_version);
-        let is_test = project.is_test_module(path);
-        Self { project, from_ruff, rules, is_test }
+        Self { project, from_ruff, rules, is_test: project.is_test_module(path) }
     }
 }
 
-// What Ruff's settings decide for a file: what simplint's rules follow, and how Ruff parses and formats it. What the
-// project's settings hold whole is borrowed, since every file of the project reads the same.
+// What the project's settings hold whole is borrowed, since every file of the project reads the same.
 #[derive(Clone, CacheKey)]
 #[expect(clippy::struct_excessive_bools, reason = "each flag is a Ruff setting that decides one rule's overlap")]
 pub struct FromRuff<'a> {
@@ -40,11 +37,9 @@ pub struct FromRuff<'a> {
     pub magic_trailing_comma: bool,
     // The version Ruff parses the file as: the latest when the project names none, unlike `target_version`.
     pub parser_version: PythonVersion,
-    // The line and indent widths `ruff format` gives the file, and whether its settings leave the file out.
     pub line_width: usize,
     pub indent_width: usize,
     pub formatted: bool,
-    // The longest comment line Ruff accepts: its line length limit, or its doc line limit when that is shorter.
     pub comment_width: usize,
     // Whether Ruff's preview mode is on, which changes the reports of Ruff rules that simplint's rules work around.
     pub preview: bool,
