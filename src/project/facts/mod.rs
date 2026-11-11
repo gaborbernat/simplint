@@ -1,12 +1,17 @@
 mod api_reached;
+mod caught;
+mod doctests;
+mod fixtures;
+mod loaded;
 mod module_reads;
 mod names;
+mod patches;
 mod runtime;
 mod scan;
 mod statements;
 mod visitor;
 
-pub(crate) use visitor::doctest_code;
+pub(crate) use doctests::doctest_code;
 
 use crate::project::computed_reads::ComputedReads;
 use crate::syntax::is_main_guard;
