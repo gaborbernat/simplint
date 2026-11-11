@@ -30,7 +30,7 @@ use rustc_hash::FxHashMap;
 use crate::lint::checker::Checker;
 use crate::project::constructors::{CallContexts, CallSites, Use};
 use crate::rules::call_sites::{module_candidate, module_uses};
-use crate::syntax::{Exports, ReturnVisitor};
+use crate::syntax::ReturnVisitor;
 
 // The one-name-per-line layout `ruff format` gives a list with a trailing comma, so the fix needs no formatter pass.
 fn exploded(checker: &Checker, base: &str, items: &[String]) -> String {
@@ -108,20 +108,10 @@ pub(super) fn is_closed_class(checker: &Checker, class: &ast::StmtClassDef) -> b
     class.bases().is_empty() && class.keywords().is_empty() && !checker.project().is_base_class(class.name.as_str())
 }
 
-pub(super) fn listed_exports<'a>(checker: &'a Checker) -> &'a [&'a str] {
-    match checker.dunder_all() {
-        Exports::Listed(names) => names.as_slice(),
-        Exports::Absent | Exports::Dynamic => &[],
-    }
-}
-
 // The module-level functions the call-site rules judge. Code outside the run may call a name `__all__` lists, so those
 // are not judged, whatever the project kind.
 pub(super) fn candidate_functions<'a>(checker: &'a Checker) -> impl Iterator<Item = &'a ast::StmtFunctionDef> {
-    let listed = listed_exports(checker);
-    checker
-        .body()
-        .iter()
-        .filter_map(ast::Stmt::as_function_def_stmt)
-        .filter(move |function| !listed.contains(&function.name.as_str()) && module_candidate(checker, function))
+    checker.body().iter().filter_map(ast::Stmt::as_function_def_stmt).filter(move |function| {
+        !checker.dunder_all().lists(function.name.as_str()) && module_candidate(checker, function)
+    })
 }

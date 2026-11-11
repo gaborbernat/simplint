@@ -1,5 +1,5 @@
 use ruff_diagnostics::{Edit, Fix, IsolationLevel};
-use ruff_python_ast::{self as ast, Expr, Stmt};
+use ruff_python_ast::{self as ast, Expr};
 use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
@@ -30,18 +30,9 @@ fn fix(checker: &Checker, func: &Expr) -> Option<Fix> {
     if is_bound_around(checker, "inspect", func.range()) {
         return None;
     }
-    if has_plain_inspect_import(checker.body()) {
+    if checker.state().top_level_imports(checker).contains(&("inspect", None)) {
         return Some(Fix::unsafe_edit(replacement));
     }
     let (_, edit) = ensure_import(checker, "inspect", None, func.range())?;
     Some(Fix::unsafe_edits(replacement, edit).isolate(IsolationLevel::Group(1)))
-}
-
-fn has_plain_inspect_import(body: &[Stmt]) -> bool {
-    body.iter().any(|stmt| {
-        matches!(stmt, Stmt::Import(import) if import
-            .names
-            .iter()
-            .any(|alias| alias.name.as_str() == "inspect" && alias.asname.is_none()))
-    })
 }

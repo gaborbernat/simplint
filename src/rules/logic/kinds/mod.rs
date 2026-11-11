@@ -14,7 +14,7 @@ use rustc_hash::FxHashMap;
 
 use crate::lint::walker::{Scope, Walker};
 
-use self::bindings::Bindings;
+use self::bindings::ScopeBindings;
 pub(in crate::rules::logic) use self::declared::class_named;
 use self::members::Members;
 
@@ -59,8 +59,8 @@ pub struct Kinds<'w, 'a> {
 // What the kinds read off the module, kept for the file since each `+` chain builds a `Kinds` of its own.
 #[derive(Default)]
 pub(crate) struct KindsCache<'a> {
-    // The bindings of a name in the def, class or lambda at a range, the module's an empty one.
-    bindings: RefCell<FxHashMap<(TextRange, &'a str), Rc<Bindings<'a>>>>,
+    // The bindings of the names in the def, class or lambda at a range, the module's at the default range.
+    scopes: RefCell<FxHashMap<TextRange, Rc<ScopeBindings<'a>>>>,
     // How the class at a range gives an attribute to its instances.
     members: RefCell<FxHashMap<(TextRange, &'a str), Rc<Members<'a>>>>,
     // Where the module writes or deletes an attribute of each name.

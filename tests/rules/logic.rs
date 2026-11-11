@@ -63,6 +63,7 @@ use crate::common::{self, check, read};
 #[test_case("string-concatenation", "string_concatenation_imported.py", "py314" ; "string_concatenation_imported")]
 #[test_case("string-concatenation", "string_concatenation_imported_values.py", "py314" ; "string_concatenation_imported_values")]
 #[test_case("string-concatenation", "string_concatenation_class_values.py", "py314" ; "string_concatenation_class_values")]
+#[test_case("string-concatenation", "string_concatenation_bindings.py", "py314" ; "string_concatenation_bindings")]
 #[test_case("unused-default", "unused_default.py", "py314" ; "unused_default")]
 #[test_case("unused-default", "unused_default_public_module.py", "py314" ; "unused_default_public_module")]
 #[test_case("unused-default", "unused_default_comment.py", "py314" ; "unused_default_comment")]

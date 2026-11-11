@@ -1,11 +1,10 @@
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::{self as ast, Expr, Stmt};
-use ruff_text_size::{Ranged, TextLen, TextRange};
+use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
-use crate::rules::logic::scoped_block::identifier_uses;
 
 // Since Python 3.14 `date` and `time` have their own `strptime`, which parse one part without building a datetime.
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
@@ -66,7 +65,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
 fn class_replacement(checker: &Checker, class: &Expr, member: &str) -> Option<(String, Option<Edit>)> {
     match class {
         Expr::Name(name) => {
-            if identifier_uses(checker, TextRange::up_to(checker.source.text_len()), member) > 0 {
+            if checker.state().unqualified_name_count(checker, member) > 0 {
                 return None;
             }
             let alias = class_alias(checker.body(), name.id.as_str())?;

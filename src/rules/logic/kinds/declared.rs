@@ -174,11 +174,14 @@ pub(in crate::rules::logic) fn class_named<'a>(checker: &Checker<'a>, name: &str
     if binding.kind != BindingKind::Class {
         return None;
     }
-    checker.body().iter().find_map(|stmt| stmt.as_class_def_stmt().filter(|class| class.name.as_str() == name))
+    checker.module_classes().get(name).copied()
 }
 
+// Statements of a module body come in source order, so the class starting at `range` is found by a search.
 pub(super) fn class_at<'a>(checker: &Checker<'a>, range: TextRange) -> Option<&'a ast::StmtClassDef> {
-    checker.body().iter().find_map(|stmt| stmt.as_class_def_stmt().filter(|class| class.range == range))
+    let body = checker.body();
+    let index = body.binary_search_by_key(&range.start(), Ranged::start).ok()?;
+    body[index].as_class_def_stmt().filter(|class| class.range == range)
 }
 
 // What calling the class gives: an instance, unless the class has a `__new__`, a metaclass or a decorator that may

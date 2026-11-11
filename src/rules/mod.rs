@@ -16,11 +16,12 @@ pub(crate) mod typing;
 use std::cell::OnceCell;
 
 use ruff_python_ast::helpers::any_over_expr;
+use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, OperatorPrecedence, Stmt};
 use ruff_python_trivia::{has_leading_content, has_trailing_content, leading_indentation};
 use ruff_source_file::LineRanges;
-use ruff_text_size::{Ranged, TextRange, TextSize};
+use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
@@ -33,7 +34,7 @@ use crate::rules::layout::{ClassOrder, class_order};
 use crate::rules::logic::KindsCache;
 use crate::rules::module_variable::{ModuleVariable, module_variables};
 use crate::rules::naming::ReportedNames;
-use crate::syntax::{all_literal, code_string_values, is_name, last_segment};
+use crate::syntax::{Nesting, all_literal, code_string_values, is_name, last_segment};
 
 // What the rules memoize for a file, each part built by the first rule that reads it.
 #[derive(Default)]
@@ -58,6 +59,10 @@ pub(crate) struct FileState<'a> {
     // The ends of the callees of the file's calls, which tell a reference that is called from one that is only read.
     call_ends: OnceCell<FxHashSet<TextSize>>,
     comprehensions: OnceCell<Vec<(TextRange, TextRange)>>,
+    unqualified_names: OnceCell<FxHashMap<&'a str, usize>>,
+    attribute_reads: OnceCell<FxHashMap<&'a str, Vec<&'a str>>>,
+    scope_nesting: OnceCell<Nesting>,
+    top_level_imports: OnceCell<FxHashSet<(&'a str, Option<&'a str>)>>,
 }
 
 impl<'a> FileState<'a> {
@@ -167,12 +172,72 @@ impl<'a> FileState<'a> {
         })
     }
 
-    fn debug_fields(&self, checker: &Checker<'a>) -> &edits::DebugFields<'a> {
-        self.debug_fields.get_or_init(|| {
-            let mut finder = edits::DebugFields::default();
-            finder.visit_body(checker.body());
-            finder
+    // How many identifier tokens of the file spell `name` outside an attribute access, the whole file included.
+    pub(crate) fn unqualified_name_count(&self, checker: &Checker<'a>, name: &str) -> usize {
+        let counts = self.unqualified_names.get_or_init(|| {
+            let tokens = checker.parsed.tokens().in_range(TextRange::up_to(checker.source.text_len()));
+            let mut counts = FxHashMap::default();
+            for (index, token) in tokens.iter().enumerate() {
+                if token.kind() == TokenKind::Identifier
+                    && index.checked_sub(1).is_none_or(|previous| tokens[previous].kind() != TokenKind::Dot)
+                {
+                    *counts.entry(checker.text(token.range())).or_default() += 1;
+                }
+            }
+            counts
+        });
+        counts.get(name).copied().unwrap_or_default()
+    }
+
+    // The attributes the file reads off each name, whatever the name is bound to there.
+    pub(crate) fn attribute_reads(&self, checker: &Checker<'a>) -> &FxHashMap<&'a str, Vec<&'a str>> {
+        self.attribute_reads.get_or_init(|| {
+            let mut reads = AttributeReads::default();
+            reads.visit_body(checker.body());
+            reads.attributes
         })
+    }
+
+    // The functions and classes of the file, searched for the ones that hold a range.
+    pub(crate) fn scope_nesting(&self, checker: &Checker<'a>) -> &Nesting {
+        self.scope_nesting.get_or_init(|| {
+            let scopes = checker
+                .function_defs()
+                .iter()
+                .map(Ranged::range)
+                .chain(checker.class_defs().iter().map(Ranged::range))
+                .collect();
+            Nesting::new(scopes)
+        })
+    }
+
+    // The modules and the members that the top-level imports bring in under their own names, as `import x` and
+    // `from x import y` do.
+    pub(crate) fn top_level_imports(&self, checker: &Checker<'a>) -> &FxHashSet<(&'a str, Option<&'a str>)> {
+        self.top_level_imports.get_or_init(|| {
+            let mut imports = FxHashSet::default();
+            for stmt in checker.body() {
+                match stmt {
+                    Stmt::Import(ast::StmtImport { names, .. }) => imports.extend(
+                        names.iter().filter(|alias| alias.asname.is_none()).map(|alias| (alias.name.as_str(), None)),
+                    ),
+                    Stmt::ImportFrom(ast::StmtImportFrom { module: Some(from), names, level: 0, .. }) => {
+                        imports.extend(
+                            names
+                                .iter()
+                                .filter(|alias| alias.asname.is_none())
+                                .map(|alias| (from.as_str(), Some(alias.name.as_str()))),
+                        );
+                    }
+                    _ => {}
+                }
+            }
+            imports
+        })
+    }
+
+    fn debug_fields(&self, checker: &Checker<'a>) -> &edits::DebugFields<'a> {
+        self.debug_fields.get_or_init(|| edits::DebugFields::of(checker.body()))
     }
 }
 
@@ -187,6 +252,23 @@ impl<'a> Visitor<'a> for CallEnds {
     fn visit_expr(&mut self, expr: &'a Expr) {
         if let Expr::Call(call) = expr {
             self.ends.insert(call.func.end());
+        }
+        visitor::walk_expr(self, expr);
+    }
+}
+
+// The attributes read off each bare name in a file.
+#[derive(Default)]
+struct AttributeReads<'a> {
+    attributes: FxHashMap<&'a str, Vec<&'a str>>,
+}
+
+impl<'a> Visitor<'a> for AttributeReads<'a> {
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        if let Expr::Attribute(attribute) = expr
+            && let Expr::Name(base) = attribute.value.as_ref()
+        {
+            self.attributes.entry(base.id.as_str()).or_default().push(attribute.attr.as_str());
         }
         visitor::walk_expr(self, expr);
     }

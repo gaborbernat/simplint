@@ -9,6 +9,50 @@ use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_python_parser::parse_expression;
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
+use rustc_hash::FxHashSet;
+
+// Ranges that nest or are disjoint, such as the scopes of a file, so that the ranges holding another range are found
+// by a search instead of a scan.
+#[derive(Default)]
+pub struct Nesting {
+    ranges: Vec<TextRange>,
+    // The indices of `ranges` by where they start, outer ranges first, each with the position in this order of the
+    // range it is nested in.
+    order: Vec<(usize, Option<usize>)>,
+}
+
+impl Nesting {
+    pub fn new(ranges: Vec<TextRange>) -> Self {
+        let mut sorted: Vec<usize> = (0..ranges.len()).collect();
+        sorted.sort_by(|&left, &right| {
+            ranges[left].start().cmp(&ranges[right].start()).then(ranges[right].end().cmp(&ranges[left].end()))
+        });
+        let mut open: Vec<usize> = Vec::new();
+        let mut order = Vec::with_capacity(sorted.len());
+        for (position, &index) in sorted.iter().enumerate() {
+            while open.last().is_some_and(|&top| ranges[sorted[top]].end() <= ranges[index].start()) {
+                open.pop();
+            }
+            order.push((index, open.last().copied()));
+            open.push(position);
+        }
+        Self { ranges, order }
+    }
+
+    pub fn range(&self, index: usize) -> TextRange {
+        self.ranges[index]
+    }
+
+    // The indices of the ranges that hold `range`, the innermost first. A range that holds `range` starts no later
+    // than it, and each such range encloses the last one that starts before it, so the holders are that one and the
+    // ranges it is nested in.
+    pub fn holders(&self, range: TextRange) -> impl Iterator<Item = usize> + '_ {
+        let last = self.order.partition_point(|&(index, _)| self.ranges[index].start() <= range.start()).checked_sub(1);
+        std::iter::successors(last, |&position| self.order[position].1)
+            .map(|position| self.order[position].0)
+            .filter(move |&index| self.ranges[index].contains_range(range))
+    }
+}
 
 pub fn for_each_body<'a>(body: &'a [Stmt], visit: &mut impl FnMut(&'a [Stmt], Option<&'a Stmt>)) {
     walk_bodies(body, None, visit);
@@ -309,18 +353,47 @@ pub fn module_statements(body: &[Stmt]) -> impl Iterator<Item = &Stmt> {
 
 pub enum Exports<'a> {
     Absent,
-    Listed(Vec<&'a str>),
+    Listed(Listing<'a>),
     Dynamic,
+}
+
+// The names `__all__` lists in the order it gives them, with a set of them for the membership checks.
+pub struct Listing<'a> {
+    names: Vec<&'a str>,
+    members: FxHashSet<&'a str>,
+}
+
+impl<'a> Listing<'a> {
+    fn new(names: Vec<&'a str>) -> Self {
+        Self { members: names.iter().copied().collect(), names }
+    }
+
+    fn extend(&mut self, names: Vec<&'a str>) {
+        self.members.extend(names.iter().copied());
+        self.names.extend(names);
+    }
+
+    pub fn names(&self) -> &[&'a str] {
+        &self.names
+    }
+
+    pub fn contains(&self, name: &str) -> bool {
+        self.members.contains(name)
+    }
 }
 
 impl Exports<'_> {
     // Whether `__all__` lists `name`, or may list it because it cannot be read statically.
     pub fn may_list(&self, name: &str) -> bool {
         match self {
-            Self::Listed(names) => names.contains(&name),
+            Self::Listed(listing) => listing.contains(name),
             Self::Dynamic => true,
             Self::Absent => false,
         }
+    }
+
+    pub fn lists(&self, name: &str) -> bool {
+        matches!(self, Self::Listed(listing) if listing.contains(name))
     }
 }
 
@@ -368,7 +441,7 @@ pub fn dunder_all(body: &[Stmt]) -> Exports<'_> {
                 listed.extend(names);
                 Exports::Listed(listed)
             }
-            (_, Some(names)) => Exports::Listed(names),
+            (_, Some(names)) => Exports::Listed(Listing::new(names)),
         };
     }
     exports

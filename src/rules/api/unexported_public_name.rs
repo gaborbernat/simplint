@@ -29,7 +29,7 @@ pub fn unexported_public_name(checker: &Checker) {
         if Visibility::of(name) != Visibility::Public
             || is_discovered_by_name(name)
             || ply && is_ply_name(name)
-            || exported.contains(&name)
+            || exported.contains(name)
             || checker.project().is_used_elsewhere(name)
         {
             continue;

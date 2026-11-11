@@ -268,16 +268,41 @@ fn owners(length: usize, uses: &Uses) -> Vec<Option<usize>> {
             }
         }
     }
-    for index in 0..length {
-        let mut current = owners[index];
-        let mut steps = 0;
-        while let Some(owner) = current {
-            if owner == index || steps > length {
-                owners[index] = None;
-                break;
+    let mut children: Vec<Vec<usize>> = vec![Vec::new(); length];
+    for (index, owner) in owners.iter().enumerate() {
+        if let Some(owner) = owner {
+            children[*owner].push(index);
+        }
+    }
+    // A chain that ends is never dropped, and nothing on it is either, so only the chains that loop are checked.
+    let mut finite: Vec<bool> = owners.iter().map(Option::is_none).collect();
+    let mut ends: Vec<usize> = (0..length).filter(|index| finite[*index]).collect();
+    while let Some(index) = ends.pop() {
+        for &child in &children[index] {
+            if !finite[child] {
+                finite[child] = true;
+                ends.push(child);
             }
-            current = owners[owner];
-            steps += 1;
+        }
+    }
+    // Walking each chain from its own index is quadratic in a long chain of helpers, so a dropped index marks the
+    // indices whose chain runs into it instead, and an index is dropped when its owner is not marked.
+    let mut marked = vec![false; length];
+    for index in 0..length {
+        let Some(owner) = owners[index].filter(|_| !finite[index]) else { continue };
+        if marked[owner] {
+            continue;
+        }
+        owners[index] = None;
+        marked[index] = true;
+        let mut upstream = vec![index];
+        while let Some(node) = upstream.pop() {
+            for &child in &children[node] {
+                if !marked[child] {
+                    marked[child] = true;
+                    upstream.push(child);
+                }
+            }
         }
     }
     owners
