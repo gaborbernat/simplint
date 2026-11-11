@@ -8,7 +8,7 @@ use crate::project::FileFacts;
 use crate::project::facts::ImportBinding;
 
 use super::FileId;
-use super::resolve::{ClassBase, ClassKey, ModuleFacts, class_home};
+use super::resolve::{ClassBase, ClassKey, ModuleFacts, acyclic_order, class_home};
 
 // The exception classes of the run that no handler catches, by name or through a subclass, which is how a handler of a
 // base class reads, and the names each file gives to an exception class, defined or imported. A class is an exception
@@ -87,17 +87,15 @@ pub(super) fn exception_classes(
             declared.entry(*importer).or_default().push(binding.bound.as_str());
         }
     }
-    let mut starred: FxHashMap<FileId, Vec<FileId>> = FxHashMap::default();
-    for (importer, source) in stars {
-        starred.entry(*importer).or_default().push(*source);
-    }
     let candidates = exceptions
         .iter()
         .map(|key| (key.0, key.1.as_str()))
         .chain(bindings.iter().map(|(importer, _, binding)| (*importer, binding.bound.as_str())))
-        .chain(starred.keys().flat_map(|importer| {
-            starred_exception_names(*importer, &starred, &declared).into_iter().map(move |name| (*importer, name))
-        }));
+        .chain(
+            star_exception_names(stars, &declared)
+                .into_iter()
+                .flat_map(|(importer, names)| names.into_iter().map(move |name| (importer, name))),
+        );
     for (file, name) in candidates {
         if home(file, name).is_some_and(|key| exceptions.contains(&key)) {
             types.entry(file).or_default().insert(name.to_owned());
@@ -119,6 +117,35 @@ fn with_subclasses<'a>(
         }
     }
     found
+}
+
+// The exception names each file of a star import brings in, by the file that star-imports it. A file that reaches no
+// star-import cycle takes the names of the files it star-imports, once; a file that reaches one is walked, since a cycle
+// leaves the file out of its own names.
+fn star_exception_names<'a>(
+    stars: &[(FileId, FileId)],
+    declared: &FxHashMap<FileId, Vec<&'a str>>,
+) -> FxHashMap<FileId, FxHashSet<&'a str>> {
+    let mut starred: FxHashMap<FileId, Vec<FileId>> = FxHashMap::default();
+    for (importer, source) in stars {
+        starred.entry(*importer).or_default().push(*source);
+    }
+    let mut memo: FxHashMap<FileId, FxHashSet<&'a str>> = FxHashMap::default();
+    for file in acyclic_order(stars.iter().copied()) {
+        let mut names = FxHashSet::default();
+        for source in starred.get(&file).into_iter().flatten() {
+            names.extend(declared.get(source).into_iter().flatten().copied());
+            names.extend(memo[source].iter().copied());
+        }
+        memo.insert(file, names);
+    }
+    starred
+        .keys()
+        .map(|&importer| {
+            let names = memo.remove(&importer).unwrap_or_else(|| starred_exception_names(importer, &starred, declared));
+            (importer, names)
+        })
+        .collect()
 }
 
 // The exception names a file's star imports bring in: those each star-imported file defines or binds, and those of the

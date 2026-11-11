@@ -274,7 +274,7 @@ pub(super) fn class_home<'b>(
 // The files whose imports reach no cycle, each listed after the files it imports. `class_home` memoises only these: a
 // walk through a cycle skips the files on its own path, so from a file above a cycle it can reach a different class than
 // a walk started at that file would.
-fn acyclic_order(edges: impl IntoIterator<Item = (FileId, FileId)>) -> Vec<FileId> {
+pub(super) fn acyclic_order(edges: impl IntoIterator<Item = (FileId, FileId)>) -> Vec<FileId> {
     let mut imports: FxHashMap<FileId, usize> = FxHashMap::default();
     let mut importers: FxHashMap<FileId, Vec<FileId>> = FxHashMap::default();
     for (importer, source) in edges {
