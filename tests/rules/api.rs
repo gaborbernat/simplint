@@ -410,6 +410,12 @@ fn init_module_content_leaves_ruf067_to_ruff(config: &str, source: &str, reporte
 #[test_case("", "from json import dumps\nprint(\"dumps\")\n", &[] ; "call_string_left_to_f401")]
 #[test_case("", "from json import dumps\nTABLE = {}\nVALUE = TABLE[\"dumps\"]\n", &[] ; "subscript_string_left_to_f401")]
 #[test_case("", "from typing import Optional\nfrom json import dumps\nx: Optional[\"dumps\"] = None\n", &[1, 2] ; "generic_subscript_string_kept")]
+#[test_case(
+    "[tool.ruff.lint.pyflakes]\nextend-generics = [\"mylib.Box\"]\n",
+    "from json import JSONDecoder\nfrom mylib import Box\n\nAlias = Box[\"JSONDecoder\"]\n",
+    &[1, 2] ;
+    "extended_generic_subscript_string_kept"
+)]
 #[test_case("", "from typing import Literal\nfrom json import dumps\nx: Literal[\"dumps\"] = \"dumps\"\n", &[1] ; "literal_string_left_to_f401")]
 #[test_case("", "from typing import Annotated\nfrom json import dumps\nx: Annotated[int, \"dumps\"] = 1\n", &[1] ; "annotated_metadata_left_to_f401")]
 #[test_case("", "from typing import Annotated\nfrom json import dumps\nx: Annotated[\"dumps\", 1] = 1\n", &[1, 2] ; "annotated_type_kept")]

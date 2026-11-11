@@ -37,10 +37,6 @@ fn is_model(class: &ast::StmtClassDef, semantic: &SemanticModel) -> bool {
     any_qualified_base_class(class, semantic, |name| matches!(name.segments(), ["django", "db", "models", "Model"]))
 }
 
-fn is_model_field(func: &Expr, semantic: &SemanticModel) -> bool {
-    semantic.resolve_qualified_name(func).is_some_and(|name| name.segments().starts_with(&["django", "db", "models"]))
-}
-
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum ContentType {
     FieldDeclaration,
@@ -72,4 +68,8 @@ fn content_type(stmt: &Stmt, semantic: &SemanticModel) -> Option<ContentType> {
         }),
         _ => None,
     }
+}
+
+fn is_model_field(func: &Expr, semantic: &SemanticModel) -> bool {
+    semantic.resolve_qualified_name(func).is_some_and(|name| name.segments().starts_with(&["django", "db", "models"]))
 }

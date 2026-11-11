@@ -48,7 +48,8 @@ pub struct Semantic<'a> {
     list_appends: FxHashSet<TextRange>,
     // The annotations alone, without a value, that `if TYPE_CHECKING:` declares, which a module's `__getattr__` serves.
     type_checking_stubs: FxHashSet<TextRange>,
-    // The names a module-scope store binds, which Ruff's N816 checks: an assignment, loop, `with`, walrus or `match` target.
+    // The names a module-scope store binds, which Ruff's N816 checks: an assignment, loop, `with`, walrus or `match`
+    // target.
     module_stores: FxHashSet<TextRange>,
     // Each comprehension with the range of its first iterable, which the enclosing scope evaluates.
     comprehensions: Vec<(TextRange, TextRange)>,
@@ -90,8 +91,11 @@ impl<'a> Semantic<'a> {
             references.sort_by_key(|reference| reference.range.start());
         }
         model.restore(module);
-        let unused_imports =
-            if matches.unused_imports { unused_imports::unused_imports(&model, body) } else { FxHashSet::default() };
+        let unused_imports = if matches.unused_imports {
+            unused_imports::unused_imports(&model, body, &settings.pyflakes.extend_generics)
+        } else {
+            FxHashSet::default()
+        };
         Self {
             model,
             annotations_are_lazy,
@@ -129,7 +133,8 @@ impl<'a> Semantic<'a> {
         self.list_appends.contains(&range)
     }
 
-    // Whether the binding at `range` is an annotation without a value under `if TYPE_CHECKING:`, which only types a name.
+    // Whether the binding at `range` is an annotation without a value under `if TYPE_CHECKING:`, which only types a
+    // name.
     pub fn is_type_checking_stub(&self, range: TextRange) -> bool {
         self.type_checking_stubs.contains(&range)
     }
@@ -161,9 +166,9 @@ impl<'a> Semantic<'a> {
             .map_or(0, |scope| scope.get_all(name).count())
     }
 
-    // Whether a binding of `name` made directly in a scope that encloses `at` shadows the name there: a function or lambda
-    // body, a class body that no function inside it encloses, or a comprehension past its first iterable, which the
-    // enclosing scope evaluates.
+    // Whether a binding of `name` made directly in a scope that encloses `at` shadows the name there: a function or
+    // lambda body, a class body that no function inside it encloses, or a comprehension past its first iterable, which
+    // the enclosing scope evaluates.
     pub fn is_bound_around(&self, name: &str, at: TextRange) -> bool {
         let scopes = || self.model.scopes.iter().filter_map(|scope| Some((scope, scope_ranges(&scope.kind)?)));
         let nested_in_class = |class: TextRange| {
@@ -197,7 +202,10 @@ impl<'a> Semantic<'a> {
                 .iter()
                 .filter(|binding| !matches!(binding.kind, RuffBindingKind::Deletion | RuffBindingKind::Annotation))
                 .all(|binding| {
-                    matches!(&binding.kind, RuffBindingKind::Import(import) if import.qualified_name.segments() == module)
+                    matches!(
+                        &binding.kind,
+                        RuffBindingKind::Import(import) if import.qualified_name.segments() == module
+                    )
                 })
         })
     }
@@ -212,8 +220,8 @@ impl<'a> Semantic<'a> {
         self.model.resolve_qualified_name(expr)
     }
 
-    // Whether Ruff's B008 reports a call to `func` in a parameter default. It leaves alone a mutable or immutable callee,
-    // and a `NewType` of an immutable type.
+    // Whether Ruff's B008 reports a call to `func` in a parameter default. It leaves alone a mutable or immutable
+    // callee, and a `NewType` of an immutable type.
     pub fn is_b008_call(&self, func: &Expr, extend_immutable_calls: &[QualifiedName]) -> bool {
         !is_mutable_func(func, &self.model)
             && !is_immutable_func(func, &self.model, extend_immutable_calls)
@@ -259,7 +267,6 @@ impl<'a> Semantic<'a> {
         self.model.scopes.iter().filter_map(|scope| scope.get(name)).any(|id| !self.model.binding(id).kind.is_builtin())
     }
 
-    // The `class` statement a binding names, when the binding is a class defined in the file.
     pub fn class_of_binding(&self, binding: &RuffBinding<'a>) -> Option<&'a ast::StmtClassDef> {
         if !matches!(binding.kind, RuffBindingKind::ClassDefinition(_)) {
             return None;
@@ -267,7 +274,6 @@ impl<'a> Semantic<'a> {
         binding.statement(&self.model)?.as_class_def_stmt()
     }
 
-    // The annotation of the parameter a binding names, when the binding is a parameter of a `def`.
     pub fn parameter_annotation(&self, binding: &RuffBinding<'a>) -> Option<&'a Expr> {
         let Stmt::FunctionDef(function) = binding.statement(&self.model)? else {
             return None;
@@ -275,8 +281,6 @@ impl<'a> Semantic<'a> {
         function.parameters.iter().find(|parameter| parameter.name().range() == binding.range)?.annotation()
     }
 
-    // The `def` a load of `name` reads when the module binds the name once, to a function it defines and no `global`
-    // statement rebinds.
     pub fn module_function(&self, name: &ast::ExprName) -> Option<&'a ast::StmtFunctionDef> {
         if self.is_rebound(name.id.as_str()) {
             return None;
@@ -291,8 +295,8 @@ impl<'a> Semantic<'a> {
         binding.statement(&self.model)?.as_function_def_stmt()
     }
 
-    // The values a binding gives its name, as far as the rules read them: the value an assignment gives, or each item of
-    // a loop over a literal list or tuple. `None` when no value is known, as for an import or a function parameter.
+    // The values a binding gives its name, as far as the rules read them: the value an assignment gives, or each item
+    // of a loop over a literal list or tuple. `None` when no value is known, as for an import or a function parameter.
     pub fn binding_values(&self, binding: &RuffBinding<'a>) -> Option<Vec<&Expr>> {
         match binding.kind {
             RuffBindingKind::LoopVar => match binding.statement(&self.model)? {
@@ -314,8 +318,8 @@ impl<'a> Semantic<'a> {
         }
     }
 
-    // Whether `func` is a method of a logger that Ruff's logging rules check: the `logging` module, a logger it creates,
-    // or one of the `logger-objects`.
+    // Whether `func` is a method of a logger that Ruff's logging rules check: the `logging` module, a logger it
+    // creates, or one of the `logger-objects`.
     pub fn is_logger_candidate(&self, func: &Expr, logger_objects: &[String]) -> bool {
         logging::is_logger_candidate(func, &self.model, logger_objects)
     }
@@ -343,12 +347,10 @@ impl<'a> Semantic<'a> {
         self.index.references.values().flatten()
     }
 
-    // Where the methods of `class` read `name` off their receiver or the class.
     pub fn member_references(&self, class: TextRange, name: &str) -> &[TextRange] {
         self.index.member_references.get(&class).and_then(|members| members.get(name)).map_or(&[], Vec::as_slice)
     }
 
-    // The ranges of the bindings of `name` in a function, class, comprehension, lambda or type parameter scope.
     pub fn local_bindings(&self, name: &str) -> &[TextRange] {
         self.index.local_bindings.get(name).map_or(&[], Vec::as_slice)
     }
@@ -380,8 +382,8 @@ impl<'a> Semantic<'a> {
     }
 }
 
-// The range of a function, lambda or class scope's node, and of the part of it that is its body: a header's defaults,
-// decorators and bases run in the enclosing scope.
+// The body is the part of a scope's node after its header, since a header's defaults, decorators and bases run in the
+// enclosing scope.
 fn scope_ranges(kind: &ScopeKind) -> Option<(TextRange, TextRange)> {
     match kind {
         ScopeKind::Function(function) => {
@@ -412,7 +414,6 @@ struct Index<'a> {
 }
 
 impl<'a> Index<'a> {
-    // Returns every binding a module-level name resolves to, builtins and `global` declarations included.
     fn collect_bindings(&mut self, model: &SemanticModel<'a>) -> FxHashSet<BindingId> {
         let mut module_bindings = FxHashSet::default();
         for scope in model.scopes.iter() {
@@ -579,7 +580,8 @@ fn binding_kind(model: &SemanticModel, binding_id: BindingId) -> BindingKind {
 // innermost function directly in a class body is the one whose receiver the load reads. A lambda in a class body, as
 // `property(lambda self: ...)`, is a method too.
 fn enclosing_method<'a>(model: &SemanticModel<'a>) -> Option<(Option<&'a str>, &'a ast::StmtClassDef)> {
-    // Ruff's scopes between a method and its class, such as the type parameter and `__class__` cell scopes, do not count.
+    // Ruff's scopes between a method and its class, such as the type parameter and `__class__` cell scopes, do not
+    // count.
     let mut method = None;
     for scope in model.current_scopes() {
         match scope.kind {

@@ -68,14 +68,6 @@ fn walk_bodies<'a>(body: &'a [Stmt], owner: Option<&'a Stmt>, visit: &mut impl F
     }
 }
 
-// A class defined in a method has its own `self`, so its body is left out of the method's bodies.
-fn for_each_body_outside_classes<'a>(body: &'a [Stmt], visit: &mut impl FnMut(&'a [Stmt])) {
-    visit(body);
-    for stmt in body.iter().filter(|stmt| !matches!(stmt, Stmt::ClassDef(_))) {
-        for_each_child_body(stmt, &mut |child| for_each_body_outside_classes(child, visit));
-    }
-}
-
 pub fn for_each_child_body<'a>(stmt: &'a Stmt, visit: &mut impl FnMut(&'a [Stmt])) {
     match stmt {
         Stmt::FunctionDef(ast::StmtFunctionDef { body, .. })
@@ -136,17 +128,15 @@ impl Visibility {
     }
 }
 
-// The name an expression such as `typing.Final` or `@name.setter` ends with.
 pub fn last_segment(expr: &Expr) -> Option<&str> {
     UnqualifiedName::from_expr(expr)?.segments().last().copied()
 }
 
-// The last segment of each decorator, so `typing.override` and `@name.setter` read as `override` and `setter`.
 pub fn decorator_names(decorators: &[ast::Decorator]) -> Vec<&str> {
     decorators.iter().filter_map(|decorator| last_segment(&decorator.expression)).collect()
 }
 
-// Whether a decorator's last name is one of `names`, so `typing.overload` and `overload` both match `"overload"`.
+// Matches by last segment, so `typing.overload` and `overload` both match `"overload"`.
 pub fn has_decorator(decorators: &[ast::Decorator], names: &[&str]) -> bool {
     decorator_names(decorators).iter().any(|name| names.contains(name))
 }
@@ -156,13 +146,10 @@ pub fn is_overload(decorators: &[ast::Decorator]) -> bool {
     has_decorator(decorators, &["overload"])
 }
 
-// Whether `expr` is the plain name `name`.
 pub fn is_name(expr: &Expr, name: &str) -> bool {
     expr.as_name_expr().is_some_and(|found| found.id.as_str() == name)
 }
 
-// The object and the name argument of a call to one of `builtins` with two positional arguments, such as `getattr`,
-// which reads the attribute named by the second.
 pub fn attribute_call<'a>(expr: &'a Expr, builtins: &[&str]) -> Option<(&'a Expr, &'a Expr)> {
     let ast::ExprCall { func, arguments, .. } = expr.as_call_expr()?;
     let [object, attribute, ..] = &*arguments.args else {
@@ -171,7 +158,6 @@ pub fn attribute_call<'a>(expr: &'a Expr, builtins: &[&str]) -> Option<(&'a Expr
     builtins.contains(&func.as_name_expr()?.id.as_str()).then_some((object, attribute))
 }
 
-// The name an `import` alias binds: its `as` name, or the name it imports.
 pub fn alias_binding(alias: &ast::Alias) -> &str {
     alias.asname.as_ref().unwrap_or(&alias.name).as_str()
 }
@@ -185,7 +171,6 @@ pub fn alias_root_binding(alias: &ast::Alias) -> &str {
         .map_or_else(|| alias.name.as_str().split('.').next().unwrap_or_default(), |name| name.as_str())
 }
 
-// The aliases an import statement binds, and none for any other statement.
 pub fn import_aliases(stmt: &Stmt) -> &[ast::Alias] {
     match stmt {
         Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => names,
@@ -193,7 +178,6 @@ pub fn import_aliases(stmt: &Stmt) -> &[ast::Alias] {
     }
 }
 
-// The `from` imports of `module` among the statements of a body, which for a module body are its top-level imports.
 pub fn from_imports<'a>(body: &'a [Stmt], module: &'a str) -> impl Iterator<Item = &'a ast::StmtImportFrom> {
     body.iter().filter_map(move |stmt| match stmt {
         Stmt::ImportFrom(import)
@@ -205,7 +189,6 @@ pub fn from_imports<'a>(body: &'a [Stmt], module: &'a str) -> impl Iterator<Item
     })
 }
 
-// The name a match pattern captures, as in `case [*rest]` or `case {**rest}`.
 pub fn pattern_capture(pattern: &ast::Pattern) -> Option<&ast::Identifier> {
     match pattern {
         ast::Pattern::MatchAs(ast::PatternMatchAs { name, .. })
@@ -215,12 +198,10 @@ pub fn pattern_capture(pattern: &ast::Pattern) -> Option<&ast::Identifier> {
     }
 }
 
-// The annotations in a `def`'s signature: its parameters and its return type.
 pub fn signature_annotations(function: &ast::StmtFunctionDef) -> impl Iterator<Item = &Expr> {
     function.parameters.iter().filter_map(AnyParameterRef::annotation).chain(function.returns.as_deref())
 }
 
-// The one positional argument of a call, when it has no keyword arguments.
 pub fn sole_argument(call: &ast::ExprCall) -> Option<&Expr> {
     match call.arguments.args.as_ref() {
         [argument] if call.arguments.keywords.is_empty() => Some(argument),
@@ -228,7 +209,6 @@ pub fn sole_argument(call: &ast::ExprCall) -> Option<&Expr> {
     }
 }
 
-// The argument a call passes at `position`, or under `keyword` when it is not passed by position.
 pub fn argument<'a>(call: &'a ast::ExprCall, position: usize, keyword: &str) -> Option<&'a Expr> {
     call.arguments.args.get(position).or_else(|| {
         call.arguments
@@ -239,24 +219,20 @@ pub fn argument<'a>(call: &'a ast::ExprCall, position: usize, keyword: &str) -> 
     })
 }
 
-// Whether `expr` runs its body once per pass of the iteration around it: a lambda or a comprehension.
 pub fn is_repeating_expr(expr: &Expr) -> bool {
     matches!(expr, Expr::Lambda(_) | Expr::ListComp(_) | Expr::SetComp(_) | Expr::DictComp(_) | Expr::Generator(_))
 }
 
-// Whether `expr` is the literal `True`.
 pub fn is_true_literal(expr: &Expr) -> bool {
     expr.as_boolean_literal_expr().is_some_and(|literal| literal.value)
 }
 
-// Whether `expr`, a call or a decorator, passes `arg=True`.
 pub fn keyword_is_true(expr: &Expr, arg: &str) -> bool {
     expr.as_call_expr()
         .and_then(|call| call.arguments.find_keyword(arg))
         .is_some_and(|keyword| is_true_literal(&keyword.value))
 }
 
-// The `@dataclass` decorator of `class`, bare or called, where `is_dataclass` resolves the decorator's function.
 pub fn dataclass_decorator<'a>(
     class: &'a ast::StmtClassDef,
     is_dataclass: &impl Fn(&Expr) -> bool,
@@ -268,7 +244,6 @@ pub fn dataclass_decorator<'a>(
         .find(|expr| is_dataclass(expr.as_call_expr().map_or(expr, |call| &call.func)))
 }
 
-// The parameter a method receives its instance or class in: the first positional one, unless the method is static.
 pub fn receiver(method: &ast::StmtFunctionDef) -> Option<&str> {
     if decorator_names(&method.decorator_list).contains(&"staticmethod") {
         return None;
@@ -290,9 +265,8 @@ pub struct InstanceWrite<'a> {
     pub through_object: bool,
 }
 
-// Every write to `receiver.attr` in the methods of `class`, nested defs included but not nested classes, for whatever
-// the receiver is named.
-// A class method's receiver is the class, so callers that want instances skip those.
+// Writes in nested defs count and nested classes do not. A class method's receiver is the class, so callers that
+// want instances skip those.
 pub fn instance_writes(class: &ast::StmtClassDef) -> Vec<InstanceWrite<'_>> {
     let mut writes = Vec::new();
     for method in module_statements(&class.body).filter_map(Stmt::as_function_def_stmt) {
@@ -316,6 +290,14 @@ pub fn instance_writes(class: &ast::StmtClassDef) -> Vec<InstanceWrite<'_>> {
         });
     }
     writes
+}
+
+// A class defined in a method has its own `self`, so its body is left out of the method's bodies.
+fn for_each_body_outside_classes<'a>(body: &'a [Stmt], visit: &mut impl FnMut(&'a [Stmt])) {
+    visit(body);
+    for stmt in body.iter().filter(|stmt| !matches!(stmt, Stmt::ClassDef(_))) {
+        for_each_child_body(stmt, &mut |child| for_each_body_outside_classes(child, visit));
+    }
 }
 
 // The attribute an `object.__setattr__(receiver, "name", value)` call sets, which a frozen dataclass uses to set its
@@ -427,7 +409,6 @@ pub enum Exports<'a> {
     Dynamic,
 }
 
-// The names `__all__` lists in the order it gives them, with a set of them for the membership checks.
 pub struct Listing<'a> {
     names: Vec<&'a str>,
     members: FxHashSet<&'a str>,
@@ -453,7 +434,6 @@ impl<'a> Listing<'a> {
 }
 
 impl Exports<'_> {
-    // Whether `__all__` lists `name`, or may list it because it cannot be read statically.
     pub fn may_list(&self, name: &str) -> bool {
         match self {
             Self::Listed(listing) => listing.contains(name),
@@ -609,7 +589,6 @@ pub fn all_binding(stmt: &Stmt) -> Option<AllBinding<'_>> {
     }
 }
 
-// A method call on `__all__` as a statement, such as `__all__.append("name")`: the method and its arguments.
 pub fn all_mutation(stmt: &Stmt) -> Option<(&str, &ast::Arguments)> {
     let call = stmt.as_expr_stmt()?.value.as_call_expr()?;
     let attribute = call.func.as_attribute_expr().filter(|attribute| is_all_target(&attribute.value))?;
@@ -637,11 +616,10 @@ pub fn all_literal(stmt: &Stmt) -> Option<AllLiteral<'_>> {
     }
 }
 
-pub fn is_all_target(target: &Expr) -> bool {
+fn is_all_target(target: &Expr) -> bool {
     is_name(target, "__all__")
 }
 
-// The expressions an assignment target stores into, with tuples, lists and starred targets taken apart.
 pub fn target_leaves(target: &Expr) -> Vec<&Expr> {
     match target {
         Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => {
@@ -652,19 +630,17 @@ pub fn target_leaves(target: &Expr) -> Vec<&Expr> {
     }
 }
 
-// The names an assignment target binds, through tuple and list unpacking and starred targets.
 pub fn target_names(target: &Expr) -> Vec<&str> {
     target_leaves(target).into_iter().filter_map(Expr::as_name_expr).map(|name| name.id.as_str()).collect()
 }
 
-// The pieces of a text split at each character that is not a letter, digit or underscore, so an identifier comes out as
-// one piece. A separator at either end, or two in a row, yields an empty piece, which a caller that needs only words skips.
+// Splits at each character that is not a letter, digit or underscore, so an identifier stays one piece. A separator at
+// either end, or two in a row, yields an empty piece, which a caller that needs only words skips.
 pub fn identifier_words(text: &str) -> impl Iterator<Item = &str> {
     text.split(|char: char| !(char.is_alphanumeric() || char == '_'))
 }
 
-// The text of every string and bytes literal of the module, and of each literal part of an f-string or t-string, with
-// its range.
+// An f-string or t-string contributes each of its literal parts as a string of its own.
 pub(crate) fn string_values(body: &[Stmt]) -> Vec<(TextRange, Cow<'_, str>)> {
     let mut values = StringValues { values: Vec::new(), with_prose: true };
     values.visit_body(body);
@@ -674,8 +650,8 @@ pub(crate) fn string_values(body: &[Stmt]) -> Vec<(TextRange, Cow<'_, str>)> {
 // The identifier words of the strings Ruff parses as type expressions, the only strings that read a name: those in an
 // annotation or type parameter, in an argument of a typing call that takes types, in a generic subscript, and the type
 // of `Annotated`. A string anywhere else is data or prose.
-pub(crate) fn type_string_words(body: &[Stmt]) -> FxHashSet<&str> {
-    let mut strings = TypeStrings { words: FxHashSet::default(), in_type: false };
+pub(crate) fn type_string_words<'a>(body: &'a [Stmt], extend_generics: &'a [String]) -> FxHashSet<&'a str> {
+    let mut strings = TypeStrings { words: FxHashSet::default(), in_type: false, extend_generics };
     strings.visit_body(body);
     strings.words
 }
@@ -683,6 +659,7 @@ pub(crate) fn type_string_words(body: &[Stmt]) -> FxHashSet<&str> {
 struct TypeStrings<'a> {
     words: FxHashSet<&'a str>,
     in_type: bool,
+    extend_generics: &'a [String],
 }
 
 impl<'a> TypeStrings<'a> {
@@ -696,6 +673,12 @@ impl<'a> TypeStrings<'a> {
         for expr in type_param_exprs(type_params) {
             self.visit_in(expr, true);
         }
+    }
+
+    // Ruff matches the qualified name of a subscripted value against `extend-generics`; this walk has no resolution,
+    // so it matches the last name the value is written with, as it does for the typing generics.
+    fn is_extended_generic(&self, name: &str) -> bool {
+        self.extend_generics.iter().any(|target| target.rsplit('.').next() == Some(name))
     }
 }
 
@@ -766,7 +749,9 @@ impl<'a> Visitor<'a> for TypeStrings<'a> {
                         }
                         _ => self.visit_expr(slice),
                     },
-                    Some(name) if is_standard_library_generic_member(name) => self.visit_in(slice, true),
+                    Some(name) if is_standard_library_generic_member(name) || self.is_extended_generic(name) => {
+                        self.visit_in(slice, true);
+                    }
                     _ => self.visit_expr(slice),
                 }
             }
@@ -775,7 +760,6 @@ impl<'a> Visitor<'a> for TypeStrings<'a> {
     }
 }
 
-// The name a callee or subscripted value ends with, as `cast` for `typing.cast`.
 fn last_name(expr: &Expr) -> Option<&str> {
     match expr {
         Expr::Name(name) => Some(name.id.as_str()),
@@ -857,7 +841,6 @@ pub fn is_main_guard(stmt: &Stmt) -> bool {
     stmt.as_if_stmt().is_some_and(|stmt| is_main_test(&stmt.test))
 }
 
-// Whether a test is `__name__ == "__main__"`, either way round.
 pub fn is_main_test(test: &Expr) -> bool {
     let Expr::Compare(ast::ExprCompare { ops, operands, .. }) = test else {
         return false;
@@ -908,7 +891,6 @@ impl<'a> Visitor<'a> for AnnotatedNames {
     }
 }
 
-// The bounds and defaults of a type parameter list.
 fn type_param_exprs(type_params: Option<&ast::TypeParams>) -> impl Iterator<Item = &Expr> {
     type_params.into_iter().flat_map(|params| &params.type_params).flat_map(|param| {
         let bound = match param {
@@ -919,15 +901,14 @@ fn type_param_exprs(type_params: Option<&ast::TypeParams>) -> impl Iterator<Item
     })
 }
 
-// The names an annotation or bound refers to, through subscripts, unions and string annotations.
 pub(crate) fn names_in(expr: &Expr) -> Vec<String> {
     let mut names = Vec::new();
     TypeNames { names: &mut names, strings: true }.visit_expr(expr);
     names
 }
 
-// The names an annotation or bound refers to, without those of its strings, which the type strings of a module read.
-pub(crate) fn annotation_names(expr: &Expr) -> Vec<String> {
+// Leaves out the strings of an annotation, which the module's type strings read.
+fn annotation_names(expr: &Expr) -> Vec<String> {
     let mut names = Vec::new();
     TypeNames { names: &mut names, strings: false }.visit_expr(expr);
     names
@@ -962,17 +943,14 @@ pub fn is_type_checking_name(test: &Expr) -> bool {
     }
 }
 
-// The top-level package of a dotted module name, which the standard library lists.
 pub(crate) fn top_level(module: &str) -> &str {
     module.split_once('.').map_or(module, |(root, _)| root)
 }
 
-// Whether the standard library of the minor version ships the module's top-level package.
 pub(crate) fn is_stdlib_root(minor: u8, module: &str) -> bool {
     ruff_python_stdlib::sys::is_known_standard_library(minor, top_level(module))
 }
 
-// Whether the statement is a `lazy` import already, which needs no `lazy` of its own.
 pub fn is_lazy(stmt: &Stmt) -> bool {
     matches!(
         stmt,
@@ -997,9 +975,8 @@ pub fn expr_mentions(expr: &Expr, name: &str) -> bool {
     any_over_expr(expr, |expr| is_name(expr, name))
 }
 
-// A module-level `if sys.version_info < ...: raise ...` or `sys.exit(...)` exists to run on interpreters older than the
-// target and report them, so fixes must not add syntax or imports those
-// interpreters lack.
+// A module-level `if sys.version_info < ...: raise ...` or `sys.exit(...)` exists to run on interpreters older than
+// the target and report them, so fixes must not add syntax or imports those interpreters lack.
 pub fn has_version_gate(body: &[Stmt]) -> bool {
     body.iter().filter_map(Stmt::as_if_stmt).any(|gate| {
         any_over_expr(&gate.test, &|expr: &Expr| last_segment(expr) == Some("version_info"))
@@ -1013,7 +990,6 @@ pub fn has_version_gate(body: &[Stmt]) -> bool {
     })
 }
 
-// `name = value` or `name: annotation = value`, binding a single plain name.
 pub fn single_assignment(stmt: &Stmt) -> Option<(&ast::ExprName, Option<&Expr>, &Expr)> {
     let (target, annotation, value) = match stmt {
         Stmt::Assign(ast::StmtAssign { targets, value, .. }) if targets.len() == 1 => (&targets[0], None, value),
