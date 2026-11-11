@@ -4,36 +4,6 @@ use crate::syntax::last_segment;
 
 use super::visitor::FactVisitor;
 
-// A target that starts with the interpolation names no module the run can find.
-fn computed_patch_module(target: &Expr) -> Option<&str> {
-    let Expr::FString(fstring) = target else {
-        return None;
-    };
-    let mut elements = fstring.value.elements();
-    let Some(ast::InterpolatedStringElement::Literal(literal)) = elements.next() else {
-        return None;
-    };
-    if !matches!(elements.next(), Some(ast::InterpolatedStringElement::Interpolation(_))) {
-        return None;
-    }
-    literal.value.rsplit_once('.').map(|(module, _)| module)
-}
-
-pub(super) fn named_attribute_call(func: &Expr) -> bool {
-    match last_segment(func) {
-        Some("setattr" | "delattr") => true,
-        Some("object") => {
-            matches!(func, Expr::Attribute(ast::ExprAttribute { value, .. }) if last_segment(value) == Some("patch"))
-        }
-        _ => false,
-    }
-}
-
-fn patch_object(func: &Expr) -> bool {
-    matches!(func, Expr::Attribute(ast::ExprAttribute { attr, value, .. })
-        if attr.as_str() == "object" && last_segment(value) == Some("patch"))
-}
-
 impl FactVisitor<'_> {
     pub(super) fn named_names(&self, arguments: &ast::Arguments) -> Vec<(String, Vec<String>)> {
         match &*arguments.args {
@@ -67,15 +37,21 @@ impl FactVisitor<'_> {
     ) -> Vec<(String, Vec<String>)> {
         let setattr = matches!(func, Expr::Attribute(ast::ExprAttribute { attr, .. }) if attr.as_str() == "setattr");
         match &*arguments.args {
+            // `mock.patch` splits a dotted string at its last dot, as pytest and `unittest.mock` do.
             [Expr::StringLiteral(path), ..] if setattr || last_segment(func) == Some("patch") => {
                 let Some((module, name)) = path.value.to_str().rsplit_once('.') else {
                     return Vec::new();
                 };
                 vec![(module.to_owned(), vec![name.to_owned()])]
             }
-            _ if setattr || patch_object(func) => named,
+            _ if setattr || Self::patch_object(func) => named,
             _ => Vec::new(),
         }
+    }
+
+    fn patch_object(func: &Expr) -> bool {
+        matches!(func, Expr::Attribute(ast::ExprAttribute { attr, value, .. })
+            if attr.as_str() == "object" && last_segment(value) == Some("patch"))
     }
 
     pub(super) fn computed_write(&mut self, func: &Expr, arguments: &ast::Arguments) {
@@ -87,9 +63,36 @@ impl FactVisitor<'_> {
             {
                 self.qualified(target)
             }
-            [target, ..] if last_segment(func) == Some("patch") => computed_patch_module(target).map(str::to_owned),
+            [target, ..] if last_segment(func) == Some("patch") => {
+                Self::computed_patch_module(target).map(str::to_owned)
+            }
             _ => None,
         };
         self.computed_writes.extend(module);
+    }
+
+    // A target that starts with the interpolation names no module the run can find.
+    fn computed_patch_module(target: &Expr) -> Option<&str> {
+        let Expr::FString(fstring) = target else {
+            return None;
+        };
+        let mut elements = fstring.value.elements();
+        let Some(ast::InterpolatedStringElement::Literal(literal)) = elements.next() else {
+            return None;
+        };
+        if !matches!(elements.next(), Some(ast::InterpolatedStringElement::Interpolation(_))) {
+            return None;
+        }
+        literal.value.rsplit_once('.').map(|(module, _)| module)
+    }
+}
+
+pub(super) fn named_attribute_call(func: &Expr) -> bool {
+    match last_segment(func) {
+        Some("setattr" | "delattr") => true,
+        Some("object") => {
+            matches!(func, Expr::Attribute(ast::ExprAttribute { value, .. }) if last_segment(value) == Some("patch"))
+        }
+        _ => false,
     }
 }

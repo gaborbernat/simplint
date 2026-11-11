@@ -14,6 +14,7 @@ impl FactVisitor<'_> {
     pub(super) fn request_parameters(&mut self, function: &ast::StmtFunctionDef) {
         let parameters: Vec<String> =
             function.parameters.iter().map(|parameter| parameter.name().to_string()).collect();
+        // pytest resolves only the parameters of tests and fixtures, wherever they are defined.
         if function.name.starts_with("test") || has_decorator(&function.decorator_list, &["fixture"]) {
             self.pytest_requests.extend(parameters.clone());
         }

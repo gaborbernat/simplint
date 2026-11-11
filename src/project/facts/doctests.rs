@@ -13,22 +13,6 @@ pub(super) fn doctest_names(text: &str) -> impl Iterator<Item = String> + '_ {
     doctest_code(text).flat_map(identifier_words).filter(|word| is_identifier(word)).map(str::to_owned)
 }
 
-fn from_import(code: &str) -> Option<(u32, &str, Vec<&str>)> {
-    let (module, names) = code.trim_start().strip_prefix("from ")?.split_once(" import ")?;
-    let module = module.trim();
-    let name = module.trim_start_matches('.');
-    let level = u32::try_from(module.len() - name.len()).ok()?;
-    let names = names
-        .trim()
-        .trim_start_matches('(')
-        .trim_end_matches(')')
-        .split(',')
-        .filter_map(|name| name.split_whitespace().next())
-        .filter(|name| *name != "*" && is_identifier(name))
-        .collect();
-    Some((level, name, names))
-}
-
 impl FactVisitor<'_> {
     // A doctest's imports keep their names used, as the code's own imports do.
     pub(super) fn doctests(&mut self, text: &str) {
@@ -50,4 +34,20 @@ impl FactVisitor<'_> {
             }
         }
     }
+}
+
+fn from_import(code: &str) -> Option<(u32, &str, Vec<&str>)> {
+    let (module, names) = code.trim_start().strip_prefix("from ")?.split_once(" import ")?;
+    let module = module.trim();
+    let name = module.trim_start_matches('.');
+    let level = u32::try_from(module.len() - name.len()).ok()?;
+    let names = names
+        .trim()
+        .trim_start_matches('(')
+        .trim_end_matches(')')
+        .split(',')
+        .filter_map(|name| name.split_whitespace().next())
+        .filter(|name| *name != "*" && is_identifier(name))
+        .collect();
+    Some((level, name, names))
 }
