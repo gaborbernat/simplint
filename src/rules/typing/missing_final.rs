@@ -68,7 +68,9 @@ pub fn missing_final(checker: &Checker) {
         let fix = (!parenthesized)
             .then(|| {
                 spelling.get_or_init(|| final_qualifier(checker, TextRange::default())).as_ref().and_then(
-                    |(qualifier, import)| final_fix(checker, qualifier, import.as_ref(), target.range, annotation, value),
+                    |(qualifier, import)| {
+                        final_fix(checker, qualifier, import.as_ref(), target.range, annotation, value)
+                    },
                 )
             })
             .flatten();
