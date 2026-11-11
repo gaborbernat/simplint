@@ -402,8 +402,13 @@ impl Project {
             },
         );
         let (cycle_reports, duplicate_reports, reads) = aside;
+        let production: FxHashSet<FileId> = indexed
+            .iter()
+            .map(|(id, _)| *id)
+            .filter(|id| !test_modules.contains(id) && !test_support.contains(id))
+            .collect();
         let StarTargets { star_imported, package_star_imported, star_sources, package_bound } =
-            StarTargets::of(&stars, &sources, &unresolved_stars, &resolver.files);
+            StarTargets::of(&stars, &sources, &unresolved_stars, &resolver.files, &production);
         let RunNames {
             assigned_attributes,
             module_reads,

@@ -24,6 +24,7 @@ impl StarTargets {
         sources: &FxHashMap<FileId, &FileFacts>,
         unresolved: &FxHashSet<&str>,
         files: &FileIds,
+        production: &FxHashSet<FileId>,
     ) -> Self {
         let star_imported = stars
             .iter()
@@ -41,6 +42,7 @@ impl StarTargets {
         let star_sources = stars.iter().map(|(_, source)| *source).collect();
         let package_bound = stars
             .iter()
+            .filter(|(importer, _)| production.contains(importer))
             .map(|(_, source)| *source)
             .flat_map(|package| {
                 let path = files.path(package);

@@ -1875,6 +1875,25 @@ fn names_read_through_a_whole_module_are_used(consumer: &str, stdout: &str) {
     );
 }
 
+// Only a production file's star import binds the submodules a package's `__all__` lists, so a test's star import of the
+// package exempts none of them.
+#[test]
+fn star_import_in_a_test_exempts_no_submodule_name() {
+    let root = project(&[
+        ("pyproject.toml", DEMO),
+        ("pkg/__init__.py", "__all__ = [\"sub\"]\n"),
+        ("pkg/sub.py", "LIMIT = 3\n\n\ndef func() -> int:\n    return LIMIT\n\n\n__all__ = [\"LIMIT\", \"func\"]\n"),
+        ("cli.py", "from pkg.sub import LIMIT\n\nprint(LIMIT)\n"),
+        ("tests/test_pkg.py", "from pkg import *\n\n\ndef test_it() -> None:\n    assert sub\n"),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP402"]).1,
+        "pkg/sub.py:8:21: SMP402 [*] `func` is in `__all__`, yet no other module imports it; list only what other modules \
+         use\nFound 1 error.\n[*] 1 fixable with `--fix`.\n"
+            .replace("pkg/", &format!("pkg{}", std::path::MAIN_SEPARATOR_STR))
+    );
+}
+
 // A `__all__` read off a module the index cannot name may be any module's, so it does not exempt the `__all__` of a module
 // the run defines.
 #[test]

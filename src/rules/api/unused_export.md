@@ -406,8 +406,9 @@ __all__ = ["parse"]
   CONFIG = settings
   ```
 
-- **Submodules a star import binds through their package's `__all__`**: `from pkg import *` binds each submodule the
-  package's `__all__` lists, so the names of that submodule may be read under its own name.
+- **Submodules a star import binds through their package's `__all__`**: `from pkg import *` in production code binds
+  each submodule the package's `__all__` lists, so the names of that submodule may be read under its own name. A star
+  import in a test binds nothing that production reads, so it exempts none of them.
 
   ```python ok file=pkg/sub.py
   LIMIT = 3
