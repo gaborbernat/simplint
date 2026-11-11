@@ -6,7 +6,8 @@ use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::TextRange;
 
 use super::attributes::{Attribute, annotation_name, attributes, is_field_call, skips_init};
-use super::{Docstring, has_attribute_bases};
+use super::has_attribute_bases;
+use super::parse::Docstring;
 use crate::lint::checker::Checker;
 use crate::rules::public_api::Need;
 use crate::settings::DocstringStyle;
@@ -26,6 +27,11 @@ pub(crate) struct Target<'a> {
     pub(crate) constructor: Option<Rc<Docstring<'a>>>,
     // For a class, its attributes, found when a rule first asks for them.
     attributes: OnceCell<Vec<Attribute<'a>>>,
+}
+
+pub(crate) struct Parameter<'a> {
+    pub(crate) name: &'a str,
+    pub(crate) annotated: bool,
 }
 
 impl<'a> Target<'a> {
@@ -51,8 +57,13 @@ impl<'a> Target<'a> {
         checker.state().public_api(checker).is_public(self.definition(), Need::Docs)
     }
 
-    // Whether the docstring is the `__init__` docstring of a public class, which documents its constructor's parameters
-    // as the class docstring may.
+    fn definition(&self) -> TextRange {
+        match self.owner {
+            Owner::Function { def, .. } => def.range,
+            Owner::Class(class) => class.range,
+        }
+    }
+
     pub(crate) fn public_constructor(&self, checker: &Checker) -> bool {
         match self.owner {
             Owner::Function { def, class: Some(class) } => {
@@ -63,14 +74,6 @@ impl<'a> Target<'a> {
         }
     }
 
-    fn definition(&self) -> TextRange {
-        match self.owner {
-            Owner::Function { def, .. } => def.range,
-            Owner::Class(class) => class.range,
-        }
-    }
-
-    // The attributes of a class, none for a function.
     pub(crate) fn attributes(&self, checker: &Checker) -> &[Attribute<'a>] {
         match self.owner {
             Owner::Class(class) => self.attributes.get_or_init(|| attributes(checker, class)),
@@ -102,41 +105,43 @@ pub(crate) fn collect_targets<'a>(checker: &Checker<'a>) -> Vec<Target<'a>> {
         .function_defs()
         .iter()
         .filter_map(|def| {
-            let docstring = Rc::new(Docstring::parse(checker, docstring(&def.body)?));
-            let class = methods.get(&def.range).copied();
-            let owner = Owner::Function { def, class };
-            Some(Target { owner, docstring, constructor: None, attributes: OnceCell::new() })
+            Some(Target {
+                owner: Owner::Function { def, class: methods.get(&def.range).copied() },
+                docstring: Rc::new(Docstring::parse(checker, docstring(&def.body)?)),
+                constructor: None,
+                attributes: OnceCell::new(),
+            })
         })
         .collect();
     // By the range of the docstring, so the class shares the one its `__init__` target holds.
     let parsed: FxHashMap<TextRange, Rc<Docstring>> =
         targets.iter().map(|target| (target.docstring.range(), Rc::clone(&target.docstring))).collect();
-    let classes = checker.class_defs().iter().filter_map(|class| {
+    targets.extend(checker.class_defs().iter().filter_map(|class| {
         let constructor = constructor(class)
             .and_then(|init| docstring(&init.body))
             .and_then(|literal| parsed.get(&literal.range))
             .cloned();
-        let docstring = Rc::new(Docstring::parse(checker, docstring(&class.body)?));
-        let owner = Owner::Class(class);
-        Some(Target { owner, docstring, constructor, attributes: OnceCell::new() })
-    });
-    targets.extend(classes);
+        Some(Target {
+            owner: Owner::Class(class),
+            docstring: Rc::new(Docstring::parse(checker, docstring(&class.body)?)),
+            constructor,
+            attributes: OnceCell::new(),
+        })
+    }));
     targets.sort_by_key(|target| target.docstring.range().start());
     targets
 }
 
-pub(crate) struct Parameter<'a> {
-    pub(crate) name: &'a str,
-    pub(crate) annotated: bool,
-}
-
-// A function's parameters in order, without the instance or class a method receives first and without names made of
-// underscores only, which take a value nobody reads.
+// A function's parameters in order, without the instance or class a method receives first. Names made of underscores
+// only are left out, as they take a value nobody reads.
 fn parameters(def: &ast::StmtFunctionDef, is_method: bool) -> Vec<Parameter<'_>> {
     let received = if is_method { receiver(def) } else { None };
     let parameters = &def.parameters;
-    let positional = parameters.posonlyargs.iter().chain(&parameters.args).map(|parameter| &parameter.parameter);
-    let all = positional
+    let all = parameters
+        .posonlyargs
+        .iter()
+        .chain(&parameters.args)
+        .map(|parameter| &parameter.parameter)
         .chain(parameters.vararg.as_deref())
         .chain(parameters.kwonlyargs.iter().map(|parameter| &parameter.parameter))
         .chain(parameters.kwarg.as_deref());
@@ -150,18 +155,9 @@ fn underscores_only(name: &str) -> bool {
     name.chars().all(|char| char == '_')
 }
 
-// The `__init__` that runs: the last one, since `@overload` stubs come before the implementation.
-fn constructor(class: &ast::StmtClassDef) -> Option<&ast::StmtFunctionDef> {
-    module_statements(&class.body)
-        .filter_map(Stmt::as_function_def_stmt)
-        .filter(|def| def.name.as_str() == "__init__" && !is_overload(&def.decorator_list))
-        .last()
-}
-
-// A class's constructor parameters: its `__init__`'s, or the fields a dataclass or attrs class turns into them, those
-// annotated in its body and those an `attr.ib()` or `field()` call declares, without `ClassVar`s, the `KW_ONLY`
-// marker and fields that set `init=False`. `None` when they come from elsewhere: a base class, or a class that is not
-// generated.
+// A dataclass or attrs class takes its constructor parameters from the fields it turns into them: those annotated in
+// its body and those an `attr.ib()` or `field()` call declares, without `ClassVar`s, the `KW_ONLY` marker and fields
+// that set `init=False`. `None` when they come from elsewhere: a base class, or a class that is not generated.
 fn class_parameters(class: &ast::StmtClassDef) -> Option<Vec<Parameter<'_>>> {
     if let Some(init) = constructor(class) {
         return Some(parameters(init, true));
@@ -196,6 +192,13 @@ fn class_parameters(class: &ast::StmtClassDef) -> Option<Vec<Parameter<'_>>> {
         .filter(|(name, _, _)| !underscores_only(name.id.as_str()))
         .map(|(name, value, annotated)| Some(Parameter { name: init_name(name, value, attrs)?, annotated }))
         .collect()
+}
+
+fn constructor(class: &ast::StmtClassDef) -> Option<&ast::StmtFunctionDef> {
+    module_statements(&class.body)
+        .filter_map(Stmt::as_function_def_stmt)
+        .filter(|def| def.name.as_str() == "__init__" && !is_overload(&def.decorator_list))
+        .last()
 }
 
 // The name of a field's constructor parameter: attrs takes it from the field's `alias`, or from the field's name

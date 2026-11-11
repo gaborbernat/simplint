@@ -18,7 +18,7 @@ pub(crate) struct Attribute<'a> {
     pub(crate) documented: bool,
 }
 
-pub(crate) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) -> Vec<Attribute<'a>> {
+pub(super) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) -> Vec<Attribute<'a>> {
     let mut found: Vec<Attribute> = Vec::new();
     let mut index: FxHashMap<&'a str, usize> = FxHashMap::default();
     let mut add = |name: &'a str, class_var: bool, documented: bool| {
@@ -38,8 +38,7 @@ pub(crate) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) ->
                 // A `Final` with a value in a class body is a class variable, as PEP 591 says; without one it is an
                 // instance attribute set in `__init__`.
                 let qualifier = annotation_name(annotation);
-                let final_constant = value.is_some() && qualifier == Some("Final");
-                let class_var = final_constant || qualifier == Some("ClassVar");
+                let class_var = (value.is_some() && qualifier == Some("Final")) || qualifier == Some("ClassVar");
                 for name in std::iter::once(target.as_ref()).filter_map(Expr::as_name_expr) {
                     add(name.id.as_str(), class_var, documented);
                 }
@@ -85,22 +84,6 @@ pub(crate) fn attributes<'a>(checker: &Checker, class: &'a ast::StmtClassDef) ->
     found
 }
 
-// Whether the class takes attributes from a base that may define them, as a field list cannot tell.
-pub(crate) fn has_attribute_bases(class: &ast::StmtClassDef) -> bool {
-    class.bases().iter().any(|base| {
-        !matches!(
-            last_segment(unsubscripted(base)),
-            Some("object" | "ABC" | "Protocol" | "Generic" | "NamedTuple" | "TypedDict")
-        )
-    })
-}
-
-// An annotation or base without its parameters, as `ClassVar` for `ClassVar[int]`.
-pub(super) fn unsubscripted(expr: &Expr) -> &Expr {
-    expr.as_subscript_expr().map_or(expr, |subscript| &subscript.value)
-}
-
-// The last name of an annotation, as `ClassVar` for `ClassVar[int]` and for the string `"typing.ClassVar[int]"`.
 pub(super) fn annotation_name(annotation: &Expr) -> Option<&str> {
     match annotation.as_string_literal_expr() {
         Some(literal) => literal.value.to_str().split('[').next()?.trim().rsplit('.').next(),
@@ -108,7 +91,10 @@ pub(super) fn annotation_name(annotation: &Expr) -> Option<&str> {
     }
 }
 
-// The names a `__slots__` value declares: a string, the strings of a tuple, list or set, or the keys of a dict.
+fn unsubscripted(expr: &Expr) -> &Expr {
+    expr.as_subscript_expr().map_or(expr, |subscript| &subscript.value)
+}
+
 fn slot_names(value: &Expr) -> Vec<&str> {
     let names: Vec<&Expr> = match value {
         Expr::Tuple(ast::ExprTuple { elts, .. })
@@ -120,13 +106,20 @@ fn slot_names(value: &Expr) -> Vec<&str> {
     names.into_iter().filter_map(|name| name.as_string_literal_expr().map(|literal| literal.value.to_str())).collect()
 }
 
-// Whether the value declares an attrs or dataclass field, which holds a value per instance.
 pub(super) fn is_field_call(value: &Expr) -> bool {
     value.as_call_expr().is_some_and(|call| matches!(last_segment(&call.func), Some("ib" | "attrib" | "field")))
 }
 
-// Whether a class generator or field call passes `init=False`, leaving the field or the whole class out of the
-// generated `__init__`.
+// Whether the class takes attributes from a base that may define them, as a field list cannot tell.
+pub(crate) fn has_attribute_bases(class: &ast::StmtClassDef) -> bool {
+    class.bases().iter().any(|base| {
+        !matches!(
+            last_segment(unsubscripted(base)),
+            Some("object" | "ABC" | "Protocol" | "Generic" | "NamedTuple" | "TypedDict")
+        )
+    })
+}
+
 pub(super) fn skips_init(call: &ast::ExprCall) -> bool {
     call.arguments
         .find_keyword("init")
