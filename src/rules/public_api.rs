@@ -47,7 +47,7 @@ pub(crate) struct PublicApi<'a> {
 }
 
 impl<'a> PublicApi<'a> {
-    // Built once per file; rules read it through `Checker::public_api`.
+    // Built once per file on first use; rules read it as `checker.state().public_api(checker)`.
     pub(crate) fn of(checker: &Checker<'a>) -> Self {
         let body = checker.body();
         let project = checker.project();

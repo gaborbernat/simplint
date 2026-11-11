@@ -27,6 +27,7 @@ use super::append::is_list_append;
 use super::django::unordered_model_statements;
 use super::runtime::Runtime;
 use crate::semantic::future_import;
+use crate::syntax::{pattern_capture, signature_annotations};
 
 pub struct Model<'a> {
     pub semantic: SemanticModel<'a>,
@@ -294,10 +295,7 @@ impl<'a> Visitor<'a> for Builder<'a> {
     }
 
     fn visit_pattern(&mut self, pattern: &'a Pattern) {
-        if let Pattern::MatchAs(ast::PatternMatchAs { name: Some(name), .. })
-        | Pattern::MatchStar(ast::PatternMatchStar { name: Some(name), .. })
-        | Pattern::MatchMapping(ast::PatternMatchMapping { rest: Some(name), .. }) = pattern
-        {
+        if let Some(name) = pattern_capture(pattern) {
             self.add_binding(name, name.range(), BindingKind::Assignment);
         }
         visitor::walk_pattern(self, pattern);
@@ -363,7 +361,7 @@ impl<'a> Builder<'a> {
     }
 
     fn visit_function_def(&mut self, stmt: &'a Stmt, function_def: &'a ast::StmtFunctionDef) {
-        let ast::StmtFunctionDef { name, parameters, decorator_list, returns, type_params, .. } = function_def;
+        let ast::StmtFunctionDef { name, parameters, decorator_list, type_params, .. } = function_def;
         for decorator in decorator_list {
             self.visit_decorator(decorator);
         }
@@ -380,7 +378,7 @@ impl<'a> Builder<'a> {
             self.visit_type_params(type_params);
         }
         let runtime = self.runtime.function(function_def, &self.semantic);
-        for annotation in parameters.iter().filter_map(AnyParameterRef::annotation).chain(returns.as_deref()) {
+        for annotation in signature_annotations(function_def) {
             self.visit_annotation_as(annotation, runtime);
         }
         self.semantic.push_scope(ScopeKind::Function(function_def));

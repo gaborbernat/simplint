@@ -585,7 +585,8 @@ pub fn target_names(target: &Expr) -> Vec<&str> {
     target_leaves(target).into_iter().filter_map(Expr::as_name_expr).map(|name| name.id.as_str()).collect()
 }
 
-// The words of a text, each a run of letters, digits and underscores, as identifiers are spelled.
+// The pieces of a text split at each character that is not a letter, digit or underscore, so an identifier comes out as
+// one piece. Adjacent separators also yield empty pieces, which a caller that needs only words skips.
 pub fn identifier_words(text: &str) -> impl Iterator<Item = &str> {
     text.split(|char: char| !(char.is_alphanumeric() || char == '_'))
 }
