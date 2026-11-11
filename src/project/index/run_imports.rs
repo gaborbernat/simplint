@@ -5,17 +5,13 @@ use super::classes::Reexports;
 use super::resolve::{ClassKey, ModuleFacts};
 use crate::project::facts::ImportBinding;
 
-// The names a file of the run defines, each as a class (true) or a function (false). A name the file only imports, assigns
-// or leaves to a module `__getattr__` is absent, so nothing tells what it is.
+// A name the file only imports, assigns or leaves to a module `__getattr__` is absent, so nothing tells what it is.
 pub(super) type Members = FxHashMap<String, bool>;
 
 #[derive(Default)]
 pub(super) struct RunImports {
-    // The names each file binds by importing them from a file of the run.
     pub(super) names: FxHashMap<FileId, Members>,
-    // The file each module a file binds by importing a file of the run as a module names, by the bound name.
     pub(super) modules: FxHashMap<FileId, FxHashMap<String, FileId>>,
-    // The members of each file of the run, which the modules above name.
     pub(super) members: FxHashMap<FileId, Members>,
 }
 

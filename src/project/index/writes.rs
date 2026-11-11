@@ -6,19 +6,15 @@ use crate::project::receivers::ANY_ATTRIBUTE;
 use super::files::FileId;
 use super::reach::unqualified;
 
-// The attribute writes of the run: by the qualified class of the instance written to when parsing tells, and otherwise
-// by name.
 #[derive(Default)]
 pub(super) struct Writes {
     pub(super) on_class: FxHashMap<String, FxHashSet<String>>,
-    // The attributes the run reads, sets or deletes through each class's name, by the class's qualified name.
     pub(super) class_attributes: FxHashMap<String, FxHashSet<String>>,
     pub(super) untyped: FxHashSet<String>,
     pub(super) dict_stores: FxHashSet<String>,
     pub(super) unslottable_bases: FxHashSet<String>,
     pub(super) stateful_bases: FxHashSet<String>,
     pub(super) pickles_low_protocol: bool,
-    // How many entries of `on_class` and `unslottable_bases` each unqualified class name has.
     pub(super) namesakes: FxHashMap<String, usize>,
 }
 

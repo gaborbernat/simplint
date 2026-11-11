@@ -12,16 +12,12 @@ pub struct Definition {
     refs: Vec<String>,
 }
 
-// The definitions a module defines at its top level, for the signature reach the index works out from the names the
-// module exposes.
 pub(super) fn interface(body: &[Stmt]) -> Vec<Definition> {
     module_statements(body).filter_map(definition).collect()
 }
 
-// The module-level names a module's interface reaches from a set of roots: the classes and aliases that the annotations,
-// bases and bounds of a root refer to, transitively, through the same places of every class and alias they reach. A root
-// counts only when another root reaches it, so a type an exposed name uses is public though no file imports it. Built
-// once per module, so the roots of several sets share the same references.
+// A root counts only when another root reaches it, so a type an exposed name uses is public though no file imports
+// it. Built once per module, so the roots of several sets share the same references.
 pub struct Closure<'a> {
     refs: FxHashMap<&'a str, Vec<&'a str>>,
     types: FxHashSet<&'a str>,
@@ -92,8 +88,6 @@ fn definition(stmt: &Stmt) -> Option<Definition> {
     Some(Definition { name: name.to_owned(), is_type, refs })
 }
 
-// The names a class puts in its interface: its type parameters' bounds, its bases, the annotations of its fields, and
-// the signatures of its public methods. Keywords such as `metaclass=` are left out.
 fn class_names(class: &ast::StmtClassDef) -> Vec<String> {
     let mut refs = type_param_names(class.type_params.as_deref());
     refs.extend(class.bases().iter().flat_map(names_in));
@@ -109,25 +103,25 @@ fn class_names(class: &ast::StmtClassDef) -> Vec<String> {
     refs
 }
 
-// The names a function's signature puts in its interface: its type parameters' bounds and defaults, its parameter
-// annotations and its return annotation.
 fn signature_names(function: &ast::StmtFunctionDef) -> Vec<String> {
     let mut refs = type_param_names(function.type_params.as_deref());
     let parameters = &function.parameters;
-    let annotated = parameters
-        .posonlyargs
-        .iter()
-        .chain(&parameters.args)
-        .chain(&parameters.kwonlyargs)
-        .map(|parameter| &parameter.parameter)
-        .chain(parameters.vararg.as_deref())
-        .chain(parameters.kwarg.as_deref());
-    refs.extend(annotated.filter_map(|parameter| parameter.annotation()).flat_map(names_in));
+    refs.extend(
+        parameters
+            .posonlyargs
+            .iter()
+            .chain(&parameters.args)
+            .chain(&parameters.kwonlyargs)
+            .map(|parameter| &parameter.parameter)
+            .chain(parameters.vararg.as_deref())
+            .chain(parameters.kwarg.as_deref())
+            .filter_map(|parameter| parameter.annotation())
+            .flat_map(names_in),
+    );
     refs.extend(function.returns.as_deref().into_iter().flat_map(names_in));
     refs
 }
 
-// The bounds and defaults of type parameters.
 fn type_param_names(type_params: Option<&ast::TypeParams>) -> Vec<String> {
     let Some(type_params) = type_params else {
         return Vec::new();

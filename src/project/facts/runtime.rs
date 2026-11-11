@@ -8,7 +8,6 @@ use super::visitor::FactVisitor;
 use crate::syntax::{alias_root_binding, is_main_test, is_type_checking_name, pattern_capture};
 
 impl FactVisitor<'_> {
-    // When the body of an `if` with this test runs, and when the clauses after it can.
     pub(super) fn branches(&self, test: &Expr) -> (Runs, Runs) {
         let name = test.as_name_expr().map(|name| name.id.as_str());
         let falsy_name = name.is_some_and(|name| self.constants.falsy.contains(name));
@@ -28,7 +27,6 @@ impl FactVisitor<'_> {
     }
 }
 
-// When a statement runs as the module loads: always, only on Pythons older than a `(major, minor)` version, or never.
 #[derive(Clone, Copy, PartialEq)]
 pub(super) enum Runs {
     Always,
@@ -37,7 +35,6 @@ pub(super) enum Runs {
 }
 
 impl Runs {
-    // When a statement runs that needs both conditions to hold.
     pub(super) fn and(self, other: Self) -> Self {
         match (self, other) {
             (Self::Never, _) | (_, Self::Never) => Self::Never,
@@ -51,9 +48,7 @@ impl Runs {
     }
 }
 
-// When the branches of a `sys.version_info` check run: `sys.version_info < (3, 8)` holds only below 3.8, and
-// `sys.version_info >= (3, 8)` fails only below it. The full `sys.version_info` is longer than the tuple it is compared
-// with, so it never equals it; its first item, as `sys.version_info[0]` or `.major`, compares as a number.
+// The full `sys.version_info` is longer than the tuple it is compared with, so it never equals that tuple.
 fn version_branches(test: &Expr) -> Option<(Runs, Runs)> {
     let ast::ExprCompare { ops, operands, .. } = test.as_compare_expr()?;
     let ([op], [left, right]) = (&**ops, &**operands) else {
@@ -103,7 +98,6 @@ fn version_branches(test: &Expr) -> Option<(Runs, Runs)> {
     Some(if holds_below { (gate, other) } else { (Runs::Always, gate) })
 }
 
-// Whether an `except` clause catches `ImportError` or `ModuleNotFoundError`, alone or in a tuple.
 pub(super) fn catches_import_error(type_: &Expr) -> bool {
     let is_import_error = |expr: &Expr| {
         UnqualifiedName::from_expr(expr)
@@ -116,10 +110,6 @@ pub(super) fn catches_import_error(type_: &Expr) -> bool {
     }
 }
 
-// The names the module binds exactly once, to a constant, as `_false = 0` or `DEBUG = True` does, sorted by the
-// truth of the constant. A binding anywhere in the module's blocks rebinds a name, as does a function's `global`
-// declaration of it, which keeps the name out. A star import binds the public names of its module, so a public name is
-// not bound once then.
 #[derive(Default)]
 pub(super) struct Constants<'a> {
     pub(super) falsy: FxHashSet<&'a str>,
@@ -149,8 +139,6 @@ pub(super) fn constants(body: &[Stmt]) -> Constants<'_> {
     constants
 }
 
-// The names the module binds in its own scope, each with the constant its only binding is, if it is one. A function
-// or a class binds its own name only, as what its body binds is local to it.
 #[derive(Default)]
 struct Bindings<'a> {
     bound: FxHashMap<&'a str, Option<bool>>,
@@ -226,7 +214,6 @@ impl<'a> Visitor<'a> for Bindings<'a> {
     }
 }
 
-// The names some function declares `global`, which rebinds them while the module runs.
 #[derive(Default)]
 struct GlobalNames<'a> {
     names: FxHashSet<&'a str>,
@@ -241,7 +228,6 @@ impl<'a> Visitor<'a> for GlobalNames<'a> {
     }
 }
 
-// The truth of a literal, as `0` is false and `True` is true. Any other value is no constant.
 fn literal_constant(value: &Expr) -> Option<bool> {
     value
         .is_literal_expr()

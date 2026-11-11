@@ -13,19 +13,14 @@ use super::reach::unqualified;
 use super::writes::Writes;
 use super::{every, every_in};
 
-// The names the files of the run list, the writes they make and what they read in common, which every file's answers
-// depend on. `digest` hashes them for the cache, and `changed` names the ones that differ between two indexes.
 pub(in crate::project) struct RunWide {
     pub(super) reads: RunReads,
     pub(super) assigned_attributes: FxHashSet<String>,
     pub(super) module_reads: FxHashSet<String>,
     pub(super) base_classes: FxHashSet<String>,
-    // The fixtures test modules request by parameter, `usefixtures` or `getfixturevalue`, so pytest may use them.
     pub(super) fixture_requests: FxHashSet<String>,
-    // The names code the index cannot follow reads: those a file imports or reads from a module that resolves to no file
-    // of the run, and those its doctest examples use.
+    // Names the index cannot follow: those read from a module that resolves to no file of the run, and doctest uses.
     pub(super) opaque_names: FxHashSet<String>,
-    // The attributes the files read under computed names, which may reach any attribute or those with a prefix.
     pub(super) computed_reads: ComputedReads,
     pub(super) writes: Writes,
 }
@@ -67,14 +62,12 @@ pub(super) fn run_names(
     }
 }
 
-// The fixtures the test modules request, and those the tests and fixtures of any other file request.
 fn fixture_requests(files: &[(FileId, &FileFacts)], test_modules: &FxHashSet<FileId>) -> FxHashSet<String> {
     let mut requests = every_in(files, |id| test_modules.contains(&id), |facts| &facts.fixture_requests);
     requests.extend(every(files, |facts| &facts.pytest_requests));
     requests
 }
 
-// The attributes the files read under names the program computes.
 fn computed_reads(files: &[(FileId, &FileFacts)]) -> ComputedReads {
     let mut reads = ComputedReads::default();
     for (_, facts) in files {
@@ -83,14 +76,10 @@ fn computed_reads(files: &[(FileId, &FileFacts)]) -> ComputedReads {
     reads
 }
 
-// What the files of the run read in common: whether any reads docstrings or a class's name off an object, so the names
-// of the run's code may be read, and the number of files each word of a string literal appears in, which a rename must
-// not change.
 #[derive(Default, PartialEq)]
 pub(super) struct RunReads {
     pub(super) docstrings: bool,
     pub(super) class_names: bool,
-    // The names whose `__name__` or `__qualname__` some file of the run reads.
     pub(super) reflected: FxHashSet<String>,
     pub(super) string_words: FxHashMap<String, u32>,
 }
@@ -128,8 +117,6 @@ fn string_word_counts(indexed: &[(FileId, &FileFacts)]) -> FxHashMap<String, u32
 }
 
 impl RunWide {
-    // What the run's attribute writes, module reads and base classes are, and whether it reads docstrings: the names
-    // of the whole run that every file's answers depend on. It is taken before the external sets are merged in.
     pub(super) fn digest(&self, docs: &DocReferences) -> u64 {
         let mut hasher = CacheKeyHasher::new();
         self.reads.docstrings.cache_key(&mut hasher);
@@ -158,19 +145,7 @@ impl RunWide {
         hasher.finish()
     }
 
-    // The words whose count of files differs between the two indexes, or that only one holds.
-    fn string_word_changes<'p>(&'p self, other: &'p Self) -> impl Iterator<Item = &'p str> {
-        let (own, others) = (&self.reads.string_words, &other.reads.string_words);
-        let counts =
-            own.iter().filter(|(word, count)| others.get(*word) != Some(*count)).map(|(word, _)| word.as_str());
-        let only_other = others.keys().filter(|word| !own.contains_key(*word));
-        counts.chain(only_other.map(String::as_str))
-    }
-
-    // The attribute, module read and base class names one index has and the other lacks, whose answers differ between
-    // the two, and the names of the classes whose attribute writes, or subclasses that a slotted base breaks, differ,
-    // which a dataclass of that name, or a namesake of it, reads. Low protocol pickling concerns every dataclass, so its
-    // change names `dataclass`.
+    // Low protocol pickling concerns every dataclass, so its change names `dataclass`.
     pub(super) fn changed<'p>(&'p self, other: &'p Self) -> FxHashSet<&'p str> {
         let (writes, others) = (&self.writes, &other.writes);
         let classes = writes
@@ -196,6 +171,14 @@ impl RunWide {
             .chain(pickling)
             .chain(self.string_word_changes(other))
             .collect()
+    }
+
+    fn string_word_changes<'p>(&'p self, other: &'p Self) -> impl Iterator<Item = &'p str> {
+        let (own, others) = (&self.reads.string_words, &other.reads.string_words);
+        let counts =
+            own.iter().filter(|(word, count)| others.get(*word) != Some(*count)).map(|(word, _)| word.as_str());
+        let only_other = others.keys().filter(|word| !own.contains_key(*word));
+        counts.chain(only_other.map(String::as_str))
     }
 }
 

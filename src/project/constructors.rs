@@ -22,53 +22,35 @@ use crate::syntax::{
     module_statements,
 };
 
-// What `dataclass-kw-only` needs to rewrite every positional call of a dataclass it makes keyword-only: the dataclasses
-// a file declares without `kw_only=True`, with the fields their `__init__` takes by position, and how the file uses
-// names from other modules. `unused-default` reads the same uses for the calls of a function, and the methods a class
-// defines with the attribute names the module loads.
 #[derive(Clone, Default, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct Constructors {
     pub(super) dataclasses: Vec<(String, Option<Vec<String>>)>,
     pub(super) uses: Vec<(String, Vec<NameUse>)>,
-    // The capitalized names called with positional arguments as attributes of something no import binds, such as
-    // `module.Ranked(issue, score)` on a module a test loads from its file path, and the capitalized names a
-    // `getattr(object, "Name")` reads; any dataclass so named may be the one.
     pub(super) dynamic: Vec<String>,
-    // The methods of the module's top-level classes.
     pub(super) methods: Vec<String>,
-    // The plain `name = value` attributes of the module's top-level classes, which `attribute_loads` counts like methods.
     pub(super) attributes: Vec<String>,
 }
 
-// A name used from a module, as the file spells it.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub(super) struct NameUse {
     pub(super) name: String,
     pub(super) written: String,
     pub(super) kind: UseKind,
-    // Whether the statement that makes the call drops its value, as `f()` on a line of its own does.
     pub(super) discarded: bool,
-    // Whether the call runs the module as a program, from `__main__.py` or an `if __name__ == "__main__":` block.
     pub(super) entry: bool,
-    // The byte range of a call, which a dataclass's report points at; `(0, 0)` for a name that is not a call.
     pub(super) span: (u32, u32),
-    // The comments on the lines of a call that passes arguments by position.
     pub(super) comments: Vec<String>,
 }
 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub(super) enum UseKind {
-    // A call, by the arguments it passes.
     Call(CallShape),
     // A use no rewrite can follow: a call unpacking `*args`, a class pattern matching by position, or the name passed
     // around as a value.
     Opaque,
-    // `from module import name as written`, or `from module import *` with `*` for the name.
     Imported,
 }
 
-// The arguments of a call that does not unpack `*args`: how many it passes by position, the names it passes by
-// keyword, and whether it unpacks a mapping with `**`.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub(crate) struct CallShape {
     pub(crate) positional: u32,
@@ -95,14 +77,11 @@ impl CacheKey for CallShape {
     }
 }
 
-// Every call of a function the run makes, and whether some use of it is not a call, which hides the arguments it gets.
-// The calls made from production code are kept apart, since the test-only rules compare them with the calls of tests.
 #[derive(Clone, Default, PartialEq)]
 pub(crate) struct CallSites {
     pub(crate) opaque: bool,
     pub(crate) shapes: BTreeSet<CallShape>,
     pub(crate) production: BTreeSet<CallShape>,
-    // Whether a production call uses the value it returns.
     pub(crate) production_reads: bool,
     // Whether code that runs the module as a program calls it, as an entry point would: its arguments and its value
     // belong to the command line, not to the run.
@@ -121,7 +100,6 @@ impl CallSites {
         }
     }
 
-    // A call the defining module itself makes, which is production code.
     pub(crate) fn add_production_call(&mut self, call: &ast::ExprCall, discarded: bool, entry: bool) {
         if CallKind::of(call) == CallKind::Unpacked {
             self.opaque = true;
@@ -277,20 +255,17 @@ impl CallContexts {
         Self { discarded, entry: entry_blocks(body, is_main) }
     }
 
-    // Whether the call's value is dropped, and whether the call sits in code that runs the module as a program.
     pub(crate) fn classify(&self, call: &ast::ExprCall) -> (bool, bool) {
         let range = call.range();
         (self.discarded.contains(&range), self.entry.iter().any(|block| block.contains_range(range)))
     }
 }
 
-// The methods and plain `name = value` attributes of a module's top-level classes.
 struct Members {
     methods: Vec<String>,
     attributes: Vec<String>,
 }
 
-// A member in an `if` or `try` block of the class body is the class's too, as `module_statements` reads it.
 fn member_names(body: &[Stmt]) -> Members {
     let classes = body.iter().filter_map(Stmt::as_class_def_stmt);
     let methods = classes
@@ -306,7 +281,6 @@ fn member_names(body: &[Stmt]) -> Members {
     Members { methods, attributes }
 }
 
-// The range of the call a statement is, when nothing reads the call's value, as `f()` on a line of its own.
 pub(super) fn discarded_call(stmt: &Stmt) -> Option<TextRange> {
     let Stmt::Expr(ast::StmtExpr { value, .. }) = stmt else {
         return None;
@@ -317,7 +291,6 @@ pub(super) fn discarded_call(stmt: &Stmt) -> Option<TextRange> {
     Some(call.range())
 }
 
-// The calls that make up a whole statement, whose value nothing reads, such as `f()` on a line of its own.
 fn discarded_calls(body: &[Stmt]) -> FxHashSet<TextRange> {
     struct Discarded(FxHashSet<TextRange>);
     impl<'a> Visitor<'a> for Discarded {
@@ -331,8 +304,6 @@ fn discarded_calls(body: &[Stmt]) -> FxHashSet<TextRange> {
     discarded.0
 }
 
-// The code that runs only when the module runs as a program: the whole of a `__main__.py`, or the module's
-// `if __name__ == "__main__":` blocks.
 fn entry_blocks(body: &[Stmt], is_main: bool) -> Vec<TextRange> {
     if is_main {
         return body.iter().map(Ranged::range).collect();
@@ -388,28 +359,18 @@ fn comment_ranges(tokens: &Tokens) -> CommentRanges {
     CommentRanges::new(tokens.iter().filter(|token| token.kind() == TokenKind::Comment).map(Ranged::range).collect())
 }
 
-// Over the run: how other files use each file's dataclasses, and the calls of each file's functions, with the positional
-// calls other files make of each dataclass.
 #[derive(Default)]
 pub struct RunCalls {
-    // Per file, its dataclasses another file uses in a way no rewrite follows, which includes importing one from a
-    // module that passes it on to others.
     opaque: FxHashMap<FileId, FxHashSet<String>>,
     star_imported: FxHashSet<FileId>,
-    // Per file, the positional calls of each dataclass it declares that other files make, with where each is.
     dataclass_calls: FxHashMap<FileId, FxHashMap<String, Vec<CallSite>>>,
-    // Per file, the calls of each function it defines, from the other files of the run.
     functions: FxHashMap<FileId, FxHashMap<String, CallSites>>,
-    // Per file, how many times the run loads each of the file's method names.
     method_loads: FxHashMap<FileId, FxHashMap<String, u32>>,
-    // The modules only tests import, directly or through other such modules, whose calls are test code.
     test_support: FxHashSet<FileId>,
 }
 
 type Declared<'f> = &'f [(String, Option<Vec<String>>)];
 
-// A file, whether its own reports rewrite its positional calls, whether it is production code rather than a test module,
-// and the files its names resolve to with the names it uses from each.
 pub(super) struct FileUses<'f> {
     pub(super) caller: FileId,
     pub(super) path: PathBuf,
@@ -420,9 +381,6 @@ pub(super) struct FileUses<'f> {
 }
 
 impl RunCalls {
-    // `defined` holds the names each file binds at its top level, which tell a re-export from a definition. `hidden`
-    // holds the names some file may read off a module under a computed name, so any function so named may be called.
-    // A dataclass of a library's public API is left out, so no caller's positional call to it is rewritten or reported.
     pub(super) fn index<'f>(
         declared: impl Iterator<Item = (FileId, Declared<'f>)>,
         uses: &[FileUses],
@@ -517,8 +475,6 @@ impl RunCalls {
         calls
     }
 
-    // Records that some use of a function the file defines hides its arguments, as an entry point or a dotted string
-    // naming it does.
     pub(super) fn mark_opaque(&mut self, file: FileId, name: String) {
         self.functions.entry(file).or_default().entry(name).or_default().opaque = true;
     }
@@ -543,8 +499,6 @@ impl RunCalls {
     }
 }
 
-// What the index knows of one file's calls: how other files use its dataclasses and functions, the dataclasses of
-// other files it calls by position, and how often the run loads its method names.
 #[derive(Clone, Copy, PartialEq)]
 pub struct FileCalls<'a> {
     opaque: Option<&'a FxHashSet<String>>,
@@ -556,8 +510,6 @@ pub struct FileCalls<'a> {
 }
 
 impl<'a> FileCalls<'a> {
-    // Whether only tests import the module, directly or through other modules only tests import, so its calls serve
-    // them.
     pub(crate) fn is_test_support(&self) -> bool {
         self.test_support
     }
@@ -567,17 +519,14 @@ impl<'a> FileCalls<'a> {
         self.star_imported || self.opaque.is_some_and(|names| names.contains(name))
     }
 
-    // The positional calls other files make of the dataclass `name` this file declares, in no particular order.
     pub fn positional_calls(&self, name: &str) -> &'a [CallSite] {
         self.dataclass_calls.and_then(|calls| calls.get(name)).map_or(&[], Vec::as_slice)
     }
 
-    // The calls the other files make of the function `name` this file defines, or `None` when they make none.
     pub(crate) fn call_sites(&self, name: &str) -> Option<&'a CallSites> {
         self.functions?.get(name)
     }
 
-    // How many times the run loads the attribute `name`, which counts every `obj.name` read of a method of that name.
     pub(crate) fn attribute_loads(&self, name: &str) -> u32 {
         self.method_loads.and_then(|loads| loads.get(name)).copied().unwrap_or_default()
     }
@@ -594,15 +543,14 @@ impl CacheKey for FileCalls<'_> {
     }
 }
 
-// A call that passes fields by position to a dataclass of another file: the file it is in, its byte range, and the digest
-// of that file's source, so a report that names it is kept only while the file is unchanged.
+// A call that passes fields by position to a dataclass of another file: the file it is in, its byte range, and the
+// digest of that file's source, so a report that names it is kept only while the file is unchanged.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct CallSite {
     pub(crate) caller: PathBuf,
     pub(crate) start: u32,
     pub(crate) end: u32,
     digest: u64,
-    // The comments on the call's lines, where a suppression of the report that names the call sits.
     pub(crate) comments: Vec<String>,
 }
 
@@ -718,7 +666,6 @@ impl CallKind {
 }
 
 pub(crate) enum Use<'a> {
-    // A call the file spells, or one a string annotation spells, which parsing owns.
     Call(Cow<'a, ast::ExprCall>),
     Opaque,
 }
@@ -738,7 +685,6 @@ impl Use<'_> {
 // when the walk has the source it is in.
 pub(crate) struct Uses<'a, K, F> {
     matches: F,
-    // Whether the walk is in an annotation, where a name is a type and not a value.
     annotated: bool,
     source: Option<&'a str>,
     pub(crate) found: Vec<(K, Use<'a>)>,

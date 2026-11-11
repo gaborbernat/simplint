@@ -6,17 +6,12 @@ use ruff_python_ast::{self as ast, Expr, Stmt};
 
 use crate::syntax::{ExprCollector, attribute_call};
 
-// The attributes a body reads under names the program computes when it runs. `getattr(obj, name)` and the reflective
-// reads `vars`, `dir` and `__dict__`, which yield every name of an object, may reach any attribute. A name built on a
-// literal start, `getattr(obj, "visit_" + kind)` or `getattr(obj, f"visit_{kind}")`, reaches only the names with that
-// prefix, as a dispatch table does.
 #[derive(Clone, Default, PartialEq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub(crate) struct ComputedReads {
     pub(crate) any: bool,
     prefixes: BTreeSet<String>,
 }
 
-// What a computed read reaches: any name, or the names starting with a prefix.
 pub(crate) enum Reach {
     Any,
     Prefix(String),
@@ -33,7 +28,6 @@ impl ComputedReads {
         reads
     }
 
-    // The computed read an expression makes, if it makes one.
     pub(crate) fn read(expr: &Expr) -> Option<Reach> {
         if let Some(attribute) = expr.as_attribute_expr() {
             return (attribute.attr.as_str() == "__dict__").then_some(Reach::Any);
@@ -60,7 +54,6 @@ impl ComputedReads {
         self.prefixes.extend(other.prefixes.iter().cloned());
     }
 
-    // Whether a read may reach the name, whatever object it reads from.
     pub(crate) fn reaches(&self, name: &str) -> bool {
         self.any || self.reaches_by_prefix(name)
     }
@@ -77,8 +70,7 @@ impl CacheKey for ComputedReads {
     }
 }
 
-// The literal start of a computed name, `"visit_"` of `"visit_" + kind` or `f"visit_{kind}"`, when it has one. A start of
-// underscores alone, as `"_" + name` has, picks out no family of names, so it reads like any name.
+// Underscores alone pick out no family of names, so `"_" + name` reads like any name.
 fn literal_prefix(name: &Expr) -> Option<String> {
     let prefix = match name {
         Expr::BinOp(ast::ExprBinOp { left, op: ast::Operator::Add, .. }) => {

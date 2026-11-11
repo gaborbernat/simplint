@@ -49,99 +49,54 @@ pub(super) enum ExportsUnknown {
     Lazy,
 }
 
-// The names a file uses from other modules, before they resolve to files; parsing finds them and the cache keeps them.
-// Names are grouped by module, so each module resolves once per file.
 #[derive(Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct FileFacts {
     pub(super) names: Channels<Vec<ModuleNames>>,
     pub(super) declared: Vec<String>,
     pub(super) assigned_attributes: Vec<String>,
-    // The names a `<receiver>.setattr` call sets on each module, as `monkeypatch.setattr(module, "NAME", value)`.
     pub(super) module_writes: Vec<ModuleNames>,
-    // The attributes read off module objects whose module parsing cannot tell, any of which may be a name of this run.
     pub(super) module_reads: Vec<String>,
     pub(super) base_classes: Vec<String>,
-    // The modules the file star-imports, which hand it whatever names their `import *` exports.
     pub(super) star_imports: Vec<String>,
-    // The names a static `__all__` lists, which are all `import *` takes; without one it takes every public name.
     pub(super) exports: Option<Vec<String>>,
-    // Whether the names the module provides are known, and why not.
     pub(super) exports_unknown: ExportsUnknown,
-    // The names the module's own top-level statements import from other modules, which `__all__`, a redundant alias
-    // such as `from .core import run as run`, or the absence of `__all__` may re-export.
     pub(super) bindings: Vec<ImportBinding>,
-    // The dotted module each name bound at the top level stands for, such as `pkg.findings` for `from . import findings`
-    // in `pkg`, which resolves to a file only when the name is a module.
     pub(super) module_names: Vec<(String, String)>,
-    // The modules among those names the file loads as a value, as `fast` in `codec = fast` does, which a call through
-    // the value reaches with no attribute read of the module's names.
+    // A call through a module value reaches the module's names without an attribute read.
     pub(super) module_values: Vec<String>,
-    // Whether the module has an `if __name__ == "__main__":` block, which runs it as a program.
     pub(super) main_guard: bool,
-    // The names the module's top-level statements define, which a module without `__all__` exports.
     pub(super) defined: Vec<String>,
     pub(super) attribute_writes: AttributeWrites,
-    // The modules a write under a computed name reaches, as `pkg.report` for `setattr(report, name, value)` or
-    // `mock.patch(f"pkg.report.{name}")`, whose names any of them may be.
     pub(super) computed_writes: Vec<String>,
     pub(super) constructors: Constructors,
-    // How many times the module loads each attribute name, wherever it appears, to count the `obj.name` reads of a
-    // method name across the run.
     pub(super) attribute_loads: BTreeMap<String, u32>,
-    // The attributes the module reads under names computed at run time.
     pub(super) computed_reads: ComputedReads,
-    // Whether the file reads a docstring off an object, through `__doc__` or a `getdoc` call.
     pub(super) reads_docstrings: bool,
-    // Whether the file reads a class's name off an object, as `type(obj).__name__` does, so renaming a class changes
-    // it.
     pub(super) reads_class_names: bool,
-    // The names whose `__name__` or `__qualname__` the file reads, as `helper` for `helper.__name__` or `Item` for
-    // `pkg.Item.__qualname__`, which renaming the function or class changes.
     pub(super) reflected_names: Vec<String>,
-    // The classes handlers catch, and those `isinstance` checks and class patterns name inside a handler, as
-    // (module, name).
     pub(super) caught: Vec<(String, String)>,
-    // The module-level names bound to a tuple, with the classes each of its elements names, as (module, name): a
-    // handler that names the tuple catches each of them.
     pub(super) class_tuples: Vec<(String, Vec<(String, String)>)>,
-    // The names the file may request as fixtures: its function parameters, the names it imports, those whose `__name__`
-    // it reads, and any string that spells a name, as `usefixtures("db")` does. The index keeps those of test modules,
-    // where pytest reads them.
+    // Parameters and imports request fixtures, and so does a string that spells a name, as `usefixtures("db")` does.
     pub(super) fixture_requests: Vec<String>,
     // The parameters of the file's `test*` functions and fixtures, which request fixtures wherever pytest collects the
     // file from, a module its `python_files` setting names as much as a test module.
     pub(super) pytest_requests: Vec<String>,
-    // The names the file's doctest examples, the `>>>` lines of its strings, use, which run code no import shows.
     pub(super) doctest_names: Vec<String>,
-    // The module-level classes, each with the classes it lists as bases, as (module, name), and its method names.
     pub(super) classes: Vec<ClassBases>,
-    // The names of the module-level functions, which an import of the run may bind as a function rather than a class.
     pub(super) functions: Vec<String>,
-    // The modules the top-level `import pkg.module` statements bind by their root name, which a module's attributes reach.
     pub(super) plain_modules: Vec<String>,
-    // The module's top-level definitions with the names their interfaces refer to, which the index follows from the names
-    // the module exposes to find the classes and aliases a signature reaches.
     pub(super) interface: Vec<Definition>,
-    // The import statements that run when the module loads, each with the module it imports.
     pub(super) runtime_imports: Vec<ImportSite>,
-    // The statements of every body that `duplicate-code` compares across files, each body's in a row.
     pub(super) statements: Vec<Statement>,
-    // The facts above only some rules read that were collected.
     pub(super) parts: Parts,
-    // The words of the file's string literals, which a string in any file of the run may spell a name by, one per line:
-    // a file holds thousands, which as one string the cache reads back in one allocation.
+    // A file holds thousands of words, which as one string the cache reads back in one allocation.
     pub(super) string_words: String,
-    // The names a `global` statement declares, which a function rebinds at run time.
     pub(super) global_names: Vec<String>,
-    // A digest of the source the facts come from, whose offsets the ranges above are.
     pub(super) source_digest: u64,
-    // A digest of the module paths the facts resolved relative imports and module names against, which change with
-    // the search roots while the file stays the same.
+    // The search roots change the module paths a relative import resolves against, while the file stays the same.
     module_digest: u64,
 }
 
-// A module an import statement names, the `module.name` of each name a `from` import takes from it, the statement's
-// range in the file, and the `(major, minor)` Python version it runs only below, if a version check guards it.
 #[derive(Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct ImportSite {
     pub(super) module: String,
@@ -166,8 +121,7 @@ impl ImportSite {
 }
 
 impl FileFacts {
-    // Whether every range of the facts lies in a source of `length` bytes, and the statements of each body follow one
-    // another, which facts a cache file holds may not when it was damaged or edited by hand.
+    // A cache file may hold facts that no longer match their source, when damaged or edited by hand.
     pub fn fits(&self, length: u64) -> bool {
         let sites = self.runtime_imports.iter().map(|site| (site.start, site.end));
         let statements = self.statements.iter().map(|statement| (statement.start, statement.end));
@@ -175,8 +129,6 @@ impl FileFacts {
             && self.statements.windows(2).all(|pair| pair[0].body != pair[1].body || pair[0].end <= pair[1].start)
     }
 
-    // The module path, such as `["package", "module"]`, is what relative imports resolve against. A file outside any
-    // package has none, and resolves them against `importable`, the module path under its search root, if it has one.
     pub fn collect(
         path: &Path,
         source: &str,
@@ -276,7 +228,6 @@ impl FileFacts {
         })
     }
 
-    // Whether the facts hold every part a run's rules read, resolved against the module paths the file has in the run.
     pub fn covers(&self, wanted: Parts, module_path: Option<&[String]>, importable: Option<&[String]>) -> bool {
         self.parts.has(wanted) && self.module_digest == module_digest(module_path, importable)
     }
@@ -286,7 +237,6 @@ impl FileFacts {
     }
 }
 
-// The modules a file binds at its top level, by the name each binds, and the modules it loads as a value.
 fn module_bindings(bindings: &[ImportBinding], imports: &FactVisitor<'_>) -> (Vec<(String, String)>, Vec<String>) {
     let module_names: Vec<(String, String)> = bindings
         .iter()
@@ -297,9 +247,6 @@ fn module_bindings(bindings: &[ImportBinding], imports: &FactVisitor<'_>) -> (Ve
     (module_names, values)
 }
 
-// The modules a file loads as a value: those among the names it binds that it loads as a value, as `fast` in
-// `codec = fast` does, those a dotted name it loads as a value names, as `app.fast` in `codec = app.fast` does, and those
-// its class bodies and function bodies import and use, as the visitor works out.
 fn module_values(module_names: &[(String, String)], imports: &FactVisitor<'_>) -> Vec<String> {
     let dotted = imports
         .dotted_loads
@@ -321,7 +268,6 @@ fn module_digest(module_path: Option<&[String]>, importable: Option<&[String]>) 
     hasher.finish()
 }
 
-// The module-level classes, each with the classes its bases name and the names of the methods it defines.
 fn module_classes(body: &[Stmt], imports: &FactVisitor<'_>) -> Vec<ClassBases> {
     module_statements(body)
         .filter_map(Stmt::as_class_def_stmt)
@@ -410,8 +356,6 @@ pub(super) fn source_digest(source: &str) -> u64 {
     hasher.finish()
 }
 
-// The calls and definitions of the module that dataclass and call rules read, with the parts only some rules read when
-// `parts` asks for them.
 fn constructors(
     path: &Path,
     (source, parsed): (&str, &Parsed<ModModule>),
@@ -428,7 +372,6 @@ fn constructors(
     Constructors::collect(source, parsed.tokens(), body, &imports.aliases, &imports.from_statements, &contexts)
 }
 
-// A module-level class, the classes it lists as bases, each as (module, name), and the names of the methods it defines.
 #[derive(Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct ClassBases {
     pub(super) name: String,
@@ -436,11 +379,8 @@ pub struct ClassBases {
     pub(super) methods: Vec<String>,
 }
 
-// A module and the names used from it.
 pub(super) type ModuleNames = (String, Vec<String>);
 
-// The ways a file names another module's names: by importing them, by referencing them, and in the examples of its
-// docstrings, which read names but patch nothing.
 #[derive(Clone, Copy)]
 pub(super) enum Channel {
     Import,
@@ -448,7 +388,6 @@ pub(super) enum Channel {
     Doctest,
 }
 
-// One value for each channel of a file's names.
 #[derive(Clone, Default, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub(super) struct Channels<T>(pub(super) [T; 3]);
 
@@ -477,23 +416,18 @@ impl<T> IndexMut<Channel> for Channels<T> {
 }
 
 impl FileFacts {
-    // The names the file imports from modules or reads off them, attributes of objects included, which a project outside
-    // the file's own may use.
     pub fn imported_names(&self) -> impl Iterator<Item = &str> {
         self.names[Channel::Import].iter().flat_map(|(_, names)| names.iter().map(String::as_str))
     }
 
-    // The attributes the file stores to or deletes, which a project outside the file's own may store to as well.
     pub fn assigned_names(&self) -> impl Iterator<Item = &str> {
         self.assigned_attributes.iter().map(String::as_str)
     }
 
-    // The names doctest examples of the file use.
     pub fn doctests(&self) -> impl Iterator<Item = &str> {
         self.doctest_names.iter().map(String::as_str)
     }
 
-    // The attributes the file reads under computed names.
     pub(crate) fn computed_reads(&self) -> &ComputedReads {
         &self.computed_reads
     }
