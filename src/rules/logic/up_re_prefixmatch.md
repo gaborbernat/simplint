@@ -170,6 +170,25 @@ def parse_version(text):
       return bool(re.match("v", text))
   ```
 
+- **A name also bound to another module**: `re` may be another module in that file, which may have no `prefixmatch`, so
+  the `re.match` of a `try` import fallback is left alone.
+
+  ```toml config
+  [tool.ruff]
+  target-version = "py315"
+  ```
+
+  ```python ok
+  try:
+      import regex as re
+  except ImportError:
+      import re
+
+
+  def first_version(text):
+      return re.match(r"\d+", text)
+  ```
+
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rule

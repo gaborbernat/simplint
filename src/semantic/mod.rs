@@ -104,6 +104,20 @@ impl<'a> Semantic<'a> {
         self.model.resolve_qualified_name(expr).is_some_and(|name| name.segments() == segments)
     }
 
+    // Whether every binding of the name `value` reads in its scope imports `module`, so a name also bound to another
+    // module, as in `try: import regex as re` beside `import re`, does not read as the module. A `del` or a bare
+    // annotation binds nothing, so it does not count.
+    pub fn is_only_import_of(&self, value: &Expr, module: &[&str]) -> bool {
+        value.as_name_expr().is_some_and(|name| {
+            self.resolved_bindings(name)
+                .iter()
+                .filter(|binding| !matches!(binding.kind, RuffBindingKind::Deletion | RuffBindingKind::Annotation))
+                .all(|binding| {
+                    matches!(&binding.kind, RuffBindingKind::Import(import) if import.qualified_name.segments() == module)
+                })
+        })
+    }
+
     // Whether `expr` is the builtin `name`, not something the file binds the name to in the scope it is read in.
     pub fn is_builtin(&self, expr: &Expr, name: &str) -> bool {
         self.resolves_to(expr, &["", name])
