@@ -353,7 +353,8 @@ def load(path: str) -> None:
       pass
   ```
 
-The rule has no fix, because the replacement type depends on what the callers expect, which the author knows.
+The rule has no fix, because the right replacement type depends on what the callers expect, and only the code's author
+knows that.
 
 ## Other tools
 
