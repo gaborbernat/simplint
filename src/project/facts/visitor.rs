@@ -72,32 +72,6 @@ impl<'a, T: Clone + PartialEq> Bound<'a, T> {
     }
 }
 
-// The modules each name loads, keyed by the scope that binds the name: the module's names, and those of each function
-// the visit is inside, innermost last. A name a function binds shadows the module's, and a name bound to several
-// modules reads each of them.
-#[derive(Default)]
-struct LoadedModules<'a> {
-    module: FxHashMap<&'a str, BTreeSet<String>>,
-    functions: Vec<FxHashMap<&'a str, BTreeSet<String>>>,
-}
-
-impl<'a> LoadedModules<'a> {
-    fn bind(&mut self, name: &'a str, modules: &[String]) {
-        let scope = self.functions.last_mut().unwrap_or(&mut self.module);
-        scope.entry(name).or_default().extend(modules.iter().cloned());
-    }
-
-    // The modules the innermost scope that binds the name loads, which a name bound to no module loads none of.
-    fn of(&self, name: &str) -> Vec<String> {
-        let mut scopes = self.functions.iter().rev().chain(std::iter::once(&self.module));
-        scopes.find_map(|scope| scope.get(name)).map_or_else(Vec::new, |modules| modules.iter().cloned().collect())
-    }
-
-    fn enter(&mut self, parameters: Vec<&'a str>) {
-        self.functions.push(parameters.into_iter().map(|name| (name, BTreeSet::new())).collect());
-    }
-}
-
 // The kind of body a statement sits in. A class body binds class attributes, which other code reads through the class.
 #[derive(Clone, Copy, PartialEq)]
 enum Body {
@@ -106,11 +80,20 @@ enum Body {
 }
 
 // A function body, or the module outside them: the names it loads as values, and the modules its imports bind to a name,
-// which count once the body is read and loads that name as a value.
+// which count once the body is read and loads that name as a value. Its parameters also shadow the modules the names
+// around it load and the loop bindings, which come back when the body is left.
 #[derive(Default)]
-struct Scope<'a> {
+struct Frame<'a> {
     loads: FxHashSet<&'a str>,
     imports: Vec<(String, String)>,
+    loaded: FxHashMap<&'a str, BTreeSet<String>>,
+    shadowed: Vec<(&'a str, Option<Vec<String>>)>,
+}
+
+impl<'a> Frame<'a> {
+    fn bind(&mut self, name: &'a str, modules: &[String]) {
+        self.loaded.entry(name).or_default().extend(modules.iter().cloned());
+    }
 }
 
 pub(super) struct FactVisitor<'a> {
@@ -125,7 +108,7 @@ pub(super) struct FactVisitor<'a> {
     pub(super) base_classes: Vec<String>,
     pub(super) stars: BTreeSet<String>,
     pub(super) from_statements: Vec<FromImport<'a>>,
-    // Whether the statement visited runs when the module loads: it sits at module level, or in a top-level `if` or
+    // Whether the statement visited binds names at module scope: it sits at module level, or in a top-level `if` or
     // `try` block.
     pub(super) top_level: bool,
     pub(super) reads_docstrings: bool,
@@ -155,8 +138,6 @@ pub(super) struct FactVisitor<'a> {
     // whose test is false at run time, such as `if TYPE_CHECKING:` or a `__main__` guard, or an `except ImportError:`
     // fallback, which runs only when the import it stands in for fails.
     pub(super) runtime: Runs,
-    // The names bound to a module a string-named import call loads, so `mod.name` reads a name of each of them.
-    loaded_modules: LoadedModules<'a>,
     // The names bound to a spec, as `spec_from_file_location(name, path)` builds, mapped to the module its path names,
     // which `module_from_spec` loads.
     specs: FxHashMap<&'a str, Option<String>>,
@@ -191,9 +172,9 @@ pub(super) struct FactVisitor<'a> {
     // The kind of body the statements visited are directly in.
     body: Body,
     // The loads and pending imports of the function bodies being visited, innermost last.
-    scopes: Vec<Scope<'a>>,
+    scopes: Vec<Frame<'a>>,
     // The loads and pending imports of the module's own statements outside any function or class body.
-    module_scope: Scope<'a>,
+    module_scope: Frame<'a>,
     // The ranges of the objects of the attributes the file reads, which are not loads as a value.
     attribute_values: FxHashSet<TextRange>,
     // The facts only some rules read that the run collects.
@@ -237,7 +218,6 @@ impl<'a> FactVisitor<'a> {
             handler_depth: 0,
             runtime: Runs::Always,
             constants,
-            loaded_modules: LoadedModules::default(),
             specs: FxHashMap::default(),
             unknown_modules: FxHashSet::default(),
             globals: FxHashMap::default(),
@@ -254,7 +234,7 @@ impl<'a> FactVisitor<'a> {
             nested_modules: Vec::new(),
             body: Body::Other,
             scopes: Vec::new(),
-            module_scope: Scope::default(),
+            module_scope: Frame::default(),
             attribute_values: FxHashSet::default(),
         }
     }
@@ -281,8 +261,16 @@ impl<'a> FactVisitor<'a> {
     }
 
     // The innermost function body being visited, or the module outside them.
-    fn scope_mut(&mut self) -> &mut Scope<'a> {
+    fn scope_mut(&mut self) -> &mut Frame<'a> {
         self.scopes.last_mut().unwrap_or(&mut self.module_scope)
+    }
+
+    // The modules the innermost scope that binds the name loads, which a name bound to no module loads none of.
+    fn loaded_named(&self, name: &str) -> Vec<String> {
+        let mut scopes = self.scopes.iter().rev().chain(std::iter::once(&self.module_scope));
+        scopes
+            .find_map(|scope| scope.loaded.get(name))
+            .map_or_else(Vec::new, |modules| modules.iter().cloned().collect())
     }
 
     // Walks a function or class statement, whose statements sit in the body it names.
@@ -292,37 +280,26 @@ impl<'a> FactVisitor<'a> {
         self.body = outer;
     }
 
-    // Walks a function statement, whose imports count only for the names its own body loads as values.
-    fn walk_function(&mut self, stmt: &'a Stmt) {
-        self.scopes.push(Scope::default());
-        self.walk_body(stmt, Body::Other);
-        self.close_scope();
+    // Enters a function body, whose parameters shadow the loop bindings and the modules of the names around them.
+    fn enter_function(&mut self, parameters: Vec<&'a str>) {
+        let shadowed = self.shadow(parameters.clone());
+        let loaded = parameters.into_iter().map(|name| (name, BTreeSet::new())).collect();
+        self.scopes.push(Frame { loaded, shadowed, ..Frame::default() });
     }
 
     // Ends the innermost function body: its imports count for the names it loads, and its loads reach the scope it sits
     // in, since a nested function reads the names of the one around it.
-    fn close_scope(&mut self) {
-        let scope = self.scopes.pop().unwrap_or_default();
-        self.nested_modules.extend(
-            scope
-                .imports
-                .iter()
-                .filter(|(bound, _)| scope.loads.contains(bound.as_str()))
-                .map(|(_, module)| module.clone()),
-        );
-        self.scope_mut().loads.extend(scope.loads);
+    fn leave_function(&mut self) {
+        let frame = self.scopes.pop().unwrap_or_default();
+        settle(&frame, &mut self.nested_modules);
+        restore_bindings(&mut self.loop_modules, frame.shadowed);
+        self.scope_mut().loads.extend(frame.loads);
     }
 
     // Ends the module: the imports outside any function body count for the names the module loads.
     pub(super) fn finish_module(&mut self) {
-        let scope = std::mem::take(&mut self.module_scope);
-        self.nested_modules.extend(
-            scope
-                .imports
-                .iter()
-                .filter(|(bound, _)| scope.loads.contains(bound.as_str()))
-                .map(|(_, module)| module.clone()),
-        );
+        let frame = std::mem::take(&mut self.module_scope);
+        settle(&frame, &mut self.nested_modules);
     }
 
     // The module an import in a function or class body binds to a name, as `fast` for `from pkg import fast` in a class.
@@ -387,7 +364,7 @@ impl<'a> FactVisitor<'a> {
             if unknown {
                 self.unknown_modules.insert(bound.to_owned());
             }
-            self.loaded_modules.bind(bound, &modules);
+            self.scope_mut().bind(bound, &modules);
         }
     }
 
@@ -395,7 +372,7 @@ impl<'a> FactVisitor<'a> {
     // variable bound to modules, or a submodule read off the package an `__import__` call returns.
     fn loaded_modules_of(&self, expr: &Expr) -> Vec<String> {
         match expr {
-            Expr::Name(name) => self.loaded_modules.of(name.id.as_str()),
+            Expr::Name(name) => self.loaded_named(name.id.as_str()),
             Expr::Attribute(ast::ExprAttribute { value, attr, .. }) if is_dunder_import_chain(value) => {
                 self.loaded_modules_of(value).into_iter().map(|module| format!("{module}.{attr}")).collect()
             }
@@ -803,12 +780,9 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
                     self.request_parameters(function);
                 }
                 self.runtime = Runs::Never;
-                let parameters = parameter_names(&function.parameters);
-                let shadowed = self.shadow(parameters.clone());
-                self.loaded_modules.enter(parameters);
-                self.walk_function(stmt);
-                self.loaded_modules.functions.pop();
-                restore_bindings(&mut self.loop_modules, shadowed);
+                self.enter_function(parameter_names(&function.parameters));
+                self.walk_body(stmt, Body::Other);
+                self.leave_function();
             }
             Stmt::ImportFrom(import) => self.import_from(stmt, import, top_level),
             Stmt::Import(ast::StmtImport { names, is_lazy, .. }) => {
@@ -1046,6 +1020,17 @@ fn previous_bindings<'a>(
     bound: &[(&'a str, Vec<String>)],
 ) -> Vec<(&'a str, Option<Vec<String>>)> {
     bound.iter().map(|(name, _)| (*name, bindings.get(name).cloned())).collect()
+}
+
+// The modules a scope's imports bind under names the scope loads as values, which the file reads as nested modules.
+fn settle(frame: &Frame, into: &mut Vec<String>) {
+    into.extend(
+        frame
+            .imports
+            .iter()
+            .filter(|(bound, _)| frame.loads.contains(bound.as_str()))
+            .map(|(_, module)| module.clone()),
+    );
 }
 
 fn restore_bindings<'a>(bindings: &mut FxHashMap<&'a str, Vec<String>>, previous: Vec<(&'a str, Option<Vec<String>>)>) {

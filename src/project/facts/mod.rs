@@ -10,7 +10,7 @@ pub(crate) use visitor::doctest_code;
 
 use crate::project::computed_reads::ComputedReads;
 use crate::syntax::is_main_guard;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::hash::Hasher;
 use std::mem::take;
 use std::ops::{Index, IndexMut};
@@ -81,6 +81,11 @@ pub struct FileFacts {
     // `mock.patch(f"pkg.report.{name}")`, whose names any of them may be.
     pub(super) computed_writes: Vec<String>,
     pub(super) constructors: Constructors,
+    // How many times the module loads each attribute name, wherever it appears, to count the `obj.name` reads of a
+    // method name across the run.
+    pub(super) attribute_loads: BTreeMap<String, u32>,
+    // The attributes the module reads under names computed at run time.
+    pub(super) computed_reads: ComputedReads,
     // Whether the file reads a docstring off an object, through `__doc__` or a `getdoc` call.
     pub(super) reads_docstrings: bool,
     // Whether the file reads a class's name off an object, as `type(obj).__name__` does, so renaming a class changes
@@ -243,6 +248,8 @@ impl FileFacts {
             attribute_writes,
             computed_writes: imports.computed_writes.into_iter().collect(),
             constructors,
+            attribute_loads: take(&mut scan.attribute_loads),
+            computed_reads: take(&mut scan.computed_reads),
             reads_docstrings: imports.reads_docstrings,
             reads_class_names: imports.reads_class_names,
             reflected_names: imports.reflected_names.into_iter().collect(),
@@ -414,11 +421,7 @@ fn constructors(
     } else {
         CallContexts::default()
     };
-    let mut constructors =
-        Constructors::collect(source, parsed.tokens(), body, &imports.aliases, &imports.from_statements, &contexts);
-    constructors.attribute_loads = take(&mut scan.attribute_loads);
-    constructors.computed_reads = take(&mut scan.computed_reads);
-    constructors
+    Constructors::collect(source, parsed.tokens(), body, &imports.aliases, &imports.from_statements, &contexts)
 }
 
 // A module-level class, the classes it lists as bases, each as (module, name), and the names of the methods it defines.
@@ -488,7 +491,7 @@ impl FileFacts {
 
     // The attributes the file reads under computed names.
     pub(crate) fn computed_reads(&self) -> &ComputedReads {
-        &self.constructors.computed_reads
+        &self.computed_reads
     }
 
     pub fn read_names(&self) -> impl Iterator<Item = &str> {
@@ -497,7 +500,7 @@ impl FileFacts {
             .flatten()
             .flat_map(|(_, names)| names.iter().map(String::as_str))
             .chain(self.module_reads.iter().map(String::as_str))
-            .chain(self.constructors.attribute_loads.keys().map(String::as_str))
+            .chain(self.attribute_loads.keys().map(String::as_str))
     }
 }
 

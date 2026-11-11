@@ -853,7 +853,7 @@ fn fixture_requests(files: &[(FileId, &FileFacts)], test_modules: &FxHashSet<Fil
 fn computed_reads(files: &[(FileId, &FileFacts)]) -> ComputedReads {
     let mut reads = ComputedReads::default();
     for (_, facts) in files {
-        reads.extend(&facts.constructors.computed_reads);
+        reads.extend(&facts.computed_reads);
     }
     reads
 }
@@ -1130,7 +1130,7 @@ fn hide_names(
 fn method_loads(calls: &mut RunCalls, files: &[(FileId, &FileFacts)]) {
     let mut loads: FxHashMap<&str, u32> = FxHashMap::default();
     for (_, facts) in files {
-        for (name, count) in &facts.constructors.attribute_loads {
+        for (name, count) in &facts.attribute_loads {
             *loads.entry(name.as_str()).or_default() += count;
         }
     }

@@ -4,12 +4,13 @@ use std::collections::BTreeSet;
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
-use ruff_text_size::{Ranged, TextRange};
+use ruff_text_size::TextRange;
 use rustc_hash::FxHashSet;
 
 use super::Parts;
 use super::module_reads::{is_module_load, is_module_type};
 use crate::project::computed_reads::ComputedReads;
+use crate::project::constructors::discarded_call;
 use crate::syntax::{attribute_call, is_prose_statement};
 
 // The facts that need no scopes, collected in one walk of the module rather than a walk for each, which would visit
@@ -60,12 +61,7 @@ impl<'a> Scan<'a> {
     // Before a statement's children, since a binding is read by the statements that follow it.
     fn open(&mut self, stmt: &'a Stmt) {
         match stmt {
-            Stmt::Expr(ast::StmtExpr { value, .. })
-                if self.parts.has(Parts::CALL_CONTEXTS)
-                    && let Expr::Call(call) = value.as_ref() =>
-            {
-                self.discarded.insert(call.range());
-            }
+            Stmt::Expr(_) if self.parts.has(Parts::CALL_CONTEXTS) => self.discarded.extend(discarded_call(stmt)),
             Stmt::Global(ast::StmtGlobal { names, .. }) if self.parts.has(Parts::GLOBAL_NAMES) => {
                 self.global_names.extend(names.iter().map(|name| name.as_str().to_owned()));
             }

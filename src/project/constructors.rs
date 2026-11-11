@@ -14,7 +14,6 @@ use ruff_python_trivia::CommentRanges;
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange};
 
-use super::computed_reads::ComputedReads;
 use super::facts::{FromImport, qualified};
 use super::index::FileId;
 use crate::syntax::is_main_guard;
@@ -40,11 +39,6 @@ pub struct Constructors {
     pub(super) attributes: Vec<String>,
     // The module's own functions and classes, which an `obj.name` read reaches through the module as an object.
     pub(super) definitions: Vec<String>,
-    // How many times the module loads each attribute name, wherever it appears, to count the `obj.name` reads of a
-    // method name across the run.
-    pub(super) attribute_loads: BTreeMap<String, u32>,
-    // The attributes the module reads under names computed at run time.
-    pub(super) computed_reads: ComputedReads,
 }
 
 // A name used from a module, as the file spells it.
@@ -264,8 +258,6 @@ impl Constructors {
             methods,
             attributes,
             definitions,
-            attribute_loads: BTreeMap::new(),
-            computed_reads: ComputedReads::default(),
         }
     }
 }
@@ -325,16 +317,23 @@ fn member_names(body: &[Stmt]) -> Members {
     Members { methods, attributes, definitions }
 }
 
+// The range of the call a statement is, when nothing reads the call's value, as `f()` on a line of its own.
+pub(super) fn discarded_call(stmt: &Stmt) -> Option<TextRange> {
+    let Stmt::Expr(ast::StmtExpr { value, .. }) = stmt else {
+        return None;
+    };
+    let Expr::Call(call) = value.as_ref() else {
+        return None;
+    };
+    Some(call.range())
+}
+
 // The calls that make up a whole statement, whose value nothing reads, such as `f()` on a line of its own.
 fn discarded_calls(body: &[Stmt]) -> FxHashSet<TextRange> {
     struct Discarded(FxHashSet<TextRange>);
     impl<'a> Visitor<'a> for Discarded {
         fn visit_stmt(&mut self, stmt: &'a Stmt) {
-            if let Stmt::Expr(ast::StmtExpr { value, .. }) = stmt
-                && let Expr::Call(call) = value.as_ref()
-            {
-                self.0.insert(call.range());
-            }
+            self.0.extend(discarded_call(stmt));
             visitor::walk_stmt(self, stmt);
         }
     }
