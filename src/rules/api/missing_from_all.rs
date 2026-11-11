@@ -147,7 +147,7 @@ fn all_insertion<'a>(checker: &Checker, names: impl Iterator<Item = &'a str>) ->
         return None;
     }
     if source.contains_line_break(value) && !elts.is_empty() && (one_per_line || has_comment) {
-        return lines_insertion(checker, (elts, one_per_line), &names);
+        return lines_insertion(checker, stmt, (elts, one_per_line), &names);
     }
     let mut items: Vec<String> = elts.iter().map(|elt| checker.text(elt.range()).to_owned()).collect();
     for name in names.iter().rev() {
@@ -179,7 +179,12 @@ fn new_all(checker: &Checker, names: &[&str]) -> Option<Fix> {
 }
 
 // Names one to a line, or after the last one when a comment pins the layout, as the `__all__` already lays them out.
-fn lines_insertion(checker: &Checker, (elts, one_per_line): (&[Expr], bool), names: &[&str]) -> Option<Fix> {
+fn lines_insertion(
+    checker: &Checker,
+    stmt: &Stmt,
+    (elts, one_per_line): (&[Expr], bool),
+    names: &[&str],
+) -> Option<Fix> {
     let source = checker.source;
     let tail = &elts[elts.len() - 1];
     let indent = if one_per_line {
@@ -187,15 +192,17 @@ fn lines_insertion(checker: &Checker, (elts, one_per_line): (&[Expr], bool), nam
     } else {
         leading_indentation(source.full_line_str(tail.start()))
     };
+    // A parenthesized element ends at its closing parenthesis, so the names go after that.
+    let tail_range = checker.parenthesized_range(tail, stmt.into());
     // A comment ending the last element's line stays with that element only when the names go on the lines after it,
     // so nothing but a comma may come between them, and the closing bracket must follow the line.
     let line_comment = match checker
-        .trailing_comment(tail)
-        .map(|comment| source[TextRange::new(tail.end(), comment.start())].trim())
+        .trailing_comment(tail_range)
+        .map(|comment| source[TextRange::new(tail_range.end(), comment.start())].trim())
     {
         None => None,
         Some(",") => Some(false),
-        Some("") if closes_after(checker, tail) => Some(true),
+        Some("") if closes_after(checker, tail_range) => Some(true),
         Some(_) => return None,
     };
     // Names sort in the same order as their positions, so the ones sharing a position form one insertion.
@@ -212,20 +219,22 @@ fn lines_insertion(checker: &Checker, (elts, one_per_line): (&[Expr], bool), nam
     let mut edits: Vec<Edit> = groups
         .into_iter()
         .map(|(at, group)| match elts.get(at) {
-            Some(next) => {
-                Edit::insertion(group.iter().fold(String::new(), |text, name| text + name + &separator), next.start())
-            }
+            Some(next) => Edit::insertion(
+                group.iter().fold(String::new(), |text, name| text + name + &separator),
+                checker.parenthesized_range(next, stmt.into()).start(),
+            ),
             None if line_comment.is_some() => Edit::insertion(
                 group.iter().fold(String::new(), |text, name| text + indent + name + "," + eol),
-                source.full_line_end(tail.end()),
+                source.full_line_end(tail_range.end()),
             ),
-            None => {
-                Edit::insertion(group.iter().fold(String::new(), |text, name| text + &separator + name), tail.end())
-            }
+            None => Edit::insertion(
+                group.iter().fold(String::new(), |text, name| text + &separator + name),
+                tail_range.end(),
+            ),
         })
         .collect();
     if line_comment == Some(true) {
-        edits.push(Edit::insertion(",".to_owned(), tail.end()));
+        edits.push(Edit::insertion(",".to_owned(), tail_range.end()));
     }
     edits.sort_by_key(Ranged::start);
     let mut edits = edits.into_iter();
@@ -234,7 +243,7 @@ fn lines_insertion(checker: &Checker, (elts, one_per_line): (&[Expr], bool), nam
 }
 
 // Whether the closing bracket of the list is the next token after `elt`, past any comment or line break.
-fn closes_after(checker: &Checker, elt: &Expr) -> bool {
+fn closes_after(checker: &Checker, elt: impl Ranged) -> bool {
     checker
         .parsed
         .tokens()

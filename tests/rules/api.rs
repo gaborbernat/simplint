@@ -21,6 +21,8 @@ use crate::common;
 #[test_case("missing-from-all", "_missing_from_all_last_bracket.py" ; "missing_from_all_last_bracket")]
 #[test_case("missing-from-all", "_missing_from_all_last_comma_line.py" ; "missing_from_all_last_comma_line")]
 #[test_case("missing-from-all", "_missing_from_all_imported.py" ; "missing_from_all_imported_name")]
+#[test_case("missing-from-all", "_missing_from_all_parenthesized_tail.py" ; "missing_from_all_parenthesized_tail")]
+#[test_case("missing-from-all", "_missing_from_all_parenthesized_next.py" ; "missing_from_all_parenthesized_next")]
 #[test_case("missing-from-all", "_missing_from_all_reached.py" ; "missing_from_all_reached_types")]
 #[test_case("missing-from-all", "missing_from_all_scripts.py" ; "missing_from_all_entry_point")]
 #[test_case("missing-from-all", "tests/test_module_docstring.py" ; "missing_from_all_test_module")]
