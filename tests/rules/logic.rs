@@ -370,21 +370,16 @@ fn single_use_fstring_quote(target: &str, source: &str, inlined: Option<&str>) {
     assert_eq!(read(root.path(), "module.py"), inlined.unwrap_or(source));
 }
 
-// `yield name` is never reported. Ruff's preview rule covers a `yield from` of the assigned name, so that pair is left
-// to it with preview on. The other next statements are inlined in both modes.
-#[test_case(false, "def run(items):\n    count = len(items)\n    yield count\n", "def run(items):\n    count = len(items)\n    yield count\n" ; "yield_never_reported")]
-#[test_case(true, "def run(items):\n    count = len(items)\n    yield count\n", "def run(items):\n    count = len(items)\n    yield count\n" ; "preview_on_yield_never_reported")]
-#[test_case(false, "def run(items):\n    count = len(items)\n    yield from count\n", "def run(items):\n    yield from len(items)\n" ; "preview_off_inlines_yield_from")]
-#[test_case(true, "def run(items):\n    count = len(items)\n    yield from count\n", "def run(items):\n    count = len(items)\n    yield from count\n" ; "preview_on_leaves_yield_from_to_ruff")]
-#[test_case(true, "def run(first, second):\n    pair = first, second\n    yield from pair\n", "def run(first, second):\n    pair = first, second\n    yield from pair\n" ; "preview_on_leaves_tuple_yield_from_to_ruff")]
-#[test_case(true, "def run(first, second):\n    pair = first, second\n    yield pair\n", "def run(first, second):\n    pair = first, second\n    yield pair\n" ; "preview_on_tuple_yield_never_reported")]
-#[test_case(true, "def run(items):\n    count = len(items)\n    print(count)\n", "def run(items):\n    print(len(items))\n" ; "preview_on_inlines_into_call")]
-#[test_case(true, "def run(items):\n    count = len(items)\n    total = count\n    return total\n", "def run(items):\n    total = len(items)\n    return total\n" ; "preview_on_inlines_into_assignment")]
-fn single_use_follows_ruff_preview_for_yields(preview: bool, source: &str, fixed: &str) {
-    let ruff = format!(
-        "[tool.ruff]\ntarget-version = \"py314\"\n\n[tool.ruff.lint]\npreview = {preview}\nselect = [\"RET504\", \"RUF070\"]\n"
-    );
-    let root = common::project(&[("pyproject.toml", ruff.as_str()), ("module.py", source)]);
+// `yield name` is never reported. Ruff's RUF070 covers a `yield from` of the assigned name, so SMP504 leaves that pair to
+// it whether or not the project selects the rule. The other next statements are inlined.
+#[test_case("def run(items):\n    count = len(items)\n    yield count\n", "def run(items):\n    count = len(items)\n    yield count\n" ; "yield_never_reported")]
+#[test_case("def run(items):\n    count = len(items)\n    yield from count\n", "def run(items):\n    count = len(items)\n    yield from count\n" ; "leaves_yield_from_to_ruff")]
+#[test_case("def run(first, second):\n    pair = first, second\n    yield from pair\n", "def run(first, second):\n    pair = first, second\n    yield from pair\n" ; "leaves_tuple_yield_from_to_ruff")]
+#[test_case("def run(first, second):\n    pair = first, second\n    yield pair\n", "def run(first, second):\n    pair = first, second\n    yield pair\n" ; "tuple_yield_never_reported")]
+#[test_case("def run(items):\n    count = len(items)\n    print(count)\n", "def run(items):\n    print(len(items))\n" ; "inlines_into_call")]
+#[test_case("def run(items):\n    count = len(items)\n    total = count\n    return total\n", "def run(items):\n    total = len(items)\n    return total\n" ; "inlines_into_assignment")]
+fn single_use_variable_leaves_ruff_yield_froms_to_ruff(source: &str, fixed: &str) {
+    let root = single_use_project("py314", source);
     check(root.path(), &["--no-cache", "--select", "SMP504", "--fix"]);
     assert_eq!(read(root.path(), "module.py"), fixed);
 }
@@ -561,6 +556,20 @@ fn unused_default_leaves_star_imported_modules_alone() {
     ]);
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP506"]);
     assert_eq!((code, stdout.as_str()), (0, common::PASSED));
+}
+
+// PT028 reports every default of a pytest test function, with a display-only fix, so a default this rule cannot fix is
+// left to it there. A default it can fix is reported in a test as anywhere else.
+#[test_case("def test_connect(host, timeout=30):\n    return host, timeout\n\n\ntest_connect(\"db\", 5)\n", 1 ; "fixable_default_of_test")]
+#[test_case("def test_pair(first=1, second=2):\n    return first, second\n\n\ntest_pair(1, 2)\n", 1 ; "unfixable_default_of_test")]
+#[test_case("def pair(first=1, second=2):\n    return first, second\n\n\npair(1, 2)\n", 2 ; "unfixable_default_of_other_function")]
+#[test_case("class TestPair:\n    def test_pair(self, first=1, second=2):\n        return first, second\n\n    def run(self):\n        return self.test_pair(1, 2)\n", 1 ; "unfixable_default_of_test_method")]
+#[test_case("class TestPair:\n    def __init__(self) -> None:\n        pass\n\n    def test_pair(self, first=1, second=2):\n        return first, second\n\n    def run(self):\n        return self.test_pair(1, 2)\n", 2 ; "test_method_of_class_with_init")]
+#[test_case("class Pair:\n    def test_pair(self, first=1, second=2):\n        return first, second\n\n    def run(self):\n        return self.test_pair(1, 2)\n", 2 ; "test_method_of_class_not_named_test")]
+fn unused_default_leaves_unfixable_defaults_of_pytest_tests_to_pt028(source: &str, reports: usize) {
+    let root = common::project(&[("module.py", source)]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP506"]);
+    assert_eq!(stdout.matches("Every call to").count(), reports, "{stdout}");
 }
 
 // Test modules may assert on the messages their code raises.
@@ -813,18 +822,21 @@ fn cognitive_complexity_scores() {
     assert_eq!(scores, expected);
 }
 
-// Ruff's RET504 reports `return name` after an assignment, and RUF070 reports a `yield from` of one, which SMP504 leaves
-// to them while the project's Ruff configuration runs them.
-#[test_case("def f() -> int:\n    total = 1 + 2\n    return total\n", "RET504", false, "`total` is used once" ; "return")]
-#[test_case("def f():\n    values = make()\n    yield from values\n", "RUF070", true, "`values` is used once" ; "yield_from")]
-fn single_use_variable_follows_ruff_returns_and_yield_froms(source: &str, code: &str, preview: bool, fragment: &str) {
-    let case = common::RuffOverlap {
-        settings: if preview { "[tool.ruff]\npreview = true\n" } else { "" },
-        select: "SMP504",
-        ruff_code: code,
-        files: &[("module.py", source)],
-    };
-    assert_eq!(common::reported_without_and_with_ruff(&case, fragment), [true, false]);
+// Ruff's RET504 reports `return name` after an assignment, and RUF070 reports a `yield from` of one, so SMP504 leaves
+// those pairs to them whether or not the project selects them. RET504 skips a generator, so the return in one is kept.
+#[test_case("def f() -> int:\n    total = 1 + 2\n    return total\n", false ; "return")]
+#[test_case("def f():\n    values = make()\n    yield from values\n", false ; "yield_from")]
+#[test_case("def f():\n    yield 0\n    total = 1 + 2\n    return total\n", true ; "return_in_generator")]
+#[test_case("def f():\n    get = lambda: (yield)\n    total = 1 + 2\n    return total\n", true ; "return_with_lambda_yield")]
+#[test_case("def f():\n    def inner():\n        yield 1\n    total = 1 + 2\n    return total\n", false ; "return_with_nested_generator")]
+fn single_use_variable_leaves_ruff_returns_and_yield_froms(source: &str, reported: bool) {
+    let root = common::project(&[("module.py", source)]);
+    let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP504"]).1;
+    assert_eq!(
+        stdout.contains("`total` is used once") || stdout.contains("`values` is used once"),
+        reported,
+        "{stdout}"
+    );
 }
 
 // Ruff's B006 and B008 report a value that becomes a parameter's default, so SMP504 keeps a variable whose value would
@@ -846,10 +858,10 @@ fn single_use_variable_follows_ruff_returns_and_yield_froms(source: &str, code: 
 #[test_case("B006", "", "collections.Counter()", "held", false, true ; "counter_call_without_b006")]
 #[test_case("B006", "", "{key: 1 for key in range(3)}", "held", true, false ; "dict_comprehension")]
 #[test_case("B006", "", "{key: 1 for key in range(3)}", "held", false, true ; "dict_comprehension_without_b006")]
-#[test_case("B006", "", "([],)", "held", true, true ; "tuple_of_list_without_preview")]
-#[test_case("B006", "[tool.ruff]\npreview = true\n", "([],)", "held", true, false ; "tuple_of_list_in_preview")]
-#[test_case("B006", "", "(key for key in range(3))", "held", true, true ; "generator_without_preview")]
-#[test_case("B006", "[tool.ruff]\npreview = true\n", "(key for key in range(3))", "held", true, false ; "generator_in_preview")]
+#[test_case("B006", "", "([],)", "held", true, false ; "tuple_of_list")]
+#[test_case("B006", "", "([],)", "held", false, true ; "tuple_of_list_without_b006")]
+#[test_case("B006", "", "(key for key in range(3))", "held", true, false ; "generator")]
+#[test_case("B006", "", "(key for key in range(3))", "held", false, true ; "generator_without_b006")]
 #[test_case("B006", "", "[]", "held: tuple[int, ...]", true, true ; "immutable_annotation_b006")]
 fn single_use_variable_follows_ruff_defaults(
     code: &str,

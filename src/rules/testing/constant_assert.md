@@ -7,7 +7,8 @@ An assertion on a truthy constant can never fail, so it checks nothing and makes
 it does. A parenthesized `assert (check, "message")` is a non-empty tuple and falls in the same trap. Ruff reports every
 non-empty tuple as [assert-tuple](https://docs.astral.sh/ruff/rules/assert-tuple/), and
 [assert-on-string-literal](https://docs.astral.sh/ruff/rules/assert-on-string-literal/) reports a string, bytes or
-f-string literal. This rule leaves those cases to Ruff when the corresponding rule runs.
+f-string literal. This rule leaves those cases to Ruff when it has no fix for them, whether or not the project selects
+the Ruff rule.
 
 ## Example
 
@@ -111,15 +112,9 @@ Truthiness is judged the way Ruff judges it. These are truthy constants:
 
 ### Exceptions
 
-- **A string, bytes or f-string literal**, such as one whose f-string calls a function: Ruff's
-  [assert-on-string-literal](https://docs.astral.sh/ruff/rules/assert-on-string-literal/) reports it while the project's
-  Ruff configuration selects it, so this rule leaves it to Ruff, including cases it could fix. Ruff's own suppressions
-  of it, through `per-file-ignores` or `noqa`, are respected too.
-
-  ```toml config
-  [tool.ruff.lint]
-  select = ["PLW0129"]
-  ```
+- **A string, bytes or f-string literal that this rule cannot delete**, such as one whose f-string calls a function:
+  Ruff's [assert-on-string-literal](https://docs.astral.sh/ruff/rules/assert-on-string-literal/) reports it, so this
+  rule leaves it to Ruff. A literal this rule can delete is reported here too.
 
   ```python ok
   def compute() -> str:
@@ -162,14 +157,9 @@ Truthiness is judged the way Ruff judges it. These are truthy constants:
   assert f"{value}"
   ```
 
-- **Any non-empty tuple test while Ruff runs F631**: Ruff's
-  [assert-tuple](https://docs.astral.sh/ruff/rules/assert-tuple/) reports them, including two-element tuples this rule
-  could fix. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are respected too.
-
-  ```toml config
-  [tool.ruff.lint]
-  select = ["F631"]
-  ```
+- **A non-empty tuple test without a fix of its own**: Ruff's
+  [assert-tuple](https://docs.astral.sh/ruff/rules/assert-tuple/) reports every non-empty tuple. This rule keeps a
+  two-element tuple without a message, which it can fix, and leaves the others to Ruff.
 
   ```python ok
   assert (1, 2, 3)
@@ -188,27 +178,20 @@ Truthiness is judged the way Ruff judges it. These are truthy constants:
 The fix depends on the constant:
 
 - **A comment within the statement**: no fix is offered, since rewriting or deleting the statement would drop the
-  comment.
-
-  ```toml config
-  [tool.ruff.lint]
-  select = []
-  ```
+  comment. A tuple with a comment is left to Ruff's F631, like every tuple without a fix of its own.
 
   ```python report
-  check = False
-  assert (
-      check,  # still pending
-      "message",
-  )
+  values = [1]
+  assert [
+      values,  # still pending
+  ]
   ```
 
   ```python fixed
-  check = False
-  assert (
-      check,  # still pending
-      "message",
-  )
+  values = [1]
+  assert [
+      values,  # still pending
+  ]
   ```
 
 - A two-element tuple without a message, such as `assert (check, "message")`, becomes `assert check, "message"`, since
@@ -271,7 +254,7 @@ The fix depends on the constant:
       assert (value async for value in values)
   ```
 
-- Other tuples get no fix. When Ruff's F631 runs, every non-empty tuple is left to it.
+- Other tuples get no fix, so they are left to Ruff's F631.
 
 - For a `format` or `%` template the fix deletes the assertion **unsafely**: its fields may not fit its arguments, and
   the deletion would hide the error that raises. Any other constant is deleted safely, since its assertion never fails.
@@ -328,11 +311,9 @@ For a constant that is not a tuple, no fix is offered when:
 ```mermaid
 flowchart TD
     assertion["assert on a<br/>truthy constant"] --> tuple{"a tuple?"}
-    tuple -->|yes| runs{"assert-tuple<br/>selected?"}
-    runs -->|yes| left["left to Ruff"]
-    runs -->|no| pair{"two elements,<br/>no message?"}
+    tuple -->|yes| pair{"two elements,<br/>no message?"}
     pair -->|yes| unwrap["unsafe: assert check, message"]
-    pair -->|no| none
+    pair -->|no| left["left to Ruff"]
     tuple -->|no| generator{"a generator?"}
     generator -->|yes| asynchronous{"asynchronous, or<br/>all rebound?"}
     asynchronous -->|yes| none
@@ -360,7 +341,7 @@ flowchart TD
 - **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules
   [F631](https://docs.astral.sh/ruff/rules/assert-tuple/) and
   [PLW0129](https://docs.astral.sh/ruff/rules/assert-on-string-literal/), which cover tuples and string literals; this
-  rule leaves every covered case to Ruff when the corresponding rule runs and covers other truthy constants.
+  rule leaves every covered case without a fix of its own to Ruff, and covers other truthy constants.
 - [flake8-useless-assert](https://github.com/decorator-factory/flake8-useless-assert) reports an assert with a truthy
   literal, such as `assert True`, as [ULA001](https://github.com/decorator-factory/flake8-useless-assert), with no fix.
 - [Sourcery](https://sourcery.ai) removes `assert True` statements through

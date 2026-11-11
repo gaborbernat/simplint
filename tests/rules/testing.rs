@@ -104,67 +104,50 @@ fn unused_fixture_keeps_conftest_fixtures_plugins_may_request(plugins: &str, rep
     assert_eq!(stdout.contains("`app_dir`"), reported, "{stdout}");
 }
 
-// Ruff's PGH005 reports a non-existent mock method in an assert, and on a line of its own only with preview on. SMP814
-// leaves those to Ruff while PGH005 runs, and reports them otherwise.
-#[test_case("[tool.ruff.lint]\nselect = [\"PGH005\"]\n", "mock.not_called()", true ; "selected_call")]
-#[test_case("[tool.ruff.lint]\nselect = [\"PGH005\"]\n", "mock.not_called", true ; "selected_attribute")]
-#[test_case("[tool.ruff.lint]\nselect = [\"PGH005\"]\n", "assert mock.not_called()", false ; "selected_assert")]
-#[test_case("[tool.ruff.lint]\nselect = [\"PGH005\"]\n", "assert not mock.not_called()", true ; "selected_assert_not")]
-#[test_case("[tool.ruff.lint]\nselect = [\"PGH005\"]\n", "assert check(mock.not_called)", true ; "selected_assert_call_argument")]
-#[test_case("[tool.ruff]\npreview = true\n[tool.ruff.lint]\nselect = [\"PGH005\"]\n", "mock.not_called()", false ; "selected_preview_call")]
-#[test_case("[tool.ruff]\npreview = true\n[tool.ruff.lint]\nselect = [\"PGH005\"]\n", "mock.not_called", false ; "selected_preview_attribute")]
-#[test_case("[tool.ruff]\npreview = true\n[tool.ruff.lint]\nselect = [\"PGH005\"]\n", "assert mock.not_called()", false ; "selected_preview_assert")]
-#[test_case("[tool.ruff]\npreview = true\n[tool.ruff.lint]\nselect = [\"PGH005\"]\n", "assert not mock.not_called()", true ; "selected_preview_assert_not")]
-#[test_case("[tool.ruff.lint]\nselect = []\n", "mock.not_called()", true ; "unselected_call")]
-#[test_case("[tool.ruff.lint]\nselect = []\n", "assert mock.not_called()", true ; "unselected_assert")]
-#[test_case("[tool.ruff]\npreview = true\n[tool.ruff.lint]\nselect = []\n", "mock.not_called()", true ; "unselected_preview_call")]
-#[test_case("[tool.ruff]\npreview = true\n[tool.ruff.lint]\nselect = []\n", "assert mock.not_called()", true ; "unselected_preview_assert")]
-#[test_case(
-    "[tool.ruff.lint]\nselect = [\"PGH005\"]\nper-file-ignores = { \"test_save.py\" = [\"PGH005\"] }\n",
-    "assert mock.not_called()",
-    false
-    ; "selected_but_ignored_for_the_file"
-)]
-fn mock_assertion_typo_follows_ruff_pgh005(pyproject: &str, statement: &str, reported: bool) {
-    let root = common::project(&[
-        ("pyproject.toml", pyproject),
-        (
-            "test_save.py",
-            &format!(
-                "from unittest.mock import MagicMock\n\n\ndef test_save(mock: MagicMock) -> None:\n    {statement}\n"
-            ),
-        ),
-    ]);
+// Ruff's PGH005 reports a non-existent mock method in the test of an assert and in a statement of its own, and PGH005
+// offers no fix. SMP814 leaves a name it has no fix for to Ruff, and reports the names it can fix, whether or not the
+// project selects PGH005.
+#[test_case("mock.not_called()", true ; "call_statement")]
+#[test_case("mock.not_called", false ; "attribute_statement")]
+#[test_case("assert mock.not_called()", true ; "assert_call")]
+#[test_case("assert mock.not_called", false ; "assert_attribute")]
+#[test_case("assert not mock.not_called()", true ; "assert_not")]
+#[test_case("assert check(mock.not_called)", true ; "assert_call_argument")]
+#[test_case("assert not mock.called_once", true ; "assert_not_attribute")]
+#[test_case("assert (mock.not_called()  # the writer\n    )", false ; "comment_in_the_fix")]
+#[test_case("assert mock.called_once_with()", true ; "assert_call_fixed")]
+#[test_case("mock.called_once_with()", true ; "call_statement_fixed")]
+#[test_case("assert mock.called_once", false ; "assert_attribute_without_fix")]
+#[test_case("mock.called_once", false ; "attribute_statement_without_fix")]
+fn mock_assertion_typo_leaves_ruff_names_without_a_fix(statement: &str, reported: bool) {
+    let root = common::project(&[(
+        "test_save.py",
+        &format!("from unittest.mock import MagicMock\n\n\ndef test_save(mock: MagicMock) -> None:\n    {statement}\n"),
+    )]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP814"]);
-    assert_eq!(stdout.contains("`not_called`"), reported, "{stdout}");
+    assert_eq!(stdout.contains("is not a mock assertion"), reported, "{stdout}");
 }
 
-// Ruff's assert-tuple reports a non-empty tuple in an assert, which SMP804 leaves to it while F631 runs.
-#[test_case("def check() -> None:\n    assert (True, 1, 2)\n", "F631", "Assertion on a constant always passes" ; "assert_tuple")]
-#[test_case("def check() -> None:\n    assert (True, \"message\")\n", "F631", "Assertion on a constant always passes" ; "assert_tuple_with_fix")]
-fn constant_assert_follows_ruff_assert_tuple(source: &str, code: &str, fragment: &str) {
-    let case = common::RuffOverlap { settings: "", select: "SMP804", ruff_code: code, files: &[("module.py", source)] };
-    assert_eq!(common::reported_without_and_with_ruff(&case, fragment), [true, false]);
-}
-
-// Ruff's PLW0129 reports an assert on a string, bytes or f-string literal, which SMP804 leaves to it. A concatenation
-// is not a literal, so SMP804 keeps it.
-#[test_case("PLW0129", "assert \"ready\"", false ; "deletable_string")]
-#[test_case("PLW0129", "check(); assert \"ready\"", false ; "string_sharing_its_line")]
-#[test_case("PLW0129", "check(); assert \"ready\", \"message\"", false ; "string_with_message")]
-#[test_case("PLW0129", "check(); assert \"ready\" \"set\"", false ; "implicit_concatenation")]
-#[test_case("PLW0129", "check(); assert b\"ready\"", false ; "bytes")]
-#[test_case("PLW0129", "assert f\"ready {check()}\"", false ; "fstring_with_effect")]
-#[test_case("PLW0129", "assert \"a\" + \"b\"", true ; "concatenation")]
-#[test_case("PLW0129", "assert True", true ; "boolean")]
-fn constant_assert_follows_ruff_assert_on_string_literal(code: &str, statement: &str, reported_when_selected: bool) {
-    let module = format!("def check() -> None:\n    {statement}\n");
-    let case =
-        common::RuffOverlap { settings: "", select: "SMP804", ruff_code: code, files: &[("module.py", &module)] };
-    assert_eq!(
-        common::reported_without_and_with_ruff(&case, "Assertion on a constant always passes"),
-        [true, reported_when_selected]
-    );
+// Ruff's F631 and PLW0129 report a non-empty tuple and a string, bytes or f-string literal, so SMP804 leaves a case
+// without a fix of its own to them, whether or not the project selects them, and reports the cases it can fix.
+#[test_case("def check() -> None:\n    assert (True, 1, 2)\n", false ; "assert_tuple")]
+#[test_case("def check() -> None:\n    assert (1, 2, 3)\n", false ; "assert_tuple_without_fix")]
+#[test_case("def check() -> None:\n    assert (True, \"message\")\n", true ; "assert_tuple_with_fix")]
+#[test_case("def check() -> None:\n    assert \"ready\"\n", true ; "deletable_string")]
+#[test_case("def check() -> None:\n    assert b\"ready\"\n", true ; "deletable_bytes")]
+#[test_case("def check() -> None:\n    assert f\"ready\"\n", true ; "deletable_fstring")]
+#[test_case("def check() -> None:\n    assert \"ready\", \"message\"\n", true ; "deletable_string_with_message")]
+#[test_case("def check() -> None:\n    check(); assert \"ready\"\n", false ; "string_sharing_its_line")]
+#[test_case("def check() -> None:\n    check(); assert \"ready\", \"message\"\n", false ; "string_with_message")]
+#[test_case("def check() -> None:\n    check(); assert \"ready\" \"set\"\n", false ; "implicit_concatenation")]
+#[test_case("def check() -> None:\n    check(); assert b\"ready\"\n", false ; "bytes")]
+#[test_case("def check() -> None:\n    assert f\"ready {check()}\"\n", false ; "fstring_with_effect")]
+#[test_case("def check() -> None:\n    assert \"a\" + \"b\"\n", true ; "concatenation")]
+#[test_case("def check() -> None:\n    assert True\n", true ; "boolean")]
+fn constant_assert_leaves_ruff_cases_without_a_fix(source: &str, reported: bool) {
+    let root = common::project(&[("module.py", source)]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP804"]);
+    assert_eq!(stdout.contains("Assertion on a constant always passes"), reported, "{stdout}");
 }
 
 // Ruff's ASYNC110 reports a `while` whose whole body awaits `asyncio.sleep`, which SMP808 leaves to it while the

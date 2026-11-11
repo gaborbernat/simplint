@@ -196,6 +196,26 @@ parameter by position counts for it, and so does one that passes it by keyword.
   Client(5)
   ```
 
+- **Defaults of pytest tests that have no fix**:
+  [PT028](https://docs.astral.sh/ruff/rules/pytest-parameter-with-default-argument/) reports every default of a test
+  function, with a display-only fix, so a default this rule cannot fix is left to it. A test is a function named
+  `test...` at module level, or a method named `test...` of a class named `Test...` without an `__init__`. A default
+  that follows another default, or has a comment in it, is one this rule cannot fix, and a default it can fix is still
+  reported.
+
+  ```python ok
+  def test_connect(
+      host,
+      timeout=(  # seconds, as the gateway counts them
+          30
+      ),
+  ):
+      return host, timeout
+
+
+  test_connect("db", 5)
+  ```
+
 - **Public API of a library**: outside code may call the functions the public module's `__all__` lists, or, without
   `__all__`, its public functions, without the argument. A public function `__all__` leaves out is judged like a private
   one.
@@ -292,6 +312,10 @@ pair(1, 2)
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** open issue [#1512](https://github.com/astral-sh/ruff/issues/1512).
+- **[Ruff](https://github.com/astral-sh/ruff):**
+  [PT028](https://docs.astral.sh/ruff/rules/pytest-parameter-with-default-argument/) reports the default of a pytest
+  test function with a display-only fix. This rule leaves the default it cannot fix to it, as described under
+  Exceptions, and reports the defaults it can fix.
 - [refurb](https://github.com/dosisod/refurb) reports call arguments that equal the default as
   [FURB120](https://github.com/dosisod/refurb/blob/master/docs/checks.md#furb120-use-implicit-default). This rule
   removes the default from the signature instead, when every call passes it.

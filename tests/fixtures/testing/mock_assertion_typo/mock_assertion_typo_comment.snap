@@ -2,10 +2,9 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
-3:14 SMP814 `called_once_with` is not a mock assertion; it is `assert_called_once_with`
 8:18 SMP814 `called_once_with` is not a mock assertion; it is `assert_called_once_with` [unsafe fix: Rename to `assert_called_once_with`]
 13:17 SMP814 `called_once_with` is not a mock assertion; it is `assert_called_once_with` [unsafe fix: Rename to `assert_called_once_with`]
---- fixed (2 applied, 1 remaining) ---
+--- fixed (2 applied, 0 remaining) ---
 def test_commented_typo(mock):
     assert (  # the writer must be reached exactly once
         mock.called_once_with(1)

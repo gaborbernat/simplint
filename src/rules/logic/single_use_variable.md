@@ -80,13 +80,10 @@ def total_price(prices: list[float]) -> str:
           print(held)
   ```
 
-- [`preview`](https://docs.astral.sh/ruff/settings/#preview) in `[tool.ruff]`, which makes B006 also report a generator
-  and a tuple that holds a mutable value, so such a value is not inlined into a default either
+- B006 also reports a generator and a tuple that holds a mutable value, as its preview mode does, so such a value is not
+  inlined into a default either
 
   ```toml config
-  [tool.ruff]
-  preview = true
-
   [tool.ruff.lint]
   select = ["B006"]
   ```
@@ -236,15 +233,10 @@ def total_price(prices: list[float]) -> str:
       print(next(stream))
   ```
 
-- **A next statement that is `return name` or `yield name`**: Ruff's
-  [unnecessary-assign](https://docs.astral.sh/ruff/rules/unnecessary-assign/) covers the `return` case while the
-  project's Ruff configuration selects it, and `yield` keeps the same shape. The inline is skipped whenever Ruff selects
-  the rule, even where `per-file-ignores` or `noqa` silence it.
-
-  ```toml config
-  [tool.ruff.lint]
-  select = ["RET504"]
-  ```
+- **A next statement that is `return name` in a function that does not yield**: Ruff's
+  [unnecessary-assign](https://docs.astral.sh/ruff/rules/unnecessary-assign/) (RET504) covers it, so this rule leaves it
+  to Ruff whether or not the project selects that rule. RET504 skips a function that yields, so a generator's return is
+  inlined here.
 
   ```python ok
   def run(items: list[str]) -> int:
@@ -252,11 +244,24 @@ def total_price(prices: list[float]) -> str:
       return count
   ```
 
-- **A next statement that is `yield from name`, while Ruff's preview mode is on**: Ruff's preview rule
-  [unnecessary-assign-before-yield](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/) covers it when
-  the project's Ruff configuration selects it, even when this rule's fix would differ. With preview off, or without
-  RUF070, this rule reports the pair. The inline is skipped whenever Ruff selects the rule, even where
-  `per-file-ignores` or `noqa` silence it.
+  ```python report
+  def run(items: list[str]) -> Iterator[int]:
+      yield 0
+      count = len(items)
+      return count
+  ```
+
+  ```python fixed
+  def run(items: list[str]) -> Iterator[int]:
+      yield 0
+      return len(items)
+  ```
+
+- **A next statement that is `yield name`**: never reported, since the value is yielded, not returned.
+
+- **A next statement that is `yield from name`**: Ruff's preview rule
+  [unnecessary-assign-before-yield](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/) (RUF070) covers
+  it, so this rule leaves the pair to Ruff whether or not the project selects that rule or enables preview.
 
 - **A read in a parameter's default, while Ruff's
   [mutable-argument-default](https://docs.astral.sh/ruff/rules/mutable-argument-default/) (B006) or
@@ -647,11 +652,11 @@ def render(value: object) -> str:
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules
-  [RET504](https://docs.astral.sh/ruff/rules/unnecessary-assign/) and preview
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
+  [RET504](https://docs.astral.sh/ruff/rules/unnecessary-assign/) and preview rule
   [RUF070](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/), which cover a value returned or yielded
-  on the next line and which this rule leaves to them; every other single read is open issue
-  [#10108](https://github.com/astral-sh/ruff/issues/10108).
+  on the next line and which this rule leaves to them, except the return of a generator; every other single read is open
+  issue [#10108](https://github.com/astral-sh/ruff/issues/10108).
 - [Sourcery](https://sourcery.ai) inlines a variable that is used once anywhere in its block through
   [inline-variable](https://docs.sourcery.ai/reference/refactorings/python/inline-variable/). This rule only inlines a
   value read on the line right below its assignment.
