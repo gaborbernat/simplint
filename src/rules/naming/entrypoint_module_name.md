@@ -4,8 +4,8 @@ Flags `main.py` and `_main.py` when they serve as command entrypoints.
 
 Python looks for a package's [`__main__.py`](https://docs.python.org/3/library/__main__.html#main-py-in-python-packages)
 when it runs `python -m package`. Keeping the command's entrypoint there makes the executable module easy to find and
-lets the same package run through `-m`. A separate `_main.py` can still hold the implementation when `__main__.py`
-imports and calls it.
+lets the same package run through `-m`. Keep the command's code in `__main__.py` too; move it to a separate module only
+when `__main__.py` grows too large to read, and have `__main__.py` import and call it.
 
 ## Example
 
