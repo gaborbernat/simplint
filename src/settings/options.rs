@@ -64,6 +64,7 @@ impl Selector {
     }
 }
 
+// `None` when `text` is neither a Ruff selector nor a Ruff rule name.
 pub fn ruff_selector(text: &str) -> Option<RuleSelector> {
     RuleSelector::from_str(text).ok().or_else(|| {
         let rule = ruff_linter::registry::Rule::from_name(text).ok()?;

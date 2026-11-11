@@ -85,6 +85,7 @@ pub(super) struct RenderedPackage {
     pub(super) files: FxHashMap<String, Rendered>,
 }
 
+// Reused only under the same file key, reports and display settings.
 pub(super) fn text(
     full: &FullDisplay,
     name: &str,

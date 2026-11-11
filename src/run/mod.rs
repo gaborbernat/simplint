@@ -120,6 +120,7 @@ pub(super) fn reports_io_errors(settings: &LinterSettings) -> bool {
     settings.rules.enabled(RuffRule::IOError)
 }
 
+// Ruff's `io-error` diagnostic for a path that cannot be read, written or found.
 pub(crate) fn io_error(path: &Path, message: String) -> Diagnostic {
     let file = SourceFileBuilder::new(path.to_string_lossy(), "").finish();
     IOError { message }.into_diagnostic(TextRange::default(), &file)

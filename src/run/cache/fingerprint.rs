@@ -15,6 +15,7 @@ pub(crate) struct FileIdentity<'a> {
     pub(crate) settings: &'a FileSettings<'a>,
     pub(crate) ruff: &'a LinterSettings,
     pub(crate) module_path: Option<&'a Vec<String>>,
+    // The index does not read the sibling `__init__.py`, so the fingerprint covers it directly.
     pub(crate) sibling_init: bool,
 }
 

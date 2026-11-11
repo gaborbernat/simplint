@@ -12,6 +12,8 @@ use crate::project::Ending;
 use crate::run::{CacheUse, Resolved, check_files};
 use crate::settings::HOOK_CONFIGS;
 
+// Ruff's watch mode: it checks again on every change to a watched Python file, and resolves the configuration again
+// when a `.toml` file changes. It runs until watching fails or a check cannot run.
 pub(super) fn watch(
     cli: &CheckCommand,
     global_options: &GlobalConfigArgs,

@@ -71,7 +71,8 @@ pub(super) fn run_digest(
     hasher.finish()
 }
 
-// Read only by `private-import-path`, whose paired-test lookup needs the layout beside each project.
+// Read only by `private-import-path`, whose paired-test lookup needs the layout beside each project. `None` when no
+// linted file checks for it.
 pub(super) fn probed_layout_key(files: &[&RunFile]) -> Option<u64> {
     let mut roots: Vec<&Path> = files
         .iter()
