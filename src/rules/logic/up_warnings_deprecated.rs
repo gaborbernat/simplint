@@ -8,7 +8,6 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
 use crate::rules::edits::{Blanks, statement_removal};
-use crate::rules::{indentation, is_alone_on_lines};
 use crate::syntax::argument;
 
 pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
@@ -66,13 +65,13 @@ fn fix(
     if !message.is_string_literal_expr()
         || text.contains('\n')
         || checker.has_comment_in(source.full_lines_range(warning.range()))
-        || !is_alone_on_lines(source, warning.range())
+        || !checker.is_alone_on_lines(warning.range())
     {
         return None;
     }
     let decorator = format!(
         "{}@{}.deprecated({text}){}",
-        indentation(source, name),
+        checker.indentation(name),
         checker.text(func.value.range()),
         checker.line_ending()
     );

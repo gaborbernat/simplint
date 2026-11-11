@@ -7,10 +7,9 @@ use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::expr_mentions;
 use crate::rules::logic::inline::{is_constant, is_hashable};
 use crate::settings::FileSettings;
-use crate::syntax::{for_each_body, is_name};
+use crate::syntax::{expr_mentions, for_each_body, is_name};
 
 pub fn collection_built_by_statements(checker: &Checker) {
     for_each_body(checker.body(), &mut |body, _| {

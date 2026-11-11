@@ -12,7 +12,6 @@ use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::is_alone_on_lines;
 use crate::rules::logic::inline::{Names, enter_function, for_each_scoped_body, is_constant};
 use crate::syntax::{Nesting, identifier_words};
 
@@ -184,7 +183,7 @@ fn is_constant_assign(stmt: &Stmt) -> bool {
 // the assignment lands on a line of its own.
 fn move_fix(checker: &Checker, assign: &ast::StmtAssign, next: &Stmt) -> Option<Fix> {
     let source = checker.source;
-    if !is_alone_on_lines(source, assign.range) {
+    if !checker.is_alone_on_lines(assign.range) {
         return None;
     }
     let lines = source.full_lines_range(assign.range);

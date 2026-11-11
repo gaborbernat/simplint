@@ -8,10 +8,9 @@ use ruff_text_size::TextRange;
 use super::attributes::{Attribute, annotation_name, attributes, is_field_call, skips_init};
 use super::{Docstring, has_attribute_bases};
 use crate::lint::checker::Checker;
-use crate::rules::docstring;
 use crate::rules::public_api::Need;
 use crate::settings::DocstringStyle;
-use crate::syntax::{Visibility, is_overload, last_segment, module_statements, receiver};
+use crate::syntax::{Visibility, docstring, is_overload, last_segment, module_statements, receiver};
 
 pub(crate) enum Owner<'a> {
     Function { def: &'a ast::StmtFunctionDef, class: Option<&'a ast::StmtClassDef> },

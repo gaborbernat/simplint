@@ -10,7 +10,6 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::imports::stdlib::ships_everywhere;
-use crate::rules::{indentation, is_alone_on_lines};
 use crate::syntax::{alias_root_binding, for_each_child_body, top_level};
 
 pub fn dependency_import_guard(checker: &Checker) {
@@ -26,7 +25,7 @@ fn report_guards<'a>(checker: &Checker, body: &'a [Stmt], function: Option<&'a [
         {
             let fix = (stmt.orelse.is_empty()
                 && stmt.finalbody.is_empty()
-                && is_alone_on_lines(checker.source, stmt.range())
+                && checker.is_alone_on_lines(stmt.range())
                 && !checker.has_comment_in(stmt.range())
                 && !shares_line_with_unused_import(checker, &stmt.body, function))
             .then(|| unwrap_try(checker, stmt, function));
@@ -83,7 +82,7 @@ const UNUSED_IMPORT_NOTE: &str = "  # noqa: F401  # fails when the module is mis
 fn unwrap_try(checker: &Checker, stmt: &ast::StmtTry, function: Option<&[Stmt]>) -> Fix {
     let source = checker.source;
     let (first, last) = (&stmt.body[0], &stmt.body[stmt.body.len() - 1]);
-    let indentation = indentation(source, stmt);
+    let indentation = checker.indentation(stmt);
     // A body on the `try:` line, as in `try: import tomllib`, starts after the colon, and the lines it is on hold the
     // `try` too.
     let body = if has_leading_content(first.start(), source) {

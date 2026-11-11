@@ -3,10 +3,10 @@
 use std::borrow::Cow;
 
 use ruff_python_ast::AnyParameterRef;
-use ruff_python_ast::helpers::is_dunder;
+use ruff_python_ast::helpers::{any_over_expr, is_dunder};
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, Expr, Stmt};
+use ruff_python_ast::{self as ast, Expr, OperatorPrecedence, Stmt};
 use ruff_python_parser::parse_expression;
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
@@ -729,4 +729,57 @@ pub(crate) fn top_level(module: &str) -> &str {
 // Whether the standard library of the minor version ships the module's top-level package.
 pub(crate) fn is_stdlib_root(minor: u8, module: &str) -> bool {
     ruff_python_stdlib::sys::is_known_standard_library(minor, top_level(module))
+}
+
+// Whether the statement is a `lazy` import already, which needs no `lazy` of its own.
+pub fn is_lazy(stmt: &Stmt) -> bool {
+    matches!(
+        stmt,
+        Stmt::Import(ast::StmtImport { is_lazy: true, .. })
+            | Stmt::ImportFrom(ast::StmtImportFrom { is_lazy: true, .. })
+    )
+}
+
+pub fn docstring(body: &[Stmt]) -> Option<&ast::ExprStringLiteral> {
+    match body.first()? {
+        Stmt::Expr(ast::StmtExpr { value, .. }) => value.as_string_literal_expr(),
+        _ => None,
+    }
+}
+
+pub fn needs_parentheses(value: &Expr) -> bool {
+    OperatorPrecedence::from_expr(value) < OperatorPrecedence::CallAttribute
+        || matches!(value, Expr::Tuple(tuple) if !tuple.parenthesized)
+}
+
+pub fn expr_mentions(expr: &Expr, name: &str) -> bool {
+    any_over_expr(expr, |expr| is_name(expr, name))
+}
+
+// A module-level `if sys.version_info < ...: raise ...` or `sys.exit(...)` exists to run on interpreters older than the
+// target and report them, so fixes must not add syntax or imports those
+// interpreters lack.
+pub fn has_version_gate(body: &[Stmt]) -> bool {
+    body.iter().filter_map(Stmt::as_if_stmt).any(|gate| {
+        any_over_expr(&gate.test, &|expr: &Expr| last_segment(expr) == Some("version_info"))
+            && gate.body.last().is_some_and(|last| match last {
+                Stmt::Raise(_) => true,
+                Stmt::Expr(ast::StmtExpr { value, .. }) => {
+                    value.as_call_expr().is_some_and(|call| last_segment(&call.func) == Some("exit"))
+                }
+                _ => false,
+            })
+    })
+}
+
+// `name = value` or `name: annotation = value`, binding a single plain name.
+pub fn single_assignment(stmt: &Stmt) -> Option<(&ast::ExprName, Option<&Expr>, &Expr)> {
+    let (target, annotation, value) = match stmt {
+        Stmt::Assign(ast::StmtAssign { targets, value, .. }) if targets.len() == 1 => (&targets[0], None, value),
+        Stmt::AnnAssign(ast::StmtAnnAssign { target, annotation, value: Some(value), .. }) => {
+            (target.as_ref(), Some(annotation.as_ref()), value)
+        }
+        _ => return None,
+    };
+    Some((target.as_name_expr()?, annotation, value))
 }

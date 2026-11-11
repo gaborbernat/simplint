@@ -8,8 +8,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Blanks, fix_of, statement_lines};
 use crate::rules::testing::recognize::is_mock_constructor;
-use crate::rules::{expr_mentions, is_alone_on_lines, single_assignment};
-use crate::syntax::{for_each_body, last_segment};
+use crate::syntax::{expr_mentions, for_each_body, last_segment, single_assignment};
 
 pub fn mock_attribute_assignment(checker: &Checker) {
     for_each_body(checker.body(), &mut |statements, _| {
@@ -82,7 +81,7 @@ fn report_assignments(checker: &Checker, call: &ast::ExprCall, assignments: &[As
     let is_autospec = last_segment(&call.func) == Some("create_autospec");
     // A `**` splat may already carry any of the attributes, so the merged call could repeat a keyword.
     let fixable = call.arguments.keywords.iter().all(|keyword| keyword.arg.is_some())
-        && assignments.iter().all(|assignment| is_alone_on_lines(source, assignment.stmt.range()))
+        && assignments.iter().all(|assignment| checker.is_alone_on_lines(assignment.stmt.range()))
         && assignments
             .iter()
             .all(|assignment| !checker.has_comment_in(source.full_lines_range(assignment.stmt.range())));

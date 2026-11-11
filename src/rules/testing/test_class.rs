@@ -13,8 +13,7 @@ use crate::lint::noqa::{ruff_ignores, suppresses};
 use crate::lint::registry::Rule;
 use crate::rules::edits::statement_block;
 use crate::rules::testing::is_test_function;
-use crate::rules::{docstring, expr_mentions, indentation};
-use crate::syntax::{is_name, names_in};
+use crate::syntax::{docstring, expr_mentions, is_name, names_in};
 
 pub fn test_class(checker: &Checker) {
     if !checker.is_test_module() {
@@ -184,7 +183,7 @@ fn flatten_method(
     }
     text.push_str(&source[TextRange::new(function.name.end(), self_parameter.start())]);
     text.push_str(&source[TextRange::new(removal_end, block.end())]);
-    Some((dedent_block(&text, indentation(source, function)), renamed))
+    Some((dedent_block(&text, checker.indentation(function)), renamed))
 }
 
 // The class's type parameters that a method's signature, body or nested type aliases name, plus those that their bounds

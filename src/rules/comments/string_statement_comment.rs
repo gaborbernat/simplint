@@ -8,7 +8,6 @@ use ruff_text_size::Ranged;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::comments::{is_tool_directive, owns_docstring};
-use crate::rules::{indentation, is_alone_on_lines};
 use crate::semantic::future_import;
 use crate::syntax::for_each_body;
 
@@ -67,7 +66,7 @@ fn comment_replacement(
         return None;
     };
     if body.iter().all(is_docstring_stmt)
-        || !is_alone_on_lines(source, stmt.range())
+        || !checker.is_alone_on_lines(stmt.range())
         || checker.trailing_comment(stmt).is_some()
     {
         return None;
@@ -76,7 +75,7 @@ fn comment_replacement(
     if content.contains('\\') {
         return None;
     }
-    let indent = indentation(source, stmt);
+    let indent = checker.indentation(stmt);
     let width = checker.settings.from_ruff.comment_width.checked_sub(indent.chars().count() + 2)?;
     // The text after the opening quotes starts on the first line, so only the lines below it share an indentation.
     let lines: Vec<String> = match content.split_once('\n') {

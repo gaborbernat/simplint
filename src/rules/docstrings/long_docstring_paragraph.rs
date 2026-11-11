@@ -5,7 +5,8 @@ use ruff_text_size::{TextLen, TextRange, TextSize};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::docstrings::lines::indent_width;
-use crate::rules::{docstring, long_paragraphs};
+use crate::rules::long_paragraphs;
+use crate::syntax::docstring;
 
 pub fn long_docstring_paragraph(checker: &Checker) {
     let limit = checker.settings.project.knobs.max_paragraph_words;

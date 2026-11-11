@@ -10,7 +10,7 @@ use ruff_python_ast::{self as ast, AnyNodeRef, Expr, ModModule, PythonVersion, S
 use ruff_python_codegen::Stylist;
 use ruff_python_index::Indexer;
 use ruff_python_parser::Parsed;
-use ruff_python_trivia::{CommentRanges, has_leading_content};
+use ruff_python_trivia::{CommentRanges, has_leading_content, has_trailing_content, leading_indentation};
 use ruff_source_file::{LineRanges, OneIndexed, SourceFile, SourceFileBuilder};
 use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};
 use rustc_hash::FxHashMap;
@@ -303,6 +303,15 @@ impl<'a> Checker<'a> {
             .first()
             .copied()
             .filter(|comment| !has_leading_content(comment.start(), self.source))
+    }
+
+    pub fn is_alone_on_lines(&self, range: TextRange) -> bool {
+        !has_leading_content(range.start(), self.source) && !has_trailing_content(range.end(), self.source)
+    }
+
+    // The leading whitespace of the line a node starts on; a node after a `;` shares the line, not its indentation.
+    pub fn indentation(&self, ranged: impl Ranged) -> &'a str {
+        leading_indentation(self.source.full_line_str(ranged.start()))
     }
 
     // What the rules memoize for this file, built by the first rule that reads each part.

@@ -5,7 +5,6 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 use super::{Docstring, Field};
 use crate::lint::checker::Checker;
 use crate::rules::edits::fix_of;
-use crate::rules::indentation;
 
 // Deletes whole fields, each with the lines that continue it. Fields that end the docstring take the blank lines before
 // them too, and the closing quotes go after the text left. They go on a line of their own at the docstring's
@@ -42,7 +41,7 @@ pub(crate) fn field_deletion(checker: &Checker, docstring: &Docstring, fields: &
         let quote = docstring.literal.value.first_literal_flags().quote_style().as_char();
         edits.push(if kept.contains('\n') || kept.ends_with([quote, '\\']) {
             let line_ending = checker.line_ending();
-            Edit::range_replacement(format!("{line_ending}{}", indentation(source, docstring.literal)), range)
+            Edit::range_replacement(format!("{line_ending}{}", checker.indentation(docstring.literal)), range)
         } else {
             Edit::range_deletion(range)
         });

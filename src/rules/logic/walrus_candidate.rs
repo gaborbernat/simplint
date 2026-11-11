@@ -13,7 +13,7 @@ use crate::rules::edits::{Blanks, statement_deletion};
 use crate::rules::logic::inline::{
     LOCALS_READERS, declared_outer, fits_line, for_each_scoped_body, inlined_text, leading_name,
 };
-use crate::rules::{expr_mentions, has_version_gate, needs_parentheses};
+use crate::syntax::{expr_mentions, has_version_gate, needs_parentheses};
 
 pub fn walrus_candidate(checker: &Checker) {
     // `:=` arrived in Python 3.8.

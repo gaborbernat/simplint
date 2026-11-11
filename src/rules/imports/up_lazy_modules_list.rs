@@ -6,7 +6,7 @@ use ruff_text_size::Ranged;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Blanks, fix_of, statement_lines};
-use crate::rules::{is_alone_on_lines, is_lazy};
+use crate::syntax::is_lazy;
 
 pub fn up_lazy_modules_list(checker: &Checker) {
     let body = checker.body();
@@ -37,7 +37,7 @@ pub fn up_lazy_modules_list(checker: &Checker) {
     let source = checker.source;
     let fix = (modules.iter().all(|module| converted.contains(module))
         && !stays_eager(checker, body, false, &modules)
-        && is_alone_on_lines(source, list_stmt.range()))
+        && checker.is_alone_on_lines(list_stmt.range()))
     .then(|| {
         let mut edits = lazy_imports;
         edits.push(Edit::range_deletion(statement_lines(source, list_stmt.range(), Blanks::Keep)));

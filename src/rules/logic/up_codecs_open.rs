@@ -5,8 +5,7 @@ use ruff_text_size::Ranged;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
-use crate::rules::needs_parentheses;
-use crate::syntax::argument;
+use crate::syntax::{argument, needs_parentheses};
 
 // `codecs.open(filename, mode, encoding, errors, buffering)`, in the order of its parameters.
 const PARAMETERS: [&str; 5] = ["filename", "mode", "encoding", "errors", "buffering"];

@@ -11,9 +11,9 @@ use rustc_hash::FxHashSet;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Import, ensure_import, with_import};
-use crate::rules::{has_version_gate, is_class_like, is_sphinx_conf, isort_key, single_assignment};
+use crate::rules::{is_class_like, is_sphinx_conf, isort_key};
 use crate::semantic::Semantic;
-use crate::syntax::{alias_binding, from_imports, last_segment};
+use crate::syntax::{alias_binding, from_imports, has_version_gate, last_segment, single_assignment};
 
 use super::is_type_parameter_constructor;
 

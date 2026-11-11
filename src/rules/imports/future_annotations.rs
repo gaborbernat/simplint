@@ -9,7 +9,6 @@ use rustc_hash::FxHashSet;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Blanks, statement_removal};
-use crate::rules::is_alone_on_lines;
 use crate::semantic::future_import;
 use crate::syntax::{alias_binding, module_statements, signature_annotations, target_names};
 
@@ -39,7 +38,8 @@ pub fn future_annotations(checker: &Checker) {
                 .collect();
             Some(Edit::range_replacement(format!("from __future__ import {}", kept.join(", ")), import.range()))
         } else {
-            is_alone_on_lines(checker.source, stmt.range())
+            checker
+                .is_alone_on_lines(stmt.range())
                 .then(|| statement_removal(checker, stmt.range(), body.len(), None, Blanks::Keep))
                 .flatten()
         };

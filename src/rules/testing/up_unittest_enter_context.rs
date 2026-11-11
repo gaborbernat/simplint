@@ -9,7 +9,6 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::testing::is_test_case;
 use crate::rules::testing::recognize::is_patcher;
-use crate::rules::{indentation, is_alone_on_lines};
 use crate::semantic::Semantic;
 use crate::syntax::for_each_body;
 
@@ -54,11 +53,11 @@ fn check_sequence<'a>(
     let range = TextRange::new(start.start(), cleanup.end());
     let fix = (!used_elsewhere
         && !checker.has_comment_in(range)
-        && [start, bind, cleanup].iter().all(|stmt| is_alone_on_lines(source, stmt.range())))
+        && [start, bind, cleanup].iter().all(|stmt| checker.is_alone_on_lines(stmt.range())))
     .then(|| {
         let replacement = format!(
             "{}{value} = self.enterContext({}){}",
-            indentation(source, start),
+            checker.indentation(start),
             checker.text(call.range()),
             checker.line_ending()
         );

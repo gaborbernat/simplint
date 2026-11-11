@@ -5,7 +5,6 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Blanks, statement_removal};
-use crate::rules::is_alone_on_lines;
 use crate::syntax::for_each_body;
 
 enum Replacement {
@@ -95,7 +94,7 @@ pub fn up_backport_import(checker: &Checker) {
                             let unaliased = import.names.iter().all(|alias| alias.asname.is_none());
                             // Another module that imports the name from this one, or `__all__`, would lose it.
                             let exported = import.names.iter().any(|alias| checker.is_exported(alias.name.as_str()));
-                            (unaliased && !exported && is_alone_on_lines(checker.source, stmt.range()))
+                            (unaliased && !exported && checker.is_alone_on_lines(stmt.range()))
                                 .then(|| statement_removal(checker, stmt.range(), statements.len(), None, Blanks::Keep))
                                 .flatten()
                                 .map(Fix::safe_edit)

@@ -13,7 +13,7 @@ use crate::lint::noqa::is_noqa_for_only;
 use crate::lint::registry::Rule;
 use crate::rules::api::{AllList, exploded};
 use crate::rules::edits::fix_of;
-use crate::rules::{export_key, indentation, is_type_checking};
+use crate::rules::{export_key, is_type_checking};
 use crate::semantic::BindingKind;
 use crate::syntax::is_main_guard;
 use crate::syntax::{Exports, Visibility, alias_binding, all_binding};
@@ -159,7 +159,7 @@ fn all_insertion<'a>(checker: &Checker, names: impl Iterator<Item = &'a str>) ->
         items.insert(position(elts, name), quoted(checker, name));
     }
     let (open, close) = all.brackets(checker);
-    let list = exploded(checker, indentation(source, stmt), &items);
+    let list = exploded(checker, checker.indentation(stmt), &items);
     Some(Fix::safe_edit(Edit::range_replacement(format!("{open}{}{close}", &list[1..list.len() - 1]), all.value())))
 }
 
@@ -190,7 +190,7 @@ fn lines_insertion(checker: &Checker, all: &AllList, names: &[&str]) -> Option<F
     let one_per_line = all.one_per_line(checker);
     let tail = &elts[elts.len() - 1];
     let indent = if one_per_line {
-        indentation(source, &elts[0])
+        checker.indentation(&elts[0])
     } else {
         leading_indentation(source.full_line_str(tail.start()))
     };

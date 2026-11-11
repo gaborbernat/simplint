@@ -8,7 +8,6 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Blanks, statement_lines};
-use crate::rules::is_alone_on_lines;
 use crate::syntax::is_main_guard;
 use crate::syntax::{all_binding, all_mutation, is_name};
 
@@ -47,7 +46,7 @@ pub fn all_not_last(checker: &Checker) {
     let fix = (positions.len() == 1
         && !referenced_later
         && is_string_list(stmt)
-        && is_alone_on_lines(source, stmt.range())
+        && checker.is_alone_on_lines(stmt.range())
         && (above.is_none() || fence.is_some_and(|off| checker.comment_above(off).is_none())))
     .then(|| {
         let lines = statement_lines(

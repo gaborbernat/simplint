@@ -8,9 +8,9 @@ use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::rules::typing::type_parameter_assignment;
-use crate::rules::{is_class_like, is_sphinx_conf, single_assignment};
+use crate::rules::{is_class_like, is_sphinx_conf};
 use crate::semantic::{Binding, BindingKind};
-use crate::syntax::{Exports, Visibility};
+use crate::syntax::{Exports, Visibility, single_assignment};
 
 pub struct ModuleVariable<'a> {
     pub name: &'a str,

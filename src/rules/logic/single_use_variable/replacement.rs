@@ -6,7 +6,7 @@ use ruff_text_size::{Ranged, TextRange};
 use super::reading::ReadSite;
 use crate::lint::checker::Checker;
 use crate::rules::logic::inline::{fstring_body_parts, inlined_text, joined, requoted_text};
-use crate::rules::needs_parentheses;
+use crate::syntax::needs_parentheses;
 
 // The range the read replaces and the text that replaces it: the assigned value as the statement takes it,
 // parenthesised where it needs that. A bare field of an f-string is replaced whole, by the value's text spliced in.

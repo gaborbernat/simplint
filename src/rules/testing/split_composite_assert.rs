@@ -6,7 +6,6 @@ use crate::layout::joined_width;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::testing::is_test_module_function;
-use crate::rules::{indentation, is_alone_on_lines};
 use crate::syntax::for_each_body;
 
 pub fn split_composite_assert(checker: &Checker) {
@@ -93,7 +92,7 @@ fn report(checker: &Checker, run: &[Stmt]) {
 // in the run would be lost, and the run must own its lines for the replacement to keep the statements' layout.
 fn fits(checker: &Checker, run: &[Stmt], fields: &[Field]) -> bool {
     let range = TextRange::new(run[0].start(), run[run.len() - 1].end());
-    if !is_alone_on_lines(checker.source, range) || checker.has_comment_in(range) {
+    if !checker.is_alone_on_lines(range) || checker.has_comment_in(range) {
         return false;
     }
     let (source, tokens) = (checker.source, checker.parsed.tokens());
@@ -109,5 +108,5 @@ fn fits(checker: &Checker, run: &[Stmt], fields: &[Field]) -> bool {
     // Each tuple's elements are separated by `, `.
     let joined = |widths: &[usize]| widths.iter().sum::<usize>() + ", ".len() * (widths.len() - 1);
     let width = "assert (".len() + joined(&names) + ") == (".len() + joined(&values) + ")".len();
-    indentation(source, &run[0]).len() + width <= checker.settings.from_ruff.line_width
+    checker.indentation(&run[0]).len() + width <= checker.settings.from_ruff.line_width
 }

@@ -14,11 +14,9 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Blanks, fix_of, keep_debug_text, statement_lines};
 use crate::rules::rename::appears_in_strings;
-use crate::rules::{
-    indentation, is_alone_on_lines, is_class_like, is_named_by_doctest, needs_parentheses, single_assignment,
-};
+use crate::rules::{is_class_like, is_named_by_doctest};
 use crate::semantic::{Binding, BindingKind, Evaluation};
-use crate::syntax::{Exports, Visibility, is_repeating_expr, last_segment};
+use crate::syntax::{Exports, Visibility, is_repeating_expr, last_segment, needs_parentheses, single_assignment};
 
 pub fn single_user_constant(checker: &Checker) {
     for stmt in checker.body() {
@@ -266,7 +264,7 @@ fn move_into_function(checker: &Checker, constant: &Constant) -> Option<(Fix, bo
     let is_local = |name: &str| {
         stores.names.contains_key(name) || function.parameters.iter().any(|parameter| parameter.name().as_str() == name)
     };
-    if !is_alone_on_lines(source, constant.stmt.range())
+    if !checker.is_alone_on_lines(constant.stmt.range())
         || any_over_expr(constant.value, |expr| expr.as_name_expr().is_some_and(|name| is_local(name.id.as_str())))
     {
         return None;
@@ -330,9 +328,9 @@ fn local_fix(checker: &Checker, constant: &Constant, value_text: &str, deletion:
     // statements move onto lines of their own, where `ruff format` would put them.
     let on_header = has_leading_content(function.body[0].start(), source);
     let indent = if on_header {
-        format!("{}{}", indentation(source, function), checker.stylist.indentation().as_str())
+        format!("{}{}", checker.indentation(function), checker.stylist.indentation().as_str())
     } else {
-        indentation(source, anchor).to_owned()
+        checker.indentation(anchor).to_owned()
     };
     let triple_quoted = value_text.contains("\"\"\"") || value_text.contains("'''");
     // A backslash continues a single-quoted string onto the next line, so the indentation added there becomes part of

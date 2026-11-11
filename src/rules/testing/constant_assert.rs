@@ -9,7 +9,6 @@ use ruff_text_size::Ranged;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Blanks, statement_removal};
-use crate::rules::is_alone_on_lines;
 use crate::syntax::for_each_body;
 
 pub fn constant_assert(checker: &Checker) {
@@ -101,7 +100,7 @@ fn report_constant_assert(checker: &Checker, stmt: &Stmt, assert: &ast::StmtAsse
 }
 
 fn is_deletable(checker: &Checker, stmt: &Stmt, test: &Expr) -> bool {
-    is_alone_on_lines(checker.source, stmt.range()) && !has_effect(checker, test)
+    checker.is_alone_on_lines(stmt.range()) && !has_effect(checker, test)
 }
 
 // A computed value and a format or `%` template read only literals, so only the arguments of such a template can

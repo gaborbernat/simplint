@@ -48,7 +48,6 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::rules::comments::is_tool_directive;
 use crate::rules::edits::{Blanks, statement_deletion};
-use crate::rules::{indentation, is_alone_on_lines};
 
 // A variable is documented the two ways Sphinx autodoc reads: a string right after it, or `#:` comments right above.
 fn is_documented_variable(checker: &Checker, stmt: &Stmt, next: Option<&Stmt>) -> bool {
@@ -74,9 +73,9 @@ pub(crate) fn docstring_deletion(checker: &Checker, body: &[Stmt]) -> Option<Edi
     let deletion = statement_deletion(checker, stmt.range(), body.get(1).map(Ranged::range), Blanks::Trailing)?;
     let comment = checker.trailing_comment(stmt).filter(|comment| !is_directive_comment(checker, *comment));
     match comment {
-        Some(comment) if is_alone_on_lines(checker.source, stmt.range()) => {
+        Some(comment) if checker.is_alone_on_lines(stmt.range()) => {
             let newline = checker.line_ending();
-            let line = format!("{}{}{newline}", indentation(checker.source, stmt), checker.text(comment));
+            let line = format!("{}{}{newline}", checker.indentation(stmt), checker.text(comment));
             Some(Edit::range_replacement(line, deletion))
         }
         _ => Some(Edit::range_deletion(deletion)),

@@ -9,7 +9,6 @@ use crate::rules::comments::is_tool_directive;
 use crate::rules::docstrings::comment_text::comment_lines;
 use crate::rules::docstrings::{docstring_deletion, is_directive_comment};
 use crate::rules::edits::{Blanks, statement_lines};
-use crate::rules::indentation;
 
 // The level of the block that starts after each indent or dedent token, by where the token starts, the module's being 1.
 pub(super) fn block_levels(checker: &Checker) -> Vec<(TextSize, usize)> {
@@ -48,9 +47,9 @@ pub(super) fn comment_replacement(
     let stmt = &owner_body[0];
     let on_header = has_leading_content(stmt.start(), source);
     let indent = if on_header {
-        format!("{}{}", indentation(source, owner), checker.stylist.indentation().as_str())
+        format!("{}{}", checker.indentation(owner), checker.stylist.indentation().as_str())
     } else {
-        indentation(source, stmt).to_owned()
+        checker.indentation(stmt).to_owned()
     };
     // The dedents closing the blocks before the owner sit at its start.
     let before = &levels[..levels.partition_point(|(at, _)| *at <= owner.start())];
