@@ -32,6 +32,7 @@ use crate::common::{self, check, read};
 #[test_case("single-use-variable", "single_use_variable.py", "py314" ; "single_use_variable")]
 #[test_case("single-use-variable", "single_use_variable_width.py", "py314" ; "single_use_variable_width")]
 #[test_case("single-use-variable", "single_use_variable_debug.py", "py314" ; "single_use_variable_debug")]
+#[test_case("single-use-variable", "single_use_variable_raw_debug.py", "py314" ; "single_use_variable_raw_debug")]
 #[test_case("single-use-variable", "single_use_variable_requote.py", "py311" ; "single_use_variable_requote")]
 #[test_case("single-use-variable", "single_use_variable_splice.py", "py314" ; "single_use_variable_splice")]
 #[test_case("single-use-variable", "single_use_variable_splice.py", "py311" ; "single_use_variable_splice_before_python312")]

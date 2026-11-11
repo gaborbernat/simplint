@@ -1,6 +1,5 @@
 use ruff_diagnostics::Edit;
 use ruff_python_ast::helpers::is_docstring_stmt;
-use ruff_python_ast::str::Quote;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Stmt, StringFlags};
 use ruff_python_stdlib::sys::is_known_standard_library;
@@ -176,6 +175,11 @@ fn debug_field(source: &str, field: &DebugField, edits: &[Edit]) -> Option<Strin
     if debug.contains(['\n', '\r', '\\']) {
         return None;
     }
+    let quote = field.flags.quote_style().as_char();
+    // A raw f-string keeps the backslash that an escaped quote would need, so the quote cannot go in its literal text.
+    if field.flags.prefix().is_raw() && debug.contains(quote) {
+        return None;
+    }
     let start = usize::from(field.range.start()) + 1;
     let text_end = start + debug.len();
     let equals = start + debug.rfind('=')?;
@@ -187,7 +191,6 @@ fn debug_field(source: &str, field: &DebugField, edits: &[Edit]) -> Option<Strin
     let remainder = splice(source, text_end, end, &mut remainder_edits)?;
     let conversion = if remainder.is_empty() { "!r" } else { &remainder };
     let space = if expression.starts_with('{') { " " } else { "" };
-    let quote = field.quote.as_char();
     let literal = escape_braces(debug).replace(quote, &format!("\\{quote}"));
     Some(format!("{literal}{{{space}{expression}{conversion}}}"))
 }
@@ -286,13 +289,12 @@ pub(super) struct DebugFields<'a> {
 struct DebugField<'a> {
     range: TextRange,
     debug: &'a ast::DebugText,
-    quote: Quote,
+    flags: ast::FStringFlags,
 }
 
 impl<'a> Visitor<'a> for DebugFields<'a> {
     fn visit_f_string(&mut self, f_string: &'a ast::FString) {
-        let quote = f_string.flags.quote_style();
-        self.fields.extend(f_string.elements.iter().filter_map(|element| debug_field_of(element, quote)));
+        self.fields.extend(f_string.elements.iter().filter_map(|element| debug_field_of(element, f_string.flags)));
         visitor::walk_f_string(self, f_string);
     }
 
@@ -307,9 +309,9 @@ impl<'a> Visitor<'a> for DebugFields<'a> {
     }
 }
 
-fn debug_field_of(element: &ast::InterpolatedStringElement, quote: Quote) -> Option<DebugField<'_>> {
+fn debug_field_of(element: &ast::InterpolatedStringElement, flags: ast::FStringFlags) -> Option<DebugField<'_>> {
     let ast::InterpolatedStringElement::Interpolation(interpolation) = element else {
         return None;
     };
-    Some(DebugField { range: interpolation.range, debug: interpolation.debug_text.as_ref()?, quote })
+    Some(DebugField { range: interpolation.range, debug: interpolation.debug_text.as_ref()?, flags })
 }
