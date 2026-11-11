@@ -574,15 +574,14 @@ fn error_message_matching_leaves_test_modules_alone() {
     assert_eq!((code, stdout.as_str()), (0, common::PASSED));
 }
 
-// Ruff's PT017 reports an `assert` naming the exception, which SMP507 leaves to it while the project's Ruff
-// configuration selects it.
-#[test_case("assert \"gone\" in str(exc)", "PT017", 0 ; "assert_left_to_ruff")]
-#[test_case("assert \"gone\" in str(exc)", "E501", 1 ; "assert_reported_without_pt017")]
-#[test_case("if \"gone\" in str(exc):\n            pass", "PT017", 1 ; "if_reported_with_pt017")]
-fn error_message_matching_leaves_asserts_to_pt017(body: &str, code: &str, reports: usize) {
+// Ruff's PT017 reports an `assert` naming the exception, at any depth in the handler, so SMP507 leaves it to Ruff
+// whether or not the project selects PT017. An `if` is not an `assert`, so its comparison stays with the rule.
+#[test_case("assert \"gone\" in str(exc)", 0 ; "assert_left_to_ruff")]
+#[test_case("if flag:\n            assert \"gone\" in str(exc)", 0 ; "nested_assert_left_to_ruff")]
+#[test_case("if \"gone\" in str(exc):\n            pass", 1 ; "if_reported")]
+fn error_message_matching_leaves_asserts_to_pt017(body: &str, reports: usize) {
     let source = format!("def run(f):\n    try:\n        f()\n    except OSError as exc:\n        {body}\n");
-    let settings = format!("[tool.ruff.lint]\nselect = [\"{code}\"]\n");
-    let root = common::project(&[("pyproject.toml", &settings), ("module.py", &source)]);
+    let root = common::project(&[("module.py", &source)]);
     common::assert_report_count(root.path(), "SMP507", reports);
 }
 
