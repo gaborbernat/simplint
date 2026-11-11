@@ -849,8 +849,7 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
                 visitor::walk_stmt(self, stmt);
             }
             Stmt::ClassDef(class) => {
-                let bases: Vec<String> = class.bases().iter().filter_map(|base| self.base_class(base)).collect();
-                self.base_classes.extend(bases);
+                self.record_bases(class);
                 self.walk_body(stmt, Body::Class);
             }
             Stmt::If(ast::StmtIf { test, body, elif_else_clauses, .. }) => {
@@ -1189,6 +1188,11 @@ pub(crate) fn qualified(segments: &[&str], aliases: &FxHashMap<&str, String>) ->
 impl FactVisitor<'_> {
     fn qualified(&self, expr: &Expr) -> Option<String> {
         qualified(UnqualifiedName::from_expr(expr)?.segments(), &self.aliases)
+    }
+
+    fn record_bases(&mut self, class: &ast::StmtClassDef) {
+        let bases: Vec<String> = class.bases().iter().filter_map(|base| self.base_class(base)).collect();
+        self.base_classes.extend(bases);
     }
 
     // The name a base class is known by, `Release` for `Base` in `from models import Release as Base`.
