@@ -3,8 +3,8 @@
 // may be unused too. The model's references are the loads and `del`s, but it does not copy them to a rebinding as Ruff
 // does, so a name's reads are the references of its chain of bindings up to the first `del`, builtin or unbound
 // exception. `__all__` and string annotations read names the model does not resolve, so they stand in for loads.
-use ruff_python_ast::Stmt;
 use ruff_python_ast::name::{QualifiedName, QualifiedNameBuilder};
+use ruff_python_ast::{Expr, Stmt};
 use ruff_python_semantic::{
     Binding, BindingId, BindingKind, Imported, NodeId, ResolvedReferenceId, Scope, SemanticModel,
 };
@@ -114,13 +114,8 @@ fn refined_unused(
         marked.mark(model, &QualifiedName::user_defined(name));
     }
     for reference in copied_references(model, scope, live) {
-        let Some(expr_id) = model.reference(reference).expression_id() else {
-            return vec![live];
-        };
-        let Some(prototype) = expand_to_qualified_name_attribute(model, expr_id) else {
-            return vec![live];
-        };
-        marked.mark(model, &prototype);
+        let expr_id = model.reference(reference).expression_id().expect("a read is recorded under the name it reads");
+        marked.mark(model, &expand_to_qualified_name_attribute(model, expr_id));
     }
     marked.into_unused()
 }
@@ -132,12 +127,8 @@ struct Marked {
 
 impl Marked {
     fn mark(&mut self, model: &SemanticModel, prototype: &QualifiedName) {
-        let Some(best) = best_match(model, &self.bindings, prototype) else {
-            return;
-        };
-        let Some(best_import) = model.binding(best).as_any_import() else {
-            return;
-        };
+        let best = best_match(model, &self.bindings, prototype).expect("a refined chain holds the live import");
+        let best_import = model.binding(best).as_any_import().expect("a refined chain holds only imports");
         let best_name = best_import.qualified_name();
         for (binding, used) in self.bindings.iter().zip(self.used.iter_mut()) {
             if !*used
@@ -163,19 +154,17 @@ fn rank_matches(
     binding: BindingId,
     prototype: &QualifiedName,
 ) -> (usize, std::cmp::Reverse<usize>) {
-    let Some(import) = model.binding(binding).as_any_import() else {
-        unreachable!("only imports are matched against a prototype")
-    };
+    let import = model.binding(binding).as_any_import().expect("only imports are matched against a prototype");
     let qualified = import.qualified_name();
     let left = qualified.segments().iter().zip(prototype.segments()).take_while(|(x, y)| x == y).count();
     (left, std::cmp::Reverse(qualified.segments().len()))
 }
 
 // The qualified name of the maximal attribute chain that an expression starts, as `a.b.foo` for `a` in `a.b.foo()`.
-fn expand_to_qualified_name_attribute<'b>(model: &SemanticModel<'b>, expr_id: NodeId) -> Option<QualifiedName<'b>> {
+fn expand_to_qualified_name_attribute<'b>(model: &SemanticModel<'b>, expr_id: NodeId) -> QualifiedName<'b> {
     let mut builder = QualifiedNameBuilder::with_capacity(16);
     let mut expr_id = expr_id;
-    let name = model.expression(expr_id)?.as_name_expr()?;
+    let name = model.expression(expr_id).and_then(Expr::as_name_expr).expect("a read is a name");
     builder.push(&name.id);
     while let Some(node_id) = model.parent_expression_id(expr_id) {
         let Some(attribute) = model.expression(node_id).and_then(|expr| expr.as_attribute_expr()) else {
@@ -184,5 +173,5 @@ fn expand_to_qualified_name_attribute<'b>(model: &SemanticModel<'b>, expr_id: No
         builder.push(attribute.attr.as_str());
         expr_id = node_id;
     }
-    Some(builder.build())
+    builder.build()
 }
