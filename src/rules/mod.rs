@@ -16,11 +16,12 @@ pub(crate) mod typing;
 use std::cell::OnceCell;
 
 use ruff_python_ast::helpers::any_over_expr;
+use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, OperatorPrecedence, Stmt};
 use ruff_python_trivia::{has_leading_content, has_trailing_content, leading_indentation};
 use ruff_source_file::LineRanges;
-use ruff_text_size::{Ranged, TextRange, TextSize};
+use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
@@ -58,6 +59,8 @@ pub(crate) struct FileState<'a> {
     // The ends of the callees of the file's calls, which tell a reference that is called from one that is only read.
     call_ends: OnceCell<FxHashSet<TextSize>>,
     comprehensions: OnceCell<Vec<(TextRange, TextRange)>>,
+    unqualified_names: OnceCell<FxHashMap<&'a str, usize>>,
+    attribute_reads: OnceCell<FxHashMap<&'a str, Vec<&'a str>>>,
 }
 
 impl<'a> FileState<'a> {
@@ -167,6 +170,32 @@ impl<'a> FileState<'a> {
         })
     }
 
+    // How many identifier tokens of the file spell `name` outside an attribute access, the whole file included.
+    pub(crate) fn unqualified_name_count(&self, checker: &Checker<'a>, name: &str) -> usize {
+        let counts = self.unqualified_names.get_or_init(|| {
+            let tokens = checker.parsed.tokens().in_range(TextRange::up_to(checker.source.text_len()));
+            let mut counts = FxHashMap::default();
+            for (index, token) in tokens.iter().enumerate() {
+                if token.kind() == TokenKind::Identifier
+                    && index.checked_sub(1).is_none_or(|previous| tokens[previous].kind() != TokenKind::Dot)
+                {
+                    *counts.entry(checker.text(token.range())).or_default() += 1;
+                }
+            }
+            counts
+        });
+        counts.get(name).copied().unwrap_or_default()
+    }
+
+    // The attributes the file reads off each name, whatever the name is bound to there.
+    pub(crate) fn attribute_reads(&self, checker: &Checker<'a>) -> &FxHashMap<&'a str, Vec<&'a str>> {
+        self.attribute_reads.get_or_init(|| {
+            let mut reads = AttributeReads::default();
+            reads.visit_body(checker.body());
+            reads.attributes
+        })
+    }
+
     fn debug_fields(&self, checker: &Checker<'a>) -> &edits::DebugFields<'a> {
         self.debug_fields.get_or_init(|| {
             let mut finder = edits::DebugFields::default();
@@ -187,6 +216,23 @@ impl<'a> Visitor<'a> for CallEnds {
     fn visit_expr(&mut self, expr: &'a Expr) {
         if let Expr::Call(call) = expr {
             self.ends.insert(call.func.end());
+        }
+        visitor::walk_expr(self, expr);
+    }
+}
+
+// The attributes read off each bare name in a file.
+#[derive(Default)]
+struct AttributeReads<'a> {
+    attributes: FxHashMap<&'a str, Vec<&'a str>>,
+}
+
+impl<'a> Visitor<'a> for AttributeReads<'a> {
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        if let Expr::Attribute(attribute) = expr
+            && let Expr::Name(base) = attribute.value.as_ref()
+        {
+            self.attributes.entry(base.id.as_str()).or_default().push(attribute.attr.as_str());
         }
         visitor::walk_expr(self, expr);
     }

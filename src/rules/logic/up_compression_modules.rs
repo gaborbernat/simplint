@@ -1,11 +1,11 @@
 use ruff_diagnostics::{Edit, Fix};
-use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, Expr, Stmt};
+use ruff_python_ast::{self as ast, Stmt};
 use ruff_text_size::{Ranged, TextRange};
+use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::syntax::{alias_binding, for_each_body, is_name};
+use crate::syntax::{alias_binding, for_each_body};
 
 const CODECS: [&str; 4] = ["gzip", "bz2", "lzma", "zlib"];
 
@@ -14,6 +14,9 @@ pub fn up_compression_modules(checker: &Checker) {
     if checker.module_path().and_then(<[String]>::first).is_some_and(|package| package == "compression") {
         return;
     }
+    // A file that imports a codec under the same name many times reads the same attributes each time, so each pair of
+    // codec and name is checked once.
+    let mut re_exported: FxHashMap<(&str, &str), bool> = FxHashMap::default();
     for_each_body(checker.body(), &mut |statements, owner| {
         // A guarded import is a fallback for the Pythons that lack the new name, so it stays as written.
         if matches!(owner, Some(Stmt::Try(_))) {
@@ -28,7 +31,9 @@ pub fn up_compression_modules(checker: &Checker) {
                         }
                         // A statement that binds other names too would need splitting, so only a lone import is fixed.
                         let fix = (import.names.len() == 1
-                            && all_re_exported(&alias.name, &attributes_of(checker.body(), alias_binding(alias))))
+                            && *re_exported.entry((alias.name.as_str(), alias_binding(alias))).or_insert_with(|| {
+                                all_re_exported(&alias.name, attributes_of(checker, alias_binding(alias)))
+                            }))
                         .then(|| {
                             let asname = alias.asname.as_ref().map_or_else(String::new, |name| format!(" as {name}"));
                             let lazy = if import.is_lazy { "lazy " } else { "" };
@@ -79,24 +84,6 @@ fn all_re_exported(codec: &str, names: &[&str]) -> bool {
 }
 
 // The attributes the file reads off `name` anywhere, whatever the name is bound to there.
-fn attributes_of<'a>(body: &'a [Stmt], name: &str) -> Vec<&'a str> {
-    let mut reads = AttributeReads { name, attributes: Vec::new() };
-    reads.visit_body(body);
-    reads.attributes
-}
-
-struct AttributeReads<'n, 'a> {
-    name: &'n str,
-    attributes: Vec<&'a str>,
-}
-
-impl<'a> Visitor<'a> for AttributeReads<'_, 'a> {
-    fn visit_expr(&mut self, expr: &'a Expr) {
-        if let Expr::Attribute(attribute) = expr
-            && is_name(&attribute.value, self.name)
-        {
-            self.attributes.push(attribute.attr.as_str());
-        }
-        visitor::walk_expr(self, expr);
-    }
+fn attributes_of<'c>(checker: &'c Checker, name: &str) -> &'c [&'c str] {
+    checker.state().attribute_reads(checker).get(name).map_or(&[][..], Vec::as_slice)
 }
