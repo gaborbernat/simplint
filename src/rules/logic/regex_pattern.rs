@@ -127,6 +127,8 @@ pub(crate) struct Facts<'c, 'a> {
     // Each name use with the scopes it sits in, innermost first, until it is resolved to the scope that binds it.
     pending: Vec<(Vec<Scope>, &'a str, Usage)>,
     usages: FxHashMap<(Scope, &'a str), Vec<Usage>>,
+    // The names whose match objects the code reads by index, which each group site of a name asks about.
+    read_by_index: FxHashSet<(Scope, &'a str)>,
     // The expressions holding the current one, outermost first, ending with the current one.
     exprs: Vec<&'a Expr>,
     // The statements holding the current expression, innermost last.
@@ -145,6 +147,7 @@ impl<'c, 'a> Facts<'c, 'a> {
             class_body: false,
             pending: Vec::new(),
             usages: FxHashMap::default(),
+            read_by_index: FxHashSet::default(),
             exprs: Vec::new(),
             stmts: Vec::new(),
             scopes: vec![None],
@@ -154,6 +157,8 @@ impl<'c, 'a> Facts<'c, 'a> {
         if MODULES.iter().any(|module| checker.name_token_count(module) > 0) {
             facts.visit_body(checker.body());
             facts.resolve_usages();
+            facts.read_by_index =
+                facts.usages.keys().copied().filter(|&(scope, name)| facts.reads_index_of(scope, name)).collect();
         }
         facts
     }
@@ -451,6 +456,10 @@ impl<'a> Facts<'_, 'a> {
 
     // Whether the code reads a numbered group of the match objects `name` holds, or of the matches its pattern makes.
     pub(crate) fn reads_index(&self, scope: Scope, name: &'a str) -> bool {
+        self.read_by_index.contains(&(scope, name))
+    }
+
+    fn reads_index_of(&self, scope: Scope, name: &'a str) -> bool {
         self.indexed(scope, name)
             || self.usages_of(scope, name).iter().any(|usage| match usage {
                 Usage::Method { call, .. } => self.calls.get(call).is_some_and(|call| {

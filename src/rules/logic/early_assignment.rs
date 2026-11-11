@@ -14,6 +14,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::is_alone_on_lines;
 use crate::rules::logic::inline::{Names, enter_function, for_each_scoped_body, is_constant};
+use crate::syntax::Nesting;
 
 pub fn early_assignment(checker: &Checker) {
     // A function's scope is walked once, and only when one of its blocks assigns a constant to a name.
@@ -59,7 +60,7 @@ fn candidate(assign: &ast::StmtAssign) -> Option<&ast::ExprName> {
 // whenever it is called, so a name it mentions must exist from the assignment on.
 struct Scope<'a> {
     names: Names<'a>,
-    nested: Vec<TextRange>,
+    nested: Nesting,
     dynamic: bool,
 }
 
@@ -67,7 +68,7 @@ impl<'a> Scope<'a> {
     fn of(body: &'a [Stmt]) -> Self {
         let mut walk = ScopeWalk::default();
         walk.visit_body(body);
-        Self { names: Names::of(body), nested: walk.ranges, dynamic: walk.dynamic }
+        Self { names: Names::of(body), nested: Nesting::new(walk.ranges), dynamic: walk.dynamic }
     }
 }
 
@@ -133,9 +134,7 @@ fn check_assign<'a>(
         if range == target.range {
             continue;
         }
-        if range.start() < assign.end()
-            || !block.contains_range(range)
-            || scope.nested.iter().any(|nested| nested.contains_range(range))
+        if range.start() < assign.end() || !block.contains_range(range) || scope.nested.holders(range).next().is_some()
         {
             return;
         }
