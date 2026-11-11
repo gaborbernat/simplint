@@ -338,6 +338,24 @@ fn sphinx_parameter_aliases_document_their_parameter(source: &str, stdout: &str)
     assert_eq!(common::check(root.path(), &["--select", "SMP910,SMP916"]).1, stdout);
 }
 
+// Dropping the type of a parameter keeps the stars that mark `*args` and `**kwargs`, which the name is written with.
+#[test_case(
+    "def call(*args: int, **kwargs: str) -> None:\n    r\"\"\"Call it.\n\n    :param int \\*args: The numbers.\n    :param str \\*\\*kwargs: The options.\n    \"\"\"\n",
+    "def call(*args: int, **kwargs: str) -> None:\n    r\"\"\"Call it.\n\n    :param \\*args: The numbers.\n    :param \\*\\*kwargs: The options.\n    \"\"\"\n" ;
+    "star_parameters"
+)]
+#[test_case(
+    "def call(count: int) -> None:\n    \"\"\"Call it.\n\n    :param int count: The number.\n    \"\"\"\n",
+    "def call(count: int) -> None:\n    \"\"\"Call it.\n\n    :param count: The number.\n    \"\"\"\n" ;
+    "plain_parameter"
+)]
+fn type_field_fix_keeps_the_star_markers(source: &str, fixed: &str) {
+    let root =
+        common::project(&[("pyproject.toml", "[tool.simplint]\ndocstring-style = \"rst\"\n"), ("demo.py", source)]);
+    common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP912"]);
+    assert_eq!(common::read(root.path(), "demo.py"), fixed);
+}
+
 // Renaming an alias changes the docstring, which code may read through `__doc__`, so it is an unsafe fix like the rule's
 // others.
 #[test]

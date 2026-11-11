@@ -118,6 +118,29 @@ Checks reStructuredText docstrings, when `docstring-style = "rst"`, for type inf
       return value * factor
   ```
 
+  The stars of `*args` and `**kwargs` stay in the name the field gives, and only the type goes.
+
+  ```toml config
+  [tool.simplint]
+  docstring-style = "rst"
+  ```
+
+  ```python report
+  def call(*args: int) -> None:
+      r"""Call it.
+
+      :param int \*args: The numbers.
+      """
+  ```
+
+  ```python fixed
+  def call(*args: int) -> None:
+      r"""Call it.
+
+      :param \*args: The numbers.
+      """
+  ```
+
 - **`:vartype name:` fields and the type in `:ivar type name:`**: attribute types are reported but get no fix.
 
   - A `:vartype name:` field, here for a class attribute

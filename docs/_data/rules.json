@@ -30093,7 +30093,7 @@
     "name": "rst-type-field",
     "summary": "Types in docstrings, which belong in annotations",
     "fix": "Sometimes",
-    "explanation": "Flags type information in reStructuredText docstrings, which belongs in annotations. A type checker verifies an\nannotation, while a type in the docstring is checked by nothing and drifts from the code.\n\n## Why is this bad?\n\nAn annotation is the type a type checker verifies; a type in the docstring is checked by nothing and drifts from the\ncode. Sphinx shows annotations itself, in the signature or, with\n[`autodoc_typehints = \"description\"`](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#confval-autodoc_typehints),\nin the parameter list.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\ndef scale(value, factor):\n    \"\"\"Scale a value.\n\n    :param float value: The value.\n    :param factor: The factor.\n    :type factor: float\n    :rtype: float\n    \"\"\"\n```\n\nUse instead:\n\n```python ok\ndef scale(value: float, factor: float) -> float:\n    \"\"\"Scale a value.\n\n    :param value: The value.\n    :param factor: The factor.\n    \"\"\"\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def scale(value: float) -> float:\n      \"\"\"Scale a value.\n\n      :rtype: float\n      \"\"\"\n      return value\n  ```\n\n## What it does\n\nChecks reStructuredText docstrings, when `docstring-style = \"rst\"`, for type information.\n\n### Active on\n\n- **`:type name:`, `:rtype:` and `:ytype:` fields**: where the signature already annotates what the field types, the fix\n  deletes the field with the lines that continue it.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def scale(value: float, factor: float) -> float:\n      \"\"\"Scale a value.\n\n      :param value: The value.\n      :type value: float\n      :rtype: float\n      \"\"\"\n      return value * factor\n  ```\n\n  ```python fixed\n  def scale(value: float, factor: float) -> float:\n      \"\"\"Scale a value.\n\n      :param value: The value.\n      \"\"\"\n      return value * factor\n  ```\n\n- **The type in `:param type name:`**: where the signature already annotates the parameter, the fix drops the type from\n  the field.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def scale(value: float, factor: float) -> float:\n      \"\"\"Scale a value.\n\n      :param float value: The value.\n      :param factor: The factor.\n      \"\"\"\n      return value * factor\n  ```\n\n  ```python fixed\n  def scale(value: float, factor: float) -> float:\n      \"\"\"Scale a value.\n\n      :param value: The value.\n      :param factor: The factor.\n      \"\"\"\n      return value * factor\n  ```\n\n- **`:vartype name:` fields and the type in `:ivar type name:`**: attribute types are reported but get no fix.\n\n  - A `:vartype name:` field, here for a class attribute\n\n    ```toml config\n    [tool.simplint]\n    docstring-style = \"rst\"\n    ```\n\n    ```python report\n    class Engine:\n        \"\"\"Run jobs.\n\n        :vartype limit: int\n        \"\"\"\n\n        limit = 3\n    ```\n\n  - The type in `:ivar type name:`, here for an attribute set in `__init__`\n\n    ```toml config\n    [tool.simplint]\n    docstring-style = \"rst\"\n    ```\n\n    ```python report\n    class Engine:\n        \"\"\"Run jobs.\n\n        :ivar int state: What it is doing.\n        \"\"\"\n\n        def __init__(self) -> None:\n            self.state = \"idle\"\n    ```\n\n### Fix\n\n**Unsafe fix:** code may read the docstring through `__doc__`.\n\nNo fix is offered:\n\n- without the annotation, since the docstring's type, such as `list of str`, may not be a valid annotation\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def join(values):\n      \"\"\"Join the strings.\n\n      :param list of str values: The values.\n      \"\"\"\n      return \"\".join(values)\n  ```\n\n- for attribute types\n\n- when escapes in the docstring make its text differ from the source\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#12434](https://github.com/astral-sh/ruff/issues/12434)\n  and [#9070](https://github.com/astral-sh/ruff/issues/9070).\n",
+    "explanation": "Flags type information in reStructuredText docstrings, which belongs in annotations. A type checker verifies an\nannotation, while a type in the docstring is checked by nothing and drifts from the code.\n\n## Why is this bad?\n\nAn annotation is the type a type checker verifies; a type in the docstring is checked by nothing and drifts from the\ncode. Sphinx shows annotations itself, in the signature or, with\n[`autodoc_typehints = \"description\"`](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#confval-autodoc_typehints),\nin the parameter list.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\ndef scale(value, factor):\n    \"\"\"Scale a value.\n\n    :param float value: The value.\n    :param factor: The factor.\n    :type factor: float\n    :rtype: float\n    \"\"\"\n```\n\nUse instead:\n\n```python ok\ndef scale(value: float, factor: float) -> float:\n    \"\"\"Scale a value.\n\n    :param value: The value.\n    :param factor: The factor.\n    \"\"\"\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def scale(value: float) -> float:\n      \"\"\"Scale a value.\n\n      :rtype: float\n      \"\"\"\n      return value\n  ```\n\n## What it does\n\nChecks reStructuredText docstrings, when `docstring-style = \"rst\"`, for type information.\n\n### Active on\n\n- **`:type name:`, `:rtype:` and `:ytype:` fields**: where the signature already annotates what the field types, the fix\n  deletes the field with the lines that continue it.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def scale(value: float, factor: float) -> float:\n      \"\"\"Scale a value.\n\n      :param value: The value.\n      :type value: float\n      :rtype: float\n      \"\"\"\n      return value * factor\n  ```\n\n  ```python fixed\n  def scale(value: float, factor: float) -> float:\n      \"\"\"Scale a value.\n\n      :param value: The value.\n      \"\"\"\n      return value * factor\n  ```\n\n- **The type in `:param type name:`**: where the signature already annotates the parameter, the fix drops the type from\n  the field.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def scale(value: float, factor: float) -> float:\n      \"\"\"Scale a value.\n\n      :param float value: The value.\n      :param factor: The factor.\n      \"\"\"\n      return value * factor\n  ```\n\n  ```python fixed\n  def scale(value: float, factor: float) -> float:\n      \"\"\"Scale a value.\n\n      :param value: The value.\n      :param factor: The factor.\n      \"\"\"\n      return value * factor\n  ```\n\n  The stars of `*args` and `**kwargs` stay in the name the field gives, and only the type goes.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def call(*args: int) -> None:\n      r\"\"\"Call it.\n\n      :param int \\*args: The numbers.\n      \"\"\"\n  ```\n\n  ```python fixed\n  def call(*args: int) -> None:\n      r\"\"\"Call it.\n\n      :param \\*args: The numbers.\n      \"\"\"\n  ```\n\n- **`:vartype name:` fields and the type in `:ivar type name:`**: attribute types are reported but get no fix.\n\n  - A `:vartype name:` field, here for a class attribute\n\n    ```toml config\n    [tool.simplint]\n    docstring-style = \"rst\"\n    ```\n\n    ```python report\n    class Engine:\n        \"\"\"Run jobs.\n\n        :vartype limit: int\n        \"\"\"\n\n        limit = 3\n    ```\n\n  - The type in `:ivar type name:`, here for an attribute set in `__init__`\n\n    ```toml config\n    [tool.simplint]\n    docstring-style = \"rst\"\n    ```\n\n    ```python report\n    class Engine:\n        \"\"\"Run jobs.\n\n        :ivar int state: What it is doing.\n        \"\"\"\n\n        def __init__(self) -> None:\n            self.state = \"idle\"\n    ```\n\n### Fix\n\n**Unsafe fix:** code may read the docstring through `__doc__`.\n\nNo fix is offered:\n\n- without the annotation, since the docstring's type, such as `list of str`, may not be a valid annotation\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  def join(values):\n      \"\"\"Join the strings.\n\n      :param list of str values: The values.\n      \"\"\"\n      return \"\".join(values)\n  ```\n\n- for attribute types\n\n- when escapes in the docstring make its text differ from the source\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#12434](https://github.com/astral-sh/ruff/issues/12434)\n  and [#9070](https://github.com/astral-sh/ruff/issues/9070).\n",
     "examples": {
       "parsed": [
         {
@@ -30221,11 +30221,11 @@
         },
         {
           "section": "What it does",
-          "line": 125,
-          "end_line": 138,
+          "line": 123,
+          "end_line": 142,
           "config": {
-            "line": 125,
-            "end_line": 128,
+            "line": 123,
+            "end_line": 126,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -30234,19 +30234,49 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 130,
-              "end_line": 138,
+              "line": 128,
+              "end_line": 134,
+              "source": "def call(*args: int) -> None:\n    r\"\"\"Call it.\n\n    :param int \\*args: The numbers.\n    \"\"\"\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 136,
+              "end_line": 142,
+              "source": "def call(*args: int) -> None:\n    r\"\"\"Call it.\n\n    :param \\*args: The numbers.\n    \"\"\"\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 148,
+          "end_line": 161,
+          "config": {
+            "line": 148,
+            "end_line": 151,
+            "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
+          },
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 153,
+              "end_line": 161,
               "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :vartype limit: int\n    \"\"\"\n\n    limit = 3\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 142,
-          "end_line": 156,
+          "line": 165,
+          "end_line": 179,
           "config": {
-            "line": 142,
-            "end_line": 145,
+            "line": 165,
+            "end_line": 168,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -30255,19 +30285,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 147,
-              "end_line": 156,
+              "line": 170,
+              "end_line": 179,
               "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :ivar int state: What it is doing.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 166,
-          "end_line": 178,
+          "line": 189,
+          "end_line": 201,
           "config": {
-            "line": 166,
-            "end_line": 169,
+            "line": 189,
+            "end_line": 192,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -30276,8 +30306,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 171,
-              "end_line": 178,
+              "line": 194,
+              "end_line": 201,
               "source": "def join(values):\n    \"\"\"Join the strings.\n\n    :param list of str values: The values.\n    \"\"\"\n    return \"\".join(values)\n"
             }
           ]

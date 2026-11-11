@@ -33,7 +33,7 @@ pub fn rst_type_field(checker: &Checker) {
                     format!("Remove `{text}`"),
                 ),
                 (FieldKind::Param | FieldKind::Var, Some(name)) if field.words.len() > 2 => {
-                    let short = format!("{} {name}", field.words[0]);
+                    let short = format!("{} {}", field.words[0], field.words[field.words.len() - 1]);
                     let fix = (field.kind == FieldKind::Param && annotated.contains(name))
                         .then(|| {
                             field.marker.map(|marker| Fix::unsafe_edit(Edit::range_replacement(short.clone(), marker)))
