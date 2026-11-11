@@ -12,6 +12,12 @@ fn startup_pth_under_src_keeps_the_name() {
         ("tests/test_hook.py", "from pkg.hook import _run\n\n\ndef test_run() -> None:\n    _run()\n"),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP408"]).1, common::PASSED);
+    let without_pth = project(&[
+        ("src/pkg/__init__.py", ""),
+        ("src/pkg/hook.py", HOOK_PROJECT),
+        ("tests/test_hook.py", "from pkg.hook import _run\n\n\ndef test_run() -> None:\n    _run()\n"),
+    ]);
+    assert!(check(without_pth.path(), &["--select", "SMP408"]).1.contains("`_run` is used only by tests"));
 }
 
 // A production module that passes another module on as a value calls that module's functions through the value, which
@@ -32,9 +38,11 @@ fn startup_pth_under_src_keeps_the_name() {
 #[test_case("from pkg import fast\n\nBACKENDS = {\"fast\": fast}\n", common::PASSED ; "dict_value")]
 #[test_case(
     "from pkg import fast\n",
-    "pkg/fast.py:1:5: SMP408 `decode` is used only by tests; move it into the tests or a test helper \
-     module\nFound 1 error.\n" ;
-    "import_alone_is_not_a_value"
+    concat!(
+        "pkg/fast.py:1:5: SMP408 `decode` is used only by tests; move it into the tests or a test helper ",
+        "module\n",
+        "Found 1 error.\n"
+    ) ; "import_alone_is_not_a_value"
 )]
 fn module_loaded_as_value_has_no_test_only_names(service: &str, stdout: &str) {
     let root = project(&[

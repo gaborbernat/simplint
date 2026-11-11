@@ -11,6 +11,12 @@ fn pyproject_pytest_plugin_counts_as_used(tool: &str) {
         ("pkg/_plugin.py", "__all__ = [\"pytest_configure\"]\n\n\ndef pytest_configure() -> None: ...\n"),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::PASSED);
+    let disabled = project(&[
+        ("pyproject.toml", &format!("{LIBRARY}[tool.pytest.ini_options]\naddopts = \"-p no:pkg._plugin\"\n")),
+        ("pkg/__init__.py", ""),
+        ("pkg/_plugin.py", "__all__ = [\"pytest_configure\"]\n\n\ndef pytest_configure() -> None: ...\n"),
+    ]);
+    assert!(check(disabled.path(), &["--select", "SMP402"]).1.contains("`pytest_configure`"));
 }
 
 #[test]
@@ -30,12 +36,27 @@ fn pdm_build_hooks_count_as_used(config: &str, file: &str) {
         (
             "pyproject.toml",
             &format!(
-                "[project]\nname = \"pkg\"\n[build-system]\nbuild-backend = \"pdm.backend\"\nrequires = [\"pdm-backend\"]\n{config}"
+                "[project]\nname = \"pkg\"\n[build-system]\nbuild-backend = \"pdm.backend\"\nrequires = \
+                [\"pdm-backend\"]\n{config}"
             ),
         ),
         (file, "__all__ = [\"pdm_build_initialize\"]\n\n\ndef pdm_build_initialize(context: object) -> None: ...\n"),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::PASSED);
+    let unhooked = project(&[
+        (
+            "pyproject.toml",
+            concat!(
+                "[project]\n",
+                "name = \"pkg\"\n",
+                "[build-system]\n",
+                "build-backend = \"pdm.backend\"\n",
+                "requires = [\"pdm-backend\"]\n"
+            ),
+        ),
+        ("build.py", "__all__ = []\n\n\ndef helper() -> None: ...\n"),
+    ]);
+    assert!(check(unhooked.path(), &["--select", "SMP409"]).1.contains("`helper`"));
 }
 
 #[test]
@@ -43,7 +64,8 @@ fn missing_pdm_build_hook_names_no_function() {
     let root = project(&[
         (
             "pyproject.toml",
-            "[project]\nname = \"pkg\"\n[build-system]\nbuild-backend = \"pdm.backend\"\nrequires = [\"pdm-backend\"]\n",
+            "[project]\nname = \"pkg\"\n[build-system]\nbuild-backend = \"pdm.backend\"\nrequires = \
+            [\"pdm-backend\"]\n",
         ),
         ("pkg/__init__.py", ""),
         ("pkg/_plugin.py", "__all__ = [\"pdm_build_initialize\"]\n\n\ndef pdm_build_initialize() -> None: ...\n"),
@@ -122,6 +144,18 @@ fn listed_build_hooks_are_not_unused_exports() {
         ),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::PASSED);
+    let unlisted_helper = project(&[
+        ("pyproject.toml", BACKEND),
+        ("demo/__init__.py", ""),
+        (
+            "build_backend.py",
+            concat!(
+                "def build_wheel(wheel_directory: str) -> str:\n    return wheel_directory\n\n\n",
+                "def helper() -> None: ...\n\n\n__all__ = [\"build_wheel\", \"helper\"]\n"
+            ),
+        ),
+    ]);
+    assert!(check(unlisted_helper.path(), &["--select", "SMP402"]).1.contains("`helper`"));
 }
 
 #[test]
@@ -157,6 +191,11 @@ fn build_backend_object_is_used() {
         ),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP403,SMP409"]).1, common::PASSED);
+    let unexported = project(&[
+        ("pyproject.toml", "[build-system]\nbuild-backend = \"backend:Backend\"\nrequires = []\n"),
+        ("backend.py", "class Backend:\n    pass\n\n\ndef helper() -> None: ...\n\n\n__all__ = []\n"),
+    ]);
+    assert!(check(unexported.path(), &["--select", "SMP403,SMP409"]).1.contains("`helper`"));
 }
 
 // Only the backend's hooks count as used, so a helper the backend does not call is still reported.
@@ -173,7 +212,8 @@ fn build_backend_in_backend_path_keeps_its_other_names_reported() {
     assert_eq!(
         check(root.path(), &["--select", "SMP403,SMP409"]).1,
         common::native(
-            "build/backend.py:5:5: SMP403 `helper` is not in `__all__`; list it there, or rename it to `_helper` by hand\n\
+            "build/backend.py:5:5: SMP403 `helper` is not in `__all__`; list it there, or rename it to `_helper` by \
+            hand\n\
              build/backend.py:5:5: SMP409 `helper` is never used in the run; remove it or give it a caller\n\
              Found 2 errors.\n"
         )
@@ -189,6 +229,14 @@ fn build_backend_by_dotted_name(backend: &str, file: &str) {
         (file, "def build_wheel(wheel_directory: str) -> str:\n    return wheel_directory\n\n\n__all__ = []\n"),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP409"]).1, common::PASSED);
+    let other = project(&[
+        ("pyproject.toml", "[build-system]\nbuild-backend = \"pkg.backend\"\nrequires = []\n"),
+        (
+            "pkg/other.py",
+            "def build_wheel(wheel_directory: str) -> str:\n    return wheel_directory\n\n\n__all__ = []\n",
+        ),
+    ]);
+    assert!(check(other.path(), &["--select", "SMP409"]).1.contains("`build_wheel`"));
 }
 
 #[test]
@@ -212,17 +260,41 @@ const METADATA_HOOK: &str = "from hatchling.metadata.plugin.interface import Met
 // hatchling loads the class that subclasses its hook interface from the `path` of a custom hook, which defaults to
 // `hatch_build.py`, so no import reaches the class.
 #[test_case("[tool.hatch]\nbuild.hooks.custom = {}\n", "hatch_build.py", BUILD_HOOK ; "build_default_path")]
-#[test_case("[tool.hatch.build.hooks.custom]\npath = \"build/hooks.py\"\n", "build/hooks.py", BUILD_HOOK ; "build_path")]
+#[test_case(
+    concat!(
+        "[tool.hatch.build.hooks.custom]\n",
+        "path = \"build/hooks.py\"\n"
+    ),
+    "build/hooks.py",
+    BUILD_HOOK ; "build_path"
+)]
 #[test_case("[tool.hatch.metadata.hooks.custom]\n", "hatch_build.py", METADATA_HOOK ; "metadata_default_path")]
-#[test_case("[tool.hatch.metadata.hooks.custom]\npath = \"build/hooks.py\"\n", "build/hooks.py", METADATA_HOOK ; "metadata_path")]
+#[test_case(
+    concat!(
+        "[tool.hatch.metadata.hooks.custom]\n",
+        "path = \"build/hooks.py\"\n"
+    ),
+    "build/hooks.py",
+    METADATA_HOOK ; "metadata_path"
+)]
 #[test_case("[tool.hatch.build.targets.wheel.hooks.custom]\n", "hatch_build.py", BUILD_HOOK ; "target_default_path")]
-#[test_case("[tool.hatch.build.targets.sdist.hooks.custom]\npath = \"build/hooks.py\"\n", "build/hooks.py", BUILD_HOOK ; "target_path")]
+#[test_case(
+    concat!(
+        "[tool.hatch.build.targets.sdist.hooks.custom]\n",
+        "path = \"build/hooks.py\"\n"
+    ),
+    "build/hooks.py",
+    BUILD_HOOK ; "target_path"
+)]
 fn configured_hatch_hook_class_is_used(hatch: &str, file: &str, source: &str) {
     let root = project(&[
         ("pyproject.toml", &format!("[project]\nname = \"demo\"\nversion = \"1\"\n{hatch}")),
         (file, source),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP409"]).1, common::PASSED);
+    let unconfigured =
+        project(&[("pyproject.toml", "[project]\nname = \"demo\"\nversion = \"1\"\n"), ("hatch_build.py", BUILD_HOOK)]);
+    assert!(check(unconfigured.path(), &["--select", "SMP409"]).1.contains("`_Hook`"));
 }
 
 #[test_case("[tool.hatch]\nbuild.hooks.custom = { path = \"other.py\" }\n" ; "other_path")]
@@ -265,6 +337,9 @@ fn hatch_toml_configures_the_hook(hatch: &str, file: &str, source: &str) {
         (file, source),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP409"]).1, common::PASSED);
+    let without_hatch_toml =
+        project(&[("pyproject.toml", "[project]\nname = \"demo\"\nversion = \"1\"\n"), (file, source)]);
+    assert!(check(without_hatch_toml.path(), &["--select", "SMP409"]).1.contains("`_Hook`"));
 }
 
 // A `hatch.toml` that cannot be parsed configures no hook, with a warning, rather than stopping the run.
@@ -287,20 +362,40 @@ fn unparsable_hatch_toml_configures_nothing() {
     );
 }
 
-// A `hatch.toml` is merged over the `[tool.hatch]` table key by key, so a key it sets wins and one it leaves unset keeps
-// the pyproject's value.
-#[test_case("[tool.hatch.build.hooks.custom]\npath = \"other.py\"\n", "[build.hooks.custom]\npath = \"hatch_build.py\"\n", common::PASSED ; "hatch_toml_overrides_the_path")]
+// A `hatch.toml` is merged over the `[tool.hatch]` table key by key, so a key it sets wins and one it leaves unset
+// keeps the pyproject's value.
 #[test_case(
-    "[tool.hatch.build.hooks.custom]\npath = \"other.py\"\n",
+    concat!(
+        "[tool.hatch.build.hooks.custom]\n",
+        "path = \"other.py\"\n"
+    ),
+    concat!(
+        "[build.hooks.custom]\n",
+        "path = \"hatch_build.py\"\n"
+    ),
+    common::PASSED ; "hatch_toml_overrides_the_path"
+)]
+#[test_case(
+    concat!(
+        "[tool.hatch.build.hooks.custom]\n",
+        "path = \"other.py\"\n"
+    ),
     "[build.hooks.custom]\n",
-    "hatch_build.py:4:7: SMP409 `_Hook` is never used in the run; remove it or give it a user\nFound 1 error.\n" ;
-    "hatch_toml_keeps_the_unset_path"
+    concat!(
+        "hatch_build.py:4:7: SMP409 `_Hook` is never used in the run; remove it or give it a user\n",
+        "Found 1 error.\n"
+    ) ; "hatch_toml_keeps_the_unset_path"
 )]
 #[test_case(
     "[tool.hatch.build.hooks.custom]\n",
-    "[build.hooks.custom]\npath = \"other.py\"\n",
-    "hatch_build.py:4:7: SMP409 `_Hook` is never used in the run; remove it or give it a user\nFound 1 error.\n" ;
-    "hatch_toml_moves_the_path"
+    concat!(
+        "[build.hooks.custom]\n",
+        "path = \"other.py\"\n"
+    ),
+    concat!(
+        "hatch_build.py:4:7: SMP409 `_Hook` is never used in the run; remove it or give it a user\n",
+        "Found 1 error.\n"
+    ) ; "hatch_toml_moves_the_path"
 )]
 fn hatch_toml_is_merged_over_the_pyproject(pyproject: &str, hatch: &str, expected: &str) {
     let root = project(&[
@@ -325,15 +420,28 @@ fn hatch_hook_path_is_normalized(path: &str) {
         ("hooks/h.py", BUILD_HOOK),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP409"]).1, common::PASSED);
+    let other_path = project(&[
+        (
+            "pyproject.toml",
+            "[project]\nname = \"demo\"\nversion = \"1\"\n[tool.hatch.build.hooks.custom]\npath = \"other/h.py\"\n",
+        ),
+        ("hooks/h.py", BUILD_HOOK),
+    ]);
+    assert!(check(other_path.path(), &["--select", "SMP409"]).1.contains("`_Hook`"));
 }
 
 // hatchling uses `issubclass` over the names of the hook file, so a class that subclasses a class of the run which
 // subclasses the hook interface is the hook, while a base of the run that does not is not.
 #[test_case("class CommonHook(BuildHookInterface):\n    pass\n", common::PASSED ; "inherited_from_hook_class")]
 #[test_case(
-    "class CommonHook:\n    pass\n",
-    "hatch_build.py:4:7: SMP409 `_Hook` is never used in the run; remove it or give it a user\nFound 1 error.\n" ;
-    "inherited_from_plain_class"
+    concat!(
+        "class CommonHook:\n",
+        "    pass\n"
+    ),
+    concat!(
+        "hatch_build.py:4:7: SMP409 `_Hook` is never used in the run; remove it or give it a user\n",
+        "Found 1 error.\n"
+    ) ; "inherited_from_plain_class"
 )]
 fn class_inheriting_a_hook_through_the_run_is_used(shared: &str, expected: &str) {
     let shared = format!("from hatchling.builders.hooks.plugin.interface import BuildHookInterface\n\n\n{shared}");
@@ -345,18 +453,60 @@ fn class_inheriting_a_hook_through_the_run_is_used(shared: &str, expected: &str)
     assert_eq!(check(root.path(), &["--select", "SMP409"]).1, expected);
 }
 
-// The interpreter runs the `import` lines of a `.pth` file at startup, so a name they read is used outside the tests, as
-// an entry point's is. A bare import reads no name, and a path line or a line with no `import` is not run.
+// The interpreter runs the `import` lines of a `.pth` file at startup, so a name they read is used outside the tests,
+// as an entry point's is. A bare import reads no name, and a path line or a line with no `import` is not run.
 #[test_case("import pkg.hook; pkg.hook._run()\n", common::PASSED ; "startup_read_keeps_the_name")]
 #[test_case("import sys; from pkg.hook import _run; _run()\n", common::PASSED ; "startup_from_import_keeps_the_name")]
 #[test_case("import\tpkg.hook; pkg.hook._run()\n", common::PASSED ; "tab_after_import_keeps_the_name")]
 #[test_case("import pkg.hook as hook; hook._run()\n", common::PASSED ; "alias_keeps_the_name")]
-#[test_case("import pkg.hook\n", "pkg/hook.py:1:5: SMP408 `_run` is used only by tests; move it into the tests or a test helper module\nFound 1 error.\n" ; "bare_import_reads_no_name")]
-#[test_case("pkg.hook._run()\n", "pkg/hook.py:1:5: SMP408 `_run` is used only by tests; move it into the tests or a test helper module\nFound 1 error.\n" ; "line_without_import_is_not_run")]
-#[test_case("pkg/hook.py\n", "pkg/hook.py:1:5: SMP408 `_run` is used only by tests; move it into the tests or a test helper module\nFound 1 error.\n" ; "path_line_names_nothing")]
-#[test_case("import pkg.hook; pkg.hook._run(\n", "pkg/hook.py:1:5: SMP408 `_run` is used only by tests; move it into the tests or a test helper module\nFound 1 error.\n" ; "unparsable_line_names_nothing")]
-#[test_case("import pkg.hook; os.sep\n", "pkg/hook.py:1:5: SMP408 `_run` is used only by tests; move it into the tests or a test helper module\nFound 1 error.\n" ; "unbound_attribute_names_nothing")]
-#[test_case("import missing.hook; missing.hook._run()\n", "pkg/hook.py:1:5: SMP408 `_run` is used only by tests; move it into the tests or a test helper module\nFound 1 error.\n" ; "unresolved_module_names_nothing")]
+#[test_case(
+    "import pkg.hook\n",
+    concat!(
+        "pkg/hook.py:1:5: SMP408 `_run` is used only by tests; move it into the tests or a test helper ",
+        "module\n",
+        "Found 1 error.\n"
+    ) ; "bare_import_reads_no_name"
+)]
+#[test_case(
+    "pkg.hook._run()\n",
+    concat!(
+        "pkg/hook.py:1:5: SMP408 `_run` is used only by tests; move it into the tests or a test helper ",
+        "module\n",
+        "Found 1 error.\n"
+    ) ; "line_without_import_is_not_run"
+)]
+#[test_case(
+    "pkg/hook.py\n",
+    concat!(
+        "pkg/hook.py:1:5: SMP408 `_run` is used only by tests; move it into the tests or a test helper ",
+        "module\n",
+        "Found 1 error.\n"
+    ) ; "path_line_names_nothing"
+)]
+#[test_case(
+    "import pkg.hook; pkg.hook._run(\n",
+    concat!(
+        "pkg/hook.py:1:5: SMP408 `_run` is used only by tests; move it into the tests or a test helper ",
+        "module\n",
+        "Found 1 error.\n"
+    ) ; "unparsable_line_names_nothing"
+)]
+#[test_case(
+    "import pkg.hook; os.sep\n",
+    concat!(
+        "pkg/hook.py:1:5: SMP408 `_run` is used only by tests; move it into the tests or a test helper ",
+        "module\n",
+        "Found 1 error.\n"
+    ) ; "unbound_attribute_names_nothing"
+)]
+#[test_case(
+    "import missing.hook; missing.hook._run()\n",
+    concat!(
+        "pkg/hook.py:1:5: SMP408 `_run` is used only by tests; move it into the tests or a test helper ",
+        "module\n",
+        "Found 1 error.\n"
+    ) ; "unresolved_module_names_nothing"
+)]
 fn startup_pth_reads_are_production_use(pth: &str, stdout: &str) {
     let root = project(&[
         ("pkg.pth", pth),

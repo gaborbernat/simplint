@@ -2,7 +2,6 @@ use super::*;
 use crate::common::{check, project};
 use test_case::test_case;
 
-// The methods of an `autoclass` with `:members:` are documented, as the class's own name is.
 #[test]
 fn autoclass_members_are_used() {
     let root = project(&[
@@ -10,7 +9,8 @@ fn autoclass_members_are_used() {
         ("pkg/__init__.py", ""),
         (
             "pkg/api.py",
-            "class Widget:\n    def render(self) -> None:\n        pass\n\n    def unused(self) -> None:\n        pass\n",
+            "class Widget:\n    def render(self) -> None:\n        pass\n\n    def unused(self) -> None:\n        \
+            pass\n",
         ),
         ("index.rst", ".. autoclass:: pkg.api.Widget\n   :members:\n"),
     ]);
@@ -18,7 +18,6 @@ fn autoclass_members_are_used() {
     assert_eq!(unused_names(&stdout), Vec::<&str>::new(), "{stdout}");
 }
 
-// `automodule` of a package documents the names its `__init__.py` defines, as it documents a submodule's.
 #[test]
 fn automodule_of_a_package_documents_its_init() {
     let root = project(&[
