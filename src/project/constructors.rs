@@ -37,8 +37,6 @@ pub struct Constructors {
     pub(super) methods: Vec<String>,
     // The plain `name = value` attributes of the module's top-level classes, which `attribute_loads` counts like methods.
     pub(super) attributes: Vec<String>,
-    // The module's own functions and classes, which an `obj.name` read reaches through the module as an object.
-    pub(super) definitions: Vec<String>,
 }
 
 // A name used from a module, as the file spells it.
@@ -250,14 +248,13 @@ impl Constructors {
             }
             known.push((class.name.as_str(), fields));
         }
-        let Members { methods, attributes, definitions } = member_names(body);
+        let Members { methods, attributes } = member_names(body);
         Self {
             dataclasses,
             uses: grouped.into_iter().map(|(module, uses)| (module, uses.into_iter().collect())).collect(),
             dynamic: dynamic.into_iter().collect(),
             methods,
             attributes,
-            definitions,
         }
     }
 }
@@ -286,12 +283,10 @@ impl CallContexts {
     }
 }
 
-// The names a module's members bind: the methods and plain `name = value` attributes of its top-level classes, and its
-// own functions and classes.
+// The methods and plain `name = value` attributes of a module's top-level classes.
 struct Members {
     methods: Vec<String>,
     attributes: Vec<String>,
-    definitions: Vec<String>,
 }
 
 // A member in an `if` or `try` block of the class body is the class's too, as `module_statements` reads it.
@@ -307,14 +302,7 @@ fn member_names(body: &[Stmt]) -> Members {
         .flat_map(|assign| assign.targets.iter().filter_map(Expr::as_name_expr))
         .map(|target| target.id.to_string())
         .collect();
-    let definitions = module_statements(body)
-        .filter_map(|stmt| match stmt {
-            Stmt::FunctionDef(function) => Some(function.name.to_string()),
-            Stmt::ClassDef(class) => Some(class.name.to_string()),
-            _ => None,
-        })
-        .collect();
-    Members { methods, attributes, definitions }
+    Members { methods, attributes }
 }
 
 // The range of the call a statement is, when nothing reads the call's value, as `f()` on a line of its own.

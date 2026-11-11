@@ -1136,7 +1136,12 @@ fn method_loads(calls: &mut RunCalls, files: &[(FileId, &FileFacts)]) {
     }
     for (id, facts) in files {
         let constructors = &facts.constructors;
-        let members = constructors.methods.iter().chain(&constructors.attributes).chain(&constructors.definitions);
+        let members = constructors
+            .methods
+            .iter()
+            .chain(&constructors.attributes)
+            .chain(&facts.functions)
+            .chain(facts.classes.iter().map(|class| &class.name));
         let method_loads =
             members.map(|member| (member.clone(), loads.get(member.as_str()).copied().unwrap_or_default())).collect();
         calls.set_method_loads(*id, method_loads);
