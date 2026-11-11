@@ -116,22 +116,22 @@ fn private_import_path(source: &str, expected: usize) {
     common::assert_report_count(root.path(), "SMP310", expected);
 }
 
-#[test_case("tests/a/b/test_x.py", "from a.b._x import Name\n", 0 ; "paired_mirrored")]
-#[test_case("tests/test_x.py", "from _x import Name\n", 0 ; "paired_root")]
-#[test_case("a/b/test_x.py", "from a.b._x import Name\n", 0 ; "paired_colocated")]
-#[test_case("a/b/test_x.py", "from ._x import Name\n", 0 ; "paired_colocated_relative")]
-#[test_case("tests/a/b/test_x.py", "from ._x import Name\n", 1 ; "mirrored_relative")]
+#[test_case("tests/a/b/test_x.py", "from a.b._x import Name\nVALUE: Name\n", 0 ; "paired_mirrored")]
+#[test_case("tests/test_x.py", "from _x import Name\nVALUE: Name\n", 0 ; "paired_root")]
+#[test_case("a/b/test_x.py", "from a.b._x import Name\nVALUE: Name\n", 0 ; "paired_colocated")]
+#[test_case("a/b/test_x.py", "from ._x import Name\nVALUE: Name\n", 0 ; "paired_colocated_relative")]
+#[test_case("tests/a/b/test_x.py", "from ._x import Name\nVALUE: Name\n", 1 ; "mirrored_relative")]
 #[test_case("tests/a/b/test_x.py", "from a.b._x import _Name\n", 0 ; "paired_private_name")]
-#[test_case("tests/a/b/test_x.py", "from a.b._other import Name\n", 1 ; "other_private_module")]
-#[test_case("tests/a/b/test_x.py", "from ._other import Name\n", 1 ; "other_relative_module")]
-#[test_case("tests/a/b/test_x.py", "from a.c._x import Name\n", 1 ; "other_package")]
-#[test_case("tests/a/b/test_x.py", "from .._x import Name\n", 1 ; "parent_relative")]
-#[test_case("tests/a/b/test_x.py", "from a.b._x.deep import Name\n", 1 ; "nested_private_module")]
-#[test_case("tests/a/b/test_x.py", "from a.b import _x\n", 1 ; "private_module_object")]
+#[test_case("tests/a/b/test_x.py", "from a.b._other import Name\nVALUE: Name\n", 1 ; "other_private_module")]
+#[test_case("tests/a/b/test_x.py", "from ._other import Name\nVALUE: Name\n", 1 ; "other_relative_module")]
+#[test_case("tests/a/b/test_x.py", "from a.c._x import Name\nVALUE: Name\n", 1 ; "other_package")]
+#[test_case("tests/a/b/test_x.py", "from .._x import Name\nVALUE: Name\n", 1 ; "parent_relative")]
+#[test_case("tests/a/b/test_x.py", "from a.b._x.deep import Name\nVALUE: Name\n", 1 ; "nested_private_module")]
+#[test_case("tests/a/b/test_x.py", "from a.b import _x\nVALUE: _x\n", 1 ; "private_module_object")]
 #[test_case("tests/a/b/test_x.py", "import a.b._x\n", 1 ; "absolute_module_object")]
-#[test_case("tests/a/b/test_y.py", "from a.b._x import Name\n", 1 ; "unpaired_test")]
-#[test_case("tests/a/b/conftest.py", "from a.b._x import Name\n", 1 ; "fixture_module")]
-#[test_case("a/b/consumer.py", "from a.b._x import Name\n", 1 ; "production_absolute")]
+#[test_case("tests/a/b/test_y.py", "from a.b._x import Name\nVALUE: Name\n", 1 ; "unpaired_test")]
+#[test_case("tests/a/b/conftest.py", "from a.b._x import Name\nVALUE: Name\n", 1 ; "fixture_module")]
+#[test_case("a/b/consumer.py", "from a.b._x import Name\nVALUE: Name\n", 1 ; "production_absolute")]
 fn private_import_path_in_tests(file: &str, source: &str, expected: usize) {
     let root = common::project(&[("a/b/_x.py", "Name = object()\n"), ("_x.py", "Name = object()\n"), (file, source)]);
     common::assert_report_count(root.path(), "SMP310", expected);
@@ -166,7 +166,10 @@ fn private_import_path_in_tests(file: &str, source: &str, expected: usize) {
     ; "missing_imported_module"
 )]
 fn private_import_path_in_mirrored_tests(file: &str, module: &str, source_file: &str, expected: usize) {
-    let root = common::project(&[(source_file, "Name = object()\n"), (file, &format!("from {module} import Name\n"))]);
+    let root = common::project(&[
+        (source_file, "Name = object()\n"),
+        (file, &format!("from {module} import Name\nVALUE: Name\n")),
+    ]);
     common::assert_report_count(root.path(), "SMP310", expected);
 }
 
@@ -174,7 +177,7 @@ fn private_import_path_in_mirrored_tests(file: &str, module: &str, source_file: 
 fn private_module_object_remains_disallowed_in_paired_suite() {
     let root = common::project(&[
         ("src/pkg/_html.pyi", "Name: object\n"),
-        ("tests/_html/test_url.py", "from pkg import _html\n"),
+        ("tests/_html/test_url.py", "from pkg import _html\nVALUE: _html\n"),
     ]);
     common::assert_report_count(root.path(), "SMP310", 1);
 }
@@ -190,6 +193,38 @@ fn private_module_object_import_reports_both_import_and_attribute() {
     assert!(stdout.contains("SMP310 Private import `package._api`"), "{stdout}");
     assert!(stdout.contains("SMP304 Import `make` from `package._api`"), "{stdout}");
     assert!(!stdout.contains("unsafe fix available"), "{stdout}");
+}
+
+// Ruff's PLC2701 reports a private import that a module or function uses at runtime, or never uses, and leaves the
+// rest to this rule: uses only in annotations, class bodies, relative imports and a module's own package. This rule
+// leaves each of Ruff's reports to it whether or not the project selects PLC2701.
+#[test_case("consumer.py", "from pkg._api import make\n\nVALUE = make()\n", false ; "runtime_use")]
+#[test_case("consumer.py", "from pkg._api import make\n\nVALUE = 1\n", false ; "unused_import")]
+#[test_case("consumer.py", "import pkg._api as api\n\nVALUE = api.make()\n", false ; "runtime_module_alias")]
+#[test_case("consumer.py", "import os._exit as exit_now\n\nexit_now(0)\n", true ; "os_exit")]
+#[test_case("consumer.py", "def run() -> object:\n    from pkg._api import make\n\n    return make()\n", false ; "function_scope")]
+#[test_case("consumer.py", "class Consumer:\n    from pkg._api import make\n\n    VALUE = make()\n", true ; "class_body")]
+#[test_case("consumer.py", "from pkg._api import API\n\n\ndef use(value: API) -> None:\n    return None\n", true ; "annotation_only_use")]
+#[test_case("consumer.py", "import pkg._api\n\nVALUE = pkg._api.make()\n", true ; "import_without_alias")]
+#[test_case("consumer.py", "from pkg._api import __version__\n\nVALUE = __version__\n", true ; "dunder_member")]
+#[test_case("consumer.py", "from pkg import make\n\nVALUE = make()\n", false ; "public_import")]
+#[test_case("pkg/consumer.py", "from .._api import make\n\nVALUE = make()\n", true ; "relative")]
+#[test_case("pkg/module.py", "from pkg._api import make\n\nVALUE = make()\n", true ; "own_package")]
+#[test_case("tests/test_consumer.py", "from pkg._api import make\n\nVALUE = make()\n", false ; "unpaired_test_module")]
+#[test_case(
+    "tests/test_consumer.py",
+    "from pkg._api import API, make\n\n\ndef use(value: API) -> object:\n    return make()\n",
+    false
+    ; "unpaired_test_module_any_alias"
+)]
+fn private_import_path_follows_ruff_import_private_name(file: &str, source: &str, reported: bool) {
+    let root = common::project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/_api.py", "def make() -> object:\n    return object()\n\n\nclass API:\n    pass\n"),
+        (file, source),
+    ]);
+    let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP310"]).1;
+    assert_eq!(stdout.contains("Private import `"), reported, "{stdout}");
 }
 
 // The package whose module imports its sibling absolutely, under `prefix`.
@@ -624,13 +659,15 @@ fn module_attribute_import_reports_private_names_with_runtime_evaluation_setting
     }
 }
 
-// The builtins define these names, so their import goes, unless another module takes the name from this one or
-// `__all__` lists it: the backport is reported either way.
-#[test_case("from exceptiongroup import ExceptionGroup\n", "from pkg.compat import ExceptionGroup\n", true ; "imported_by_another_module")]
-#[test_case("from exceptiongroup import ExceptionGroup\n__all__ = [\"ExceptionGroup\"]\n", "", true ; "listed_in_all")]
-#[test_case("from exceptiongroup import ExceptionGroup\n", "from pkg.other import ExceptionGroup\n", false ; "imported_from_another_module")]
-#[test_case("from exceptiongroup import ExceptionGroup\n", "from pkg import compat\n", false ; "module_imported")]
-fn backport_import_keeps_builtin_name_another_module_takes(compat: &str, consumer: &str, kept: bool) {
+// The builtins define these names, so their import goes. Ruff's A004 reports an unaliased import of a builtin that
+// another module takes from this one or `__all__` lists, which has no fix here, so this rule leaves it to A004. The
+// other imports keep their report, and the fix removes the statement only when no other module takes the name.
+#[test_case("from exceptiongroup import ExceptionGroup\n", "from pkg.compat import ExceptionGroup\n", false, false ; "imported_by_another_module")]
+#[test_case("from exceptiongroup import ExceptionGroup\n__all__ = [\"ExceptionGroup\"]\n", "", false, false ; "listed_in_all")]
+#[test_case("from exceptiongroup import ExceptionGroup\n", "from pkg.other import ExceptionGroup\n", true, true ; "imported_from_another_module")]
+#[test_case("from exceptiongroup import ExceptionGroup\n", "from pkg import compat\n", true, true ; "module_imported")]
+#[test_case("from exceptiongroup import ExceptionGroup as group\n", "from pkg.compat import ExceptionGroup\n", true, false ; "aliased_name")]
+fn backport_import_follows_builtin_import_shadowing(compat: &str, consumer: &str, reported: bool, removed: bool) {
     let root = common::project(&[
         ("pyproject.toml", "[project]\nname = \"x\"\nversion = \"0\"\nrequires-python = \">=3.11\"\n"),
         ("pkg/__init__.py", ""),
@@ -638,10 +675,26 @@ fn backport_import_keeps_builtin_name_another_module_takes(compat: &str, consume
         ("pkg/other.py", "ExceptionGroup = object()\n"),
         ("pkg/run.py", consumer),
     ]);
-    let reported = common::check(root.path(), &["--select", "SMP305", "pkg"]).1;
-    assert!(reported.contains(&common::native("pkg/compat.py:1:1: SMP305")), "{reported}");
+    let stdout = common::check(root.path(), &["--select", "SMP305", "pkg"]).1;
+    assert_eq!(stdout.contains(&common::native("pkg/compat.py:1:1: SMP305")), reported, "{stdout}");
     common::fix_unsafe(root.path(), "SMP305");
-    assert_eq!(common::read(root.path(), "pkg/compat.py").contains("from exceptiongroup"), kept);
+    assert_eq!(!common::read(root.path(), "pkg/compat.py").contains("from exceptiongroup"), removed);
+}
+
+// The builtins ignorelist names a builtin that Ruff's A004 lets an import shadow, so the import keeps this rule's report.
+#[test]
+fn backport_import_keeps_report_for_a_builtin_the_ignorelist_allows() {
+    let root = common::project(&[
+        (
+            "pyproject.toml",
+            "[project]\nname = \"x\"\nversion = \"0\"\nrequires-python = \">=3.11\"\n\n[tool.ruff.lint.flake8-builtins]\nignorelist = [\"ExceptionGroup\"]\n",
+        ),
+        ("pkg/__init__.py", ""),
+        ("pkg/compat.py", "from exceptiongroup import ExceptionGroup\n"),
+        ("pkg/run.py", "from pkg.compat import ExceptionGroup\n"),
+    ]);
+    let stdout = common::check(root.path(), &["--select", "SMP305", "pkg"]).1;
+    assert!(stdout.contains(&common::native("pkg/compat.py:1:1: SMP305")), "{stdout}");
 }
 
 // A listed import that the list keeps lazy stays eager once the list goes, so the list stays. CPython compiles the body

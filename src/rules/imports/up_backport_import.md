@@ -134,7 +134,8 @@ print(loads("name = 'demo'"))
   ```
 
 - **`exceptiongroup` names another module of the run imports from this one, or `__all__` lists**: deleting the import
-  would break that module. The rule reports the import without a fix.
+  would break that module, so it has no fix. Ruff's [A004](https://docs.astral.sh/ruff/rules/builtin-import-shadowing/)
+  reports the import instead, and this rule reports nothing for it.
 
   ```toml config
   [project]
@@ -148,13 +149,7 @@ print(loads("name = 'demo'"))
   VALUE = ExceptionGroup("failed", [ValueError()])
   ```
 
-  ```python report file=pkg/compat.py
-  from exceptiongroup import ExceptionGroup
-
-  __all__ = ["ExceptionGroup"]
-  ```
-
-  ```python fixed file=pkg/compat.py
+  ```python ok file=pkg/compat.py
   from exceptiongroup import ExceptionGroup
 
   __all__ = ["ExceptionGroup"]
@@ -208,6 +203,14 @@ print(loads("name = 'demo'"))
   ```
 
 The fix leaves `pyproject.toml` alone. The message names the dependency, which can go once nothing imports the backport.
+
+## Ruff overlap
+
+Ruff's [builtin-import-shadowing](https://docs.astral.sh/ruff/rules/builtin-import-shadowing/) (A004) reports an
+unaliased `exceptiongroup` import of `ExceptionGroup` or `BaseExceptionGroup` that has no fix here: one that another
+module takes from this one, one that `__all__` lists, or one that shares its line with other code. This rule leaves
+those reports to A004, whether or not the project selects it, and keeps the imports with a fix, which A004 does not
+remove. Names the `flake8-builtins` ignorelist allows are not A004's reports, so this rule keeps them too.
 
 ## Other tools
 

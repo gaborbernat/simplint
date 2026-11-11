@@ -6,7 +6,7 @@ use std::path::Path;
 
 use ruff_linter::rules::flake8_type_checking::settings::RuntimeSemantics;
 use ruff_linter::settings::LinterSettings;
-use ruff_python_ast::helpers::collect_import_from_member;
+use ruff_python_ast::helpers::{collect_import_from_member, is_dunder};
 use ruff_python_ast::identifier::Identifier;
 use ruff_python_ast::name::QualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
@@ -16,8 +16,8 @@ use ruff_python_ast::{
 };
 use ruff_python_semantic::analyze::typing::is_type_checking_block;
 use ruff_python_semantic::{
-    BindingFlags, BindingKind, FromImport, GeneratorKind, Import, Module, ModuleKind, ModuleSource, ScopeId, ScopeKind,
-    SemanticModel, SemanticModelFlags, Snapshot, StarImport, SubmoduleImport,
+    Binding, BindingFlags, BindingKind, FromImport, GeneratorKind, Import, Imported, Module, ModuleKind, ModuleSource,
+    ResolvedReference, ScopeId, ScopeKind, SemanticModel, SemanticModelFlags, Snapshot, StarImport, SubmoduleImport,
 };
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::FxHashSet;
@@ -39,6 +39,7 @@ pub struct Model<'a> {
     pub list_appends: FxHashSet<TextRange>,
     pub type_checking_stubs: FxHashSet<TextRange>,
     pub comprehensions: Vec<(TextRange, TextRange)>,
+    pub private_imports: FxHashSet<TextRange>,
 }
 
 pub fn build<'a>(
@@ -46,6 +47,7 @@ pub fn build<'a>(
     body: &'a [Stmt],
     target_version: PythonVersion,
     settings: &'a LinterSettings,
+    package: Option<&'a Path>,
     matches: RuffMatches,
 ) -> Model<'a> {
     let module = Module {
@@ -71,6 +73,11 @@ pub fn build<'a>(
     let module = builder.semantic.snapshot();
     let annotations_are_lazy = builder.annotations_are_lazy();
     builder.visit_deferred();
+    let private_imports = if builder.matches.private_imports {
+        private_import_reports(&builder.semantic, package)
+    } else {
+        FxHashSet::default()
+    };
     Model {
         semantic: builder.semantic,
         loads: builder.loads,
@@ -80,7 +87,49 @@ pub fn build<'a>(
         list_appends: builder.list_appends,
         type_checking_stubs: builder.type_checking_stubs,
         comprehensions: builder.comprehensions,
+        private_imports,
     }
+}
+
+// Ported from Ruff's PLC2701 (crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs, MIT), which reads the
+// bindings of each module and function scope once their references resolve. Keyed by the range of the name a binding
+// makes, which is the alias of its import.
+fn private_import_reports(semantic: &SemanticModel, package: Option<&Path>) -> FxHashSet<TextRange> {
+    semantic
+        .scopes
+        .iter()
+        .filter(|scope| matches!(scope.kind, ScopeKind::Function(_) | ScopeKind::Module))
+        .flat_map(ruff_python_semantic::Scope::binding_ids)
+        .map(|binding_id| semantic.binding(binding_id))
+        .filter(|binding| is_private_import(semantic, binding, package))
+        .map(|binding| binding.range)
+        .collect()
+}
+
+fn is_private_import(semantic: &SemanticModel, binding: &Binding, package: Option<&Path>) -> bool {
+    let Some(import) = binding.as_any_import().filter(|import| !import.is_submodule_import()) else {
+        return false;
+    };
+    if import.module_name().starts_with(&["."]) {
+        return false;
+    }
+    let segments = import.qualified_name().segments();
+    let root_module = segments[0];
+    let member_name = import.member_name();
+    if is_dunder(root_module) || is_dunder(&member_name) {
+        return false;
+    }
+    if package.is_some_and(|path| path.ends_with(root_module)) {
+        return false;
+    }
+    if !segments.iter().any(|name| name.starts_with('_') && !is_dunder(name)) || matches!(segments, ["os", "_exit"]) {
+        return false;
+    }
+    binding.references().next().is_none() || binding.references().any(|id| !is_typing_only(semantic.reference(id)))
+}
+
+fn is_typing_only(reference: &ResolvedReference) -> bool {
+    reference.in_typing_context() || reference.in_runtime_evaluated_annotation()
 }
 
 struct Builder<'a> {

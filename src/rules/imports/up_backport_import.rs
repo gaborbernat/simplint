@@ -1,5 +1,6 @@
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::{self as ast, PythonVersion, Stmt};
+use ruff_python_stdlib::builtins::is_python_builtin;
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
@@ -101,12 +102,25 @@ pub fn up_backport_import(checker: &Checker) {
                         }
                         Replacement::Review(_) => None,
                     };
-                    report(checker, import.range(), backport, fix);
+                    let left_to_ruff = fix.is_none()
+                        && matches!(backport.replacement, Replacement::Builtins(_))
+                        && import.names.iter().any(|alias| binds_builtin(checker, alias));
+                    if !left_to_ruff {
+                        report(checker, import.range(), backport, fix);
+                    }
                 }
                 _ => {}
             }
         }
     });
+}
+
+// Ruff's A004 reports an import that binds a builtin of the target version, unless the builtins ignorelist names it. A
+// builtin-only backport without a fix is left to A004 for that reason.
+fn binds_builtin(checker: &Checker, alias: &ast::Alias) -> bool {
+    let name = alias.asname.as_ref().unwrap_or(&alias.name);
+    is_python_builtin(name.as_str(), checker.target_version().minor, false)
+        && checker.settings.from_ruff.builtins_ignorelist.iter().all(|ignored| ignored.as_str() != name.as_str())
 }
 
 fn backport_named(module: &str, target: PythonVersion) -> Option<&'static Backport> {

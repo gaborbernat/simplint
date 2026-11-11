@@ -30,6 +30,8 @@ pub struct RuffMatches {
     pub list_appends: bool,
     // The statements of Django models that Ruff's DJ012 reports.
     pub django_reports: bool,
+    // The import bindings that Ruff's PLC2701 reports.
+    pub private_imports: bool,
 }
 
 pub struct Semantic<'a> {
@@ -44,6 +46,8 @@ pub struct Semantic<'a> {
     type_checking_stubs: FxHashSet<TextRange>,
     // Each comprehension with the range of its first iterable, which the enclosing scope evaluates.
     comprehensions: Vec<(TextRange, TextRange)>,
+    // The import bindings that Ruff's PLC2701 reports, by the range of the name each binds.
+    private_imports: FxHashSet<TextRange>,
 }
 
 impl<'a> Semantic<'a> {
@@ -52,6 +56,7 @@ impl<'a> Semantic<'a> {
         body: &'a [Stmt],
         target_version: PythonVersion,
         settings: &'a LinterSettings,
+        package: Option<&'a Path>,
         matches: RuffMatches,
     ) -> Self {
         let builder::Model {
@@ -63,7 +68,8 @@ impl<'a> Semantic<'a> {
             list_appends,
             type_checking_stubs,
             comprehensions,
-        } = builder::build(path, body, target_version, settings, matches);
+            private_imports,
+        } = builder::build(path, body, target_version, settings, package, matches);
         let mut index = Index::default();
         let module_bindings = index.collect_bindings(&model);
         for (name, snapshot) in loads {
@@ -75,13 +81,28 @@ impl<'a> Semantic<'a> {
             references.sort_by_key(|reference| reference.range.start());
         }
         model.restore(module);
-        Self { model, annotations_are_lazy, index, django_reports, list_appends, type_checking_stubs, comprehensions }
+        Self {
+            model,
+            annotations_are_lazy,
+            index,
+            django_reports,
+            list_appends,
+            type_checking_stubs,
+            comprehensions,
+            private_imports,
+        }
     }
 
     // Whether Ruff's DJ012 reports the statement at `range`, a statement of a Django model's body; only answered when
     // `RuffMatches::django_reports` asked for it.
     pub fn reported_by_dj012(&self, range: TextRange) -> bool {
         self.django_reports.contains(&range)
+    }
+
+    // Whether Ruff's PLC2701 reports the import binding at `range`, the name the import binds; only answered when
+    // `RuffMatches::private_imports` asked for it.
+    pub fn reported_by_plc2701(&self, range: TextRange) -> bool {
+        self.private_imports.contains(&range)
     }
 
     // Whether the statement at `range` is an append on a list, as FURB113 matches it; only answered when

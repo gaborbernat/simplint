@@ -96,6 +96,13 @@ def test_client(mocker: MockerFixture) -> None:
 No fix is offered: a test that moves to `mocker` changes its fixtures and its calls to the patched objects, which is a
 rewrite of the test.
 
+## Ruff overlap
+
+Ruff's [banned-api](https://docs.astral.sh/ruff/rules/banned-api/) (TID251) reports an import that `banned-api` bans, by
+its module or a parent of it or by the full name of a member, and this rule leaves those imports to it, whether or not
+the project selects TID251. A module ban covers an import of that module or a submodule, and a member ban covers an
+import of that member only, so an import of other members of `unittest.mock` keeps this rule's report.
+
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

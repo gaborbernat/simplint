@@ -62,6 +62,30 @@ fn stdlib_mock_allows_create_autospec_only(imports: &str, reports: usize) {
     common::assert_report_count(root.path(), "SMP809", reports);
 }
 
+// Ruff's TID251 reports an import that `banned-api` bans by its module, a parent of it, or a member's full name. SMP809
+// leaves those to it, whether or not the project selects TID251.
+#[test_case("unittest.mock", "from unittest.mock import MagicMock", 0 ; "module_keyed")]
+#[test_case("unittest", "from unittest.mock import MagicMock", 0 ; "parent_keyed_from_module")]
+#[test_case("unittest", "import unittest.mock", 0 ; "parent_keyed_import")]
+#[test_case("unittest", "from unittest import mock", 0 ; "parent_keyed_member")]
+#[test_case("unittest.mock.patch", "from unittest.mock import patch, MagicMock", 0 ; "member_keyed")]
+#[test_case("unittest.mock.patch", "from unittest.mock import MagicMock", 1 ; "other_member_keyed")]
+#[test_case("unittest.mockery", "from unittest.mock import MagicMock", 1 ; "sibling_keyed")]
+#[test_case("os.path", "from unittest.mock import MagicMock", 1 ; "unrelated_keyed")]
+fn stdlib_mock_follows_ruff_banned_api(key: &str, imports: &str, reports: usize) {
+    let root = common::project(&[
+        (
+            "pyproject.toml",
+            &format!(
+                "[project]\nname = \"example\"\nversion = \"1\"\ndependencies = [\"pytest-mock\"]\n\n\
+                 [tool.ruff.lint.flake8-tidy-imports.banned-api]\n\"{key}\" = {{ msg = \"use mocker\" }}\n"
+            ),
+        ),
+        ("tests/test_mock.py", &format!("{imports}\n\n\ndef test_mock() -> None:\n    assert True\n")),
+    ]);
+    common::assert_report_count(root.path(), "SMP809", reports);
+}
+
 // A `pytest_plugins` a test module sets may load fixtures that request a `conftest.py` fixture overriding one of
 // theirs, so the conftest's fixtures are kept; pytest's own plugins request none of the run's.
 #[test_case("pytest_plugins = [\"sphinx.testing.fixtures\"]", false ; "plugin_list")]
