@@ -1,0 +1,31 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:28 SMP506 Every call to `_connect` passes `timeout`; drop its default `(  # seconds, as the gateway counts them
+    30
+)`
+7:27 SMP506 Every call to `_open_port` passes `port`; drop its default `(  # the default port
+    80
+)`
+13:18 SMP506 Every call to `_retry` passes `count`; drop its default `3` [unsafe fix: Remove the default of `count`]
+--- fixed (1 applied, 2 remaining) ---
+def _connect(host, timeout=(  # seconds, as the gateway counts them
+    30
+)):
+    return host, timeout
+
+
+def _open_port(host, port=(  # the default port
+    80
+)):
+    return host, port
+
+
+def _retry(count):
+    return count
+
+
+_connect("db", 5)
+_open_port("db", 8080)
+_retry(4)
