@@ -152,7 +152,7 @@ fn init_module_content_allows_test_packages_and_pep_562_hooks() {
         ),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP407"]);
-    assert_eq!(common::reports(&stdout, "SMP407").len(), 2, "{stdout}");
+    assert_eq!(common::reports(&stdout, "SMP407").len(), 1, "{stdout}");
     assert!(!stdout.contains("tests/__init__.py"), "{stdout}");
     assert!(!stdout.contains("roots/test-example"), "{stdout}");
 }
@@ -165,8 +165,7 @@ fn init_module_content_allows_explicit_api_in_applications() {
         ("package/_api.py", "API = 1\nhidden = 2\n"),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP407"]);
-    assert_eq!(common::reports(&stdout, "SMP407").len(), 1, "{stdout}");
-    assert!(stdout.contains("package/__init__.py:2:1"), "{stdout}");
+    assert!(common::reports(&stdout, "SMP407").is_empty(), "{stdout}");
 }
 
 #[test]
@@ -367,7 +366,7 @@ const RUF067_STRICT: &str = "[tool.ruff.lint]\npreview = true\nselect = [\"RUF06
 // the run leaves those to Ruff. The default allows imports, dunder assignments and `if TYPE_CHECKING` blocks, and a
 // project that bans all code leaves nothing to the run but attribute docstrings.
 #[test_case(RUF067_PREVIEW, common::CLEAN_MODULE, 0 ; "preview_assignment")]
-#[test_case(RUF067_PREVIEW, "import os\n", 1 ; "preview_import_allowed")]
+#[test_case(RUF067_PREVIEW, "import os\n", 0 ; "preview_unused_import_left_to_f401")]
 #[test_case(RUF067_PREVIEW, "__version__ = \"1\"\n", 1 ; "preview_dunder_allowed")]
 #[test_case(RUF067_PREVIEW, "if TYPE_CHECKING:\n    pass\n", 0 ; "preview_type_checking_allowed")]
 #[test_case(RUF067_PREVIEW, "def helper() -> None:\n    pass\n", 0 ; "preview_function")]
@@ -375,7 +374,8 @@ const RUF067_STRICT: &str = "[tool.ruff.lint]\npreview = true\nselect = [\"RUF06
 #[test_case(RUF067_PREVIEW, "def helper() -> None:\n    pass\n\n\"stray\"\n", 0 ; "preview_stray_string")]
 #[test_case(RUF067_STRICT, "import os\n", 0 ; "preview_strict_import")]
 #[test_case(RUF067_STRICT, "X = 1\n\"\"\"Doc of X.\"\"\"\n", 1 ; "preview_strict_attribute_docstring")]
-#[test_case("[tool.ruff.lint]\nselect = [\"RUF067\"]\n", common::CLEAN_MODULE, 1 ; "preview_off_leaves_it_to_the_run")]
+#[test_case("[tool.ruff.lint]\nselect = [\"RUF067\"]\n", common::CLEAN_MODULE, 0 ; "preview_off_skipped")]
+#[test_case("[tool.ruff.lint]\nselect = []\n", "import os\nVALUE = 1\n", 0 ; "unselected_skipped")]
 #[test_case(RUF067_PREVIEW, "__all__: list[str] = []\n", 0 ; "preview_dunder_annotated_allowed")]
 #[test_case(RUF067_PREVIEW, "__all__ += [\"x\"]\n", 1 ; "preview_dunder_augmented_allowed")]
 #[test_case(RUF067_PREVIEW, "counter += 1\n", 0 ; "preview_augmented_reported")]
@@ -387,6 +387,43 @@ fn init_module_content_leaves_ruf067_to_ruff(config: &str, source: &str, reporte
     let (_, stdout, _) =
         common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP407", "--output-format", "json"]);
     assert_eq!(stdout.matches("\"code\": \"SMP407\"").count(), reported, "{stdout}");
+}
+
+const PREVIEW: &str = "[tool.ruff]\npreview = true\n";
+// F401 reports an import of an `__init__.py` that nothing reads, so the rule leaves that statement to it while F401
+// runs. A statement keeps its report when one of its names is not one F401 reports.
+#[test_case("", "from json import dumps\n", &[] ; "unused_import_left_to_f401")]
+#[test_case("[tool.ruff.lint]\nselect = []\n", "from json import dumps\n", &[] ; "unused_import_skipped_without_f401")]
+#[test_case("", "from json import dumps, loads\nprint(dumps)\n", &[1] ; "partly_used_statement_kept")]
+#[test_case("", "from json import dumps\nprint(dumps)\n", &[1] ; "used_import_kept")]
+#[test_case("", "from json import dumps\ndel dumps\n", &[1] ; "deleted_import_kept")]
+#[test_case("", "from json import dumps\n\n\ndef load(value: \"dumps\") -> None:\n    pass\n", &[1] ; "string_annotation_keeps_import")]
+#[test_case("", "from json import dumps as dumps\n__all__ = [\"loads\"]\n", &[1] ; "explicit_alias_kept")]
+#[test_case(PREVIEW, "import json.decoder\nimport json\nprint(json.decoder)\n", &[1] ; "shadowed_import_read_kept")]
+#[test_case(PREVIEW, "import json.decoder\nimport json\n", &[] ; "shadowed_unread_imports_left_to_f401")]
+#[test_case("", "from json import *\n", &[1] ; "star_import_kept")]
+#[test_case("", "from json import dumps\nfrom typing import cast\n\nvalue = cast(\"dumps\", 1)\n", &[1, 2] ; "cast_string_keeps_import")]
+#[test_case("", "from json import dumps\nfrom typing import TypeVar\n\nT = TypeVar(\"T\", bound=\"dumps\")\n", &[1, 2] ; "type_var_bound_keeps_import")]
+#[test_case("", "from json import dumps\nNAME = \"dumps\"\n", &[1] ; "plain_string_keeps_import")]
+#[test_case("", "from json import dumps, loads\n__all__ = [\"dumps\"]\n", &[] ; "partly_listed_statement_left_to_f401")]
+#[test_case(
+    "[tool.ruff.lint.pyflakes]\nallowed-unused-imports = [\"json.dumps\"]\n",
+    "from json import dumps\n",
+    &[1] ;
+    "allowed_unused_import_kept"
+)]
+#[test_case(
+    "[tool.ruff.lint.isort]\nrequired-imports = [\"from json import dumps\"]\n",
+    "from json import dumps\n",
+    &[1] ;
+    "required_import_kept"
+)]
+fn init_module_content_leaves_unused_imports_to_f401(config: &str, source: &str, rows: &[u64]) {
+    let root = common::project(&[("pyproject.toml", config), ("pkg/__init__.py", source)]);
+    let reports: Vec<serde_json::Value> =
+        common::json(root.path(), &["check", "--no-cache", "--select", "SMP407", "--output-format", "json"]);
+    let found: Vec<u64> = reports.iter().map(|report| report["location"]["row"].as_u64().expect("row")).collect();
+    assert_eq!(found, rows);
 }
 
 // PYI046 and PYI049 report a private protocol or TypedDict that its file never reads, so the run leaves those to Ruff
