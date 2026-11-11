@@ -248,6 +248,22 @@ fn add_noqa_logs_an_unreadable_file() {
     assert_eq!((code, stderr.contains("Failed to extract source from")), (0, true));
 }
 
+#[test_case("--add-noqa" ; "noqa")]
+#[test_case("--add-ignore" ; "ignore")]
+fn add_suppression_refuses_conflicting_rules(flag: &str) {
+    let source = "from __future__ import annotations\n";
+    let root = project(&[
+        (
+            "pyproject.toml",
+            "[project]\nrequires-python = \">=3.14\"\n[tool.ruff]\nlint.select = [\"I002\"]\nlint.isort.required-imports = [\"from __future__ import annotations\"]\n",
+        ),
+        ("module.py", source),
+    ]);
+    let (code, stdout, stderr) = check(root.path(), &["--select", "SMP301", flag]);
+    assert_eq!((code, stdout, read(root.path(), "module.py")), (2, String::new(), source.to_owned()));
+    assert!(stderr.contains("SMP301 (future-annotations) and Ruff's I002"), "{stderr}");
+}
+
 #[test]
 fn unused_ignore_reports_and_fixes_each_selector() {
     let root = project(&[(

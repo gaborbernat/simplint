@@ -12,6 +12,10 @@ class Span:
         return cls(self.start, self.end)
 
     @classmethod
+    def without_receiver() -> None:
+        pass
+
+    @classmethod
     def parse(cls, text: str) -> "Span":
         start, end = text.split(":")
         return cls(int(start), int(end))
