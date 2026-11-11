@@ -99,9 +99,9 @@ rewrite of the test.
 ## Ruff overlap
 
 Ruff's [banned-api](https://docs.astral.sh/ruff/rules/banned-api/) (TID251) reports an import that `banned-api` bans, by
-its module or a parent of it or by the full name of a member, and this rule leaves those imports to it, whether or not
-the project selects TID251. A module ban covers an import of that module or a submodule, and a member ban covers an
-import of that member only, so an import of other members of `unittest.mock` keeps this rule's report.
+its module or a parent of it or by the full name of every member it brings in, and this rule leaves those imports to it,
+whether or not the project selects TID251. A module ban covers an import of that module or a submodule. A member ban
+covers that member only, so an import that also brings in a mock member no ban names keeps this rule's report.
 
 ## Other tools
 

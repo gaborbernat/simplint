@@ -38,8 +38,8 @@ fn is_mock_member(module: &str, member: &str) -> bool {
     }
 }
 
-// Ruff's TID251 reports an import that `banned-api` bans by its module or a parent of it, or by a member's full name,
-// which this rule leaves to it.
+// Ruff's TID251 reports an import that `banned-api` bans by its module or a parent of it, or by the full name of every
+// mock member it brings in, which this rule leaves to it.
 fn banned_by_ruff(checker: &Checker, stmt: &Stmt) -> bool {
     let banned = &checker.settings.from_ruff.banned_api;
     let banned_module = |module: &str| {
@@ -54,10 +54,8 @@ fn banned_by_ruff(checker: &Checker, stmt: &Stmt) -> bool {
         Stmt::ImportFrom(ast::StmtImportFrom { module: Some(module), names, level: 0, .. }) => {
             let module = module.as_str();
             banned_module(module)
-                || names.iter().any(|alias| {
-                    alias.name.as_str() != "*"
-                        && is_mock_member(module, alias.name.as_str())
-                        && banned.contains_key(format!("{module}.{}", alias.name).as_str())
+                || names.iter().filter(|alias| is_mock_member(module, alias.name.as_str())).all(|alias| {
+                    alias.name.as_str() != "*" && banned.contains_key(format!("{module}.{}", alias.name).as_str())
                 })
         }
         _ => false,
