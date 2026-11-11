@@ -292,20 +292,20 @@ line.
 
 The known field names, with the aliases Sphinx also reads and the rule reports:
 
-| Field     | Reported aliases                                 |
-| --------- | ------------------------------------------------ |
-| `param`   | `parameter`, `arg`, `argument`, `key`, `keyword` |
-| `type`    |                                                  |
-| `raises`  | `raise`, `except`, `exception`                   |
-| `var`     |                                                  |
-| `ivar`    |                                                  |
-| `cvar`    |                                                  |
-| `vartype` |                                                  |
-| `returns` | `return`                                         |
-| `rtype`   |                                                  |
-| `meta`    |                                                  |
-| `yields`  | `yield`                                          |
-| `ytype`   |                                                  |
+| Field     | Reported aliases                                                     |
+| --------- | -------------------------------------------------------------------- |
+| `param`   | `parameter`, `arg`, `argument`, `key`, `keyword`, `kwarg`, `kwparam` |
+| `type`    | `paramtype`                                                          |
+| `raises`  | `raise`, `except`, `exception`                                       |
+| `var`     |                                                                      |
+| `ivar`    |                                                                      |
+| `cvar`    |                                                                      |
+| `vartype` |                                                                      |
+| `returns` | `return`                                                             |
+| `rtype`   |                                                                      |
+| `meta`    |                                                                      |
+| `yields`  | `yield`                                                              |
+| `ytype`   |                                                                      |
 
 Sphinx renders `var`, `ivar` and `cvar` alike, yet they say different things: `ivar` documents an instance attribute and
 `cvar` a class variable, which [rst-attribute-kind](SMP922.html) checks. So none of them counts as an alias of another.

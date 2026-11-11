@@ -310,6 +310,34 @@ fn rst_rules_need_the_docstring_style() {
     assert_eq!(common::check(root.path(), &["--select", "SMP91,SMP92"]).1, "All checks passed!\n");
 }
 
+// Sphinx reads `kwarg` and `kwparam` as spellings of `param`, and `paramtype` as one of `type`, so the fields document
+// their parameter and are not reported as unknown.
+#[test_case(
+    "def load(path: str, mode: str) -> None:\n    \"\"\"Load.\n\n    :param path: Where.\n    :kwarg mode: How.\n    \"\"\"\n    print(path, mode)\n",
+    "model.py:5:6: SMP910 Field `:kwarg mode:` uses the alias `kwarg`; write `param`\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    "kwarg"
+)]
+#[test_case(
+    "def load(mode: str) -> None:\n    \"\"\"Load.\n\n    :param mode: How.\n    :paramtype mode: str\n    \"\"\"\n    print(mode)\n",
+    "model.py:5:6: SMP910 Field `:paramtype mode:` uses the alias `paramtype`; write `type`\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    "paramtype"
+)]
+#[test_case(
+    "def load(path: str, mode: str) -> None:\n    \"\"\"Load.\n\n    :param path: Where.\n    :kwargs mode: How.\n    \"\"\"\n    print(path, mode)\n",
+    "model.py:2:5: SMP916 Docstring of `load` does not document parameter `mode`; add `:param mode:`\nmodel.py:5:6: SMP910 Unknown field `:kwargs mode:`; Sphinx reads `param`, `type`, `raises`, `returns`, `rtype`, `var`, `vartype` and their aliases\nFound 2 errors.\n" ;
+    "misspelled"
+)]
+fn sphinx_parameter_aliases_document_their_parameter(source: &str, stdout: &str) {
+    let root = common::project(&[
+        (
+            "pyproject.toml",
+            "[project]\nname = \"demo\"\n\n[tool.simplint]\nproject-kind = \"library\"\ndocstring-style = \"rst\"\n",
+        ),
+        ("model.py", source),
+    ]);
+    assert_eq!(common::check(root.path(), &["--select", "SMP910,SMP916"]).1, stdout);
+}
+
 // Renaming an alias changes the docstring, which code may read through `__doc__`, so it is an unsafe fix like the rule's
 // others.
 #[test]

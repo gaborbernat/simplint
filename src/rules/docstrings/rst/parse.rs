@@ -23,8 +23,8 @@ pub(crate) enum FieldKind {
 impl FieldKind {
     fn of(name: &str) -> Self {
         match name {
-            "param" | "parameter" | "arg" | "argument" | "key" | "keyword" => Self::Param,
-            "type" => Self::Type,
+            "param" | "parameter" | "arg" | "argument" | "key" | "keyword" | "kwarg" | "kwparam" => Self::Param,
+            "type" | "paramtype" => Self::Type,
             "raises" | "raise" | "except" | "exception" => Self::Raises,
             "var" | "ivar" | "cvar" => Self::Var,
             "vartype" => Self::VarType,

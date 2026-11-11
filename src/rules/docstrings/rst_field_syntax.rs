@@ -82,7 +82,8 @@ pub fn rst_field_syntax(checker: &Checker) {
 // alike, yet `rst-attribute-kind` tells instance attributes from class variables by them.
 fn primary_name(name: &str) -> Option<&'static str> {
     match name {
-        "parameter" | "arg" | "argument" | "key" | "keyword" => Some("param"),
+        "parameter" | "arg" | "argument" | "key" | "keyword" | "kwarg" | "kwparam" => Some("param"),
+        "paramtype" => Some("type"),
         "raise" | "except" | "exception" => Some("raises"),
         "return" => Some("returns"),
         "yield" => Some("yields"),
