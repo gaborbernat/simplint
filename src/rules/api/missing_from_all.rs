@@ -61,31 +61,29 @@ pub fn missing_from_all(checker: &Checker) {
         return;
     }
     missing.sort_by_key(|(_, range, _)| range.start());
-    // Listing a name in a public module of a library widens its API and what `import *` binds, so the report stays and
-    // the author decides.
-    let fix = if checker.project().role().public {
-        None
-    } else {
-        all_insertion(checker, missing.iter().map(|(name, _, _)| *name))
-            .and_then(|fix| with_unused_noqas_removed(checker, fix, &missing))
-    };
     let names: Vec<String> = missing.iter().map(|(name, _, _)| format!("`{name}`")).collect();
     let title = format!("Add {} to `__all__`", names.join(", "));
-    let offer_at = fix
-        .as_ref()
-        .and_then(|_| checker.first_unsuppressed(Rule::MissingFromAll, missing.iter().map(|(_, range, _)| *range)));
-    // Repeating the whole listing in every report makes output slow; the first visible report carries it.
-    let mut offer = fix.map(|fix| (fix, title));
-    for (name, range, imported) in missing {
-        let reason =
-            if imported { "is imported by other modules" } else { "appears in the signature of a name in `__all__`" };
-        let (fix, title) = if offer_at == Some(range) {
-            offer.take().map_or((None, String::new()), |(fix, title)| (Some(fix), title))
+    let reports = missing
+        .iter()
+        .map(|&(name, range, imported)| {
+            let reason = if imported {
+                "is imported by other modules"
+            } else {
+                "appears in the signature of a name in `__all__`"
+            };
+            (range, format!("`{name}` {reason}; list it in `__all__`"), title.clone())
+        })
+        .collect();
+    // Listing a name in a public module of a library widens its API and what `import *` binds, so the report stays and
+    // the author decides.
+    checker.report_shared_fix(Rule::MissingFromAll, reports, || {
+        if checker.project().role().public {
+            None
         } else {
-            (None, String::new())
-        };
-        checker.report_fix(Rule::MissingFromAll, range, format!("`{name}` {reason}; list it in `__all__`"), fix, title);
-    }
+            all_insertion(checker, missing.iter().map(|(name, _, _)| *name))
+                .and_then(|fix| with_unused_noqas_removed(checker, fix, &missing))
+        }
+    });
 }
 
 // Listing a name silences Ruff's F401 for its import, so a `noqa` that named only F401 there is left unused, which Ruff

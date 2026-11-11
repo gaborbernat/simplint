@@ -234,13 +234,9 @@ fn report_misplaced(checker: &Checker, suite: &Suite, expected: &[usize], owners
     // One fix reorders the whole block, so only the block's first visible report carries it: Ruff renders a report's
     // fix in full, and repeating a block-sized edit on every report made output slow on files with many misplaced
     // definitions.
-    let offer_at = checker.first_unsuppressed(Rule::DefinitionBeforeUse, reports.iter().map(|(range, ..)| *range));
-    for (range, message, title) in reports {
-        let fix = (offer_at == Some(range))
-            .then(|| reorder_fix(checker, suite, expected, span.clone(), shifts_unsafely))
-            .flatten();
-        checker.report_fix(Rule::DefinitionBeforeUse, range, message, fix, title);
-    }
+    checker.report_shared_fix(Rule::DefinitionBeforeUse, reports, || {
+        reorder_fix(checker, suite, expected, span.clone(), shifts_unsafely)
+    });
 }
 
 // A `def` that moves past a decorator or a default changes when Python evaluates it, so a definition whose move is

@@ -77,31 +77,26 @@ pub fn module_attribute_import(checker: &Checker) {
                 && !is_python_builtin(attribute.name, checker.target_version().minor, false);
             reports.push(attribute);
         }
-        let mut fix = convertible.then(|| {
-            let names: Vec<&str> = reports.iter().map(|attribute| attribute.name).unique().collect();
-            let import = Edit::range_replacement(
-                format!("{}from {path} import {}", lazy_prefix(statement), names.join(", ")),
-                statement.range(),
-            );
-            let accesses =
-                reports.iter().map(|attribute| Edit::range_replacement(attribute.name.to_owned(), attribute.range));
-            Fix::unsafe_edits(import, accesses)
+        let shared = reports
+            .iter()
+            .map(|attribute| {
+                let message =
+                    format!("Import `{}` from `{path}` instead of reaching it through the module", attribute.name);
+                (attribute.range, message, format!("Import the names from `{path}`"))
+            })
+            .collect();
+        checker.report_shared_fix(Rule::ModuleAttributeImport, shared, || {
+            convertible.then(|| {
+                let names: Vec<&str> = reports.iter().map(|attribute| attribute.name).unique().collect();
+                let import = Edit::range_replacement(
+                    format!("{}from {path} import {}", lazy_prefix(statement), names.join(", ")),
+                    statement.range(),
+                );
+                let accesses =
+                    reports.iter().map(|attribute| Edit::range_replacement(attribute.name.to_owned(), attribute.range));
+                Fix::unsafe_edits(import, accesses)
+            })
         });
-        let offer_at = fix.as_ref().and_then(|_| {
-            checker.first_unsuppressed(Rule::ModuleAttributeImport, reports.iter().map(|attribute| attribute.range))
-        });
-        // Ruff renders the whole fix on each report, so only the first visible report carries it.
-        for attribute in reports {
-            let message =
-                format!("Import `{}` from `{path}` instead of reaching it through the module", attribute.name);
-            checker.report_fix(
-                Rule::ModuleAttributeImport,
-                attribute.range,
-                message,
-                if offer_at == Some(attribute.range) { fix.take() } else { None },
-                format!("Import the names from `{path}`"),
-            );
-        }
     }
 }
 

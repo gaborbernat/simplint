@@ -186,6 +186,22 @@ impl<'a> Checker<'a> {
         self.report_related(rule, range, message, fix, title, Vec::new());
     }
 
+    // Ruff renders a report's fix in full, so reports that share one fix offer it on the first report that no suppression
+    // comment hides, and the fix is built only then.
+    pub fn report_shared_fix(
+        &self,
+        rule: Rule,
+        reports: Vec<(TextRange, String, String)>,
+        fix: impl FnOnce() -> Option<Fix>,
+    ) {
+        let offer_at = self.first_unsuppressed(rule, reports.iter().map(|(range, ..)| *range));
+        let mut fix = Some(fix);
+        for (range, message, title) in reports {
+            let carried = if offer_at == Some(range) { fix.take().and_then(|build| build()) } else { None };
+            self.report_fix(rule, range, message, carried, title);
+        }
+    }
+
     // A report that also points at other locations, in this file or any other of the run. The locations a file cannot
     // be read for are left out, since the report is still about its primary location.
     pub fn report_related(
