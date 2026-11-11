@@ -55,16 +55,12 @@ fn stdlib_mock_allows_create_autospec_only(imports: &str, reports: usize) {
     assert_eq!(common::report_count(root.path(), "SMP809"), reports);
 }
 
-#[test]
-fn test_class_generic_before_3_13() {
-    common::assert_rule_snapshot("test-class", "tests/test_class_generic.py", "py312");
-}
-
 #[test_case("up-unittest-enter-context", "up_unittest_enter_context.py", "py311" ; "unittest_enter_context")]
 #[test_case("up-unittest-enter-context", "up_unittest_enter_context.py", "py310" ; "unittest_enter_context_py310")]
 #[test_case("up-unittest-enter-context", "up_unittest_enter_context_used.py", "py311" ; "unittest_enter_context_used")]
 #[test_case("up-unittest-enter-context", "up_unittest_enter_context_comment.py", "py311" ; "unittest_enter_context_comment")]
 #[test_case("up-unittest-enter-context", "up_unittest_enter_context_inline.py", "py311" ; "unittest_enter_context_inline")]
+#[test_case("test-class", "tests/test_class_generic.py", "py312" ; "test_class_generic_before_3_13")]
 #[test_case("up-unittest-enter-context", "up_unittest_enter_context_not_testcase.py", "py311" ; "unittest_enter_context_not_testcase")]
 fn versioned_rule(rule: &str, fixture: &str, target_version: &str) {
     common::assert_rule_snapshot(rule, fixture, target_version);
