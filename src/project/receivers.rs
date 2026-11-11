@@ -146,6 +146,10 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
                 self.visit_body(&class.body);
                 self.scopes.pop();
             }
+            Stmt::Assign(ast::StmtAssign { targets, value, .. }) => {
+                self.weakly_stored_by_assign(targets, value);
+                visitor::walk_stmt(self, stmt);
+            }
             _ => visitor::walk_stmt(self, stmt),
         }
     }
@@ -165,6 +169,7 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
                 self.record(value, "__dict__");
             }
             Expr::Call(call @ ast::ExprCall { func, arguments, .. }) => {
+                self.weakly_stored_by_call(call);
                 let builtin = func.as_name_expr().map(|name| name.id.as_str());
                 match (&*arguments.args, builtin) {
                     ([target, attribute, ..], Some("setattr" | "delattr")) => self.record_write(target, attribute),
@@ -203,7 +208,12 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
 
 impl<'a> Collector<'a, '_> {
     fn record(&mut self, receiver: &Expr, attribute: &str) {
-        match self.receiver(receiver) {
+        let receiver = self.receiver(receiver);
+        self.record_on(receiver, attribute);
+    }
+
+    fn record_on(&mut self, receiver: Receiver, attribute: &str) {
+        match receiver {
             Receiver::Instance(class) => self.writes.typed.push((self.qualified(&class), attribute.to_owned())),
             Receiver::Declared(class) => self.writes.declared.push((self.qualified(&class), attribute.to_owned())),
             Receiver::Own(class) => self.writes.typed.push((class, attribute.to_owned())),
@@ -270,6 +280,61 @@ impl<'a> Collector<'a, '_> {
                 "weakref.ref" | "weakref.proxy" | "weakref.finalize"
             )
         })
+    }
+
+    // The qualified name of what a call or a name refers to, such as `weakref.WeakSet` for `Live` after
+    // `from weakref import WeakSet as Live`.
+    fn qualified_name(&self, expr: &Expr) -> Option<String> {
+        UnqualifiedName::from_expr(expr).map(|written| self.qualified(&written.segments().join(".")))
+    }
+
+    // Whether the name an expression evaluates to is an instance of the class `class`, qualified.
+    fn is_instance_of(&self, expr: &Expr, class: &str) -> bool {
+        matches!(self.receiver(expr), Receiver::Instance(written) if self.qualified(&written) == class)
+    }
+
+    // A weak container holds the items put into it through `weakref.ref`, so the items need a `__weakref__` slot: the
+    // item a `WeakSet` gets through `add`, a `WeakMethod`'s object and a `WeakKeyDictionary` key.
+    fn weakly_stored_by_call(&mut self, call: &ast::ExprCall) {
+        let item = match (&*call.arguments.args, call.func.as_ref()) {
+            ([item, ..], Expr::Attribute(ast::ExprAttribute { value, attr, .. }))
+                if attr.as_str() == "add" && self.is_instance_of(value, "weakref.WeakSet") =>
+            {
+                Some(item)
+            }
+            ([Expr::Attribute(ast::ExprAttribute { value, .. }), ..], func)
+                if self.qualified_name(func).as_deref() == Some("weakref.WeakMethod") =>
+            {
+                Some(value.as_ref())
+            }
+            _ => None,
+        };
+        if let Some(item) = item {
+            let stored = self.stored(item);
+            self.record_on(stored, "__weakref__");
+        }
+    }
+
+    // What an item put into a container is: an instance a call builds, as `Release("1")`, or what its name is.
+    fn stored(&self, item: &Expr) -> Receiver {
+        if item.is_call_expr() { assigned(item) } else { self.receiver(item) }
+    }
+
+    // A `WeakKeyDictionary` holds the keys stored into it and a `WeakValueDictionary` the values.
+    fn weakly_stored_by_assign(&mut self, targets: &'a [Expr], value: &'a Expr) {
+        for target in targets {
+            let Expr::Subscript(ast::ExprSubscript { value: container, slice, .. }) = target else {
+                continue;
+            };
+            if self.is_instance_of(container, "weakref.WeakKeyDictionary") {
+                let stored = self.stored(slice);
+                self.record_on(stored, "__weakref__");
+            }
+            if self.is_instance_of(container, "weakref.WeakValueDictionary") {
+                let stored = self.stored(value);
+                self.record_on(stored, "__weakref__");
+            }
+        }
     }
 
     // `pickle.dumps(obj, protocol)`, `pickle.dump(obj, file, protocol)` or `pickle.Pickler(file, protocol)` with a

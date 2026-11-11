@@ -8,7 +8,7 @@ use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 use crate::lint::checker::Checker;
 use crate::project::receivers::module_name;
 use crate::rules::classes::Decorated;
-use crate::syntax::{ExprCollector, is_classmethod, is_name, is_true_literal, last_segment, receiver};
+use crate::syntax::{is_classmethod, is_name, is_true_literal, last_segment, receiver};
 
 // What freezing or slotting the class would break, and whether the walk met code it cannot judge, which makes the fix
 // unsafe.
@@ -120,7 +120,6 @@ pub(super) fn analyze<'a>(
     hazards.slots |= project.has_unslottable_subclass(&qualified);
     hazards.slots |= decorated.wrapped;
     hazards.slots |= defaults.iter().any(|field| project.is_class_attribute_accessed(&qualified, field));
-    hazards.slots |= holds_weakly(checker.body());
     // Only a frozen slotted dataclass gets a `__getstate__`: without one, pickle protocols 0 and 1 refuse a slotted
     // instance, and with one, a pickled subclass instance keeps only the fields. The fixes of both options apply
     // together, so the state is the one after freezing, whichever fix goes first.
@@ -335,14 +334,4 @@ fn has_default(value: Option<&Expr>) -> bool {
     };
     value.as_call_expr().is_none_or(|call| last_segment(&call.func) != Some("field"))
         || field_keyword(Some(value), "default").is_some()
-}
-
-// Whether the module uses a weak container, which holds the instances it is given through `weakref.ref`.
-fn holds_weakly(body: &[Stmt]) -> bool {
-    let mut containers = ExprCollector::new(|expr: &Expr| {
-        matches!(last_segment(expr)?, "WeakSet" | "WeakKeyDictionary" | "WeakValueDictionary" | "WeakMethod")
-            .then_some(())
-    });
-    containers.visit_body(body);
-    !containers.found.is_empty()
 }

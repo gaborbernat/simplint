@@ -388,8 +388,10 @@ class Release:
       setattr(release, key, value)
   ```
 
-- a weak reference to an instance, from `weakref.ref`, `weakref.proxy` or `weakref.finalize`, or a module that uses a
-  weak container such as `weakref.WeakSet`, which needs a `__weakref__` slot the class does not have
+- a weak reference to an instance, from `weakref.ref`, `weakref.proxy` or `weakref.finalize`, or an instance a weak
+  container holds, the item added to a `weakref.WeakSet`, a key of a `WeakKeyDictionary`, a value of a
+  `WeakValueDictionary` or the object of a `WeakMethod`, in any checked file; each needs a `__weakref__` slot the class
+  does not have
 
   ```python report
   import weakref
@@ -445,6 +447,25 @@ class Release:
   @dataclass(frozen=True)
   class Release:
       version: str
+
+
+  LIVE = weakref.WeakSet()
+  LIVE.add(Release("1"))
+  ```
+
+  ```python report file=app/models.py
+  from dataclasses import dataclass
+
+
+  @dataclass(frozen=True)
+  class Release:
+      version: str
+  ```
+
+  ```python context file=app/cache.py
+  import weakref
+
+  from app.models import Release
 
 
   LIVE = weakref.WeakSet()

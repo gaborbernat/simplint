@@ -610,20 +610,6 @@ fn class_keyword_keeps_the_frozen_fix_safe() {
     assert!(common::read(root.path(), "main.py").contains("@dataclass(frozen=True)\nclass Release"));
 }
 
-// A weak container holds its items through `weakref.ref`, which needs a `__weakref__` slot a slotted class lacks.
-#[test_case("import weakref\nLIVE = weakref.WeakSet()\n", false ; "weak_set")]
-#[test_case("import weakref\nNAMES = weakref.WeakKeyDictionary()\n", false ; "weak_key_dictionary")]
-#[test_case("import weakref\nNAMES = weakref.WeakValueDictionary()\n", false ; "weak_value_dictionary")]
-#[test_case("import weakref\nNAMES = weakref.WeakMethod\n", false ; "weak_method")]
-#[test_case("import weakref\nNAMES = {}\n", true ; "no_weak_container")]
-fn module_with_a_weak_container_keeps_slots_unset(header: &str, fixed: bool) {
-    let source =
-        format!("{header}from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n");
-    let root = common::project(&[("main.py", &source)]);
-    common::check(root.path(), &["--no-cache", "--select", "dataclass-slots", "--fix", "."]);
-    assert_eq!(common::read(root.path(), "main.py").contains("slots=True"), fixed);
-}
-
 // A positional walrus becomes the value of its keyword, which needs its own parentheses to stay valid Python.
 #[test_case("Release(name := raw.strip(), version=raw)", "Release(name=(name := raw.strip()), version=raw)" ; "bare_walrus")]
 #[test_case("Release((name := raw.strip()), version=raw)", "Release(name=(name := raw.strip()), version=raw)" ; "parenthesized_walrus")]
@@ -737,6 +723,28 @@ fn class_level_access_to_a_default_keeps_slots_unset(caller: &str, fixed: bool) 
         (
             "models.py",
             "from dataclasses import dataclass\n\n\n@dataclass\nclass Config:\n    name: str\n    timeout: int = 30\n",
+        ),
+        ("main.py", caller),
+    ]);
+    common::fix_unsafe(root.path(), "dataclass-slots");
+    assert_eq!(common::read(root.path(), "models.py").contains("slots=True"), fixed);
+}
+
+// A weak container holds the items put into it through `weakref.ref`, so an item of a dataclass withholds `slots`: a
+// `WeakSet` in another module or under an import alias, a key of a weak dictionary, a value of one, and the object of a
+// `WeakMethod`. An item of unknown class and a module with no weak container keep the option.
+#[test_case("import weakref\n\nfrom models import Release\n\nLIVE = weakref.WeakSet()\nLIVE.add(Release(\"1\"))\n", false ; "weak_set_of_another_module")]
+#[test_case("from weakref import WeakSet as Live\n\nfrom models import Release\n\nLIVE = Live()\nrelease = Release(\"1\")\nLIVE.add(release)\n", false ; "aliased_weak_set")]
+#[test_case("from weakref import WeakKeyDictionary\n\nfrom models import Release\n\nNAMES = WeakKeyDictionary()\nNAMES[Release(\"1\")] = 1\n", false ; "weak_key_dictionary")]
+#[test_case("from weakref import WeakValueDictionary\n\nfrom models import Release\n\nNAMES = WeakValueDictionary()\nNAMES[\"one\"] = Release(\"1\")\n", false ; "weak_value_dictionary")]
+#[test_case("from weakref import WeakMethod\n\nfrom models import Release\n\nrelease = Release(\"1\")\nmethod = WeakMethod(release.label)\n", false ; "weak_method")]
+#[test_case("import weakref\n\nfrom models import Release\n\nLIVE = weakref.WeakSet()\n\n\ndef keep(item) -> None:\n    LIVE.add(item)\n", true ; "item_of_unknown_class")]
+#[test_case("from models import Release\n\nNAMES = {}\nNAMES[\"one\"] = Release(\"1\")\n", true ; "no_weak_container")]
+fn weak_container_holding_a_dataclass_keeps_slots_unset(caller: &str, fixed: bool) {
+    let root = common::project(&[
+        (
+            "models.py",
+            "from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n\n    def label(self) -> str:\n        return self.version\n",
         ),
         ("main.py", caller),
     ]);
