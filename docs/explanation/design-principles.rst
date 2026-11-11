@@ -2,7 +2,7 @@ Design principles
 #################
 
 These are the rules simplint's own rules follow. They decide what a new rule may report, when it may fix, and how it
-shares a project with Ruff.
+shares a project with `Ruff <https://docs.astral.sh/ruff/>`__.
 
 Opinionated, but objective where it can be
 ==========================================

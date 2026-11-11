@@ -6,7 +6,8 @@ Rule settings
 Paragraph length
 ================
 
-:doc:`long-paragraph </rules/SMP002>` reports a comment paragraph, and :doc:`long-docstring-paragraph </rules/SMP904>` a docstring paragraph, longer than ``max-paragraph-words`` words:
+:doc:`long-paragraph </rules/SMP002>` reports a comment paragraph, and :doc:`long-docstring-paragraph </rules/SMP904>` a
+docstring paragraph, longer than ``max-paragraph-words`` words:
 
 .. code-block:: toml
 
@@ -21,9 +22,11 @@ Paragraph length
 Naming
 ======
 
-Some frameworks read a module variable by its exact name, so renaming it, to the ``UPPER_CASE`` form that :doc:`module-variable-case </rules/SMP102>`
-asks for or to the underscore prefix that :doc:`module-variable-prefix </rules/SMP404>` asks for, breaks the program. Both rules already leave alone
-the names Sphinx, Alembic, gunicorn and WSGI or ASGI servers read. List any other in ``naming.keep-names``:
+Some frameworks read a module variable by its exact name, so renaming it, to the ``UPPER_CASE`` form that
+:doc:`module-variable-case </rules/SMP102>` asks for or to the underscore prefix that :doc:`module-variable-prefix
+</rules/SMP404>` asks for, breaks the program. Both rules already leave alone the names `Sphinx
+<https://www.sphinx-doc.org/>`__, `Alembic <https://alembic.sqlalchemy.org/>`__, `gunicorn <https://gunicorn.org/>`__
+and WSGI or ASGI servers read. List any other in ``naming.keep-names``:
 
 .. code-block:: toml
 
@@ -33,11 +36,10 @@ the names Sphinx, Alembic, gunicorn and WSGI or ASGI servers read. List any othe
 ``--config "naming.keep-names = ['urlpatterns']"`` replaces the list, and ``--show-settings`` prints it as
 ``linter.naming.keep_names``.
 
-``naming.meaningless-names`` holds the words that :doc:`meaningless-name </rules/SMP103>` reports, such as
-``foo`` and ``baz``. ``naming.catch-all-modules`` holds the module and package names that
-:doc:`catch-all-module </rules/SMP104>` reports, such as ``utils`` and ``helpers``. Both lists replace their
-defaults when set, and ``--show-settings`` prints them as ``linter.naming.meaningless_names`` and
-``linter.naming.catch_all_modules``.
+``naming.meaningless-names`` holds the words that :doc:`meaningless-name </rules/SMP103>` reports, such as ``foo`` and
+``baz``. ``naming.catch-all-modules`` holds the module and package names that :doc:`catch-all-module </rules/SMP104>`
+reports, such as ``utils`` and ``helpers``. Both lists replace their defaults when set, and ``--show-settings`` prints
+them as ``linter.naming.meaningless_names`` and ``linter.naming.catch_all_modules``.
 
 .. code-block:: toml
 
@@ -50,9 +52,9 @@ defaults when set, and ``--show-settings`` prints them as ``linter.naming.meanin
 Module attributes
 =================
 
-:doc:`module-attribute-import </rules/SMP304>` asks for a name imported from its module rather than reached through the module, as
-``findings.DbWriter`` after ``from . import findings``. A module that tests patch attribute by attribute must stay
-reached through the module, so list it, by its absolute dotted name, in ``imports.module-attributes``:
+:doc:`module-attribute-import </rules/SMP304>` asks for a name imported from its module rather than reached through the
+module, as ``findings.DbWriter`` after ``from . import findings``. A module that tests patch attribute by attribute must
+stay reached through the module, so list it, by its absolute dotted name, in ``imports.module-attributes``:
 
 .. code-block:: toml
 
@@ -67,12 +69,12 @@ reached through the module, so list it, by its absolute dotted name, in ``import
 Logic
 =====
 
-:doc:`single-caller-helper </rules/SMP505>` suggests inlining a private helper that one function calls, when the helper is short and its caller stays
-short. Two limits set how short. :doc:`duplicate-code </rules/SMP530>` reports statements another module
-repeats, once the copy is long enough. Statements count as the top-level statements of a body, each nested block
-counting as one, and a docstring does not count. :doc:`long-tuple-return </rules/SMP528>` reports a returned
-tuple with more elements than its limit, and :doc:`cognitive-complexity </rules/SMP529>` a function whose
-score is over its limit:
+:doc:`single-caller-helper </rules/SMP505>` suggests inlining a private helper that one function calls, when the helper
+is short and its caller stays short. Two limits set how short. :doc:`duplicate-code </rules/SMP530>` reports statements
+another module repeats, once the copy is long enough. Statements count as the top-level statements of a body, each
+nested block counting as one, and a docstring does not count. :doc:`long-tuple-return </rules/SMP528>` reports a
+returned tuple with more elements than its limit, and :doc:`cognitive-complexity </rules/SMP529>` a function whose score
+is over its limit:
 
 .. code-block:: toml
 
@@ -124,5 +126,8 @@ The fixes add the missing fields with empty descriptions, in the order Sphinx re
 
 .. note::
 
-    Ruff's `docstring-missing-returns <https://docs.astral.sh/ruff/rules/docstring-missing-returns/>`__, `docstring-missing-yields <https://docs.astral.sh/ruff/rules/docstring-missing-yields/>`__ and `docstring-missing-exception <https://docs.astral.sh/ruff/rules/docstring-missing-exception/>`__ read Google and numpydoc sections only, so they report the
-    ``:returns:``, ``:yields:`` and ``:raises:`` fields as missing; see :ref:`resolve-ruff-conflicts`.
+    `Ruff <https://docs.astral.sh/ruff/>`__'s `docstring-missing-returns
+    <https://docs.astral.sh/ruff/rules/docstring-missing-returns/>`__, `docstring-missing-yields
+    <https://docs.astral.sh/ruff/rules/docstring-missing-yields/>`__ and `docstring-missing-exception
+    <https://docs.astral.sh/ruff/rules/docstring-missing-exception/>`__ read Google and numpydoc sections only, so they
+    report the ``:returns:``, ``:yields:`` and ``:raises:`` fields as missing; see :ref:`resolve-ruff-conflicts`.

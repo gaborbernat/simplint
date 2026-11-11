@@ -30,7 +30,7 @@ The full resolution order for each setting is in :doc:`/configuration/project`.
 Names used from ``pyproject.toml``
 ***********************************
 
-Simplint counts Python names referenced by these tables as used, even when no Python file imports them:
+simplint counts Python names referenced by these tables as used, even when no Python file imports them:
 
 * ``[project.scripts]``, ``[project.gui-scripts]``, and ``[project.entry-points]`` name installed commands or plugins.
   Legacy ``[tool.poetry.plugins]`` values work the same way.
@@ -51,7 +51,7 @@ For example, a function named only by mypy configuration still counts as used:
     [tool.mypy]
     plugins = ["my_package.mypy_plugin:custom_plugin"]
 
-These references are resolved against Python files in the project. Simplint does not execute configuration, so a
+These references are resolved against Python files in the project. simplint does not execute configuration, so a
 command embedded in an arbitrary script setting does not supply a Python reference. The packaging entry point format
 is defined by the `Python Packaging User Guide <https://packaging.python.org/en/latest/specifications/entry-points/>`_;
 the tool-specific forms are documented by

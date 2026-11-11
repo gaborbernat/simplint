@@ -6,7 +6,8 @@ Project settings
 Settings shared with Ruff
 =========================
 
-simplint resolves Ruff's configuration with Ruff's own code, so the two tools agree on it. The first of these wins:
+simplint resolves `Ruff <https://docs.astral.sh/ruff/>`__'s configuration with Ruff's own code, so the two tools agree
+on it. The first of these wins:
 
 1. ``--isolated``
 2. ``--config``
@@ -37,33 +38,71 @@ Every rule and fix that depends on the language version follows it:
     * - Python
       - What changes
     * - 3.8
-      - :doc:`walrus-candidate </rules/SMP502>` offers ``:=`` and :doc:`missing-final </rules/SMP601>` offers ``Final`` only from here.
+      - :doc:`walrus-candidate </rules/SMP502>` offers ``:=`` and :doc:`missing-final </rules/SMP601>` offers ``Final``
+        only from here.
     * - 3.9
-      - :doc:`single-use-variable </rules/SMP504>` inlines a value into a decorator that is not a dotted name only from here.
+      - :doc:`single-use-variable </rules/SMP504>` inlines a value into a decorator that is not a dotted name only from
+        here.
     * - 3.10
-      - :doc:`dataclass-frozen </rules/SMP701>`, :doc:`dataclass-slots </rules/SMP702>` and :doc:`dataclass-kw-only </rules/SMP703>` need it. :doc:`up-backport-import </rules/SMP305>` reports ``importlib_metadata`` and ``importlib_resources`` imports from here. :doc:`up-traceback-exception-arguments </rules/SMP509>` takes the exception alone from here. :doc:`up-deprecated-stdlib-alias </rules/SMP525>` reports the camelCase ``threading`` names from here.
+      - :doc:`dataclass-frozen </rules/SMP701>`, :doc:`dataclass-slots </rules/SMP702>` and
+        :doc:`dataclass-kw-only </rules/SMP703>` need it. :doc:`up-backport-import </rules/SMP305>` reports
+        ``importlib_metadata`` and ``importlib_resources`` imports from here. :doc:`up-traceback-exception-arguments
+        </rules/SMP509>` takes the exception alone from here. :doc:`up-deprecated-stdlib-alias </rules/SMP525>` reports
+        the camelCase ``threading`` names from here.
     * - 3.11
-      - ``except*`` clauses exist only from here, and ``ExceptionGroup.split`` or ``subgroup`` in a handler count as catches for :doc:`indistinct-error-class </rules/SMP704>`. :doc:`up-backport-import </rules/SMP305>` reports ``tomli``, ``exceptiongroup``, ``async_timeout`` and ``taskgroup`` imports, and :doc:`up-unittest-enter-context </rules/SMP812>` offers ``self.enterContext`` from here. :doc:`up-exc-info-exception </rules/SMP510>` offers ``sys.exception()`` and :doc:`up-chdir-restore </rules/SMP513>` offers ``contextlib.chdir`` from here. :doc:`up-deprecated-stdlib-alias </rules/SMP525>` reports ``unittest.makeSuite`` and the other helpers it removes from here.
+      - ``except*`` clauses exist only from here, and ``ExceptionGroup.split`` or ``subgroup`` in a handler count as
+        catches for :doc:`indistinct-error-class </rules/SMP704>`. :doc:`up-backport-import </rules/SMP305>` reports
+        ``tomli``, ``exceptiongroup``, ``async_timeout`` and ``taskgroup`` imports, and :doc:`up-unittest-enter-context
+        </rules/SMP812>` offers ``self.enterContext`` from here. :doc:`up-exc-info-exception </rules/SMP510>` offers
+        ``sys.exception()`` and :doc:`up-chdir-restore </rules/SMP513>` offers ``contextlib.chdir`` from here.
+        :doc:`up-deprecated-stdlib-alias </rules/SMP525>` reports ``unittest.makeSuite`` and the other helpers it
+        removes from here.
     * - 3.12
-      - The :doc:`string-concatenation </rules/SMP503>` fix reuses the string's quotes inside an f-string only from here, and :doc:`single-use-variable </rules/SMP504>` inlines a value that holds the f-string's quote into a replacement field as written only from here. Before it, the value's strings take the other quote, where they can. Type statements and type parameters are 3.12 syntax: :doc:`module-variable-case </rules/SMP102>` and :doc:`module-variable-prefix </rules/SMP404>` skip ``type`` aliases, :doc:`undocumented-public-api </rules/SMP903>` and :doc:`rst-unknown-attribute </rules/SMP921>` count them, :doc:`imprecise-annotation </rules/SMP602>` checks their bounds, defaults and values, :doc:`definition-before-use </rules/SMP201>` treats them as lazy, and :doc:`test-class </rules/SMP801>` moves the type parameters a method uses onto its function, and skips a defaulted one until 3.13. :doc:`up-deprecated-stdlib-alias </rules/SMP525>` reports ``calendar.January``, ``SafeConfigParser`` and the ``pkgutil`` loaders from here.
+      - The :doc:`string-concatenation </rules/SMP503>` fix reuses the string's quotes inside an f-string only from
+        here, and :doc:`single-use-variable </rules/SMP504>` inlines a value that holds the f-string's quote into a
+        replacement field as written only from here. Before it, the value's strings take the other quote, where they
+        can. Type statements and type parameters are 3.12 syntax: :doc:`module-variable-case </rules/SMP102>` and
+        :doc:`module-variable-prefix </rules/SMP404>` skip ``type`` aliases, :doc:`undocumented-public-api
+        </rules/SMP903>` and :doc:`rst-unknown-attribute </rules/SMP921>` count them, :doc:`imprecise-annotation
+        </rules/SMP602>` checks their bounds, defaults and values, :doc:`definition-before-use </rules/SMP201>` treats
+        them as lazy, and :doc:`test-class </rules/SMP801>` moves the type parameters a method uses onto its function,
+        and skips a defaulted one until 3.13. :doc:`up-deprecated-stdlib-alias </rules/SMP525>` reports
+        ``calendar.January``, ``SafeConfigParser`` and the ``pkgutil`` loaders from here.
     * - 3.13
-      - :doc:`up-re-error-alias </rules/SMP518>` offers ``re.PatternError`` from here. :doc:`up-warnings-deprecated </rules/SMP524>` offers ``@warnings.deprecated`` from here.
+      - :doc:`up-re-error-alias </rules/SMP518>` offers ``re.PatternError`` from here.
+        :doc:`up-warnings-deprecated </rules/SMP524>` offers ``@warnings.deprecated`` from here.
     * - 3.14
-      - :doc:`definition-before-use </rules/SMP201>` and :doc:`future-annotations </rules/SMP301>` treat annotations as lazy from here, and future-annotations reports no import when a class body binds a name its annotations read. :doc:`single-user-constant </rules/SMP202>` and the renames leave names read in t-string interpolations alone. :doc:`up-context-var-token-reset </rules/SMP512>` offers ``with`` on a ``ContextVar`` token and :doc:`up-strptime-date </rules/SMP514>` offers ``date.strptime`` and ``time.strptime`` from here. :doc:`up-compression-modules </rules/SMP523>` offers the ``compression`` imports from here.
+      - :doc:`definition-before-use </rules/SMP201>` and :doc:`future-annotations </rules/SMP301>` treat annotations as
+        lazy from here, and future-annotations reports no import when a class body binds a name its annotations read.
+        :doc:`single-user-constant </rules/SMP202>` and the renames leave names read in t-string interpolations alone.
+        :doc:`up-context-var-token-reset </rules/SMP512>` offers ``with`` on a ``ContextVar`` token and
+        :doc:`up-strptime-date </rules/SMP514>` offers ``date.strptime`` and ``time.strptime`` from here.
+        :doc:`up-compression-modules </rules/SMP523>` offers the ``compression`` imports from here.
     * - 3.15
-      - :doc:`module-attribute-import </rules/SMP304>` keeps the ``lazy`` keyword when it rewrites a lazy import, and :doc:`init-module-content </rules/SMP407>` accepts ``__lazy_modules__``. :doc:`up-type-checking-lazy-import </rules/SMP306>` and :doc:`up-lazy-modules-list </rules/SMP307>` offer ``lazy`` imports from here. :doc:`up-argparse-suggest-on-error </rules/SMP519>` drops ``suggest_on_error=True``, the default from here. :doc:`up-comprehension-unpacking </rules/SMP508>` unpacks in the element and :doc:`up-object-sentinel </rules/SMP511>` offers ``sentinel`` from here. :doc:`up-utf8-encoding-default </rules/SMP521>` drops ``encoding="utf-8"`` from here, and :doc:`up-re-prefixmatch </rules/SMP522>` offers ``re.prefixmatch`` from here.
+      - :doc:`module-attribute-import </rules/SMP304>` keeps the ``lazy`` keyword when it rewrites a lazy import, and
+        :doc:`init-module-content </rules/SMP407>` accepts ``__lazy_modules__``. :doc:`up-type-checking-lazy-import
+        </rules/SMP306>` and :doc:`up-lazy-modules-list </rules/SMP307>` offer ``lazy`` imports from here.
+        :doc:`up-argparse-suggest-on-error </rules/SMP519>` drops ``suggest_on_error=True``, the default from here.
+        :doc:`up-comprehension-unpacking </rules/SMP508>` unpacks in the element and :doc:`up-object-sentinel
+        </rules/SMP511>` offers ``sentinel`` from here. :doc:`up-utf8-encoding-default </rules/SMP521>` drops
+        ``encoding="utf-8"`` from here, and :doc:`up-re-prefixmatch </rules/SMP522>` offers ``re.prefixmatch`` from
+        here.
     * - any
-      - :doc:`dependency-import-guard </rules/SMP303>` counts a module as standard library only when every version from the target onward ships it, so a submodule such as ``asyncio.taskgroups`` counts from the version that adds it. :doc:`single-use-variable </rules/SMP504>` never inlines a conditional read, an annotation, a ``type`` value, or a ``case`` or ``except`` clause. A fix that adds syntax the target version rejects is reverted and reported as a bug.
+      - :doc:`dependency-import-guard </rules/SMP303>` counts a module as standard library only when every version from
+        the target onward ships it, so a submodule such as ``asyncio.taskgroups`` counts from the version that adds it.
+        :doc:`single-use-variable </rules/SMP504>` never inlines a conditional read, an annotation, a ``type`` value, or
+        a ``case`` or ``except`` clause. A fix that adds syntax the target version rejects is reverted and reported as a
+        bug.
 
 Files to check
 --------------
 
-`exclude <https://docs.astral.sh/ruff/settings/#exclude>`__,
-`extend-exclude <https://docs.astral.sh/ruff/settings/#extend-exclude>`__,
-`lint.exclude <https://docs.astral.sh/ruff/settings/#lint_exclude>`__,
-`respect-gitignore <https://docs.astral.sh/ruff/settings/#respect-gitignore>`__ and
-`force-exclude <https://docs.astral.sh/ruff/settings/#force-exclude>`__ pick the files to check, Ruff's built-in
-excludes included. The command-line flags of the same names override them.
+`exclude <https://docs.astral.sh/ruff/settings/#exclude>`__, `extend-exclude
+<https://docs.astral.sh/ruff/settings/#extend-exclude>`__, `lint.exclude
+<https://docs.astral.sh/ruff/settings/#lint_exclude>`__, `respect-gitignore
+<https://docs.astral.sh/ruff/settings/#respect-gitignore>`__ and `force-exclude
+<https://docs.astral.sh/ruff/settings/#force-exclude>`__ pick the files to check, Ruff's built-in excludes included. The
+command-line flags of the same names override them.
 
 .. _settings-read-from-project:
 
@@ -74,22 +113,21 @@ simplint also reads the `project metadata <https://peps.python.org/pep-0621/>`__
 ``pyproject.toml`` described in :ref:`settings-metadata-source`:
 
 - `dependencies <https://packaging.python.org/en/latest/specifications/pyproject-toml/#dependencies>`__ are the
-  packages :doc:`dependency-import-guard </rules/SMP303>` treats as required, so it reports a ``try``/``except ImportError`` around their imports. A
-  requirement with an `environment marker
+  packages :doc:`dependency-import-guard </rules/SMP303>` treats as required, so it reports a ``try``/``except
+  ImportError`` around their imports. A requirement with an `environment marker
   <https://packaging.python.org/en/latest/specifications/dependency-specifiers/#environment-markers>`__ is conditional
   and does not count.
 - `Entry points <https://packaging.python.org/en/latest/specifications/entry-points/>`__ in ``scripts``,
   ``gui-scripts`` and ``entry-points`` count as imports of the names they reference. Fixes leave those names in place,
-  and :doc:`missing-from-all </rules/SMP401>` expects them in
-  ``__all__``.
+  and :doc:`missing-from-all </rules/SMP401>` expects them in ``__all__``.
 
 .. _settings-public-api:
 
 Public API
 ==========
 
-``project-kind`` and ``api-packages`` tell simplint which code users import. The documentation rules
-and the unused-export rules read them; :doc:`/how-to/library-api` walks through setting them.
+``project-kind`` and ``api-packages`` tell simplint which code users import. The documentation rules and the
+unused-export rules read them; :doc:`/how-to/library-api` walks through setting them.
 
 .. _library-or-application:
 

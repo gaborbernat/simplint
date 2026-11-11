@@ -30,9 +30,9 @@ The options of ``simplint check`` are the ones ``ruff check`` has, with the same
     * - ``--per-file-ignores``, ``--extend-per-file-ignores``
       - Take ``PATTERN:CODE`` pairs.
     * - ``--output-format``, ``--statistics``
-      - ``--output-format`` picks one of Ruff's formats: ``full``, ``concise``, ``grouped``, ``json``,
-        ``json-lines``, ``junit``, ``github``, ``gitlab``, ``pylint``, ``rdjson``, ``azure`` or ``sarif``.
-        ``--statistics`` counts the reports per rule.
+      - ``--output-format`` picks one of `Ruff <https://docs.astral.sh/ruff/>`__'s formats: ``full``, ``concise``,
+        ``grouped``, ``json``, ``json-lines``, ``junit``, ``github``, ``gitlab``, ``pylint``, ``rdjson``, ``azure`` or
+        ``sarif``. ``--statistics`` counts the reports per rule.
     * - ``--watch``
       - Checks again whenever a Python or TOML file changes.
     * - ``--stdin-filename``

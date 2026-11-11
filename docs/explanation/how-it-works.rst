@@ -75,7 +75,7 @@ How module names resolve
 Each module name resolves to a file with ty's module resolver, the one behind
 `ruff analyze graph <https://docs.astral.sh/ruff/settings/#analyze>`__. It searches:
 
-- Ruff's `src <https://docs.astral.sh/ruff/settings/#src>`__ directories
+- `Ruff <https://docs.astral.sh/ruff/>`__'s `src <https://docs.astral.sh/ruff/settings/#src>`__ directories
 - the directory above each package
 - like pytest, the directories above an importing file, so ``tests/helpers.py`` imported as ``tests.helpers`` counts
   even without a ``tests/__init__.py``

@@ -1,8 +1,9 @@
 Suppress a report
 #################
 
-simplint honors the same `noqa comments <https://docs.astral.sh/ruff/linter/#error-suppression>`__ as Ruff. Put the
-comment on the line where the report starts, and give a reason after the codes:
+simplint honors the same `noqa comments <https://docs.astral.sh/ruff/linter/#error-suppression>`__ as `Ruff
+<https://docs.astral.sh/ruff/>`__. Put the comment on the line where the report starts, and give a reason after the
+codes:
 
 .. code-block:: python
 
