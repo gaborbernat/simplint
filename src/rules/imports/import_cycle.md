@@ -52,10 +52,6 @@ def checkout(items):
     return place(items)
 ```
 
-## Conflicts with Ruff
-
-Ruff has no lint rule for import cycles, so the two do not overlap.
-
 ## What it does
 
 simplint builds a graph of the modules of the run whose imports run when the module loads. A module reports once, on its
