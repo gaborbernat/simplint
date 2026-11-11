@@ -25,8 +25,7 @@ fn dataclass_frozen_reads_writes_on_package_classes() {
 fn dataclass_kw_only_leaves_cross_file_calls_to_the_class_report(caller: &str) {
     let models = format!("{PARTITION}\n\ndef helper(value):\n    return value\n");
     let root = project(&[("models.py", &models), ("caller.py", caller)]);
-    let fix = ["--select", "SMP703", "--fix", "--unsafe-fixes", "--target-version", "py314"];
-    let first = check(root.path(), &fix).1;
+    let first = check(root.path(), &["--select", "SMP703", "--fix", "--unsafe-fixes", "--target-version", "py314"]).1;
     assert_eq!(
         (
             first.contains("Found 1 error.\n"),
@@ -86,8 +85,10 @@ fn dataclass_kw_only_related_locations_in_machine_formats(format: &str) {
 #[test]
 fn dataclass_kw_only_fixes_same_file_calls_with_the_class() {
     let root = project(&[("models.py", &format!("{PARTITION}\nPartition(\"a\", 1)\n"))]);
-    let fix = ["--select", "SMP703", "--fix", "--unsafe-fixes", "--target-version", "py314"];
-    assert_eq!(check(root.path(), &fix).1, common::ONE_FIXED);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP703", "--fix", "--unsafe-fixes", "--target-version", "py314"]).1,
+        common::ONE_FIXED
+    );
     assert_eq!(common::read(root.path(), "models.py").lines().last(), Some("Partition(topic=\"a\", number=1)"));
 }
 

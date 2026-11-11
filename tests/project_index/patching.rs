@@ -263,8 +263,10 @@ fn constants_a_string_spells_are_not_inlined(test: &str) {
         ),
         ("tests/test_docs.py", test),
     ]);
-    let fix = ["--select", "SMP202", "--fix", "--unsafe-fixes"];
-    assert_eq!(check(root.path(), &fix).1, common::native(common::PASSED));
+    assert_eq!(
+        check(root.path(), &["--select", "SMP202", "--fix", "--unsafe-fixes"]).1,
+        common::native(common::PASSED)
+    );
     assert_eq!(
         common::read(root.path(), "docs/tutorial.py"),
         "__all__ = []\n\nLIMIT: int | None = None\n\n\ndef limit() -> int | None:\n    return LIMIT or 3\n"
