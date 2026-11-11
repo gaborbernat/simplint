@@ -32,14 +32,13 @@ pub fn single_use_variable(checker: &Checker) {
             if let [Stmt::Assign(assign), next] = pair
                 && let Some(target) = sole_name_target(assign)
             {
-                let names = names.entry(function.range).or_insert_with(|| Names::of(&function.body));
-                check_pair(checker, (names, &rebindable), (assign, target), next, &function.body, depth);
+                let function_names = names.entry(function.range).or_insert_with(|| Names::of(&function.body));
+                check_pair(checker, (function_names, &rebindable), (assign, target), next, &function.body, depth);
             }
         }
     });
 }
 
-// `assign` binds `target`, its only target.
 fn check_pair<'a>(
     checker: &Checker<'a>,
     (names, rebindable): (&Names<'a>, &FxHashSet<&str>),
@@ -64,8 +63,7 @@ fn check_pair<'a>(
     // An empty value, such as `''` spliced into an f-string, leaves nothing to write, which only a deletion expresses.
     let edit =
         if replacement.is_empty() { Edit::range_deletion(range) } else { Edit::range_replacement(replacement, range) };
-    let edits = keep_debug_text(checker, vec![edit]);
-    let fix = match edits {
+    let fix = match keep_debug_text(checker, vec![edit]) {
         Some(edits) if !reading.in_tstring => {
             // A read in a `=` debug field rewrites the whole field, so the width is measured on the field it becomes.
             let Some(replace) = edits.first() else { return };
@@ -89,8 +87,7 @@ fn check_pair<'a>(
     );
 }
 
-// The one read of the assigned name that the statement after the assignment makes, with its range, when inlining the
-// value there keeps the value's evaluation in order.
+// Only a read that keeps the value's evaluation in order can take it.
 fn single_read<'a>(
     checker: &Checker<'a>,
     names: &Names<'a>,

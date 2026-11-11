@@ -7,8 +7,6 @@ use rustc_hash::FxHashSet;
 
 use crate::syntax::{is_name, is_repeating_expr, last_segment};
 
-// The precedence the operand that holds the read must have in its operator, `None` when the read is not a direct operand
-// of an operator or test, or the operator is not one that asks for a precedence here.
 fn operand_precedence(expr: &Expr, reference: TextRange) -> Option<OperatorPrecedence> {
     let direct = |operand: &Expr| operand.range() == reference;
     match expr {
@@ -51,14 +49,11 @@ fn operand_precedence(expr: &Expr, reference: TextRange) -> Option<OperatorPrece
     }
 }
 
-// How the next statement reads the name, walked in evaluation order. `read` is set once the walk reaches the read, to
-// whether it runs only in some passes or branches: in a nested block, a lambda or a comprehension. A read the walk
-// never reaches stays unset, and is not reported. `effects` is set when something before the read may have side
-// effects, so inlining would reorder them.
 #[expect(clippy::struct_excessive_bools, reason = "each flag marks one place the read sits in")]
 pub(super) struct ReadSite<'a> {
-    // Whether the read is conditional, set once the walk reaches it.
+    // Whether the read is conditional, set once the walk reaches it. A read the walk never reaches stays unset.
     pub(super) read: Option<bool>,
+    // Something before the read may have side effects, so inlining would reorder them.
     effects: bool,
     // The read is a whole argument, keyword value, return value or assigned value, where no parentheses are needed.
     pub(super) whole: bool,
@@ -70,7 +65,7 @@ pub(super) struct ReadSite<'a> {
     pub(super) in_tstring: bool,
     // The read is a part of its value, an attribute or a subscript that is not the callee of a call.
     reads_part: bool,
-    // The whole field the read fills, `{name}`, when it has no conversion, format spec or `=`, and the f-string around it.
+    // The whole field the read fills, `{name}`, with no conversion, format spec or `=`, and the f-string around it.
     pub(super) bare_field: Option<TextRange>,
     pub(super) field_fstring: Option<ast::FStringFlags>,
     // The precedence the operator around the read asks of its operand, `None` where no operator asks for one.
@@ -155,7 +150,8 @@ impl<'a> ReadWalk<'a> {
         self.takes_state -= usize::from(outside);
     }
 
-    // Reading a part of the value lets its object die right after the read, and a t-string keeps its fields' source text.
+    // Reading a part of the value lets its object die right after the read, and a t-string keeps its fields' source
+    // text.
     fn places_read(&mut self, expr: &Expr) {
         match expr {
             Expr::Attribute(ast::ExprAttribute { value, .. })
@@ -322,7 +318,8 @@ impl<'a> Visitor<'a> for ReadWalk<'a> {
             let steps_receiver = matches!(
                 func.as_ref(),
                 Expr::Attribute(ast::ExprAttribute { value, attr, .. })
-                    if value.range() == self.reference && matches!(attr.as_str(), "send" | "throw" | "close" | "__next__")
+                    if value.range() == self.reference
+                        && matches!(attr.as_str(), "send" | "throw" | "close" | "__next__")
             );
             self.site.consumes |= steps_argument || steps_receiver;
         }

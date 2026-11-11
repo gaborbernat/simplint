@@ -9,8 +9,6 @@ use crate::lint::checker::Checker;
 use crate::rules::logic::inline::{fstring_body_parts, inlined_text, requoted_text};
 use crate::syntax::needs_parentheses;
 
-// The range the read replaces and the text that replaces it: the assigned value as the statement takes it,
-// parenthesised where it needs that. A bare field of an f-string is replaced whole, by the value's text spliced in.
 pub(super) fn inlined_replacement(
     checker: &Checker,
     assign: &ast::StmtAssign,
@@ -71,9 +69,7 @@ pub(super) fn inlined_replacement(
     Some((use_range, replacement))
 }
 
-// The text of a string value that takes the place of a bare field of the f-string around it, with the f-string's
-// braces. `None` where the field's f-string cannot hold the text: a raw or triple-quoted part, a quote of the
-// enclosing f-string in the text, a backslash before Python 3.12, or a brace in a format spec, where `{{` is no escape.
+// `None` where the field's f-string cannot hold the text.
 fn spliced_text(
     checker: &Checker,
     value: &Expr,
@@ -93,8 +89,24 @@ fn spliced_text(
     (!splices_wrongly).then_some(text)
 }
 
-// The precedence the value needs to stay one operand where the read sits, with the parentheses `needs_parentheses`
-// asks for where the read is in no operator, as an argument or a call.
+fn in_brackets(checker: &Checker, next: &Stmt, use_range: TextRange) -> bool {
+    let tokens = checker.parsed.tokens().in_range(TextRange::new(next.start(), use_range.start()));
+    let opened =
+        tokens.iter().filter(|token| matches!(token.kind(), TokenKind::Lpar | TokenKind::Lsqb | TokenKind::Lbrace));
+    let closed =
+        tokens.iter().filter(|token| matches!(token.kind(), TokenKind::Rpar | TokenKind::Rsqb | TokenKind::Rbrace));
+    opened.count() > closed.count()
+}
+
+fn is_dotted_name(expr: &Expr) -> bool {
+    match expr {
+        Expr::Name(_) => true,
+        Expr::Attribute(ast::ExprAttribute { value, .. }) => is_dotted_name(value),
+        _ => false,
+    }
+}
+
+// Where the read is in no operator, `needs_parentheses` decides.
 fn needs_parentheses_at(value: &Expr, slot: Option<OperatorPrecedence>) -> bool {
     match slot {
         Some(required) => {
@@ -106,8 +118,8 @@ fn needs_parentheses_at(value: &Expr, slot: Option<OperatorPrecedence>) -> bool 
 }
 
 // The value as it goes into the statement. Before Python 3.12 a replacement field cannot hold the quote of the f-string
-// around it, so a value that holds it takes the other quote in its strings, which needs every such f-string to share one
-// quote.
+// around it, so a value that holds it takes the other quote in its strings, which needs every such f-string to share
+// one quote.
 fn field_value(
     checker: &Checker,
     (value, value_range, joined): (&Expr, TextRange, Option<&str>),
@@ -126,22 +138,4 @@ fn field_value(
     let quote = quotes.first().filter(|first| quotes.iter().all(|quote| quote == *first))?;
     let text = requoted_text(checker, value, *quote)?;
     Some(if parenthesize { format!("({text})") } else { text })
-}
-
-fn in_brackets(checker: &Checker, next: &Stmt, use_range: TextRange) -> bool {
-    let tokens = checker.parsed.tokens().in_range(TextRange::new(next.start(), use_range.start()));
-    let opened =
-        tokens.iter().filter(|token| matches!(token.kind(), TokenKind::Lpar | TokenKind::Lsqb | TokenKind::Lbrace));
-    let closed =
-        tokens.iter().filter(|token| matches!(token.kind(), TokenKind::Rpar | TokenKind::Rsqb | TokenKind::Rbrace));
-    opened.count() > closed.count()
-}
-
-// The value of a decorator before Python 3.9, which the grammar limits to a dotted name.
-fn is_dotted_name(expr: &Expr) -> bool {
-    match expr {
-        Expr::Name(_) => true,
-        Expr::Attribute(ast::ExprAttribute { value, .. }) => is_dotted_name(value),
-        _ => false,
-    }
 }
