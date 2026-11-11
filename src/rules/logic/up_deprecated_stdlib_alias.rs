@@ -88,7 +88,6 @@ const ALIASES: &[Alias] = &[
 ];
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
-    let checker = walker.checker;
     // An assignment or `del` patches the old name for code that still reads it, so only reads are reported.
     let Expr::Attribute(attribute) = expr else {
         return;
@@ -96,11 +95,11 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     if !attribute.ctx.is_load() {
         return;
     }
-    let target = checker.target_version();
+    let checker = walker.checker;
     // The name is compared first, so an attribute no alias names never builds the file's semantic model.
     let Some(alias) = ALIASES.iter().find(|alias| {
         alias.name == attribute.attr.as_str()
-            && target >= alias.since
+            && checker.target_version() >= alias.since
             && checker.semantic().resolves_to(expr, &[alias.module, alias.name])
     }) else {
         return;
