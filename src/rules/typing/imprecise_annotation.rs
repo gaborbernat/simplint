@@ -9,9 +9,6 @@ use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
 use crate::syntax::{ExprCollector, for_each_child_body, last_segment};
 
-const OBJECT_MESSAGE: &str = "`object` annotation; use the precise type";
-const ANY_MESSAGE: &str = "`Any` accepts any value and turns off type checking for it; use a precise type";
-
 pub fn statement(walker: &mut Walker, stmt: &Stmt) {
     match stmt {
         Stmt::ClassDef(class) => report_type_params(walker, class.type_params.as_deref()),
@@ -21,18 +18,15 @@ pub fn statement(walker: &mut Walker, stmt: &Stmt) {
         }
         Stmt::FunctionDef(function) => {
             report_type_params(walker, function.type_params.as_deref());
+            let checked = ann401_checks(walker, function);
             let is_guard = function.returns.as_deref().is_some_and(|returns| {
                 let Expr::Subscript(ast::ExprSubscript { value, .. }) = returns else {
                     return false;
                 };
                 matches!(last_segment(value), Some("TypeIs" | "TypeGuard"))
             });
-            let settings = &walker.checker.settings.from_ruff;
-            let checked = ann401_checks(walker, function);
-            // ANN401 leaves the `self` or `cls` a method receives unchecked, unless the method is static, and the
-            // `*args` and `**kwargs` alone when `allow-star-arg-any` is set.
-            let receiver = receiver_name(walker, function);
             if !is_guard && !is_dunder(function.name.as_str()) {
+                let receiver = receiver_name(walker, function);
                 for parameter in &function.parameters {
                     if let Some(annotation) = parameter.annotation() {
                         let variadic = matches!(parameter, AnyParameterRef::Variadic(_));
@@ -40,8 +34,10 @@ pub fn statement(walker: &mut Walker, stmt: &Stmt) {
                         if variadic && is_object(walker, annotation) {
                             continue;
                         }
+                        // ANN401 leaves the `self` or `cls` a method receives unchecked, unless the method is static,
+                        // and the `*args` and `**kwargs` alone when `allow-star-arg-any` is set.
                         let by_ann401 = checked
-                            && !(variadic && settings.allow_star_arg_any)
+                            && !(variadic && walker.checker.settings.from_ruff.allow_star_arg_any)
                             && Some(parameter.name().range()) != receiver;
                         report_imprecise(walker, annotation, by_ann401);
                     }
@@ -68,8 +64,8 @@ fn report_type_params(walker: &Walker, type_params: Option<&ast::TypeParams>) {
     }
 }
 
-// Whether Ruff's ANN401 checks the annotations of `function`: it skips functions decorated with `@override`, and the
-// implementation of an `@overload` set, whose signature the type checker reads from the stubs above it.
+// ANN401 skips `@override` functions and the implementations of an `@overload` set, whose signature the type checker
+// reads from the stubs.
 fn ann401_checks(walker: &Walker, function: &ast::StmtFunctionDef) -> bool {
     let semantic = walker.checker.semantic();
     let overridden =
@@ -77,8 +73,7 @@ fn ann401_checks(walker: &Walker, function: &ast::StmtFunctionDef) -> bool {
     !overridden && !walker.checker.state().overload_implementations(walker.checker).contains(&function.start())
 }
 
-// The name of the first parameter of a method that is not static, which ANN401 skips since it receives the instance
-// or the class.
+// The first parameter of a non-static method receives the instance or the class, which ANN401 skips.
 fn receiver_name(walker: &Walker, function: &ast::StmtFunctionDef) -> Option<TextRange> {
     let is_method = matches!(walker.scopes().last(), Some(Scope::Class(_)));
     let semantic = walker.checker.semantic();
@@ -88,6 +83,92 @@ fn receiver_name(walker: &Walker, function: &ast::StmtFunctionDef) -> Option<Tex
         return None;
     }
     function.parameters.iter_non_variadic_params().next().map(|parameter| parameter.name().range())
+}
+
+fn is_object(walker: &Walker, expr: &Expr) -> bool {
+    let semantic = walker.checker.semantic();
+    semantic.is_builtin(expr, "object") || semantic.resolves_to(expr, &["builtins", "object"])
+}
+
+fn report_imprecise(walker: &Walker, annotation: &Expr, ann401: bool) {
+    let semantic = walker.checker.semantic();
+    let mut left_to_ann401 = FxHashSet::default();
+    if ann401 {
+        ann401_anys(walker, annotation, &mut left_to_ann401);
+    }
+    // The collector visits a subscript before its elements, so the return of a `Callable` is known before `object` is
+    // picked. `Callable[..., object]` says the return value is ignored, which is the point of `object` there.
+    let mut callable_returns = FxHashSet::default();
+    // The arguments of `Annotated` after the first are metadata, where `object` is a value rather than a type.
+    let mut metadata = Vec::new();
+    let mut finder = ExprCollector::new(|expr: &Expr| {
+        if let Expr::Subscript(ast::ExprSubscript { value, slice, .. }) = expr {
+            if is_callable(walker, value)
+                && let Some(returns) = slice_elements(slice).last()
+            {
+                callable_returns.insert(returns.range());
+            }
+            if semantic.match_typing_expr(value, "Annotated") {
+                metadata.extend(slice_elements(slice).iter().skip(1).map(Ranged::range));
+            }
+        }
+        if is_object(walker, expr) {
+            if metadata.iter().any(|range| range.contains_range(expr.range())) {
+                return None;
+            }
+            return (!callable_returns.contains(&expr.range()))
+                .then_some((expr.range(), "`object` annotation; use the precise type"));
+        }
+        (semantic.match_typing_expr(expr, "Any") && !left_to_ann401.contains(&expr.range()))
+            .then(|| (expr.range(), "`Any` accepts any value and turns off type checking for it; use a precise type"))
+    });
+    finder.visit_expr(annotation);
+    for (range, message) in finder.found {
+        walker.checker.report(Rule::ImpreciseAnnotation, range, message);
+    }
+}
+
+// The `Any` nodes ANN401 reports in an annotation, which this rule leaves out while ANN401 checks the function. Ruff
+// reports the whole annotation once, when `Any` is the annotation or sits in one of the wrappers it searches: an
+// `Optional`, a `Union` or `|` element, or the first argument of `Annotated`. Its search does not enter other
+// subscripts, such as `list[Any]`, nor a quoted annotation, which this rule does not check either.
+fn ann401_anys(walker: &Walker, expr: &Expr, found: &mut FxHashSet<TextRange>) {
+    let semantic = walker.checker.semantic();
+    match expr {
+        Expr::BinOp(ast::ExprBinOp { left, op: ast::Operator::BitOr, right, .. }) => {
+            ann401_anys(walker, left, found);
+            ann401_anys(walker, right, found);
+        }
+        Expr::Subscript(ast::ExprSubscript { value, slice, .. }) => {
+            if semantic.match_typing_expr(value, "Optional") {
+                ann401_anys(walker, slice, found);
+            } else if semantic.match_typing_expr(value, "Union") {
+                for element in slice_elements(slice) {
+                    ann401_anys(walker, element, found);
+                }
+            } else if semantic.match_typing_expr(value, "Annotated")
+                && let Some(first) = slice_elements(slice).first()
+            {
+                ann401_anys(walker, first, found);
+            }
+        }
+        _ if semantic.match_typing_expr(expr, "Any") => {
+            found.insert(expr.range());
+        }
+        _ => {}
+    }
+}
+
+fn slice_elements(slice: &Expr) -> &[Expr] {
+    match slice {
+        Expr::Tuple(ast::ExprTuple { elts, .. }) => elts,
+        _ => std::slice::from_ref(slice),
+    }
+}
+
+fn is_callable(walker: &Walker, expr: &Expr) -> bool {
+    let semantic = walker.checker.semantic();
+    semantic.match_typing_expr(expr, "Callable") || semantic.resolves_to(expr, &["collections", "abc", "Callable"])
 }
 
 // The `def`s that implement an `@overload` set. Ruff's ANN401 skips them, since the type checker reads the signature
@@ -128,91 +209,4 @@ fn overload_implementations_in<'a>(
 fn is_overload(checker: &Checker, function: &ast::StmtFunctionDef) -> bool {
     let semantic = checker.semantic();
     function.decorator_list.iter().any(|decorator| semantic.match_typing_expr(&decorator.expression, "overload"))
-}
-
-// The `Any` nodes ANN401 reports in an annotation, which this rule leaves out while ANN401 checks the function. Ruff
-// reports the whole annotation once, when `Any` is the annotation or sits in one of the wrappers it searches: an
-// `Optional`, a `Union` or `|` element, or the first argument of `Annotated`. Its search does not enter other
-// subscripts, such as `list[Any]`, nor a quoted annotation, which this rule does not check either.
-fn ann401_anys(walker: &Walker, expr: &Expr, found: &mut FxHashSet<TextRange>) {
-    let semantic = walker.checker.semantic();
-    match expr {
-        Expr::BinOp(ast::ExprBinOp { left, op: ast::Operator::BitOr, right, .. }) => {
-            ann401_anys(walker, left, found);
-            ann401_anys(walker, right, found);
-        }
-        Expr::Subscript(ast::ExprSubscript { value, slice, .. }) => {
-            if semantic.match_typing_expr(value, "Optional") {
-                ann401_anys(walker, slice, found);
-            } else if semantic.match_typing_expr(value, "Union") {
-                for element in slice_elements(slice) {
-                    ann401_anys(walker, element, found);
-                }
-            } else if semantic.match_typing_expr(value, "Annotated")
-                && let Some(first) = slice_elements(slice).first()
-            {
-                ann401_anys(walker, first, found);
-            }
-        }
-        _ if semantic.match_typing_expr(expr, "Any") => {
-            found.insert(expr.range());
-        }
-        _ => {}
-    }
-}
-
-// The elements of a subscript's slice: those of a tuple, or the slice itself.
-fn slice_elements(slice: &Expr) -> &[Expr] {
-    match slice {
-        Expr::Tuple(ast::ExprTuple { elts, .. }) => elts,
-        _ => std::slice::from_ref(slice),
-    }
-}
-
-// Whether `expr` names `Callable` from `typing`, `typing_extensions` or `collections.abc`.
-fn is_callable(walker: &Walker, expr: &Expr) -> bool {
-    let semantic = walker.checker.semantic();
-    semantic.match_typing_expr(expr, "Callable") || semantic.resolves_to(expr, &["collections", "abc", "Callable"])
-}
-
-fn report_imprecise(walker: &Walker, annotation: &Expr, ann401: bool) {
-    let semantic = walker.checker.semantic();
-    let mut left_to_ann401 = FxHashSet::default();
-    if ann401 {
-        ann401_anys(walker, annotation, &mut left_to_ann401);
-    }
-    // The collector visits a subscript before its elements, so the return of a `Callable` is known before `object` is
-    // picked. `Callable[..., object]` says the return value is ignored, which is the point of `object` there.
-    let mut callable_returns = FxHashSet::default();
-    // The arguments of `Annotated` after the first are metadata, where `object` is a value rather than a type.
-    let mut metadata = Vec::new();
-    let mut finder = ExprCollector::new(|expr: &Expr| {
-        if let Expr::Subscript(ast::ExprSubscript { value, slice, .. }) = expr {
-            if is_callable(walker, value)
-                && let Some(returns) = slice_elements(slice).last()
-            {
-                callable_returns.insert(returns.range());
-            }
-            if semantic.match_typing_expr(value, "Annotated") {
-                metadata.extend(slice_elements(slice).iter().skip(1).map(Ranged::range));
-            }
-        }
-        if is_object(walker, expr) {
-            if metadata.iter().any(|range| range.contains_range(expr.range())) {
-                return None;
-            }
-            return (!callable_returns.contains(&expr.range())).then_some((expr.range(), OBJECT_MESSAGE));
-        }
-        (semantic.match_typing_expr(expr, "Any") && !left_to_ann401.contains(&expr.range()))
-            .then(|| (expr.range(), ANY_MESSAGE))
-    });
-    finder.visit_expr(annotation);
-    for (range, message) in finder.found {
-        walker.checker.report(Rule::ImpreciseAnnotation, range, message);
-    }
-}
-
-fn is_object(walker: &Walker, expr: &Expr) -> bool {
-    let semantic = walker.checker.semantic();
-    semantic.is_builtin(expr, "object") || semantic.resolves_to(expr, &["builtins", "object"])
 }
