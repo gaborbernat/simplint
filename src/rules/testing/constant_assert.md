@@ -48,11 +48,6 @@ Truthiness is judged the way Ruff judges it. These are truthy constants:
 
 - **A non-empty string, bytes or f-string literal**: only an empty one is falsy.
 
-  ```toml config
-  [tool.ruff.lint]
-  select = []
-  ```
-
   ```python report
   assert "ready"
   ```
@@ -197,11 +192,6 @@ The fix depends on the constant:
 - A two-element tuple without a message, such as `assert (check, "message")`, becomes `assert check, "message"`, since
   deleting it would drop the check it meant. **Unsafe fix:** the restored check may now fail.
 
-  ```toml config
-  [tool.ruff.lint]
-  select = []
-  ```
-
   ```python report
   check = False
   assert (check, "message")
@@ -213,11 +203,6 @@ The fix depends on the constant:
   ```
 
   A walrus check gets parentheses, since `:=` cannot stand alone before the comma.
-
-  ```toml config
-  [tool.ruff.lint]
-  select = []
-  ```
 
   ```python report
   assert (ready := True, "message")

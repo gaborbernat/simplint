@@ -192,8 +192,9 @@ No fix is offered, since a meaningful name cannot be derived from the code.
 
 - **`l`, `I` and `O`**: Ruff's [ambiguous-variable-name](https://docs.astral.sh/ruff/rules/ambiguous-variable-name/),
   [ambiguous-class-name](https://docs.astral.sh/ruff/rules/ambiguous-class-name/) and
-  [ambiguous-function-name](https://docs.astral.sh/ruff/rules/ambiguous-function-name/) report these letters wherever
-  this rule would, so this rule leaves them to Ruff.
+  [ambiguous-function-name](https://docs.astral.sh/ruff/rules/ambiguous-function-name/) report these letters on the
+  names they check, so this rule leaves them to Ruff there. Import aliases, `match` captures and type parameters keep
+  this rule's report.
 
   ```python ok
   l = 3
