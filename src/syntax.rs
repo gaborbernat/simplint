@@ -696,7 +696,8 @@ pub fn is_main_test(test: &Expr) -> bool {
 pub(crate) const MOCK_CLASSES: &[&str] =
     &["Mock", "MagicMock", "AsyncMock", "NonCallableMock", "NonCallableMagicMock", "PropertyMock", "create_autospec"];
 
-// The names the annotations of a module spell, including those of string annotations, which Ruff reads as uses.
+// The names the annotations of a module spell, including those of string annotations, which Ruff reads as uses, and
+// those of type aliases and type parameters, which Ruff reads once the module binds the names they spell.
 pub(crate) fn annotated_names(body: &[Stmt]) -> FxHashSet<String> {
     let mut names = AnnotatedNames::default();
     names.visit_body(body);
@@ -710,11 +711,30 @@ impl<'a> Visitor<'a> for AnnotatedNames {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
             Stmt::AnnAssign(ast::StmtAnnAssign { annotation, .. }) => self.0.extend(names_in(annotation)),
-            Stmt::FunctionDef(function) => self.0.extend(signature_annotations(function).flat_map(names_in)),
+            Stmt::FunctionDef(function) => {
+                self.0.extend(signature_annotations(function).flat_map(names_in));
+                self.0.extend(type_param_exprs(function.type_params.as_deref()).flat_map(names_in));
+            }
+            Stmt::ClassDef(class) => self.0.extend(type_param_exprs(class.type_params.as_deref()).flat_map(names_in)),
+            Stmt::TypeAlias(alias) => {
+                self.0.extend(names_in(&alias.value));
+                self.0.extend(type_param_exprs(alias.type_params.as_deref()).flat_map(names_in));
+            }
             _ => {}
         }
         visitor::walk_stmt(self, stmt);
     }
+}
+
+// The bounds and defaults of a type parameter list.
+fn type_param_exprs(type_params: Option<&ast::TypeParams>) -> impl Iterator<Item = &Expr> {
+    type_params.into_iter().flat_map(|params| &params.type_params).flat_map(|param| {
+        let bound = match param {
+            ast::TypeParam::TypeVar(ast::TypeParamTypeVar { bound, .. }) => bound.as_deref(),
+            ast::TypeParam::TypeVarTuple(_) | ast::TypeParam::ParamSpec(_) => None,
+        };
+        bound.into_iter().chain(param.default())
+    })
 }
 
 // The names an annotation or bound refers to, through subscripts, unions and string annotations.
