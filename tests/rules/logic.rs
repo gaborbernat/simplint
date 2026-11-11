@@ -3,160 +3,160 @@ use test_case::test_case;
 
 use crate::common::{self, check, read};
 
-#[test_case("duplicate-code", "duplicate_code.py", "py314" ; "duplicate_code")]
-#[test_case("duplicate-code", "duplicate_code_copy.py", "py314" ; "duplicate_code_copy")]
-#[test_case("duplicate-code", "duplicate_code_many.py", "py314" ; "duplicate_code_many")]
-#[test_case("duplicate-code", "duplicate_code_renamed.py", "py314" ; "duplicate_code_renamed")]
-#[test_case("duplicate-code", "duplicate_code_twice.py", "py314" ; "duplicate_code_twice")]
-#[test_case("duplicate-code", "duplicate_code_short.py", "py314" ; "duplicate_code_short")]
-#[test_case("duplicate-code", "duplicate_code_nested.py", "py314" ; "duplicate_code_nested")]
-#[test_case("duplicate-code", "duplicate_code_import.py", "py314" ; "duplicate_code_import")]
-#[test_case("duplicate-code", "duplicate_code_nested_copy.py", "py314" ; "duplicate_code_nested_copy")]
-#[test_case("duplicate-code", "duplicate_code_short_copy.py", "py314" ; "duplicate_code_short_copy")]
-#[test_case("duplicate-code", "duplicate_code_import_copy.py", "py314" ; "duplicate_code_import_copy")]
-#[test_case("duplicate-code", "duplicate_code_block.py", "py314" ; "duplicate_code_block")]
-#[test_case("duplicate-code", "test_duplicate_code_module.py", "py314" ; "duplicate_code_test_module")]
-#[test_case("forwarding-function", "forwarding_function.py", "py314" ; "forwarding_function")]
-#[test_case("forwarding-function", "forwarding_function_hook.py", "py314" ; "forwarding_function_hook")]
-#[test_case("forwarding-function", "forwarding_function_reference.py", "py314" ; "forwarding_function_reference")]
-#[test_case("forwarding-function", "forwarding_function_call_lines.py", "py314" ; "forwarding_function_call_lines")]
-#[test_case("forwarding-function", "forwarding_function_receiver.py", "py314" ; "forwarding_function_receiver")]
-#[test_case("walrus-candidate", "walrus_candidate.py", "py314" ; "walrus_candidate")]
-#[test_case("walrus-candidate", "walrus_candidate.py", "py37" ; "walrus_candidate_before_python38")]
-#[test_case("walrus-candidate", "walrus_candidate_gate.py", "py314" ; "walrus_candidate_version_gate")]
-#[test_case("walrus-candidate", "walrus_candidate_dynamic.py", "py314" ; "walrus_candidate_computed_all")]
-#[test_case("walrus-candidate", "walrus_candidate_listed.py", "py314" ; "walrus_candidate_listed_in_all")]
-#[test_case("walrus-candidate", "walrus_candidate_width.py", "py314" ; "walrus_candidate_header_width")]
-#[test_case("walrus-candidate", "walrus_candidate_locals.py", "py314" ; "walrus_candidate_locals")]
-#[test_case("walrus-candidate", "walrus_candidate_globals.py", "py314" ; "walrus_candidate_globals")]
-#[test_case("single-caller-helper", "single_caller_helper.py", "py314" ; "single_caller_helper")]
-#[test_case("single-caller-helper", "single_caller_helper_dynamic.py", "py314" ; "single_caller_helper_computed_all")]
-#[test_case("single-caller-helper", "single_caller_helper_recursive.py", "py314" ; "single_caller_helper_recursive")]
-#[test_case("single-caller-helper", "single_caller_helper_reference.py", "py314" ; "single_caller_helper_reference")]
-#[test_case("single-caller-helper", "single_caller_helper_call_lines.py", "py314" ; "single_caller_helper_call_lines")]
-#[test_case("single-caller-helper", "tests/test_single_caller_helper_from_test.py", "py314" ; "single_caller_helper_from_test")]
-#[test_case("single-use-variable", "single_use_variable.py", "py314" ; "single_use_variable")]
-#[test_case("single-use-variable", "single_use_variable_width.py", "py314" ; "single_use_variable_width")]
-#[test_case("single-use-variable", "single_use_variable_debug.py", "py314" ; "single_use_variable_debug")]
-#[test_case("single-use-variable", "single_use_variable_raw_debug.py", "py314" ; "single_use_variable_raw_debug")]
-#[test_case("single-use-variable", "single_use_variable_requote.py", "py311" ; "single_use_variable_requote")]
-#[test_case("single-use-variable", "single_use_variable_splice.py", "py314" ; "single_use_variable_splice")]
-#[test_case("single-use-variable", "single_use_variable_splice.py", "py311" ; "single_use_variable_splice_before_python312")]
-#[test_case("single-use-variable", "single_use_variable_nested_fstring.py", "py314" ; "single_use_variable_nested_fstring")]
-#[test_case("single-use-variable", "single_use_variable_nested_fstring.py", "py311" ; "single_use_variable_nested_fstring_before_python312")]
-#[test_case("single-use-variable", "single_use_variable_parens.py", "py314" ; "single_use_variable_parens")]
-#[test_case("single-use-variable", "single_use_variable_field.py", "py314" ; "single_use_variable_field")]
-#[test_case("single-use-variable", "single_use_variable_lifetime.py", "py314" ; "single_use_variable_lifetime")]
-#[test_case("single-use-variable", "single_use_variable_augassign.py", "py314" ; "single_use_variable_augassign")]
-#[test_case("single-use-variable", "single_use_variable_operator.py", "py314" ; "single_use_variable_operator")]
-#[test_case("single-use-variable", "single_use_variable_walrus.py", "py314" ; "single_use_variable_walrus")]
-#[test_case("single-use-variable", "single_use_variable_tstring.py", "py314" ; "single_use_variable_tstring")]
-#[test_case("single-use-variable", "single_use_variable_format_spec.py", "py314" ; "single_use_variable_format_spec")]
-#[test_case("string-concatenation", "string_concatenation.py", "py314" ; "string_concatenation")]
-#[test_case("string-concatenation", "string_concatenation_old.py", "py310" ; "string_concatenation_py310")]
-#[test_case("string-concatenation", "string_concatenation_types.py", "py314" ; "string_concatenation_types")]
-#[test_case("string-concatenation", "string_concatenation_kinds.py", "py314" ; "string_concatenation_kinds")]
-#[test_case("string-concatenation", "string_concatenation_class.py", "py314" ; "string_concatenation_class")]
-#[test_case("string-concatenation", "string_concatenation_genexp.py", "py314" ; "string_concatenation_genexp")]
-#[test_case("string-concatenation", "string_concatenation_type_params.py", "py314" ; "string_concatenation_type_params")]
-#[test_case("string-concatenation", "string_concatenation_ruff_overlap.py", "py314" ; "string_concatenation_ruff_overlap")]
-#[test_case("string-concatenation", "string_concatenation_imported.py", "py314" ; "string_concatenation_imported")]
-#[test_case("string-concatenation", "string_concatenation_imported_values.py", "py314" ; "string_concatenation_imported_values")]
-#[test_case("string-concatenation", "string_concatenation_class_values.py", "py314" ; "string_concatenation_class_values")]
-#[test_case("string-concatenation", "string_concatenation_bindings.py", "py314" ; "string_concatenation_bindings")]
-#[test_case("unused-default", "unused_default.py", "py314" ; "unused_default")]
-#[test_case("unused-default", "unused_default_public_module.py", "py314" ; "unused_default_public_module")]
-#[test_case("unused-default", "unused_default_comment.py", "py314" ; "unused_default_comment")]
-#[test_case("error-message-matching", "error_message_matching.py", "py314" ; "error_message_matching")]
-#[test_case("up-comprehension-unpacking", "up_comprehension_unpacking.py", "py315" ; "comprehension_unpacking")]
-#[test_case("up-comprehension-unpacking", "up_comprehension_unpacking.py", "py314" ; "comprehension_unpacking_before_python315")]
-#[test_case("up-traceback-exception-arguments", "up_traceback_exception_arguments.py", "py310" ; "traceback_exception_arguments")]
-#[test_case("up-traceback-exception-arguments", "up_traceback_exception_arguments.py", "py39" ; "traceback_exception_arguments_before_python310")]
-#[test_case("up-exc-info-exception", "up_exc_info_exception.py", "py311" ; "exc_info_exception")]
-#[test_case("up-exc-info-exception", "up_exc_info_exception.py", "py310" ; "exc_info_exception_before_python311")]
-#[test_case("up-object-sentinel", "up_object_sentinel.py", "py315" ; "object_sentinel")]
-#[test_case("up-object-sentinel", "up_object_sentinel.py", "py314" ; "object_sentinel_before_python315")]
-#[test_case("up-context-var-token-reset", "up_context_var_token_reset.py", "py314" ; "context_var_token_reset")]
-#[test_case("up-context-var-token-reset", "up_context_var_token_reset.py", "py313" ; "context_var_token_reset_before_python314")]
-#[test_case("up-chdir-restore", "up_chdir_restore.py", "py311" ; "chdir_restore")]
-#[test_case("up-chdir-restore", "up_chdir_restore_future.py", "py311" ; "chdir_restore_after_future_import")]
-#[test_case("up-chdir-restore", "up_chdir_restore_no_import.py", "py311" ; "chdir_restore_without_imports")]
-#[test_case("up-chdir-restore", "up_chdir_restore_imported.py", "py311" ; "chdir_restore_contextlib_imported")]
-#[test_case("up-chdir-restore", "up_chdir_restore_name.py", "py311" ; "chdir_restore_contextlib_name_taken")]
-#[test_case("up-chdir-restore", "up_chdir_restore.py", "py310" ; "chdir_restore_before_python311")]
-#[test_case("up-chdir-restore", "up_chdir_restore_shared_line.py", "py311" ; "chdir_restore_shared_line")]
-#[test_case("up-chdir-restore", "up_chdir_restore_shadow.py", "py311" ; "chdir_restore_shadow")]
-#[test_case("up-context-var-token-reset", "up_context_var_token_reset_shared_line.py", "py314" ; "context_var_token_reset_shared_line")]
-#[test_case("up-strptime-date", "up_strptime_date.py", "py314" ; "strptime_date")]
-#[test_case("up-strptime-date", "up_strptime_date_name.py", "py314" ; "strptime_date_class_name")]
-#[test_case("up-strptime-date", "up_strptime_date_spelled.py", "py314" ; "strptime_date_name_taken")]
-#[test_case("up-strptime-date", "up_strptime_date_class_import.py", "py314" ; "strptime_date_class_imported_by_function")]
-#[test_case("up-strptime-date", "up_strptime_date_imported.py", "py314" ; "strptime_date_name_imported")]
-#[test_case("up-strptime-date", "up_strptime_date_no_class_import.py", "py314" ; "strptime_date_without_class_import")]
-#[test_case("up-strptime-date", "up_strptime_date.py", "py313" ; "strptime_date_before_python314")]
-#[test_case("up-event-loop-in-coroutine", "up_event_loop_in_coroutine.py", "py314" ; "event_loop_in_coroutine")]
-#[test_case("up-event-loop-in-coroutine", "up_event_loop_in_coroutine.py", "py313" ; "event_loop_in_coroutine_before_python314")]
-#[test_case("up-event-loop-in-coroutine", "up_event_loop_in_coroutine_future.py", "py313" ; "event_loop_in_coroutine_future_import")]
-#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction.py", "py314" ; "asyncio_iscoroutinefunction")]
-#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_inspect.py", "py314" ; "asyncio_iscoroutinefunction_imported")]
-#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_bound.py", "py314" ; "asyncio_iscoroutinefunction_bound")]
-#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_sorted.py", "py314" ; "asyncio_iscoroutinefunction_sorted")]
-#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_guarded.py", "py314" ; "asyncio_iscoroutinefunction_guarded")]
-#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_name.py", "py314" ; "asyncio_iscoroutinefunction_name")]
-#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_parameter.py", "py314" ; "asyncio_iscoroutinefunction_parameter")]
-#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_shadow.py", "py314" ; "asyncio_iscoroutinefunction_shadow")]
-#[test_case("up-codecs-open", "up_codecs_open_comprehension.py", "py314" ; "codecs_open_comprehension")]
-#[test_case("up-codecs-open", "up_codecs_open.py", "py314" ; "codecs_open")]
-#[test_case("up-codecs-open", "up_codecs_open_shadowed.py", "py314" ; "codecs_open_renamed")]
-#[test_case("up-codecs-open", "up_codecs_open_builtin.py", "py314" ; "codecs_open_builtin")]
-#[test_case("up-codecs-open", "up_codecs_open_parameter.py", "py314" ; "codecs_open_parameter")]
-#[test_case("up-codecs-open", "up_codecs_open_walrus.py", "py314" ; "codecs_open_walrus")]
-#[test_case("up-codecs-open", "up_codecs_open_parenthesized.py", "py314" ; "codecs_open_parenthesized")]
-#[test_case("up-re-error-alias", "up_re_error_alias.py", "py314" ; "re_error_alias")]
-#[test_case("up-re-error-alias", "up_re_error_alias_fallback.py", "py314" ; "re_error_alias_fallback_import")]
-#[test_case("up-re-error-alias", "up_re_error_alias_deleted.py", "py314" ; "re_error_alias_deleted_name")]
-#[test_case("up-re-error-alias", "up_re_error_alias.py", "py312" ; "re_error_alias_before_python313")]
-#[test_case("up-argparse-suggest-on-error", "up_argparse_suggest_on_error.py", "py315" ; "argparse_suggest_on_error")]
-#[test_case("up-argparse-suggest-on-error", "up_argparse_suggest_on_error.py", "py310" ; "argparse_suggest_on_error_before_python315")]
-#[test_case("up-argparse-suggest-on-error", "up_argparse_suggest_on_error_commented.py", "py315" ; "argparse_suggest_on_error_commented")]
-#[test_case("up-removed-ast-node", "up_removed_ast_node.py", "py314" ; "removed_ast_node")]
-#[test_case("up-removed-ast-node", "up_removed_ast_node_shadowed.py", "py314" ; "removed_ast_node_shadowed")]
-#[test_case("up-removed-ast-node", "up_removed_ast_node_parameter.py", "py314" ; "removed_ast_node_parameter")]
-#[test_case("early-assignment", "early_assignment.py", "py314" ; "early_assignment")]
-#[test_case("early-assignment", "early_assignment_blocked.py", "py314" ; "early_assignment_blocked")]
-#[test_case("early-assignment", "early_assignment_comment.py", "py314" ; "early_assignment_comment")]
-#[test_case("super-forwarding-method", "super_forwarding_method.py", "py314" ; "super_forwarding_method")]
-#[test_case("super-forwarding-method", "super_forwarding_method_decorated.py", "py314" ; "super_forwarding_method_decorated")]
-#[test_case("super-forwarding-method", "super_forwarding_method_class_body.py", "py314" ; "super_forwarding_method_class_body")]
-#[test_case("super-forwarding-method", "super_forwarding_method_class_body_forms.py", "py314" ; "super_forwarding_method_class_body_forms")]
-#[test_case("long-tuple-return", "long_tuple_return.py", "py314" ; "long_tuple_return")]
-#[test_case("long-tuple-return", "long_tuple_return_quoted.py", "py314" ; "long_tuple_return_quoted")]
-#[test_case("cognitive-complexity", "cognitive_complexity.py", "py314" ; "cognitive_complexity")]
-#[test_case("collection-built-by-statements", "collection_built_by_statements.py", "py314" ; "collection_built_by_statements")]
-#[test_case("collection-built-by-statements", "collection_built_by_statements_names.py", "py314" ; "collection_built_by_statements_names")]
-#[test_case("unnamed-regex-group", "unnamed_regex_group.py", "py314" ; "unnamed_regex_group")]
-#[test_case("unnamed-regex-group", "unnamed_regex_group_unknown_flags.py", "py314" ; "unnamed_regex_group_unknown_flags")]
-#[test_case("unnamed-regex-group", "unnamed_regex_group_default_scope.py", "py314" ; "unnamed_regex_group_default_scope")]
-#[test_case("unnamed-regex-group", "unnamed_regex_group_escaping.py", "py314" ; "unnamed_regex_group_escaping")]
-#[test_case("unnamed-regex-group", "unnamed_regex_group_scoped_verbose.py", "py314" ; "unnamed_regex_group_scoped_verbose")]
-#[test_case("unexplained-regex", "unexplained_regex.py", "py314" ; "unexplained_regex")]
-#[test_case("unexplained-regex", "unexplained_regex_unknown_flags.py", "py314" ; "unexplained_regex_unknown_flags")]
-#[test_case("up-utf8-encoding-default", "up_utf8_encoding_default.py", "py315" ; "utf8_encoding_default")]
-#[test_case("up-utf8-encoding-default", "up_utf8_encoding_default.py", "py314" ; "utf8_encoding_default_before_python315")]
-#[test_case("up-utf8-encoding-default", "up_utf8_encoding_default_shadowed.py", "py315" ; "utf8_encoding_default_shadowed_open")]
-#[test_case("up-re-prefixmatch", "up_re_prefixmatch.py", "py315" ; "re_prefixmatch")]
-#[test_case("up-re-prefixmatch", "up_re_prefixmatch_fallback.py", "py315" ; "re_prefixmatch_fallback_import")]
-#[test_case("up-re-prefixmatch", "up_re_prefixmatch.py", "py314" ; "re_prefixmatch_before_python315")]
-#[test_case("up-compression-modules", "up_compression_modules.py", "py314" ; "compression_modules")]
-#[test_case("up-compression-modules", "up_compression_modules.py", "py313" ; "compression_modules_before_python314")]
-#[test_case("up-compression-modules", "compression/up_compression_modules_shim.py", "py314" ; "compression_modules_in_compression_package")]
-#[test_case("up-compression-modules", "up_compression_modules_lazy.py", "py315" ; "compression_modules_lazy")]
-#[test_case("up-warnings-deprecated", "up_warnings_deprecated.py", "py313" ; "warnings_deprecated")]
-#[test_case("up-warnings-deprecated", "up_warnings_deprecated.py", "py312" ; "warnings_deprecated_before_python313")]
-#[test_case("up-deprecated-stdlib-alias", "up_deprecated_stdlib_alias.py", "py312" ; "deprecated_stdlib_alias")]
-#[test_case("up-deprecated-stdlib-alias", "up_deprecated_stdlib_alias.py", "py310" ; "deprecated_stdlib_alias_python310")]
-fn rule(rule: &str, fixture: &str, target_version: &str) {
-    common::assert_rule_snapshot(rule, fixture, target_version);
+#[test_case("duplicate-code", "duplicate_code.py", None ; "duplicate_code")]
+#[test_case("duplicate-code", "duplicate_code_copy.py", None ; "duplicate_code_copy")]
+#[test_case("duplicate-code", "duplicate_code_many.py", None ; "duplicate_code_many")]
+#[test_case("duplicate-code", "duplicate_code_renamed.py", None ; "duplicate_code_renamed")]
+#[test_case("duplicate-code", "duplicate_code_twice.py", None ; "duplicate_code_twice")]
+#[test_case("duplicate-code", "duplicate_code_short.py", None ; "duplicate_code_short")]
+#[test_case("duplicate-code", "duplicate_code_nested.py", None ; "duplicate_code_nested")]
+#[test_case("duplicate-code", "duplicate_code_import.py", None ; "duplicate_code_import")]
+#[test_case("duplicate-code", "duplicate_code_nested_copy.py", None ; "duplicate_code_nested_copy")]
+#[test_case("duplicate-code", "duplicate_code_short_copy.py", None ; "duplicate_code_short_copy")]
+#[test_case("duplicate-code", "duplicate_code_import_copy.py", None ; "duplicate_code_import_copy")]
+#[test_case("duplicate-code", "duplicate_code_block.py", None ; "duplicate_code_block")]
+#[test_case("duplicate-code", "test_duplicate_code_module.py", None ; "duplicate_code_test_module")]
+#[test_case("forwarding-function", "forwarding_function.py", None ; "forwarding_function")]
+#[test_case("forwarding-function", "forwarding_function_hook.py", None ; "forwarding_function_hook")]
+#[test_case("forwarding-function", "forwarding_function_reference.py", None ; "forwarding_function_reference")]
+#[test_case("forwarding-function", "forwarding_function_call_lines.py", None ; "forwarding_function_call_lines")]
+#[test_case("forwarding-function", "forwarding_function_receiver.py", None ; "forwarding_function_receiver")]
+#[test_case("walrus-candidate", "walrus_candidate.py", None ; "walrus_candidate")]
+#[test_case("walrus-candidate", "walrus_candidate.py", Some("py37") ; "walrus_candidate_before_python38")]
+#[test_case("walrus-candidate", "walrus_candidate_gate.py", None ; "walrus_candidate_version_gate")]
+#[test_case("walrus-candidate", "walrus_candidate_dynamic.py", None ; "walrus_candidate_computed_all")]
+#[test_case("walrus-candidate", "walrus_candidate_listed.py", None ; "walrus_candidate_listed_in_all")]
+#[test_case("walrus-candidate", "walrus_candidate_width.py", None ; "walrus_candidate_header_width")]
+#[test_case("walrus-candidate", "walrus_candidate_locals.py", None ; "walrus_candidate_locals")]
+#[test_case("walrus-candidate", "walrus_candidate_globals.py", None ; "walrus_candidate_globals")]
+#[test_case("single-caller-helper", "single_caller_helper.py", None ; "single_caller_helper")]
+#[test_case("single-caller-helper", "single_caller_helper_dynamic.py", None ; "single_caller_helper_computed_all")]
+#[test_case("single-caller-helper", "single_caller_helper_recursive.py", None ; "single_caller_helper_recursive")]
+#[test_case("single-caller-helper", "single_caller_helper_reference.py", None ; "single_caller_helper_reference")]
+#[test_case("single-caller-helper", "single_caller_helper_call_lines.py", None ; "single_caller_helper_call_lines")]
+#[test_case("single-caller-helper", "tests/test_single_caller_helper_from_test.py", None ; "single_caller_helper_from_test")]
+#[test_case("single-use-variable", "single_use_variable.py", None ; "single_use_variable")]
+#[test_case("single-use-variable", "single_use_variable_width.py", None ; "single_use_variable_width")]
+#[test_case("single-use-variable", "single_use_variable_debug.py", None ; "single_use_variable_debug")]
+#[test_case("single-use-variable", "single_use_variable_raw_debug.py", None ; "single_use_variable_raw_debug")]
+#[test_case("single-use-variable", "single_use_variable_requote.py", Some("py311") ; "single_use_variable_requote")]
+#[test_case("single-use-variable", "single_use_variable_splice.py", None ; "single_use_variable_splice")]
+#[test_case("single-use-variable", "single_use_variable_splice.py", Some("py311") ; "single_use_variable_splice_before_python312")]
+#[test_case("single-use-variable", "single_use_variable_nested_fstring.py", None ; "single_use_variable_nested_fstring")]
+#[test_case("single-use-variable", "single_use_variable_nested_fstring.py", Some("py311") ; "single_use_variable_nested_fstring_before_python312")]
+#[test_case("single-use-variable", "single_use_variable_parens.py", None ; "single_use_variable_parens")]
+#[test_case("single-use-variable", "single_use_variable_field.py", None ; "single_use_variable_field")]
+#[test_case("single-use-variable", "single_use_variable_lifetime.py", None ; "single_use_variable_lifetime")]
+#[test_case("single-use-variable", "single_use_variable_augassign.py", None ; "single_use_variable_augassign")]
+#[test_case("single-use-variable", "single_use_variable_operator.py", None ; "single_use_variable_operator")]
+#[test_case("single-use-variable", "single_use_variable_walrus.py", None ; "single_use_variable_walrus")]
+#[test_case("single-use-variable", "single_use_variable_tstring.py", None ; "single_use_variable_tstring")]
+#[test_case("single-use-variable", "single_use_variable_format_spec.py", None ; "single_use_variable_format_spec")]
+#[test_case("string-concatenation", "string_concatenation.py", None ; "string_concatenation")]
+#[test_case("string-concatenation", "string_concatenation_old.py", Some("py310") ; "string_concatenation_py310")]
+#[test_case("string-concatenation", "string_concatenation_types.py", None ; "string_concatenation_types")]
+#[test_case("string-concatenation", "string_concatenation_kinds.py", None ; "string_concatenation_kinds")]
+#[test_case("string-concatenation", "string_concatenation_class.py", None ; "string_concatenation_class")]
+#[test_case("string-concatenation", "string_concatenation_genexp.py", None ; "string_concatenation_genexp")]
+#[test_case("string-concatenation", "string_concatenation_type_params.py", None ; "string_concatenation_type_params")]
+#[test_case("string-concatenation", "string_concatenation_ruff_overlap.py", None ; "string_concatenation_ruff_overlap")]
+#[test_case("string-concatenation", "string_concatenation_imported.py", None ; "string_concatenation_imported")]
+#[test_case("string-concatenation", "string_concatenation_imported_values.py", None ; "string_concatenation_imported_values")]
+#[test_case("string-concatenation", "string_concatenation_class_values.py", None ; "string_concatenation_class_values")]
+#[test_case("string-concatenation", "string_concatenation_bindings.py", None ; "string_concatenation_bindings")]
+#[test_case("unused-default", "unused_default.py", None ; "unused_default")]
+#[test_case("unused-default", "unused_default_public_module.py", None ; "unused_default_public_module")]
+#[test_case("unused-default", "unused_default_comment.py", None ; "unused_default_comment")]
+#[test_case("error-message-matching", "error_message_matching.py", None ; "error_message_matching")]
+#[test_case("up-comprehension-unpacking", "up_comprehension_unpacking.py", Some("py315") ; "comprehension_unpacking")]
+#[test_case("up-comprehension-unpacking", "up_comprehension_unpacking.py", None ; "comprehension_unpacking_before_python315")]
+#[test_case("up-traceback-exception-arguments", "up_traceback_exception_arguments.py", Some("py310") ; "traceback_exception_arguments")]
+#[test_case("up-traceback-exception-arguments", "up_traceback_exception_arguments.py", Some("py39") ; "traceback_exception_arguments_before_python310")]
+#[test_case("up-exc-info-exception", "up_exc_info_exception.py", Some("py311") ; "exc_info_exception")]
+#[test_case("up-exc-info-exception", "up_exc_info_exception.py", Some("py310") ; "exc_info_exception_before_python311")]
+#[test_case("up-object-sentinel", "up_object_sentinel.py", Some("py315") ; "object_sentinel")]
+#[test_case("up-object-sentinel", "up_object_sentinel.py", None ; "object_sentinel_before_python315")]
+#[test_case("up-context-var-token-reset", "up_context_var_token_reset.py", None ; "context_var_token_reset")]
+#[test_case("up-context-var-token-reset", "up_context_var_token_reset.py", Some("py313") ; "context_var_token_reset_before_python314")]
+#[test_case("up-chdir-restore", "up_chdir_restore.py", Some("py311") ; "chdir_restore")]
+#[test_case("up-chdir-restore", "up_chdir_restore_future.py", Some("py311") ; "chdir_restore_after_future_import")]
+#[test_case("up-chdir-restore", "up_chdir_restore_no_import.py", Some("py311") ; "chdir_restore_without_imports")]
+#[test_case("up-chdir-restore", "up_chdir_restore_imported.py", Some("py311") ; "chdir_restore_contextlib_imported")]
+#[test_case("up-chdir-restore", "up_chdir_restore_name.py", Some("py311") ; "chdir_restore_contextlib_name_taken")]
+#[test_case("up-chdir-restore", "up_chdir_restore.py", Some("py310") ; "chdir_restore_before_python311")]
+#[test_case("up-chdir-restore", "up_chdir_restore_shared_line.py", Some("py311") ; "chdir_restore_shared_line")]
+#[test_case("up-chdir-restore", "up_chdir_restore_shadow.py", Some("py311") ; "chdir_restore_shadow")]
+#[test_case("up-context-var-token-reset", "up_context_var_token_reset_shared_line.py", None ; "context_var_token_reset_shared_line")]
+#[test_case("up-strptime-date", "up_strptime_date.py", None ; "strptime_date")]
+#[test_case("up-strptime-date", "up_strptime_date_name.py", None ; "strptime_date_class_name")]
+#[test_case("up-strptime-date", "up_strptime_date_spelled.py", None ; "strptime_date_name_taken")]
+#[test_case("up-strptime-date", "up_strptime_date_class_import.py", None ; "strptime_date_class_imported_by_function")]
+#[test_case("up-strptime-date", "up_strptime_date_imported.py", None ; "strptime_date_name_imported")]
+#[test_case("up-strptime-date", "up_strptime_date_no_class_import.py", None ; "strptime_date_without_class_import")]
+#[test_case("up-strptime-date", "up_strptime_date.py", Some("py313") ; "strptime_date_before_python314")]
+#[test_case("up-event-loop-in-coroutine", "up_event_loop_in_coroutine.py", None ; "event_loop_in_coroutine")]
+#[test_case("up-event-loop-in-coroutine", "up_event_loop_in_coroutine.py", Some("py313") ; "event_loop_in_coroutine_before_python314")]
+#[test_case("up-event-loop-in-coroutine", "up_event_loop_in_coroutine_future.py", Some("py313") ; "event_loop_in_coroutine_future_import")]
+#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction.py", None ; "asyncio_iscoroutinefunction")]
+#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_inspect.py", None ; "asyncio_iscoroutinefunction_imported")]
+#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_bound.py", None ; "asyncio_iscoroutinefunction_bound")]
+#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_sorted.py", None ; "asyncio_iscoroutinefunction_sorted")]
+#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_guarded.py", None ; "asyncio_iscoroutinefunction_guarded")]
+#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_name.py", None ; "asyncio_iscoroutinefunction_name")]
+#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_parameter.py", None ; "asyncio_iscoroutinefunction_parameter")]
+#[test_case("up-asyncio-iscoroutinefunction", "up_asyncio_iscoroutinefunction_shadow.py", None ; "asyncio_iscoroutinefunction_shadow")]
+#[test_case("up-codecs-open", "up_codecs_open_comprehension.py", None ; "codecs_open_comprehension")]
+#[test_case("up-codecs-open", "up_codecs_open.py", None ; "codecs_open")]
+#[test_case("up-codecs-open", "up_codecs_open_shadowed.py", None ; "codecs_open_renamed")]
+#[test_case("up-codecs-open", "up_codecs_open_builtin.py", None ; "codecs_open_builtin")]
+#[test_case("up-codecs-open", "up_codecs_open_parameter.py", None ; "codecs_open_parameter")]
+#[test_case("up-codecs-open", "up_codecs_open_walrus.py", None ; "codecs_open_walrus")]
+#[test_case("up-codecs-open", "up_codecs_open_parenthesized.py", None ; "codecs_open_parenthesized")]
+#[test_case("up-re-error-alias", "up_re_error_alias.py", None ; "re_error_alias")]
+#[test_case("up-re-error-alias", "up_re_error_alias_fallback.py", None ; "re_error_alias_fallback_import")]
+#[test_case("up-re-error-alias", "up_re_error_alias_deleted.py", None ; "re_error_alias_deleted_name")]
+#[test_case("up-re-error-alias", "up_re_error_alias.py", Some("py312") ; "re_error_alias_before_python313")]
+#[test_case("up-argparse-suggest-on-error", "up_argparse_suggest_on_error.py", Some("py315") ; "argparse_suggest_on_error")]
+#[test_case("up-argparse-suggest-on-error", "up_argparse_suggest_on_error.py", Some("py310") ; "argparse_suggest_on_error_before_python315")]
+#[test_case("up-argparse-suggest-on-error", "up_argparse_suggest_on_error_commented.py", Some("py315") ; "argparse_suggest_on_error_commented")]
+#[test_case("up-removed-ast-node", "up_removed_ast_node.py", None ; "removed_ast_node")]
+#[test_case("up-removed-ast-node", "up_removed_ast_node_shadowed.py", None ; "removed_ast_node_shadowed")]
+#[test_case("up-removed-ast-node", "up_removed_ast_node_parameter.py", None ; "removed_ast_node_parameter")]
+#[test_case("early-assignment", "early_assignment.py", None ; "early_assignment")]
+#[test_case("early-assignment", "early_assignment_blocked.py", None ; "early_assignment_blocked")]
+#[test_case("early-assignment", "early_assignment_comment.py", None ; "early_assignment_comment")]
+#[test_case("super-forwarding-method", "super_forwarding_method.py", None ; "super_forwarding_method")]
+#[test_case("super-forwarding-method", "super_forwarding_method_decorated.py", None ; "super_forwarding_method_decorated")]
+#[test_case("super-forwarding-method", "super_forwarding_method_class_body.py", None ; "super_forwarding_method_class_body")]
+#[test_case("super-forwarding-method", "super_forwarding_method_class_body_forms.py", None ; "super_forwarding_method_class_body_forms")]
+#[test_case("long-tuple-return", "long_tuple_return.py", None ; "long_tuple_return")]
+#[test_case("long-tuple-return", "long_tuple_return_quoted.py", None ; "long_tuple_return_quoted")]
+#[test_case("cognitive-complexity", "cognitive_complexity.py", None ; "cognitive_complexity")]
+#[test_case("collection-built-by-statements", "collection_built_by_statements.py", None ; "collection_built_by_statements")]
+#[test_case("collection-built-by-statements", "collection_built_by_statements_names.py", None ; "collection_built_by_statements_names")]
+#[test_case("unnamed-regex-group", "unnamed_regex_group.py", None ; "unnamed_regex_group")]
+#[test_case("unnamed-regex-group", "unnamed_regex_group_unknown_flags.py", None ; "unnamed_regex_group_unknown_flags")]
+#[test_case("unnamed-regex-group", "unnamed_regex_group_default_scope.py", None ; "unnamed_regex_group_default_scope")]
+#[test_case("unnamed-regex-group", "unnamed_regex_group_escaping.py", None ; "unnamed_regex_group_escaping")]
+#[test_case("unnamed-regex-group", "unnamed_regex_group_scoped_verbose.py", None ; "unnamed_regex_group_scoped_verbose")]
+#[test_case("unexplained-regex", "unexplained_regex.py", None ; "unexplained_regex")]
+#[test_case("unexplained-regex", "unexplained_regex_unknown_flags.py", None ; "unexplained_regex_unknown_flags")]
+#[test_case("up-utf8-encoding-default", "up_utf8_encoding_default.py", Some("py315") ; "utf8_encoding_default")]
+#[test_case("up-utf8-encoding-default", "up_utf8_encoding_default.py", None ; "utf8_encoding_default_before_python315")]
+#[test_case("up-utf8-encoding-default", "up_utf8_encoding_default_shadowed.py", Some("py315") ; "utf8_encoding_default_shadowed_open")]
+#[test_case("up-re-prefixmatch", "up_re_prefixmatch.py", Some("py315") ; "re_prefixmatch")]
+#[test_case("up-re-prefixmatch", "up_re_prefixmatch_fallback.py", Some("py315") ; "re_prefixmatch_fallback_import")]
+#[test_case("up-re-prefixmatch", "up_re_prefixmatch.py", None ; "re_prefixmatch_before_python315")]
+#[test_case("up-compression-modules", "up_compression_modules.py", None ; "compression_modules")]
+#[test_case("up-compression-modules", "up_compression_modules.py", Some("py313") ; "compression_modules_before_python314")]
+#[test_case("up-compression-modules", "compression/up_compression_modules_shim.py", None ; "compression_modules_in_compression_package")]
+#[test_case("up-compression-modules", "up_compression_modules_lazy.py", Some("py315") ; "compression_modules_lazy")]
+#[test_case("up-warnings-deprecated", "up_warnings_deprecated.py", Some("py313") ; "warnings_deprecated")]
+#[test_case("up-warnings-deprecated", "up_warnings_deprecated.py", Some("py312") ; "warnings_deprecated_before_python313")]
+#[test_case("up-deprecated-stdlib-alias", "up_deprecated_stdlib_alias.py", Some("py312") ; "deprecated_stdlib_alias")]
+#[test_case("up-deprecated-stdlib-alias", "up_deprecated_stdlib_alias.py", Some("py310") ; "deprecated_stdlib_alias_python310")]
+fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
+    common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
 
 // Ruff's cleanup merges the `if` the fix leaves alone in an outer `if`, whatever the layout and line length.
@@ -176,11 +176,7 @@ fn walrus_candidate_leaving_collapsible_if_is_merged(outer: &str, assignment: &s
     let result = read(root.path(), "module.py");
     assert_eq!(
         (code, stdout.as_str(), result),
-        (
-            0,
-            "Found 1 error (1 fixed, 0 remaining).\n",
-            format!("def run(text, flag):\n    {merged}\n        return text\n")
-        )
+        (0, common::ONE_FIXED, format!("def run(text, flag):\n    {merged}\n        return text\n"))
     );
 }
 
@@ -204,7 +200,7 @@ fn walrus_candidate_keeping_if_branches_is_fixed(body: &str, fixed: &str) {
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP502", "--fix"]);
     assert_eq!(
         (code, stdout.as_str(), read(root.path(), "module.py")),
-        (0, "Found 1 error (1 fixed, 0 remaining).\n", format!("def run(text, flag):\n{fixed}"))
+        (0, common::ONE_FIXED, format!("def run(text, flag):\n{fixed}"))
     );
 }
 
@@ -218,8 +214,7 @@ fn walrus_candidate_under_a_comment_in_the_outer_if_is_reported_without_a_fix() 
     let report = "module.py:3:9: SMP502 Inline single-use `size` into the `if` test\nFound 1 error.\n";
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP502"]);
     assert_eq!((code, stdout.as_str()), (1, report));
-    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP502", "--fix", "--unsafe-fixes"]);
-    assert_eq!((code, stdout.as_str(), read(root.path(), "module.py")), (1, report, source.to_owned()));
+    common::assert_fix_keeps_report(root.path(), "SMP502", &["--fix", "--unsafe-fixes"], "module.py", report);
 }
 
 #[test]
@@ -489,7 +484,7 @@ fn unused_default_leaves_the_public_api_alone() {
         ("main.py", "from core import connect\n\nconnect(\"a\", 1)\n"),
     ]);
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP506"]);
-    assert_eq!((code, stdout.as_str()), (0, "All checks passed!\n"));
+    assert_eq!((code, stdout.as_str()), (0, common::PASSED));
 }
 
 // Outside code calls the public methods of a public class, not its private ones, so a private method keeps its judgment.
@@ -565,7 +560,7 @@ fn unused_default_leaves_star_imported_modules_alone() {
         ("main.py", "from core import *\n\nconnect(\"a\", 1)\n"),
     ]);
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP506"]);
-    assert_eq!((code, stdout.as_str()), (0, "All checks passed!\n"));
+    assert_eq!((code, stdout.as_str()), (0, common::PASSED));
 }
 
 // Test modules may assert on the messages their code raises.
@@ -576,7 +571,7 @@ fn error_message_matching_leaves_test_modules_alone() {
         "def test_load():\n    try:\n        load()\n    except OSError as exc:\n        assert \"gone\" in str(exc)\n",
     )]);
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
-    assert_eq!((code, stdout.as_str()), (0, "All checks passed!\n"));
+    assert_eq!((code, stdout.as_str()), (0, common::PASSED));
 }
 
 // Ruff's PT017 reports an `assert` naming the exception, which SMP507 leaves to it while the project's Ruff
@@ -588,8 +583,7 @@ fn error_message_matching_leaves_asserts_to_pt017(body: &str, code: &str, report
     let source = format!("def run(f):\n    try:\n        f()\n    except OSError as exc:\n        {body}\n");
     let settings = format!("[tool.ruff.lint]\nselect = [\"{code}\"]\n");
     let root = common::project(&[("pyproject.toml", &settings), ("module.py", &source)]);
-    let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
-    assert_eq!(stdout.matches("SMP507").count(), reports, "{stdout}");
+    common::assert_report_count(root.path(), "SMP507", reports);
 }
 
 // The text of two exceptions tells them apart by their wording alone, so only the text of one against a literal or a
@@ -610,8 +604,7 @@ fn error_message_matching_leaves_text_pairs_alone(body: &str, reports: usize) {
         "def run(f, other: OSError, expected):\n    try:\n        f()\n    except OSError as exc:\n        {body}\n"
     );
     let root = common::project(&[("module.py", &source)]);
-    let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
-    assert_eq!(stdout.matches("SMP507").count(), reports, "{stdout}");
+    common::assert_report_count(root.path(), "SMP507", reports);
 }
 
 // The parameters of a method, reached through its class, are read the same way as those of a function.
@@ -622,8 +615,7 @@ fn error_message_matching_reads_parameters_of_methods(body: &str, reports: usize
         "class Replay:\n    def run(self, target, error: OSError, expected):\n        try:\n            target()\n        except OSError as replay_error:\n            {body}\n"
     );
     let root = common::project(&[("module.py", &source)]);
-    let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
-    assert_eq!(stdout.matches("SMP507").count(), reports, "{stdout}");
+    common::assert_report_count(root.path(), "SMP507", reports);
 }
 
 // A name the file does not bind is not the handler's exception, even when its text is the same as the handler's name
@@ -636,8 +628,7 @@ fn error_message_matching_leaves_unresolved_names_alone(body: &str, reports: usi
         "from os.path import *\n\n\ndef run(f):\n    try:\n        f()\n    except OSError as exc:\n        {body}\n"
     );
     let root = common::project(&[("module.py", &source)]);
-    let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
-    assert_eq!(stdout.matches("SMP507").count(), reports, "{stdout}");
+    common::assert_report_count(root.path(), "SMP507", reports);
 }
 
 // A string annotation names the class the file binds under that name, which shadows the builtin of the same name.
@@ -649,8 +640,7 @@ fn error_message_matching_reads_string_annotations_in_the_file(annotation: &str,
         "class ValueError:\n    pass\n\n\ndef run(f, other: {annotation}):\n    try:\n        f()\n    except OSError as exc:\n        return str(exc) == str(other)\n"
     );
     let root = common::project(&[("module.py", &source)]);
-    let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
-    assert_eq!(stdout.matches("SMP507").count(), reports, "{stdout}");
+    common::assert_report_count(root.path(), "SMP507", reports);
 }
 
 // A parameter counts as an exception through its annotation: a class of the file, an exception in a union with `None`,
@@ -666,8 +656,7 @@ fn error_message_matching_reads_annotations(annotation: &str, reports: usize) {
         "from typing import Optional\n\n\nclass Local(Exception):\n    pass\n\n\nclass Deep(Local):\n    pass\n\n\ndef run(f, other: {annotation}):\n    try:\n        f()\n    except OSError as exc:\n        return str(exc) == str(other)\n"
     );
     let root = common::project(&[("module.py", &source)]);
-    let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
-    assert_eq!(stdout.matches("SMP507").count(), reports, "{stdout}");
+    common::assert_report_count(root.path(), "SMP507", reports);
 }
 
 // An exception class the parameter's annotation imports from another file of the run.
@@ -676,8 +665,7 @@ fn error_message_matching_reads_annotations(annotation: &str, reports: usize) {
 fn error_message_matching_reads_imported_exceptions(definition: &str, reports: usize) {
     let module = "from errors import MyError\n\n\ndef run(f, other: MyError):\n    try:\n        f()\n    except OSError as exc:\n        return str(exc) == str(other)\n";
     let root = common::project(&[("errors.py", definition), ("module.py", module)]);
-    let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
-    assert_eq!(stdout.matches("SMP507").count(), reports, "{stdout}");
+    common::assert_report_count(root.path(), "SMP507", reports);
 }
 
 // A class nested in a function is an exception class of the file, whether the annotation names it or a string does.
@@ -689,8 +677,7 @@ fn error_message_matching_reads_nested_exception_classes(annotation: &str, repor
         "def outer():\n    class Local(Exception):\n        pass\n\n    def inner(f, other: {annotation}):\n        try:\n            f()\n        except OSError as exc:\n            return str(exc) == str(other)\n    return inner\n"
     );
     let root = common::project(&[("module.py", &source)]);
-    let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
-    assert_eq!(stdout.matches("SMP507").count(), reports, "{stdout}");
+    common::assert_report_count(root.path(), "SMP507", reports);
 }
 
 // A class whose base name is rebound to a class deriving from it is followed through both bindings, and stops at the
@@ -700,7 +687,7 @@ fn error_message_matching_stops_at_rebound_class_cycles() {
     let source = "def outer():\n    class B(Exception):\n        pass\n\n    class A(B):\n        pass\n\n    class B(A):\n        pass\n\n    def inner(f, other: A):\n        try:\n            f()\n        except OSError as exc:\n            return str(exc) == str(other)\n    return inner\n";
     let root = common::project(&[("module.py", source)]);
     let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
-    assert_eq!(stdout.as_str(), "All checks passed!\n");
+    assert_eq!(stdout.as_str(), common::PASSED);
 }
 
 // An exception class of the file counts as an exception type for a parameter annotation.
@@ -711,7 +698,7 @@ fn error_message_matching_reads_exception_classes_of_the_file() {
         "class Offset(Exception):\n    pass\n\n\ndef replay(target, error: Offset):\n    try:\n        target()\n    except Offset as replay_error:\n        return replay_error.args == error.args\n",
     )]);
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
-    assert_eq!((code, stdout.as_str()), (0, "All checks passed!\n"));
+    assert_eq!((code, stdout.as_str()), (0, common::PASSED));
 }
 
 // A class the run defines that a star import brings into the module, which the annotation then names.
@@ -720,8 +707,7 @@ fn error_message_matching_reads_exception_classes_of_the_file() {
 fn error_message_matching_reads_star_imported_exceptions(definition: &str, reports: usize) {
     let module = "from mod_a import *\n\n\ndef run(f, other: AppError):\n    try:\n        f()\n    except OSError as exc:\n        return str(exc) == str(other)\n";
     let root = common::project(&[("mod_a.py", definition), ("module.py", module)]);
-    let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
-    assert_eq!(stdout.matches("SMP507").count(), reports, "{stdout}");
+    common::assert_report_count(root.path(), "SMP507", reports);
 }
 
 // The tuple length and the complexity a project allows before the rules report, read from `[tool.simplint.logic]`.
@@ -746,8 +732,7 @@ fn long_tuple_return_respects_override_contract(import: &str, decorator: &str, r
             "{import}\n\nclass Base:\n    def fields(self) -> tuple[int, int, int]:\n        return 1, 2, 3\n\n\nclass Child(Base):\n    {decorator}\n    def fields(self) -> tuple[int, int, int]:\n        return 1, 2, 3\n"
         ),
     )]);
-    let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP528"]);
-    assert_eq!(stdout.matches("SMP528").count(), reports + 1, "{stdout}");
+    common::assert_report_count(root.path(), "SMP528", reports + 1);
 }
 
 #[test_case("PLR1702", "max-nested-blocks = 1", "if value:\n        return _helper(value)\n    return 0", "if value:\n        return 1\n    return 0" ; "nested_blocks")]
@@ -798,7 +783,7 @@ fn single_caller_helper_reports_when_ruff_limits_hold(rule: &str, option: &str, 
 #[test_case("[tool.simplint.logic]\nmax-cognitive-complexity = 17\n", 2 ; "limit_seventeen_reports_eighteen")]
 #[test_case("[tool.simplint.logic]\nmax-cognitive-complexity = 18\n", 1 ; "limit_eighteen_keeps_eighteen")]
 fn cognitive_complexity_limit(settings: &str, reports: usize) {
-    let source = fixture_source("cognitive_complexity/cognitive_complexity.py");
+    let source = common::fixture_source("logic/cognitive_complexity/cognitive_complexity.py");
     let root = common::project(&[("pyproject.toml", settings), ("module.py", &source)]);
     let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP529"]);
     assert_eq!(stdout.matches("SMP529").count(), reports);
@@ -807,7 +792,7 @@ fn cognitive_complexity_limit(settings: &str, reports: usize) {
 // Each function in the fixture ends its name with the score SonarSource gives it, which a limit of zero reports.
 #[test]
 fn cognitive_complexity_scores() {
-    let source = fixture_source("cognitive_complexity/cognitive_complexity_scores.py");
+    let source = common::fixture_source("logic/cognitive_complexity/cognitive_complexity_scores.py");
     let settings = "[tool.simplint.logic]\nmax-cognitive-complexity = 0\n";
     let root = common::project(&[("pyproject.toml", settings), ("module.py", &source)]);
     let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP529"]);
@@ -828,26 +813,18 @@ fn cognitive_complexity_scores() {
     assert_eq!(scores, expected);
 }
 
-fn fixture_source(path: &str) -> String {
-    std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/logic").join(path))
-        .expect("fixture")
-}
-
 // Ruff's RET504 reports `return name` after an assignment, and RUF070 reports a `yield from` of one, which SMP504 leaves
 // to them while the project's Ruff configuration runs them.
 #[test_case("def f() -> int:\n    total = 1 + 2\n    return total\n", "RET504", false, "`total` is used once" ; "return")]
 #[test_case("def f():\n    values = make()\n    yield from values\n", "RUF070", true, "`values` is used once" ; "yield_from")]
 fn single_use_variable_follows_ruff_returns_and_yield_froms(source: &str, code: &str, preview: bool, fragment: &str) {
-    for selected in [false, true] {
-        let select = if selected { format!("\"{code}\"") } else { String::new() };
-        let preview = if preview { "[tool.ruff]\npreview = true\n" } else { "" };
-        let root = common::project(&[
-            ("pyproject.toml", &format!("{preview}[tool.ruff.lint]\nselect = [{select}]\n")),
-            ("module.py", source),
-        ]);
-        let stdout = common::check(root.path(), &["--select", "SMP504"]).1;
-        assert_eq!(stdout.contains(fragment), !selected, "{stdout}");
-    }
+    let case = common::RuffOverlap {
+        settings: if preview { "[tool.ruff]\npreview = true\n" } else { "" },
+        select: "SMP504",
+        ruff_code: code,
+        files: &[("module.py", source)],
+    };
+    assert_eq!(common::reported_without_and_with_ruff(&case, fragment), [true, false]);
 }
 
 // Ruff's B006 and B008 report a value that becomes a parameter's default, so SMP504 keeps a variable whose value would
@@ -912,15 +889,12 @@ fn single_use_variable_follows_ruff_defaults(
 #[test_case("ISC003", "", "x = (\n    \"Hello, \"\n    + name\n)\n", true ; "name_in_pair")]
 #[test_case("ISC003", "[tool.ruff.lint.flake8-implicit-str-concat]\nallow-multiline = false\n", "x = (\n    \"Hello, \"\n    + \"world\"\n)\n", true ; "multiline_not_allowed")]
 fn string_concatenation_follows_ruff(code: &str, extra: &str, source: &str, reported_when_selected: bool) {
-    for selected in [false, true] {
-        let select = if selected { format!("\"{code}\"") } else { String::new() };
-        let root = common::project(&[
-            ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [{select}]\n{extra}")),
-            ("module.py", source),
-        ]);
-        let stdout = common::check(root.path(), &["--select", "SMP503"]).1;
-        assert_eq!(stdout.contains("Build text with an f-string"), !selected || reported_when_selected, "{stdout}");
-    }
+    let case =
+        common::RuffOverlap { settings: extra, select: "SMP503", ruff_code: code, files: &[("module.py", source)] };
+    assert_eq!(
+        common::reported_without_and_with_ruff(&case, "Build text with an f-string"),
+        [true, reported_when_selected]
+    );
 }
 
 // A class of the project is skipped under any name, and a function of the project is reported even when its name is
@@ -1093,41 +1067,6 @@ fn unused_default_leaves_public_functions_of_library_modules_alone() {
     );
 }
 
-// A fix writes the line ending the file uses, so a CRLF file comes out as the LF file does, with CRLF line endings.
-#[test_case(
-    "SMP513",
-    "py311",
-    "import contextlib\nimport os\n\n\ndef build(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        run()\n    finally:\n        os.chdir(old)\n"
-    ; "chdir_restore"
-)]
-#[test_case(
-    "SMP512",
-    "py314",
-    "import contextvars\n\nuser = contextvars.ContextVar(\"user\")\n\n\ndef handle(value):\n    token = user.set(value)\n    try:\n        run()\n    finally:\n        user.reset(token)\n"
-    ; "context_var_token_reset"
-)]
-#[test_case(
-    "SMP524",
-    "py313",
-    "import warnings\n\n\ndef connect(host):\n    warnings.warn(\"connect() is deprecated\", DeprecationWarning, stacklevel=2)\n    return host\n"
-    ; "warnings_deprecated"
-)]
-#[test_case(
-    "SMP526",
-    "py314",
-    "def total(items: list[int]) -> int:\n    count = 0\n    items.sort()\n    print(items); print(count)\n    return 0\n"
-    ; "early_assignment_split_line"
-)]
-fn logic_fix_keeps_crlf_line_endings(select: &str, target: &str, source: &str) {
-    let fix = |source: &str| {
-        let pyproject = format!("[tool.ruff]\ntarget-version = \"{target}\"\n");
-        common::fixed_file(&pyproject, "module.py", source, select).2
-    };
-    let fixed = fix(source);
-    assert_ne!(fixed, source);
-    assert_eq!(fix(&source.replace('\n', "\r\n")), fixed.replace('\n', "\r\n"));
-}
-
 // A pattern another module imports may be read by number there, so its groups keep their numbers.
 #[test]
 fn unnamed_regex_group_keeps_a_pattern_another_module_imports() {
@@ -1167,8 +1106,7 @@ fn module_name_another_module_uses_keeps_report_without_fix(
     ]);
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", select]);
     assert_eq!((code, stdout.as_str()), (1, report));
-    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", select, "--fix"]);
-    assert_eq!((code, stdout.as_str(), read(root.path(), "state.py")), (1, report, state.to_owned()));
+    common::assert_fix_keeps_report(root.path(), select, &["--fix"], "state.py", report);
 }
 
 // A name in a function is not the module's, so another module importing the same name does not withhold its fix.
@@ -1187,144 +1125,38 @@ fn context_var_token_local_named_like_an_imported_name_is_still_fixed() {
         (code, stdout.as_str(), read(root.path(), "state.py")),
         (
             0,
-            "Found 1 error (1 fixed, 0 remaining).\n",
+            common::ONE_FIXED,
             "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    with request_id.set(value):\n        run()\n".to_owned()
         )
     );
 }
 
+const PY311: &str = "[tool.ruff]\ntarget-version = \"py311\"\n";
+
 // A backslash joins the line before the assignment to it, so the `with` block would keep that line's statement before it.
-#[test]
-fn chdir_restore_keeps_report_without_fix_after_a_line_joined_by_backslash() {
-    let source = "import os\n\nstarted = True; \\\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(started)\nfinally:\n    os.chdir(old)\n";
-    let root = common::project(&[("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"), ("mod.py", source)]);
-    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
-    assert_eq!(
-        (code, stdout.as_str(), read(root.path(), "mod.py")),
-        (
-            1,
-            "mod.py:4:1: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n",
-            source.to_owned()
-        )
-    );
+#[test_case("import os\n\nstarted = True; \\\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(started)\nfinally:\n    os.chdir(old)\n", "mod.py:4:1: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n" ; "backslash_joined_line")]
+// A parameter named like the module hides it in the function, even when the module imports it too.
+#[test_case("import contextlib\nimport os\n\n\ndef run(target, contextlib=None):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n", "mod.py:6:5: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n" ; "parameter_takes_module_name")]
+fn chdir_restore_keeps_report_without_fix(source: &str, report: &str) {
+    let root = common::project(&[("pyproject.toml", PY311), ("mod.py", source)]);
+    common::assert_fix_keeps_report(root.path(), "SMP513", &["--fix"], "mod.py", report);
 }
 
 // A comment ends no line with a backslash, so a backslash in one does not join the lines and the fix stays.
-#[test]
-fn chdir_restore_fixes_after_a_comment_ending_in_backslash() {
-    let root = common::project(&[
-        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"),
-        (
-            "mod.py",
-            "import os\n\nstarted = True  # see \\\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd(), started)\nfinally:\n    os.chdir(old)\n",
-        ),
-    ]);
-    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
-    assert_eq!(
-        (code, stdout.as_str(), read(root.path(), "mod.py")),
-        (0, "Found 1 error (1 fixed, 0 remaining).\n", "import contextlib\nimport os\n\nstarted = True  # see \\\nwith contextlib.chdir(\"..\"):\n    print(os.getcwd(), started)\n".to_owned())
-    );
-}
-
+#[test_case("mod.py", "import os\n\nstarted = True  # see \\\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd(), started)\nfinally:\n    os.chdir(old)\n", "import contextlib\nimport os\n\nstarted = True  # see \\\nwith contextlib.chdir(\"..\"):\n    print(os.getcwd(), started)\n" ; "comment_ending_in_backslash")]
 // The import goes above the comment that describes the import it precedes, so the comment stays with its statement.
-#[test]
-fn chdir_restore_import_goes_above_the_comment_of_the_import_it_precedes() {
-    let root = common::project(&[
-        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"),
-        (
-            "block.py",
-            "import abc\n# os: the build runs in the target directory\nimport os\nimport sys\n\n\ndef run(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return abc, sys, os.listdir()\n    finally:\n        os.chdir(old)\n",
-        ),
-    ]);
-    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
-    assert_eq!(
-        (code, stdout.as_str(), read(root.path(), "block.py")),
-        (
-            0,
-            "Found 1 error (1 fixed, 0 remaining).\n",
-            "import abc\nimport contextlib\n# os: the build runs in the target directory\nimport os\nimport sys\n\n\ndef run(target):\n    with contextlib.chdir(target):\n        return abc, sys, os.listdir()\n".to_owned()
-        )
-    );
-}
-
+#[test_case("block.py", "import abc\n# os: the build runs in the target directory\nimport os\nimport sys\n\n\ndef run(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return abc, sys, os.listdir()\n    finally:\n        os.chdir(old)\n", "import abc\nimport contextlib\n# os: the build runs in the target directory\nimport os\nimport sys\n\n\ndef run(target):\n    with contextlib.chdir(target):\n        return abc, sys, os.listdir()\n" ; "import_above_comment")]
 // A docstring line that starts with `#` is text, not a comment, so the import goes above the comment after the docstring
 // and not into the docstring.
-#[test]
-fn chdir_restore_import_skips_a_docstring_line_starting_with_hash() {
-    let root = common::project(&[
-        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"),
-        (
-            "h.py",
-            "\"\"\"Doc.\n\n# heading\"\"\"\n# comment\nVALUE = 1\n\n\ndef run(target):\n    import os\n\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n",
-        ),
-    ]);
-    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
-    assert_eq!(
-        (code, stdout.as_str(), read(root.path(), "h.py")),
-        (
-            0,
-            "Found 1 error (1 fixed, 0 remaining).\n",
-            "\"\"\"Doc.\n\n# heading\"\"\"\nimport contextlib\n\n# comment\nVALUE = 1\n\n\ndef run(target):\n    import os\n\n    with contextlib.chdir(target):\n        return os.listdir()\n".to_owned()
-        )
-    );
-}
-
+#[test_case("h.py", "\"\"\"Doc.\n\n# heading\"\"\"\n# comment\nVALUE = 1\n\n\ndef run(target):\n    import os\n\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n", "\"\"\"Doc.\n\n# heading\"\"\"\nimport contextlib\n\n# comment\nVALUE = 1\n\n\ndef run(target):\n    import os\n\n    with contextlib.chdir(target):\n        return os.listdir()\n" ; "docstring_line_starting_with_hash")]
 // A comment on the first line is a header of the file, which the import stays below.
-#[test]
-fn chdir_restore_import_stays_below_a_header_comment_on_the_first_line() {
-    let root = common::project(&[
-        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"),
-        (
-            "first.py",
-            "# Runs the step in the target directory; see docs/build.md.\ndef run(target):\n    import os\n\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n",
-        ),
-    ]);
-    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
-    assert_eq!(
-        (code, stdout.as_str(), read(root.path(), "first.py")),
-        (
-            0,
-            "Found 1 error (1 fixed, 0 remaining).\n",
-            "# Runs the step in the target directory; see docs/build.md.\nimport contextlib\n\n\ndef run(target):\n    import os\n\n    with contextlib.chdir(target):\n        return os.listdir()\n".to_owned()
-        )
-    );
-}
-
-// A parameter named like the module hides it in the function, even when the module imports it too.
-#[test]
-fn chdir_restore_keeps_report_without_fix_when_a_parameter_takes_the_module_name() {
-    let source = "import contextlib\nimport os\n\n\ndef run(target, contextlib=None):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n";
-    let root = common::project(&[("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"), ("mod.py", source)]);
-    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
-    assert_eq!(
-        (code, stdout.as_str(), read(root.path(), "mod.py")),
-        (
-            1,
-            "mod.py:6:5: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n",
-            source.to_owned()
-        )
-    );
-}
-
+#[test_case("first.py", "# Runs the step in the target directory; see docs/build.md.\ndef run(target):\n    import os\n\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n", "# Runs the step in the target directory; see docs/build.md.\nimport contextlib\n\n\ndef run(target):\n    import os\n\n    with contextlib.chdir(target):\n        return os.listdir()\n" ; "header_comment_on_first_line")]
 // A class attribute named like the module is not seen by the methods of the class, so their fix stays.
-#[test]
-fn chdir_restore_fixes_a_method_whose_class_attribute_takes_the_module_name() {
-    let root = common::project(&[
-        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"),
-        (
-            "mod.py",
-            "import os\n\n\nclass Runner:\n    contextlib = None\n\n    def run(self, target):\n        old = os.getcwd()\n        os.chdir(target)\n        try:\n            return os.listdir()\n        finally:\n            os.chdir(old)\n",
-        ),
-    ]);
+#[test_case("mod.py", "import os\n\n\nclass Runner:\n    contextlib = None\n\n    def run(self, target):\n        old = os.getcwd()\n        os.chdir(target)\n        try:\n            return os.listdir()\n        finally:\n            os.chdir(old)\n", "import contextlib\nimport os\n\n\nclass Runner:\n    contextlib = None\n\n    def run(self, target):\n        with contextlib.chdir(target):\n            return os.listdir()\n" ; "class_attribute_takes_module_name")]
+fn chdir_restore_fixes(file: &str, source: &str, expected: &str) {
+    let root = common::project(&[("pyproject.toml", PY311), (file, source)]);
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
-    assert_eq!(
-        (code, stdout.as_str(), read(root.path(), "mod.py")),
-        (
-            0,
-            "Found 1 error (1 fixed, 0 remaining).\n",
-            "import contextlib\nimport os\n\n\nclass Runner:\n    contextlib = None\n\n    def run(self, target):\n        with contextlib.chdir(target):\n            return os.listdir()\n".to_owned()
-        )
-    );
+    assert_eq!((code, stdout.as_str(), read(root.path(), file)), (0, common::ONE_FIXED, expected.to_owned()));
 }
 
 // An import that shares its line with code cannot take the new import below it, as the code runs first, so the fix
@@ -1356,7 +1188,7 @@ fn asyncio_import_after_a_comment_on_the_import_line_is_inserted_below_it() {
         (code, stdout.as_str(), read(root.path(), "mod.py")),
         (
             0,
-            "Found 1 error (1 fixed, 0 remaining).\n",
+            common::ONE_FIXED,
             "import asyncio  # loop\nimport inspect\n\n\ndef check(task):\n    asyncio.sleep(0)\n    return inspect.iscoroutinefunction(task)\n".to_owned()
         )
     );

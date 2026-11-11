@@ -6,8 +6,7 @@ use ruff_text_size::TextRange;
 
 use super::bindings::{Bindings, Value, bindings_in};
 use super::declared::{
-    Class, annotation, body_range, class_at, instance_of, is_class_name, is_property, keeps_return, self_parameter,
-    target_binds,
+    Class, annotation, attribute_root, class_at, instance_of, is_property, keeps_return, self_parameter, target_binds,
 };
 use super::members::{Members, members_of, written_outside};
 use super::tables::{
@@ -15,13 +14,14 @@ use super::tables::{
 };
 use super::{Kind, Kinds};
 use crate::lint::walker::{Scope, Walker};
-use crate::syntax::Visibility;
+use crate::rules::is_class_like;
+use crate::syntax::{Visibility, sole_argument};
 
 impl<'w, 'a> Kinds<'w, 'a> {
     pub fn new(walker: &'w Walker<'w, 'a>, range: TextRange) -> Self {
         // A default value or decorator sits in the scope around its def.
         let scopes =
-            walker.scopes().iter().take_while(|scope| body_range(**scope).contains_range(range)).copied().collect();
+            walker.scopes().iter().take_while(|scope| scope.body_range().contains_range(range)).copied().collect();
         Self { walker, scopes, at_spot: true, resolving: Vec::new(), reading: Vec::new(), relies_on: usize::MAX }
     }
 
@@ -122,10 +122,9 @@ impl<'w, 'a> Kinds<'w, 'a> {
                 None => match name.id.as_str() {
                     "ascii" | "bin" | "chr" | "format" | "hex" | "input" | "oct" | "repr" | "str" => Some(Kind::Str),
                     "int" | "len" | "ord" => Some(Kind::Int),
-                    "frozenset" | "list" | "reversed" | "set" | "sorted" | "tuple" => match arguments.args.as_ref() {
-                        [iterable] if arguments.keywords.is_empty() => self.item(iterable, depth).and_then(items),
-                        _ => None,
-                    },
+                    "frozenset" | "list" | "reversed" | "set" | "sorted" | "tuple" => {
+                        sole_argument(call).and_then(|iterable| self.item(iterable, depth)).and_then(items)
+                    }
                     "range" => Some(Kind::IntItems),
                     _ => None,
                 },
@@ -184,7 +183,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
             Some(false) => None,
             None => self
                 .library_call(call, depth)
-                .or_else(|| name.filter(|name| is_class_name(name)).map(|_| Kind::ImportedInstance)),
+                .or_else(|| name.filter(|name| is_class_like(name)).map(|_| Kind::ImportedInstance)),
         }
     }
 
@@ -212,11 +211,10 @@ impl<'w, 'a> Kinds<'w, 'a> {
 
     // Whether `expr` is a name the module imports, or an attribute of one.
     fn imported_root(&self, expr: &'a Expr, depth: usize) -> bool {
-        let mut head = expr;
-        while let Expr::Attribute(ast::ExprAttribute { value, .. }) = head {
-            head = value;
-        }
-        head.as_name_expr().and_then(|name| self.lookup(&name.id, depth)).is_some_and(|(bindings, _)| bindings.imported)
+        attribute_root(expr)
+            .as_name_expr()
+            .and_then(|name| self.lookup(&name.id, depth))
+            .is_some_and(|(bindings, _)| bindings.imported)
     }
 
     // What a call to a standard library function returns, for a function the module imports.
@@ -303,11 +301,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
     // The qualified name of `expr`, an imported name or an attribute of one, when the module's own import binds the
     // name it starts with.
     pub(super) fn qualified(&self, expr: &'a Expr, depth: usize) -> Option<QualifiedName<'w>> {
-        let mut head = expr;
-        while let Expr::Attribute(ast::ExprAttribute { value, .. }) = head {
-            head = value;
-        }
-        let (bindings, scope) = self.lookup(&head.as_name_expr()?.id, depth)?;
+        let (bindings, scope) = self.lookup(&attribute_root(expr).as_name_expr()?.id, depth)?;
         let semantic = self.walker.checker.semantic();
         (scope == 0 && bindings.only_imported()).then(|| semantic.qualified_name(expr)).flatten()
     }
@@ -397,7 +391,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
 
     // The scope the innermost `depth` scopes end in, the module's as an empty range.
     pub(super) fn scope_key(&self, depth: usize) -> TextRange {
-        depth.checked_sub(1).map_or_else(TextRange::default, |index| body_range(self.scopes[index]))
+        depth.checked_sub(1).map_or_else(TextRange::default, |index| self.scopes[index].body_range())
     }
 
     // The innermost generator of a comprehension around the spot that binds `name`.

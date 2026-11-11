@@ -1,13 +1,14 @@
 use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::{self as ast, Expr, Stmt};
-use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::api::{AllList, is_alone_on_line};
+use crate::rules::edits::fix_of;
 use crate::settings::ProjectKind;
-use crate::syntax::{Exports, alias_binding, all_binding, all_literal, all_mutation, module_statements};
+use crate::syntax::{Exports, alias_binding, all_binding, all_mutation, module_statements};
 
 pub fn unused_export(checker: &Checker) {
     let project = checker.project();
@@ -41,18 +42,19 @@ pub fn unused_export(checker: &Checker) {
     }
     let statements: Vec<&Stmt> = checker.body().iter().filter(|stmt| builds_all(stmt)).collect();
     // A list built over several statements has no one place to remove a name from.
-    let literal = match statements.as_slice() {
-        [stmt] => all_literal(stmt).filter(|_| all_binding(stmt).is_some_and(|binding| binding.operator.is_none())),
+    let list = match statements.as_slice() {
+        [stmt] => AllList::of(stmt).filter(|_| all_binding(stmt).is_some_and(|binding| binding.operator.is_none())),
         _ => None,
     };
-    let elements = literal.map_or(&[][..], |(_, elements)| elements);
+    let elements = list.as_ref().map_or(&[][..], AllList::elements);
     // Ruff's fix for the import this leaves unused drops every binding of a name imported twice from one module, as in
     // `from .question import Question, Question as Alias`, the one still in use included.
     let doubled = doubled_bindings(checker);
     let unused_set: FxHashSet<&str> = unused.iter().copied().collect();
-    let fix = literal
+    let fix = list
+        .as_ref()
         .filter(|_| !unused.iter().any(|name| doubled.contains(name) || project.is_read_opaquely(name)))
-        .and_then(|(value, elements)| removal(checker, statements.first()?, value, elements, &unused_set));
+        .and_then(|list| removal(checker, list, &unused_set));
     let title = format!(
         "Remove {} from `__all__`",
         unused.iter().map(|name| format!("`{name}`")).collect::<Vec<_>>().join(", ")
@@ -87,26 +89,23 @@ fn builds_all(stmt: &Stmt) -> bool {
 // Each run of unused names goes with the separator after it, or, at the end of the list, with the separator before it,
 // so the layout and comments around the names kept stay as they are, whatever the layout. A comment inside a run, or
 // after a removed name that sits alone on its line, may belong to it, so the fix leaves such a list alone.
-fn removal(
-    checker: &Checker,
-    statement: &Stmt,
-    value: TextRange,
-    elements: &[Expr],
-    unused: &FxHashSet<&str>,
-) -> Option<Fix> {
+fn removal(checker: &Checker, list: &AllList, unused: &FxHashSet<&str>) -> Option<Fix> {
     let source = checker.source;
+    let elements = list.elements();
     let is_unused =
         |element: &Expr| element.as_string_literal_expr().is_some_and(|text| unused.contains(text.value.to_str()));
-    let (open, close) = if source[value].starts_with('[') { ("[", "]") } else { ("(", ")") };
+    let (open, close) = list.brackets(checker);
     let kept = elements.iter().filter(|element| !is_unused(element)).count();
     if kept == 0 {
-        return (!checker.has_comment_in(value)).then(|| {
-            Fix::applicable_edit(Edit::range_replacement(format!("{open}{close}"), value), applicability(checker))
+        return (!list.has_comment(checker)).then(|| {
+            Fix::applicable_edit(
+                Edit::range_replacement(format!("{open}{close}"), list.value()),
+                applicability(checker),
+            )
         });
     }
     // A parenthesized element's range starts at its parenthesis, which the deletion must take with it.
-    let ranges: Vec<TextRange> =
-        elements.iter().map(|element| checker.parenthesized_range(element, statement.into())).collect();
+    let ranges: Vec<TextRange> = elements.iter().map(|element| list.element_range(checker, element)).collect();
     // A tuple left with one name needs a comma after it.
     let lone = open == "(" && kept == 1;
     let mut edits = Vec::new();
@@ -146,9 +145,7 @@ fn removal(
     {
         edits.push(Edit::insertion(",".to_owned(), last.end()));
     }
-    let mut edits = edits.into_iter();
-    let first = edits.next()?;
-    Some(Fix::applicable_edits(first, edits, applicability(checker)))
+    fix_of(edits, applicability(checker))
 }
 
 // Whether a comment after a name that sits alone on its line may be the name's, rather than one after the statement.
@@ -156,7 +153,7 @@ fn owns_comment(checker: &Checker, name: TextRange) -> bool {
     let Some(comment) = checker.trailing_comment(name) else {
         return false;
     };
-    let alone = checker.text(TextRange::new(checker.source.line_start(name.start()), name.start())).trim().is_empty();
+    let alone = is_alone_on_line(checker, name);
     let before_comment = checker.text(TextRange::new(name.end(), comment.start())).trim();
     alone && matches!(before_comment, "" | ",")
 }

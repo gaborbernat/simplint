@@ -6,7 +6,6 @@ use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::is_alone_on_lines;
 use crate::rules::naming::script_targets;
 use crate::syntax::is_name;
 
@@ -28,9 +27,9 @@ pub fn unguarded_entrypoint_call(checker: &Checker) {
         return;
     }
     let source = checker.source;
-    let fix = (is_alone_on_lines(source, stmt.range()) && !source.contains_line_break(stmt.range())).then(|| {
+    let fix = (checker.is_alone_on_lines(stmt.range()) && !source.contains_line_break(stmt.range())).then(|| {
         let lines = source.full_lines_range(stmt.range());
-        let eol = checker.stylist.line_ending().as_str();
+        let eol = checker.line_ending();
         let indent = checker.stylist.indentation().as_str();
         Fix::unsafe_edit(Edit::range_replacement(
             format!("if __name__ == \"__main__\":{eol}{indent}{}", &source[lines]),

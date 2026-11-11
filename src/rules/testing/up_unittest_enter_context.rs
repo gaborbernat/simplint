@@ -8,18 +8,9 @@ use rustc_hash::FxHashMap;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::testing::is_test_case;
-use crate::rules::{indentation, is_alone_on_lines};
+use crate::rules::testing::recognize::is_patcher;
 use crate::semantic::Semantic;
-use crate::syntax::for_each_body;
-
-const PATCHERS: &[&[&str]] = &[
-    &["unittest", "mock", "patch"],
-    &["unittest", "mock", "patch", "object"],
-    &["unittest", "mock", "patch", "dict"],
-    &["mock", "patch"],
-    &["mock", "patch", "object"],
-    &["mock", "patch", "dict"],
-];
+use crate::syntax::{for_each_body, sole_argument};
 
 pub fn up_unittest_enter_context(checker: &Checker) {
     let mut spellings = FxHashMap::default();
@@ -62,13 +53,13 @@ fn check_sequence<'a>(
     let range = TextRange::new(start.start(), cleanup.end());
     let fix = (!used_elsewhere
         && !checker.has_comment_in(range)
-        && [start, bind, cleanup].iter().all(|stmt| is_alone_on_lines(source, stmt.range())))
+        && [start, bind, cleanup].iter().all(|stmt| checker.is_alone_on_lines(stmt.range())))
     .then(|| {
         let replacement = format!(
             "{}{value} = self.enterContext({}){}",
-            indentation(source, start),
+            checker.indentation(start),
             checker.text(call.range()),
-            checker.stylist.line_ending().as_str()
+            checker.line_ending()
         );
         Fix::safe_edit(Edit::range_replacement(replacement, source.full_lines_range(range)))
     });
@@ -95,7 +86,7 @@ fn patcher_assignment<'a>(semantic: &Semantic, stmt: &'a Stmt) -> Option<(&'a st
     let Expr::Call(call) = value else {
         return None;
     };
-    PATCHERS.iter().any(|path| semantic.resolves_to(&call.func, path)).then_some((target, call))
+    is_patcher(semantic, &call.func).then_some((target, call))
 }
 
 // The name the started patch's value is bound to, when the statement is `value = patcher.start()`.
@@ -115,12 +106,10 @@ fn is_cleanup_of(stmt: &Stmt, patcher: &str) -> bool {
     let Expr::Call(call) = value.as_ref() else {
         return false;
     };
-    let [stop] = call.arguments.args.as_ref() else {
+    let Some(stop) = sole_argument(call) else {
         return false;
     };
-    call.arguments.keywords.is_empty()
-        && is_method_on(&call.func, "self", "addCleanup")
-        && is_method_on(stop, patcher, "stop")
+    is_method_on(&call.func, "self", "addCleanup") && is_method_on(stop, patcher, "stop")
 }
 
 fn single_name_assignment(stmt: &Stmt) -> Option<(&str, &Expr)> {

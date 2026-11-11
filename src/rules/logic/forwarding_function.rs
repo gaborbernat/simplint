@@ -19,6 +19,7 @@ pub fn forwarding_function(checker: &Checker) {
                     .collect();
                 check_forwarding(checker, function, &calls, None);
             }
+            // Only positional bases open the class here: `metaclass=` and other class keywords add no caller of `self`.
             Stmt::ClassDef(class)
                 if class.arguments.as_ref().is_none_or(|arguments| arguments.args.is_empty())
                     && !checker.project().is_base_class(class.name.as_str()) =>

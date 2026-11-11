@@ -2,126 +2,126 @@ use test_case::test_case;
 
 use crate::common;
 
-#[test_case("missing-from-all", "_missing_from_all.py" ; "missing_from_all")]
-#[test_case("missing-from-all", "_missing_from_all_multiline.py" ; "missing_from_all_multiline")]
-#[test_case("missing-from-all", "_missing_from_all_noall.py" ; "missing_from_all_creates_all")]
-#[test_case("missing-from-all", "_missing_from_all_guard.py" ; "missing_from_all_above_main_guard")]
-#[test_case("missing-from-all", "_missing_from_all_bare.py" ; "missing_from_all_bare_tuple")]
-#[test_case("missing-from-all", "_missing_from_all_sorted.py" ; "missing_from_all_sorted_insertion")]
-#[test_case("missing-from-all", "_missing_from_all_reexport.py" ; "missing_from_all_reexported_all")]
-#[test_case("missing-from-all", "_missing_from_all_hanging.py" ; "missing_from_all_hanging_indent")]
-#[test_case("missing-from-all", "_missing_from_all_hanging_comment.py" ; "missing_from_all_hanging_indent_comment")]
-#[test_case("missing-from-all", "_missing_from_all_aug.py" ; "missing_from_all_augmented")]
-#[test_case("missing-from-all", "_missing_from_all_call.py" ; "missing_from_all_dynamic")]
-#[test_case("missing-from-all", "_missing_from_all_nested.py" ; "missing_from_all_nested_all")]
-#[test_case("missing-from-all", "_missing_from_all_empty.py" ; "missing_from_all_empty")]
-#[test_case("missing-from-all", "_missing_from_all_empty_comment.py" ; "missing_from_all_empty_comment")]
-#[test_case("missing-from-all", "_missing_from_all_last_comment.py" ; "missing_from_all_last_comment")]
-#[test_case("missing-from-all", "_missing_from_all_last_no_comma.py" ; "missing_from_all_last_no_comma")]
-#[test_case("missing-from-all", "_missing_from_all_last_bracket.py" ; "missing_from_all_last_bracket")]
-#[test_case("missing-from-all", "_missing_from_all_last_comma_line.py" ; "missing_from_all_last_comma_line")]
-#[test_case("missing-from-all", "_missing_from_all_imported.py" ; "missing_from_all_imported_name")]
-#[test_case("missing-from-all", "_missing_from_all_parenthesized_tail.py" ; "missing_from_all_parenthesized_tail")]
-#[test_case("missing-from-all", "_missing_from_all_parenthesized_next.py" ; "missing_from_all_parenthesized_next")]
-#[test_case("missing-from-all", "_missing_from_all_reached.py" ; "missing_from_all_reached_types")]
-#[test_case("missing-from-all", "missing_from_all_scripts.py" ; "missing_from_all_entry_point")]
-#[test_case("missing-from-all", "tests/test_module_docstring.py" ; "missing_from_all_test_module")]
-#[test_case("missing-from-all", "package/__init__.py" ; "missing_from_all_init_module")]
-#[test_case("unused-export", "_exporting/unused_export.py" ; "unused_export")]
-#[test_case("unused-export", "_exporting/unused_export_inline.py" ; "unused_export_inline")]
-#[test_case("unused-export", "_exporting/unused_export_tuple.py" ; "unused_export_tuple")]
-#[test_case("unused-export", "_exporting/unused_export_all.py" ; "unused_export_all_unused")]
-#[test_case("unused-export", "_exporting/unused_export_comment.py" ; "unused_export_comment")]
-#[test_case("unused-export", "_exporting/unused_export_extend.py" ; "unused_export_extended")]
-#[test_case("unused-export", "_exporting/unused_export_call.py" ; "unused_export_extend_call")]
-#[test_case("unused-export", "_exporting/sub/__init__.py" ; "unused_export_init_module")]
-#[test_case("unused-export", "_exporting/unused_export_double.py" ; "unused_export_double_import")]
-#[test_case("unused-export", "_exporting/unused_export_comment_all.py" ; "unused_export_comment_all")]
-#[test_case("unused-export", "_exporting/unused_export_lazy.py" ; "unused_export_lazy_module")]
-#[test_case("unused-export", "_exporting/unused_export_packed.py" ; "unused_export_packed")]
-#[test_case("unused-export", "_exporting/unused_export_tuple_end.py" ; "unused_export_tuple_end")]
-#[test_case("unused-export", "_exporting/unused_export_parenthesized.py" ; "unused_export_parenthesized")]
-#[test_case("unused-export", "_exporting/unused_export_trailing_comment.py" ; "unused_export_trailing_comment")]
-#[test_case("unused-export", "_exporting/unused_export_kept_comment.py" ; "unused_export_kept_comment")]
-#[test_case("unused-export", "_exporting/unused_export_kept_entry_comment.py" ; "unused_export_kept_entry_comment")]
-#[test_case("unused-export", "_exporting/unused_export_statement_comment.py" ; "unused_export_statement_comment")]
-#[test_case("unused-export", "_exporting/unused_export_noted.py" ; "unused_export_noted")]
-#[test_case("unused-export", "_exporting/unused_export_star.py" ; "unused_export_star_imported")]
-#[test_case("unused-export", "unused_export_root.py" ; "unused_export_api_root")]
-#[test_case("unused-export", "unused_export_public_module.py" ; "unused_export_public_module")]
-#[test_case("unused-export", "_exporting/unused_export_reached.py" ; "unused_export_reached_types")]
-#[test_case("unused-export", "tests/test_module_docstring.py" ; "unused_export_test_module")]
-#[test_case("unexported-public-name", "unexported_public_name.py" ; "unexported_public_name")]
-#[test_case("unexported-public-name", "unexported_public_name_extend.py" ; "unexported_public_name_extended_all")]
-#[test_case("unexported-public-name", "unexported_public_name_remove.py" ; "unexported_public_name_dynamic_all")]
-#[test_case("unexported-public-name", "tests/test_module_docstring.py" ; "unexported_public_name_test_module")]
-#[test_case("unexported-public-name", "multiline_module_docstring_ok.py" ; "unexported_public_name_without_all")]
-#[test_case("unexported-public-name", "unexported_public_name_ply.py" ; "unexported_public_name_ply_grammar")]
-#[test_case("unexported-public-name", "missing_from_all_reached.py" ; "unexported_public_name_reached_types")]
-#[test_case("module-variable-prefix", "_module_variable_prefix.py" ; "module_variable_prefix")]
-#[test_case("module-variable-prefix", "_module_variable_prefix_empty_name.py" ; "module_variable_prefix_empty_or_keyword_name")]
-#[test_case("module-variable-prefix", "module_variable_prefix_source_text.py" ; "module_variable_prefix_source_text")]
-#[test_case("module-variable-prefix", "module_variable_prefix_type_alias.py" ; "module_variable_prefix_type_alias")]
-#[test_case("module-variable-prefix", "module_variable_prefix_function_alias.py" ; "module_variable_prefix_function_alias")]
-#[test_case("module-variable-prefix", "_module_variable_prefix_block_local.py" ; "module_variable_prefix_block_local")]
-#[test_case("module-variable-prefix", "_module_variable_prefix_computed_setattr.py" ; "module_variable_prefix_computed_setattr")]
-#[test_case("module-variable-prefix", "module_variable_prefix_type_checking_stubs.py" ; "module_variable_prefix_type_checking_stubs")]
-#[test_case("unexported-public-name", "unexported_public_name_source_text.py" ; "unexported_public_name_source_text")]
-#[test_case("all-format", "all_format.py" ; "all_format")]
-#[test_case("all-format", "all_format_tuple.py" ; "all_format_tuple")]
-#[test_case("all-format", "all_format_bare.py" ; "all_format_bare_tuple")]
-#[test_case("all-format", "all_format_ruff_overlap.py" ; "all_format_ruff_overlap")]
-#[test_case("all-format", "all_format_parenthesized_last.py" ; "all_format_parenthesized_last")]
-#[test_case("all-format", "all_format_parenthesized_tuple.py" ; "all_format_parenthesized_tuple")]
-#[test_case("all-format", "all_format_augmented_tuple.py" ; "all_format_augmented_tuple")]
-#[test_case("all-format", "all_format_augmented_literal.py" ; "all_format_augmented_literal")]
-#[test_case("all-format", "all_format_augmented_nested.py" ; "all_format_augmented_nested")]
-#[test_case("all-format", "all_format_augmented_noqa.py" ; "all_format_augmented_noqa")]
-#[test_case("all-not-last", "all_not_last.py" ; "all_not_last")]
-#[test_case("all-not-last", "all_not_last_eof.py" ; "all_not_last_at_eof")]
-#[test_case("all-not-last", "all_not_last_reversed.py" ; "all_not_last_reversed_main_guard")]
-#[test_case("all-not-last", "all_not_last_nested.py" ; "all_not_last_extended_in_block")]
-#[test_case("all-not-last", "all_not_last_negated.py" ; "all_not_last_negated_guard")]
-#[test_case("all-not-last", "all_not_last_nonl.py" ; "all_not_last_without_trailing_newline")]
-#[test_case("all-not-last", "all_not_last_ann.py" ; "all_not_last_annotated_and_augmented")]
-#[test_case("all-not-last", "all_not_last_fenced.py" ; "all_not_last_keeps_its_fmt_off_fence")]
-#[test_case("all-not-last", "all_not_last_mutated.py" ; "all_not_last_mutated_after_binding")]
-#[test_case("all-not-last", "all_not_last_mutated_before_definition.py" ; "all_not_last_mutated_before_definition")]
-#[test_case("all-not-last", "all_not_last_dynamic_attribute.py" ; "all_not_last_dynamic_attribute")]
-#[test_case("all-not-last", "all_not_last_dynamic_string.py" ; "all_not_last_dynamic_string")]
-#[test_case("all-not-last", "all_not_last_dynamic_globals.py" ; "all_not_last_dynamic_globals")]
-#[test_case("all-not-last", "all_not_last_dynamic_vars.py" ; "all_not_last_dynamic_vars")]
-#[test_case("all-not-last", "all_not_last_dynamic_dir.py" ; "all_not_last_dynamic_dir")]
-#[test_case("all-not-last", "all_not_last_function_reader.py" ; "all_not_last_read_by_function")]
-#[test_case("all-not-last", "all_not_last_function_other.py" ; "all_not_last_function_without_read")]
-#[test_case("all-not-last", "all_not_last_computed_value.py" ; "all_not_last_computed_value")]
-#[test_case("all-not-last", "all_not_last_comment_above.py" ; "all_not_last_comment_above")]
-#[test_case("all-not-last", "all_not_last_function_globals_string.py" ; "all_not_last_function_globals_string")]
-#[test_case("all-not-last", "all_not_last_function_sysmod.py" ; "all_not_last_function_sysmod")]
-#[test_case("all-not-last", "all_not_last_lambda_dir.py" ; "all_not_last_lambda_dir")]
-#[test_case("all-not-last", "all_not_last_fence_comment.py" ; "all_not_last_fence_comment")]
-#[test_case("all-not-last", "multiline_module_docstring_ok.py" ; "all_not_last_without_all")]
-#[test_case("init-module-content", "package/__init__.py" ; "init_module_content")]
-#[test_case("init-module-content", "facade/__init__.py" ; "init_module_content_facade_with_all")]
-#[test_case("init-module-content", "loose/__init__.py" ; "init_module_content_facade_without_all")]
-#[test_case("init-module-content", "_hidden/__init__.py" ; "init_module_content_private_package")]
-#[test_case("init-module-content", "package/sub/__init__.py" ; "init_module_content_docstring_only")]
-#[test_case("init-module-content", "multiline_module_docstring_ok.py" ; "init_module_content_regular_module")]
-#[test_case("init-module-content", "lazy_modules/__init__.py" ; "init_module_content_lazy_modules")]
-#[test_case("init-module-content", "lazy_annotated/__init__.py" ; "init_module_content_lazy_annotated")]
-#[test_case("test-only-code", "tonly_builders.py" ; "test_only_code")]
-#[test_case("test-only-code", "tonly_app.py" ; "test_only_code_used_outside_tests")]
-#[test_case("test-only-code", "test_tonly_builders.py" ; "test_only_code_test_module")]
-#[test_case("unused-definition", "_unused_definition.py" ; "unused_definition")]
-#[test_case("unused-definition", "_unused_definition_used.py" ; "unused_definition_imported")]
-#[test_case("unused-definition", "tests/test_udef_helpers.py" ; "unused_definition_test_module")]
-#[test_case("test-only-parameter", "_test_only_parameter.py" ; "test_only_parameter")]
-#[test_case("unused-return-value", "_unused_return_value.py" ; "unused_return_value")]
-#[test_case("unused-return-value", "_unused_return_value_listed.py" ; "unused_return_value_listed")]
-#[test_case("unused-definition", "_unused_definition_frozen_core.py" ; "unused_definition_unresolved_import")]
-#[test_case("unused-definition", "_unused_definition_doctest.py" ; "unused_definition_doctest")]
-fn rule(rule: &str, fixture: &str) {
-    common::assert_rule_snapshot(rule, fixture, "py314");
+#[test_case("missing-from-all", "_missing_from_all.py", None ; "missing_from_all")]
+#[test_case("missing-from-all", "_missing_from_all_multiline.py", None ; "missing_from_all_multiline")]
+#[test_case("missing-from-all", "_missing_from_all_noall.py", None ; "missing_from_all_creates_all")]
+#[test_case("missing-from-all", "_missing_from_all_guard.py", None ; "missing_from_all_above_main_guard")]
+#[test_case("missing-from-all", "_missing_from_all_bare.py", None ; "missing_from_all_bare_tuple")]
+#[test_case("missing-from-all", "_missing_from_all_sorted.py", None ; "missing_from_all_sorted_insertion")]
+#[test_case("missing-from-all", "_missing_from_all_reexport.py", None ; "missing_from_all_reexported_all")]
+#[test_case("missing-from-all", "_missing_from_all_hanging.py", None ; "missing_from_all_hanging_indent")]
+#[test_case("missing-from-all", "_missing_from_all_hanging_comment.py", None ; "missing_from_all_hanging_indent_comment")]
+#[test_case("missing-from-all", "_missing_from_all_aug.py", None ; "missing_from_all_augmented")]
+#[test_case("missing-from-all", "_missing_from_all_call.py", None ; "missing_from_all_dynamic")]
+#[test_case("missing-from-all", "_missing_from_all_nested.py", None ; "missing_from_all_nested_all")]
+#[test_case("missing-from-all", "_missing_from_all_empty.py", None ; "missing_from_all_empty")]
+#[test_case("missing-from-all", "_missing_from_all_empty_comment.py", None ; "missing_from_all_empty_comment")]
+#[test_case("missing-from-all", "_missing_from_all_last_comment.py", None ; "missing_from_all_last_comment")]
+#[test_case("missing-from-all", "_missing_from_all_last_no_comma.py", None ; "missing_from_all_last_no_comma")]
+#[test_case("missing-from-all", "_missing_from_all_last_bracket.py", None ; "missing_from_all_last_bracket")]
+#[test_case("missing-from-all", "_missing_from_all_last_comma_line.py", None ; "missing_from_all_last_comma_line")]
+#[test_case("missing-from-all", "_missing_from_all_imported.py", None ; "missing_from_all_imported_name")]
+#[test_case("missing-from-all", "_missing_from_all_parenthesized_tail.py", None ; "missing_from_all_parenthesized_tail")]
+#[test_case("missing-from-all", "_missing_from_all_parenthesized_next.py", None ; "missing_from_all_parenthesized_next")]
+#[test_case("missing-from-all", "_missing_from_all_reached.py", None ; "missing_from_all_reached_types")]
+#[test_case("missing-from-all", "missing_from_all_scripts.py", None ; "missing_from_all_entry_point")]
+#[test_case("missing-from-all", "tests/test_module_docstring.py", None ; "missing_from_all_test_module")]
+#[test_case("missing-from-all", "package/__init__.py", None ; "missing_from_all_init_module")]
+#[test_case("unused-export", "_exporting/unused_export.py", None ; "unused_export")]
+#[test_case("unused-export", "_exporting/unused_export_inline.py", None ; "unused_export_inline")]
+#[test_case("unused-export", "_exporting/unused_export_tuple.py", None ; "unused_export_tuple")]
+#[test_case("unused-export", "_exporting/unused_export_all.py", None ; "unused_export_all_unused")]
+#[test_case("unused-export", "_exporting/unused_export_comment.py", None ; "unused_export_comment")]
+#[test_case("unused-export", "_exporting/unused_export_extend.py", None ; "unused_export_extended")]
+#[test_case("unused-export", "_exporting/unused_export_call.py", None ; "unused_export_extend_call")]
+#[test_case("unused-export", "_exporting/sub/__init__.py", None ; "unused_export_init_module")]
+#[test_case("unused-export", "_exporting/unused_export_double.py", None ; "unused_export_double_import")]
+#[test_case("unused-export", "_exporting/unused_export_comment_all.py", None ; "unused_export_comment_all")]
+#[test_case("unused-export", "_exporting/unused_export_lazy.py", None ; "unused_export_lazy_module")]
+#[test_case("unused-export", "_exporting/unused_export_packed.py", None ; "unused_export_packed")]
+#[test_case("unused-export", "_exporting/unused_export_tuple_end.py", None ; "unused_export_tuple_end")]
+#[test_case("unused-export", "_exporting/unused_export_parenthesized.py", None ; "unused_export_parenthesized")]
+#[test_case("unused-export", "_exporting/unused_export_trailing_comment.py", None ; "unused_export_trailing_comment")]
+#[test_case("unused-export", "_exporting/unused_export_kept_comment.py", None ; "unused_export_kept_comment")]
+#[test_case("unused-export", "_exporting/unused_export_kept_entry_comment.py", None ; "unused_export_kept_entry_comment")]
+#[test_case("unused-export", "_exporting/unused_export_statement_comment.py", None ; "unused_export_statement_comment")]
+#[test_case("unused-export", "_exporting/unused_export_noted.py", None ; "unused_export_noted")]
+#[test_case("unused-export", "_exporting/unused_export_star.py", None ; "unused_export_star_imported")]
+#[test_case("unused-export", "unused_export_root.py", None ; "unused_export_api_root")]
+#[test_case("unused-export", "unused_export_public_module.py", None ; "unused_export_public_module")]
+#[test_case("unused-export", "_exporting/unused_export_reached.py", None ; "unused_export_reached_types")]
+#[test_case("unused-export", "tests/test_module_docstring.py", None ; "unused_export_test_module")]
+#[test_case("unexported-public-name", "unexported_public_name.py", None ; "unexported_public_name")]
+#[test_case("unexported-public-name", "unexported_public_name_extend.py", None ; "unexported_public_name_extended_all")]
+#[test_case("unexported-public-name", "unexported_public_name_remove.py", None ; "unexported_public_name_dynamic_all")]
+#[test_case("unexported-public-name", "tests/test_module_docstring.py", None ; "unexported_public_name_test_module")]
+#[test_case("unexported-public-name", "multiline_module_docstring_ok.py", None ; "unexported_public_name_without_all")]
+#[test_case("unexported-public-name", "unexported_public_name_ply.py", None ; "unexported_public_name_ply_grammar")]
+#[test_case("unexported-public-name", "missing_from_all_reached.py", None ; "unexported_public_name_reached_types")]
+#[test_case("module-variable-prefix", "_module_variable_prefix.py", None ; "module_variable_prefix")]
+#[test_case("module-variable-prefix", "_module_variable_prefix_empty_name.py", None ; "module_variable_prefix_empty_or_keyword_name")]
+#[test_case("module-variable-prefix", "module_variable_prefix_source_text.py", None ; "module_variable_prefix_source_text")]
+#[test_case("module-variable-prefix", "module_variable_prefix_type_alias.py", None ; "module_variable_prefix_type_alias")]
+#[test_case("module-variable-prefix", "module_variable_prefix_function_alias.py", None ; "module_variable_prefix_function_alias")]
+#[test_case("module-variable-prefix", "_module_variable_prefix_block_local.py", None ; "module_variable_prefix_block_local")]
+#[test_case("module-variable-prefix", "_module_variable_prefix_computed_setattr.py", None ; "module_variable_prefix_computed_setattr")]
+#[test_case("module-variable-prefix", "module_variable_prefix_type_checking_stubs.py", None ; "module_variable_prefix_type_checking_stubs")]
+#[test_case("unexported-public-name", "unexported_public_name_source_text.py", None ; "unexported_public_name_source_text")]
+#[test_case("all-format", "all_format.py", None ; "all_format")]
+#[test_case("all-format", "all_format_tuple.py", None ; "all_format_tuple")]
+#[test_case("all-format", "all_format_bare.py", None ; "all_format_bare_tuple")]
+#[test_case("all-format", "all_format_ruff_overlap.py", None ; "all_format_ruff_overlap")]
+#[test_case("all-format", "all_format_parenthesized_last.py", None ; "all_format_parenthesized_last")]
+#[test_case("all-format", "all_format_parenthesized_tuple.py", None ; "all_format_parenthesized_tuple")]
+#[test_case("all-format", "all_format_augmented_tuple.py", None ; "all_format_augmented_tuple")]
+#[test_case("all-format", "all_format_augmented_literal.py", None ; "all_format_augmented_literal")]
+#[test_case("all-format", "all_format_augmented_nested.py", None ; "all_format_augmented_nested")]
+#[test_case("all-format", "all_format_augmented_noqa.py", None ; "all_format_augmented_noqa")]
+#[test_case("all-not-last", "all_not_last.py", None ; "all_not_last")]
+#[test_case("all-not-last", "all_not_last_eof.py", None ; "all_not_last_at_eof")]
+#[test_case("all-not-last", "all_not_last_reversed.py", None ; "all_not_last_reversed_main_guard")]
+#[test_case("all-not-last", "all_not_last_nested.py", None ; "all_not_last_extended_in_block")]
+#[test_case("all-not-last", "all_not_last_negated.py", None ; "all_not_last_negated_guard")]
+#[test_case("all-not-last", "all_not_last_nonl.py", None ; "all_not_last_without_trailing_newline")]
+#[test_case("all-not-last", "all_not_last_ann.py", None ; "all_not_last_annotated_and_augmented")]
+#[test_case("all-not-last", "all_not_last_fenced.py", None ; "all_not_last_keeps_its_fmt_off_fence")]
+#[test_case("all-not-last", "all_not_last_mutated.py", None ; "all_not_last_mutated_after_binding")]
+#[test_case("all-not-last", "all_not_last_mutated_before_definition.py", None ; "all_not_last_mutated_before_definition")]
+#[test_case("all-not-last", "all_not_last_dynamic_attribute.py", None ; "all_not_last_dynamic_attribute")]
+#[test_case("all-not-last", "all_not_last_dynamic_string.py", None ; "all_not_last_dynamic_string")]
+#[test_case("all-not-last", "all_not_last_dynamic_globals.py", None ; "all_not_last_dynamic_globals")]
+#[test_case("all-not-last", "all_not_last_dynamic_vars.py", None ; "all_not_last_dynamic_vars")]
+#[test_case("all-not-last", "all_not_last_dynamic_dir.py", None ; "all_not_last_dynamic_dir")]
+#[test_case("all-not-last", "all_not_last_function_reader.py", None ; "all_not_last_read_by_function")]
+#[test_case("all-not-last", "all_not_last_function_other.py", None ; "all_not_last_function_without_read")]
+#[test_case("all-not-last", "all_not_last_computed_value.py", None ; "all_not_last_computed_value")]
+#[test_case("all-not-last", "all_not_last_comment_above.py", None ; "all_not_last_comment_above")]
+#[test_case("all-not-last", "all_not_last_function_globals_string.py", None ; "all_not_last_function_globals_string")]
+#[test_case("all-not-last", "all_not_last_function_sysmod.py", None ; "all_not_last_function_sysmod")]
+#[test_case("all-not-last", "all_not_last_lambda_dir.py", None ; "all_not_last_lambda_dir")]
+#[test_case("all-not-last", "all_not_last_fence_comment.py", None ; "all_not_last_fence_comment")]
+#[test_case("all-not-last", "multiline_module_docstring_ok.py", None ; "all_not_last_without_all")]
+#[test_case("init-module-content", "package/__init__.py", None ; "init_module_content")]
+#[test_case("init-module-content", "facade/__init__.py", None ; "init_module_content_facade_with_all")]
+#[test_case("init-module-content", "loose/__init__.py", None ; "init_module_content_facade_without_all")]
+#[test_case("init-module-content", "_hidden/__init__.py", None ; "init_module_content_private_package")]
+#[test_case("init-module-content", "package/sub/__init__.py", None ; "init_module_content_docstring_only")]
+#[test_case("init-module-content", "multiline_module_docstring_ok.py", None ; "init_module_content_regular_module")]
+#[test_case("init-module-content", "lazy_modules/__init__.py", None ; "init_module_content_lazy_modules")]
+#[test_case("init-module-content", "lazy_annotated/__init__.py", None ; "init_module_content_lazy_annotated")]
+#[test_case("test-only-code", "tonly_builders.py", None ; "test_only_code")]
+#[test_case("test-only-code", "tonly_app.py", None ; "test_only_code_used_outside_tests")]
+#[test_case("test-only-code", "test_tonly_builders.py", None ; "test_only_code_test_module")]
+#[test_case("unused-definition", "_unused_definition.py", None ; "unused_definition")]
+#[test_case("unused-definition", "_unused_definition_used.py", None ; "unused_definition_imported")]
+#[test_case("unused-definition", "tests/test_udef_helpers.py", None ; "unused_definition_test_module")]
+#[test_case("test-only-parameter", "_test_only_parameter.py", None ; "test_only_parameter")]
+#[test_case("unused-return-value", "_unused_return_value.py", None ; "unused_return_value")]
+#[test_case("unused-return-value", "_unused_return_value_listed.py", None ; "unused_return_value_listed")]
+#[test_case("unused-definition", "_unused_definition_frozen_core.py", None ; "unused_definition_unresolved_import")]
+#[test_case("unused-definition", "_unused_definition_doctest.py", None ; "unused_definition_doctest")]
+fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
+    common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
 
 #[test_case("", "", 0 ; "paired_test_only_without_all")]
@@ -137,22 +137,22 @@ fn missing_from_all_ignores_test_only_imports(exports: &str, production: &str, e
         ("tests/_render/test_intersphinx.py", "from pkg._render.intersphinx import Hint\n"),
     ]);
     let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP401"]).1;
-    assert_eq!(stdout.matches("SMP401").count(), expected, "{stdout}");
+    assert_eq!(common::reports(&stdout, "SMP401").len(), expected, "{stdout}");
 }
 
 #[test]
 fn init_module_content_allows_test_packages_and_pep_562_hooks() {
     let root = common::project(&[
-        ("tests/__init__.py", "VALUE = 1\n"),
+        ("tests/__init__.py", common::CLEAN_MODULE),
         ("roots/test-example/pyproject.toml", "[project]\nname = \"example\"\n"),
-        ("roots/test-example/package/__init__.py", "VALUE = 1\n"),
+        ("roots/test-example/package/__init__.py", common::CLEAN_MODULE),
         (
             "package/__init__.py",
             "from typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from package import model\n\n\ndef __getattr__(name: str):\n    return name\n\n\ndef __dir__():\n    return []\n\nVALUE = 1\n",
         ),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP407"]);
-    assert_eq!(stdout.matches("SMP407").count(), 2, "{stdout}");
+    assert_eq!(common::reports(&stdout, "SMP407").len(), 2, "{stdout}");
     assert!(!stdout.contains("tests/__init__.py"), "{stdout}");
     assert!(!stdout.contains("roots/test-example"), "{stdout}");
 }
@@ -165,19 +165,19 @@ fn init_module_content_allows_explicit_api_in_applications() {
         ("package/_api.py", "API = 1\nhidden = 2\n"),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP407"]);
-    assert_eq!(stdout.matches("SMP407").count(), 1, "{stdout}");
+    assert_eq!(common::reports(&stdout, "SMP407").len(), 1, "{stdout}");
     assert!(stdout.contains("package/__init__.py:2:1"), "{stdout}");
 }
 
 #[test]
 fn missing_from_all_allows_main_modules() {
     let root = common::project(&[
-        ("package/__main__.py", "VALUE = 1\n"),
-        ("package/module.py", "VALUE = 1\n"),
+        ("package/__main__.py", common::CLEAN_MODULE),
+        ("package/module.py", common::CLEAN_MODULE),
         ("package/user.py", "from package.module import VALUE\n\nprint(VALUE)\n"),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP401"]);
-    assert_eq!(stdout.matches("SMP401").count(), 1, "{stdout}");
+    assert_eq!(common::reports(&stdout, "SMP401").len(), 1, "{stdout}");
     assert!(stdout.contains("module.py"), "{stdout}");
 }
 
@@ -334,8 +334,7 @@ fn unused_definitions(body: &str) -> String {
     let reader = format!("def read(obj: object, name: str = \"send\") -> object:\n    {body}\n");
     let main = "from app.core import Client\nfrom app.reader import read\n\nprint(read(Client()))\n";
     let root = common::project(&[("app/core.py", core), ("app/reader.py", reader.as_str()), ("app/main.py", main)]);
-    let (_, stdout, _) =
-        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP409"]);
     stdout
 }
 
@@ -358,8 +357,7 @@ fn unused_definition_judges_a_private_method_by_its_own_file(name: &str, same_fi
         ("app/other.py", reader.as_str()),
         ("app/main.py", "from app.core import _Handler\n\nprint(_Handler)\n"),
     ]);
-    let (_, stdout, _) =
-        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP409"]);
     assert_eq!(stdout.contains("`_Handler._handle_text`"), reported, "{stdout}");
 }
 
@@ -368,7 +366,7 @@ const RUF067_STRICT: &str = "[tool.ruff.lint]\npreview = true\nselect = [\"RUF06
 // RUF067 reports the statements of an `__init__.py` only in preview mode, and then the statements it does not allow, so
 // the run leaves those to Ruff. The default allows imports, dunder assignments and `if TYPE_CHECKING` blocks, and a
 // project that bans all code leaves nothing to the run but attribute docstrings.
-#[test_case(RUF067_PREVIEW, "VALUE = 1\n", 0 ; "preview_assignment")]
+#[test_case(RUF067_PREVIEW, common::CLEAN_MODULE, 0 ; "preview_assignment")]
 #[test_case(RUF067_PREVIEW, "import os\n", 1 ; "preview_import_allowed")]
 #[test_case(RUF067_PREVIEW, "__version__ = \"1\"\n", 1 ; "preview_dunder_allowed")]
 #[test_case(RUF067_PREVIEW, "if TYPE_CHECKING:\n    pass\n", 0 ; "preview_type_checking_allowed")]
@@ -377,7 +375,7 @@ const RUF067_STRICT: &str = "[tool.ruff.lint]\npreview = true\nselect = [\"RUF06
 #[test_case(RUF067_PREVIEW, "def helper() -> None:\n    pass\n\n\"stray\"\n", 0 ; "preview_stray_string")]
 #[test_case(RUF067_STRICT, "import os\n", 0 ; "preview_strict_import")]
 #[test_case(RUF067_STRICT, "X = 1\n\"\"\"Doc of X.\"\"\"\n", 1 ; "preview_strict_attribute_docstring")]
-#[test_case("[tool.ruff.lint]\nselect = [\"RUF067\"]\n", "VALUE = 1\n", 1 ; "preview_off_leaves_it_to_the_run")]
+#[test_case("[tool.ruff.lint]\nselect = [\"RUF067\"]\n", common::CLEAN_MODULE, 1 ; "preview_off_leaves_it_to_the_run")]
 #[test_case(RUF067_PREVIEW, "__all__: list[str] = []\n", 0 ; "preview_dunder_annotated_allowed")]
 #[test_case(RUF067_PREVIEW, "__all__ += [\"x\"]\n", 1 ; "preview_dunder_augmented_allowed")]
 #[test_case(RUF067_PREVIEW, "counter += 1\n", 0 ; "preview_augmented_reported")]
@@ -407,9 +405,8 @@ fn init_module_content_leaves_ruf067_to_ruff(config: &str, source: &str, reporte
 fn unused_definition_leaves_private_protocols_and_typed_dicts_to_ruff(source: &str, select: &str, reported: usize) {
     let ruff = format!("[tool.ruff.lint]\nselect = [{select}]\n");
     let root = common::project(&[("pyproject.toml", ruff.as_str()), ("module.py", source)]);
-    let (_, stdout, _) =
-        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
-    assert_eq!(stdout.matches("SMP409").count(), reported, "{stdout}");
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP409"]);
+    assert_eq!(common::reports(&stdout, "SMP409").len(), reported, "{stdout}");
 }
 
 // A method a version switch defines inside an `if` in the class body is the class's method, so its calls count.
@@ -422,8 +419,7 @@ fn unused_definition_counts_calls_of_a_method_under_an_if_block() {
         ),
         ("app/main.py", "from app.core import Client\n\nprint(Client().run())\n"),
     ]);
-    let (_, stdout, _) =
-        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP409"]);
     assert!(!stdout.contains("`Client._send`"), "{stdout}");
 }
 
@@ -433,9 +429,8 @@ fn unused_definition_keeps_framework_hooks_called_by_name() {
         "app/hooks.py",
         "def setup(app: object) -> None:\n    print(app)\n\n\ndef pytest_configure(config: object) -> None:\n    print(config)\n",
     )]);
-    let (_, stdout, _) =
-        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
-    assert_eq!(stdout, "All checks passed!\n");
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP409"]);
+    assert_eq!(stdout, common::PASSED);
 }
 
 // A definition a page of the project's documentation names is used: by a Sphinx role, an autodoc directive, or the
@@ -470,8 +465,7 @@ fn unused_definition_reads_the_documentation(page: &str, text: &str, helper: boo
         ("app/main.py", "from app.core import Client\n\nprint(Client())\n"),
         (page, text),
     ]);
-    let (_, stdout, _) =
-        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP409"]);
     assert_eq!(
         (stdout.contains("`helper` is never used"), stdout.contains("`Client.send` is never called")),
         (helper, send),
@@ -490,8 +484,7 @@ fn unused_definition_skips_documentation_an_ignore_file_hides(ignore_file: &str,
         (ignore_file, &format!("{pattern}\n")),
         (page, ":func:`app.core.helper`\n"),
     ]);
-    let (_, stdout, _) =
-        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP409"]);
     assert!(stdout.contains("`helper` is never used"), "{stdout}");
 }
 
@@ -502,8 +495,7 @@ fn unused_definition_reads_no_documentation_without_a_project() {
         ("app/core.py", "def helper() -> None:\n    pass\n"),
         ("docs/index.rst", ":func:`app.core.helper`\n"),
     ]);
-    let (_, stdout, _) =
-        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP409"]);
     assert!(stdout.contains("`helper` is never used"), "{stdout}");
 }
 
@@ -616,15 +608,9 @@ fn unexported_public_name_checks_strings_of_other_files() {
 #[test_case("__all__ = [\"a\", \"b\"]\n", true ; "single_line")]
 #[test_case("__all__ = [\n    \"a\" \\\n]\n", true ; "line_continuation")]
 fn all_format_follows_ruff_com812(source: &str, reported_when_selected: bool) {
-    for selected in [false, true] {
-        let select = if selected { "\"COM812\"" } else { "" };
-        let root = common::project(&[
-            ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [{select}]\n")),
-            ("module.py", source),
-        ]);
-        let stdout = common::check(root.path(), &["--select", "SMP405"]).1;
-        assert_eq!(stdout.contains("has no trailing comma"), !selected || reported_when_selected, "{stdout}");
-    }
+    let case =
+        common::RuffOverlap { settings: "", select: "SMP405", ruff_code: "COM812", files: &[("module.py", source)] };
+    assert_eq!(common::reported_without_and_with_ruff(&case, "has no trailing comma"), [true, reported_when_selected]);
 }
 
 // A parenthesized last element keeps the comma after it, so the list has one and SMP405 has nothing to add.
@@ -646,7 +632,7 @@ fn unused_export_keeps_the_declared_api_of_libraries(settings: &str, module: &st
         (module, "def run() -> None: ...\n\n\n__all__ = [\"run\"]\n"),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP402"]);
-    assert_eq!(stdout.matches("SMP402").count(), reports, "{stdout}");
+    assert_eq!(common::reports(&stdout, "SMP402").len(), reports, "{stdout}");
 }
 
 // A public module's names are the API its users import, so the rename to private stays with the author, though the
@@ -736,7 +722,7 @@ fn unresolved_import_does_not_change_the_module_variables_of_other_modules() {
         ("app/other.py", "from itertools import count\n\nprint(count)\n"),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--select", "SMP102,SMP404"]);
-    assert_eq!(stdout, "All checks passed!\n");
+    assert_eq!(stdout, common::PASSED);
 }
 
 // A name an unresolved import may read keeps its report, and only the rename is withheld.
@@ -785,7 +771,7 @@ fn documented_function_is_not_test_only_code() {
         ),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--select", "SMP408"]);
-    assert_eq!(stdout, "All checks passed!\n");
+    assert_eq!(stdout, common::PASSED);
 }
 
 // A listed name with a leading underscore keeps its name in a public module of a library, so its report asks for the
@@ -812,5 +798,5 @@ fn doctest_relative_import_counts_as_a_read_of_the_name() {
         ("app/cli.py", "def run() -> None:\n    \"\"\"Run.\n\n    >>> from .mod import LIMIT\n    \"\"\"\n"),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--select", "SMP404"]);
-    assert_eq!(stdout, "All checks passed!\n");
+    assert_eq!(stdout, common::PASSED);
 }

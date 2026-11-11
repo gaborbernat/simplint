@@ -1,10 +1,10 @@
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::StringFlags;
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use super::{Docstring, Field};
 use crate::lint::checker::Checker;
-use crate::rules::indentation;
+use crate::rules::edits::fix_of;
 
 // Deletes whole fields, each with the lines that continue it. Fields that end the docstring take the blank lines before
 // them too, and the closing quotes go after the text left. They go on a line of their own at the docstring's
@@ -40,13 +40,22 @@ pub(crate) fn field_deletion(checker: &Checker, docstring: &Docstring, fields: &
         let range = TextRange::new(text_end, content.end());
         let quote = docstring.literal.value.first_literal_flags().quote_style().as_char();
         edits.push(if kept.contains('\n') || kept.ends_with([quote, '\\']) {
-            let line_ending = checker.stylist.line_ending().as_str();
-            Edit::range_replacement(format!("{line_ending}{}", indentation(source, docstring.literal)), range)
+            let line_ending = checker.line_ending();
+            Edit::range_replacement(format!("{line_ending}{}", checker.indentation(docstring.literal)), range)
         } else {
             Edit::range_deletion(range)
         });
     }
-    let mut edits = edits.into_iter();
-    let first = edits.next()?;
-    Some(Fix::unsafe_edits(first, edits))
+    fix_of(edits, Applicability::Unsafe)
+}
+
+impl Field {
+    pub(crate) fn rename(&self, name: &str) -> Option<Fix> {
+        let word = TextRange::at(self.marker?.start(), TextSize::of(self.words[0].as_str()));
+        Some(Fix::unsafe_edit(Edit::range_replacement(name.to_owned(), word)))
+    }
+
+    pub(crate) fn removal(&self, checker: &Checker, docstring: &Docstring) -> Option<Fix> {
+        field_deletion(checker, docstring, &[self])
+    }
 }

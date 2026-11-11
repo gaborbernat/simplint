@@ -12,9 +12,9 @@ use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::is_alone_on_lines;
 use crate::rules::logic::inline::{Names, enter_function, for_each_scoped_body, is_constant};
-use crate::syntax::Nesting;
+use crate::rules::logic::sole_name_target;
+use crate::syntax::{Nesting, identifier_words};
 
 pub fn early_assignment(checker: &Checker) {
     // A function's scope is walked once, and only when one of its blocks assigns a constant to a name.
@@ -49,9 +49,7 @@ fn string_tokens(checker: &Checker) -> Vec<TextRange> {
 
 // The name an assignment binds when it assigns a constant to that single local name, the only kind the rule moves.
 fn candidate(assign: &ast::StmtAssign) -> Option<&ast::ExprName> {
-    let [Expr::Name(target)] = assign.targets.as_slice() else {
-        return None;
-    };
+    let target = sole_name_target(assign)?;
     let name = target.id.as_str();
     (name != "_" && !is_dunder(name) && is_constant(&assign.value)).then_some(target)
 }
@@ -105,7 +103,7 @@ fn reads_by_name(name: &str) -> bool {
 
 // Whether the text holds the name as a whole identifier, so `out` is in `"out.append(1)"` but not in `"output"`.
 fn spells(text: &str, name: &str) -> bool {
-    text.split(|c: char| !(c.is_alphanumeric() || c == '_')).any(|word| word == name)
+    identifier_words(text).any(|word| word == name)
 }
 
 // A constant assigned to a local whose first use is at least two statements down the same block. Nothing reads or
@@ -121,7 +119,7 @@ fn check_assign<'a>(
 ) {
     let name = target.id.as_str();
     let names = &scope.names;
-    if names.declared_outer.contains(name) || names.rebound.contains(name) || names.reads_locals || scope.dynamic {
+    if names.declared_outer.contains(name) || names.rebound.contains(name) || scope.dynamic {
         return;
     }
     // The name must be read, not bound again, and every mention must sit in this block after the assignment. A use
@@ -184,7 +182,7 @@ fn is_constant_assign(stmt: &Stmt) -> bool {
 // the assignment lands on a line of its own.
 fn move_fix(checker: &Checker, assign: &ast::StmtAssign, next: &Stmt) -> Option<Fix> {
     let source = checker.source;
-    if !is_alone_on_lines(source, assign.range) {
+    if !checker.is_alone_on_lines(assign.range) {
         return None;
     }
     let lines = source.full_lines_range(assign.range);
@@ -197,7 +195,7 @@ fn move_fix(checker: &Checker, assign: &ast::StmtAssign, next: &Stmt) -> Option<
         return Some(Fix::safe_edits(Edit::range_deletion(lines), [Edit::insertion(text, start)]));
     }
     let indentation = leading_indentation(before);
-    let eol = checker.stylist.line_ending().as_str();
+    let eol = checker.line_ending();
     let assign_text = checker.text(assign.range);
     let statement = checker.text(next.range());
     let mut content = if before.trim().is_empty() {

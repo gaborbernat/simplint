@@ -98,7 +98,7 @@ fn combination_without_conflict_lints(pyproject: &str, file: &str) {
     let root = project(&[("pyproject.toml", pyproject), (file, "value = 1\n")]);
     assert_eq!(
         check(root.path(), &["--select", "SMP901,SMP902,SMP301,SMP302,SMP521,SMP923"]),
-        (0, "All checks passed!\n".to_owned(), String::new())
+        (0, common::PASSED.to_owned(), String::new())
     );
 }
 

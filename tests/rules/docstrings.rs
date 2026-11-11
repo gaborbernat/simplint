@@ -2,64 +2,64 @@ use test_case::test_case;
 
 use crate::common;
 
-#[test_case("function-docstring", "_internal/function_docstring.py" ; "function_docstring")]
-#[test_case("function-docstring", "function_docstring_exported.py" ; "function_docstring_exported")]
-#[test_case("function-docstring", "function_docstring_dynamic.py" ; "function_docstring_dynamic_all")]
-#[test_case("function-docstring", "function_docstring_contract.py" ; "function_docstring_contract")]
-#[test_case("function-docstring", "function_docstring_fields.py" ; "function_docstring_fields")]
-#[test_case("function-docstring", "function_docstring_inherited.py" ; "function_docstring_inherited")]
-#[test_case("function-docstring", "function_docstring_runtime.py" ; "function_docstring_runtime")]
-#[test_case("function-docstring", "undocumented_public_api.py" ; "function_docstring_public_api")]
-#[test_case("function-docstring", "undocumented_public_api_imported.py" ; "function_docstring_imported")]
-#[test_case("function-docstring", "switched.py" ; "function_docstring_top_level_blocks")]
-#[test_case("function-docstring", "facade/_core.py" ; "function_docstring_reexported_through_all")]
-#[test_case("function-docstring", "facade/_helpers.py" ; "function_docstring_shared_internally")]
-#[test_case("test-module-docstring", "tests/test_module_docstring.py" ; "test_module_docstring")]
-#[test_case("test-module-docstring", "tests/test_module_docstring_inline.py" ; "test_module_docstring_inline")]
-#[test_case("test-module-docstring", "multiline_module_docstring.py" ; "test_module_docstring_non_test")]
-#[test_case("undocumented-public-api", "undocumented_public_api.py" ; "undocumented_public_api")]
-#[test_case("undocumented-public-api", "undocumented_public_api_imported.py" ; "undocumented_public_api_imported")]
-#[test_case("undocumented-public-api", "undocumented_public_api_inherited.py" ; "undocumented_public_api_inherited")]
-#[test_case("undocumented-public-api", "undocumented_public_api_type_alias.py" ; "undocumented_public_api_type_alias")]
-#[test_case("undocumented-public-api", "undocumented_public_api_ruff_overlap.py" ; "undocumented_public_api_ruff_overlap")]
-#[test_case("undocumented-public-api", "undocumented_public_api_all_forms.py" ; "undocumented_public_api_all_forms")]
-#[test_case("undocumented-public-api", "function_docstring_dynamic.py" ; "undocumented_public_api_dynamic_all")]
-#[test_case("undocumented-public-api", "tests/test_module_docstring.py" ; "undocumented_public_api_test_module")]
-#[test_case("undocumented-public-api", "facade/_core.py" ; "undocumented_public_api_reexported_through_all")]
-#[test_case("undocumented-public-api", "facade/_helpers.py" ; "undocumented_public_api_shared_internally")]
-#[test_case("undocumented-public-api", "loose/_impl.py" ; "undocumented_public_api_redundant_alias")]
-#[test_case("undocumented-public-api", "loose/_stars.py" ; "undocumented_public_api_star_import")]
-#[test_case("undocumented-public-api", "loose/_extra.py" ; "undocumented_public_api_star_import_without_all")]
-#[test_case("undocumented-public-api", "loose/_deep.py" ; "undocumented_public_api_chain")]
-#[test_case("undocumented-public-api", "switched.py" ; "undocumented_public_api_top_level_blocks")]
-#[test_case("long-docstring-paragraph", "long_docstring_paragraph.py" ; "long_docstring_paragraph")]
-#[test_case("rst-field-syntax", "rst_field_syntax.py" ; "rst_field_syntax")]
-#[test_case("rst-inline-markup", "rst_inline_markup.py" ; "rst_inline_markup")]
-#[test_case("rst-inline-markup", "rst_inline_markup_first_line.py" ; "rst_inline_markup_first_line")]
-#[test_case("rst-type-field", "rst_type_field.py" ; "rst_type_field")]
-#[test_case("rst-restating-field", "rst_restating_field.py" ; "rst_restating_field")]
-#[test_case("rst-empty-field", "rst_empty_field.py" ; "rst_empty_field")]
-#[test_case("rst-private-field", "rst_private_field.py" ; "rst_private_field")]
-#[test_case("rst-missing-param", "rst_missing_param.py" ; "rst_missing_param")]
-#[test_case("rst-missing-param", "rst_missing_param_quoted_classvar.py" ; "rst_missing_param_quoted_classvar")]
-#[test_case("rst-unknown-param", "rst_unknown_param.py" ; "rst_unknown_param")]
-#[test_case("rst-unknown-param", "rst_unknown_param_quotes.py" ; "rst_unknown_param_quotes")]
-#[test_case("rst-duplicate-param", "rst_duplicate_param.py" ; "rst_duplicate_param")]
-#[test_case("rst-param-order", "rst_param_order.py" ; "rst_param_order")]
-#[test_case("rst-missing-attribute", "rst_missing_attribute.py" ; "rst_missing_attribute")]
-#[test_case("rst-missing-attribute", "rst_missing_attribute_nested_class.py" ; "rst_missing_attribute_nested_class")]
-#[test_case("rst-unknown-attribute", "rst_unknown_attribute.py" ; "rst_unknown_attribute")]
-#[test_case("rst-unknown-attribute", "rst_unknown_attribute_delete.py" ; "rst_unknown_attribute_delete")]
-#[test_case("rst-unknown-attribute", "rst_unknown_attribute_type_alias.py" ; "rst_unknown_attribute_type_alias")]
-#[test_case("rst-unknown-attribute", "rst_unknown_attribute_slots.py" ; "rst_unknown_attribute_slots")]
-#[test_case("rst-attribute-kind", "rst_attribute_kind.py" ; "rst_attribute_kind")]
-#[test_case("rst-attribute-kind", "rst_attribute_kind_final.py" ; "rst_attribute_kind_final")]
-#[test_case("rst-attribute-kind", "rst_attribute_kind_quoted_classvar.py" ; "rst_attribute_kind_quoted_classvar")]
-#[test_case("rst-returns", "rst_returns.py" ; "rst_returns")]
-#[test_case("rst-returns", "rst_returns_lambda_yield.py" ; "rst_returns_lambda_yield")]
-#[test_case("rst-missing-raises", "rst_missing_raises.py" ; "rst_missing_raises")]
-fn rule(rule: &str, fixture: &str) {
-    common::assert_rule_snapshot(rule, fixture, "py314");
+#[test_case("function-docstring", "_internal/function_docstring.py", None ; "function_docstring")]
+#[test_case("function-docstring", "function_docstring_exported.py", None ; "function_docstring_exported")]
+#[test_case("function-docstring", "function_docstring_dynamic.py", None ; "function_docstring_dynamic_all")]
+#[test_case("function-docstring", "function_docstring_contract.py", None ; "function_docstring_contract")]
+#[test_case("function-docstring", "function_docstring_fields.py", None ; "function_docstring_fields")]
+#[test_case("function-docstring", "function_docstring_inherited.py", None ; "function_docstring_inherited")]
+#[test_case("function-docstring", "function_docstring_runtime.py", None ; "function_docstring_runtime")]
+#[test_case("function-docstring", "undocumented_public_api.py", None ; "function_docstring_public_api")]
+#[test_case("function-docstring", "undocumented_public_api_imported.py", None ; "function_docstring_imported")]
+#[test_case("function-docstring", "switched.py", None ; "function_docstring_top_level_blocks")]
+#[test_case("function-docstring", "facade/_core.py", None ; "function_docstring_reexported_through_all")]
+#[test_case("function-docstring", "facade/_helpers.py", None ; "function_docstring_shared_internally")]
+#[test_case("test-module-docstring", "tests/test_module_docstring.py", None ; "test_module_docstring")]
+#[test_case("test-module-docstring", "tests/test_module_docstring_inline.py", None ; "test_module_docstring_inline")]
+#[test_case("test-module-docstring", "multiline_module_docstring.py", None ; "test_module_docstring_non_test")]
+#[test_case("undocumented-public-api", "undocumented_public_api.py", None ; "undocumented_public_api")]
+#[test_case("undocumented-public-api", "undocumented_public_api_imported.py", None ; "undocumented_public_api_imported")]
+#[test_case("undocumented-public-api", "undocumented_public_api_inherited.py", None ; "undocumented_public_api_inherited")]
+#[test_case("undocumented-public-api", "undocumented_public_api_type_alias.py", None ; "undocumented_public_api_type_alias")]
+#[test_case("undocumented-public-api", "undocumented_public_api_ruff_overlap.py", None ; "undocumented_public_api_ruff_overlap")]
+#[test_case("undocumented-public-api", "undocumented_public_api_all_forms.py", None ; "undocumented_public_api_all_forms")]
+#[test_case("undocumented-public-api", "function_docstring_dynamic.py", None ; "undocumented_public_api_dynamic_all")]
+#[test_case("undocumented-public-api", "tests/test_module_docstring.py", None ; "undocumented_public_api_test_module")]
+#[test_case("undocumented-public-api", "facade/_core.py", None ; "undocumented_public_api_reexported_through_all")]
+#[test_case("undocumented-public-api", "facade/_helpers.py", None ; "undocumented_public_api_shared_internally")]
+#[test_case("undocumented-public-api", "loose/_impl.py", None ; "undocumented_public_api_redundant_alias")]
+#[test_case("undocumented-public-api", "loose/_stars.py", None ; "undocumented_public_api_star_import")]
+#[test_case("undocumented-public-api", "loose/_extra.py", None ; "undocumented_public_api_star_import_without_all")]
+#[test_case("undocumented-public-api", "loose/_deep.py", None ; "undocumented_public_api_chain")]
+#[test_case("undocumented-public-api", "switched.py", None ; "undocumented_public_api_top_level_blocks")]
+#[test_case("long-docstring-paragraph", "long_docstring_paragraph.py", None ; "long_docstring_paragraph")]
+#[test_case("rst-field-syntax", "rst_field_syntax.py", None ; "rst_field_syntax")]
+#[test_case("rst-inline-markup", "rst_inline_markup.py", None ; "rst_inline_markup")]
+#[test_case("rst-inline-markup", "rst_inline_markup_first_line.py", None ; "rst_inline_markup_first_line")]
+#[test_case("rst-type-field", "rst_type_field.py", None ; "rst_type_field")]
+#[test_case("rst-restating-field", "rst_restating_field.py", None ; "rst_restating_field")]
+#[test_case("rst-empty-field", "rst_empty_field.py", None ; "rst_empty_field")]
+#[test_case("rst-private-field", "rst_private_field.py", None ; "rst_private_field")]
+#[test_case("rst-missing-param", "rst_missing_param.py", None ; "rst_missing_param")]
+#[test_case("rst-missing-param", "rst_missing_param_quoted_classvar.py", None ; "rst_missing_param_quoted_classvar")]
+#[test_case("rst-unknown-param", "rst_unknown_param.py", None ; "rst_unknown_param")]
+#[test_case("rst-unknown-param", "rst_unknown_param_quotes.py", None ; "rst_unknown_param_quotes")]
+#[test_case("rst-duplicate-param", "rst_duplicate_param.py", None ; "rst_duplicate_param")]
+#[test_case("rst-param-order", "rst_param_order.py", None ; "rst_param_order")]
+#[test_case("rst-missing-attribute", "rst_missing_attribute.py", None ; "rst_missing_attribute")]
+#[test_case("rst-missing-attribute", "rst_missing_attribute_nested_class.py", None ; "rst_missing_attribute_nested_class")]
+#[test_case("rst-unknown-attribute", "rst_unknown_attribute.py", None ; "rst_unknown_attribute")]
+#[test_case("rst-unknown-attribute", "rst_unknown_attribute_delete.py", None ; "rst_unknown_attribute_delete")]
+#[test_case("rst-unknown-attribute", "rst_unknown_attribute_type_alias.py", None ; "rst_unknown_attribute_type_alias")]
+#[test_case("rst-unknown-attribute", "rst_unknown_attribute_slots.py", None ; "rst_unknown_attribute_slots")]
+#[test_case("rst-attribute-kind", "rst_attribute_kind.py", None ; "rst_attribute_kind")]
+#[test_case("rst-attribute-kind", "rst_attribute_kind_final.py", None ; "rst_attribute_kind_final")]
+#[test_case("rst-attribute-kind", "rst_attribute_kind_quoted_classvar.py", None ; "rst_attribute_kind_quoted_classvar")]
+#[test_case("rst-returns", "rst_returns.py", None ; "rst_returns")]
+#[test_case("rst-returns", "rst_returns_lambda_yield.py", None ; "rst_returns_lambda_yield")]
+#[test_case("rst-missing-raises", "rst_missing_raises.py", None ; "rst_missing_raises")]
+fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
+    common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
 
 // `ruff format` keeps blank lines after a module of comments only, and Ruff reports blank lines ending the file.
@@ -134,7 +134,7 @@ fn docstring_comment_stays_after_removal(file: &str, source: &str, select: &str,
 // module's.
 #[test_case(
     "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    help = __doc__\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "class_body_reads_it"
 )]
 #[test_case(
@@ -149,22 +149,22 @@ fn docstring_comment_stays_after_removal(file: &str, source: &str, select: &str,
 )]
 #[test_case(
     "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    def run(self, text=__doc__):\n        return text\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "method_default_reads_it"
 )]
 #[test_case(
     "def show(text):\n    return lambda func: func\n\n\nclass Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    @show(__doc__)\n    def run(self):\n        return 1\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "decorator_reads_it"
 )]
 #[test_case(
     "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    run = staticmethod(lambda text=__doc__: text)\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "lambda_default_reads_it"
 )]
 #[test_case(
     "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    class Inner(dict, doc=__doc__):\n        pass\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "nested_class_header_reads_it"
 )]
 #[test_case(
@@ -179,7 +179,7 @@ fn docstring_comment_stays_after_removal(file: &str, source: &str, select: &str,
 )]
 #[test_case(
     "def show(text):\n    return lambda func: func\n\n\nclass Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    @show(__doc__)\n    class Inner:\n        pass\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "nested_class_decorator_reads_it"
 )]
 fn class_body_reading_doc_keeps_its_docstring(source: &str, stdout: &str) {
@@ -266,17 +266,17 @@ fn function_docstring_comment_waits_for_a_removed_statement() {
 // dataclass keeps the name.
 #[test_case(
     "from attrs import define\n\n@define\nclass Point:\n    \"\"\"A point.\n\n    :param x: Where it sits.\n    \"\"\"\n\n    _x: int\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "attrs_without_underscores"
 )]
 #[test_case(
     "from attrs import define, field\n\n@define\nclass Point:\n    \"\"\"A point.\n\n    :param pos: Where it sits.\n    \"\"\"\n\n    _x: int = field(alias=\"pos\")\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "attrs_alias"
 )]
 #[test_case(
     "from dataclasses import dataclass\n\n@dataclass\nclass Point:\n    \"\"\"A point.\n\n    :param _x: Where it sits.\n    \"\"\"\n\n    _x: int\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "dataclass_keeps_name"
 )]
 #[test_case(
@@ -286,7 +286,7 @@ fn function_docstring_comment_waits_for_a_removed_statement() {
 )]
 #[test_case(
     "from attrs import define, field\n\nPOS = \"pos\"\n\n\n@define\nclass Point:\n    \"\"\"A point.\n\n    :param pos: Where it sits.\n    \"\"\"\n\n    _x: int = field(alias=POS)\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "attrs_alias_not_a_literal_is_unknown"
 )]
 fn constructor_parameters_follow_the_generator(source: &str, stdout: &str) {
@@ -319,12 +319,12 @@ fn attrs_private_field_is_a_documented_parameter() {
 // for the fields of a value it has not written. A body with code is held to the same rules.
 #[test_case(
     "from collections.abc import Iterator\n\n\ndef rows() -> Iterator[str]:\n    \"\"\"Read the rows.\n\n    :yields: Each row.\n    \"\"\"\n    ...\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "placeholder_yields"
 )]
 #[test_case(
     "def rows():\n    \"\"\"Read the rows.\n\n    :yields: Each row.\n    \"\"\"\n    raise NotImplementedError\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "placeholder_raises"
 )]
 #[test_case(
@@ -351,7 +351,7 @@ fn placeholder_body_documents_no_return(source: &str, stdout: &str) {
 // The members of a class include those in its `if` blocks and the loop variables of its body, so a field documents them.
 #[test_case(
     "import sys\n\n\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar speed: Units per second.\n    :ivar run: The entry point.\n    :ivar size: How many jobs wait.\n    \"\"\"\n\n    if sys.version_info >= (3, 12):\n\n        @property\n        def speed(self) -> int:\n            return 2\n\n    else:\n\n        def run(self) -> None:\n            pass\n\n    for size in (1, 2):\n        pass\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "members_in_blocks_and_loops"
 )]
 #[test_case(
@@ -375,7 +375,7 @@ fn rst_rules_need_the_docstring_style() {
             "def run(path: str) -> str:\n    \"\"\"Run.\n\n    :parm path: Where.\n    \"\"\"\n    return path\n",
         ),
     ]);
-    assert_eq!(common::check(root.path(), &["--select", "SMP91,SMP92"]).1, "All checks passed!\n");
+    assert_eq!(common::check(root.path(), &["--select", "SMP91,SMP92"]).1, common::PASSED);
 }
 
 // Sphinx reads `kwarg` and `kwparam` as spellings of `param`, and `paramtype` as one of `type`, so the fields document
@@ -476,18 +476,13 @@ fn alias_fix_composes(source: &str, fixed: &str) {
 #[test_case("class C:\n    class N:\n        pass\n", "D106", "Public class `C.N`" ; "nested_class")]
 #[test_case("class C:\n    def m(self) -> None:\n        pass\n", "D102", "Public method `C.m`" ; "method")]
 fn undocumented_public_api_follows_ruff_pydocstyle(source: &str, code: &str, fragment: &str) {
-    for selected in [false, true] {
-        let select = if selected { format!("\"{code}\"") } else { String::new() };
-        let root = common::project(&[
-            (
-                "pyproject.toml",
-                &format!("[tool.simplint]\nproject-kind = \"library\"\n[tool.ruff.lint]\nselect = [{select}]\n"),
-            ),
-            ("module.py", source),
-        ]);
-        let stdout = common::check(root.path(), &["--select", "SMP903"]).1;
-        assert_eq!(stdout.contains(fragment), !selected, "{stdout}");
-    }
+    let case = common::RuffOverlap {
+        settings: "[tool.simplint]\nproject-kind = \"library\"\n",
+        select: "SMP903",
+        ruff_code: code,
+        files: &[("module.py", source)],
+    };
+    assert_eq!(common::reported_without_and_with_ruff(&case, fragment), [true, false]);
 }
 
 // A public class of a library inherits the members of its private base without overriding them, so users reach them

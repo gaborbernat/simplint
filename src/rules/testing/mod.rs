@@ -5,6 +5,7 @@ mod mock_assertion_typo;
 mod mock_attribute_assignment;
 pub(crate) mod mock_without_spec;
 mod parametrize_without_id;
+pub(crate) mod recognize;
 mod sleep_in_test;
 mod split_composite_assert;
 mod stdlib_mock;

@@ -1,4 +1,4 @@
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::{self as ast, Comprehension, Expr};
 use ruff_text_size::{Ranged, TextRange};
 
@@ -50,7 +50,8 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let fix = (!checker.has_comment_in(element_range) && !checker.has_comment_in(clause)).then(|| {
         let rewrite = Edit::range_replacement(unpacking.replacement(source), element_range);
         let remove = Edit::range_deletion(clause);
-        if unpacking.safe { Fix::safe_edits(rewrite, [remove]) } else { Fix::unsafe_edits(rewrite, [remove]) }
+        let applicability = if unpacking.safe { Applicability::Safe } else { Applicability::Unsafe };
+        Fix::applicable_edits(rewrite, [remove], applicability)
     });
     let (message, title) = match unpacking.kind {
         Kind::Elements => (
@@ -111,8 +112,7 @@ fn unpacking(element: Element, inner: &Comprehension, source: &str) -> Option<Un
                 return None;
             };
             let items = inner.iter.as_call_expr().is_some_and(|call| {
-                call.arguments.args.is_empty()
-                    && call.arguments.keywords.is_empty()
+                call.arguments.is_empty()
                     && call.func.as_attribute_expr().is_some_and(|attribute| {
                         attribute.attr.as_str() == "items" && is_name(&attribute.value, source)
                     })

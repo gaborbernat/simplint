@@ -1,17 +1,16 @@
 use ruff_diagnostics::{Edit, Fix};
-use ruff_python_trivia::has_leading_content;
 use ruff_source_file::LineRanges;
-use ruff_text_size::{Ranged, TextRange};
+use ruff_text_size::TextRange;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::comments::follows;
 
 const DIVIDER_CHARS: &[char] = &['-', '=', '*', '#', '~', '_', '+', '/'];
 
 pub fn section_comment(checker: &Checker) {
     let source = checker.source;
-    let comments: Vec<TextRange> =
-        checker.comment_ranges().iter().copied().filter(|range| !has_leading_content(range.start(), source)).collect();
+    let comments = checker.state().own_line_comments(checker);
     // A sentence wrapped onto a line that ends in an operator such as `===` continues the prose above it rather than
     // labeling code.
     let is_prose =
@@ -22,9 +21,10 @@ pub fn section_comment(checker: &Checker) {
             && content.chars().any(char::is_alphanumeric)
             && divider_run(content.chars()) == 0
             && !content.to_ascii_lowercase().contains("region")
-            && index.checked_sub(1).map(|previous| comments[previous]).is_some_and(|previous| {
-                source.full_line_end(previous.end()) == source.line_start(range.start()) && is_prose(previous)
-            });
+            && index
+                .checked_sub(1)
+                .map(|previous| comments[previous])
+                .is_some_and(|previous| follows(source, previous, range) && is_prose(previous));
         if continues_prose || !is_section_comment(&source[range]) {
             continue;
         }

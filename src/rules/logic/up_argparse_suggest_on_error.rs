@@ -1,10 +1,9 @@
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::Applicability;
 use ruff_python_ast::{self as ast, Expr};
-use ruff_text_size::Ranged;
 
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
-use crate::rules::edits::keyword_removal;
+use crate::rules::logic::modernize::report_redundant_keyword;
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let checker = walker.checker;
@@ -22,12 +21,13 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     if !checker.semantic().resolves_to(&call.func, &["argparse", "ArgumentParser"]) {
         return;
     }
-    let fix = keyword_removal(checker, call, keyword).map(|range| Fix::safe_edit(Edit::range_deletion(range)));
-    checker.report_fix(
+    report_redundant_keyword(
+        checker,
+        call,
+        keyword,
         Rule::ArgparseSuggestOnError,
-        keyword.range(),
+        Applicability::Safe,
         "`suggest_on_error=True` is the default from Python 3.15",
-        fix,
         "Drop `suggest_on_error=True`",
     );
 }

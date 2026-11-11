@@ -3,25 +3,23 @@ use std::cell::{OnceCell, RefCell};
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, PythonVersion, Stmt};
-use ruff_text_size::{Ranged, TextLen, TextRange};
+use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::layout::joined_width;
+use crate::layout::{fits_line, joined_width};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::edits::statement_deletion;
-use crate::rules::logic::inline::{
-    LOCALS_READERS, declared_outer, fits_line, for_each_scoped_body, inlined_text, leading_name,
-};
-use crate::rules::{expr_mentions, has_version_gate, needs_parentheses};
+use crate::rules::edits::{Blanks, statement_deletion};
+use crate::rules::logic::inline::{LOCALS_READERS, declared_outer, for_each_scoped_body, inlined_text, leading_name};
+use crate::rules::logic::sole_name_target;
+use crate::syntax::{expr_mentions, has_version_gate, needs_parentheses};
 
 pub fn walrus_candidate(checker: &Checker) {
     // `:=` arrived in Python 3.8.
-    if checker.settings.from_ruff.target_version < PythonVersion::PY38 || has_version_gate(checker.body()) {
+    if checker.target_version() < PythonVersion::PY38 || has_version_gate(checker.body()) {
         return;
     }
-    let mentions = OnceCell::new();
-    let declared = RefCell::new(FxHashMap::default());
+    let lookups = Lookups::default();
     for_each_scoped_body(
         checker.body(),
         Block { scope: Scope::Module, owner: None },
@@ -30,8 +28,7 @@ pub fn walrus_candidate(checker: &Checker) {
         &mut |body, block, depth| {
             for pair in body.windows(2) {
                 if let [Stmt::Assign(assign), if_stmt @ Stmt::If(ast::StmtIf { test, .. })] = pair
-                    && let Some(candidate) =
-                        candidate(checker, &mentions, &declared, block.scope, assign, if_stmt, test)
+                    && let Some(candidate) = candidate(checker, &lookups, block.scope, assign, if_stmt, test)
                 {
                     report(checker, &candidate, depth, !collapse_blocked(checker, body, block.owner, if_stmt));
                 }
@@ -134,21 +131,24 @@ struct Candidate<'a> {
     single_use: bool,
 }
 
+#[derive(Default)]
+struct Lookups<'a> {
+    mentions: OnceCell<Mentions<'a>>,
+    declared: RefCell<FxHashMap<TextRange, FxHashSet<&'a str>>>,
+}
+
 fn candidate<'a>(
     checker: &Checker<'a>,
-    mentions: &OnceCell<Mentions<'a>>,
-    declared: &RefCell<FxHashMap<TextRange, FxHashSet<&'a str>>>,
+    lookups: &Lookups<'a>,
     scope: Scope<'a>,
     assign: &'a ast::StmtAssign,
     if_stmt: &'a Stmt,
     test: &'a Expr,
 ) -> Option<Candidate<'a>> {
-    let [Expr::Name(target)] = assign.targets.as_slice() else {
-        return None;
-    };
+    let target = sole_name_target(assign)?;
     let name = target.id.as_str();
     let value = assign.value.as_ref();
-    let deleted = statement_deletion(checker, assign.range, None, false)?;
+    let deleted = statement_deletion(checker, assign.range, None, Blanks::Shared)?;
     // Type checkers treat a guard named `TYPE_CHECKING` as true whatever its value, so the name must stay.
     if name == "TYPE_CHECKING"
         || matches!(value, Expr::Lambda(_) | Expr::Yield(_) | Expr::YieldFrom(_) | Expr::Named(_) | Expr::Starred(_))
@@ -169,19 +169,17 @@ fn candidate<'a>(
         Scope::Function(function) => (
             function.range(),
             function.as_function_def_stmt().is_some_and(|definition| {
-                declared
+                lookups
+                    .declared
                     .borrow_mut()
                     .entry(function.range())
                     .or_insert_with(|| declared_outer(&definition.body))
                     .contains(name)
             }),
         ),
-        Scope::Module => (
-            TextRange::up_to(checker.source.text_len()),
-            checker.project().is_referenced(name) || checker.dunder_all().may_list(name),
-        ),
+        Scope::Module => (checker.file_range(), checker.is_exported(name)),
     };
-    let mentions = mentions.get_or_init(|| Mentions::of(checker.body()));
+    let mentions = lookups.mentions.get_or_init(|| Mentions::of(checker.body()));
     // `globals()` reads the module's names, so it keeps only a module-level name alive.
     if shared
         || LOCALS_READERS

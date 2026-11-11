@@ -9,6 +9,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::module_variable::ModuleVariable;
 use crate::rules::rename::rename_fix;
+use crate::syntax::target_leaves;
 
 pub fn module_variable_case(checker: &Checker) {
     let named_tuples = OnceCell::new();
@@ -63,7 +64,7 @@ fn collect_named_tuples(checker: &Checker, body: &[Stmt], targets: &mut FxHashSe
         match stmt {
             Stmt::Assign(ast::StmtAssign { targets: bound, value, .. }) if is_named_tuple_call(checker, value) => {
                 for target in bound {
-                    store_names(target, targets);
+                    targets.extend(target_leaves(target).into_iter().filter_map(Expr::as_name_expr).map(Ranged::range));
                 }
             }
             Stmt::If(ast::StmtIf { body, elif_else_clauses, .. }) => {
@@ -101,20 +102,4 @@ fn is_named_tuple_call(checker: &Checker, value: &Expr) -> bool {
     };
     let semantic = checker.semantic();
     semantic.resolves_to(func, &["collections", "namedtuple"]) || semantic.match_typing_expr(func, "NamedTuple")
-}
-
-// The names an assignment target binds, where a tuple, list or starred target binds the names inside it.
-fn store_names(target: &Expr, names: &mut FxHashSet<TextRange>) {
-    match target {
-        Expr::Name(name) => {
-            names.insert(name.range());
-        }
-        Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => {
-            for elt in elts {
-                store_names(elt, names);
-            }
-        }
-        Expr::Starred(ast::ExprStarred { value, .. }) => store_names(value, names),
-        _ => {}
-    }
 }

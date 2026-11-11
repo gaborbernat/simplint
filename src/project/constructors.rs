@@ -14,12 +14,12 @@ use ruff_python_trivia::CommentRanges;
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange};
 
-use super::computed_reads::ComputedReads;
 use super::facts::{FromImport, qualified};
 use super::index::FileId;
 use crate::syntax::is_main_guard;
 use crate::syntax::{
-    ExprCollector, attribute_call, dataclass_decorator, keyword_is_true, last_segment, module_statements,
+    ExprCollector, alias_binding, attribute_call, dataclass_decorator, identifier_words, keyword_is_true, last_segment,
+    module_statements,
 };
 
 // What `dataclass-kw-only` needs to rewrite every positional call of a dataclass it makes keyword-only: the dataclasses
@@ -38,13 +38,6 @@ pub struct Constructors {
     pub(super) methods: Vec<String>,
     // The plain `name = value` attributes of the module's top-level classes, which `attribute_loads` counts like methods.
     pub(super) attributes: Vec<String>,
-    // The module's own functions and classes, which an `obj.name` read reaches through the module as an object.
-    pub(super) definitions: Vec<String>,
-    // How many times the module loads each attribute name, wherever it appears, to count the `obj.name` reads of a
-    // method name across the run.
-    pub(super) attribute_loads: BTreeMap<String, u32>,
-    // The attributes the module reads under names computed at run time.
-    pub(super) computed_reads: ComputedReads,
 }
 
 // A name used from a module, as the file spells it.
@@ -228,7 +221,7 @@ impl Constructors {
         }
         for FromImport { module, names, .. } in from_imports {
             for alias in *names {
-                let written = alias.asname.as_ref().unwrap_or(&alias.name).to_string();
+                let written = alias_binding(alias).to_owned();
                 let name = alias.name.to_string();
                 grouped.entry(module.clone()).or_default().insert(NameUse {
                     name,
@@ -256,16 +249,13 @@ impl Constructors {
             }
             known.push((class.name.as_str(), fields));
         }
-        let Members { methods, attributes, definitions } = member_names(body);
+        let Members { methods, attributes } = member_names(body);
         Self {
             dataclasses,
             uses: grouped.into_iter().map(|(module, uses)| (module, uses.into_iter().collect())).collect(),
             dynamic: dynamic.into_iter().collect(),
             methods,
             attributes,
-            definitions,
-            attribute_loads: BTreeMap::new(),
-            computed_reads: ComputedReads::default(),
         }
     }
 }
@@ -294,12 +284,10 @@ impl CallContexts {
     }
 }
 
-// The names a module's members bind: the methods and plain `name = value` attributes of its top-level classes, and its
-// own functions and classes.
+// The methods and plain `name = value` attributes of a module's top-level classes.
 struct Members {
     methods: Vec<String>,
     attributes: Vec<String>,
-    definitions: Vec<String>,
 }
 
 // A member in an `if` or `try` block of the class body is the class's too, as `module_statements` reads it.
@@ -315,14 +303,18 @@ fn member_names(body: &[Stmt]) -> Members {
         .flat_map(|assign| assign.targets.iter().filter_map(Expr::as_name_expr))
         .map(|target| target.id.to_string())
         .collect();
-    let definitions = module_statements(body)
-        .filter_map(|stmt| match stmt {
-            Stmt::FunctionDef(function) => Some(function.name.to_string()),
-            Stmt::ClassDef(class) => Some(class.name.to_string()),
-            _ => None,
-        })
-        .collect();
-    Members { methods, attributes, definitions }
+    Members { methods, attributes }
+}
+
+// The range of the call a statement is, when nothing reads the call's value, as `f()` on a line of its own.
+pub(super) fn discarded_call(stmt: &Stmt) -> Option<TextRange> {
+    let Stmt::Expr(ast::StmtExpr { value, .. }) = stmt else {
+        return None;
+    };
+    let Expr::Call(call) = value.as_ref() else {
+        return None;
+    };
+    Some(call.range())
 }
 
 // The calls that make up a whole statement, whose value nothing reads, such as `f()` on a line of its own.
@@ -330,11 +322,7 @@ fn discarded_calls(body: &[Stmt]) -> FxHashSet<TextRange> {
     struct Discarded(FxHashSet<TextRange>);
     impl<'a> Visitor<'a> for Discarded {
         fn visit_stmt(&mut self, stmt: &'a Stmt) {
-            if let Stmt::Expr(ast::StmtExpr { value, .. }) = stmt
-                && let Expr::Call(call) = value.as_ref()
-            {
-                self.0.insert(call.range());
-            }
+            self.0.extend(discarded_call(stmt));
             visitor::walk_stmt(self, stmt);
         }
     }
@@ -381,10 +369,7 @@ impl<'a> Visitor<'a> for Unparsed {
         strings.visit_expr(annotation);
         for literal in strings.found {
             for part in &literal.value {
-                let words = part
-                    .value
-                    .split(|character: char| !(character.is_alphanumeric() || character == '_'))
-                    .filter(|word| !word.is_empty());
+                let words = identifier_words(&part.value).filter(|word| !word.is_empty());
                 self.0.extend(words.map(str::to_owned));
             }
         }

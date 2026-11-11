@@ -4,12 +4,12 @@ use std::fs;
 
 use test_case::test_case;
 
-use common::{SECTION, SINGLE_X, check, check_with_stdin, project, simplint_with_stdin};
+use common::{SECTION, SINGLE_X, check, check_with_stdin, empty_project, project, simplint_with_stdin};
 
 #[test]
 fn check_clean_project_passes() {
     let root = project(&[("module.py", "_VALUE: Final[int] = 1\n")]);
-    assert_eq!(check(root.path(), &["--select", "SMP001"]), (0, "All checks passed!\n".to_owned(), String::new()));
+    assert_eq!(check(root.path(), &["--select", "SMP001"]), (0, common::PASSED.to_owned(), String::new()));
 }
 
 #[test]
@@ -45,7 +45,7 @@ fn check_accepts_several_paths() {
     );
 }
 
-#[test_case(&["--select", "SMP101"], "All checks passed!\n" ; "check")]
+#[test_case(&["--select", "SMP101"], common::PASSED ; "check")]
 #[test_case(&["--show-files"], "" ; "show_files")]
 fn check_without_python_files_warns(flags: &[&str], stdout: &str) {
     let root = project(&[("notes.txt", "x = 1\n")]);
@@ -162,7 +162,7 @@ fn per_file_ignores_flag_needs_a_pattern_and_code() {
 #[test_case(&["--config", "extend-unsafe-fixes = [\"SMP99\"]"], "`SMP99` in `extend-unsafe-fixes`" ; "inline_extend_unsafe_fixes")]
 #[test_case(&["--config", "extend-per-file-ignores = { \"a.py\" = [\"SMP99\"] }"], "`SMP99` in `extend-per-file-ignores`" ; "inline_extend_per_file_ignores")]
 fn check_unknown_selector_names_the_cli(flags: &[&str], selector: &str) {
-    let root = project(&[("module.py", "VALUE = 1\n")]);
+    let root = project(&[("module.py", common::CLEAN_MODULE)]);
     assert_eq!(
         check(root.path(), flags),
         (2, String::new(), format!("simplint failed\n  Cause: Unknown rule selector {selector} from the CLI\n"))
@@ -173,7 +173,7 @@ fn check_unknown_selector_names_the_cli(flags: &[&str], selector: &str) {
 #[test_case("E5" ; "prefix")]
 #[test_case("unused-import" ; "name")]
 fn check_points_ruff_selectors_to_ruff(selector: &str) {
-    let root = project(&[("module.py", "VALUE = 1\n")]);
+    let root = project(&[("module.py", common::CLEAN_MODULE)]);
     assert_eq!(
         check(root.path(), &["--select", selector]),
         (
@@ -193,7 +193,7 @@ fn check_points_ruff_selectors_to_ruff(selector: &str) {
 #[test_case(&["--statistics", "--watch"] ; "statistics_watch")]
 #[test_case(&["--show-settings", "--stdin-filename", "x.py"] ; "show_settings_stdin")]
 fn conflicting_flags_fail(flags: &[&str]) {
-    let root = project(&[]);
+    let root = empty_project();
     let (code, _, stderr) = check(root.path(), flags);
     assert_eq!((code, stderr.contains("cannot be used with")), (2, true));
 }
@@ -208,7 +208,7 @@ fn conflicting_flags_fail(flags: &[&str]) {
 #[test_case("py314" ; "py314")]
 #[test_case("py315" ; "py315")]
 fn check_accepts_every_target_version(version: &str) {
-    let root = project(&[("module.py", "VALUE = 1\n")]);
+    let root = project(&[("module.py", common::CLEAN_MODULE)]);
     assert_eq!(check(root.path(), &["--target-version", version, "--select", "SMP101"]).0, 0);
 }
 
@@ -227,7 +227,7 @@ fn check_syntax_error_is_reported() {
 #[cfg(unix)]
 #[test]
 fn check_unreadable_file_is_reported() {
-    let root = project(&[("module.py", "VALUE = 1\n")]);
+    let root = project(&[("module.py", common::CLEAN_MODULE)]);
     common::set_mode(&root.path().join("module.py"), 0o000);
     assert_eq!(
         check(root.path(), &[]),
@@ -238,19 +238,20 @@ fn check_unreadable_file_is_reported() {
 #[cfg(unix)]
 #[test]
 fn unreadable_file_is_a_warning_while_ruff_io_error_is_off() {
-    let root = project(&[("pyproject.toml", "[tool.ruff.lint]\nselect = [\"F\"]\n"), ("module.py", "VALUE = 1\n")]);
+    let root =
+        project(&[("pyproject.toml", "[tool.ruff.lint]\nselect = [\"F\"]\n"), ("module.py", common::CLEAN_MODULE)]);
     common::set_mode(&root.path().join("module.py"), 0o000);
     let (code, stdout, stderr) = check(root.path(), &[]);
     assert_eq!(
         (code, stdout, stderr.contains("Failed to lint module.py: Permission denied")),
-        (0, "All checks passed!\n".to_owned(), true)
+        (0, common::PASSED.to_owned(), true)
     );
 }
 
 #[cfg(unix)]
 #[test]
 fn check_warns_about_unreadable_directories() {
-    let root = project(&[("locked/module.py", "x = 1\n"), ("module.py", "VALUE = 1\n")]);
+    let root = project(&[("locked/module.py", "x = 1\n"), ("module.py", common::CLEAN_MODULE)]);
     common::set_mode(&root.path().join("locked"), 0o000);
     let (code, _, stderr) = check(root.path(), &["--select", "SMP101"]);
     common::set_mode(&root.path().join("locked"), 0o755);
@@ -260,7 +261,7 @@ fn check_warns_about_unreadable_directories() {
 #[test]
 fn check_stops_quietly_when_the_reader_goes_away() {
     // More report than a pipe buffer holds, so the run still writes once the reader is gone however late it goes.
-    let root = project(&[("module.py", &"# --- helpers ---\nVALUE = 1\n".repeat(5000))]);
+    let root = project(&[("module.py", &common::SECTIONED.repeat(5000))]);
     let mut child = common::command(root.path())
         .args(["check", "--select", "SMP001"])
         .stdout(std::process::Stdio::piped())
@@ -273,13 +274,13 @@ fn check_stops_quietly_when_the_reader_goes_away() {
 
 #[test]
 fn check_verbose_logs_debug_output() {
-    let root = project(&[("module.py", "VALUE = 1\n")]);
+    let root = project(&[("module.py", common::CLEAN_MODULE)]);
     assert!(check(root.path(), &["--verbose"]).2.contains("Using Ruff default settings"));
 }
 
 #[test]
 fn check_reads_stdin() {
-    let root = project(&[]);
+    let root = empty_project();
     assert_eq!(
         check_with_stdin(root.path(), &["--select", "SMP101", "-"], "x = 1\n"),
         (1, format!("-:1:1: {SINGLE_X}\nFound 1 error.\n"), String::new())
@@ -287,20 +288,20 @@ fn check_reads_stdin() {
 }
 
 #[test_case(
-    "--fix", "# --- helpers ---\nVALUE = 1\n", 0, "VALUE = 1\n", "Found 1 error (1 fixed, 0 remaining).\n" ;
+    "--fix", common::SECTIONED, 0, common::CLEAN_MODULE, common::ONE_FIXED ;
     "fix_writes_the_fixed_source"
 )]
-#[test_case("--fix", "VALUE = 1\n", 0, "VALUE = 1\n", "All checks passed!\n" ; "fix_keeps_source_with_nothing_to_fix")]
+#[test_case("--fix", common::CLEAN_MODULE, 0, common::CLEAN_MODULE, common::PASSED ; "fix_keeps_source_with_nothing_to_fix")]
 #[test_case(
     "--diff",
-    "# --- helpers ---\nVALUE = 1\n",
+    common::SECTIONED,
     1,
     "--- module.py\n+++ module.py\n@@ -1,2 +1 @@\n-# --- helpers ---\n VALUE = 1\n\n",
     "Would fix 1 error.\n" ;
     "diff_prints_the_diff"
 )]
 fn check_fix_from_stdin(flag: &str, stdin: &str, code: i32, stdout: &str, stderr: &str) {
-    let root = project(&[]);
+    let root = empty_project();
     assert_eq!(
         check_with_stdin(root.path(), &[flag, "--select", "SMP001", "--stdin-filename", "module.py"], stdin),
         (code, stdout.to_owned(), stderr.to_owned())
@@ -351,7 +352,7 @@ fn check_stdin_lints_like_the_file_it_stands_for(files: &[(&str, &str)], name: &
 
 // Standard input is judged by the path it stands for, so a helper read from a test directory is a test module's and
 // its SMP409 is left out, as it is when the file is checked by path.
-#[test_case("tests", "All checks passed!\n" ; "test_directory")]
+#[test_case("tests", common::PASSED ; "test_directory")]
 #[test_case(
     "lib",
     "helpers.py:1:5: SMP409 `helper` is never used in the run; remove it or give it a caller\nFound 1 error.\n" ;
@@ -373,7 +374,7 @@ fn check_stdin_judges_its_test_module_by_the_directory_it_stands_in(dir: &str, s
 // Ruff reports a path that does not exist as `E902`, which fails the run, as it reports an unreadable file.
 #[test]
 fn check_reports_a_missing_path_as_io_error() {
-    let root = project(&[("real.py", "VALUE = 1\n")]);
+    let root = project(&[("real.py", common::CLEAN_MODULE)]);
     let (code, stdout, _) = check(root.path(), &["--select", "SMP101", "typo.py", "real.py"]);
     assert_eq!(
         (code, stdout),
@@ -384,13 +385,14 @@ fn check_reports_a_missing_path_as_io_error() {
 // With Ruff's `E902` off, a missing path stays a warning and the run keeps its status, as it always has.
 #[test]
 fn check_warns_about_a_missing_path_while_io_error_is_off() {
-    let root = project(&[("pyproject.toml", "[tool.ruff.lint]\nselect = [\"F\"]\n"), ("real.py", "VALUE = 1\n")]);
+    let root =
+        project(&[("pyproject.toml", "[tool.ruff.lint]\nselect = [\"F\"]\n"), ("real.py", common::CLEAN_MODULE)]);
     let (code, stdout, stderr) = check(root.path(), &["--select", "SMP101", "typo.py", "real.py"]);
     assert_eq!(
         (code, stdout, stderr),
         (
             0,
-            "All checks passed!\n".to_owned(),
+            common::PASSED.to_owned(),
             "warning: Encountered error: No such file or directory (os error 2)\n".to_owned()
         )
     );

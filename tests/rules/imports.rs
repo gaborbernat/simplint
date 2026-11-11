@@ -1,93 +1,92 @@
 use std::fs;
 use std::path::Path;
 
-use tempfile::TempDir;
 use test_case::test_case;
 
 use crate::common;
 
-#[test_case("future-annotations", "future_annotations.py", "py314" ; "future_annotations")]
-#[test_case("future-annotations", "future_annotations.py", "py310" ; "future_annotations_py310")]
-#[test_case("future-annotations", "future_annotations_checking.py", "py314" ; "future_annotations_type_checking")]
-#[test_case("future-annotations", "future_annotations_joined.py", "py314" ; "future_annotations_joined_statement")]
-#[test_case("future-annotations", "future_annotations_class_bindings.py", "py314" ; "future_annotations_class_bindings")]
-#[test_case("future-annotations", "future_annotations_class_shadow.py", "py314" ; "future_annotations_class_shadow")]
-#[test_case("future-annotations", "future_annotations_quoted_union.py", "py314" ; "future_annotations_quoted_union")]
-#[test_case("future-annotations", "future_annotations_guarded_import.py", "py314" ; "future_annotations_guarded_import")]
-#[test_case("future-annotations", "future_annotations_comments.py", "py314" ; "future_annotations_comments")]
-#[test_case("future-annotations", "future_annotations_trailing_comment.py", "py314" ; "future_annotations_trailing_comment")]
-#[test_case("import-cycle", "import_cycle.py", "py314" ; "import_cycle")]
-#[test_case("import-cycle", "import_cycle_partner.py", "py314" ; "import_cycle_partner")]
-#[test_case("import-cycle", "import_cycle_ring_a.py", "py314" ; "import_cycle_ring")]
-#[test_case("import-cycle", "import_cycle_chord_a.py", "py314" ; "import_cycle_chord")]
-#[test_case("import-cycle", "import_cycle_exceptions.py", "py314" ; "import_cycle_exceptions")]
-#[test_case("import-cycle", "import_cycle_lazy.py", "py315" ; "import_cycle_lazy")]
-#[test_case("import-cycle", "import_cycle_pkg/core.py", "py314" ; "import_cycle_package")]
-#[test_case("import-cycle", "import_cycle_dead.py", "py314" ; "import_cycle_dead")]
-#[test_case("import-cycle", "import_cycle_platform.py", "py314" ; "import_cycle_platform")]
-#[test_case("import-cycle", "import_cycle_platform_partner.py", "py314" ; "import_cycle_platform_partner")]
-#[test_case("import-cycle", "test_import_cycle_fixture.py", "py314" ; "import_cycle_test_module")]
-#[test_case("absolute-sibling-import", "package/sub/module.py", "py314" ; "absolute_sibling_import")]
-#[test_case("absolute-sibling-import", "package/__init__.py", "py314" ; "absolute_sibling_import_init")]
-#[test_case("absolute-sibling-import", "package/sub/script.py", "py314" ; "absolute_sibling_import_script")]
-#[test_case("absolute-sibling-import", "package/sub/channel_exec.py", "py314" ; "absolute_sibling_import_channel_exec")]
-#[test_case("absolute-sibling-import", "package/sub/remote_worker.py", "py314" ; "absolute_sibling_import_remote_worker")]
-#[test_case("absolute-sibling-import", "package/sub/reversed_guard.py", "py314" ; "absolute_sibling_import_reversed_guard")]
+#[test_case("future-annotations", "future_annotations.py", None ; "future_annotations")]
+#[test_case("future-annotations", "future_annotations.py", Some("py310") ; "future_annotations_py310")]
+#[test_case("future-annotations", "future_annotations_checking.py", None ; "future_annotations_type_checking")]
+#[test_case("future-annotations", "future_annotations_joined.py", None ; "future_annotations_joined_statement")]
+#[test_case("future-annotations", "future_annotations_class_bindings.py", None ; "future_annotations_class_bindings")]
+#[test_case("future-annotations", "future_annotations_class_shadow.py", None ; "future_annotations_class_shadow")]
+#[test_case("future-annotations", "future_annotations_quoted_union.py", None ; "future_annotations_quoted_union")]
+#[test_case("future-annotations", "future_annotations_guarded_import.py", None ; "future_annotations_guarded_import")]
+#[test_case("future-annotations", "future_annotations_comments.py", None ; "future_annotations_comments")]
+#[test_case("future-annotations", "future_annotations_trailing_comment.py", None ; "future_annotations_trailing_comment")]
+#[test_case("import-cycle", "import_cycle.py", None ; "import_cycle")]
+#[test_case("import-cycle", "import_cycle_partner.py", None ; "import_cycle_partner")]
+#[test_case("import-cycle", "import_cycle_ring_a.py", None ; "import_cycle_ring")]
+#[test_case("import-cycle", "import_cycle_chord_a.py", None ; "import_cycle_chord")]
+#[test_case("import-cycle", "import_cycle_exceptions.py", None ; "import_cycle_exceptions")]
+#[test_case("import-cycle", "import_cycle_lazy.py", Some("py315") ; "import_cycle_lazy")]
+#[test_case("import-cycle", "import_cycle_pkg/core.py", None ; "import_cycle_package")]
+#[test_case("import-cycle", "import_cycle_dead.py", None ; "import_cycle_dead")]
+#[test_case("import-cycle", "import_cycle_platform.py", None ; "import_cycle_platform")]
+#[test_case("import-cycle", "import_cycle_platform_partner.py", None ; "import_cycle_platform_partner")]
+#[test_case("import-cycle", "test_import_cycle_fixture.py", None ; "import_cycle_test_module")]
+#[test_case("absolute-sibling-import", "package/sub/module.py", None ; "absolute_sibling_import")]
+#[test_case("absolute-sibling-import", "package/__init__.py", None ; "absolute_sibling_import_init")]
+#[test_case("absolute-sibling-import", "package/sub/script.py", None ; "absolute_sibling_import_script")]
+#[test_case("absolute-sibling-import", "package/sub/channel_exec.py", None ; "absolute_sibling_import_channel_exec")]
+#[test_case("absolute-sibling-import", "package/sub/remote_worker.py", None ; "absolute_sibling_import_remote_worker")]
+#[test_case("absolute-sibling-import", "package/sub/reversed_guard.py", None ; "absolute_sibling_import_reversed_guard")]
 #[test_case(
-    "absolute-sibling-import", "multiline_module_docstring_ok.py", "py314" ; "absolute_sibling_import_outside_package"
+    "absolute-sibling-import", "multiline_module_docstring_ok.py", None ; "absolute_sibling_import_outside_package"
 )]
-#[test_case("module-attribute-import", "writers/module_fix.py", "py314" ; "module_attribute_import_fix")]
-#[test_case("module-attribute-import", "writers/module_alias.py", "py314" ; "module_attribute_import_alias")]
-#[test_case("module-attribute-import", "writers/module_mixed.py", "py314" ; "module_attribute_import_store_leaves_other_names")]
-#[test_case("module-attribute-import", "writers/module_undefined.py", "py314" ; "module_attribute_import_undefined")]
-#[test_case("module-attribute-import", "writers/module_value.py", "py314" ; "module_attribute_import_value")]
-#[test_case("module-attribute-import", "writers/module_type_param.py", "py314" ; "module_attribute_import_type_param")]
-#[test_case("module-attribute-import", "writers/module_parameter.py", "py314" ; "module_attribute_import_parameter")]
-#[test_case("module-attribute-import", "writers/module_shadowed.py", "py314" ; "module_attribute_import_shadowed")]
-#[test_case("module-attribute-import", "writers/module_clash.py", "py314" ; "module_attribute_import_clash")]
-#[test_case("module-attribute-import", "writers/module_rebound.py", "py314" ; "module_attribute_import_rebound")]
-#[test_case("module-attribute-import", "writers/module_dunder.py", "py314" ; "module_attribute_import_dunder")]
-#[test_case("module-attribute-import", "writers/module_third_party.py", "py314" ; "module_attribute_import_third_party")]
-#[test_case("module-attribute-import", "writers/module_patched.py", "py314" ; "module_attribute_import_patched")]
-#[test_case("module-attribute-import", "writers/module_lazy.py", "py315" ; "module_attribute_import_lazy")]
-#[test_case("module-attribute-import", "writers/module_computed.py", "py314" ; "module_attribute_import_computed_write")]
-#[test_case("module-attribute-import", "writers/module_function_import.py", "py314" ; "module_attribute_import_function_import")]
-#[test_case("module-attribute-import", "writers/module_branch_imports.py", "py314" ; "module_attribute_import_branch_imports")]
-#[test_case("module-attribute-import", "writers/module_bound_elsewhere.py", "py314" ; "module_attribute_import_bound_elsewhere")]
-#[test_case("module-attribute-import", "writers/module_builtin_name.py", "py314" ; "module_attribute_import_builtin_name")]
-#[test_case("dependency-import-guard", "dependency_import_guard.py", "py314" ; "dependency_import_guard")]
-#[test_case("dependency-import-guard", "dependency_import_guard.py", "py310" ; "dependency_import_guard_py310")]
-#[test_case("dependency-import-guard", "dependency_import_guard_optional.py", "py314" ; "dependency_import_guard_optional")]
-#[test_case("dependency-import-guard", "dependency_import_guard_function.py", "py314" ; "dependency_import_guard_function")]
-#[test_case("up-backport-import", "up_backport_import.py", "py311" ; "backport_import")]
-#[test_case("up-backport-import", "up_backport_import.py", "py310" ; "backport_import_py310")]
-#[test_case("up-backport-import", "up_backport_import_single.py", "py311" ; "backport_import_single")]
-#[test_case("up-backport-import", "up_backport_import_inline.py", "py311" ; "backport_import_inline")]
-#[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import.py", "py315" ; "type_checking_lazy_import")]
-#[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import.py", "py314" ; "type_checking_lazy_import_py314")]
-#[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_shared.py", "py315" ; "type_checking_lazy_import_shared")]
-#[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_attribute.py", "py315" ; "type_checking_lazy_import_attribute")]
-#[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_comment.py", "py315" ; "type_checking_lazy_import_comment")]
-#[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_typeshed.py", "py315" ; "type_checking_lazy_import_typeshed")]
-#[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_inline.py", "py315" ; "type_checking_lazy_import_inline")]
-#[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_ignored.py", "py315" ; "type_checking_lazy_import_ignored")]
-#[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_module.py", "py315" ; "type_checking_lazy_import_module")]
-#[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_typeshed_module.py", "py315" ; "type_checking_lazy_import_typeshed_module")]
-#[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_already_lazy.py", "py315" ; "type_checking_lazy_import_already_lazy")]
-#[test_case("up-lazy-modules-list", "up_lazy_modules_list.py", "py315" ; "lazy_modules_list")]
-#[test_case("up-lazy-modules-list", "up_lazy_modules_list.py", "py314" ; "lazy_modules_list_py314")]
-#[test_case("up-lazy-modules-list", "up_lazy_modules_list_partial.py", "py315" ; "lazy_modules_list_partial")]
-#[test_case("up-lazy-modules-list", "up_lazy_modules_list_mixed.py", "py315" ; "lazy_modules_list_mixed")]
-#[test_case("up-lazy-modules-list", "up_lazy_modules_list_nonliteral.py", "py315" ; "lazy_modules_list_nonliteral")]
-#[test_case("up-lazy-modules-list", "up_lazy_modules_list_comprehension.py", "py315" ; "lazy_modules_list_comprehension")]
-#[test_case("up-lazy-modules-list", "up_lazy_modules_list_guarded.py", "py315" ; "lazy_modules_list_guarded")]
-#[test_case("up-lazy-modules-list", "up_lazy_modules_list_inline.py", "py315" ; "lazy_modules_list_inline")]
-#[test_case("up-lazy-modules-list", "up_lazy_modules_list_tuple.py", "py315" ; "lazy_modules_list_tuple")]
-#[test_case("up-lazy-modules-list", "up_lazy_modules_list_set.py", "py315" ; "lazy_modules_list_set")]
-#[test_case("up-lazy-modules-list", "up_lazy_modules_list_nested.py", "py315" ; "lazy_modules_list_nested")]
-#[test_case("up-lazy-modules-list", "up_lazy_modules_list_lazy.py", "py315" ; "lazy_modules_list_already_lazy")]
-fn rule(rule: &str, fixture: &str, target_version: &str) {
-    common::assert_rule_snapshot(rule, fixture, target_version);
+#[test_case("module-attribute-import", "writers/module_fix.py", None ; "module_attribute_import_fix")]
+#[test_case("module-attribute-import", "writers/module_alias.py", None ; "module_attribute_import_alias")]
+#[test_case("module-attribute-import", "writers/module_mixed.py", None ; "module_attribute_import_store_leaves_other_names")]
+#[test_case("module-attribute-import", "writers/module_undefined.py", None ; "module_attribute_import_undefined")]
+#[test_case("module-attribute-import", "writers/module_value.py", None ; "module_attribute_import_value")]
+#[test_case("module-attribute-import", "writers/module_type_param.py", None ; "module_attribute_import_type_param")]
+#[test_case("module-attribute-import", "writers/module_parameter.py", None ; "module_attribute_import_parameter")]
+#[test_case("module-attribute-import", "writers/module_shadowed.py", None ; "module_attribute_import_shadowed")]
+#[test_case("module-attribute-import", "writers/module_clash.py", None ; "module_attribute_import_clash")]
+#[test_case("module-attribute-import", "writers/module_rebound.py", None ; "module_attribute_import_rebound")]
+#[test_case("module-attribute-import", "writers/module_dunder.py", None ; "module_attribute_import_dunder")]
+#[test_case("module-attribute-import", "writers/module_third_party.py", None ; "module_attribute_import_third_party")]
+#[test_case("module-attribute-import", "writers/module_patched.py", None ; "module_attribute_import_patched")]
+#[test_case("module-attribute-import", "writers/module_lazy.py", Some("py315") ; "module_attribute_import_lazy")]
+#[test_case("module-attribute-import", "writers/module_computed.py", None ; "module_attribute_import_computed_write")]
+#[test_case("module-attribute-import", "writers/module_function_import.py", None ; "module_attribute_import_function_import")]
+#[test_case("module-attribute-import", "writers/module_branch_imports.py", None ; "module_attribute_import_branch_imports")]
+#[test_case("module-attribute-import", "writers/module_bound_elsewhere.py", None ; "module_attribute_import_bound_elsewhere")]
+#[test_case("module-attribute-import", "writers/module_builtin_name.py", None ; "module_attribute_import_builtin_name")]
+#[test_case("dependency-import-guard", "dependency_import_guard.py", None ; "dependency_import_guard")]
+#[test_case("dependency-import-guard", "dependency_import_guard.py", Some("py310") ; "dependency_import_guard_py310")]
+#[test_case("dependency-import-guard", "dependency_import_guard_optional.py", None ; "dependency_import_guard_optional")]
+#[test_case("dependency-import-guard", "dependency_import_guard_function.py", None ; "dependency_import_guard_function")]
+#[test_case("up-backport-import", "up_backport_import.py", Some("py311") ; "backport_import")]
+#[test_case("up-backport-import", "up_backport_import.py", Some("py310") ; "backport_import_py310")]
+#[test_case("up-backport-import", "up_backport_import_single.py", Some("py311") ; "backport_import_single")]
+#[test_case("up-backport-import", "up_backport_import_inline.py", Some("py311") ; "backport_import_inline")]
+#[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import.py", Some("py315") ; "type_checking_lazy_import")]
+#[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import.py", None ; "type_checking_lazy_import_py314")]
+#[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_shared.py", Some("py315") ; "type_checking_lazy_import_shared")]
+#[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_attribute.py", Some("py315") ; "type_checking_lazy_import_attribute")]
+#[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_comment.py", Some("py315") ; "type_checking_lazy_import_comment")]
+#[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_typeshed.py", Some("py315") ; "type_checking_lazy_import_typeshed")]
+#[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_inline.py", Some("py315") ; "type_checking_lazy_import_inline")]
+#[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_ignored.py", Some("py315") ; "type_checking_lazy_import_ignored")]
+#[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_module.py", Some("py315") ; "type_checking_lazy_import_module")]
+#[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_typeshed_module.py", Some("py315") ; "type_checking_lazy_import_typeshed_module")]
+#[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_already_lazy.py", Some("py315") ; "type_checking_lazy_import_already_lazy")]
+#[test_case("up-lazy-modules-list", "up_lazy_modules_list.py", Some("py315") ; "lazy_modules_list")]
+#[test_case("up-lazy-modules-list", "up_lazy_modules_list.py", None ; "lazy_modules_list_py314")]
+#[test_case("up-lazy-modules-list", "up_lazy_modules_list_partial.py", Some("py315") ; "lazy_modules_list_partial")]
+#[test_case("up-lazy-modules-list", "up_lazy_modules_list_mixed.py", Some("py315") ; "lazy_modules_list_mixed")]
+#[test_case("up-lazy-modules-list", "up_lazy_modules_list_nonliteral.py", Some("py315") ; "lazy_modules_list_nonliteral")]
+#[test_case("up-lazy-modules-list", "up_lazy_modules_list_comprehension.py", Some("py315") ; "lazy_modules_list_comprehension")]
+#[test_case("up-lazy-modules-list", "up_lazy_modules_list_guarded.py", Some("py315") ; "lazy_modules_list_guarded")]
+#[test_case("up-lazy-modules-list", "up_lazy_modules_list_inline.py", Some("py315") ; "lazy_modules_list_inline")]
+#[test_case("up-lazy-modules-list", "up_lazy_modules_list_tuple.py", Some("py315") ; "lazy_modules_list_tuple")]
+#[test_case("up-lazy-modules-list", "up_lazy_modules_list_set.py", Some("py315") ; "lazy_modules_list_set")]
+#[test_case("up-lazy-modules-list", "up_lazy_modules_list_nested.py", Some("py315") ; "lazy_modules_list_nested")]
+#[test_case("up-lazy-modules-list", "up_lazy_modules_list_lazy.py", Some("py315") ; "lazy_modules_list_already_lazy")]
+fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
+    common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
 
 const PROJECT: &str = "[project]\nname = \"x\"\nversion = \"0\"\n";
@@ -114,8 +113,7 @@ const HOOK: &str = "repos:\n  - repo: https://github.com/henryiii/flake8-lazy\n 
 #[test_case("def load():\n    from .._api import API\n    return API\n", 1 ; "function_import")]
 fn private_import_path(source: &str, expected: usize) {
     let root = common::project(&[("package/__init__.py", ""), ("package/module.py", source)]);
-    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP310"]);
-    assert_eq!(stdout.matches("SMP310").count(), expected, "{stdout}");
+    common::assert_report_count(root.path(), "SMP310", expected);
 }
 
 #[test_case("tests/a/b/test_x.py", "from a.b._x import Name\n", 0 ; "paired_mirrored")]
@@ -136,8 +134,7 @@ fn private_import_path(source: &str, expected: usize) {
 #[test_case("a/b/consumer.py", "from a.b._x import Name\n", 1 ; "production_absolute")]
 fn private_import_path_in_tests(file: &str, source: &str, expected: usize) {
     let root = common::project(&[("a/b/_x.py", "Name = object()\n"), ("_x.py", "Name = object()\n"), (file, source)]);
-    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP310"]);
-    assert_eq!(stdout.matches("SMP310").count(), expected, "{stdout}");
+    common::assert_report_count(root.path(), "SMP310", expected);
 }
 
 #[test_case(
@@ -170,8 +167,7 @@ fn private_import_path_in_tests(file: &str, source: &str, expected: usize) {
 )]
 fn private_import_path_in_mirrored_tests(file: &str, module: &str, source_file: &str, expected: usize) {
     let root = common::project(&[(source_file, "Name = object()\n"), (file, &format!("from {module} import Name\n"))]);
-    let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP310"]).1;
-    assert_eq!(stdout.matches("SMP310").count(), expected, "{stdout}");
+    common::assert_report_count(root.path(), "SMP310", expected);
 }
 
 #[test]
@@ -180,8 +176,7 @@ fn private_module_object_remains_disallowed_in_paired_suite() {
         ("src/pkg/_html.pyi", "Name: object\n"),
         ("tests/_html/test_url.py", "from pkg import _html\n"),
     ]);
-    let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP310"]).1;
-    assert_eq!(stdout.matches("SMP310").count(), 1, "{stdout}");
+    common::assert_report_count(root.path(), "SMP310", 1);
 }
 
 #[test]
@@ -202,16 +197,11 @@ fn sibling_package(prefix: &str) -> Vec<(String, &'static str)> {
     [
         ("package/__init__.py", ""),
         ("package/sub/__init__.py", ""),
-        ("package/sub/sibling.py", "VALUE = 1\n"),
+        ("package/sub/sibling.py", common::CLEAN_MODULE),
         ("package/sub/module.py", "from package.sub import sibling\n"),
     ]
     .map(|(name, content)| (format!("{prefix}{name}"), content))
     .into()
-}
-
-fn project_of(files: &[(String, &str)]) -> TempDir {
-    let borrowed: Vec<(&str, &str)> = files.iter().map(|(name, content)| (name.as_str(), *content)).collect();
-    common::project(&borrowed)
 }
 
 fn reported(root: &Path) -> bool {
@@ -253,7 +243,7 @@ fn absolute_sibling_import_follows_flake8_lazy(pyproject: &str, hook: Option<(&s
     let mut files = sibling_package("");
     files.push(("pyproject.toml".to_owned(), pyproject));
     files.extend(hook.map(|(name, text)| (name.to_owned(), text)));
-    assert_eq!(reported(project_of(&files).path()), reported_);
+    assert_eq!(reported(common::project(&files).path()), reported_);
 }
 
 // The hook of the repository that holds the project counts, as pre-commit reads it from the repository root.
@@ -263,7 +253,7 @@ fn absolute_sibling_import_finds_hook_above_the_project() {
     files.push(("monorepo/pkg/pyproject.toml".to_owned(), PROJECT));
     files.push(("monorepo/.pre-commit-config.yaml".to_owned(), HOOK));
     files.push(("monorepo/.git/HEAD".to_owned(), "ref: refs/heads/main\n"));
-    assert!(!reported(project_of(&files).path().join("monorepo").as_path()));
+    assert!(!reported(common::project(&files).path().join("monorepo").as_path()));
 }
 
 // The search stops at the repository root, so a hook above it does not count.
@@ -273,7 +263,7 @@ fn absolute_sibling_import_stops_at_the_repository_root() {
     files.push(("outer/.pre-commit-config.yaml".to_owned(), HOOK));
     files.push(("outer/repo/pyproject.toml".to_owned(), PROJECT));
     files.push(("outer/repo/.git/HEAD".to_owned(), "ref: refs/heads/main\n"));
-    assert!(reported(project_of(&files).path().join("outer/repo").as_path()));
+    assert!(reported(common::project(&files).path().join("outer/repo").as_path()));
 }
 
 // Outside a repository, the search stops at the run's project, so a hook above it, as in the home directory, does not
@@ -283,7 +273,7 @@ fn absolute_sibling_import_outside_a_repository_stops_at_the_project() {
     let mut files = sibling_package("home/repo/");
     files.push(("home/.pre-commit-config.yaml".to_owned(), HOOK));
     files.push(("home/repo/pyproject.toml".to_owned(), PROJECT));
-    assert!(reported(project_of(&files).path().join("home/repo").as_path()));
+    assert!(reported(common::project(&files).path().join("home/repo").as_path()));
 }
 
 // A `[tool.flake8-lazy]` table in the settings pyproject, which a workspace member's own `pyproject.toml` does not hold.
@@ -295,7 +285,7 @@ fn absolute_sibling_import_finds_table_in_settings_pyproject() {
         "workspace/pyproject.toml".to_owned(),
         "[tool.simplint]\n[tool.flake8-lazy.standalone]\napply = \"list\"\n",
     ));
-    assert!(!reported(project_of(&files).path().join("workspace").as_path()));
+    assert!(!reported(common::project(&files).path().join("workspace").as_path()));
 }
 
 // A nested project with its own `[project]` sees the hook of the project around it.
@@ -306,7 +296,7 @@ fn absolute_sibling_import_nested_project_sees_outer_hook() {
     files.push((".pre-commit-config.yaml".to_owned(), HOOK));
     files.extend(sibling_package("tests/fixture/"));
     files.push(("tests/fixture/pyproject.toml".to_owned(), PROJECT));
-    assert!(!reported(project_of(&files).path()));
+    assert!(!reported(common::project(&files).path()));
 }
 
 // A nested project without a `pyproject.toml` of its own takes the metadata of the project around it.
@@ -317,7 +307,7 @@ fn absolute_sibling_import_nested_project_without_pyproject_sees_outer_hook() {
     files.push((".pre-commit-config.yaml".to_owned(), HOOK));
     files.extend(sibling_package("tests/proj/"));
     files.push(("tests/proj/conf.py".to_owned(), ""));
-    assert!(!reported(project_of(&files).path()));
+    assert!(!reported(common::project(&files).path()));
 }
 
 // Without a `pyproject.toml`, the hook configuration of the directory the run starts from counts.
@@ -325,7 +315,7 @@ fn absolute_sibling_import_nested_project_without_pyproject_sees_outer_hook() {
 fn absolute_sibling_import_without_pyproject_reads_hook_at_run_root() {
     let mut files = sibling_package("");
     files.push((".pre-commit-config.yaml".to_owned(), HOOK));
-    assert!(!reported(project_of(&files).path()));
+    assert!(!reported(common::project(&files).path()));
 }
 
 // `--isolated` reads no pyproject and no hook configuration, so the hook of the project does not count.
@@ -334,7 +324,7 @@ fn isolated_run_does_not_read_hook_configurations() {
     let mut files = sibling_package("");
     files.push(("pyproject.toml".to_owned(), PROJECT));
     files.push(("prek.toml".to_owned(), "[[repos]]\nrepo = \"x\"\nhooks = [{ id = \"flake8-lazy\" }]\n"));
-    let root = project_of(&files);
+    let root = common::project(&files);
     let isolated = common::check(root.path(), &["--isolated", "--select", "absolute-sibling-import"]).1;
     assert_eq!((isolated.contains("SMP302"), reported(root.path())), (true, false));
 }
@@ -345,7 +335,7 @@ fn isolated_run_does_not_read_hook_configurations() {
 fn unparsable_hook_configuration_counts_as_no_hook(select: &str, expected: (i32, bool)) {
     let mut files = sibling_package("");
     files.push(("prek.toml".to_owned(), "[[repos]\n"));
-    let root = project_of(&files);
+    let root = common::project(&files);
     let (status, _, stderr) = common::check(root.path(), &["--select", select]);
     assert_eq!((status, stderr.contains("Failed to parse")), expected);
 }
@@ -356,7 +346,7 @@ fn unparsable_hook_configuration_counts_as_no_hook(select: &str, expected: (i32,
 fn unreadable_hook_configuration_counts_as_no_hook(select: &str, expected: (i32, bool)) {
     let mut files = sibling_package("");
     files.push((".pre-commit-config.yaml".to_owned(), HOOK));
-    let root = project_of(&files);
+    let root = common::project(&files);
     common::set_mode(&root.path().join(".pre-commit-config.yaml"), 0o000);
     let (status, _, stderr) = common::check(root.path(), &["--select", select]);
     assert_eq!((status, stderr.contains("Failed to read")), expected);
@@ -367,7 +357,7 @@ fn unreadable_hook_configuration_counts_as_no_hook(select: &str, expected: (i32,
 fn latin1_hook_configuration_still_counts() {
     let mut files = sibling_package("");
     files.push(("pyproject.toml".to_owned(), PROJECT));
-    let root = project_of(&files);
+    let root = common::project(&files);
     fs::write(
         root.path().join(".pre-commit-config.yaml"),
         b"repos:\n  - repo: x # \xe9\xe9\n    hooks:\n      - id: flake8-lazy\n",
@@ -694,7 +684,7 @@ fn lazy_modules_list_matches_a_relative_import_by_its_module(
     let root = common::project(&[
         ("pyproject.toml", "[project]\nname = \"x\"\nversion = \"0\"\nrequires-python = \">=3.15\"\n"),
         ("pkg/__init__.py", ""),
-        ("pkg/helper.py", "VALUE = 1\n"),
+        ("pkg/helper.py", common::CLEAN_MODULE),
         ("pkg/other.py", "VALUE = 2\n"),
         (
             "pkg/consumer.py",
@@ -750,6 +740,5 @@ fn dependency_import_guard_keeps_a_guard_with_a_comment(guard: &str, fixable: bo
 fn dependency_import_guard_ignores_platform_and_accelerator_modules(module: &str, name: &str, reports: usize) {
     let root =
         common::project(&[("mod.py", &format!("try:\n    import {module}\nexcept ImportError:\n    {name} = None\n"))]);
-    let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP303"]).1;
-    assert_eq!(stdout.matches("SMP303").count(), reports, "{stdout}");
+    common::assert_report_count(root.path(), "SMP303", reports);
 }

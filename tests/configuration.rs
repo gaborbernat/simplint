@@ -53,7 +53,7 @@ fn pyproject_run_options_apply() {
             "pyproject.toml",
             "[tool.simplint]\nselect = [\"SMP001\"]\nfix = true\nshow-fixes = true\noutput-format = \"concise\"\n",
         ),
-        ("module.py", "# --- helpers ---\nVALUE = 1\n"),
+        ("module.py", common::SECTIONED),
     ]);
     assert_eq!(
         simplint(root.path(), &["check"]).1,
@@ -68,15 +68,16 @@ fn command_line_flags_override_pyproject_run_options() {
             "pyproject.toml",
             "[tool.simplint]\nselect = [\"SMP001\"]\nfix = true\nunsafe-fixes = true\nfix-only = true\n",
         ),
-        ("module.py", "# --- helpers ---\nVALUE = 1\n"),
+        ("module.py", common::SECTIONED),
     ]);
     let result = check(root.path(), &["--no-fix-only", "--no-fix", "--no-unsafe-fixes", "--no-show-fixes"]);
-    assert_eq!((result.0, read(root.path(), "module.py")), (1, "# --- helpers ---\nVALUE = 1\n".to_owned()));
+    assert_eq!((result.0, read(root.path(), "module.py")), (1, common::SECTIONED.to_owned()));
 }
 
 #[test]
 fn pyproject_unknown_simplint_key_fails() {
-    let root = project(&[("pyproject.toml", "[tool.simplint]\nnot-an-option = 1\n"), ("module.py", "VALUE = 1\n")]);
+    let root =
+        project(&[("pyproject.toml", "[tool.simplint]\nnot-an-option = 1\n"), ("module.py", common::CLEAN_MODULE)]);
     let (code, _, stderr) = check(root.path(), &[]);
     assert_eq!((code, stderr.contains("unknown field `not-an-option`")), (2, true));
 }
@@ -86,7 +87,7 @@ fn pyproject_unknown_simplint_key_fails() {
 #[test_case("[project\n" ; "not_toml")]
 #[test_case("[tool.simplint]\ndocstring-style = \"numpy\"\n" ; "unknown_docstring_style")]
 fn pyproject_invalid_fails(content: &str) {
-    let root = project(&[("pyproject.toml", content), ("module.py", "VALUE = 1\n")]);
+    let root = project(&[("pyproject.toml", content), ("module.py", common::CLEAN_MODULE)]);
     let (code, _, stderr) = check(root.path(), &[]);
     assert_eq!((code, stderr.contains("Failed to parse")), (2, true));
 }
@@ -183,7 +184,7 @@ fn member_metadata_comes_from_its_own_pyproject(root_pyproject: &str, member_pyp
 #[cfg(unix)]
 #[test]
 fn unreadable_pyproject_fails() {
-    let root = project(&[("pyproject.toml", "[project]\n"), ("module.py", "VALUE = 1\n")]);
+    let root = project(&[("pyproject.toml", "[project]\n"), ("module.py", common::CLEAN_MODULE)]);
     common::set_mode(&root.path().join("pyproject.toml"), 0o000);
     let (code, _, stderr) = check(root.path(), &[]);
     assert_eq!((code, stderr.contains("Failed to read")), (2, true));
@@ -194,7 +195,7 @@ fn unreadable_pyproject_fails() {
 fn unknown_selector_names_its_pyproject(flags: &[&str]) {
     let root = project(&[
         ("sub/pyproject.toml", "[tool.simplint]\nselect = [\"SMP999\"]\n"),
-        ("sub/module.py", "VALUE = 1\n"),
+        ("sub/module.py", common::CLEAN_MODULE),
     ]);
     let pyproject = common::canonical(root.path()).join("sub").join("pyproject.toml");
     assert_eq!(
@@ -249,7 +250,7 @@ fn isolated_rejects_a_config_file() {
 fn config_file_is_used_for_every_file(name: &str, content: &str, stdout: &str) {
     let path = format!("config/{name}");
     let root = project(&[
-        (&path, content),
+        (path.as_str(), content),
         ("pyproject.toml", "[tool.simplint]\nselect = [\"SMP001\"]\n"),
         ("module.py", "x = 1\n"),
     ]);
@@ -265,7 +266,7 @@ fn relative_config_anchors_per_file_ignores_at_its_directory() {
     ]);
     assert_eq!(
         check(root.path(), &["--config", "sub/pyproject.toml", "--select", "SMP101"]),
-        (0, "All checks passed!\n".to_owned(), String::new())
+        (0, common::PASSED.to_owned(), String::new())
     );
 }
 
@@ -300,7 +301,7 @@ fn inline_config_splits_simplint_and_ruff_keys() {
         ("module.py", "from __future__ import annotations\nx = 1\n"),
     ]);
     let (code, stdout, _) = check(root.path(), &["--config", "select = ['SMP301']\ntarget-version = 'py313'"]);
-    assert_eq!((code, stdout), (0, "All checks passed!\n".to_owned()));
+    assert_eq!((code, stdout), (0, common::PASSED.to_owned()));
 }
 
 #[test_case(&[("pyproject.toml", "[tool.simplint.naming]\nkeep-names = [\"app_name\"]\n")], &[] ; "pyproject")]
@@ -330,7 +331,7 @@ fn module_attributes_leave_listed_modules_alone(pyproject: &str, flags: &[&str])
     ]);
     assert_eq!(
         check(root.path(), &[&["--select", "SMP304"], flags].concat()),
-        (0, "All checks passed!\n".to_owned(), String::new())
+        (0, common::PASSED.to_owned(), String::new())
     );
 }
 
@@ -353,20 +354,20 @@ fn module_attributes_ignore_modules_outside_the_run() {
         ("pkg/__init__.py", "# A package.\n"),
         ("pkg/consumer.py", "from excluded import mod\n\nwriter = mod.Writer()\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP304"]), (0, "All checks passed!\n".to_owned(), String::new()));
+    assert_eq!(check(root.path(), &["--select", "SMP304"]), (0, common::PASSED.to_owned(), String::new()));
 }
 
 #[test_case(&[], &["--config", "max-paragraph-words = 4"], "module.py:1:1: SMP002 Paragraph exceeds 4 words; split it at a change of topic\nFound 1 error.\n" ; "limit_inline")]
 #[test_case(&[("pyproject.toml", "[tool.simplint]\nmax-paragraph-words = 4\n")], &[], "module.py:1:1: SMP002 Paragraph exceeds 4 words; split it at a change of topic\nFound 1 error.\n" ; "limit_in_pyproject")]
-#[test_case(&[], &[], "All checks passed!\n" ; "default_limit")]
+#[test_case(&[], &[], common::PASSED ; "default_limit")]
 fn paragraph_word_limit_decides_long_paragraphs(files: &[(&str, &str)], flags: &[&str], expected: &str) {
     let root = project(&[files, &[("module.py", "# One two three four five.\nVALUE = 1\n")]].concat());
     assert_eq!(check(root.path(), &[&["--select", "SMP002"], flags].concat()).1, expected);
 }
 
 #[test_case(&[], &[], "module.py:6:5: SMP505 `_parse_header` is called only from `load`, and inlining keeps `load` short; inline it\nFound 1 error.\n" ; "defaults")]
-#[test_case(&[("pyproject.toml", "[tool.simplint.logic]\nmax-helper-statements = 2\n")], &[], "All checks passed!\n" ; "helper_limit_in_pyproject")]
-#[test_case(&[], &["--config", "logic.max-caller-statements = 3"], "All checks passed!\n" ; "caller_limit_inline")]
+#[test_case(&[("pyproject.toml", "[tool.simplint.logic]\nmax-helper-statements = 2\n")], &[], common::PASSED ; "helper_limit_in_pyproject")]
+#[test_case(&[], &["--config", "logic.max-caller-statements = 3"], common::PASSED ; "caller_limit_inline")]
 fn logic_limits_decide_single_caller_helpers(files: &[(&str, &str)], flags: &[&str], expected: &str) {
     let source = "def load(text):\n    header = _parse_header(text)\n    return {\"header\": header}\n\n\ndef _parse_header(text):\n    first = text.splitlines()[0]\n    return first.strip()\n";
     let root = project(&[files, &[("module.py", source)]].concat());
@@ -564,7 +565,7 @@ fn ruff_excludes_apply() {
         ("generated/output.py", "x = 1\n"),
         (".gitignore", "ignored.py\n"),
         ("ignored.py", "x = 1\n"),
-        ("module.py", "VALUE = 1\n"),
+        ("module.py", common::CLEAN_MODULE),
     ]);
     fs::create_dir(root.path().join(".git")).expect("git directory");
     assert_eq!(check(root.path(), &["--select", "SMP101"]).0, 0);
@@ -584,7 +585,7 @@ fn ruff_lint_exclude_applies() {
 fn ruff_configuration_warnings_stay_with_ruff(file: &str, stderr: &str) {
     let root = project(&[
         ("pyproject.toml", "[tool.ruff]\nextend-select = [\"E\"]\n\n[tool.ruff.lint]\nignore = [\"ANN101\"]\n"),
-        (file, "VALUE = 1\n"),
+        (file, common::CLEAN_MODULE),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP101"]).2, stderr);
 }
@@ -599,7 +600,7 @@ fn absolute_sibling_import_needs_an_init_module(files: &[(&str, &str)], code: i3
             files,
             &[
                 ("pyproject.toml", "[tool.ruff]\nnamespace-packages = [\"tests\"]\n"),
-                ("tests/unit/support.py", "VALUE = 1\n"),
+                ("tests/unit/support.py", common::CLEAN_MODULE),
                 ("tests/unit/test_module.py", "from tests.unit.support import VALUE\n\nassert VALUE\n"),
             ],
         ]
@@ -623,37 +624,36 @@ fn test_module_without_pyproject(name: &str, reported: bool) {
 
 const LAZY_ANNOTATIONS: &str = "module.py:1:24: SMP301 [*] Annotations are evaluated lazily from Python 3.14; drop `from \
                                  __future__ import annotations`\nFound 1 error.\n[*] 1 fixable with `--fix`.\n";
-const PASSED: &str = "All checks passed!\n";
 
 #[test_case(&[("pyproject.toml", "[project]\nrequires-python = \">=3.14\"\n")], &[], LAZY_ANNOTATIONS ; "requires_python")]
 #[test_case(&[("pyproject.toml", "[project]\nrequires-python = \"~=3.14\"\n")], &[], LAZY_ANNOTATIONS ; "requires_python_compatible")]
 #[test_case(&[("pyproject.toml", "[project]\nrequires-python = \"==3.14.*\"\n")], &[], LAZY_ANNOTATIONS ; "requires_python_wildcard")]
 #[test_case(
-    &[("pyproject.toml", "[project]\nrequires-python = \">=3.14\"\n")], &["--target-version", "py313"], PASSED ;
+    &[("pyproject.toml", "[project]\nrequires-python = \">=3.14\"\n")], &["--target-version", "py313"], common::PASSED ;
     "flag_wins"
 )]
 #[test_case(
-    &[("pyproject.toml", "[project]\nrequires-python = \">=3.14\"\n")], &["--config", "target-version = 'py313'"], PASSED ;
+    &[("pyproject.toml", "[project]\nrequires-python = \">=3.14\"\n")], &["--config", "target-version = 'py313'"], common::PASSED ;
     "inline_config_wins"
 )]
 #[test_case(
-    &[("pyproject.toml", "[project]\nrequires-python = \">=3.14\"\n[tool.ruff]\ntarget-version = \"py312\"\n")], &[], PASSED ;
+    &[("pyproject.toml", "[project]\nrequires-python = \">=3.14\"\n[tool.ruff]\ntarget-version = \"py312\"\n")], &[], common::PASSED ;
     "pyproject_ruff_target_version_wins"
 )]
 #[test_case(
     &[("pyproject.toml", "[project]\nrequires-python = \">=3.14\"\n"), (".ruff.toml", "target-version = \"py313\"\n")],
     &[],
-    PASSED ;
+    common::PASSED ;
     "dot_ruff_toml_wins"
 )]
 #[test_case(
     &[("pyproject.toml", "[project]\nrequires-python = \">=3.14\"\n"), ("ruff.toml", "target-version = \"py313\"\n")],
     &[],
-    PASSED ;
+    common::PASSED ;
     "ruff_toml_wins"
 )]
 #[test_case(
-    &[(".config/ruff/ruff.toml", "target-version = \"py312\"\n")], &[], PASSED ;
+    &[(".config/ruff/ruff.toml", "target-version = \"py312\"\n")], &[], common::PASSED ;
     "user_configuration_without_a_project_configuration"
 )]
 #[test_case(
@@ -805,7 +805,7 @@ fn inline_config_sets_options_ruff_does_not_know() {
 fn extend_outside_the_project_is_named_without_its_text() {
     let root = project(&[
         ("repo/pyproject.toml", "[tool.ruff]\nextend = \"../outside/notes.txt\"\n"),
-        ("repo/module.py", "VALUE = 1\n"),
+        ("repo/module.py", common::CLEAN_MODULE),
         ("outside/notes.txt", "API_TOKEN = \"hunter2\"\n"),
     ]);
     let (code, _, stderr) = check(&root.path().join("repo"), &["--select", "SMP101"]);
@@ -818,7 +818,7 @@ fn nested_extend_outside_the_project_is_named_without_its_text() {
     let root = project(&[
         ("pyproject.toml", "[tool.ruff]\n"),
         ("nested/pyproject.toml", "[tool.ruff]\nextend = \"../../outside/notes.txt\"\n"),
-        ("nested/module.py", "VALUE = 1\n"),
+        ("nested/module.py", common::CLEAN_MODULE),
         ("outside/notes.txt", "API_TOKEN = \"hunter2\"\n"),
     ]);
     let (code, _, stderr) = check(root.path(), &["--select", "SMP101"]);
@@ -831,7 +831,7 @@ fn nested_extend_outside_the_project_is_named_without_its_text() {
 fn extend_through_a_link_outside_the_project_is_named_without_its_text() {
     let root = project(&[
         ("repo/pyproject.toml", "[tool.ruff]\nextend = \"link/notes.txt\"\n"),
-        ("repo/module.py", "VALUE = 1\n"),
+        ("repo/module.py", common::CLEAN_MODULE),
         ("outside/notes.txt", "API_TOKEN = \"hunter2\"\n"),
     ]);
     std::os::unix::fs::symlink(root.path().join("outside"), root.path().join("repo/link")).expect("symlink");
@@ -845,7 +845,7 @@ fn extend_inside_the_project_keeps_ruffs_report() {
     let root = project(&[
         ("pyproject.toml", "[tool.ruff]\nextend = \"extra.toml\"\n"),
         ("extra.toml", "API_TOKEN = \"hunter2\"\n"),
-        ("module.py", "VALUE = 1\n"),
+        ("module.py", common::CLEAN_MODULE),
     ]);
     let (code, _, stderr) = check(root.path(), &["--select", "SMP101"]);
     assert_eq!((code, stderr.contains("Failed to load extended configuration")), (2, true));

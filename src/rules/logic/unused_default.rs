@@ -6,7 +6,9 @@ use rustc_hash::FxHashMap;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::project::constructors::{CallShape, CallSites, Use};
-use crate::rules::call_sites::{add_use, method_candidate, method_uses, module_candidate, module_uses};
+use crate::rules::call_sites::{
+    add_use, is_closed_class, method_candidate, method_uses, module_candidate, module_uses, self_only_uses,
+};
 
 pub(crate) fn unused_default(checker: &Checker) {
     let project = checker.project();
@@ -18,11 +20,7 @@ pub(crate) fn unused_default(checker: &Checker) {
     for stmt in checker.body() {
         match stmt {
             Stmt::FunctionDef(function) => module_function(checker, function, &functions),
-            Stmt::ClassDef(class)
-                if class.bases().is_empty()
-                    && class.keywords().is_empty()
-                    && !project.is_base_class(class.name.as_str()) =>
-            {
+            Stmt::ClassDef(class) if is_closed_class(checker, class) => {
                 let methods = method_uses(checker, class);
                 for method in class.body.iter().filter_map(Stmt::as_function_def_stmt) {
                     method_of(checker, method, &methods);
@@ -51,19 +49,14 @@ fn module_function(checker: &Checker, function: &ast::StmtFunctionDef, functions
 // one of the class's `self.name(...)` calls.
 fn method_of(checker: &Checker, function: &ast::StmtFunctionDef, methods: &FxHashMap<&str, Vec<(bool, Use)>>) {
     let name = function.name.as_str();
-    let project = checker.project();
     if !method_candidate(checker, function) {
         return;
     }
-    let found = methods.get(name).map_or(&[][..], Vec::as_slice);
-    if found.len() != project.calls().attribute_loads(name) as usize {
+    let Some(uses) = self_only_uses(checker, name, methods.get(name).map_or(&[][..], Vec::as_slice)) else {
         return;
-    }
+    };
     let mut sites = CallSites::default();
-    for (is_self, found) in found {
-        if !is_self {
-            return;
-        }
+    for found in uses {
         add_use(&mut sites, found);
     }
     report(checker, function, name, &sites, true);

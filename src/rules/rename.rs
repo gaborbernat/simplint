@@ -2,15 +2,15 @@
 
 use std::borrow::Cow;
 
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast as ast;
 use ruff_python_stdlib::builtins::is_python_builtin;
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
-use crate::rules::edits::keep_debug_text;
-use crate::syntax::Visibility;
+use crate::rules::edits::{fix_of, keep_debug_text};
+use crate::syntax::{Visibility, identifier_words};
 
 // The report for a name a public module keeps: its users import it, so the author lists it or renames it by hand, or,
 // when `__all__` lists it already, renames it by hand.
@@ -33,7 +33,7 @@ pub fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
     // A module name that shadows a builtin, as in `zip = zip`, shares its token with the builtin it reads.
     if is_offered(checker, old)
         || checker.name_token_count(new) > 0
-        || is_python_builtin(old, checker.settings.from_ruff.target_version.minor, false)
+        || is_python_builtin(old, checker.target_version().minor, false)
         || checker.project().is_used_elsewhere(old)
         // Code the index cannot follow may read the name, so only the fix is withheld, never the report.
         || checker.project().is_read_opaquely(old)
@@ -49,8 +49,7 @@ pub fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
         return None;
     }
     // A name in a t-string keeps its source text, which a new spelling would change.
-    let source_spans = checker.state().source_text_spans(checker);
-    if ranges.iter().any(|range| source_spans.iter().any(|span| span.contains_range(*range))) {
+    if ranges.iter().any(|range| checker.state().in_source_text(checker, *range)) {
         return None;
     }
     let renamed_exports = exports
@@ -58,8 +57,7 @@ pub fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
         .filter(|element| element.value.to_str() == old)
         .filter_map(|element| Some(element.value.iter().next()?.content_range()));
     let edits = ranges.into_iter().chain(renamed_exports).map(|range| Edit::range_replacement(new.to_owned(), range));
-    let mut edits = keep_debug_text(checker, edits.collect())?.into_iter();
-    Some(Fix::unsafe_edits(edits.next()?, edits))
+    fix_of(keep_debug_text(checker, edits.collect())?, Applicability::Unsafe)
 }
 
 // The text a string holds, not its source: `ruff format` rewrites escapes, as `\N{latin small letter x}` into
@@ -88,7 +86,7 @@ impl StringWords {
         let mut words = Self::default();
         for (range, text) in values {
             let outside = !exports.iter().any(|export| export.range().contains_range(*range));
-            for word in text.split(|char| !is_word_char(char)).filter(|word| !word.is_empty()) {
+            for word in identifier_words(text).filter(|word| !word.is_empty()) {
                 if outside && !words.outside_exports.contains(word) {
                     words.outside_exports.insert(word.to_owned());
                 }

@@ -2,8 +2,9 @@ use ruff_python_ast::{self as ast, Expr, Stmt};
 use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
-use crate::rules::docstrings::{is_documented_variable, module_statements_with_next};
-use crate::syntax::{instance_writes, is_classmethod, is_name, last_segment};
+use crate::rules::docstrings::is_documented_variable;
+use crate::rules::public_api::module_statements_with_next;
+use crate::syntax::{instance_writes, is_classmethod, is_name, last_segment, target_names};
 
 // An attribute of a class as autodoc documents it: one its body assigns, or one a method sets on `self`.
 pub(crate) struct Attribute<'a> {
@@ -104,18 +105,6 @@ pub(super) fn annotation_name(annotation: &Expr) -> Option<&str> {
     match annotation.as_string_literal_expr() {
         Some(literal) => literal.value.to_str().split('[').next()?.trim().rsplit('.').next(),
         None => last_segment(unsubscripted(annotation)),
-    }
-}
-
-// The names an assignment target binds, through tuples, lists and starred targets, so `low, *rest = values` binds two.
-fn target_names(target: &Expr) -> Vec<&str> {
-    match target {
-        Expr::Name(name) => vec![name.id.as_str()],
-        Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => {
-            elts.iter().flat_map(target_names).collect()
-        }
-        Expr::Starred(ast::ExprStarred { value, .. }) => target_names(value),
-        _ => Vec::new(),
     }
 }
 

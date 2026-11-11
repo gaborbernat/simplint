@@ -4,8 +4,7 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::edits::delete_statement;
-use crate::rules::is_alone_on_lines;
+use crate::rules::edits::{Blanks, statement_removal};
 use crate::syntax::for_each_body;
 
 enum Replacement {
@@ -53,7 +52,7 @@ const BACKPORTS: &[Backport] = &[
 ];
 
 pub fn up_backport_import(checker: &Checker) {
-    let target = checker.settings.from_ruff.target_version;
+    let target = checker.target_version();
     for_each_body(checker.body(), &mut |statements, owner| {
         // A guarded import is a fallback, which the import guard rule reviews, so it is left alone here.
         if matches!(owner, Some(Stmt::Try(_))) {
@@ -94,12 +93,11 @@ pub fn up_backport_import(checker: &Checker) {
                             }
                             let unaliased = import.names.iter().all(|alias| alias.asname.is_none());
                             // Another module that imports the name from this one, or `__all__`, would lose it.
-                            let exported = import.names.iter().any(|alias| {
-                                checker.project().is_referenced(alias.name.as_str())
-                                    || checker.dunder_all().may_list(alias.name.as_str())
-                            });
-                            (unaliased && !exported && is_alone_on_lines(checker.source, stmt.range()))
-                                .then(|| Fix::safe_edit(delete_statement(checker.source, stmt, statements)))
+                            let exported = import.names.iter().any(|alias| checker.is_exported(alias.name.as_str()));
+                            (unaliased && !exported && checker.is_alone_on_lines(stmt.range()))
+                                .then(|| statement_removal(checker, stmt.range(), statements.len(), None, Blanks::Keep))
+                                .flatten()
+                                .map(Fix::safe_edit)
                         }
                         Replacement::Review(_) => None,
                     };

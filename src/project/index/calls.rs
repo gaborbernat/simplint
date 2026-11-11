@@ -1,0 +1,70 @@
+use rustc_hash::{FxHashMap, FxHashSet};
+use std::path::PathBuf;
+
+use crate::project::FileFacts;
+use crate::project::constructors::{FileUses, RunCalls};
+
+use super::files::FileId;
+
+// The calls of every function and dataclass of the run, with the names reached in ways simplint cannot follow marked.
+#[expect(clippy::too_many_arguments, reason = "the run's inputs, which the index passes on")]
+pub(super) fn run_calls(
+    files: &[(FileId, &FileFacts)],
+    sources: &FxHashMap<FileId, &FileFacts>,
+    constructor_uses: &[FileUses],
+    imported: &FxHashMap<FileId, FxHashSet<String>>,
+    module_reads: &FxHashSet<String>,
+    entry_names: Vec<(FileId, String)>,
+    referenced: &FxHashMap<FileId, FxHashSet<String>>,
+    library_api: &FxHashMap<FileId, FxHashMap<String, Option<PathBuf>>>,
+) -> RunCalls {
+    let declared = files.iter().map(|(id, facts)| (*id, facts.constructors.dataclasses.as_slice()));
+    let dynamic: FxHashSet<&str> =
+        files.iter().flat_map(|(_, facts)| facts.constructors.dynamic.iter().map(String::as_str)).collect();
+    let defined: FxHashMap<FileId, FxHashSet<&str>> =
+        sources.iter().map(|(file, facts)| (*file, facts.defined.iter().map(String::as_str).collect())).collect();
+    let hidden: FxHashSet<&str> = dynamic.iter().copied().chain(module_reads.iter().map(String::as_str)).collect();
+    let mut calls = RunCalls::index(declared, constructor_uses, imported, &dynamic, &defined, &hidden, library_api);
+    hide_names(&mut calls, entry_names, referenced);
+    method_loads(&mut calls, files);
+    calls
+}
+
+// The functions a file's entry points and dotted strings name are reached by calls simplint cannot follow.
+fn hide_names(
+    calls: &mut RunCalls,
+    entry_names: Vec<(FileId, String)>,
+    referenced: &FxHashMap<FileId, FxHashSet<String>>,
+) {
+    for (file, name) in entry_names {
+        calls.mark_opaque(file, name);
+    }
+    for (file, names) in referenced {
+        for name in names {
+            calls.mark_opaque(*file, name.clone());
+        }
+    }
+}
+
+// How many times the run loads each method, class attribute and module-level name of each file as `obj.name`, so a
+// member's calls can be checked against every read.
+fn method_loads(calls: &mut RunCalls, files: &[(FileId, &FileFacts)]) {
+    let mut loads: FxHashMap<&str, u32> = FxHashMap::default();
+    for (_, facts) in files {
+        for (name, count) in &facts.attribute_loads {
+            *loads.entry(name.as_str()).or_default() += count;
+        }
+    }
+    for (id, facts) in files {
+        let constructors = &facts.constructors;
+        let members = constructors
+            .methods
+            .iter()
+            .chain(&constructors.attributes)
+            .chain(&facts.functions)
+            .chain(facts.classes.iter().map(|class| &class.name));
+        let method_loads =
+            members.map(|member| (member.clone(), loads.get(member.as_str()).copied().unwrap_or_default())).collect();
+        calls.set_method_loads(*id, method_loads);
+    }
+}

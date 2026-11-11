@@ -15,8 +15,7 @@ use crate::common;
 fn entrypoint_module_name(file: &str, metadata: &str, source: &str, expected: usize) {
     let pyproject = format!("[project]\nname = \"pkg\"\nversion = \"1\"\n{metadata}");
     let root = common::project(&[("pyproject.toml", &pyproject), ("pkg/__init__.py", ""), (file, source)]);
-    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP105"]);
-    assert_eq!(stdout.matches("SMP105").count(), expected, "{stdout}");
+    common::assert_report_count(root.path(), "SMP105", expected);
 }
 
 #[test_case("", "main()", 0 ; "name_alone_main")]
@@ -38,8 +37,7 @@ fn trailing_entrypoint_call_needs_guard(prefix: &str, trailing: &str, expected: 
             "{prefix}def main() -> None:\n    pass\n\n\ndef run() -> None:\n    pass\n\n\ndef launch() -> None:\n    pass\n\n\n{trailing}\n"
         ),
     )]);
-    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP106"]);
-    assert_eq!(stdout.matches("SMP106").count(), expected, "{stdout}");
+    common::assert_report_count(root.path(), "SMP106", expected);
 }
 
 #[cfg(unix)]
@@ -94,8 +92,7 @@ fn trailing_entrypoint_call_requires_unsafe_fixes() {
 #[test_case("pkg/__main__.py" ; "package")]
 fn main_module_requires_guard(file: &str) {
     let root = common::project(&[(file, "from pkg.cli import launch\n\nlaunch()\n")]);
-    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP106"]);
-    assert_eq!(stdout.matches("SMP106").count(), 1, "{stdout}");
+    common::assert_report_count(root.path(), "SMP106", 1);
     let (code, stdout, _) = common::fix_unsafe(root.path(), "SMP106");
     assert_eq!(code, 0, "{stdout}");
     assert_eq!(
@@ -115,8 +112,7 @@ fn configured_entrypoint_call(metadata: &str, trailing: &str, expected: usize) {
         ("pkg/__init__.py", ""),
         ("pkg/cli.py", &format!("def launch() -> None:\n    pass\n\n\n{trailing}\n")),
     ]);
-    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP106"]);
-    assert_eq!(stdout.matches("SMP106").count(), expected, "{stdout}");
+    common::assert_report_count(root.path(), "SMP106", expected);
 }
 
 #[test]
@@ -140,8 +136,7 @@ fn package_init_console_script_call() {
         ("pyproject.toml", "[project]\nname = \"pkg\"\nversion = \"1\"\n[project.scripts]\ncli = \"pkg:launch\"\n"),
         ("pkg/__init__.py", "def launch() -> None:\n    pass\n\n\nlaunch()\n"),
     ]);
-    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP106"]);
-    assert_eq!(stdout.matches("SMP106").count(), 1, "{stdout}");
+    common::assert_report_count(root.path(), "SMP106", 1);
 }
 
 #[cfg(unix)]
@@ -155,47 +150,47 @@ fn executable_script_requires_guard() {
     assert_eq!(stdout.matches("SMP106").count(), 1, "{stdout}");
 }
 
-#[test_case("single-letter-name", "single_letter_name.py" ; "single_letter_name")]
-#[test_case("meaningless-name", "meaningless_name.py" ; "meaningless_name")]
-#[test_case("catch-all-module", "utils/__init__.py" ; "catch_all_module_package")]
-#[test_case("catch-all-module", "utils/slugs.py" ; "catch_all_module_package_module")]
-#[test_case("catch-all-module", "helpers.py" ; "catch_all_module_module")]
-#[test_case("catch-all-module", "models.py" ; "catch_all_module_outside_default_list")]
-#[test_case("module-variable-case", "_module_variable_case.py" ; "module_variable_case")]
-#[test_case("module-variable-case", "_module_variable_case_noall.py" ; "module_variable_case_without_all")]
-#[test_case("module-variable-case", "module_variable_case_scopes.py" ; "module_variable_case_shadowed")]
-#[test_case("module-variable-case", "_module_variable_case_rename.py" ; "module_variable_case_rename_across_scopes")]
-#[test_case("module-variable-case", "module_variable_case_debug.py" ; "module_variable_case_debug")]
-#[test_case("module-variable-case", "module_variable_case_call.py" ; "module_variable_case_dynamic_all")]
-#[test_case("module-variable-case", "_module_variable_case_ann.py" ; "module_variable_case_annotated_all")]
-#[test_case("module-variable-case", "module_variable_case_conflict.py" ; "module_variable_case_conflict")]
-#[test_case("module-variable-case", "module_variable_case_kinds.py" ; "module_variable_case_binding_kinds")]
-#[test_case("module-variable-case", "module_variable_case_strings.py" ; "module_variable_case_named_in_strings")]
-#[test_case("module-variable-case", "_module_variable_case_alembic.py" ; "module_variable_case_alembic_revision")]
-#[test_case("module-variable-case", "module_variable_case_gunicorn.py" ; "module_variable_case_gunicorn_named")]
-#[test_case("module-variable-case", "_module_variable_case_frameworks.py" ; "module_variable_case_framework_names")]
-#[test_case("module-variable-case", "_module_variable_case_lookalikes.py" ; "module_variable_case_framework_lookalikes")]
-#[test_case("module-variable-case", "_module_variable_case_source_text.py" ; "module_variable_case_source_text")]
-#[test_case("module-variable-case", "_module_variable_case_version.py" ; "module_variable_case_version_file")]
-#[test_case("module-variable-case", "_module_variable_case_ply.py" ; "module_variable_case_ply_grammar")]
-#[test_case("module-variable-case", "module_variable_case_ply_table.py" ; "module_variable_case_ply_table")]
-#[test_case("module-variable-case", "_module_variable_case_dbapi.py" ; "module_variable_case_db_api_globals")]
-#[test_case("module-variable-case", "_module_variable_case_typer.py" ; "module_variable_case_typer_app")]
-#[test_case("module-variable-case", "module_variable_case_type_alias.py" ; "module_variable_case_type_alias")]
-#[test_case("module-variable-case", "_module_variable_case_ruff.py" ; "module_variable_case_ruff_overlap")]
-#[test_case("module-variable-case", "module_variable_case_function_alias.py" ; "module_variable_case_function_alias")]
-#[test_case("module-variable-case", "_module_variable_case_block_local.py" ; "module_variable_case_block_local")]
-#[test_case("module-variable-case", "module_variable_case_computed_setattr.py" ; "module_variable_case_computed_setattr")]
-#[test_case("module-variable-case", "module_variable_case_computed_fstring.py" ; "module_variable_case_computed_fstring")]
-#[test_case("module-variable-case", "module_variable_case_computed_patch_object.py" ; "module_variable_case_computed_patch_object")]
-#[test_case("module-variable-case", "_module_variable_case_computed_control.py" ; "module_variable_case_computed_other_module")]
-#[test_case("module-variable-case", "_module_variable_case_read_in_two_blocks.py" ; "module_variable_case_read_in_two_blocks")]
-#[test_case("module-variable-case", "module_variable_case_type_checking_stubs.py" ; "module_variable_case_type_checking_stubs")]
-fn rule(rule: &str, fixture: &str) {
-    common::assert_rule_snapshot(rule, fixture, "py314");
+#[test_case("single-letter-name", "single_letter_name.py", None ; "single_letter_name")]
+#[test_case("meaningless-name", "meaningless_name.py", None ; "meaningless_name")]
+#[test_case("catch-all-module", "utils/__init__.py", None ; "catch_all_module_package")]
+#[test_case("catch-all-module", "utils/slugs.py", None ; "catch_all_module_package_module")]
+#[test_case("catch-all-module", "helpers.py", None ; "catch_all_module_module")]
+#[test_case("catch-all-module", "models.py", None ; "catch_all_module_outside_default_list")]
+#[test_case("module-variable-case", "_module_variable_case.py", None ; "module_variable_case")]
+#[test_case("module-variable-case", "_module_variable_case_noall.py", None ; "module_variable_case_without_all")]
+#[test_case("module-variable-case", "module_variable_case_scopes.py", None ; "module_variable_case_shadowed")]
+#[test_case("module-variable-case", "_module_variable_case_rename.py", None ; "module_variable_case_rename_across_scopes")]
+#[test_case("module-variable-case", "module_variable_case_debug.py", None ; "module_variable_case_debug")]
+#[test_case("module-variable-case", "module_variable_case_call.py", None ; "module_variable_case_dynamic_all")]
+#[test_case("module-variable-case", "_module_variable_case_ann.py", None ; "module_variable_case_annotated_all")]
+#[test_case("module-variable-case", "module_variable_case_conflict.py", None ; "module_variable_case_conflict")]
+#[test_case("module-variable-case", "module_variable_case_kinds.py", None ; "module_variable_case_binding_kinds")]
+#[test_case("module-variable-case", "module_variable_case_strings.py", None ; "module_variable_case_named_in_strings")]
+#[test_case("module-variable-case", "_module_variable_case_alembic.py", None ; "module_variable_case_alembic_revision")]
+#[test_case("module-variable-case", "module_variable_case_gunicorn.py", None ; "module_variable_case_gunicorn_named")]
+#[test_case("module-variable-case", "_module_variable_case_frameworks.py", None ; "module_variable_case_framework_names")]
+#[test_case("module-variable-case", "_module_variable_case_lookalikes.py", None ; "module_variable_case_framework_lookalikes")]
+#[test_case("module-variable-case", "_module_variable_case_source_text.py", None ; "module_variable_case_source_text")]
+#[test_case("module-variable-case", "_module_variable_case_version.py", None ; "module_variable_case_version_file")]
+#[test_case("module-variable-case", "_module_variable_case_ply.py", None ; "module_variable_case_ply_grammar")]
+#[test_case("module-variable-case", "module_variable_case_ply_table.py", None ; "module_variable_case_ply_table")]
+#[test_case("module-variable-case", "_module_variable_case_dbapi.py", None ; "module_variable_case_db_api_globals")]
+#[test_case("module-variable-case", "_module_variable_case_typer.py", None ; "module_variable_case_typer_app")]
+#[test_case("module-variable-case", "module_variable_case_type_alias.py", None ; "module_variable_case_type_alias")]
+#[test_case("module-variable-case", "_module_variable_case_ruff.py", None ; "module_variable_case_ruff_overlap")]
+#[test_case("module-variable-case", "module_variable_case_function_alias.py", None ; "module_variable_case_function_alias")]
+#[test_case("module-variable-case", "_module_variable_case_block_local.py", None ; "module_variable_case_block_local")]
+#[test_case("module-variable-case", "module_variable_case_computed_setattr.py", None ; "module_variable_case_computed_setattr")]
+#[test_case("module-variable-case", "module_variable_case_computed_fstring.py", None ; "module_variable_case_computed_fstring")]
+#[test_case("module-variable-case", "module_variable_case_computed_patch_object.py", None ; "module_variable_case_computed_patch_object")]
+#[test_case("module-variable-case", "_module_variable_case_computed_control.py", None ; "module_variable_case_computed_other_module")]
+#[test_case("module-variable-case", "_module_variable_case_read_in_two_blocks.py", None ; "module_variable_case_read_in_two_blocks")]
+#[test_case("module-variable-case", "module_variable_case_type_checking_stubs.py", None ; "module_variable_case_type_checking_stubs")]
+fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
+    common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
 
-#[test_case("docs/conf.py", "All checks passed!\n" ; "sphinx_conf")]
+#[test_case("docs/conf.py", common::PASSED ; "sphinx_conf")]
 #[test_case(
     "docs/settings.py",
     "docs/settings.py:1:1: SMP102 Module-scope variable `project` should be named `PROJECT`\ndocs/settings.py:2:1: \
@@ -270,15 +265,8 @@ fn module_variable_rename_keeps_names_read_off_a_standard_library_namesake() {
 #[test_case("class I:\n    pass\n", "E742", "Single-letter name `I`" ; "class")]
 #[test_case("def l() -> None:\n    pass\n", "E743", "Single-letter name `l`" ; "function")]
 fn single_letter_name_follows_ruff_ambiguous_names(source: &str, code: &str, fragment: &str) {
-    for selected in [false, true] {
-        let select = if selected { format!("\"{code}\"") } else { String::new() };
-        let root = common::project(&[
-            ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [{select}]\n")),
-            ("module.py", source),
-        ]);
-        let stdout = common::check(root.path(), &["--select", "SMP101"]).1;
-        assert_eq!(stdout.contains(fragment), !selected, "{stdout}");
-    }
+    let case = common::RuffOverlap { settings: "", select: "SMP101", ruff_code: code, files: &[("module.py", source)] };
+    assert_eq!(common::reported_without_and_with_ruff(&case, fragment), [true, false]);
 }
 
 #[test_case("from typing import TypeVar\n\nT = TypeVar(\"T\")\n", 0, 0 ; "type_var")]

@@ -7,6 +7,7 @@ mod forwarding_function;
 mod inline;
 pub(crate) mod kinds;
 pub(crate) mod long_tuple_return;
+mod modernize;
 mod regex_pattern;
 mod scoped_block;
 mod single_caller_helper;
@@ -37,7 +38,7 @@ pub(crate) mod up_warnings_deprecated;
 mod walrus_candidate;
 
 pub(crate) use cognitive_complexity::cognitive_complexity;
-pub(crate) use collection_built_by_statements::{collection_built_by_statements, counts_ruff_appends};
+pub(crate) use collection_built_by_statements::collection_built_by_statements;
 pub(crate) use duplicate_code::duplicate_code;
 pub(crate) use early_assignment::early_assignment;
 pub(crate) use forwarding_function::forwarding_function;
@@ -53,3 +54,12 @@ pub(crate) use up_compression_modules::up_compression_modules;
 pub(crate) use up_context_var_token_reset::up_context_var_token_reset;
 pub(crate) use up_object_sentinel::up_object_sentinel;
 pub(crate) use walrus_candidate::walrus_candidate;
+
+use ruff_python_ast::{self as ast, Expr};
+
+fn sole_name_target(assign: &ast::StmtAssign) -> Option<&ast::ExprName> {
+    let [Expr::Name(target)] = assign.targets.as_slice() else {
+        return None;
+    };
+    Some(target)
+}

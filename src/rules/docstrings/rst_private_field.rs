@@ -1,6 +1,6 @@
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rst::{FieldKind, field_deletion, is_internal};
+use crate::rules::docstrings::rst::{FieldKind, is_internal};
 
 pub fn rst_private_field(checker: &Checker) {
     // A public class's `__init__` docstring documents its constructor as the class docstring may.
@@ -23,7 +23,7 @@ pub fn rst_private_field(checker: &Checker) {
                 Rule::RstPrivateField,
                 field.range_in(&target.docstring),
                 format!("`{text}` documents the internal `{name}` in the public API; leave internal names out"),
-                field_deletion(checker, &target.docstring, &[field]),
+                field.removal(checker, &target.docstring),
                 format!("Remove `{text}`"),
             );
         }

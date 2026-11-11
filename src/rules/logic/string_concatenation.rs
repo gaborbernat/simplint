@@ -164,7 +164,7 @@ fn fstring(checker: &Checker, operands: &[&Expr], nested: bool) -> Result<String
     // A part or an expression the rule does not write leaves the chain reported without a fix, but a later string with a
     // backslash still makes it impossible, so the loop goes on.
     let mut declined = false;
-    let before_312 = checker.settings.from_ruff.target_version < PythonVersion::PY312;
+    let before_312 = checker.target_version() < PythonVersion::PY312;
     for operand in operands {
         match operand {
             // An implicit concatenation, which `ruff format` may join into one literal, joins here part by part.
@@ -262,7 +262,7 @@ fn fstring(checker: &Checker, operands: &[&Expr], nested: bool) -> Result<String
 fn expression_text(checker: &Checker, expr: &Expr, text: &str, delimiter: Quote, as_written: bool) -> Option<String> {
     // Before Python 3.12 an f-string expression cannot reuse the string's own quote, so its string literals take the
     // other one, as `ruff format` leaves them once the f-string holds them.
-    let before_312 = checker.settings.from_ruff.target_version < PythonVersion::PY312;
+    let before_312 = checker.target_version() < PythonVersion::PY312;
     let requote = before_312 && text.contains(delimiter.as_char());
     if requote && as_written {
         return None;

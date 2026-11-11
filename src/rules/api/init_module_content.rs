@@ -5,6 +5,7 @@ use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::is_type_checking;
 use crate::semantic::future_import;
 use crate::syntax::{Exports, alias_binding, all_binding, all_mutation, is_name};
 
@@ -73,17 +74,6 @@ fn is_allowed_by_default(stmt: &Stmt, checker: &Checker) -> bool {
 
 fn is_dunder_name(target: &Expr) -> bool {
     target.as_name_expr().is_some_and(|name| is_dunder(name.id.as_str()))
-}
-
-// Ruff's test: a name `TYPE_CHECKING` by its own spelling or through `typing`, or any `.TYPE_CHECKING` attribute.
-pub(crate) fn is_type_checking(test: &Expr, checker: &Checker) -> bool {
-    match test {
-        Expr::Name(name) => {
-            name.id.as_str() == "TYPE_CHECKING" || checker.semantic().match_typing_expr(test, "TYPE_CHECKING")
-        }
-        Expr::Attribute(attribute) => attribute.attr.as_str() == "TYPE_CHECKING",
-        _ => false,
-    }
 }
 
 // An import whose every name the package exports, through `__all__`, a redundant alias or `import *`, the `__all__`

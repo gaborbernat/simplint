@@ -2,7 +2,7 @@ mod common;
 
 use test_case::test_case;
 
-use common::{SINGLE_X, check, project, read, simplint, simplint_with};
+use common::{SINGLE_X, check, empty_project, json, project, read, simplint, simplint_with};
 
 // Each report as the format renders it, one with a fix and one without, with the project's temporary directory as
 // `[ROOT]`.
@@ -70,9 +70,8 @@ fn check_keeps_report_order_across_chunks(format: &str) {
 #[test_case(&["--ignore-noqa"] ; "suppressions_ignored")]
 fn check_json_gives_the_row_a_noqa_comment_goes_on(flags: &[&str]) {
     let root = project(&[("module.py", "x = \"\"\"a\nb\"\"\"\n")]);
-    let stdout =
-        simplint(root.path(), &[&["check", "--output-format", "json", "--select", "SMP101"], flags].concat()).1;
-    let diagnostics: Vec<serde_json::Value> = serde_json::from_str(&stdout).expect("json report");
+    let diagnostics: Vec<serde_json::Value> =
+        json(root.path(), &[&["check", "--output-format", "json", "--select", "SMP101"], flags].concat());
     assert_eq!(diagnostics[0]["noqa_row"], 2);
 }
 
@@ -134,7 +133,7 @@ fn check_statistics_marks_partly_fixable_rules() {
 
 #[test]
 fn check_statistics_of_a_clean_project_prints_nothing() {
-    let root = project(&[("module.py", "VALUE = 1\n")]);
+    let root = project(&[("module.py", common::CLEAN_MODULE)]);
     assert_eq!(check(root.path(), &["--statistics", "--select", "SMP101"]), (0, String::new(), String::new()));
 }
 
@@ -176,7 +175,7 @@ fn color_follows_the_flag_then_force_color(flags: &[&str], env: &[(&str, &str)],
 
 #[test]
 fn preview_help_says_simplint_has_no_preview_rules() {
-    let root = project(&[]);
+    let root = empty_project();
     let help = simplint(root.path(), &["check", "--help"]).1;
     let preview = help.lines().skip_while(|line| !line.contains("--preview")).skip(1);
     assert_eq!(
@@ -196,10 +195,7 @@ fn preview_shows_codes_only_for_rules() {
 
 #[test]
 fn preview_names_rules_as_ruff_does() {
-    let root = project(&[
-        ("pyproject.toml", "[tool.ruff]\npreview = true\n"),
-        ("module.py", "# --- helpers ---\nVALUE = 1\n"),
-    ]);
+    let root = project(&[("pyproject.toml", "[tool.ruff]\npreview = true\n"), ("module.py", common::SECTIONED)]);
     let reported = check(root.path(), &["--select", "SMP001"]).1;
     let fixed = check(root.path(), &["--select", "SMP001", "--fix", "--show-fixes"]).1;
     assert_eq!(

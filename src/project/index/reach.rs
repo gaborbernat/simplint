@@ -6,7 +6,7 @@ use crate::project::facts::{Closure, ExportsUnknown, ImportBinding};
 use crate::settings::ModuleRole;
 use crate::syntax::Visibility;
 
-use super::resolve::Unreached;
+use super::resolve::UnreachedPath;
 use super::{FileId, FileIds};
 
 // The files `import *` reaches: those it reads every public name of, those a package's `__init__.py` star-imports, and
@@ -115,10 +115,7 @@ pub(super) fn library_api(
             (*source, exported)
         })
         .collect();
-    let mut by_importer: FxHashMap<FileId, Vec<FileId>> = FxHashMap::default();
-    for (importer, source) in stars {
-        by_importer.entry(*importer).or_default().push(*source);
-    }
+    let by_importer = starred_by_importer(stars);
     let mut loaded: FxHashMap<FileId, FxHashSet<&str>> = FxHashMap::default();
     for (file, name) in entries {
         loaded.entry(*file).or_default().insert(name.as_str());
@@ -194,6 +191,14 @@ pub(super) fn library_api(
     }
 }
 
+pub(super) fn starred_by_importer(stars: &[(FileId, FileId)]) -> FxHashMap<FileId, Vec<FileId>> {
+    let mut by_importer: FxHashMap<FileId, Vec<FileId>> = FxHashMap::default();
+    for (importer, source) in stars {
+        by_importer.entry(*importer).or_default().push(*source);
+    }
+    by_importer
+}
+
 // A name another module takes from a module that star-imports it, as `from pkg import Name` where `pkg/__init__.py` has
 // `from ._types import *`, comes from the star-imported module, so it counts there too, through any chain of star
 // re-exports, unless that module's `__all__` leaves it out of the `import *`. Names only spread, so this settles.
@@ -209,10 +214,7 @@ pub(super) fn reexport(
             Some((*source, exports.iter().map(String::as_str).collect()))
         })
         .collect();
-    let mut by_importer: FxHashMap<FileId, Vec<FileId>> = FxHashMap::default();
-    for (importer, source) in stars {
-        by_importer.entry(*importer).or_default().push(*source);
-    }
+    let by_importer = starred_by_importer(stars);
     let mut pending: Vec<FileId> = by_importer.keys().copied().collect();
     while let Some(importer) = pending.pop() {
         for source in by_importer.get(&importer).into_iter().flatten() {
@@ -243,28 +245,38 @@ fn unresolved_candidates(
     files.filter(|file| last_name(paths.path(*file)).is_some_and(|name| unresolved.contains(name))).collect()
 }
 
-// A dotted path through a package that names no module, as `nx.reportviews.Name` where `networkx` re-exports its
-// `networkx.classes.reportviews` submodule, may reach any module of that package with the path's last name. The names
-// count as the path was written: imported when an import reads them, referenced when a string or a store does.
-pub(super) fn reach_by_last_name(
-    referenced: &mut FxHashMap<FileId, FxHashSet<String>>,
-    unreached: &[Unreached],
-    paths: &FileIds,
-    files: impl Iterator<Item = FileId>,
-) {
-    if unreached.is_empty() {
-        return;
-    }
-    let mut by_name: FxHashMap<&str, Vec<FileId>> = FxHashMap::default();
-    for file in files {
-        if let Some(name) = last_name(paths.path(file)) {
-            by_name.entry(name).or_default().push(file);
+// The files of the run by the last name of their module, for the dotted paths that reach a package's modules by name.
+pub(super) struct LastNames<'p> {
+    by_name: FxHashMap<&'p str, Vec<FileId>>,
+    paths: &'p FileIds,
+}
+
+impl<'p> LastNames<'p> {
+    pub(super) fn new(paths: &'p FileIds, files: impl Iterator<Item = FileId>) -> Self {
+        let mut by_name: FxHashMap<&str, Vec<FileId>> = FxHashMap::default();
+        for file in files {
+            if let Some(name) = last_name(paths.path(file)) {
+                by_name.entry(name).or_default().push(file);
+            }
         }
+        Self { by_name, paths }
     }
-    for (package, name, names) in unreached {
-        for file in by_name.get(name).into_iter().flatten().filter(|file| paths.path(**file).starts_with(package)) {
-            referenced.entry(*file).or_default().extend(names.iter().cloned());
-        }
+
+    // A dotted path through a package that names no module, as `nx.reportviews.Name` where `networkx` re-exports its
+    // `networkx.classes.reportviews` submodule, may reach any module of that package with the path's last name. Each
+    // file it reaches comes with the names the path was written with.
+    pub(super) fn reached<'s>(
+        &'s self,
+        unreached: impl IntoIterator<Item = &'s UnreachedPath> + 's,
+    ) -> impl Iterator<Item = (FileId, &'s [String])> + 's {
+        unreached.into_iter().flat_map(move |path| {
+            self.by_name
+                .get(path.last.as_str())
+                .into_iter()
+                .flatten()
+                .filter(move |file| self.paths.path(**file).starts_with(&path.package))
+                .map(move |file| (*file, path.names.as_slice()))
+        })
     }
 }
 

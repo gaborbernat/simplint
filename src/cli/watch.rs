@@ -9,7 +9,7 @@ use ruff::ExitStatus;
 use crate::cli::args::{CheckCommand, GlobalConfigArgs};
 use crate::cli::printer::Printer;
 use crate::project::Ending;
-use crate::run::{Resolved, check_files};
+use crate::run::{CacheUse, Resolved, check_files};
 use crate::settings::HOOK_CONFIGS;
 
 // Ruff's watch mode: check, then check again on every change to a watched Python file, resolving the configuration
@@ -19,7 +19,7 @@ pub(super) fn watch(
     global_options: &GlobalConfigArgs,
     files: &[PathBuf],
     mut resolved: Resolved,
-    use_cache: bool,
+    usage: &CacheUse,
     printer: &Printer,
     mut writer: Box<dyn Write>,
 ) -> Result<ExitStatus> {
@@ -31,7 +31,7 @@ pub(super) fn watch(
     clearscreen::clear()?;
     printer.write_to_user("Starting linter in watch mode...\n");
     loop {
-        let diagnostics = check_files(files, &resolved, printer.mode, use_cache, None, Ending::Drop)?;
+        let diagnostics = check_files(files, &resolved, printer.mode, usage, Ending::Drop)?;
         printer.write_continuously(&mut writer, &diagnostics)?;
         let change = loop {
             if let Some(change) = change_detected(&receiver.recv()??) {

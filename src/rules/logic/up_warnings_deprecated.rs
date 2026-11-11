@@ -7,8 +7,8 @@ use ruff_text_size::Ranged;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
-use crate::rules::edits::statement_deletion;
-use crate::rules::{indentation, is_alone_on_lines};
+use crate::rules::edits::{Blanks, statement_removal};
+use crate::syntax::argument;
 
 pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     let checker = walker.checker;
@@ -65,32 +65,17 @@ fn fix(
     if !message.is_string_literal_expr()
         || text.contains('\n')
         || checker.has_comment_in(source.full_lines_range(warning.range()))
-        || !is_alone_on_lines(source, warning.range())
+        || !checker.is_alone_on_lines(warning.range())
     {
         return None;
     }
     let decorator = format!(
         "{}@{}.deprecated({text}){}",
-        indentation(source, name),
+        checker.indentation(name),
         checker.text(func.value.range()),
-        checker.stylist.line_ending().as_str()
+        checker.line_ending()
     );
     // A body of only the warning keeps a statement, as the decorated function still has to run to its end.
-    let removal = if body.len() == 1 {
-        Edit::range_replacement("pass".to_owned(), warning.range())
-    } else {
-        Edit::range_deletion(statement_deletion(checker, warning.range(), None, true)?)
-    };
+    let removal = statement_removal(checker, warning.range(), body.len(), None, Blanks::Trailing)?;
     Some(Fix::unsafe_edits(Edit::insertion(decorator, source.line_start(name.start())), [removal]))
-}
-
-// The argument the call passes at `position` or under `keyword`.
-fn argument<'a>(call: &'a ast::ExprCall, position: usize, keyword: &str) -> Option<&'a Expr> {
-    call.arguments.args.get(position).or_else(|| {
-        call.arguments
-            .keywords
-            .iter()
-            .find(|item| item.arg.as_ref().is_some_and(|name| name.as_str() == keyword))
-            .map(|item| &item.value)
-    })
 }

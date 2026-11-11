@@ -1,16 +1,13 @@
 use ruff_diagnostics::{Edit, Fix};
-use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::comparable::HashableExpr;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::FxHashSet;
 
-use crate::lint::checker::Checker;
+use crate::lint::checker::{Checker, counts_ruff_appends};
 use crate::lint::registry::Rule;
-use crate::rules::expr_mentions;
 use crate::rules::logic::inline::{is_constant, is_hashable};
-use crate::settings::FileSettings;
-use crate::syntax::{for_each_body, is_name};
+use crate::syntax::{expr_mentions, for_each_body, is_name, sole_argument};
 
 pub fn collection_built_by_statements(checker: &Checker) {
     for_each_body(checker.body(), &mut |body, _| {
@@ -48,9 +45,7 @@ fn empty_collection<'a>(checker: &Checker, stmt: &'a Stmt) -> Option<(&'a str, K
         Expr::Dict(ast::ExprDict { items, .. }) if items.is_empty() => Kind::Dict,
         Expr::List(ast::ExprList { elts, .. }) if elts.is_empty() => Kind::List,
         Expr::Call(ast::ExprCall { func, arguments, .. })
-            if arguments.args.is_empty()
-                && arguments.keywords.is_empty()
-                && checker.semantic().is_builtin(func, "set") =>
+            if arguments.is_empty() && checker.semantic().is_builtin(func, "set") =>
         {
             Kind::Set
         }
@@ -74,17 +69,15 @@ fn entry<'a>(stmt: &'a Stmt, name: &str, kind: Kind) -> Option<Entry<'a>> {
             (Some(slice.as_ref()), value.as_ref())
         }
         (Stmt::Expr(ast::StmtExpr { value, .. }), Kind::List | Kind::Set) => {
-            let Expr::Call(ast::ExprCall { func, arguments, .. }) = value.as_ref() else {
+            let Expr::Call(call) = value.as_ref() else {
                 return None;
             };
-            let Expr::Attribute(ast::ExprAttribute { value: receiver, attr, .. }) = func.as_ref() else {
+            let Expr::Attribute(ast::ExprAttribute { value: receiver, attr, .. }) = call.func.as_ref() else {
                 return None;
             };
             let method = if kind == Kind::List { "append" } else { "add" };
-            let [argument] = arguments.args.as_ref() else {
-                return None;
-            };
-            if !is_name(receiver, name) || attr.as_str() != method || !arguments.keywords.is_empty() {
+            let argument = sole_argument(call)?;
+            if !is_name(receiver, name) || attr.as_str() != method {
                 return None;
             }
             (None, argument)
@@ -133,14 +126,6 @@ fn check_run(checker: &Checker, assign: &Stmt, name: &str, kind: Kind, rest: &[S
         Some(fix),
         "Write the entries in the literal",
     );
-}
-
-// Whether the rule runs on a file where Ruff's FURB113 counts list appends, which the rule then reads from the semantic
-// model.
-pub(crate) fn counts_ruff_appends(settings: &FileSettings) -> bool {
-    settings.rules.contains(Rule::CollectionBuiltByStatements)
-        && settings.from_ruff.preview
-        && settings.from_ruff.ruff_runs(RuffRule::RepeatedAppend)
 }
 
 // Ruff's FURB113 reports two or more appends to a list in a run of consecutive appends, when preview mode is on and the

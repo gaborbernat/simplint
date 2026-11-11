@@ -1,15 +1,14 @@
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::{self as ast, Expr, Stmt};
-use ruff_text_size::{Ranged, TextLen, TextRange};
+use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::logic::scoped_block::identifier_uses;
 use crate::syntax::for_each_child_body;
 
 // Python 3.15 adds the `sentinel` builtin, whose repr and pickle carry the name the placeholder is bound to.
 pub fn up_object_sentinel(checker: &Checker) {
-    if identifier_uses(checker, TextRange::up_to(checker.source.text_len()), "sentinel") > 0 {
+    if checker.identifier_count_in(checker.file_range(), "sentinel") > 0 {
         return;
     }
     placeholders(checker, checker.body(), &Enclosing::default(), true);
@@ -76,8 +75,7 @@ fn is_assigned_again(checker: &Checker, name: &str, enclosing: &Enclosing) -> bo
 
 fn is_bare_object(checker: &Checker, value: &Expr) -> bool {
     matches!(value, Expr::Call(ast::ExprCall { func, arguments, .. })
-        if arguments.args.is_empty()
-            && arguments.keywords.is_empty()
+        if arguments.is_empty()
             && checker.semantic().is_builtin(func, "object"))
 }
 

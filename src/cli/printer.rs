@@ -1,7 +1,6 @@
 // A port of Ruff's `printer.rs`, which the `ruff` crate keeps private, so the summary lines, statistics and fix summary
 // read the same as `ruff check`'s.
 use std::cmp::Reverse;
-use std::hash::Hasher;
 use std::io::Write;
 
 use anyhow::{Context, Result, bail};
@@ -9,7 +8,6 @@ use bitflags::bitflags;
 use colored::Colorize;
 use itertools::{Itertools, iterate};
 use rayon::prelude::*;
-use ruff_cache::{CacheKey, CacheKeyHasher};
 use ruff_db::diagnostic::render::{Renderer, SarifRenderer};
 use ruff_db::diagnostic::{
     Diagnostic, DiagnosticStylesheet, DisplayDiagnosticConfig, LintName, RuleMetadata, SecondaryCode, Severity,
@@ -28,7 +26,7 @@ use serde::Serialize;
 use supports_hyperlinks::supports_hyperlinks;
 
 use crate::lint::registry::Rule;
-use crate::run::{Diagnostics, FixMap, FullDisplay, Mode};
+use crate::run::{Diagnostics, DisplayKey, FixMap, FullDisplay, Mode};
 
 bitflags! {
     #[derive(Default, Copy, Clone)]
@@ -103,24 +101,22 @@ impl Printer<'_> {
             .with_fix_applicability(self.mode.unsafe_fixes.required_applicability())
     }
 
-    // The text of a file's diagnostics in `full` output, for the cache to keep, when the output is `full` and the run
-    // generates fixes only. `None` when the working directory cannot be read, which leaves the text to the printer.
+    // The text of a file's diagnostics in `full` output, for the cache to keep, when the output is `full`. `None` when the
+    // working directory cannot be read, which leaves the text to the printer.
     pub fn full_display(&self) -> Option<FullDisplay> {
         if self.format != OutputFormat::Full {
             return None;
         }
-        let cwd = std::env::current_dir().ok()?;
         let color = colored::control::SHOULD_COLORIZE.should_colorize();
-        let required = self.mode.unsafe_fixes.required_applicability();
-        let mut hasher = CacheKeyHasher::new();
-        self.preview.cache_key(&mut hasher);
-        self.prefer_rule_codes.cache_key(&mut hasher);
-        color.cache_key(&mut hasher);
         // Ruff picks hyperlinks from the terminal only when it colors the output.
-        (color && supports_hyperlinks()).cache_key(&mut hasher);
-        format!("{required:?}").cache_key(&mut hasher);
-        cwd.to_string_lossy().cache_key(&mut hasher);
-        Some(FullDisplay::new(self.display_config(false), hasher.finish()))
+        let key = DisplayKey {
+            preview: self.preview,
+            prefer_rule_codes: self.prefer_rule_codes,
+            color,
+            hyperlinks: color && supports_hyperlinks(),
+            required: self.mode.unsafe_fixes.required_applicability(),
+        };
+        FullDisplay::new(self.display_config(false), key)
     }
 
     fn render(

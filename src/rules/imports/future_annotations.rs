@@ -1,17 +1,16 @@
 use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::helpers::any_over_expr;
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, AnyParameterRef, Expr, Operator, Stmt};
+use ruff_python_ast::{self as ast, Expr, Operator, Stmt};
 use ruff_source_file::LineRanges;
 use ruff_text_size::Ranged;
 use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::edits::delete_statement;
-use crate::rules::is_alone_on_lines;
+use crate::rules::edits::{Blanks, statement_removal};
 use crate::semantic::future_import;
-use crate::syntax::{alias_binding, module_statements, target_names};
+use crate::syntax::{alias_binding, import_aliases, module_statements, signature_annotations, target_names};
 
 pub fn future_annotations(checker: &Checker) {
     let body = checker.body();
@@ -39,7 +38,10 @@ pub fn future_annotations(checker: &Checker) {
                 .collect();
             Some(Edit::range_replacement(format!("from __future__ import {}", kept.join(", ")), import.range()))
         } else {
-            is_alone_on_lines(checker.source, stmt.range()).then(|| delete_statement(checker.source, stmt, body))
+            checker
+                .is_alone_on_lines(stmt.range())
+                .then(|| statement_removal(checker, stmt.range(), body.len(), None, Blanks::Keep))
+                .flatten()
         };
         // Lazy annotations still evaluate on access, so a name imported only for type checking raises there, and so
         // does a quoted union or an import under an `if` that may be false.
@@ -128,9 +130,7 @@ fn bound_names(stmt: &Stmt) -> Vec<&str> {
         Stmt::Assign(ast::StmtAssign { targets, .. }) => targets.iter().flat_map(target_names).collect(),
         Stmt::AnnAssign(ast::StmtAnnAssign { target, value: Some(_), .. })
         | Stmt::AugAssign(ast::StmtAugAssign { target, .. }) => target_names(target),
-        Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
-            names.iter().map(alias_binding).collect()
-        }
+        Stmt::Import(_) | Stmt::ImportFrom(_) => import_aliases(stmt).iter().map(alias_binding).collect(),
         _ => Vec::new(),
     }
 }
@@ -138,9 +138,7 @@ fn bound_names(stmt: &Stmt) -> Vec<&str> {
 // The annotations of a method's parameters and return type, and of an annotated class field.
 fn annotations(stmt: &Stmt) -> Vec<&Expr> {
     match stmt {
-        Stmt::FunctionDef(ast::StmtFunctionDef { parameters, returns, .. }) => {
-            parameters.iter().filter_map(AnyParameterRef::annotation).chain(returns.as_deref()).collect()
-        }
+        Stmt::FunctionDef(function) => signature_annotations(function).collect(),
         Stmt::AnnAssign(ast::StmtAnnAssign { annotation, .. }) => vec![annotation],
         _ => Vec::new(),
     }

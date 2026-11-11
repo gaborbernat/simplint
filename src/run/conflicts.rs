@@ -20,9 +20,9 @@ use crate::settings::{DocstringStyle, FileSettings};
 
 // A file the run is about to lint: simplint's settings for it, Ruff's with the configuration file they come from, and
 // the package it sits in, which decides whether Ruff counts its module as public.
-pub struct Scope<'a> {
+pub(super) struct Scope<'a> {
     pub path: &'a Path,
-    pub settings: FileSettings<'a>,
+    pub settings: &'a FileSettings<'a>,
     pub ruff: &'a ruff_workspace::Settings,
     pub ruff_config: Option<&'a Path>,
     pub package: Option<PackageRoot<'a>>,
@@ -32,7 +32,7 @@ pub struct Scope<'a> {
 // other's, or leaves what the other reports, so no run of `ruff check --fix` and `simplint check --fix` leaves the file
 // clean. Per-file ignores can turn either side off for some files, so every file counts, but files that share both
 // settings conflict the same way, and the search for each pair of settings stops at its first conflicting file.
-pub fn ensure_compatible(scopes: &[Scope], by_name: bool) -> Result<()> {
+pub(super) fn ensure_compatible(scopes: &[Scope], by_name: bool) -> Result<()> {
     let found = find_conflicts(scopes);
     if found.is_empty() {
         return Ok(());
@@ -349,7 +349,7 @@ impl Clash {
     // Where the Ruff rules that work against the simplint rule in the file sit in `ruff`; `None` when either side is off
     // there.
     fn reported(&self, scope: &Scope, narrowed: &LinterSettings) -> Option<Vec<usize>> {
-        if !scope.settings.rules.contains(self.simplint) || !(self.acts_on)(&scope.settings, narrowed) {
+        if !scope.settings.rules.contains(self.simplint) || !(self.acts_on)(scope.settings, narrowed) {
             return None;
         }
         let diagnostics = lint_only(

@@ -2,10 +2,9 @@
 // block.
 
 use ruff_diagnostics::Edit;
-use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_source_file::LineRanges;
-use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};
+use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 
@@ -21,41 +20,10 @@ pub fn finally_call(try_stmt: &ast::StmtTry) -> Option<&ast::ExprCall> {
     (try_stmt.handlers.is_empty() && try_stmt.orelse.is_empty() && !try_stmt.is_star).then_some(call)
 }
 
-// The one positional argument of a call, when it has no keyword arguments.
-pub fn sole_argument(call: &ast::ExprCall) -> Option<&Expr> {
-    match call.arguments.args.as_ref() {
-        [argument] if call.arguments.keywords.is_empty() => Some(argument),
-        _ => None,
-    }
-}
-
-// The range of the innermost function or class that holds `range`, or the whole file at module level.
-pub fn scope_of(checker: &Checker, range: TextRange) -> TextRange {
-    let scopes = checker.state().scope_nesting(checker);
-    scopes
-        .holders(range)
-        .next()
-        .map_or_else(|| TextRange::up_to(checker.source.text_len()), |index| scopes.range(index))
-}
-
-// How many identifiers in `scope` spell `name`. An attribute such as `obj.name` reads another binding, so it does not
-// count. Any other spelling, a parameter or an import included, may bind the name, so the fix leaves it alone.
-pub fn identifier_uses(checker: &Checker, scope: TextRange, name: &str) -> usize {
-    let tokens = checker.parsed.tokens().in_range(scope);
-    tokens
-        .iter()
-        .enumerate()
-        .filter(|(index, token)| {
-            token.kind() == TokenKind::Identifier
-                && checker.text(token.range()) == name
-                && index.checked_sub(1).is_none_or(|previous| tokens[previous].kind() != TokenKind::Dot)
-        })
-        .count()
-}
-
 // Whether `target` binds a module-level name that another module of the run reads, through an import, a star import or
 // an attribute, or that `__all__` lists. Removing that binding would break those readers, so the report stays without a
-// fix.
+// fix. Unlike `Checker::is_exported`, this takes the module-scope binding, counts only the literal strings of `__all__`
+// so a dynamic `__all__` does not count, and also counts a name that the signature of an exported name reaches.
 pub fn is_exported_module_name(checker: &Checker, target: &ast::ExprName) -> bool {
     let name = target.id.as_str();
     checker.semantic().bindings(name).iter().any(|binding| binding.module_scope && binding.range == target.range())
@@ -85,7 +53,7 @@ pub fn wrap_edits(checker: &Checker, first: TextRange, try_stmt: &ast::StmtTry, 
     if checker.has_comment_in(head) || checker.has_comment_in(tail) {
         return None;
     }
-    let header = format!("{header}{}", checker.stylist.line_ending().as_str());
+    let header = format!("{header}{}", checker.line_ending());
     Some([Edit::range_replacement(header, head), Edit::range_deletion(tail)])
 }
 

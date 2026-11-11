@@ -2,7 +2,6 @@ use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::helpers::{any_over_body, extract_handled_exceptions};
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
-use ruff_python_stdlib::sys::is_known_standard_library;
 use ruff_python_trivia::has_leading_content;
 use ruff_python_trivia::textwrap::{dedent, indent};
 use ruff_source_file::LineRanges;
@@ -10,9 +9,8 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::imports::stdlib_submodules::STDLIB_SUBMODULES;
-use crate::rules::{indentation, is_alone_on_lines};
-use crate::syntax::for_each_child_body;
+use crate::rules::imports::stdlib::ships_everywhere;
+use crate::syntax::{alias_root_binding, for_each_child_body, top_level};
 
 pub fn dependency_import_guard(checker: &Checker) {
     report_guards(checker, checker.body(), None);
@@ -27,7 +25,7 @@ fn report_guards<'a>(checker: &Checker, body: &'a [Stmt], function: Option<&'a [
         {
             let fix = (stmt.orelse.is_empty()
                 && stmt.finalbody.is_empty()
-                && is_alone_on_lines(checker.source, stmt.range())
+                && checker.is_alone_on_lines(stmt.range())
                 && !checker.has_comment_in(stmt.range())
                 && !shares_line_with_unused_import(checker, &stmt.body, function))
             .then(|| unwrap_try(checker, stmt, function));
@@ -36,7 +34,7 @@ fn report_guards<'a>(checker: &Checker, body: &'a [Stmt], function: Option<&'a [
                 .iter()
                 .filter_map(imported_modules)
                 .flatten()
-                .all(|module| is_standard_library(checker, module))
+                .all(|module| ships_everywhere(checker.target_version().minor, module))
             {
                 "Import guard around a standard library module every supported Python ships; import it directly"
             } else {
@@ -71,109 +69,10 @@ fn imported_modules(stmt: &Stmt) -> Option<Vec<&str>> {
     Some(stmt.as_import_stmt()?.names.iter().map(|alias| alias.name.as_str()).collect())
 }
 
-const LATEST_MINOR: u8 = 15;
-
 fn is_required(checker: &Checker, module: &str) -> bool {
-    let root = module.split('.').next().unwrap_or_default();
-    is_standard_library(checker, module)
+    let root = top_level(module);
+    ships_everywhere(checker.target_version().minor, module)
         || checker.settings.project.metadata.dependencies.contains(&root.to_ascii_lowercase())
-}
-
-fn is_standard_library(checker: &Checker, module: &str) -> bool {
-    // Guarding a module that exists on one platform only, or that a minimal or alternative Python build may leave out,
-    // is legitimate, so these never count as required.
-    const PLATFORM_MODULES: &[&str] = &[
-        "_bz2",
-        "_ctypes",
-        "_curses",
-        "_curses_panel",
-        "_dbm",
-        "_decimal",
-        "_gdbm",
-        "_hashlib",
-        "_lzma",
-        "_multiprocessing",
-        "_overlapped",
-        "_posixshmem",
-        "_posixsubprocess",
-        "_scproxy",
-        "_sqlite3",
-        "_ssl",
-        "_tkinter",
-        "_uuid",
-        "_winapi",
-        "_wmi",
-        "_zstd",
-        "bz2",
-        "compression.zstd",
-        "ctypes",
-        "dbm",
-        "ensurepip",
-        "gzip",
-        "idlelib",
-        "lzma",
-        "mmap",
-        "pyexpat",
-        "sqlite3",
-        "ssl",
-        "tkinter",
-        "turtle",
-        "zlib",
-        "asyncio.unix_events",
-        "asyncio.windows_events",
-        "asyncio.windows_utils",
-        "crypt",
-        "curses",
-        "encodings.mbcs",
-        "encodings.oem",
-        "fcntl",
-        "grp",
-        "msvcrt",
-        "multiprocessing.popen_forkserver",
-        "multiprocessing.popen_spawn_win32",
-        "multiprocessing.synchronize",
-        "nis",
-        "nt",
-        "ossaudiodev",
-        "posix",
-        "pty",
-        "pwd",
-        "readline",
-        "resource",
-        "spwd",
-        "syslog",
-        "termios",
-        "tty",
-        "winreg",
-        "winsound",
-        "xml.parsers.expat",
-    ];
-    // The C accelerators that CPython itself imports under an `ImportError` fallback, so a guard around one is CPython's
-    // own pattern: `_bisect` (Lib/bisect.py:111-114), `_collections` (Lib/collections/__init__.py:46-49),
-    // `_datetime` (Lib/datetime.py:7-10), `_functools` (Lib/functools.py:225-228), `_heapq` (Lib/heapq.py:596-599),
-    // `_json` (Lib/json/scanner.py:4-7), `_operator` (Lib/operator.py:421-424) and `_pickle` (Lib/pickle.py:1970-1971).
-    const ACCELERATORS: &[&str] =
-        &["_bisect", "_collections", "_datetime", "_functools", "_heapq", "_json", "_operator", "_pickle"];
-    let target = checker.settings.from_ruff.target_version.minor;
-    let root = module.split_once('.').map_or(module, |(root, _)| root);
-    // A module removed in a later version, such as `distutils` in 3.12, is optional for a project that supports both.
-    let top_level = (target..=LATEST_MINOR).all(|minor| is_known_standard_library(minor, root));
-    // CPython builds its `_test*` extensions for its own test suite, which release builds leave out.
-    top_level
-        && !root.starts_with("_test")
-        && !PLATFORM_MODULES.contains(&root)
-        && !PLATFORM_MODULES.contains(&module)
-        && !ACCELERATORS.contains(&module)
-        && (root == module || is_standard_submodule(target, module))
-}
-
-// The top-level table cannot say whether a submodule such as `asyncio.taskgroups` ships on the target, so the
-// generated table does. A submodule it lacks is never assumed present.
-fn is_standard_submodule(target: u8, module: &str) -> bool {
-    STDLIB_SUBMODULES.binary_search_by_key(&module, |&(name, _, _)| name).is_ok_and(|index| {
-        let (_, added, removed) = STDLIB_SUBMODULES[index];
-        added <= target && removed.is_none()
-    })
 }
 
 // Ruff's unused-import fix would delete an import the unwrapped guard leaves unused, though that import is there to
@@ -183,7 +82,7 @@ const UNUSED_IMPORT_NOTE: &str = "  # noqa: F401  # fails when the module is mis
 fn unwrap_try(checker: &Checker, stmt: &ast::StmtTry, function: Option<&[Stmt]>) -> Fix {
     let source = checker.source;
     let (first, last) = (&stmt.body[0], &stmt.body[stmt.body.len() - 1]);
-    let indentation = indentation(source, stmt);
+    let indentation = checker.indentation(stmt);
     // A body on the `try:` line, as in `try: import tomllib`, starts after the colon, and the lines it is on hold the
     // `try` too.
     let body = if has_leading_content(first.start(), source) {
@@ -225,10 +124,7 @@ fn shares_line_with_unused_import(checker: &Checker, body: &[Stmt], function: Op
 fn has_unreferenced_import(checker: &Checker, stmt: &Stmt, function: Option<&[Stmt]>) -> bool {
     stmt.as_import_stmt().is_some_and(|import| {
         import.names.iter().any(|alias| {
-            let bound = alias
-                .asname
-                .as_ref()
-                .map_or_else(|| alias.name.as_str().split('.').next().unwrap_or_default(), |name| name.as_str());
+            let bound = alias_root_binding(alias);
             match function {
                 Some(body) => !any_over_body(
                     body,

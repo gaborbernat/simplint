@@ -4,35 +4,40 @@ use test_case::test_case;
 
 use crate::common;
 
+const PROJECT: &str = "[project]\nrequires-python = \">=3.14\"\n";
+
 // A fix writes the line endings of the file it fixes: a CRLF file comes out as the LF one does, with CRLF endings.
-#[test_case("SMP201", &[("module.py", "def _helper() -> int:\n    return 1\n\n\ndef main() -> int:\n    return _helper()\n")] ; "definition_before_use")]
-#[test_case("SMP202", &[("module.py", "_LIMIT = [1]\n\n\ndef read() -> int:\n    return len(_LIMIT) + len(_LIMIT)\n")] ; "single_user_constant_local")]
-#[test_case("SMP202", &[("module.py", "import os\n\n\n_LIMIT = 1\n\n\ndef read() -> int:\n    return _LIMIT + _LIMIT\n")] ; "single_user_constant_between_blank_lines")]
-#[test_case("SMP202", &[("module.py", "_LIMIT = 1\n\n\ndef read() -> int: return _LIMIT + _LIMIT\n")] ; "single_user_constant_on_header")]
-#[test_case("SMP203", &[("module.py", "class Shape:\n    def area(self) -> int:\n        return 1\n\n    def __init__(self) -> None:\n        self.size = 1\n")] ; "class_member_order")]
-#[test_case("SMP401", &[("module.py", "def run() -> None:\n    pass\n"), ("user.py", "from module import run\n")] ; "missing_from_all_new")]
-#[test_case("SMP401", &[("module.py", "__all__ = [\n    \"run\",\n]\n\n\ndef run() -> None:\n    pass\n\n\ndef stop() -> None:\n    pass\n"), ("user.py", "from module import run, stop\n")] ; "missing_from_all_lines")]
-#[test_case("SMP405", &[("module.py", "__all__ = (\"a\", \"b\")\n\na = b = 1\n")] ; "all_format")]
-#[test_case("SMP406", &[("module.py", "__all__ = [\"run\"]\n\n\ndef run() -> None:\n    pass\n")] ; "all_not_last")]
-#[test_case("SMP601", &[("module.py", "LIMIT = 3\n\n\ndef read() -> int:\n    return LIMIT\n")] ; "missing_final_import")]
-#[test_case("SMP801", &[("tests/test_shape.py", "class TestShape:\n    def test_one(self) -> None:\n        assert True\n\n    def test_two(self) -> None:\n        assert True\n")] ; "test_class")]
-#[test_case("SMP812", &[("tests/test_cwd.py", "import unittest\nfrom unittest import mock\n\n\nclass Cwd(unittest.TestCase):\n    def test_cwd(self) -> None:\n        patcher = mock.patch(\"os.getcwd\")\n        patched = patcher.start()\n        self.addCleanup(patcher.stop)\n        assert patched\n")] ; "unittest_enter_context")]
-fn fix_keeps_crlf_line_endings(select: &str, files: &[(&str, &str)]) {
-    let lf = fixed(select, files);
+#[test_case(PROJECT, "SMP201", &[("module.py", "def _helper() -> int:\n    return 1\n\n\ndef main() -> int:\n    return _helper()\n")] ; "definition_before_use")]
+#[test_case(PROJECT, "SMP202", &[("module.py", "_LIMIT = [1]\n\n\ndef read() -> int:\n    return len(_LIMIT) + len(_LIMIT)\n")] ; "single_user_constant_local")]
+#[test_case(PROJECT, "SMP202", &[("module.py", "import os\n\n\n_LIMIT = 1\n\n\ndef read() -> int:\n    return _LIMIT + _LIMIT\n")] ; "single_user_constant_between_blank_lines")]
+#[test_case(PROJECT, "SMP202", &[("module.py", "_LIMIT = 1\n\n\ndef read() -> int: return _LIMIT + _LIMIT\n")] ; "single_user_constant_on_header")]
+#[test_case(PROJECT, "SMP203", &[("module.py", "class Shape:\n    def area(self) -> int:\n        return 1\n\n    def __init__(self) -> None:\n        self.size = 1\n")] ; "class_member_order")]
+#[test_case(PROJECT, "SMP401", &[("module.py", "def run() -> None:\n    pass\n"), ("user.py", "from module import run\n")] ; "missing_from_all_new")]
+#[test_case(PROJECT, "SMP401", &[("module.py", "__all__ = [\n    \"run\",\n]\n\n\ndef run() -> None:\n    pass\n\n\ndef stop() -> None:\n    pass\n"), ("user.py", "from module import run, stop\n")] ; "missing_from_all_lines")]
+#[test_case(PROJECT, "SMP405", &[("module.py", "__all__ = (\"a\", \"b\")\n\na = b = 1\n")] ; "all_format")]
+#[test_case(PROJECT, "SMP406", &[("module.py", "__all__ = [\"run\"]\n\n\ndef run() -> None:\n    pass\n")] ; "all_not_last")]
+#[test_case(PROJECT, "SMP601", &[("module.py", "LIMIT = 3\n\n\ndef read() -> int:\n    return LIMIT\n")] ; "missing_final_import")]
+#[test_case(PROJECT, "SMP801", &[("tests/test_shape.py", "class TestShape:\n    def test_one(self) -> None:\n        assert True\n\n    def test_two(self) -> None:\n        assert True\n")] ; "test_class")]
+#[test_case(PROJECT, "SMP812", &[("tests/test_cwd.py", "import unittest\nfrom unittest import mock\n\n\nclass Cwd(unittest.TestCase):\n    def test_cwd(self) -> None:\n        patcher = mock.patch(\"os.getcwd\")\n        patched = patcher.start()\n        self.addCleanup(patcher.stop)\n        assert patched\n")] ; "unittest_enter_context")]
+#[test_case("[tool.ruff]\ntarget-version = \"py311\"\n", "SMP513", &[("module.py", "import contextlib\nimport os\n\n\ndef build(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        run()\n    finally:\n        os.chdir(old)\n")] ; "chdir_restore")]
+#[test_case("[tool.ruff]\ntarget-version = \"py314\"\n", "SMP512", &[("module.py", "import contextvars\n\nuser = contextvars.ContextVar(\"user\")\n\n\ndef handle(value):\n    token = user.set(value)\n    try:\n        run()\n    finally:\n        user.reset(token)\n")] ; "context_var_token_reset")]
+#[test_case("[tool.ruff]\ntarget-version = \"py313\"\n", "SMP524", &[("module.py", "import warnings\n\n\ndef connect(host):\n    warnings.warn(\"connect() is deprecated\", DeprecationWarning, stacklevel=2)\n    return host\n")] ; "warnings_deprecated")]
+#[test_case("[tool.ruff]\ntarget-version = \"py314\"\n", "SMP526", &[("module.py", "def total(items: list[int]) -> int:\n    count = 0\n    items.sort()\n    print(items); print(count)\n    return 0\n")] ; "early_assignment_split_line")]
+fn fix_keeps_crlf_line_endings(pyproject: &str, select: &str, files: &[(&str, &str)]) {
+    let lf = fixed(pyproject, select, files);
     let crlf_files: Vec<(&str, String)> =
         files.iter().map(|(name, source)| (*name, source.replace('\n', "\r\n"))).collect();
-    let crlf = fixed(select, &crlf_files.iter().map(|(name, source)| (*name, source.as_str())).collect::<Vec<_>>());
+    let crlf =
+        fixed(pyproject, select, &crlf_files.iter().map(|(name, source)| (*name, source.as_str())).collect::<Vec<_>>());
     assert_ne!(lf.get(files[0].0).map(String::as_str), Some(files[0].1));
     assert_eq!(crlf, lf.into_iter().map(|(name, source)| (name, source.replace('\n', "\r\n"))).collect());
 }
 
-fn fixed(select: &str, files: &[(&str, &str)]) -> BTreeMap<String, String> {
-    let root = common::project(&[&[("pyproject.toml", "[project]\nrequires-python = \">=3.14\"\n")], files].concat());
+fn fixed(pyproject: &str, select: &str, files: &[(&str, &str)]) -> BTreeMap<String, String> {
+    let root = common::project(&[&[("pyproject.toml", pyproject)], files].concat());
     common::check(root.path(), &["--no-cache", "--fix", "--unsafe-fixes", "--select", select]);
     files.iter().map(|(name, _)| ((*name).to_owned(), common::read(root.path(), name))).collect()
 }
-
-const PROJECT: &str = "[project]\nrequires-python = \">=3.14\"\n";
 
 // The diagnostics of `select` on a module, and the module after its fixes.
 fn report_and_fix(select: &str, source: &str) -> (String, String) {
@@ -59,6 +64,6 @@ fn comment_above_exempts_constant(line_ending: &str) {
     let root = common::project(&[("pyproject.toml", PROJECT), ("module.py", &source.replace('\n', line_ending))]);
     assert_eq!(
         common::check(root.path(), &["--no-cache", "--select", "SMP202"]),
-        (0, "All checks passed!\n".to_owned(), String::new())
+        (0, common::PASSED.to_owned(), String::new())
     );
 }

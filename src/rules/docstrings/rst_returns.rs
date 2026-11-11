@@ -1,9 +1,8 @@
-use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::visitor::Visitor;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_python_parser::parse_expression;
-use ruff_text_size::{TextRange, TextSize};
 
+use super::raised_class;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::docstrings::rst::{Field, FieldKind, Owner, Target, field_deletion};
@@ -34,10 +33,7 @@ fn generator_fields(checker: &Checker, target: &Target, name: &str) {
     let (has_returns, has_yields) = (docstring.has(FieldKind::Returns), docstring.has(FieldKind::Yields));
     if has_returns && !has_yields {
         // The `returns` of the field's name becomes `yields`, keeping its description.
-        let fix = docstring.fields(&[FieldKind::Returns]).next().and_then(|field| {
-            let word = TextRange::at(field.marker?.start(), TextSize::of(field.words[0].as_str()));
-            Some(Fix::unsafe_edit(Edit::range_replacement("yields".to_owned(), word)))
-        });
+        let fix = docstring.fields(&[FieldKind::Returns]).next().and_then(|field| field.rename("yields"));
         checker.report_fix(
             Rule::RstReturns,
             docstring.range(),
@@ -111,8 +107,7 @@ fn is_placeholder(body: &[Stmt]) -> bool {
         Stmt::Pass(_) => true,
         Stmt::Expr(ast::StmtExpr { value, .. }) => value.is_ellipsis_literal_expr(),
         Stmt::Raise(ast::StmtRaise { exc: Some(exc), .. }) => {
-            let raised = exc.as_call_expr().map_or(exc.as_ref(), |call| call.func.as_ref());
-            matches!(raised, Expr::Name(name) if name.id.as_str() == "NotImplementedError")
+            matches!(raised_class(exc), Expr::Name(name) if name.id.as_str() == "NotImplementedError")
         }
         _ => false,
     })

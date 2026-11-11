@@ -4,9 +4,9 @@ use ruff_text_size::{Ranged, TextRange};
 use super::Kind;
 use super::tables::{CONTAINERS, PATH_CLASSES, items, shared};
 use crate::lint::checker::Checker;
-use crate::lint::walker::Scope;
+use crate::rules::is_class_like;
 use crate::semantic::BindingKind;
-use crate::syntax::{is_classmethod, receiver};
+use crate::syntax::{is_classmethod, is_name, receiver, target_leaves};
 
 // A class around the spot, with its index among the scopes.
 #[derive(Clone, Copy)]
@@ -15,23 +15,22 @@ pub(super) struct Class<'a> {
     pub(super) depth: usize,
 }
 
-pub(super) fn body_range(scope: Scope) -> TextRange {
-    let (body, end) = match scope {
-        Scope::Function(function) => (&function.body, function.end()),
-        Scope::Class(class) => (&class.body, class.end()),
-        Scope::Lambda(lambda) => return lambda.body.range(),
-    };
-    TextRange::new(body.first().map_or(end, Ranged::start), end)
+pub(super) fn target_binds(target: &Expr, name: &str) -> bool {
+    target_leaves(target).into_iter().any(|leaf| is_name(leaf, name))
 }
 
-pub(super) fn target_binds(target: &Expr, name: &str) -> bool {
-    match target {
-        Expr::Name(target) => target.id == name,
-        Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => {
-            elts.iter().any(|elt| target_binds(elt, name))
-        }
-        Expr::Starred(ast::ExprStarred { value, .. }) => target_binds(value, name),
-        _ => false,
+pub(super) fn attribute_root(expr: &Expr) -> &Expr {
+    let mut head = expr;
+    while let Expr::Attribute(ast::ExprAttribute { value, .. }) = head {
+        head = value;
+    }
+    head
+}
+
+fn decorator_callee(decorator: &ast::Decorator) -> &Expr {
+    match &decorator.expression {
+        Expr::Call(ast::ExprCall { func, .. }) => func.as_ref(),
+        expr => expr,
     }
 }
 
@@ -47,10 +46,7 @@ pub(super) fn is_builtin_call(checker: &Checker, expr: &Expr, names: &[&str]) ->
 // Whether a decorator hands back the function's own result: `staticmethod`, `classmethod`, a `functools` cache or
 // `typing.override`.
 pub(super) fn keeps_return(checker: &Checker, decorator: &ast::Decorator) -> bool {
-    let expr = match &decorator.expression {
-        Expr::Call(ast::ExprCall { func, .. }) => func.as_ref(),
-        expr => expr,
-    };
+    let expr = decorator_callee(decorator);
     is_builtin_call(checker, expr, &["staticmethod", "classmethod"])
         || checker.semantic().qualified_name(expr).is_some_and(|name| {
             matches!(
@@ -136,11 +132,7 @@ pub(super) fn annotation(checker: &Checker, expr: &Expr) -> Option<Kind> {
 pub(super) fn imported_class(checker: &Checker, expr: &Expr) -> Option<Kind> {
     let semantic = checker.semantic();
     let name = semantic.qualified_name(expr)?;
-    let mut head = expr;
-    while let Expr::Attribute(ast::ExprAttribute { value, .. }) = head {
-        head = value;
-    }
-    let root = head.as_name_expr()?;
+    let root = attribute_root(expr).as_name_expr()?;
     if !semantic.bindings(root.id.as_str()).iter().all(|binding| binding.kind == BindingKind::Import) {
         return None;
     }
@@ -148,15 +140,8 @@ pub(super) fn imported_class(checker: &Checker, expr: &Expr) -> Option<Kind> {
     match (run, name.segments()) {
         (Some(true), _) => Some(Kind::ImportedInstance),
         (Some(false), _) | (None, ["typing" | "typing_extensions", ..]) => None,
-        (None, segments) => segments.last().is_some_and(|last| is_class_name(last)).then_some(Kind::ImportedInstance),
+        (None, segments) => segments.last().is_some_and(|last| is_class_like(last)).then_some(Kind::ImportedInstance),
     }
-}
-
-// A class name is CapWords, which starts with an uppercase letter once leading underscores are dropped, and is not all
-// caps, as PEP 8 spells classes.
-pub(super) fn is_class_name(name: &str) -> bool {
-    let name = name.trim_start_matches('_');
-    name.starts_with(char::is_uppercase) && name.chars().any(char::is_lowercase)
 }
 
 pub(super) fn path_class(checker: &Checker, expr: &Expr) -> Option<Kind> {
@@ -189,11 +174,7 @@ pub(super) fn class_at<'a>(checker: &Checker<'a>, range: TextRange) -> Option<&'
 pub(super) fn instance_of(checker: &Checker, class: &ast::StmtClassDef) -> Option<Kind> {
     let plain = class.keywords().is_empty()
         && class.decorator_list.iter().all(|decorator| {
-            let expr = match &decorator.expression {
-                Expr::Call(ast::ExprCall { func, .. }) => func.as_ref(),
-                expr => expr,
-            };
-            checker.semantic().qualified_name(expr).is_some_and(|name| {
+            checker.semantic().qualified_name(decorator_callee(decorator)).is_some_and(|name| {
                 matches!(
                     name.segments(),
                     ["dataclasses", "dataclass"] | ["functools", "total_ordering"] | ["typing", "final"]

@@ -13,8 +13,7 @@ use crate::lint::noqa::{ruff_ignores, suppresses};
 use crate::lint::registry::Rule;
 use crate::rules::edits::statement_block;
 use crate::rules::testing::is_test_function;
-use crate::rules::{docstring, expr_mentions, indentation};
-use crate::syntax::{is_name, names_in};
+use crate::syntax::{docstring, expr_mentions, is_name, names_in};
 
 pub fn test_class(checker: &Checker) {
     if !checker.is_test_module() {
@@ -70,7 +69,8 @@ fn flatten_class(checker: &Checker, class: &ast::StmtClassDef, new_names: &mut H
         let Stmt::FunctionDef(function) = stmt else {
             return None;
         };
-        let (text, name) = flatten_method(checker, (function, type_params, &prefix), block, new_names)?;
+        let (text, name) =
+            flatten_method(checker, Method { function, type_params, prefix: &prefix }, block, new_names)?;
         // Methods of one class can share a name too: `test_a` and `testa` in `TestSame` both become `test_same_a`.
         if !names.insert(name) {
             return None;
@@ -78,7 +78,7 @@ fn flatten_class(checker: &Checker, class: &ast::StmtClassDef, new_names: &mut H
         functions.push(text);
     }
     new_names.extend(names);
-    (!functions.is_empty()).then(|| functions.join(&checker.stylist.line_ending().as_str().repeat(2)))
+    (!functions.is_empty()).then(|| functions.join(&checker.line_ending().repeat(2)))
 }
 
 // Whether the class can become module-level functions without its text changing: it has no bases, decorators or
@@ -119,11 +119,17 @@ fn can_flatten(checker: &Checker, class: &ast::StmtClassDef) -> bool {
     true
 }
 
+struct Method<'a> {
+    function: &'a ast::StmtFunctionDef,
+    type_params: &'a [TypeParam],
+    prefix: &'a str,
+}
+
 // Turns a test method of a test class into a module-level function, named for the class, dropping `self`. Returns the
 // function's text and its name.
 fn flatten_method(
     checker: &Checker,
-    (function, type_params, prefix): (&ast::StmtFunctionDef, &[ast::TypeParam], &str),
+    Method { function, type_params, prefix }: Method<'_>,
     block: TextRange,
     new_names: &HashSet<String>,
 ) -> Option<(String, String)> {
@@ -161,9 +167,7 @@ fn flatten_method(
     }
     let used = used_type_params(function, type_params);
     // A default on a type parameter is 3.13 syntax, which a fix for an older target would leave invalid.
-    if checker.settings.from_ruff.target_version < PythonVersion::PY313
-        && used.iter().any(|param| param.default().is_some())
-    {
+    if checker.target_version() < PythonVersion::PY313 && used.iter().any(|param| param.default().is_some()) {
         return None;
     }
     let header: Vec<&str> = used.into_iter().map(|param| &source[param.range()]).collect();
@@ -186,7 +190,7 @@ fn flatten_method(
     }
     text.push_str(&source[TextRange::new(function.name.end(), self_parameter.start())]);
     text.push_str(&source[TextRange::new(removal_end, block.end())]);
-    Some((dedent_block(&text, indentation(source, function)), renamed))
+    Some((dedent_block(&text, checker.indentation(function)), renamed))
 }
 
 // The class's type parameters that a method's signature, body or nested type aliases name, plus those that their bounds

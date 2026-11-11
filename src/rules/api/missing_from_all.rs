@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::{Applicability, Edit, Fix};
+use ruff_python_ast::Expr;
 use ruff_python_ast::token::TokenKind;
-use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_python_trivia::leading_indentation;
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
@@ -11,11 +11,18 @@ use rustc_hash::FxHashSet;
 use crate::lint::checker::Checker;
 use crate::lint::noqa::is_noqa_for_only;
 use crate::lint::registry::Rule;
-use crate::rules::api::{exploded, is_type_checking};
-use crate::rules::{export_key, indentation};
+use crate::rules::api::{AllList, exploded};
+use crate::rules::edits::fix_of;
+use crate::rules::{export_key, is_type_checking};
 use crate::semantic::BindingKind;
 use crate::syntax::is_main_guard;
-use crate::syntax::{Exports, Visibility, alias_binding, all_binding, all_literal};
+use crate::syntax::{Exports, Visibility, alias_binding, all_binding, import_aliases};
+
+struct Missing<'a> {
+    name: &'a str,
+    range: TextRange,
+    imported: bool,
+}
 
 pub fn missing_from_all(checker: &Checker) {
     if checker.is_init_module()
@@ -38,7 +45,7 @@ pub fn missing_from_all(checker: &Checker) {
         .filter_map(|stmt| stmt.as_if_stmt().filter(|stmt| is_type_checking(&stmt.test, checker)))
         .filter_map(|stmt| Some(TextRange::new(stmt.body.first()?.start(), stmt.body.last()?.end())))
         .collect();
-    let mut missing: Vec<(&str, TextRange, bool)> = checker
+    let mut missing: Vec<Missing> = checker
         .semantic()
         .all_bindings()
         .filter(|(name, bindings)| {
@@ -54,48 +61,50 @@ pub fn missing_from_all(checker: &Checker) {
                     || checker.project().is_api_reached(name))
                 && !shadows_module(name)
         })
-        .map(|(name, bindings)| (name, bindings[0].range, checker.project().is_imported_by_others(name)))
+        .map(|(name, bindings)| Missing {
+            name,
+            range: bindings[0].range,
+            imported: checker.project().is_imported_by_others(name),
+        })
         .collect();
     if missing.is_empty() {
         return;
     }
-    missing.sort_by_key(|(_, range, _)| range.start());
+    missing.sort_by_key(|missing| missing.range.start());
+    let names: Vec<String> = missing.iter().map(|missing| format!("`{}`", missing.name)).collect();
+    let title = format!("Add {} to `__all__`", names.join(", "));
+    let reports = missing
+        .iter()
+        .map(|missing| {
+            let reason = if missing.imported {
+                "is imported by other modules"
+            } else {
+                "appears in the signature of a name in `__all__`"
+            };
+            (missing.range, format!("`{}` {reason}; list it in `__all__`", missing.name), title.clone())
+        })
+        .collect();
     // Listing a name in a public module of a library widens its API and what `import *` binds, so the report stays and
     // the author decides.
-    let fix = if checker.project().role().public {
-        None
-    } else {
-        all_insertion(checker, missing.iter().map(|(name, _, _)| *name))
-            .and_then(|fix| with_unused_noqas_removed(checker, fix, &missing))
-    };
-    let names: Vec<String> = missing.iter().map(|(name, _, _)| format!("`{name}`")).collect();
-    let title = format!("Add {} to `__all__`", names.join(", "));
-    let offer_at = fix
-        .as_ref()
-        .and_then(|_| checker.first_unsuppressed(Rule::MissingFromAll, missing.iter().map(|(_, range, _)| *range)));
-    // Repeating the whole listing in every report makes output slow; the first visible report carries it.
-    let mut offer = fix.map(|fix| (fix, title));
-    for (name, range, imported) in missing {
-        let reason =
-            if imported { "is imported by other modules" } else { "appears in the signature of a name in `__all__`" };
-        let (fix, title) = if offer_at == Some(range) {
-            offer.take().map_or((None, String::new()), |(fix, title)| (Some(fix), title))
+    checker.report_shared_fix(Rule::MissingFromAll, reports, || {
+        if checker.project().role().public {
+            None
         } else {
-            (None, String::new())
-        };
-        checker.report_fix(Rule::MissingFromAll, range, format!("`{name}` {reason}; list it in `__all__`"), fix, title);
-    }
+            all_insertion(checker, missing.iter().map(|missing| missing.name))
+                .and_then(|fix| with_unused_noqas_removed(checker, fix, &missing))
+        }
+    });
 }
 
 // Listing a name silences Ruff's F401 for its import, so a `noqa` that named only F401 there is left unused, which Ruff
 // reports as RUF100. The fix drops those comments with the listing.
-fn with_unused_noqas_removed(checker: &Checker, fix: Fix, missing: &[(&str, TextRange, bool)]) -> Option<Fix> {
+fn with_unused_noqas_removed(checker: &Checker, fix: Fix, missing: &[Missing]) -> Option<Fix> {
     let applicability = fix.applicability();
-    let listed: FxHashSet<&str> = missing.iter().map(|(name, _, _)| *name).collect();
+    let listed: FxHashSet<&str> = missing.iter().map(|missing| missing.name).collect();
     // Names on one line share its comment, which is removed once: two deletions of it would overlap.
     let comments: BTreeSet<(TextSize, TextSize)> = missing
         .iter()
-        .filter_map(|(_, range, _)| checker.trailing_comment(*range))
+        .filter_map(|missing| checker.trailing_comment(missing.range))
         .filter(|comment| is_noqa_for_only(checker.text(*comment), "F401"))
         .filter(|comment| binds_only_listed(checker, *comment, &listed))
         .map(|comment| (comment.start(), comment.end()))
@@ -106,11 +115,7 @@ fn with_unused_noqas_removed(checker: &Checker, fix: Fix, missing: &[(&str, Text
         let code_end = comment.start() - TextSize::try_from(before.len() - before.trim_end().len()).ok()?;
         Some(Edit::range_deletion(TextRange::new(code_end, comment.end())))
     });
-    let mut edits: Vec<Edit> = fix.into_edits().into_iter().chain(unused).collect();
-    edits.sort_by_key(Ranged::start);
-    let mut sorted = edits.into_iter();
-    let first = sorted.next()?;
-    Some(Fix::applicable_edits(first, sorted, applicability))
+    fix_of(fix.into_edits().into_iter().chain(unused), applicability)
 }
 
 // Whether every name the imports on the comment's line bind is listed, so no import left unused needs the comment.
@@ -119,13 +124,7 @@ fn binds_only_listed(checker: &Checker, comment: TextRange, listed: &FxHashSet<&
     checker
         .body()
         .iter()
-        .filter_map(|stmt| match stmt {
-            Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
-                Some(names)
-            }
-            _ => None,
-        })
-        .flatten()
+        .flat_map(import_aliases)
         .filter(|alias| line.contains_range(alias.range()))
         .all(|alias| listed.contains(alias_binding(alias)))
 }
@@ -136,24 +135,24 @@ fn all_insertion<'a>(checker: &Checker, names: impl Iterator<Item = &'a str>) ->
     let Some(stmt) = checker.body().iter().rev().find(|stmt| all_binding(stmt).is_some()) else {
         return new_all(checker, &names);
     };
-    let (value, elts) = all_literal(stmt)?;
+    let all = AllList::of(stmt)?;
     let source = checker.source;
-    let one_per_line =
-        elts.iter().all(|elt| source[TextRange::new(source.line_start(elt.start()), elt.start())].trim().is_empty());
-    let has_comment = checker.has_comment_in(value);
+    let elts = all.elements();
+    let one_per_line = all.one_per_line(checker);
+    let has_comment = all.has_comment(checker);
     if has_comment && elts.is_empty() {
         return None;
     }
-    if source.contains_line_break(value) && !elts.is_empty() && (one_per_line || has_comment) {
-        return lines_insertion(checker, stmt, (elts, one_per_line), &names);
+    if source.contains_line_break(all.value()) && !elts.is_empty() && (one_per_line || has_comment) {
+        return lines_insertion(checker, &all, &names);
     }
-    let mut items: Vec<String> = elts.iter().map(|elt| checker.text(elt.range()).to_owned()).collect();
+    let mut items = all.items(checker);
     for name in names.iter().rev() {
         items.insert(position(elts, name), quoted(checker, name));
     }
-    let (open, close) = if source[value].starts_with('[') { ("[", "]") } else { ("(", ")") };
-    let list = exploded(checker, indentation(source, stmt), &items);
-    Some(Fix::safe_edit(Edit::range_replacement(format!("{open}{}{close}", &list[1..list.len() - 1]), value)))
+    let (open, close) = all.brackets(checker);
+    let list = exploded(checker, checker.indentation(stmt), &items);
+    Some(Fix::safe_edit(Edit::range_replacement(format!("{open}{}{close}", &list[1..list.len() - 1]), all.value())))
 }
 
 // The `__all__` a module without one gets, last but above a closing `if __name__ == "__main__":` block, as SMP406 asks.
@@ -164,7 +163,7 @@ fn new_all(checker: &Checker, names: &[&str]) -> Option<Fix> {
         return None;
     }
     let items: Vec<String> = names.iter().map(|name| quoted(checker, name)).collect();
-    let eol = checker.stylist.line_ending().as_str();
+    let eol = checker.line_ending();
     let declaration = format!("__all__ = {}{eol}", exploded(checker, "", &items));
     // A module without `__all__` exports every public name to `from module import *`; adding one narrows that.
     let edit = if let Some(guard) = checker.body().last().filter(|stmt| is_main_guard(stmt)) {
@@ -177,21 +176,18 @@ fn new_all(checker: &Checker, names: &[&str]) -> Option<Fix> {
 }
 
 // Names one to a line, or after the last one when a comment pins the layout, as the `__all__` already lays them out.
-fn lines_insertion(
-    checker: &Checker,
-    stmt: &Stmt,
-    (elts, one_per_line): (&[Expr], bool),
-    names: &[&str],
-) -> Option<Fix> {
+fn lines_insertion(checker: &Checker, all: &AllList, names: &[&str]) -> Option<Fix> {
     let source = checker.source;
+    let elts = all.elements();
+    let one_per_line = all.one_per_line(checker);
     let tail = &elts[elts.len() - 1];
     let indent = if one_per_line {
-        indentation(source, &elts[0])
+        checker.indentation(&elts[0])
     } else {
         leading_indentation(source.full_line_str(tail.start()))
     };
     // A parenthesized element ends at its closing parenthesis, so the names go after that.
-    let tail_range = checker.parenthesized_range(tail, stmt.into());
+    let tail_range = all.element_range(checker, tail);
     // A comment ending the last element's line stays with that element only when the names go on the lines after it,
     // so nothing but a comma may come between them, and the closing bracket must follow the line.
     let line_comment = match checker
@@ -212,14 +208,14 @@ fn lines_insertion(
             _ => groups.push((at, vec![quoted(checker, name)])),
         }
     }
-    let eol = checker.stylist.line_ending().as_str();
+    let eol = checker.line_ending();
     let separator = format!(",{eol}{indent}");
     let mut edits: Vec<Edit> = groups
         .into_iter()
         .map(|(at, group)| match elts.get(at) {
             Some(next) => Edit::insertion(
                 group.iter().fold(String::new(), |text, name| text + name + &separator),
-                checker.parenthesized_range(next, stmt.into()).start(),
+                all.element_range(checker, next).start(),
             ),
             None if line_comment.is_some() => Edit::insertion(
                 group.iter().fold(String::new(), |text, name| text + indent + name + "," + eol),
@@ -234,10 +230,7 @@ fn lines_insertion(
     if line_comment == Some(true) {
         edits.push(Edit::insertion(",".to_owned(), tail_range.end()));
     }
-    edits.sort_by_key(Ranged::start);
-    let mut edits = edits.into_iter();
-    let first = edits.next()?;
-    Some(Fix::safe_edits(first, edits))
+    fix_of(edits, Applicability::Safe)
 }
 
 // Whether the closing bracket of the list is the next token after `elt`, past any comment or line break.

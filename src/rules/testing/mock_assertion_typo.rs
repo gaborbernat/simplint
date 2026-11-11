@@ -1,4 +1,4 @@
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::{Applicability, Edit};
 use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
@@ -7,7 +7,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::syntax::last_segment;
+use crate::rules::edits::fix_of;
+use crate::rules::testing::recognize::expects_error;
 
 // The assertion methods of `unittest.mock`; a name is a typo of one of them, not of a mock attribute.
 const ASSERTIONS: &[&str] = &[
@@ -73,12 +74,11 @@ pub fn mock_assertion_typo(checker: &Checker) {
             .fixable
             .get(&attr.range())
             .filter(|deletions| !deletions.iter().any(|&range| checker.has_comment_in(range)))
-            .map(|deletions| {
+            .and_then(|deletions| {
                 let rename = Edit::range_replacement(intended.to_owned(), attr.range());
                 let mut edits: Vec<Edit> = deletions.iter().map(|range| Edit::range_deletion(*range)).collect();
                 edits.push(rename);
-                let first = edits.remove(0);
-                Fix::unsafe_edits(first, edits)
+                fix_of(edits, Applicability::Unsafe)
             });
         checker.report_fix(
             Rule::MockAssertionTypo,
@@ -171,13 +171,6 @@ fn called_attribute(expr: &Expr) -> Option<&ast::Identifier> {
         return None;
     };
     func.as_attribute_expr().map(|attribute| &attribute.attr)
-}
-
-fn expects_error(expr: &Expr) -> bool {
-    let Expr::Call(ast::ExprCall { func, .. }) = expr else {
-        return false;
-    };
-    last_segment(func).is_some_and(|name| name == "raises" || name.starts_with("assertRaises"))
 }
 
 // The assertion a name is meant to be: the same name with the `assert_` prefix, or the nearest assertion when the

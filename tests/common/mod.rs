@@ -9,13 +9,21 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
 use assert_cmd::Command;
+use serde::de::DeserializeOwned;
 use serde_json::Value;
 use tempfile::TempDir;
 
 pub const SECTION: &str = "SMP001 [*] Section comment groups code; extract a named function or class instead";
 pub const SINGLE_X: &str = "SMP101 Single-letter name `x`; use a descriptive name";
+pub const PASSED: &str = "All checks passed!\n";
+pub const ONE_FIXED: &str = "Found 1 error (1 fixed, 0 remaining).\n";
+pub const SECTIONED: &str = "# --- helpers ---\nVALUE = 1\n";
+pub const CLEAN_MODULE: &str = "VALUE = 1\n";
+// Ruff's PLR2004 would report the value inlined into a comparison, so the fix loop withdraws SMP202's fix.
+pub const RUFF_PLR2004: (&str, &str) = ("pyproject.toml", "[tool.ruff.lint]\nselect = [\"PLR2004\"]\n");
+pub const COMPARED: &str = "_LIMIT = 3\n\n\ndef over(value: int) -> bool:\n    return value > _LIMIT\n";
 
-pub fn project(files: &[(&str, &str)]) -> TempDir {
+pub fn project<N: AsRef<Path>>(files: &[(N, &str)]) -> TempDir {
     let root = TempDir::new().expect("temporary directory");
     for (name, content) in files {
         let path = root.path().join(name);
@@ -25,8 +33,23 @@ pub fn project(files: &[(&str, &str)]) -> TempDir {
     root
 }
 
+pub fn empty_project() -> TempDir {
+    TempDir::new().expect("temporary directory")
+}
+
 pub fn check(root: &Path, args: &[&str]) -> (i32, String, String) {
     check_with_stdin(root, args, "")
+}
+
+// The concise lines that report `code`, matched as a whole code so that a message naming it is not counted.
+pub fn reports<'a>(stdout: &'a str, code: &str) -> Vec<&'a str> {
+    let token = format!(" {code} ");
+    stdout.lines().filter(|line| line.contains(&token)).collect()
+}
+
+pub fn assert_report_count(root: &Path, code: &str, expected: usize) {
+    let stdout = check(root, &["--no-cache", "--select", code]).1;
+    assert_eq!(reports(&stdout, code).len(), expected, "{stdout}");
 }
 
 // Fixes the file under `root` with every unsafe fix of `select` applied, the way most fix tests run it.
@@ -34,11 +57,51 @@ pub fn fix_unsafe(root: &Path, select: &str) -> (i32, String, String) {
     check(root, &["--fix", "--unsafe-fixes", "--select", select])
 }
 
+pub fn fix_safe(root: &Path, select: &str) -> (i32, String, String) {
+    check(root, &["--no-cache", "--fix", "--select", select])
+}
+
+// The fix run keeps the report of `select` on `file` and leaves the file as it is.
+pub fn assert_fix_keeps_report(root: &Path, select: &str, fix: &[&str], file: &str, report: &str) {
+    let source = read(root, file);
+    let (code, stdout, _) = check(root, &[&["--no-cache", "--select", select], fix].concat());
+    assert_eq!((code, stdout.as_str(), read(root, file)), (1, report, source));
+}
+
 // Fixes the single file `name` of a project with `pyproject`, and returns the exit code, the report and the new source.
 pub fn fixed_file(pyproject: &str, name: &str, source: &str, select: &str) -> (i32, String, String) {
     let root = project(&[("pyproject.toml", pyproject), (name, source)]);
     let (code, stdout, _) = fix_unsafe(root.path(), select);
     (code, stdout, read(root.path(), name))
+}
+
+pub struct RuffOverlap<'a> {
+    pub settings: &'a str,
+    pub select: &'a str,
+    pub ruff_code: &'a str,
+    pub files: &'a [(&'a str, &'a str)],
+}
+
+// Whether `fragment` is reported without Ruff's rule and with it selected, which hands the case over to Ruff.
+pub fn reported_without_and_with_ruff(case: &RuffOverlap, fragment: &str) -> [bool; 2] {
+    [false, true].map(|selected| {
+        let ruff_select = if selected { format!("\"{}\"", case.ruff_code) } else { String::new() };
+        let pyproject = format!("[tool.ruff.lint]\nselect = [{ruff_select}]\n{}", case.settings);
+        let mut files = vec![("pyproject.toml", pyproject.as_str())];
+        files.extend_from_slice(case.files);
+        let root = project(&files);
+        check(root.path(), &["--select", case.select]).1.contains(fragment)
+    })
+}
+
+// Runs `check` with `args` from `cwd`, a directory of the project at `root`.
+pub fn check_in(root: &Path, cwd: &Path, args: &[&str]) -> (i32, String, String) {
+    let output = command(root).current_dir(cwd).arg("check").args(args).output().expect("runs");
+    (
+        output.status.code().expect("exit code"),
+        String::from_utf8(output.stdout).expect("utf-8 stdout"),
+        String::from_utf8(output.stderr).expect("utf-8 stderr"),
+    )
 }
 
 pub fn check_with_stdin(root: &Path, args: &[&str], stdin: &str) -> (i32, String, String) {
@@ -81,6 +144,14 @@ pub fn read(root: &Path, name: &str) -> String {
 
 pub fn simplint(root: &Path, args: &[&str]) -> (i32, String, String) {
     simplint_with_stdin(root, args, "")
+}
+
+pub fn json<T: DeserializeOwned>(root: &Path, args: &[&str]) -> T {
+    serde_json::from_str(&simplint(root, args).1).expect("json output")
+}
+
+pub fn fixture_source(path: &str) -> String {
+    fs::read_to_string(fixtures().join(path)).expect("fixture")
 }
 
 pub fn simplint_with_stdin(root: &Path, args: &[&str], stdin: &str) -> (i32, String, String) {
@@ -141,8 +212,7 @@ fn lint_fixture(rule: &str, fixture: &str, target_version: &str) -> String {
     let root = fixture_project();
     let path = root.path().join(fixture);
     let select = ["check", "--no-cache", "--select", rule, "--target-version", target_version];
-    let report = simplint(root.path(), &[&select[..], &["--output-format", "json"]].concat()).1;
-    let diagnostics: Vec<Value> = serde_json::from_str(&report).expect("json report");
+    let diagnostics: Vec<Value> = json(root.path(), &[&select[..], &["--output-format", "json"]].concat());
     let diagnostics: Vec<&Value> =
         diagnostics.iter().filter(|diagnostic| Path::new(text(&diagnostic["filename"])) == path).collect();
     let mut output = String::new();

@@ -4,15 +4,16 @@ use std::path::{Path, PathBuf};
 
 use ruff_db::diagnostic::{Annotation, Diagnostic, DiagnosticId, LintName, SecondaryCode, Severity, Span};
 use ruff_diagnostics::{Edit, Fix};
+use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::parenthesize::parenthesized_range;
 use ruff_python_ast::token::TokenKind;
-use ruff_python_ast::{self as ast, AnyNodeRef, Expr, ModModule, Stmt};
+use ruff_python_ast::{self as ast, AnyNodeRef, Expr, ModModule, PythonVersion, Stmt};
 use ruff_python_codegen::Stylist;
 use ruff_python_index::Indexer;
 use ruff_python_parser::Parsed;
-use ruff_python_trivia::{CommentRanges, has_leading_content};
+use ruff_python_trivia::{CommentRanges, has_leading_content, has_trailing_content, leading_indentation};
 use ruff_source_file::{LineRanges, OneIndexed, SourceFile, SourceFileBuilder};
-use ruff_text_size::{Ranged, TextRange, TextSize};
+use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};
 use rustc_hash::FxHashMap;
 
 use crate::lint::Linter;
@@ -21,8 +22,6 @@ use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
 use crate::project::FileIndex;
 use crate::rules::FileState;
-use crate::rules::layout::leaves_django_order_to_ruff;
-use crate::rules::logic::counts_ruff_appends;
 use crate::semantic::{RuffMatches, Semantic};
 use crate::settings::FileSettings;
 use crate::syntax::{Exports, dunder_all, for_each_body, previous_line_start, string_values};
@@ -52,8 +51,7 @@ pub struct Checker<'a> {
     suppressions: &'a Suppressions<'a>,
     semantic: OnceCell<Semantic<'a>>,
     dunder_all: OnceCell<Exports<'a>>,
-    function_defs: OnceCell<Vec<&'a ast::StmtFunctionDef>>,
-    class_defs: OnceCell<Vec<&'a ast::StmtClassDef>>,
+    defs: OnceCell<(Vec<&'a ast::StmtFunctionDef>, Vec<&'a ast::StmtClassDef>)>,
     module_classes: OnceCell<FxHashMap<&'a str, &'a ast::StmtClassDef>>,
     name_tokens: OnceCell<FxHashMap<&'a str, usize>>,
     string_values: OnceCell<Vec<(TextRange, Cow<'a, str>)>>,
@@ -89,8 +87,7 @@ impl<'a> Checker<'a> {
             suppressions,
             semantic: OnceCell::new(),
             dunder_all: OnceCell::new(),
-            function_defs: OnceCell::new(),
-            class_defs: OnceCell::new(),
+            defs: OnceCell::new(),
             module_classes: OnceCell::new(),
             name_tokens: OnceCell::new(),
             string_values: OnceCell::new(),
@@ -186,6 +183,22 @@ impl<'a> Checker<'a> {
         self.report_related(rule, range, message, fix, title, Vec::new());
     }
 
+    // Ruff renders a report's fix in full, so reports that share one fix offer it on the first report that no suppression
+    // comment hides, and the fix is built only then.
+    pub fn report_shared_fix(
+        &self,
+        rule: Rule,
+        reports: Vec<(TextRange, String, String)>,
+        fix: impl FnOnce() -> Option<Fix>,
+    ) {
+        let offer_at = self.first_unsuppressed(rule, reports.iter().map(|(range, ..)| *range));
+        let mut fix = Some(fix);
+        for (range, message, title) in reports {
+            let carried = if offer_at == Some(range) { fix.take().and_then(|build| build()) } else { None };
+            self.report_fix(rule, range, message, carried, title);
+        }
+    }
+
     // A report that also points at other locations, in this file or any other of the run. The locations a file cannot
     // be read for are left out, since the report is still about its primary location.
     pub fn report_related(
@@ -240,13 +253,7 @@ impl<'a> Checker<'a> {
                 list_appends: counts_ruff_appends(self.settings),
                 django_reports: leaves_django_order_to_ruff(self.settings),
             };
-            Semantic::new(
-                self.path,
-                self.body(),
-                self.settings.from_ruff.target_version,
-                self.linter.ruff.settings,
-                matches,
-            )
+            Semantic::new(self.path, self.body(), self.target_version(), self.linter.ruff.settings, matches)
         })
     }
 
@@ -295,6 +302,15 @@ impl<'a> Checker<'a> {
             .filter(|comment| !has_leading_content(comment.start(), self.source))
     }
 
+    pub fn is_alone_on_lines(&self, range: TextRange) -> bool {
+        !has_leading_content(range.start(), self.source) && !has_trailing_content(range.end(), self.source)
+    }
+
+    // The leading whitespace of the line a node starts on; a node after a `;` shares the line, not its indentation.
+    pub fn indentation(&self, ranged: impl Ranged) -> &'a str {
+        leading_indentation(self.source.full_line_str(ranged.start()))
+    }
+
     // What the rules memoize for this file, built by the first rule that reads each part.
     pub(crate) fn state(&self) -> &FileState<'a> {
         &self.state
@@ -304,25 +320,31 @@ impl<'a> Checker<'a> {
         self.dunder_all.get_or_init(|| dunder_all(self.body()))
     }
 
+    // Whether another file of the run reads the name from this module, or `__all__` lists it, so that removing its
+    // binding would break a reader.
+    pub fn is_exported(&self, name: &str) -> bool {
+        self.project().is_referenced(name) || self.dunder_all().may_list(name)
+    }
+
     // Every `def` of the module, nested ones included.
     pub fn function_defs(&self) -> &[&'a ast::StmtFunctionDef] {
-        self.function_defs.get_or_init(|| {
-            let mut functions = Vec::new();
-            for_each_body(self.body(), &mut |statements, _| {
-                functions.extend(statements.iter().filter_map(Stmt::as_function_def_stmt));
-            });
-            functions
-        })
+        &self.defs().0
     }
 
     // Every `class` of the module, nested ones included.
     pub fn class_defs(&self) -> &[&'a ast::StmtClassDef] {
-        self.class_defs.get_or_init(|| {
+        &self.defs().1
+    }
+
+    fn defs(&self) -> &(Vec<&'a ast::StmtFunctionDef>, Vec<&'a ast::StmtClassDef>) {
+        self.defs.get_or_init(|| {
+            let mut functions = Vec::new();
             let mut classes = Vec::new();
             for_each_body(self.body(), &mut |statements, _| {
+                functions.extend(statements.iter().filter_map(Stmt::as_function_def_stmt));
                 classes.extend(statements.iter().filter_map(Stmt::as_class_def_stmt));
             });
-            classes
+            (functions, classes)
         })
     }
 
@@ -345,6 +367,31 @@ impl<'a> Checker<'a> {
         counts.get(name).copied().unwrap_or_default()
     }
 
+    // How many identifier tokens of `range` spell `name`. An attribute such as `obj.name` reads another binding, so it
+    // does not count. Any other spelling, a parameter or an import included, may bind the name.
+    pub fn identifier_count_in(&self, range: TextRange, name: &str) -> usize {
+        let tokens = self.parsed.tokens().in_range(range);
+        tokens
+            .iter()
+            .enumerate()
+            .filter(|(index, token)| {
+                token.kind() == TokenKind::Identifier
+                    && self.text(token.range()) == name
+                    && index.checked_sub(1).is_none_or(|previous| tokens[previous].kind() != TokenKind::Dot)
+            })
+            .count()
+    }
+
+    // The range of the innermost function or class that holds `range`, or the whole file at module level.
+    pub fn enclosing_scope(&self, range: TextRange) -> TextRange {
+        let scopes = self.state().scope_nesting(self);
+        scopes.holders(range).next().map_or_else(|| self.file_range(), |index| scopes.range(index))
+    }
+
+    pub fn file_range(&self) -> TextRange {
+        TextRange::up_to(self.source.text_len())
+    }
+
     // What each string of the module holds, with its range.
     pub fn string_values(&self) -> &[(TextRange, Cow<'a, str>)] {
         self.string_values.get_or_init(|| string_values(self.body()))
@@ -352,6 +399,14 @@ impl<'a> Checker<'a> {
 
     pub fn is_test_module(&self) -> bool {
         self.settings.is_test
+    }
+
+    pub fn line_ending(&self) -> &'static str {
+        self.stylist.line_ending().as_str()
+    }
+
+    pub fn target_version(&self) -> PythonVersion {
+        self.settings.from_ruff.target_version
     }
 
     pub fn file_name(&self) -> &str {
@@ -399,6 +454,21 @@ impl<'a> Checker<'a> {
     pub fn line_number(&self, offset: TextSize) -> OneIndexed {
         self.file.index().line_index(offset)
     }
+}
+
+// Whether `class-member-order` runs on a file where Ruff's DJ012 reports Django model statements out of order, which
+// the rule leaves to Ruff and reads from the semantic model.
+pub(crate) fn leaves_django_order_to_ruff(settings: &FileSettings) -> bool {
+    settings.rules.contains(Rule::ClassMemberOrder)
+        && settings.from_ruff.ruff_runs(RuffRule::DjangoUnorderedBodyContentInModel)
+}
+
+// Whether `collection-built-by-statements` runs on a file where Ruff's FURB113 counts list appends, which the rule then
+// reads from the semantic model.
+pub(crate) fn counts_ruff_appends(settings: &FileSettings) -> bool {
+    settings.rules.contains(Rule::CollectionBuiltByStatements)
+        && settings.from_ruff.preview
+        && settings.from_ruff.ruff_runs(RuffRule::RepeatedAppend)
 }
 
 // Whether the edits of a fix are sorted and do not overlap, as `Fix` requires. Touching edits, such as an insertion at

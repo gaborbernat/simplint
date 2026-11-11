@@ -9,6 +9,7 @@ use ruff_python_parser::parse_module;
 use rustc_hash::FxHashMap;
 
 use crate::project::facts::qualified;
+use crate::syntax::alias_binding;
 
 // The dotted names the `.pth` files at the top of each root make the interpreter load and read at startup, sorted and
 // without repeats. `site` runs a line that starts with `import` as Python and reads no other line as code, so a path
@@ -64,7 +65,7 @@ fn line_names(line: &str) -> Vec<String> {
                 for alias in names.iter().filter(|alias| alias.name.as_str() != "*") {
                     let target = format!("{module}.{}", alias.name.as_str());
                     reads.names.push(target.clone());
-                    reads.aliases.insert(alias.asname.as_ref().unwrap_or(&alias.name).as_str(), target);
+                    reads.aliases.insert(alias_binding(alias), target);
                 }
             }
             _ => reads.visit_stmt(stmt),

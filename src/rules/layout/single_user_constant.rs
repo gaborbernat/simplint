@@ -1,4 +1,4 @@
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::helpers::{StoredNameFinder, any_over_expr, body_without_leading_docstring, is_dunder};
 use ruff_python_ast::token::TokenKind;
@@ -12,13 +12,13 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::edits::{keep_debug_text, lines_with_trailing_blanks};
+use crate::rules::edits::{Blanks, fix_of, keep_debug_text, statement_lines};
 use crate::rules::rename::appears_in_strings;
-use crate::rules::{
-    indentation, is_alone_on_lines, is_class_like, is_named_by_doctest, needs_parentheses, single_assignment,
-};
+use crate::rules::{is_class_like, is_named_by_doctest};
 use crate::semantic::{Binding, BindingKind, Evaluation};
-use crate::syntax::{Exports, Visibility, is_repeating_expr, last_segment};
+use crate::syntax::{
+    Exports, Visibility, is_repeating_expr, last_segment, needs_parentheses, single_assignment, sole_argument,
+};
 
 pub fn single_user_constant(checker: &Checker) {
     for stmt in checker.body() {
@@ -209,10 +209,9 @@ impl<'a> Visitor<'a> for Reads<'_, '_> {
                     }
                 }
             }
-            Expr::Call(ast::ExprCall { func, arguments, .. }) => {
+            Expr::Call(call @ ast::ExprCall { func, arguments, .. }) => {
                 let semantic = self.checker.semantic();
-                if let [argument] = &*arguments.args
-                    && arguments.keywords.is_empty()
+                if let Some(argument) = sole_argument(call)
                     && semantic.is_builtin(func, "len")
                     && let Some(range) = self.reference(argument)
                 {
@@ -266,12 +265,12 @@ fn move_into_function(checker: &Checker, constant: &Constant) -> Option<(Fix, bo
     let is_local = |name: &str| {
         stores.names.contains_key(name) || function.parameters.iter().any(|parameter| parameter.name().as_str() == name)
     };
-    if !is_alone_on_lines(source, constant.stmt.range())
+    if !checker.is_alone_on_lines(constant.stmt.range())
         || any_over_expr(constant.value, |expr| expr.as_name_expr().is_some_and(|name| is_local(name.id.as_str())))
     {
         return None;
     }
-    let deletion = Edit::range_deletion(deletion_keeping_separation(source, constant.stmt.range()));
+    let deletion = Edit::range_deletion(statement_lines(source, constant.stmt.range(), Blanks::WiderSide));
     let value_text = checker.parenthesized_text(constant.value, constant.stmt.into());
     // Inside an f-string replacement field a value with quotes is a syntax error before Python 3.12, and any longer
     // expression buries the text the f-string builds, so only a number goes there.
@@ -310,8 +309,10 @@ fn inline_fix(checker: &Checker, value: &Expr, value_text: &str, deletion: Edit,
     let wrap = !parenthesized
         && (needs_parentheses(value) || value_text.contains('\n') && value.is_tuple_expr() || int_attribute);
     let inlined = if wrap { format!("({text})") } else { text };
-    let mut edits = keep_debug_text(checker, vec![deletion, Edit::range_replacement(inlined, reference)])?.into_iter();
-    Some(Fix::unsafe_edits(edits.next()?, edits))
+    fix_of(
+        keep_debug_text(checker, vec![deletion, Edit::range_replacement(inlined, reference)])?,
+        Applicability::Unsafe,
+    )
 }
 
 fn local_fix(checker: &Checker, constant: &Constant, value_text: &str, deletion: Edit) -> Option<Fix> {
@@ -328,9 +329,9 @@ fn local_fix(checker: &Checker, constant: &Constant, value_text: &str, deletion:
     // statements move onto lines of their own, where `ruff format` would put them.
     let on_header = has_leading_content(function.body[0].start(), source);
     let indent = if on_header {
-        format!("{}{}", indentation(source, function), checker.stylist.indentation().as_str())
+        format!("{}{}", checker.indentation(function), checker.stylist.indentation().as_str())
     } else {
-        indentation(source, anchor).to_owned()
+        checker.indentation(anchor).to_owned()
     };
     let triple_quoted = value_text.contains("\"\"\"") || value_text.contains("'''");
     // A backslash continues a single-quoted string onto the next line, so the indentation added there becomes part of
@@ -348,7 +349,7 @@ fn local_fix(checker: &Checker, constant: &Constant, value_text: &str, deletion:
     let declared = local_annotation(checker, constant)
         .map_or_else(|| local.clone(), |annotation| format!("{local}: {annotation}"));
     let declaration = format!("{declared} = {value_text}");
-    let eol = checker.stylist.line_ending().as_str();
+    let eol = checker.line_ending();
     let placements = if on_header {
         let mut gap_start = TextSize::of(source[..function.body[0].start().to_usize()].trim_end());
         let mut placements = Vec::new();
@@ -367,28 +368,8 @@ fn local_fix(checker: &Checker, constant: &Constant, value_text: &str, deletion:
     };
     let renames = constant.references.iter().map(|range| Edit::range_replacement(local.clone(), *range));
     let edits = std::iter::once(deletion).chain(placements).chain(renames).collect();
-    let mut edits = keep_debug_text(checker, edits)?.into_iter();
-    Some(Fix::unsafe_edits(edits.next()?, edits))
+    fix_of(keep_debug_text(checker, edits)?, Applicability::Unsafe)
 }
-// Deleting a statement leaves the blank lines on both sides of it next to each other; drop the shorter run so the code
-// around it keeps the wider separation, and keep everything when the statement directly follows code.
-fn deletion_keeping_separation(source: &str, range: TextRange) -> TextRange {
-    let lines = source.full_lines_range(range);
-    let before = &source[..lines.start().to_usize()];
-    let leading_text = before.trim_end_matches([' ', '\t', '\r', '\n']);
-    let leading = before[leading_text.len()..].matches('\n').count().saturating_sub(1);
-    let with_trailing = lines_with_trailing_blanks(source, range);
-    let trailing = source[lines.end().to_usize()..with_trailing.end().to_usize()].matches('\n').count();
-    if leading_text.is_empty() || (leading > 0 && trailing <= leading) {
-        with_trailing
-    } else if leading > 0 {
-        let line_end = leading_text.len() + before[leading_text.len()..].find('\n').map_or(0, |offset| offset + 1);
-        TextRange::new(TextSize::try_from(line_end).unwrap_or_default(), lines.end())
-    } else {
-        lines
-    }
-}
-
 // The type a local keeps from the constant's annotation. An empty container needs its declared type to type check,
 // while `Final` belongs to module scope only, so `Final[T]` keeps `T` and a bare `Final` keeps nothing.
 fn local_annotation<'a>(checker: &Checker<'a>, constant: &Constant) -> Option<&'a str> {

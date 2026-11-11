@@ -1,10 +1,11 @@
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
+use crate::syntax::from_imports;
 
 // Since Python 3.14 `date` and `time` have their own `strptime`, which parse one part without building a datetime.
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
@@ -16,7 +17,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
         return;
     };
     let member = part.attr.as_str();
-    if !matches!(member, "date" | "time") || !outer.arguments.args.is_empty() || !outer.arguments.keywords.is_empty() {
+    if !matches!(member, "date" | "time") || !outer.arguments.is_empty() {
         return;
     }
     let Expr::Call(parse) = part.value.as_ref() else {
@@ -48,7 +49,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
             let class_edit = Edit::range_replacement(replacement, class.range());
             let mut rest = vec![Edit::range_deletion(unwrap)];
             rest.extend(import);
-            if safe { Fix::safe_edits(class_edit, rest) } else { Fix::unsafe_edits(class_edit, rest) }
+            Fix::applicable_edits(class_edit, rest, if safe { Applicability::Safe } else { Applicability::Unsafe })
         });
     checker.report_fix(
         Rule::StrptimeDate,
@@ -77,16 +78,8 @@ fn class_replacement(checker: &Checker, class: &Expr, member: &str) -> Option<(S
 
 // The alias that imports `datetime.datetime` under the name `local` at module level.
 fn class_alias<'b>(body: &'b [Stmt], local: &str) -> Option<&'b ast::Alias> {
-    body.iter()
-        .filter_map(|stmt| match stmt {
-            Stmt::ImportFrom(ast::StmtImportFrom { module: Some(module), names, level: 0, .. })
-                if module.as_str() == "datetime" =>
-            {
-                Some(names)
-            }
-            _ => None,
-        })
-        .flatten()
+    from_imports(body, "datetime")
+        .flat_map(|import| &import.names)
         .find(|alias| alias.name.as_str() == "datetime" && alias.asname.as_ref().unwrap_or(&alias.name) == local)
 }
 

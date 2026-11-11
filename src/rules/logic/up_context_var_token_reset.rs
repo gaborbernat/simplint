@@ -4,10 +4,9 @@ use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::logic::scoped_block::{
-    finally_call, identifier_uses, is_exported_module_name, scope_of, sole_argument, wrap_edits,
-};
-use crate::syntax::{for_each_body, is_name};
+use crate::rules::logic::scoped_block::{finally_call, is_exported_module_name, wrap_edits};
+use crate::rules::logic::sole_name_target;
+use crate::syntax::{for_each_body, is_name, sole_argument};
 
 // Since Python 3.14 the token `ContextVar.set` returns is a context manager that resets the variable on exit.
 pub fn up_context_var_token_reset(checker: &Checker) {
@@ -21,7 +20,7 @@ pub fn up_context_var_token_reset(checker: &Checker) {
 }
 
 fn report_reset(checker: &Checker, assign: &ast::StmtAssign, try_stmt: &ast::StmtTry) {
-    let [Expr::Name(token)] = assign.targets.as_slice() else {
+    let Some(token) = sole_name_target(assign) else {
         return;
     };
     let Expr::Call(set) = assign.value.as_ref() else {
@@ -50,7 +49,7 @@ fn report_reset(checker: &Checker, assign: &ast::StmtAssign, try_stmt: &ast::Stm
         return;
     }
     // The assignment and the `reset` argument are the token's only spellings; any other use reads it after the block.
-    let uses = identifier_uses(checker, scope_of(checker, assign.range()), token.id.as_str());
+    let uses = checker.identifier_count_in(checker.enclosing_scope(assign.range()), token.id.as_str());
     if uses != 2 {
         return;
     }

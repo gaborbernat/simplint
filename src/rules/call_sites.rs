@@ -4,8 +4,8 @@ use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
-use crate::project::constructors::{CallSites, Use, Uses};
-use crate::rules::docstrings::Need;
+use crate::project::constructors::{CallContexts, CallSites, Use, Uses};
+use crate::rules::public_api::Need;
 use crate::syntax::Visibility;
 
 // The uses of every candidate function by its name, found in one walk of the module rather than one per function.
@@ -84,4 +84,72 @@ pub(crate) fn add_use(sites: &mut CallSites, found: &Use) {
         Use::Call(call) => sites.add_call(call),
         Use::Opaque => sites.opaque = true,
     }
+}
+
+// A star import of this module can call its functions under names no file spells out, so none is judged. A module
+// only tests import serves them, so its calls are test code.
+pub(crate) fn judges_call_sites(checker: &Checker) -> bool {
+    let project = checker.project();
+    !(checker.is_test_module() || project.calls().is_test_support() || project.is_star_import_source())
+}
+
+// How this module calls its own functions: the uses of each by name, and where those calls sit.
+pub(crate) struct OwnCalls<'a> {
+    uses: FxHashMap<&'a str, Vec<Use<'a>>>,
+    contexts: CallContexts,
+}
+
+impl<'a> OwnCalls<'a> {
+    pub(crate) fn of(checker: &'a Checker) -> Self {
+        Self {
+            uses: module_uses(checker),
+            contexts: CallContexts::of(checker.body(), checker.file_name() == "__main__.py"),
+        }
+    }
+
+    // The calls a module-level function of this module gets: the calls other files make through the index, and the
+    // calls this module makes, which are production code.
+    pub(crate) fn function(&self, checker: &Checker, name: &str) -> CallSites {
+        let mut sites = checker.project().calls().call_sites(name).cloned().unwrap_or_default();
+        self.add(&mut sites, self.uses.get(name).map_or(&[][..], Vec::as_slice));
+        sites
+    }
+
+    pub(crate) fn add(&self, sites: &mut CallSites, found: &[Use]) {
+        for found in found {
+            match found {
+                Use::Call(call) => {
+                    let (discarded, entry) = self.contexts.classify(call);
+                    sites.add_production_call(call, discarded, entry);
+                }
+                Use::Opaque => sites.opaque = true,
+            }
+        }
+    }
+}
+
+// The module-level functions the call-site rules judge. Code outside the run may call a name `__all__` lists, so those
+// are not judged, whatever the project kind.
+pub(crate) fn candidate_functions<'a>(checker: &'a Checker) -> impl Iterator<Item = &'a ast::StmtFunctionDef> {
+    checker.body().iter().filter_map(Stmt::as_function_def_stmt).filter(move |function| {
+        !checker.dunder_all().lists(function.name.as_str()) && module_candidate(checker, function)
+    })
+}
+
+// A module-level class whose methods a call through `self` can reach, with no base a subclass or a framework may
+// override it from.
+pub(crate) fn is_closed_class(checker: &Checker, class: &ast::StmtClassDef) -> bool {
+    class.bases().is_empty() && class.keywords().is_empty() && !checker.project().is_base_class(class.name.as_str())
+}
+
+// A method whose every load is a call through `self` of its class, so the uses found are all of its calls. The rules
+// that judge methods add these uses to their own counts, which differ.
+pub(crate) fn self_only_uses<'u, 'a>(
+    checker: &Checker,
+    name: &str,
+    found: &'u [(bool, Use<'a>)],
+) -> Option<impl Iterator<Item = &'u Use<'a>>> {
+    let every_load_is_self = found.len() == checker.project().calls().attribute_loads(name) as usize
+        && found.iter().all(|(is_self, _)| *is_self);
+    every_load_is_self.then(|| found.iter().map(|(_, found)| found))
 }

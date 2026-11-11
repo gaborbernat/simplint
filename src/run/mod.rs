@@ -1,11 +1,15 @@
 // The lint pipeline and the run over a set of files: what a file's lint reports, how a run finds its files, indexes
 // them and lints them. The command line reads these, and the project cache stores their results.
 mod cache;
+mod check;
 mod conflicts;
+mod digest;
 mod discover;
+mod files;
 mod overlay;
 mod rounds;
 
+use std::env;
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::ops::{Add, AddAssign};
@@ -19,10 +23,11 @@ use ruff_db::diagnostic::Diagnostic;
 use ruff_linter::fs::relativize_path;
 use ruff_linter::linter::FixTable;
 use ruff_linter::registry::Rule as RuffRule;
+use ruff_linter::settings::LinterSettings;
 use ruff_linter::settings::flags;
 use ruff_linter::settings::types::UnsafeFixes;
 use ruff_linter::source_kind::SourceKindDiff;
-use ruff_linter::{IOError, Violation};
+use ruff_linter::{IOError, Violation, warn_user};
 use ruff_source_file::SourceFileBuilder;
 use ruff_text_size::{TextRange, TextSize};
 use ruff_workspace::resolver::PyprojectConfig;
@@ -32,10 +37,11 @@ use crate::fix::{Fixer, FixerResult, Withdrawn, add_fixes};
 use crate::lint::Linter;
 use crate::settings::SettingsResolver;
 
-pub(crate) use cache::FullDisplay;
-pub(crate) use discover::{Discovered, discover, linted_roots, redact_extended, warn_missing, within};
+pub(crate) use cache::{DisplayKey, FullDisplay};
+pub(crate) use check::{CacheUse, add_suppressions, check_files, check_stdin};
+use discover::within;
+pub(crate) use discover::{Discovered, discover, linted_roots, redact_extended, warn_missing};
 pub(crate) use overlay::Overlay;
-pub(crate) use rounds::{add_suppressions, check_files, check_stdin};
 
 // Ruff's configuration and simplint's, from the same command line, as a run reads them.
 pub(crate) struct Resolved {
@@ -53,27 +59,68 @@ impl Resolved {
     }
 }
 
+// Ruff's cache directory, where simplint keeps its cache. A path from the command line or `RUFF_CACHE_DIR` is the user's
+// choice and stands wherever it points. Otherwise the repository being linted picks it, through `cache-dir` or a link
+// committed in place of the default, so it must stay inside the project root: the directory of the configuration file,
+// or the working directory without one. A `cache-dir` that leaves the root falls back to Ruff's default there, and a
+// default that leaves it too turns the cache off.
+pub(crate) fn choose_cache_dir(named: bool, config: &PyprojectConfig) -> Option<PathBuf> {
+    let configured = &config.settings.cache_dir;
+    if named {
+        return Some(configured.clone());
+    }
+    let root = match config.path.as_deref().and_then(Path::parent) {
+        Some(parent) => parent.to_path_buf(),
+        None => env::current_dir().ok()?,
+    };
+    let chosen = if within(configured, &root) { configured.clone() } else { ruff_cache::cache_dir(&root) };
+    // The directory of this build is the deepest the cache creates, so checking it covers a link at any level above.
+    let build = crate::project::cache::documentation_file(&chosen, &root);
+    if build.parent().is_some_and(|build| within(build, &root)) {
+        return Some(chosen);
+    }
+    warn_user!("Not caching: the cache directory `{}` leads outside the project", chosen.display());
+    None
+}
+
 // What a run reports: the remaining diagnostics and the fixes applied per file, as Ruff's `Diagnostics` holds them, and
 // the diffs `--diff` prints, each with the path of its file.
 #[derive(Default)]
-pub struct Diagnostics {
-    pub inner: Vec<Diagnostic>,
-    pub fixed: FixMap,
-    pub diffs: Vec<(String, String)>,
+pub(crate) struct Diagnostics {
+    pub(crate) inner: Vec<Diagnostic>,
+    pub(crate) fixed: FixMap,
+    pub(crate) diffs: Vec<(String, String)>,
     // The `full` text of some files' diagnostics, by the name the output shows each file by, when the cache held or
     // rendered it.
-    pub rendered: FxHashMap<String, Vec<u8>>,
+    pub(crate) rendered: FxHashMap<String, Vec<u8>>,
+}
+
+// Whether Ruff's `io-error` rule is on, which reports a path that cannot be read, written or found as a diagnostic
+// rather than as a warning.
+pub(super) fn reports_io_errors(settings: &LinterSettings) -> bool {
+    settings.rules.enabled(RuffRule::IOError)
 }
 
 impl Diagnostics {
     // As `ruff check` reports a file it cannot read or write: Ruff's own `io-error` diagnostic while that rule is on,
     // otherwise a warning.
-    pub fn from_error(path: &Path, message: String, linter: &Linter) -> Self {
-        if !linter.ruff.settings.rules.enabled(RuffRule::IOError) {
+    pub(crate) fn from_error(path: &Path, message: String, linter: &Linter) -> Self {
+        if !reports_io_errors(linter.ruff.settings) {
             warn!("{}{}{} {message}", "Failed to lint ".bold(), relativize_path(path).bold(), ":".bold());
             return Self::default();
         }
         Self { inner: vec![io_error(path, message)], ..Self::default() }
+    }
+
+    // A later pass over a file replaces its reports, while the fixes of every pass count. Each pass's diff is from the
+    // source as read, so the last pass that has one holds all of the file's fixes.
+    pub(crate) fn then(mut self, later: Self) -> Self {
+        self.inner = later.inner;
+        self.fixed += later.fixed;
+        if !later.diffs.is_empty() {
+            self.diffs = later.diffs;
+        }
+        self
     }
 }
 
@@ -102,18 +149,22 @@ impl AddAssign for Diagnostics {
 }
 
 #[derive(Default)]
-pub struct FixMap(FxHashMap<String, FixTable>);
+pub(crate) struct FixMap(FxHashMap<String, FixTable>);
 
 impl FixMap {
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn of(path: &Path, fixed: FixTable) -> Self {
+        Self::from_iter([(relativize_path(path), fixed)])
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &FixTable)> {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (&String, &FixTable)> {
         self.0.iter()
     }
 
-    pub fn values(&self) -> impl Iterator<Item = &FixTable> {
+    pub(crate) fn values(&self) -> impl Iterator<Item = &FixTable> {
         self.0.values()
     }
 }
@@ -133,12 +184,12 @@ impl AddAssign for FixMap {
     }
 }
 
-pub struct Mode {
-    pub fix: flags::FixMode,
-    pub unsafe_fixes: UnsafeFixes,
-    pub noqa: flags::Noqa,
+pub(crate) struct Mode {
+    pub(crate) fix: flags::FixMode,
+    pub(crate) unsafe_fixes: UnsafeFixes,
+    pub(crate) noqa: flags::Noqa,
     // The paths named on the command line, canonical, which a fix may write files under.
-    pub roots: Vec<PathBuf>,
+    pub(crate) roots: Vec<PathBuf>,
 }
 
 // A file's lint: its diagnostics and fixes, the fixes a settled fix loop withdrew, and, without fixes, the line each
@@ -146,11 +197,11 @@ pub struct Mode {
 // written is not cacheable: the cache keys a file by its metadata, not by whether its directory and the run's roots let
 // it be written, so its reports would outlive what they depend on. A file that cannot be read fails the same way for
 // the same key, so its report is stored, unless the error is only logged and so leaves no report.
-pub struct Linting {
-    pub diagnostics: Diagnostics,
-    pub settled: Option<Withdrawn>,
-    pub noqa_rows: Vec<TextSize>,
-    pub cacheable: bool,
+pub(crate) struct Linting {
+    pub(crate) diagnostics: Diagnostics,
+    pub(crate) settled: Option<Withdrawn>,
+    pub(crate) noqa_rows: Vec<TextSize>,
+    pub(crate) cacheable: bool,
 }
 
 // Ruff's `lint_path`: lint a file, and with `--fix` or `--diff` fix it and write the result back or keep the diff for
@@ -160,7 +211,13 @@ pub struct Linting {
 // cannot be written keeps its diagnostics, with the error reported beside them. Both `settled` sets name the fixes the
 // fix loop withdrew from a file it left as it was: the one passed from an earlier run, which spares running the loop,
 // the one returned from this run.
-pub fn lint_path(path: &Path, linter: &Linter, mode: &Mode, settled: Option<Withdrawn>, overlay: &Overlay) -> Linting {
+pub(crate) fn lint_path(
+    path: &Path,
+    linter: &Linter,
+    mode: &Mode,
+    settled: Option<Withdrawn>,
+    overlay: &Overlay,
+) -> Linting {
     fix_path(path, linter, mode, settled, overlay).unwrap_or_else(|error| {
         let diagnostics = Diagnostics::from_error(path, format!("{error:#}"), linter);
         // A cached clean result would leave out the warning of a read error that was only logged.
@@ -175,10 +232,7 @@ fn fix_path(
     settled: Option<Withdrawn>,
     overlay: &Overlay,
 ) -> Result<Linting> {
-    let source = match overlay.current(path) {
-        Some(current) => current,
-        None => std::fs::read_to_string(path)?,
-    };
+    let source = overlay.source(path)?;
     let Linted { diagnostics, transformed, fixed, settled, noqa_rows } =
         lint_source(path, &source, linter, mode, settled);
     let mut diffs = Vec::new();
@@ -192,7 +246,7 @@ fn fix_path(
             diffs.push((path.to_string_lossy().into_owned(), diff));
         }
     }
-    let fixed = FixMap::from_iter([(relativize_path(path), fixed)]);
+    let fixed = FixMap::of(path, fixed);
     Ok(Linting {
         diagnostics: Diagnostics { inner: diagnostics, fixed, diffs, ..Diagnostics::default() },
         settled,
@@ -248,7 +302,7 @@ pub(crate) fn lint_stdin(path: &Path, source: &str, linter: &Linter, mode: &Mode
     StdinLint {
         diagnostics: Diagnostics {
             inner: diagnostics,
-            fixed: FixMap::from_iter([(relativize_path(path), fixed)]),
+            fixed: FixMap::of(path, fixed),
             diffs: Vec::new(),
             rendered: FxHashMap::default(),
         },

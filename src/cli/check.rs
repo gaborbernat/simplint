@@ -18,8 +18,8 @@ use crate::cli::watch::watch;
 use crate::lint::registry::RuleSet;
 use crate::project::{Ending, cache};
 use crate::run::{
-    Diagnostics, Discovered, Mode, Resolved, add_suppressions, check_files, check_stdin, discover, linted_roots,
-    warn_missing,
+    CacheUse, Diagnostics, Discovered, Mode, Resolved, add_suppressions, check_files, check_stdin, discover,
+    linted_roots, warn_missing,
 };
 use crate::settings::{FileSettings, Settings};
 
@@ -99,17 +99,15 @@ pub(crate) fn check(cli: &CheckCommand, global_options: &GlobalConfigArgs) -> Re
         preview: resolved.pyproject_config.settings.linter.preview.is_enabled(),
         prefer_rule_codes: resolved.pyproject_config.settings.output_prefer_rule_codes,
     };
-    // As in Ruff, the cache is only read and written while `noqa` comments apply.
-    let use_cache = !cli.no_cache && mode.noqa.is_enabled();
     if cli.watch {
-        return watch(cli, global_options, &files, resolved, use_cache, &printer, writer);
+        let usage = CacheUse::new(cli.no_cache, &mode, None);
+        return watch(cli, global_options, &files, resolved, &usage, &printer, writer);
     }
-    // Only generated fixes keep their reports in the cache, so only then can the `full` text be kept with them.
-    let full = (use_cache && mode.fix.is_generate()).then(|| printer.full_display()).flatten();
+    let usage = CacheUse::new(cli.no_cache, &mode, printer.full_display());
     let mut diagnostics = if is_stdin {
         check_standard_input(cli, &resolved, &mode)?
     } else {
-        check_files(&files, &resolved, &mode, use_cache, full.as_ref(), Ending::Exit)?
+        check_files(&files, &resolved, &mode, &usage, Ending::Exit)?
     };
     diagnostics.inner.sort_by(Diagnostic::ruff_start_ordering);
     // Files are linted in parallel, so their diffs wait here to print in the order the report sorts files.

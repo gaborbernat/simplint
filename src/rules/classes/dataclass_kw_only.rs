@@ -51,12 +51,10 @@ pub fn dataclass_kw_only(checker: &Checker) {
         let edits = if calls.is_empty() { keyword_calls(checker, module, class) } else { None };
         let options = if edits.is_some() { missing.to_vec() } else { Vec::new() };
         Some(Offer {
-            options,
             edits: edits.unwrap_or_default(),
-            applicability: Applicability::Unsafe,
             related,
             note,
-            left_to_ruff: false,
+            ..Offer::options(options, Applicability::Unsafe)
         })
     });
 }

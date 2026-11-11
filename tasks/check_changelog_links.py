@@ -26,31 +26,26 @@ _ANY_SOURCE_LINK: Final[re.Pattern[str]] = re.compile(
 
 
 def main(paths: list[str]) -> int:
-    failed = False
+    problems: list[str] = []
     known_names: dict[Path, set[str]] = {}
     for raw_path in paths:
         path = Path(raw_path)
         for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             if _RULE_PAGE.search(line):
-                print(
-                    f"{path}:{line_number}: link to the rule source with a relative Markdown path",
-                    file=sys.stderr,
-                )
-                failed = True
-            for link in _ANY_SOURCE_LINK.finditer(line):
-                if not RULE_SOURCE_LINK.fullmatch(link[0]):
-                    print(
-                        f"{path}:{line_number}: write the rule source link as [`name`](path): {link[0]}",
-                        file=sys.stderr,
-                    )
-                    failed = True
+                problems.append(f"{path}:{line_number}: link to the rule source with a relative Markdown path")
+            problems.extend(
+                f"{path}:{line_number}: write the rule source link as [`name`](path): {link[0]}"
+                for link in _ANY_SOURCE_LINK.finditer(line)
+                if not RULE_SOURCE_LINK.fullmatch(link[0])
+            )
             for match in RULE_SOURCE_LINK.finditer(line):
                 try:
                     _validate_source_link(match, path, known_names)
                 except ValueError as error:
-                    print(f"{path}:{line_number}: {error}", file=sys.stderr)
-                    failed = True
-    return int(failed)
+                    problems.append(f"{path}:{line_number}: {error}")
+    if problems:
+        print("\n".join(problems), file=sys.stderr)
+    return int(bool(problems))
 
 
 def _validate_source_link(match: re.Match[str], path: Path, known_names: dict[Path, set[str]]) -> None:

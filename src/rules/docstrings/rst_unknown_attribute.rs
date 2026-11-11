@@ -3,7 +3,7 @@ use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rst::{FieldKind, Owner, field_deletion, has_attribute_bases};
+use crate::rules::docstrings::rst::{FieldKind, Owner, has_attribute_bases};
 use crate::syntax::module_statements;
 
 pub fn rst_unknown_attribute(checker: &Checker) {
@@ -29,7 +29,7 @@ pub fn rst_unknown_attribute(checker: &Checker) {
                 Rule::RstUnknownAttribute,
                 field.range_in(&target.docstring),
                 format!("`{text}` documents `{subject}`, which `{}` does not have", target.name()),
-                field_deletion(checker, &target.docstring, &[field]),
+                field.removal(checker, &target.docstring),
                 format!("Remove `{text}`"),
             );
         }

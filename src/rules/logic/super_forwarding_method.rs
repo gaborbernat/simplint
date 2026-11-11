@@ -8,9 +8,9 @@ use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::edits::{delete_statement, lines_with_trailing_blanks};
+use crate::rules::edits::{Blanks, statement_removal};
 use crate::rules::logic::kinds::class_named;
-use crate::syntax::{alias_binding, is_name};
+use crate::syntax::{alias_root_binding, is_name, pattern_capture};
 
 pub fn super_forwarding_method(checker: &Checker) {
     let bindings = class_bindings(checker);
@@ -70,7 +70,7 @@ fn check_method<'a>(
     // The annotations are the override's declared types, which the parent's method does not declare.
     let annotated =
         function.returns.is_some() || function.parameters.iter().any(|parameter| parameter.annotation().is_some());
-    let fix = (!annotated).then(|| Fix::safe_edit(deletion(checker, stmt, body)));
+    let fix = (!annotated).then(|| deletion(checker, stmt, body)).flatten().map(Fix::safe_edit);
     checker.report_fix(
         Rule::SuperForwardingMethod,
         function.name.range(),
@@ -167,11 +167,8 @@ fn keyword_only(parameters: &ast::Parameters) -> Vec<&str> {
 
 // A method that leaves other statements in its class goes with the blank lines after it. A class left with nothing gets
 // a `pass` in its place.
-fn deletion(checker: &Checker, stmt: &Stmt, body: &[Stmt]) -> Edit {
-    if body.len() == 1 {
-        return delete_statement(checker.source, stmt, body);
-    }
-    Edit::range_deletion(lines_with_trailing_blanks(checker.source, stmt.range()))
+fn deletion(checker: &Checker, stmt: &Stmt, body: &[Stmt]) -> Option<Edit> {
+    statement_removal(checker, stmt.range(), body.len(), None, Blanks::Trailing)
 }
 
 // The body, apart from a docstring, is a single `return super().name(...)` of the method's own name, which passes every
@@ -192,8 +189,7 @@ fn forwards_to_parent(function: &ast::StmtFunctionDef) -> bool {
     };
     attr.as_str() == function.name.as_str()
         && is_name(&super_call.func, "super")
-        && super_call.arguments.args.is_empty()
-        && super_call.arguments.keywords.is_empty()
+        && super_call.arguments.is_empty()
         && forwards_own_arguments(&function.parameters, call)
 }
 
@@ -277,8 +273,7 @@ impl<'a> Visitor<'a> for ClassBodyUses<'a> {
             }
             Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
                 for alias in names {
-                    let bound = alias_binding(alias);
-                    self.add(bound.split_once('.').map_or(bound, |(first, _)| first));
+                    self.add(alias_root_binding(alias));
                 }
             }
             _ => visitor::walk_stmt(self, stmt),
@@ -306,13 +301,7 @@ impl<'a> Visitor<'a> for ClassBodyUses<'a> {
     }
 
     fn visit_pattern(&mut self, pattern: &'a ast::Pattern) {
-        let captured = match pattern {
-            ast::Pattern::MatchAs(ast::PatternMatchAs { name, .. })
-            | ast::Pattern::MatchStar(ast::PatternMatchStar { name, .. })
-            | ast::Pattern::MatchMapping(ast::PatternMatchMapping { rest: name, .. }) => name.as_ref(),
-            _ => None,
-        };
-        if let Some(bound) = captured {
+        if let Some(bound) = pattern_capture(pattern) {
             self.add(bound.as_str());
         }
         visitor::walk_pattern(self, pattern);

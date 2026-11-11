@@ -1,27 +1,24 @@
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::Fix;
 use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::{self as ast, BoolOp, CmpOp, Expr, Stmt, UnaryOp};
 use ruff_text_size::Ranged;
 
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
+use crate::rules::logic::modernize::{module_attribute_read, rename_attribute};
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let checker = walker.checker;
-    let Expr::Attribute(attribute) = expr else {
-        return;
-    };
     // `re.prefixmatch` is the same function as `re.match` from Python 3.15, so the rename keeps the behavior. A name
     // imported from `re` is not reported, since renaming it would also rename its uses. An assignment or `del` patches
     // the module, where a rename would patch the other name. A name bound to another module as well may be that one.
-    if !attribute.ctx.is_load()
-        || !checker.semantic().resolves_to(expr, &["re", "match"])
-        || !checker.semantic().is_only_import_of(&attribute.value, &["re"])
-        || left_to_ruff(walker, expr)
-    {
+    let Some(attribute) = module_attribute_read(checker, expr, &["re", "match"]) else {
+        return;
+    };
+    if left_to_ruff(walker, expr) {
         return;
     }
-    let fix = Fix::safe_edit(Edit::range_replacement("prefixmatch".to_owned(), attribute.attr.range()));
+    let fix = Fix::safe_edit(rename_attribute(attribute, "prefixmatch"));
     checker.report_fix(
         Rule::RePrefixMatch,
         expr.range(),

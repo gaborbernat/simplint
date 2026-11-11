@@ -4,11 +4,11 @@ use std::fs;
 
 use test_case::test_case;
 
-use common::{project, simplint};
+use common::{empty_project, json, project, simplint};
 
 #[test]
 fn rules_lists_codes() {
-    let root = project(&[]);
+    let root = empty_project();
     let (code, stdout, _) = simplint(root.path(), &["rules"]);
     assert_eq!(
         (code, stdout.lines().take(3).collect::<Vec<_>>()),
@@ -18,7 +18,7 @@ fn rules_lists_codes() {
 
 #[test]
 fn rules_json_carries_explanations() {
-    let root = project(&[]);
+    let root = empty_project();
     let (code, stdout, _) = simplint(root.path(), &["rules", "--output-format", "json"]);
     let first = stdout.split("},").next().expect("one entry").to_owned();
     assert_eq!(
@@ -34,7 +34,7 @@ fn rules_json_carries_explanations() {
 
 #[test]
 fn rules_json_lists_parsed_examples() {
-    let root = project(&[]);
+    let root = empty_project();
     let (code, stdout, _) = simplint(root.path(), &["rules", "--output-format", "json"]);
     let rules: Vec<serde_json::Value> = serde_json::from_str(&stdout).expect("json");
     let first = &rules[0]["examples"]["parsed"][0];
@@ -63,14 +63,14 @@ fn rules_json_lists_parsed_examples() {
     "by_code_never"
 )]
 fn rule_explains(selector: &str, title: &str, third: &str) {
-    let root = project(&[]);
+    let root = empty_project();
     let (code, stdout, _) = simplint(root.path(), &["rule", selector]);
     assert_eq!((code, stdout.lines().take(3).collect::<Vec<_>>()), (0, vec![title, "", third]));
 }
 
 #[test]
 fn rule_leaves_out_diagram_source() {
-    let root = project(&[]);
+    let root = empty_project();
     let (code, stdout, _) = simplint(root.path(), &["rule", "SMP701"]);
     assert_eq!(
         (
@@ -85,7 +85,7 @@ fn rule_leaves_out_diagram_source() {
 
 #[test]
 fn rule_shows_examples_as_plain_python() {
-    let root = project(&[]);
+    let root = empty_project();
     let (code, stdout, _) = simplint(root.path(), &["rule", "SMP601"]);
     assert_eq!(
         (
@@ -99,7 +99,7 @@ fn rule_shows_examples_as_plain_python() {
 
 #[test]
 fn rule_rejects_unknown() {
-    let root = project(&[]);
+    let root = empty_project();
     assert_eq!(
         simplint(root.path(), &["rule", "NOPE"]),
         (
@@ -113,7 +113,7 @@ fn rule_rejects_unknown() {
 #[test_case("F401" ; "code")]
 #[test_case("unused-import" ; "name")]
 fn rule_points_ruff_rules_to_ruff(rule: &str) {
-    let root = project(&[]);
+    let root = empty_project();
     assert_eq!(
         simplint(root.path(), &["rule", rule]),
         (
@@ -129,7 +129,7 @@ fn rule_points_ruff_rules_to_ruff(rule: &str) {
 
 #[test]
 fn rule_all_explains_every_rule() {
-    let root = project(&[]);
+    let root = empty_project();
     let (code, stdout, _) = simplint(root.path(), &["rule", "--all"]);
     let rules = simplint(root.path(), &["rules"]).1.lines().count();
     assert_eq!(
@@ -144,7 +144,7 @@ fn rule_all_explains_every_rule() {
 
 #[test]
 fn rule_all_json_lists_every_rule() {
-    let root = project(&[]);
+    let root = empty_project();
     let (code, stdout, _) = simplint(root.path(), &["rule", "--all", "--output-format", "json"]);
     let rules: Vec<serde_json::Value> = serde_json::from_str(&stdout).expect("json");
     let listed = simplint(root.path(), &["rules"]).1.lines().count();
@@ -153,7 +153,7 @@ fn rule_all_json_lists_every_rule() {
 
 #[test]
 fn rule_json_describes_the_rule() {
-    let root = project(&[]);
+    let root = empty_project();
     let (code, stdout, _) = simplint(root.path(), &["rule", "SMP002", "--output-format", "json"]);
     let rule: serde_json::Value = serde_json::from_str(&stdout).expect("json");
     assert_eq!(
@@ -164,7 +164,7 @@ fn rule_json_describes_the_rule() {
 
 #[test]
 fn rule_needs_a_rule_or_all() {
-    let root = project(&[]);
+    let root = empty_project();
     let (code, _, stderr) = simplint(root.path(), &["rule"]);
     assert_eq!((code, stderr.contains("<RULE|--all>")), (2, true));
 }
@@ -175,14 +175,14 @@ fn rule_needs_a_rule_or_all() {
 #[test_case(&["config", "--output-format", "json"], "{\n  \"api-packages\": {" ; "list_json")]
 #[test_case(&["config", "naming.keep-names"], "A list of module-scope names" ; "nested")]
 fn config_describes_options(args: &[&str], start: &str) {
-    let root = project(&[]);
+    let root = empty_project();
     let (code, stdout, _) = simplint(root.path(), args);
     assert_eq!((code, stdout.starts_with(start)), (0, true));
 }
 
 #[test]
 fn config_rejects_unknown_options() {
-    let root = project(&[]);
+    let root = empty_project();
     let (code, _, stderr) = simplint(root.path(), &["config", "nope"]);
     assert_eq!((code, stderr.starts_with("error: invalid value 'nope' for '[OPTION]'")), (2, true));
 }
@@ -190,7 +190,7 @@ fn config_rejects_unknown_options() {
 #[test_case("text", "Comments: SMP001, SMP002, SMP003, SMP004, SMP005, SMP006, SMP008, SMP009\n" ; "text")]
 #[test_case("json", "[\n  {\n    \"name\": \"Comments\",\n    \"codes\": [\n      \"SMP001\",\n      \"SMP002\",\n      \"SMP003\",\n      \"SMP004\",\n      \"SMP005\",\n      \"SMP006\",\n      \"SMP008\",\n      \"SMP009\"\n    ]\n  }," ; "json")]
 fn linter_lists_rule_groups(format: &str, first_group: &str) {
-    let root = project(&[]);
+    let root = empty_project();
     let (code, stdout, stderr) = simplint(root.path(), &["linter", "--output-format", format]);
     let rules = simplint(root.path(), &["rules"]).1.lines().count();
     assert_eq!(
@@ -221,7 +221,7 @@ fn clean_keeps_links_and_what_they_point_at(ruff_cache_is_link: bool) {
     let outside = tempfile::TempDir::new().expect("temporary directory");
     fs::create_dir_all(outside.path().join("simplint/0.1.0")).expect("create");
     fs::write(outside.path().join("simplint/0.1.0/1234"), "").expect("write");
-    let root = project(&[("module.py", "VALUE = 1\n")]);
+    let root = project(&[("module.py", common::CLEAN_MODULE)]);
     let (link, target) = if ruff_cache_is_link {
         (root.path().join(".ruff_cache"), outside.path().to_path_buf())
     } else {
@@ -243,20 +243,20 @@ fn clean_keeps_links_and_what_they_point_at(ruff_cache_is_link: bool) {
 #[test_case("text", &format!("simplint {}\n", env!("CARGO_PKG_VERSION")) ; "text")]
 #[test_case("json", &format!("{{\n  \"version\": \"{}\",\n  \"commit_info\": null\n}}", env!("CARGO_PKG_VERSION")) ; "json")]
 fn version_prints_the_version(format: &str, stdout: &str) {
-    let root = project(&[]);
+    let root = empty_project();
     assert_eq!(simplint(root.path(), &["version", "--output-format", format]), (0, stdout.to_owned(), String::new()));
 }
 
 #[test]
 fn generate_shell_completion_writes_a_script() {
-    let root = project(&[]);
+    let root = empty_project();
     let (code, stdout, _) = simplint(root.path(), &["generate-shell-completion", "bash"]);
     assert_eq!((code, stdout.contains("_simplint()")), (0, true));
 }
 
 #[test]
 fn cli_schema_describes_check_flags() {
-    let root = project(&[]);
+    let root = empty_project();
     let (code, stdout, _) = simplint(root.path(), &["cli-schema"]);
     let check = stdout.split(r#""name": "check""#).next().expect("check subcommand").to_owned();
     assert_eq!(
@@ -273,7 +273,7 @@ fn cli_schema_describes_check_flags() {
 #[test_case("SMP202", true ; "project_index")]
 #[test_case("SMP101", false ; "one_file")]
 fn rule_says_whether_other_files_matter(selector: &str, cross_file: bool) {
-    let root = project(&[]);
+    let root = empty_project();
     let text = simplint(root.path(), &["rule", selector]).1;
     let json = simplint(root.path(), &["rule", selector, "--output-format", "json"]).1;
     assert_eq!(
@@ -287,9 +287,8 @@ fn rule_says_whether_other_files_matter(selector: &str, cross_file: bool) {
 #[test_case("SMP920" ; "missing_attribute")]
 #[test_case("SMP924" ; "missing_raises")]
 fn rules_that_offer_no_fix_say_so(code: &str) {
-    let root = project(&[]);
-    let (_, stdout, _) = simplint(root.path(), &["rules", "--output-format", "json"]);
-    let rules: Vec<serde_json::Value> = serde_json::from_str(&stdout).expect("json");
+    let root = empty_project();
+    let rules: Vec<serde_json::Value> = json(root.path(), &["rules", "--output-format", "json"]);
     let rule = rules.iter().find(|rule| rule["code"] == code).expect("the rule is listed");
     assert_eq!(rule["fix"], "None");
 }

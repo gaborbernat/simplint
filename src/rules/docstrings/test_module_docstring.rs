@@ -3,8 +3,8 @@ use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstring;
 use crate::rules::docstrings::docstring_deletion;
+use crate::syntax::docstring;
 
 pub fn test_module_docstring(checker: &Checker) {
     if !checker.is_test_module() {

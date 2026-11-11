@@ -11,7 +11,7 @@ use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::syntax::{Visibility, for_each_body};
+use crate::syntax::{Visibility, for_each_body, import_aliases, is_lazy};
 
 // A module bound by an import of this run's own code is reached through an attribute, which the name itself reaches
 // without the module.
@@ -51,11 +51,10 @@ pub fn module_attribute_import(checker: &Checker) {
         // import without a comment, no stores, no computed write the import would miss, each name importable from the
         // module, and no other module that imports or reads the bound name, which the replaced import would no longer
         // bind.
-        let mut convertible = aliases(statement).len() == 1
+        let mut convertible = import_aliases(statement).len() == 1
             && !checker.has_comment_in(statement.range())
             && !module.computed_written
-            && !checker.project().is_referenced(&module.bound)
-            && !checker.dunder_all().may_list(&module.bound);
+            && !checker.is_exported(&module.bound);
         let private_path = path.split('.').any(|part| Visibility::of(part) == Visibility::Private);
         let mut reports = Vec::new();
         for attribute in attributes {
@@ -75,34 +74,29 @@ pub fn module_attribute_import(checker: &Checker) {
                 && module.defined.contains(attribute.name)
                 && !is_shadowed(checker, attribute)
                 && !rebound
-                && !is_python_builtin(attribute.name, checker.settings.from_ruff.target_version.minor, false);
+                && !is_python_builtin(attribute.name, checker.target_version().minor, false);
             reports.push(attribute);
         }
-        let mut fix = convertible.then(|| {
-            let names: Vec<&str> = reports.iter().map(|attribute| attribute.name).unique().collect();
-            let import = Edit::range_replacement(
-                format!("{}from {path} import {}", lazy_prefix(statement), names.join(", ")),
-                statement.range(),
-            );
-            let accesses =
-                reports.iter().map(|attribute| Edit::range_replacement(attribute.name.to_owned(), attribute.range));
-            Fix::unsafe_edits(import, accesses)
+        let shared = reports
+            .iter()
+            .map(|attribute| {
+                let message =
+                    format!("Import `{}` from `{path}` instead of reaching it through the module", attribute.name);
+                (attribute.range, message, format!("Import the names from `{path}`"))
+            })
+            .collect();
+        checker.report_shared_fix(Rule::ModuleAttributeImport, shared, || {
+            convertible.then(|| {
+                let names: Vec<&str> = reports.iter().map(|attribute| attribute.name).unique().collect();
+                let import = Edit::range_replacement(
+                    format!("{}from {path} import {}", lazy_prefix(statement), names.join(", ")),
+                    statement.range(),
+                );
+                let accesses =
+                    reports.iter().map(|attribute| Edit::range_replacement(attribute.name.to_owned(), attribute.range));
+                Fix::unsafe_edits(import, accesses)
+            })
         });
-        let offer_at = fix.as_ref().and_then(|_| {
-            checker.first_unsuppressed(Rule::ModuleAttributeImport, reports.iter().map(|attribute| attribute.range))
-        });
-        // Ruff renders the whole fix on each report, so only the first visible report carries it.
-        for attribute in reports {
-            let message =
-                format!("Import `{}` from `{path}` instead of reaching it through the module", attribute.name);
-            checker.report_fix(
-                Rule::ModuleAttributeImport,
-                attribute.range,
-                message,
-                if offer_at == Some(attribute.range) { fix.take() } else { None },
-                format!("Import the names from `{path}`"),
-            );
-        }
     }
 }
 
@@ -122,7 +116,7 @@ fn binding_import(body: &[Stmt], binding: TextRange) -> Option<(&Stmt, &ast::Ali
     let mut found = None;
     for_each_body(body, &mut |statements, _| {
         for stmt in statements {
-            if let Some(alias) = aliases(stmt).iter().find(|alias| alias.range.contains_range(binding)) {
+            if let Some(alias) = import_aliases(stmt).iter().find(|alias| alias.range.contains_range(binding)) {
                 found = Some((stmt, alias));
             }
         }
@@ -130,21 +124,9 @@ fn binding_import(body: &[Stmt], binding: TextRange) -> Option<(&Stmt, &ast::Ali
     found
 }
 
-// The aliases an import statement binds, and none for any other statement.
-fn aliases(stmt: &Stmt) -> &[ast::Alias] {
-    match stmt {
-        Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => names,
-        _ => &[],
-    }
-}
-
 // The `lazy` keyword of a lazy import, which the rewritten import keeps so the module still loads on first use.
 fn lazy_prefix(stmt: &Stmt) -> &'static str {
-    match stmt {
-        Stmt::Import(ast::StmtImport { is_lazy: true, .. })
-        | Stmt::ImportFrom(ast::StmtImportFrom { is_lazy: true, .. }) => "lazy ",
-        _ => "",
-    }
+    if is_lazy(stmt) { "lazy " } else { "" }
 }
 
 // The module as the import spells it, relative with its dots, such as `.findings` for `from . import findings`.

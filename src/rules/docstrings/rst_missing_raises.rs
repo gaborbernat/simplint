@@ -2,6 +2,7 @@ use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use rustc_hash::FxHashSet;
 
+use super::raised_class;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::docstrings::rst::{FieldKind, Owner};
@@ -16,8 +17,7 @@ pub fn rst_missing_raises(checker: &Checker) {
         raises.visit_body(&def.body);
         let documented: FxHashSet<&str> = target
             .docstring
-            .fields(&[FieldKind::Raises])
-            .filter_map(|field| field.subject())
+            .subjects(&[FieldKind::Raises])
             .map(|subject| subject.rsplit('.').next().unwrap_or(subject))
             .collect();
         let mut missing: Vec<&str> = Vec::new();
@@ -76,8 +76,7 @@ impl<'a> Visitor<'a> for Raises<'a> {
                 self.visit_body(finalbody);
             }
             Stmt::Raise(ast::StmtRaise { exc: Some(exc), .. }) => {
-                let raised = exc.as_call_expr().map_or(exc.as_ref(), |call| call.func.as_ref());
-                let Some(name) = last_segment(raised) else {
+                let Some(name) = last_segment(raised_class(exc)) else {
                     return;
                 };
                 // `Exception` catches all but the exceptions that end the program or a generator.

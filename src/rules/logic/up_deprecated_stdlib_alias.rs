@@ -1,9 +1,10 @@
-use ruff_diagnostics::{Applicability, Edit, Fix};
+use ruff_diagnostics::{Applicability, Fix};
 use ruff_python_ast::{Expr, PythonVersion};
 use ruff_text_size::Ranged;
 
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
+use crate::rules::logic::modernize::rename_attribute;
 
 enum Replacement {
     // The new name does the same work, so only the attribute name changes; the fix is unsafe where the new name's
@@ -95,7 +96,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     if !attribute.ctx.is_load() {
         return;
     }
-    let target = checker.settings.from_ruff.target_version;
+    let target = checker.target_version();
     // The name is compared first, so an attribute no alias names never builds the file's semantic model.
     let Some(alias) = ALIASES.iter().find(|alias| {
         alias.name == attribute.attr.as_str()
@@ -107,8 +108,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let (fix, replacement, title) = match alias.replacement {
         Replacement::Rename(new, applicability) => {
             let replacement = format!("{}.{new}", alias.module);
-            let fix =
-                Fix::applicable_edit(Edit::range_replacement(new.to_owned(), attribute.attr.range()), applicability);
+            let fix = Fix::applicable_edit(rename_attribute(attribute, new), applicability);
             (Some(fix), replacement.clone(), format!("Use `{replacement}`"))
         }
         Replacement::Review(new) => (None, new.to_owned(), format!("Use `{new}`")),

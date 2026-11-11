@@ -75,13 +75,10 @@ commands = [
 
 [env.docs_links]
 description = "check the documentation's external links"
-# The diagrams are drawn at build time by mermaid-cli, which conf.py runs through npx, so Node.js must be on PATH. Its
-# puppeteer downloads a headless browser on first use; PUPPETEER_SKIP_DOWNLOAD=1 with PUPPETEER_EXECUTABLE_PATH runs an
-# installed one instead.
-pass_env = [ "PUPPETEER_*", "SSL_CERT_FILE" ]
-base_python = [ "3.15" ]
-skip_install = true
-dependency_groups = [ "docs" ]
+pass_env = { replace = "ref", of = [ "env", "docs", "pass_env" ] }
+base_python = { replace = "ref", of = [ "env", "docs", "base_python" ] }
+skip_install = { replace = "ref", of = [ "env", "docs", "skip_install" ] }
+dependency_groups = { replace = "ref", of = [ "env", "docs", "dependency_groups" ] }
 commands = [
   [ "python", "-m", "tasks.generate_changelog" ],
   [
@@ -98,7 +95,6 @@ commands = [
 ]
 
 [env.examples]
-runner = "uv-venv-runner"
 description = "compile the rule-page examples under CPython 3.10 to 3.15"
 dependency_groups = []
 deps = [ "uv>=0.13.6" ]
@@ -161,14 +157,12 @@ commands = [
 ]
 
 [env.pkg_sdist]
-runner = "uv-venv-runner"
 description = "build and test the source distribution"
 skip_install = true
 dependency_groups = [ "test" ]
 commands = [ [ "python", "tasks{/}check_sdist.py" ] ]
 
 [env.ecosystem]
-runner = "uv-venv-runner"
 description = "lint and fix the most downloaded PyPI projects, failing on crashes and on fixes that break code"
 dependency_groups = []
 # The Ruff the crates are built from, so a Ruff release cannot change the outcome on its own.

@@ -6,6 +6,7 @@ use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
 use crate::rules::naming::{current, except_name, parameters, pattern_name};
 use crate::rules::typing::type_parameter_assignment;
+use crate::syntax::import_aliases;
 
 pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     match stmt {
@@ -15,8 +16,8 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
         Stmt::ClassDef(ast::StmtClassDef { name, .. }) => {
             check(walker, current(walker), name.as_str(), name.range, RuffRule::AmbiguousClassName);
         }
-        Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
-            for asname in names.iter().filter_map(|alias| alias.asname.as_ref()) {
+        Stmt::Import(_) | Stmt::ImportFrom(_) => {
+            for asname in import_aliases(stmt).iter().filter_map(|alias| alias.asname.as_ref()) {
                 simplint_only(walker, current(walker), asname.as_str(), asname.range);
             }
         }

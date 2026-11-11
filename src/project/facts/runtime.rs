@@ -5,14 +5,15 @@ use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::visitor::FactVisitor;
-use crate::syntax::is_main_test;
+use crate::syntax::{alias_root_binding, is_main_test, is_type_checking_name, pattern_capture};
 
 impl FactVisitor<'_> {
     // When the body of an `if` with this test runs, and when the clauses after it can.
     pub(super) fn branches(&self, test: &Expr) -> (Runs, Runs) {
         let name = test.as_name_expr().map(|name| name.id.as_str());
         let falsy_name = name.is_some_and(|name| self.constants.falsy.contains(name));
-        let typing_guard = is_type_checking(test) && !name.is_some_and(|name| self.constants.truthy.contains(name));
+        let typing_guard =
+            is_type_checking_name(test) && !name.is_some_and(|name| self.constants.truthy.contains(name));
         if typing_guard || is_main_test(test) || falsy_name {
             return (Runs::Never, Runs::Always);
         }
@@ -47,16 +48,6 @@ impl Runs {
             (Self::Below(..), Self::Always) => self,
             (Self::Always, _) => other,
         }
-    }
-}
-
-// Whether an `if` test is `TYPE_CHECKING`, bare or as `typing.TYPE_CHECKING`, which is false at run time. A module that
-// binds it to a true constant runs the block, so the name is an ordinary flag there.
-fn is_type_checking(test: &Expr) -> bool {
-    match test {
-        Expr::Name(name) => name.id.as_str() == "TYPE_CHECKING",
-        Expr::Attribute(attribute) => attribute.attr.as_str() == "TYPE_CHECKING",
-        _ => false,
     }
 }
 
@@ -138,7 +129,7 @@ pub(super) struct Constants<'a> {
 pub(super) fn constants(body: &[Stmt]) -> Constants<'_> {
     let mut bindings = Bindings::default();
     bindings.visit_body(body);
-    let mut globals = Globals::default();
+    let mut globals = GlobalNames::default();
     globals.visit_body(body);
     for name in globals.names {
         bindings.bind(name, None);
@@ -199,13 +190,13 @@ impl<'a> Visitor<'a> for Bindings<'a> {
             Stmt::ClassDef(class) => self.bind(class.name.as_str(), None),
             Stmt::Import(ast::StmtImport { names, .. }) => {
                 for alias in names {
-                    self.bind(bound_name(alias), None);
+                    self.bind(alias_root_binding(alias), None);
                 }
             }
             Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
                 self.star |= names.iter().any(|alias| alias.name.as_str() == "*");
                 for alias in names.iter().filter(|alias| alias.name.as_str() != "*") {
-                    self.bind(bound_name(alias), None);
+                    self.bind(alias_root_binding(alias), None);
                 }
             }
             _ => visitor::walk_stmt(self, stmt),
@@ -228,13 +219,8 @@ impl<'a> Visitor<'a> for Bindings<'a> {
     }
 
     fn visit_pattern(&mut self, pattern: &'a ast::Pattern) {
-        match pattern {
-            ast::Pattern::MatchAs(ast::PatternMatchAs { name: Some(name), .. })
-            | ast::Pattern::MatchStar(ast::PatternMatchStar { name: Some(name), .. })
-            | ast::Pattern::MatchMapping(ast::PatternMatchMapping { rest: Some(name), .. }) => {
-                self.bind(name.as_str(), None);
-            }
-            _ => {}
+        if let Some(name) = pattern_capture(pattern) {
+            self.bind(name.as_str(), None);
         }
         visitor::walk_pattern(self, pattern);
     }
@@ -242,24 +228,16 @@ impl<'a> Visitor<'a> for Bindings<'a> {
 
 // The names some function declares `global`, which rebinds them while the module runs.
 #[derive(Default)]
-struct Globals<'a> {
+struct GlobalNames<'a> {
     names: FxHashSet<&'a str>,
 }
 
-impl<'a> Visitor<'a> for Globals<'a> {
+impl<'a> Visitor<'a> for GlobalNames<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         if let Stmt::Global(ast::StmtGlobal { names, .. }) = stmt {
             self.names.extend(names.iter().map(ast::Identifier::as_str));
         }
         visitor::walk_stmt(self, stmt);
-    }
-}
-
-// The name an import alias binds: its `as` name, or for `import pkg.module` the first part of the module's name.
-fn bound_name(alias: &ast::Alias) -> &str {
-    match &alias.asname {
-        Some(asname) => asname.as_str(),
-        None => alias.name.as_str().split('.').next().unwrap_or_default(),
     }
 }
 

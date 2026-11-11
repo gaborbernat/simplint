@@ -7,6 +7,7 @@ use rustc_hash::FxHashSet;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::comments::own_line_comment_runs;
+use crate::syntax::identifier_words;
 
 // A comment whose every word is a name or keyword of the line below only repeats that code, so deleting it loses
 // nothing. Words match whole names: `create_user` does not spell out `create`. Only plain prose can restate: a colon
@@ -57,8 +58,5 @@ fn restating_block(checker: &Checker, block: &[TextRange]) {
 
 // The lowercase words of a comment, split at anything that is not a letter, digit or underscore.
 fn words(text: &str) -> Vec<String> {
-    text.split(|char: char| !(char.is_alphanumeric() || char == '_'))
-        .filter(|word| !word.is_empty())
-        .map(str::to_lowercase)
-        .collect()
+    identifier_words(text).filter(|word| !word.is_empty()).map(str::to_lowercase).collect()
 }

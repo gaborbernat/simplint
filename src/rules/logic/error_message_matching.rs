@@ -9,8 +9,7 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
-use crate::syntax::ExprCollector;
-use crate::syntax::{for_each_body, is_name};
+use crate::syntax::{ExprCollector, for_each_body, is_name};
 
 // The `str` methods that read the text of an exception to tell it apart from others.
 const TEXT_METHODS: [&str; 5] = ["startswith", "endswith", "find", "index", "count"];
@@ -160,7 +159,7 @@ fn is_exception_type(checker: &Checker, annotation: &Expr, resolved: bool) -> bo
 // a cycle of classes that derive from each other.
 fn is_exception_class_name(checker: &Checker, expr: &Expr, resolved: bool, seen: &mut Vec<TextRange>) -> bool {
     expr.as_name_expr().is_some_and(|name| {
-        let minor = checker.settings.from_ruff.target_version.minor;
+        let minor = checker.target_version().minor;
         let builtin = if resolved {
             checker.semantic().is_builtin(expr, name.id.as_str())
         } else {

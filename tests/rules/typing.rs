@@ -2,35 +2,35 @@ use test_case::test_case;
 
 use crate::common;
 
-#[test_case("missing-final", "missing_final.py", "py314" ; "missing_final")]
-#[test_case("missing-final", "missing_final_typing.py", "py314" ; "missing_final_extends_typing_import")]
-#[test_case("missing-final", "missing_final_sorted.py", "py314" ; "missing_final_keeps_isort_order")]
-#[test_case("missing-final", "missing_final_order.py", "py314" ; "missing_final_places_new_import")]
-#[test_case("missing-final", "missing_final_alias.py", "py314" ; "missing_final_uses_typing_alias")]
-#[test_case("missing-final", "missing_final_module.py", "py314" ; "missing_final_typing_module")]
-#[test_case("missing-final", "missing_final_new.py", "py314" ; "missing_final_new_import")]
-#[test_case("missing-final", "missing_final_shared_docstring.py", "py314" ; "missing_final_shared_docstring")]
-#[test_case("missing-final", "missing_final_docstring_import.py", "py314" ; "missing_final_docstring_import")]
-#[test_case("missing-final", "missing_final_bare.py", "py314" ; "missing_final_import_at_top")]
-#[test_case("missing-final", "missing_final_checking.py", "py310" ; "missing_final_type_checking_eager")]
-#[test_case("missing-final", "missing_final_checking.py", "py314" ; "missing_final_type_checking_lazy")]
-#[test_case("missing-final", "missing_final_future.py", "py310" ; "missing_final_type_checking_future")]
-#[test_case("missing-final", "missing_final.py", "py37" ; "missing_final_before_python38")]
-#[test_case("missing-final", "missing_final_gate.py", "py314" ; "missing_final_version_gate")]
-#[test_case("missing-final", "missing_final_branch.py", "py314" ; "missing_final_version_branch")]
-#[test_case("missing-final", "missing_final_globals.py", "py314" ; "missing_final_globals_written")]
-#[test_case("missing-final", "docs/conf.py", "py314" ; "missing_final_sphinx_conf")]
-#[test_case("imprecise-annotation", "imprecise_annotation.py", "py314" ; "imprecise_annotation")]
-#[test_case("imprecise-annotation", "imprecise_annotation_type_params.py", "py314" ; "imprecise_annotation_type_params")]
-#[test_case("imprecise-annotation", "imprecise_annotation_ruff_overlap.py", "py314" ; "imprecise_annotation_ruff_overlap")]
-#[test_case("imprecise-annotation", "imprecise_annotation_callable.py", "py314" ; "imprecise_annotation_callable")]
-#[test_case("imprecise-annotation", "imprecise_annotation_annotated.py", "py314" ; "imprecise_annotation_annotated")]
-#[test_case("callable-ellipsis", "callable_ellipsis.py", "py314" ; "callable_ellipsis")]
-#[test_case("vars-call", "vars_call.py", "py314" ; "vars_call")]
-#[test_case("vars-call", "vars_call_bound.py", "py314" ; "vars_call_shadowed")]
-#[test_case("vars-call", "vars_call_mapping.py", "py314" ; "vars_call_mapping")]
-fn rule(rule: &str, fixture: &str, target_version: &str) {
-    common::assert_rule_snapshot(rule, fixture, target_version);
+#[test_case("missing-final", "missing_final.py", None ; "missing_final")]
+#[test_case("missing-final", "missing_final_typing.py", None ; "missing_final_extends_typing_import")]
+#[test_case("missing-final", "missing_final_sorted.py", None ; "missing_final_keeps_isort_order")]
+#[test_case("missing-final", "missing_final_order.py", None ; "missing_final_places_new_import")]
+#[test_case("missing-final", "missing_final_alias.py", None ; "missing_final_uses_typing_alias")]
+#[test_case("missing-final", "missing_final_module.py", None ; "missing_final_typing_module")]
+#[test_case("missing-final", "missing_final_new.py", None ; "missing_final_new_import")]
+#[test_case("missing-final", "missing_final_shared_docstring.py", None ; "missing_final_shared_docstring")]
+#[test_case("missing-final", "missing_final_docstring_import.py", None ; "missing_final_docstring_import")]
+#[test_case("missing-final", "missing_final_bare.py", None ; "missing_final_import_at_top")]
+#[test_case("missing-final", "missing_final_checking.py", Some("py310") ; "missing_final_type_checking_eager")]
+#[test_case("missing-final", "missing_final_checking.py", None ; "missing_final_type_checking_lazy")]
+#[test_case("missing-final", "missing_final_future.py", Some("py310") ; "missing_final_type_checking_future")]
+#[test_case("missing-final", "missing_final.py", Some("py37") ; "missing_final_before_python38")]
+#[test_case("missing-final", "missing_final_gate.py", None ; "missing_final_version_gate")]
+#[test_case("missing-final", "missing_final_branch.py", None ; "missing_final_version_branch")]
+#[test_case("missing-final", "missing_final_globals.py", None ; "missing_final_globals_written")]
+#[test_case("missing-final", "docs/conf.py", None ; "missing_final_sphinx_conf")]
+#[test_case("imprecise-annotation", "imprecise_annotation.py", None ; "imprecise_annotation")]
+#[test_case("imprecise-annotation", "imprecise_annotation_type_params.py", None ; "imprecise_annotation_type_params")]
+#[test_case("imprecise-annotation", "imprecise_annotation_ruff_overlap.py", None ; "imprecise_annotation_ruff_overlap")]
+#[test_case("imprecise-annotation", "imprecise_annotation_callable.py", None ; "imprecise_annotation_callable")]
+#[test_case("imprecise-annotation", "imprecise_annotation_annotated.py", None ; "imprecise_annotation_annotated")]
+#[test_case("callable-ellipsis", "callable_ellipsis.py", None ; "callable_ellipsis")]
+#[test_case("vars-call", "vars_call.py", None ; "vars_call")]
+#[test_case("vars-call", "vars_call_bound.py", None ; "vars_call_shadowed")]
+#[test_case("vars-call", "vars_call_mapping.py", None ; "vars_call_mapping")]
+fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
+    common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
 
 // A write through `globals()` under a name the code cannot read may set any name of the module, as a computed
@@ -41,8 +41,7 @@ fn rule(rule: &str, fixture: &str, target_version: &str) {
 #[test_case("globals().pop(name)" ; "pop")]
 fn missing_final_skips_every_name_a_computed_globals_write_may_set(body: &str) {
     let root = common::project(&[("module.py", &format!("LIMIT = 1\nRATE = 2\n\n\ndef write(name):\n    {body}\n"))]);
-    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP601"]);
-    assert_eq!(stdout.matches("SMP601").count(), 0, "{stdout}");
+    common::assert_report_count(root.path(), "SMP601", 0);
 }
 
 // A `globals` the module defines is not the builtin, so its calls write no module name and `LIMIT` stays reported.
@@ -52,8 +51,7 @@ fn missing_final_ignores_a_globals_the_module_defines() {
         "module.py",
         "LIMIT = 1\n\n\ndef globals():\n    return {}\n\n\ndef write(name):\n    globals()[name] = 3\n",
     )]);
-    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP601"]);
-    assert_eq!(stdout.matches("SMP601").count(), 1, "{stdout}");
+    common::assert_report_count(root.path(), "SMP601", 1);
 }
 
 // At module level `vars()` and `locals()` with no argument are the module's dict, so their writes count as `globals()`
@@ -73,8 +71,7 @@ fn missing_final_ignores_a_globals_the_module_defines() {
 #[test_case("def write():\n    value = vars().update(LIMIT=3)", 1 ; "function_body_local")]
 fn missing_final_counts_module_vars_and_locals_writes_only(body: &str, reports: usize) {
     let root = common::project(&[("module.py", &format!("LIMIT = 1\n\n\n{body}\n"))]);
-    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP601"]);
-    assert_eq!(stdout.matches("SMP601").count(), reports, "{stdout}");
+    common::assert_report_count(root.path(), "SMP601", reports);
 }
 
 // The parenthesized name `(LIMIT)` takes no annotation of its own, as `(LIMIT: Final[int]) = 3` is not valid Python,
@@ -119,15 +116,10 @@ fn callable_ellipsis_in_test_module_outside_function_reports() {
 #[test_case("def f(value: Any) -> None:\n    print(value)\n", "ANN401", "`Any` accepts any value" ; "whole_parameter")]
 #[test_case("def f() -> Any:\n    return 1\n", "ANN401", "`Any` accepts any value" ; "whole_return")]
 fn imprecise_annotation_follows_ruff_any_type(source: &str, code: &str, fragment: &str) {
-    for selected in [false, true] {
-        let select = if selected { format!("\"{code}\"") } else { String::new() };
-        let root = common::project(&[
-            ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [{select}]\n")),
-            ("module.py", &format!("from typing import Any\n\n{source}")),
-        ]);
-        let stdout = common::check(root.path(), &["--select", "SMP602"]).1;
-        assert_eq!(stdout.contains(fragment), !selected, "{stdout}");
-    }
+    let module = format!("from typing import Any\n\n{source}");
+    let case =
+        common::RuffOverlap { settings: "", select: "SMP602", ruff_code: code, files: &[("module.py", &module)] };
+    assert_eq!(common::reported_without_and_with_ruff(&case, fragment), [true, false]);
 }
 
 // Ruff's ANN401 reports an `Any` that is, or sits in an `Optional`, a `Union`, a `|` or the first argument of
@@ -142,15 +134,13 @@ fn imprecise_annotation_follows_ruff_any_type(source: &str, code: &str, fragment
 #[test_case("def f(value: Annotated[int, Any]) -> None:\n    print(value)\n", true ; "annotated_metadata")]
 #[test_case("def f(value: Foo[Any]) -> None:\n    print(value)\n", true ; "unknown_generic")]
 fn imprecise_annotation_follows_ruff_optional_any(source: &str, reported_when_selected: bool) {
-    for selected in [false, true] {
-        let select = if selected { "\"ANN401\"" } else { "" };
-        let root = common::project(&[
-            ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [{select}]\n")),
-            ("module.py", &format!("from typing import Annotated, Any, Optional, Union\n\n\n{source}")),
-        ]);
-        let stdout = common::check(root.path(), &["--select", "SMP602"]).1;
-        assert_eq!(stdout.contains("`Any` accepts any value"), !selected || reported_when_selected, "{stdout}");
-    }
+    let module = format!("from typing import Annotated, Any, Optional, Union\n\n\n{source}");
+    let case =
+        common::RuffOverlap { settings: "", select: "SMP602", ruff_code: "ANN401", files: &[("module.py", &module)] };
+    assert_eq!(
+        common::reported_without_and_with_ruff(&case, "`Any` accepts any value"),
+        [true, reported_when_selected]
+    );
 }
 
 // ANN401 skips `*args` and `**kwargs` under `allow-star-arg-any`, the `self` or `cls` of a method, and `@override`
@@ -177,13 +167,12 @@ fn imprecise_annotation_follows_ann401_settings(extra: &str, source: &str, repor
 #[test_case("", "def f(*args: list[object]) -> None:\n    print(args)\n", true ; "nested_in_variadic")]
 #[test_case("", "def f(value: object) -> None:\n    print(value)\n", true ; "parameter")]
 fn imprecise_annotation_accepts_object_variadic(extra: &str, source: &str, reported: bool) {
-    for selected in [false, true] {
-        let select = if selected { "\"ANN401\"" } else { "" };
-        let root = common::project(&[
-            ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [{select}]\n{extra}")),
-            ("module.py", &format!("import builtins\n\n\n{source}")),
-        ]);
-        let stdout = common::check(root.path(), &["--select", "SMP602"]).1;
-        assert_eq!(stdout.contains("`object` annotation"), reported, "{stdout}");
-    }
+    let module = format!("import builtins\n\n\n{source}");
+    let case = common::RuffOverlap {
+        settings: extra,
+        select: "SMP602",
+        ruff_code: "ANN401",
+        files: &[("module.py", &module)],
+    };
+    assert_eq!(common::reported_without_and_with_ruff(&case, "`object` annotation"), [reported, reported]);
 }

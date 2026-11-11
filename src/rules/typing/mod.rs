@@ -1,8 +1,8 @@
 use ruff_python_ast::{self as ast, Expr, Stmt};
 
 use crate::lint::checker::Checker;
-use crate::rules::single_assignment;
 use crate::semantic::Semantic;
+use crate::syntax::single_assignment;
 
 pub(crate) mod callable_ellipsis;
 pub(crate) mod imprecise_annotation;

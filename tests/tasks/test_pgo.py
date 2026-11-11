@@ -4,7 +4,6 @@ import hashlib
 import io
 import json
 import subprocess
-import tarfile
 import urllib.error
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
@@ -15,82 +14,82 @@ from tasks.download import Pinned
 from tasks.pgo import extract, llvm_profdata, main, pin_sdist, read_manifest, write_manifest
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from pytest_mock import MockerFixture
 
-_FILES: Final[str] = "https://files.pythonhosted.org/packages/ab/cd"
 
-
-def test_pin_sdist_takes_the_tar_gz_sdist(mocker: MockerFixture) -> None:
+def test_pin_sdist_takes_the_tar_gz_sdist(mocker: MockerFixture, files_url: str) -> None:
     release = _release(
-        ("demo-1.0-py3-none-any.whl", "bdist_wheel"), ("demo-1.0.zip", "sdist"), ("demo-1.0.tar.gz", "sdist")
+        files_url,
+        ("demo-1.0-py3-none-any.whl", "bdist_wheel"),
+        ("demo-1.0.zip", "sdist"),
+        ("demo-1.0.tar.gz", "sdist"),
     )
     urlopen = mocker.patch("urllib.request.urlopen", autospec=True, return_value=release)
 
-    assert pin_sdist("demo") == Pinned(url=f"{_FILES}/demo-1.0.tar.gz", sha256="demo-1.0.tar.gz-digest")
+    assert pin_sdist("demo") == Pinned(url=f"{files_url}/demo-1.0.tar.gz", sha256="demo-1.0.tar.gz-digest")
     assert urlopen.call_args.args == ("https://pypi.org/pypi/demo/json",)
 
 
-def _release(*files: tuple[str, str]) -> io.BytesIO:
+def _release(files_url: str, *files: tuple[str, str]) -> io.BytesIO:
     urls = [
-        {"filename": name, "packagetype": kind, "url": f"{_FILES}/{name}", "digests": {"sha256": f"{name}-digest"}}
+        {"filename": name, "packagetype": kind, "url": f"{files_url}/{name}", "digests": {"sha256": f"{name}-digest"}}
         for name, kind in files
     ]
     return io.BytesIO(json.dumps({"urls": urls}).encode())
 
 
-def test_pin_sdist_rejects_a_wheel_only_release(mocker: MockerFixture) -> None:
-    mocker.patch("urllib.request.urlopen", autospec=True, return_value=_release(("demo.whl", "bdist_wheel")))
+def test_pin_sdist_rejects_a_wheel_only_release(mocker: MockerFixture, files_url: str) -> None:
+    mocker.patch("urllib.request.urlopen", autospec=True, return_value=_release(files_url, ("demo.whl", "bdist_wheel")))
 
     with pytest.raises(ValueError, match=r"^the latest release of demo ships no \.tar\.gz sdist$"):
         pin_sdist("demo")
 
 
 @pytest.mark.usefixtures("sleep")
-def test_pin_sdist_retries_a_transient_failure(mocker: MockerFixture, capsys: pytest.CaptureFixture[str]) -> None:
-    release = _release(("demo-1.0.tar.gz", "sdist"))
+def test_pin_sdist_retries_a_transient_failure(
+    mocker: MockerFixture, capsys: pytest.CaptureFixture[str], files_url: str
+) -> None:
+    release = _release(files_url, ("demo-1.0.tar.gz", "sdist"))
     mocker.patch("urllib.request.urlopen", autospec=True, side_effect=[urllib.error.URLError("reset"), release])
 
-    assert pin_sdist("demo") == Pinned(url=f"{_FILES}/demo-1.0.tar.gz", sha256="demo-1.0.tar.gz-digest")
+    assert pin_sdist("demo") == Pinned(url=f"{files_url}/demo-1.0.tar.gz", sha256="demo-1.0.tar.gz-digest")
     assert capsys.readouterr().err == "https://pypi.org/pypi/demo/json: <urlopen error reset>, retrying\n"
 
 
-def test_main_pins_the_latest_sdists(tmp_path: Path, mocker: MockerFixture) -> None:
+def test_main_pins_the_latest_sdists(tmp_path: Path, mocker: MockerFixture, files_url: str) -> None:
     mocker.patch("tasks.pgo.PROJECTS", ("b", "A"))
     mocker.patch(
         "urllib.request.urlopen",
         autospec=True,
-        side_effect=lambda url, **_: _release((f"{url.split('/')[-2]}-1.0.tar.gz", "sdist")),
+        side_effect=lambda url, **_: _release(files_url, (f"{url.split('/')[-2]}-1.0.tar.gz", "sdist")),
     )
     manifest = tmp_path / "pgo_corpus.toml"
 
     main(["manifest", "--manifest", str(manifest)])
 
     assert read_manifest(manifest) == [
-        Pinned(url=f"{_FILES}/b-1.0.tar.gz", sha256="b-1.0.tar.gz-digest"),
-        Pinned(url=f"{_FILES}/A-1.0.tar.gz", sha256="A-1.0.tar.gz-digest"),
+        Pinned(url=f"{files_url}/b-1.0.tar.gz", sha256="b-1.0.tar.gz-digest"),
+        Pinned(url=f"{files_url}/A-1.0.tar.gz", sha256="A-1.0.tar.gz-digest"),
     ]
 
 
-def test_extract_keeps_only_python_files(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_extract_keeps_only_python_files(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], tar_gz: Callable[..., bytes]
+) -> None:
     archive = tmp_path / "demo-1.0.tar.gz"
-    archive.write_bytes(_tar_gz("demo-1.0/demo/__init__.py", "demo-1.0/README.md"))
+    archive.write_bytes(
+        tar_gz(
+            dict.fromkeys(("demo-1.0/demo/__init__.py", "demo-1.0/README.md"), b""),
+            {"demo-1.0/link.py": "demo/__init__.py"},
+        )
+    )
 
     extract(archive, tmp_path / "corpus")
 
     assert [path.name for path in (tmp_path / "corpus").rglob("*") if path.is_file()] == ["__init__.py"]
     assert not capsys.readouterr().out
-
-
-# An sdist holding the given empty files and a symlink, which is no regular file to extract.
-def _tar_gz(*names: str) -> bytes:
-    buffer = io.BytesIO()
-    with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
-        for name in names:
-            tar.addfile(tarfile.TarInfo(name), io.BytesIO())
-        link = tarfile.TarInfo("demo-1.0/link.py")
-        link.type, link.linkname = tarfile.SYMTYPE, "demo/__init__.py"
-        tar.addfile(link)
-    return buffer.getvalue()
 
 
 @pytest.mark.parametrize(
@@ -112,8 +111,14 @@ def test_llvm_profdata_needs_the_component(tmp_path: Path, mocker: MockerFixture
         llvm_profdata()
 
 
-def test_train_records_a_profile(tmp_path: Path, mocker: MockerFixture, capsys: pytest.CaptureFixture[str]) -> None:
-    calls = _train(tmp_path, mocker, status=1)
+def test_train_records_a_profile(
+    tmp_path: Path,
+    mocker: MockerFixture,
+    capsys: pytest.CaptureFixture[str],
+    tar_gz: Callable[..., bytes],
+    files_url: str,
+) -> None:
+    calls = _train(tmp_path, mocker, tar_gz, files_url, status=1)
 
     work = tmp_path / "work"
     corpus = work / "corpus"
@@ -137,10 +142,17 @@ def test_train_records_a_profile(tmp_path: Path, mocker: MockerFixture, capsys: 
 
 # Run the training over one sdist with every tool simulated, and return the commands; simplint exits with the given
 # status.
-def _train(tmp_path: Path, mocker: MockerFixture, status: int) -> list[list[str]]:
-    payload = _tar_gz("demo-1.0/demo/__init__.py", "demo-1.0/demo/types.pyi", "demo-1.0/README.md", "../escape.py")
+def _train(
+    tmp_path: Path, mocker: MockerFixture, tar_gz: Callable[..., bytes], files_url: str, status: int
+) -> list[list[str]]:
+    payload = tar_gz(
+        dict.fromkeys(
+            ("demo-1.0/demo/__init__.py", "demo-1.0/demo/types.pyi", "demo-1.0/README.md", "../escape.py"), b""
+        ),
+        {"demo-1.0/link.py": "demo/__init__.py"},
+    )
     manifest = tmp_path / "pgo_corpus.toml"
-    write_manifest(manifest, [Pinned(url=f"{_FILES}/demo-1.0.tar.gz", sha256=hashlib.sha256(payload).hexdigest())])
+    write_manifest(manifest, [Pinned(url=f"{files_url}/demo-1.0.tar.gz", sha256=hashlib.sha256(payload).hexdigest())])
     mocker.patch("urllib.request.urlopen", autospec=True, return_value=io.BytesIO(payload))
     tool = tmp_path / "sysroot" / "lib" / "rustlib" / "x86_64-unknown-linux-gnu" / "bin" / "llvm-profdata"
     tool.parent.mkdir(parents=True)
@@ -163,9 +175,11 @@ def _train(tmp_path: Path, mocker: MockerFixture, status: int) -> list[list[str]
     return calls
 
 
-def test_train_stops_when_simplint_fails(tmp_path: Path, mocker: MockerFixture) -> None:
+def test_train_stops_when_simplint_fails(
+    tmp_path: Path, mocker: MockerFixture, tar_gz: Callable[..., bytes], files_url: str
+) -> None:
     with pytest.raises(subprocess.CalledProcessError, match="exit status 2"):
-        _train(tmp_path, mocker, status=2)
+        _train(tmp_path, mocker, tar_gz, files_url, status=2)
 
 
 _COMPILING: Final[str] = "   Compiling simplint v0.1.0 (/src)\n"

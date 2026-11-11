@@ -1,3 +1,4 @@
+use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
@@ -8,7 +9,7 @@ use rustc_hash::FxHashMap;
 // source as read and its source after the fixes so far. A later round fixes the source after the fixes so far, which
 // the disk does not hold.
 #[derive(Default)]
-pub struct Overlay(Mutex<FxHashMap<PathBuf, Fixed>>);
+pub(crate) struct Overlay(Mutex<FxHashMap<PathBuf, Fixed>>);
 
 struct Fixed {
     original: String,
@@ -16,17 +17,24 @@ struct Fixed {
 }
 
 impl Overlay {
-    pub fn current(&self, path: &Path) -> Option<String> {
+    fn current(&self, path: &Path) -> Option<String> {
         self.0.lock().expect("no worker panics while fixing").get(path).map(|fixed| fixed.current.clone())
     }
 
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn source(&self, path: &Path) -> io::Result<String> {
+        match self.current(path) {
+            Some(current) => Ok(current),
+            None => std::fs::read_to_string(path),
+        }
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
         self.0.lock().expect("no worker panics while fixing").is_empty()
     }
 
     // Records `fixed` as the source of `path` after a fix that changed `source`, and returns the diff from the source
     // as read to `fixed`.
-    pub fn record(&self, path: &Path, source: &str, fixed: &str) -> String {
+    pub(crate) fn record(&self, path: &Path, source: &str, fixed: &str) -> String {
         let mut files = self.0.lock().expect("no worker panics while fixing");
         let entry = files
             .entry(path.to_path_buf())

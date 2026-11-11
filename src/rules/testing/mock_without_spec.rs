@@ -1,11 +1,10 @@
 use ruff_python_ast::Expr;
-use ruff_python_ast::name::UnqualifiedName;
 use ruff_text_size::Ranged;
 
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
+use crate::rules::testing::recognize::{is_mock_constructor_except_autospec, is_mock_patch, is_patch_object};
 use crate::semantic::Semantic;
-use crate::syntax::MOCK_CLASSES;
 use crate::syntax::last_segment;
 
 pub fn expression(walker: &mut Walker, expr: &Expr) {
@@ -49,21 +48,10 @@ enum MockCall {
 impl MockCall {
     fn of(semantic: &Semantic, func: &Expr) -> Option<Self> {
         match last_segment(func)? {
-            // `create_autospec` takes the spec it builds the mock from, so it is never built without one.
-            last if MOCK_CLASSES.contains(&last) && last != "create_autospec" => Some(Self::Mock),
-            _ if is_patch(semantic, func) => Some(Self::Patch),
-            "object" if func.as_attribute_expr().is_some_and(|attribute| is_patch(semantic, &attribute.value)) => {
-                Some(Self::PatchObject)
-            }
+            _ if is_mock_constructor_except_autospec(func) => Some(Self::Mock),
+            _ if is_mock_patch(semantic, func) => Some(Self::Patch),
+            _ if is_patch_object(semantic, func) => Some(Self::PatchObject),
             _ => None,
         }
     }
-}
-
-// `patch` alone is too common a method name (HTTP clients, `requests.patch`) to match on the name; the call must
-// reach it through a mock module or the pytest-mock fixture.
-fn is_patch(semantic: &Semantic, func: &Expr) -> bool {
-    let resolved = semantic.qualified_name(func);
-    resolved.is_some_and(|name| matches!(name.segments(), ["unittest", "mock", "patch"] | ["mock", "patch"]))
-        || UnqualifiedName::from_expr(func).is_some_and(|name| matches!(name.segments(), [.., "mocker", "patch"]))
 }

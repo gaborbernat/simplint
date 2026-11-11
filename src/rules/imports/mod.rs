@@ -4,6 +4,7 @@ mod future_annotations;
 mod import_cycle;
 mod module_attribute_import;
 pub(crate) mod private_import_path;
+mod stdlib;
 mod stdlib_submodules;
 mod up_backport_import;
 mod up_lazy_modules_list;

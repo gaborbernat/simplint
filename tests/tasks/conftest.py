@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import io
+import tarfile
 import time
+from pathlib import Path
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Final
 
@@ -9,7 +12,7 @@ import pytest
 from tasks import download as download_module
 
 if TYPE_CHECKING:
-    from pathlib import Path
+    from collections.abc import Callable
 
     from pytest_mock import MockerFixture, MockType
 
@@ -40,6 +43,36 @@ def registry(tmp_path: Path) -> Path:
     path = tmp_path / "src" / "lint" / "registry.rs"
     path.write_text(_REGISTRY, encoding="utf-8")
     return path
+
+
+@pytest.fixture
+def root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+@pytest.fixture
+def files_url() -> str:
+    # The address PyPI serves source archives under, the prefix of the pinned URLs a test names.
+    return "https://files.pythonhosted.org/packages/ab/cd"
+
+
+@pytest.fixture
+def tar_gz() -> Callable[[dict[str, bytes], dict[str, str] | None], bytes]:
+    # A gzipped tar of regular files, by member name and content, and of symbolic links, by member name and target.
+    def build(members: dict[str, bytes], links: dict[str, str] | None = None) -> bytes:
+        buffer = io.BytesIO()
+        with tarfile.open(fileobj=buffer, mode="w:gz") as tar:
+            for name, content in members.items():
+                member = tarfile.TarInfo(name)
+                member.size = len(content)
+                tar.addfile(member, io.BytesIO(content))
+            for name, target in (links or {}).items():
+                link = tarfile.TarInfo(name)
+                link.type, link.linkname = tarfile.SYMTYPE, target
+                tar.addfile(link)
+        return buffer.getvalue()
+
+    return build
 
 
 @pytest.fixture

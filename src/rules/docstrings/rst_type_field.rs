@@ -3,7 +3,7 @@ use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rst::{FieldKind, Owner, field_deletion};
+use crate::rules::docstrings::rst::{FieldKind, Owner};
 
 pub fn rst_type_field(checker: &Checker) {
     for target in checker.state().rst_targets(checker) {
@@ -19,7 +19,7 @@ pub fn rst_type_field(checker: &Checker) {
             let (message, fix, title) = match (field.kind, field.subject()) {
                 (FieldKind::Type, Some(name)) => (
                     format!("`{text}` puts a type in the docstring; annotate `{name}` in the signature instead"),
-                    annotated.contains(name).then(|| field_deletion(checker, &target.docstring, &[field])).flatten(),
+                    annotated.contains(name).then(|| field.removal(checker, &target.docstring)).flatten(),
                     format!("Remove `{text}`"),
                 ),
                 (FieldKind::VarType, Some(name)) => (
@@ -29,7 +29,7 @@ pub fn rst_type_field(checker: &Checker) {
                 ),
                 (FieldKind::ReturnType | FieldKind::YieldType, _) => (
                     format!("`{text}` puts a type in the docstring; annotate the return type in the signature instead"),
-                    returns_annotated.then(|| field_deletion(checker, &target.docstring, &[field])).flatten(),
+                    returns_annotated.then(|| field.removal(checker, &target.docstring)).flatten(),
                     format!("Remove `{text}`"),
                 ),
                 (FieldKind::Param | FieldKind::Var, Some(name)) if field.words.len() > 2 => {

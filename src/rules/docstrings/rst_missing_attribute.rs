@@ -10,11 +10,7 @@ pub fn rst_missing_attribute(checker: &Checker) {
             continue;
         };
         let parameters = target.parameters().unwrap_or_default();
-        let documented: FxHashSet<&str> = target
-            .docstring
-            .fields(&[FieldKind::Var, FieldKind::VarType])
-            .filter_map(|field| field.subject())
-            .collect();
+        let documented: FxHashSet<&str> = target.docstring.subjects(&[FieldKind::Var, FieldKind::VarType]).collect();
         // An attribute the constructor takes is documented by its `:param:` field, which `rst-missing-param` asks for.
         // The description of an attribute is for a person to write, so the report carries no fix.
         for attribute in target.attributes(checker).iter().filter(|attribute| {

@@ -1,6 +1,6 @@
 use std::cell::OnceCell;
 
-use ruff_diagnostics::{Edit, Fix, IsolationLevel};
+use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::helpers::is_dunder;
 use ruff_python_ast::parenthesize::parenthesized_range;
 use ruff_python_ast::visitor::{self, Visitor};
@@ -10,20 +10,17 @@ use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::edits::ensure_import;
-use crate::rules::{has_version_gate, is_class_like, is_sphinx_conf, isort_key, single_assignment};
+use crate::rules::edits::{Import, ensure_import, with_import};
+use crate::rules::{is_class_like, is_sphinx_conf, isort_key};
 use crate::semantic::Semantic;
-use crate::syntax::{alias_binding, last_segment};
+use crate::syntax::{alias_binding, from_imports, has_version_gate, last_segment, single_assignment};
 
 use super::is_type_parameter_constructor;
 
 pub fn missing_final(checker: &Checker) {
     // `typing.Final` arrived in Python 3.8.
     // Sphinx reads the module variables of `conf.py` by name, so a `Final` there would change nothing.
-    if checker.settings.from_ruff.target_version < PythonVersion::PY38
-        || has_version_gate(checker.body())
-        || is_sphinx_conf(checker)
-    {
+    if checker.target_version() < PythonVersion::PY38 || has_version_gate(checker.body()) || is_sphinx_conf(checker) {
         return;
     }
     let spelling = OnceCell::new();
@@ -68,9 +65,7 @@ pub fn missing_final(checker: &Checker) {
         let fix = (!parenthesized)
             .then(|| {
                 spelling.get_or_init(|| final_qualifier(checker, TextRange::default())).as_ref().and_then(
-                    |(qualifier, import)| {
-                        final_fix(checker, qualifier, import.as_ref(), target.range, annotation, value)
-                    },
+                    |(qualifier, import)| final_fix(checker, qualifier, import, target.range, annotation, value),
                 )
             })
             .flatten();
@@ -266,7 +261,7 @@ fn is_type_alias(value: &Expr) -> bool {
 fn final_fix(
     checker: &Checker,
     qualifier: &str,
-    import: Option<&Edit>,
+    import: &Import,
     target: TextRange,
     annotation: Option<&Expr>,
     value: &Expr,
@@ -277,11 +272,7 @@ fn final_fix(
         let literal_type = literal_type(value)?;
         Edit::insertion(format!(": {qualifier}[{literal_type}]"), target.end())
     };
-    Some(match import {
-        // One import-adding fix per pass, so the next pass sees the import instead of adding it twice.
-        Some(import) => Fix::unsafe_edits(edit, [import.clone()]).isolate(IsolationLevel::Group(1)),
-        None => Fix::unsafe_edit(edit),
-    })
+    Some(with_import(edit, import.clone(), Applicability::Unsafe))
 }
 
 // The type of a literal value, which is what `Final` infers from a bare assignment.
@@ -305,7 +296,7 @@ fn bare_final_fix(checker: &Checker, annotation: &Expr, value: &Expr) -> Option<
 }
 
 // The name a fix annotates with, and the import it adds; `None` when the import cannot be added without shadowing.
-fn final_qualifier(checker: &Checker, at: TextRange) -> Option<(String, Option<Edit>)> {
+fn final_qualifier(checker: &Checker, at: TextRange) -> Option<(String, Import)> {
     let body = checker.body();
     // A `Final` bound only under `if TYPE_CHECKING:` is missing at runtime, where eager annotations evaluate it.
     let lazy = checker.semantic().annotations_are_lazy();
@@ -316,7 +307,7 @@ fn final_qualifier(checker: &Checker, at: TextRange) -> Option<(String, Option<E
         _ => false,
     });
     if checker.semantic().is_bound("Final") && (lazy || bound_at_top) {
-        return Some(("Final".to_owned(), None));
+        return Some(("Final".to_owned(), Import::Present));
     }
     let typing_module = body
         .iter()
@@ -324,24 +315,21 @@ fn final_qualifier(checker: &Checker, at: TextRange) -> Option<(String, Option<E
         .flat_map(|import| &import.names)
         .find(|alias| alias.name.as_str() == "typing");
     if let Some(alias) = typing_module {
-        return Some((format!("{}.Final", alias.asname.as_ref().unwrap_or(&alias.name)), None));
+        return Some((format!("{}.Final", alias.asname.as_ref().unwrap_or(&alias.name)), Import::Present));
     }
-    let existing = body.iter().find_map(|stmt| match stmt {
-        Stmt::ImportFrom(ast::StmtImportFrom { module: Some(module), names, level: 0, .. })
-            if module.as_str() == "typing" && names.first().is_some_and(|alias| alias.name.as_str() != "*") =>
-        {
-            Some(names)
-        }
-        _ => None,
-    });
-    let edit = match existing {
+    let existing = from_imports(body, "typing")
+        .map(|import| &import.names)
+        .find(|names| names.first().is_some_and(|alias| alias.name.as_str() != "*"));
+    let import = match existing {
         // Ruff's isort orders names by type, constants such as `TYPE_CHECKING` before classes such as `Final`, then
         // alphabetically, so `Final` goes before the first name that sorts after it.
-        Some(names) => match names.iter().find(|alias| isort_key(alias.name.as_str()) > isort_key("Final")) {
-            Some(alias) => Some(Edit::insertion("Final, ".to_owned(), alias.start())),
-            None => Some(Edit::insertion(", Final".to_owned(), names.last().expect("an import names something").end())),
-        },
-        None => ensure_import(checker, "typing", Some("Final"), at)?.1,
+        Some(names) => {
+            Import::Add(match names.iter().find(|alias| isort_key(alias.name.as_str()) > isort_key("Final")) {
+                Some(alias) => Edit::insertion("Final, ".to_owned(), alias.start()),
+                None => Edit::insertion(", Final".to_owned(), names.last().expect("an import names something").end()),
+            })
+        }
+        None => ensure_import(checker, "typing", Some("Final"), at)?,
     };
-    Some(("Final".to_owned(), edit))
+    Some(("Final".to_owned(), import))
 }

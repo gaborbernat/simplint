@@ -7,11 +7,12 @@ use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use super::class_order::Arrangement;
-use super::definition_time::{class_runtime_names, definition_name, definition_time_exprs, signature_annotations};
-use super::reorder::{Suite, moved_span, moves_definition_unsafely, reorder_fix};
+use super::definition_time::{class_runtime_names, definition_name, definition_time_exprs};
+use super::reorder::{Read, Suite, depth_first, moved_span, moves_definition_unsafely, reorder_fix};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::semantic::{BindingKind, Evaluation, Reference};
+use crate::syntax::signature_annotations;
 
 pub fn definition_before_use(checker: &Checker) {
     let body = checker.body();
@@ -31,7 +32,7 @@ pub fn definition_before_use(checker: &Checker) {
 
 #[derive(Default)]
 struct Uses {
-    deferred: FxHashMap<usize, Vec<(usize, TextSize)>>,
+    deferred: FxHashMap<usize, Vec<Read>>,
     runtime: FxHashSet<usize>,
 }
 
@@ -87,7 +88,10 @@ fn module_uses(checker: &Checker, body: &[Stmt], runtime_names: &FxHashMap<TextR
                     uses.runtime.insert(index);
                 }
                 Evaluation::Deferred if reference.statement != index => {
-                    uses.deferred.entry(index).or_default().push((reference.statement, reference.range.start()));
+                    uses.deferred
+                        .entry(index)
+                        .or_default()
+                        .push(Read { reader: reference.statement, at: reference.range.start() });
                 }
                 Evaluation::Deferred | Evaluation::Annotation => {}
             }
@@ -233,13 +237,9 @@ fn report_misplaced(checker: &Checker, suite: &Suite, expected: &[usize], owners
     // One fix reorders the whole block, so only the block's first visible report carries it: Ruff renders a report's
     // fix in full, and repeating a block-sized edit on every report made output slow on files with many misplaced
     // definitions.
-    let offer_at = checker.first_unsuppressed(Rule::DefinitionBeforeUse, reports.iter().map(|(range, ..)| *range));
-    for (range, message, title) in reports {
-        let fix = (offer_at == Some(range))
-            .then(|| reorder_fix(checker, suite, expected, span.clone(), shifts_unsafely))
-            .flatten();
-        checker.report_fix(Rule::DefinitionBeforeUse, range, message, fix, title);
-    }
+    checker.report_shared_fix(Rule::DefinitionBeforeUse, reports, || {
+        reorder_fix(checker, suite, expected, span.clone(), shifts_unsafely)
+    });
 }
 
 // A `def` that moves past a decorator or a default changes when Python evaluates it, so a definition whose move is
@@ -250,12 +250,12 @@ fn shifts_unsafely(stmt: &Stmt) -> bool {
 
 fn owners(length: usize, uses: &Uses) -> Vec<Option<usize>> {
     let mut owners: Vec<Option<usize>> = (0..length)
-        .map(|index| uses.deferred.get(&index).and_then(|users| users.iter().map(|(user, _)| *user).min()))
+        .map(|index| uses.deferred.get(&index).and_then(|users| users.iter().map(|read| read.reader).min()))
         .collect();
     let mut dependencies: FxHashMap<usize, Vec<usize>> = FxHashMap::default();
     for (dependency, users) in &uses.deferred {
-        for (user, _) in users {
-            dependencies.entry(*user).or_default().push(*dependency);
+        for read in users {
+            dependencies.entry(read.reader).or_default().push(*dependency);
         }
     }
     let mut pinned: Vec<usize> = uses.runtime.iter().copied().collect();
@@ -309,26 +309,21 @@ fn owners(length: usize, uses: &Uses) -> Vec<Option<usize>> {
 }
 
 fn expected_order(length: usize, owners: &[Option<usize>], uses: &Uses) -> Vec<usize> {
-    let mut children: FxHashMap<usize, Vec<(TextSize, usize)>> = FxHashMap::default();
+    let mut children: Vec<Vec<(TextSize, usize)>> = vec![Vec::new(); length];
     for (index, owner) in owners.iter().enumerate() {
         if let Some(owner) = owner {
-            let first = uses.deferred[&index].iter().filter(|(user, _)| user == owner).map(|(_, offset)| *offset).min();
-            children.entry(*owner).or_default().push((first.unwrap_or_default(), index));
+            let first = uses.deferred[&index].iter().filter(|read| read.reader == *owner).map(|read| read.at).min();
+            children[*owner].push((first.unwrap_or_default(), index));
         }
     }
-    for list in children.values_mut() {
-        list.sort_unstable();
-    }
+    let children: Vec<Vec<usize>> = children
+        .into_iter()
+        .map(|mut list| {
+            list.sort_unstable();
+            list.into_iter().map(|(_, child)| child).collect()
+        })
+        .collect();
     let mut order = Vec::with_capacity(length);
-    for root in (0..length).filter(|index| owners[*index].is_none()) {
-        order.push(root);
-        let mut stack: Vec<usize> = children.get(&root).into_iter().flatten().rev().map(|(_, child)| *child).collect();
-        while let Some(index) = stack.pop() {
-            order.push(index);
-            if let Some(list) = children.get(&index) {
-                stack.extend(list.iter().rev().map(|(_, child)| *child));
-            }
-        }
-    }
+    depth_first((0..length).filter(|index| owners[*index].is_none()), &children, |index| order.push(index));
     order
 }

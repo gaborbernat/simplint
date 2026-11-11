@@ -1,6 +1,6 @@
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::docstrings::rst::{FieldKind, field_deletion};
+use crate::rules::docstrings::rst::FieldKind;
 use rustc_hash::FxHashSet;
 
 pub fn rst_unknown_param(checker: &Checker) {
@@ -19,7 +19,7 @@ pub fn rst_unknown_param(checker: &Checker) {
                 Rule::RstUnknownParam,
                 field.range_in(&target.docstring),
                 format!("`{text}` documents `{subject}`, which `{}` does not take", target.name()),
-                field_deletion(checker, &target.docstring, &[field]),
+                field.removal(checker, &target.docstring),
                 format!("Remove `{text}`"),
             );
         }

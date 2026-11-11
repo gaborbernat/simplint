@@ -4,13 +4,14 @@ use std::collections::BTreeSet;
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
-use ruff_text_size::{Ranged, TextRange};
+use ruff_text_size::TextRange;
 use rustc_hash::FxHashSet;
 
 use super::Parts;
 use super::module_reads::{is_module_load, is_module_type};
 use crate::project::computed_reads::ComputedReads;
-use crate::syntax::{attribute_call, is_prose_statement};
+use crate::project::constructors::discarded_call;
+use crate::syntax::{attribute_call, identifier_words, is_prose_statement};
 
 // The facts that need no scopes, collected in one walk of the module rather than a walk for each, which would visit
 // every node again.
@@ -50,7 +51,7 @@ impl<'a> Scan<'a> {
 
     // A word repeats across the strings, so it is copied once, when it first appears.
     fn add_words(&mut self, text: &str) {
-        for word in text.split(|char: char| !(char.is_alphanumeric() || char == '_')).filter(|word| !word.is_empty()) {
+        for word in identifier_words(text).filter(|word| !word.is_empty()) {
             if !self.words.contains(word) {
                 self.words.insert(word.to_owned());
             }
@@ -60,12 +61,7 @@ impl<'a> Scan<'a> {
     // Before a statement's children, since a binding is read by the statements that follow it.
     fn open(&mut self, stmt: &'a Stmt) {
         match stmt {
-            Stmt::Expr(ast::StmtExpr { value, .. })
-                if self.parts.has(Parts::CALL_CONTEXTS)
-                    && let Expr::Call(call) = value.as_ref() =>
-            {
-                self.discarded.insert(call.range());
-            }
+            Stmt::Expr(_) if self.parts.has(Parts::CALL_CONTEXTS) => self.discarded.extend(discarded_call(stmt)),
             Stmt::Global(ast::StmtGlobal { names, .. }) if self.parts.has(Parts::GLOBAL_NAMES) => {
                 self.global_names.extend(names.iter().map(|name| name.as_str().to_owned()));
             }
@@ -192,4 +188,11 @@ fn attribute_load(expr: &Expr) -> Option<&str> {
         }
         _ => attribute_call(expr, &["getattr"])?.1.as_string_literal_expr().map(|name| name.value.to_str()),
     }
+}
+
+// The words a file's string literals hold, sorted and one per line, which the cache reads back in one allocation.
+pub(super) fn string_words(words: FxHashSet<String>) -> String {
+    let mut words: Vec<String> = words.into_iter().collect();
+    words.sort_unstable();
+    words.join("\n")
 }

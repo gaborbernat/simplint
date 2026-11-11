@@ -27,6 +27,7 @@ use super::append::is_list_append;
 use super::django::unordered_model_statements;
 use super::runtime::Runtime;
 use crate::semantic::future_import;
+use crate::syntax::{pattern_capture, signature_annotations};
 
 pub struct Model<'a> {
     pub semantic: SemanticModel<'a>,
@@ -37,6 +38,7 @@ pub struct Model<'a> {
     pub django_reports: FxHashSet<TextRange>,
     pub list_appends: FxHashSet<TextRange>,
     pub type_checking_stubs: FxHashSet<TextRange>,
+    pub comprehensions: Vec<(TextRange, TextRange)>,
 }
 
 pub fn build<'a>(
@@ -63,6 +65,7 @@ pub fn build<'a>(
         django_reports: FxHashSet::default(),
         list_appends: FxHashSet::default(),
         type_checking_stubs: FxHashSet::default(),
+        comprehensions: Vec::new(),
     };
     builder.visit_body(body);
     let module = builder.semantic.snapshot();
@@ -76,6 +79,7 @@ pub fn build<'a>(
         django_reports: builder.django_reports,
         list_appends: builder.list_appends,
         type_checking_stubs: builder.type_checking_stubs,
+        comprehensions: builder.comprehensions,
     }
 }
 
@@ -90,6 +94,7 @@ struct Builder<'a> {
     django_reports: FxHashSet<TextRange>,
     list_appends: FxHashSet<TextRange>,
     type_checking_stubs: FxHashSet<TextRange>,
+    comprehensions: Vec<(TextRange, TextRange)>,
 }
 
 impl Builder<'_> {
@@ -223,19 +228,19 @@ impl<'a> Visitor<'a> for Builder<'a> {
                 ExprContext::Del | ExprContext::Invalid => self.handle_node_delete(name),
             },
             Expr::ListComp(ast::ExprListComp { elt, generators, .. }) => {
-                self.visit_generators(GeneratorKind::ListComprehension, generators);
+                self.visit_generators(GeneratorKind::ListComprehension, expr.range(), generators);
                 self.visit_expr(elt);
             }
             Expr::SetComp(ast::ExprSetComp { elt, generators, .. }) => {
-                self.visit_generators(GeneratorKind::SetComprehension, generators);
+                self.visit_generators(GeneratorKind::SetComprehension, expr.range(), generators);
                 self.visit_expr(elt);
             }
             Expr::Generator(ast::ExprGenerator { elt, generators, .. }) => {
-                self.visit_generators(GeneratorKind::Generator, generators);
+                self.visit_generators(GeneratorKind::Generator, expr.range(), generators);
                 self.visit_expr(elt);
             }
             Expr::DictComp(ast::ExprDictComp { key, value, generators, .. }) => {
-                self.visit_generators(GeneratorKind::DictComprehension, generators);
+                self.visit_generators(GeneratorKind::DictComprehension, expr.range(), generators);
                 if let Some(key) = key {
                     self.visit_expr(key);
                 }
@@ -290,10 +295,7 @@ impl<'a> Visitor<'a> for Builder<'a> {
     }
 
     fn visit_pattern(&mut self, pattern: &'a Pattern) {
-        if let Pattern::MatchAs(ast::PatternMatchAs { name: Some(name), .. })
-        | Pattern::MatchStar(ast::PatternMatchStar { name: Some(name), .. })
-        | Pattern::MatchMapping(ast::PatternMatchMapping { rest: Some(name), .. }) = pattern
-        {
+        if let Some(name) = pattern_capture(pattern) {
             self.add_binding(name, name.range(), BindingKind::Assignment);
         }
         visitor::walk_pattern(self, pattern);
@@ -359,7 +361,7 @@ impl<'a> Builder<'a> {
     }
 
     fn visit_function_def(&mut self, stmt: &'a Stmt, function_def: &'a ast::StmtFunctionDef) {
-        let ast::StmtFunctionDef { name, parameters, decorator_list, returns, type_params, .. } = function_def;
+        let ast::StmtFunctionDef { name, parameters, decorator_list, type_params, .. } = function_def;
         for decorator in decorator_list {
             self.visit_decorator(decorator);
         }
@@ -376,7 +378,7 @@ impl<'a> Builder<'a> {
             self.visit_type_params(type_params);
         }
         let runtime = self.runtime.function(function_def, &self.semantic);
-        for annotation in parameters.iter().filter_map(AnyParameterRef::annotation).chain(returns.as_deref()) {
+        for annotation in signature_annotations(function_def) {
             self.visit_annotation_as(annotation, runtime);
         }
         self.semantic.push_scope(ScopeKind::Function(function_def));
@@ -400,8 +402,9 @@ impl<'a> Builder<'a> {
         self.semantic.current_scope_mut().add(name, binding_id);
     }
 
-    fn visit_generators(&mut self, kind: GeneratorKind, generators: &'a [Comprehension]) {
+    fn visit_generators(&mut self, kind: GeneratorKind, range: TextRange, generators: &'a [Comprehension]) {
         // The first iterable evaluates in the enclosing scope; everything after it in the comprehension's own scope.
+        self.comprehensions.push((range, generators[0].iter.range()));
         self.visit_expr(&generators[0].iter);
         let is_async = generators.iter().any(|generator| generator.is_async);
         self.semantic.push_scope(ScopeKind::Generator { kind, is_async });

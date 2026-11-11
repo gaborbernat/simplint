@@ -2,10 +2,11 @@
 // name's underscores say, what a module's `__all__` and strings hold, and where the line above a statement starts.
 use std::borrow::Cow;
 
-use ruff_python_ast::helpers::is_dunder;
+use ruff_python_ast::AnyParameterRef;
+use ruff_python_ast::helpers::{any_over_expr, is_dunder};
 use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, Expr, Stmt};
+use ruff_python_ast::{self as ast, Expr, OperatorPrecedence, Stmt};
 use ruff_python_parser::parse_expression;
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
@@ -45,7 +46,8 @@ impl Nesting {
 
     // The indices of the ranges that hold `range`, the innermost first. A range that holds `range` starts no later
     // than it, and each such range encloses the last one that starts before it, so the holders are that one and the
-    // ranges it is nested in.
+    // ranges it is nested in. Exact for a non-empty `range`, and for an empty one that no two ranges touch at; there it
+    // returns one of the two holders a linear scan finds.
     pub fn holders(&self, range: TextRange) -> impl Iterator<Item = usize> + '_ {
         let last = self.order.partition_point(|&(index, _)| self.ranges[index].start() <= range.start()).checked_sub(1);
         std::iter::successors(last, |&position| self.order[position].1)
@@ -171,6 +173,69 @@ pub fn attribute_call<'a>(expr: &'a Expr, builtins: &[&str]) -> Option<(&'a Expr
 // The name an `import` alias binds: its `as` name, or the name it imports.
 pub fn alias_binding(alias: &ast::Alias) -> &str {
     alias.asname.as_ref().unwrap_or(&alias.name).as_str()
+}
+
+// The name an `import` binds in its scope: its `as` name, or the first part of a dotted module name, which `import a.b`
+// binds as `a`.
+pub fn alias_root_binding(alias: &ast::Alias) -> &str {
+    alias
+        .asname
+        .as_ref()
+        .map_or_else(|| alias.name.as_str().split('.').next().unwrap_or_default(), |name| name.as_str())
+}
+
+// The aliases an import statement binds, and none for any other statement.
+pub fn import_aliases(stmt: &Stmt) -> &[ast::Alias] {
+    match stmt {
+        Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => names,
+        _ => &[],
+    }
+}
+
+// The `from` imports of `module` among the statements of a body, which for a module body are its top-level imports.
+pub fn from_imports<'a>(body: &'a [Stmt], module: &'a str) -> impl Iterator<Item = &'a ast::StmtImportFrom> {
+    body.iter().filter_map(move |stmt| match stmt {
+        Stmt::ImportFrom(import)
+            if import.level == 0 && import.module.as_ref().is_some_and(|name| name.as_str() == module) =>
+        {
+            Some(import)
+        }
+        _ => None,
+    })
+}
+
+// The name a match pattern captures, as in `case [*rest]` or `case {**rest}`.
+pub fn pattern_capture(pattern: &ast::Pattern) -> Option<&ast::Identifier> {
+    match pattern {
+        ast::Pattern::MatchAs(ast::PatternMatchAs { name, .. })
+        | ast::Pattern::MatchStar(ast::PatternMatchStar { name, .. })
+        | ast::Pattern::MatchMapping(ast::PatternMatchMapping { rest: name, .. }) => name.as_ref(),
+        _ => None,
+    }
+}
+
+// The annotations in a `def`'s signature: its parameters and its return type.
+pub fn signature_annotations(function: &ast::StmtFunctionDef) -> impl Iterator<Item = &Expr> {
+    function.parameters.iter().filter_map(AnyParameterRef::annotation).chain(function.returns.as_deref())
+}
+
+// The one positional argument of a call, when it has no keyword arguments.
+pub fn sole_argument(call: &ast::ExprCall) -> Option<&Expr> {
+    match call.arguments.args.as_ref() {
+        [argument] if call.arguments.keywords.is_empty() => Some(argument),
+        _ => None,
+    }
+}
+
+// The argument a call passes at `position`, or under `keyword` when it is not passed by position.
+pub fn argument<'a>(call: &'a ast::ExprCall, position: usize, keyword: &str) -> Option<&'a Expr> {
+    call.arguments.args.get(position).or_else(|| {
+        call.arguments
+            .keywords
+            .iter()
+            .find(|item| item.arg.as_ref().is_some_and(|name| name.as_str() == keyword))
+            .map(|item| &item.value)
+    })
 }
 
 // Whether `expr` runs its body once per pass of the iteration around it: a lambda or a comprehension.
@@ -351,6 +416,10 @@ pub fn module_statements(body: &[Stmt]) -> impl Iterator<Item = &Stmt> {
     })
 }
 
+pub fn statement_index(body: &[Stmt], offset: TextSize) -> usize {
+    body.partition_point(|stmt| stmt.end() <= offset)
+}
+
 pub enum Exports<'a> {
     Absent,
     Listed(Listing<'a>),
@@ -419,7 +488,7 @@ pub fn dunder_all(body: &[Stmt]) -> Exports<'_> {
     let mut exports = Exports::Absent;
     for stmt in body {
         let (resets, elements): (bool, Option<Vec<&Expr>>) = if let Some(binding) = all_binding(stmt) {
-            (binding.operator.is_none(), all_literal(stmt).map(|(_, elts)| elts.iter().collect()))
+            (binding.operator.is_none(), all_literal(stmt).map(|literal| literal.elements.iter().collect()))
         } else if let Some((method, arguments)) = all_mutation(stmt) {
             let elements = match (method, &*arguments.args) {
                 ("append", [element]) => Some(vec![element]),
@@ -475,7 +544,12 @@ pub fn all_mutation(stmt: &Stmt) -> Option<(&str, &ast::Arguments)> {
     Some((attribute.attr.as_str(), &call.arguments))
 }
 
-pub fn all_literal(stmt: &Stmt) -> Option<(TextRange, &[Expr])> {
+pub struct AllLiteral<'a> {
+    pub value: TextRange,
+    pub elements: &'a [Expr],
+}
+
+pub fn all_literal(stmt: &Stmt) -> Option<AllLiteral<'_>> {
     // In `alias = __all__ = [...]` the list has a second name that can change it out of sight.
     if let Stmt::Assign(ast::StmtAssign { targets, .. }) = stmt
         && !targets.first().is_some_and(is_all_target)
@@ -486,7 +560,7 @@ pub fn all_literal(stmt: &Stmt) -> Option<(TextRange, &[Expr])> {
         AllBinding {
             value: Some(value @ (Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. }))),
             operator: None | Some(ast::Operator::Add),
-        } => Some((value.range(), elts)),
+        } => Some(AllLiteral { value: value.range(), elements: elts }),
         _ => None,
     }
 }
@@ -495,16 +569,26 @@ pub fn is_all_target(target: &Expr) -> bool {
     is_name(target, "__all__")
 }
 
+// The expressions an assignment target stores into, with tuples, lists and starred targets taken apart.
+pub fn target_leaves(target: &Expr) -> Vec<&Expr> {
+    match target {
+        Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => {
+            elts.iter().flat_map(target_leaves).collect()
+        }
+        Expr::Starred(ast::ExprStarred { value, .. }) => target_leaves(value),
+        _ => vec![target],
+    }
+}
+
 // The names an assignment target binds, through tuple and list unpacking and starred targets.
 pub fn target_names(target: &Expr) -> Vec<&str> {
-    match target {
-        Expr::Name(ast::ExprName { id, .. }) => vec![id.as_str()],
-        Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => {
-            elts.iter().flat_map(target_names).collect()
-        }
-        Expr::Starred(ast::ExprStarred { value, .. }) => target_names(value),
-        _ => Vec::new(),
-    }
+    target_leaves(target).into_iter().filter_map(Expr::as_name_expr).map(|name| name.id.as_str()).collect()
+}
+
+// The pieces of a text split at each character that is not a letter, digit or underscore, so an identifier comes out as
+// one piece. A separator at either end, or two in a row, yields an empty piece, which a caller that needs only words skips.
+pub fn identifier_words(text: &str) -> impl Iterator<Item = &str> {
+    text.split(|char: char| !(char.is_alphanumeric() || char == '_'))
 }
 
 // The text of every string and bytes literal of the module, and of each literal part of an f-string or t-string, with
@@ -630,4 +714,77 @@ impl<'a> Visitor<'a> for TypeNames<'_> {
             _ => visitor::walk_expr(self, expr),
         }
     }
+}
+
+// Whether an `if` test is `TYPE_CHECKING`, bare or as `typing.TYPE_CHECKING`, which is false at run time. A module that
+// binds it to a true constant runs the block, so the name is an ordinary flag there.
+pub fn is_type_checking_name(test: &Expr) -> bool {
+    match test {
+        Expr::Name(name) => name.id.as_str() == "TYPE_CHECKING",
+        Expr::Attribute(attribute) => attribute.attr.as_str() == "TYPE_CHECKING",
+        _ => false,
+    }
+}
+
+// The top-level package of a dotted module name, which the standard library lists.
+pub(crate) fn top_level(module: &str) -> &str {
+    module.split_once('.').map_or(module, |(root, _)| root)
+}
+
+// Whether the standard library of the minor version ships the module's top-level package.
+pub(crate) fn is_stdlib_root(minor: u8, module: &str) -> bool {
+    ruff_python_stdlib::sys::is_known_standard_library(minor, top_level(module))
+}
+
+// Whether the statement is a `lazy` import already, which needs no `lazy` of its own.
+pub fn is_lazy(stmt: &Stmt) -> bool {
+    matches!(
+        stmt,
+        Stmt::Import(ast::StmtImport { is_lazy: true, .. })
+            | Stmt::ImportFrom(ast::StmtImportFrom { is_lazy: true, .. })
+    )
+}
+
+pub fn docstring(body: &[Stmt]) -> Option<&ast::ExprStringLiteral> {
+    match body.first()? {
+        Stmt::Expr(ast::StmtExpr { value, .. }) => value.as_string_literal_expr(),
+        _ => None,
+    }
+}
+
+pub fn needs_parentheses(value: &Expr) -> bool {
+    OperatorPrecedence::from_expr(value) < OperatorPrecedence::CallAttribute
+        || matches!(value, Expr::Tuple(tuple) if !tuple.parenthesized)
+}
+
+pub fn expr_mentions(expr: &Expr, name: &str) -> bool {
+    any_over_expr(expr, |expr| is_name(expr, name))
+}
+
+// A module-level `if sys.version_info < ...: raise ...` or `sys.exit(...)` exists to run on interpreters older than the
+// target and report them, so fixes must not add syntax or imports those
+// interpreters lack.
+pub fn has_version_gate(body: &[Stmt]) -> bool {
+    body.iter().filter_map(Stmt::as_if_stmt).any(|gate| {
+        any_over_expr(&gate.test, &|expr: &Expr| last_segment(expr) == Some("version_info"))
+            && gate.body.last().is_some_and(|last| match last {
+                Stmt::Raise(_) => true,
+                Stmt::Expr(ast::StmtExpr { value, .. }) => {
+                    value.as_call_expr().is_some_and(|call| last_segment(&call.func) == Some("exit"))
+                }
+                _ => false,
+            })
+    })
+}
+
+// `name = value` or `name: annotation = value`, binding a single plain name.
+pub fn single_assignment(stmt: &Stmt) -> Option<(&ast::ExprName, Option<&Expr>, &Expr)> {
+    let (target, annotation, value) = match stmt {
+        Stmt::Assign(ast::StmtAssign { targets, value, .. }) if targets.len() == 1 => (&targets[0], None, value),
+        Stmt::AnnAssign(ast::StmtAnnAssign { target, annotation, value: Some(value), .. }) => {
+            (target.as_ref(), Some(annotation.as_ref()), value)
+        }
+        _ => return None,
+    };
+    Some((target.as_name_expr()?, annotation, value))
 }

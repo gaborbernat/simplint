@@ -1,4 +1,4 @@
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::{Applicability, Edit};
 use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_source_file::LineRanges;
@@ -6,9 +6,9 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::{expr_mentions, is_alone_on_lines, single_assignment};
-use crate::syntax::MOCK_CLASSES;
-use crate::syntax::{for_each_body, last_segment};
+use crate::rules::edits::{Blanks, fix_of, statement_lines};
+use crate::rules::testing::recognize::is_mock_constructor;
+use crate::syntax::{expr_mentions, for_each_body, last_segment, single_assignment};
 
 pub fn mock_attribute_assignment(checker: &Checker) {
     for_each_body(checker.body(), &mut |statements, _| {
@@ -16,7 +16,7 @@ pub fn mock_attribute_assignment(checker: &Checker) {
             let Some((target, _, Expr::Call(call))) = single_assignment(stmt) else {
                 continue;
             };
-            if !last_segment(&call.func).is_some_and(|last| MOCK_CLASSES.contains(&last)) {
+            if !is_mock_constructor(&call.func) {
                 continue;
             }
             let assignments = following_assignments(target.id.as_str(), &statements[index + 1..]);
@@ -81,53 +81,55 @@ fn report_assignments(checker: &Checker, call: &ast::ExprCall, assignments: &[As
     let is_autospec = last_segment(&call.func) == Some("create_autospec");
     // A `**` splat may already carry any of the attributes, so the merged call could repeat a keyword.
     let fixable = call.arguments.keywords.iter().all(|keyword| keyword.arg.is_some())
-        && assignments.iter().all(|assignment| is_alone_on_lines(source, assignment.stmt.range()))
+        && assignments.iter().all(|assignment| checker.is_alone_on_lines(assignment.stmt.range()))
         && assignments
             .iter()
             .all(|assignment| !checker.has_comment_in(source.full_lines_range(assignment.stmt.range())));
-    let fix = fixable.then(|| {
-        let close = call.arguments.end() - TextSize::from(1);
-        let mut keywords = Vec::new();
-        let mut edits: Vec<Edit> = assignments
-            .iter()
-            .map(|assignment| Edit::range_deletion(source.full_lines_range(assignment.stmt.range())))
-            .collect();
-        for assignment in assignments {
-            let text = checker.text(assignment.value.range());
-            // As a keyword argument, a bare tuple would split into arguments, and `:=` or `yield` need brackets.
-            let bare = match assignment.value {
-                Expr::Tuple(tuple) => !tuple.parenthesized,
-                Expr::Named(_) | Expr::Yield(_) | Expr::YieldFrom(_) => true,
-                _ => false,
-            };
-            let value = if bare { format!("({text})") } else { text.to_owned() };
-            if let Some(existing) = call.arguments.find_keyword(assignment.attr) {
-                edits.push(Edit::range_replacement(value, existing.value.range()));
-            } else {
-                keywords.push(format!("{}={value}", assignment.attr));
+    let fix = fixable
+        .then(|| {
+            let close = call.arguments.end() - TextSize::from(1);
+            let mut keywords = Vec::new();
+            let mut edits: Vec<Edit> = assignments
+                .iter()
+                .map(|assignment| Edit::range_deletion(statement_lines(source, assignment.stmt.range(), Blanks::Keep)))
+                .collect();
+            for assignment in assignments {
+                let text = checker.text(assignment.value.range());
+                // As a keyword argument, a bare tuple would split into arguments, and `:=` or `yield` need brackets.
+                let bare = match assignment.value {
+                    Expr::Tuple(tuple) => !tuple.parenthesized,
+                    Expr::Named(_) | Expr::Yield(_) | Expr::YieldFrom(_) => true,
+                    _ => false,
+                };
+                let value = if bare { format!("({text})") } else { text.to_owned() };
+                if let Some(existing) = call.arguments.find_keyword(assignment.attr) {
+                    edits.push(Edit::range_replacement(value, existing.value.range()));
+                } else {
+                    keywords.push(format!("{}={value}", assignment.attr));
+                }
             }
-        }
-        if !keywords.is_empty() {
-            let separator = if call.arguments.is_empty() {
-                ""
-            } else if ends_with_comma(checker, TextRange::new(call.arguments.start(), close)) {
-                " "
+            if !keywords.is_empty() {
+                let separator = if call.arguments.is_empty() {
+                    ""
+                } else if ends_with_comma(checker, TextRange::new(call.arguments.start(), close)) {
+                    " "
+                } else {
+                    ", "
+                };
+                edits.push(Edit::insertion(format!("{separator}{}", keywords.join(", ")), close));
+            }
+            // `create_autospec` of a function returns a wrapper that hands other keywords to the inner mock, so only
+            // `return_value` and `side_effect` reach the object the test holds.
+            let applicability = if is_autospec
+                && !assignments.iter().all(|assignment| matches!(assignment.attr, "return_value" | "side_effect"))
+            {
+                Applicability::Unsafe
             } else {
-                ", "
+                Applicability::Safe
             };
-            edits.push(Edit::insertion(format!("{separator}{}", keywords.join(", ")), close));
-        }
-        let first = edits.remove(0);
-        // `create_autospec` of a function returns a wrapper that hands other keywords to the inner mock, so only
-        // `return_value` and `side_effect` reach the object the test holds.
-        if is_autospec
-            && !assignments.iter().all(|assignment| matches!(assignment.attr, "return_value" | "side_effect"))
-        {
-            Fix::unsafe_edits(first, edits)
-        } else {
-            Fix::safe_edits(first, edits)
-        }
-    });
+            fix_of(edits, applicability)
+        })
+        .flatten();
     let names: Vec<&str> = assignments.iter().map(|assignment| assignment.attr).collect();
     checker.report_fix(
         Rule::MockAttributeAssignment,

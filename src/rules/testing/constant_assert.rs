@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::helpers::{Truthiness, any_over_expr, contains_effect};
 use ruff_python_ast::{self as ast, BoolOp, CmpOp, Expr, Operator, Stmt, UnaryOp};
@@ -8,8 +8,7 @@ use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::edits::delete_statement;
-use crate::rules::is_alone_on_lines;
+use crate::rules::edits::{Blanks, statement_removal};
 use crate::syntax::for_each_body;
 
 pub fn constant_assert(checker: &Checker) {
@@ -75,11 +74,16 @@ fn report_constant_assert(checker: &Checker, stmt: &Stmt, assert: &ast::StmtAsse
             let test = test.as_ref();
             Fix::unsafe_edit(Edit::range_replacement(format!("all{}", checker.text(test)), test.range()))
         }),
-        _ => is_deletable(checker, stmt, test).then(|| {
-            let edit = delete_statement(checker.source, stmt, statements);
-            // A template raises when its fields do not fit its arguments, and deleting it would hide that error.
-            if formats_to_text(test) { Fix::unsafe_edit(edit) } else { Fix::safe_edit(edit) }
-        }),
+        _ => is_deletable(checker, stmt, test)
+            .then(|| statement_removal(checker, stmt.range(), statements.len(), None, Blanks::Keep))
+            .flatten()
+            .map(|edit| {
+                // A template raises when its fields do not fit its arguments, and deleting it would hide that error.
+                Fix::applicable_edit(
+                    edit,
+                    if formats_to_text(test) { Applicability::Unsafe } else { Applicability::Safe },
+                )
+            }),
     };
     let title = match test.as_ref() {
         Expr::Tuple(_) => "Split the tuple into a test and a message",
@@ -96,7 +100,7 @@ fn report_constant_assert(checker: &Checker, stmt: &Stmt, assert: &ast::StmtAsse
 }
 
 fn is_deletable(checker: &Checker, stmt: &Stmt, test: &Expr) -> bool {
-    is_alone_on_lines(checker.source, stmt.range()) && !has_effect(checker, test)
+    checker.is_alone_on_lines(stmt.range()) && !has_effect(checker, test)
 }
 
 // A computed value and a format or `%` template read only literals, so only the arguments of such a template can

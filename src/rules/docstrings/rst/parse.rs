@@ -2,10 +2,11 @@ use ruff_python_ast::{self as ast, StringFlags};
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
+use crate::rules::docstrings::lines::{doc_lines, indent_width};
 
 // What a field documents, by its name: the info fields of Sphinx's Python domain and their aliases, and the `yields` and
 // `ytype` fields documentation tools accept for generators.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum FieldKind {
     Param,
     Type,
@@ -20,21 +21,27 @@ pub(crate) enum FieldKind {
     Unknown,
 }
 
-impl FieldKind {
-    fn of(name: &str) -> Self {
-        match name {
-            "param" | "parameter" | "arg" | "argument" | "key" | "keyword" | "kwarg" | "kwparam" => Self::Param,
-            "type" | "paramtype" => Self::Type,
-            "raises" | "raise" | "except" | "exception" => Self::Raises,
-            "var" | "ivar" | "cvar" => Self::Var,
-            "vartype" => Self::VarType,
-            "returns" | "return" => Self::Returns,
-            "rtype" => Self::ReturnType,
-            "yields" | "yield" => Self::Yields,
-            "ytype" => Self::YieldType,
-            "meta" => Self::Meta,
-            _ => Self::Unknown,
-        }
+// The kind of a field by its first word, and the name Sphinx reads it as when the word is an alias. `var`, `ivar` and
+// `cvar` have no name of their own: Sphinx renders them alike, yet `rst-attribute-kind` tells instance attributes from
+// class variables by them.
+fn field_name(word: &str) -> (FieldKind, Option<&'static str>) {
+    match word {
+        "param" => (FieldKind::Param, None),
+        "parameter" | "arg" | "argument" | "key" | "keyword" | "kwarg" | "kwparam" => (FieldKind::Param, Some("param")),
+        "type" => (FieldKind::Type, None),
+        "paramtype" => (FieldKind::Type, Some("type")),
+        "raises" => (FieldKind::Raises, None),
+        "raise" | "except" | "exception" => (FieldKind::Raises, Some("raises")),
+        "var" | "ivar" | "cvar" => (FieldKind::Var, None),
+        "vartype" => (FieldKind::VarType, None),
+        "returns" => (FieldKind::Returns, None),
+        "return" => (FieldKind::Returns, Some("returns")),
+        "rtype" => (FieldKind::ReturnType, None),
+        "yields" => (FieldKind::Yields, None),
+        "yield" => (FieldKind::Yields, Some("yields")),
+        "ytype" => (FieldKind::YieldType, None),
+        "meta" => (FieldKind::Meta, None),
+        _ => (FieldKind::Unknown, None),
     }
 }
 
@@ -43,6 +50,8 @@ pub(crate) struct Field {
     pub(crate) kind: FieldKind,
     // The words between the colons: `param`, `int` and `count` above.
     pub(crate) words: Vec<String>,
+    // The name an alias of the field stands for, such as `param` for `:arg:`.
+    pub(crate) primary: Option<&'static str>,
     // Where the field and its continuation lines sit in the source, whole lines with their line break, and where the text
     // between its colons sits; `None` when escapes make the docstring's text differ from its source, or the field
     // shares the line of the opening quotes.
@@ -130,34 +139,19 @@ impl<'a> Docstring<'a> {
             _ => None,
         };
         let start = content.map(TextRange::start);
-        let lines: Vec<(TextSize, &str)> = text
-            .split_inclusive('\n')
-            .scan(TextSize::default(), |offset, line| {
-                let at = *offset;
-                *offset += TextSize::of(line);
-                Some((at, line))
-            })
-            .collect();
-        let indent = |line: &str| line.len() - line.trim_start().len();
-        let base = lines
-            .iter()
-            .skip(1)
-            .map(|(_, line)| line.trim_end())
-            .filter(|line| !line.is_empty())
-            .map(indent)
-            .min()
-            .unwrap_or_default();
+        let lines = doc_lines(text);
+        let base = lines.first().map_or(0, |line| line.indent);
         let mut fields: Vec<Field> = Vec::new();
         let mut sections = Vec::new();
         // The position and indentation of the field whose body a deeper line continues.
         let mut open: Option<(usize, usize)> = None;
         let mut text_since_field = false;
-        for (index, (offset, line)) in lines.iter().enumerate() {
-            let content = line.trim_end();
+        for (index, line) in lines.iter().enumerate() {
+            let content = line.text;
             if content.is_empty() {
                 continue;
             }
-            let level = if index == 0 { base } else { indent(content) };
+            let level = line.indent;
             let trimmed = content.trim_start();
             if level == base
                 && let Some(marker) = field_marker(trimmed)
@@ -166,14 +160,16 @@ impl<'a> Docstring<'a> {
                 let in_source = start.filter(|_| index > 0);
                 let description = trimmed[marker.len() + 2..].trim().to_owned();
                 let described = !description.is_empty();
-                let joins_text = index > 0 && open.is_none() && !lines[index - 1].1.trim().is_empty();
+                let joins_text = index > 0 && open.is_none() && !lines[index - 1].text.is_empty();
+                let (kind, primary) = field_name(&words[0]);
                 fields.push(Field {
-                    kind: FieldKind::of(&words[0]),
+                    kind,
                     words,
-                    lines: in_source.map(|start| TextRange::at(start + offset, TextSize::of(*line))),
+                    primary,
+                    lines: in_source.map(|start| TextRange::at(start + line.start, TextSize::of(line.raw))),
                     marker: in_source.map(|start| {
                         TextRange::at(
-                            start + offset + TextSize::try_from(level + 1).unwrap_or_default(),
+                            start + line.start + TextSize::try_from(level + 1).unwrap_or_default(),
                             TextSize::of(marker),
                         )
                     }),
@@ -192,14 +188,14 @@ impl<'a> Docstring<'a> {
                 field.description.push(' ');
                 field.description.push_str(trimmed);
                 if let (Some(start), Some(lines)) = (start, field.lines) {
-                    field.lines = Some(TextRange::new(lines.start(), start + offset + TextSize::of(*line)));
+                    field.lines = Some(TextRange::new(lines.start(), start + line.start + TextSize::of(line.raw)));
                 }
                 continue;
             }
             open = None;
             text_since_field = true;
             if level == base
-                && let Some(section) = section(trimmed, lines.get(index + 1).map(|(_, next)| next.trim_end()), level)
+                && let Some(section) = section(trimmed, lines.get(index + 1).map(|next| next.text), level)
             {
                 sections.push(section);
             }
@@ -210,6 +206,10 @@ impl<'a> Docstring<'a> {
 
     pub(crate) fn fields(&self, kinds: &[FieldKind]) -> impl Iterator<Item = &Field> {
         self.fields.iter().filter(move |field| kinds.contains(&field.kind))
+    }
+
+    pub(crate) fn subjects(&self, kinds: &[FieldKind]) -> impl Iterator<Item = &str> {
+        self.fields(kinds).filter_map(Field::subject)
     }
 
     pub(crate) fn has(&self, kind: FieldKind) -> bool {
@@ -258,7 +258,7 @@ fn is_section(heading: &str) -> bool {
 // `Args:` over indented lines, as Google style writes a section, or `Parameters` over a line of dashes, as numpydoc does.
 fn section(line: &str, next: Option<&str>, level: usize) -> Option<Section> {
     let next = next.filter(|next| !next.is_empty())?;
-    let next_level = next.len() - next.trim_start().len();
+    let next_level = indent_width(next);
     if let Some(heading) = line.strip_suffix(':').filter(|heading| is_section(heading))
         && next_level > level
     {
