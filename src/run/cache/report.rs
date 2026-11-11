@@ -218,8 +218,8 @@ impl StoredFix {
         }
     }
 
-    // `None` for a fix without edits, which no rule builds and which a cache file therefore cannot hold, or with an edit
-    // outside a source of `length` bytes.
+    // `None` for a fix without edits, which no rule builds and which a cache file therefore cannot hold, or with an
+    // edit outside a source of `length` bytes.
     fn fix(&self, length: usize) -> Option<Fix> {
         let applicability = match self.applicability {
             StoredApplicability::DisplayOnly => Applicability::DisplayOnly,
@@ -354,7 +354,10 @@ mod tests {
     #[test_case(
         Fix::unsafe_edits(
             Edit::range_deletion(range(0, 3)),
-            [Edit::insertion("import os\n".to_owned(), TextSize::new(12)), Edit::range_replacement("z".to_owned(), range(20, 25))],
+            [
+                Edit::insertion("import os\n".to_owned(), TextSize::new(12)),
+                Edit::range_replacement("z".to_owned(), range(20, 25)),
+            ],
         )
         .isolate(IsolationLevel::Group(7)) ; "unsafe_edits_in_a_group"
     )]

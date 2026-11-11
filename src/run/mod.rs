@@ -60,8 +60,8 @@ impl Resolved {
 // Ruff's cache directory, where simplint keeps its cache. A path from the command line or `RUFF_CACHE_DIR` is the
 // user's choice and stands wherever it points. Otherwise the repository being linted picks it, through `cache-dir` or a
 // link committed in place of the default, so it must stay inside the project root: the directory of the configuration
-// file, or the working directory without one. A `cache-dir` that leaves the root falls back to Ruff's default there, and
-// a default that leaves it too turns the cache off.
+// file, or the working directory without one. A `cache-dir` that leaves the root falls back to Ruff's default there,
+// and a default that leaves it too turns the cache off.
 pub(crate) fn choose_cache_dir(named: bool, config: &PyprojectConfig) -> Option<PathBuf> {
     let configured = &config.settings.cache_dir;
     if named {
