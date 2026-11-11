@@ -11,22 +11,18 @@ use ruff_python_semantic::{
 use ruff_text_size::TextRange;
 use rustc_hash::FxHashSet;
 
-use crate::syntax::{Exports, annotated_names, code_string_values, dunder_all, string_words};
+use crate::syntax::{annotated_names, export_names, type_string_words};
 
 pub fn unused_imports(model: &SemanticModel, body: &[Stmt]) -> FxHashSet<TextRange> {
-    let exports = dunder_all(body);
-    if matches!(exports, Exports::Dynamic) {
-        return FxHashSet::default();
-    }
     let scope = model.global_scope();
     if !scope.bindings().any(|(_, live)| is_import(model.binding(live))) {
         return FxHashSet::default();
     }
+    let exports = export_names(body);
     let annotated = annotated_names(body);
-    // Ruff reads the names that a string type expression spells, as `cast("X", value)` or a `TypeVar` bound does, and the
-    // model does not resolve them, so every word of a string of the module that is not prose counts as a read.
-    let strings = code_string_values(body);
-    let words = string_words(&strings);
+    // Ruff reads the names a string type expression spells, as `cast("X", value)` or a `TypeVar` bound does, and the
+    // model does not resolve them, so a word of such a string counts as a read.
+    let words = type_string_words(body);
     let mut unused = FxHashSet::default();
     for (name, live) in scope.bindings() {
         let binding = model.binding(live);
@@ -36,10 +32,11 @@ pub fn unused_imports(model: &SemanticModel, body: &[Stmt]) -> FxHashSet<TextRan
         if words.contains(name) {
             continue;
         }
-        let read = exports.lists(name) || annotated.contains(name);
+        let listed = exports.contains(name);
+        let read = listed || annotated.contains(name);
         let found =
             if scope.shadowed_bindings(live).nth(1).is_some() && has_simple_shadowed_bindings(model, scope, live) {
-                refined_unused(model, scope, live, name, exports.lists(name), annotated.contains(name))
+                refined_unused(model, scope, live, name, listed, annotated.contains(name))
             } else if read || copied_references(model, scope, live).next().is_some() {
                 Vec::new()
             } else {

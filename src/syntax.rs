@@ -8,6 +8,7 @@ use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, OperatorPrecedence, Stmt};
 use ruff_python_parser::parse_expression;
+use ruff_python_stdlib::typing::{is_literal_member, is_pep_593_generic_member, is_standard_library_generic_member};
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
 use rustc_hash::FxHashSet;
@@ -516,6 +517,77 @@ pub fn dunder_all(body: &[Stmt]) -> Exports<'_> {
     exports
 }
 
+// The names Ruff reads from the module's `__all__` bindings, in any block of the module but not in a function or class.
+// Ruff reads the strings of a list, a tuple, a `list()` or `tuple()` of one, and the operands of a `+` chain, and no
+// name that `extend` or `append` adds.
+pub fn export_names(body: &[Stmt]) -> FxHashSet<&str> {
+    let mut names = FxHashSet::default();
+    module_scope_statements(body, &mut |stmt| {
+        if let Some(value) = export_value(stmt) {
+            add_export_names(value, &mut names);
+        }
+    });
+    names
+}
+
+fn module_scope_statements<'a>(body: &'a [Stmt], visit: &mut impl FnMut(&'a Stmt)) {
+    for stmt in body {
+        visit(stmt);
+        if !matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_)) {
+            for_each_child_body(stmt, &mut |child| module_scope_statements(child, visit));
+        }
+    }
+}
+
+fn export_value(stmt: &Stmt) -> Option<&Expr> {
+    match stmt {
+        Stmt::Assign(ast::StmtAssign { targets, value, .. }) if targets.first().is_some_and(is_all_target) => {
+            Some(value)
+        }
+        Stmt::AnnAssign(ast::StmtAnnAssign { target, value, .. }) if is_all_target(target) => value.as_deref(),
+        Stmt::AugAssign(ast::StmtAugAssign { target, value, .. }) if is_all_target(target) => Some(value),
+        _ => None,
+    }
+}
+
+fn add_export_names<'a>(value: &'a Expr, names: &mut FxHashSet<&'a str>) {
+    let Expr::BinOp(ast::ExprBinOp { left, right, .. }) = value else {
+        return add_export_elements(value, names);
+    };
+    let mut left = left;
+    let mut right = right;
+    loop {
+        add_export_elements(right, names);
+        let Expr::BinOp(ast::ExprBinOp { left: inner_left, right: inner_right, .. }) = left.as_ref() else {
+            return add_export_elements(left, names);
+        };
+        left = inner_left;
+        right = inner_right;
+    }
+}
+
+fn add_export_elements<'a>(expr: &'a Expr, names: &mut FxHashSet<&'a str>) {
+    let elements = match expr {
+        Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. }) => elts,
+        Expr::Call(ast::ExprCall { func, arguments, .. })
+            if arguments.keywords.is_empty() && (is_name(func, "list") || is_name(func, "tuple")) =>
+        {
+            let [
+                Expr::List(ast::ExprList { elts, .. })
+                | Expr::Set(ast::ExprSet { elts, .. })
+                | Expr::Tuple(ast::ExprTuple { elts, .. }),
+            ] = &*arguments.args
+            else {
+                return;
+            };
+            elts
+        }
+        Expr::Named(ast::ExprNamed { value, .. }) => return add_export_elements(value, names),
+        _ => return,
+    };
+    names.extend(elements.iter().filter_map(|element| Some(element.as_string_literal_expr()?.value.to_str())));
+}
+
 pub struct AllBinding<'a> {
     pub value: Option<&'a Expr>,
     // Set for `__all__ += ...`, which extends the list instead of replacing it.
@@ -599,9 +671,117 @@ pub(crate) fn string_values(body: &[Stmt]) -> Vec<(TextRange, Cow<'_, str>)> {
     values.values
 }
 
-// The identifier words of the strings a module holds, which Ruff reads as uses where a string spells a type expression.
-pub(crate) fn string_words<'a>(strings: &'a [(TextRange, Cow<'_, str>)]) -> FxHashSet<&'a str> {
-    strings.iter().flat_map(|(_, text)| identifier_words(text)).collect()
+// The identifier words of the strings Ruff parses as type expressions, the only strings that read a name: those in an
+// annotation or type parameter, in an argument of a typing call that takes types, in a generic subscript, and the type
+// of `Annotated`. A string anywhere else is data or prose.
+pub(crate) fn type_string_words(body: &[Stmt]) -> FxHashSet<&str> {
+    let mut strings = TypeStrings { words: FxHashSet::default(), in_type: false };
+    strings.visit_body(body);
+    strings.words
+}
+
+struct TypeStrings<'a> {
+    words: FxHashSet<&'a str>,
+    in_type: bool,
+}
+
+impl<'a> TypeStrings<'a> {
+    fn visit_in(&mut self, expr: &'a Expr, in_type: bool) {
+        let outer = std::mem::replace(&mut self.in_type, in_type);
+        self.visit_expr(expr);
+        self.in_type = outer;
+    }
+
+    fn visit_type_params(&mut self, type_params: Option<&'a ast::TypeParams>) {
+        for expr in type_param_exprs(type_params) {
+            self.visit_in(expr, true);
+        }
+    }
+}
+
+impl<'a> Visitor<'a> for TypeStrings<'a> {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        match stmt {
+            Stmt::AnnAssign(ast::StmtAnnAssign { annotation, value, .. }) => {
+                self.visit_in(annotation, true);
+                if let Some(value) = value.as_deref().filter(|_| last_name(annotation) == Some("TypeAlias")) {
+                    self.visit_in(value, true);
+                }
+            }
+            Stmt::FunctionDef(function) => {
+                for annotation in signature_annotations(function) {
+                    self.visit_in(annotation, true);
+                }
+                self.visit_type_params(function.type_params.as_deref());
+            }
+            Stmt::ClassDef(class) => self.visit_type_params(class.type_params.as_deref()),
+            Stmt::TypeAlias(alias) => {
+                self.visit_in(&alias.value, true);
+                self.visit_type_params(alias.type_params.as_deref());
+            }
+            _ => {}
+        }
+        visitor::walk_stmt(self, stmt);
+    }
+
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        match expr {
+            Expr::StringLiteral(literal) => {
+                if self.in_type {
+                    self.words.extend(identifier_words(literal.value.to_str()));
+                }
+            }
+            Expr::Call(ast::ExprCall { func, arguments, .. }) => {
+                let takes_types = last_name(func).is_some_and(|name| {
+                    matches!(
+                        name,
+                        "cast"
+                            | "NamedTuple"
+                            | "NewType"
+                            | "ParamSpec"
+                            | "TypeAliasType"
+                            | "TypeForm"
+                            | "TypedDict"
+                            | "TypeVar"
+                    )
+                });
+                let in_type = self.in_type || takes_types;
+                self.visit_expr(func);
+                for argument in &arguments.args {
+                    self.visit_in(argument, in_type);
+                }
+                for keyword in &arguments.keywords {
+                    self.visit_in(&keyword.value, in_type);
+                }
+            }
+            Expr::Subscript(ast::ExprSubscript { value, slice, .. }) => {
+                self.visit_expr(value);
+                match last_name(value) {
+                    Some(name) if is_literal_member(name) => self.visit_in(slice, false),
+                    Some(name) if is_pep_593_generic_member(name) => match slice.as_ref() {
+                        Expr::Tuple(ast::ExprTuple { elts, .. }) => {
+                            for (index, element) in elts.iter().enumerate() {
+                                self.visit_in(element, index == 0);
+                            }
+                        }
+                        _ => self.visit_expr(slice),
+                    },
+                    Some(name) if is_standard_library_generic_member(name) => self.visit_in(slice, true),
+                    _ => self.visit_expr(slice),
+                }
+            }
+            _ => visitor::walk_expr(self, expr),
+        }
+    }
+}
+
+// The name a callee or subscripted value ends with, as `cast` for `typing.cast`.
+fn last_name(expr: &Expr) -> Option<&str> {
+    match expr {
+        Expr::Name(name) => Some(name.id.as_str()),
+        Expr::Attribute(attribute) => Some(attribute.attr.as_str()),
+        _ => None,
+    }
 }
 
 // The strings a name may be spelled in to patch or look it up, which leaves out the prose of the statements that hold a
@@ -710,15 +890,17 @@ struct AnnotatedNames(FxHashSet<String>);
 impl<'a> Visitor<'a> for AnnotatedNames {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
-            Stmt::AnnAssign(ast::StmtAnnAssign { annotation, .. }) => self.0.extend(names_in(annotation)),
+            Stmt::AnnAssign(ast::StmtAnnAssign { annotation, .. }) => self.0.extend(annotation_names(annotation)),
             Stmt::FunctionDef(function) => {
-                self.0.extend(signature_annotations(function).flat_map(names_in));
-                self.0.extend(type_param_exprs(function.type_params.as_deref()).flat_map(names_in));
+                self.0.extend(signature_annotations(function).flat_map(annotation_names));
+                self.0.extend(type_param_exprs(function.type_params.as_deref()).flat_map(annotation_names));
             }
-            Stmt::ClassDef(class) => self.0.extend(type_param_exprs(class.type_params.as_deref()).flat_map(names_in)),
+            Stmt::ClassDef(class) => {
+                self.0.extend(type_param_exprs(class.type_params.as_deref()).flat_map(annotation_names));
+            }
             Stmt::TypeAlias(alias) => {
-                self.0.extend(names_in(&alias.value));
-                self.0.extend(type_param_exprs(alias.type_params.as_deref()).flat_map(names_in));
+                self.0.extend(annotation_names(&alias.value));
+                self.0.extend(type_param_exprs(alias.type_params.as_deref()).flat_map(annotation_names));
             }
             _ => {}
         }
@@ -740,21 +922,29 @@ fn type_param_exprs(type_params: Option<&ast::TypeParams>) -> impl Iterator<Item
 // The names an annotation or bound refers to, through subscripts, unions and string annotations.
 pub(crate) fn names_in(expr: &Expr) -> Vec<String> {
     let mut names = Vec::new();
-    TypeNames { names: &mut names }.visit_expr(expr);
+    TypeNames { names: &mut names, strings: true }.visit_expr(expr);
+    names
+}
+
+// The names an annotation or bound refers to, without those of its strings, which the type strings of a module read.
+pub(crate) fn annotation_names(expr: &Expr) -> Vec<String> {
+    let mut names = Vec::new();
+    TypeNames { names: &mut names, strings: false }.visit_expr(expr);
     names
 }
 
 struct TypeNames<'n> {
     names: &'n mut Vec<String>,
+    strings: bool,
 }
 
 impl<'a> Visitor<'a> for TypeNames<'_> {
     fn visit_expr(&mut self, expr: &'a Expr) {
         match expr {
             Expr::Name(name) => self.names.push(name.id.to_string()),
-            Expr::StringLiteral(literal) => {
+            Expr::StringLiteral(literal) if self.strings => {
                 if let Ok(parsed) = parse_expression(literal.value.to_str()) {
-                    TypeNames { names: self.names }.visit_expr(parsed.expr());
+                    TypeNames { names: self.names, strings: true }.visit_expr(parsed.expr());
                 }
             }
             _ => visitor::walk_expr(self, expr),

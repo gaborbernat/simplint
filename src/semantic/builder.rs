@@ -27,7 +27,7 @@ use super::append::is_list_append;
 use super::django::unordered_model_statements;
 use super::runtime::Runtime;
 use crate::semantic::future_import;
-use crate::syntax::{Exports, code_string_values, dunder_all, pattern_capture, signature_annotations, string_words};
+use crate::syntax::{export_names, pattern_capture, signature_annotations, type_string_words};
 
 pub struct Model<'a> {
     pub semantic: SemanticModel<'a>,
@@ -98,9 +98,8 @@ pub fn build<'a>(
 // bindings of each module and function scope once their references resolve. Keyed by the range of the name a binding
 // makes, which is the alias of its import.
 fn private_import_reports(semantic: &SemanticModel, body: &[Stmt], package: Option<&Path>) -> FxHashSet<TextRange> {
-    let exports = dunder_all(body);
-    let strings = code_string_values(body);
-    let words = string_words(&strings);
+    let exports = export_names(body);
+    let words = type_string_words(body);
     semantic
         .scopes
         .iter()
@@ -118,7 +117,7 @@ fn is_private_import(
     binding: &Binding,
     name: &str,
     package: Option<&Path>,
-    exports: &Exports,
+    exports: &FxHashSet<&str>,
     words: &FxHashSet<&str>,
 ) -> bool {
     let Some(import) = binding.as_any_import().filter(|import| !import.is_submodule_import()) else {
@@ -140,7 +139,7 @@ fn is_private_import(
         return false;
     }
     // Ruff marks a module-level name that `__all__` lists as used at runtime.
-    if binding.scope == ScopeId::global() && exports.lists(name) {
+    if binding.scope == ScopeId::global() && exports.contains(name) {
         return true;
     }
     // Ruff resolves the names a string type expression spells, which this model does not, so the string may be
