@@ -52,8 +52,7 @@ fn stdlib_mock_allows_create_autospec_only(imports: &str, reports: usize) {
             &format!("from unittest.mock import {imports}\n\n\ndef test_mock() -> None:\n    assert True\n"),
         ),
     ]);
-    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP809"]);
-    assert_eq!(stdout.matches("SMP809").count(), reports, "{stdout}");
+    assert_eq!(common::report_count(root.path(), "SMP809"), reports);
 }
 
 #[test]
@@ -85,8 +84,7 @@ fn unused_fixture_keeps_conftest_fixtures_plugins_may_request(plugins: &str, rep
         ("tests/conftest.py", conftest),
         ("tests/test_app.py", &format!("PLUGINS = [\"x\"]\n{plugins}\n\n\ndef test_app() -> None:\n    assert True\n")),
     ]);
-    let (_, stdout, _) =
-        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP815", "--output-format", "concise"]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP815"]);
     assert_eq!(stdout.contains("`app_dir`"), reported, "{stdout}");
 }
 
@@ -121,8 +119,7 @@ fn mock_assertion_typo_follows_ruff_pgh005(pyproject: &str, statement: &str, rep
             ),
         ),
     ]);
-    let (_, stdout, _) =
-        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP814", "--output-format", "concise"]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP814"]);
     assert_eq!(stdout.contains("`not_called`"), reported, "{stdout}");
 }
 
@@ -163,6 +160,5 @@ fn sleep_in_test_leaves_busy_waits_to_async110(body: &str, code: &str, reports: 
     let source = format!("import asyncio\n\n\nasync def test_busy(done):\n    {body}\n");
     let settings = format!("[tool.ruff.lint]\nselect = [\"{code}\"]\n");
     let root = common::project(&[("pyproject.toml", &settings), ("test_busy.py", &source)]);
-    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP808"]);
-    assert_eq!(stdout.matches("SMP808").count(), reports, "{stdout}");
+    assert_eq!(common::report_count(root.path(), "SMP808"), reports);
 }

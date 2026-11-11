@@ -41,8 +41,7 @@ fn rule(rule: &str, fixture: &str, target_version: &str) {
 #[test_case("globals().pop(name)" ; "pop")]
 fn missing_final_skips_every_name_a_computed_globals_write_may_set(body: &str) {
     let root = common::project(&[("module.py", &format!("LIMIT = 1\nRATE = 2\n\n\ndef write(name):\n    {body}\n"))]);
-    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP601"]);
-    assert_eq!(stdout.matches("SMP601").count(), 0, "{stdout}");
+    assert_eq!(common::report_count(root.path(), "SMP601"), 0);
 }
 
 // A `globals` the module defines is not the builtin, so its calls write no module name and `LIMIT` stays reported.
@@ -52,8 +51,7 @@ fn missing_final_ignores_a_globals_the_module_defines() {
         "module.py",
         "LIMIT = 1\n\n\ndef globals():\n    return {}\n\n\ndef write(name):\n    globals()[name] = 3\n",
     )]);
-    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP601"]);
-    assert_eq!(stdout.matches("SMP601").count(), 1, "{stdout}");
+    assert_eq!(common::report_count(root.path(), "SMP601"), 1);
 }
 
 // At module level `vars()` and `locals()` with no argument are the module's dict, so their writes count as `globals()`
@@ -73,8 +71,7 @@ fn missing_final_ignores_a_globals_the_module_defines() {
 #[test_case("def write():\n    value = vars().update(LIMIT=3)", 1 ; "function_body_local")]
 fn missing_final_counts_module_vars_and_locals_writes_only(body: &str, reports: usize) {
     let root = common::project(&[("module.py", &format!("LIMIT = 1\n\n\n{body}\n"))]);
-    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP601"]);
-    assert_eq!(stdout.matches("SMP601").count(), reports, "{stdout}");
+    assert_eq!(common::report_count(root.path(), "SMP601"), reports);
 }
 
 // The parenthesized name `(LIMIT)` takes no annotation of its own, as `(LIMIT: Final[int]) = 3` is not valid Python,

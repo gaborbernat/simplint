@@ -2610,9 +2610,8 @@ const REPEATED: &str = "def build(items):\n    total = 0\n    for item in items:
 fn duplicate_code_reports(files: &[(&str, &str)]) -> Vec<String> {
     let root = project(files);
     let stdout = check(root.path(), &["--select", "SMP530"]).1;
-    let mut reported: Vec<String> = stdout
-        .lines()
-        .filter(|line| line.contains(" SMP530 "))
+    let mut reported: Vec<String> = common::reports(&stdout, "SMP530")
+        .into_iter()
         .filter_map(|line| line.split(':').next())
         .map(|path| path.replace(std::path::MAIN_SEPARATOR, "/"))
         .collect();
@@ -2913,7 +2912,7 @@ fn name_read_by_a_nested_project_is_unused_in_the_outer_project() {
 // The names `unused-definition` reports in the run, sorted.
 fn unused_names(stdout: &str) -> Vec<&str> {
     let mut names: Vec<&str> =
-        stdout.lines().filter(|line| line.contains(" SMP409 ")).filter_map(|line| line.split('`').nth(1)).collect();
+        common::reports(stdout, "SMP409").into_iter().filter_map(|line| line.split('`').nth(1)).collect();
     names.sort_unstable();
     names
 }

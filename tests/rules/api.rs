@@ -334,8 +334,7 @@ fn unused_definitions(body: &str) -> String {
     let reader = format!("def read(obj: object, name: str = \"send\") -> object:\n    {body}\n");
     let main = "from app.core import Client\nfrom app.reader import read\n\nprint(read(Client()))\n";
     let root = common::project(&[("app/core.py", core), ("app/reader.py", reader.as_str()), ("app/main.py", main)]);
-    let (_, stdout, _) =
-        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP409"]);
     stdout
 }
 
@@ -358,8 +357,7 @@ fn unused_definition_judges_a_private_method_by_its_own_file(name: &str, same_fi
         ("app/other.py", reader.as_str()),
         ("app/main.py", "from app.core import _Handler\n\nprint(_Handler)\n"),
     ]);
-    let (_, stdout, _) =
-        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP409"]);
     assert_eq!(stdout.contains("`_Handler._handle_text`"), reported, "{stdout}");
 }
 
@@ -407,8 +405,7 @@ fn init_module_content_leaves_ruf067_to_ruff(config: &str, source: &str, reporte
 fn unused_definition_leaves_private_protocols_and_typed_dicts_to_ruff(source: &str, select: &str, reported: usize) {
     let ruff = format!("[tool.ruff.lint]\nselect = [{select}]\n");
     let root = common::project(&[("pyproject.toml", ruff.as_str()), ("module.py", source)]);
-    let (_, stdout, _) =
-        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP409"]);
     assert_eq!(stdout.matches("SMP409").count(), reported, "{stdout}");
 }
 
@@ -422,8 +419,7 @@ fn unused_definition_counts_calls_of_a_method_under_an_if_block() {
         ),
         ("app/main.py", "from app.core import Client\n\nprint(Client().run())\n"),
     ]);
-    let (_, stdout, _) =
-        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP409"]);
     assert!(!stdout.contains("`Client._send`"), "{stdout}");
 }
 
@@ -433,8 +429,7 @@ fn unused_definition_keeps_framework_hooks_called_by_name() {
         "app/hooks.py",
         "def setup(app: object) -> None:\n    print(app)\n\n\ndef pytest_configure(config: object) -> None:\n    print(config)\n",
     )]);
-    let (_, stdout, _) =
-        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP409"]);
     assert_eq!(stdout, common::PASSED);
 }
 
@@ -470,8 +465,7 @@ fn unused_definition_reads_the_documentation(page: &str, text: &str, helper: boo
         ("app/main.py", "from app.core import Client\n\nprint(Client())\n"),
         (page, text),
     ]);
-    let (_, stdout, _) =
-        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP409"]);
     assert_eq!(
         (stdout.contains("`helper` is never used"), stdout.contains("`Client.send` is never called")),
         (helper, send),
@@ -490,8 +484,7 @@ fn unused_definition_skips_documentation_an_ignore_file_hides(ignore_file: &str,
         (ignore_file, &format!("{pattern}\n")),
         (page, ":func:`app.core.helper`\n"),
     ]);
-    let (_, stdout, _) =
-        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP409"]);
     assert!(stdout.contains("`helper` is never used"), "{stdout}");
 }
 
@@ -502,8 +495,7 @@ fn unused_definition_reads_no_documentation_without_a_project() {
         ("app/core.py", "def helper() -> None:\n    pass\n"),
         ("docs/index.rst", ":func:`app.core.helper`\n"),
     ]);
-    let (_, stdout, _) =
-        common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP409"]);
     assert!(stdout.contains("`helper` is never used"), "{stdout}");
 }
 

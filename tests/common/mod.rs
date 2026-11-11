@@ -41,6 +41,16 @@ pub fn check(root: &Path, args: &[&str]) -> (i32, String, String) {
     check_with_stdin(root, args, "")
 }
 
+// The concise lines that report `code`, matched as a whole code so that a message naming it is not counted.
+pub fn reports<'a>(stdout: &'a str, code: &str) -> Vec<&'a str> {
+    let token = format!(" {code} ");
+    stdout.lines().filter(|line| line.contains(&token)).collect()
+}
+
+pub fn report_count(root: &Path, code: &str) -> usize {
+    reports(&check(root, &["--no-cache", "--select", code]).1, code).len()
+}
+
 // Fixes the file under `root` with every unsafe fix of `select` applied, the way most fix tests run it.
 pub fn fix_unsafe(root: &Path, select: &str) -> (i32, String, String) {
     check(root, &["--fix", "--unsafe-fixes", "--select", select])
