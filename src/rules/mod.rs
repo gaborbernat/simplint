@@ -66,6 +66,7 @@ pub(crate) struct FileState<'a> {
     top_level_imports: OnceCell<FxHashSet<(&'a str, Option<&'a str>)>>,
     // The comments that stand on a line of their own, which the comment rules read in runs.
     own_line_comments: OnceCell<Vec<TextRange>>,
+    expected_to_raise: OnceCell<FxHashSet<&'a str>>,
 }
 
 impl<'a> FileState<'a> {
@@ -244,6 +245,10 @@ impl<'a> FileState<'a> {
                 .filter(|range| !has_leading_content(range.start(), source))
                 .collect()
         })
+    }
+
+    pub(crate) fn expected_to_raise(&self, checker: &Checker<'a>) -> &FxHashSet<&'a str> {
+        self.expected_to_raise.get_or_init(|| classes::expected_to_raise_classes(checker.body()))
     }
 }
 

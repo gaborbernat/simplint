@@ -5,6 +5,7 @@ mod dataclass_slots;
 mod indistinct_error_class;
 
 pub(crate) use dataclass_frozen::dataclass_frozen;
+pub(crate) use dataclass_hazards::expected_to_raise_classes;
 pub(crate) use dataclass_kw_only::dataclass_kw_only;
 pub(crate) use dataclass_slots::dataclass_slots;
 pub(crate) use indistinct_error_class::indistinct_error_class;
@@ -39,21 +40,42 @@ fn library_api<'a>(checker: &'a Checker) -> impl Fn(&ast::StmtClassDef) -> bool 
 // A dataclass decorator, with the keywords it passes and the options its `**` splats pass.
 struct Decorated<'a> {
     class: &'a ast::StmtClassDef,
+    decorator: &'a Expr,
+    func: &'a Expr,
     keywords: &'a [ast::Keyword],
-    splat: &'a [(&'a str, &'a Expr)],
+    splat: Vec<(&'a str, &'a Expr)>,
     // A decorator below `@dataclass` runs first, and `slots=True` makes the dataclass return a new class, which the
     // decorator below never saw.
     wrapped: bool,
 }
 
 impl<'a> Decorated<'a> {
+    // `None` for a class without a `@dataclass` decorator, or whose `**` splat has keys that cannot be read, as such a
+    // splat may set any option.
+    fn parse(checker: &'a Checker, class: &'a ast::StmtClassDef) -> Option<Self> {
+        let is_dataclass = |func: &Expr| checker.semantic().resolves_to(func, &["dataclasses", "dataclass"]);
+        let decorator = dataclass_decorator(class, &is_dataclass)?;
+        let (func, keywords) = match decorator {
+            Expr::Call(ast::ExprCall { func, arguments, .. }) => (func.as_ref(), &*arguments.keywords),
+            other => (other, &[][..]),
+        };
+        Some(Self {
+            class,
+            decorator,
+            func,
+            keywords,
+            splat: splatted_options(checker, keywords)?,
+            wrapped: class.decorator_list.iter().any(|other| other.start() > decorator.end()),
+        })
+    }
+
     // The value the decorator passes for `name`, by keyword or by a splat. A splat cannot repeat a keyword's name.
     fn option(&self, name: &str) -> Option<&'a Expr> {
         self.keywords
             .iter()
             .find(|keyword| keyword.arg.as_ref().is_some_and(|arg| arg.as_str() == name))
             .map(|keyword| &keyword.value)
-            .or_else(|| splat_value(self.splat, name))
+            .or_else(|| splat_value(&self.splat, name))
     }
 }
 
@@ -66,6 +88,19 @@ struct Offer {
     related: Vec<Related>,
     note: String,
     left_to_ruff: bool,
+}
+
+impl Offer {
+    fn options(options: Vec<&'static str>, applicability: Applicability) -> Self {
+        Self {
+            options,
+            edits: Vec::new(),
+            applicability,
+            related: Vec::new(),
+            note: String::new(),
+            left_to_ruff: false,
+        }
+    }
 }
 
 fn require_options(
@@ -85,36 +120,21 @@ fn require_options(
     // which these options change.
     let exempt = library_api(checker);
     for class in checker.class_defs() {
-        let is_dataclass = |func: &Expr| checker.semantic().resolves_to(func, &["dataclasses", "dataclass"]);
-        let Some(decorator) = dataclass_decorator(class, &is_dataclass) else {
+        let Some(decorated) = Decorated::parse(checker, class) else {
             continue;
         };
         if exempt(class) {
             continue;
         }
-        let (func, keywords) = match decorator {
-            Expr::Call(ast::ExprCall { func, arguments, .. }) => (func.as_ref(), &*arguments.keywords),
-            other => (other, &[][..]),
-        };
-        // A splat whose keys cannot be read may set any option, so the class is left alone.
-        let Some(splat) = splatted_options(checker, keywords) else {
-            continue;
-        };
-        let decorated = Decorated {
-            class,
-            keywords,
-            splat: &splat,
-            wrapped: class.decorator_list.iter().any(|other| other.start() > decorator.end()),
-        };
         let missing: Vec<&'static str> =
             options.iter().copied().filter(|option| !decorated.option(option).is_some_and(is_true_literal)).collect();
         if missing.is_empty() {
             continue;
         }
-        let range = decorator.range();
+        let range = decorated.decorator.range();
         // The fix cannot take a key out of a splat, so adding the option would repeat it. The offer still runs for
         // its related locations and note.
-        let passed = missing.iter().any(|option| splat_value(&splat, option).is_some());
+        let passed = missing.iter().any(|option| splat_value(&decorated.splat, option).is_some());
         let offer = offer(&decorated, &missing);
         if offer.as_ref().is_some_and(|offer| offer.left_to_ruff) {
             continue;
@@ -125,8 +145,11 @@ fn require_options(
             Some(Offer { options, edits, applicability, related, note, .. })
                 if !options.is_empty() && !checker.has_comment_in(range) =>
             {
-                let arguments = decorator_arguments(checker, keywords, &options);
-                let edit = Edit::range_replacement(format!("{}({})", checker.text(func), arguments.join(", ")), range);
+                let arguments = decorator_arguments(checker, decorated.keywords, &options);
+                let edit = Edit::range_replacement(
+                    format!("{}({})", checker.text(decorated.func), arguments.join(", ")),
+                    range,
+                );
                 let fix = Fix::applicable_edits(edit, edits, applicability);
                 (Some(fix), format!("Pass `{}` to `@dataclass`", settings(&options)), related, note)
             }
