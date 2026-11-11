@@ -123,6 +123,7 @@ use crate::common::{self, check, read};
 #[test_case("unnamed-regex-group", "unnamed_regex_group_unknown_flags.py", "py314" ; "unnamed_regex_group_unknown_flags")]
 #[test_case("unnamed-regex-group", "unnamed_regex_group_default_scope.py", "py314" ; "unnamed_regex_group_default_scope")]
 #[test_case("unnamed-regex-group", "unnamed_regex_group_escaping.py", "py314" ; "unnamed_regex_group_escaping")]
+#[test_case("unnamed-regex-group", "unnamed_regex_group_scoped_verbose.py", "py314" ; "unnamed_regex_group_scoped_verbose")]
 #[test_case("unexplained-regex", "unexplained_regex.py", "py314" ; "unexplained_regex")]
 #[test_case("unexplained-regex", "unexplained_regex_unknown_flags.py", "py314" ; "unexplained_regex_unknown_flags")]
 #[test_case("up-utf8-encoding-default", "up_utf8_encoding_default.py", "py315" ; "utf8_encoding_default")]

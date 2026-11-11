@@ -126,6 +126,20 @@ def parse_date(text):
       )
   ```
 
+- **A `#` comment in a scoped `(?x:...)` group** explains the pattern, as a comment in a verbose pattern does.
+
+  ```python ok
+  import re
+
+
+  def is_version(text):
+      return re.match(
+          r"""(?x:(\d+)  # the major version
+      )\.(\d+)\.(\d+)\.(\d+)""",
+          text,
+      )
+  ```
+
 - **A pattern that is not a literal**, such as an f-string or a name, is not read.
 
 ## Other tools
