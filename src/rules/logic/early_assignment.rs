@@ -13,6 +13,7 @@ use rustc_hash::FxHashMap;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::logic::inline::{Names, enter_function, for_each_scoped_body, is_constant};
+use crate::rules::logic::sole_name_target;
 use crate::syntax::{Nesting, identifier_words};
 
 pub fn early_assignment(checker: &Checker) {
@@ -48,9 +49,7 @@ fn string_tokens(checker: &Checker) -> Vec<TextRange> {
 
 // The name an assignment binds when it assigns a constant to that single local name, the only kind the rule moves.
 fn candidate(assign: &ast::StmtAssign) -> Option<&ast::ExprName> {
-    let [Expr::Name(target)] = assign.targets.as_slice() else {
-        return None;
-    };
+    let target = sole_name_target(assign)?;
     let name = target.id.as_str();
     (name != "_" && !is_dunder(name) && is_constant(&assign.value)).then_some(target)
 }
@@ -120,7 +119,7 @@ fn check_assign<'a>(
 ) {
     let name = target.id.as_str();
     let names = &scope.names;
-    if names.declared_outer.contains(name) || names.rebound.contains(name) || names.reads_locals || scope.dynamic {
+    if names.declared_outer.contains(name) || names.rebound.contains(name) || scope.dynamic {
         return;
     }
     // The name must be read, not bound again, and every mention must sit in this block after the assignment. A use

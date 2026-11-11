@@ -54,3 +54,12 @@ pub(crate) use up_compression_modules::up_compression_modules;
 pub(crate) use up_context_var_token_reset::up_context_var_token_reset;
 pub(crate) use up_object_sentinel::up_object_sentinel;
 pub(crate) use walrus_candidate::walrus_candidate;
+
+use ruff_python_ast::{self as ast, Expr};
+
+fn sole_name_target(assign: &ast::StmtAssign) -> Option<&ast::ExprName> {
+    let [Expr::Name(target)] = assign.targets.as_slice() else {
+        return None;
+    };
+    Some(target)
+}

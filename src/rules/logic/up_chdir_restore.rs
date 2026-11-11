@@ -6,6 +6,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Import, ensure_import};
 use crate::rules::logic::scoped_block::{finally_call, is_exported_module_name, wrap_edits};
+use crate::rules::logic::sole_name_target;
 use crate::syntax::{for_each_body, sole_argument};
 
 // Since Python 3.11 `contextlib.chdir` enters a directory and returns to the one it left on exit.
@@ -21,7 +22,7 @@ pub fn up_chdir_restore(checker: &Checker) {
 
 fn report_restore(checker: &Checker, assign: &ast::StmtAssign, change: &Expr, try_stmt: &ast::StmtTry) {
     let semantic = checker.semantic();
-    let [Expr::Name(old)] = assign.targets.as_slice() else {
+    let Some(old) = sole_name_target(assign) else {
         return;
     };
     let Expr::Call(get) = assign.value.as_ref() else {

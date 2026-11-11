@@ -6,9 +6,9 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::edits::keep_debug_text;
-use crate::rules::edits::{Blanks, statement_deletion};
+use crate::rules::edits::{Blanks, keep_debug_text, statement_deletion};
 use crate::rules::logic::inline::{Names, declared_outer, enter_function, fits, for_each_scoped_body};
+use crate::rules::logic::sole_name_target;
 
 mod reading;
 mod replacement;
@@ -29,7 +29,7 @@ pub fn single_use_variable(checker: &Checker) {
         };
         for pair in body.windows(2) {
             if let [Stmt::Assign(assign), next] = pair
-                && let [Expr::Name(target)] = assign.targets.as_slice()
+                && let Some(target) = sole_name_target(assign)
             {
                 let names = names.entry(function.range).or_insert_with(|| Names::of(&function.body));
                 check_pair(checker, (names, &rebindable), (assign, target), next, depth);

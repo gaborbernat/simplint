@@ -9,8 +9,7 @@ use ruff_text_size::{Ranged, TextRange};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
-use crate::syntax::ExprCollector;
-use crate::syntax::{for_each_body, is_name};
+use crate::syntax::{ExprCollector, for_each_body, is_name};
 
 // The `str` methods that read the text of an exception to tell it apart from others.
 const TEXT_METHODS: [&str; 5] = ["startswith", "endswith", "find", "index", "count"];

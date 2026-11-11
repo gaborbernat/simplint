@@ -33,6 +33,13 @@ pub(super) struct Members<'a> {
 }
 
 impl<'a> Members<'a> {
+    pub(super) fn declare(&mut self, kind: Option<Kind>) {
+        match kind {
+            Some(kind) if self.declared.is_none_or(|declared| declared == kind) => self.declared = Some(kind),
+            _ => self.opaque = true,
+        }
+    }
+
     pub(super) fn of_class(checker: &Checker<'a>, class: &'a ast::StmtClassDef, attr: &'a str) -> Self {
         let body = bindings_in(checker, Some(Scope::Class(class)), attr);
         let (properties, methods) = body
@@ -122,12 +129,7 @@ impl<'a> Visitor<'a> for Writes<'_, 'a, '_> {
                 self.visit_expr(value);
             }
             Stmt::AnnAssign(ast::StmtAnnAssign { target, annotation, value, .. }) if self.is_member(target) => {
-                match self::annotation(self.checker, annotation) {
-                    Some(kind) if self.members.declared.is_none_or(|declared| declared == kind) => {
-                        self.members.declared = Some(kind);
-                    }
-                    _ => self.members.opaque = true,
-                }
+                self.members.declare(self::annotation(self.checker, annotation));
                 if let Some(value) = value {
                     self.visit_expr(value);
                 }

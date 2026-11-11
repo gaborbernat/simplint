@@ -6,7 +6,7 @@ use ruff_text_size::TextRange;
 
 use super::bindings::{Bindings, Value, bindings_in};
 use super::declared::{
-    Class, annotation, class_at, instance_of, is_class_name, is_property, keeps_return, self_parameter, target_binds,
+    Class, annotation, attribute_root, class_at, instance_of, is_property, keeps_return, self_parameter, target_binds,
 };
 use super::members::{Members, members_of, written_outside};
 use super::tables::{
@@ -14,6 +14,7 @@ use super::tables::{
 };
 use super::{Kind, Kinds};
 use crate::lint::walker::{Scope, Walker};
+use crate::rules::is_class_like;
 use crate::syntax::Visibility;
 
 impl<'w, 'a> Kinds<'w, 'a> {
@@ -183,7 +184,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
             Some(false) => None,
             None => self
                 .library_call(call, depth)
-                .or_else(|| name.filter(|name| is_class_name(name)).map(|_| Kind::ImportedInstance)),
+                .or_else(|| name.filter(|name| is_class_like(name)).map(|_| Kind::ImportedInstance)),
         }
     }
 
@@ -211,11 +212,10 @@ impl<'w, 'a> Kinds<'w, 'a> {
 
     // Whether `expr` is a name the module imports, or an attribute of one.
     fn imported_root(&self, expr: &'a Expr, depth: usize) -> bool {
-        let mut head = expr;
-        while let Expr::Attribute(ast::ExprAttribute { value, .. }) = head {
-            head = value;
-        }
-        head.as_name_expr().and_then(|name| self.lookup(&name.id, depth)).is_some_and(|(bindings, _)| bindings.imported)
+        attribute_root(expr)
+            .as_name_expr()
+            .and_then(|name| self.lookup(&name.id, depth))
+            .is_some_and(|(bindings, _)| bindings.imported)
     }
 
     // What a call to a standard library function returns, for a function the module imports.
@@ -302,11 +302,7 @@ impl<'w, 'a> Kinds<'w, 'a> {
     // The qualified name of `expr`, an imported name or an attribute of one, when the module's own import binds the
     // name it starts with.
     pub(super) fn qualified(&self, expr: &'a Expr, depth: usize) -> Option<QualifiedName<'w>> {
-        let mut head = expr;
-        while let Expr::Attribute(ast::ExprAttribute { value, .. }) = head {
-            head = value;
-        }
-        let (bindings, scope) = self.lookup(&head.as_name_expr()?.id, depth)?;
+        let (bindings, scope) = self.lookup(&attribute_root(expr).as_name_expr()?.id, depth)?;
         let semantic = self.walker.checker.semantic();
         (scope == 0 && bindings.only_imported()).then(|| semantic.qualified_name(expr)).flatten()
     }
