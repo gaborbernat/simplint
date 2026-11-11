@@ -127,3 +127,18 @@ fn test_prefixed_library_directory_is_not_a_nested_project() {
     let stdout = check(root.path(), &["--select", "SMP903"]).1;
     assert!(stdout.contains(&common::native("testkit/sub/mod.py")), "{stdout}");
 }
+
+// A doctest reads a name through a package whose `__init__.py` does not bind the submodule it names, so the name counts
+// as read by that submodule's file, which no import reaches.
+#[test_case("\"\"\"Guide.\n\n>>> import pkg\n>>> pkg.reportviews._build()\n1\n\"\"\"\n", false ; "doctest_reads_it")]
+#[test_case("\"\"\"Guide.\"\"\"\n", true ; "docstring_reads_nothing")]
+fn doctest_reads_through_a_package_reach_the_submodule(guide: &str, reported: bool) {
+    let root = project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/classes/__init__.py", ""),
+        ("pkg/classes/reportviews.py", "def _build() -> int:\n    return 1\n"),
+        ("pkg/guide.py", guide),
+    ]);
+    let stdout = check(root.path(), &["--select", "SMP409"]).1;
+    assert_eq!(stdout.contains("SMP409 `_build`"), reported, "{stdout}");
+}
