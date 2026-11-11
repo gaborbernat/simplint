@@ -11,7 +11,7 @@ use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::syntax::{Visibility, for_each_body, import_aliases};
+use crate::syntax::{Visibility, for_each_body, import_aliases, is_lazy};
 
 // A module bound by an import of this run's own code is reached through an attribute, which the name itself reaches
 // without the module.
@@ -126,11 +126,7 @@ fn binding_import(body: &[Stmt], binding: TextRange) -> Option<(&Stmt, &ast::Ali
 
 // The `lazy` keyword of a lazy import, which the rewritten import keeps so the module still loads on first use.
 fn lazy_prefix(stmt: &Stmt) -> &'static str {
-    match stmt {
-        Stmt::Import(ast::StmtImport { is_lazy: true, .. })
-        | Stmt::ImportFrom(ast::StmtImportFrom { is_lazy: true, .. }) => "lazy ",
-        _ => "",
-    }
+    if is_lazy(stmt) { "lazy " } else { "" }
 }
 
 // The module as the import spells it, relative with its dots, such as `.findings` for `from . import findings`.

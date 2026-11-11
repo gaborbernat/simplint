@@ -2,6 +2,7 @@ use ruff_python_ast::visitor::Visitor;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_python_parser::parse_expression;
 
+use super::raised_class;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::docstrings::rst::{Field, FieldKind, Owner, Target, field_deletion};
@@ -106,8 +107,7 @@ fn is_placeholder(body: &[Stmt]) -> bool {
         Stmt::Pass(_) => true,
         Stmt::Expr(ast::StmtExpr { value, .. }) => value.is_ellipsis_literal_expr(),
         Stmt::Raise(ast::StmtRaise { exc: Some(exc), .. }) => {
-            let raised = exc.as_call_expr().map_or(exc.as_ref(), |call| call.func.as_ref());
-            matches!(raised, Expr::Name(name) if name.id.as_str() == "NotImplementedError")
+            matches!(raised_class(exc), Expr::Name(name) if name.id.as_str() == "NotImplementedError")
         }
         _ => false,
     })

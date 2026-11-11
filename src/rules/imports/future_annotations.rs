@@ -10,7 +10,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Blanks, statement_removal};
 use crate::semantic::future_import;
-use crate::syntax::{alias_binding, module_statements, signature_annotations, target_names};
+use crate::syntax::{alias_binding, import_aliases, module_statements, signature_annotations, target_names};
 
 pub fn future_annotations(checker: &Checker) {
     let body = checker.body();
@@ -130,9 +130,7 @@ fn bound_names(stmt: &Stmt) -> Vec<&str> {
         Stmt::Assign(ast::StmtAssign { targets, .. }) => targets.iter().flat_map(target_names).collect(),
         Stmt::AnnAssign(ast::StmtAnnAssign { target, value: Some(_), .. })
         | Stmt::AugAssign(ast::StmtAugAssign { target, .. }) => target_names(target),
-        Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
-            names.iter().map(alias_binding).collect()
-        }
+        Stmt::Import(_) | Stmt::ImportFrom(_) => import_aliases(stmt).iter().map(alias_binding).collect(),
         _ => Vec::new(),
     }
 }

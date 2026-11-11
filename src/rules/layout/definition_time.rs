@@ -3,7 +3,7 @@ use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 use rustc_hash::FxHashSet;
 
-use crate::syntax::{ExprCollector, alias_binding, pattern_capture};
+use crate::syntax::{ExprCollector, alias_binding, import_aliases, pattern_capture};
 
 // The names a class body reads as it runs: outside its methods, or in their decorators and default values.
 pub(super) fn class_runtime_names(class: &ast::StmtClassDef) -> FxHashSet<&str> {
@@ -62,8 +62,8 @@ impl<'a> Visitor<'a> for BoundNames<'a> {
             Stmt::FunctionDef(ast::StmtFunctionDef { name, .. }) | Stmt::ClassDef(ast::StmtClassDef { name, .. }) => {
                 self.names.push(name.as_str());
             }
-            Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
-                self.names.extend(names.iter().map(alias_binding));
+            Stmt::Import(_) | Stmt::ImportFrom(_) => {
+                self.names.extend(import_aliases(stmt).iter().map(alias_binding));
             }
             _ => visitor::walk_stmt(self, stmt),
         }

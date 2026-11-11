@@ -1,8 +1,8 @@
 use std::collections::BTreeSet;
 
 use ruff_diagnostics::{Applicability, Edit, Fix};
+use ruff_python_ast::Expr;
 use ruff_python_ast::token::TokenKind;
-use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_python_trivia::leading_indentation;
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
@@ -16,7 +16,7 @@ use crate::rules::edits::fix_of;
 use crate::rules::{export_key, is_type_checking};
 use crate::semantic::BindingKind;
 use crate::syntax::is_main_guard;
-use crate::syntax::{Exports, Visibility, alias_binding, all_binding};
+use crate::syntax::{Exports, Visibility, alias_binding, all_binding, import_aliases};
 
 struct Missing<'a> {
     name: &'a str,
@@ -115,9 +115,7 @@ fn with_unused_noqas_removed(checker: &Checker, fix: Fix, missing: &[Missing]) -
         let code_end = comment.start() - TextSize::try_from(before.len() - before.trim_end().len()).ok()?;
         Some(Edit::range_deletion(TextRange::new(code_end, comment.end())))
     });
-    let mut edits: Vec<Edit> = fix.into_edits().into_iter().chain(unused).collect();
-    edits.sort_by_key(Ranged::start);
-    fix_of(edits, applicability)
+    fix_of(fix.into_edits().into_iter().chain(unused), applicability)
 }
 
 // Whether every name the imports on the comment's line bind is listed, so no import left unused needs the comment.
@@ -126,13 +124,7 @@ fn binds_only_listed(checker: &Checker, comment: TextRange, listed: &FxHashSet<&
     checker
         .body()
         .iter()
-        .filter_map(|stmt| match stmt {
-            Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
-                Some(names)
-            }
-            _ => None,
-        })
-        .flatten()
+        .flat_map(import_aliases)
         .filter(|alias| line.contains_range(alias.range()))
         .all(|alias| listed.contains(alias_binding(alias)))
 }
@@ -238,7 +230,6 @@ fn lines_insertion(checker: &Checker, all: &AllList, names: &[&str]) -> Option<F
     if line_comment == Some(true) {
         edits.push(Edit::insertion(",".to_owned(), tail_range.end()));
     }
-    edits.sort_by_key(Ranged::start);
     fix_of(edits, Applicability::Safe)
 }
 

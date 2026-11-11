@@ -42,12 +42,16 @@ pub(crate) use test_module_docstring::test_module_docstring;
 pub(crate) use undocumented_public_api::undocumented_public_api;
 
 use ruff_diagnostics::Edit;
-use ruff_python_ast::Stmt;
+use ruff_python_ast::{Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::rules::comments::is_tool_directive;
 use crate::rules::edits::{Blanks, statement_deletion};
+
+fn raised_class(exc: &Expr) -> &Expr {
+    exc.as_call_expr().map_or(exc, |call| call.func.as_ref())
+}
 
 // A variable is documented the two ways Sphinx autodoc reads: a string right after it, or `#:` comments right above.
 fn is_documented_variable(checker: &Checker, stmt: &Stmt, next: Option<&Stmt>) -> bool {

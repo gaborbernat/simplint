@@ -75,23 +75,19 @@ fn report(checker: &Checker, run: &[Stmt]) {
     let names: Vec<&str> = fields.iter().map(|field| checker.text(field.access.range())).collect();
     let values: Vec<&str> =
         fields.iter().map(|field| checker.parenthesized_text(field.value, field.compare.into())).collect();
+    let replacement = format!("assert ({}) == ({})", names.join(", "), values.join(", "));
     // A diagnostic is one line, so a value written over several lines is shown joined.
-    let example = format!("assert ({}) == ({})", names.join(", "), values.join(", "));
-    let example = example.split_whitespace().collect::<Vec<_>>().join(" ");
+    let example = replacement.split_whitespace().collect::<Vec<_>>().join(" ");
     let message =
         format!("These asserts check fields of `{owner}` one by one; compare them in one assert, as in `{example}`");
-    let fix = fits(checker, run, &fields).then(|| {
-        let replacement = format!("assert ({}) == ({})", names.join(", "), values.join(", "));
-        let range = TextRange::new(run[0].start(), run[run.len() - 1].end());
-        Fix::unsafe_edit(Edit::range_replacement(replacement, range))
-    });
+    let range = TextRange::new(run[0].start(), run[run.len() - 1].end());
+    let fix = fits(checker, run, range, &fields).then(|| Fix::unsafe_edit(Edit::range_replacement(replacement, range)));
     checker.report_fix(Rule::SplitCompositeAssert, run[0].range(), message, fix, "Compare the fields in one assert");
 }
 
 // The joined assert must fit the line it replaces: the line's indentation and the assert, joined on one line. Comments
 // in the run would be lost, and the run must own its lines for the replacement to keep the statements' layout.
-fn fits(checker: &Checker, run: &[Stmt], fields: &[Field]) -> bool {
-    let range = TextRange::new(run[0].start(), run[run.len() - 1].end());
+fn fits(checker: &Checker, run: &[Stmt], range: TextRange, fields: &[Field]) -> bool {
     if !checker.is_alone_on_lines(range) || checker.has_comment_in(range) {
         return false;
     }

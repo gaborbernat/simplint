@@ -69,7 +69,8 @@ fn flatten_class(checker: &Checker, class: &ast::StmtClassDef, new_names: &mut H
         let Stmt::FunctionDef(function) = stmt else {
             return None;
         };
-        let (text, name) = flatten_method(checker, (function, type_params, &prefix), block, new_names)?;
+        let (text, name) =
+            flatten_method(checker, Method { function, type_params, prefix: &prefix }, block, new_names)?;
         // Methods of one class can share a name too: `test_a` and `testa` in `TestSame` both become `test_same_a`.
         if !names.insert(name) {
             return None;
@@ -118,11 +119,17 @@ fn can_flatten(checker: &Checker, class: &ast::StmtClassDef) -> bool {
     true
 }
 
+struct Method<'a> {
+    function: &'a ast::StmtFunctionDef,
+    type_params: &'a [TypeParam],
+    prefix: &'a str,
+}
+
 // Turns a test method of a test class into a module-level function, named for the class, dropping `self`. Returns the
 // function's text and its name.
 fn flatten_method(
     checker: &Checker,
-    (function, type_params, prefix): (&ast::StmtFunctionDef, &[ast::TypeParam], &str),
+    Method { function, type_params, prefix }: Method<'_>,
     block: TextRange,
     new_names: &HashSet<String>,
 ) -> Option<(String, String)> {
