@@ -115,32 +115,26 @@ fn mock_assertion_typo_follows_ruff_pgh005(pyproject: &str, statement: &str, rep
     assert_eq!(stdout.contains("`not_called`"), reported, "{stdout}");
 }
 
-// Ruff's assert-tuple reports a non-empty tuple in an assert, which SMP804 leaves to it while F631 runs.
-#[test_case("def check() -> None:\n    assert (True, 1, 2)\n", "F631", "Assertion on a constant always passes" ; "assert_tuple")]
-#[test_case("def check() -> None:\n    assert (True, \"message\")\n", "F631", "Assertion on a constant always passes" ; "assert_tuple_with_fix")]
-fn constant_assert_follows_ruff_assert_tuple(source: &str, code: &str, fragment: &str) {
-    let case = common::RuffOverlap { settings: "", select: "SMP804", ruff_code: code, files: &[("module.py", source)] };
-    assert_eq!(common::reported_without_and_with_ruff(&case, fragment), [true, false]);
-}
-
-// Ruff's PLW0129 reports an assert on a string, bytes or f-string literal, which SMP804 leaves to it. A concatenation
-// is not a literal, so SMP804 keeps it.
-#[test_case("PLW0129", "assert \"ready\"", false ; "deletable_string")]
-#[test_case("PLW0129", "check(); assert \"ready\"", false ; "string_sharing_its_line")]
-#[test_case("PLW0129", "check(); assert \"ready\", \"message\"", false ; "string_with_message")]
-#[test_case("PLW0129", "check(); assert \"ready\" \"set\"", false ; "implicit_concatenation")]
-#[test_case("PLW0129", "check(); assert b\"ready\"", false ; "bytes")]
-#[test_case("PLW0129", "assert f\"ready {check()}\"", false ; "fstring_with_effect")]
-#[test_case("PLW0129", "assert \"a\" + \"b\"", true ; "concatenation")]
-#[test_case("PLW0129", "assert True", true ; "boolean")]
-fn constant_assert_follows_ruff_assert_on_string_literal(code: &str, statement: &str, reported_when_selected: bool) {
-    let module = format!("def check() -> None:\n    {statement}\n");
-    let case =
-        common::RuffOverlap { settings: "", select: "SMP804", ruff_code: code, files: &[("module.py", &module)] };
-    assert_eq!(
-        common::reported_without_and_with_ruff(&case, "Assertion on a constant always passes"),
-        [true, reported_when_selected]
-    );
+// Ruff's F631 and PLW0129 report a non-empty tuple and a string, bytes or f-string literal, so SMP804 leaves a case
+// without a fix of its own to them, whether or not the project selects them, and reports the cases it can fix.
+#[test_case("def check() -> None:\n    assert (True, 1, 2)\n", false ; "assert_tuple")]
+#[test_case("def check() -> None:\n    assert (1, 2, 3)\n", false ; "assert_tuple_without_fix")]
+#[test_case("def check() -> None:\n    assert (True, \"message\")\n", true ; "assert_tuple_with_fix")]
+#[test_case("def check() -> None:\n    assert \"ready\"\n", true ; "deletable_string")]
+#[test_case("def check() -> None:\n    assert b\"ready\"\n", true ; "deletable_bytes")]
+#[test_case("def check() -> None:\n    assert f\"ready\"\n", true ; "deletable_fstring")]
+#[test_case("def check() -> None:\n    assert \"ready\", \"message\"\n", true ; "deletable_string_with_message")]
+#[test_case("def check() -> None:\n    check(); assert \"ready\"\n", false ; "string_sharing_its_line")]
+#[test_case("def check() -> None:\n    check(); assert \"ready\", \"message\"\n", false ; "string_with_message")]
+#[test_case("def check() -> None:\n    check(); assert \"ready\" \"set\"\n", false ; "implicit_concatenation")]
+#[test_case("def check() -> None:\n    check(); assert b\"ready\"\n", false ; "bytes")]
+#[test_case("def check() -> None:\n    assert f\"ready {check()}\"\n", false ; "fstring_with_effect")]
+#[test_case("def check() -> None:\n    assert \"a\" + \"b\"\n", true ; "concatenation")]
+#[test_case("def check() -> None:\n    assert True\n", true ; "boolean")]
+fn constant_assert_leaves_ruff_cases_without_a_fix(source: &str, reported: bool) {
+    let root = common::project(&[("module.py", source)]);
+    let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP804"]);
+    assert_eq!(stdout.contains("Assertion on a constant always passes"), reported, "{stdout}");
 }
 
 // Ruff's ASYNC110 reports a `while` whose whole body awaits `asyncio.sleep`, which SMP808 leaves to it while the
