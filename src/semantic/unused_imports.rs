@@ -71,16 +71,18 @@ fn copied_references<'m>(
         .flat_map(move |prior| model.binding(prior).references())
 }
 
+// The model records no branches, so only a statement of the module body surely runs before the import that shadows it.
+fn is_top_level(model: &SemanticModel, node: NodeId) -> bool {
+    model.parent_statement(node).is_none()
+}
+
 fn has_simple_shadowed_bindings(model: &SemanticModel, scope: &Scope, live: BindingId) -> bool {
-    let Some(live_node) = model.binding(live).source else {
-        return false;
-    };
     scope.shadowed_bindings(live).enumerate().all(|(index, shadow)| {
         let shadowed = model.binding(shadow);
         if index > 0 && copied_references(model, scope, shadow).next().is_some() {
             return false;
         }
-        if shadowed.source.is_none_or(|node| !model.dominates(node, live_node)) {
+        if index > 0 && shadowed.source.is_none_or(|node| !is_top_level(model, node)) {
             return false;
         }
         matches!(shadowed.kind, BindingKind::Import(_) | BindingKind::SubmoduleImport(_)) && !shadowed.is_alias()
