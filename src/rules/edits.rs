@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use ruff_diagnostics::Edit;
+use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::helpers::is_docstring_stmt;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Stmt, StringFlags};
@@ -13,6 +13,13 @@ use crate::lint::checker::Checker;
 use crate::rules::{indentation, is_alone_on_lines};
 use crate::semantic::future_import;
 use crate::syntax::{Nesting, previous_line_start};
+
+// The fix that applies the edits, in the order its constructor sorts them; none when there are no edits.
+pub fn fix_of(edits: impl IntoIterator<Item = Edit>, applicability: Applicability) -> Option<Fix> {
+    let mut edits = edits.into_iter();
+    let first = edits.next()?;
+    Some(Fix::applicable_edits(first, edits, applicability))
+}
 
 pub fn delete_statement(source: &str, stmt: &Stmt, body: &[Stmt]) -> Edit {
     if body.len() == 1 {

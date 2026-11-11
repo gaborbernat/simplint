@@ -1,4 +1,4 @@
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::helpers::{StoredNameFinder, any_over_expr, body_without_leading_docstring, is_dunder};
 use ruff_python_ast::token::TokenKind;
@@ -12,7 +12,7 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::edits::{keep_debug_text, lines_with_trailing_blanks};
+use crate::rules::edits::{fix_of, keep_debug_text, lines_with_trailing_blanks};
 use crate::rules::rename::appears_in_strings;
 use crate::rules::{
     indentation, is_alone_on_lines, is_class_like, is_named_by_doctest, needs_parentheses, single_assignment,
@@ -310,8 +310,10 @@ fn inline_fix(checker: &Checker, value: &Expr, value_text: &str, deletion: Edit,
     let wrap = !parenthesized
         && (needs_parentheses(value) || value_text.contains('\n') && value.is_tuple_expr() || int_attribute);
     let inlined = if wrap { format!("({text})") } else { text };
-    let mut edits = keep_debug_text(checker, vec![deletion, Edit::range_replacement(inlined, reference)])?.into_iter();
-    Some(Fix::unsafe_edits(edits.next()?, edits))
+    fix_of(
+        keep_debug_text(checker, vec![deletion, Edit::range_replacement(inlined, reference)])?,
+        Applicability::Unsafe,
+    )
 }
 
 fn local_fix(checker: &Checker, constant: &Constant, value_text: &str, deletion: Edit) -> Option<Fix> {
@@ -367,8 +369,7 @@ fn local_fix(checker: &Checker, constant: &Constant, value_text: &str, deletion:
     };
     let renames = constant.references.iter().map(|range| Edit::range_replacement(local.clone(), *range));
     let edits = std::iter::once(deletion).chain(placements).chain(renames).collect();
-    let mut edits = keep_debug_text(checker, edits)?.into_iter();
-    Some(Fix::unsafe_edits(edits.next()?, edits))
+    fix_of(keep_debug_text(checker, edits)?, Applicability::Unsafe)
 }
 // Deleting a statement leaves the blank lines on both sides of it next to each other; drop the shorter run so the code
 // around it keeps the wider separation, and keep everything when the statement directly follows code.

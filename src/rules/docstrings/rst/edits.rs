@@ -1,9 +1,10 @@
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::StringFlags;
 use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use super::{Docstring, Field};
 use crate::lint::checker::Checker;
+use crate::rules::edits::fix_of;
 use crate::rules::indentation;
 
 // Deletes whole fields, each with the lines that continue it. Fields that end the docstring take the blank lines before
@@ -46,7 +47,5 @@ pub(crate) fn field_deletion(checker: &Checker, docstring: &Docstring, fields: &
             Edit::range_deletion(range)
         });
     }
-    let mut edits = edits.into_iter();
-    let first = edits.next()?;
-    Some(Fix::unsafe_edits(first, edits))
+    fix_of(edits, Applicability::Unsafe)
 }

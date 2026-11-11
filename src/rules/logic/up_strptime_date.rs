@@ -1,4 +1,4 @@
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 
@@ -48,7 +48,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
             let class_edit = Edit::range_replacement(replacement, class.range());
             let mut rest = vec![Edit::range_deletion(unwrap)];
             rest.extend(import);
-            if safe { Fix::safe_edits(class_edit, rest) } else { Fix::unsafe_edits(class_edit, rest) }
+            Fix::applicable_edits(class_edit, rest, if safe { Applicability::Safe } else { Applicability::Unsafe })
         });
     checker.report_fix(
         Rule::StrptimeDate,

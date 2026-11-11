@@ -2,14 +2,14 @@
 
 use std::borrow::Cow;
 
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast as ast;
 use ruff_python_stdlib::builtins::is_python_builtin;
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
-use crate::rules::edits::keep_debug_text;
+use crate::rules::edits::{fix_of, keep_debug_text};
 use crate::syntax::{Visibility, identifier_words};
 
 // The report for a name a public module keeps: its users import it, so the author lists it or renames it by hand, or,
@@ -58,8 +58,7 @@ pub fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
         .filter(|element| element.value.to_str() == old)
         .filter_map(|element| Some(element.value.iter().next()?.content_range()));
     let edits = ranges.into_iter().chain(renamed_exports).map(|range| Edit::range_replacement(new.to_owned(), range));
-    let mut edits = keep_debug_text(checker, edits.collect())?.into_iter();
-    Some(Fix::unsafe_edits(edits.next()?, edits))
+    fix_of(keep_debug_text(checker, edits.collect())?, Applicability::Unsafe)
 }
 
 // The text a string holds, not its source: `ruff format` rewrites escapes, as `\N{latin small letter x}` into

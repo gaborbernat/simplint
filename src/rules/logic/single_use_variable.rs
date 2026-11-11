@@ -1,4 +1,4 @@
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::helpers::{any_over_expr, is_dunder};
 use ruff_python_ast::name::QualifiedName;
@@ -72,11 +72,9 @@ fn check_pair<'a>(
             if !fits(checker, next, replace, depth) {
                 return;
             }
-            Some(if reorders(rebindable, assign, &reading) {
-                Fix::unsafe_edits(deletion, edits)
-            } else {
-                Fix::safe_edits(deletion, edits)
-            })
+            let applicability =
+                if reorders(rebindable, assign, &reading) { Applicability::Unsafe } else { Applicability::Safe };
+            Some(Fix::applicable_edits(deletion, edits, applicability))
         }
         // A debug field that cannot be rewritten keeps the report, and so does a t-string, whose fields keep their
         // source text, as the variable is still used once.

@@ -1,8 +1,9 @@
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_text_size::{TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::edits::fix_of;
 use crate::rules::logic::regex_pattern::{Context, Facts, scan};
 
 const MATCH_CALLS: [&str; 5] = ["compile", "match", "search", "fullmatch", "finditer"];
@@ -52,14 +53,13 @@ fn insertions(checker: &Checker, parts: &[(&[u8], TextRange)], groups: &[usize])
         starts.push((decoded, content.start()));
         decoded += value.len();
     }
-    let mut edits = groups
+    let edits = groups
         .iter()
         .map(|&group| {
             let (part_start, source_start) = starts[starts.partition_point(|(start, _)| *start <= group) - 1];
             let offset = TextSize::try_from(group - part_start + 1).ok()?;
             Some(Edit::insertion("?:".to_owned(), source_start + offset))
         })
-        .collect::<Option<Vec<_>>>()?
-        .into_iter();
-    Some(Fix::unsafe_edits(edits.next()?, edits))
+        .collect::<Option<Vec<_>>>()?;
+    fix_of(edits, Applicability::Unsafe)
 }

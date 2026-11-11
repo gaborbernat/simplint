@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::helpers::{Truthiness, any_over_expr, contains_effect};
 use ruff_python_ast::{self as ast, BoolOp, CmpOp, Expr, Operator, Stmt, UnaryOp};
@@ -78,7 +78,7 @@ fn report_constant_assert(checker: &Checker, stmt: &Stmt, assert: &ast::StmtAsse
         _ => is_deletable(checker, stmt, test).then(|| {
             let edit = delete_statement(checker.source, stmt, statements);
             // A template raises when its fields do not fit its arguments, and deleting it would hide that error.
-            if formats_to_text(test) { Fix::unsafe_edit(edit) } else { Fix::safe_edit(edit) }
+            Fix::applicable_edit(edit, if formats_to_text(test) { Applicability::Unsafe } else { Applicability::Safe })
         }),
     };
     let title = match test.as_ref() {

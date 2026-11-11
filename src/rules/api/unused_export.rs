@@ -6,6 +6,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::edits::fix_of;
 use crate::settings::ProjectKind;
 use crate::syntax::{Exports, alias_binding, all_binding, all_literal, all_mutation, module_statements};
 
@@ -146,9 +147,7 @@ fn removal(
     {
         edits.push(Edit::insertion(",".to_owned(), last.end()));
     }
-    let mut edits = edits.into_iter();
-    let first = edits.next()?;
-    Some(Fix::applicable_edits(first, edits, applicability(checker)))
+    fix_of(edits, applicability(checker))
 }
 
 // Whether a comment after a name that sits alone on its line may be the name's, rather than one after the statement.

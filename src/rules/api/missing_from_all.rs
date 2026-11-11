@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_python_trivia::leading_indentation;
@@ -12,6 +12,7 @@ use crate::lint::checker::Checker;
 use crate::lint::noqa::is_noqa_for_only;
 use crate::lint::registry::Rule;
 use crate::rules::api::{exploded, is_type_checking};
+use crate::rules::edits::fix_of;
 use crate::rules::{export_key, indentation};
 use crate::semantic::BindingKind;
 use crate::syntax::is_main_guard;
@@ -108,9 +109,7 @@ fn with_unused_noqas_removed(checker: &Checker, fix: Fix, missing: &[(&str, Text
     });
     let mut edits: Vec<Edit> = fix.into_edits().into_iter().chain(unused).collect();
     edits.sort_by_key(Ranged::start);
-    let mut sorted = edits.into_iter();
-    let first = sorted.next()?;
-    Some(Fix::applicable_edits(first, sorted, applicability))
+    fix_of(edits, applicability)
 }
 
 // Whether every name the imports on the comment's line bind is listed, so no import left unused needs the comment.
@@ -235,9 +234,7 @@ fn lines_insertion(
         edits.push(Edit::insertion(",".to_owned(), tail_range.end()));
     }
     edits.sort_by_key(Ranged::start);
-    let mut edits = edits.into_iter();
-    let first = edits.next()?;
-    Some(Fix::safe_edits(first, edits))
+    fix_of(edits, Applicability::Safe)
 }
 
 // Whether the closing bracket of the list is the next token after `elt`, past any comment or line break.

@@ -1,6 +1,6 @@
 use std::ops::RangeInclusive;
 
-use ruff_diagnostics::{Edit, Fix};
+use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::Stmt;
 use ruff_text_size::{Ranged, TextRange};
 
@@ -70,7 +70,7 @@ pub(super) fn reorder_fix(
         .filter(|position| expected[*position] != *position)
         .any(|position| shifts_unsafely(&suite.body[expected[position]]));
     let edit = Edit::range_replacement(replacement, region);
-    Some(if moved_unsafe { Fix::unsafe_edit(edit) } else { Fix::safe_edit(edit) })
+    Some(Fix::applicable_edit(edit, if moved_unsafe { Applicability::Unsafe } else { Applicability::Safe }))
 }
 
 // Decorators with no effect of their own, so moving a decorated method past another only changes the order of
