@@ -32,7 +32,8 @@ per-file-ignores = { "legacy.py" = ["SMP101"] }
         ("cli.py", "def main() -> None:\n    pass\n"),
         (
             "module.py",
-            "# --- helpers ---\nfrom __future__ import annotations\ntry:\n    import requests\nexcept ImportError:\n    requests = None\n",
+            "# --- helpers ---\nfrom __future__ import annotations\ntry:\n    import \
+             requests\nexcept ImportError:\n    requests = None\n",
         ),
         ("legacy.py", "x = 1\n"),
         ("generated/output.py", "x = 1\n"),
@@ -40,8 +41,10 @@ per-file-ignores = { "legacy.py" = ["SMP101"] }
     assert_eq!(
         check(root.path(), &[]).1,
         "cli.py:1:5: SMP401 `main` is imported by other modules; list it in `__all__`\n\
-         module.py:2:24: SMP301 [*] Annotations are evaluated lazily from Python 3.14; drop `from __future__ import annotations`\n\
-         module.py:3:1: SMP303 Import guard around a required dependency; import it directly and let a broken install fail\n\
+          module.py:2:24: SMP301 [*] Annotations are evaluated lazily from Python 3.14; drop \
+          `from __future__ import annotations`\n\
+          module.py:3:1: SMP303 Import guard around a required dependency; import it directly and let a broken \
+          install fail\n\
          Found 3 errors.\n[*] 1 fixable with `--fix` (2 unsafe fixes available with `--fix --unsafe-fixes`).\n"
     );
 }
@@ -101,7 +104,8 @@ fn pyproject_extend_per_file_ignores_adds_to_per_file_ignores() {
     let root = project(&[
         (
             "pyproject.toml",
-            "[tool.simplint]\nper-file-ignores = { \"other.py\" = [\"SMP001\"] }\nextend-per-file-ignores = { \"module.py\" = [\"SMP101\"] }\n",
+            "[tool.simplint]\nper-file-ignores = { \"other.py\" = [\"SMP001\"] }\nextend-per-file-ignores = \
+             { \"module.py\" = [\"SMP101\"] }\n",
         ),
         ("module.py", "x = 1\n"),
         ("other.py", "# --- helpers ---\nx = 1\n"),
@@ -118,7 +122,8 @@ fn dependency_guard_maps_import_names_and_skips_markers() {
         ("pyproject.toml", "[project]\ndependencies = [\"PyYAML>=6\", \"tomli>=2; python_version < '3.11'\"]\n"),
         (
             "module.py",
-            "try:\n    import yaml\nexcept ImportError:\n    yaml = None\ntry:\n    import tomli\nexcept ImportError:\n    tomli = None\n",
+            "try:\n    import yaml\nexcept ImportError:\n    yaml = None\ntry:\n    import \
+             tomli\nexcept ImportError:\n    tomli = None\n",
         ),
     ]);
     assert_eq!(
@@ -246,9 +251,10 @@ fn isolated_rejects_a_config_file() {
     "ruff.toml",
     "target-version = \"py310\"\n",
     "module.py:1:1: SMP101 Single-letter name `x`; use a descriptive name\nmodule.py:1:1: \
-     SMP102 Module-scope variable `x` should be named `X`\nmodule.py:1:1: SMP404 `x` is not in `__all__`; name it `_x`\n\
-     module.py:1:1: SMP601 `x` is never reassigned; annotate it `Final`\nFound 4 errors.\n3 unsafe fixes available with \
-     `--fix --unsafe-fixes`.\n" ;
+      SMP102 Module-scope variable `x` should be named `X`\nmodule.py:1:1: SMP404 `x` is not in `__all__`; \
+      name it `_x`\n\
+      module.py:1:1: SMP601 `x` is never reassigned; annotate it `Final`\nFound 4 errors.\n3 unsafe fixes available \
+      with `--fix --unsafe-fixes`.\n" ;
     "ruff_toml"
 )]
 fn config_file_is_used_for_every_file(name: &str, content: &str, stdout: &str) {
@@ -361,7 +367,12 @@ fn module_attributes_ignore_modules_outside_the_run() {
 }
 
 #[test_case(&[], &["--config", "max-paragraph-words = 4"], LONG_PARAGRAPH ; "limit_inline")]
-#[test_case(&[("pyproject.toml", "[tool.simplint]\nmax-paragraph-words = 4\n")], &[], LONG_PARAGRAPH ; "limit_in_pyproject")]
+#[test_case(
+    &[("pyproject.toml", "[tool.simplint]\nmax-paragraph-words = 4\n")],
+    &[],
+    LONG_PARAGRAPH
+    ; "limit_in_pyproject"
+)]
 #[test_case(&[], &[], PASSED ; "default_limit")]
 fn paragraph_word_limit_decides_long_paragraphs(files: &[(&str, &str)], flags: &[&str], expected: &str) {
     let root = project(&[files, &[("module.py", "# One two three four five.\nVALUE = 1\n")]].concat());
@@ -378,7 +389,12 @@ const LONG_PARAGRAPH: &str =
      Found 1 error.\n" ;
     "defaults"
 )]
-#[test_case(&[("pyproject.toml", "[tool.simplint.logic]\nmax-helper-statements = 2\n")], &[], PASSED ; "helper_limit_in_pyproject")]
+#[test_case(
+    &[("pyproject.toml", "[tool.simplint.logic]\nmax-helper-statements = 2\n")],
+    &[],
+    PASSED
+    ; "helper_limit_in_pyproject"
+)]
 #[test_case(&[], &["--config", "logic.max-caller-statements = 3"], PASSED ; "caller_limit_inline")]
 fn logic_limits_decide_single_caller_helpers(files: &[(&str, &str)], flags: &[&str], expected: &str) {
     let source = r#"def load(text):
@@ -757,20 +773,42 @@ fn test_module_without_pyproject(name: &str, reported: bool) {
     assert_eq!((code, stdout.contains("SMP902")), (i32::from(reported), reported));
 }
 
-#[test_case(&[("pyproject.toml", "[project]\nrequires-python = \">=3.14\"\n")], &[], LAZY_ANNOTATIONS ; "requires_python")]
-#[test_case(&[("pyproject.toml", "[project]\nrequires-python = \"~=3.14\"\n")], &[], LAZY_ANNOTATIONS ; "requires_python_compatible")]
-#[test_case(&[("pyproject.toml", "[project]\nrequires-python = \"==3.14.*\"\n")], &[], LAZY_ANNOTATIONS ; "requires_python_wildcard")]
+#[test_case(
+    &[("pyproject.toml", "[project]\nrequires-python = \">=3.14\"\n")],
+    &[],
+    LAZY_ANNOTATIONS
+    ; "requires_python"
+)]
+#[test_case(
+    &[("pyproject.toml", "[project]\nrequires-python = \"~=3.14\"\n")],
+    &[],
+    LAZY_ANNOTATIONS
+    ; "requires_python_compatible"
+)]
+#[test_case(
+    &[("pyproject.toml", "[project]\nrequires-python = \"==3.14.*\"\n")],
+    &[],
+    LAZY_ANNOTATIONS
+    ; "requires_python_wildcard"
+)]
 #[test_case(
     &[("pyproject.toml", "[project]\nrequires-python = \">=3.14\"\n")], &["--target-version", "py313"], PASSED ;
     "flag_wins"
 )]
 #[test_case(
-    &[("pyproject.toml", "[project]\nrequires-python = \">=3.14\"\n")], &["--config", "target-version = 'py313'"], PASSED ;
-    "inline_config_wins"
+    &[("pyproject.toml", "[project]\nrequires-python = \">=3.14\"\n")],
+    &["--config", "target-version = 'py313'"],
+    PASSED
+    ; "inline_config_wins"
 )]
 #[test_case(
-    &[("pyproject.toml", "[project]\nrequires-python = \">=3.14\"\n[tool.ruff]\ntarget-version = \"py312\"\n")], &[], PASSED ;
-    "pyproject_ruff_target_version_wins"
+    &[(
+        "pyproject.toml",
+        "[project]\nrequires-python = \">=3.14\"\n[tool.ruff]\ntarget-version = \"py312\"\n"
+    )],
+    &[],
+    PASSED
+    ; "pyproject_ruff_target_version_wins"
 )]
 #[test_case(
     &[("pyproject.toml", "[project]\nrequires-python = \">=3.14\"\n"), (".ruff.toml", "target-version = \"py313\"\n")],
@@ -799,7 +837,11 @@ fn test_module_without_pyproject(name: &str, reported: bool) {
 )]
 #[test_case(
     &[
-        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py314\"\nper-file-target-version = { \"legacy.py\" = \"py310\" }\n"),
+        (
+            "pyproject.toml",
+            "[tool.ruff]\ntarget-version = \"py314\"\nper-file-target-version = \
+             { \"legacy.py\" = \"py310\" }\n"
+        ),
         ("legacy.py", "from __future__ import annotations\n"),
     ],
     &[],
@@ -811,8 +853,8 @@ fn target_version_resolution(files: &[(&str, &str)], flags: &[&str], stdout: &st
     assert_eq!(check(root.path(), &[&["--select", "SMP301"], flags].concat()).1, stdout);
 }
 
-const LAZY_ANNOTATIONS: &str = "module.py:1:24: SMP301 [*] Annotations are evaluated lazily from Python 3.14; drop `from \
-                                 __future__ import annotations`\nFound 1 error.\n[*] 1 fixable with `--fix`.\n";
+const LAZY_ANNOTATIONS: &str = "module.py:1:24: SMP301 [*] Annotations are evaluated lazily from Python 3.14; drop \
+                                 `from __future__ import annotations`\nFound 1 error.\n[*] 1 fixable with `--fix`.\n";
 
 #[test]
 fn show_settings_describes_the_first_file() {
@@ -860,12 +902,25 @@ max-cognitive-complexity = 15
                  cache_dir = {cache_dir}\nfix = false\nfix_only = false\noutput_format = concise\n\
                  show_fixes = false\nunsafe_fixes = hint\n\n# Linter Settings\nlinter.project_root = {project_root}\n\
                  linter.target_version = 3.12\nlinter.rules.enabled = [\n\tsection-comment (SMP001),\n]\n\
-                 linter.rules.should_fix = []\nlinter.per_file_ignores = [\n\t{ignored} = [\"section-comment (SMP001)\"],\n]\n\
-                 linter.safety_table.forced_safe = [\n\tsection-comment (SMP001),\n]\nlinter.safety_table.forced_unsafe = []\n\
-                 linter.dependencies = [\n\t\"requests\",\n]\nlinter.declared_dependencies = [\n\t\"pytest_mock\",\n\t\"requests\",\n]\nlinter.entry_points = [\n\t\"cli:main\",\n]\n\
-                 linter.max_paragraph_words = 100\nlinter.naming.keep_names = [\n\t\"app_name\",\n]\nlinter.naming.meaningless_names = [\n\t\"foo\",\n\t\"baz\",\n\t\"qux\",\n\t\"quux\",\n]\nlinter.naming.catch_all_modules = [\n\t\"utils\",\n\t\"util\",\n\t\"utilities\",\n\t\"helpers\",\n\t\"helper\",\n\t\"common\",\n\t\"misc\",\n]\nlinter.imports.module_attributes = [\n\t\"app.settings\",\n]\n\
-                 linter.logic.max_helper_statements = 3\nlinter.logic.max_caller_statements = 20\nlinter.logic.max_tuple_elements = 3\n\
-                 linter.logic.max_cognitive_complexity = 15\nlinter.logic.min_duplicate_statements = 6\nlinter.project_kind = library\n\
+                 linter.rules.should_fix = []\nlinter.per_file_ignores = \
+                 [\n\t{ignored} = [\"section-comment (SMP001)\"],\n]\n\
+                 linter.safety_table.forced_safe = \
+                 [\n\tsection-comment (SMP001),\n]\nlinter.safety_table.forced_unsafe = \
+                 []\n\
+                 linter.dependencies = [\n\t\"requests\",\n]\nlinter.declared_dependencies = \
+                 [\n\t\"pytest_mock\",\n\t\"requests\",\n]\nlinter.entry_points = [\n\t\"cli:main\",\n]\n\
+                 linter.max_paragraph_words = 100\nlinter.naming.keep_names = \
+                 [\n\t\"app_name\",\n]\nlinter.naming.meaningless_names = \
+                 [\n\t\"foo\",\n\t\"baz\",\n\t\"qux\",\n\t\"quux\",\n]\nlinter.naming.catch_all_modules = \
+                 [\n\t\"utils\",\n\t\"util\",\n\t\"utilities\",\n\t\"helpers\",\n\t\"helper\",\n\
+                 \t\"common\",\n\t\"misc\",\n]\nlinter.imports.module_attributes = \
+                 [\n\t\"app.settings\",\n]\n\
+                 linter.logic.max_helper_statements = 3\nlinter.logic.max_caller_statements = \
+                 20\nlinter.logic.max_tuple_elements = \
+                 3\n\
+                 linter.logic.max_cognitive_complexity = \
+                 15\nlinter.logic.min_duplicate_statements = 6\nlinter.project_kind = \
+                 library\n\
                  linter.api_packages = [\n\t\"app\",\n]\n\
                  linter.docstring_style = rst\n"
             )
@@ -895,10 +950,25 @@ fn show_settings_without_files_fails() {
 #[test_case("", &[("setup.py", "")], "library" ; "setup_py")]
 #[test_case("", &[("setup.cfg", "")], "library" ; "setup_cfg")]
 #[test_case("[project]\nname = \"tool\"\n", &[], "application" ; "nothing_installs_it")]
-#[test_case("[build-system]\nrequires = []\n[tool.uv]\npackage = false\n", &[], "application" ; "uv_installs_no_package")]
-#[test_case("[build-system]\nrequires = []\n[tool.maturin]\nbindings = \"bin\"\n", &[], "application" ; "maturin_binary")]
+#[test_case(
+    "[build-system]\nrequires = []\n[tool.uv]\npackage = false\n",
+    &[],
+    "application"
+    ; "uv_installs_no_package"
+)]
+#[test_case(
+    "[build-system]\nrequires = []\n[tool.maturin]\nbindings = \"bin\"\n",
+    &[],
+    "application"
+    ; "maturin_binary"
+)]
 #[test_case("[tool.simplint]\nproject-kind = \"library\"\n", &[], "library" ; "set_to_library")]
-#[test_case("[build-system]\nrequires = []\n[tool.simplint]\nproject-kind = \"application\"\n", &[], "application" ; "set_to_application")]
+#[test_case(
+    "[build-system]\nrequires = []\n[tool.simplint]\nproject-kind = \"application\"\n",
+    &[],
+    "application"
+    ; "set_to_application"
+)]
 fn project_kind_follows_how_the_project_installs(pyproject: &str, files: &[(&str, &str)], kind: &str) {
     let root = project(&[&[("pyproject.toml", pyproject), ("module.py", "")], files].concat());
     let stdout = check(root.path(), &["--show-settings"]).1;
@@ -925,7 +995,12 @@ fn shown_setting<'s>(stdout: &'s str, setting: &str, next: &str) -> &'s str {
     "[tool.setuptools]\npackages = 3\n", &[("src/typed/py.typed", ""), ("src/plain/__init__.py", "")],
     "[\n\t\"typed\",\n]" ; "py_typed_marker"
 )]
-#[test_case("[project]\nname = \"named-package\"\n", &[("named_package/__init__.py", "")], "[\n\t\"named_package\",\n]" ; "project_name")]
+#[test_case(
+    "[project]\nname = \"named-package\"\n",
+    &[("named_package/__init__.py", "")],
+    "[\n\t\"named_package\",\n]"
+    ; "project_name"
+)]
 #[test_case("[project]\nname = \"absent\"\n", &[], "every module outside docs and tests" ; "fallback")]
 #[test_case("[tool.simplint]\napi-packages = [\"chosen.sub\"]\n", &[], "[\n\t\"chosen.sub\",\n]" ; "configured")]
 fn api_packages_come_from_the_build_configuration(pyproject: &str, files: &[(&str, &str)], packages: &str) {

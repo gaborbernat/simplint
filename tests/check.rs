@@ -76,7 +76,11 @@ fn show_files_lists_the_files_to_check() {
 #[test_case(&["--extend-exclude", "module.py"], 0 ; "extend_exclude")]
 #[test_case(&["--extend-exclude", "module.py", "module.py"], 1 ; "explicit_path_wins")]
 #[test_case(&["--extend-exclude", "module.py", "--force-exclude", "module.py"], 0 ; "force_exclude")]
-#[test_case(&["--extend-exclude", "module.py", "--force-exclude", "--no-force-exclude", "module.py"], 1 ; "no_force_exclude")]
+#[test_case(
+    &["--extend-exclude", "module.py", "--force-exclude", "--no-force-exclude", "module.py"],
+    1
+    ; "no_force_exclude"
+)]
 fn exclusion_flags(flags: &[&str], code: i32) {
     let root = project(&[("module.py", "x = 1\n")]);
     let mut args = vec!["--select", "SMP101"];
@@ -160,9 +164,21 @@ fn per_file_ignores_flag_needs_a_pattern_and_code() {
 #[test_case(&["--extend-fixable", "SMP99"], "`SMP99` in `extend-fixable`" ; "extend_fixable")]
 #[test_case(&["--unfixable", "SMP99"], "`SMP99` in `unfixable`" ; "unfixable")]
 #[test_case(&["--per-file-ignores", "a.py:SMP99"], "`SMP99` in `per-file-ignores`" ; "per_file_ignores")]
-#[test_case(&["--config", "extend-unfixable = [\"SMP99\"]"], "`SMP99` in `extend-unfixable`" ; "inline_extend_unfixable")]
-#[test_case(&["--config", "extend-safe-fixes = [\"SMP99\"]"], "`SMP99` in `extend-safe-fixes`" ; "inline_extend_safe_fixes")]
-#[test_case(&["--config", "extend-unsafe-fixes = [\"SMP99\"]"], "`SMP99` in `extend-unsafe-fixes`" ; "inline_extend_unsafe_fixes")]
+#[test_case(
+    &["--config", "extend-unfixable = [\"SMP99\"]"],
+    "`SMP99` in `extend-unfixable`"
+    ; "inline_extend_unfixable"
+)]
+#[test_case(
+    &["--config", "extend-safe-fixes = [\"SMP99\"]"],
+    "`SMP99` in `extend-safe-fixes`"
+    ; "inline_extend_safe_fixes"
+)]
+#[test_case(
+    &["--config", "extend-unsafe-fixes = [\"SMP99\"]"],
+    "`SMP99` in `extend-unsafe-fixes`"
+    ; "inline_extend_unsafe_fixes"
+)]
 #[test_case(
     &["--config", "extend-per-file-ignores = { \"a.py\" = [\"SMP99\"] }"],
     "`SMP99` in `extend-per-file-ignores`" ;
@@ -187,7 +203,8 @@ fn check_points_ruff_selectors_to_ruff(selector: &str) {
             2,
             String::new(),
             format!(
-                "simplint failed\n  Cause: Unknown rule selector `{selector}` in `select` from the CLI; it selects Ruff \
+                "simplint failed\n  Cause: Unknown rule selector `{selector}` in `select` from the \
+                 CLI; it selects Ruff \
                  rules, so select it in Ruff's configuration instead\n"
             )
         )
@@ -350,7 +367,11 @@ fn check_stdin_resolves_the_package_of_its_filename() {
 }
 
 #[test_case(
-    &[("pyproject.toml", "[tool.ruff]\ntarget-version = \"py39\"\nper-file-target-version = { \"legacy/*.py\" = \"py314\" }\n")],
+    &[(
+        "pyproject.toml",
+        "[tool.ruff]\ntarget-version = \"py39\"\nper-file-target-version = \
+         { \"legacy/*.py\" = \"py314\" }\n"
+    )],
     "legacy/model.py",
     "from dataclasses import dataclass\n\n\n@dataclass\nclass Point:\n    x: int\n",
     "SMP701"
