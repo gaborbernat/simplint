@@ -24665,7 +24665,7 @@
     "name": "indistinct-error-class",
     "summary": "Exception classes no handler catches by name",
     "fix": "None",
-    "explanation": "Flags exception classes that no `except` clause in the run names by name.\n\n## Why is this bad?\n\nCallers handle an error by the type they catch. A class that nothing catches by name adds a name to import and a type to\ndocument, yet callers cannot tell it from a built-in exception, which says the same thing. Raising a built-in such as\n`ValueError` keeps the program to the types Python already has.\n\n## Example\n\n```python report\nclass ConfigError(Exception):\n    pass\n\n\ndef load(path: str) -> None:\n    raise ConfigError(path)\n```\n\nUse instead:\n\n```python ok\ndef load(path: str) -> None:\n    raise ValueError(path)\n```\n\n## What it does\n\n### Active on\n\n- **Exception classes no handler names**: a class whose base is `Exception`, `BaseException`, a class of the run that is\n  one, or a standard-library exception, with no `except` clause in non-test code that names it or a subclass of it.\n\n  ```python report\n  class ConfigError(Exception):\n      pass\n  ```\n\n- **Subclasses of built-in exceptions**: a built-in base makes the class an exception, whatever the class's own name.\n\n  ```python report\n  class ConfigError(ValueError):\n      pass\n  ```\n\n- **Standard-library exception bases**: a class of a standard-library module whose name ends in `Error`, `Exception` or\n  `Warning` counts as an exception base.\n\n  ```python report\n  from json import JSONDecodeError\n\n\n  class ConfigError(JSONDecodeError):\n      pass\n  ```\n\n- **Catches in test modules**: an `except` clause in a test module, or a `pytest.raises(...)` block, does not count, so\n  the class stays reported.\n\n  ```python report file=app/errors.py\n  class ConfigError(Exception):\n      pass\n  ```\n\n  ```python context file=tests/test_errors.py\n  from app.errors import ConfigError\n\n\n  def test_config() -> None:\n      try:\n          raise ConfigError()\n      except ConfigError:\n          pass\n  ```\n\n- **What counts as naming a class in a handler**: a class named in any of these ways is caught by name, so it is not\n  reported:\n\n  - **A class named in a tuple of an `except` clause**: each class of the tuple counts.\n\n    ```python ok file=app/errors.py\n    class ConfigError(Exception):\n        pass\n    ```\n\n    ```python context file=app/main.py\n    from app.errors import ConfigError\n\n\n    def load() -> None:\n        try:\n            raise ConfigError()\n        except (KeyError, ConfigError):\n            pass\n    ```\n\n  - **An `except*` clause**: an exception group handler names a class the same way.\n\n    ```toml config\n    [project]\n    requires-python = \">=3.11\"\n    ```\n\n    ```python ok file=app/errors.py\n    class ConfigError(Exception):\n        pass\n    ```\n\n    ```python context file=app/main.py\n    from app.errors import ConfigError\n\n\n    def load() -> None:\n        try:\n            raise ExceptionGroup(\"errors\", [ConfigError()])\n        except* ConfigError:\n            pass\n    ```\n\n  - **A split or subgroup of an exception group inside a handler**: `split` and `subgroup` take the classes to select as\n    their first argument.\n\n    ```toml config\n    [project]\n    requires-python = \">=3.11\"\n    ```\n\n    ```python ok file=app/errors.py\n    class ConfigError(Exception):\n        pass\n    ```\n\n    ```python context file=app/main.py\n    from app.errors import ConfigError\n\n\n    def load() -> None:\n        try:\n            raise ExceptionGroup(\"errors\", [ConfigError()])\n        except ExceptionGroup as group:\n            matched, rest = group.split(ConfigError)\n    ```\n\n  - **An `isinstance` check inside a handler**: a check on the caught exception names the class.\n\n    ```python ok file=app/errors.py\n    class ConfigError(Exception):\n        pass\n    ```\n\n    ```python context file=app/main.py\n    from app.errors import ConfigError\n\n\n    def load() -> None:\n        try:\n            raise ConfigError()\n        except Exception as error:\n            if isinstance(error, ConfigError):\n                pass\n    ```\n\n  - **A class pattern inside a handler**: a `case` of a `match` on the caught exception names the class.\n\n    ```python ok file=app/errors.py\n    class ConfigError(Exception):\n        pass\n    ```\n\n    ```python context file=app/main.py\n    from app.errors import ConfigError\n\n\n    def load() -> None:\n        try:\n            raise ConfigError()\n        except Exception as error:\n            match error:\n                case ConfigError():\n                    pass\n    ```\n\n  - **A handler through a module that re-exports the class**: the catch reaches the class where it is defined, through\n    the `from ... import` statements that re-export it.\n\n    ```python ok file=app/errors.py\n    class ConfigError(Exception):\n        pass\n    ```\n\n    ```python context file=app/api.py\n    from app.errors import ConfigError\n\n    __all__ = [\"ConfigError\"]\n    ```\n\n    ```python context file=app/main.py\n    from app.api import ConfigError\n\n\n    def load() -> None:\n        try:\n            raise ConfigError()\n        except ConfigError:\n            pass\n    ```\n\n  - **A handler in the module itself**: a class the module catches is in use.\n\n    ```python ok\n    class ConfigError(Exception):\n        pass\n\n\n    def load() -> None:\n        try:\n            raise ConfigError()\n        except ConfigError:\n            pass\n    ```\n\n### Exceptions\n\n- **A library's public API**: a class a public module offers, which users of the library may catch, is kept. This rule\n  reuses the public API decision of the docstring rules.\n\n  ```toml config\n  [build-system]\n  requires = [\"setuptools\"]\n\n  [project]\n  name = \"mylib\"\n  ```\n\n  ```python ok file=mylib/errors.py\n  class ConfigError(Exception):\n      pass\n  ```\n\n- **Classes with state**: a class that assigns attributes, or defines `__init__`, is kept, since a handler may read\n  attributes off it that a built-in cannot carry. The rule does not follow each attribute read, so any such class is\n  skipped.\n\n  ```python ok\n  class ConfigError(Exception):\n      def __init__(self, key: str) -> None:\n          super().__init__(key)\n          self.key = key\n  ```\n\n- **A base class with a caught subclass**: a handler that names a subclass also catches its bases, so only the subclass\n  is needed. A base is reported only when no subclass of it is caught.\n\n  ```python ok file=app/errors.py\n  class AppError(Exception):\n      pass\n\n\n  class ConfigError(AppError):\n      pass\n  ```\n\n  ```python context file=app/main.py\n  from app.errors import ConfigError\n\n\n  def load() -> None:\n      try:\n          raise ConfigError()\n      except ConfigError:\n          pass\n  ```\n\n- **Warnings**: a subclass of `Warning` is raised to be seen, not caught, so it is not reported.\n\n  ```python ok\n  class ConfigWarning(UserWarning):\n      pass\n  ```\n\nThe rule has no fix, because the replacement type depends on what the callers expect, which the author knows.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags exception classes that no `except` clause in the run names by name.\n\n## Why is this bad?\n\nCallers handle an error by the type they catch. A class that nothing catches by name adds a name to import and a type to\ndocument, yet callers cannot tell it from a built-in exception, which says the same thing. Raising a built-in such as\n`ValueError` keeps the program to the types Python already has.\n\n## Example\n\n```python report\nclass ConfigError(Exception):\n    pass\n\n\ndef load(path: str) -> None:\n    raise ConfigError(path)\n```\n\nUse instead:\n\n```python ok\ndef load(path: str) -> None:\n    raise ValueError(path)\n```\n\n## What it does\n\n### Active on\n\n- **Exception classes no handler names**: a class whose base is `Exception`, `BaseException`, a class of the run that is\n  one, or a standard-library exception, with no `except` clause in non-test code that names it or a subclass of it.\n\n  ```python report\n  class ConfigError(Exception):\n      pass\n  ```\n\n- **Subclasses of built-in exceptions**: a built-in base makes the class an exception, whatever the class's own name.\n\n  ```python report\n  class ConfigError(ValueError):\n      pass\n  ```\n\n- **Standard-library exception bases**: a class of a standard-library module whose name ends in `Error`, `Exception` or\n  `Warning` counts as an exception base.\n\n  ```python report\n  from json import JSONDecodeError\n\n\n  class ConfigError(JSONDecodeError):\n      pass\n  ```\n\n- **Catches in test modules**: an `except` clause in a test module, or a `pytest.raises(...)` block, does not count, so\n  the class stays reported.\n\n  ```python report file=app/errors.py\n  class ConfigError(Exception):\n      pass\n  ```\n\n  ```python context file=tests/test_errors.py\n  from app.errors import ConfigError\n\n\n  def test_config() -> None:\n      try:\n          raise ConfigError()\n      except ConfigError:\n          pass\n  ```\n\n- **What counts as naming a class in a handler**: a class named in any of these ways is caught by name, so it is not\n  reported:\n\n  - **A class named in a tuple of an `except` clause**: each class of the tuple counts.\n\n    ```python ok file=app/errors.py\n    class ConfigError(Exception):\n        pass\n    ```\n\n    ```python context file=app/main.py\n    from app.errors import ConfigError\n\n\n    def load() -> None:\n        try:\n            raise ConfigError()\n        except (KeyError, ConfigError):\n            pass\n    ```\n\n  - **A tuple of classes named by an `except` clause**: a module-level tuple of classes, such as\n    `RETRYABLE = (ConfigError,)`, counts as each class it holds, wherever the tuple is defined.\n\n    ```python ok file=app/errors.py\n    class ConfigError(Exception):\n        pass\n\n\n    RETRYABLE = (ConfigError,)\n    ```\n\n    ```python context file=app/main.py\n    from app.errors import RETRYABLE\n\n\n    def load() -> None:\n        try:\n            raise ValueError()\n        except RETRYABLE:\n            pass\n    ```\n\n  - **A class given to `contextlib.suppress`**: each argument of `suppress` counts, since the context manager catches\n    it.\n\n    ```python ok file=app/errors.py\n    class ConfigError(Exception):\n        pass\n    ```\n\n    ```python context file=app/main.py\n    import contextlib\n\n    from app.errors import ConfigError\n\n\n    def load() -> None:\n        with contextlib.suppress(ConfigError):\n            raise ConfigError()\n    ```\n\n  - **An `except*` clause**: an exception group handler names a class the same way.\n\n    ```toml config\n    [project]\n    requires-python = \">=3.11\"\n    ```\n\n    ```python ok file=app/errors.py\n    class ConfigError(Exception):\n        pass\n    ```\n\n    ```python context file=app/main.py\n    from app.errors import ConfigError\n\n\n    def load() -> None:\n        try:\n            raise ExceptionGroup(\"errors\", [ConfigError()])\n        except* ConfigError:\n            pass\n    ```\n\n  - **A split or subgroup of an exception group inside a handler**: `split` and `subgroup` take the classes to select as\n    their first argument.\n\n    ```toml config\n    [project]\n    requires-python = \">=3.11\"\n    ```\n\n    ```python ok file=app/errors.py\n    class ConfigError(Exception):\n        pass\n    ```\n\n    ```python context file=app/main.py\n    from app.errors import ConfigError\n\n\n    def load() -> None:\n        try:\n            raise ExceptionGroup(\"errors\", [ConfigError()])\n        except ExceptionGroup as group:\n            matched, rest = group.split(ConfigError)\n    ```\n\n  - **An `isinstance` check inside a handler**: a check on the caught exception names the class.\n\n    ```python ok file=app/errors.py\n    class ConfigError(Exception):\n        pass\n    ```\n\n    ```python context file=app/main.py\n    from app.errors import ConfigError\n\n\n    def load() -> None:\n        try:\n            raise ConfigError()\n        except Exception as error:\n            if isinstance(error, ConfigError):\n                pass\n    ```\n\n  - **A class pattern inside a handler**: a `case` of a `match` on the caught exception names the class.\n\n    ```python ok file=app/errors.py\n    class ConfigError(Exception):\n        pass\n    ```\n\n    ```python context file=app/main.py\n    from app.errors import ConfigError\n\n\n    def load() -> None:\n        try:\n            raise ConfigError()\n        except Exception as error:\n            match error:\n                case ConfigError():\n                    pass\n    ```\n\n  - **A handler through a module that re-exports the class**: the catch reaches the class where it is defined, through\n    the `from ... import` statements that re-export it.\n\n    ```python ok file=app/errors.py\n    class ConfigError(Exception):\n        pass\n    ```\n\n    ```python context file=app/api.py\n    from app.errors import ConfigError\n\n    __all__ = [\"ConfigError\"]\n    ```\n\n    ```python context file=app/main.py\n    from app.api import ConfigError\n\n\n    def load() -> None:\n        try:\n            raise ConfigError()\n        except ConfigError:\n            pass\n    ```\n\n  - **A handler in the module itself**: a class the module catches is in use.\n\n    ```python ok\n    class ConfigError(Exception):\n        pass\n\n\n    def load() -> None:\n        try:\n            raise ConfigError()\n        except ConfigError:\n            pass\n    ```\n\n### Exceptions\n\n- **A library's public API**: a class a public module offers, which users of the library may catch, is kept. This rule\n  reuses the public API decision of the docstring rules.\n\n  ```toml config\n  [build-system]\n  requires = [\"setuptools\"]\n\n  [project]\n  name = \"mylib\"\n  ```\n\n  ```python ok file=mylib/errors.py\n  class ConfigError(Exception):\n      pass\n  ```\n\n- **Classes with state**: a class that assigns attributes, or defines `__init__`, is kept, since a handler may read\n  attributes off it that a built-in cannot carry. The rule does not follow each attribute read, so any such class is\n  skipped.\n\n  ```python ok\n  class ConfigError(Exception):\n      def __init__(self, key: str) -> None:\n          super().__init__(key)\n          self.key = key\n  ```\n\n- **A base class with a caught subclass**: a handler that names a subclass also catches its bases, so only the subclass\n  is needed. A base is reported only when no subclass of it is caught.\n\n  ```python ok file=app/errors.py\n  class AppError(Exception):\n      pass\n\n\n  class ConfigError(AppError):\n      pass\n  ```\n\n  ```python context file=app/main.py\n  from app.errors import ConfigError\n\n\n  def load() -> None:\n      try:\n          raise ConfigError()\n      except ConfigError:\n          pass\n  ```\n\n- **Warnings**: a subclass of `Warning` is raised to be seen, not caught, so it is not reported.\n\n  ```python ok\n  class ConfigWarning(UserWarning):\n      pass\n  ```\n\nThe rule has no fix, because the replacement type depends on what the callers expect, which the author knows.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -24807,11 +24807,63 @@
         },
         {
           "section": "What it does",
-          "line": 99,
-          "end_line": 118,
+          "line": 100,
+          "end_line": 117,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "app/errors.py",
+              "named": true,
+              "line": 100,
+              "end_line": 106,
+              "source": "class ConfigError(Exception):\n    pass\n\n\nRETRYABLE = (ConfigError,)\n"
+            },
+            {
+              "role": "context",
+              "language": "python",
+              "file": "app/main.py",
+              "named": true,
+              "line": 108,
+              "end_line": 117,
+              "source": "from app.errors import RETRYABLE\n\n\ndef load() -> None:\n    try:\n        raise ValueError()\n    except RETRYABLE:\n        pass\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 122,
+          "end_line": 136,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "app/errors.py",
+              "named": true,
+              "line": 122,
+              "end_line": 125,
+              "source": "class ConfigError(Exception):\n    pass\n"
+            },
+            {
+              "role": "context",
+              "language": "python",
+              "file": "app/main.py",
+              "named": true,
+              "line": 127,
+              "end_line": 136,
+              "source": "import contextlib\n\nfrom app.errors import ConfigError\n\n\ndef load() -> None:\n    with contextlib.suppress(ConfigError):\n        raise ConfigError()\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 140,
+          "end_line": 159,
           "config": {
-            "line": 99,
-            "end_line": 102,
+            "line": 140,
+            "end_line": 143,
             "source": "[project]\nrequires-python = \">=3.11\"\n"
           },
           "blocks": [
@@ -24820,8 +24872,8 @@
               "language": "python",
               "file": "app/errors.py",
               "named": true,
-              "line": 104,
-              "end_line": 107,
+              "line": 145,
+              "end_line": 148,
               "source": "class ConfigError(Exception):\n    pass\n"
             },
             {
@@ -24829,19 +24881,19 @@
               "language": "python",
               "file": "app/main.py",
               "named": true,
-              "line": 109,
-              "end_line": 118,
+              "line": 150,
+              "end_line": 159,
               "source": "from app.errors import ConfigError\n\n\ndef load() -> None:\n    try:\n        raise ExceptionGroup(\"errors\", [ConfigError()])\n    except* ConfigError:\n        pass\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 123,
-          "end_line": 142,
+          "line": 164,
+          "end_line": 183,
           "config": {
-            "line": 123,
-            "end_line": 126,
+            "line": 164,
+            "end_line": 167,
             "source": "[project]\nrequires-python = \">=3.11\"\n"
           },
           "blocks": [
@@ -24850,8 +24902,8 @@
               "language": "python",
               "file": "app/errors.py",
               "named": true,
-              "line": 128,
-              "end_line": 131,
+              "line": 169,
+              "end_line": 172,
               "source": "class ConfigError(Exception):\n    pass\n"
             },
             {
@@ -24859,16 +24911,16 @@
               "language": "python",
               "file": "app/main.py",
               "named": true,
-              "line": 133,
-              "end_line": 142,
+              "line": 174,
+              "end_line": 183,
               "source": "from app.errors import ConfigError\n\n\ndef load() -> None:\n    try:\n        raise ExceptionGroup(\"errors\", [ConfigError()])\n    except ExceptionGroup as group:\n        matched, rest = group.split(ConfigError)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 146,
-          "end_line": 161,
+          "line": 187,
+          "end_line": 202,
           "config": null,
           "blocks": [
             {
@@ -24876,8 +24928,8 @@
               "language": "python",
               "file": "app/errors.py",
               "named": true,
-              "line": 146,
-              "end_line": 149,
+              "line": 187,
+              "end_line": 190,
               "source": "class ConfigError(Exception):\n    pass\n"
             },
             {
@@ -24885,16 +24937,16 @@
               "language": "python",
               "file": "app/main.py",
               "named": true,
-              "line": 151,
-              "end_line": 161,
+              "line": 192,
+              "end_line": 202,
               "source": "from app.errors import ConfigError\n\n\ndef load() -> None:\n    try:\n        raise ConfigError()\n    except Exception as error:\n        if isinstance(error, ConfigError):\n            pass\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 165,
-          "end_line": 181,
+          "line": 206,
+          "end_line": 222,
           "config": null,
           "blocks": [
             {
@@ -24902,8 +24954,8 @@
               "language": "python",
               "file": "app/errors.py",
               "named": true,
-              "line": 165,
-              "end_line": 168,
+              "line": 206,
+              "end_line": 209,
               "source": "class ConfigError(Exception):\n    pass\n"
             },
             {
@@ -24911,16 +24963,16 @@
               "language": "python",
               "file": "app/main.py",
               "named": true,
-              "line": 170,
-              "end_line": 181,
+              "line": 211,
+              "end_line": 222,
               "source": "from app.errors import ConfigError\n\n\ndef load() -> None:\n    try:\n        raise ConfigError()\n    except Exception as error:\n        match error:\n            case ConfigError():\n                pass\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 186,
-          "end_line": 206,
+          "line": 227,
+          "end_line": 247,
           "config": null,
           "blocks": [
             {
@@ -24928,8 +24980,8 @@
               "language": "python",
               "file": "app/errors.py",
               "named": true,
-              "line": 186,
-              "end_line": 189,
+              "line": 227,
+              "end_line": 230,
               "source": "class ConfigError(Exception):\n    pass\n"
             },
             {
@@ -24937,8 +24989,8 @@
               "language": "python",
               "file": "app/api.py",
               "named": true,
-              "line": 191,
-              "end_line": 195,
+              "line": 232,
+              "end_line": 236,
               "source": "from app.errors import ConfigError\n\n__all__ = [\"ConfigError\"]\n"
             },
             {
@@ -24946,16 +24998,16 @@
               "language": "python",
               "file": "app/main.py",
               "named": true,
-              "line": 197,
-              "end_line": 206,
+              "line": 238,
+              "end_line": 247,
               "source": "from app.api import ConfigError\n\n\ndef load() -> None:\n    try:\n        raise ConfigError()\n    except ConfigError:\n        pass\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 210,
-          "end_line": 220,
+          "line": 251,
+          "end_line": 261,
           "config": null,
           "blocks": [
             {
@@ -24963,19 +25015,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 210,
-              "end_line": 220,
+              "line": 251,
+              "end_line": 261,
               "source": "class ConfigError(Exception):\n    pass\n\n\ndef load() -> None:\n    try:\n        raise ConfigError()\n    except ConfigError:\n        pass\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 227,
-          "end_line": 238,
+          "line": 268,
+          "end_line": 279,
           "config": {
-            "line": 227,
-            "end_line": 233,
+            "line": 268,
+            "end_line": 274,
             "source": "[build-system]\nrequires = [\"setuptools\"]\n\n[project]\nname = \"mylib\"\n"
           },
           "blocks": [
@@ -24984,16 +25036,16 @@
               "language": "python",
               "file": "mylib/errors.py",
               "named": true,
-              "line": 235,
-              "end_line": 238,
+              "line": 276,
+              "end_line": 279,
               "source": "class ConfigError(Exception):\n    pass\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 244,
-          "end_line": 249,
+          "line": 285,
+          "end_line": 290,
           "config": null,
           "blocks": [
             {
@@ -25001,16 +25053,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 244,
-              "end_line": 249,
+              "line": 285,
+              "end_line": 290,
               "source": "class ConfigError(Exception):\n    def __init__(self, key: str) -> None:\n        super().__init__(key)\n        self.key = key\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 254,
-          "end_line": 272,
+          "line": 295,
+          "end_line": 313,
           "config": null,
           "blocks": [
             {
@@ -25018,8 +25070,8 @@
               "language": "python",
               "file": "app/errors.py",
               "named": true,
-              "line": 254,
-              "end_line": 261,
+              "line": 295,
+              "end_line": 302,
               "source": "class AppError(Exception):\n    pass\n\n\nclass ConfigError(AppError):\n    pass\n"
             },
             {
@@ -25027,16 +25079,16 @@
               "language": "python",
               "file": "app/main.py",
               "named": true,
-              "line": 263,
-              "end_line": 272,
+              "line": 304,
+              "end_line": 313,
               "source": "from app.errors import ConfigError\n\n\ndef load() -> None:\n    try:\n        raise ConfigError()\n    except ConfigError:\n        pass\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 276,
-          "end_line": 279,
+          "line": 317,
+          "end_line": 320,
           "config": null,
           "blocks": [
             {
@@ -25044,8 +25096,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 276,
-              "end_line": 279,
+              "line": 317,
+              "end_line": 320,
               "source": "class ConfigWarning(UserWarning):\n    pass\n"
             }
           ]

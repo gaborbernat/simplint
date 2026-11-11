@@ -286,6 +286,20 @@ fn acyclic(bindings: &[(FileId, FileId, &ImportBinding)], stars: &[(FileId, File
     ordered == files
 }
 
+// The tuples of classes a file binds, with the file each class is defined in.
+fn class_tuples<'f>(
+    tuples: &'f [(String, Vec<(String, String)>)],
+    resolved: &impl Fn(&'f str) -> Option<PathBuf>,
+) -> Vec<(String, Vec<(PathBuf, String)>)> {
+    tuples
+        .iter()
+        .map(|(name, classes)| {
+            let classes = classes.iter().filter_map(|(module, class)| Some((resolved(module)?, class.clone())));
+            (name.clone(), classes.collect())
+        })
+        .collect()
+}
+
 // The modules the names of a file bind, each with the file it resolves to when that file is not the file itself.
 fn named_modules<'f>(
     names: &'f [(String, String)],
@@ -355,6 +369,8 @@ pub(super) struct ModuleFacts<F> {
     // The files of the modules the file loads as values, as `modules` gives them.
     pub(super) values: Vec<F>,
     pub(super) caught: Vec<(F, String)>,
+    // The module-level names bound to a tuple, with the file and class name of each class the tuple names.
+    pub(super) class_tuples: Vec<(String, Vec<(F, String)>)>,
     // Each class with the bases it lists and the names of the methods it defines.
     pub(super) classes: Vec<(String, Vec<ClassBase<F>>, Vec<String>)>,
     pub(super) functions: Vec<String>,
@@ -386,6 +402,11 @@ impl<F> ModuleFacts<F> {
             modules: self.modules.into_iter().map(|(bound, module, file)| (bound, module, to(file))).collect(),
             values: self.values.into_iter().map(&mut to).collect(),
             caught: self.caught.into_iter().map(|(file, name)| (to(file), name)).collect(),
+            class_tuples: self
+                .class_tuples
+                .into_iter()
+                .map(|(name, classes)| (name, classes.into_iter().map(|(file, class)| (to(file), class)).collect()))
+                .collect(),
             classes: self
                 .classes
                 .into_iter()
@@ -480,6 +501,7 @@ impl ModuleFacts<PathBuf> {
         let values =
             facts.module_values.iter().filter_map(|module| resolved(module)).filter(|file| *file != own).collect();
         let caught = facts.caught.iter().filter_map(|(module, name)| Some((resolved(module)?, name.clone()))).collect();
+        let class_tuples = class_tuples(&facts.class_tuples, &resolved);
         let runtime = runtime_targets(&facts.runtime_imports, python_version, &resolved, &own);
         // A module may write its own names under a computed name too, so its own file stays.
         let computed_writes = facts.computed_writes.iter().filter_map(|module| resolved(module)).collect();
@@ -506,6 +528,7 @@ impl ModuleFacts<PathBuf> {
             modules,
             values,
             caught,
+            class_tuples,
             classes,
             functions: facts.functions.clone(),
             plain_modules: named_modules(&facts.plain_modules, &resolved, &own),
