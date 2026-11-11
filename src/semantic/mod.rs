@@ -5,6 +5,7 @@ mod runtime;
 
 use std::path::Path;
 
+use ruff_linter::registry::Rule as RuffRule;
 use ruff_linter::settings::LinterSettings;
 use ruff_python_ast::identifier::Identifier;
 
@@ -21,6 +22,8 @@ use ruff_python_semantic::{
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
+use crate::lint::registry::Rule;
+use crate::settings::FileSettings;
 use crate::syntax::{first_positional, is_name, receiver};
 
 // The statements of a file whose Ruff reports a rule mirrors, collected only when an enabled rule reads them.
@@ -30,6 +33,27 @@ pub struct RuffMatches {
     pub list_appends: bool,
     // The statements of Django models that Ruff's DJ012 reports.
     pub django_reports: bool,
+}
+
+impl RuffMatches {
+    pub fn of(settings: &FileSettings) -> Self {
+        Self { list_appends: counts_ruff_appends(settings), django_reports: leaves_django_order_to_ruff(settings) }
+    }
+}
+
+// Whether the rule runs on a file where Ruff's DJ012 reports Django model statements out of order, which the rule leaves
+// to Ruff and reads from the semantic model.
+pub(crate) fn leaves_django_order_to_ruff(settings: &FileSettings) -> bool {
+    settings.rules.contains(Rule::ClassMemberOrder)
+        && settings.from_ruff.ruff_runs(RuffRule::DjangoUnorderedBodyContentInModel)
+}
+
+// Whether the rule runs on a file where Ruff's FURB113 counts list appends, which the rule then reads from the semantic
+// model.
+pub(crate) fn counts_ruff_appends(settings: &FileSettings) -> bool {
+    settings.rules.contains(Rule::CollectionBuiltByStatements)
+        && settings.from_ruff.preview
+        && settings.from_ruff.ruff_runs(RuffRule::RepeatedAppend)
 }
 
 pub struct Semantic<'a> {

@@ -38,7 +38,7 @@ pub(crate) mod up_warnings_deprecated;
 mod walrus_candidate;
 
 pub(crate) use cognitive_complexity::cognitive_complexity;
-pub(crate) use collection_built_by_statements::{collection_built_by_statements, counts_ruff_appends};
+pub(crate) use collection_built_by_statements::collection_built_by_statements;
 pub(crate) use duplicate_code::duplicate_code;
 pub(crate) use early_assignment::early_assignment;
 pub(crate) use forwarding_function::forwarding_function;

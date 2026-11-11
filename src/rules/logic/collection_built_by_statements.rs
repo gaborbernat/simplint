@@ -1,5 +1,4 @@
 use ruff_diagnostics::{Edit, Fix};
-use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::comparable::HashableExpr;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
@@ -8,7 +7,7 @@ use rustc_hash::FxHashSet;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::logic::inline::{is_constant, is_hashable};
-use crate::settings::FileSettings;
+use crate::semantic::counts_ruff_appends;
 use crate::syntax::{expr_mentions, for_each_body, is_name};
 
 pub fn collection_built_by_statements(checker: &Checker) {
@@ -130,14 +129,6 @@ fn check_run(checker: &Checker, assign: &Stmt, name: &str, kind: Kind, rest: &[S
         Some(fix),
         "Write the entries in the literal",
     );
-}
-
-// Whether the rule runs on a file where Ruff's FURB113 counts list appends, which the rule then reads from the semantic
-// model.
-pub(crate) fn counts_ruff_appends(settings: &FileSettings) -> bool {
-    settings.rules.contains(Rule::CollectionBuiltByStatements)
-        && settings.from_ruff.preview
-        && settings.from_ruff.ruff_runs(RuffRule::RepeatedAppend)
 }
 
 // Ruff's FURB113 reports two or more appends to a list in a run of consecutive appends, when preview mode is on and the

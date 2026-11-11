@@ -4,7 +4,7 @@ use ruff_text_size::Ranged;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::api::definitions;
-use crate::rules::module_variable::{is_ply_name, uses_ply};
+use crate::rules::frameworks::{is_ply_name, uses_ply};
 use crate::rules::rename::{kept_message, rename_fix};
 use crate::syntax::{Exports, Visibility};
 

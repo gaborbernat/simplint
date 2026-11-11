@@ -1,4 +1,3 @@
-use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::helpers::any_over_body;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::Ranged;
@@ -7,14 +6,7 @@ use super::class_order::{Arrangement, ClassOrder, Inversion, Section};
 use super::reorder::{Suite, moved_span, moves_definition_unsafely, reorder_fix};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::settings::FileSettings;
-
-// Whether the rule runs on a file where Ruff's DJ012 reports Django model statements out of order, which the rule leaves
-// to Ruff and reads from the semantic model.
-pub(crate) fn leaves_django_order_to_ruff(settings: &FileSettings) -> bool {
-    settings.rules.contains(Rule::ClassMemberOrder)
-        && settings.from_ruff.ruff_runs(RuffRule::DjangoUnorderedBodyContentInModel)
-}
+use crate::semantic::leaves_django_order_to_ruff;
 
 pub fn class_member_order(checker: &Checker) {
     let orders = checker.state().class_orders(checker);
