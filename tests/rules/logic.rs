@@ -1131,134 +1131,32 @@ fn context_var_token_local_named_like_an_imported_name_is_still_fixed() {
     );
 }
 
+const PY311: &str = "[tool.ruff]\ntarget-version = \"py311\"\n";
+
 // A backslash joins the line before the assignment to it, so the `with` block would keep that line's statement before it.
-#[test]
-fn chdir_restore_keeps_report_without_fix_after_a_line_joined_by_backslash() {
-    let source = "import os\n\nstarted = True; \\\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(started)\nfinally:\n    os.chdir(old)\n";
-    let root = common::project(&[("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"), ("mod.py", source)]);
-    common::assert_fix_keeps_report(
-        root.path(),
-        "SMP513",
-        &["--fix"],
-        "mod.py",
-        "mod.py:4:1: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n",
-    );
+#[test_case("import os\n\nstarted = True; \\\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(started)\nfinally:\n    os.chdir(old)\n", "mod.py:4:1: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n" ; "backslash_joined_line")]
+// A parameter named like the module hides it in the function, even when the module imports it too.
+#[test_case("import contextlib\nimport os\n\n\ndef run(target, contextlib=None):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n", "mod.py:6:5: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n" ; "parameter_takes_module_name")]
+fn chdir_restore_keeps_report_without_fix(source: &str, report: &str) {
+    let root = common::project(&[("pyproject.toml", PY311), ("mod.py", source)]);
+    common::assert_fix_keeps_report(root.path(), "SMP513", &["--fix"], "mod.py", report);
 }
 
 // A comment ends no line with a backslash, so a backslash in one does not join the lines and the fix stays.
-#[test]
-fn chdir_restore_fixes_after_a_comment_ending_in_backslash() {
-    let root = common::project(&[
-        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"),
-        (
-            "mod.py",
-            "import os\n\nstarted = True  # see \\\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd(), started)\nfinally:\n    os.chdir(old)\n",
-        ),
-    ]);
-    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
-    assert_eq!(
-        (code, stdout.as_str(), read(root.path(), "mod.py")),
-        (0, common::ONE_FIXED, "import contextlib\nimport os\n\nstarted = True  # see \\\nwith contextlib.chdir(\"..\"):\n    print(os.getcwd(), started)\n".to_owned())
-    );
-}
-
+#[test_case("mod.py", "import os\n\nstarted = True  # see \\\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd(), started)\nfinally:\n    os.chdir(old)\n", "import contextlib\nimport os\n\nstarted = True  # see \\\nwith contextlib.chdir(\"..\"):\n    print(os.getcwd(), started)\n" ; "comment_ending_in_backslash")]
 // The import goes above the comment that describes the import it precedes, so the comment stays with its statement.
-#[test]
-fn chdir_restore_import_goes_above_the_comment_of_the_import_it_precedes() {
-    let root = common::project(&[
-        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"),
-        (
-            "block.py",
-            "import abc\n# os: the build runs in the target directory\nimport os\nimport sys\n\n\ndef run(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return abc, sys, os.listdir()\n    finally:\n        os.chdir(old)\n",
-        ),
-    ]);
-    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
-    assert_eq!(
-        (code, stdout.as_str(), read(root.path(), "block.py")),
-        (
-            0,
-            common::ONE_FIXED,
-            "import abc\nimport contextlib\n# os: the build runs in the target directory\nimport os\nimport sys\n\n\ndef run(target):\n    with contextlib.chdir(target):\n        return abc, sys, os.listdir()\n".to_owned()
-        )
-    );
-}
-
+#[test_case("block.py", "import abc\n# os: the build runs in the target directory\nimport os\nimport sys\n\n\ndef run(target):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return abc, sys, os.listdir()\n    finally:\n        os.chdir(old)\n", "import abc\nimport contextlib\n# os: the build runs in the target directory\nimport os\nimport sys\n\n\ndef run(target):\n    with contextlib.chdir(target):\n        return abc, sys, os.listdir()\n" ; "import_above_comment")]
 // A docstring line that starts with `#` is text, not a comment, so the import goes above the comment after the docstring
 // and not into the docstring.
-#[test]
-fn chdir_restore_import_skips_a_docstring_line_starting_with_hash() {
-    let root = common::project(&[
-        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"),
-        (
-            "h.py",
-            "\"\"\"Doc.\n\n# heading\"\"\"\n# comment\nVALUE = 1\n\n\ndef run(target):\n    import os\n\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n",
-        ),
-    ]);
-    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
-    assert_eq!(
-        (code, stdout.as_str(), read(root.path(), "h.py")),
-        (
-            0,
-            common::ONE_FIXED,
-            "\"\"\"Doc.\n\n# heading\"\"\"\nimport contextlib\n\n# comment\nVALUE = 1\n\n\ndef run(target):\n    import os\n\n    with contextlib.chdir(target):\n        return os.listdir()\n".to_owned()
-        )
-    );
-}
-
+#[test_case("h.py", "\"\"\"Doc.\n\n# heading\"\"\"\n# comment\nVALUE = 1\n\n\ndef run(target):\n    import os\n\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n", "\"\"\"Doc.\n\n# heading\"\"\"\nimport contextlib\n\n# comment\nVALUE = 1\n\n\ndef run(target):\n    import os\n\n    with contextlib.chdir(target):\n        return os.listdir()\n" ; "docstring_line_starting_with_hash")]
 // A comment on the first line is a header of the file, which the import stays below.
-#[test]
-fn chdir_restore_import_stays_below_a_header_comment_on_the_first_line() {
-    let root = common::project(&[
-        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"),
-        (
-            "first.py",
-            "# Runs the step in the target directory; see docs/build.md.\ndef run(target):\n    import os\n\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n",
-        ),
-    ]);
-    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
-    assert_eq!(
-        (code, stdout.as_str(), read(root.path(), "first.py")),
-        (
-            0,
-            common::ONE_FIXED,
-            "# Runs the step in the target directory; see docs/build.md.\nimport contextlib\n\n\ndef run(target):\n    import os\n\n    with contextlib.chdir(target):\n        return os.listdir()\n".to_owned()
-        )
-    );
-}
-
-// A parameter named like the module hides it in the function, even when the module imports it too.
-#[test]
-fn chdir_restore_keeps_report_without_fix_when_a_parameter_takes_the_module_name() {
-    let source = "import contextlib\nimport os\n\n\ndef run(target, contextlib=None):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n";
-    let root = common::project(&[("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"), ("mod.py", source)]);
-    common::assert_fix_keeps_report(
-        root.path(),
-        "SMP513",
-        &["--fix"],
-        "mod.py",
-        "mod.py:6:5: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n",
-    );
-}
-
+#[test_case("first.py", "# Runs the step in the target directory; see docs/build.md.\ndef run(target):\n    import os\n\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n", "# Runs the step in the target directory; see docs/build.md.\nimport contextlib\n\n\ndef run(target):\n    import os\n\n    with contextlib.chdir(target):\n        return os.listdir()\n" ; "header_comment_on_first_line")]
 // A class attribute named like the module is not seen by the methods of the class, so their fix stays.
-#[test]
-fn chdir_restore_fixes_a_method_whose_class_attribute_takes_the_module_name() {
-    let root = common::project(&[
-        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"),
-        (
-            "mod.py",
-            "import os\n\n\nclass Runner:\n    contextlib = None\n\n    def run(self, target):\n        old = os.getcwd()\n        os.chdir(target)\n        try:\n            return os.listdir()\n        finally:\n            os.chdir(old)\n",
-        ),
-    ]);
+#[test_case("mod.py", "import os\n\n\nclass Runner:\n    contextlib = None\n\n    def run(self, target):\n        old = os.getcwd()\n        os.chdir(target)\n        try:\n            return os.listdir()\n        finally:\n            os.chdir(old)\n", "import contextlib\nimport os\n\n\nclass Runner:\n    contextlib = None\n\n    def run(self, target):\n        with contextlib.chdir(target):\n            return os.listdir()\n" ; "class_attribute_takes_module_name")]
+fn chdir_restore_fixes(file: &str, source: &str, expected: &str) {
+    let root = common::project(&[("pyproject.toml", PY311), (file, source)]);
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
-    assert_eq!(
-        (code, stdout.as_str(), read(root.path(), "mod.py")),
-        (
-            0,
-            common::ONE_FIXED,
-            "import contextlib\nimport os\n\n\nclass Runner:\n    contextlib = None\n\n    def run(self, target):\n        with contextlib.chdir(target):\n            return os.listdir()\n".to_owned()
-        )
-    );
+    assert_eq!((code, stdout.as_str(), read(root.path(), file)), (0, common::ONE_FIXED, expected.to_owned()));
 }
 
 // An import that shares its line with code cannot take the new import below it, as the code runs first, so the fix
