@@ -1,6 +1,7 @@
 use ruff_diagnostics::{Edit, Fix};
 use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::helpers::{StoredNameFinder, any_over_expr, body_without_leading_docstring, is_dunder};
+use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_python_codegen::Generator;
@@ -331,11 +332,19 @@ fn local_fix(checker: &Checker, constant: &Constant, value_text: &str, deletion:
     } else {
         indentation(source, anchor).to_owned()
     };
-    let value_text = if value_text.contains("\"\"\"") || value_text.contains("'''") {
-        value_text.to_owned()
-    } else {
-        value_text.replace('\n', &format!("\n{indent}"))
-    };
+    let triple_quoted = value_text.contains("\"\"\"") || value_text.contains("'''");
+    // A backslash continues a single-quoted string onto the next line, so the indentation added there becomes part of
+    // the value.
+    if !triple_quoted
+        && checker.parsed.tokens().in_range(constant.value.range()).iter().any(|token| {
+            matches!(token.kind(), TokenKind::String | TokenKind::FStringMiddle | TokenKind::TStringMiddle)
+                && source.contains_line_break(token.range())
+        })
+    {
+        return None;
+    }
+    let value_text =
+        if triple_quoted { value_text.to_owned() } else { value_text.replace('\n', &format!("\n{indent}")) };
     let declared = local_annotation(checker, constant)
         .map_or_else(|| local.clone(), |annotation| format!("{local}: {annotation}"));
     let declaration = format!("{declared} = {value_text}");

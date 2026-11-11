@@ -21,8 +21,9 @@ pub(super) fn moved_span(expected: &[usize]) -> Option<RangeInclusive<usize>> {
     Some(low..=high)
 }
 
-// The fix that puts the statements at `expected` in the span's place, with blank lines between them. Each statement
-// keeps its decorators and the comment lines above it. `shifts_unsafely` tells the statements whose move is unsafe.
+// The fix that puts the statements at `expected` in the span's place, with blank lines between them. Two statements
+// that stay adjacent in the same order keep the blank lines they had. Each statement keeps its decorators and the
+// comment lines above it. `shifts_unsafely` tells the statements whose move is unsafe.
 pub(super) fn reorder_fix(
     checker: &Checker,
     suite: &Suite,
@@ -31,7 +32,7 @@ pub(super) fn reorder_fix(
     shifts_unsafely: fn(&Stmt) -> bool,
 ) -> Option<Fix> {
     let source = checker.source;
-    let blocks: Vec<TextRange> = suite.body.iter().map(|stmt| statement_block(source, stmt)).collect();
+    let blocks: Vec<TextRange> = suite.body.iter().map(|stmt| statement_block(checker, stmt)).collect();
     let moved = &blocks[span.clone()];
     let region = TextRange::new(moved[0].start(), moved[moved.len() - 1].end());
     if checker
@@ -44,14 +45,24 @@ pub(super) fn reorder_fix(
         return None;
     }
     let eol = checker.stylist.line_ending().as_str();
-    let text: Vec<String> = expected[span.clone()]
-        .iter()
-        .map(|index| {
-            let block = &source[blocks[*index]];
-            if block.ends_with('\n') { block.to_owned() } else { format!("{block}{eol}") }
-        })
-        .collect();
-    let mut replacement = text.join(&eol.repeat(suite.blank_lines));
+    let blank_lines = eol.repeat(suite.blank_lines);
+    let slots = &expected[span.clone()];
+    let mut replacement = String::new();
+    for (position, index) in slots.iter().enumerate() {
+        if position > 0 {
+            let previous = slots[position - 1];
+            if *index == previous + 1 {
+                replacement.push_str(&source[TextRange::new(blocks[previous].end(), blocks[*index].start())]);
+            } else {
+                replacement.push_str(&blank_lines);
+            }
+        }
+        let block = &source[blocks[*index]];
+        replacement.push_str(block);
+        if !block.ends_with('\n') {
+            replacement.push_str(eol);
+        }
+    }
     if !source[region].ends_with('\n') {
         replacement.truncate(replacement.len() - eol.len());
     }

@@ -244,7 +244,34 @@ Some members stay where they are, and some reports come without a fix:
 
 - **Statements that are not definitions.** Such a statement sits in section 2, so it moves up with the other class
   attributes. It stays in place when it conflicts with a definition: it binds a name that a definition reads while the
-  class is created, or it reads a name that a definition binds. A definition does not move past such a statement.
+  class is created, or it reads a name that a definition binds. A definition does not move past such a statement. A
+  `match` capture or an `except ... as` name binds its name too.
+
+  ```python report
+  class Shape:
+      def area(self) -> int:
+          return 1
+
+      match 1:
+          case area:
+              pass
+
+      def __init__(self) -> None:
+          self.size = 1
+  ```
+
+  ```python fixed
+  class Shape:
+      def area(self) -> int:
+          return 1
+
+      match 1:
+          case area:
+              pass
+
+      def __init__(self) -> None:
+          self.size = 1
+  ```
 
 - **Django model statements Ruff reports**: when the file imports Django and the project selects
   [DJ012](https://docs.astral.sh/ruff/rules/django-unordered-body-content-in-model/), Ruff reports a statement of a
@@ -300,7 +327,30 @@ Some members stay where they are, and some reports come without a fix:
 
 The fix rewrites the span from the first to the last moved statement in the expected order. Only the first report of a
 class body that the layout can resolve carries it, since that one fix reorders every member of the body. A member keeps
-its decorators and the comment lines directly above it.
+its decorators and the comment lines directly above it. A comment indented deeper than the member below it belongs to
+the member above, so it stays in place, and when it lies inside the span the report has no fix.
+
+```python report
+# fmt: off
+class A:
+    def run(self):
+        return 1
+        # trailing note of run
+    def __init__(self):
+        self.x = 1
+# fmt: on
+```
+
+```python fixed
+# fmt: off
+class A:
+    def run(self):
+        return 1
+        # trailing note of run
+    def __init__(self):
+        self.x = 1
+# fmt: on
+```
 
 The fix is safe when every moved member is undecorated or has only pure decorators: `property`, `cached_property`,
 `classmethod`, `staticmethod`, `overload`, and the accessor decorators `setter`, `getter` and `deleter`. **Unsafe fix:**
@@ -323,6 +373,33 @@ class Counted:
 
     def __repr__(self) -> str:
         return "Counted"
+```
+
+Two members that stay adjacent in the same order keep the blank lines they had between them. The other members are
+separated by one blank line.
+
+```python report
+class Parser:
+    def load(self) -> int:
+        return 1
+
+    LIMIT = 3
+    SEP = ","
+
+    def __init__(self) -> None:
+        self.sep = SEP
+```
+
+```python fixed
+class Parser:
+    LIMIT = 3
+    SEP = ","
+
+    def __init__(self) -> None:
+        self.sep = SEP
+
+    def load(self) -> int:
+        return 1
 ```
 
 No fix is offered when the member stays behind a statement it conflicts with, when the span holds a comment that is not

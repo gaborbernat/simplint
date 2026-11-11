@@ -1,0 +1,16 @@
+---
+source: tests/common/mod.rs
+assertion_line: 137
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+4:5 SMP201 `helper` is defined before its first use in `main`; move it below `main` [fix: Move `helper` below `main`]
+--- fixed (1 applied, 0 remaining) ---
+def first():
+    return 1
+    # trailing note of first
+def main():
+    return helper()
+
+
+def helper():
+    return 1

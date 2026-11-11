@@ -148,6 +148,16 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
       raise RuntimeError(msg)
   ```
 
+- **Names with no valid spelling**: a name of underscores only, such as `_`, or one whose spelling without its
+  underscores is a keyword, such as `_class`, has no name to take, so the rule leaves it alone.
+
+  ```python ok
+  __all__ = ["_", "_class"]
+
+  _ = print
+  _class = 1
+  ```
+
 ### Fix
 
 The fix adds the leading underscore, or removes every leading underscore, and keeps the rest of the name as written. It

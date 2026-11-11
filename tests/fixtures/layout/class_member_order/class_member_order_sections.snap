@@ -1,6 +1,6 @@
 ---
 source: tests/common/mod.rs
-assertion_line: 125
+assertion_line: 137
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
 15:9 SMP203 `size` belongs with the properties, above `run` [unsafe fix: Move `size` above `run`]
@@ -35,7 +35,6 @@ class Layout:
         pass
 
     LIMIT: ClassVar[int] = 3
-
     __slots__ = ("a",)
 
     def __init_subclass__(cls) -> None:

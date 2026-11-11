@@ -75,6 +75,22 @@ impl<'a> Visitor<'a> for BoundNames<'a> {
         }
         visitor::walk_expr(self, expr);
     }
+
+    fn visit_pattern(&mut self, pattern: &'a ast::Pattern) {
+        if let ast::Pattern::MatchAs(ast::PatternMatchAs { name, .. })
+        | ast::Pattern::MatchStar(ast::PatternMatchStar { name, .. })
+        | ast::Pattern::MatchMapping(ast::PatternMatchMapping { rest: name, .. }) = pattern
+        {
+            self.names.extend(name.iter().map(ast::Identifier::as_str));
+        }
+        visitor::walk_pattern(self, pattern);
+    }
+
+    fn visit_except_handler(&mut self, handler: &'a ast::ExceptHandler) {
+        let ast::ExceptHandler::ExceptHandler(ast::ExceptHandlerExceptHandler { name, .. }) = handler;
+        self.names.extend(name.iter().map(ast::Identifier::as_str));
+        visitor::walk_except_handler(self, handler);
+    }
 }
 
 // The annotations in a `def`'s signature: its parameters and its return type.
