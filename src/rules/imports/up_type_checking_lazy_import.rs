@@ -23,12 +23,11 @@ pub fn up_type_checking_lazy_import(checker: &Checker) {
         {
             continue;
         }
-        let fix = lazy_fix(checker, body, stmt, &if_stmt.body);
         checker.report_fix(
             Rule::TypeCheckingLazyImport,
             if_stmt.test.range(),
             "Imports under `if TYPE_CHECKING:` can be lazy imports from Python 3.15; use `lazy` on each one",
-            fix,
+            lazy_fix(checker, body, stmt, &if_stmt.body),
             "Make the imports lazy and remove the `TYPE_CHECKING` guard",
         );
     }
@@ -49,7 +48,6 @@ fn is_lazy_importable(stmt: &Stmt) -> bool {
 // The lazy import binds the name on first use, so a module the guard hid, such as `_typeshed`, fails there. Comments
 // in the block would be lost, so a block holding one is reported without a fix.
 fn lazy_fix(checker: &Checker, body: &[Stmt], stmt: &Stmt, imports: &[Stmt]) -> Option<Fix> {
-    let source = checker.source;
     let runtime_missing = imports.iter().any(|import| {
         matches!(import, Stmt::ImportFrom(ast::StmtImportFrom { module: Some(module), .. })
             if top_level(module.as_str()) == "_typeshed")
@@ -63,6 +61,7 @@ fn lazy_fix(checker: &Checker, body: &[Stmt], stmt: &Stmt, imports: &[Stmt]) -> 
     {
         return None;
     }
+    let source = checker.source;
     let lazy = imports
         .iter()
         .map(|import| {

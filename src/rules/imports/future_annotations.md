@@ -91,6 +91,7 @@ the import from `required-imports` once the project targets Python 3.14, or turn
   the name `TYPE_CHECKING` in code; a mention in a comment or string does not count. Lazy annotations are still
   evaluated on access, and an annotation that names something imported only under
   [`if TYPE_CHECKING:`](https://docs.python.org/3/library/typing.html#typing.TYPE_CHECKING) raises `NameError` there.
+
   The fix is also unsafe when an annotation unions a string with a type, such as `"Node" | None`, which raises once
   evaluated, or when an import sits under a module-level `if`, which may leave its name unbound. Otherwise the fix is
   safe.

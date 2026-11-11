@@ -63,8 +63,10 @@ re-export or replacing uses of a module object may require changes elsewhere.
   `package._render.intersphinx`. A colocated `package/test_api.py` may also import names from `._api`. The remaining
   directories and the stem after `test_` must match an existing source file. A dedicated subtree may instead take the
   module's name: `tests/_html/url/test_url.py` may import names from `package._html` when `_html.py` or `_html.pyi`
-  exists. A relative import from the mirrored test tree resolves inside that tree, so it is not paired with the source
-  module. Importing the private module as an object remains disallowed.
+  exists.
+
+  A relative import from the mirrored test tree resolves inside that tree, so it is not paired with the source module.
+  Importing the private module as an object remains disallowed.
 
 - **Dunder names**: `__future__` and `__version__` do not count as private names.
 

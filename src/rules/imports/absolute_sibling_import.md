@@ -179,13 +179,14 @@ turn one of the two rules off. A project that runs flake8-lazy has no such confl
 - **Every file of a project that runs [flake8-lazy](https://github.com/henryiii/flake8-lazy)**: flake8-lazy rewrites
   each module's `__lazy_modules__` list from its absolute imports. In pipx, a relative import made it write a list that
   `ty` rejects (99 errors), and flake8-lazy and this fix then keep rewriting each other's output, so the rule stays off.
-  An explicit `--select absolute-sibling-import` does not turn it back on for such a project. The project runs
-  flake8-lazy when one of its `pyproject.toml` files, the one with `[project]` or the one with `[tool.simplint]`, has a
-  `[tool.flake8-lazy]` table, or when the nearest `.pre-commit-config.yaml`, `.pre-commit-config.yml` or `prek.toml`
-  from the project upwards, stopping at the repository root, or at the linted project outside a repository, has a hook
-  with id `flake8-lazy`. A hook configuration simplint cannot read or parse counts as none, with a warning. A
-  `flake8-lazy` entry in another hook's `additional_dependencies` does not count, since it only installs the plugin into
-  flake8.
+  An explicit `--select absolute-sibling-import` does not turn it back on for such a project.
+
+  The project runs flake8-lazy when one of its `pyproject.toml` files, the one with `[project]` or the one with
+  `[tool.simplint]`, has a `[tool.flake8-lazy]` table, or when the nearest `.pre-commit-config.yaml`,
+  `.pre-commit-config.yml` or `prek.toml` from the project upwards, stopping at the repository root, or at the linted
+  project outside a repository, has a hook with id `flake8-lazy`. A hook configuration simplint cannot read or parse
+  counts as none, with a warning. A `flake8-lazy` entry in another hook's `additional_dependencies` does not count,
+  since it only installs the plugin into flake8.
 
   ```toml config
   [tool.flake8-lazy]
