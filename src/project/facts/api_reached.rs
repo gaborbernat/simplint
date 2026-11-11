@@ -16,8 +16,8 @@ pub(super) fn interface(body: &[Stmt]) -> Vec<Definition> {
     module_statements(body).filter_map(definition).collect()
 }
 
-// A root counts only when another root reaches it, so a type an exposed name uses is public though no file imports it. Built
-// once per module, so the roots of several sets share the same references.
+// A root counts only when another root reaches it, so a type an exposed name uses is public though no file imports
+// it. Built once per module, so the roots of several sets share the same references.
 pub struct Closure<'a> {
     refs: FxHashMap<&'a str, Vec<&'a str>>,
     types: FxHashSet<&'a str>,

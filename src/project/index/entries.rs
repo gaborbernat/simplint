@@ -11,10 +11,8 @@ use super::resolve::{ImportResolver, resolve};
 
 type FileNames = Vec<(FileId, String)>;
 
-// The entry points' and build hooks' names, with each file interned, so the index keys them by file id, and the names
-// the bare module entry points load among them. A bare module entry point, which the host loads whole and reads by
-// convention, names every public name it defines or imports, such as the hooks and fixtures of a pytest plugin, so none
-// of them is internal.
+// A bare module entry point is loaded whole and read by convention, so every public name it defines or imports is in
+// use, such as the hooks and fixtures of a pytest plugin.
 pub(super) fn interned_entry_names(
     resolver: &mut ImportResolver,
     entry_points: &[(PathBuf, String)],
@@ -39,9 +37,6 @@ pub(super) fn interned_entry_names(
     (names, bare)
 }
 
-// The modules the interpreter loads at startup through the `.pth` names, which no import reaches, with each attribute
-// one of those names reads from its module. The longest prefix of a name that is a module is the one loaded, and the
-// part after it is the attribute read.
 pub(super) fn startup_entries(
     resolver: &mut ImportResolver,
     startup: &[String],
@@ -56,7 +51,6 @@ pub(super) fn startup_entries(
     (loaded, reads)
 }
 
-// The file each `.pth` name resolves to, with the attribute it reads from that file, if any.
 fn startup_targets(resolver: &ImportResolver, startup: &[String]) -> Vec<(PathBuf, Option<String>)> {
     let environment = ResolverEnvironment::new(&resolver.db, resolver.python_version, resolver.paths.clone());
     startup
@@ -71,8 +65,7 @@ fn startup_targets(resolver: &ImportResolver, startup: &[String]) -> Vec<(PathBu
         .collect()
 }
 
-// The `coverage_init` of each coverage plugin module that resolves to a file of the run. Coverage loads the module by
-// its dotted name and calls `coverage_init` on it, so no import reaches the function, and the name is read as a string.
+// Coverage calls `coverage_init` on a module it loads by dotted name, so no import reaches the function.
 pub(super) fn coverage_plugin_names(
     resolver: &mut ImportResolver,
     plugins: &[(PathBuf, String)],
@@ -88,7 +81,6 @@ pub(super) fn coverage_plugin_names(
     files.iter().map(|file| (resolver.intern(file), "coverage_init".to_owned())).collect()
 }
 
-// The file each entry point of the project names, with the top-level attribute of a `module:attribute` entry point.
 // Each resolves with its project's directory on the search path, since a flat layout's modules sit there.
 fn entry_point_targets(
     resolver: &ImportResolver,
@@ -110,7 +102,6 @@ fn entry_point_targets(
         .collect()
 }
 
-// The names a module defines or imports at its top level that are not private, which its users may reach.
 fn public_names(facts: &FileFacts) -> Vec<String> {
     facts
         .defined

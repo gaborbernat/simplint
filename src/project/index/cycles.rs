@@ -7,12 +7,9 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use super::range_key;
 use super::{FileId, FileIds};
 
-// The files a cycle names before it counts the rest, as a ring of thousands of modules would otherwise name every one of
-// them in each of its reports.
+// A ring of thousands of modules would otherwise name every one of them in each of its reports.
 const SHOWN: usize = 8;
 
-// The statement that closes a cycle of runtime imports, and the files the cycle runs through, starting and ending at
-// the file the statement sits in. A long cycle keeps its first files, and the number of files it leaves out.
 #[derive(Clone, PartialEq)]
 pub struct Cycle {
     pub(super) range: TextRange,
@@ -41,12 +38,8 @@ impl Cycle {
     }
 }
 
-// Each file's runtime imports, as the file each names and where the statement sits, in source order.
 pub(super) type RuntimeGraph = FxHashMap<FileId, Vec<(FileId, TextRange)>>;
 
-// The cycles of the runtime import graph: a file in a strongly connected component of two or more files reports its
-// first import into that component, with the shortest cycle through it. Each file reports once, so a cycle of n files
-// gives n reports, one per file, each on the import that closes the cycle from that file.
 pub(super) fn cycles(mut graph: RuntimeGraph) -> FxHashMap<FileId, Cycle> {
     for imports in graph.values_mut() {
         imports.sort_by_key(|(_, range)| range.start());
@@ -94,7 +87,6 @@ pub(super) fn cycles(mut graph: RuntimeGraph) -> FxHashMap<FileId, Cycle> {
     cycles
 }
 
-// The imports of a file that stay in its component.
 fn inside<'a>(
     imports: &'a [(FileId, TextRange)],
     component: &'a FxHashMap<FileId, usize>,
@@ -103,8 +95,6 @@ fn inside<'a>(
     imports.iter().filter(move |(target, _)| component.get(target) == Some(&home))
 }
 
-// The chain of a file in a ring of `size` files: the files the ring runs through from it, as far as the cycle shows,
-// and the number it leaves out.
 fn ring_chain(
     graph: &RuntimeGraph,
     component: &FxHashMap<FileId, usize>,
@@ -122,7 +112,6 @@ fn ring_chain(
     (chain, size.saturating_sub(SHOWN))
 }
 
-// The files on the shortest path from `from` to `to` that stays inside the component, both included.
 fn shortest_path(
     graph: &RuntimeGraph,
     component: &FxHashMap<FileId, usize>,
@@ -152,8 +141,7 @@ fn shortest_path(
     path
 }
 
-// The strongly connected component each file of the graph belongs to, numbered in the order Tarjan's algorithm closes
-// them. Iterative, so a long chain of imports does not exhaust the stack.
+// Iterative, so a long chain of imports does not exhaust the stack.
 fn components(graph: &RuntimeGraph) -> FxHashMap<FileId, usize> {
     let mut order: FxHashMap<FileId, usize> = FxHashMap::default();
     let mut low: FxHashMap<FileId, usize> = FxHashMap::default();
@@ -165,7 +153,6 @@ fn components(graph: &RuntimeGraph) -> FxHashMap<FileId, usize> {
         if order.contains_key(&root) {
             continue;
         }
-        // Each frame is a file and how many of its imports the walk has followed.
         let mut frames: Vec<(FileId, usize)> = vec![(root, 0)];
         order.insert(root, order.len());
         low.insert(root, order[&root]);

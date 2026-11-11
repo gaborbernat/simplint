@@ -12,8 +12,6 @@ use super::{FileId, FileIds};
 use crate::project::FileFacts;
 use crate::project::facts::{Statement, statement_texts};
 
-// A block of statements that other files repeat: the place each other file's copy starts, and how many statements the
-// longest single copy spans. `others` names some of the files that repeat the block, and `sharers` counts all of them.
 #[derive(Clone, PartialEq)]
 pub struct DuplicateRun {
     pub(super) range: TextRange,
@@ -49,20 +47,14 @@ impl CacheKey for DuplicateRun {
     }
 }
 
-// A window of statements, by its file and the position of its first statement among the file's statements.
 type Place = (FileId, usize);
 
-// A window repeated in many files pairs each place with this many other files, one place in each, so the pairs grow with
-// the files rather than with every pair of them. The blocks still count every file that repeats a window.
+// Pairs each window with a few partners, so the pairs grow with the files rather than with every pair of them. The
+// blocks still count every file that repeats a window.
 const PARTNERS: usize = 3;
 
-// The duplicate blocks of every file, made of windows of `window` statements of one body that another file holds too.
-// Only repeats in another file count, as pylint's duplicate check compares files with each other.
-//
 // Windows match by the hash of their statements' hashes first, and then by the statements' token texts, so a hash
-// collision never reports code that differs. The windows a file shares with one other file at a fixed offset, one
-// statement apart, form one copy; the copies of a file that overlap form one block, and a block inside another, as the
-// body of a function the other block holds, is left to the outer one.
+// collision never reports code that differs.
 pub(super) fn duplicate_runs(
     files: &[(FileId, &FileFacts)],
     paths: &FileIds,
@@ -84,7 +76,6 @@ pub(super) fn duplicate_runs(
     }
     by_hash.retain(|_, places| places.iter().any(|(file, _)| *file != places[0].0));
     let texts = texts(&by_hash, &statements, paths, window);
-    // Each window by the texts of its statements, numbered as they first appear.
     let mut numbers: FxHashMap<&[u8], usize> = FxHashMap::default();
     let mut groups: FxHashMap<Vec<usize>, Vec<Place>> = FxHashMap::default();
     for places in by_hash.values() {
@@ -101,12 +92,9 @@ pub(super) fn duplicate_runs(
             }
         }
     }
-    // The files each window's group repeats together, numbered as they first appear, and the windows of each file with
-    // the number of its group.
     let mut sets: FxHashMap<Vec<FileId>, usize> = FxHashMap::default();
     let mut set_files: Vec<Vec<FileId>> = Vec::new();
     let mut windows: FxHashMap<FileId, Vec<(usize, usize)>> = FxHashMap::default();
-    // The starts of the windows each file shares with each other file, by the offset between the two copies.
     let mut shared: FxHashMap<FileId, BTreeMap<(FileId, isize), Vec<usize>>> = FxHashMap::default();
     for mut places in groups.into_values() {
         places.sort_unstable();
@@ -146,8 +134,7 @@ pub(super) fn duplicate_runs(
         .collect()
 }
 
-// The token texts of the statements of the windows that hash alike in more than one file, by file and position. A file
-// that changed since its statements were recorded has none.
+// A file that changed since its statements were recorded has none.
 fn texts(
     by_hash: &FxHashMap<u64, Vec<Place>>,
     statements: &FxHashMap<FileId, &[Statement]>,
@@ -168,7 +155,6 @@ fn texts(
         .collect()
 }
 
-// The blocks of a file from the windows it shares with each other file at each offset.
 fn blocks(
     copies: &BTreeMap<(FileId, isize), Vec<usize>>,
     file: FileId,
@@ -179,7 +165,6 @@ fn blocks(
     sets: &[Vec<FileId>],
 ) -> Vec<DuplicateRun> {
     let own = statements[&file];
-    // Each copy as its first and last statement, the other file and the line its copy starts on.
     let mut spans: Vec<(usize, usize, FileId, u32)> = Vec::new();
     for (&(other, offset), starts) in copies {
         let mut starts = starts.clone();
@@ -216,7 +201,6 @@ fn blocks(
         .filter(|(_, range)| !ranges.iter().any(|outer| outer != *range && outer.contains_range(**range)))
         .map(|(block, range)| {
             let sharers = sharers(file, &block, windows, sets, window);
-            // Each other file once, where its first copy in the block starts.
             let mut places: BTreeMap<PathBuf, u32> = BTreeMap::new();
             for (other, line) in block.others {
                 let line_of = places.entry(paths.path(other).to_path_buf()).or_insert(line);
@@ -227,8 +211,7 @@ fn blocks(
         .collect()
 }
 
-// How many other files repeat the statements of a block: the files of each set of windows the block covers, less the
-// file itself. A set several windows of the block share is counted once.
+// A set that several windows of the block share is counted once.
 fn sharers(file: FileId, block: &Block, windows: &[(usize, usize)], sets: &[Vec<FileId>], window: usize) -> usize {
     let first = windows.partition_point(|(start, _)| *start < block.first);
     let end = windows.partition_point(|(start, _)| *start <= block.last + 1 - window);
@@ -243,8 +226,6 @@ fn sharers(file: FileId, block: &Block, windows: &[(usize, usize)], sets: &[Vec<
     others.len()
 }
 
-// Overlapping copies of one file: its first and last statement, the statements of its longest single copy, and the other
-// file and start line of each copy.
 struct Block {
     first: usize,
     last: usize,

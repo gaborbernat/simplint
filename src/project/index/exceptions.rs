@@ -10,7 +10,6 @@ use super::FileId;
 use super::classes::{ClassGraph, Reexports, acyclic_order};
 use super::resolve::{ClassKey, ModuleFacts};
 
-// A handler that names a tuple of classes catches each class in it, and a tuple may name other tuples.
 fn expand_tuples(caught: &mut Vec<ClassKey>, tuples: &FxHashMap<ClassKey, Vec<ClassKey>>) {
     let mut pending = std::mem::take(caught);
     let mut expanded: FxHashSet<ClassKey> = FxHashSet::default();
@@ -26,10 +25,7 @@ fn expand_tuples(caught: &mut Vec<ClassKey>, tuples: &FxHashMap<ClassKey, Vec<Cl
     }
 }
 
-// The exception classes of the run that no handler catches, by name or through a subclass, which is how a handler of a
-// base class reads, and the names each file gives to an exception class, defined or imported. A class is an exception
-// when a base is an exception: a builtin one, a standard-library one, or an exception class of the run. A warning is
-// not reported, since a warning is raised to be seen, not caught.
+// A warning is not reported, since a warning is raised to be seen, not caught.
 pub(super) fn exception_classes(
     modules: &FxHashMap<FileId, ModuleFacts<FileId>>,
     python_version: PythonVersion,
@@ -99,9 +95,7 @@ pub(super) fn exception_classes(
     (uncaught, types)
 }
 
-// The exception names each file of a star import brings in, by the file that star-imports it. A file that reaches no
-// star-import cycle takes the names of the files it star-imports, once; a file that reaches one is walked, since a cycle
-// leaves the file out of its own names.
+// A file that reaches a star-import cycle is walked, since a cycle leaves the file out of its own names.
 fn star_exception_names<'a>(
     starred: &FxHashMap<FileId, Vec<FileId>>,
     declared: &FxHashMap<FileId, Vec<&'a str>>,
@@ -125,8 +119,6 @@ fn star_exception_names<'a>(
         .collect()
 }
 
-// The exception names a file's star imports bring in: those each star-imported file defines or binds, and those of the
-// files it star-imports in turn.
 fn starred_exception_names<'a>(
     file: FileId,
     starred: &FxHashMap<FileId, Vec<FileId>>,
@@ -144,8 +136,6 @@ fn starred_exception_names<'a>(
     names
 }
 
-// Whether a base class a run does not define is an exception: a builtin one, or a standard-library one, which by its
-// name ends in `Error`, `Exception` or `Warning`.
 fn is_exception_name(module: &str, name: &str, minor: u8) -> bool {
     let standard = is_stdlib_root(minor, module);
     is_exception(name, minor)

@@ -8,9 +8,6 @@ use super::classes::{ClassGraph, Reexports};
 use super::resolve::{ClassBase, ClassKey};
 use crate::syntax::Visibility;
 
-// The members a private class defines that a public class of a library inherits without overriding them, which users
-// reach through the public class, as `Unix` reaches the methods of its private base `XDGMixin`. Each file maps its
-// classes to their inherited members.
 pub(super) fn inherited_api(
     library_api: &FxHashMap<FileId, FxHashMap<String, Option<PathBuf>>>,
     library_reached: &FxHashMap<FileId, FxHashSet<String>>,
@@ -30,8 +27,6 @@ pub(super) fn inherited_api(
     inherited
 }
 
-// Records the public members of each base class `bases` lists, and of the bases those inherit, that no class on the way
-// from the public class overrides. A base the run does not define has no members to record.
 fn collect<'a>(
     home: &impl Fn(FileId, &str) -> Option<ClassKey>,
     classes: &FxHashMap<ClassKey, (&'a [ClassBase], &'a [String])>,
@@ -44,7 +39,6 @@ fn collect<'a>(
         let Some(key) = file.and_then(|file| home(file, name)) else {
             continue;
         };
-        // `home` answers only for classes of the run.
         let (base_bases, methods) = classes[&key];
         if !visited.insert(key.clone()) {
             continue;

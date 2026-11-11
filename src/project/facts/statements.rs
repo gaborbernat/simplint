@@ -126,8 +126,8 @@ fn compared_tokens(tokens: &[Token]) -> impl Iterator<Item = &Token> {
         .filter(|token| !matches!(token.kind(), TokenKind::Comment | TokenKind::NonLogicalNewline | TokenKind::Newline))
 }
 
-// The text a token compares by. An indent or a dedent compares by a marker, as its text is the width of the indentation,
-// which must not decide a match while the nesting it marks does.
+// An indent or a dedent compares by a marker, since its text is the width of the indentation, which must not decide a
+// match while the nesting it marks does.
 fn compared_text<'s>(token: &Token, source: &'s str) -> &'s str {
     match token.kind() {
         TokenKind::Indent => "<indent>",

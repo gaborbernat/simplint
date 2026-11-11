@@ -6,7 +6,6 @@ use crate::project::constructors::{FileUses, RunCalls};
 
 use super::files::FileId;
 
-// The calls of every function and dataclass of the run, with the names reached in ways simplint cannot follow marked.
 #[expect(clippy::too_many_arguments, reason = "the run's inputs, which the index passes on")]
 pub(super) fn run_calls(
     files: &[(FileId, &FileFacts)],
@@ -30,7 +29,6 @@ pub(super) fn run_calls(
     calls
 }
 
-// The functions a file's entry points and dotted strings name are reached by calls simplint cannot follow.
 fn hide_names(
     calls: &mut RunCalls,
     entry_names: Vec<(FileId, String)>,
@@ -46,8 +44,6 @@ fn hide_names(
     }
 }
 
-// How many times the run loads each method, class attribute and module-level name of each file as `obj.name`, so a
-// member's calls can be checked against every read.
 fn method_loads(calls: &mut RunCalls, files: &[(FileId, &FileFacts)]) {
     let mut loads: FxHashMap<&str, u32> = FxHashMap::default();
     for (_, facts) in files {
