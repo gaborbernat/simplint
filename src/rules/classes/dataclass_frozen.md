@@ -107,9 +107,9 @@ class Release:
 ### Exceptions
 
 A class whose instances are written after construction, as the Instances of the class section describes, is not reported
-when the plain class that `frozen=True` would push it towards is one Ruff rejects, since that plain class is the only
-other form of the code. Writes through an object of unknown class do not count, and stubs are always reported, since
-Ruff's rules skip them:
+when Ruff rejects its plain form, the class without the dataclass decorator, since that is the only other form the code
+can take. Writes through an object of unknown class do not count. Stubs are always reported, since Ruff's rules skip
+them:
 
 - **Ruff's B903 runs**: `class-as-data-structure` flags a plain class with no base classes or class keywords, no
   decorator besides the dataclass's, and no method but private ones, such as `_bump`. A public method, such as `bump`,
