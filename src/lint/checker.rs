@@ -252,8 +252,16 @@ impl<'a> Checker<'a> {
             let matches = RuffMatches {
                 list_appends: counts_ruff_appends(self.settings),
                 django_reports: leaves_django_order_to_ruff(self.settings),
+                private_imports: self.settings.rules.contains(Rule::PrivateImportPath),
             };
-            Semantic::new(self.path, self.body(), self.target_version(), self.linter.ruff.settings, matches)
+            Semantic::new(
+                self.path,
+                self.body(),
+                self.target_version(),
+                self.linter.ruff.settings,
+                self.linter.ruff.package(),
+                matches,
+            )
         })
     }
 

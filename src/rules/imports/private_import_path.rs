@@ -1,8 +1,10 @@
 use std::path::PathBuf;
 
+use ruff_python_ast::identifier::Identifier;
 use ruff_python_ast::{self as ast, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 
+use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
 use crate::syntax::Visibility;
@@ -11,7 +13,9 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     match stmt {
         Stmt::Import(ast::StmtImport { names, .. }) => {
             for alias in names.iter().filter(|alias| private_count(alias.name.as_str()) > 0) {
-                report(walker, alias.name.as_str(), alias.name.range());
+                if !left_to_ruff(walker.checker, alias.identifier()) {
+                    report(walker, alias.name.as_str(), alias.name.range());
+                }
             }
         }
         Stmt::ImportFrom(ast::StmtImportFrom { module, level, names, .. }) => {
@@ -22,7 +26,10 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
             }
             let direct = *level == 1 && !path.contains('.');
             if private > 0 && (!direct || walker.checker.is_test_module()) {
-                report(walker, path, module.as_ref().map_or(stmt.range(), Ranged::range));
+                let covered = names.iter().any(|alias| left_to_ruff(walker.checker, alias.identifier()));
+                if !covered {
+                    report(walker, path, module.as_ref().map_or(stmt.range(), Ranged::range));
+                }
                 return;
             }
             for alias in names.iter().filter(|alias| alias.name.as_str() != "*") {
@@ -30,13 +37,21 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
                     continue;
                 }
                 let count = private + private_count(alias.name.as_str());
-                if count > 0 && (!direct || count > 1 || path.is_empty()) {
+                if count > 0
+                    && (!direct || count > 1 || path.is_empty())
+                    && !left_to_ruff(walker.checker, alias.identifier())
+                {
                     report(walker, alias.name.as_str(), alias.name.range());
                 }
             }
         }
         _ => {}
     }
+}
+
+// Ruff's PLC2701 reports the private imports a module or function uses at runtime, which this rule leaves to it.
+fn left_to_ruff(checker: &Checker, range: TextRange) -> bool {
+    checker.semantic().reported_by_plc2701(range)
 }
 
 fn paired_test_module(walker: &Walker<'_, '_>, path: &str, level: u32) -> bool {

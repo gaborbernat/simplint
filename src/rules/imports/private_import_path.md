@@ -9,6 +9,9 @@ as `from .._api import API` also crosses a package boundary.
 
 ## Example
 
+```python context file=package/__init__.py
+```
+
 ```python context file=package/_api.py
 def make() -> object:
     return object()
@@ -67,6 +70,14 @@ re-export or replacing uses of a module object may require changes elsewhere.
 
 - **Documented public underscore names**: [`os._exit`](https://docs.python.org/3/library/os.html#os._exit) is a public
   API despite its underscore.
+
+## Ruff overlap
+
+Ruff's [import-private-name](https://docs.astral.sh/ruff/rules/import-private-name/) (PLC2701, a preview rule) reports a
+private import that a module or function uses at runtime or never uses, and this rule leaves those reports to it whether
+or not the project selects PLC2701. It keeps the rest, such as imports used only in annotations or bound in a class
+body, relative imports, imports within their own package, and `import package._api` without an alias, which Ruff does
+not report.
 
 ## Other tools
 

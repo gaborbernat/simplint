@@ -954,7 +954,10 @@ fn checked_again_once_its_source_is_deleted(setup: impl FnOnce(&Path, &tempfile:
         ("pyproject.toml", "[tool.ruff]\nsrc = [\"lib\"]\n"),
         ("lib/.keep", ""),
         ("src/pkg/__init__.py", ""),
-        ("tests/pkg/test_api.py", "from pkg._api import VALUE\n\n\ndef test_value() -> None:\n    assert VALUE == 1\n"),
+        (
+            "tests/pkg/test_api.py",
+            "from pkg._api import VALUE\n\n\ndef test_value(value: VALUE) -> None:\n    assert value == 1\n",
+        ),
     ]);
     let deleted = setup(root.path(), &outside);
     let select = ["check", "--select", "SMP310", "tests"];
