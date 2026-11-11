@@ -30,7 +30,66 @@ impl<'a> FactVisitor<'a> {
             Expr::Attribute(ast::ExprAttribute { value, attr, .. }) if is_dunder_import_chain(value) => {
                 self.loaded_modules_of(value).into_iter().map(|module| format!("{module}.{attr}")).collect()
             }
-            _ => loaded_module(expr).map(str::to_owned).or_else(|| self.module_from_spec(expr)).into_iter().collect(),
+            _ => loaded_module(expr)
+                .map(str::to_owned)
+                .or_else(|| self.spec_module(module_from_spec_arg(expr)?))
+                .into_iter()
+                .collect(),
+        }
+    }
+
+    fn spec_module(&self, expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Name(name) => self.specs.get(name.id.as_str()).cloned().flatten(),
+            Expr::Call(ast::ExprCall { func, arguments, .. })
+                if last_segment(func) == Some("spec_from_file_location") =>
+            {
+                self.file_module(arguments.args.get(1)?)
+            }
+            _ => None,
+        }
+    }
+
+    fn file_module(&self, expr: &Expr) -> Option<String> {
+        let root = self.root.as_deref()?;
+        let path = lexically_normalized(&root.join(self.static_path(expr)?));
+        module_of(path.strip_prefix(root).ok()?)
+    }
+
+    fn static_path(&self, expr: &Expr) -> Option<PathBuf> {
+        match expr {
+            Expr::Name(name) if name.id.as_str() == "__file__" => Some(self.file.clone()),
+            Expr::StringLiteral(literal) => Some(PathBuf::from(literal.value.to_str())),
+            Expr::BinOp(ast::ExprBinOp { left, op: ast::Operator::Div, right, .. }) => {
+                Some(self.static_path(left)?.join(self.static_path(right)?))
+            }
+            Expr::Attribute(ast::ExprAttribute { value, attr, .. }) if attr.as_str() == "parent" => {
+                self.static_path(value)?.parent().map(Path::to_path_buf)
+            }
+            Expr::Subscript(ast::ExprSubscript { value, slice, .. }) => match value.as_ref() {
+                Expr::Attribute(ast::ExprAttribute { value: base, attr, .. }) if attr.as_str() == "parents" => {
+                    let index = slice.as_number_literal_expr()?.value.as_int()?.as_usize()?;
+                    self.static_path(base)?.ancestors().nth(index.checked_add(1)?).map(Path::to_path_buf)
+                }
+                _ => None,
+            },
+            Expr::Call(ast::ExprCall { func, arguments, .. }) => {
+                match (self.qualified(func)?.as_str(), &*arguments.args) {
+                    ("pathlib.Path" | "os.path.join", args) => {
+                        args.iter().try_fold(PathBuf::new(), |path, arg| Some(path.join(self.static_path(arg)?)))
+                    }
+                    ("os.path.dirname", [arg]) => self.static_path(arg)?.parent().map(Path::to_path_buf),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn is_unknown_module(&self, expr: &Expr) -> bool {
+        match expr {
+            Expr::Name(name) => self.unknown_modules.contains(name.id.as_str()),
+            _ => module_from_spec_arg(expr).is_some(),
         }
     }
 
@@ -82,65 +141,6 @@ impl<'a> FactVisitor<'a> {
             None => {}
         }
     }
-
-    fn module_from_spec(&self, expr: &Expr) -> Option<String> {
-        self.spec_module(module_from_spec_arg(expr)?)
-    }
-
-    fn spec_module(&self, expr: &Expr) -> Option<String> {
-        match expr {
-            Expr::Name(name) => self.specs.get(name.id.as_str()).cloned().flatten(),
-            Expr::Call(ast::ExprCall { func, arguments, .. })
-                if last_segment(func) == Some("spec_from_file_location") =>
-            {
-                self.file_module(arguments.args.get(1)?)
-            }
-            _ => None,
-        }
-    }
-
-    fn is_unknown_module(&self, expr: &Expr) -> bool {
-        match expr {
-            Expr::Name(name) => self.unknown_modules.contains(name.id.as_str()),
-            _ => module_from_spec_arg(expr).is_some(),
-        }
-    }
-
-    fn file_module(&self, expr: &Expr) -> Option<String> {
-        let root = self.root.as_deref()?;
-        let path = lexically_normalized(&root.join(self.static_path(expr)?));
-        module_of(path.strip_prefix(root).ok()?)
-    }
-
-    fn static_path(&self, expr: &Expr) -> Option<PathBuf> {
-        match expr {
-            Expr::Name(name) if name.id.as_str() == "__file__" => Some(self.file.clone()),
-            Expr::StringLiteral(literal) => Some(PathBuf::from(literal.value.to_str())),
-            Expr::BinOp(ast::ExprBinOp { left, op: ast::Operator::Div, right, .. }) => {
-                Some(self.static_path(left)?.join(self.static_path(right)?))
-            }
-            Expr::Attribute(ast::ExprAttribute { value, attr, .. }) if attr.as_str() == "parent" => {
-                self.static_path(value)?.parent().map(Path::to_path_buf)
-            }
-            Expr::Subscript(ast::ExprSubscript { value, slice, .. }) => match value.as_ref() {
-                Expr::Attribute(ast::ExprAttribute { value: base, attr, .. }) if attr.as_str() == "parents" => {
-                    let index = slice.as_number_literal_expr()?.value.as_int()?.as_usize()?;
-                    self.static_path(base)?.ancestors().nth(index.checked_add(1)?).map(Path::to_path_buf)
-                }
-                _ => None,
-            },
-            Expr::Call(ast::ExprCall { func, arguments, .. }) => {
-                match (self.qualified(func)?.as_str(), &*arguments.args) {
-                    ("pathlib.Path" | "os.path.join", args) => {
-                        args.iter().try_fold(PathBuf::new(), |path, arg| Some(path.join(self.static_path(arg)?)))
-                    }
-                    ("os.path.dirname", [arg]) => self.static_path(arg)?.parent().map(Path::to_path_buf),
-                    _ => None,
-                }
-            }
-            _ => None,
-        }
-    }
 }
 
 #[derive(Clone, PartialEq)]
@@ -157,14 +157,6 @@ fn is_dunder_import_chain(expr: &Expr) -> bool {
     }
 }
 
-fn names_fromlist(arguments: &ast::Arguments) -> bool {
-    match arguments.find_argument_value("fromlist", 3) {
-        None | Some(Expr::NoneLiteral(_)) => false,
-        Some(Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. })) => !elts.is_empty(),
-        Some(_) => true,
-    }
-}
-
 // Without a `fromlist`, `__import__` returns the top package of the name, not the module it names.
 fn loaded_module(expr: &Expr) -> Option<&str> {
     let Expr::Call(ast::ExprCall { func, arguments, .. }) = expr else {
@@ -178,6 +170,14 @@ fn loaded_module(expr: &Expr) -> Option<&str> {
     match module.split_once('.') {
         Some((package, _)) if name == "__import__" && !names_fromlist(arguments) => Some(package),
         _ => Some(module),
+    }
+}
+
+fn names_fromlist(arguments: &ast::Arguments) -> bool {
+    match arguments.find_argument_value("fromlist", 3) {
+        None | Some(Expr::NoneLiteral(_)) => false,
+        Some(Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. })) => !elts.is_empty(),
+        Some(_) => true,
     }
 }
 

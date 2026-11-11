@@ -48,6 +48,7 @@ fn permissions(metadata: &fs::Metadata) -> u32 {
     u32::from(metadata.permissions().readonly())
 }
 
+// rkyv reads an archive in place, which needs its bytes aligned to 16.
 pub fn read_aligned(path: &Path) -> io::Result<AlignedVec<16>> {
     let mut file = fs::File::open(path)?;
     let mut bytes = AlignedVec::<16>::new();
@@ -69,12 +70,6 @@ pub(super) fn stat_key(path: &Path, hasher: &mut CacheKeyHasher) {
     stat(path).cache_key(hasher);
 }
 
-// The version and a hash of the crate's source, which `build.rs` computes, so a development build that changes it does
-// not read caches an earlier build of the same version wrote.
-const FORMAT: &str = concat!(env!("CARGO_PKG_VERSION"), "-", env!("SIMPLINT_CACHE_FORMAT"));
-
-pub const MAX_LAST_SEEN: Duration = Duration::from_hours(720);
-
 // Makes this build's cache directory and drops other builds' directories. The documentation key hashes the times of
 // the directories it walks, and the cache directory sits in a project root by default, so creating it while that walk
 // runs would change a key that is then stored, and the next run would miss it.
@@ -86,30 +81,27 @@ pub fn prepare(ruff_cache_dir: &Path) {
     remove_stale(&directory);
 }
 
+// Ruff's retention for unused cache entries, applied to whole build directories too.
+pub const MAX_LAST_SEEN: Duration = Duration::from_hours(720);
+
 pub fn build_directory(ruff_cache_dir: &Path) -> PathBuf {
+    // The version and a hash of the crate's source, which `build.rs` computes, so a development build that changes it
+    // does not read caches an earlier build of the same version wrote.
+    const FORMAT: &str = concat!(env!("CARGO_PKG_VERSION"), "-", env!("SIMPLINT_CACHE_FORMAT"));
     directory(ruff_cache_dir).join(FORMAT)
-}
-
-pub fn documentation_file(ruff_cache_dir: &Path, project_root: &Path) -> PathBuf {
-    let mut hasher = CacheKeyHasher::new();
-    "documentation".cache_key(&mut hasher);
-    project_root.cache_key(&mut hasher);
-    build_directory(ruff_cache_dir).join(hasher.finish().to_string())
-}
-
-// Writes a cache file through a temporary file next to it, so a reader never sees it cut short. The directory is made
-// first, as the run may write before it has opened the package caches.
-pub fn write_atomically(path: &Path, bytes: &[u8]) -> Result<()> {
-    let directory = path.parent().context("a cache file sits in a directory")?;
-    fs::create_dir_all(directory)?;
-    let mut temporary = tempfile_in(directory)?;
-    temporary.write_all(bytes)?;
-    temporary.persist(path)?;
-    Ok(())
 }
 
 pub fn directory(ruff_cache_dir: &Path) -> PathBuf {
     ruff_cache_dir.join("simplint")
+}
+
+fn init(ruff_cache_dir: &Path, directory: &Path) -> io::Result<()> {
+    fs::create_dir_all(directory)?;
+    cachedir::ensure_tag(ruff_cache_dir)?;
+    match fs::OpenOptions::new().write(true).create_new(true).open(ruff_cache_dir.join(".gitignore")) {
+        Ok(mut file) => file.write_all(b"# Automatically created by ruff.\n*\n"),
+        Err(error) => (error.kind() == io::ErrorKind::AlreadyExists).then_some(()).ok_or(error),
+    }
 }
 
 // Removes the directories other simplint builds wrote that no run has written to for `MAX_LAST_SEEN`. A directory
@@ -120,7 +112,6 @@ fn remove_stale(current: &Path) {
     let Some(Ok(siblings)) = current.parent().map(fs::read_dir) else {
         return;
     };
-    let now = SystemTime::now();
     for entry in siblings.filter_map(Result::ok) {
         let sibling = entry.path();
         if sibling == current || !is_build_directory(&entry) {
@@ -132,14 +123,16 @@ fn remove_stale(current: &Path) {
             .filter_map(|entry| entry.ok()?.metadata().ok()?.modified().ok())
             .max()
             .or_else(|| sibling.metadata().ok()?.modified().ok());
-        let stale = newest.is_none_or(|modified| now.duration_since(modified).is_ok_and(|age| age > MAX_LAST_SEEN));
+        let now = SystemTime::now();
         // Removal is best effort: a directory it cannot remove, as one another process has open, waits for a later run.
-        if stale {
+        if newest.is_none_or(|modified| now.duration_since(modified).is_ok_and(|age| age > MAX_LAST_SEEN)) {
             let _ = fs::remove_dir_all(&sibling);
         }
     }
 }
 
+// Only a real directory named as a build, holding nothing but cache files, is removed, so a directory a user put in the
+// simplint directory stays.
 fn is_build_directory(entry: &fs::DirEntry) -> bool {
     entry.file_name().to_str().is_some_and(is_build_name)
         && entry.file_type().is_ok_and(|file_type| file_type.is_dir())
@@ -169,13 +162,22 @@ fn holds_only_cache_files(directory: &Path) -> bool {
     })
 }
 
-fn init(ruff_cache_dir: &Path, directory: &Path) -> io::Result<()> {
+pub fn documentation_file(ruff_cache_dir: &Path, project_root: &Path) -> PathBuf {
+    let mut hasher = CacheKeyHasher::new();
+    "documentation".cache_key(&mut hasher);
+    project_root.cache_key(&mut hasher);
+    build_directory(ruff_cache_dir).join(hasher.finish().to_string())
+}
+
+// Writes a cache file through a temporary file next to it, so a reader never sees it cut short. The directory is made
+// first, as the run may write before it has opened the package caches.
+pub fn write_atomically(path: &Path, bytes: &[u8]) -> Result<()> {
+    let directory = path.parent().context("a cache file sits in a directory")?;
     fs::create_dir_all(directory)?;
-    cachedir::ensure_tag(ruff_cache_dir)?;
-    match fs::OpenOptions::new().write(true).create_new(true).open(ruff_cache_dir.join(".gitignore")) {
-        Ok(mut file) => file.write_all(b"# Automatically created by ruff.\n*\n"),
-        Err(error) => (error.kind() == io::ErrorKind::AlreadyExists).then_some(()).ok_or(error),
-    }
+    let mut temporary = tempfile_in(directory)?;
+    temporary.write_all(bytes)?;
+    temporary.persist(path)?;
+    Ok(())
 }
 
 // A temporary file with the permissions of a file created the usual way, as `NamedTempFile` defaults to `0o600`.

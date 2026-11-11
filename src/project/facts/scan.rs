@@ -41,78 +41,6 @@ impl<'a> Scan<'a> {
         scan.visit_body(body);
         scan
     }
-
-    // A word repeats across the strings, so it is copied once, when it first appears.
-    fn add_words(&mut self, text: &str) {
-        for word in identifier_words(text).filter(|word| !word.is_empty()) {
-            if !self.words.contains(word) {
-                self.words.insert(word.to_owned());
-            }
-        }
-    }
-
-    // Before a statement's children, since a binding is read by the statements that follow it.
-    fn open(&mut self, stmt: &'a Stmt) {
-        match stmt {
-            Stmt::Expr(_) if self.parts.has(Parts::CALL_CONTEXTS) => self.discarded.extend(discarded_call(stmt)),
-            Stmt::Global(ast::StmtGlobal { names, .. }) if self.parts.has(Parts::GLOBAL_NAMES) => {
-                self.global_names.extend(names.iter().map(|name| name.as_str().to_owned()));
-            }
-            Stmt::Assign(ast::StmtAssign { targets, value, .. }) => self.bind_module(targets, Some(value), None),
-            Stmt::AnnAssign(ast::StmtAnnAssign { target, value, annotation, .. }) => {
-                self.bind_module(std::slice::from_ref(target.as_ref()), value.as_deref(), Some(annotation));
-            }
-            Stmt::Return(ast::StmtReturn { value: Some(value), .. }) => {
-                if let Some(returns) = self.returns.last_mut() {
-                    returns.push(value);
-                }
-            }
-            Stmt::FunctionDef(_) | Stmt::ClassDef(_) => self.returns.push(Vec::new()),
-            _ => {}
-        }
-    }
-
-    // After a statement's children, so the returns of a function are all known. A pytest fixture that returns a module
-    // hands it to each test under the fixture's name, which a decorator may give.
-    fn close(&mut self, stmt: &'a Stmt) {
-        match stmt {
-            Stmt::FunctionDef(function) => {
-                let returns = self.returns.pop().unwrap_or_default();
-                if returns.into_iter().any(|value| self.is_module(value)) {
-                    self.modules.insert(function.name.to_string());
-                    self.modules.extend(
-                        function
-                            .decorator_list
-                            .iter()
-                            .filter_map(|decorator| decorator.expression.as_call_expr()?.arguments.find_keyword("name"))
-                            .filter_map(|keyword| {
-                                Some(keyword.value.as_string_literal_expr()?.value.to_str().to_owned())
-                            }),
-                    );
-                }
-            }
-            Stmt::ClassDef(_) => _ = self.returns.pop(),
-            _ => {}
-        }
-    }
-
-    fn bind_module(&mut self, targets: &[Expr], value: Option<&Expr>, annotation: Option<&Expr>) {
-        if value.is_some_and(|value| self.is_module(value)) || annotation.is_some_and(is_module_type) {
-            self.modules.extend(targets.iter().filter_map(Expr::as_name_expr).map(|name| name.id.to_string()));
-        }
-    }
-
-    fn is_module(&self, expr: &Expr) -> bool {
-        match expr {
-            Expr::Name(name) => self.modules.contains(name.id.as_str()),
-            Expr::Call(ast::ExprCall { func, arguments, .. })
-                if UnqualifiedName::from_expr(func).is_some_and(|name| name.segments().last() == Some(&"cast")) =>
-            {
-                arguments.args.get(1).is_some_and(|value| self.is_module(value))
-            }
-            _ => is_module_load(expr),
-        }
-    }
 }
 
 impl<'a> Visitor<'a> for Scan<'a> {
@@ -168,6 +96,80 @@ impl<'a> Visitor<'a> for Scan<'a> {
             self.add_words(&literal.value);
         }
         visitor::walk_interpolated_string_element(self, element);
+    }
+}
+
+impl<'a> Scan<'a> {
+    // A word repeats across the strings, so it is copied once, when it first appears.
+    fn add_words(&mut self, text: &str) {
+        for word in identifier_words(text).filter(|word| !word.is_empty()) {
+            if !self.words.contains(word) {
+                self.words.insert(word.to_owned());
+            }
+        }
+    }
+
+    // Before a statement's children, since a binding is read by the statements that follow it.
+    fn open(&mut self, stmt: &'a Stmt) {
+        match stmt {
+            Stmt::Expr(_) if self.parts.has(Parts::CALL_CONTEXTS) => self.discarded.extend(discarded_call(stmt)),
+            Stmt::Global(ast::StmtGlobal { names, .. }) if self.parts.has(Parts::GLOBAL_NAMES) => {
+                self.global_names.extend(names.iter().map(|name| name.as_str().to_owned()));
+            }
+            Stmt::Assign(ast::StmtAssign { targets, value, .. }) => self.bind_module(targets, Some(value), None),
+            Stmt::AnnAssign(ast::StmtAnnAssign { target, value, annotation, .. }) => {
+                self.bind_module(std::slice::from_ref(target.as_ref()), value.as_deref(), Some(annotation));
+            }
+            Stmt::Return(ast::StmtReturn { value: Some(value), .. }) => {
+                if let Some(returns) = self.returns.last_mut() {
+                    returns.push(value);
+                }
+            }
+            Stmt::FunctionDef(_) | Stmt::ClassDef(_) => self.returns.push(Vec::new()),
+            _ => {}
+        }
+    }
+
+    fn bind_module(&mut self, targets: &[Expr], value: Option<&Expr>, annotation: Option<&Expr>) {
+        if value.is_some_and(|value| self.is_module(value)) || annotation.is_some_and(is_module_type) {
+            self.modules.extend(targets.iter().filter_map(Expr::as_name_expr).map(|name| name.id.to_string()));
+        }
+    }
+
+    fn is_module(&self, expr: &Expr) -> bool {
+        match expr {
+            Expr::Name(name) => self.modules.contains(name.id.as_str()),
+            Expr::Call(ast::ExprCall { func, arguments, .. })
+                if UnqualifiedName::from_expr(func).is_some_and(|name| name.segments().last() == Some(&"cast")) =>
+            {
+                arguments.args.get(1).is_some_and(|value| self.is_module(value))
+            }
+            _ => is_module_load(expr),
+        }
+    }
+
+    // After a statement's children, so the returns of a function are all known. A pytest fixture that returns a module
+    // hands it to each test under the fixture's name, which a decorator may give.
+    fn close(&mut self, stmt: &'a Stmt) {
+        match stmt {
+            Stmt::FunctionDef(function) => {
+                let returns = self.returns.pop().unwrap_or_default();
+                if returns.into_iter().any(|value| self.is_module(value)) {
+                    self.modules.insert(function.name.to_string());
+                    self.modules.extend(
+                        function
+                            .decorator_list
+                            .iter()
+                            .filter_map(|decorator| decorator.expression.as_call_expr()?.arguments.find_keyword("name"))
+                            .filter_map(|keyword| {
+                                Some(keyword.value.as_string_literal_expr()?.value.to_str().to_owned())
+                            }),
+                    );
+                }
+            }
+            Stmt::ClassDef(_) => _ = self.returns.pop(),
+            _ => {}
+        }
     }
 }
 

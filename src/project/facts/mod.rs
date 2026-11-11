@@ -40,15 +40,6 @@ use super::constructors::{CallContexts, Constructors};
 use super::receivers::{AttributeWrites, module_name};
 use crate::syntax::{Exports, dunder_all, module_statements};
 
-// Why the names a module provides may not all be known: `__all__` is built in a way parsing cannot follow, or a
-// module-level `__getattr__` supplies names lazily, on top of the names the module defines.
-#[derive(Clone, Copy, PartialEq, Eq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
-pub(super) enum ExportsUnknown {
-    No,
-    Dynamic,
-    Lazy,
-}
-
 #[derive(Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct FileFacts {
     pub(super) names: Channels<Vec<ModuleNames>>,
@@ -83,6 +74,7 @@ pub struct FileFacts {
     pub(super) pytest_requests: Vec<String>,
     pub(super) doctest_names: Vec<String>,
     pub(super) classes: Vec<ClassBases>,
+    // An import of one of these names may bind a function rather than a class.
     pub(super) functions: Vec<String>,
     pub(super) plain_modules: Vec<String>,
     pub(super) interface: Vec<Definition>,
@@ -95,29 +87,6 @@ pub struct FileFacts {
     pub(super) source_digest: u64,
     // The search roots change the module paths a relative import resolves against, while the file stays the same.
     module_digest: u64,
-}
-
-#[derive(Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
-pub struct ImportSite {
-    pub(super) module: String,
-    pub(super) submodules: Vec<String>,
-    pub(super) start: u32,
-    pub(super) end: u32,
-    pub(super) below: Option<(u8, u8)>,
-}
-
-impl ImportSite {
-    fn new(module: String, submodules: Vec<String>, range: TextRange, runs: Runs) -> Self {
-        let below = match runs {
-            Runs::Below(major, minor) => Some((major, minor)),
-            Runs::Always | Runs::Never => None,
-        };
-        Self { module, submodules, start: range.start().to_u32(), end: range.end().to_u32(), below }
-    }
-
-    pub(super) fn range(&self) -> TextRange {
-        TextRange::new(TextSize::new(self.start), TextSize::new(self.end))
-    }
 }
 
 impl FileFacts {
@@ -137,6 +106,7 @@ impl FileFacts {
         parts: Parts,
     ) -> Option<Self> {
         let parsed = parse_module(source).ok()?;
+        // A file outside any package has no module path, so its relative imports resolve against its importable path.
         let mut visitor = FactVisitor::new(
             path,
             module_path.or(importable),
@@ -146,7 +116,6 @@ impl FileFacts {
         );
         visitor.visit_body(&parsed.syntax().body);
         visitor.finish_module();
-        let functions = module_functions(&parsed.syntax().body);
         let classes = module_classes(&parsed.syntax().body, &visitor);
         // A stub publishes what it declares, so its names are the API of the module it describes.
         let declared = if path.extension().is_some_and(|extension| extension == "pyi") {
@@ -167,9 +136,7 @@ impl FileFacts {
             .collect::<BTreeSet<String>>()
             .into_iter()
             .collect();
-        let listed = dunder_all(&parsed.syntax().body);
-        let interface = interface(&parsed.syntax().body);
-        let (exports, dynamic_exports) = match listed {
+        let (exports, dynamic_exports) = match dunder_all(&parsed.syntax().body) {
             Exports::Listed(names) => (Some(names.names().iter().copied().map(str::to_owned).collect()), false),
             Exports::Absent => (None, false),
             Exports::Dynamic => (None, true),
@@ -212,9 +179,9 @@ impl FileFacts {
             caught: visitor.caught,
             class_tuples: visitor.class_tuples,
             classes,
-            functions,
+            functions: module_functions(&parsed.syntax().body),
             plain_modules: visitor.plain_modules,
-            interface,
+            interface: interface(&parsed.syntax().body),
             fixture_requests: visitor.fixture_requests.into_iter().collect(),
             pytest_requests: visitor.pytest_requests.into_iter().collect(),
             doctest_names: visitor.doctest_names.into_iter().collect(),
@@ -235,37 +202,68 @@ impl FileFacts {
     pub fn parts(&self) -> Parts {
         self.parts
     }
+
+    pub fn imported_names(&self) -> impl Iterator<Item = &str> {
+        self.names[Channel::Import].iter().flat_map(|(_, names)| names.iter().map(String::as_str))
+    }
+
+    pub fn assigned_names(&self) -> impl Iterator<Item = &str> {
+        self.assigned_attributes.iter().map(String::as_str)
+    }
+
+    pub fn doctests(&self) -> impl Iterator<Item = &str> {
+        self.doctest_names.iter().map(String::as_str)
+    }
+
+    pub(crate) fn computed_reads(&self) -> &ComputedReads {
+        &self.computed_reads
+    }
+
+    pub fn read_names(&self) -> impl Iterator<Item = &str> {
+        self.names
+            .iter()
+            .flatten()
+            .flat_map(|(_, names)| names.iter().map(String::as_str))
+            .chain(self.module_reads.iter().map(String::as_str))
+            .chain(self.attribute_loads.keys().map(String::as_str))
+    }
 }
 
-fn module_bindings(bindings: &[ImportBinding], imports: &FactVisitor<'_>) -> (Vec<(String, String)>, Vec<String>) {
-    let module_names: Vec<(String, String)> = bindings
-        .iter()
-        .map(|binding| (binding.bound.clone(), format!("{}.{}", binding.module, binding.name)))
-        .chain(imports.module_aliases.iter().cloned())
-        .collect();
-    let values = module_values(&module_names, imports);
-    (module_names, values)
+#[derive(Clone, Copy, PartialEq, Eq, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+pub(super) enum ExportsUnknown {
+    No,
+    Dynamic,
+    Lazy,
 }
 
-fn module_values(module_names: &[(String, String)], imports: &FactVisitor<'_>) -> Vec<String> {
-    let dotted = imports
-        .dotted_loads
-        .iter()
-        .filter_map(|dotted| visitor::qualified(&dotted.split('.').collect::<Vec<_>>(), &imports.aliases));
-    module_names
-        .iter()
-        .filter(|(bound, _)| imports.value_loads.contains(bound.as_str()))
-        .map(|(_, module)| module.clone())
-        .chain(dotted)
-        .chain(imports.nested_modules.iter().cloned())
-        .collect()
+#[derive(Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+pub struct ImportSite {
+    pub(super) module: String,
+    pub(super) submodules: Vec<String>,
+    pub(super) start: u32,
+    pub(super) end: u32,
+    pub(super) below: Option<(u8, u8)>,
 }
 
-fn module_digest(module_path: Option<&[String]>, importable: Option<&[String]>) -> u64 {
-    let mut hasher = CacheKeyHasher::new();
-    module_path.cache_key(&mut hasher);
-    importable.cache_key(&mut hasher);
-    hasher.finish()
+impl ImportSite {
+    fn new(module: String, submodules: Vec<String>, range: TextRange, runs: Runs) -> Self {
+        let below = match runs {
+            Runs::Below(major, minor) => Some((major, minor)),
+            Runs::Always | Runs::Never => None,
+        };
+        Self { module, submodules, start: range.start().to_u32(), end: range.end().to_u32(), below }
+    }
+
+    pub(super) fn range(&self) -> TextRange {
+        TextRange::new(TextSize::new(self.start), TextSize::new(self.end))
+    }
+}
+
+#[derive(Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+pub struct ClassBases {
+    pub(super) name: String,
+    pub(super) bases: Vec<(String, String)>,
+    pub(super) methods: Vec<String>,
 }
 
 fn module_classes(body: &[Stmt], imports: &FactVisitor<'_>) -> Vec<ClassBases> {
@@ -301,6 +299,59 @@ fn declared_names(stmt: &Stmt) -> Vec<String> {
         }
         _ => Vec::new(),
     }
+}
+
+fn constructors(
+    path: &Path,
+    (source, parsed): (&str, &Parsed<ModModule>),
+    imports: &FactVisitor,
+    parts: Parts,
+    scan: &mut Scan<'_>,
+) -> Constructors {
+    let body = &parsed.syntax().body;
+    let contexts = if parts.has(Parts::CALL_CONTEXTS) {
+        CallContexts::new(take(&mut scan.discarded), body, path.file_name().is_some_and(|name| name == "__main__.py"))
+    } else {
+        CallContexts::default()
+    };
+    Constructors::collect(source, parsed.tokens(), body, &imports.aliases, &imports.from_statements, &contexts)
+}
+
+fn module_bindings(bindings: &[ImportBinding], imports: &FactVisitor<'_>) -> (Vec<(String, String)>, Vec<String>) {
+    let module_names: Vec<(String, String)> = bindings
+        .iter()
+        .map(|binding| (binding.bound.clone(), format!("{}.{}", binding.module, binding.name)))
+        .chain(imports.module_aliases.iter().cloned())
+        .collect();
+    let values = module_values(&module_names, imports);
+    (module_names, values)
+}
+
+fn module_values(module_names: &[(String, String)], imports: &FactVisitor<'_>) -> Vec<String> {
+    let dotted = imports
+        .dotted_loads
+        .iter()
+        .filter_map(|dotted| visitor::qualified(&dotted.split('.').collect::<Vec<_>>(), &imports.aliases));
+    module_names
+        .iter()
+        .filter(|(bound, _)| imports.value_loads.contains(bound.as_str()))
+        .map(|(_, module)| module.clone())
+        .chain(dotted)
+        .chain(imports.nested_modules.iter().cloned())
+        .collect()
+}
+
+fn module_digest(module_path: Option<&[String]>, importable: Option<&[String]>) -> u64 {
+    let mut hasher = CacheKeyHasher::new();
+    module_path.cache_key(&mut hasher);
+    importable.cache_key(&mut hasher);
+    hasher.finish()
+}
+
+pub(super) fn source_digest(source: &str) -> u64 {
+    let mut hasher = CacheKeyHasher::new();
+    source.cache_key(&mut hasher);
+    hasher.finish()
 }
 
 // The facts only some rules read, each collected only for a run with one of those rules on, as collecting them costs
@@ -350,35 +401,7 @@ impl Parts {
     }
 }
 
-pub(super) fn source_digest(source: &str) -> u64 {
-    let mut hasher = CacheKeyHasher::new();
-    source.cache_key(&mut hasher);
-    hasher.finish()
-}
-
-fn constructors(
-    path: &Path,
-    (source, parsed): (&str, &Parsed<ModModule>),
-    imports: &FactVisitor,
-    parts: Parts,
-    scan: &mut Scan<'_>,
-) -> Constructors {
-    let body = &parsed.syntax().body;
-    let contexts = if parts.has(Parts::CALL_CONTEXTS) {
-        CallContexts::new(take(&mut scan.discarded), body, path.file_name().is_some_and(|name| name == "__main__.py"))
-    } else {
-        CallContexts::default()
-    };
-    Constructors::collect(source, parsed.tokens(), body, &imports.aliases, &imports.from_statements, &contexts)
-}
-
-#[derive(Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
-pub struct ClassBases {
-    pub(super) name: String,
-    pub(super) bases: Vec<(String, String)>,
-    pub(super) methods: Vec<String>,
-}
-
+// Grouped by module, so each module resolves once per file.
 pub(super) type ModuleNames = (String, Vec<String>);
 
 #[derive(Clone, Copy)]
@@ -412,33 +435,6 @@ impl<T> Index<Channel> for Channels<T> {
 impl<T> IndexMut<Channel> for Channels<T> {
     fn index_mut(&mut self, channel: Channel) -> &mut T {
         &mut self.0[channel as usize]
-    }
-}
-
-impl FileFacts {
-    pub fn imported_names(&self) -> impl Iterator<Item = &str> {
-        self.names[Channel::Import].iter().flat_map(|(_, names)| names.iter().map(String::as_str))
-    }
-
-    pub fn assigned_names(&self) -> impl Iterator<Item = &str> {
-        self.assigned_attributes.iter().map(String::as_str)
-    }
-
-    pub fn doctests(&self) -> impl Iterator<Item = &str> {
-        self.doctest_names.iter().map(String::as_str)
-    }
-
-    pub(crate) fn computed_reads(&self) -> &ComputedReads {
-        &self.computed_reads
-    }
-
-    pub fn read_names(&self) -> impl Iterator<Item = &str> {
-        self.names
-            .iter()
-            .flatten()
-            .flat_map(|(_, names)| names.iter().map(String::as_str))
-            .chain(self.module_reads.iter().map(String::as_str))
-            .chain(self.attribute_loads.keys().map(String::as_str))
     }
 }
 

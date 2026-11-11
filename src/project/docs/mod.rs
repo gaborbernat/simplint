@@ -18,6 +18,8 @@ pub struct DocReferences {
     // directory on `sys.path`, so any definition whose dotted name ends with one may be the target.
     names: FxHashSet<String>,
     scopes: FxHashSet<String>,
+    // `automodule` with `:members:` alone documents what the module's `__all__` lists, or its public names, which the
+    // index resolves into names.
     modules: FxHashSet<Module>,
 }
 
@@ -30,18 +32,6 @@ pub struct Module {
 }
 
 impl DocReferences {
-    pub fn modules(&self) -> impl Iterator<Item = &Module> {
-        self.modules.iter()
-    }
-
-    pub fn add_names(&mut self, names: impl IntoIterator<Item = String>) {
-        self.names.extend(names);
-    }
-
-    pub fn add_scope(&mut self, scope: String) {
-        self.scopes.insert(scope);
-    }
-
     // With a cache directory, a root's names are kept under `tree_key`, so a run where nothing under the root changed
     // reads no page.
     pub fn collect<'a>(
@@ -75,6 +65,18 @@ impl DocReferences {
         self.names.extend(other.names);
         self.scopes.extend(other.scopes);
         self.modules.extend(other.modules);
+    }
+
+    pub fn modules(&self) -> impl Iterator<Item = &Module> {
+        self.modules.iter()
+    }
+
+    pub fn add_names(&mut self, names: impl IntoIterator<Item = String>) {
+        self.names.extend(names);
+    }
+
+    pub fn add_scope(&mut self, scope: String) {
+        self.scopes.insert(scope);
     }
 
     // When the package is unknown, `qualified` starts at the module's own name, and a documented name that ends with it

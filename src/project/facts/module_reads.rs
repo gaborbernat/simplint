@@ -17,25 +17,6 @@ pub(super) fn module_reads(body: &[Stmt], modules: &FxHashSet<String>) -> Vec<St
     reads.reads.into_iter().collect()
 }
 
-pub(super) fn is_module_load(expr: &Expr) -> bool {
-    match expr {
-        Expr::Call(ast::ExprCall { func, .. }) => match func.as_ref() {
-            Expr::Name(name) => matches!(name.id.as_str(), "import_module" | "__import__"),
-            Expr::Attribute(ast::ExprAttribute { attr, .. }) => attr == "import_module",
-            _ => false,
-        },
-        Expr::Subscript(ast::ExprSubscript { value, .. }) => {
-            UnqualifiedName::from_expr(value).is_some_and(|name| name.segments() == ["sys", "modules"])
-        }
-        _ => false,
-    }
-}
-
-pub(super) fn is_module_type(annotation: &Expr) -> bool {
-    UnqualifiedName::from_expr(annotation)
-        .is_some_and(|name| matches!(name.segments(), ["ModuleType"] | ["types", "ModuleType"]))
-}
-
 struct ModuleReads<'m> {
     modules: &'m FxHashSet<String>,
     reads: BTreeSet<String>,
@@ -60,4 +41,23 @@ impl<'a> Visitor<'a> for ModuleReads<'_> {
         self.reads.extend(read.map(str::to_owned));
         visitor::walk_expr(self, expr);
     }
+}
+
+pub(super) fn is_module_load(expr: &Expr) -> bool {
+    match expr {
+        Expr::Call(ast::ExprCall { func, .. }) => match func.as_ref() {
+            Expr::Name(name) => matches!(name.id.as_str(), "import_module" | "__import__"),
+            Expr::Attribute(ast::ExprAttribute { attr, .. }) => attr == "import_module",
+            _ => false,
+        },
+        Expr::Subscript(ast::ExprSubscript { value, .. }) => {
+            UnqualifiedName::from_expr(value).is_some_and(|name| name.segments() == ["sys", "modules"])
+        }
+        _ => false,
+    }
+}
+
+pub(super) fn is_module_type(annotation: &Expr) -> bool {
+    UnqualifiedName::from_expr(annotation)
+        .is_some_and(|name| matches!(name.segments(), ["ModuleType"] | ["types", "ModuleType"]))
 }

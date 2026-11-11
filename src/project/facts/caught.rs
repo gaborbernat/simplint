@@ -4,6 +4,7 @@ use super::Parts;
 use super::visitor::FactVisitor;
 
 impl<'a> FactVisitor<'a> {
+    // A handler that names a module-level tuple catches each of its classes, so the tuple's classes are recorded.
     pub(super) fn bind_class_tuple(&mut self, stmt: &'a Stmt) {
         let (target, value) = match stmt {
             Stmt::Assign(ast::StmtAssign { targets, value, .. }) => match targets.as_slice() {
@@ -30,6 +31,16 @@ impl<'a> FactVisitor<'a> {
         }
     }
 
+    pub(super) fn catch_suppressed(&mut self, expr: &Expr) {
+        if let Expr::Call(ast::ExprCall { func, arguments, .. }) = expr
+            && self.qualified(func).as_deref() == Some("contextlib.suppress")
+        {
+            for argument in &arguments.args {
+                self.catch(argument);
+            }
+        }
+    }
+
     pub(super) fn catch(&mut self, expr: &Expr) {
         if !self.parts.has(Parts::CAUGHT) {
             return;
@@ -42,16 +53,6 @@ impl<'a> FactVisitor<'a> {
             self.catch(value);
         } else if let Some(path) = self.class_path(expr) {
             self.caught.push(path);
-        }
-    }
-
-    pub(super) fn catch_suppressed(&mut self, expr: &Expr) {
-        if let Expr::Call(ast::ExprCall { func, arguments, .. }) = expr
-            && self.qualified(func).as_deref() == Some("contextlib.suppress")
-        {
-            for argument in &arguments.args {
-                self.catch(argument);
-            }
         }
     }
 }
