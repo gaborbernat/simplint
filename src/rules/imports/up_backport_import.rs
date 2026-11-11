@@ -104,7 +104,7 @@ pub fn up_backport_import(checker: &Checker) {
                     };
                     let left_to_ruff = fix.is_none()
                         && matches!(backport.replacement, Replacement::Builtins(_))
-                        && import.names.iter().any(|alias| binds_builtin(checker, alias));
+                        && import.names.iter().all(|alias| binds_builtin(checker, alias));
                     if !left_to_ruff {
                         report(checker, import.range(), backport, fix);
                     }

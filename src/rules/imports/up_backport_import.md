@@ -210,7 +210,8 @@ Ruff's [builtin-import-shadowing](https://docs.astral.sh/ruff/rules/builtin-impo
 unaliased `exceptiongroup` import of `ExceptionGroup` or `BaseExceptionGroup` that has no fix here: one that another
 module takes from this one, one that `__all__` lists, or one that shares its line with other code. This rule leaves
 those reports to A004, whether or not the project selects it, and keeps the imports with a fix, which A004 does not
-remove. Names the `flake8-builtins` ignorelist allows are not A004's reports, so this rule keeps them too.
+remove. Names the `flake8-builtins` ignorelist allows are not A004's reports, so this rule keeps them too, and so does
+an import that also names something A004 does not report, such as an alias.
 
 ## Other tools
 

@@ -673,6 +673,7 @@ fn module_attribute_import_reports_private_names_with_runtime_evaluation_setting
 #[test_case("from exceptiongroup import ExceptionGroup\n", "from pkg.other import ExceptionGroup\n", true, true ; "imported_from_another_module")]
 #[test_case("from exceptiongroup import ExceptionGroup\n", "from pkg import compat\n", true, true ; "module_imported")]
 #[test_case("from exceptiongroup import ExceptionGroup as group\n", "from pkg.compat import ExceptionGroup\n", true, false ; "aliased_name")]
+#[test_case("from exceptiongroup import ExceptionGroup, BaseExceptionGroup as BEG\n", "", true, false ; "aliased_with_builtin")]
 fn backport_import_follows_builtin_import_shadowing(compat: &str, consumer: &str, reported: bool, removed: bool) {
     let root = common::project(&[
         ("pyproject.toml", "[project]\nname = \"x\"\nversion = \"0\"\nrequires-python = \">=3.11\"\n"),
