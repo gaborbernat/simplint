@@ -192,9 +192,7 @@ fn report_misplaced(checker: &Checker, suite: &Suite, expected: &[usize], owners
     let Some(span) = moved_span(expected) else {
         return;
     };
-    // One fix reorders the whole block, so only the block's first report carries it: Ruff renders a report's fix in full,
-    // and repeating a block-sized edit on every report made output slow on files with many misplaced definitions.
-    let mut offered = false;
+    let mut reports = Vec::new();
     let describe = |index: usize| {
         definition_name(&suite.body[index]).map_or_else(
             || format!("the statement on line {}", checker.line_number(suite.body[index].start())),
@@ -230,9 +228,17 @@ fn report_misplaced(checker: &Checker, suite: &Suite, expected: &[usize], owners
                 format!("Move `{name}` right after {predecessor_name}"),
             )
         };
-        let fix = if offered { None } else { reorder_fix(checker, suite, expected, span.clone(), shifts_unsafely) };
-        offered = true;
-        checker.report_fix(Rule::DefinitionBeforeUse, identifier.range(), message, fix, title);
+        reports.push((identifier.range(), message, title));
+    }
+    // One fix reorders the whole block, so only the block's first visible report carries it: Ruff renders a report's
+    // fix in full, and repeating a block-sized edit on every report made output slow on files with many misplaced
+    // definitions.
+    let offer_at = checker.first_unsuppressed(Rule::DefinitionBeforeUse, reports.iter().map(|(range, ..)| *range));
+    for (range, message, title) in reports {
+        let fix = (offer_at == Some(range))
+            .then(|| reorder_fix(checker, suite, expected, span.clone(), shifts_unsafely))
+            .flatten();
+        checker.report_fix(Rule::DefinitionBeforeUse, range, message, fix, title);
     }
 }
 

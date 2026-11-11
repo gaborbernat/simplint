@@ -3047,7 +3047,7 @@
     "name": "definition-before-use",
     "summary": "Helpers defined above their first caller, or away from it",
     "fix": "Sometimes",
-    "explanation": "Flags functions and classes that do not sit directly below their first user. With each helper following the code that\ncalls it, the file reads top-down, from the entry point into the details.\n\n## Why is this bad?\n\nThis order lets the reader start with the high-level overview, the entry point or caller, and then drill down into the\ndetails, the helpers, as they read ahead, top to bottom.\n\nCode reads top-down when each function is followed by the helpers it calls. A helper above its caller, or far from it,\nmakes the reader jump around the file.\n\nThe habit of putting helpers first comes from compiled languages such as C, where a function has to be\n[declared before it is used](https://en.cppreference.com/c/language/function_declaration). Python has no such rule: a\nname inside a function body is looked up\n[when the function runs](https://docs.python.org/3/reference/executionmodel.html#resolution-of-names), not when it is\ndefined, so a helper can sit anywhere in the module.\n\nThat leaves the order free to serve the reader. A file that starts with its entry point and then explains each step lets\na reviewer follow the change the way it runs.\n\nThe order is depth first, like reading a book: each helper follows its first caller, and a helper's own helpers come\nbefore the caller's next one. For this call tree the file reads `load`, `_parse`, `_split`, `_validate`:\n\n- `load` calls `_parse` first, then `_validate`\n  - `_parse` calls `_split`\n\n## Example\n\n```python report\ndef _parse(line: str) -> tuple[str, str]:\n    key, _, value = line.partition(\"=\")\n    return key, value\n\n\ndef load(text: str) -> dict[str, str]:\n    return dict(_parse(line) for line in text.splitlines())\n```\n\nUse instead:\n\n```python ok\ndef load(text: str) -> dict[str, str]:\n    return dict(_parse(line) for line in text.splitlines())\n\n\ndef _parse(line: str) -> tuple[str, str]:\n    key, _, value = line.partition(\"=\")\n    return key, value\n```\n\n## What it does\n\n### Active on\n\nA helper that runs only when another definition is called should sit directly below its **first user**, the earliest\nstatement that refers to it. When one user has several helpers, they follow it in the order the user first refers to\nthem. The rule checks the order of functions and classes in two places:\n\n- **At module level**: a user refers to a helper by name.\n\n  ```python report\n  def _clean(line: str) -> str:\n      return line.strip()\n\n\n  def unrelated() -> int:\n      return 1\n\n\n  def load(text: str) -> list[str]:\n      return [_clean(line) for line in text.splitlines()]\n  ```\n\n- **In every class body**: a method refers to another through its first parameter, such as `self.name` or `cls.name`,\n  through `ClassName.name`, or through an instance the method builds from its first parameter, such as `obj = cls()` or\n  `obj = super().__new__(cls)` followed by `obj.name`. A lambda in the class body, such as\n  `property(lambda self: self.name)`, counts as a method.\n\n  The first user is the one the class layout puts first, as [class-member-order](SMP203.html) orders the members: a\n  constructor, an alternative constructor or a dunder method comes before the methods, so a helper that both a method\n  and a constructor call follows the constructor.\n\n  ```python report\n  class Parser:\n      def _clean(self, line: str) -> str:\n          return line.strip()\n\n      def unrelated(self) -> int:\n          return 1\n\n      def load(self, text: str) -> list[str]:\n          return [self._clean(line) for line in text.splitlines()]\n  ```\n\n### Exceptions\n\nDefinitions that must exist while the module or class body runs stay where they are, since moving them below their user\nwould leave the name unbound when it is read:\n\n- **Anything referenced at import time**: module-level code, decorators, default values and base classes.\n\n  ```python ok\n  def _limit() -> int:\n      return 3\n\n\n  LIMIT = _limit()\n\n\n  def load() -> int:\n      return LIMIT\n  ```\n\n- **Anything read by a function that runs at import time**: the name must already exist when that call runs, so it\n  cannot move below it:\n\n  - a lambda in module-level code or a class body; a lambda bound straight to a name counts as a definition instead:\n\n    - called where it is written, such as `(lambda: options)()`:\n\n      ```python ok\n      def load() -> int:\n          return 1\n\n\n      RESULT = (lambda: load())()\n      ```\n\n    - handed to a call, such as `build(skip=lambda case: is_slow(case))`:\n\n      ```python ok\n      def is_slow(case: str) -> bool:\n          return case == \"slow\"\n\n\n      build(skip=lambda case: is_slow(case))\n      ```\n\n  - a function a class body calls, such as `tokens = [state(1)]`\n\n    ```python ok\n    def state(value: int) -> int:\n        return value\n\n\n    class Machine:\n        tokens = [state(1)]\n    ```\n\n  - a `def` in a block of module-level code, such as the body of an `if`, `try`, `with`, `for`, `while` or `match`\n    statement, which the block may call while the module loads\n\n    ```python ok\n    def _render(value: int) -> str:\n        return str(value)\n\n\n    if __name__ == \"__main__\":\n\n        def main() -> None:\n            print(_render(1))\n\n        main()\n    ```\n\n- **Names read from an import placed below the first definition**, such as a default value: the import is bound only\n  where it sits, so the definition reading it and the helpers it calls stay where they are.\n\n  ```python ok\n  def main() -> object:\n      return _load(\"{}\")\n\n\n  def _check(text: str) -> str:\n      return text.strip()\n\n\n  import json\n\n\n  def _load(text: str, loads=json.loads) -> object:\n      return loads(_check(text))\n  ```\n\n- **Names bound more than once**, such as a [property](https://docs.python.org/3/builtins/functions.html#property) and\n  its setter: each later binding builds on or replaces the earlier one, so their order matters.\n\n  ```python ok\n  class Box:\n      @property\n      def size(self) -> int:\n          return self._size\n\n      @size.setter\n      def size(self, value: int) -> None:\n          self._size = value\n  ```\n\n- **At module level, definitions whose own statement evaluates another module-level name that is not an import**, for\n  example in a decorator or default value: that name has to be bound first.\n\n  ```python ok\n  def load(limit: int = DEFAULT_LIMIT) -> int:\n      return limit\n\n\n  DEFAULT_LIMIT = 3\n  ```\n\n- **Everything these call**: it runs at import time too.\n\n  ```python ok\n  def _base() -> int:\n      return 2\n\n\n  def _scaled() -> int:\n      return _base() * 2\n\n\n  LIMIT = _scaled()\n  ```\n\n- **Mutually recursive helpers**: each is the other's first user, so no order puts both directly below their user.\n\n  ```python ok\n  def _even(n: int) -> bool:\n      return True if n == 0 else _odd(n - 1)\n\n\n  def _odd(n: int) -> bool:\n      return False if n == 0 else _even(n - 1)\n  ```\n\n- **Constructors**: `__new__`, `__init__`, `__post_init__` and `__init_subclass__` are entry points, never helpers, so a\n  method that calls one does not pull it below that method. [class-member-order](SMP203.html) keeps each constructor in\n  its section, above the methods.\n\n  ```python ok\n  class Cache:\n      def __init__(self) -> None:\n          self.items = {}\n\n      def reset(self) -> None:\n          self.__init__()\n  ```\n\n### Annotations\n\nAnnotations do not make a user when Python evaluates them lazily:\n\n- when the target version is 3.14 or later ([PEP 649](https://peps.python.org/pep-0649/)), read from Ruff's\n  [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) or\n  [`requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python)\n- when the module has [`from __future__ import annotations`](https://docs.python.org/3/library/__future__.html)\n\nOtherwise an annotation in a module-level or class-level `def` signature or variable annotation counts as an import-time\nuse. Annotations inside a function body never make that function a user: a name a function only annotates with is not a\nhelper it calls.\n\nThe signature of a decorated function and the class-level annotations of a decorated class count as an import-time use\nwhatever the target version, because many decorators read them while the module loads:\n\n- a [FastAPI](https://fastapi.tiangolo.com/) route builds its response model from the return annotation\n- pydantic's `validate_call`, typer, click, [`dataclass`](https://docs.python.org/3/library/dataclasses.html), attrs and\n  [`functools.singledispatch`](https://docs.python.org/3/library/functools.html#functools.singledispatch) read them too\n\nMoving such a name below its user would leave the decorator with an unresolved forward reference.\n\n### Type parameters and type statements\n\nPython 3.12 evaluates the bound and default of a type parameter ([PEP 695](https://peps.python.org/pep-0695/),\n[PEP 696](https://peps.python.org/pep-0696/)) and the value of a `type` statement lazily, so the names they read need\nnot exist yet. They make their statement a user like a function body does:\n\n```toml config\n[project]\nrequires-python = \">=3.12\"\n```\n\n```python report\nclass _Base:\n    pass\n\n\ndef make[T: _Base]() -> T:\n    raise NotImplementedError\n```\n\n### Fix\n\nThe fix rewrites the span from the first to the last misplaced statement in the expected order:\n\n- It comes with the first report of each body only, since that one fix moves every definition the body's reports name.\n  In a class body the fix leaves the sections alone; [class-member-order](SMP203.html) sorts them, with the same helper\n  placement.\n\n  ```python report\n  def _clean(line: str) -> str:\n      return line.strip()\n\n\n  def unrelated() -> int:\n      return 1\n\n\n  def load(text: str) -> list[str]:\n      return [_clean(line) for line in text.splitlines()]\n  ```\n\n  ```python fixed\n  def unrelated() -> int:\n      return 1\n\n\n  def load(text: str) -> list[str]:\n      return [_clean(line) for line in text.splitlines()]\n\n\n  def _clean(line: str) -> str:\n      return line.strip()\n  ```\n\n- Decorators and the comment lines directly above a definition move with it.\n\n  ```python report\n  # Strips the line.\n  def _clean(line: str) -> str:\n      return line.strip()\n\n\n  def unrelated() -> int:\n      return 1\n\n\n  def load(text: str) -> list[str]:\n      return [_clean(line) for line in text.splitlines()]\n  ```\n\n  ```python fixed\n  def unrelated() -> int:\n      return 1\n\n\n  def load(text: str) -> list[str]:\n      return [_clean(line) for line in text.splitlines()]\n\n\n  # Strips the line.\n  def _clean(line: str) -> str:\n      return line.strip()\n  ```\n\n- Statements are separated by two blank lines at module level and one in a class body.\n\n  ```python report\n  class Parser:\n      def _clean(self, line: str) -> str:\n          return line.strip()\n\n      def unrelated(self) -> int:\n          return 1\n\n      def load(self, text: str) -> list[str]:\n          return [self._clean(line) for line in text.splitlines()]\n  ```\n\nThe fix is safe when every definition in the rewritten span is an undecorated function. **Unsafe fix:** a span holding a\nclass or a decorated function, even when that definition only shifts to make room, because\n[decorators](https://docs.python.org/3/glossary.html#term-decorator),\n[metaclasses](https://docs.python.org/3/reference/datamodel.html#metaclasses) and\n[`__init_subclass__`](https://docs.python.org/3/reference/datamodel.html#object.__init_subclass__) hooks then run in a\ndifferent order.\n\nNo fix is offered when the span holds a comment that is not attached to a definition, or when two statements share a\nline.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Open issue\n  [#3946](https://github.com/astral-sh/ruff/issues/3946) asks for ssort, which orders the other way, with definitions\n  above their users.\n- [pyorder](https://github.com/Winipedia/pyorder) orders module-level definitions with the same\n  [callers-before-callees](https://github.com/Winipedia/pyorder#ordering-rules) rule, and its `--fix` option rewrites\n  the file. Ties break by visibility and then alphabetically, which this rule does not check.\n- [flake8-stepdown](https://github.com/didmar/flake8-stepdown) reports functions defined in the wrong order as\n  [TDP001](https://github.com/didmar/flake8-stepdown#violation-codes), and its `stepdown fix` command rewrites them.\n",
+    "explanation": "Flags functions and classes that do not sit directly below their first user. With each helper following the code that\ncalls it, the file reads top-down, from the entry point into the details.\n\n## Why is this bad?\n\nThis order lets the reader start with the high-level overview, the entry point or caller, and then drill down into the\ndetails, the helpers, as they read ahead, top to bottom.\n\nCode reads top-down when each function is followed by the helpers it calls. A helper above its caller, or far from it,\nmakes the reader jump around the file.\n\nThe habit of putting helpers first comes from compiled languages such as C, where a function has to be\n[declared before it is used](https://en.cppreference.com/c/language/function_declaration). Python has no such rule: a\nname inside a function body is looked up\n[when the function runs](https://docs.python.org/3/reference/executionmodel.html#resolution-of-names), not when it is\ndefined, so a helper can sit anywhere in the module.\n\nThat leaves the order free to serve the reader. A file that starts with its entry point and then explains each step lets\na reviewer follow the change the way it runs.\n\nThe order is depth first, like reading a book: each helper follows its first caller, and a helper's own helpers come\nbefore the caller's next one. For this call tree the file reads `load`, `_parse`, `_split`, `_validate`:\n\n- `load` calls `_parse` first, then `_validate`\n  - `_parse` calls `_split`\n\n## Example\n\n```python report\ndef _parse(line: str) -> tuple[str, str]:\n    key, _, value = line.partition(\"=\")\n    return key, value\n\n\ndef load(text: str) -> dict[str, str]:\n    return dict(_parse(line) for line in text.splitlines())\n```\n\nUse instead:\n\n```python ok\ndef load(text: str) -> dict[str, str]:\n    return dict(_parse(line) for line in text.splitlines())\n\n\ndef _parse(line: str) -> tuple[str, str]:\n    key, _, value = line.partition(\"=\")\n    return key, value\n```\n\n## What it does\n\n### Active on\n\nA helper that runs only when another definition is called should sit directly below its **first user**, the earliest\nstatement that refers to it. When one user has several helpers, they follow it in the order the user first refers to\nthem. The rule checks the order of functions and classes in two places:\n\n- **At module level**: a user refers to a helper by name.\n\n  ```python report\n  def _clean(line: str) -> str:\n      return line.strip()\n\n\n  def unrelated() -> int:\n      return 1\n\n\n  def load(text: str) -> list[str]:\n      return [_clean(line) for line in text.splitlines()]\n  ```\n\n- **In every class body**: a method refers to another through its first parameter, such as `self.name` or `cls.name`,\n  through `ClassName.name`, or through an instance the method builds from its first parameter, such as `obj = cls()` or\n  `obj = super().__new__(cls)` followed by `obj.name`. A lambda in the class body, such as\n  `property(lambda self: self.name)`, counts as a method.\n\n  The first user is the one the class layout puts first, as [class-member-order](SMP203.html) orders the members: a\n  constructor, an alternative constructor or a dunder method comes before the methods, so a helper that both a method\n  and a constructor call follows the constructor.\n\n  ```python report\n  class Parser:\n      def _clean(self, line: str) -> str:\n          return line.strip()\n\n      def unrelated(self) -> int:\n          return 1\n\n      def load(self, text: str) -> list[str]:\n          return [self._clean(line) for line in text.splitlines()]\n  ```\n\n### Exceptions\n\nDefinitions that must exist while the module or class body runs stay where they are, since moving them below their user\nwould leave the name unbound when it is read:\n\n- **Anything referenced at import time**: module-level code, decorators, default values and base classes.\n\n  ```python ok\n  def _limit() -> int:\n      return 3\n\n\n  LIMIT = _limit()\n\n\n  def load() -> int:\n      return LIMIT\n  ```\n\n- **Anything read by a function that runs at import time**: the name must already exist when that call runs, so it\n  cannot move below it:\n\n  - a lambda in module-level code or a class body; a lambda bound straight to a name counts as a definition instead:\n\n    - called where it is written, such as `(lambda: options)()`:\n\n      ```python ok\n      def load() -> int:\n          return 1\n\n\n      RESULT = (lambda: load())()\n      ```\n\n    - handed to a call, such as `build(skip=lambda case: is_slow(case))`:\n\n      ```python ok\n      def is_slow(case: str) -> bool:\n          return case == \"slow\"\n\n\n      build(skip=lambda case: is_slow(case))\n      ```\n\n  - a function a class body calls, such as `tokens = [state(1)]`\n\n    ```python ok\n    def state(value: int) -> int:\n        return value\n\n\n    class Machine:\n        tokens = [state(1)]\n    ```\n\n  - a `def` in a block of module-level code, such as the body of an `if`, `try`, `with`, `for`, `while` or `match`\n    statement, which the block may call while the module loads\n\n    ```python ok\n    def _render(value: int) -> str:\n        return str(value)\n\n\n    if __name__ == \"__main__\":\n\n        def main() -> None:\n            print(_render(1))\n\n        main()\n    ```\n\n- **Names read from an import placed below the first definition**, such as a default value: the import is bound only\n  where it sits, so the definition reading it and the helpers it calls stay where they are.\n\n  ```python ok\n  def main() -> object:\n      return _load(\"{}\")\n\n\n  def _check(text: str) -> str:\n      return text.strip()\n\n\n  import json\n\n\n  def _load(text: str, loads=json.loads) -> object:\n      return loads(_check(text))\n  ```\n\n- **Names bound more than once**, such as a [property](https://docs.python.org/3/builtins/functions.html#property) and\n  its setter: each later binding builds on or replaces the earlier one, so their order matters.\n\n  ```python ok\n  class Box:\n      @property\n      def size(self) -> int:\n          return self._size\n\n      @size.setter\n      def size(self, value: int) -> None:\n          self._size = value\n  ```\n\n- **At module level, definitions whose own statement evaluates another module-level name that is not an import**, for\n  example in a decorator or default value: that name has to be bound first.\n\n  ```python ok\n  def load(limit: int = DEFAULT_LIMIT) -> int:\n      return limit\n\n\n  DEFAULT_LIMIT = 3\n  ```\n\n- **Everything these call**: it runs at import time too.\n\n  ```python ok\n  def _base() -> int:\n      return 2\n\n\n  def _scaled() -> int:\n      return _base() * 2\n\n\n  LIMIT = _scaled()\n  ```\n\n- **Mutually recursive helpers**: each is the other's first user, so no order puts both directly below their user.\n\n  ```python ok\n  def _even(n: int) -> bool:\n      return True if n == 0 else _odd(n - 1)\n\n\n  def _odd(n: int) -> bool:\n      return False if n == 0 else _even(n - 1)\n  ```\n\n- **Constructors**: `__new__`, `__init__`, `__post_init__` and `__init_subclass__` are entry points, never helpers, so a\n  method that calls one does not pull it below that method. [class-member-order](SMP203.html) keeps each constructor in\n  its section, above the methods.\n\n  ```python ok\n  class Cache:\n      def __init__(self) -> None:\n          self.items = {}\n\n      def reset(self) -> None:\n          self.__init__()\n  ```\n\n### Annotations\n\nAnnotations do not make a user when Python evaluates them lazily:\n\n- when the target version is 3.14 or later ([PEP 649](https://peps.python.org/pep-0649/)), read from Ruff's\n  [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) or\n  [`requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python)\n- when the module has [`from __future__ import annotations`](https://docs.python.org/3/library/__future__.html)\n\nOtherwise an annotation in a module-level or class-level `def` signature or variable annotation counts as an import-time\nuse. Annotations inside a function body never make that function a user: a name a function only annotates with is not a\nhelper it calls.\n\nThe signature of a decorated function and the class-level annotations of a decorated class count as an import-time use\nwhatever the target version, because many decorators read them while the module loads:\n\n- a [FastAPI](https://fastapi.tiangolo.com/) route builds its response model from the return annotation\n- pydantic's `validate_call`, typer, click, [`dataclass`](https://docs.python.org/3/library/dataclasses.html), attrs and\n  [`functools.singledispatch`](https://docs.python.org/3/library/functools.html#functools.singledispatch) read them too\n\nMoving such a name below its user would leave the decorator with an unresolved forward reference.\n\n### Type parameters and type statements\n\nPython 3.12 evaluates the bound and default of a type parameter ([PEP 695](https://peps.python.org/pep-0695/),\n[PEP 696](https://peps.python.org/pep-0696/)) and the value of a `type` statement lazily, so the names they read need\nnot exist yet. They make their statement a user like a function body does:\n\n```toml config\n[project]\nrequires-python = \">=3.12\"\n```\n\n```python report\nclass _Base:\n    pass\n\n\ndef make[T: _Base]() -> T:\n    raise NotImplementedError\n```\n\n### Fix\n\nThe fix rewrites the span from the first to the last misplaced statement in the expected order:\n\n- It comes with the first report of each body only, since that one fix moves every definition the body's reports name.\n  When a comment suppresses that report, the first report still shown carries it. In a class body the fix leaves the\n  sections alone; [class-member-order](SMP203.html) sorts them, with the same helper placement.\n\n  ```python report\n  def _clean(line: str) -> str:\n      return line.strip()\n\n\n  def unrelated() -> int:\n      return 1\n\n\n  def load(text: str) -> list[str]:\n      return [_clean(line) for line in text.splitlines()]\n  ```\n\n  ```python fixed\n  def unrelated() -> int:\n      return 1\n\n\n  def load(text: str) -> list[str]:\n      return [_clean(line) for line in text.splitlines()]\n\n\n  def _clean(line: str) -> str:\n      return line.strip()\n  ```\n\n- Decorators and the comment lines directly above a definition move with it.\n\n  ```python report\n  # Strips the line.\n  def _clean(line: str) -> str:\n      return line.strip()\n\n\n  def unrelated() -> int:\n      return 1\n\n\n  def load(text: str) -> list[str]:\n      return [_clean(line) for line in text.splitlines()]\n  ```\n\n  ```python fixed\n  def unrelated() -> int:\n      return 1\n\n\n  def load(text: str) -> list[str]:\n      return [_clean(line) for line in text.splitlines()]\n\n\n  # Strips the line.\n  def _clean(line: str) -> str:\n      return line.strip()\n  ```\n\n- Statements are separated by two blank lines at module level and one in a class body.\n\n  ```python report\n  class Parser:\n      def _clean(self, line: str) -> str:\n          return line.strip()\n\n      def unrelated(self) -> int:\n          return 1\n\n      def load(self, text: str) -> list[str]:\n          return [self._clean(line) for line in text.splitlines()]\n  ```\n\nThe fix is safe when every definition in the rewritten span is an undecorated function. **Unsafe fix:** a span holding a\nclass or a decorated function, even when that definition only shifts to make room, because\n[decorators](https://docs.python.org/3/glossary.html#term-decorator),\n[metaclasses](https://docs.python.org/3/reference/datamodel.html#metaclasses) and\n[`__init_subclass__`](https://docs.python.org/3/reference/datamodel.html#object.__init_subclass__) hooks then run in a\ndifferent order.\n\nNo fix is offered when the span holds a comment that is not attached to a definition, or when two statements share a\nline.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Open issue\n  [#3946](https://github.com/astral-sh/ruff/issues/3946) asks for ssort, which orders the other way, with definitions\n  above their users.\n- [pyorder](https://github.com/Winipedia/pyorder) orders module-level definitions with the same\n  [callers-before-callees](https://github.com/Winipedia/pyorder#ordering-rules) rule, and its `--fix` option rewrites\n  the file. Ties break by visibility and then alphabetically, which this rule does not check.\n- [flake8-stepdown](https://github.com/didmar/flake8-stepdown) reports functions defined in the wrong order as\n  [TDP001](https://github.com/didmar/flake8-stepdown#violation-codes), and its `stepdown fix` command rewrites them.\n",
     "examples": {
       "parsed": [
         {
@@ -5594,7 +5594,7 @@
     "name": "module-attribute-import",
     "summary": "Module attributes reached as `module.Name` instead of imported",
     "fix": "Sometimes",
-    "explanation": "Flags `module.Name` attribute access on a module of this project, where `from module import Name` would bind the same\nobject.\n\n## Why is this bad?\n\nReaching a name through its module makes the reader trace where the module came from at every use, and it repeats the\nmodule name in each line. Importing the name once states the dependency at the top of the file.\n\n## Example\n\n```python context file=pkg/__init__.py\n\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\n```\n\nUse instead:\n\n```python context file=pkg/__init__.py\n\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python ok file=pkg/consumer.py\nfrom .findings import DbWriter\n\nwriter = DbWriter()\n```\n\n## Configuration\n\n- [`module-attributes`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#module-attributes):\n  modules whose attributes the code reaches as `module.Name`, by absolute dotted name, such as a module that tests patch\n  attribute by attribute. The default is `[]`.\n\n  ```toml config\n  [tool.simplint.imports]\n  module-attributes = [\"pkg.findings\"]\n  ```\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  writer = findings.DbWriter()\n  ```\n\n## What it does\n\n### Active on\n\n- **Attribute access on a module of this project bound by `from . import module` or `from package import module`**: the\n  module must resolve to a file of the run, so the attribute reads a name the file defines.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python report file=pkg/consumer.py\n  from . import findings\n\n  writer = findings.DbWriter()\n  ```\n\n- **Attribute access on a module bound by `import package.module as name`**, which binds the module like the form above.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python report file=pkg/consumer.py\n  import pkg.findings as findings\n\n  writer = findings.DbWriter()\n  ```\n\n- **Private attributes of imported modules**, such as `main._compute`, including when Ruff selects `PLC2701`. Only a\n  module that resolves to a file of this project is checked.\n\n  ```python context file=pkg/main.py\n  def _compute() -> int:\n      return 1\n  ```\n\n  ```python report file=pkg/consumer.py\n  from . import main\n\n  result = main._compute()\n  ```\n\n### Exceptions\n\n- **Third-party and standard-library modules**: only modules that resolve to a file of the run count, so `json` stays as\n  it is.\n\n  ```python ok\n  import json as jsonlib\n\n  text = jsonlib.dumps([])\n  ```\n\n- **The project's own top-level package under another name**: `import pkg as pd` reads the package's names through its\n  alias, as `pd.NAT` does, which is how the package is meant to be used. A read through a submodule, such as\n  `import pkg.core.common as com`, is still reported, and so is an alias equal to the package name, `import pkg as pkg`.\n\n  ```python context file=pkg/__init__.py\n  NAT = object()\n  ```\n\n  ```python ok file=pkg/consumer.py\n  import pkg as pd\n\n  writer = pd.NAT\n  ```\n\n- **Modules listed in\n  [`module-attributes`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#module-attributes)**:\n  the listed module is left alone, as in the configuration example above.\n\n  ```toml config\n  [tool.simplint.imports]\n  module-attributes = [\"pkg.findings\"]\n  ```\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  writer = findings.DbWriter()\n  ```\n\n- **A module used as a value**: passed to a function, assigned or returned, as in `getattr(findings, \"DbWriter\")` or\n  `importlib.reload(findings)`, the module is an object of its own, so the file keeps it.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  writer = getattr(findings, \"DbWriter\")\n  ```\n\n- **Attributes stored or deleted**: `findings.DEBUG = True` and `del findings.OLD` change the module, which an import\n  cannot do. A store in any file of the run patches that attribute the way `setattr` over a literal does, so the\n  attribute is left alone while the module's other attributes are still reported. A name a function of the module\n  rebinds through `global` changes it after the import has bound the value it had at load, so that name is not converted\n  either.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  DEBUG = False\n\n\n  def enable() -> None:\n      global DEBUG\n      DEBUG = True\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  print(findings.DEBUG)\n  ```\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  findings.DEBUG = True\n  del findings.OLD\n  ```\n\n- **Names the file binds itself**: when the file already binds the attribute name to something else, importing it would\n  clash with that binding.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  DbWriter = object\n  writer = findings.DbWriter()\n  ```\n\n- **A name the module's own name shadows**: a parameter, local, loop or comprehension variable named like the module is\n  that variable's value, so an attribute read off it does not reach the module. The real reads of the module are still\n  reported.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n\n  def write(findings: object) -> object:\n      return findings.DbWriter()\n  ```\n\n- **Module dunders such as `__name__`**: they describe the module they are read from, so importing them would read the\n  wrong module.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  NAME = findings.__name__\n  ```\n\n- **Modules that tests patch by attribute**: a dotted string such as `mocker.patch(\"pkg.findings.DbWriter\")` names the\n  attribute in the module, so the code keeps reaching it through the module, where the patch takes effect. The module's\n  other attributes are still reported. A `setattr` in a loop over a literal tuple or list of modules patches the name on\n  each of them the same way, until a statement rebinds the loop's name or a function's parameter shadows it.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  writer = findings.DbWriter()\n  ```\n\n  ```python context file=tests/test_writer.py\n  def test_writer(mocker):\n      mocker.patch(\"pkg.findings.DbWriter\")\n  ```\n\n### Fix\n\n**Unsafe fix:** the fix rewrites the import to bind the names, so the object is bound when the module loads. A test that\npatches the module attribute later no longer reaches the name. The fix replaces the import and every `findings.Name`\naccess in the file, and it is offered only when every use of the module is such an access to a name the module defines,\nno computed write, such as `setattr(module, name, value)`, may set a name of the module, no other module of the run\nimports or reads the module's name, and `__all__` does not list it, since the replaced import would no longer bind it.\nThe fix is attached to the first report only, since it covers all of them.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\n```\n\n```python fixed file=pkg/consumer.py\nfrom .findings import DbWriter\n\nwriter = DbWriter()\n```\n\nThe fix rewrites every access in the file, so only the first report below carries it, and the second has none.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n\n\nclass Reader:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\nreader = findings.Reader()\n```\n\n```python fixed file=pkg/consumer.py\nfrom .findings import DbWriter, Reader\n\nwriter = DbWriter()\nreader = Reader()\n```\n\nA use the fix cannot rewrite keeps the report without a fix. Here `findings.__name__` is a module dunder, so `DbWriter`\nis reported without a fix.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\nlabel = findings.__name__\n```\n\nA use that a local binding of the same name shadows keeps the report without a fix, since the bare name would resolve to\nthat binding. Here the type parameter `Item` shadows the module's `Item`.\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.12\"\n```\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass Item:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\n\ndef make[Item](kind: type[Item]) -> object:\n    return findings.Item()\n```\n\nA name that is a Python builtin keeps the report without a fix, since the bare name would shadow the builtin that the\nmodule may still call. Here `set` is the attribute reached through `findings`, and the module also calls the builtin\n`set`.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\ndef set(key, value):\n    return key, value\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nconfigured = findings.set(\"a\", 1)\nvalues = set([1, 2])\n```\n\n```python fixed file=pkg/consumer.py\nfrom . import findings\n\nconfigured = findings.set(\"a\", 1)\nvalues = set([1, 2])\n```\n\nA name that another file of the run imports from this module keeps the report without a fix, since the replaced import\nwould no longer bind it here. Here `pkg/other.py` imports `findings` from `pkg.consumer`.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python context file=pkg/other.py\nfrom .consumer import findings\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\n```\n\n```python fixed file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\n```\n\nA module name that the file lists in `__all__` keeps the report without a fix, since the replaced import would stop\nbinding the name the file exports. Here `pkg/api.py` re-exports `findings`.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/api.py\nfrom . import findings\n\n__all__ = [\"findings\"]\n\nwriter = findings.DbWriter()\n```\n\n```python fixed file=pkg/api.py\nfrom . import findings\n\n__all__ = [\"findings\"]\n\nwriter = findings.DbWriter()\n```\n\nA `lazy` import stays lazy after the fix, so the module still loads on first use of a name.\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n```\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/consumer.py\nlazy from . import findings\n\nwriter = findings.DbWriter()\n```\n\n```python fixed file=pkg/consumer.py\nlazy from .findings import DbWriter\n\nwriter = DbWriter()\n```\n\n## Private module attributes\n\nThe rule reports `module._name` when `module` resolves to a file in this project. It does not check attributes of\nclasses, functions or other values. Private names and private module paths receive no automatic fix: a replacement\nimport can cross a package boundary or violate [private-import-path](SMP310.html). Ruff's\n[import-private-name](https://docs.astral.sh/ruff/rules/import-private-name/) (PLC2701) checks imports, not attribute\naccess, so selecting it does not suppress this report.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#21025](https://github.com/astral-sh/ruff/issues/21025)\n  and [#14070](https://github.com/astral-sh/ruff/issues/14070).\n",
+    "explanation": "Flags `module.Name` attribute access on a module of this project, where `from module import Name` would bind the same\nobject.\n\n## Why is this bad?\n\nReaching a name through its module makes the reader trace where the module came from at every use, and it repeats the\nmodule name in each line. Importing the name once states the dependency at the top of the file.\n\n## Example\n\n```python context file=pkg/__init__.py\n\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\n```\n\nUse instead:\n\n```python context file=pkg/__init__.py\n\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python ok file=pkg/consumer.py\nfrom .findings import DbWriter\n\nwriter = DbWriter()\n```\n\n## Configuration\n\n- [`module-attributes`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#module-attributes):\n  modules whose attributes the code reaches as `module.Name`, by absolute dotted name, such as a module that tests patch\n  attribute by attribute. The default is `[]`.\n\n  ```toml config\n  [tool.simplint.imports]\n  module-attributes = [\"pkg.findings\"]\n  ```\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  writer = findings.DbWriter()\n  ```\n\n## What it does\n\n### Active on\n\n- **Attribute access on a module of this project bound by `from . import module` or `from package import module`**: the\n  module must resolve to a file of the run, so the attribute reads a name the file defines.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python report file=pkg/consumer.py\n  from . import findings\n\n  writer = findings.DbWriter()\n  ```\n\n- **Attribute access on a module bound by `import package.module as name`**, which binds the module like the form above.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python report file=pkg/consumer.py\n  import pkg.findings as findings\n\n  writer = findings.DbWriter()\n  ```\n\n- **Private attributes of imported modules**, such as `main._compute`, including when Ruff selects `PLC2701`. Only a\n  module that resolves to a file of this project is checked.\n\n  ```python context file=pkg/main.py\n  def _compute() -> int:\n      return 1\n  ```\n\n  ```python report file=pkg/consumer.py\n  from . import main\n\n  result = main._compute()\n  ```\n\n### Exceptions\n\n- **Third-party and standard-library modules**: only modules that resolve to a file of the run count, so `json` stays as\n  it is.\n\n  ```python ok\n  import json as jsonlib\n\n  text = jsonlib.dumps([])\n  ```\n\n- **The project's own top-level package under another name**: `import pkg as pd` reads the package's names through its\n  alias, as `pd.NAT` does, which is how the package is meant to be used. A read through a submodule, such as\n  `import pkg.core.common as com`, is still reported, and so is an alias equal to the package name, `import pkg as pkg`.\n\n  ```python context file=pkg/__init__.py\n  NAT = object()\n  ```\n\n  ```python ok file=pkg/consumer.py\n  import pkg as pd\n\n  writer = pd.NAT\n  ```\n\n- **Modules listed in\n  [`module-attributes`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#module-attributes)**:\n  the listed module is left alone, as in the configuration example above.\n\n  ```toml config\n  [tool.simplint.imports]\n  module-attributes = [\"pkg.findings\"]\n  ```\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  writer = findings.DbWriter()\n  ```\n\n- **A module used as a value**: passed to a function, assigned or returned, as in `getattr(findings, \"DbWriter\")` or\n  `importlib.reload(findings)`, the module is an object of its own, so the file keeps it.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  writer = getattr(findings, \"DbWriter\")\n  ```\n\n- **Attributes stored or deleted**: `findings.DEBUG = True` and `del findings.OLD` change the module, which an import\n  cannot do. A store in any file of the run patches that attribute the way `setattr` over a literal does, so the\n  attribute is left alone while the module's other attributes are still reported. A name a function of the module\n  rebinds through `global` changes it after the import has bound the value it had at load, so that name is not converted\n  either.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  DEBUG = False\n\n\n  def enable() -> None:\n      global DEBUG\n      DEBUG = True\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  print(findings.DEBUG)\n  ```\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  findings.DEBUG = True\n  del findings.OLD\n  ```\n\n- **Names the file binds itself**: when the file already binds the attribute name to something else, importing it would\n  clash with that binding.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  DbWriter = object\n  writer = findings.DbWriter()\n  ```\n\n- **A name the module's own name shadows**: a parameter, local, loop or comprehension variable named like the module is\n  that variable's value, so an attribute read off it does not reach the module. The real reads of the module are still\n  reported.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n\n  def write(findings: object) -> object:\n      return findings.DbWriter()\n  ```\n\n- **Module dunders such as `__name__`**: they describe the module they are read from, so importing them would read the\n  wrong module.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  NAME = findings.__name__\n  ```\n\n- **Modules that tests patch by attribute**: a dotted string such as `mocker.patch(\"pkg.findings.DbWriter\")` names the\n  attribute in the module, so the code keeps reaching it through the module, where the patch takes effect. The module's\n  other attributes are still reported. A `setattr` in a loop over a literal tuple or list of modules patches the name on\n  each of them the same way, until a statement rebinds the loop's name or a function's parameter shadows it.\n\n  ```python context file=pkg/__init__.py\n  # A package.\n  ```\n\n  ```python context file=pkg/findings.py\n  class DbWriter:\n      pass\n  ```\n\n  ```python ok file=pkg/consumer.py\n  from . import findings\n\n  writer = findings.DbWriter()\n  ```\n\n  ```python context file=tests/test_writer.py\n  def test_writer(mocker):\n      mocker.patch(\"pkg.findings.DbWriter\")\n  ```\n\n### Fix\n\n**Unsafe fix:** the fix rewrites the import to bind the names, so the object is bound when the module loads. A test that\npatches the module attribute later no longer reaches the name. The fix replaces the import and every `findings.Name`\naccess in the file, and it is offered only when every use of the module is such an access to a name the module defines,\nno computed write, such as `setattr(module, name, value)`, may set a name of the module, no other module of the run\nimports or reads the module's name, and `__all__` does not list it, since the replaced import would no longer bind it.\nThe fix is attached to the first report only, since it covers all of them; when a comment suppresses that report, the\nfirst report still shown carries it.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\n```\n\n```python fixed file=pkg/consumer.py\nfrom .findings import DbWriter\n\nwriter = DbWriter()\n```\n\nThe fix rewrites every access in the file, so only the first report below carries it, and the second has none.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n\n\nclass Reader:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\nreader = findings.Reader()\n```\n\n```python fixed file=pkg/consumer.py\nfrom .findings import DbWriter, Reader\n\nwriter = DbWriter()\nreader = Reader()\n```\n\nA use the fix cannot rewrite keeps the report without a fix. Here `findings.__name__` is a module dunder, so `DbWriter`\nis reported without a fix.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\nlabel = findings.__name__\n```\n\nA use that a local binding of the same name shadows keeps the report without a fix, since the bare name would resolve to\nthat binding. Here the type parameter `Item` shadows the module's `Item`.\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.12\"\n```\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass Item:\n    pass\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\n\ndef make[Item](kind: type[Item]) -> object:\n    return findings.Item()\n```\n\nA name that is a Python builtin keeps the report without a fix, since the bare name would shadow the builtin that the\nmodule may still call. Here `set` is the attribute reached through `findings`, and the module also calls the builtin\n`set`.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\ndef set(key, value):\n    return key, value\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nconfigured = findings.set(\"a\", 1)\nvalues = set([1, 2])\n```\n\n```python fixed file=pkg/consumer.py\nfrom . import findings\n\nconfigured = findings.set(\"a\", 1)\nvalues = set([1, 2])\n```\n\nA name that another file of the run imports from this module keeps the report without a fix, since the replaced import\nwould no longer bind it here. Here `pkg/other.py` imports `findings` from `pkg.consumer`.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python context file=pkg/other.py\nfrom .consumer import findings\n```\n\n```python report file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\n```\n\n```python fixed file=pkg/consumer.py\nfrom . import findings\n\nwriter = findings.DbWriter()\n```\n\nA module name that the file lists in `__all__` keeps the report without a fix, since the replaced import would stop\nbinding the name the file exports. Here `pkg/api.py` re-exports `findings`.\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/api.py\nfrom . import findings\n\n__all__ = [\"findings\"]\n\nwriter = findings.DbWriter()\n```\n\n```python fixed file=pkg/api.py\nfrom . import findings\n\n__all__ = [\"findings\"]\n\nwriter = findings.DbWriter()\n```\n\nA `lazy` import stays lazy after the fix, so the module still loads on first use of a name.\n\n```toml config\n[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n```\n\n```python context file=pkg/__init__.py\n# A package.\n```\n\n```python context file=pkg/findings.py\nclass DbWriter:\n    pass\n```\n\n```python report file=pkg/consumer.py\nlazy from . import findings\n\nwriter = findings.DbWriter()\n```\n\n```python fixed file=pkg/consumer.py\nlazy from .findings import DbWriter\n\nwriter = DbWriter()\n```\n\n## Private module attributes\n\nThe rule reports `module._name` when `module` resolves to a file in this project. It does not check attributes of\nclasses, functions or other values. Private names and private module paths receive no automatic fix: a replacement\nimport can cross a package boundary or violate [private-import-path](SMP310.html). Ruff's\n[import-private-name](https://docs.astral.sh/ruff/rules/import-private-name/) (PLC2701) checks imports, not attribute\naccess, so selecting it does not suppress this report.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#21025](https://github.com/astral-sh/ruff/issues/21025)\n  and [#14070](https://github.com/astral-sh/ruff/issues/14070).\n",
     "examples": {
       "parsed": [
         {
@@ -6132,8 +6132,8 @@
         },
         {
           "section": "What it does",
-          "line": 322,
-          "end_line": 341,
+          "line": 323,
+          "end_line": 342,
           "config": null,
           "blocks": [
             {
@@ -6141,8 +6141,8 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 322,
-              "end_line": 324,
+              "line": 323,
+              "end_line": 325,
               "source": "# A package.\n"
             },
             {
@@ -6150,8 +6150,8 @@
               "language": "python",
               "file": "pkg/findings.py",
               "named": true,
-              "line": 326,
-              "end_line": 329,
+              "line": 327,
+              "end_line": 330,
               "source": "class DbWriter:\n    pass\n"
             },
             {
@@ -6159,8 +6159,8 @@
               "language": "python",
               "file": "pkg/consumer.py",
               "named": true,
-              "line": 331,
-              "end_line": 335,
+              "line": 332,
+              "end_line": 336,
               "source": "from . import findings\n\nwriter = findings.DbWriter()\n"
             },
             {
@@ -6168,16 +6168,16 @@
               "language": "python",
               "file": "pkg/consumer.py",
               "named": true,
-              "line": 337,
-              "end_line": 341,
+              "line": 338,
+              "end_line": 342,
               "source": "from .findings import DbWriter\n\nwriter = DbWriter()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 345,
-          "end_line": 370,
+          "line": 346,
+          "end_line": 371,
           "config": null,
           "blocks": [
             {
@@ -6185,8 +6185,8 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 345,
-              "end_line": 347,
+              "line": 346,
+              "end_line": 348,
               "source": "# A package.\n"
             },
             {
@@ -6194,8 +6194,8 @@
               "language": "python",
               "file": "pkg/findings.py",
               "named": true,
-              "line": 349,
-              "end_line": 356,
+              "line": 350,
+              "end_line": 357,
               "source": "class DbWriter:\n    pass\n\n\nclass Reader:\n    pass\n"
             },
             {
@@ -6203,8 +6203,8 @@
               "language": "python",
               "file": "pkg/consumer.py",
               "named": true,
-              "line": 358,
-              "end_line": 363,
+              "line": 359,
+              "end_line": 364,
               "source": "from . import findings\n\nwriter = findings.DbWriter()\nreader = findings.Reader()\n"
             },
             {
@@ -6212,16 +6212,16 @@
               "language": "python",
               "file": "pkg/consumer.py",
               "named": true,
-              "line": 365,
-              "end_line": 370,
+              "line": 366,
+              "end_line": 371,
               "source": "from .findings import DbWriter, Reader\n\nwriter = DbWriter()\nreader = Reader()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 375,
-          "end_line": 389,
+          "line": 376,
+          "end_line": 390,
           "config": null,
           "blocks": [
             {
@@ -6229,8 +6229,8 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 375,
-              "end_line": 377,
+              "line": 376,
+              "end_line": 378,
               "source": "# A package.\n"
             },
             {
@@ -6238,8 +6238,8 @@
               "language": "python",
               "file": "pkg/findings.py",
               "named": true,
-              "line": 379,
-              "end_line": 382,
+              "line": 380,
+              "end_line": 383,
               "source": "class DbWriter:\n    pass\n"
             },
             {
@@ -6247,19 +6247,19 @@
               "language": "python",
               "file": "pkg/consumer.py",
               "named": true,
-              "line": 384,
-              "end_line": 389,
+              "line": 385,
+              "end_line": 390,
               "source": "from . import findings\n\nwriter = findings.DbWriter()\nlabel = findings.__name__\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 394,
-          "end_line": 415,
+          "line": 395,
+          "end_line": 416,
           "config": {
-            "line": 394,
-            "end_line": 398,
+            "line": 395,
+            "end_line": 399,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.12\"\n"
           },
           "blocks": [
@@ -6268,8 +6268,8 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 400,
-              "end_line": 402,
+              "line": 401,
+              "end_line": 403,
               "source": "# A package.\n"
             },
             {
@@ -6277,8 +6277,8 @@
               "language": "python",
               "file": "pkg/findings.py",
               "named": true,
-              "line": 404,
-              "end_line": 407,
+              "line": 405,
+              "end_line": 408,
               "source": "class Item:\n    pass\n"
             },
             {
@@ -6286,16 +6286,16 @@
               "language": "python",
               "file": "pkg/consumer.py",
               "named": true,
-              "line": 409,
-              "end_line": 415,
+              "line": 410,
+              "end_line": 416,
               "source": "from . import findings\n\n\ndef make[Item](kind: type[Item]) -> object:\n    return findings.Item()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 421,
-          "end_line": 442,
+          "line": 422,
+          "end_line": 443,
           "config": null,
           "blocks": [
             {
@@ -6303,8 +6303,8 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 421,
-              "end_line": 423,
+              "line": 422,
+              "end_line": 424,
               "source": "# A package.\n"
             },
             {
@@ -6312,8 +6312,8 @@
               "language": "python",
               "file": "pkg/findings.py",
               "named": true,
-              "line": 425,
-              "end_line": 428,
+              "line": 426,
+              "end_line": 429,
               "source": "def set(key, value):\n    return key, value\n"
             },
             {
@@ -6321,8 +6321,8 @@
               "language": "python",
               "file": "pkg/consumer.py",
               "named": true,
-              "line": 430,
-              "end_line": 435,
+              "line": 431,
+              "end_line": 436,
               "source": "from . import findings\n\nconfigured = findings.set(\"a\", 1)\nvalues = set([1, 2])\n"
             },
             {
@@ -6330,16 +6330,16 @@
               "language": "python",
               "file": "pkg/consumer.py",
               "named": true,
-              "line": 437,
-              "end_line": 442,
+              "line": 438,
+              "end_line": 443,
               "source": "from . import findings\n\nconfigured = findings.set(\"a\", 1)\nvalues = set([1, 2])\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 447,
-          "end_line": 470,
+          "line": 448,
+          "end_line": 471,
           "config": null,
           "blocks": [
             {
@@ -6347,8 +6347,8 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 447,
-              "end_line": 449,
+              "line": 448,
+              "end_line": 450,
               "source": "# A package.\n"
             },
             {
@@ -6356,8 +6356,8 @@
               "language": "python",
               "file": "pkg/findings.py",
               "named": true,
-              "line": 451,
-              "end_line": 454,
+              "line": 452,
+              "end_line": 455,
               "source": "class DbWriter:\n    pass\n"
             },
             {
@@ -6365,8 +6365,8 @@
               "language": "python",
               "file": "pkg/other.py",
               "named": true,
-              "line": 456,
-              "end_line": 458,
+              "line": 457,
+              "end_line": 459,
               "source": "from .consumer import findings\n"
             },
             {
@@ -6374,8 +6374,8 @@
               "language": "python",
               "file": "pkg/consumer.py",
               "named": true,
-              "line": 460,
-              "end_line": 464,
+              "line": 461,
+              "end_line": 465,
               "source": "from . import findings\n\nwriter = findings.DbWriter()\n"
             },
             {
@@ -6383,16 +6383,16 @@
               "language": "python",
               "file": "pkg/consumer.py",
               "named": true,
-              "line": 466,
-              "end_line": 470,
+              "line": 467,
+              "end_line": 471,
               "source": "from . import findings\n\nwriter = findings.DbWriter()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 475,
-          "end_line": 498,
+          "line": 476,
+          "end_line": 499,
           "config": null,
           "blocks": [
             {
@@ -6400,8 +6400,8 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 475,
-              "end_line": 477,
+              "line": 476,
+              "end_line": 478,
               "source": "# A package.\n"
             },
             {
@@ -6409,8 +6409,8 @@
               "language": "python",
               "file": "pkg/findings.py",
               "named": true,
-              "line": 479,
-              "end_line": 482,
+              "line": 480,
+              "end_line": 483,
               "source": "class DbWriter:\n    pass\n"
             },
             {
@@ -6418,8 +6418,8 @@
               "language": "python",
               "file": "pkg/api.py",
               "named": true,
-              "line": 484,
-              "end_line": 490,
+              "line": 485,
+              "end_line": 491,
               "source": "from . import findings\n\n__all__ = [\"findings\"]\n\nwriter = findings.DbWriter()\n"
             },
             {
@@ -6427,19 +6427,19 @@
               "language": "python",
               "file": "pkg/api.py",
               "named": true,
-              "line": 492,
-              "end_line": 498,
+              "line": 493,
+              "end_line": 499,
               "source": "from . import findings\n\n__all__ = [\"findings\"]\n\nwriter = findings.DbWriter()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 502,
-          "end_line": 527,
+          "line": 503,
+          "end_line": 528,
           "config": {
-            "line": 502,
-            "end_line": 506,
+            "line": 503,
+            "end_line": 507,
             "source": "[project]\nname = \"demo\"\nrequires-python = \">=3.15\"\n"
           },
           "blocks": [
@@ -6448,8 +6448,8 @@
               "language": "python",
               "file": "pkg/__init__.py",
               "named": true,
-              "line": 508,
-              "end_line": 510,
+              "line": 509,
+              "end_line": 511,
               "source": "# A package.\n"
             },
             {
@@ -6457,8 +6457,8 @@
               "language": "python",
               "file": "pkg/findings.py",
               "named": true,
-              "line": 512,
-              "end_line": 515,
+              "line": 513,
+              "end_line": 516,
               "source": "class DbWriter:\n    pass\n"
             },
             {
@@ -6466,8 +6466,8 @@
               "language": "python",
               "file": "pkg/consumer.py",
               "named": true,
-              "line": 517,
-              "end_line": 521,
+              "line": 518,
+              "end_line": 522,
               "source": "lazy from . import findings\n\nwriter = findings.DbWriter()\n"
             },
             {
@@ -6475,8 +6475,8 @@
               "language": "python",
               "file": "pkg/consumer.py",
               "named": true,
-              "line": 523,
-              "end_line": 527,
+              "line": 524,
+              "end_line": 528,
               "source": "lazy from .findings import DbWriter\n\nwriter = DbWriter()\n"
             }
           ]
@@ -7492,7 +7492,7 @@
     "name": "missing-from-all",
     "summary": "Names other modules import that `__all__` omits",
     "fix": "Sometimes",
-    "explanation": "Flags public module-level names that another file in the same run imports but `__all__` does not list.\n\n## Why is this bad?\n\n`__all__` lists the names that make up a module's public interface\n([PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces)). A name other modules depend on but\n`__all__` omits looks private, so a later change can remove or rename it without anyone noticing the importers.\n\nIn the example below, `cli.py` imports `LIMIT` and `shared` from `config.py`, yet `config.py` lists neither, so nothing\nin `config.py` tells its next editor that `cli.py` relies on them.\n\n## Example\n\n```python context file=cli.py\nfrom config import LIMIT, local, shared\n\nprint(LIMIT, local(), shared())\n```\n\n```python report file=config.py\nLIMIT = 3\n\n\ndef shared() -> int:\n    return LIMIT\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\"local\"]  # cli.py also imports LIMIT and shared\n```\n\nUse instead:\n\n```python context file=cli.py\nfrom config import LIMIT, local, shared\n\nprint(LIMIT, local(), shared())\n```\n\n```python ok file=config.py\nLIMIT = 3\n\n\ndef shared() -> int:\n    return LIMIT\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\"LIMIT\", \"local\", \"shared\"]\n```\n\n## What it does\n\n### Active on\n\nA public module-level name that [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package)\ndoes not list is reported when another file in the same run imports it in one of these ways, or when a listed name's\nsignature reaches it:\n\n- **`from module import name`**, absolute or relative: the importer names the module and the name directly.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\n- **`module.name` access after `import module`**: the importer reads the name as an attribute of the module.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=cli.py\n  import config\n\n  print(config.LIMIT)\n  ```\n\n- **[Entry points](https://packaging.python.org/en/latest/specifications/pyproject-toml/#entry-points)** declared in\n  `pyproject.toml` under `[project.scripts]`, `[project.gui-scripts]` or `[project.entry-points]`: installers and plugin\n  hosts import the name from outside the code.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [project.scripts]\n  run = \"config:main\"\n  ```\n\n  ```python report file=config.py\n  def main() -> None:\n      pass\n\n\n  def helper() -> int:\n      return 1\n\n\n  __all__ = [\"helper\"]\n  ```\n\n- **String-named handlers** passed to `pkgutil.resolve_name` as `module:attribute`, or stored with\n  `parser.set_defaults(handler=\"module:attribute\")`: the dispatch reads the named attribute at runtime.\n\n- **Tool references in `pyproject.toml`**: setuptools reads `[tool.setuptools.dynamic]` `attr` values and\n  `[tool.setuptools.cmdclass]` classes; mypy calls the function named by `[tool.mypy] plugins` (`plugin` by default);\n  Pylint calls `register` in `[tool.pylint.main] load-plugins`. Legacy `[tool.poetry.plugins]` values are entry points.\n  A pytest plugin loaded with `-p` in `[tool.pytest.ini_options] addopts` or `[tool.pytest] addopts` exposes its public\n  hooks by name.\n\n- **Build backend hooks** of the module that `build-backend` names in `[build-system]`: a build frontend calls the PEP\n  517 and PEP 660 hooks by name, so the names are used from outside the code. When the backend is `pdm.backend`, its\n  local `pdm_build.py` hook functions are also called by name; `[tool.pdm.build] custom-hook` may name another file.\n\n  ```toml config\n  [build-system]\n  build-backend = \"build_backend\"\n  requires = [\"setuptools\"]\n  backend-path = [\".\"]\n  ```\n\n  ```python report file=build_backend.py\n  def build_wheel(wheel_directory: str) -> str:\n      return wheel_directory\n\n\n  __all__ = []\n  ```\n\n- **Declarations in the module's `.pyi` stub**: a stub publishes the names it lists.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=config.pyi\n  LIMIT: int\n  ```\n\n- **Imports the module never uses**: such an import is there for its importers, so it counts as a re-export and is\n  reported.\n\n  ```python report file=config.py\n  from os import sep\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=cli.py\n  from config import sep\n\n  print(sep)\n  ```\n\n- **Classes and aliases in the signature of a listed name**: the annotations, bases and bounds of an exported function,\n  or of a public class, that refer to a class or alias make it public API, though no file imports it. Such a name is\n  reached through the same places of every class and alias the signature reaches, and it counts only when its name is\n  public.\n\n  ```python report file=config.py\n  Level = int\n\n\n  def local() -> Level:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python fixed file=config.py\n  Level = int\n\n\n  def local() -> Level:\n      return 1\n\n\n  __all__ = [\n      \"Level\",\n      \"local\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import local\n\n  print(local())\n  ```\n\n### Exceptions\n\n- **`__main__.py` files**: these are entry points, so imports by tests or runners do not make their names a public API.\n\n- **Names used only by tests**: a test of a module may inspect its implementation without making that name part of the\n  module's public interface. A production importer still makes the name reportable.\n\n  ```python ok file=config.py\n  class Parser:\n      pass\n\n\n  __all__ = []\n  ```\n\n  ```python context file=test_config.py\n  from config import Parser\n  ```\n\n- **Names starting with `_`**: the underscore already marks them as internal.\n\n  ```python ok file=config.py\n  _LIMIT = 3\n  __all__ = []\n  ```\n\n  ```python context file=cli.py\n  from config import _LIMIT\n\n  print(_LIMIT)\n  ```\n\n- **`__init__.py` files**: these are not checked.\n\n  ```python ok file=pkg/__init__.py\n  LIMIT = 3\n  __all__ = []\n  ```\n\n  ```python context file=cli.py\n  from pkg import LIMIT\n\n  print(LIMIT)\n  ```\n\n- **Private names in the signature of an exported name**: a type a listed name's annotations refer to is public API only\n  when its name is public, and the underscore marks a private one as internal.\n\n  ```python ok file=config.py\n  _Level = int\n\n\n  def local() -> _Level:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=cli.py\n  from config import local\n\n  print(local())\n  ```\n\n- **Test modules**, as defined in [test-class](SMP801.html): these are not checked.\n\n  ```python ok file=test_config.py\n  LIMIT = 3\n  __all__ = []\n  ```\n\n  ```python context file=cli.py\n  from test_config import LIMIT\n\n  print(LIMIT)\n  ```\n\n- **Modules that import `__all__` from elsewhere**: `from ._impl import __all__` re-exports a list this module cannot\n  see.\n\n  ```python ok file=pkg/api.py\n  from ._impl import __all__\n  ```\n\n  ```python context file=pkg/_impl.py\n  LIMIT = 3\n  __all__ = [\"LIMIT\"]\n  ```\n\n- **Names bound only under `if TYPE_CHECKING:`**: such a name exists for type checkers alone, so listing it makes\n  `from module import *` raise `AttributeError` at run time.\n\n  ```python ok file=pkg/typed.py\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n\n      class Locked(dict): ...\n\n\n  def use(x: \"Locked\") -> None: ...\n\n\n  __all__ = [\"use\"]\n  ```\n\n- **A name equal to the module's own name, when the package's `__init__.py` star-imports the module**: listing it would\n  make the `import *` bind it over the package attribute that holds the submodule.\n\n  ```python ok file=pkg/shared.py\n  def shared() -> int:\n      return 1\n\n\n  __all__ = []\n  ```\n\n  ```python context file=pkg/__init__.py\n  from .shared import *\n  ```\n\n  ```python context file=cli.py\n  from pkg.shared import shared\n\n  print(shared())\n  ```\n\n- **Names the module imports and uses itself**: another module reaching `sys` as `app.sys` borrows a name `app` needs,\n  which is not part of its API.\n\n  ```python ok file=app.py\n  import sys\n\n  print(sys.argv)\n  ```\n\n  ```python context file=cli.py\n  import app\n\n  print(app.sys)\n  ```\n\n- **Dotted strings and attribute patches**, such as `mocker.patch(\"pkg.mod.name\")` and `patch.object(module, \"name\")`:\n  they reach into the module without making the name part of its API. Fixes that rename or move a name still leave names\n  reached this way alone.\n\n  ```python ok file=config.py\n  LIMIT = 3\n  __all__ = []\n  ```\n\n  ```python context file=cli.py\n  import config\n  from unittest import mock\n\n  with mock.patch(\"config.LIMIT\"), mock.patch.object(config, \"LIMIT\"):\n      pass\n  ```\n\n- **An `__all__` built any other way** than the forms listed under Reading `__all__` below, such as `list(...)` or\n  `.remove(...)`, or bound inside a nested block such as an `if`, `try` or function: its contents depend on how the\n  module runs, so nothing is reported.\n\n  - a call, such as `list(...)`\n\n    ```python ok file=config.py\n    LIMIT = 3\n\n\n    def local() -> int:\n        return 1\n\n\n    __all__ = list([\"local\"])\n    ```\n\n    ```python context file=cli.py\n    from config import LIMIT\n\n    print(LIMIT)\n    ```\n\n  - a binding in a nested block\n\n    ```python ok file=config.py\n    LIMIT = 3\n\n\n    def local() -> int:\n        return 1\n\n\n    if LIMIT:\n        __all__ = [\"local\"]\n    ```\n\n    ```python context file=cli.py\n    from config import LIMIT\n\n    print(LIMIT)\n    ```\n\n### Resolving modules\n\nModule names resolve to files the way Ruff's import graph resolves them, from Ruff's\n[`src`](https://docs.astral.sh/ruff/settings/#src) directories and the directory above each package. So a `src` layout\nworks, and `tests/helpers.py` imported as `tests.helpers` matches even when `tests` has no `__init__.py`.\n\nA module of a namespace package, a directory without `__init__.py`, is named from the search root above it, as Python\nnames it, so its relative imports count.\n\n### Reading `__all__`\n\nsimplint reads `__all__` from these forms, all holding string literals:\n\n- module-level `=`, annotated and `+=` assignments of list or tuple literals\n- `.extend([...])` and `.append(\"name\")` calls\n\n### Fix\n\nWhat the fix does depends on whether the module already has an `__all__`, and on who star-imports it:\n\n- **The module has an `__all__`**: the fix adds the names to it, and is safe.\n- **It has none, and no other file may star-import it**: the fix creates one, and is unsafe.\n- **It has none, and another file may star-import it**: no fix is offered.\n- **A public module of a library**: no fix is offered at all, since listing a name widens the library's API and what\n  `import *` binds; the author decides.\n\n**Adding to an existing `__all__`**: the fix adds the missing names to the list or tuple literal of the last `=`,\nannotated or `+=` assignment to `__all__`. Adding names is safe. No fix is offered when the empty list holds a comment,\nsince the rewrite would drop it. When a comment ends the last element's line, the new names go on the lines after it, so\nthe comment stays with its element; no fix is offered when that line holds other code, such as the closing bracket. A\n`# noqa: F401` comment on an import is removed with its names only when every name the import binds on that line is\nlisted.\n\n- Each name goes before the first listed name that Ruff's\n  [unsorted-dunder-all](https://docs.astral.sh/ruff/rules/unsorted-dunder-all/) sorts after it, so a sorted `__all__`\n  stays sorted.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  def shared() -> int:\n      return LIMIT + local()\n\n\n  __all__ = [\n      \"LIMIT\",\n      \"shared\",\n  ]\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  def shared() -> int:\n      return LIMIT + local()\n\n\n  __all__ = [\n      \"LIMIT\",\n      \"local\",\n      \"shared\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import local\n\n  print(local())\n  ```\n\n- A literal written on one line is rewritten one name per line with a trailing comma, the layout `ruff format` gives it.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\n      \"LIMIT\",\n      \"local\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\n- An empty literal that holds a comment gets no fix, since the rewrite would drop the comment:\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  __all__ = [  # filled in by the release script\n  ]\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  __all__ = [  # filled in by the release script\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\n- A comment ending the last element's line stays with that element: the new names go on the lines after it.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\n      \"LIMIT\",  # the limit\n  ]\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\n      \"LIMIT\",  # the limit\n      \"local\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import local\n\n  print(local())\n  ```\n\n- A `# noqa: F401` on an import stays while a name the import binds is left out of the listing, since that name still\n  needs it:\n\n  ```python report file=config.py\n  from math import pi, tau  # noqa: F401\n\n\n  def area(radius: float) -> float:\n      return 3.14 * radius**2\n\n\n  __all__ = [\n      \"area\",\n  ]\n  ```\n\n  ```python fixed file=config.py\n  from math import pi, tau  # noqa: F401\n\n\n  def area(radius: float) -> float:\n      return 3.14 * radius**2\n\n\n  __all__ = [\n      \"area\",\n      \"pi\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import pi\n\n  print(pi)\n  ```\n\nWhen several names are missing, only the first report carries the fix, since it adds all of them at once; the others\nhave none.\n\n**Creating a new `__all__`**: a module without `__all__` gets a new one, sorted and one name per line, as its last\nstatement, or above a closing `if __name__ == \"__main__\":` block. **Unsafe fix:** it narrows what `from module import *`\nexports.\n\n- Last statement of the module:\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\n      \"LIMIT\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\n- Above a closing `__main__` block:\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def main() -> None:\n      print(LIMIT)\n\n\n  if __name__ == \"__main__\":\n      main()\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def main() -> None:\n      print(LIMIT)\n\n\n  __all__ = [\n      \"LIMIT\",\n  ]\n\n\n  if __name__ == \"__main__\":\n      main()\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\nA module another file of the run star-imports, or may star-import, gets no new `__all__`. `import *` takes every public\nname of it, and a name such as `ResourceType` that `pkg/__init__.py` re-exports with `from ._types import *` would\nvanish from `pkg`. A name imported from `pkg` counts as imported from `pkg/_types.py`. Importers outside the run are not\nseen.\n\n```python report file=config.py\nLIMIT = 3\n\n\ndef local() -> int:\n    return 1\n```\n\n```python fixed file=config.py\nLIMIT = 3\n\n\ndef local() -> int:\n    return 1\n```\n\n```python context file=cli.py\nfrom config import LIMIT\n\nprint(LIMIT)\n```\n\n```python context file=star.py\nfrom config import *\n\nprint(local())\n```\n\n### Related rules\n\n[unused-export](SMP402.html) removes the opposite: names `__all__` lists that no other module imports.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#167](https://github.com/astral-sh/ruff/issues/167)\n  (report importers of names `__all__` omits), [#2098](https://github.com/astral-sh/ruff/issues/2098) and\n  [#3482](https://github.com/astral-sh/ruff/issues/3482) (modules with no `__all__`).\n",
+    "explanation": "Flags public module-level names that another file in the same run imports but `__all__` does not list.\n\n## Why is this bad?\n\n`__all__` lists the names that make up a module's public interface\n([PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces)). A name other modules depend on but\n`__all__` omits looks private, so a later change can remove or rename it without anyone noticing the importers.\n\nIn the example below, `cli.py` imports `LIMIT` and `shared` from `config.py`, yet `config.py` lists neither, so nothing\nin `config.py` tells its next editor that `cli.py` relies on them.\n\n## Example\n\n```python context file=cli.py\nfrom config import LIMIT, local, shared\n\nprint(LIMIT, local(), shared())\n```\n\n```python report file=config.py\nLIMIT = 3\n\n\ndef shared() -> int:\n    return LIMIT\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\"local\"]  # cli.py also imports LIMIT and shared\n```\n\nUse instead:\n\n```python context file=cli.py\nfrom config import LIMIT, local, shared\n\nprint(LIMIT, local(), shared())\n```\n\n```python ok file=config.py\nLIMIT = 3\n\n\ndef shared() -> int:\n    return LIMIT\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\"LIMIT\", \"local\", \"shared\"]\n```\n\n## What it does\n\n### Active on\n\nA public module-level name that [`__all__`](https://docs.python.org/3/tutorial/modules.html#importing-from-a-package)\ndoes not list is reported when another file in the same run imports it in one of these ways, or when a listed name's\nsignature reaches it:\n\n- **`from module import name`**, absolute or relative: the importer names the module and the name directly.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\n- **`module.name` access after `import module`**: the importer reads the name as an attribute of the module.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=cli.py\n  import config\n\n  print(config.LIMIT)\n  ```\n\n- **[Entry points](https://packaging.python.org/en/latest/specifications/pyproject-toml/#entry-points)** declared in\n  `pyproject.toml` under `[project.scripts]`, `[project.gui-scripts]` or `[project.entry-points]`: installers and plugin\n  hosts import the name from outside the code.\n\n  ```toml config\n  [project]\n  name = \"demo\"\n\n  [project.scripts]\n  run = \"config:main\"\n  ```\n\n  ```python report file=config.py\n  def main() -> None:\n      pass\n\n\n  def helper() -> int:\n      return 1\n\n\n  __all__ = [\"helper\"]\n  ```\n\n- **String-named handlers** passed to `pkgutil.resolve_name` as `module:attribute`, or stored with\n  `parser.set_defaults(handler=\"module:attribute\")`: the dispatch reads the named attribute at runtime.\n\n- **Tool references in `pyproject.toml`**: setuptools reads `[tool.setuptools.dynamic]` `attr` values and\n  `[tool.setuptools.cmdclass]` classes; mypy calls the function named by `[tool.mypy] plugins` (`plugin` by default);\n  Pylint calls `register` in `[tool.pylint.main] load-plugins`. Legacy `[tool.poetry.plugins]` values are entry points.\n  A pytest plugin loaded with `-p` in `[tool.pytest.ini_options] addopts` or `[tool.pytest] addopts` exposes its public\n  hooks by name.\n\n- **Build backend hooks** of the module that `build-backend` names in `[build-system]`: a build frontend calls the PEP\n  517 and PEP 660 hooks by name, so the names are used from outside the code. When the backend is `pdm.backend`, its\n  local `pdm_build.py` hook functions are also called by name; `[tool.pdm.build] custom-hook` may name another file.\n\n  ```toml config\n  [build-system]\n  build-backend = \"build_backend\"\n  requires = [\"setuptools\"]\n  backend-path = [\".\"]\n  ```\n\n  ```python report file=build_backend.py\n  def build_wheel(wheel_directory: str) -> str:\n      return wheel_directory\n\n\n  __all__ = []\n  ```\n\n- **Declarations in the module's `.pyi` stub**: a stub publishes the names it lists.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=config.pyi\n  LIMIT: int\n  ```\n\n- **Imports the module never uses**: such an import is there for its importers, so it counts as a re-export and is\n  reported.\n\n  ```python report file=config.py\n  from os import sep\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=cli.py\n  from config import sep\n\n  print(sep)\n  ```\n\n- **Classes and aliases in the signature of a listed name**: the annotations, bases and bounds of an exported function,\n  or of a public class, that refer to a class or alias make it public API, though no file imports it. Such a name is\n  reached through the same places of every class and alias the signature reaches, and it counts only when its name is\n  public.\n\n  ```python report file=config.py\n  Level = int\n\n\n  def local() -> Level:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python fixed file=config.py\n  Level = int\n\n\n  def local() -> Level:\n      return 1\n\n\n  __all__ = [\n      \"Level\",\n      \"local\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import local\n\n  print(local())\n  ```\n\n### Exceptions\n\n- **`__main__.py` files**: these are entry points, so imports by tests or runners do not make their names a public API.\n\n- **Names used only by tests**: a test of a module may inspect its implementation without making that name part of the\n  module's public interface. A production importer still makes the name reportable.\n\n  ```python ok file=config.py\n  class Parser:\n      pass\n\n\n  __all__ = []\n  ```\n\n  ```python context file=test_config.py\n  from config import Parser\n  ```\n\n- **Names starting with `_`**: the underscore already marks them as internal.\n\n  ```python ok file=config.py\n  _LIMIT = 3\n  __all__ = []\n  ```\n\n  ```python context file=cli.py\n  from config import _LIMIT\n\n  print(_LIMIT)\n  ```\n\n- **`__init__.py` files**: these are not checked.\n\n  ```python ok file=pkg/__init__.py\n  LIMIT = 3\n  __all__ = []\n  ```\n\n  ```python context file=cli.py\n  from pkg import LIMIT\n\n  print(LIMIT)\n  ```\n\n- **Private names in the signature of an exported name**: a type a listed name's annotations refer to is public API only\n  when its name is public, and the underscore marks a private one as internal.\n\n  ```python ok file=config.py\n  _Level = int\n\n\n  def local() -> _Level:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python context file=cli.py\n  from config import local\n\n  print(local())\n  ```\n\n- **Test modules**, as defined in [test-class](SMP801.html): these are not checked.\n\n  ```python ok file=test_config.py\n  LIMIT = 3\n  __all__ = []\n  ```\n\n  ```python context file=cli.py\n  from test_config import LIMIT\n\n  print(LIMIT)\n  ```\n\n- **Modules that import `__all__` from elsewhere**: `from ._impl import __all__` re-exports a list this module cannot\n  see.\n\n  ```python ok file=pkg/api.py\n  from ._impl import __all__\n  ```\n\n  ```python context file=pkg/_impl.py\n  LIMIT = 3\n  __all__ = [\"LIMIT\"]\n  ```\n\n- **Names bound only under `if TYPE_CHECKING:`**: such a name exists for type checkers alone, so listing it makes\n  `from module import *` raise `AttributeError` at run time.\n\n  ```python ok file=pkg/typed.py\n  from typing import TYPE_CHECKING\n\n  if TYPE_CHECKING:\n\n      class Locked(dict): ...\n\n\n  def use(x: \"Locked\") -> None: ...\n\n\n  __all__ = [\"use\"]\n  ```\n\n- **A name equal to the module's own name, when the package's `__init__.py` star-imports the module**: listing it would\n  make the `import *` bind it over the package attribute that holds the submodule.\n\n  ```python ok file=pkg/shared.py\n  def shared() -> int:\n      return 1\n\n\n  __all__ = []\n  ```\n\n  ```python context file=pkg/__init__.py\n  from .shared import *\n  ```\n\n  ```python context file=cli.py\n  from pkg.shared import shared\n\n  print(shared())\n  ```\n\n- **Names the module imports and uses itself**: another module reaching `sys` as `app.sys` borrows a name `app` needs,\n  which is not part of its API.\n\n  ```python ok file=app.py\n  import sys\n\n  print(sys.argv)\n  ```\n\n  ```python context file=cli.py\n  import app\n\n  print(app.sys)\n  ```\n\n- **Dotted strings and attribute patches**, such as `mocker.patch(\"pkg.mod.name\")` and `patch.object(module, \"name\")`:\n  they reach into the module without making the name part of its API. Fixes that rename or move a name still leave names\n  reached this way alone.\n\n  ```python ok file=config.py\n  LIMIT = 3\n  __all__ = []\n  ```\n\n  ```python context file=cli.py\n  import config\n  from unittest import mock\n\n  with mock.patch(\"config.LIMIT\"), mock.patch.object(config, \"LIMIT\"):\n      pass\n  ```\n\n- **An `__all__` built any other way** than the forms listed under Reading `__all__` below, such as `list(...)` or\n  `.remove(...)`, or bound inside a nested block such as an `if`, `try` or function: its contents depend on how the\n  module runs, so nothing is reported.\n\n  - a call, such as `list(...)`\n\n    ```python ok file=config.py\n    LIMIT = 3\n\n\n    def local() -> int:\n        return 1\n\n\n    __all__ = list([\"local\"])\n    ```\n\n    ```python context file=cli.py\n    from config import LIMIT\n\n    print(LIMIT)\n    ```\n\n  - a binding in a nested block\n\n    ```python ok file=config.py\n    LIMIT = 3\n\n\n    def local() -> int:\n        return 1\n\n\n    if LIMIT:\n        __all__ = [\"local\"]\n    ```\n\n    ```python context file=cli.py\n    from config import LIMIT\n\n    print(LIMIT)\n    ```\n\n### Resolving modules\n\nModule names resolve to files the way Ruff's import graph resolves them, from Ruff's\n[`src`](https://docs.astral.sh/ruff/settings/#src) directories and the directory above each package. So a `src` layout\nworks, and `tests/helpers.py` imported as `tests.helpers` matches even when `tests` has no `__init__.py`.\n\nA module of a namespace package, a directory without `__init__.py`, is named from the search root above it, as Python\nnames it, so its relative imports count.\n\n### Reading `__all__`\n\nsimplint reads `__all__` from these forms, all holding string literals:\n\n- module-level `=`, annotated and `+=` assignments of list or tuple literals\n- `.extend([...])` and `.append(\"name\")` calls\n\n### Fix\n\nWhat the fix does depends on whether the module already has an `__all__`, and on who star-imports it:\n\n- **The module has an `__all__`**: the fix adds the names to it, and is safe.\n- **It has none, and no other file may star-import it**: the fix creates one, and is unsafe.\n- **It has none, and another file may star-import it**: no fix is offered.\n- **A public module of a library**: no fix is offered at all, since listing a name widens the library's API and what\n  `import *` binds; the author decides.\n\n**Adding to an existing `__all__`**: the fix adds the missing names to the list or tuple literal of the last `=`,\nannotated or `+=` assignment to `__all__`. Adding names is safe. No fix is offered when the empty list holds a comment,\nsince the rewrite would drop it. When a comment ends the last element's line, the new names go on the lines after it, so\nthe comment stays with its element; no fix is offered when that line holds other code, such as the closing bracket. A\n`# noqa: F401` comment on an import is removed with its names only when every name the import binds on that line is\nlisted.\n\n- Each name goes before the first listed name that Ruff's\n  [unsorted-dunder-all](https://docs.astral.sh/ruff/rules/unsorted-dunder-all/) sorts after it, so a sorted `__all__`\n  stays sorted.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  def shared() -> int:\n      return LIMIT + local()\n\n\n  __all__ = [\n      \"LIMIT\",\n      \"shared\",\n  ]\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  def shared() -> int:\n      return LIMIT + local()\n\n\n  __all__ = [\n      \"LIMIT\",\n      \"local\",\n      \"shared\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import local\n\n  print(local())\n  ```\n\n- A literal written on one line is rewritten one name per line with a trailing comma, the layout `ruff format` gives it.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\"local\"]\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\n      \"LIMIT\",\n      \"local\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\n- An empty literal that holds a comment gets no fix, since the rewrite would drop the comment:\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  __all__ = [  # filled in by the release script\n  ]\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  __all__ = [  # filled in by the release script\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\n- A comment ending the last element's line stays with that element: the new names go on the lines after it.\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\n      \"LIMIT\",  # the limit\n  ]\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\n      \"LIMIT\",  # the limit\n      \"local\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import local\n\n  print(local())\n  ```\n\n- A `# noqa: F401` on an import stays while a name the import binds is left out of the listing, since that name still\n  needs it:\n\n  ```python report file=config.py\n  from math import pi, tau  # noqa: F401\n\n\n  def area(radius: float) -> float:\n      return 3.14 * radius**2\n\n\n  __all__ = [\n      \"area\",\n  ]\n  ```\n\n  ```python fixed file=config.py\n  from math import pi, tau  # noqa: F401\n\n\n  def area(radius: float) -> float:\n      return 3.14 * radius**2\n\n\n  __all__ = [\n      \"area\",\n      \"pi\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import pi\n\n  print(pi)\n  ```\n\nWhen several names are missing, only the first report carries the fix, since it adds all of them at once; the others\nhave none. A suppression comment on the first report moves the fix to the next report that is still shown, and the fix\nstill lists every name:\n\n```python context file=use.py\nfrom api import alpha, beta\n\nprint(alpha(), beta())\n```\n\n```python report file=api.py\n__all__ = []\n\n\ndef alpha() -> int:  # noqa: SMP401\n    return 1\n\n\ndef beta() -> int:\n    return 2\n```\n\n```python fixed file=api.py\n__all__ = [\n    \"alpha\",\n    \"beta\",\n]\n\n\ndef alpha() -> int:  # noqa: SMP401\n    return 1\n\n\ndef beta() -> int:\n    return 2\n```\n\n**Creating a new `__all__`**: a module without `__all__` gets a new one, sorted and one name per line, as its last\nstatement, or above a closing `if __name__ == \"__main__\":` block. **Unsafe fix:** it narrows what `from module import *`\nexports.\n\n- Last statement of the module:\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def local() -> int:\n      return 1\n\n\n  __all__ = [\n      \"LIMIT\",\n  ]\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\n- Above a closing `__main__` block:\n\n  ```python report file=config.py\n  LIMIT = 3\n\n\n  def main() -> None:\n      print(LIMIT)\n\n\n  if __name__ == \"__main__\":\n      main()\n  ```\n\n  ```python fixed file=config.py\n  LIMIT = 3\n\n\n  def main() -> None:\n      print(LIMIT)\n\n\n  __all__ = [\n      \"LIMIT\",\n  ]\n\n\n  if __name__ == \"__main__\":\n      main()\n  ```\n\n  ```python context file=cli.py\n  from config import LIMIT\n\n  print(LIMIT)\n  ```\n\nA module another file of the run star-imports, or may star-import, gets no new `__all__`. `import *` takes every public\nname of it, and a name such as `ResourceType` that `pkg/__init__.py` re-exports with `from ._types import *` would\nvanish from `pkg`. A name imported from `pkg` counts as imported from `pkg/_types.py`. Importers outside the run are not\nseen.\n\n```python report file=config.py\nLIMIT = 3\n\n\ndef local() -> int:\n    return 1\n```\n\n```python fixed file=config.py\nLIMIT = 3\n\n\ndef local() -> int:\n    return 1\n```\n\n```python context file=cli.py\nfrom config import LIMIT\n\nprint(LIMIT)\n```\n\n```python context file=star.py\nfrom config import *\n\nprint(local())\n```\n\n### Related rules\n\n[unused-export](SMP402.html) removes the opposite: names `__all__` lists that no other module imports.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#167](https://github.com/astral-sh/ruff/issues/167)\n  (report importers of names `__all__` omits), [#2098](https://github.com/astral-sh/ruff/issues/2098) and\n  [#3482](https://github.com/astral-sh/ruff/issues/3482) (modules with no `__all__`).\n",
     "examples": {
       "parsed": [
         {
@@ -8217,8 +8217,43 @@
         },
         {
           "section": "What it does",
-          "line": 649,
-          "end_line": 674,
+          "line": 644,
+          "end_line": 675,
+          "config": null,
+          "blocks": [
+            {
+              "role": "context",
+              "language": "python",
+              "file": "use.py",
+              "named": true,
+              "line": 644,
+              "end_line": 648,
+              "source": "from api import alpha, beta\n\nprint(alpha(), beta())\n"
+            },
+            {
+              "role": "report",
+              "language": "python",
+              "file": "api.py",
+              "named": true,
+              "line": 650,
+              "end_line": 660,
+              "source": "__all__ = []\n\n\ndef alpha() -> int:  # noqa: SMP401\n    return 1\n\n\ndef beta() -> int:\n    return 2\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "api.py",
+              "named": true,
+              "line": 662,
+              "end_line": 675,
+              "source": "__all__ = [\n    \"alpha\",\n    \"beta\",\n]\n\n\ndef alpha() -> int:  # noqa: SMP401\n    return 1\n\n\ndef beta() -> int:\n    return 2\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 683,
+          "end_line": 708,
           "config": null,
           "blocks": [
             {
@@ -8226,8 +8261,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 649,
-              "end_line": 655,
+              "line": 683,
+              "end_line": 689,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n"
             },
             {
@@ -8235,8 +8270,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 657,
-              "end_line": 668,
+              "line": 691,
+              "end_line": 702,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\n    \"LIMIT\",\n]\n"
             },
             {
@@ -8244,16 +8279,16 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 670,
-              "end_line": 674,
+              "line": 704,
+              "end_line": 708,
               "source": "from config import LIMIT\n\nprint(LIMIT)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 678,
-          "end_line": 711,
+          "line": 712,
+          "end_line": 745,
           "config": null,
           "blocks": [
             {
@@ -8261,8 +8296,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 678,
-              "end_line": 688,
+              "line": 712,
+              "end_line": 722,
               "source": "LIMIT = 3\n\n\ndef main() -> None:\n    print(LIMIT)\n\n\nif __name__ == \"__main__\":\n    main()\n"
             },
             {
@@ -8270,8 +8305,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 690,
-              "end_line": 705,
+              "line": 724,
+              "end_line": 739,
               "source": "LIMIT = 3\n\n\ndef main() -> None:\n    print(LIMIT)\n\n\n__all__ = [\n    \"LIMIT\",\n]\n\n\nif __name__ == \"__main__\":\n    main()\n"
             },
             {
@@ -8279,16 +8314,16 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 707,
-              "end_line": 711,
+              "line": 741,
+              "end_line": 745,
               "source": "from config import LIMIT\n\nprint(LIMIT)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 718,
-          "end_line": 744,
+          "line": 752,
+          "end_line": 778,
           "config": null,
           "blocks": [
             {
@@ -8296,8 +8331,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 718,
-              "end_line": 724,
+              "line": 752,
+              "end_line": 758,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n"
             },
             {
@@ -8305,8 +8340,8 @@
               "language": "python",
               "file": "config.py",
               "named": true,
-              "line": 726,
-              "end_line": 732,
+              "line": 760,
+              "end_line": 766,
               "source": "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n"
             },
             {
@@ -8314,8 +8349,8 @@
               "language": "python",
               "file": "cli.py",
               "named": true,
-              "line": 734,
-              "end_line": 738,
+              "line": 768,
+              "end_line": 772,
               "source": "from config import LIMIT\n\nprint(LIMIT)\n"
             },
             {
@@ -8323,8 +8358,8 @@
               "language": "python",
               "file": "star.py",
               "named": true,
-              "line": 740,
-              "end_line": 744,
+              "line": 774,
+              "end_line": 778,
               "source": "from config import *\n\nprint(local())\n"
             }
           ]

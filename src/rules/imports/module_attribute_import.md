@@ -317,7 +317,8 @@ patches the module attribute later no longer reaches the name. The fix replaces 
 access in the file, and it is offered only when every use of the module is such an access to a name the module defines,
 no computed write, such as `setattr(module, name, value)`, may set a name of the module, no other module of the run
 imports or reads the module's name, and `__all__` does not list it, since the replaced import would no longer bind it.
-The fix is attached to the first report only, since it covers all of them.
+The fix is attached to the first report only, since it covers all of them; when a comment suppresses that report, the
+first report still shown carries it.
 
 ```python context file=pkg/__init__.py
 # A package.
