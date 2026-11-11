@@ -95,6 +95,16 @@ not selected, the missing path is a warning instead, and the run exits with 0, a
     nope.py:1:1: E902 No such file or directory (os error 2)
     Found 1 error.
 
+A file that does not parse has no reports. simplint warns about it and goes on, as Ruff reports the file's syntax
+errors, and its syntax errors do not change the exit status:
+
+.. code-block:: console
+
+    $ simplint check --output-format concise broken.py module.py
+    warning: Skipped broken.py: it does not parse, so Ruff reports its syntax errors.
+    module.py:1:1: SMP101 Single-letter name `x`; use a descriptive name
+    Found 1 error.
+
 A fix that cannot be written, such as one to a read-only file, leaves the file as it was. The reports it had stay, and
 E902 reports the failed write beside them, with no fix counted:
 

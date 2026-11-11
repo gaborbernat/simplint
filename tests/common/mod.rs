@@ -16,6 +16,7 @@ use tempfile::TempDir;
 pub const SECTION: &str = "SMP001 [*] Section comment groups code; extract a named function or class instead";
 pub const SINGLE_X: &str = "SMP101 Single-letter name `x`; use a descriptive name";
 pub const PASSED: &str = "All checks passed!\n";
+pub const UNPARSED: &str = "warning: Skipped broken.py: it does not parse, so Ruff reports its syntax errors.\n";
 pub const ONE_FIXED: &str = "Found 1 error (1 fixed, 0 remaining).\n";
 pub const SECTIONED: &str = "# --- helpers ---\nVALUE = 1\n";
 pub const CLEAN_MODULE: &str = "VALUE = 1\n";

@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime};
 
 use test_case::test_case;
 
-use common::{check, check_in, fix_unsafe, project, quoted, read, simplint, simplint_with};
+use common::{UNPARSED, check, check_in, fix_unsafe, project, quoted, read, simplint, simplint_with};
 
 fn cache_dir(root: &Path) -> PathBuf {
     root.join(".ruff_cache/simplint").join(concat!(env!("CARGO_PKG_VERSION"), "-", env!("SIMPLINT_CACHE_FORMAT")))
@@ -613,7 +613,7 @@ fn cached_findings_are_reported_again_under_other_settings() {
     assert_eq!(cached, fresh(root.path(), &args));
 }
 
-// A file with a syntax error or bytes that are not UTF-8 gets no rule report, yet its reports are cached, so a warm run
+// A file with a syntax error or bytes that are not UTF-8 gets no rule report, yet its result is cached, so a warm run
 // answers every file from the cache and does not index the project again.
 #[test_case(b"def broken(:\n", &["--output-format", "concise"] ; "syntax_error_concise")]
 #[test_case(b"def broken(:\n", &["--output-format", "full"] ; "syntax_error_full")]
@@ -634,6 +634,28 @@ fn warm_run_reuses_the_reports_of_a_file_no_rule_reports(source: &[u8], flags: &
         (first.2.contains("Indexed "), warm.2.contains("Indexed "), first.1 == fresh.1, warm.1 == fresh.1),
         (true, false, true, true)
     );
+}
+
+// A file that does not parse is cached as having nothing to report, yet its warning shows on every run, cached or
+// not.
+#[test_case(&["--output-format", "concise"] ; "concise")]
+#[test_case(&["--output-format", "full"] ; "full")]
+#[test_case(&["--output-format", "json"] ; "json")]
+fn warm_run_warns_again_about_a_file_that_does_not_parse(flags: &[&str]) {
+    let root = project(&[("module.py", "x = 1\n"), ("broken.py", "def broken(:\n")]);
+    let args = [&["check", "--select", "SMP101"], flags].concat();
+    let fresh_run = simplint(root.path(), &[&args, &["--no-cache"][..]].concat());
+    let (first, warm) = (simplint(root.path(), &args), simplint(root.path(), &args));
+    assert_eq!((&first, &warm, warm.2.as_str()), (&fresh_run, &fresh_run, UNPARSED));
+}
+
+#[test]
+fn file_that_parses_again_is_checked_again() {
+    let root = project(&[("module.py", "x = 1\n"), ("broken.py", "def broken(:\n")]);
+    let args = ["--select", "SMP101"];
+    check(root.path(), &args);
+    fs::write(root.path().join("broken.py"), "y = 2\n").expect("write");
+    assert_eq!(check(root.path(), &args), fresh(root.path(), &args));
 }
 
 // A read error is reported only while `io-error` is selected: without it the run logs a warning, which a cached clean

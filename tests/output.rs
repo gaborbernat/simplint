@@ -186,14 +186,6 @@ fn preview_help_says_simplint_has_no_preview_rules() {
 }
 
 #[test]
-fn preview_shows_codes_only_for_rules() {
-    let root = project(&[("module.py", "x = (\n")]);
-    let (_, stable, _) = simplint(root.path(), &["check", "--output-format", "json"]);
-    let (_, preview, _) = simplint(root.path(), &["check", "--output-format", "json", "--preview"]);
-    assert_eq!((stable.contains(r#""code": "invalid-syntax""#), preview.contains(r#""code": null"#)), (true, true));
-}
-
-#[test]
 fn preview_names_rules_as_ruff_does() {
     let root = project(&[("pyproject.toml", "[tool.ruff]\npreview = true\n"), ("module.py", common::SECTIONED)]);
     let reported = check(root.path(), &["--select", "SMP001"]).1;

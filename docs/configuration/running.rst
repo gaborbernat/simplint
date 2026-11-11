@@ -34,9 +34,10 @@ another directory checks the file again. With :doc:`private-import-path </rules/
 directory listing under the project root and under ``src/``, and the ``.py`` and ``.pyi`` links in it, are part of the
 key, so adding, removing or renaming a module checks the tests again, while editing a module's content does not.
 
-Without fixes, a file that does not parse, or cannot be read because it is not UTF-8, keeps its syntax error or read
-error too, so a warm run reports it again without building the project index. A read error that is only logged, because
-``io-error`` (E902) is not selected, is not cached, so every run logs it again.
+A file that does not parse is cached with nothing to report, and its warning is shown on every run, so a warm run
+warns about it without building the project index. Without fixes, a file that cannot be read because it is not UTF-8
+keeps its read error too, so a warm run reports it again without building the project index. A read error that is only
+logged, because ``io-error`` (E902) is not selected, is not cached, so every run logs it again.
 
 .. mermaid::
 
