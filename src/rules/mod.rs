@@ -34,7 +34,9 @@ use crate::rules::layout::{ClassOrder, class_order};
 use crate::rules::logic::KindsCache;
 use crate::rules::module_variable::{ModuleVariable, module_variables};
 use crate::rules::naming::ReportedNames;
-use crate::syntax::{Nesting, all_literal, code_string_values, identifier_words, is_name, last_segment};
+use crate::syntax::{
+    Nesting, all_literal, code_string_values, identifier_words, is_name, is_type_checking_name, last_segment,
+};
 
 // What the rules memoize for a file, each part built by the first rule that reads it.
 #[derive(Default)]
@@ -62,6 +64,8 @@ pub(crate) struct FileState<'a> {
     attribute_reads: OnceCell<FxHashMap<&'a str, Vec<&'a str>>>,
     scope_nesting: OnceCell<Nesting>,
     top_level_imports: OnceCell<FxHashSet<(&'a str, Option<&'a str>)>>,
+    // The comments that stand on a line of their own, which the comment rules read in runs.
+    own_line_comments: OnceCell<Vec<TextRange>>,
 }
 
 impl<'a> FileState<'a> {
@@ -228,6 +232,18 @@ impl<'a> FileState<'a> {
 
     fn debug_fields(&self, checker: &Checker<'a>) -> &edits::DebugFields<'a> {
         self.debug_fields.get_or_init(|| edits::DebugFields::of(checker.body()))
+    }
+
+    pub(crate) fn own_line_comments(&self, checker: &Checker) -> &[TextRange] {
+        self.own_line_comments.get_or_init(|| {
+            let source = checker.source;
+            checker
+                .comment_ranges()
+                .iter()
+                .copied()
+                .filter(|range| !has_leading_content(range.start(), source))
+                .collect()
+        })
     }
 }
 
@@ -407,4 +423,9 @@ pub fn single_assignment(stmt: &Stmt) -> Option<(&ast::ExprName, Option<&Expr>, 
         _ => return None,
     };
     Some((target.as_name_expr()?, annotation, value))
+}
+
+// Ruff's test: a name `TYPE_CHECKING` by its own spelling or through `typing`, or any `.TYPE_CHECKING` attribute.
+pub(crate) fn is_type_checking(test: &Expr, checker: &Checker) -> bool {
+    is_type_checking_name(test) || (test.is_name_expr() && checker.semantic().match_typing_expr(test, "TYPE_CHECKING"))
 }

@@ -8,7 +8,6 @@ mod string_statement_comment;
 mod suppression_without_reason;
 
 use ruff_python_ast::Stmt;
-use ruff_python_trivia::has_leading_content;
 use ruff_source_file::LineRanges;
 use ruff_text_size::TextRange;
 
@@ -32,13 +31,15 @@ pub(crate) fn owns_docstring(owner: Option<&Stmt>) -> bool {
 // above. A comment with code before it on its line sits on a line of code, so it never joins a run.
 pub(crate) fn own_line_comment_runs(checker: &Checker) -> Vec<Vec<TextRange>> {
     let source = checker.source;
-    let own: Vec<TextRange> = checker
-        .comment_ranges()
-        .iter()
-        .copied()
-        .filter(|comment| !has_leading_content(comment.start(), source))
-        .collect();
-    own.chunk_by(|previous, next| source.full_line_end(previous.end()) == source.line_start(next.start()))
+    checker
+        .state()
+        .own_line_comments(checker)
+        .chunk_by(|previous, next| follows(source, *previous, *next))
         .map(<[TextRange]>::to_vec)
         .collect()
+}
+
+// Whether `next` starts on the line below the one `previous` ends on.
+pub(crate) fn follows(source: &str, previous: TextRange, next: TextRange) -> bool {
+    source.full_line_end(previous.end()) == source.line_start(next.start())
 }

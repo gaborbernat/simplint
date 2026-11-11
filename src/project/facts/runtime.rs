@@ -5,14 +5,15 @@ use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::visitor::FactVisitor;
-use crate::syntax::is_main_test;
+use crate::syntax::{is_main_test, is_type_checking_name};
 
 impl FactVisitor<'_> {
     // When the body of an `if` with this test runs, and when the clauses after it can.
     pub(super) fn branches(&self, test: &Expr) -> (Runs, Runs) {
         let name = test.as_name_expr().map(|name| name.id.as_str());
         let falsy_name = name.is_some_and(|name| self.constants.falsy.contains(name));
-        let typing_guard = is_type_checking(test) && !name.is_some_and(|name| self.constants.truthy.contains(name));
+        let typing_guard =
+            is_type_checking_name(test) && !name.is_some_and(|name| self.constants.truthy.contains(name));
         if typing_guard || is_main_test(test) || falsy_name {
             return (Runs::Never, Runs::Always);
         }
@@ -47,16 +48,6 @@ impl Runs {
             (Self::Below(..), Self::Always) => self,
             (Self::Always, _) => other,
         }
-    }
-}
-
-// Whether an `if` test is `TYPE_CHECKING`, bare or as `typing.TYPE_CHECKING`, which is false at run time. A module that
-// binds it to a true constant runs the block, so the name is an ordinary flag there.
-fn is_type_checking(test: &Expr) -> bool {
-    match test {
-        Expr::Name(name) => name.id.as_str() == "TYPE_CHECKING",
-        Expr::Attribute(attribute) => attribute.attr.as_str() == "TYPE_CHECKING",
-        _ => false,
     }
 }
 

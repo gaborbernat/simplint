@@ -1,8 +1,9 @@
-use ruff_python_ast::{self as ast, Stmt};
+use ruff_python_ast::Stmt;
 use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::api::definitions;
 use crate::rules::module_variable::{is_ply_name, uses_ply};
 use crate::rules::rename::{kept_message, rename_fix};
 use crate::syntax::{Exports, Visibility};
@@ -15,16 +16,8 @@ pub fn unexported_public_name(checker: &Checker) {
         return;
     };
     let ply = uses_ply(checker);
-    for stmt in checker.body() {
-        let identifier = match stmt {
-            Stmt::FunctionDef(ast::StmtFunctionDef { name, decorator_list, .. })
-            | Stmt::ClassDef(ast::StmtClassDef { name, decorator_list, .. })
-                if decorator_list.is_empty() =>
-            {
-                name
-            }
-            _ => continue,
-        };
+    for definition in definitions(checker.body().iter()).filter(|definition| !definition.decorated) {
+        let identifier = definition.name;
         let name = identifier.as_str();
         if Visibility::of(name) != Visibility::Public
             || is_discovered_by_name(name)
@@ -43,7 +36,7 @@ pub fn unexported_public_name(checker: &Checker) {
         }
         // Code that reads the name of a class or function, as `type(self).__name__` or `helper.__name__`, sees the new
         // name once renamed.
-        let class = matches!(stmt, Stmt::ClassDef(_));
+        let class = matches!(definition.stmt, Stmt::ClassDef(_));
         let reflected = checker.project().reads_name_of(name) || class && checker.project().reads_class_names();
         let fix = (!reflected).then(|| rename_fix(checker, name, &private)).flatten();
         checker.report_fix(

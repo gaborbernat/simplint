@@ -710,3 +710,13 @@ impl<'a> Visitor<'a> for TypeNames<'_> {
         }
     }
 }
+
+// Whether an `if` test is `TYPE_CHECKING`, bare or as `typing.TYPE_CHECKING`, which is false at run time. A module that
+// binds it to a true constant runs the block, so the name is an ordinary flag there.
+pub fn is_type_checking_name(test: &Expr) -> bool {
+    match test {
+        Expr::Name(name) => name.id.as_str() == "TYPE_CHECKING",
+        Expr::Attribute(attribute) => attribute.attr.as_str() == "TYPE_CHECKING",
+        _ => false,
+    }
+}

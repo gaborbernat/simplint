@@ -10,7 +10,7 @@ use rustc_hash::FxHashMap;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::project::computed_reads::ComputedReads;
-use crate::rules::api::references_outside;
+use crate::rules::api::{definitions, names_are_followed, references_outside};
 use crate::rules::docstrings::Need;
 use crate::rules::is_named_by_doctest;
 use crate::semantic::Evaluation;
@@ -18,29 +18,21 @@ use crate::syntax::{Visibility, identifier_words, module_statements};
 
 pub fn unused_definition(checker: &Checker) {
     let project = checker.project();
-    // An `import *` of this module hands its names to code the index cannot follow, as `unused-export` assumes too.
-    if checker.is_test_module() || project.is_star_import_source() {
+    if !names_are_followed(checker) {
         return;
     }
     let api = checker.state().public_api(checker);
     let local_reads = ComputedReads::of(checker.body());
     // Most definitions are ruled out before their name is looked up in the strings, so the words are split only then.
     let strings = LazyCell::new(|| string_words(checker));
-    for stmt in module_statements(checker.body()) {
-        let (name, range, decorated, caller) = match stmt {
-            Stmt::FunctionDef(function) => {
-                (function.name.as_str(), function.name.range(), !function.decorator_list.is_empty(), "caller")
-            }
-            Stmt::ClassDef(class) => {
-                (class.name.as_str(), class.name.range(), !class.decorator_list.is_empty(), "user")
-            }
-            _ => continue,
-        };
+    for definition in definitions(module_statements(checker.body())) {
+        let stmt = definition.stmt;
+        let name = definition.name.as_str();
         // A decorator may register the definition with something outside the run, so decorated ones are kept, and so are
         // public names a computed read may fetch.
         // An `obj.name` read may reach the definition through its module, imported under a name the index does not
         // follow, as `module = importlib.import_module(...)` binds one.
-        let unused = !decorated
+        let unused = !definition.decorated
             && !is_protocol_name(name)
             && !computed_read_hides(checker, name, &local_reads)
             && !api.covers(stmt.range(), Need::Any)
@@ -55,9 +47,10 @@ pub fn unused_definition(checker: &Checker) {
             && !matches!(stmt, Stmt::ClassDef(class) if is_hatch_hook(checker, class));
         if unused {
             if !matches!(stmt, Stmt::ClassDef(class) if left_to_ruff(checker, class, &strings)) {
+                let caller = if matches!(stmt, Stmt::ClassDef(_)) { "user" } else { "caller" };
                 checker.report(
                     Rule::UnusedDefinition,
-                    range,
+                    definition.name.range(),
                     format!("`{name}` is never used in the run; remove it or give it a {caller}"),
                 );
             }

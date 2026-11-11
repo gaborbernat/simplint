@@ -1,9 +1,9 @@
-use ruff_python_trivia::has_leading_content;
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::comments::follows;
 use crate::rules::long_paragraphs;
 
 pub fn long_paragraph(checker: &Checker) {
@@ -17,10 +17,9 @@ pub fn long_paragraph(checker: &Checker) {
         );
     };
     let mut block: Vec<TextRange> = Vec::new();
-    let comments = checker.comment_ranges().iter().copied().filter(|range| !has_leading_content(range.start(), source));
-    for range in comments {
+    for range in checker.state().own_line_comments(checker).iter().copied() {
         let continues = block.last().is_some_and(|previous| {
-            source.full_line_end(previous.end()) == source.line_start(range.start())
+            follows(source, *previous, range)
                 && previous.start() - source.line_start(previous.start())
                     == range.start() - source.line_start(range.start())
         });

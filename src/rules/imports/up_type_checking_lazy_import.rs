@@ -15,6 +15,8 @@ pub fn up_type_checking_lazy_import(checker: &Checker) {
         let Stmt::If(if_stmt) = stmt else {
             continue;
         };
+        // Only `typing`'s name is false at run time for certain: a same-named flag may be a true constant, which runs
+        // the imports today.
         if !if_stmt.elif_else_clauses.is_empty()
             || !checker.semantic().resolves_to(&if_stmt.test, &["typing", "TYPE_CHECKING"])
             || !if_stmt.body.iter().all(is_lazy_importable)
