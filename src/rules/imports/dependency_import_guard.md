@@ -187,8 +187,8 @@ A module is required when its top-level package is one of these:
       tomllib = None
   ```
 
-- **Standard library modules that exist on one platform only**, such as `fcntl`, `msvcrt` or `winreg`: the import fails
-  on the other platforms.
+- **Standard library modules that exist on one platform only**, such as `fcntl`, `msvcrt`, `winreg` or
+  `asyncio.unix_events`: the import fails on the other platforms.
 
   ```toml config
   [project]
@@ -201,6 +201,13 @@ A module is required when its top-level package is one of these:
       import fcntl
   except ImportError:
       fcntl = None
+  ```
+
+  ```python ok
+  try:
+      import asyncio.unix_events
+  except ImportError:
+      asyncio = None
   ```
 
 - **Standard library modules that minimal and alternative builds may leave out**, such as `_hashlib`, `ctypes`, `gzip`,
@@ -240,6 +247,36 @@ A module is required when its top-level package is one of these:
       import mmap
   except ImportError:
       mmap = None
+  ```
+
+- **The C accelerators CPython imports under a fallback**, such as `_json` and `_pickle`: CPython guards each of them
+  with an `ImportError` fallback of its own, so the rule does not count them as required. Other private modules, such
+  as `_thread`, are still reported, since every Python ships them.
+
+  ```toml config
+  [project]
+  name = "demo"
+  requires-python = ">=3.11"
+  ```
+
+  ```python ok
+  try:
+      import _json
+  except ImportError:
+      _json = None
+  ```
+
+  ```toml config
+  [project]
+  name = "demo"
+  requires-python = ">=3.11"
+  ```
+
+  ```python report
+  try:
+      import _thread
+  except ImportError:
+      _thread = None
   ```
 
 - **CPython's test extensions**, such as `_testcapi`: only builds made for CPython's own test suite include them, so the

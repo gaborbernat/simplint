@@ -732,3 +732,23 @@ fn dependency_import_guard_keeps_a_guard_with_a_comment(guard: &str, fixable: bo
     common::fix_unsafe(root.path(), "SMP303");
     assert_eq!(common::read(root.path(), "mod.py").contains("except ImportError"), !fixable);
 }
+
+// A platform-only module raises `ImportError` on the other platforms, and CPython guards its C accelerators with a
+// fallback, so a guard around them is legitimate. Other private modules, such as `_thread`, ship with every Python.
+#[test_case("asyncio.unix_events", "asyncio", 0 ; "asyncio_unix_events")]
+#[test_case("multiprocessing.popen_forkserver", "multiprocessing", 0 ; "multiprocessing_popen_forkserver")]
+#[test_case("_pickle", "_pickle", 0 ; "accelerator_pickle")]
+#[test_case("_json", "_json", 0 ; "accelerator_json")]
+#[test_case("json", "json", 1 ; "ordinary_module")]
+#[test_case("_thread", "_thread", 1 ; "private_thread")]
+#[test_case("_collections_abc", "_collections_abc", 1 ; "private_collections_abc")]
+#[test_case("_io", "_io", 1 ; "private_io")]
+#[test_case("_weakref", "_weakref", 1 ; "private_weakref")]
+#[test_case("concurrent.futures._base", "concurrent", 1 ; "private_submodule_base")]
+#[test_case("importlib._bootstrap", "importlib", 1 ; "private_submodule_bootstrap")]
+fn dependency_import_guard_ignores_platform_and_accelerator_modules(module: &str, name: &str, reports: usize) {
+    let root =
+        common::project(&[("mod.py", &format!("try:\n    import {module}\nexcept ImportError:\n    {name} = None\n"))]);
+    let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP303"]).1;
+    assert_eq!(stdout.matches("SMP303").count(), reports, "{stdout}");
+}
