@@ -56,6 +56,40 @@ fn duplicate_block_repeated_in_pieces_names_each_repeating_file_once() {
     ));
 }
 
+const DUP_BLOCK: &str = "def run(items):\n    total = 0\n    for item in items:\n        total += item\n    count = len(items)\n    mean = total / count\n    spread = max(items) - min(items)\n    label = f\"{mean}:{spread}\"\n    print(label)\n";
+const DUP_EXTRA: &str = "    extra = label.upper()\n    more = extra.lower()\n    again = more.title()\n    final = again.strip()\n    return final\n";
+
+// Each file names the first three other files in sorted order, one place each, and counts the rest. A later statement
+// that only two files share does not make a file a partner of the whole block, nor name it at that later line.
+#[test]
+fn repeated_block_names_three_files_one_place_each() {
+    let repeated = (1..=4)
+        .map(|n| format!("{}\n\n", DUP_BLOCK.replace("def run(", &format!("def run{n}("))))
+        .collect::<Vec<_>>()
+        .concat();
+    let longer = format!("{DUP_BLOCK}{DUP_EXTRA}");
+    let root = project(&[
+        ("a.py", repeated.as_str()),
+        ("b.py", DUP_BLOCK),
+        ("c.py", DUP_BLOCK),
+        ("d.py", DUP_BLOCK),
+        ("e.py", DUP_BLOCK),
+        ("f.py", DUP_BLOCK),
+        ("g.py", longer.as_str()),
+        ("h.py", longer.as_str()),
+    ]);
+    let stdout = check(root.path(), &["--select", "SMP530"]).1;
+    assert!(stdout.contains(
+        "b.py:2:5: SMP530 These statements repeat in `a.py:2`, `c.py:2`, `d.py:2`, and 4 more; move them into one definition \
+         the modules share\n"
+    ));
+    assert!(stdout.contains(
+        "g.py:2:5: SMP530 These statements repeat in `a.py:2`, `b.py:2`, `c.py:2`, and 4 more; move them into one definition \
+         the modules share\n"
+    ));
+    assert!(!stdout.contains("h.py:5"), "{stdout}");
+}
+
 #[test]
 fn package_outside_the_source_roots_resolves_from_its_parent() {
     let root = project(&[

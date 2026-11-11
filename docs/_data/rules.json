@@ -20644,7 +20644,7 @@
     "name": "duplicate-code",
     "summary": "Statements that another module repeats",
     "fix": "None",
-    "explanation": "Flags six or more statements in a row that another module repeats.\n\n## Why is this bad?\n\nCopied code drifts. A fix or a change lands in one copy and not the other, and nothing says the two were ever the same.\nOne definition that both modules call keeps a single place to change.\n\nIn the example below, `reader.py` and `writer.py` each define the same six statements.\n\n## Example\n\n```python report file=reader.py\ndef parse_lines(text):\n    lines = text.splitlines()\n    values = {}\n    for line in lines:\n        key, _, value = line.partition(\"=\")\n        values[key] = value\n    count = len(values)\n    if count == 0:\n        raise ValueError(\"no values\")\n    return values, count\n```\n\n```python report file=writer.py\ndef parse_lines(text):\n    lines = text.splitlines()\n    values = {}\n    for line in lines:\n        key, _, value = line.partition(\"=\")\n        values[key] = value\n    count = len(values)\n    if count == 0:\n        raise ValueError(\"no values\")\n    return values, count\n```\n\nMove the parser into one module that both import:\n\n```python context file=parsing.py\ndef parse_lines(text):\n    lines = text.splitlines()\n    values = {}\n    for line in lines:\n        key, _, value = line.partition(\"=\")\n        values[key] = value\n    count = len(values)\n    if count == 0:\n        raise ValueError(\"no values\")\n    return values, count\n```\n\n```python ok file=reader.py\nfrom parsing import parse_lines\n```\n\n## Configuration\n\n- [`logic.min-duplicate-statements`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#logic)\n  in `[tool.simplint]`: the fewest statements in a row another module must repeat, 6 by default, such as\n  `min-duplicate-statements = 4` under `[tool.simplint.logic]`\n\n  ```toml config\n  [tool.simplint.logic]\n  min-duplicate-statements = 4\n  ```\n\n  ```python context file=first.py\n  def run(items):\n      total = sum(items)\n      count = len(items)\n      log(total)\n      return total, count\n  ```\n\n  ```python report file=second.py\n  def run(items):\n      total = sum(items)\n      count = len(items)\n      log(total)\n      return total, count\n  ```\n\n  Six is where the copies on CPython's standard library turn from boilerplate to code worth sharing: at four and five\n  statements most reports are the generated codec classes of `encodings`, and at eight the copied file classes of `bz2`\n  and `lzma` go unreported.\n\n## Conflicts with Ruff\n\nRuff has no rule for repeated code, so the two do not overlap.\n\n## What it does\n\nsimplint compares the statements of every body of every module of the run, and reports a run of\n`min-duplicate-statements` statements or more that another module holds too. Overlapping copies make one block, reported\nonce in each module on its first statement, and a block inside another one, as the body of a function the outer block\nholds, is left to the outer one. The report names the other modules where their copy starts: up to three, then a count\nof the rest.\n\nStatements match when their tokens match, and the blocks they nest in match too, so the same statements under another\n`if` do not. Comments, layout, indentation width, imports and docstrings do not count. Identifiers and literals must\nmatch exactly, so a copy with a renamed variable does not match. Statements are compared by a hash of their tokens first\nand by the tokens themselves before a report, so two different statements whose hashes collide never match.\n\n### Active on\n\n- **Six consecutive statements of one body** that another module repeats, at any depth, such as the body of a function,\n  a method or an `if` block. A nested block, such as a `for` loop, counts as one statement.\n\n  ```python context file=first.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n  ```python report file=second.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n### Exceptions\n\n- **Separate distributions in one repository**: files are compared within the distribution identified by their nearest\n  project metadata. For example, code repeated in two workspace members with separate `[project]` tables is not reported\n  across those members. Repeats within either member are still reported.\n\n- **Repeats inside one module**, which pylint's duplicate check does not compare either.\n\n  ```python ok file=twice.py\n  def first(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n\n\n  def second(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n- **Test modules**, which the run tells by their names and the `tests` and `test` directories of the project. Tests\n  repeat their setup and checks so each test reads on its own, and copy the code they test to compare against it. Stub\n  files are not compared either, since stubs repeat each other's signatures by design.\n\n  ```python context file=tests/test_first.py\n  def test_run():\n      total = 0\n      for item in ITEMS:\n          total += item\n      count = len(ITEMS)\n      log(total)\n      log(count)\n      assert total\n  ```\n\n  ```python ok file=tests/test_second.py\n  def test_run():\n      total = 0\n      for item in ITEMS:\n          total += item\n      count = len(ITEMS)\n      log(total)\n      log(count)\n      assert total\n  ```\n\n- **Nested test projects**, which are directories named `test*`, or inside one, that hold a project of their own with a\n  `conf.py`, `pyproject.toml`, `setup.py` or `setup.cfg`, such as each `roots/test-*` project of Sphinx's test suite. A\n  nested project repeats code by design, so its modules are compared with each other only, never with another nested\n  project or the rest of the run. Repeats within one nested project are still reported.\n\n  ```python context file=roots/test-first/conf.py\n  project = \"first\"\n  ```\n\n  ```python context file=roots/test-first/parser.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n  ```python context file=roots/test-second/conf.py\n  project = \"second\"\n  ```\n\n  ```python ok file=roots/test-second/parser.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n- **Runs shorter than `min-duplicate-statements`**, which are too short to report.\n\n  ```python context file=short_first.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      return total, count\n  ```\n\n  ```python ok file=short_second.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      return total, count\n  ```\n\n### Undetected cases\n\nCode repeated with renamed identifiers, changed literals or reordered statements does not match.\n\n### Fix\n\nsimplint offers no fix: the right shared definition depends on the code around the copies.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#17724](https://github.com/astral-sh/ruff/issues/17724).\n- [pylint](https://github.com/pylint-dev/pylint) reports similar lines repeated across modules as\n  [duplicate-code](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/duplicate-code.html), with no\n  fix.\n",
+    "explanation": "Flags six or more statements in a row that another module repeats.\n\n## Why is this bad?\n\nCopied code drifts. A fix or a change lands in one copy and not the other, and nothing says the two were ever the same.\nOne definition that both modules call keeps a single place to change.\n\nIn the example below, `reader.py` and `writer.py` each define the same six statements.\n\n## Example\n\n```python report file=reader.py\ndef parse_lines(text):\n    lines = text.splitlines()\n    values = {}\n    for line in lines:\n        key, _, value = line.partition(\"=\")\n        values[key] = value\n    count = len(values)\n    if count == 0:\n        raise ValueError(\"no values\")\n    return values, count\n```\n\n```python report file=writer.py\ndef parse_lines(text):\n    lines = text.splitlines()\n    values = {}\n    for line in lines:\n        key, _, value = line.partition(\"=\")\n        values[key] = value\n    count = len(values)\n    if count == 0:\n        raise ValueError(\"no values\")\n    return values, count\n```\n\nMove the parser into one module that both import:\n\n```python context file=parsing.py\ndef parse_lines(text):\n    lines = text.splitlines()\n    values = {}\n    for line in lines:\n        key, _, value = line.partition(\"=\")\n        values[key] = value\n    count = len(values)\n    if count == 0:\n        raise ValueError(\"no values\")\n    return values, count\n```\n\n```python ok file=reader.py\nfrom parsing import parse_lines\n```\n\n## Configuration\n\n- [`logic.min-duplicate-statements`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#logic)\n  in `[tool.simplint]`: the fewest statements in a row another module must repeat, 6 by default, such as\n  `min-duplicate-statements = 4` under `[tool.simplint.logic]`\n\n  ```toml config\n  [tool.simplint.logic]\n  min-duplicate-statements = 4\n  ```\n\n  ```python context file=first.py\n  def run(items):\n      total = sum(items)\n      count = len(items)\n      log(total)\n      return total, count\n  ```\n\n  ```python report file=second.py\n  def run(items):\n      total = sum(items)\n      count = len(items)\n      log(total)\n      return total, count\n  ```\n\n  Six is where the copies on CPython's standard library turn from boilerplate to code worth sharing: at four and five\n  statements most reports are the generated codec classes of `encodings`, and at eight the copied file classes of `bz2`\n  and `lzma` go unreported.\n\n## Conflicts with Ruff\n\nRuff has no rule for repeated code, so the two do not overlap.\n\n## What it does\n\nsimplint compares the statements of every body of every module of the run, and reports a run of\n`min-duplicate-statements` statements or more that another module holds too. Overlapping copies make one block, reported\nonce in each module on its first statement, and a block inside another one, as the body of a function the outer block\nholds, is left to the outer one. The report names the other modules where their copy starts: up to three, then a count\nof the rest.\n\nStatements match when their tokens match, and the blocks they nest in match too, so the same statements under another\n`if` do not. Comments, layout, indentation width, imports and docstrings do not count. Identifiers and literals must\nmatch exactly, so a copy with a renamed variable does not match. Statements are compared by a hash of their tokens first\nand by the tokens themselves before a report, so two different statements whose hashes collide never match.\n\n### Active on\n\n- **Six consecutive statements of one body** that another module repeats, at any depth, such as the body of a function,\n  a method or an `if` block. A nested block, such as a `for` loop, counts as one statement.\n\n  ```python context file=first.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n  ```python report file=second.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n- **Several modules repeat the block**: the report names the first three other modules in sorted order, one place each,\n  and counts the rest.\n\n  ```python report file=alpha.py\n  def run(items):\n      total = sum(items)\n      count = len(items)\n      log(total)\n      log(count)\n      checked = total > 0\n      return checked\n  ```\n\n  ```python context file=beta.py\n  def run(items):\n      total = sum(items)\n      count = len(items)\n      log(total)\n      log(count)\n      checked = total > 0\n      return checked\n  ```\n\n  ```python context file=delta.py\n  def run(items):\n      total = sum(items)\n      count = len(items)\n      log(total)\n      log(count)\n      checked = total > 0\n      return checked\n  ```\n\n  ```python context file=epsilon.py\n  def run(items):\n      total = sum(items)\n      count = len(items)\n      log(total)\n      log(count)\n      checked = total > 0\n      return checked\n  ```\n\n  ```python context file=gamma.py\n  def run(items):\n      total = sum(items)\n      count = len(items)\n      log(total)\n      log(count)\n      checked = total > 0\n      return checked\n  ```\n\n### Exceptions\n\n- **Separate distributions in one repository**: files are compared within the distribution identified by their nearest\n  project metadata. For example, code repeated in two workspace members with separate `[project]` tables is not reported\n  across those members. Repeats within either member are still reported.\n\n- **Repeats inside one module**, which pylint's duplicate check does not compare either.\n\n  ```python ok file=twice.py\n  def first(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n\n\n  def second(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n- **Test modules**, which the run tells by their names and the `tests` and `test` directories of the project. Tests\n  repeat their setup and checks so each test reads on its own, and copy the code they test to compare against it. Stub\n  files are not compared either, since stubs repeat each other's signatures by design.\n\n  ```python context file=tests/test_first.py\n  def test_run():\n      total = 0\n      for item in ITEMS:\n          total += item\n      count = len(ITEMS)\n      log(total)\n      log(count)\n      assert total\n  ```\n\n  ```python ok file=tests/test_second.py\n  def test_run():\n      total = 0\n      for item in ITEMS:\n          total += item\n      count = len(ITEMS)\n      log(total)\n      log(count)\n      assert total\n  ```\n\n- **Nested test projects**, which are directories named `test*`, or inside one, that hold a project of their own with a\n  `conf.py`, `pyproject.toml`, `setup.py` or `setup.cfg`, such as each `roots/test-*` project of Sphinx's test suite. A\n  nested project repeats code by design, so its modules are compared with each other only, never with another nested\n  project or the rest of the run. Repeats within one nested project are still reported.\n\n  ```python context file=roots/test-first/conf.py\n  project = \"first\"\n  ```\n\n  ```python context file=roots/test-first/parser.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n  ```python context file=roots/test-second/conf.py\n  project = \"second\"\n  ```\n\n  ```python ok file=roots/test-second/parser.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      log(total)\n      log(count)\n      return total\n  ```\n\n- **Runs shorter than `min-duplicate-statements`**, which are too short to report.\n\n  ```python context file=short_first.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      return total, count\n  ```\n\n  ```python ok file=short_second.py\n  def run(items):\n      total = 0\n      for item in items:\n          total += item\n      count = len(items)\n      return total, count\n  ```\n\n### Undetected cases\n\nCode repeated with renamed identifiers, changed literals or reordered statements does not match.\n\n### Fix\n\nsimplint offers no fix: the right shared definition depends on the code around the copies.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#17724](https://github.com/astral-sh/ruff/issues/17724).\n- [pylint](https://github.com/pylint-dev/pylint) reports similar lines repeated across modules as\n  [duplicate-code](https://pylint.readthedocs.io/en/latest/user_guide/messages/refactor/duplicate-code.html), with no\n  fix.\n",
     "examples": {
       "parsed": [
         {
@@ -20757,8 +20757,61 @@
         },
         {
           "section": "What it does",
-          "line": 140,
-          "end_line": 159,
+          "line": 135,
+          "end_line": 183,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "alpha.py",
+              "named": true,
+              "line": 135,
+              "end_line": 143,
+              "source": "def run(items):\n    total = sum(items)\n    count = len(items)\n    log(total)\n    log(count)\n    checked = total > 0\n    return checked\n"
+            },
+            {
+              "role": "context",
+              "language": "python",
+              "file": "beta.py",
+              "named": true,
+              "line": 145,
+              "end_line": 153,
+              "source": "def run(items):\n    total = sum(items)\n    count = len(items)\n    log(total)\n    log(count)\n    checked = total > 0\n    return checked\n"
+            },
+            {
+              "role": "context",
+              "language": "python",
+              "file": "delta.py",
+              "named": true,
+              "line": 155,
+              "end_line": 163,
+              "source": "def run(items):\n    total = sum(items)\n    count = len(items)\n    log(total)\n    log(count)\n    checked = total > 0\n    return checked\n"
+            },
+            {
+              "role": "context",
+              "language": "python",
+              "file": "epsilon.py",
+              "named": true,
+              "line": 165,
+              "end_line": 173,
+              "source": "def run(items):\n    total = sum(items)\n    count = len(items)\n    log(total)\n    log(count)\n    checked = total > 0\n    return checked\n"
+            },
+            {
+              "role": "context",
+              "language": "python",
+              "file": "gamma.py",
+              "named": true,
+              "line": 175,
+              "end_line": 183,
+              "source": "def run(items):\n    total = sum(items)\n    count = len(items)\n    log(total)\n    log(count)\n    checked = total > 0\n    return checked\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 193,
+          "end_line": 212,
           "config": null,
           "blocks": [
             {
@@ -20766,16 +20819,16 @@
               "language": "python",
               "file": "twice.py",
               "named": true,
-              "line": 140,
-              "end_line": 159,
+              "line": 193,
+              "end_line": 212,
               "source": "def first(items):\n    total = 0\n    for item in items:\n        total += item\n    count = len(items)\n    log(total)\n    log(count)\n    return total\n\n\ndef second(items):\n    total = 0\n    for item in items:\n        total += item\n    count = len(items)\n    log(total)\n    log(count)\n    return total\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 165,
-          "end_line": 185,
+          "line": 218,
+          "end_line": 238,
           "config": null,
           "blocks": [
             {
@@ -20783,8 +20836,8 @@
               "language": "python",
               "file": "tests/test_first.py",
               "named": true,
-              "line": 165,
-              "end_line": 174,
+              "line": 218,
+              "end_line": 227,
               "source": "def test_run():\n    total = 0\n    for item in ITEMS:\n        total += item\n    count = len(ITEMS)\n    log(total)\n    log(count)\n    assert total\n"
             },
             {
@@ -20792,16 +20845,16 @@
               "language": "python",
               "file": "tests/test_second.py",
               "named": true,
-              "line": 176,
-              "end_line": 185,
+              "line": 229,
+              "end_line": 238,
               "source": "def test_run():\n    total = 0\n    for item in ITEMS:\n        total += item\n    count = len(ITEMS)\n    log(total)\n    log(count)\n    assert total\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 192,
-          "end_line": 220,
+          "line": 245,
+          "end_line": 273,
           "config": null,
           "blocks": [
             {
@@ -20809,8 +20862,8 @@
               "language": "python",
               "file": "roots/test-first/conf.py",
               "named": true,
-              "line": 192,
-              "end_line": 194,
+              "line": 245,
+              "end_line": 247,
               "source": "project = \"first\"\n"
             },
             {
@@ -20818,8 +20871,8 @@
               "language": "python",
               "file": "roots/test-first/parser.py",
               "named": true,
-              "line": 196,
-              "end_line": 205,
+              "line": 249,
+              "end_line": 258,
               "source": "def run(items):\n    total = 0\n    for item in items:\n        total += item\n    count = len(items)\n    log(total)\n    log(count)\n    return total\n"
             },
             {
@@ -20827,8 +20880,8 @@
               "language": "python",
               "file": "roots/test-second/conf.py",
               "named": true,
-              "line": 207,
-              "end_line": 209,
+              "line": 260,
+              "end_line": 262,
               "source": "project = \"second\"\n"
             },
             {
@@ -20836,16 +20889,16 @@
               "language": "python",
               "file": "roots/test-second/parser.py",
               "named": true,
-              "line": 211,
-              "end_line": 220,
+              "line": 264,
+              "end_line": 273,
               "source": "def run(items):\n    total = 0\n    for item in items:\n        total += item\n    count = len(items)\n    log(total)\n    log(count)\n    return total\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 224,
-          "end_line": 240,
+          "line": 277,
+          "end_line": 293,
           "config": null,
           "blocks": [
             {
@@ -20853,8 +20906,8 @@
               "language": "python",
               "file": "short_first.py",
               "named": true,
-              "line": 224,
-              "end_line": 231,
+              "line": 277,
+              "end_line": 284,
               "source": "def run(items):\n    total = 0\n    for item in items:\n        total += item\n    count = len(items)\n    return total, count\n"
             },
             {
@@ -20862,8 +20915,8 @@
               "language": "python",
               "file": "short_second.py",
               "named": true,
-              "line": 233,
-              "end_line": 240,
+              "line": 286,
+              "end_line": 293,
               "source": "def run(items):\n    total = 0\n    for item in items:\n        total += item\n    count = len(items)\n    return total, count\n"
             }
           ]
