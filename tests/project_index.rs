@@ -2356,6 +2356,45 @@ fn import_only_called_through_keeps_other_test_only_names() {
     );
 }
 
+const MAIL: &str = "def send(address: str, urgent: bool = False) -> str:\n    return f\"{address}:{urgent}\"\n";
+const PLAIN: &str = "from app.mail import send\n\n\ndef notify(address: str) -> str:\n    return send(address)\n";
+const SERVICE: &str =
+    "from app.mail import send\n\n\ndef escalate(address: str) -> str:\n    return send(address, urgent=True)\n";
+const PROGRAM_SERVICE: &str = "from app.mail import send\n\n\ndef escalate(address: str) -> str:\n    return send(address, urgent=True)\n\n\nif __name__ == \"__main__\":\n    print(escalate(\"x\"))\n";
+
+// A module a star import or a `__main__` guard runs is production code, so its calls to `send` are production calls, not
+// the calls of a test that imports it.
+#[test_case(
+    "from app.plain import notify\nfrom app.service import *\n\nprint(notify(\"x\"), escalate(\"x\"))\n",
+    SERVICE,
+    "All checks passed!\n" ;
+    "star_imported_by_program"
+)]
+#[test_case("from app.plain import notify\n\nprint(notify(\"x\"))\n", PROGRAM_SERVICE, "All checks passed!\n" ; "guard_runs_as_program")]
+#[test_case(
+    "from app.plain import notify\n\nprint(notify(\"x\"))\n",
+    SERVICE,
+    "app/mail.py:1:24: SMP410 Only tests pass `urgent` to `send`; production calls leave it at its default\nFound 1 error.\n" ;
+    "imported_only_by_tests"
+)]
+fn module_run_as_a_program_makes_production_calls(main: &str, service: &str, stdout: &str) {
+    let root = project(&[
+        ("app/__init__.py", ""),
+        ("app/__main__.py", main),
+        ("app/mail.py", MAIL),
+        ("app/plain.py", PLAIN),
+        ("app/service.py", service),
+        (
+            "tests/test_service.py",
+            "from app.service import escalate\n\n\ndef test_escalate() -> None:\n    assert escalate(\"a\") == \"a:True\"\n",
+        ),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP410"]).1,
+        stdout.replace("app/", &format!("app{}", std::path::MAIN_SEPARATOR_STR))
+    );
+}
+
 // The value load only hides the module's test-only names from SMP408. SMP401 still lists a name that production imports.
 #[test_case("from pkg import fast\n\nCODEC = fast\n", "All checks passed!\n" ; "module_loaded_as_value")]
 #[test_case(

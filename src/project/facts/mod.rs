@@ -9,6 +9,7 @@ mod visitor;
 pub(crate) use visitor::doctest_code;
 
 use crate::project::computed_reads::ComputedReads;
+use crate::syntax::is_main_guard;
 use std::collections::BTreeSet;
 use std::hash::Hasher;
 use std::mem::take;
@@ -73,6 +74,8 @@ pub struct FileFacts {
     // The modules among those names the file loads as a value, as `fast` in `codec = fast` does, which a call through
     // the value reaches with no attribute read of the module's names.
     pub(super) module_values: Vec<String>,
+    // Whether the module has an `if __name__ == "__main__":` block, which runs it as a program.
+    pub(super) main_guard: bool,
     // The names the module's top-level statements define, which a module without `__all__` exports.
     pub(super) defined: Vec<String>,
     pub(super) attribute_writes: AttributeWrites,
@@ -246,6 +249,7 @@ impl FileFacts {
             },
             bindings,
             module_values,
+            main_guard: parsed.syntax().body.iter().any(is_main_guard),
             module_names,
             defined,
             attribute_writes,

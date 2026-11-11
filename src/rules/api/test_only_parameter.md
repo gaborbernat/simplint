@@ -124,6 +124,81 @@ unpacks `**kwargs`, which may pass any keyword.
       send("a@b.c", urgent=True)
   ```
 
+- **Modules a program runs**: a module with an `if __name__ == "__main__":` block, or one that production code
+  star-imports, runs as production code even when a test imports it, so its calls count as production calls.
+
+  ```python context file=app/notify.py
+  from app.mail import send
+
+
+  def notify(address: str) -> None:
+      send(address)
+  ```
+
+  ```python ok file=app/mail.py
+  def send(address: str, urgent: bool = False) -> None:
+      print(address, urgent)
+  ```
+
+  ```python context file=app/service.py
+  from app.mail import send
+
+
+  def escalate(address: str) -> None:
+      send(address, urgent=True)
+
+
+  if __name__ == "__main__":
+      escalate("a@b.c")
+  ```
+
+  ```python context file=tests/test_service.py
+  from app.service import escalate
+
+
+  def test_escalate() -> None:
+      escalate("a@b.c")
+  ```
+
+- **Modules production code star-imports**: a module that a star import of production code reads runs as production code
+  too, so its calls count as production calls.
+
+  ```python context file=app/notify.py
+  from app.mail import send
+
+
+  def notify(address: str) -> None:
+      send(address)
+  ```
+
+  ```python ok file=app/mail.py
+  def send(address: str, urgent: bool = False) -> None:
+      print(address, urgent)
+  ```
+
+  ```python context file=app/service.py
+  from app.mail import send
+
+
+  def escalate(address: str) -> None:
+      send(address, urgent=True)
+  ```
+
+  ```python context file=app/__main__.py
+  from app.service import *
+
+
+  escalate("a@b.c")
+  ```
+
+  ```python context file=tests/test_service.py
+  from app.service import escalate
+
+
+  def test_escalate() -> None:
+      escalate("a@b.c")
+  ```
+
 - **Functions with no production call**: a function only tests call is test support, which `test-only-code` reports
   instead.
 

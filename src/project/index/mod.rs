@@ -339,7 +339,12 @@ impl Project {
         let plugin_names = coverage_plugin_names(resolver, coverage_plugins);
         let (loaded, startup_reads) = startup_entries(resolver, startup);
         entry_names.extend(startup_reads);
-        let entries: FxHashSet<FileId> = entry_names.iter().map(|(file, _)| *file).chain(loaded).collect();
+        let entries: FxHashSet<FileId> = entry_names
+            .iter()
+            .map(|(file, _)| *file)
+            .chain(loaded)
+            .chain(indexed.iter().filter(|(_, facts)| facts.main_guard).map(|(id, _)| *id))
+            .collect();
         let test_support = test_support(&importers(&indexed, resolver), &test_modules, &entries);
         let Gathered {
             mut imported,
@@ -752,7 +757,8 @@ fn importers(files: &[(FileId, &FileFacts)], resolver: &ImportResolver) -> FxHas
     let mut importers: FxHashMap<FileId, FxHashSet<FileId>> = FxHashMap::default();
     for (id, _) in files {
         let module = &resolver.modules[id];
-        for (file, _) in module.imports.iter().chain(&module.references) {
+        // A star import uses the names of the module it reads, as a named import does.
+        for file in module.imports.iter().chain(&module.references).map(|(file, _)| file).chain(&module.stars) {
             importers.entry(*file).or_default().insert(*id);
         }
     }
@@ -761,7 +767,7 @@ fn importers(files: &[(FileId, &FileFacts)], resolver: &ImportResolver) -> FxHas
 
 // The modules that only test modules, or modules found this way, import: helpers such as a `testing/fixtures.py`, whose
 // calls are test code though its path does not say so. An entry point or a module a `.pth` file loads runs without an
-// import, so it is never one.
+// import, and a module with a `__main__` guard runs as a program, so none of them is one.
 fn test_support(
     importers: &FxHashMap<FileId, FxHashSet<FileId>>,
     test_modules: &FxHashSet<FileId>,
