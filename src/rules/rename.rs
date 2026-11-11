@@ -5,7 +5,6 @@ use std::borrow::Cow;
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast as ast;
 use ruff_python_stdlib::builtins::is_python_builtin;
-use ruff_python_stdlib::identifiers::is_identifier;
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::FxHashSet;
 
@@ -33,7 +32,6 @@ pub fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
     let ranges = checker.semantic().name_ranges(old);
     // A module name that shadows a builtin, as in `zip = zip`, shares its token with the builtin it reads.
     if is_offered(checker, old)
-        || !is_identifier(new)
         || checker.name_token_count(new) > 0
         || is_python_builtin(old, checker.settings.from_ruff.target_version.minor, false)
         || checker.project().is_used_elsewhere(old)
