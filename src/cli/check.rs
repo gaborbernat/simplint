@@ -1,5 +1,4 @@
-// `simplint check`: the CLI flow, the settings and file listings it prints, and the exit status. The run itself lives in
-// `run`.
+// The `simplint check` flow: the settings and file listings it prints, and the exit status.
 use std::io::{BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
 
@@ -23,8 +22,6 @@ use crate::run::{
 };
 use crate::settings::{FileSettings, Settings};
 
-// `ruff check`'s flow: resolve both configurations, decide the fix mode, lint every file in parallel, print, and pick
-// the exit status.
 pub(crate) fn check(cli: &CheckCommand, global_options: &GlobalConfigArgs) -> Result<ExitStatus> {
     let log_level = global_options.log_level();
     let resolved = Resolved::new(cli, global_options)?;
@@ -79,8 +76,7 @@ pub(crate) fn check(cli: &CheckCommand, global_options: &GlobalConfigArgs) -> Re
                 SuppressionKind::Noqa => "noqa directive",
                 SuppressionKind::Ignore => "ignore comment",
             };
-            let plural = if modifications == 1 { "" } else { "s" };
-            eprintln!("Added {modifications} {noun}{plural}.");
+            eprintln!("Added {modifications} {noun}{}.", if modifications == 1 { "" } else { "s" });
         }
         return Ok(ExitStatus::Success);
     }
@@ -103,10 +99,10 @@ pub(crate) fn check(cli: &CheckCommand, global_options: &GlobalConfigArgs) -> Re
         let usage = CacheUse::new(cli.no_cache, &mode, None);
         return watch(cli, global_options, &files, resolved, &usage, &printer, writer);
     }
-    let usage = CacheUse::new(cli.no_cache, &mode, printer.full_display());
     let mut diagnostics = if is_stdin {
         check_standard_input(cli, &resolved, &mode)?
     } else {
+        let usage = CacheUse::new(cli.no_cache, &mode, printer.full_display());
         check_files(&files, &resolved, &mode, &usage, Ending::Exit)?
     };
     diagnostics.inner.sort_by(Diagnostic::ruff_start_ordering);
@@ -142,19 +138,6 @@ fn reads_stdin(cli: &CheckCommand) -> bool {
     true
 }
 
-// The source comes from standard input, which is linted as the file it stands for, and whatever the fixes or the diff
-// write goes to standard output.
-fn check_standard_input(cli: &CheckCommand, resolved: &Resolved, mode: &Mode) -> Result<Diagnostics> {
-    let mut source = String::new();
-    std::io::stdin().read_to_string(&mut source)?;
-    let path = cli.stdin_filename.clone().unwrap_or_else(|| PathBuf::from("-"));
-    let stdin = check_stdin(&path, &source, resolved, mode)?;
-    if let Some(output) = stdin.output {
-        std::io::stdout().lock().write_all(output.as_bytes())?;
-    }
-    Ok(stdin.diagnostics)
-}
-
 fn show_settings(files: &[PathBuf], resolved: &Resolved, writer: &mut dyn Write) -> Result<()> {
     let Discovered { python, resolver, missing, .. } = discover(files, resolved)?;
     warn_missing(&missing);
@@ -167,8 +150,7 @@ fn show_settings(files: &[PathBuf], resolved: &Resolved, writer: &mut dyn Write)
         writeln!(writer, "Settings path: {:?}", settings_path.display().to_string())?;
     }
     let target_version = FileSettings::new(&settings, resolver.resolve(path), path).from_ruff.target_version;
-    let cache_dir = resolved.cache_dir.as_deref().map(cache::directory);
-    write_settings(writer, &settings, target_version, cache_dir.as_deref())?;
+    write_settings(writer, &settings, target_version, resolved.cache_dir.as_deref().map(cache::directory).as_deref())?;
     Ok(())
 }
 
@@ -247,6 +229,18 @@ fn show_files(files: &[PathBuf], resolved: &Resolved, writer: &mut dyn Write) ->
         writeln!(writer, "{}", path.to_string_lossy())?;
     }
     Ok(())
+}
+
+// The source comes from standard input, which is linted as the file it stands for.
+fn check_standard_input(cli: &CheckCommand, resolved: &Resolved, mode: &Mode) -> Result<Diagnostics> {
+    let mut source = String::new();
+    std::io::stdin().read_to_string(&mut source)?;
+    let path = cli.stdin_filename.clone().unwrap_or_else(|| PathBuf::from("-"));
+    let stdin = check_stdin(&path, &source, resolved, mode)?;
+    if let Some(output) = stdin.output {
+        std::io::stdout().lock().write_all(output.as_bytes())?;
+    }
+    Ok(stdin.diagnostics)
 }
 
 fn exit_status(cli: &CheckCommand, diagnostics: &Diagnostics, fix_only: bool) -> ExitStatus {
