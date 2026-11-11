@@ -13,6 +13,7 @@ use crate::lint::Linter;
 use crate::project::cache::FileKey;
 use crate::project::{DocReferences, External, FileFacts, ImportResolver, IndexInputs, Parts, Project, SearchRoots};
 use crate::run::cache::Cache;
+use crate::syntax::identifier_words;
 
 // One discovered Python file, with its linter, and its package's cache with its key when the cache is on.
 pub(super) struct DiscoveredFile<'a> {
@@ -241,8 +242,7 @@ struct Words(Vec<u64>);
 impl Words {
     fn of(path: &Path, overlay: &Overlay) -> Self {
         let source = overlay.source(path).unwrap_or_default();
-        let mut hashes: Vec<u64> =
-            source.split(|char: char| !(char.is_alphanumeric() || char == '_')).map(word_hash).collect();
+        let mut hashes: Vec<u64> = identifier_words(&source).map(word_hash).collect();
         hashes.sort_unstable();
         hashes.dedup();
         Self(hashes)
