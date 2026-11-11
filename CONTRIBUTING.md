@@ -173,6 +173,7 @@ Choose an installed Python version if 3.15 is unavailable. Tox skips missing int
 1. Add the rule's Markdown page next to its file, `src/rules/<family>/<rule_name>.md`, with these sections:
    - What it does, Why is this bad?, Example and Fix safety
    - Options, listing the settings the rule reads
+   - Ruff overlap, when a Ruff rule reports some of the rule's cases
    - Conflicts with Ruff, when a Ruff rule contradicts it
 1. Add a fixture named after the rule under `tests/fixtures/<family>/<rule_name>/` and a `test_case` row in the matching
    `tests/rules/<family>.rs`, then accept the snapshot with `cargo insta test --accept` and review it.
