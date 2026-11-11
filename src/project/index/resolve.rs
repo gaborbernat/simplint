@@ -205,7 +205,10 @@ pub(super) fn class_home<'b>(
     for (importer, source) in stars {
         starred.entry(*importer).or_default().push(*source);
     }
-    let memoize = acyclic(bindings, stars);
+    let acyclic: FxHashSet<FileId> =
+        acyclic_order(bindings.iter().map(|(importer, source, _)| (*importer, *source)).chain(stars.iter().copied()))
+            .into_iter()
+            .collect();
     let known: RefCell<FxHashMap<(FileId, String), Option<ClassKey>>> = RefCell::default();
     move |file: FileId, name: &str| -> Option<ClassKey> {
         let mut pending: Vec<(Node, Option<Node>)> = vec![((file, name), None)];
@@ -217,7 +220,7 @@ pub(super) fn class_home<'b>(
             }
             parents.insert(node, parent);
             let key = (node.0, node.1.to_owned());
-            let cached = if memoize { known.borrow().get(&key).cloned() } else { None };
+            let cached = if acyclic.contains(&node.0) { known.borrow().get(&key).cloned() } else { None };
             match cached {
                 Some(Some(class)) => {
                     found = Some((node, class));
@@ -238,52 +241,53 @@ pub(super) fn class_home<'b>(
             }
             pending.extend(starred.get(&file).into_iter().flatten().map(|source| ((*source, name), Some(node))));
         }
-        if memoize {
-            match &found {
-                Some((node, class)) => {
-                    let mut known = known.borrow_mut();
-                    let mut at = Some(*node);
-                    while let Some(member) = at {
+        match &found {
+            Some((node, class)) => {
+                let mut known = known.borrow_mut();
+                let mut at = Some(*node);
+                while let Some(member) = at {
+                    if acyclic.contains(&member.0) {
                         known.insert((member.0, member.1.to_owned()), Some(class.clone()));
-                        at = parents[&member];
                     }
+                    at = parents[&member];
                 }
-                None => {
-                    known.borrow_mut().extend(parents.keys().map(|&(file, name)| ((file, name.to_owned()), None)));
-                }
+            }
+            None => {
+                known.borrow_mut().extend(
+                    parents
+                        .keys()
+                        .filter(|(file, _)| acyclic.contains(file))
+                        .map(|&(file, name)| ((file, name.to_owned()), None)),
+                );
             }
         }
         found.map(|(_, class)| class)
     }
 }
 
-// Whether no file reaches itself through the imports that bind names or star-import them. `class_home` memoises only
-// then: a walk that loops back to a file on its own path can reach a different class than a walk from a file it passed
-// through would, so the memo would change which class a name is.
-fn acyclic(bindings: &[(FileId, FileId, &ImportBinding)], stars: &[(FileId, FileId)]) -> bool {
-    let mut successors: FxHashMap<FileId, Vec<FileId>> = FxHashMap::default();
-    let mut indegree: FxHashMap<FileId, usize> = FxHashMap::default();
-    for (importer, source) in
-        bindings.iter().map(|(importer, source, _)| (*importer, *source)).chain(stars.iter().copied())
-    {
-        successors.entry(importer).or_default().push(source);
-        *indegree.entry(source).or_default() += 1;
-        indegree.entry(importer).or_default();
+// The files whose imports reach no cycle, each listed after the files it imports. `class_home` memoises only these: a
+// walk through a cycle skips the files on its own path, so from a file above a cycle it can reach a different class than
+// a walk started at that file would.
+fn acyclic_order(edges: impl IntoIterator<Item = (FileId, FileId)>) -> Vec<FileId> {
+    let mut imports: FxHashMap<FileId, usize> = FxHashMap::default();
+    let mut importers: FxHashMap<FileId, Vec<FileId>> = FxHashMap::default();
+    for (importer, source) in edges {
+        *imports.entry(importer).or_default() += 1;
+        importers.entry(source).or_default().push(importer);
     }
-    let files = indegree.len();
-    let mut ready: Vec<FileId> = indegree.iter().filter(|(_, degree)| **degree == 0).map(|(file, _)| *file).collect();
-    let mut ordered = 0;
+    let mut ready: Vec<FileId> = importers.keys().filter(|file| !imports.contains_key(file)).copied().collect();
+    let mut order = Vec::new();
     while let Some(file) = ready.pop() {
-        ordered += 1;
-        for source in successors.get(&file).into_iter().flatten() {
-            let degree = indegree.entry(*source).or_default();
+        order.push(file);
+        for importer in importers.get(&file).into_iter().flatten() {
+            let degree = imports.get_mut(importer).expect("an importer imports a file");
             *degree -= 1;
             if *degree == 0 {
-                ready.push(*source);
+                ready.push(*importer);
             }
         }
     }
-    ordered == files
+    order
 }
 
 // The modules the names of a file bind, each with the file it resolves to when that file is not the file itself.
