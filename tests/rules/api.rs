@@ -67,6 +67,8 @@ use crate::common;
 #[test_case("all-format", "all_format_tuple.py" ; "all_format_tuple")]
 #[test_case("all-format", "all_format_bare.py" ; "all_format_bare_tuple")]
 #[test_case("all-format", "all_format_ruff_overlap.py" ; "all_format_ruff_overlap")]
+#[test_case("all-format", "all_format_parenthesized_last.py" ; "all_format_parenthesized_last")]
+#[test_case("all-format", "all_format_parenthesized_tuple.py" ; "all_format_parenthesized_tuple")]
 #[test_case("all-not-last", "all_not_last.py" ; "all_not_last")]
 #[test_case("all-not-last", "all_not_last_eof.py" ; "all_not_last_at_eof")]
 #[test_case("all-not-last", "all_not_last_reversed.py" ; "all_not_last_reversed_main_guard")]

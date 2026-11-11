@@ -197,7 +197,7 @@ The fix keeps the names in their order. The layout depends on how the literal is
   ```
 
 - **A list whose closing bracket is on its own line, or that holds a comment**: the fix adds only the comma after the
-  last name, so the layout and the comment stay.
+  last name, after its closing parenthesis if it has one, so the layout and the comment stay.
 
   - the closing bracket on its own line:
 
@@ -235,6 +235,26 @@ The fix keeps the names in their order. The layout depends on how the literal is
     __all__ = [
         "load",
         "save",  # the public API
+    ]
+    # fmt: on
+    ```
+
+  - a parenthesized last name:
+
+    ```python report
+    # fmt: off
+    __all__ = [
+        "load",
+        ("save")
+    ]
+    # fmt: on
+    ```
+
+    ```python fixed
+    # fmt: off
+    __all__ = [
+        "load",
+        ("save"),
     ]
     # fmt: on
     ```

@@ -58,7 +58,7 @@ pub fn all_format(checker: &Checker) {
                     continue;
                 }
                 let edit = if multiline && closes_on_own_line || has_comment {
-                    Edit::insertion(",".to_owned(), last.end())
+                    Edit::insertion(",".to_owned(), checker.parenthesized_range(last, value.into()).end())
                 } else {
                     Edit::range_replacement(exploded(checker, base, &items), value.range())
                 };
@@ -81,7 +81,8 @@ pub fn all_format(checker: &Checker) {
                 "]".to_owned(),
                 TextRange::at(value.end() - TextSize::from(1), TextSize::from(1)),
             );
-            let edits = (comma.is_none() && magic).then(|| Edit::insertion(",".to_owned(), last.end()));
+            let edits = (comma.is_none() && magic)
+                .then(|| Edit::insertion(",".to_owned(), checker.parenthesized_range(last, value.into()).end()));
             Fix::unsafe_edits(open, std::iter::once(close).chain(edits))
         } else if magic {
             Fix::unsafe_edit(Edit::range_replacement(exploded(checker, base, &items), value.range()))

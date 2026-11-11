@@ -1,0 +1,10 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:11 SMP405 `__all__` is a tuple; make it a list with a trailing comma [unsafe fix: Convert `__all__` to a list]
+--- fixed (1 applied, 0 remaining) ---
+__all__ = [
+    "run",
+    ("stop"),
+]
