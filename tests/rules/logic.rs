@@ -829,6 +829,7 @@ fn cognitive_complexity_scores() {
 #[test_case("def f():\n    yield 0\n    total = 1 + 2\n    return total\n", true ; "return_in_generator")]
 #[test_case("def f():\n    get = lambda: (yield)\n    total = 1 + 2\n    return total\n", true ; "return_with_lambda_yield")]
 #[test_case("def f():\n    def inner():\n        yield 1\n    total = 1 + 2\n    return total\n", false ; "return_with_nested_generator")]
+#[test_case("def f():\n    def inner() -> (yield):\n        return 1\n    total = 1 + 2\n    return total\n", false ; "return_with_nested_annotation_yield")]
 fn single_use_variable_leaves_ruff_returns_and_yield_froms(source: &str, reported: bool) {
     let root = common::project(&[("module.py", source)]);
     let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP504"]).1;

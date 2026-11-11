@@ -115,7 +115,7 @@ impl<'a> Visitor<'a> for Yields {
                     self.visit_decorator(decorator);
                 }
                 if let Some(returns) = returns {
-                    self.visit_expr(returns);
+                    visitor::walk_expr(self, returns);
                 }
                 self.visit_parameters(parameters);
             }
