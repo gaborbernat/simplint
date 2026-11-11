@@ -7,7 +7,7 @@ use rustc_hash::FxHashSet;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
-use crate::syntax::{ExprCollector, for_each_body, last_segment};
+use crate::syntax::{ExprCollector, for_each_child_body, last_segment};
 
 const OBJECT_MESSAGE: &str = "`object` annotation; use the precise type";
 const ANY_MESSAGE: &str = "`Any` accepts any value and turns off type checking for it; use a precise type";
@@ -90,33 +90,44 @@ fn receiver_name(walker: &Walker, function: &ast::StmtFunctionDef) -> Option<Tex
     function.parameters.iter_non_variadic_params().next().map(|parameter| parameter.name().range())
 }
 
-// The `def`s that implement an `@overload` set: the `def` right after the last `@overload` stub of its name, with no
-// class in between. Ruff's ANN401 skips them, since the type checker reads the signature from the stubs.
+// The `def`s that implement an `@overload` set. Ruff's ANN401 skips them, since the type checker reads the signature
+// from the stubs. Ruff reads the definitions in order, so a stub carries on through the bodies of an `if` or a `try`
+// that follow it, until a `def` or a class resets it.
 pub(crate) fn overload_implementations(checker: &Checker) -> FxHashSet<TextSize> {
-    let semantic = checker.semantic();
-    let is_overload = |function: &ast::StmtFunctionDef| {
-        function.decorator_list.iter().any(|decorator| semantic.match_typing_expr(&decorator.expression, "overload"))
-    };
     let mut implementations = FxHashSet::default();
-    for_each_body(checker.body(), &mut |body, _| {
-        let mut stub: Option<&ast::StmtFunctionDef> = None;
-        for stmt in body {
-            match stmt {
-                Stmt::FunctionDef(function) => {
-                    if let Some(stub) = stub
-                        && stub.name.as_str() == function.name.as_str()
-                        && !is_overload(function)
-                    {
-                        implementations.insert(function.start());
-                    }
-                    stub = is_overload(function).then_some(function);
-                }
-                Stmt::ClassDef(_) => stub = None,
-                _ => {}
-            }
-        }
-    });
+    overload_implementations_in(checker, checker.body(), &mut None, &mut implementations);
     implementations
+}
+
+fn overload_implementations_in<'a>(
+    checker: &Checker,
+    body: &'a [Stmt],
+    stub: &mut Option<&'a str>,
+    implementations: &mut FxHashSet<TextSize>,
+) {
+    for stmt in body {
+        match stmt {
+            Stmt::FunctionDef(function) => {
+                if stub.is_some_and(|name| name == function.name.as_str()) && !is_overload(checker, function) {
+                    implementations.insert(function.start());
+                }
+                *stub = is_overload(checker, function).then_some(function.name.as_str());
+                overload_implementations_in(checker, &function.body, &mut None, implementations);
+            }
+            Stmt::ClassDef(class) => {
+                *stub = None;
+                overload_implementations_in(checker, &class.body, &mut None, implementations);
+            }
+            _ => for_each_child_body(stmt, &mut |child| {
+                overload_implementations_in(checker, child, stub, implementations);
+            }),
+        }
+    }
+}
+
+fn is_overload(checker: &Checker, function: &ast::StmtFunctionDef) -> bool {
+    let semantic = checker.semantic();
+    function.decorator_list.iter().any(|decorator| semantic.match_typing_expr(&decorator.expression, "overload"))
 }
 
 // The `Any` nodes ANN401 reports in an annotation, which this rule leaves out while ANN401 checks the function. Ruff
