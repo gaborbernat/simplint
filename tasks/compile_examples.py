@@ -11,6 +11,8 @@ import tomllib
 from dataclasses import dataclass
 from typing import Final
 
+from tasks.interpreters import Interpreter, minor_version, resolve
+
 #: The oldest release a block compiles under when its group names no lower bound.
 _DEFAULT_FLOOR: Final[int] = 11
 #: Reads the sources as a JSON list and prints, for each, its syntax error or null. Warnings are dropped: some examples
@@ -31,26 +33,6 @@ for source in json.load(sys.stdin):
         errors.append(None)
 json.dump(errors, sys.stdout)
 """
-#: Compiles the files of a tree, named by a JSON list of relative paths on stdin, and prints the ones that compile. The
-#: running parser knows only this interpreter's grammar, so an older target needs its own compiler; one subprocess per
-#: tree runs it over every file.
-COMPILE_TREE: Final[str] = """\
-import json
-import sys
-import warnings
-
-warnings.simplefilter("ignore")
-compiling = []
-for path in json.load(sys.stdin):
-    with open(path, "rb") as handle:
-        source = handle.read()
-    try:
-        compile(source, path, "exec", dont_inherit=True)
-    except SyntaxError:
-        continue
-    compiling.append(path)
-json.dump(compiling, sys.stdout)
-"""
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -59,13 +41,6 @@ class Block:
     name: str
     source: str
     floor: int
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
-class Interpreter:
-    # A CPython of a minor version, found by uv.
-    minor: int
-    path: str
 
 
 class _Options(argparse.Namespace):
@@ -109,35 +84,6 @@ def main(arguments: list[str]) -> int:
     for failure in failures:
         print(failure)
     return int(bool(failures))
-
-
-def minor_version(text: str) -> int:
-    # Read a CPython version such as 3.12 as its minor number.
-    #
-    # :param text: the version, of the form 3.X
-    # :returns: the minor number
-    # :raises argparse.ArgumentTypeError: if the text is not a 3.X version
-    if match := re.fullmatch(r"3\.(\d+)", text):
-        return int(match.group(1))
-    msg = f"expected 3.X, got {text!r}"
-    raise argparse.ArgumentTypeError(msg)
-
-
-def resolve(minor: int) -> Interpreter:
-    # Find the CPython of a minor version with uv, which the CI job installs ahead of this task.
-    #
-    # The project's own requires-python is skipped, as it would warn about the older versions this task exists to test.
-    #
-    # :param minor: the minor number
-    # :returns: the interpreter
-    # :raises ValueError: if uv finds no interpreter of that version
-    found = subprocess.run(
-        ["uv", "python", "find", "--no-project", f"3.{minor}"], capture_output=True, text=True, check=False
-    )
-    if found.returncode:
-        msg = f"no CPython 3.{minor} for the examples: {found.stderr.strip()}"
-        raise ValueError(msg)
-    return Interpreter(minor=minor, path=found.stdout.strip())
 
 
 def block_floor(config: dict[str, str] | None) -> int:
@@ -184,10 +130,6 @@ if __name__ == "__main__":
 
 
 __all__ = [
-    "COMPILE_TREE",
-    "Interpreter",
     "block_floor",
     "main",
-    "minor_version",
-    "resolve",
 ]

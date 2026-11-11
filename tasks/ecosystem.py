@@ -20,8 +20,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Final
 
-from tasks.compile_examples import COMPILE_TREE, Interpreter, minor_version, resolve
 from tasks.download import Pinned, download
+from tasks.interpreters import Interpreter, minor_version, resolve
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -546,13 +546,34 @@ def _stranded_pragmas(root: Path) -> dict[str, int]:
     }
 
 
+#: Compiles the files of a tree, named by a JSON list of relative paths on stdin, and prints the ones that compile; one
+#: subprocess per tree runs it over every file.
+_COMPILE_TREE: Final[str] = """\
+import json
+import sys
+import warnings
+
+warnings.simplefilter("ignore")
+compiling = []
+for path in json.load(sys.stdin):
+    with open(path, "rb") as handle:
+        source = handle.read()
+    try:
+        compile(source, path, "exec", dont_inherit=True)
+    except SyntaxError:
+        continue
+    compiling.append(path)
+json.dump(compiling, sys.stdout)
+"""
+
+
 # The running parser knows only this interpreter's grammar, so an older target compiles the files itself.
 def _compiling(root: Path, target: Interpreter | None) -> set[str]:
     paths = {path.relative_to(root).as_posix() for path in root.rglob("*.py")}
     if target is None:
         return {path for path in paths if _parses(root / path)}
     compiling = subprocess.run(
-        [target.path, "-I", "-c", COMPILE_TREE],
+        [target.path, "-I", "-c", _COMPILE_TREE],
         cwd=root,
         input=json.dumps(sorted(paths)),
         capture_output=True,

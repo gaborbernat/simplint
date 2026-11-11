@@ -17,8 +17,8 @@ from typing import TYPE_CHECKING, Final, Protocol, TypedDict, Unpack
 
 import pytest
 
-from tasks.compile_examples import Interpreter
 from tasks.ecosystem import PACKAGES, Package, check, main
+from tasks.interpreters import Interpreter
 
 if TYPE_CHECKING:
     from collections.abc import Callable
