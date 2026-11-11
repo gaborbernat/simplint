@@ -1,5 +1,5 @@
 Flags `:param name:` and `:type name:` fields in reStructuredText docstrings that name a parameter the signature does
-not take. Such a field, often left behind by a rename or removal, documents a call that no longer works.
+not take.
 
 ## Why is this bad?
 

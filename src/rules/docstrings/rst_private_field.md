@@ -1,5 +1,4 @@
-Flags fields in public API docstrings that document a parameter or attribute named with a leading underscore. The
-underscore marks the name as internal, so documenting it in the public reference invites users to depend on it.
+Flags fields in public API docstrings that document a parameter or attribute named with a leading underscore.
 
 ## Why is this bad?
 

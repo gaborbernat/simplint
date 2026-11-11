@@ -1,5 +1,4 @@
-Flags type information in reStructuredText docstrings, which belongs in annotations. A type checker verifies an
-annotation, while a type in the docstring is checked by nothing and drifts from the code.
+Flags type information in reStructuredText docstrings, which belongs in annotations.
 
 ## Why is this bad?
 

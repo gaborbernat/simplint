@@ -1,6 +1,5 @@
 Flags exceptions a public API function raises itself that its reStructuredText docstring leaves without a
-`:raises Error:` field. Callers handle the exceptions they know about, so an undocumented one reaches them as a
-surprise.
+`:raises Error:` field.
 
 ## Why is this bad?
 
@@ -46,7 +45,7 @@ def parse(text: str) -> int:
 
 Ruff's [docstring-missing-exception](https://docs.astral.sh/ruff/rules/docstring-missing-exception/) reads Google and
 numpydoc sections only, so it reports the `:raises:` fields this rule asks for as a missing section. simplint stops with
-an error before linting while it applies to a file this rule checks; turn it off in Ruff, or turn this rule off.
+an error when both apply to the same file, so turn the Ruff rule off, or this one.
 
 ## Configuration
 

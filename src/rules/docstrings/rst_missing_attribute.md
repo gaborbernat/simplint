@@ -1,6 +1,5 @@
 Flags attributes of a library's public classes that the reStructuredText class docstring leaves without an `:ivar:`,
-`:cvar:` or `:var:` field. autodoc lists only documented attributes, so an undocumented one is invisible or unexplained
-in the reference.
+`:cvar:` or `:var:` field.
 
 ## Why is this bad?
 
