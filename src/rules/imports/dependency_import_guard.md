@@ -250,8 +250,8 @@ A module is required when its top-level package is one of these:
   ```
 
 - **The C accelerators CPython imports under a fallback**, such as `_json` and `_pickle`: CPython guards each of them
-  with an `ImportError` fallback of its own, so the rule does not count them as required. Other private modules, such
-  as `_thread`, are still reported, since every Python ships them.
+  with an `ImportError` fallback of its own, so the rule does not count them as required. Other private modules, such as
+  `_thread`, are still reported, since every Python ships them.
 
   ```toml config
   [project]
