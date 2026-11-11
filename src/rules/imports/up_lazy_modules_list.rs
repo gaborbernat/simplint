@@ -1,12 +1,11 @@
 use ruff_diagnostics::{Applicability, Edit};
 use ruff_python_ast::helpers::resolve_imported_module_path;
 use ruff_python_ast::{self as ast, Expr, Stmt};
-use ruff_source_file::LineRanges;
 use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::edits::fix_of;
+use crate::rules::edits::{Blanks, fix_of, statement_lines};
 use crate::rules::{is_alone_on_lines, is_lazy};
 
 pub fn up_lazy_modules_list(checker: &Checker) {
@@ -41,7 +40,7 @@ pub fn up_lazy_modules_list(checker: &Checker) {
         && is_alone_on_lines(source, list_stmt.range()))
     .then(|| {
         let mut edits = lazy_imports;
-        edits.push(Edit::range_deletion(source.full_lines_range(list_stmt.range())));
+        edits.push(Edit::range_deletion(statement_lines(source, list_stmt.range(), Blanks::Keep)));
         fix_of(edits, Applicability::Safe)
     })
     .flatten();

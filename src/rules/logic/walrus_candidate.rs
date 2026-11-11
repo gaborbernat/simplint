@@ -9,7 +9,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::layout::joined_width;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::edits::statement_deletion;
+use crate::rules::edits::{Blanks, statement_deletion};
 use crate::rules::logic::inline::{
     LOCALS_READERS, declared_outer, fits_line, for_each_scoped_body, inlined_text, leading_name,
 };
@@ -148,7 +148,7 @@ fn candidate<'a>(
     };
     let name = target.id.as_str();
     let value = assign.value.as_ref();
-    let deleted = statement_deletion(checker, assign.range, None, false)?;
+    let deleted = statement_deletion(checker, assign.range, None, Blanks::Shared)?;
     // Type checkers treat a guard named `TYPE_CHECKING` as true whatever its value, so the name must stay.
     if name == "TYPE_CHECKING"
         || matches!(value, Expr::Lambda(_) | Expr::Yield(_) | Expr::YieldFrom(_) | Expr::Named(_) | Expr::Starred(_))

@@ -8,7 +8,7 @@ use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::edits::delete_statement;
+use crate::rules::edits::{Blanks, statement_removal};
 use crate::rules::is_alone_on_lines;
 use crate::syntax::for_each_body;
 
@@ -75,11 +75,16 @@ fn report_constant_assert(checker: &Checker, stmt: &Stmt, assert: &ast::StmtAsse
             let test = test.as_ref();
             Fix::unsafe_edit(Edit::range_replacement(format!("all{}", checker.text(test)), test.range()))
         }),
-        _ => is_deletable(checker, stmt, test).then(|| {
-            let edit = delete_statement(checker.source, stmt, statements);
-            // A template raises when its fields do not fit its arguments, and deleting it would hide that error.
-            Fix::applicable_edit(edit, if formats_to_text(test) { Applicability::Unsafe } else { Applicability::Safe })
-        }),
+        _ => is_deletable(checker, stmt, test)
+            .then(|| statement_removal(checker, stmt.range(), statements.len(), None, Blanks::Keep))
+            .flatten()
+            .map(|edit| {
+                // A template raises when its fields do not fit its arguments, and deleting it would hide that error.
+                Fix::applicable_edit(
+                    edit,
+                    if formats_to_text(test) { Applicability::Unsafe } else { Applicability::Safe },
+                )
+            }),
     };
     let title = match test.as_ref() {
         Expr::Tuple(_) => "Split the tuple into a test and a message",

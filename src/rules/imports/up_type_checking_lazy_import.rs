@@ -6,6 +6,7 @@ use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::edits::{Blanks, statement_lines};
 use crate::rules::{is_alone_on_lines, is_lazy};
 
 pub fn up_type_checking_lazy_import(checker: &Checker) {
@@ -73,7 +74,7 @@ fn lazy_fix(checker: &Checker, body: &[Stmt], stmt: &Stmt, imports: &[Stmt]) -> 
     let typing_import = (checker.name_token_count("TYPE_CHECKING") == 2)
         .then(|| body.iter().find(|stmt| is_type_checking_import(stmt) && is_alone_on_lines(source, stmt.range())))
         .flatten()
-        .map(|import| Edit::range_deletion(source.full_lines_range(import.range())));
+        .map(|import| Edit::range_deletion(statement_lines(source, import.range(), Blanks::Keep)));
     Some(Fix::applicable_edits(replacement, typing_import, Applicability::Unsafe))
 }
 

@@ -21,30 +21,54 @@ pub fn fix_of(edits: impl IntoIterator<Item = Edit>, applicability: Applicabilit
     Some(Fix::applicable_edits(first, edits, applicability))
 }
 
-pub fn delete_statement(source: &str, stmt: &Stmt, body: &[Stmt]) -> Edit {
-    if body.len() == 1 {
-        return Edit::range_replacement("pass".to_owned(), stmt.range());
-    }
-    Edit::range_deletion(source.full_lines_range(stmt.range()))
+// The blank lines a removed statement takes with its lines, which each caller picks for the code around it.
+#[derive(Clone, Copy)]
+pub enum Blanks {
+    Keep,
+    Shared,
+    Trailing,
+    WiderSide,
 }
 
-// The text deleting a statement removes: its lines when it has them to itself, with the blank lines after them when
-// `trailing_blanks` is set. A statement sharing its line goes from the `;` that joins it to the statement before it, as
-// in `run(); x = 1`, or up to the `next` statement, as in `"""Doc."""; run()`, unless a comment in between would go
-// with it; `ruff format` puts joined statements on lines of their own either way.
+// The lines a statement takes when it goes, with the blank lines `blanks` names, for a statement that has its lines to
+// itself.
+pub fn statement_lines(source: &str, range: TextRange, blanks: Blanks) -> TextRange {
+    match blanks {
+        Blanks::Keep => source.full_lines_range(range),
+        Blanks::Shared => lines_with_shared_blanks(source, range),
+        Blanks::Trailing => lines_with_trailing_blanks(source, range),
+        Blanks::WiderSide => lines_keeping_separation(source, range),
+    }
+}
+
+// The removal of a statement: a `pass` in place of a body's only statement, and otherwise its deletion, as
+// `statement_deletion` gives it.
+pub fn statement_removal(
+    checker: &Checker,
+    stmt: TextRange,
+    siblings: usize,
+    next: Option<TextRange>,
+    blanks: Blanks,
+) -> Option<Edit> {
+    if siblings == 1 {
+        return Some(Edit::range_replacement("pass".to_owned(), stmt));
+    }
+    statement_deletion(checker, stmt, next, blanks).map(Edit::range_deletion)
+}
+
+// The text deleting a statement removes: its lines when it has them to itself, with the blank lines `blanks` names. A
+// statement sharing its line goes from the `;` that joins it to the statement before it, as in `run(); x = 1`, or up
+// to the `next` statement, as in `"""Doc."""; run()`, unless a comment in between would go with it; `ruff format` puts
+// joined statements on lines of their own either way.
 pub fn statement_deletion(
     checker: &Checker,
     range: TextRange,
     next: Option<TextRange>,
-    trailing_blanks: bool,
+    blanks: Blanks,
 ) -> Option<TextRange> {
     let source = checker.source;
     if is_alone_on_lines(source, range) {
-        return Some(if trailing_blanks {
-            lines_with_trailing_blanks(source, range)
-        } else {
-            lines_with_shared_blanks(source, range)
-        });
+        return Some(statement_lines(source, range, blanks));
     }
     let line_start = source.line_start(range.start());
     let before = source[TextRange::new(line_start, range.start())].trim_end();
@@ -81,7 +105,26 @@ fn lines_with_shared_blanks(source: &str, range: TextRange) -> TextRange {
     TextRange::new(lines.start(), surplus_end)
 }
 
-pub fn lines_with_trailing_blanks(source: &str, range: TextRange) -> TextRange {
+// Deleting a statement leaves the blank lines on both sides of it next to each other; drop the shorter run so the code
+// around it keeps the wider separation, and keep everything when the statement directly follows code.
+fn lines_keeping_separation(source: &str, range: TextRange) -> TextRange {
+    let lines = source.full_lines_range(range);
+    let before = &source[..lines.start().to_usize()];
+    let leading_text = before.trim_end_matches([' ', '\t', '\r', '\n']);
+    let leading = before[leading_text.len()..].matches('\n').count().saturating_sub(1);
+    let with_trailing = lines_with_trailing_blanks(source, range);
+    let trailing = source[lines.end().to_usize()..with_trailing.end().to_usize()].matches('\n').count();
+    if leading_text.is_empty() || (leading > 0 && trailing <= leading) {
+        with_trailing
+    } else if leading > 0 {
+        let line_end = leading_text.len() + before[leading_text.len()..].find('\n').map_or(0, |offset| offset + 1);
+        TextRange::new(TextSize::try_from(line_end).unwrap_or_default(), lines.end())
+    } else {
+        lines
+    }
+}
+
+fn lines_with_trailing_blanks(source: &str, range: TextRange) -> TextRange {
     let mut end = source.full_line_end(range.end());
     while end.to_usize() < source.len() && source.full_line_str(end).trim().is_empty() {
         end = source.full_line_end(end);

@@ -7,7 +7,7 @@ use ruff_text_size::Ranged;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
-use crate::rules::edits::statement_deletion;
+use crate::rules::edits::{Blanks, statement_removal};
 use crate::rules::{indentation, is_alone_on_lines};
 use crate::syntax::argument;
 
@@ -77,10 +77,6 @@ fn fix(
         checker.line_ending()
     );
     // A body of only the warning keeps a statement, as the decorated function still has to run to its end.
-    let removal = if body.len() == 1 {
-        Edit::range_replacement("pass".to_owned(), warning.range())
-    } else {
-        Edit::range_deletion(statement_deletion(checker, warning.range(), None, true)?)
-    };
+    let removal = statement_removal(checker, warning.range(), body.len(), None, Blanks::Trailing)?;
     Some(Fix::unsafe_edits(Edit::insertion(decorator, source.line_start(name.start())), [removal]))
 }

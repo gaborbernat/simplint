@@ -12,7 +12,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::keep_debug_text;
-use crate::rules::edits::statement_deletion;
+use crate::rules::edits::{Blanks, statement_deletion};
 use crate::rules::logic::inline::{
     Names, declared_outer, enter_function, fits, for_each_scoped_body, fstring_body_parts, inlined_text, joined,
     leading_name, requoted_text,
@@ -58,7 +58,7 @@ fn check_pair<'a>(
     if ruff_reports_yield_from(checker, target, next) {
         return;
     }
-    let deletion = statement_deletion(checker, assign.range, Some(next.range()), false)
+    let deletion = statement_deletion(checker, assign.range, Some(next.range()), Blanks::Shared)
         .expect("no comment sits between the assignment and the statement after it");
     let deletion = Edit::range_deletion(deletion);
     // An empty value, such as `''` spliced into an f-string, leaves nothing to write, which only a deletion expresses.

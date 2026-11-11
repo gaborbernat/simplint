@@ -13,7 +13,7 @@ use crate::lint::registry::Rule;
 use crate::rules::comments::is_tool_directive;
 use crate::rules::docstrings::rst::{SIGNATURE_SECTIONS, field_marker};
 use crate::rules::docstrings::{Need, docstring_deletion, is_directive_comment};
-use crate::rules::edits::lines_with_trailing_blanks;
+use crate::rules::edits::{Blanks, statement_lines};
 use crate::rules::{docstring, indentation};
 
 pub fn function_docstring(checker: &Checker) {
@@ -253,7 +253,10 @@ fn comment_replacement(
                 .trailing_comment(stmt)
                 .filter(|comment| !is_directive_comment(checker, *comment))
                 .map_or_else(String::new, |comment| format!("  {}", checker.text(comment)));
-            (lines_with_trailing_blanks(source, stmt.range()).end(), format!("{comment}{}", checker.line_ending()))
+            (
+                statement_lines(source, stmt.range(), Blanks::Trailing).end(),
+                format!("{comment}{}", checker.line_ending()),
+            )
         }
     };
     Some(Edit::range_replacement(format!("{prefix}{block}{suffix}"), TextRange::new(start, end)))

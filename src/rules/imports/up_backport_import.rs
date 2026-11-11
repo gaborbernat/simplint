@@ -4,7 +4,7 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::edits::delete_statement;
+use crate::rules::edits::{Blanks, statement_removal};
 use crate::rules::is_alone_on_lines;
 use crate::syntax::for_each_body;
 
@@ -96,7 +96,9 @@ pub fn up_backport_import(checker: &Checker) {
                             // Another module that imports the name from this one, or `__all__`, would lose it.
                             let exported = import.names.iter().any(|alias| checker.is_exported(alias.name.as_str()));
                             (unaliased && !exported && is_alone_on_lines(checker.source, stmt.range()))
-                                .then(|| Fix::safe_edit(delete_statement(checker.source, stmt, statements)))
+                                .then(|| statement_removal(checker, stmt.range(), statements.len(), None, Blanks::Keep))
+                                .flatten()
+                                .map(Fix::safe_edit)
                         }
                         Replacement::Review(_) => None,
                     };

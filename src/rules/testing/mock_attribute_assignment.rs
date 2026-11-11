@@ -6,7 +6,7 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::edits::fix_of;
+use crate::rules::edits::{Blanks, fix_of, statement_lines};
 use crate::rules::{expr_mentions, is_alone_on_lines, single_assignment};
 use crate::syntax::MOCK_CLASSES;
 use crate::syntax::{for_each_body, last_segment};
@@ -92,7 +92,7 @@ fn report_assignments(checker: &Checker, call: &ast::ExprCall, assignments: &[As
             let mut keywords = Vec::new();
             let mut edits: Vec<Edit> = assignments
                 .iter()
-                .map(|assignment| Edit::range_deletion(source.full_lines_range(assignment.stmt.range())))
+                .map(|assignment| Edit::range_deletion(statement_lines(source, assignment.stmt.range(), Blanks::Keep)))
                 .collect();
             for assignment in assignments {
                 let text = checker.text(assignment.value.range());

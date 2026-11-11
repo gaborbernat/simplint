@@ -49,7 +49,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::lint::checker::Checker;
 use crate::project::{Exposure, FileIndex};
 use crate::rules::comments::is_tool_directive;
-use crate::rules::edits::statement_deletion;
+use crate::rules::edits::{Blanks, statement_deletion};
 use crate::rules::{indentation, is_alone_on_lines};
 use crate::syntax::{Exports, Visibility, decorator_names, is_overload, module_statements};
 
@@ -377,7 +377,7 @@ pub(crate) fn is_directive_comment(checker: &Checker, comment: TextRange) -> boo
 // tool directive, which goes with it.
 pub(crate) fn docstring_deletion(checker: &Checker, body: &[Stmt]) -> Option<Edit> {
     let stmt = &body[0];
-    let deletion = statement_deletion(checker, stmt.range(), body.get(1).map(Ranged::range), true)?;
+    let deletion = statement_deletion(checker, stmt.range(), body.get(1).map(Ranged::range), Blanks::Trailing)?;
     let comment = checker.trailing_comment(stmt).filter(|comment| !is_directive_comment(checker, *comment));
     match comment {
         Some(comment) if is_alone_on_lines(checker.source, stmt.range()) => {
