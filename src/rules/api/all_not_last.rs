@@ -11,7 +11,7 @@ use crate::rules::edits::{Blanks, statement_lines};
 use crate::syntax::is_main_guard;
 use crate::syntax::{all_binding, all_mutation, is_name};
 
-pub fn all_not_last(checker: &Checker) {
+pub(crate) fn all_not_last(checker: &Checker) {
     let body = checker.body();
     let positions: Vec<usize> =
         body.iter().enumerate().filter(|(_, stmt)| all_binding(stmt).is_some()).map(|(index, _)| index).collect();
@@ -24,11 +24,10 @@ pub fn all_not_last(checker: &Checker) {
         return;
     }
     let stmt = &body[last];
-    let source = checker.source;
-    // A later `__all__ += [...]` inside a block extends the list, so it must still find it bound above.
     let semantic = checker.semantic();
-    // A module that reads `__all__` at run time, by attribute, string or `globals()`, needs the list bound above it, and
-    // so does a function or lambda that reads it, by name or at run time, wherever it is defined.
+    // A module that reads `__all__` at run time, by attribute, string or `globals()`, needs the list bound above
+    // it, and so does a function or lambda that reads it, by name or at run time, wherever it is defined. A later
+    // `__all__ += [...]` inside a block extends the list, so it must still find it bound above.
     let referenced_later = semantic
         .references_to("__all__")
         .iter()
@@ -36,6 +35,7 @@ pub fn all_not_last(checker: &Checker) {
         || semantic.bindings("__all__").iter().any(|binding| binding.range.start() > stmt.end())
         || any_over_body(&body[last + 1..], reads_all_dynamically)
         || scope_reads_dynamically(body);
+    let source = checker.source;
     let after = source.full_line_end(stmt.end());
     // A `# fmt: off` / `# fmt: on` pair around `__all__` keeps `ruff format` off its layout, which can hold a
     // suppression comment for several names on one line, so the pair moves with it.
@@ -73,11 +73,12 @@ pub fn all_not_last(checker: &Checker) {
     );
 }
 
-// A list or tuple of names, which keeps its value when moved; a computed value may depend on where it runs.
-fn is_string_list(stmt: &Stmt) -> bool {
-    match all_binding(stmt).and_then(|binding| binding.value) {
-        Some(Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. })) => {
-            elts.iter().all(Expr::is_string_literal_expr)
+fn reads_all_dynamically(expr: &Expr) -> bool {
+    match expr {
+        Expr::Attribute(ast::ExprAttribute { attr, ctx, .. }) => attr.as_str() == "__all__" && ctx.is_load(),
+        Expr::StringLiteral(literal) => literal.value.to_str() == "__all__",
+        Expr::Call(ast::ExprCall { func, .. }) => {
+            ["globals", "vars", "dir"].into_iter().any(|name| is_name(func, name))
         }
         _ => false,
     }
@@ -123,12 +124,11 @@ impl<'a> Visitor<'a> for ScopeReads {
     }
 }
 
-fn reads_all_dynamically(expr: &Expr) -> bool {
-    match expr {
-        Expr::Attribute(ast::ExprAttribute { attr, ctx, .. }) => attr.as_str() == "__all__" && ctx.is_load(),
-        Expr::StringLiteral(literal) => literal.value.to_str() == "__all__",
-        Expr::Call(ast::ExprCall { func, .. }) => {
-            ["globals", "vars", "dir"].into_iter().any(|name| is_name(func, name))
+// A list or tuple of names, which keeps its value when moved; a computed value may depend on where it runs.
+fn is_string_list(stmt: &Stmt) -> bool {
+    match all_binding(stmt).and_then(|binding| binding.value) {
+        Some(Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. })) => {
+            elts.iter().all(Expr::is_string_literal_expr)
         }
         _ => false,
     }

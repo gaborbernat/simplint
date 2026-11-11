@@ -18,13 +18,7 @@ use crate::semantic::BindingKind;
 use crate::syntax::is_main_guard;
 use crate::syntax::{Exports, Visibility, alias_binding, all_binding, import_aliases};
 
-struct Missing<'a> {
-    name: &'a str,
-    range: TextRange,
-    imported: bool,
-}
-
-pub fn missing_from_all(checker: &Checker) {
+pub(crate) fn missing_from_all(checker: &Checker) {
     if checker.is_init_module()
         || checker.is_test_module()
         || checker.path.file_stem().is_some_and(|stem| stem == "__main__")
@@ -96,6 +90,141 @@ pub fn missing_from_all(checker: &Checker) {
     });
 }
 
+struct Missing<'a> {
+    name: &'a str,
+    range: TextRange,
+    imported: bool,
+}
+
+fn all_insertion<'a>(checker: &Checker, names: impl Iterator<Item = &'a str>) -> Option<Fix> {
+    let mut names: Vec<&str> = names.collect();
+    names.sort_by_key(|name| export_key(name));
+    let Some(stmt) = checker.body().iter().rev().find(|stmt| all_binding(stmt).is_some()) else {
+        return new_all(checker, &names);
+    };
+    let all_list = AllList::of(stmt)?;
+    let elts = all_list.elements();
+    let one_per_line = all_list.one_per_line(checker);
+    let has_comment = all_list.has_comment(checker);
+    if has_comment && elts.is_empty() {
+        return None;
+    }
+    if checker.source.contains_line_break(all_list.value()) && !elts.is_empty() && (one_per_line || has_comment) {
+        return lines_insertion(checker, &all_list, &names);
+    }
+    let mut items = all_list.items(checker);
+    for name in names.iter().rev() {
+        items.insert(position(elts, name), quoted(checker, name));
+    }
+    let (open, close) = all_list.brackets(checker);
+    let list = exploded(checker, checker.indentation(stmt), &items);
+    Some(Fix::safe_edit(Edit::range_replacement(
+        format!("{open}{}{close}", &list[1..list.len() - 1]),
+        all_list.value(),
+    )))
+}
+
+// The `__all__` a module without one gets, last but above a closing `if __name__ == "__main__":` block, as SMP406 asks.
+fn new_all(checker: &Checker, names: &[&str]) -> Option<Fix> {
+    // An `import *` of this module takes every public name, which a new `__all__` would narrow to the listed ones.
+    if checker.project().is_star_imported() {
+        return None;
+    }
+    let items: Vec<String> = names.iter().map(|name| quoted(checker, name)).collect();
+    let eol = checker.line_ending();
+    let declaration = format!("__all__ = {}{eol}", exploded(checker, "", &items));
+    let source = checker.source;
+    let edit = if let Some(guard) = checker.body().last().filter(|stmt| is_main_guard(stmt)) {
+        Edit::insertion(format!("{declaration}{eol}{eol}"), source.line_start(guard.start()))
+    } else {
+        let blank_lines = if source.ends_with('\n') { 2 } else { 3 };
+        Edit::insertion(format!("{}{declaration}", eol.repeat(blank_lines)), TextSize::try_from(source.len()).ok()?)
+    };
+    Some(Fix::unsafe_edit(edit))
+}
+
+fn quoted(checker: &Checker, name: &str) -> String {
+    let quote = checker.stylist.quote().as_char();
+    format!("{quote}{name}{quote}")
+}
+
+// Names one to a line, or after the last one when a comment pins the layout, as the `__all__` already lays them out.
+fn lines_insertion(checker: &Checker, all_list: &AllList, names: &[&str]) -> Option<Fix> {
+    let source = checker.source;
+    let elts = all_list.elements();
+    let one_per_line = all_list.one_per_line(checker);
+    let tail = &elts[elts.len() - 1];
+    let indent = if one_per_line {
+        checker.indentation(&elts[0])
+    } else {
+        leading_indentation(source.full_line_str(tail.start()))
+    };
+    // A parenthesized element ends at its closing parenthesis, so the names go after that.
+    let tail_range = all_list.element_range(checker, tail);
+    // A comment ending the last element's line stays with that element only when the names go on the lines after it,
+    // so nothing but a comma may come between them, and the closing bracket must follow the line.
+    let line_comment = match checker
+        .trailing_comment(tail_range)
+        .map(|comment| source[TextRange::new(tail_range.end(), comment.start())].trim())
+    {
+        None => None,
+        Some(",") => Some(false),
+        Some("") if closes_after(checker, tail_range) => Some(true),
+        Some(_) => return None,
+    };
+    // Names sort in the same order as their positions, so the ones sharing a position form one insertion.
+    let mut groups: Vec<(usize, Vec<String>)> = Vec::new();
+    for name in names {
+        let at = if one_per_line { position(elts, name) } else { elts.len() };
+        match groups.last_mut() {
+            Some((last, group)) if *last == at => group.push(quoted(checker, name)),
+            _ => groups.push((at, vec![quoted(checker, name)])),
+        }
+    }
+    let eol = checker.line_ending();
+    let separator = format!(",{eol}{indent}");
+    let mut edits: Vec<Edit> = groups
+        .into_iter()
+        .map(|(at, group)| match elts.get(at) {
+            Some(next) => Edit::insertion(
+                group.iter().fold(String::new(), |text, name| text + name + &separator),
+                all_list.element_range(checker, next).start(),
+            ),
+            None if line_comment.is_some() => Edit::insertion(
+                group.iter().fold(String::new(), |text, name| text + indent + name + "," + eol),
+                source.full_line_end(tail_range.end()),
+            ),
+            None => Edit::insertion(
+                group.iter().fold(String::new(), |text, name| text + &separator + name),
+                tail_range.end(),
+            ),
+        })
+        .collect();
+    if line_comment == Some(true) {
+        edits.push(Edit::insertion(",".to_owned(), tail_range.end()));
+    }
+    fix_of(edits, Applicability::Safe)
+}
+
+fn closes_after(checker: &Checker, elt: impl Ranged) -> bool {
+    checker
+        .parsed
+        .tokens()
+        .after(elt.end())
+        .iter()
+        .find(|token| !matches!(token.kind(), TokenKind::NonLogicalNewline | TokenKind::Comment))
+        .is_some_and(|token| token.kind() == TokenKind::Rsqb)
+}
+
+// Each name goes before the first listed name Ruff's RUF022 sorts after it, so a sorted `__all__` stays sorted.
+fn position(elts: &[Expr], name: &str) -> usize {
+    elts.iter()
+        .position(|elt| {
+            elt.as_string_literal_expr().is_some_and(|literal| export_key(literal.value.to_str()) > export_key(name))
+        })
+        .unwrap_or(elts.len())
+}
+
 // Listing a name silences Ruff's F401 for its import, so a `noqa` that named only F401 there is left unused, which Ruff
 // reports as RUF100. The fix drops those comments with the listing.
 fn with_unused_noqas_removed(checker: &Checker, fix: Fix, missing: &[Missing]) -> Option<Fix> {
@@ -127,133 +256,4 @@ fn binds_only_listed(checker: &Checker, comment: TextRange, listed: &FxHashSet<&
         .flat_map(import_aliases)
         .filter(|alias| line.contains_range(alias.range()))
         .all(|alias| listed.contains(alias_binding(alias)))
-}
-
-fn all_insertion<'a>(checker: &Checker, names: impl Iterator<Item = &'a str>) -> Option<Fix> {
-    let mut names: Vec<&str> = names.collect();
-    names.sort_by_key(|name| export_key(name));
-    let Some(stmt) = checker.body().iter().rev().find(|stmt| all_binding(stmt).is_some()) else {
-        return new_all(checker, &names);
-    };
-    let all = AllList::of(stmt)?;
-    let source = checker.source;
-    let elts = all.elements();
-    let one_per_line = all.one_per_line(checker);
-    let has_comment = all.has_comment(checker);
-    if has_comment && elts.is_empty() {
-        return None;
-    }
-    if source.contains_line_break(all.value()) && !elts.is_empty() && (one_per_line || has_comment) {
-        return lines_insertion(checker, &all, &names);
-    }
-    let mut items = all.items(checker);
-    for name in names.iter().rev() {
-        items.insert(position(elts, name), quoted(checker, name));
-    }
-    let (open, close) = all.brackets(checker);
-    let list = exploded(checker, checker.indentation(stmt), &items);
-    Some(Fix::safe_edit(Edit::range_replacement(format!("{open}{}{close}", &list[1..list.len() - 1]), all.value())))
-}
-
-// The `__all__` a module without one gets, last but above a closing `if __name__ == "__main__":` block, as SMP406 asks.
-fn new_all(checker: &Checker, names: &[&str]) -> Option<Fix> {
-    let source = checker.source;
-    // An `import *` of this module takes every public name, which a new `__all__` would narrow to the listed ones.
-    if checker.project().is_star_imported() {
-        return None;
-    }
-    let items: Vec<String> = names.iter().map(|name| quoted(checker, name)).collect();
-    let eol = checker.line_ending();
-    let declaration = format!("__all__ = {}{eol}", exploded(checker, "", &items));
-    // A module without `__all__` exports every public name to `from module import *`; adding one narrows that.
-    let edit = if let Some(guard) = checker.body().last().filter(|stmt| is_main_guard(stmt)) {
-        Edit::insertion(format!("{declaration}{eol}{eol}"), source.line_start(guard.start()))
-    } else {
-        let blank_lines = if source.ends_with('\n') { 2 } else { 3 };
-        Edit::insertion(format!("{}{declaration}", eol.repeat(blank_lines)), TextSize::try_from(source.len()).ok()?)
-    };
-    Some(Fix::unsafe_edit(edit))
-}
-
-// Names one to a line, or after the last one when a comment pins the layout, as the `__all__` already lays them out.
-fn lines_insertion(checker: &Checker, all: &AllList, names: &[&str]) -> Option<Fix> {
-    let source = checker.source;
-    let elts = all.elements();
-    let one_per_line = all.one_per_line(checker);
-    let tail = &elts[elts.len() - 1];
-    let indent = if one_per_line {
-        checker.indentation(&elts[0])
-    } else {
-        leading_indentation(source.full_line_str(tail.start()))
-    };
-    // A parenthesized element ends at its closing parenthesis, so the names go after that.
-    let tail_range = all.element_range(checker, tail);
-    // A comment ending the last element's line stays with that element only when the names go on the lines after it,
-    // so nothing but a comma may come between them, and the closing bracket must follow the line.
-    let line_comment = match checker
-        .trailing_comment(tail_range)
-        .map(|comment| source[TextRange::new(tail_range.end(), comment.start())].trim())
-    {
-        None => None,
-        Some(",") => Some(false),
-        Some("") if closes_after(checker, tail_range) => Some(true),
-        Some(_) => return None,
-    };
-    // Names sort in the same order as their positions, so the ones sharing a position form one insertion.
-    let mut groups: Vec<(usize, Vec<String>)> = Vec::new();
-    for name in names {
-        let at = if one_per_line { position(elts, name) } else { elts.len() };
-        match groups.last_mut() {
-            Some((last, group)) if *last == at => group.push(quoted(checker, name)),
-            _ => groups.push((at, vec![quoted(checker, name)])),
-        }
-    }
-    let eol = checker.line_ending();
-    let separator = format!(",{eol}{indent}");
-    let mut edits: Vec<Edit> = groups
-        .into_iter()
-        .map(|(at, group)| match elts.get(at) {
-            Some(next) => Edit::insertion(
-                group.iter().fold(String::new(), |text, name| text + name + &separator),
-                all.element_range(checker, next).start(),
-            ),
-            None if line_comment.is_some() => Edit::insertion(
-                group.iter().fold(String::new(), |text, name| text + indent + name + "," + eol),
-                source.full_line_end(tail_range.end()),
-            ),
-            None => Edit::insertion(
-                group.iter().fold(String::new(), |text, name| text + &separator + name),
-                tail_range.end(),
-            ),
-        })
-        .collect();
-    if line_comment == Some(true) {
-        edits.push(Edit::insertion(",".to_owned(), tail_range.end()));
-    }
-    fix_of(edits, Applicability::Safe)
-}
-
-// Whether the closing bracket of the list is the next token after `elt`, past any comment or line break.
-fn closes_after(checker: &Checker, elt: impl Ranged) -> bool {
-    checker
-        .parsed
-        .tokens()
-        .after(elt.end())
-        .iter()
-        .find(|token| !matches!(token.kind(), TokenKind::NonLogicalNewline | TokenKind::Comment))
-        .is_some_and(|token| token.kind() == TokenKind::Rsqb)
-}
-
-fn quoted(checker: &Checker, name: &str) -> String {
-    let quote = checker.stylist.quote().as_char();
-    format!("{quote}{name}{quote}")
-}
-
-// Each name goes before the first listed name Ruff's RUF022 sorts after it, so a sorted `__all__` stays sorted.
-fn position(elts: &[Expr], name: &str) -> usize {
-    elts.iter()
-        .position(|elt| {
-            elt.as_string_literal_expr().is_some_and(|literal| export_key(literal.value.to_str()) > export_key(name))
-        })
-        .unwrap_or(elts.len())
 }

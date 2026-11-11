@@ -4,7 +4,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::rename::{kept_message, rename_fix};
 
-pub fn module_variable_prefix(checker: &Checker) {
+pub(crate) fn module_variable_prefix(checker: &Checker) {
     let public = checker.project().role().public;
     for variable in checker.state().module_variables(checker) {
         if variable.name.starts_with('_') == variable.private {
@@ -33,12 +33,11 @@ pub fn module_variable_prefix(checker: &Checker) {
         } else {
             format!("`{}` is in `__all__`; name it `{expected}`", variable.name)
         };
-        let fix = rename_fix(checker, variable.name, &expected);
         checker.report_fix(
             Rule::ModuleVariablePrefix,
             variable.range,
             message,
-            fix,
+            rename_fix(checker, variable.name, &expected),
             format!("Rename `{}` to `{expected}`", variable.name),
         );
     }
