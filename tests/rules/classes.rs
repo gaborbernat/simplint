@@ -2,6 +2,16 @@ use test_case::test_case;
 
 use crate::common;
 
+const RELEASE_MODEL: &str =
+    "from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    name: str\n    version: str\n";
+
+// The fixed source of `file` after `select` fixes the project made of `files`.
+fn fixed_source(files: &[(&str, &str)], select: &str, file: &str) -> String {
+    let root = common::project(files);
+    common::fix_unsafe(root.path(), select);
+    common::read(root.path(), file)
+}
+
 #[test_case("dataclass-frozen", "_dataclass_frozen.py", "py314" ; "dataclass_frozen")]
 #[test_case("dataclass-frozen", "_dataclass_frozen_receivers.py", "py314" ; "dataclass_frozen_receivers")]
 #[test_case("dataclass-frozen", "_dataclass_frozen_receiver_names.py", "py314" ; "dataclass_frozen_receiver_names")]
@@ -451,16 +461,19 @@ fn dict_write_leaves_the_class_without_a_frozen_fix() {
 #[test_case("import models\n", true ; "not_reached_by_getattr")]
 #[test_case("import models\n\nRelease = getattr(models, \"Release\")(\"a\", \"1\")\n", false ; "reached_by_getattr")]
 fn getattr_reached_dataclass_keeps_its_positional_calls(caller: &str, fixed: bool) {
-    let root = common::project(&[
-        ("pyproject.toml", "[tool.simplint]\nproject-kind = \"application\"\n"),
-        (
-            "models.py",
-            "from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    name: str\n    version: str\n",
-        ),
-        ("main.py", caller),
-    ]);
-    common::fix_unsafe(root.path(), "dataclass-kw-only");
-    assert_eq!(common::read(root.path(), "models.py").contains("kw_only=True"), fixed);
+    assert_eq!(
+        fixed_source(
+            &[
+                ("pyproject.toml", "[tool.simplint]\nproject-kind = \"application\"\n"),
+                ("models.py", RELEASE_MODEL,),
+                ("main.py", caller),
+            ],
+            "dataclass-kw-only",
+            "models.py"
+        )
+        .contains("kw_only=True"),
+        fixed
+    );
 }
 
 // A handler that names a tuple of classes catches each class in it, in whichever module the tuple is defined, and
@@ -492,15 +505,13 @@ fn indistinct_error_class_counts_the_classes_a_tuple_or_suppress_catches(errors_
 #[test_case("Base", "from models import Release as Base", false ; "aliased_base")]
 #[test_case("Base", "from models import Other as Base", true ; "aliased_other_class")]
 fn subclass_through_an_import_keeps_frozen_unset(base: &str, import: &str, fixed: bool) {
-    let root = common::project(&[
+    assert_eq!(fixed_source(&[
         (
             "models.py",
             "from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n\n\nclass Other:\n    pass\n",
         ),
         ("main.py", &format!("{import}\n\n\nclass Tagged({base}):\n    pass\n")),
-    ]);
-    common::fix_unsafe(root.path(), "dataclass-frozen");
-    assert_eq!(common::read(root.path(), "models.py").contains("frozen=True"), fixed);
+    ], "dataclass-frozen", "models.py").contains("frozen=True"), fixed);
 }
 
 // An instance reached through the module that defines its class, as `models.Release(...)` or an annotation
@@ -509,12 +520,18 @@ fn subclass_through_an_import_keeps_frozen_unset(base: &str, import: &str, fixed
 #[test_case("def bump(release: models.Release) -> None:\n    release.version = \"2\"\n", false ; "dotted_annotation")]
 #[test_case("release = models.Release(\"1\")\nprint(release)\n", true ; "dotted_constructor_without_write")]
 fn module_qualified_instance_keeps_frozen_unset(caller: &str, fixed: bool) {
-    let root = common::project(&[
-        ("models.py", "from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n"),
-        ("main.py", &format!("import models\n\n\n{caller}")),
-    ]);
-    common::fix_unsafe(root.path(), "dataclass-frozen");
-    assert_eq!(common::read(root.path(), "models.py").contains("frozen=True"), fixed);
+    assert_eq!(
+        fixed_source(
+            &[
+                ("models.py", "from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n"),
+                ("main.py", &format!("import models\n\n\n{caller}")),
+            ],
+            "dataclass-frozen",
+            "models.py"
+        )
+        .contains("frozen=True"),
+        fixed
+    );
 }
 
 // An annotation names a class the run defines, or else an object of unknown class: `Any`, a protocol, a type alias and a
@@ -527,15 +544,13 @@ fn module_qualified_instance_keeps_frozen_unset(caller: &str, fixed: bool) {
 #[test_case("from models import Release", "Release", false ; "dataclass_of_the_run")]
 #[test_case("from models import Other", "Other", true ; "other_class_of_the_run")]
 fn annotation_naming_no_class_of_the_run_writes_untyped(header: &str, annotation: &str, fixed: bool) {
-    let root = common::project(&[
+    assert_eq!(fixed_source(&[
         (
             "models.py",
             "from dataclasses import dataclass\nfrom typing import Protocol\n\n\n@dataclass\nclass Release:\n    version: str\n\n\nclass Other:\n    version: str\n\n\nclass Versioned(Protocol):\n    version: str\n",
         ),
         ("main.py", &format!("{header}\n\n\ndef bump(item: {annotation}) -> None:\n    item.version = \"2\"\n")),
-    ]);
-    common::fix_unsafe(root.path(), "dataclass-frozen");
-    assert_eq!(common::read(root.path(), "models.py").contains("frozen=True"), fixed);
+    ], "dataclass-frozen", "models.py").contains("frozen=True"), fixed);
 }
 
 // A field a class body annotates with a class of the run is an instance of that class in the methods, though no method
@@ -546,9 +561,11 @@ fn annotated_field_is_an_instance_of_its_class(body: &str, fixed: bool) {
     let source = format!(
         "from dataclasses import dataclass\n\n\n@dataclass\nclass Config:\n    name: str\n\n\n@dataclass\nclass App:\n    config: Config\n\n    def load(self) -> None:\n        {body}\n"
     );
-    let root = common::project(&[("main.py", &source)]);
-    common::fix_unsafe(root.path(), "dataclass-frozen");
-    assert_eq!(common::read(root.path(), "main.py").contains("@dataclass(frozen=True)\nclass Config:"), fixed);
+    assert_eq!(
+        fixed_source(&[("main.py", &source)], "dataclass-frozen", "main.py")
+            .contains("@dataclass(frozen=True)\nclass Config:"),
+        fixed
+    );
 }
 
 // A slotted class replaces a field's default, its class attribute, with a descriptor, so reading or assigning the default
@@ -561,9 +578,11 @@ fn class_level_use_of_a_default_keeps_slots_unset(module_level: &str, fixed: boo
     let source = format!(
         "from dataclasses import dataclass\n\n\n@dataclass\nclass Config:\n    name: str\n    timeout: int = 30\n\n\n{module_level}"
     );
-    let root = common::project(&[("main.py", &source)]);
-    common::fix_unsafe(root.path(), "dataclass-slots");
-    assert_eq!(common::read(root.path(), "main.py").contains("@dataclass(slots=True)\nclass Config:"), fixed);
+    assert_eq!(
+        fixed_source(&[("main.py", &source)], "dataclass-slots", "main.py")
+            .contains("@dataclass(slots=True)\nclass Config:"),
+        fixed
+    );
 }
 
 #[test_case("        return cls.timeout\n", false ; "read_through_cls")]
@@ -573,9 +592,11 @@ fn classmethod_use_of_a_default_keeps_slots_unset(body: &str, fixed: bool) {
     let source = format!(
         "from dataclasses import dataclass\n\n\n@dataclass\nclass Config:\n    name: str\n    timeout: int = 30\n\n    @classmethod\n    def reset(cls) -> int:\n{body}"
     );
-    let root = common::project(&[("main.py", &source)]);
-    common::fix_unsafe(root.path(), "dataclass-slots");
-    assert_eq!(common::read(root.path(), "main.py").contains("@dataclass(slots=True)\nclass Config:"), fixed);
+    assert_eq!(
+        fixed_source(&[("main.py", &source)], "dataclass-slots", "main.py")
+            .contains("@dataclass(slots=True)\nclass Config:"),
+        fixed
+    );
 }
 
 // A nested class has instances of its own, so the writes its methods make to `self` leave the dataclass's options alone.
@@ -656,9 +677,11 @@ fn annotated_dict_store_keeps_frozen_unset(annotation: &str, fixed: bool) {
     let source = format!(
         "from dataclasses import dataclass\nfrom typing import Any\n\n\n@dataclass\nclass Counter:\n    count: int\n\n\ndef reset(counter: {annotation}) -> None:\n    counter.__dict__ = {{\"count\": 0}}\n"
     );
-    let root = common::project(&[("main.py", &source)]);
-    common::fix_unsafe(root.path(), "dataclass-frozen");
-    assert_eq!(common::read(root.path(), "main.py").contains("@dataclass(frozen=True)\nclass Counter:"), fixed);
+    assert_eq!(
+        fixed_source(&[("main.py", &source)], "dataclass-frozen", "main.py")
+            .contains("@dataclass(frozen=True)\nclass Counter:"),
+        fixed
+    );
 }
 
 // A nested class writes its own instances through the first parameter of its methods, which leaves the options alone.
@@ -683,15 +706,13 @@ fn nested_class_writes_keep_options_only_for_their_own_instances(body: &str, fix
 #[test_case("from models import Release\n\nBase = Release\n\n\nclass Tagged(Base):\n    pass\n", false ; "imported_class")]
 #[test_case("from models import Other\n\nBase = Other\n\n\nclass Tagged(Base):\n    pass\n", true ; "other_class")]
 fn subclass_through_a_name_bound_to_a_class_keeps_frozen_unset(caller: &str, fixed: bool) {
-    let root = common::project(&[
+    assert_eq!(fixed_source(&[
         (
             "models.py",
             "from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n\n\nclass Other:\n    pass\n",
         ),
         ("main.py", caller),
-    ]);
-    common::fix_unsafe(root.path(), "dataclass-frozen");
-    assert_eq!(common::read(root.path(), "models.py").contains("frozen=True"), fixed);
+    ], "dataclass-frozen", "models.py").contains("frozen=True"), fixed);
 }
 
 #[test]
@@ -719,15 +740,13 @@ fn subclass_through_a_name_bound_to_a_class_of_the_same_file_keeps_frozen_unset(
 #[test_case("from models import Config\n\nprint(Config().timeout)\n", true ; "instance_read")]
 #[test_case("from models import Config\n\nprint(Config.name)\n", true ; "read_of_field_without_default")]
 fn class_level_access_to_a_default_keeps_slots_unset(caller: &str, fixed: bool) {
-    let root = common::project(&[
+    assert_eq!(fixed_source(&[
         (
             "models.py",
             "from dataclasses import dataclass\n\n\n@dataclass\nclass Config:\n    name: str\n    timeout: int = 30\n",
         ),
         ("main.py", caller),
-    ]);
-    common::fix_unsafe(root.path(), "dataclass-slots");
-    assert_eq!(common::read(root.path(), "models.py").contains("slots=True"), fixed);
+    ], "dataclass-slots", "models.py").contains("slots=True"), fixed);
 }
 
 // A weak container holds the items put into it through `weakref.ref`, so an item of a dataclass withholds `slots`: a
@@ -741,15 +760,13 @@ fn class_level_access_to_a_default_keeps_slots_unset(caller: &str, fixed: bool) 
 #[test_case("import weakref\n\nfrom models import Release\n\nLIVE = weakref.WeakSet()\n\n\ndef keep(item) -> None:\n    LIVE.add(item)\n", true ; "item_of_unknown_class")]
 #[test_case("from models import Release\n\nNAMES = {}\nNAMES[\"one\"] = Release(\"1\")\n", true ; "no_weak_container")]
 fn weak_container_holding_a_dataclass_keeps_slots_unset(caller: &str, fixed: bool) {
-    let root = common::project(&[
+    assert_eq!(fixed_source(&[
         (
             "models.py",
             "from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n\n    def label(self) -> str:\n        return self.version\n",
         ),
         ("main.py", caller),
-    ]);
-    common::fix_unsafe(root.path(), "dataclass-slots");
-    assert_eq!(common::read(root.path(), "models.py").contains("slots=True"), fixed);
+    ], "dataclass-slots", "models.py").contains("slots=True"), fixed);
 }
 
 // A class in the metadata of `Annotated` is a value, which a caller may call by position, so the keyword-only fix leaves

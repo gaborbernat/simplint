@@ -920,24 +920,43 @@ fn diff_run_does_not_cache_reports_computed_from_fixes_it_kept_in_memory() {
     assert_eq!((warm.1.matches("SMP530").count(), warm.1.contains("SMP502"), warm), (2, true, fresh_run));
 }
 
-// A mirrored source that links to a file outside the project keeps its target out of the directories the run walks, so
-// the cache must key the link by whether its target still exists.
+// Ruff's `src` may leave out the directory the mirrored source sits in, yet the paired-test lookup reads it, so a source
+// deleted from there is checked again even though no run names it.
+#[test]
+fn private_import_is_checked_again_once_its_source_outside_the_search_roots_is_deleted() {
+    checked_again_once_its_source_is_deleted(|root, _| {
+        let source = root.join("src/pkg/_api.py");
+        fs::write(&source, common::CLEAN_MODULE).expect("write");
+        source
+    });
+}
+
+// A link keys the cache by whether its target still exists, so the linked source is deleted through its target.
 #[cfg(unix)]
 #[test]
 fn private_import_is_checked_again_once_its_linked_source_is_deleted() {
+    checked_again_once_its_source_is_deleted(|root, outside| {
+        let target = outside.path().join("_api.py");
+        fs::write(&target, common::CLEAN_MODULE).expect("write");
+        std::os::unix::fs::symlink(&target, root.join("src/pkg/_api.py")).expect("symlink");
+        target
+    });
+}
+
+// `setup` writes the mirrored source, in the project or outside it, and returns the file the test then deletes.
+fn checked_again_once_its_source_is_deleted(setup: impl FnOnce(&Path, &tempfile::TempDir) -> PathBuf) {
     let outside = tempfile::TempDir::new().expect("temporary directory");
-    fs::write(outside.path().join("_api.py"), common::CLEAN_MODULE).expect("write");
     let root = project(&[
         ("pyproject.toml", "[tool.ruff]\nsrc = [\"lib\"]\n"),
         ("lib/.keep", ""),
         ("src/pkg/__init__.py", ""),
         ("tests/pkg/test_api.py", "from pkg._api import VALUE\n\n\ndef test_value() -> None:\n    assert VALUE == 1\n"),
     ]);
-    std::os::unix::fs::symlink(outside.path().join("_api.py"), root.path().join("src/pkg/_api.py")).expect("symlink");
+    let deleted = setup(root.path(), &outside);
     let select = ["check", "--select", "SMP310", "tests"];
     let cold = simplint(root.path(), &select).0;
     let kept = simplint_with(root.path(), &[&select[..], &["-v"]].concat(), "", &[]);
-    fs::remove_file(outside.path().join("_api.py")).expect("remove");
+    fs::remove_file(deleted).expect("remove");
     let warm = simplint(root.path(), &select);
     let fresh = simplint(root.path(), &[&select[..], &["--no-cache"]].concat());
     assert_eq!((cold, kept.0, kept.2.contains("Indexed "), warm.0, warm == fresh), (0, 0, false, 1, true));
@@ -983,24 +1002,4 @@ fn private_import_is_checked_again_once_its_mirrored_module_is_deleted() {
     let warm = simplint(root.path(), &select);
     let fresh = simplint(root.path(), &[&select[..], &["--no-cache"]].concat());
     assert_eq!((cold, warm), (0, fresh));
-}
-
-// Ruff's `src` may leave out the directory the mirrored source sits in, yet the paired-test lookup reads it, so a source
-// deleted from there is checked again even though no run names it.
-#[test]
-fn private_import_is_checked_again_once_its_source_outside_the_search_roots_is_deleted() {
-    let root = project(&[
-        ("pyproject.toml", "[tool.ruff]\nsrc = [\"lib\"]\n"),
-        ("lib/.keep", ""),
-        ("src/pkg/__init__.py", ""),
-        ("src/pkg/_api.py", common::CLEAN_MODULE),
-        ("tests/pkg/test_api.py", "from pkg._api import VALUE\n\n\ndef test_value() -> None:\n    assert VALUE == 1\n"),
-    ]);
-    let select = ["check", "--select", "SMP310", "tests"];
-    let cold = simplint(root.path(), &select).0;
-    let kept = simplint_with(root.path(), &[&select[..], &["-v"]].concat(), "", &[]);
-    fs::remove_file(root.path().join("src/pkg/_api.py")).expect("remove");
-    let warm = simplint(root.path(), &select);
-    let fresh = simplint(root.path(), &[&select[..], &["--no-cache"]].concat());
-    assert_eq!((cold, kept.0, kept.2.contains("Indexed "), warm.0, warm == fresh), (0, 0, false, 1, true));
 }

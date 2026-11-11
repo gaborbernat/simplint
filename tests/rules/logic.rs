@@ -214,8 +214,7 @@ fn walrus_candidate_under_a_comment_in_the_outer_if_is_reported_without_a_fix() 
     let report = "module.py:3:9: SMP502 Inline single-use `size` into the `if` test\nFound 1 error.\n";
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP502"]);
     assert_eq!((code, stdout.as_str()), (1, report));
-    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP502", "--fix", "--unsafe-fixes"]);
-    assert_eq!((code, stdout.as_str(), read(root.path(), "module.py")), (1, report, source.to_owned()));
+    common::assert_fix_keeps_report(root.path(), "SMP502", &["--fix", "--unsafe-fixes"], "module.py", report);
 }
 
 #[test]
@@ -584,7 +583,7 @@ fn error_message_matching_leaves_asserts_to_pt017(body: &str, code: &str, report
     let source = format!("def run(f):\n    try:\n        f()\n    except OSError as exc:\n        {body}\n");
     let settings = format!("[tool.ruff.lint]\nselect = [\"{code}\"]\n");
     let root = common::project(&[("pyproject.toml", &settings), ("module.py", &source)]);
-    assert_eq!(common::report_count(root.path(), "SMP507"), reports);
+    common::assert_report_count(root.path(), "SMP507", reports);
 }
 
 // The text of two exceptions tells them apart by their wording alone, so only the text of one against a literal or a
@@ -605,7 +604,7 @@ fn error_message_matching_leaves_text_pairs_alone(body: &str, reports: usize) {
         "def run(f, other: OSError, expected):\n    try:\n        f()\n    except OSError as exc:\n        {body}\n"
     );
     let root = common::project(&[("module.py", &source)]);
-    assert_eq!(common::report_count(root.path(), "SMP507"), reports);
+    common::assert_report_count(root.path(), "SMP507", reports);
 }
 
 // The parameters of a method, reached through its class, are read the same way as those of a function.
@@ -616,7 +615,7 @@ fn error_message_matching_reads_parameters_of_methods(body: &str, reports: usize
         "class Replay:\n    def run(self, target, error: OSError, expected):\n        try:\n            target()\n        except OSError as replay_error:\n            {body}\n"
     );
     let root = common::project(&[("module.py", &source)]);
-    assert_eq!(common::report_count(root.path(), "SMP507"), reports);
+    common::assert_report_count(root.path(), "SMP507", reports);
 }
 
 // A name the file does not bind is not the handler's exception, even when its text is the same as the handler's name
@@ -629,7 +628,7 @@ fn error_message_matching_leaves_unresolved_names_alone(body: &str, reports: usi
         "from os.path import *\n\n\ndef run(f):\n    try:\n        f()\n    except OSError as exc:\n        {body}\n"
     );
     let root = common::project(&[("module.py", &source)]);
-    assert_eq!(common::report_count(root.path(), "SMP507"), reports);
+    common::assert_report_count(root.path(), "SMP507", reports);
 }
 
 // A string annotation names the class the file binds under that name, which shadows the builtin of the same name.
@@ -641,7 +640,7 @@ fn error_message_matching_reads_string_annotations_in_the_file(annotation: &str,
         "class ValueError:\n    pass\n\n\ndef run(f, other: {annotation}):\n    try:\n        f()\n    except OSError as exc:\n        return str(exc) == str(other)\n"
     );
     let root = common::project(&[("module.py", &source)]);
-    assert_eq!(common::report_count(root.path(), "SMP507"), reports);
+    common::assert_report_count(root.path(), "SMP507", reports);
 }
 
 // A parameter counts as an exception through its annotation: a class of the file, an exception in a union with `None`,
@@ -657,7 +656,7 @@ fn error_message_matching_reads_annotations(annotation: &str, reports: usize) {
         "from typing import Optional\n\n\nclass Local(Exception):\n    pass\n\n\nclass Deep(Local):\n    pass\n\n\ndef run(f, other: {annotation}):\n    try:\n        f()\n    except OSError as exc:\n        return str(exc) == str(other)\n"
     );
     let root = common::project(&[("module.py", &source)]);
-    assert_eq!(common::report_count(root.path(), "SMP507"), reports);
+    common::assert_report_count(root.path(), "SMP507", reports);
 }
 
 // An exception class the parameter's annotation imports from another file of the run.
@@ -666,7 +665,7 @@ fn error_message_matching_reads_annotations(annotation: &str, reports: usize) {
 fn error_message_matching_reads_imported_exceptions(definition: &str, reports: usize) {
     let module = "from errors import MyError\n\n\ndef run(f, other: MyError):\n    try:\n        f()\n    except OSError as exc:\n        return str(exc) == str(other)\n";
     let root = common::project(&[("errors.py", definition), ("module.py", module)]);
-    assert_eq!(common::report_count(root.path(), "SMP507"), reports);
+    common::assert_report_count(root.path(), "SMP507", reports);
 }
 
 // A class nested in a function is an exception class of the file, whether the annotation names it or a string does.
@@ -678,7 +677,7 @@ fn error_message_matching_reads_nested_exception_classes(annotation: &str, repor
         "def outer():\n    class Local(Exception):\n        pass\n\n    def inner(f, other: {annotation}):\n        try:\n            f()\n        except OSError as exc:\n            return str(exc) == str(other)\n    return inner\n"
     );
     let root = common::project(&[("module.py", &source)]);
-    assert_eq!(common::report_count(root.path(), "SMP507"), reports);
+    common::assert_report_count(root.path(), "SMP507", reports);
 }
 
 // A class whose base name is rebound to a class deriving from it is followed through both bindings, and stops at the
@@ -708,7 +707,7 @@ fn error_message_matching_reads_exception_classes_of_the_file() {
 fn error_message_matching_reads_star_imported_exceptions(definition: &str, reports: usize) {
     let module = "from mod_a import *\n\n\ndef run(f, other: AppError):\n    try:\n        f()\n    except OSError as exc:\n        return str(exc) == str(other)\n";
     let root = common::project(&[("mod_a.py", definition), ("module.py", module)]);
-    assert_eq!(common::report_count(root.path(), "SMP507"), reports);
+    common::assert_report_count(root.path(), "SMP507", reports);
 }
 
 // The tuple length and the complexity a project allows before the rules report, read from `[tool.simplint.logic]`.
@@ -733,7 +732,7 @@ fn long_tuple_return_respects_override_contract(import: &str, decorator: &str, r
             "{import}\n\nclass Base:\n    def fields(self) -> tuple[int, int, int]:\n        return 1, 2, 3\n\n\nclass Child(Base):\n    {decorator}\n    def fields(self) -> tuple[int, int, int]:\n        return 1, 2, 3\n"
         ),
     )]);
-    assert_eq!(common::report_count(root.path(), "SMP528"), reports + 1);
+    common::assert_report_count(root.path(), "SMP528", reports + 1);
 }
 
 #[test_case("PLR1702", "max-nested-blocks = 1", "if value:\n        return _helper(value)\n    return 0", "if value:\n        return 1\n    return 0" ; "nested_blocks")]
@@ -1107,8 +1106,7 @@ fn module_name_another_module_uses_keeps_report_without_fix(
     ]);
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", select]);
     assert_eq!((code, stdout.as_str()), (1, report));
-    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", select, "--fix"]);
-    assert_eq!((code, stdout.as_str(), read(root.path(), "state.py")), (1, report, state.to_owned()));
+    common::assert_fix_keeps_report(root.path(), select, &["--fix"], "state.py", report);
 }
 
 // A name in a function is not the module's, so another module importing the same name does not withhold its fix.
@@ -1138,14 +1136,12 @@ fn context_var_token_local_named_like_an_imported_name_is_still_fixed() {
 fn chdir_restore_keeps_report_without_fix_after_a_line_joined_by_backslash() {
     let source = "import os\n\nstarted = True; \\\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(started)\nfinally:\n    os.chdir(old)\n";
     let root = common::project(&[("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"), ("mod.py", source)]);
-    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
-    assert_eq!(
-        (code, stdout.as_str(), read(root.path(), "mod.py")),
-        (
-            1,
-            "mod.py:4:1: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n",
-            source.to_owned()
-        )
+    common::assert_fix_keeps_report(
+        root.path(),
+        "SMP513",
+        &["--fix"],
+        "mod.py",
+        "mod.py:4:1: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n",
     );
 }
 
@@ -1235,14 +1231,12 @@ fn chdir_restore_import_stays_below_a_header_comment_on_the_first_line() {
 fn chdir_restore_keeps_report_without_fix_when_a_parameter_takes_the_module_name() {
     let source = "import contextlib\nimport os\n\n\ndef run(target, contextlib=None):\n    old = os.getcwd()\n    os.chdir(target)\n    try:\n        return os.listdir()\n    finally:\n        os.chdir(old)\n";
     let root = common::project(&[("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"), ("mod.py", source)]);
-    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
-    assert_eq!(
-        (code, stdout.as_str(), read(root.path(), "mod.py")),
-        (
-            1,
-            "mod.py:6:5: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n",
-            source.to_owned()
-        )
+    common::assert_fix_keeps_report(
+        root.path(),
+        "SMP513",
+        &["--fix"],
+        "mod.py",
+        "mod.py:6:5: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n",
     );
 }
 
