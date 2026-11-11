@@ -498,7 +498,25 @@ To make `Final` available, the fix picks the first of these that applies:
 
 A statement that shares the docstring's line keeps the report without a fix, since an import above the docstring would
 leave `__doc__` as `None`. A `from __future__` import that shares its line with code does the same, since an import
-above it is a syntax error.
+above it is a syntax error. So does a last import that shares its line with code, since the new import would land below
+that code.
+
+```toml config
+[project]
+requires-python = ">=3.11"
+```
+
+```python report
+# fmt: off
+import os; LIMIT = 3
+# fmt: on
+```
+
+```python fixed
+# fmt: off
+import os; LIMIT = 3
+# fmt: on
+```
 
 ```python report
 # fmt: off

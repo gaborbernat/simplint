@@ -183,6 +183,25 @@ No fix is offered when:
 
 - a `from __future__` import shares its line with code, since an import above it is a syntax error.
 
+- the last import shares its line with code, since the new import would land below that code, which would run first.
+
+  ```toml config
+  [project]
+  requires-python = ">=3.10"
+  ```
+
+  ```python report
+  # fmt: off
+  import asyncio; print(asyncio.iscoroutinefunction(print))
+  # fmt: on
+  ```
+
+  ```python fixed
+  # fmt: off
+  import asyncio; print(asyncio.iscoroutinefunction(print))
+  # fmt: on
+  ```
+
 ## Other tools
 
 - **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.

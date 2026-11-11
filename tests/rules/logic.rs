@@ -1322,3 +1322,38 @@ fn chdir_restore_fixes_a_method_whose_class_attribute_takes_the_module_name() {
         )
     );
 }
+
+// An import that shares its line with code cannot take the new import below it, as the code runs first, so the fix
+// stays off. A comment after the import is no code, so the import takes the fix.
+#[test_case("SMP516", "py314", "import asyncio; print(asyncio.iscoroutinefunction(print))\n", "mod.py:1:23: SMP516 `asyncio.iscoroutinefunction()` is deprecated since Python 3.14 and also accepts the legacy coroutine marker\nFound 1 error.\n" ; "asyncio_shared_line")]
+#[test_case("SMP601", "py314", "import os; LIMIT = 3\n", "mod.py:1:12: SMP601 `LIMIT` is never reassigned; annotate it `Final`\nFound 1 error.\n" ; "final_shared_line")]
+fn import_after_a_shared_line_is_not_inserted(select: &str, target: &str, source: &str, report: &str) {
+    let root = common::project(&[
+        ("pyproject.toml", &format!("[tool.ruff]\ntarget-version = \"{target}\"\n")),
+        ("mod.py", source),
+    ]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", select]);
+    assert_eq!((code, stdout.as_str()), (1, report));
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", select, "--fix", "--unsafe-fixes"]);
+    assert_eq!((code, stdout.as_str(), read(root.path(), "mod.py")), (1, report, source.to_owned()));
+}
+
+#[test]
+fn asyncio_import_after_a_comment_on_the_import_line_is_inserted_below_it() {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py314\"\n"),
+        (
+            "mod.py",
+            "import asyncio  # loop\n\n\ndef check(task):\n    asyncio.sleep(0)\n    return asyncio.iscoroutinefunction(task)\n",
+        ),
+    ]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP516", "--fix", "--unsafe-fixes"]);
+    assert_eq!(
+        (code, stdout.as_str(), read(root.path(), "mod.py")),
+        (
+            0,
+            "Found 1 error (1 fixed, 0 remaining).\n",
+            "import asyncio  # loop\nimport inspect\n\n\ndef check(task):\n    asyncio.sleep(0)\n    return inspect.iscoroutinefunction(task)\n".to_owned()
+        )
+    );
+}

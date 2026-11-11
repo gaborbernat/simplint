@@ -278,7 +278,13 @@ fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Op
     let (line, insertion) = if let Some((next, _)) = stdlib.iter().find(|(_, sort)| *sort > key) {
         (above_comments(checker, next), text)
     } else if let Some((last, _)) = stdlib.last() {
-        (source.full_line_end(last.end()), text)
+        let line_end = source.full_line_end(last.end());
+        let rest = source[TextRange::new(last.end(), line_end)].trim();
+        // Code after the import on its line would run before the new import lands below it.
+        if !rest.is_empty() && !rest.starts_with('#') {
+            return None;
+        }
+        (line_end, text)
     } else {
         // The statement the import goes before follows the preamble, so the body has one there.
         (above_comments(checker, &body[preamble]), format!("{text}{eol}"))
