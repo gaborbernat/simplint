@@ -7,6 +7,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::testing::recognize::is_pytest_raises;
 use crate::semantic::Semantic;
 use crate::syntax::ReturnVisitor;
 
@@ -176,7 +177,7 @@ fn can_swallow(semantic: &Semantic, expr: &Expr) -> bool {
         return true;
     };
     semantic.resolves_to(func, &["contextlib", "suppress"])
-        || semantic.resolves_to(func, &["pytest", "raises"])
+        || is_pytest_raises(semantic, func)
         || semantic.resolves_to(func, &["contextlib", "ExitStack"])
         || semantic.resolves_to(func, &["contextlib", "AsyncExitStack"])
 }

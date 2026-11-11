@@ -1,9 +1,10 @@
-use ruff_python_ast::{self as ast, Expr};
+use ruff_python_ast as ast;
 use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::syntax::{last_segment, module_statements};
+use crate::rules::testing::recognize::is_fixture;
+use crate::syntax::module_statements;
 
 pub fn unused_fixture(checker: &Checker) {
     if !checker.is_test_module() {
@@ -33,15 +34,8 @@ pub fn unused_fixture(checker: &Checker) {
 
 // The name pytest requests the fixture by, or `None` when the function is no fixture or runs for every test.
 fn fixture_name(function: &ast::StmtFunctionDef) -> Option<&str> {
-    function.decorator_list.iter().find_map(|decorator| {
-        let (func, arguments) = match &decorator.expression {
-            Expr::Call(call) => (&*call.func, Some(&call.arguments)),
-            expr => (expr, None),
-        };
-        if last_segment(func) != Some("fixture") {
-            return None;
-        }
-        let Some(arguments) = arguments else {
+    function.decorator_list.iter().filter(|decorator| is_fixture(decorator)).find_map(|decorator| {
+        let Some(arguments) = decorator.expression.as_call_expr().map(|call| &call.arguments) else {
             return Some(function.name.as_str());
         };
         // Autouse fixtures run for every test, whether or not a test names them, unless `autouse=False`.

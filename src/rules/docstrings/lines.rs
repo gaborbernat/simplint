@@ -25,13 +25,8 @@ pub(crate) fn doc_lines(text: &str) -> Vec<DocLine<'_>> {
             line
         })
         .collect();
-    let base = lines
-        .iter()
-        .skip(1)
-        .filter(|line| !line.text.is_empty())
-        .map(|line| line.indent)
-        .min()
-        .unwrap_or_default();
+    let base =
+        lines.iter().skip(1).filter(|line| !line.text.is_empty()).map(|line| line.indent).min().unwrap_or_default();
     lines
         .into_iter()
         .enumerate()

@@ -8,6 +8,7 @@ use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 use crate::lint::checker::Checker;
 use crate::project::receivers::module_name;
 use crate::rules::classes::Decorated;
+use crate::rules::testing::recognize::is_raises_or_assert_raises;
 use crate::syntax::{is_classmethod, is_name, is_true_literal, last_segment, receiver};
 
 // What freezing or slotting the class would break, and whether the walk met code it cannot judge, which makes the fix
@@ -157,11 +158,10 @@ impl<'a> Visitor<'a> for Raises<'a> {
         let Stmt::With(with) = stmt else {
             return visitor::walk_stmt(self, stmt);
         };
-        let raises = with.items.iter().any(|item| {
-            item.context_expr.as_call_expr().is_some_and(|call| {
-                last_segment(&call.func).is_some_and(|name| matches!(name, "raises" | "assertRaises"))
-            })
-        });
+        let raises = with
+            .items
+            .iter()
+            .any(|item| item.context_expr.as_call_expr().is_some_and(|call| is_raises_or_assert_raises(&call.func)));
         self.depth += usize::from(raises);
         visitor::walk_stmt(self, stmt);
         self.depth -= usize::from(raises);

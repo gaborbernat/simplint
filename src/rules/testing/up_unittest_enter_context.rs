@@ -8,18 +8,10 @@ use rustc_hash::FxHashMap;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::testing::is_test_case;
+use crate::rules::testing::recognize::is_patcher;
 use crate::rules::{indentation, is_alone_on_lines};
 use crate::semantic::Semantic;
 use crate::syntax::for_each_body;
-
-const PATCHERS: &[&[&str]] = &[
-    &["unittest", "mock", "patch"],
-    &["unittest", "mock", "patch", "object"],
-    &["unittest", "mock", "patch", "dict"],
-    &["mock", "patch"],
-    &["mock", "patch", "object"],
-    &["mock", "patch", "dict"],
-];
 
 pub fn up_unittest_enter_context(checker: &Checker) {
     let mut spellings = FxHashMap::default();
@@ -95,7 +87,7 @@ fn patcher_assignment<'a>(semantic: &Semantic, stmt: &'a Stmt) -> Option<(&'a st
     let Expr::Call(call) = value else {
         return None;
     };
-    PATCHERS.iter().any(|path| semantic.resolves_to(&call.func, path)).then_some((target, call))
+    is_patcher(semantic, &call.func).then_some((target, call))
 }
 
 // The name the started patch's value is bound to, when the statement is `value = patcher.start()`.

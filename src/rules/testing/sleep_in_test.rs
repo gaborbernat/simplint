@@ -6,8 +6,8 @@ use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::testing::recognize::is_patch_by_name;
 use crate::semantic::Semantic;
-use crate::syntax::last_segment;
 
 pub fn sleep_in_test(checker: &Checker) {
     if !checker.is_test_module() {
@@ -77,9 +77,7 @@ fn patches_sleep(semantic: &Semantic, call: &ast::ExprCall) -> bool {
     let monkeypatch_setattr = UnqualifiedName::from_expr(&call.func)
         .is_some_and(|name| matches!(name.segments(), [.., "monkeypatch", "setattr"]));
     let args = call.arguments.args.as_ref();
-    if (last_segment(&call.func) == Some("patch") || monkeypatch_setattr)
-        && args.iter().any(|arg| is_string(arg, "time.sleep"))
-    {
+    if (is_patch_by_name(&call.func) || monkeypatch_setattr) && args.iter().any(|arg| is_string(arg, "time.sleep")) {
         return true;
     }
     monkeypatch_setattr

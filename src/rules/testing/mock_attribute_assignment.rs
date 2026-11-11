@@ -7,8 +7,8 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Blanks, fix_of, statement_lines};
+use crate::rules::testing::recognize::is_mock_constructor;
 use crate::rules::{expr_mentions, is_alone_on_lines, single_assignment};
-use crate::syntax::MOCK_CLASSES;
 use crate::syntax::{for_each_body, last_segment};
 
 pub fn mock_attribute_assignment(checker: &Checker) {
@@ -17,7 +17,7 @@ pub fn mock_attribute_assignment(checker: &Checker) {
             let Some((target, _, Expr::Call(call))) = single_assignment(stmt) else {
                 continue;
             };
-            if !last_segment(&call.func).is_some_and(|last| MOCK_CLASSES.contains(&last)) {
+            if !is_mock_constructor(&call.func) {
                 continue;
             }
             let assignments = following_assignments(target.id.as_str(), &statements[index + 1..]);

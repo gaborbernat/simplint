@@ -9,7 +9,8 @@ use rustc_hash::FxHashMap;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::testing::is_test_module_function;
-use crate::syntax::{for_each_body, is_name, last_segment, target_names};
+use crate::rules::testing::recognize::is_assert_raises_family;
+use crate::syntax::{for_each_body, is_name, target_names};
 
 pub fn loop_in_test(checker: &Checker) {
     let mut found = Vec::new();
@@ -75,7 +76,7 @@ impl<'a> Visitor<'a> for Exercises<'_> {
             Stmt::Expr(ast::StmtExpr { value, .. })
                 if is_self_assertion(value)
                     && let Expr::Call(ast::ExprCall { func, arguments, .. }) = value.as_ref()
-                    && last_segment(func).is_none_or(|name| !name.starts_with("assertRaises")) =>
+                    && !is_assert_raises_family(func) =>
             {
                 self.found |= arguments
                     .args
