@@ -10,10 +10,9 @@ use crate::syntax::{alias_root_binding, is_main_test, is_type_checking_name, pat
 impl FactVisitor<'_> {
     pub(super) fn branches(&self, test: &Expr) -> (Runs, Runs) {
         let name = test.as_name_expr().map(|name| name.id.as_str());
-        let falsy_name = name.is_some_and(|name| self.constants.falsy.contains(name));
         let typing_guard =
             is_type_checking_name(test) && !name.is_some_and(|name| self.constants.truthy.contains(name));
-        if typing_guard || is_main_test(test) || falsy_name {
+        if typing_guard || is_main_test(test) || name.is_some_and(|name| self.constants.falsy.contains(name)) {
             return (Runs::Never, Runs::Always);
         }
         if let Some(branches) = version_branches(test) {
@@ -121,6 +120,8 @@ pub(super) fn constants(body: &[Stmt]) -> Constants<'_> {
     bindings.visit_body(body);
     let mut globals = GlobalNames::default();
     globals.visit_body(body);
+    // A `global` declaration rebinds a name while the module runs, and a star import binds the public names, so
+    // neither leaves a name a constant.
     for name in globals.names {
         bindings.bind(name, None);
     }
@@ -174,6 +175,7 @@ impl<'a> Visitor<'a> for Bindings<'a> {
                     self.visit_expr(value);
                 }
             }
+            // A function or a class binds its own name only; what its body binds is local to it.
             Stmt::FunctionDef(function) => self.bind(function.name.as_str(), None),
             Stmt::ClassDef(class) => self.bind(class.name.as_str(), None),
             Stmt::Import(ast::StmtImport { names, .. }) => {

@@ -25,7 +25,6 @@ pub(crate) struct Statement {
 pub(super) fn statements(parsed: &Parsed<ModModule>, source: &str) -> Vec<Statement> {
     // Any odd multiplier works modulo 2^64; the windows that hash alike are compared by their texts after.
     const BASE: u64 = 0x9E37_79B9_7F4A_7C15;
-    let lines = LineIndex::from_source_text(source);
     let tokens: Vec<(TextSize, bool, u64)> = compared_tokens(parsed.tokens())
         .map(|token| {
             let text = compared_text(token, source);
@@ -46,15 +45,15 @@ pub(super) fn statements(parsed: &Parsed<ModModule>, source: &str) -> Vec<Statem
     }
     prefix.push(hash);
     powers.push(power);
+    let lines = LineIndex::from_source_text(source);
     let mut statements = Vec::new();
     compared_statements(&parsed.syntax().body, &mut |body, stmt| {
         let first = tokens.partition_point(|(start, ..)| *start < stmt.start());
         let first =
             first + tokens[first..].iter().take_while(|(start, dedent, _)| *dedent && *start == stmt.start()).count();
         let end = tokens.partition_point(|(start, ..)| *start < stmt.end());
-        let hash = prefix[end].wrapping_sub(prefix[first].wrapping_mul(powers[end - first]));
         statements.push(Statement {
-            hash,
+            hash: prefix[end].wrapping_sub(prefix[first].wrapping_mul(powers[end - first])),
             body,
             start: stmt.start().to_u32(),
             end: stmt.end().to_u32(),
@@ -65,30 +64,22 @@ pub(super) fn statements(parsed: &Parsed<ModModule>, source: &str) -> Vec<Statem
     statements
 }
 
-// None when the file no longer holds the statements `expected` records.
-pub(crate) fn statement_texts(
-    path: &Path,
-    wanted: &FxHashSet<usize>,
-    expected: &[Statement],
-) -> Option<FxHashMap<usize, Vec<u8>>> {
-    let source = std::fs::read_to_string(path).ok()?;
-    let parsed = parse_module(&source).ok()?;
-    let mut texts = FxHashMap::default();
-    let mut at = 0;
-    let mut same = true;
-    compared_statements(&parsed.syntax().body, &mut |_, stmt| {
-        same &= expected.get(at).is_some_and(|known| known.start == stmt.start().to_u32());
-        if same && wanted.contains(&at) {
-            let mut text = Vec::new();
-            for token in statement_tokens(&parsed, &source, stmt.range()) {
-                text.extend_from_slice(&token.len().to_le_bytes());
-                text.extend_from_slice(token.as_bytes());
-            }
-            texts.insert(at, text);
-        }
-        at += 1;
-    });
-    (same && at == expected.len()).then_some(texts)
+// Indents and dedents stay, as they nest a statement under another. A dedent on a statement's first token closes the
+// block before it, so `statement_tokens` skips it.
+fn compared_tokens(tokens: &[Token]) -> impl Iterator<Item = &Token> {
+    tokens
+        .iter()
+        .filter(|token| !matches!(token.kind(), TokenKind::Comment | TokenKind::NonLogicalNewline | TokenKind::Newline))
+}
+
+// An indent or a dedent compares by a marker, since its text is the width of the indentation, which must not decide a
+// match while the nesting it marks does.
+fn compared_text<'s>(token: &Token, source: &'s str) -> &'s str {
+    match token.kind() {
+        TokenKind::Indent => "<indent>",
+        TokenKind::Dedent => "<dedent>",
+        _ => &source[token.range()],
+    }
 }
 
 // Imports and docstrings are left out, as pylint's duplicate check leaves them out.
@@ -107,6 +98,33 @@ fn compared_statements<'a>(body: &'a [Stmt], visit: &mut impl FnMut(u32, &'a Stm
     });
 }
 
+// None when the file no longer holds the statements `expected` records.
+pub(crate) fn statement_texts(
+    path: &Path,
+    wanted: &FxHashSet<usize>,
+    expected: &[Statement],
+) -> Option<FxHashMap<usize, Vec<u8>>> {
+    let source = std::fs::read_to_string(path).ok()?;
+    let parsed = parse_module(&source).ok()?;
+    let mut texts = FxHashMap::default();
+    let mut at = 0;
+    let mut same = true;
+    compared_statements(&parsed.syntax().body, &mut |_, stmt| {
+        same &= expected.get(at).is_some_and(|known| known.start == stmt.start().to_u32());
+        if same && wanted.contains(&at) {
+            let mut text = Vec::new();
+            for token in statement_tokens(&parsed, &source, stmt.range()) {
+                // A token's length precedes its text, so token boundaries cannot blur two statements into one text.
+                text.extend_from_slice(&token.len().to_le_bytes());
+                text.extend_from_slice(token.as_bytes());
+            }
+            texts.insert(at, text);
+        }
+        at += 1;
+    });
+    (same && at == expected.len()).then_some(texts)
+}
+
 fn statement_tokens<'s>(
     parsed: &'s Parsed<ModModule>,
     source: &'s str,
@@ -115,23 +133,4 @@ fn statement_tokens<'s>(
     compared_tokens(parsed.tokens().in_range(range))
         .skip_while(move |token| token.kind() == TokenKind::Dedent && token.start() == range.start())
         .map(|token| compared_text(token, source))
-}
-
-// The tokens that make up a statement's text: those other than layout and comments. Indents and dedents stay, as they
-// are what nests a statement under another, but a dedent on a statement's first token closes the block before it, so a
-// statement's text leaves it out.
-fn compared_tokens(tokens: &[Token]) -> impl Iterator<Item = &Token> {
-    tokens
-        .iter()
-        .filter(|token| !matches!(token.kind(), TokenKind::Comment | TokenKind::NonLogicalNewline | TokenKind::Newline))
-}
-
-// An indent or a dedent compares by a marker, since its text is the width of the indentation, which must not decide a
-// match while the nesting it marks does.
-fn compared_text<'s>(token: &Token, source: &'s str) -> &'s str {
-    match token.kind() {
-        TokenKind::Indent => "<indent>",
-        TokenKind::Dedent => "<dedent>",
-        _ => &source[token.range()],
-    }
 }
