@@ -3,6 +3,7 @@ mod cleanup;
 mod errors;
 
 use std::collections::BTreeSet;
+use std::hash::Hash;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -41,12 +42,12 @@ pub struct Fixer<'l, 'a> {
     unsafe_fixes: UnsafeFixes,
     noqa: flags::Noqa,
     sources: Sources,
-    lints: Memo<Lint>,
-    checks: Memo<Arc<Checked>>,
+    lints: Memo<Arc<str>, Lint>,
+    checks: Memo<Arc<str>, Arc<Checked>>,
     // Whether Ruff has checked a source yet: the first check is of the source as read, whose warnings are shown.
     checked: AtomicBool,
-    failing: Memo<Arc<FxHashSet<&'static str>>>,
-    cleanups: Mutex<FxHashMap<CleanupKey, Arc<str>>>,
+    failing: Memo<Arc<str>, Arc<FxHashSet<&'static str>>>,
+    cleanups: Memo<CleanupKey, Arc<str>>,
 }
 
 impl<'l, 'a> Fixer<'l, 'a> {
@@ -61,7 +62,7 @@ impl<'l, 'a> Fixer<'l, 'a> {
             checks: Memo::default(),
             checked: AtomicBool::new(false),
             failing: Memo::default(),
-            cleanups: Mutex::default(),
+            cleanups: Memo::default(),
         }
     }
 
@@ -167,7 +168,7 @@ impl<'l, 'a> Fixer<'l, 'a> {
         let keys: Vec<FixKey> = fix_keys(linted.source, &linted.lint.diagnostics)
             .into_iter()
             .map(|(_, key)| key)
-            .filter(|key| key.0 == rule && !withdrawn.fixes.contains(key))
+            .filter(|key| key.rule == rule && !withdrawn.fixes.contains(key))
             .collect();
         let mut withheld = withdrawn.clone();
         withheld.fixes.extend(keys.iter().cloned());
@@ -238,7 +239,8 @@ impl<'l, 'a> Fixer<'l, 'a> {
     fn clean_up(&self, start: &str, transformed: &str) -> Option<(String, usize)> {
         let baseline = self.check(start);
         let failing = || {
-            self.failing.get_or(&self.sources, start, || Arc::new(self.linter.ruff.fixable_at_limit(self.path, start)))
+            self.failing
+                .get_or(self.sources.intern(start), || Arc::new(self.linter.ruff.fixable_at_limit(self.path, start)))
         };
         let mut introduced = self.check(transformed).findings.introduced_since(&baseline.findings, failing);
         if introduced.is_empty() {
@@ -263,17 +265,13 @@ impl<'l, 'a> Fixer<'l, 'a> {
         rules.sort_unstable();
         // Ruff checked the source before it asked for a cleanup, so interning it finds the copy already held.
         let key = (self.sources.intern(source), rules);
-        if let Some(known) = self.cleanups.lock().expect("no worker panics while cleaning up").get(&key) {
-            return known.to_string();
-        }
-        let parser_version = self.linter.settings.from_ruff.parser_version;
-        let cleaned = cleanup(self.path, source, introduced, parser_version, |source| self.check(source));
-        let mut cleanups = self.cleanups.lock().expect("no worker panics while cleaning up");
-        if cleanups.len() >= ENTRIES {
-            cleanups.clear();
-        }
-        cleanups.insert(key, self.sources.intern(&cleaned));
-        cleaned
+        self.cleanups
+            .get_or(key, || {
+                let parser_version = self.linter.settings.from_ruff.parser_version;
+                let cleaned = cleanup(self.path, source, introduced, parser_version, |source| self.check(source));
+                self.sources.intern(&cleaned)
+            })
+            .to_string()
     }
 
     // Ruff's `lint_fix` loop: apply fixes and lint again until nothing applies, giving up when a fix breaks the syntax
@@ -312,11 +310,11 @@ impl<'l, 'a> Fixer<'l, 'a> {
     }
 
     fn lint(&self, source: &str) -> Lint {
-        self.lints.get_or(&self.sources, source, || self.linter.lint(self.path, source, self.noqa))
+        self.lints.get_or(self.sources.intern(source), || self.linter.lint(self.path, source, self.noqa))
     }
 
     fn check(&self, source: &str) -> Arc<Checked> {
-        self.checks.get_or(&self.sources, source, || {
+        self.checks.get_or(self.sources.intern(source), || {
             let first = !self.checked.swap(true, Ordering::Relaxed);
             Arc::new(self.linter.ruff.check(self.path, source, &self.linter.settings.from_ruff, first))
         })
@@ -394,7 +392,13 @@ pub struct Withdrawn {
     pub fixes: FxHashSet<FixKey>,
 }
 
-pub type FixKey = (Rule, String, String, usize);
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct FixKey {
+    pub rule: Rule,
+    pub message: String,
+    pub text: String,
+    pub occurrence: usize,
+}
 
 impl Withdrawn {
     fn with_rule(&self, rule: Rule) -> Self {
@@ -405,17 +409,17 @@ impl Withdrawn {
     // up one occurrence. Moving the held keys with it keeps each withheld report held through a settle's passes.
     fn follow(&mut self, applied: &[FixKey]) {
         let mut taken = FxHashMap::<(Rule, &str, &str), Vec<usize>>::default();
-        for (rule, message, text, occurrence) in applied {
-            taken.entry((*rule, message, text)).or_default().push(*occurrence);
+        for key in applied {
+            taken.entry((key.rule, &key.message, &key.text)).or_default().push(key.occurrence);
         }
         self.fixes = self
             .fixes
             .drain()
-            .map(|(rule, message, text, occurrence)| {
+            .map(|key| {
                 let before = taken
-                    .get(&(rule, message.as_str(), text.as_str()))
-                    .map_or(0, |occurrences| occurrences.iter().filter(|&&taken_at| taken_at < occurrence).count());
-                (rule, message, text, occurrence - before)
+                    .get(&(key.rule, key.message.as_str(), key.text.as_str()))
+                    .map_or(0, |occurrences| occurrences.iter().filter(|&&taken_at| taken_at < key.occurrence).count());
+                FixKey { occurrence: key.occurrence - before, ..key }
             })
             .collect();
     }
@@ -453,7 +457,7 @@ fn fix_keys(source: &str, diagnostics: &[Diagnostic]) -> Vec<(usize, FixKey)> {
             let range = diagnostic.range().expect("a simplint report has a range");
             let (message, text) = (diagnostic.headline_message(), &source[range]);
             let seen = occurrences.entry((rule, message, text)).or_default();
-            let key = (rule, message.to_owned(), text.to_owned(), *seen);
+            let key = FixKey { rule, message: message.to_owned(), text: text.to_owned(), occurrence: *seen };
             *seen += 1;
             (index, key)
         })
@@ -478,19 +482,19 @@ struct Settled {
 // Ruff check. A map already holding this many entries is cleared before its next insert, which only costs recomputing.
 const ENTRIES: usize = 128;
 
-// Results keyed by the source they were computed from. The lock is not held while computing, so parallel candidates
-// do not wait on each other; two that need the same source at once both compute it.
-struct Memo<T>(Mutex<FxHashMap<Arc<str>, T>>);
+// Results keyed by what they were computed from. The lock is not held while computing, so parallel candidates do not
+// wait on each other; two that need the same key at once both compute it.
+struct Memo<K, T>(Mutex<FxHashMap<K, T>>);
 
-impl<T> Default for Memo<T> {
+impl<K, T> Default for Memo<K, T> {
     fn default() -> Self {
         Self(Mutex::new(FxHashMap::default()))
     }
 }
 
-impl<T: Clone> Memo<T> {
-    fn get_or(&self, sources: &Sources, source: &str, compute: impl FnOnce() -> T) -> T {
-        if let Some(known) = self.entries().get(source) {
+impl<K: Eq + Hash, T: Clone> Memo<K, T> {
+    fn get_or(&self, key: K, compute: impl FnOnce() -> T) -> T {
+        if let Some(known) = self.entries().get(&key) {
             return known.clone();
         }
         let computed = compute();
@@ -498,11 +502,11 @@ impl<T: Clone> Memo<T> {
         if entries.len() >= ENTRIES {
             entries.clear();
         }
-        entries.insert(sources.intern(source), computed.clone());
+        entries.insert(key, computed.clone());
         computed
     }
 
-    fn entries(&self) -> MutexGuard<'_, FxHashMap<Arc<str>, T>> {
+    fn entries(&self) -> MutexGuard<'_, FxHashMap<K, T>> {
         self.0.lock().expect("no worker panics while computing")
     }
 }
@@ -611,7 +615,12 @@ mod tests {
     }
 
     fn key(occurrence: usize) -> FixKey {
-        (Rule::SingleUseVariable, "message".to_owned(), "lock = build()".to_owned(), occurrence)
+        FixKey {
+            rule: Rule::SingleUseVariable,
+            message: "message".to_owned(),
+            text: "lock = build()".to_owned(),
+            occurrence,
+        }
     }
 
     #[test_case(&[3], &[1], &[2] ; "held_moves_up_past_an_applied_identical_report")]
@@ -621,7 +630,7 @@ mod tests {
         let mut withdrawn =
             Withdrawn { rules: RuleSet::default(), fixes: held.iter().map(|&occurrence| key(occurrence)).collect() };
         withdrawn.follow(&applied.iter().map(|&occurrence| key(occurrence)).collect::<Vec<_>>());
-        let mut occurrences: Vec<usize> = withdrawn.fixes.iter().map(|fix| fix.3).collect();
+        let mut occurrences: Vec<usize> = withdrawn.fixes.iter().map(|fix| fix.occurrence).collect();
         occurrences.sort_unstable();
         assert_eq!(occurrences, moved);
     }

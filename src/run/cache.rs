@@ -33,7 +33,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use ruff_linter::settings::LinterSettings;
 
-use crate::fix::Withdrawn;
+use crate::fix::{FixKey, Withdrawn};
 use crate::lint::Linter;
 use crate::lint::checker::source_file_at;
 use crate::lint::registry::{Rule, RuleSet};
@@ -797,7 +797,7 @@ struct WithdrawnFix {
     rule: String,
     message: String,
     text: String,
-    ordinal: usize,
+    occurrence: usize,
 }
 
 impl Settled {
@@ -808,11 +808,11 @@ impl Settled {
             fixes: withdrawn
                 .fixes
                 .iter()
-                .map(|(rule, message, text, ordinal)| WithdrawnFix {
-                    rule: rule.code().to_owned(),
-                    message: message.clone(),
-                    text: text.clone(),
-                    ordinal: *ordinal,
+                .map(|key| WithdrawnFix {
+                    rule: key.rule.code().to_owned(),
+                    message: key.message.clone(),
+                    text: key.text.clone(),
+                    occurrence: key.occurrence,
                 })
                 .collect(),
         }
@@ -826,12 +826,12 @@ fn withdrawn(settled: &ArchivedSettled) -> Withdrawn {
             .fixes
             .iter()
             .filter_map(|fix| {
-                Some((
-                    Rule::from_code(fix.rule.as_str())?,
-                    fix.message.as_str().to_owned(),
-                    fix.text.as_str().to_owned(),
-                    fix.ordinal.to_native() as usize,
-                ))
+                Some(FixKey {
+                    rule: Rule::from_code(fix.rule.as_str())?,
+                    message: fix.message.as_str().to_owned(),
+                    text: fix.text.as_str().to_owned(),
+                    occurrence: fix.occurrence.to_native() as usize,
+                })
             })
             .collect(),
     }
