@@ -691,6 +691,27 @@ pub fn is_main_test(test: &Expr) -> bool {
 pub(crate) const MOCK_CLASSES: &[&str] =
     &["Mock", "MagicMock", "AsyncMock", "NonCallableMock", "NonCallableMagicMock", "PropertyMock", "create_autospec"];
 
+// The names the annotations of a module spell, including those of string annotations, which Ruff reads as uses.
+pub(crate) fn annotated_names(body: &[Stmt]) -> FxHashSet<String> {
+    let mut names = AnnotatedNames::default();
+    names.visit_body(body);
+    names.0
+}
+
+#[derive(Default)]
+struct AnnotatedNames(FxHashSet<String>);
+
+impl<'a> Visitor<'a> for AnnotatedNames {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        match stmt {
+            Stmt::AnnAssign(ast::StmtAnnAssign { annotation, .. }) => self.0.extend(names_in(annotation)),
+            Stmt::FunctionDef(function) => self.0.extend(signature_annotations(function).flat_map(names_in)),
+            _ => {}
+        }
+        visitor::walk_stmt(self, stmt);
+    }
+}
+
 // The names an annotation or bound refers to, through subscripts, unions and string annotations.
 pub(crate) fn names_in(expr: &Expr) -> Vec<String> {
     let mut names = Vec::new();

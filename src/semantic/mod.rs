@@ -2,6 +2,7 @@ mod append;
 mod builder;
 mod django;
 mod runtime;
+mod unused_imports;
 
 use std::path::Path;
 
@@ -44,6 +45,8 @@ pub struct Semantic<'a> {
     type_checking_stubs: FxHashSet<TextRange>,
     // Each comprehension with the range of its first iterable, which the enclosing scope evaluates.
     comprehensions: Vec<(TextRange, TextRange)>,
+    // The module-scope imports Ruff's F401 finds unused, by the range of the name each binds.
+    unused_imports: FxHashSet<TextRange>,
 }
 
 impl<'a> Semantic<'a> {
@@ -75,7 +78,22 @@ impl<'a> Semantic<'a> {
             references.sort_by_key(|reference| reference.range.start());
         }
         model.restore(module);
-        Self { model, annotations_are_lazy, index, django_reports, list_appends, type_checking_stubs, comprehensions }
+        let unused_imports = unused_imports::unused_imports(&model, body);
+        Self {
+            model,
+            annotations_are_lazy,
+            index,
+            django_reports,
+            list_appends,
+            type_checking_stubs,
+            comprehensions,
+            unused_imports,
+        }
+    }
+
+    // Whether Ruff's F401 finds the import binding its name at `range` unused.
+    pub fn is_unused_import(&self, range: TextRange) -> bool {
+        self.unused_imports.contains(&range)
     }
 
     // Whether Ruff's DJ012 reports the statement at `range`, a statement of a Django model's body; only answered when
