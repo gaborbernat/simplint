@@ -4,6 +4,7 @@ use rustc_hash::FxHashSet;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::docstrings::rst::{FieldKind, Owner, field_deletion, has_attribute_bases};
+use crate::syntax::module_statements;
 
 pub fn rst_unknown_attribute(checker: &Checker) {
     for target in checker.state().rst_targets(checker) {
@@ -15,7 +16,8 @@ pub fn rst_unknown_attribute(checker: &Checker) {
             continue;
         }
         // A field may document a property, which autodoc renders as an attribute.
-        let methods = class.body.iter().filter_map(Stmt::as_function_def_stmt).map(|method| method.name.as_str());
+        let methods =
+            module_statements(&class.body).filter_map(Stmt::as_function_def_stmt).map(|method| method.name.as_str());
         let known: FxHashSet<&str> =
             target.attributes(checker).iter().map(|attribute| attribute.name).chain(methods).collect();
         for field in target.docstring.fields(&[FieldKind::Var, FieldKind::VarType]) {

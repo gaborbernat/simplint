@@ -11,18 +11,18 @@ expression: "lint_fixture(rule, fixture, target_version)"
 35:6 SMP910 Field `:param path:` repeats an earlier field
 48:6 SMP910 Field `:param mode:` follows text after the field list; keep the fields together at the end
 71:6 SMP910 Field `:param path:` follows text without a blank line, so it renders as part of that paragraph [unsafe fix: Add a blank line before the field list]
-89:6 SMP910 Field `:parameter path:` uses the alias `parameter`; write `param` [fix: Rename the field to `:param:`]
-90:6 SMP910 Field `:arg mode:` uses the alias `arg`; write `param` [fix: Rename the field to `:param:`]
-91:6 SMP910 Field `:keyword flag:` uses the alias `keyword`; write `param` [fix: Rename the field to `:param:`]
-92:6 SMP910 Field `:raise OSError:` uses the alias `raise`; write `raises` [fix: Rename the field to `:raises:`]
-93:6 SMP910 Field `:exception ValueError:` uses the alias `exception`; write `raises` [fix: Rename the field to `:raises:`]
-94:6 SMP910 Field `:return:` uses the alias `return`; write `returns` [fix: Rename the field to `:returns:`]
-102:6 SMP910 Field `:argument count:` uses the alias `argument`; write `param` [fix: Rename the field to `:param:`]
-103:6 SMP910 Field `:key:` uses the alias `key`; write `param` [fix: Rename the field to `:param:`]
+89:6 SMP910 Field `:parameter path:` uses the alias `parameter`; write `param` [unsafe fix: Rename the field to `:param:`]
+90:6 SMP910 Field `:arg mode:` uses the alias `arg`; write `param` [unsafe fix: Rename the field to `:param:`]
+91:6 SMP910 Field `:keyword flag:` uses the alias `keyword`; write `param` [unsafe fix: Rename the field to `:param:`]
+92:6 SMP910 Field `:raise OSError:` uses the alias `raise`; write `raises` [unsafe fix: Rename the field to `:raises:`]
+93:6 SMP910 Field `:exception ValueError:` uses the alias `exception`; write `raises` [unsafe fix: Rename the field to `:raises:`]
+94:6 SMP910 Field `:return:` uses the alias `return`; write `returns` [unsafe fix: Rename the field to `:returns:`]
+102:6 SMP910 Field `:argument count:` uses the alias `argument`; write `param` [unsafe fix: Rename the field to `:param:`]
+103:6 SMP910 Field `:key:` uses the alias `key`; write `param` [unsafe fix: Rename the field to `:param:`]
 103:6 SMP910 Field `:key:` names nothing; write `:key name:`
-104:6 SMP910 Field `:except:` uses the alias `except`; write `raises` [fix: Rename the field to `:raises:`]
+104:6 SMP910 Field `:except:` uses the alias `except`; write `raises` [unsafe fix: Rename the field to `:raises:`]
 104:6 SMP910 Field `:except:` names no exception; write `:except Error:`
-105:6 SMP910 Field `:yield:` uses the alias `yield`; write `yields` [fix: Rename the field to `:yields:`]
+105:6 SMP910 Field `:yield:` uses the alias `yield`; write `yields` [unsafe fix: Rename the field to `:yields:`]
 128:6 SMP910 Field `:param:` names nothing; write `:param name:`
 134:5 SMP910 Field `:arg path:` uses the alias `arg`; write `param`
 --- fixed (11 applied, 12 remaining) ---

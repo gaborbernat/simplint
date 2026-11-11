@@ -280,6 +280,23 @@ fn placeholder_body_documents_no_return(source: &str, stdout: &str) {
     assert_eq!(common::check(root.path(), &["--select", "SMP923"]).1, stdout);
 }
 
+// The members of a class include those in its `if` blocks and the loop variables of its body, so a field documents them.
+#[test_case(
+    "import sys\n\n\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar speed: Units per second.\n    :ivar run: The entry point.\n    :ivar size: How many jobs wait.\n    \"\"\"\n\n    if sys.version_info >= (3, 12):\n\n        @property\n        def speed(self) -> int:\n            return 2\n\n    else:\n\n        def run(self) -> None:\n            pass\n\n    for size in (1, 2):\n        pass\n",
+    "All checks passed!\n" ;
+    "members_in_blocks_and_loops"
+)]
+#[test_case(
+    "class Engine:\n    \"\"\"Run jobs.\n\n    :ivar missing: Not a member.\n    \"\"\"\n\n    if True:\n        speed = 1\n\n    for size in (1, 2):\n        pass\n",
+    "model.py:4:6: SMP921 `:ivar missing:` documents `missing`, which `Engine` does not have\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    "unknown_member_still_reported"
+)]
+fn class_members_in_blocks_are_documented(source: &str, stdout: &str) {
+    let root =
+        common::project(&[("pyproject.toml", "[tool.simplint]\ndocstring-style = \"rst\"\n"), ("model.py", source)]);
+    assert_eq!(common::check(root.path(), &["--select", "SMP921"]).1, stdout);
+}
+
 // Without `docstring-style`, the field lists of a project's docstrings are not known to be reStructuredText.
 #[test]
 fn rst_rules_need_the_docstring_style() {

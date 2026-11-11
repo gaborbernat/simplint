@@ -31800,7 +31800,7 @@
     "name": "rst-unknown-attribute",
     "summary": "`:ivar:`, `:cvar:` and `:var:` fields for attributes the class lacks",
     "fix": "Sometimes",
-    "explanation": "Flags `:ivar:`, `:cvar:`, `:var:` and `:vartype:` fields in a reStructuredText class docstring that name an attribute\nthe class does not have. Such a field, often left behind by a rename or removal, documents state no instance has.\n\n## Why is this bad?\n\nA field for an attribute that is gone, often renamed or removed in a later change, documents state no instance has.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    :ivar queue: The jobs waiting.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n```\n\nUse instead:\n\n```python ok\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :cvar limit: The most jobs it runs at once.\n      \"\"\"\n\n      state = \"idle\"\n  ```\n\n## What it does\n\nChecks the docstrings of classes, when `docstring-style = \"rst\"`, for `:ivar name:`, `:cvar name:`, `:var name:` and\n`:vartype name:` fields naming an attribute the class does not have.\n\n### Active on\n\n- **Attribute fields in a class docstring**: reported when the name is none of the attributes the class has: those its\n  body assigns, including names unpacked from a tuple and the strings of a `__slots__`, those its methods set on `self`,\n  and its methods and properties, which autodoc can render as attributes.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar state: What it is doing.\n      :ivar queue: The jobs waiting.\n      \"\"\"\n\n      def __init__(self) -> None:\n          self.state = \"idle\"\n  ```\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar run: The entry point.\n      \"\"\"\n\n      def run(self) -> None:\n          print()\n  ```\n\n- **Type aliases in the class body**: a `type` statement there is a class attribute, so a `:cvar` field may document it.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.12\"\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\n\n      :cvar Point: The pair of coordinates.\n      \"\"\"\n\n      type Point = tuple[int, int]\n  ```\n\n### Exceptions\n\n- **A class with a base class other than `object`, `ABC`, `Protocol`, `Generic`, `NamedTuple` or `TypedDict`**: the base\n  may define the attribute.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine(Base):\n      \"\"\"Run jobs.\n\n      :ivar queue: The jobs waiting.\n      \"\"\"\n  ```\n\n- **Names a `__slots__` declares**: the strings of a string, tuple, list or set, and the keys of a dict, whether the\n  assignment is annotated or not.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Named:\n      \"\"\"A name.\n\n      :ivar text: The text.\n      \"\"\"\n\n      __slots__ = \"text\"\n\n\n  class Pair:\n      \"\"\"Two names.\n\n      :ivar first: The first.\n      :ivar second: The second.\n      \"\"\"\n\n      __slots__ = (\"first\", \"second\")\n\n\n  class Listed:\n      \"\"\"A list of names.\n\n      :ivar third: The third.\n      \"\"\"\n\n      __slots__ = [\"third\"]\n\n\n  class Stored:\n      \"\"\"A set of names.\n\n      :ivar fourth: The fourth.\n      \"\"\"\n\n      __slots__ = {\"fourth\"}\n\n\n  class Keyed:\n      \"\"\"Keys.\n\n      :ivar key: The key.\n      \"\"\"\n\n      __slots__ = {\"key\": \"The key.\"}\n\n\n  class Annotated:\n      \"\"\"Annotated slots.\n\n      :ivar size: The size.\n      \"\"\"\n\n      __slots__: tuple[str, ...] = (\"size\",)\n  ```\n\n- **Names unpacked into the class body**: each name a tuple or starred target binds, such as `low` and `high` in\n  `low, high = 0, 10`, or `tail` in `head, *tail = values`.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Bounds:\n      \"\"\"Limits of a range.\n\n      :cvar low: The lower limit.\n      :cvar high: The upper limit.\n      :cvar tail: The rest.\n      \"\"\"\n\n      low, high = 0, 10\n      head, *tail = 1, 2, 3\n  ```\n\n### Fix\n\nThe fix deletes the field with the lines that continue it.\n\n**Unsafe fix:** code may read the docstring through `__doc__`.\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    :ivar queue: The jobs waiting.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n```\n\n```python fixed\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n```\n\nNo fix is offered when escapes in the docstring make its text differ from the source.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#12434](https://github.com/astral-sh/ruff/issues/12434).\n- [pydoclint](https://github.com/jsh9/pydoclint) reports a class docstring that lists more attributes than the class has\n  as [DOC602](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.\n",
+    "explanation": "Flags `:ivar:`, `:cvar:`, `:var:` and `:vartype:` fields in a reStructuredText class docstring that name an attribute\nthe class does not have. Such a field, often left behind by a rename or removal, documents state no instance has.\n\n## Why is this bad?\n\nA field for an attribute that is gone, often renamed or removed in a later change, documents state no instance has.\n\n## Example\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    :ivar queue: The jobs waiting.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n```\n\nUse instead:\n\n```python ok\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n```\n\n## Configuration\n\n- [`docstring-style`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#docstring-markup) in\n  `[tool.simplint]`: `\"rst\"` turns the rule on\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :cvar limit: The most jobs it runs at once.\n      \"\"\"\n\n      state = \"idle\"\n  ```\n\n## What it does\n\nChecks the docstrings of classes, when `docstring-style = \"rst\"`, for `:ivar name:`, `:cvar name:`, `:var name:` and\n`:vartype name:` fields naming an attribute the class does not have.\n\n### Active on\n\n- **Attribute fields in a class docstring**: reported when the name is none of the attributes the class has: those its\n  body assigns, including names unpacked from a tuple and the strings of a `__slots__`, those its methods set on `self`,\n  and its methods and properties, which autodoc can render as attributes.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python report\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar state: What it is doing.\n      :ivar queue: The jobs waiting.\n      \"\"\"\n\n      def __init__(self) -> None:\n          self.state = \"idle\"\n  ```\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar run: The entry point.\n      \"\"\"\n\n      def run(self) -> None:\n          print()\n  ```\n\n- **Type aliases in the class body**: a `type` statement there is a class attribute, so a `:cvar` field may document it.\n\n  ```toml config\n  [project]\n  requires-python = \">=3.12\"\n\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine:\n      \"\"\"Run jobs.\n\n      :cvar Point: The pair of coordinates.\n      \"\"\"\n\n      type Point = tuple[int, int]\n  ```\n\n### Exceptions\n\n- **A class with a base class other than `object`, `ABC`, `Protocol`, `Generic`, `NamedTuple` or `TypedDict`**: the base\n  may define the attribute.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Engine(Base):\n      \"\"\"Run jobs.\n\n      :ivar queue: The jobs waiting.\n      \"\"\"\n  ```\n\n- **Names a `__slots__` declares**: the strings of a string, tuple, list or set, and the keys of a dict, whether the\n  assignment is annotated or not.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Named:\n      \"\"\"A name.\n\n      :ivar text: The text.\n      \"\"\"\n\n      __slots__ = \"text\"\n\n\n  class Pair:\n      \"\"\"Two names.\n\n      :ivar first: The first.\n      :ivar second: The second.\n      \"\"\"\n\n      __slots__ = (\"first\", \"second\")\n\n\n  class Listed:\n      \"\"\"A list of names.\n\n      :ivar third: The third.\n      \"\"\"\n\n      __slots__ = [\"third\"]\n\n\n  class Stored:\n      \"\"\"A set of names.\n\n      :ivar fourth: The fourth.\n      \"\"\"\n\n      __slots__ = {\"fourth\"}\n\n\n  class Keyed:\n      \"\"\"Keys.\n\n      :ivar key: The key.\n      \"\"\"\n\n      __slots__ = {\"key\": \"The key.\"}\n\n\n  class Annotated:\n      \"\"\"Annotated slots.\n\n      :ivar size: The size.\n      \"\"\"\n\n      __slots__: tuple[str, ...] = (\"size\",)\n  ```\n\n- **Names unpacked into the class body**: each name a tuple or starred target binds, such as `low` and `high` in\n  `low, high = 0, 10`, or `tail` in `head, *tail = values`, and the target of a `for` statement in the class body.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  class Bounds:\n      \"\"\"Limits of a range.\n\n      :cvar low: The lower limit.\n      :cvar high: The upper limit.\n      :cvar tail: The rest.\n      :cvar step: The distance between them.\n      \"\"\"\n\n      low, high = 0, 10\n      head, *tail = 1, 2, 3\n      for step in (1, 2):\n          pass\n  ```\n\n- **Members under `if` or `try` in the class body**: a method or assignment there is a member of the class, as one that\n  a version check picks.\n\n  ```toml config\n  [tool.simplint]\n  docstring-style = \"rst\"\n  ```\n\n  ```python ok\n  import sys\n\n\n  class Engine:\n      \"\"\"Run jobs.\n\n      :ivar run: The entry point.\n      \"\"\"\n\n      if sys.version_info >= (3, 12):\n\n          def run(self) -> None:\n              print()\n\n      else:\n\n          def run(self) -> None:\n              print()\n  ```\n\n### Fix\n\nThe fix deletes the field with the lines that continue it.\n\n**Unsafe fix:** code may read the docstring through `__doc__`.\n\n```toml config\n[tool.simplint]\ndocstring-style = \"rst\"\n```\n\n```python report\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    :ivar queue: The jobs waiting.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n```\n\n```python fixed\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n```\n\nNo fix is offered when escapes in the docstring make its text differ from the source.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#12434](https://github.com/astral-sh/ruff/issues/12434).\n- [pydoclint](https://github.com/jsh9/pydoclint) reports a class docstring that lists more attributes than the class has\n  as [DOC602](https://jsh9.github.io/pydoclint/violation_codes.html), with no fix.\n",
     "examples": {
       "parsed": [
         {
@@ -31974,7 +31974,7 @@
         {
           "section": "What it does",
           "line": 209,
-          "end_line": 225,
+          "end_line": 228,
           "config": {
             "line": 209,
             "end_line": 212,
@@ -31987,18 +31987,39 @@
               "file": "example.py",
               "named": false,
               "line": 214,
-              "end_line": 225,
-              "source": "class Bounds:\n    \"\"\"Limits of a range.\n\n    :cvar low: The lower limit.\n    :cvar high: The upper limit.\n    :cvar tail: The rest.\n    \"\"\"\n\n    low, high = 0, 10\n    head, *tail = 1, 2, 3\n"
+              "end_line": 228,
+              "source": "class Bounds:\n    \"\"\"Limits of a range.\n\n    :cvar low: The lower limit.\n    :cvar high: The upper limit.\n    :cvar tail: The rest.\n    :cvar step: The distance between them.\n    \"\"\"\n\n    low, high = 0, 10\n    head, *tail = 1, 2, 3\n    for step in (1, 2):\n        pass\n"
             }
           ]
         },
         {
           "section": "What it does",
           "line": 233,
-          "end_line": 259,
+          "end_line": 257,
           "config": {
             "line": 233,
             "end_line": 236,
+            "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
+          },
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 238,
+              "end_line": 257,
+              "source": "import sys\n\n\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar run: The entry point.\n    \"\"\"\n\n    if sys.version_info >= (3, 12):\n\n        def run(self) -> None:\n            print()\n\n    else:\n\n        def run(self) -> None:\n            print()\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 265,
+          "end_line": 291,
+          "config": {
+            "line": 265,
+            "end_line": 268,
             "source": "[tool.simplint]\ndocstring-style = \"rst\"\n"
           },
           "blocks": [
@@ -32007,8 +32028,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 238,
-              "end_line": 248,
+              "line": 270,
+              "end_line": 280,
               "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    :ivar queue: The jobs waiting.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n"
             },
             {
@@ -32016,8 +32037,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 250,
-              "end_line": 259,
+              "line": 282,
+              "end_line": 291,
               "source": "class Engine:\n    \"\"\"Run jobs.\n\n    :ivar state: What it is doing.\n    \"\"\"\n\n    def __init__(self) -> None:\n        self.state = \"idle\"\n"
             }
           ]
