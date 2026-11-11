@@ -8,6 +8,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Blanks, statement_lines};
 use crate::rules::{is_alone_on_lines, is_lazy};
+use crate::syntax::top_level;
 
 pub fn up_type_checking_lazy_import(checker: &Checker) {
     let body = checker.body();
@@ -52,9 +53,9 @@ fn lazy_fix(checker: &Checker, body: &[Stmt], stmt: &Stmt, imports: &[Stmt]) -> 
     let source = checker.source;
     let runtime_missing = imports.iter().any(|import| {
         matches!(import, Stmt::ImportFrom(ast::StmtImportFrom { module: Some(module), .. })
-            if module.as_str().split('.').next() == Some("_typeshed"))
+            if top_level(module.as_str()) == "_typeshed")
             || matches!(import, Stmt::Import(ast::StmtImport { names, .. })
-                if names.iter().any(|alias| alias.name.as_str().split('.').next() == Some("_typeshed")))
+                if names.iter().any(|alias| top_level(alias.name.as_str()) == "_typeshed"))
     });
     if runtime_missing
         || checker.has_comment_in(stmt.range())

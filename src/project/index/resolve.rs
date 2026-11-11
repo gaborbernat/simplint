@@ -10,7 +10,6 @@ use ruff_db::files::{File, system_path_to_file};
 use ruff_db::system::{OsSystem, SystemPathBuf};
 use ruff_graph::{ModuleDb, ResolverEnvironment, resolve_search_paths};
 use ruff_python_ast::PythonVersion;
-use ruff_python_stdlib::sys::is_known_standard_library;
 use ruff_text_size::TextRange;
 use ty_module_resolver::{
     ImportingFile, Module, ModuleName, SearchPaths, resolve_module, resolve_module_confident, resolve_real_module,
@@ -20,6 +19,7 @@ use ty_module_resolver::{
 use crate::project::constructors::{NameUse, UseKind};
 use crate::project::facts::{ImportBinding, ImportSite, ModuleNames};
 use crate::project::{Ending, FileFacts};
+use crate::syntax::is_stdlib_root;
 
 use super::reach::last_name;
 use super::{FileId, FileIds, SearchRoots};
@@ -560,7 +560,7 @@ pub(super) fn is_module_found<'db>(
     importing: Option<File>,
     module: &str,
 ) -> bool {
-    is_known_standard_library(PythonVersion::latest().minor, module.split('.').next().unwrap_or_default())
+    is_stdlib_root(PythonVersion::latest().minor, module)
         || ModuleName::new(module).is_some_and(|name| locate(db, environment, importing, &name).is_some())
 }
 

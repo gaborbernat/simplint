@@ -2,10 +2,10 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use ruff_python_ast::PythonVersion;
 use ruff_python_stdlib::builtins::is_exception;
-use ruff_python_stdlib::sys::is_known_standard_library;
 
 use crate::project::FileFacts;
 use crate::project::facts::ImportBinding;
+use crate::syntax::is_stdlib_root;
 
 use super::FileId;
 use super::resolve::{ClassBase, ClassKey, ModuleFacts, acyclic_order, class_home};
@@ -191,7 +191,7 @@ fn starred_exception_names<'a>(
 // Whether a base class a run does not define is an exception: a builtin one, or a standard-library one, which by its
 // name ends in `Error`, `Exception` or `Warning`.
 fn is_exception_name(module: &str, name: &str, minor: u8) -> bool {
-    let standard = is_known_standard_library(minor, module.split('.').next().unwrap_or_default());
+    let standard = is_stdlib_root(minor, module);
     is_exception(name, minor)
         || standard && ["Error", "Exception", "Warning"].iter().any(|suffix| name.ends_with(suffix))
 }

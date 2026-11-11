@@ -4,7 +4,6 @@ use ruff_diagnostics::{Applicability, Edit, Fix, IsolationLevel};
 use ruff_python_ast::helpers::is_docstring_stmt;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Stmt, StringFlags};
-use ruff_python_stdlib::sys::is_known_standard_library;
 use ruff_python_trivia::leading_indentation;
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};
@@ -12,7 +11,7 @@ use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};
 use crate::lint::checker::Checker;
 use crate::rules::{indentation, is_alone_on_lines};
 use crate::semantic::future_import;
-use crate::syntax::{Nesting, previous_line_start};
+use crate::syntax::{Nesting, is_stdlib_root, previous_line_start};
 
 // The fix that applies the edits, in the order its constructor sorts them; none when there are no edits.
 pub fn fix_of(edits: impl IntoIterator<Item = Edit>, applicability: Applicability) -> Option<Fix> {
@@ -309,11 +308,10 @@ fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Op
         .filter_map(|stmt| match stmt {
             Stmt::Import(ast::StmtImport { names, .. }) => names
                 .iter()
-                .all(|alias| is_known_standard_library(minor, alias.name.split('.').next().unwrap_or_default()))
+                .all(|alias| is_stdlib_root(minor, alias.name.as_str()))
                 .then(|| (stmt, (false, names[0].name.to_ascii_lowercase()))),
             Stmt::ImportFrom(ast::StmtImportFrom { module: Some(module), level: 0, .. }) => {
-                is_known_standard_library(minor, module.split('.').next().unwrap_or_default())
-                    .then(|| (stmt, (true, module.to_ascii_lowercase())))
+                is_stdlib_root(minor, module.as_str()).then(|| (stmt, (true, module.to_ascii_lowercase())))
             }
             _ => None,
         })

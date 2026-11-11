@@ -720,3 +720,13 @@ pub fn is_type_checking_name(test: &Expr) -> bool {
         _ => false,
     }
 }
+
+// The top-level package of a dotted module name, which the standard library lists.
+pub(crate) fn top_level(module: &str) -> &str {
+    module.split_once('.').map_or(module, |(root, _)| root)
+}
+
+// Whether the standard library of the minor version ships the module's top-level package.
+pub(crate) fn is_stdlib_root(minor: u8, module: &str) -> bool {
+    ruff_python_stdlib::sys::is_known_standard_library(minor, top_level(module))
+}
