@@ -34,28 +34,6 @@ enum Rank {
     Method,
 }
 
-impl Section {
-    fn rank(self) -> Rank {
-        match self {
-            Self::Nested => Rank::Nested,
-            Self::Constructor(index) => Rank::Constructor(index),
-            Self::Factory => Rank::Factory,
-            Self::Dunder => Rank::Dunder,
-            Self::Property => Rank::Property,
-        }
-    }
-
-    pub(super) fn noun(self) -> &'static str {
-        match self {
-            Self::Nested => "the nested classes",
-            Self::Constructor(_) => "the constructors",
-            Self::Factory => "the alternative constructors",
-            Self::Dunder => "the dunder methods",
-            Self::Property => "the properties",
-        }
-    }
-}
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum Arrangement {
     // SMP201: entry points keep their order, so only helpers move.
@@ -91,31 +69,6 @@ struct Unit<'a> {
     fixed: bool,
 }
 
-impl Unit<'_> {
-    fn first(&self) -> usize {
-        self.members[0]
-    }
-
-    fn last(&self) -> usize {
-        self.members[self.members.len() - 1]
-    }
-
-    fn is_definition(&self) -> bool {
-        matches!(self.kind, Kind::Definition { .. })
-    }
-
-    fn rank(&self) -> Rank {
-        match self.kind {
-            Kind::Statement => Rank::Attribute,
-            Kind::Definition { section, .. } => section.map_or(Rank::Method, Section::rank),
-        }
-    }
-
-    fn key(&self) -> (Rank, usize) {
-        (self.rank(), self.first())
-    }
-}
-
 pub(crate) struct ClassOrder<'a> {
     units: Vec<Unit<'a>>,
     unit_of: Vec<usize>,
@@ -123,6 +76,62 @@ pub(crate) struct ClassOrder<'a> {
     ranges: Vec<TextRange>,
     owner: Vec<Option<usize>>,
     children: Vec<Vec<usize>>,
+}
+
+impl<'a> ClassOrder<'a> {
+    pub(super) fn expected(&self, arrangement: Arrangement) -> Vec<usize> {
+        let mut order = Vec::with_capacity(self.unit_of.len());
+        let entries = entry_order(&self.units, |unit| self.owner[unit].is_none(), arrangement);
+        depth_first(entries.into_iter(), &self.children, |unit| {
+            order.extend(self.units[unit].members.iter().copied());
+        });
+        order
+    }
+
+    pub(super) fn helper_owners(&self) -> Vec<Option<usize>> {
+        self.unit_of.iter().map(|&unit| self.owner[unit].map(|owner| self.units[owner].first())).collect()
+    }
+
+    pub(super) fn inversions(&self) -> Vec<Inversion<'a>> {
+        let entries: Vec<(usize, &'a str, Option<Section>)> = (0..self.units.len())
+            .filter_map(|unit| match self.units[unit].kind {
+                Kind::Definition { name, section } if self.owner[unit].is_none() => Some((unit, name, section)),
+                Kind::Definition { .. } | Kind::Statement => None,
+            })
+            .collect();
+        let mut inversions = Vec::new();
+        let mut first_method = None;
+        let mut first_of_rank = BTreeMap::new();
+        for (position, &(unit, name, section)) in entries.iter().enumerate() {
+            let Some(section) = section else {
+                first_method.get_or_insert(position);
+                continue;
+            };
+            let earlier = first_method
+                .into_iter()
+                .chain(
+                    first_of_rank
+                        .range((Bound::Excluded(section.rank()), Bound::Unbounded))
+                        .map(|(_, &earlier)| earlier),
+                )
+                .min();
+            first_of_rank.entry(section.rank()).or_insert(position);
+            let Some(earlier) = earlier else { continue };
+            let (anchor, anchor_name, anchor_section) = entries[earlier];
+            for &member in &self.units[unit].members {
+                inversions.push(Inversion {
+                    statement: member,
+                    range: self.ranges[member],
+                    name,
+                    anchor: self.units[anchor].first(),
+                    anchor_name,
+                    section,
+                    anchor_section,
+                });
+            }
+        }
+        inversions
+    }
 }
 
 // The one order of a class body that SMP201 and SMP203 both read, so a fix of either leaves the other with nothing to
@@ -150,6 +159,27 @@ pub(crate) fn class_order<'a>(checker: &Checker, class: &'a ast::StmtClassDef) -
     }
     let ranges = body.iter().map(|stmt| definition_name(stmt).map_or(stmt.range(), Ranged::range)).collect();
     ClassOrder { units, unit_of, ranges, owner, children }
+}
+
+fn creation_reads(stmt: &Stmt, lazy: bool) -> FxHashSet<&str> {
+    let mut reads = ExprCollector::new(|expr| {
+        expr.as_name_expr().filter(|name| name.ctx == ExprContext::Load).map(|name| name.id.as_str())
+    });
+    match stmt {
+        Stmt::FunctionDef(function) => {
+            for expr in definition_time_exprs(function) {
+                reads.visit_expr(expr);
+            }
+            // Decorators read the annotations they decorate even under lazy annotations, as SMP201 assumes.
+            if !lazy || !function.decorator_list.is_empty() {
+                for expr in signature_annotations(function) {
+                    reads.visit_expr(expr);
+                }
+            }
+        }
+        other => reads.visit_stmt(other),
+    }
+    reads.found.into_iter().collect()
 }
 
 fn units_of<'a>(
@@ -221,21 +251,6 @@ fn pin(units: &mut [Unit], swaps: &Swaps, by_name: &FxHashMap<&str, usize>, body
     {
         units[swaps.unit_of[0]].fixed = true;
     }
-}
-
-fn users(checker: &Checker, class: &ast::StmtClassDef, units: &[Unit], unit_of: &[usize]) -> Vec<Vec<Read>> {
-    let body = &class.body;
-    let mut users: Vec<Vec<Read>> = vec![Vec::new(); units.len()];
-    for (unit, info) in units.iter().enumerate() {
-        let Kind::Definition { name, .. } = info.kind else { continue };
-        for reference in checker.semantic().member_references(class.range, name) {
-            let reader = body.partition_point(|stmt| stmt.end() <= reference.start());
-            if body.get(reader).is_some_and(|stmt| stmt.range().contains_range(*reference)) && unit_of[reader] != unit {
-                users[unit].push(Read { reader: unit_of[reader], at: reference.start() });
-            }
-        }
-    }
-    users
 }
 
 // The owner of each unit, found again after each pinning until no unit needs pinning: pinning a helper or a split
@@ -311,6 +326,21 @@ fn owners(units: &[Unit<'_>], users: &[Vec<Read>]) -> Vec<Option<usize>> {
     }
 }
 
+fn users(checker: &Checker, class: &ast::StmtClassDef, units: &[Unit], unit_of: &[usize]) -> Vec<Vec<Read>> {
+    let body = &class.body;
+    let mut users: Vec<Vec<Read>> = vec![Vec::new(); units.len()];
+    for (unit, info) in units.iter().enumerate() {
+        let Kind::Definition { name, .. } = info.kind else { continue };
+        for reference in checker.semantic().member_references(class.range, name) {
+            let reader = body.partition_point(|stmt| stmt.end() <= reference.start());
+            if body.get(reader).is_some_and(|stmt| stmt.range().contains_range(*reference)) && unit_of[reader] != unit {
+                users[unit].push(Read { reader: unit_of[reader], at: reference.start() });
+            }
+        }
+    }
+    users
+}
+
 fn entry_order(units: &[Unit<'_>], is_entry: impl Fn(usize) -> bool, arrangement: Arrangement) -> Vec<usize> {
     let mut order = Vec::with_capacity(units.len());
     let mut segment = Vec::new();
@@ -356,6 +386,13 @@ impl<'r, 'a> Swaps<'r, 'a> {
         Self { reads, binds, unit_of, binders, readers }
     }
 
+    fn can_move(&self, units: &[Unit], unit: usize, owner: usize) -> bool {
+        let info = &units[unit];
+        let low = info.first().min(units[owner].first());
+        let high = info.last().max(units[owner].last());
+        !self.conflicts(info).into_iter().any(|other| (low..=high).contains(&other) && self.unit_of[other] != unit)
+    }
+
     fn conflicts(&self, info: &Unit) -> FxHashSet<usize> {
         let mut others = FxHashSet::default();
         for &member in &info.members {
@@ -368,13 +405,6 @@ impl<'r, 'a> Swaps<'r, 'a> {
             }
         }
         others
-    }
-
-    fn can_move(&self, units: &[Unit], unit: usize, owner: usize) -> bool {
-        let info = &units[unit];
-        let low = info.first().min(units[owner].first());
-        let high = info.last().max(units[owner].last());
-        !self.conflicts(info).into_iter().any(|other| (low..=high).contains(&other) && self.unit_of[other] != unit)
     }
 
     fn splits(&self, units: &[Unit], unit: usize) -> bool {
@@ -393,59 +423,28 @@ impl<'r, 'a> Swaps<'r, 'a> {
     }
 }
 
-impl<'a> ClassOrder<'a> {
-    pub(super) fn expected(&self, arrangement: Arrangement) -> Vec<usize> {
-        let mut order = Vec::with_capacity(self.unit_of.len());
-        let entries = entry_order(&self.units, |unit| self.owner[unit].is_none(), arrangement);
-        depth_first(entries.into_iter(), &self.children, |unit| {
-            order.extend(self.units[unit].members.iter().copied());
-        });
-        order
+impl Unit<'_> {
+    fn last(&self) -> usize {
+        self.members[self.members.len() - 1]
     }
 
-    pub(super) fn helper_owners(&self) -> Vec<Option<usize>> {
-        self.unit_of.iter().map(|&unit| self.owner[unit].map(|owner| self.units[owner].first())).collect()
+    fn is_definition(&self) -> bool {
+        matches!(self.kind, Kind::Definition { .. })
     }
 
-    pub(super) fn inversions(&self) -> Vec<Inversion<'a>> {
-        let entries: Vec<(usize, &'a str, Option<Section>)> = (0..self.units.len())
-            .filter_map(|unit| match self.units[unit].kind {
-                Kind::Definition { name, section } if self.owner[unit].is_none() => Some((unit, name, section)),
-                Kind::Definition { .. } | Kind::Statement => None,
-            })
-            .collect();
-        let mut inversions = Vec::new();
-        let mut first_method = None;
-        let mut first_of_rank = BTreeMap::new();
-        for (position, &(unit, name, section)) in entries.iter().enumerate() {
-            let Some(section) = section else {
-                first_method.get_or_insert(position);
-                continue;
-            };
-            let earlier = first_method
-                .into_iter()
-                .chain(
-                    first_of_rank
-                        .range((Bound::Excluded(section.rank()), Bound::Unbounded))
-                        .map(|(_, &earlier)| earlier),
-                )
-                .min();
-            first_of_rank.entry(section.rank()).or_insert(position);
-            let Some(earlier) = earlier else { continue };
-            let (anchor, anchor_name, anchor_section) = entries[earlier];
-            for &member in &self.units[unit].members {
-                inversions.push(Inversion {
-                    statement: member,
-                    range: self.ranges[member],
-                    name,
-                    anchor: self.units[anchor].first(),
-                    anchor_name,
-                    section,
-                    anchor_section,
-                });
-            }
+    fn key(&self) -> (Rank, usize) {
+        (self.rank(), self.first())
+    }
+
+    fn rank(&self) -> Rank {
+        match self.kind {
+            Kind::Statement => Rank::Attribute,
+            Kind::Definition { section, .. } => section.map_or(Rank::Method, Section::rank),
         }
-        inversions
+    }
+
+    fn first(&self) -> usize {
+        self.members[0]
     }
 }
 
@@ -471,23 +470,24 @@ fn section(stmt: &Stmt, factories: &FxHashSet<&str>) -> Option<Section> {
     }
 }
 
-fn creation_reads(stmt: &Stmt, lazy: bool) -> FxHashSet<&str> {
-    let mut reads = ExprCollector::new(|expr| {
-        expr.as_name_expr().filter(|name| name.ctx == ExprContext::Load).map(|name| name.id.as_str())
-    });
-    match stmt {
-        Stmt::FunctionDef(function) => {
-            for expr in definition_time_exprs(function) {
-                reads.visit_expr(expr);
-            }
-            // Decorators read the annotations they decorate even under lazy annotations, as SMP201 assumes.
-            if !lazy || !function.decorator_list.is_empty() {
-                for expr in signature_annotations(function) {
-                    reads.visit_expr(expr);
-                }
-            }
+impl Section {
+    fn rank(self) -> Rank {
+        match self {
+            Self::Nested => Rank::Nested,
+            Self::Constructor(index) => Rank::Constructor(index),
+            Self::Factory => Rank::Factory,
+            Self::Dunder => Rank::Dunder,
+            Self::Property => Rank::Property,
         }
-        other => reads.visit_stmt(other),
     }
-    reads.found.into_iter().collect()
+
+    pub(super) fn noun(self) -> &'static str {
+        match self {
+            Self::Nested => "the nested classes",
+            Self::Constructor(_) => "the constructors",
+            Self::Factory => "the alternative constructors",
+            Self::Dunder => "the dunder methods",
+            Self::Property => "the properties",
+        }
+    }
 }

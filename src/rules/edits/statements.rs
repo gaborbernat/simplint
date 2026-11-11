@@ -15,15 +15,6 @@ pub(crate) enum Blanks {
     WiderSide,
 }
 
-pub(crate) fn statement_lines(source: &str, range: TextRange, blanks: Blanks) -> TextRange {
-    match blanks {
-        Blanks::Keep => source.full_lines_range(range),
-        Blanks::Shared => lines_with_shared_blanks(source, range),
-        Blanks::Trailing => lines_with_trailing_blanks(source, range),
-        Blanks::WiderSide => lines_keeping_separation(source, range),
-    }
-}
-
 pub(crate) fn statement_removal(
     checker: &Checker,
     stmt: TextRange,
@@ -58,6 +49,15 @@ pub(crate) fn statement_deletion(
     }
     let up_to_next = TextRange::new(range.start(), next?.start());
     (!checker.has_comment_in(up_to_next)).then_some(up_to_next)
+}
+
+pub(crate) fn statement_lines(source: &str, range: TextRange, blanks: Blanks) -> TextRange {
+    match blanks {
+        Blanks::Keep => source.full_lines_range(range),
+        Blanks::Shared => lines_with_shared_blanks(source, range),
+        Blanks::Trailing => lines_with_trailing_blanks(source, range),
+        Blanks::WiderSide => lines_keeping_separation(source, range),
+    }
 }
 
 // The lines of a statement, with the blank lines after it that `ruff format` would not keep once it is gone. The

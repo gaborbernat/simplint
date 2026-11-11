@@ -35,11 +35,6 @@ pub(crate) fn keep_debug_text(checker: &Checker, edits: Vec<Edit>) -> Option<Vec
     Some(rewritten)
 }
 
-// The text with each brace doubled, as an f-string spells a literal brace.
-pub(crate) fn escape_braces(text: &str) -> String {
-    text.replace('{', "{{").replace('}', "}}")
-}
-
 fn debug_field(source: &str, field: &DebugField, edits: &[Edit]) -> Option<String> {
     let debug = field.debug.as_str();
     if debug.contains(['\n', '\r', '\\']) {
@@ -74,6 +69,11 @@ fn splice(source: &str, from: usize, to: usize, edits: &mut [&Edit]) -> Option<S
     }
     text.push_str(source.get(cursor..to)?);
     Some(text)
+}
+
+// The text with each brace doubled, as an f-string spells a literal brace.
+pub(crate) fn escape_braces(text: &str) -> String {
+    text.replace('{', "{{").replace('}', "}}")
 }
 
 #[derive(Default)]

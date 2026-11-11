@@ -58,19 +58,6 @@ pub(super) fn grouped(names: BTreeMap<String, BTreeSet<String>>) -> Vec<ModuleNa
 #[derive(Default)]
 struct Bound<'a, T>(FxHashMap<&'a str, Option<T>>);
 
-impl<'a, T: Clone + PartialEq> Bound<'a, T> {
-    fn bind(&mut self, name: &'a str, value: Option<&T>) {
-        let slot = self.0.entry(name).or_insert_with(|| value.cloned());
-        if slot.as_ref() != value {
-            *slot = None;
-        }
-    }
-
-    fn get(&self, name: &str) -> Option<&T> {
-        self.0.get(name)?.as_ref()
-    }
-}
-
 #[derive(Clone, Copy, PartialEq)]
 enum Body {
     // A class body binds class attributes, which other code reads through the class.
@@ -202,207 +189,6 @@ impl<'a> FactVisitor<'a> {
     }
 }
 
-impl<'a> FactVisitor<'a> {
-    // The object of an attribute is read through the attribute's name, which an import shows, so only other loads count
-    // as values.
-    fn record_value_load(&mut self, expr: &'a Expr) {
-        if let Expr::Attribute(ast::ExprAttribute { value, ctx, .. }) = expr {
-            if ctx.is_load()
-                && !self.attribute_values.contains(&expr.range())
-                && let Some(name) = UnqualifiedName::from_expr(expr)
-            {
-                self.dotted_loads.insert(name.segments().join("."));
-            }
-            self.attribute_values.insert(value.range());
-        } else if let Expr::Name(ast::ExprName { id, ctx: ExprContext::Load, range, .. }) = expr
-            && !self.attribute_values.contains(range)
-        {
-            self.value_loads.insert(id.as_str());
-            self.scope_mut().loads.insert(id.as_str());
-        }
-    }
-
-    pub(super) fn scope_mut(&mut self) -> &mut Frame<'a> {
-        self.scopes.last_mut().unwrap_or(&mut self.module_scope)
-    }
-
-    pub(super) fn loaded_named(&self, name: &str) -> Vec<String> {
-        let mut scopes = self.scopes.iter().rev().chain(std::iter::once(&self.module_scope));
-        scopes
-            .find_map(|scope| scope.loaded.get(name))
-            .map_or_else(Vec::new, |modules| modules.iter().cloned().collect())
-    }
-
-    fn walk_body(&mut self, stmt: &'a Stmt, body: Body) {
-        let outer = std::mem::replace(&mut self.body, body);
-        visitor::walk_stmt(self, stmt);
-        self.body = outer;
-    }
-
-    fn enter_function(&mut self, parameters: Vec<&'a str>) {
-        let shadowed = self.shadow(parameters.clone());
-        let loaded = parameters.into_iter().map(|name| (name, BTreeSet::new())).collect();
-        self.scopes.push(Frame { loaded, shadowed, ..Frame::default() });
-    }
-
-    // Its loads reach the scope it sits in, as a nested function reads the names around it.
-    fn leave_function(&mut self) {
-        let frame = self.scopes.pop().unwrap_or_default();
-        settle(&frame, &mut self.nested_modules);
-        restore_bindings(&mut self.loop_modules, frame.shadowed);
-        self.scope_mut().loads.extend(frame.loads);
-    }
-
-    pub(super) fn finish_module(&mut self) {
-        let frame = std::mem::take(&mut self.module_scope);
-        settle(&frame, &mut self.nested_modules);
-    }
-
-    fn record_nested(&mut self, top_level: bool, bound: &str, module: &str) {
-        if top_level {
-            return;
-        }
-        if self.body == Body::Class {
-            self.nested_modules.push(module.to_owned());
-        } else {
-            self.scope_mut().imports.push((bound.to_owned(), module.to_owned()));
-        }
-    }
-
-    fn import_from(&mut self, stmt: &'a Stmt, import: &'a ast::StmtImportFrom, top_level: bool) {
-        let ast::StmtImportFrom { module, names, level, is_lazy, .. } = import;
-        let runtime = self.runtime;
-        let module = module.as_ref().map(ast::Identifier::as_str);
-        if let Some(resolved) = resolve_imported_module_path(*level, module, self.module_path).map(Cow::into_owned) {
-            if names.iter().any(|alias| alias.name.as_str() == "*") {
-                self.stars.insert(resolved.clone());
-            }
-            if runtime != Runs::Never && !is_lazy && self.parts.has(Parts::RUNTIME_IMPORTS) {
-                let submodules = names
-                    .iter()
-                    .filter(|alias| alias.name.as_str() != "*")
-                    .map(|alias| format!("{resolved}.{}", alias.name.as_str()))
-                    .collect();
-                self.runtime_sites.push(ImportSite::new(resolved.clone(), submodules, stmt.range(), runtime));
-            }
-            for alias in names.iter().filter(|alias| alias.name.as_str() != "*") {
-                // A test module that imports a fixture shares it with its tests, which request it by name.
-                if self.parts.has(Parts::FIXTURES) {
-                    self.fixture_requests.insert(alias.name.to_string());
-                }
-                self.names[Channel::Import].entry(resolved.clone()).or_default().insert(alias.name.as_str().to_owned());
-                self.aliases.insert(alias_binding(alias), format!("{resolved}.{}", alias.name.as_str()));
-            }
-            for alias in names.iter().filter(|alias| alias.name.as_str() != "*") {
-                self.record_nested(top_level, alias_binding(alias), &format!("{resolved}.{}", alias.name.as_str()));
-            }
-            self.from_statements.push(FromImport { module: resolved, names, top_level });
-        }
-    }
-}
-
-impl<'a> FactVisitor<'a> {
-    fn bind_class_alias(&mut self, targets: &'a [Expr], value: &'a Expr) {
-        let [Expr::Name(target)] = targets else {
-            return;
-        };
-        if !self.top_level {
-            return;
-        }
-        let Some((module, name)) = self.class_path(value) else {
-            return;
-        };
-        if name.starts_with(|first: char| first.is_ascii_uppercase()) {
-            self.aliases.insert(target.id.as_str(), format!("{module}.{name}"));
-        }
-    }
-
-    fn bind_string_rows(&mut self, targets: &'a [Expr], value: &'a Expr) {
-        let rows = self.string_rows(value);
-        for name in targets.iter().filter_map(Expr::as_name_expr) {
-            self.string_rows.bind(name.id.as_str(), rows.as_ref());
-        }
-    }
-
-    fn string_rows(&self, expr: &Expr) -> Option<Vec<Vec<String>>> {
-        match expr {
-            Expr::Name(name) => self.string_rows.get(name.id.as_str()).cloned(),
-            Expr::Tuple(ast::ExprTuple { elts, .. })
-            | Expr::List(ast::ExprList { elts, .. })
-            | Expr::Set(ast::ExprSet { elts, .. }) => elts.iter().map(string_row).collect(),
-            _ => None,
-        }
-    }
-
-    fn loop_bindings(&self, target: &'a Expr, iter: &Expr) -> Vec<(&'a str, Vec<String>)> {
-        let Some(rows) = self.string_rows(iter) else {
-            return Vec::new();
-        };
-        match target {
-            Expr::Name(name) if rows.iter().all(|row| row.len() == 1) => {
-                vec![(name.id.as_str(), rows.into_iter().flatten().collect())]
-            }
-            Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. })
-                if rows.iter().all(|row| row.len() == elts.len()) =>
-            {
-                elts.iter()
-                    .enumerate()
-                    .filter_map(|(index, elt)| {
-                        let name = elt.as_name_expr()?;
-                        Some((name.id.as_str(), rows.iter().map(|row| row[index].clone()).collect()))
-                    })
-                    .collect()
-            }
-            _ => Vec::new(),
-        }
-    }
-
-    fn visit_for(&mut self, stmt: &'a Stmt, target: &'a Expr, iter: &Expr) {
-        let bound = self.loop_bindings(target, iter);
-        let modules = self.loop_modules(target, iter);
-        let previous = previous_bindings(&self.loop_strings, &bound);
-        let previous_modules = previous_bindings(&self.loop_modules, &modules);
-        self.loop_strings.extend(bound);
-        self.loop_modules.extend(modules);
-        visitor::walk_stmt(self, stmt);
-        restore_bindings(&mut self.loop_strings, previous);
-        restore_bindings(&mut self.loop_modules, previous_modules);
-    }
-
-    fn shadow(&mut self, names: Vec<&'a str>) -> Vec<(&'a str, Option<Vec<String>>)> {
-        names.into_iter().map(|name| (name, self.loop_modules.remove(name))).collect()
-    }
-
-    fn loop_modules(&self, target: &'a Expr, iter: &Expr) -> Vec<(&'a str, Vec<String>)> {
-        let (Expr::Name(name), Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. })) =
-            (target, iter)
-        else {
-            return Vec::new();
-        };
-        vec![(name.id.as_str(), elts.iter().filter_map(|elt| self.module_of(elt)).collect())]
-    }
-
-    fn module_of(&self, expr: &Expr) -> Option<String> {
-        match expr {
-            Expr::Call(ast::ExprCall { func, arguments, .. }) if last_segment(func) == Some("import_module") => {
-                arguments.args.first()?.as_string_literal_expr().map(|module| module.value.to_str().to_owned())
-            }
-            _ => self.qualified(expr),
-        }
-    }
-}
-
-fn string_row(expr: &Expr) -> Option<Vec<String>> {
-    match expr {
-        Expr::StringLiteral(literal) => Some(vec![literal.value.to_str().to_owned()]),
-        Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => elts
-            .iter()
-            .map(|elt| elt.as_string_literal_expr().map(|literal| literal.value.to_str().to_owned()))
-            .collect(),
-        _ => None,
-    }
-}
-
 impl<'a> Visitor<'a> for FactVisitor<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         for name in bound_names(stmt) {
@@ -500,25 +286,6 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
         }
         self.runtime = runtime;
         self.top_level = top_level;
-    }
-
-    fn visit_except_handler(&mut self, handler: &'a ast::ExceptHandler) {
-        let ast::ExceptHandler::ExceptHandler(ast::ExceptHandlerExceptHandler { type_, .. }) = handler;
-        if let Some(type_) = type_ {
-            self.catch(type_);
-        }
-        self.handler_depth += 1;
-        visitor::walk_except_handler(self, handler);
-        self.handler_depth -= 1;
-    }
-
-    fn visit_pattern(&mut self, pattern: &'a ast::Pattern) {
-        if let ast::Pattern::MatchClass(ast::PatternMatchClass { cls, .. }) = pattern
-            && self.handler_depth > 0
-        {
-            self.catch(cls);
-        }
-        visitor::walk_pattern(self, pattern);
     }
 
     fn visit_expr(&mut self, expr: &'a Expr) {
@@ -632,6 +399,25 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
         visitor::walk_expr(self, expr);
         restore_bindings(&mut self.loop_modules, shadowed);
     }
+
+    fn visit_except_handler(&mut self, handler: &'a ast::ExceptHandler) {
+        let ast::ExceptHandler::ExceptHandler(ast::ExceptHandlerExceptHandler { type_, .. }) = handler;
+        if let Some(type_) = type_ {
+            self.catch(type_);
+        }
+        self.handler_depth += 1;
+        visitor::walk_except_handler(self, handler);
+        self.handler_depth -= 1;
+    }
+
+    fn visit_pattern(&mut self, pattern: &'a ast::Pattern) {
+        if let ast::Pattern::MatchClass(ast::PatternMatchClass { cls, .. }) = pattern
+            && self.handler_depth > 0
+        {
+            self.catch(cls);
+        }
+        visitor::walk_pattern(self, pattern);
+    }
 }
 
 fn bound_names(stmt: &Stmt) -> Vec<&str> {
@@ -658,6 +444,246 @@ fn parameter_names(parameters: &ast::Parameters) -> Vec<&str> {
     parameters.iter().map(|parameter| parameter.name().as_str()).collect()
 }
 
+impl<'a> FactVisitor<'a> {
+    // The object of an attribute is read through the attribute's name, which an import shows, so only other loads count
+    // as values.
+    fn record_value_load(&mut self, expr: &'a Expr) {
+        if let Expr::Attribute(ast::ExprAttribute { value, ctx, .. }) = expr {
+            if ctx.is_load()
+                && !self.attribute_values.contains(&expr.range())
+                && let Some(name) = UnqualifiedName::from_expr(expr)
+            {
+                self.dotted_loads.insert(name.segments().join("."));
+            }
+            self.attribute_values.insert(value.range());
+        } else if let Expr::Name(ast::ExprName { id, ctx: ExprContext::Load, range, .. }) = expr
+            && !self.attribute_values.contains(range)
+        {
+            self.value_loads.insert(id.as_str());
+            self.scope_mut().loads.insert(id.as_str());
+        }
+    }
+
+    pub(super) fn loaded_named(&self, name: &str) -> Vec<String> {
+        let mut scopes = self.scopes.iter().rev().chain(std::iter::once(&self.module_scope));
+        scopes
+            .find_map(|scope| scope.loaded.get(name))
+            .map_or_else(Vec::new, |modules| modules.iter().cloned().collect())
+    }
+
+    fn walk_body(&mut self, stmt: &'a Stmt, body: Body) {
+        let outer = std::mem::replace(&mut self.body, body);
+        visitor::walk_stmt(self, stmt);
+        self.body = outer;
+    }
+
+    fn enter_function(&mut self, parameters: Vec<&'a str>) {
+        let shadowed = self.shadow(parameters.clone());
+        let loaded = parameters.into_iter().map(|name| (name, BTreeSet::new())).collect();
+        self.scopes.push(Frame { loaded, shadowed, ..Frame::default() });
+    }
+
+    // Its loads reach the scope it sits in, as a nested function reads the names around it.
+    fn leave_function(&mut self) {
+        let frame = self.scopes.pop().unwrap_or_default();
+        settle(&frame, &mut self.nested_modules);
+        restore_bindings(&mut self.loop_modules, frame.shadowed);
+        self.scope_mut().loads.extend(frame.loads);
+    }
+
+    pub(super) fn finish_module(&mut self) {
+        let frame = std::mem::take(&mut self.module_scope);
+        settle(&frame, &mut self.nested_modules);
+    }
+
+    fn import_from(&mut self, stmt: &'a Stmt, import: &'a ast::StmtImportFrom, top_level: bool) {
+        let ast::StmtImportFrom { module, names, level, is_lazy, .. } = import;
+        let runtime = self.runtime;
+        let module = module.as_ref().map(ast::Identifier::as_str);
+        if let Some(resolved) = resolve_imported_module_path(*level, module, self.module_path).map(Cow::into_owned) {
+            if names.iter().any(|alias| alias.name.as_str() == "*") {
+                self.stars.insert(resolved.clone());
+            }
+            if runtime != Runs::Never && !is_lazy && self.parts.has(Parts::RUNTIME_IMPORTS) {
+                let submodules = names
+                    .iter()
+                    .filter(|alias| alias.name.as_str() != "*")
+                    .map(|alias| format!("{resolved}.{}", alias.name.as_str()))
+                    .collect();
+                self.runtime_sites.push(ImportSite::new(resolved.clone(), submodules, stmt.range(), runtime));
+            }
+            for alias in names.iter().filter(|alias| alias.name.as_str() != "*") {
+                // A test module that imports a fixture shares it with its tests, which request it by name.
+                if self.parts.has(Parts::FIXTURES) {
+                    self.fixture_requests.insert(alias.name.to_string());
+                }
+                self.names[Channel::Import].entry(resolved.clone()).or_default().insert(alias.name.as_str().to_owned());
+                self.aliases.insert(alias_binding(alias), format!("{resolved}.{}", alias.name.as_str()));
+            }
+            for alias in names.iter().filter(|alias| alias.name.as_str() != "*") {
+                self.record_nested(top_level, alias_binding(alias), &format!("{resolved}.{}", alias.name.as_str()));
+            }
+            self.from_statements.push(FromImport { module: resolved, names, top_level });
+        }
+    }
+
+    fn record_nested(&mut self, top_level: bool, bound: &str, module: &str) {
+        if top_level {
+            return;
+        }
+        if self.body == Body::Class {
+            self.nested_modules.push(module.to_owned());
+        } else {
+            self.scope_mut().imports.push((bound.to_owned(), module.to_owned()));
+        }
+    }
+
+    pub(super) fn scope_mut(&mut self) -> &mut Frame<'a> {
+        self.scopes.last_mut().unwrap_or(&mut self.module_scope)
+    }
+}
+
+fn settle(frame: &Frame, into: &mut Vec<String>) {
+    into.extend(
+        frame
+            .imports
+            .iter()
+            .filter(|(bound, _)| frame.loads.contains(bound.as_str()))
+            .map(|(_, module)| module.clone()),
+    );
+}
+
+impl<'a> FactVisitor<'a> {
+    fn bind_class_alias(&mut self, targets: &'a [Expr], value: &'a Expr) {
+        let [Expr::Name(target)] = targets else {
+            return;
+        };
+        if !self.top_level {
+            return;
+        }
+        let Some((module, name)) = self.class_path(value) else {
+            return;
+        };
+        if name.starts_with(|first: char| first.is_ascii_uppercase()) {
+            self.aliases.insert(target.id.as_str(), format!("{module}.{name}"));
+        }
+    }
+
+    fn bind_string_rows(&mut self, targets: &'a [Expr], value: &'a Expr) {
+        let rows = self.string_rows(value);
+        for name in targets.iter().filter_map(Expr::as_name_expr) {
+            self.string_rows.bind(name.id.as_str(), rows.as_ref());
+        }
+    }
+
+    fn visit_for(&mut self, stmt: &'a Stmt, target: &'a Expr, iter: &Expr) {
+        let bound = self.loop_bindings(target, iter);
+        let modules = self.loop_modules(target, iter);
+        let previous = previous_bindings(&self.loop_strings, &bound);
+        let previous_modules = previous_bindings(&self.loop_modules, &modules);
+        self.loop_strings.extend(bound);
+        self.loop_modules.extend(modules);
+        visitor::walk_stmt(self, stmt);
+        restore_bindings(&mut self.loop_strings, previous);
+        restore_bindings(&mut self.loop_modules, previous_modules);
+    }
+
+    fn loop_bindings(&self, target: &'a Expr, iter: &Expr) -> Vec<(&'a str, Vec<String>)> {
+        let Some(rows) = self.string_rows(iter) else {
+            return Vec::new();
+        };
+        match target {
+            Expr::Name(name) if rows.iter().all(|row| row.len() == 1) => {
+                vec![(name.id.as_str(), rows.into_iter().flatten().collect())]
+            }
+            Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. })
+                if rows.iter().all(|row| row.len() == elts.len()) =>
+            {
+                elts.iter()
+                    .enumerate()
+                    .filter_map(|(index, elt)| {
+                        let name = elt.as_name_expr()?;
+                        Some((name.id.as_str(), rows.iter().map(|row| row[index].clone()).collect()))
+                    })
+                    .collect()
+            }
+            _ => Vec::new(),
+        }
+    }
+
+    fn string_rows(&self, expr: &Expr) -> Option<Vec<Vec<String>>> {
+        match expr {
+            Expr::Name(name) => self.string_rows.get(name.id.as_str()).cloned(),
+            Expr::Tuple(ast::ExprTuple { elts, .. })
+            | Expr::List(ast::ExprList { elts, .. })
+            | Expr::Set(ast::ExprSet { elts, .. }) => elts.iter().map(string_row).collect(),
+            _ => None,
+        }
+    }
+
+    fn shadow(&mut self, names: Vec<&'a str>) -> Vec<(&'a str, Option<Vec<String>>)> {
+        names.into_iter().map(|name| (name, self.loop_modules.remove(name))).collect()
+    }
+
+    fn loop_modules(&self, target: &'a Expr, iter: &Expr) -> Vec<(&'a str, Vec<String>)> {
+        let (Expr::Name(name), Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. })) =
+            (target, iter)
+        else {
+            return Vec::new();
+        };
+        vec![(name.id.as_str(), elts.iter().filter_map(|elt| self.module_of(elt)).collect())]
+    }
+
+    fn module_of(&self, expr: &Expr) -> Option<String> {
+        match expr {
+            Expr::Call(ast::ExprCall { func, arguments, .. }) if last_segment(func) == Some("import_module") => {
+                arguments.args.first()?.as_string_literal_expr().map(|module| module.value.to_str().to_owned())
+            }
+            _ => self.qualified(expr),
+        }
+    }
+}
+
+impl FactVisitor<'_> {
+    pub(super) fn record_path(names: &mut BTreeMap<String, BTreeSet<String>>, path: &str) {
+        let parts: Vec<&str> = path.split('.').collect();
+        for split in 1..parts.len() {
+            names.entry(parts[..split].join(".")).or_default().insert(parts[split].to_owned());
+        }
+    }
+
+    fn record_named_handler(&mut self, func: &Expr, arguments: &ast::Arguments) {
+        let target = if self.qualified(func).as_deref() == Some("pkgutil.resolve_name") {
+            arguments.args.first().and_then(Expr::as_string_literal_expr)
+        } else if func.as_attribute_expr().is_some_and(|attribute| attribute.attr.as_str() == "set_defaults") {
+            arguments.find_keyword("handler").and_then(|keyword| keyword.value.as_string_literal_expr())
+        } else {
+            None
+        };
+        if let Some((module, name)) = target.and_then(|literal| module_attribute(literal.value.to_str())) {
+            self.names[Channel::Import].entry(module.to_owned()).or_default().insert(name.to_owned());
+            self.record_references(module.to_owned(), [name.to_owned()]);
+        }
+    }
+
+    // A rename of these names would break the code that reaches them by name.
+    pub(super) fn record_references(&mut self, module: String, names: impl IntoIterator<Item = String>) {
+        self.names[Channel::Reference].entry(module).or_default().extend(names);
+    }
+
+    pub(super) fn class_path(&self, expr: &Expr) -> Option<(String, String)> {
+        let name = UnqualifiedName::from_expr(expr)?;
+        let segments = name.segments();
+        match qualified(segments, &self.aliases) {
+            Some(path) => path.rsplit_once('.').map(|(module, name)| (module.to_owned(), name.to_owned())),
+            None => match segments {
+                [name] => Some((self.own_module.clone(), (*name).to_owned())),
+                _ => None,
+            },
+        }
+    }
+}
+
 impl FactVisitor<'_> {
     fn record_bases(&mut self, class: &ast::StmtClassDef) {
         let bases: Vec<String> = class.bases().iter().filter_map(|base| self.base_class(base)).collect();
@@ -679,6 +705,53 @@ pub(crate) fn qualified(segments: &[&str], aliases: &FxHashMap<&str, String>) ->
     let (first, rest) = segments.split_first()?;
     let module = aliases.get(first)?;
     Some(std::iter::once(module.as_str()).chain(rest.iter().copied()).collect::<Vec<_>>().join("."))
+}
+
+fn module_attribute(path: &str) -> Option<(&str, &str)> {
+    let (module, attribute) = path.split_once(':')?;
+    (module.split('.').all(is_identifier) && attribute.split('.').all(is_identifier))
+        .then(|| (module, attribute.split('.').next().expect("an identifier")))
+}
+
+// The names a loop binds, paired with the value each of them held before it, so the loop can hand them back.
+fn previous_bindings<'a>(
+    bindings: &FxHashMap<&'a str, Vec<String>>,
+    bound: &[(&'a str, Vec<String>)],
+) -> Vec<(&'a str, Option<Vec<String>>)> {
+    bound.iter().map(|(name, _)| (*name, bindings.get(name).cloned())).collect()
+}
+
+fn restore_bindings<'a>(bindings: &mut FxHashMap<&'a str, Vec<String>>, previous: Vec<(&'a str, Option<Vec<String>>)>) {
+    for (name, values) in previous {
+        match values {
+            Some(values) => _ = bindings.insert(name, values),
+            None => _ = bindings.remove(name),
+        }
+    }
+}
+
+fn string_row(expr: &Expr) -> Option<Vec<String>> {
+    match expr {
+        Expr::StringLiteral(literal) => Some(vec![literal.value.to_str().to_owned()]),
+        Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => elts
+            .iter()
+            .map(|elt| elt.as_string_literal_expr().map(|literal| literal.value.to_str().to_owned()))
+            .collect(),
+        _ => None,
+    }
+}
+
+impl<'a, T: Clone + PartialEq> Bound<'a, T> {
+    fn bind(&mut self, name: &'a str, value: Option<&T>) {
+        let slot = self.0.entry(name).or_insert_with(|| value.cloned());
+        if slot.as_ref() != value {
+            *slot = None;
+        }
+    }
+
+    fn get(&self, name: &str) -> Option<&T> {
+        self.0.get(name)?.as_ref()
+    }
 }
 
 // A bare `__doc__` is the module's own docstring, which no function or class docstring feeds.
@@ -723,77 +796,4 @@ fn reflected_name(expr: &Expr) -> Option<&str> {
         Expr::Attribute(ast::ExprAttribute { attr, .. }) => Some(attr.as_str()),
         _ => None,
     }
-}
-
-impl FactVisitor<'_> {
-    // A rename of these names would break the code that reaches them by name.
-    pub(super) fn record_references(&mut self, module: String, names: impl IntoIterator<Item = String>) {
-        self.names[Channel::Reference].entry(module).or_default().extend(names);
-    }
-
-    pub(super) fn record_path(names: &mut BTreeMap<String, BTreeSet<String>>, path: &str) {
-        let parts: Vec<&str> = path.split('.').collect();
-        for split in 1..parts.len() {
-            names.entry(parts[..split].join(".")).or_default().insert(parts[split].to_owned());
-        }
-    }
-
-    fn record_named_handler(&mut self, func: &Expr, arguments: &ast::Arguments) {
-        let target = if self.qualified(func).as_deref() == Some("pkgutil.resolve_name") {
-            arguments.args.first().and_then(Expr::as_string_literal_expr)
-        } else if func.as_attribute_expr().is_some_and(|attribute| attribute.attr.as_str() == "set_defaults") {
-            arguments.find_keyword("handler").and_then(|keyword| keyword.value.as_string_literal_expr())
-        } else {
-            None
-        };
-        if let Some((module, name)) = target.and_then(|literal| module_attribute(literal.value.to_str())) {
-            self.names[Channel::Import].entry(module.to_owned()).or_default().insert(name.to_owned());
-            self.record_references(module.to_owned(), [name.to_owned()]);
-        }
-    }
-
-    pub(super) fn class_path(&self, expr: &Expr) -> Option<(String, String)> {
-        let name = UnqualifiedName::from_expr(expr)?;
-        let segments = name.segments();
-        match qualified(segments, &self.aliases) {
-            Some(path) => path.rsplit_once('.').map(|(module, name)| (module.to_owned(), name.to_owned())),
-            None => match segments {
-                [name] => Some((self.own_module.clone(), (*name).to_owned())),
-                _ => None,
-            },
-        }
-    }
-}
-
-fn module_attribute(path: &str) -> Option<(&str, &str)> {
-    let (module, attribute) = path.split_once(':')?;
-    (module.split('.').all(is_identifier) && attribute.split('.').all(is_identifier))
-        .then(|| (module, attribute.split('.').next().expect("an identifier")))
-}
-
-fn restore_bindings<'a>(bindings: &mut FxHashMap<&'a str, Vec<String>>, previous: Vec<(&'a str, Option<Vec<String>>)>) {
-    for (name, values) in previous {
-        match values {
-            Some(values) => _ = bindings.insert(name, values),
-            None => _ = bindings.remove(name),
-        }
-    }
-}
-
-// The names a loop binds, paired with the value each of them held before it, so the loop can hand them back.
-fn previous_bindings<'a>(
-    bindings: &FxHashMap<&'a str, Vec<String>>,
-    bound: &[(&'a str, Vec<String>)],
-) -> Vec<(&'a str, Option<Vec<String>>)> {
-    bound.iter().map(|(name, _)| (*name, bindings.get(name).cloned())).collect()
-}
-
-fn settle(frame: &Frame, into: &mut Vec<String>) {
-    into.extend(
-        frame
-            .imports
-            .iter()
-            .filter(|(bound, _)| frame.loads.contains(bound.as_str()))
-            .map(|(_, module)| module.clone()),
-    );
 }
