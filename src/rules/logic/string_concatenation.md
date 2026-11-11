@@ -67,13 +67,8 @@ message = f"Hello, {name}!"
   ```
 
 - **The message of a logging call**, such as `logger.info("Hello, " + name)`: Ruff's
-  [logging-string-concat](https://docs.astral.sh/ruff/rules/logging-string-concat/) reports it while the project's Ruff
-  configuration selects it, so this rule leaves it to Ruff.
-
-  ```toml config
-  [tool.ruff.lint]
-  select = ["G003"]
-  ```
+  [logging-string-concat](https://docs.astral.sh/ruff/rules/logging-string-concat/) reports it, so this rule leaves it
+  to Ruff.
 
   ```python ok
   import logging
@@ -86,14 +81,9 @@ message = f"Hello, {name}!"
   ```
 
 - **Two literals joined by `+` across lines**, such as `("Hello, "` followed by `+ "world")`: Ruff's
-  [explicit-string-concatenation](https://docs.astral.sh/ruff/rules/explicit-string-concatenation/) reports it while the
-  project's Ruff configuration selects it and `allow-multiline` is on, so this rule leaves it to Ruff. A longer chain
-  that starts with such a pair is left to Ruff as well, since both would report the same spot.
-
-  ```toml config
-  [tool.ruff.lint]
-  select = ["ISC003"]
-  ```
+  [explicit-string-concatenation](https://docs.astral.sh/ruff/rules/explicit-string-concatenation/) reports it when
+  `allow-multiline` is on, so this rule leaves it to Ruff. A longer chain that starts with such a pair is left to Ruff
+  as well, since both would report the same spot.
 
   ```python ok
   # fmt: off

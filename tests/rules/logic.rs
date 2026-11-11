@@ -871,29 +871,29 @@ fn single_use_variable_follows_ruff_defaults(
 }
 
 // Ruff's G003 reports a `+` that is a logging call's message, and its ISC003 a concatenation of two literals across
-// lines, so SMP503 leaves those to Ruff while the project's Ruff configuration selects them.
-#[test_case("G003", "", "import logging\n\n\ndef f(name: str) -> None:\n    logging.info(\"Hello, \" + name)\n", false ; "logging_message")]
-#[test_case("G003", "", "import logging\n\n\ndef f(name: str) -> None:\n    logging.info(msg=\"Hello, \" + name)\n", false ; "logging_keyword_message")]
-#[test_case("G003", "", "import logging\n\n\ndef f(name: str) -> None:\n    logging.log(1, \"Hello, \" + name)\n", false ; "logging_log_message")]
-#[test_case("G003", "", "import logging\n\n\ndef f(name: str) -> None:\n    logging.info(\"Hello, \" + name + \"!\")\n", false ; "logging_chain_message")]
-#[test_case("G003", "", "import logging\n\n\ndef f(name: str) -> None:\n    logging.log(\"Hello, \" + name)\n", true ; "logging_log_without_message")]
-#[test_case("G003", "", "import logging\n\n\ndef f(name: str) -> None:\n    logging.info(\"a\", \"Hello, \" + name)\n", true ; "logging_second_argument")]
-#[test_case("G003", "", "import logging\n\n\ndef f(name: str) -> None:\n    logging.info((\"Hello, \" + name) * 2)\n", true ; "logging_repeated_message")]
-#[test_case("G003", "", "def f(name: str) -> None:\n    foo.info(\"Hello, \" + name)\n", true ; "not_a_logger")]
-#[test_case("G003", "", "def f(name: str) -> None:\n    logger.info(\"Hello, \" + name)\n", false ; "logger_named_variable")]
-#[test_case("G003", "logger-objects = [\"mypkg.logger\"]\n", "from mypkg import logger\n\n\ndef f(name: str) -> None:\n    logger.info(\"Hello, \" + name)\n", false ; "logger_object")]
-#[test_case("ISC003", "", "x = (\n    \"Hello, \"\n    + \"world\"\n)\n", false ; "literal_pair_across_lines")]
-#[test_case("ISC003", "", "x = \"Hello, \" + \"world\"\n", true ; "literal_pair_on_one_line")]
-#[test_case("ISC003", "", "x = (\n    \"Hello, \"\n    + \"world\"\n    + name\n)\n", false ; "pair_at_start_of_chain")]
-#[test_case("ISC003", "", "x = (\n    \"Hello, \"\n    + name\n)\n", true ; "name_in_pair")]
-#[test_case("ISC003", "[tool.ruff.lint.flake8-implicit-str-concat]\nallow-multiline = false\n", "x = (\n    \"Hello, \"\n    + \"world\"\n)\n", true ; "multiline_not_allowed")]
-fn string_concatenation_follows_ruff(code: &str, extra: &str, source: &str, reported_when_selected: bool) {
-    let case =
-        common::RuffOverlap { settings: extra, select: "SMP503", ruff_code: code, files: &[("module.py", source)] };
-    assert_eq!(
-        common::reported_without_and_with_ruff(&case, "Build text with an f-string"),
-        [true, reported_when_selected]
-    );
+// lines, so SMP503 leaves those to Ruff whether or not the project selects them.
+#[test_case("", "import logging\n\n\ndef f(name: str) -> None:\n    logging.info(\"Hello, \" + name)\n", false ; "logging_message")]
+#[test_case("", "import logging\n\n\ndef f(name: str) -> None:\n    logging.info(msg=\"Hello, \" + name)\n", false ; "logging_keyword_message")]
+#[test_case("", "import logging\n\n\ndef f(name: str) -> None:\n    logging.log(1, \"Hello, \" + name)\n", false ; "logging_log_message")]
+#[test_case("", "import logging\n\n\ndef f(name: str) -> None:\n    logging.info(\"Hello, \" + name + \"!\")\n", false ; "logging_chain_message")]
+#[test_case("", "import logging\n\n\ndef f(name: str) -> None:\n    logging.log(\"Hello, \" + name)\n", true ; "logging_log_without_message")]
+#[test_case("", "import logging\n\n\ndef f(name: str) -> None:\n    logging.info(\"a\", \"Hello, \" + name)\n", true ; "logging_second_argument")]
+#[test_case("", "import logging\n\n\ndef f(name: str) -> None:\n    logging.info((\"Hello, \" + name) * 2)\n", true ; "logging_repeated_message")]
+#[test_case("", "def f(name: str) -> None:\n    foo.info(\"Hello, \" + name)\n", true ; "not_a_logger")]
+#[test_case("", "def f(name: str) -> None:\n    logger.info(\"Hello, \" + name)\n", false ; "logger_named_variable")]
+#[test_case("logger-objects = [\"mypkg.logger\"]\n", "from mypkg import logger\n\n\ndef f(name: str) -> None:\n    logger.info(\"Hello, \" + name)\n", false ; "logger_object")]
+#[test_case("", "x = (\n    \"Hello, \"\n    + \"world\"\n)\n", false ; "literal_pair_across_lines")]
+#[test_case("", "x = \"Hello, \" + \"world\"\n", true ; "literal_pair_on_one_line")]
+#[test_case("", "x = (\n    \"Hello, \"\n    + \"world\"\n    + name\n)\n", false ; "pair_at_start_of_chain")]
+#[test_case("", "x = (\n    \"Hello, \"\n    + name\n)\n", true ; "name_in_pair")]
+#[test_case("[tool.ruff.lint.flake8-implicit-str-concat]\nallow-multiline = false\n", "x = (\n    \"Hello, \"\n    + \"world\"\n)\n", true ; "multiline_not_allowed")]
+fn string_concatenation_follows_ruff(extra: &str, source: &str, reported: bool) {
+    let root = common::project(&[
+        ("pyproject.toml", &format!("[tool.ruff.lint]\nselect = []\n{extra}")),
+        ("module.py", source),
+    ]);
+    let stdout = common::check(root.path(), &["--select", "SMP503"]).1;
+    assert_eq!(stdout.contains("Build text with an f-string"), reported, "{stdout}");
 }
 
 // A class of the project is skipped under any name, and a function of the project is reported even when its name is
