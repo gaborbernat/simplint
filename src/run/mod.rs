@@ -1,5 +1,4 @@
-// The lint pipeline and the run over a set of files: what a file's lint reports, how a run finds its files, indexes
-// them and lints them. The command line reads these, and the project cache stores their results.
+// The lint pipeline and the run over a set of files, which the command line reads and the project cache stores.
 mod cache;
 mod check;
 mod conflicts;
@@ -43,7 +42,6 @@ use discover::within;
 pub(crate) use discover::{Discovered, discover, linted_roots, redact_extended, warn_missing};
 pub(crate) use overlay::Overlay;
 
-// Ruff's configuration and simplint's, from the same command line, as a run reads them.
 pub(crate) struct Resolved {
     pub(crate) config_arguments: ConfigArguments,
     pub(crate) settings_resolver: SettingsResolver,
@@ -59,11 +57,11 @@ impl Resolved {
     }
 }
 
-// Ruff's cache directory, where simplint keeps its cache. A path from the command line or `RUFF_CACHE_DIR` is the user's
-// choice and stands wherever it points. Otherwise the repository being linted picks it, through `cache-dir` or a link
-// committed in place of the default, so it must stay inside the project root: the directory of the configuration file,
-// or the working directory without one. A `cache-dir` that leaves the root falls back to Ruff's default there, and a
-// default that leaves it too turns the cache off.
+// Ruff's cache directory, where simplint keeps its cache. A path from the command line or `RUFF_CACHE_DIR` is the
+// user's choice and stands wherever it points. Otherwise the repository being linted picks it, through `cache-dir` or a
+// link committed in place of the default, so it must stay inside the project root: the directory of the configuration
+// file, or the working directory without one. A `cache-dir` that leaves the root falls back to Ruff's default there, and
+// a default that leaves it too turns the cache off.
 pub(crate) fn choose_cache_dir(named: bool, config: &PyprojectConfig) -> Option<PathBuf> {
     let configured = &config.settings.cache_dir;
     if named {
@@ -83,8 +81,6 @@ pub(crate) fn choose_cache_dir(named: bool, config: &PyprojectConfig) -> Option<
     None
 }
 
-// What a run reports: the remaining diagnostics and the fixes applied per file, as Ruff's `Diagnostics` holds them, and
-// the diffs `--diff` prints, each with the path of its file.
 #[derive(Default)]
 pub(crate) struct Diagnostics {
     pub(crate) inner: Vec<Diagnostic>,
@@ -93,12 +89,6 @@ pub(crate) struct Diagnostics {
     // The `full` text of some files' diagnostics, by the name the output shows each file by, when the cache held or
     // rendered it.
     pub(crate) rendered: FxHashMap<String, Vec<u8>>,
-}
-
-// Whether Ruff's `io-error` rule is on, which reports a path that cannot be read, written or found as a diagnostic
-// rather than as a warning.
-pub(super) fn reports_io_errors(settings: &LinterSettings) -> bool {
-    settings.rules.enabled(RuffRule::IOError)
 }
 
 impl Diagnostics {
@@ -124,7 +114,12 @@ impl Diagnostics {
     }
 }
 
-// Ruff's `io-error` diagnostic for a path that cannot be read, written or found.
+// Whether Ruff's `io-error` rule is on, which reports a path that cannot be read, written or found as a diagnostic
+// rather than as a warning.
+pub(super) fn reports_io_errors(settings: &LinterSettings) -> bool {
+    settings.rules.enabled(RuffRule::IOError)
+}
+
 pub(crate) fn io_error(path: &Path, message: String) -> Diagnostic {
     let file = SourceFileBuilder::new(path.to_string_lossy(), "").finish();
     IOError { message }.into_diagnostic(TextRange::default(), &file)
@@ -193,11 +188,12 @@ pub(crate) struct Mode {
 }
 
 // A file's lint: its diagnostics and fixes, the fixes a settled fix loop withdrew, and, without fixes, the line each
-// diagnostic's suppression comment belongs on, which the cache stores with the reports. A file whose fixes cannot be
-// written is not cacheable: the cache keys a file by its metadata, not by whether its directory and the run's roots let
-// it be written, so its reports would outlive what they depend on. A file that cannot be read fails the same way for
-// the same key, so its report is stored, unless the error is only logged and so leaves no report. `unparsed` marks a
-// file that does not parse, which has no diagnostics but its warning.
+// diagnostic's suppression comment belongs on, which the cache stores with the reports.
+//
+// A file whose fixes cannot be written is not cacheable: the cache keys a file by its metadata, not by whether its
+// directory and the run's roots let it be written, so its reports would outlive what they depend on. A file that
+// cannot be read fails the same way for the same key, so its report is stored, unless the error is only logged and so
+// leaves no report. `unparsed` marks a file that does not parse, which has no diagnostics but its warning.
 pub(crate) struct Linting {
     pub(crate) diagnostics: Diagnostics,
     pub(crate) settled: Option<Withdrawn>,
@@ -209,6 +205,7 @@ pub(crate) struct Linting {
 // Ruff's `lint_path`: lint a file, and with `--fix` or `--diff` fix it and write the result back or keep the diff for
 // the caller to print. A `--diff` run keeps the fixed source in `overlay` instead of writing it, so the next fix round
 // lints what the fixes made. Files are linted in parallel, so the diff waits for the caller to print it in file order.
+//
 // A file that cannot be read is reported in place of its diagnostics, as Ruff reports `io-error`; one whose fixes
 // cannot be written keeps its diagnostics, with the error reported beside them. Both `settled` sets name the fixes the
 // fix loop withdrew from a file it left as it was: the one passed from an earlier run, which spares running the loop,
@@ -265,6 +262,33 @@ fn fix_path(
     })
 }
 
+// A fix that fails leaves the file as it was, so its diagnostics come from the original source, with nothing fixed. A
+// source the fix loop already settled, whose withdrawn fixes `settled` names, gets the loop's reports from one lint.
+fn lint_source(path: &Path, source: &str, linter: &Linter, mode: &Mode, settled: Option<Withdrawn>) -> Linted {
+    let unfixed = || {
+        let lint = linter.lint(path, source, mode.noqa);
+        Linted {
+            diagnostics: lint.diagnostics,
+            transformed: None,
+            fixed: FixTable::default(),
+            settled: None,
+            noqa_rows: lint.noqa_rows,
+        }
+    };
+    if mode.fix.is_generate() {
+        return unfixed();
+    }
+    if let Some(withdrawn) = settled {
+        let mut linted = unfixed();
+        Fixer::withdraw(source, &mut linted.diagnostics, &withdrawn);
+        return Linted { settled: Some(withdrawn), ..linted };
+    }
+    let result = Fixer::new(linter, path, mode.unsafe_fixes, mode.noqa).fix(source);
+    let Ok((FixerResult { diagnostics, transformed, fixed }, withdrawn)) = result else { return unfixed() };
+    let settled = (fixed.is_empty() && transformed == source).then_some(withdrawn);
+    Linted { diagnostics, transformed: Some(transformed), fixed, settled, noqa_rows: Vec::new() }
+}
+
 // A file that does not parse has no reports, since Ruff reports its syntax errors and the rules need a valid tree. Its
 // warning comes from here and from a cached result alike, so each run shows it.
 fn skip_unparsed(path: &Path, diagnostics: &mut Vec<Diagnostic>) -> bool {
@@ -278,15 +302,6 @@ fn skip_unparsed(path: &Path, diagnostics: &mut Vec<Diagnostic>) -> bool {
 
 pub(crate) fn warn_unparsed(path: &Path) {
     warn_user!("Skipped {}: it does not parse, so Ruff reports its syntax errors.", relativize_path(path));
-}
-
-// A fix that cannot be written leaves the file as it is, so its reports are those of the source as read, with the
-// write's error reported beside them and no fix counted.
-fn unwritten(path: &Path, source: &str, linter: &Linter, mode: &Mode, error: &anyhow::Error) -> Linting {
-    let lint = linter.lint(path, source, mode.noqa);
-    let mut diagnostics = Diagnostics::from_error(path, format!("writing {}: {error:#}", path.display()), linter);
-    diagnostics.inner.extend(lint.diagnostics);
-    Linting { diagnostics, settled: None, noqa_rows: Vec::new(), cacheable: false, unparsed: false }
 }
 
 // Replaces a file read as `original` with `fixed`, in place as Ruff writes it, so the file keeps its owner, hard
@@ -306,8 +321,15 @@ pub(crate) fn write_source(path: &Path, roots: &[PathBuf], original: &str, fixed
     Ok(())
 }
 
-// What a run over standard input reports, and the text for standard output: the source after the fixes with `--fix`,
-// or the diff with `--diff`.
+// A fix that cannot be written leaves the file as it is, so its reports are those of the source as read, with the
+// write's error reported beside them and no fix counted.
+fn unwritten(path: &Path, source: &str, linter: &Linter, mode: &Mode, error: &anyhow::Error) -> Linting {
+    let lint = linter.lint(path, source, mode.noqa);
+    let mut diagnostics = Diagnostics::from_error(path, format!("writing {}: {error:#}", path.display()), linter);
+    diagnostics.inner.extend(lint.diagnostics);
+    Linting { diagnostics, settled: None, noqa_rows: Vec::new(), cacheable: false, unparsed: false }
+}
+
 pub(crate) struct StdinLint {
     pub(crate) diagnostics: Diagnostics,
     pub(crate) output: Option<String>,
@@ -336,39 +358,11 @@ pub(crate) fn lint_stdin(path: &Path, source: &str, linter: &Linter, mode: &Mode
     }
 }
 
-// A fix that fails leaves the file as it was, so its diagnostics come from the original source, with nothing fixed. A
-// source the fix loop already settled, whose withdrawn fixes `settled` names, gets the loop's reports from one lint.
-fn lint_source(path: &Path, source: &str, linter: &Linter, mode: &Mode, settled: Option<Withdrawn>) -> Linted {
-    let unfixed = || {
-        let lint = linter.lint(path, source, mode.noqa);
-        Linted {
-            diagnostics: lint.diagnostics,
-            transformed: None,
-            fixed: FixTable::default(),
-            settled: None,
-            noqa_rows: lint.noqa_rows,
-        }
-    };
-    if mode.fix.is_generate() {
-        return unfixed();
-    }
-    if let Some(withdrawn) = settled {
-        let mut linted = unfixed();
-        Fixer::withdraw(source, &mut linted.diagnostics, &withdrawn);
-        return Linted { settled: Some(withdrawn), ..linted };
-    }
-    let result = Fixer::new(linter, path, mode.unsafe_fixes, mode.noqa).fix(source);
-    let Ok((FixerResult { diagnostics, transformed, fixed }, withdrawn)) = result else { return unfixed() };
-    let settled = (fixed.is_empty() && transformed == source).then_some(withdrawn);
-    Linted { diagnostics, transformed: Some(transformed), fixed, settled, noqa_rows: Vec::new() }
-}
-
-// A source's reports, its text after the fixes when they ran, and the fixes applied; `settled` names the fixes the fix
-// loop withdrew when it left the source as it was.
 struct Linted {
     diagnostics: Vec<Diagnostic>,
     transformed: Option<String>,
     fixed: FixTable,
+    // `settled` names the fixes the fix loop withdrew when it left the source as it was.
     settled: Option<Withdrawn>,
     // Only a lint without fixes keeps these, aligned with `diagnostics`.
     noqa_rows: Vec<TextSize>,
