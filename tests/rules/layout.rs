@@ -77,6 +77,14 @@ use crate::common;
     "single-user-constant", "single_user_constant_continued_string.py", "py314"
     ; "single_user_constant_continued_string_keeps_its_value"
 )]
+#[test_case(
+    "definition-before-use", "definition_before_use_indented_comment.py", "py314"
+    ; "definition_before_use_deeper_comment_ends_block"
+)]
+#[test_case(
+    "class-member-order", "class_member_order_indented_comment.py", "py314"
+    ; "class_member_order_deeper_comment_ends_block"
+)]
 #[test_case("single-user-constant", "single_user_constant.py", "py314" ; "single_user_constant")]
 #[test_case(
     "definition-before-use", "definition_before_use_module_defaults.py", "py314"

@@ -9,7 +9,7 @@ use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
-use crate::rules::is_alone_on_lines;
+use crate::rules::{indentation, is_alone_on_lines};
 use crate::semantic::future_import;
 use crate::syntax::previous_line_start;
 
@@ -101,8 +101,12 @@ pub fn statement_block(checker: &Checker, stmt: &Stmt) -> TextRange {
         _ => stmt.start(),
     };
     let mut line_start = source.line_start(start);
-    // A line inside a string may start with `#` too, so only a comment token above the statement counts.
-    while let Some(comment) = checker.comment_above(TextRange::empty(line_start)) {
+    // A line inside a string may start with `#` too, so only a comment token above the statement counts. A deeper
+    // comment ends the block above it, as the trailing note of a method does.
+    let indent = indentation(source, stmt);
+    while let Some(comment) =
+        checker.comment_above(TextRange::empty(line_start)).filter(|comment| indentation(source, *comment) == indent)
+    {
         line_start = source.line_start(comment.start());
     }
     TextRange::new(line_start, source.full_line_end(stmt.end()))

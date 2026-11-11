@@ -327,7 +327,30 @@ Some members stay where they are, and some reports come without a fix:
 
 The fix rewrites the span from the first to the last moved statement in the expected order. Only the first report of a
 class body that the layout can resolve carries it, since that one fix reorders every member of the body. A member keeps
-its decorators and the comment lines directly above it.
+its decorators and the comment lines directly above it. A comment indented deeper than the member below it belongs to
+the member above, so it stays in place, and when it lies inside the span the report has no fix.
+
+```python report
+# fmt: off
+class A:
+    def run(self):
+        return 1
+        # trailing note of run
+    def __init__(self):
+        self.x = 1
+# fmt: on
+```
+
+```python fixed
+# fmt: off
+class A:
+    def run(self):
+        return 1
+        # trailing note of run
+    def __init__(self):
+        self.x = 1
+# fmt: on
+```
 
 The fix is safe when every moved member is undecorated or has only pure decorators: `property`, `cached_property`,
 `classmethod`, `staticmethod`, `overload`, and the accessor decorators `setter`, `getter` and `deleter`. **Unsafe fix:**

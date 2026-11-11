@@ -351,6 +351,37 @@ The fix rewrites the span from the first to the last misplaced statement in the 
       return line.strip()
   ```
 
+- A comment indented deeper than the definition below it, such as a trailing note at the end of the previous method,
+  stays where it is, since it belongs to the code above it.
+
+  ```python report
+  # fmt: off
+  def first() -> int:
+      return 1
+      # trailing note of first
+  def _clean(line: str) -> str:
+      return line.strip()
+
+
+  def load(text: str) -> list[str]:
+      return [_clean(line) for line in text.splitlines()]
+  # fmt: on
+  ```
+
+  ```python fixed
+  # fmt: off
+  def first() -> int:
+      return 1
+      # trailing note of first
+  def load(text: str) -> list[str]:
+      return [_clean(line) for line in text.splitlines()]
+
+
+  def _clean(line: str) -> str:
+      return line.strip()
+  # fmt: on
+  ```
+
 - A line of a string that starts with `#` is not a comment, so it stays with the string.
 
   ```python report
