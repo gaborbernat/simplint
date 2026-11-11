@@ -1142,10 +1142,12 @@ fn single_use_variable_leaves_ruff_returns_and_yield_froms(source: &str, reporte
 #[test_case("B006", "", "collections.Counter()", "held", false, true ; "counter_call_without_b006")]
 #[test_case("B006", "", "{key: 1 for key in range(3)}", "held", true, false ; "dict_comprehension")]
 #[test_case("B006", "", "{key: 1 for key in range(3)}", "held", false, true ; "dict_comprehension_without_b006")]
-#[test_case("B006", "", "([],)", "held", true, false ; "tuple_of_list")]
-#[test_case("B006", "", "([],)", "held", false, true ; "tuple_of_list_without_b006")]
-#[test_case("B006", "", "(key for key in range(3))", "held", true, false ; "generator")]
-#[test_case("B006", "", "(key for key in range(3))", "held", false, true ; "generator_without_b006")]
+#[test_case("B006", PREVIEW, "([],)", "held", true, false ; "tuple_of_list")]
+#[test_case("B006", "", "([],)", "held", true, true ; "tuple_of_list_without_preview")]
+#[test_case("B006", PREVIEW, "([],)", "held", false, true ; "tuple_of_list_without_b006")]
+#[test_case("B006", PREVIEW, "(key for key in range(3))", "held", true, false ; "generator")]
+#[test_case("B006", "", "(key for key in range(3))", "held", true, true ; "generator_without_preview")]
+#[test_case("B006", PREVIEW, "(key for key in range(3))", "held", false, true ; "generator_without_b006")]
 #[test_case("B006", "", "[]", "held: tuple[int, ...]", true, true ; "immutable_annotation_b006")]
 fn single_use_variable_follows_ruff_defaults(
     code: &str,
@@ -1168,6 +1170,9 @@ fn single_use_variable_follows_ruff_defaults(
     let stdout = common::check(root.path(), &["--select", "SMP504"]).1;
     assert_eq!(stdout.contains("`lock` is used once"), reported, "{stdout}");
 }
+
+// B006 reports a generator and a tuple holding a mutable value only in preview.
+const PREVIEW: &str = "[tool.ruff]\npreview = true\n";
 
 // Ruff's G003 reports a `+` that is a logging call's message, and its ISC003 a concatenation of two literals across
 // lines, so SMP503 leaves those to Ruff whether or not the project selects them.

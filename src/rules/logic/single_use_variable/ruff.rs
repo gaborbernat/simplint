@@ -31,12 +31,14 @@ pub(super) fn reports_default(checker: &Checker, value: &Expr, parameter: &ast::
     calls.reported || (b006 && is_b006_mutable(checker, value))
 }
 
-// The values B006 reports as a mutable default, as its preview mode reports them: also a generator, and a tuple that
-// holds one of the mutable values.
+// The values B006 reports as a mutable default. In preview, it also reports a generator and a tuple that holds one of
+// the mutable values.
 fn is_b006_mutable(checker: &Checker, value: &Expr) -> bool {
     match value {
-        Expr::Generator(_) => true,
-        Expr::Tuple(ast::ExprTuple { elts, .. }) => elts.iter().any(|elt| is_b006_mutable(checker, elt)),
+        Expr::Generator(_) if checker.settings.from_ruff.preview => true,
+        Expr::Tuple(ast::ExprTuple { elts, .. }) if checker.settings.from_ruff.preview => {
+            elts.iter().any(|elt| is_b006_mutable(checker, elt))
+        }
         _ => checker.semantic().is_mutable_value(value),
     }
 }

@@ -79,10 +79,13 @@ def total_price(prices: list[float]) -> str:
           print(held)
   ```
 
-- B006 also reports a generator and a tuple that holds a mutable value, as its preview mode does, so such a value is not
-  inlined into a default either
+- [`preview`](https://docs.astral.sh/ruff/settings/#preview) in `[tool.ruff]`, which makes B006 also report a generator
+  and a tuple that holds a mutable value, so such a value is not inlined into a default either
 
   ```toml config
+  [tool.ruff]
+  preview = true
+
   [tool.ruff.lint]
   select = ["B006"]
   ```
