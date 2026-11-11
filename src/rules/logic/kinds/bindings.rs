@@ -9,7 +9,7 @@ use super::Kind;
 use super::declared::annotation;
 use crate::lint::checker::Checker;
 use crate::lint::walker::Scope;
-use crate::syntax::{alias_binding, for_each_child_body, pattern_capture};
+use crate::syntax::{alias_root_binding, for_each_child_body, pattern_capture};
 
 // The bindings of `name` in `scope`, or in the module for none. A scope is walked once for all of its names.
 pub(super) fn bindings_in<'a>(checker: &Checker<'a>, scope: Option<Scope<'a>>, name: &'a str) -> Rc<Bindings<'a>> {
@@ -298,11 +298,11 @@ impl<'a> Visitor<'a> for Collector<'_, 'a, '_> {
             Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
                 let from = matches!(stmt, Stmt::ImportFrom(_));
                 for alias in names {
-                    let bound = alias_binding(alias);
+                    let bound = alias_root_binding(alias);
                     if bound == "*" {
                         self.scope.star = true;
                     } else {
-                        self.scope.of(bound.split_once('.').map_or(bound, |(first, _)| first)).imported = true;
+                        self.scope.of(bound).imported = true;
                         if from {
                             self.scope.of(bound).original = Some(alias.name.as_str());
                         }

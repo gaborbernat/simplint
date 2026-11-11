@@ -10,7 +10,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Blanks, statement_removal};
 use crate::rules::logic::kinds::class_named;
-use crate::syntax::{alias_binding, is_name, pattern_capture};
+use crate::syntax::{alias_root_binding, is_name, pattern_capture};
 
 pub fn super_forwarding_method(checker: &Checker) {
     let bindings = class_bindings(checker);
@@ -273,8 +273,7 @@ impl<'a> Visitor<'a> for ClassBodyUses<'a> {
             }
             Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
                 for alias in names {
-                    let bound = alias_binding(alias);
-                    self.add(bound.split_once('.').map_or(bound, |(first, _)| first));
+                    self.add(alias_root_binding(alias));
                 }
             }
             _ => visitor::walk_stmt(self, stmt),

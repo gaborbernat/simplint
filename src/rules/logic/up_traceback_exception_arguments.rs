@@ -6,7 +6,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
 use crate::rules::logic::modernize::replacement_unless_commented;
-use crate::syntax::is_name;
+use crate::syntax::{is_name, sole_argument};
 
 // Since Python 3.10 the `traceback` functions read the exception's type and traceback from the exception itself.
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
@@ -55,12 +55,8 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
 // The name `X` of `type(X)` or `X.__class__`.
 fn exception_name<'e>(checker: &Checker, expr: &'e Expr) -> Option<&'e str> {
     match expr {
-        Expr::Call(ast::ExprCall { func, arguments, .. })
-            if checker.semantic().is_builtin(func, "type")
-                && arguments.args.len() == 1
-                && arguments.keywords.is_empty() =>
-        {
-            arguments.args[0].as_name_expr().map(|name| name.id.as_str())
+        Expr::Call(call) if checker.semantic().is_builtin(&call.func, "type") => {
+            sole_argument(call)?.as_name_expr().map(|name| name.id.as_str())
         }
         Expr::Attribute(ast::ExprAttribute { value, attr, .. }) if attr.as_str() == "__class__" => {
             value.as_name_expr().map(|name| name.id.as_str())

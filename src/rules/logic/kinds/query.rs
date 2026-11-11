@@ -15,7 +15,7 @@ use super::tables::{
 use super::{Kind, Kinds};
 use crate::lint::walker::{Scope, Walker};
 use crate::rules::is_class_like;
-use crate::syntax::Visibility;
+use crate::syntax::{Visibility, sole_argument};
 
 impl<'w, 'a> Kinds<'w, 'a> {
     pub fn new(walker: &'w Walker<'w, 'a>, range: TextRange) -> Self {
@@ -122,10 +122,9 @@ impl<'w, 'a> Kinds<'w, 'a> {
                 None => match name.id.as_str() {
                     "ascii" | "bin" | "chr" | "format" | "hex" | "input" | "oct" | "repr" | "str" => Some(Kind::Str),
                     "int" | "len" | "ord" => Some(Kind::Int),
-                    "frozenset" | "list" | "reversed" | "set" | "sorted" | "tuple" => match arguments.args.as_ref() {
-                        [iterable] if arguments.keywords.is_empty() => self.item(iterable, depth).and_then(items),
-                        _ => None,
-                    },
+                    "frozenset" | "list" | "reversed" | "set" | "sorted" | "tuple" => {
+                        sole_argument(call).and_then(|iterable| self.item(iterable, depth)).and_then(items)
+                    }
                     "range" => Some(Kind::IntItems),
                     _ => None,
                 },

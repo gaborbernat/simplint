@@ -8,7 +8,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::logic::inline::{is_constant, is_hashable};
 use crate::semantic::counts_ruff_appends;
-use crate::syntax::{expr_mentions, for_each_body, is_name};
+use crate::syntax::{expr_mentions, for_each_body, is_name, sole_argument};
 
 pub fn collection_built_by_statements(checker: &Checker) {
     for_each_body(checker.body(), &mut |body, _| {
@@ -70,17 +70,15 @@ fn entry<'a>(stmt: &'a Stmt, name: &str, kind: Kind) -> Option<Entry<'a>> {
             (Some(slice.as_ref()), value.as_ref())
         }
         (Stmt::Expr(ast::StmtExpr { value, .. }), Kind::List | Kind::Set) => {
-            let Expr::Call(ast::ExprCall { func, arguments, .. }) = value.as_ref() else {
+            let Expr::Call(call) = value.as_ref() else {
                 return None;
             };
-            let Expr::Attribute(ast::ExprAttribute { value: receiver, attr, .. }) = func.as_ref() else {
+            let Expr::Attribute(ast::ExprAttribute { value: receiver, attr, .. }) = call.func.as_ref() else {
                 return None;
             };
             let method = if kind == Kind::List { "append" } else { "add" };
-            let [argument] = arguments.args.as_ref() else {
-                return None;
-            };
-            if !is_name(receiver, name) || attr.as_str() != method || !arguments.keywords.is_empty() {
+            let argument = sole_argument(call)?;
+            if !is_name(receiver, name) || attr.as_str() != method {
                 return None;
             }
             (None, argument)
