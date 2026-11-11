@@ -6,124 +6,124 @@ use test_case::test_case;
 
 use crate::common;
 
-#[test_case("definition-before-use", "definition_before_use.py", "py314" ; "definition_before_use")]
+#[test_case("definition-before-use", "definition_before_use.py", None ; "definition_before_use")]
 #[test_case(
-    "definition-before-use", "definition_before_use_floating.py", "py314" ; "definition_before_use_floating_comment"
+    "definition-before-use", "definition_before_use_floating.py", None ; "definition_before_use_floating_comment"
 )]
 #[test_case(
-    "definition-before-use", "definition_before_use_nonl.py", "py314" ; "definition_before_use_without_trailing_newline"
+    "definition-before-use", "definition_before_use_nonl.py", None ; "definition_before_use_without_trailing_newline"
 )]
 #[test_case(
-    "definition-before-use", "definition_before_use_classbody.py", "py314"
+    "definition-before-use", "definition_before_use_classbody.py", None
     ; "definition_before_use_class_body_reads_module_name"
 )]
 #[test_case(
-    "definition-before-use", "definition_before_use_annotations.py", "py314" ; "definition_before_use_lazy_annotations"
+    "definition-before-use", "definition_before_use_annotations.py", None ; "definition_before_use_lazy_annotations"
 )]
 #[test_case(
-    "definition-before-use", "definition_before_use_annotations.py", "py310" ; "definition_before_use_eager_annotations"
+    "definition-before-use", "definition_before_use_annotations.py", Some("py310") ; "definition_before_use_eager_annotations"
 )]
 #[test_case(
-    "definition-before-use", "definition_before_use_decorated.py", "py314" ; "definition_before_use_decorated_lazy"
+    "definition-before-use", "definition_before_use_decorated.py", None ; "definition_before_use_decorated_lazy"
 )]
 #[test_case(
-    "definition-before-use", "definition_before_use_decorated.py", "py310" ; "definition_before_use_decorated_eager"
+    "definition-before-use", "definition_before_use_decorated.py", Some("py310") ; "definition_before_use_decorated_eager"
 )]
 #[test_case(
-    "definition-before-use", "definition_before_use_import_time.py", "py314" ; "definition_before_use_import_time"
+    "definition-before-use", "definition_before_use_import_time.py", None ; "definition_before_use_import_time"
 )]
 #[test_case(
-    "definition-before-use", "definition_before_use_type_params.py", "py314" ; "definition_before_use_type_params"
+    "definition-before-use", "definition_before_use_type_params.py", None ; "definition_before_use_type_params"
 )]
 #[test_case(
-    "definition-before-use", "definition_before_use_receiver.py", "py314" ; "definition_before_use_receiver"
+    "definition-before-use", "definition_before_use_receiver.py", None ; "definition_before_use_receiver"
 )]
 #[test_case(
-    "definition-before-use", "definition_before_use_class_order.py", "py314"
+    "definition-before-use", "definition_before_use_class_order.py", None
     ; "definition_before_use_class_order"
 )]
 #[test_case(
-    "definition-before-use", "definition_before_use_later_helper.py", "py314"
+    "definition-before-use", "definition_before_use_later_helper.py", None
     ; "definition_before_use_later_helper"
 )]
 #[test_case(
-    "definition-before-use", "definition_before_use_block_helper.py", "py314"
+    "definition-before-use", "definition_before_use_block_helper.py", None
     ; "definition_before_use_block_helper"
 )]
 #[test_case(
-    "definition-before-use", "definition_before_use_block_method.py", "py314"
+    "definition-before-use", "definition_before_use_block_method.py", None
     ; "definition_before_use_block_method"
 )]
 #[test_case(
-    "definition-before-use", "definition_before_use_mid_import.py", "py314" ; "definition_before_use_mid_import"
+    "definition-before-use", "definition_before_use_mid_import.py", None ; "definition_before_use_mid_import"
 )]
 #[test_case(
-    "definition-before-use", "definition_before_use_leading_import.py", "py314"
+    "definition-before-use", "definition_before_use_leading_import.py", None
     ; "definition_before_use_leading_import"
 )]
 #[test_case(
-    "definition-before-use", "definition_before_use_string_tail.py", "py314"
+    "definition-before-use", "definition_before_use_string_tail.py", None
     ; "definition_before_use_string_line_is_not_a_comment"
 )]
 #[test_case(
-    "definition-before-use", "definition_before_use_blank_lines.py", "py314"
+    "definition-before-use", "definition_before_use_blank_lines.py", None
     ; "definition_before_use_keeps_blank_lines_of_adjacent_statements"
 )]
 #[test_case(
-    "class-member-order", "class_member_order_string_tail.py", "py314"
+    "class-member-order", "class_member_order_string_tail.py", None
     ; "class_member_order_string_line_is_not_a_comment"
 )]
 #[test_case(
-    "class-member-order", "class_member_order_pattern_binding.py", "py314"
+    "class-member-order", "class_member_order_pattern_binding.py", None
     ; "class_member_order_pattern_and_handler_bindings"
 )]
 #[test_case(
-    "single-user-constant", "single_user_constant_continued_string.py", "py314"
+    "single-user-constant", "single_user_constant_continued_string.py", None
     ; "single_user_constant_continued_string_keeps_its_value"
 )]
 #[test_case(
-    "definition-before-use", "definition_before_use_indented_comment.py", "py314"
+    "definition-before-use", "definition_before_use_indented_comment.py", None
     ; "definition_before_use_deeper_comment_ends_block"
 )]
 #[test_case(
-    "class-member-order", "class_member_order_indented_comment.py", "py314"
+    "class-member-order", "class_member_order_indented_comment.py", None
     ; "class_member_order_deeper_comment_ends_block"
 )]
-#[test_case("single-user-constant", "single_user_constant.py", "py314" ; "single_user_constant")]
+#[test_case("single-user-constant", "single_user_constant.py", None ; "single_user_constant")]
 #[test_case(
-    "definition-before-use", "definition_before_use_module_defaults.py", "py314"
+    "definition-before-use", "definition_before_use_module_defaults.py", None
     ; "definition_before_use_module_defaults"
 )]
 #[test_case(
-    "definition-before-use", "definition_before_use_class_defaults.py", "py314"
+    "definition-before-use", "definition_before_use_class_defaults.py", None
     ; "definition_before_use_class_defaults"
 )]
-#[test_case("class-member-order", "class_member_order.py", "py314" ; "class_member_order")]
+#[test_case("class-member-order", "class_member_order.py", None ; "class_member_order")]
 #[test_case(
-    "class-member-order", "class_member_order_sections.py", "py314" ; "class_member_order_sections"
+    "class-member-order", "class_member_order_sections.py", None ; "class_member_order_sections"
 )]
-#[test_case("class-member-order", "class_member_order_pins.py", "py314" ; "class_member_order_pins")]
-#[test_case("class-member-order", "class_member_order_safety.py", "py314" ; "class_member_order_safety")]
-#[test_case("class-member-order", "class_member_order_factories.py", "py314" ; "class_member_order_factories")]
+#[test_case("class-member-order", "class_member_order_pins.py", None ; "class_member_order_pins")]
+#[test_case("class-member-order", "class_member_order_safety.py", None ; "class_member_order_safety")]
+#[test_case("class-member-order", "class_member_order_factories.py", None ; "class_member_order_factories")]
 #[test_case(
-    "class-member-order", "class_member_order_annotations.py", "py314"
+    "class-member-order", "class_member_order_annotations.py", None
     ; "class_member_order_lazy_annotations"
 )]
 #[test_case(
-    "class-member-order", "class_member_order_annotations.py", "py310"
+    "class-member-order", "class_member_order_annotations.py", Some("py310")
     ; "class_member_order_eager_annotations"
 )]
-#[test_case("single-user-constant", "single_user_constant_all.py", "py314" ; "single_user_constant_with_all")]
-#[test_case("single-user-constant", "single_user_constant_dynamic.py", "py314" ; "single_user_constant_dynamic_all")]
-#[test_case("single-user-constant", "single_user_constant_spacing.py", "py314" ; "single_user_constant_spacing")]
-#[test_case("single-user-constant", "single_user_constant_source_text.py", "py314" ; "single_user_constant_source_text")]
-#[test_case("single-user-constant", "single_user_constant_debug.py", "py314" ; "single_user_constant_debug")]
-#[test_case("single-user-constant", "single_user_constant_annotated.py", "py314" ; "single_user_constant_annotated")]
-#[test_case("single-user-constant", "single_user_constant_computed.py", "py314" ; "single_user_constant_computed_write")]
-#[test_case("single-user-constant", "single_user_constant_shared.py", "py314" ; "single_user_constant_shared_state")]
-#[test_case("single-user-constant", "single_user_constant_int_attribute.py", "py314" ; "single_user_constant_int_attribute")]
-fn rule(rule: &str, fixture: &str, target_version: &str) {
-    common::assert_rule_snapshot(rule, fixture, target_version);
+#[test_case("single-user-constant", "single_user_constant_all.py", None ; "single_user_constant_with_all")]
+#[test_case("single-user-constant", "single_user_constant_dynamic.py", None ; "single_user_constant_dynamic_all")]
+#[test_case("single-user-constant", "single_user_constant_spacing.py", None ; "single_user_constant_spacing")]
+#[test_case("single-user-constant", "single_user_constant_source_text.py", None ; "single_user_constant_source_text")]
+#[test_case("single-user-constant", "single_user_constant_debug.py", None ; "single_user_constant_debug")]
+#[test_case("single-user-constant", "single_user_constant_annotated.py", None ; "single_user_constant_annotated")]
+#[test_case("single-user-constant", "single_user_constant_computed.py", None ; "single_user_constant_computed_write")]
+#[test_case("single-user-constant", "single_user_constant_shared.py", None ; "single_user_constant_shared_state")]
+#[test_case("single-user-constant", "single_user_constant_int_attribute.py", None ; "single_user_constant_int_attribute")]
+fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
+    common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
 
 #[test_case("[tool.ruff.lint]\npreview = true\nselect = [\"PLR0914\"]\n[tool.ruff.lint.pylint]\nmax-locals = 2\n", 0 ; "enabled_limit")]

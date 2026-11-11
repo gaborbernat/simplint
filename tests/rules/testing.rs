@@ -2,44 +2,51 @@ use test_case::test_case;
 
 use crate::common;
 
-#[test_case("test-class", "tests/test_class.py" ; "test_class")]
-#[test_case("test-class", "multiline_module_docstring_ok.py" ; "test_class_regular_module")]
-#[test_case("test-class", "tests/test_class_generic.py" ; "test_class_generic")]
-#[test_case("test-class", "tests/test_class_indent.py" ; "test_class_indent")]
-#[test_case("test-class", "tests/test_class_shadow.py" ; "test_class_shadow")]
-#[test_case("test-class", "tests/test_class_flattened_collision.py" ; "test_class_flattened_collision")]
-#[test_case("parametrize-without-id", "tests/test_parametrize_without_id.py" ; "parametrize_without_id")]
-#[test_case("parametrize-without-id", "tests/test_parametrize_scalar_ids.py" ; "parametrize_scalar_ids")]
-#[test_case("parametrize-without-id", "tests/test_parametrize_starred.py" ; "parametrize_starred")]
-#[test_case("parametrize-without-id", "tests/test_parametrize_spread.py" ; "parametrize_spread")]
-#[test_case("parametrize-without-id", "tests/test_parametrize_names.py" ; "parametrize_names")]
-#[test_case("parametrize-without-id", "tests/test_parametrize_bindings.py" ; "parametrize_bindings")]
-#[test_case("parametrize-without-id", "tests/test_parametrize_helpers.py" ; "parametrize_helpers")]
-#[test_case("conditional-in-test", "tests/test_conditional_in_test.py" ; "conditional_in_test")]
-#[test_case("conditional-in-test", "multiline_module_docstring_ok.py" ; "conditional_in_test_regular_module")]
-#[test_case("constant-assert", "constant_assert.py" ; "constant_assert")]
-#[test_case("constant-assert", "constant_assert_all_rebound.py" ; "constant_assert_all_rebound")]
-#[test_case("constant-assert", "constant_assert_ruff_overlap.py" ; "constant_assert_ruff_overlap")]
-#[test_case("loop-in-test", "tests/test_loop_in_test.py" ; "loop_in_test")]
-#[test_case("loop-in-test", "tests/test_loop_in_test_shared.py" ; "loop_in_test_shared_name")]
-#[test_case("mock-assertion-typo", "mock_assertion_typo.py" ; "mock_assertion_typo")]
-#[test_case("mock-assertion-typo", "mock_assertion_typo_defined.py" ; "mock_assertion_typo_defined")]
-#[test_case("mock-assertion-typo", "mock_assertion_typo_parenthesized.py" ; "mock_assertion_typo_parenthesized")]
-#[test_case("mock-assertion-typo", "mock_assertion_typo_comment.py" ; "mock_assertion_typo_comment")]
-#[test_case("mock-attribute-assignment", "tests/test_mock_attribute_assignment.py" ; "mock_attribute_assignment")]
-#[test_case("mock-attribute-assignment", "tests/test_mock_attribute_comment.py" ; "mock_attribute_assignment_comment")]
-#[test_case("mock-attribute-assignment", "tests/test_mock_reserved_attribute.py" ; "mock_attribute_assignment_reserved")]
-#[test_case("mock-without-spec", "tests/test_mock_without_spec.py" ; "mock_without_spec")]
-#[test_case("split-composite-assert", "tests/test_split_composite_assert.py" ; "split_composite_assert")]
-#[test_case("sleep-in-test", "tests/test_sleep_in_test.py" ; "sleep_in_test")]
-#[test_case("sleep-in-test", "tests/test_sleep_patched.py" ; "sleep_in_test_patched")]
-#[test_case("stdlib-mock", "tests/test_stdlib_mock.py" ; "stdlib_mock")]
-#[test_case("stdlib-mock", "tests/test_stdlib_mock_mocker.py" ; "stdlib_mock_mocker")]
-#[test_case("stdlib-mock", "stdlib_mock_helper.py" ; "stdlib_mock_helper")]
-#[test_case("unused-fixture", "tests/test_ufix_requests.py" ; "unused_fixture")]
-#[test_case("unused-fixture", "tests/conftest.py" ; "unused_fixture_conftest")]
-fn rule(rule: &str, fixture: &str) {
-    common::assert_rule_snapshot(rule, fixture, "py314");
+#[test_case("test-class", "tests/test_class.py", None ; "test_class")]
+#[test_case("test-class", "multiline_module_docstring_ok.py", None ; "test_class_regular_module")]
+#[test_case("test-class", "tests/test_class_generic.py", None ; "test_class_generic")]
+#[test_case("test-class", "tests/test_class_indent.py", None ; "test_class_indent")]
+#[test_case("test-class", "tests/test_class_shadow.py", None ; "test_class_shadow")]
+#[test_case("test-class", "tests/test_class_flattened_collision.py", None ; "test_class_flattened_collision")]
+#[test_case("parametrize-without-id", "tests/test_parametrize_without_id.py", None ; "parametrize_without_id")]
+#[test_case("parametrize-without-id", "tests/test_parametrize_scalar_ids.py", None ; "parametrize_scalar_ids")]
+#[test_case("parametrize-without-id", "tests/test_parametrize_starred.py", None ; "parametrize_starred")]
+#[test_case("parametrize-without-id", "tests/test_parametrize_spread.py", None ; "parametrize_spread")]
+#[test_case("parametrize-without-id", "tests/test_parametrize_names.py", None ; "parametrize_names")]
+#[test_case("parametrize-without-id", "tests/test_parametrize_bindings.py", None ; "parametrize_bindings")]
+#[test_case("parametrize-without-id", "tests/test_parametrize_helpers.py", None ; "parametrize_helpers")]
+#[test_case("conditional-in-test", "tests/test_conditional_in_test.py", None ; "conditional_in_test")]
+#[test_case("conditional-in-test", "multiline_module_docstring_ok.py", None ; "conditional_in_test_regular_module")]
+#[test_case("constant-assert", "constant_assert.py", None ; "constant_assert")]
+#[test_case("constant-assert", "constant_assert_all_rebound.py", None ; "constant_assert_all_rebound")]
+#[test_case("constant-assert", "constant_assert_ruff_overlap.py", None ; "constant_assert_ruff_overlap")]
+#[test_case("loop-in-test", "tests/test_loop_in_test.py", None ; "loop_in_test")]
+#[test_case("loop-in-test", "tests/test_loop_in_test_shared.py", None ; "loop_in_test_shared_name")]
+#[test_case("mock-assertion-typo", "mock_assertion_typo.py", None ; "mock_assertion_typo")]
+#[test_case("mock-assertion-typo", "mock_assertion_typo_defined.py", None ; "mock_assertion_typo_defined")]
+#[test_case("mock-assertion-typo", "mock_assertion_typo_parenthesized.py", None ; "mock_assertion_typo_parenthesized")]
+#[test_case("mock-assertion-typo", "mock_assertion_typo_comment.py", None ; "mock_assertion_typo_comment")]
+#[test_case("mock-attribute-assignment", "tests/test_mock_attribute_assignment.py", None ; "mock_attribute_assignment")]
+#[test_case("mock-attribute-assignment", "tests/test_mock_attribute_comment.py", None ; "mock_attribute_assignment_comment")]
+#[test_case("mock-attribute-assignment", "tests/test_mock_reserved_attribute.py", None ; "mock_attribute_assignment_reserved")]
+#[test_case("mock-without-spec", "tests/test_mock_without_spec.py", None ; "mock_without_spec")]
+#[test_case("split-composite-assert", "tests/test_split_composite_assert.py", None ; "split_composite_assert")]
+#[test_case("sleep-in-test", "tests/test_sleep_in_test.py", None ; "sleep_in_test")]
+#[test_case("sleep-in-test", "tests/test_sleep_patched.py", None ; "sleep_in_test_patched")]
+#[test_case("stdlib-mock", "tests/test_stdlib_mock.py", None ; "stdlib_mock")]
+#[test_case("stdlib-mock", "tests/test_stdlib_mock_mocker.py", None ; "stdlib_mock_mocker")]
+#[test_case("stdlib-mock", "stdlib_mock_helper.py", None ; "stdlib_mock_helper")]
+#[test_case("up-unittest-enter-context", "up_unittest_enter_context.py", Some("py311") ; "unittest_enter_context")]
+#[test_case("up-unittest-enter-context", "up_unittest_enter_context.py", Some("py310") ; "unittest_enter_context_py310")]
+#[test_case("up-unittest-enter-context", "up_unittest_enter_context_used.py", Some("py311") ; "unittest_enter_context_used")]
+#[test_case("up-unittest-enter-context", "up_unittest_enter_context_comment.py", Some("py311") ; "unittest_enter_context_comment")]
+#[test_case("up-unittest-enter-context", "up_unittest_enter_context_inline.py", Some("py311") ; "unittest_enter_context_inline")]
+#[test_case("test-class", "tests/test_class_generic.py", Some("py312") ; "test_class_generic_before_3_13")]
+#[test_case("up-unittest-enter-context", "up_unittest_enter_context_not_testcase.py", Some("py311") ; "unittest_enter_context_not_testcase")]
+#[test_case("unused-fixture", "tests/test_ufix_requests.py", None ; "unused_fixture")]
+#[test_case("unused-fixture", "tests/conftest.py", None ; "unused_fixture_conftest")]
+fn rule(rule: &str, fixture: &str, target_version: Option<&str>) {
+    common::assert_rule_snapshot(rule, fixture, target_version.unwrap_or("py314"));
 }
 
 #[test_case("create_autospec", 0 ; "autospec_only")]
@@ -53,17 +60,6 @@ fn stdlib_mock_allows_create_autospec_only(imports: &str, reports: usize) {
         ),
     ]);
     common::assert_report_count(root.path(), "SMP809", reports);
-}
-
-#[test_case("up-unittest-enter-context", "up_unittest_enter_context.py", "py311" ; "unittest_enter_context")]
-#[test_case("up-unittest-enter-context", "up_unittest_enter_context.py", "py310" ; "unittest_enter_context_py310")]
-#[test_case("up-unittest-enter-context", "up_unittest_enter_context_used.py", "py311" ; "unittest_enter_context_used")]
-#[test_case("up-unittest-enter-context", "up_unittest_enter_context_comment.py", "py311" ; "unittest_enter_context_comment")]
-#[test_case("up-unittest-enter-context", "up_unittest_enter_context_inline.py", "py311" ; "unittest_enter_context_inline")]
-#[test_case("test-class", "tests/test_class_generic.py", "py312" ; "test_class_generic_before_3_13")]
-#[test_case("up-unittest-enter-context", "up_unittest_enter_context_not_testcase.py", "py311" ; "unittest_enter_context_not_testcase")]
-fn versioned_rule(rule: &str, fixture: &str, target_version: &str) {
-    common::assert_rule_snapshot(rule, fixture, target_version);
 }
 
 // A `pytest_plugins` a test module sets may load fixtures that request a `conftest.py` fixture overriding one of
