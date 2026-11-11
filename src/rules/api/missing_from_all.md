@@ -638,7 +638,41 @@ listed.
   ```
 
 When several names are missing, only the first report carries the fix, since it adds all of them at once; the others
-have none.
+have none. A suppression comment on the first report moves the fix to the next report that is still shown, and the fix
+still lists every name:
+
+```python context file=use.py
+from api import alpha, beta
+
+print(alpha(), beta())
+```
+
+```python report file=api.py
+__all__ = []
+
+
+def alpha() -> int:  # noqa: SMP401
+    return 1
+
+
+def beta() -> int:
+    return 2
+```
+
+```python fixed file=api.py
+__all__ = [
+    "alpha",
+    "beta",
+]
+
+
+def alpha() -> int:  # noqa: SMP401
+    return 1
+
+
+def beta() -> int:
+    return 2
+```
 
 **Creating a new `__all__`**: a module without `__all__` gets a new one, sorted and one name per line, as its last
 statement, or above a closing `if __name__ == "__main__":` block. **Unsafe fix:** it narrows what `from module import *`

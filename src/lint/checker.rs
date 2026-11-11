@@ -49,6 +49,7 @@ pub struct Checker<'a> {
     file: &'a SourceFile,
     indexer: &'a Indexer,
     linter: &'a Linter<'a>,
+    suppressions: &'a Suppressions<'a>,
     semantic: OnceCell<Semantic<'a>>,
     dunder_all: OnceCell<Exports<'a>>,
     function_defs: OnceCell<Vec<&'a ast::StmtFunctionDef>>,
@@ -73,6 +74,7 @@ impl<'a> Checker<'a> {
         indexer: &'a Indexer,
         stylist: &'a Stylist<'a>,
         linter: &'a Linter<'a>,
+        suppressions: &'a Suppressions<'a>,
     ) -> Self {
         Self {
             path,
@@ -83,6 +85,7 @@ impl<'a> Checker<'a> {
             file,
             indexer,
             linter,
+            suppressions,
             semantic: OnceCell::new(),
             dunder_all: OnceCell::new(),
             function_defs: OnceCell::new(),
@@ -146,6 +149,20 @@ impl<'a> Checker<'a> {
 
     pub fn report(&self, rule: Rule, range: TextRange, message: impl Into<String>) {
         self.diagnostics.borrow_mut().push((rule, self.diagnostic(rule, range, message)));
+    }
+
+    pub fn first_unsuppressed(&self, rule: Rule, ranges: impl IntoIterator<Item = TextRange>) -> Option<TextRange> {
+        let mut ranges = ranges.into_iter();
+        let first = ranges.next()?;
+        if !self.suppressions.has_directives() {
+            return Some(first);
+        }
+        self.suppressions
+            .pending(std::iter::once(first).chain(ranges).map(|range| self.diagnostic(rule, range, "")).collect())
+            .first()
+            .and_then(|(report, _)| report.range())
+            // `--ignore-noqa` still needs the fix when every report has a suppression.
+            .or(Some(first))
     }
 
     // Ruff attaches a fix's title as a help note: the `help:` line of the full output, and the fix message of the JSON,

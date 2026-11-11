@@ -86,8 +86,10 @@ pub fn module_attribute_import(checker: &Checker) {
                 reports.iter().map(|attribute| Edit::range_replacement(attribute.name.to_owned(), attribute.range));
             Fix::unsafe_edits(import, accesses)
         });
-        // The fix rewrites the import and every access, so only the first report carries it: Ruff renders a report's
-        // fix in full, and repeating it on every access made output slow on modules with many accesses.
+        let offer_at = fix.as_ref().and_then(|_| {
+            checker.first_unsuppressed(Rule::ModuleAttributeImport, reports.iter().map(|attribute| attribute.range))
+        });
+        // Ruff renders the whole fix on each report, so only the first visible report carries it.
         for attribute in reports {
             let message =
                 format!("Import `{}` from `{path}` instead of reaching it through the module", attribute.name);
@@ -95,7 +97,7 @@ pub fn module_attribute_import(checker: &Checker) {
                 Rule::ModuleAttributeImport,
                 attribute.range,
                 message,
-                fix.take(),
+                if offer_at == Some(attribute.range) { fix.take() } else { None },
                 format!("Import the names from `{path}`"),
             );
         }

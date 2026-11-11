@@ -292,8 +292,8 @@ def make[T: _Base]() -> T:
 The fix rewrites the span from the first to the last misplaced statement in the expected order:
 
 - It comes with the first report of each body only, since that one fix moves every definition the body's reports name.
-  In a class body the fix leaves the sections alone; [class-member-order](SMP203.html) sorts them, with the same helper
-  placement.
+  When a comment suppresses that report, the first report still shown carries it. In a class body the fix leaves the
+  sections alone; [class-member-order](SMP203.html) sorts them, with the same helper placement.
 
   ```python report
   def _clean(line: str) -> str:

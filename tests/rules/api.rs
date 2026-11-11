@@ -218,6 +218,35 @@ fn missing_from_all_shows_the_fix_once_for_many_names() {
     assert_eq!(stdout.matches("help: Add ").count(), 1, "{stdout}");
 }
 
+#[test]
+fn missing_from_all_fixes_after_first_report_is_suppressed() {
+    let root = common::project(&[
+        (
+            "api.py",
+            "__all__ = []\n\n\ndef alpha() -> int:  # noqa: SMP401\n    return 1\n\n\ndef beta() -> int:\n    return 2\n",
+        ),
+        ("use.py", "from api import alpha, beta\n\nprint(alpha(), beta())\n"),
+    ]);
+    common::check(root.path(), &["--no-cache", "--fix", "--select", "SMP401"]);
+    assert_eq!(
+        common::read(root.path(), "api.py"),
+        "__all__ = [\n    \"alpha\",\n    \"beta\",\n]\n\n\ndef alpha() -> int:  # noqa: SMP401\n    return 1\n\n\ndef beta() -> int:\n    return 2\n"
+    );
+}
+
+#[test]
+fn missing_from_all_fixes_with_all_suppressions_ignored() {
+    let root = common::project(&[
+        ("api.py", "__all__ = []\n\n\ndef alpha() -> int:  # noqa: SMP401\n    return 1\n"),
+        ("use.py", "from api import alpha\n\nprint(alpha())\n"),
+    ]);
+    common::check(root.path(), &["--no-cache", "--ignore-noqa", "--fix", "--select", "SMP401"]);
+    assert_eq!(
+        common::read(root.path(), "api.py"),
+        "__all__ = [\n    \"alpha\",\n]\n\n\ndef alpha() -> int:  # noqa: SMP401\n    return 1\n"
+    );
+}
+
 // A name bound only under `if TYPE_CHECKING:` exists for type checkers alone, so listing it would make `import *` fail,
 // while a name the module also binds at run time is still reported.
 #[test]

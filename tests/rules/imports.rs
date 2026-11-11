@@ -425,6 +425,20 @@ fn module_attribute_import_reports_each_same_named_module_read_through_an_import
     assert!(stdout.contains("tools/gen.py:5:12: SMP304 Import `TABLE`"), "{stdout}");
 }
 
+#[test]
+fn module_attribute_import_fixes_after_first_report_is_suppressed() {
+    let root = common::project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/mod.py", "def alpha() -> int:\n    return 1\n\n\ndef beta() -> int:\n    return 2\n"),
+        ("pkg/use.py", "from . import mod\n\nprint(mod.alpha())  # noqa: SMP304\nprint(mod.beta())\n"),
+    ]);
+    common::fix_unsafe(root.path(), "SMP304");
+    assert_eq!(
+        common::read(root.path(), "pkg/use.py"),
+        "from .mod import alpha, beta\n\nprint(alpha())  # noqa: SMP304\nprint(beta())\n"
+    );
+}
+
 // The fix rewrites the reads of the module only, so a parameter, local, loop or comprehension variable of the same name
 // keeps its attribute reads.
 #[test]

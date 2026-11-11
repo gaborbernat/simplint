@@ -124,7 +124,7 @@ impl<'a> Linter<'a> {
         let indexer = Indexer::from_tokens(parsed.tokens(), source);
         let stylist = Stylist::from_tokens(parsed.tokens(), source);
         let suppressions = Suppressions::new(path, source, &parsed, &indexer, &stylist);
-        let diagnostics = Checker::new(path, &file, &parsed, &indexer, &stylist, self)
+        let diagnostics = Checker::new(path, &file, &parsed, &indexer, &stylist, self, &suppressions)
             .run(include_unused_ignore.then_some(&suppressions));
         (unsupported, Ok(then(diagnostics, &suppressions)))
     }

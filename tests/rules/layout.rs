@@ -109,6 +109,20 @@ fn single_user_constant_respects_ruff_local_limit(config: &str, reports: usize) 
     assert_eq!(stdout.matches("`_MESSAGE` is used by one function").count(), reports, "{stdout}");
 }
 
+// One fix reorders the whole body, so it rides on the first report a comment does not suppress.
+#[test]
+fn definition_before_use_fixes_after_first_report_is_suppressed() {
+    let root = common::project(&[(
+        "module.py",
+        "def main():\n    return helper()\n\n\ndef late():  # noqa: SMP201\n    return 1\n\n\ndef helper():\n    return late()\n",
+    )]);
+    common::check(root.path(), &["--no-cache", "--fix", "--select", "SMP201"]);
+    assert_eq!(
+        common::read(root.path(), "module.py"),
+        "def main():\n    return helper()\n\n\ndef helper():\n    return late()\n\n\ndef late():  # noqa: SMP201\n    return 1\n"
+    );
+}
+
 #[test]
 fn single_user_constant_still_reports_inlineable_value_at_local_limit() {
     let root = common::project(&[
