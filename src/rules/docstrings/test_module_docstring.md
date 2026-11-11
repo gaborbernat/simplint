@@ -103,7 +103,8 @@ import os
 import os
 ```
 
-A comment after the docstring stays on a line of its own.
+A comment after the docstring stays on a line of its own, unless it is a pragma or tool directive, such as `# fmt: off`
+or `# noqa: E501`, which goes with the docstring.
 
 ```python report file=test_net.py
 """Network tests."""  # these need the staging VPN

@@ -96,6 +96,34 @@ fn test_module_docstring_removal_leaves_no_blank_lines_ending_the_file() {
     "def _run() -> None:\n    print()\n" ;
     "pragma"
 )]
+#[test_case(
+    "module.py",
+    "def _run() -> None:\n    \"\"\"Run the job.\"\"\"  # fmt: off\n    print()\n",
+    "SMP901",
+    "def _run() -> None:\n    print()\n" ;
+    "fmt_directive"
+)]
+#[test_case(
+    "module.py",
+    "def _run() -> None:\n    \"\"\"Run the job.\"\"\"  # first # noqa: E501\n    print()\n",
+    "SMP901",
+    "def _run() -> None:\n    print()\n" ;
+    "comment_ending_in_pragma"
+)]
+#[test_case(
+    "tests/test_net.py",
+    "\"\"\"Network tests.\"\"\"  # fmt: skip\nimport os\n",
+    "SMP902",
+    "import os\n" ;
+    "test_module_directive"
+)]
+#[test_case(
+    "module.py",
+    "def _run() -> None:\n    \"\"\"Run the job.\"\"\"  # type: ignore\n",
+    "SMP901",
+    "def _run() -> None:\n    ...\n" ;
+    "single_statement_directive"
+)]
 fn docstring_comment_stays_after_removal(file: &str, source: &str, select: &str, fixed: &str) {
     let root = common::project(&[("pyproject.toml", ""), (file, source)]);
     common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", select]);

@@ -423,8 +423,9 @@ Around the docstring, both fixes do the following:
       ...
   ```
 
-- A pragma comment after the docstring, such as `# noqa: E501`, covered the docstring's line only and goes with it.
-  Another comment stays, after the `...` or at the end of the last comment line.
+- A pragma or tool directive after the docstring, such as `# noqa: E501` or `# fmt: off`, covers the docstring's line
+  only and goes with it, as does a comment holding one anywhere in its text, such as `# first # noqa: E501`. Another
+  comment stays, after the `...` or at the end of the last comment line.
 
   ```python report
   def _run() -> None:
@@ -437,7 +438,19 @@ Around the docstring, both fixes do the following:
       print()
   ```
 
-- When other code follows the docstring, a comment after it stays on a line of its own, as the deletion keeps it.
+  ```python report file=directive.py
+  def _run() -> None:
+      """Run the job."""  # first # noqa: E501
+      print()
+  ```
+
+  ```python fixed file=directive.py
+  def _run() -> None:
+      print()
+  ```
+
+- When other code follows the docstring, a comment after it stays on a line of its own, unless it is a pragma or tool
+  directive, as the deletion keeps it.
 
   ```python report
   def _acquire() -> int:

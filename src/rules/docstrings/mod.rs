@@ -43,12 +43,12 @@ use std::path::Path;
 
 use ruff_diagnostics::Edit;
 use ruff_python_ast::{self as ast, Expr, Stmt};
-use ruff_python_trivia::is_pragma_comment;
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::lint::checker::Checker;
 use crate::project::{Exposure, FileIndex};
+use crate::rules::comments::is_tool_directive;
 use crate::rules::edits::statement_deletion;
 use crate::rules::{indentation, is_alone_on_lines};
 use crate::syntax::{Exports, Visibility, decorator_names, is_overload, module_statements};
@@ -366,12 +366,19 @@ fn is_documented_variable(checker: &Checker, stmt: &Stmt, next: Option<&Stmt>) -
         || checker.trailing_comment(stmt).is_some_and(is_doc_comment)
 }
 
-// Deletes the docstring that starts a body. A comment after it stays on a line of its own, unless it is a pragma,
-// which covers the docstring's line only.
+// Whether a comment after a docstring is a pragma or a tool directive. Such a comment covers the docstring's line only,
+// so it goes with the docstring.
+pub(crate) fn is_directive_comment(checker: &Checker, comment: TextRange) -> bool {
+    let text = checker.text(comment);
+    text.match_indices('#').any(|(start, _)| is_tool_directive(&text[start..]))
+}
+
+// Deletes the docstring that starts a body. A comment after it stays on a line of its own, unless it is a pragma or a
+// tool directive, which goes with it.
 pub(crate) fn docstring_deletion(checker: &Checker, body: &[Stmt]) -> Option<Edit> {
     let stmt = &body[0];
     let deletion = statement_deletion(checker, stmt.range(), body.get(1).map(Ranged::range), true)?;
-    let comment = checker.trailing_comment(stmt).filter(|comment| !is_pragma_comment(checker.text(*comment)));
+    let comment = checker.trailing_comment(stmt).filter(|comment| !is_directive_comment(checker, *comment));
     match comment {
         Some(comment) if is_alone_on_lines(checker.source, stmt.range()) => {
             let newline = checker.stylist.line_ending().as_str();
