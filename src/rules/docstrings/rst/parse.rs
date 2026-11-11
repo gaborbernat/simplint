@@ -5,7 +5,7 @@ use crate::lint::checker::Checker;
 
 // What a field documents, by its name: the info fields of Sphinx's Python domain and their aliases, and the `yields` and
 // `ytype` fields documentation tools accept for generators.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum FieldKind {
     Param,
     Type,
@@ -20,21 +20,27 @@ pub(crate) enum FieldKind {
     Unknown,
 }
 
-impl FieldKind {
-    fn of(name: &str) -> Self {
-        match name {
-            "param" | "parameter" | "arg" | "argument" | "key" | "keyword" | "kwarg" | "kwparam" => Self::Param,
-            "type" | "paramtype" => Self::Type,
-            "raises" | "raise" | "except" | "exception" => Self::Raises,
-            "var" | "ivar" | "cvar" => Self::Var,
-            "vartype" => Self::VarType,
-            "returns" | "return" => Self::Returns,
-            "rtype" => Self::ReturnType,
-            "yields" | "yield" => Self::Yields,
-            "ytype" => Self::YieldType,
-            "meta" => Self::Meta,
-            _ => Self::Unknown,
-        }
+// The kind of a field by its first word, and the name Sphinx reads it as when the word is an alias. `var`, `ivar` and
+// `cvar` have no name of their own: Sphinx renders them alike, yet `rst-attribute-kind` tells instance attributes from
+// class variables by them.
+fn field_name(word: &str) -> (FieldKind, Option<&'static str>) {
+    match word {
+        "param" => (FieldKind::Param, None),
+        "parameter" | "arg" | "argument" | "key" | "keyword" | "kwarg" | "kwparam" => (FieldKind::Param, Some("param")),
+        "type" => (FieldKind::Type, None),
+        "paramtype" => (FieldKind::Type, Some("type")),
+        "raises" => (FieldKind::Raises, None),
+        "raise" | "except" | "exception" => (FieldKind::Raises, Some("raises")),
+        "var" | "ivar" | "cvar" => (FieldKind::Var, None),
+        "vartype" => (FieldKind::VarType, None),
+        "returns" => (FieldKind::Returns, None),
+        "return" => (FieldKind::Returns, Some("returns")),
+        "rtype" => (FieldKind::ReturnType, None),
+        "yields" => (FieldKind::Yields, None),
+        "yield" => (FieldKind::Yields, Some("yields")),
+        "ytype" => (FieldKind::YieldType, None),
+        "meta" => (FieldKind::Meta, None),
+        _ => (FieldKind::Unknown, None),
     }
 }
 
@@ -43,6 +49,8 @@ pub(crate) struct Field {
     pub(crate) kind: FieldKind,
     // The words between the colons: `param`, `int` and `count` above.
     pub(crate) words: Vec<String>,
+    // The name an alias of the field stands for, such as `param` for `:arg:`.
+    pub(crate) primary: Option<&'static str>,
     // Where the field and its continuation lines sit in the source, whole lines with their line break, and where the text
     // between its colons sits; `None` when escapes make the docstring's text differ from its source, or the field
     // shares the line of the opening quotes.
@@ -167,9 +175,11 @@ impl<'a> Docstring<'a> {
                 let description = trimmed[marker.len() + 2..].trim().to_owned();
                 let described = !description.is_empty();
                 let joins_text = index > 0 && open.is_none() && !lines[index - 1].1.trim().is_empty();
+                let (kind, primary) = field_name(&words[0]);
                 fields.push(Field {
-                    kind: FieldKind::of(&words[0]),
+                    kind,
                     words,
+                    primary,
                     lines: in_source.map(|start| TextRange::at(start + offset, TextSize::of(*line))),
                     marker: in_source.map(|start| {
                         TextRange::at(
@@ -210,6 +220,10 @@ impl<'a> Docstring<'a> {
 
     pub(crate) fn fields(&self, kinds: &[FieldKind]) -> impl Iterator<Item = &Field> {
         self.fields.iter().filter(move |field| kinds.contains(&field.kind))
+    }
+
+    pub(crate) fn subjects(&self, kinds: &[FieldKind]) -> impl Iterator<Item = &str> {
+        self.fields(kinds).filter_map(Field::subject)
     }
 
     pub(crate) fn has(&self, kind: FieldKind) -> bool {

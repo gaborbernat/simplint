@@ -49,3 +49,14 @@ pub(crate) fn field_deletion(checker: &Checker, docstring: &Docstring, fields: &
     }
     fix_of(edits, Applicability::Unsafe)
 }
+
+impl Field {
+    pub(crate) fn rename(&self, name: &str) -> Option<Fix> {
+        let word = TextRange::at(self.marker?.start(), TextSize::of(self.words[0].as_str()));
+        Some(Fix::unsafe_edit(Edit::range_replacement(name.to_owned(), word)))
+    }
+
+    pub(crate) fn removal(&self, checker: &Checker, docstring: &Docstring) -> Option<Fix> {
+        field_deletion(checker, docstring, &[self])
+    }
+}

@@ -142,9 +142,13 @@ fn parameters(def: &ast::StmtFunctionDef, is_method: bool) -> Vec<Parameter<'_>>
         .chain(parameters.kwonlyargs.iter().map(|parameter| &parameter.parameter))
         .chain(parameters.kwarg.as_deref());
     all.filter(|parameter| Some(parameter.name.as_str()) != received)
-        .filter(|parameter| !parameter.name.as_str().chars().all(|char| char == '_'))
+        .filter(|parameter| !underscores_only(parameter.name.as_str()))
         .map(|parameter| Parameter { name: parameter.name.as_str(), annotated: parameter.annotation.is_some() })
         .collect()
+}
+
+fn underscores_only(name: &str) -> bool {
+    name.chars().all(|char| char == '_')
 }
 
 // The `__init__` that runs: the last one, since `@overload` stubs come before the implementation.
@@ -190,7 +194,7 @@ fn class_parameters(class: &ast::StmtClassDef) -> Option<Vec<Parameter<'_>>> {
         _ => None,
     });
     fields
-        .filter(|(name, _, _)| !name.id.as_str().chars().all(|char| char == '_'))
+        .filter(|(name, _, _)| !underscores_only(name.id.as_str()))
         .map(|(name, value, annotated)| Some(Parameter { name: init_name(name, value, attrs)?, annotated }))
         .collect()
 }

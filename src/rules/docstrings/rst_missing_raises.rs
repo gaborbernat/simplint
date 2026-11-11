@@ -16,8 +16,7 @@ pub fn rst_missing_raises(checker: &Checker) {
         raises.visit_body(&def.body);
         let documented: FxHashSet<&str> = target
             .docstring
-            .fields(&[FieldKind::Raises])
-            .filter_map(|field| field.subject())
+            .subjects(&[FieldKind::Raises])
             .map(|subject| subject.rsplit('.').next().unwrap_or(subject))
             .collect();
         let mut missing: Vec<&str> = Vec::new();

@@ -1,8 +1,6 @@
-use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::visitor::Visitor;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_python_parser::parse_expression;
-use ruff_text_size::{TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
@@ -34,10 +32,7 @@ fn generator_fields(checker: &Checker, target: &Target, name: &str) {
     let (has_returns, has_yields) = (docstring.has(FieldKind::Returns), docstring.has(FieldKind::Yields));
     if has_returns && !has_yields {
         // The `returns` of the field's name becomes `yields`, keeping its description.
-        let fix = docstring.fields(&[FieldKind::Returns]).next().and_then(|field| {
-            let word = TextRange::at(field.marker?.start(), TextSize::of(field.words[0].as_str()));
-            Some(Fix::unsafe_edit(Edit::range_replacement("yields".to_owned(), word)))
-        });
+        let fix = docstring.fields(&[FieldKind::Returns]).next().and_then(|field| field.rename("yields"));
         checker.report_fix(
             Rule::RstReturns,
             docstring.range(),

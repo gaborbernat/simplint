@@ -11,9 +11,8 @@ pub fn rst_missing_param(checker: &Checker) {
         let constructor = target.constructor.as_deref();
         let documented: FxHashSet<&str> = target
             .docstring
-            .fields(&[FieldKind::Param])
-            .chain(constructor.iter().flat_map(|docstring| docstring.fields(&[FieldKind::Param])))
-            .filter_map(|field| field.subject())
+            .subjects(&[FieldKind::Param])
+            .chain(constructor.iter().flat_map(|docstring| docstring.subjects(&[FieldKind::Param])))
             .collect();
         // A parameter with a leading underscore is internal, a knob the documentation leaves out. The description
         // of a parameter is for a person to write, so the report carries no fix.
