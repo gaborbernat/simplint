@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+1:1 SMP308 This import closes a cycle of runtime imports, `import_cycle_chord_a.py -> import_cycle_chord_b.py -> import_cycle_chord_c.py -> import_cycle_chord_a.py`; import inside the function that needs it

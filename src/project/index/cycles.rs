@@ -56,27 +56,70 @@ pub(super) fn cycles(mut graph: RuntimeGraph) -> FxHashMap<FileId, Cycle> {
     for component in component.values() {
         *sizes.entry(*component).or_default() += 1;
     }
+    // A component where every file has one import into it is a single ring, so the path from a file is the one its
+    // imports follow, and the search for it is not needed.
+    let mut rings: FxHashMap<usize, usize> = FxHashMap::default();
+    for (&file, imports) in &graph {
+        let home = component[&file];
+        if sizes[&home] >= 2 && inside(imports, &component, home).count() == 1 {
+            *rings.entry(home).or_default() += 1;
+        }
+    }
     let mut cycles = FxHashMap::default();
     for (&file, imports) in &graph {
         // Every file with imports is in a component, and one in a component of two or more files imports into it.
         let home = component[&file];
-        if sizes[&home] < 2 {
+        let size = sizes[&home];
+        if size < 2 {
             continue;
         }
-        let &(first, range) = imports
-            .iter()
-            .find(|(target, _)| component.get(target) == Some(&home))
-            .expect("a file in a cycle imports a file of its component");
-        let mut chain = vec![file];
-        chain.extend(shortest_path(&graph, &component, home, first, file));
-        // The path ends on `file`, which the chain closes on once more after the files it keeps.
-        chain.pop();
-        let omitted = chain.len().saturating_sub(SHOWN);
-        chain.truncate(SHOWN);
-        chain.push(file);
+        let &(first, range) =
+            inside(imports, &component, home).next().expect("a file in a cycle imports a file of its component");
+        let (chain, omitted) = if rings.get(&home) == Some(&size) {
+            ring_chain(&graph, &component, home, file, size)
+        } else {
+            let mut chain = vec![file];
+            chain.extend(shortest_path(&graph, &component, home, first, file));
+            // The path ends on `file`, which the chain closes on once more after the files it keeps.
+            chain.pop();
+            let omitted = chain.len().saturating_sub(SHOWN);
+            chain.truncate(SHOWN);
+            // Without this, each cycle of a ring keeps the allocation of the whole path it was cut from.
+            chain.shrink_to_fit();
+            chain.push(file);
+            (chain, omitted)
+        };
         cycles.insert(file, Cycle { range, chain, omitted });
     }
     cycles
+}
+
+// The imports of a file that stay in its component.
+fn inside<'a>(
+    imports: &'a [(FileId, TextRange)],
+    component: &'a FxHashMap<FileId, usize>,
+    home: usize,
+) -> impl Iterator<Item = &'a (FileId, TextRange)> {
+    imports.iter().filter(move |(target, _)| component.get(target) == Some(&home))
+}
+
+// The chain of a file in a ring of `size` files: the files the ring runs through from it, as far as the cycle shows,
+// and the number it leaves out.
+fn ring_chain(
+    graph: &RuntimeGraph,
+    component: &FxHashMap<FileId, usize>,
+    home: usize,
+    file: FileId,
+    size: usize,
+) -> (Vec<FileId>, usize) {
+    let mut chain = vec![file];
+    let mut at = file;
+    while chain.len() < size.min(SHOWN) {
+        at = inside(&graph[&at], component, home).next().expect("a file in a ring imports a file of it").0;
+        chain.push(at);
+    }
+    chain.push(file);
+    (chain, size.saturating_sub(SHOWN))
 }
 
 // The files on the shortest path from `from` to `to` that stays inside the component, both included.

@@ -19,6 +19,7 @@ use crate::common;
 #[test_case("import-cycle", "import_cycle.py", "py314" ; "import_cycle")]
 #[test_case("import-cycle", "import_cycle_partner.py", "py314" ; "import_cycle_partner")]
 #[test_case("import-cycle", "import_cycle_ring_a.py", "py314" ; "import_cycle_ring")]
+#[test_case("import-cycle", "import_cycle_chord_a.py", "py314" ; "import_cycle_chord")]
 #[test_case("import-cycle", "import_cycle_exceptions.py", "py314" ; "import_cycle_exceptions")]
 #[test_case("import-cycle", "import_cycle_lazy.py", "py315" ; "import_cycle_lazy")]
 #[test_case("import-cycle", "import_cycle_pkg/core.py", "py314" ; "import_cycle_package")]
