@@ -20155,7 +20155,7 @@
     "name": "long-tuple-return",
     "summary": "Functions returning tuples too long to unpack by position",
     "fix": "None",
-    "explanation": "Flags a function that returns a tuple with more elements than the limit, which is two by default. A tuple of three or\nmore values that travel together is a record, and a dataclass or a named tuple gives its fields names.\n\n## Why is this bad?\n\nCallers unpack a tuple by position, so a reader must find the function to learn what each element means. Past two or\nthree elements that is easy to get wrong: swapping two `int`s type-checks and runs. A record names each field where it\nis defined and where it is read.\n\n## Example\n\n```python report\ndef span(text: str) -> tuple[int, int, str]:\n    start = text.find(\"(\")\n    end = text.rfind(\")\")\n    return start, end, text[start:end]\n```\n\nUse instead:\n\n```python ok\nfrom typing import NamedTuple\n\n\nclass Span(NamedTuple):\n    start: int\n    end: int\n    text: str\n\n\ndef span(text: str) -> Span:\n    start = text.find(\"(\")\n    end = text.rfind(\")\")\n    return Span(start, end, text[start:end])\n```\n\n## Configuration\n\n- [`logic.max-tuple-elements`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#logic) in\n  `[tool.simplint]`: the most elements a returned tuple may hold, such as `max-tuple-elements = 3` under\n  `[tool.simplint.logic]`\n\n  ```toml config\n  [tool.simplint.logic]\n  max-tuple-elements = 3\n  ```\n\n  ```python report\n  def corners() -> tuple[int, int, int, int]:\n      return 0, 0, 1, 1\n  ```\n\n## What it does\n\n### Active on\n\nA `return` whose value is a tuple display longer than the limit is reported, at the tuple. Each function is judged by\nits own `return` statements, so a nested function's return belongs to the nested function.\n\n- **A tuple display of the length**: parentheses do not matter.\n\n  ```python report\n  def bounds(values: list[int]) -> tuple[int, int, int]:\n      return min(values), max(values), len(values)\n  ```\n\n- **A nested function**: its return is judged on its own.\n\n  ```python report\n  def outer() -> int:\n      def inner() -> tuple[int, int, int]:\n          return 1, 2, 3\n\n      return inner()[0]\n  ```\n\n### Exceptions\n\n- **Methods decorated with `@override`**: a base class or plugin contract fixes the return shape. This also recognizes\n  compatibility imports of `override` that forward to `typing.override`.\n\n- **The methods the pickle and copy protocols call**: `__reduce__`, `__reduce_ex__`, `__getnewargs__` and\n  `__getnewargs_ex__` must return a tuple of the shape those protocols read.\n\n  ```python ok\n  class Point:\n      def __reduce__(self):\n          return self.__class__, (self.x,), self.__dict__\n  ```\n\n- **`__getstate__`**: its tuple goes back to the class's own `__setstate__`, which the pickle protocol calls with it.\n\n  ```python ok\n  class Point:\n      def __getstate__(self):\n          return self.x, self.y, self.z\n  ```\n\n- **A key function**, named `key` or ending in `_key`: its tuple is compared or hashed as a whole to sort or cache, and\n  never unpacked.\n\n  ```python ok\n  class Version:\n      def _sort_key(self):\n          return self.major, self.minor, self.micro\n  ```\n\n- **A function annotated to return `tuple[T, ...]`**: its tuple is a sequence of any length rather than a record.\n\n  ```python ok\n  def primes() -> tuple[int, ...]:\n      return 2, 3, 5, 7\n  ```\n\n- **A tuple with a starred element**: the number of values it stands for is not known.\n\n  ```python ok\n  def first(items: list[int]) -> tuple[int, ...]:\n      return (*items, 1, 2)\n  ```\n\n- **A `yield`**: a generator's tuples are the items of a stream, which callers loop over, and not one value to unpack.\n\n  ```python ok\n  def rows() -> Iterator[tuple[int, int, int]]:\n      yield 1, 2, 3\n  ```\n\n### Fix\n\nNo fix is offered: a record needs a name for its fields, which only the author can choose.\n\n## Ruff overlap\n\nRuff has no rule for the length of a returned tuple.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#3845](https://github.com/astral-sh/ruff/issues/3845) and\n  [#8022](https://github.com/astral-sh/ruff/issues/8022).\n- [flake8-too-many](https://github.com/queensferryme/flake8-too-many) counts return values as\n  [TMN002](https://github.com/queensferryme/flake8-too-many) against `max-function-return-values`, which defaults to 3.\n  This rule's limit defaults to 2.\n- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports long returned tuples\n  as\n  [WPS227](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/complexity.html#wemake_python_styleguide.violations.complexity.TooLongOutputTupleViolation),\n  with no fix.\n",
+    "explanation": "Flags a function that returns a tuple with more elements than the limit, which is two by default. A tuple of three or\nmore values that travel together is a record, and a dataclass or a named tuple gives its fields names.\n\n## Why is this bad?\n\nCallers unpack a tuple by position, so a reader must find the function to learn what each element means. Past two or\nthree elements that is easy to get wrong: swapping two `int`s type-checks and runs. A record names each field where it\nis defined and where it is read.\n\n## Example\n\n```python report\ndef span(text: str) -> tuple[int, int, str]:\n    start = text.find(\"(\")\n    end = text.rfind(\")\")\n    return start, end, text[start:end]\n```\n\nUse instead:\n\n```python ok\nfrom typing import NamedTuple\n\n\nclass Span(NamedTuple):\n    start: int\n    end: int\n    text: str\n\n\ndef span(text: str) -> Span:\n    start = text.find(\"(\")\n    end = text.rfind(\")\")\n    return Span(start, end, text[start:end])\n```\n\n## Configuration\n\n- [`logic.max-tuple-elements`](https://simplint.readthedocs.io/en/latest/configuration/rule-settings.html#logic) in\n  `[tool.simplint]`: the most elements a returned tuple may hold, such as `max-tuple-elements = 3` under\n  `[tool.simplint.logic]`\n\n  ```toml config\n  [tool.simplint.logic]\n  max-tuple-elements = 3\n  ```\n\n  ```python report\n  def corners() -> tuple[int, int, int, int]:\n      return 0, 0, 1, 1\n  ```\n\n## What it does\n\n### Active on\n\nA `return` whose value is a tuple display longer than the limit is reported, at the tuple. Each function is judged by\nits own `return` statements, so a nested function's return belongs to the nested function.\n\n- **A tuple display of the length**: parentheses do not matter.\n\n  ```python report\n  def bounds(values: list[int]) -> tuple[int, int, int]:\n      return min(values), max(values), len(values)\n  ```\n\n- **A nested function**: its return is judged on its own.\n\n  ```python report\n  def outer() -> int:\n      def inner() -> tuple[int, int, int]:\n          return 1, 2, 3\n\n      return inner()[0]\n  ```\n\n### Exceptions\n\n- **Methods decorated with `@override`**: a base class or plugin contract fixes the return shape. This also recognizes\n  compatibility imports of `override` that forward to `typing.override`.\n\n- **The methods the pickle and copy protocols call**: `__reduce__`, `__reduce_ex__`, `__getnewargs__` and\n  `__getnewargs_ex__` must return a tuple of the shape those protocols read.\n\n  ```python ok\n  class Point:\n      def __reduce__(self):\n          return self.__class__, (self.x,), self.__dict__\n  ```\n\n- **`__getstate__`**: its tuple goes back to the class's own `__setstate__`, which the pickle protocol calls with it.\n\n  ```python ok\n  class Point:\n      def __getstate__(self):\n          return self.x, self.y, self.z\n  ```\n\n- **A key function**, named `key` or ending in `_key`: its tuple is compared or hashed as a whole to sort or cache, and\n  never unpacked.\n\n  ```python ok\n  class Version:\n      def _sort_key(self):\n          return self.major, self.minor, self.micro\n  ```\n\n- **A function annotated to return `tuple[T, ...]`**: its tuple is a sequence of any length rather than a record.\n\n  ```python ok\n  def primes() -> tuple[int, ...]:\n      return 2, 3, 5, 7\n  ```\n\n- **A function annotated with a quoted `\"tuple[T, ...]\"`**: the annotation is read as code, as a forward reference is,\n  so it counts like the unquoted one.\n\n  ```python ok\n  def primes() -> \"tuple[int, ...]\":\n      return 2, 3, 5, 7\n  ```\n\n- **A tuple with a starred element**: the number of values it stands for is not known.\n\n  ```python ok\n  def first(items: list[int]) -> tuple[int, ...]:\n      return (*items, 1, 2)\n  ```\n\n- **A `yield`**: a generator's tuples are the items of a stream, which callers loop over, and not one value to unpack.\n\n  ```python ok\n  def rows() -> Iterator[tuple[int, int, int]]:\n      yield 1, 2, 3\n  ```\n\n### Fix\n\nNo fix is offered: a record needs a name for its fields, which only the author can choose.\n\n## Ruff overlap\n\nRuff has no rule for the length of a returned tuple.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issues [#3845](https://github.com/astral-sh/ruff/issues/3845) and\n  [#8022](https://github.com/astral-sh/ruff/issues/8022).\n- [flake8-too-many](https://github.com/queensferryme/flake8-too-many) counts return values as\n  [TMN002](https://github.com/queensferryme/flake8-too-many) against `max-function-return-values`, which defaults to 3.\n  This rule's limit defaults to 2.\n- [wemake-python-styleguide](https://github.com/wemake-services/wemake-python-styleguide) reports long returned tuples\n  as\n  [WPS227](https://wemake-python-styleguide.readthedocs.io/en/latest/pages/usage/violations/complexity.html#wemake_python_styleguide.violations.complexity.TooLongOutputTupleViolation),\n  with no fix.\n",
     "examples": {
       "parsed": [
         {
@@ -20317,8 +20317,8 @@
         },
         {
           "section": "What it does",
-          "line": 117,
-          "end_line": 120,
+          "line": 118,
+          "end_line": 121,
           "config": null,
           "blocks": [
             {
@@ -20326,16 +20326,33 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 117,
-              "end_line": 120,
+              "line": 118,
+              "end_line": 121,
+              "source": "def primes() -> \"tuple[int, ...]\":\n    return 2, 3, 5, 7\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 125,
+          "end_line": 128,
+          "config": null,
+          "blocks": [
+            {
+              "role": "ok",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 125,
+              "end_line": 128,
               "source": "def first(items: list[int]) -> tuple[int, ...]:\n    return (*items, 1, 2)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 124,
-          "end_line": 127,
+          "line": 132,
+          "end_line": 135,
           "config": null,
           "blocks": [
             {
@@ -20343,8 +20360,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 124,
-              "end_line": 127,
+              "line": 132,
+              "end_line": 135,
               "source": "def rows() -> Iterator[tuple[int, int, int]]:\n    yield 1, 2, 3\n"
             }
           ]

@@ -1,0 +1,5 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+10:12 SMP528 `quoted_fixed` returns a tuple of 4 elements; a dataclass or a named tuple names its fields

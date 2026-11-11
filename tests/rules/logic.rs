@@ -116,6 +116,7 @@ use crate::common::{self, check, read};
 #[test_case("super-forwarding-method", "super_forwarding_method_class_body.py", "py314" ; "super_forwarding_method_class_body")]
 #[test_case("super-forwarding-method", "super_forwarding_method_class_body_forms.py", "py314" ; "super_forwarding_method_class_body_forms")]
 #[test_case("long-tuple-return", "long_tuple_return.py", "py314" ; "long_tuple_return")]
+#[test_case("long-tuple-return", "long_tuple_return_quoted.py", "py314" ; "long_tuple_return_quoted")]
 #[test_case("cognitive-complexity", "cognitive_complexity.py", "py314" ; "cognitive_complexity")]
 #[test_case("collection-built-by-statements", "collection_built_by_statements.py", "py314" ; "collection_built_by_statements")]
 #[test_case("collection-built-by-statements", "collection_built_by_statements_names.py", "py314" ; "collection_built_by_statements_names")]

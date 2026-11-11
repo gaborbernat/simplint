@@ -112,6 +112,14 @@ its own `return` statements, so a nested function's return belongs to the nested
       return 2, 3, 5, 7
   ```
 
+- **A function annotated with a quoted `"tuple[T, ...]"`**: the annotation is read as code, as a forward reference is,
+  so it counts like the unquoted one.
+
+  ```python ok
+  def primes() -> "tuple[int, ...]":
+      return 2, 3, 5, 7
+  ```
+
 - **A tuple with a starred element**: the number of values it stands for is not known.
 
   ```python ok
