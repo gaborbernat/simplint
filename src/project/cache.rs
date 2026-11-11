@@ -59,6 +59,22 @@ pub fn read_aligned(path: &Path) -> io::Result<AlignedVec<16>> {
     Ok(bytes)
 }
 
+// A path's modification time, in seconds and nanoseconds, and its size.
+pub(super) type Stat = (i64, u32, u64);
+
+pub(super) fn stat(path: &Path) -> Option<Stat> {
+    fs::metadata(path).ok().map(|metadata| {
+        let modified = FileTime::from_last_modification_time(&metadata);
+        (modified.unix_seconds(), modified.nanoseconds(), metadata.len())
+    })
+}
+
+// A path with its modification time and size, or with neither when it does not exist.
+pub(super) fn stat_key(path: &Path, hasher: &mut CacheKeyHasher) {
+    path.cache_key(hasher);
+    stat(path).cache_key(hasher);
+}
+
 // The version and a hash of the crate's source, which `build.rs` computes, so a development build that changes it does
 // not read caches an earlier build of the same version wrote.
 const FORMAT: &str = concat!(env!("CARGO_PKG_VERSION"), "-", env!("SIMPLINT_CACHE_FORMAT"));
