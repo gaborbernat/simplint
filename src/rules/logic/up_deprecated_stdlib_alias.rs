@@ -95,7 +95,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     if !attribute.ctx.is_load() {
         return;
     }
-    let target = checker.settings.from_ruff.target_version;
+    let target = checker.target_version();
     // The name is compared first, so an attribute no alias names never builds the file's semantic model.
     let Some(alias) = ALIASES.iter().find(|alias| {
         alias.name == attribute.attr.as_str()

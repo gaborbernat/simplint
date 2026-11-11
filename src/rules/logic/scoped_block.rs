@@ -85,7 +85,7 @@ pub fn wrap_edits(checker: &Checker, first: TextRange, try_stmt: &ast::StmtTry, 
     if checker.has_comment_in(head) || checker.has_comment_in(tail) {
         return None;
     }
-    let header = format!("{header}{}", checker.stylist.line_ending().as_str());
+    let header = format!("{header}{}", checker.line_ending());
     Some([Edit::range_replacement(header, head), Edit::range_deletion(tail)])
 }
 

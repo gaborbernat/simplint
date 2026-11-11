@@ -381,7 +381,7 @@ pub(crate) fn docstring_deletion(checker: &Checker, body: &[Stmt]) -> Option<Edi
     let comment = checker.trailing_comment(stmt).filter(|comment| !is_directive_comment(checker, *comment));
     match comment {
         Some(comment) if is_alone_on_lines(checker.source, stmt.range()) => {
-            let newline = checker.stylist.line_ending().as_str();
+            let newline = checker.line_ending();
             let line = format!("{}{}{newline}", indentation(checker.source, stmt), checker.text(comment));
             Some(Edit::range_replacement(line, deletion))
         }

@@ -76,7 +76,7 @@ fn require_options(
 ) {
     // `slots=` and `kw_only=` arrived in Python 3.10; an older target cannot use them. `frozen=` has no such limit.
     if options.iter().any(|option| matches!(*option, "slots" | "kw_only"))
-        && checker.settings.from_ruff.target_version < dataclass_kw_only::SINCE
+        && checker.target_version() < dataclass_kw_only::SINCE
     {
         return;
     }

@@ -78,7 +78,7 @@ fn flatten_class(checker: &Checker, class: &ast::StmtClassDef, new_names: &mut H
         functions.push(text);
     }
     new_names.extend(names);
-    (!functions.is_empty()).then(|| functions.join(&checker.stylist.line_ending().as_str().repeat(2)))
+    (!functions.is_empty()).then(|| functions.join(&checker.line_ending().repeat(2)))
 }
 
 // Whether the class can become module-level functions without its text changing: it has no bases, decorators or
@@ -161,9 +161,7 @@ fn flatten_method(
     }
     let used = used_type_params(function, type_params);
     // A default on a type parameter is 3.13 syntax, which a fix for an older target would leave invalid.
-    if checker.settings.from_ruff.target_version < PythonVersion::PY313
-        && used.iter().any(|param| param.default().is_some())
-    {
+    if checker.target_version() < PythonVersion::PY313 && used.iter().any(|param| param.default().is_some()) {
         return None;
     }
     let header: Vec<&str> = used.into_iter().map(|param| &source[param.range()]).collect();

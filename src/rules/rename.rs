@@ -33,7 +33,7 @@ pub fn rename_fix(checker: &Checker, old: &str, new: &str) -> Option<Fix> {
     // A module name that shadows a builtin, as in `zip = zip`, shares its token with the builtin it reads.
     if is_offered(checker, old)
         || checker.name_token_count(new) > 0
-        || is_python_builtin(old, checker.settings.from_ruff.target_version.minor, false)
+        || is_python_builtin(old, checker.target_version().minor, false)
         || checker.project().is_used_elsewhere(old)
         // Code the index cannot follow may read the name, so only the fix is withheld, never the report.
         || checker.project().is_read_opaquely(old)

@@ -94,7 +94,7 @@ fn comment_replacement(
     }
     let comments: Vec<String> =
         lines.iter().map(|line| if line.is_empty() { "#".to_owned() } else { format!("# {line}") }).collect();
-    let eol = checker.stylist.line_ending().as_str();
+    let eol = checker.line_ending();
     Some(Edit::range_replacement(
         format!("{indent}{}{eol}", comments.join(&format!("{eol}{indent}"))),
         source.full_lines_range(stmt.range()),

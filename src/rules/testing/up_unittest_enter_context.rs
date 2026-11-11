@@ -68,7 +68,7 @@ fn check_sequence<'a>(
             "{}{value} = self.enterContext({}){}",
             indentation(source, start),
             checker.text(call.range()),
-            checker.stylist.line_ending().as_str()
+            checker.line_ending()
         );
         Fix::safe_edit(Edit::range_replacement(replacement, source.full_lines_range(range)))
     });

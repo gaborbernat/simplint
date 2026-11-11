@@ -75,7 +75,7 @@ pub fn module_attribute_import(checker: &Checker) {
                 && module.defined.contains(attribute.name)
                 && !is_shadowed(checker, attribute)
                 && !rebound
-                && !is_python_builtin(attribute.name, checker.settings.from_ruff.target_version.minor, false);
+                && !is_python_builtin(attribute.name, checker.target_version().minor, false);
             reports.push(attribute);
         }
         let mut fix = convertible.then(|| {

@@ -6,7 +6,7 @@ use ruff_db::diagnostic::{Annotation, Diagnostic, DiagnosticId, LintName, Second
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::parenthesize::parenthesized_range;
 use ruff_python_ast::token::TokenKind;
-use ruff_python_ast::{self as ast, AnyNodeRef, Expr, ModModule, Stmt};
+use ruff_python_ast::{self as ast, AnyNodeRef, Expr, ModModule, PythonVersion, Stmt};
 use ruff_python_codegen::Stylist;
 use ruff_python_index::Indexer;
 use ruff_python_parser::Parsed;
@@ -240,13 +240,7 @@ impl<'a> Checker<'a> {
                 list_appends: counts_ruff_appends(self.settings),
                 django_reports: leaves_django_order_to_ruff(self.settings),
             };
-            Semantic::new(
-                self.path,
-                self.body(),
-                self.settings.from_ruff.target_version,
-                self.linter.ruff.settings,
-                matches,
-            )
+            Semantic::new(self.path, self.body(), self.target_version(), self.linter.ruff.settings, matches)
         })
     }
 
@@ -352,6 +346,14 @@ impl<'a> Checker<'a> {
 
     pub fn is_test_module(&self) -> bool {
         self.settings.is_test
+    }
+
+    pub fn line_ending(&self) -> &'static str {
+        self.stylist.line_ending().as_str()
+    }
+
+    pub fn target_version(&self) -> PythonVersion {
+        self.settings.from_ruff.target_version
     }
 
     pub fn file_name(&self) -> &str {

@@ -44,7 +44,7 @@ pub(super) fn reorder_fix(
     {
         return None;
     }
-    let eol = checker.stylist.line_ending().as_str();
+    let eol = checker.line_ending();
     let blank_lines = eol.repeat(suite.blank_lines);
     let slots = &expected[span.clone()];
     let mut replacement = String::new();

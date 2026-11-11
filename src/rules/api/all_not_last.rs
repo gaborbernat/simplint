@@ -54,7 +54,7 @@ pub fn all_not_last(checker: &Checker) {
             lines_with_trailing_blanks(source, fence.map_or(stmt.range(), |off| TextRange::new(off.start(), after)));
         let insertion = source.full_line_end(body[end - 1].end());
         let text = source[lines].trim_end();
-        let eol = checker.stylist.line_ending().as_str();
+        let eol = checker.line_ending();
         let content = if insertion.to_usize() == source.len() && !source.ends_with('\n') {
             format!("{eol}{eol}{eol}{text}")
         } else {

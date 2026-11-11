@@ -40,7 +40,7 @@ pub(crate) fn field_deletion(checker: &Checker, docstring: &Docstring, fields: &
         let range = TextRange::new(text_end, content.end());
         let quote = docstring.literal.value.first_literal_flags().quote_style().as_char();
         edits.push(if kept.contains('\n') || kept.ends_with([quote, '\\']) {
-            let line_ending = checker.stylist.line_ending().as_str();
+            let line_ending = checker.line_ending();
             Edit::range_replacement(format!("{line_ending}{}", indentation(source, docstring.literal)), range)
         } else {
             Edit::range_deletion(range)

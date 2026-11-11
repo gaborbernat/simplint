@@ -157,7 +157,7 @@ fn inlined_replacement(
     (use_range, reading): (TextRange, &Reading<'_>),
 ) -> Option<(TextRange, String)> {
     let value = assign.value.as_ref();
-    let before_312 = checker.settings.from_ruff.target_version < PythonVersion::PY312;
+    let before_312 = checker.target_version() < PythonVersion::PY312;
     if let Some(field) = reading.bare_field
         && let Some(text) = spliced_text(
             checker,
@@ -188,10 +188,7 @@ fn inlined_replacement(
     let joined =
         if field_before_312 && value_text.contains(['\n', '\r']) { Some(joined(checker, value_text)?) } else { None };
     // Before Python 3.9 a decorator is a dotted name, optionally called, so the value must be one.
-    if checker.settings.from_ruff.target_version < PythonVersion::PY39
-        && reading.decorator_head
-        && !is_dotted_name(value)
-    {
+    if checker.target_version() < PythonVersion::PY39 && reading.decorator_head && !is_dotted_name(value) {
         return None;
     }
     // A whole argument, return or assigned value needs no parentheses, though a tuple still does.

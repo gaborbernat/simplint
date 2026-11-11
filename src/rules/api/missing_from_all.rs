@@ -164,7 +164,7 @@ fn new_all(checker: &Checker, names: &[&str]) -> Option<Fix> {
         return None;
     }
     let items: Vec<String> = names.iter().map(|name| quoted(checker, name)).collect();
-    let eol = checker.stylist.line_ending().as_str();
+    let eol = checker.line_ending();
     let declaration = format!("__all__ = {}{eol}", exploded(checker, "", &items));
     // A module without `__all__` exports every public name to `from module import *`; adding one narrows that.
     let edit = if let Some(guard) = checker.body().last().filter(|stmt| is_main_guard(stmt)) {
@@ -212,7 +212,7 @@ fn lines_insertion(
             _ => groups.push((at, vec![quoted(checker, name)])),
         }
     }
-    let eol = checker.stylist.line_ending().as_str();
+    let eol = checker.line_ending();
     let separator = format!(",{eol}{indent}");
     let mut edits: Vec<Edit> = groups
         .into_iter()

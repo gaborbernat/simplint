@@ -154,7 +154,7 @@ fn is_standard_library(checker: &Checker, module: &str) -> bool {
     // `_json` (Lib/json/scanner.py:4-7), `_operator` (Lib/operator.py:421-424) and `_pickle` (Lib/pickle.py:1970-1971).
     const ACCELERATORS: &[&str] =
         &["_bisect", "_collections", "_datetime", "_functools", "_heapq", "_json", "_operator", "_pickle"];
-    let target = checker.settings.from_ruff.target_version.minor;
+    let target = checker.target_version().minor;
     let root = module.split_once('.').map_or(module, |(root, _)| root);
     // A module removed in a later version, such as `distutils` in 3.12, is optional for a project that supports both.
     let top_level = (target..=LATEST_MINOR).all(|minor| is_known_standard_library(minor, root));

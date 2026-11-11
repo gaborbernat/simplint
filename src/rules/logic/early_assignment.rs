@@ -197,7 +197,7 @@ fn move_fix(checker: &Checker, assign: &ast::StmtAssign, next: &Stmt) -> Option<
         return Some(Fix::safe_edits(Edit::range_deletion(lines), [Edit::insertion(text, start)]));
     }
     let indentation = leading_indentation(before);
-    let eol = checker.stylist.line_ending().as_str();
+    let eol = checker.line_ending();
     let assign_text = checker.text(assign.range);
     let statement = checker.text(next.range());
     let mut content = if before.trim().is_empty() {

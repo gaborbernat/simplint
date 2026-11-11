@@ -73,7 +73,7 @@ fn fix(
         "{}@{}.deprecated({text}){}",
         indentation(source, name),
         checker.text(func.value.range()),
-        checker.stylist.line_ending().as_str()
+        checker.line_ending()
     );
     // A body of only the warning keeps a statement, as the decorated function still has to run to its end.
     let removal = if body.len() == 1 {

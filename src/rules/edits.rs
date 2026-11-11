@@ -240,7 +240,7 @@ pub fn is_bound_around(checker: &Checker, name: &str, at: TextRange) -> bool {
 fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Option<Edit> {
     let body = checker.body();
     let source = checker.source;
-    let eol = checker.stylist.line_ending().as_str();
+    let eol = checker.line_ending();
     let text = match member {
         Some(member) => format!("from {module} import {member}{eol}"),
         None => format!("import {module}{eol}"),
@@ -248,7 +248,7 @@ fn import_insertion(checker: &Checker, module: &str, member: Option<&str>) -> Op
     let key = (member.is_some(), module.to_ascii_lowercase());
     let preamble = body.iter().take_while(|stmt| future_import(stmt).is_some() || is_docstring_stmt(stmt)).count();
     let block = body[preamble..].iter().take_while(|stmt| matches!(stmt, Stmt::Import(_) | Stmt::ImportFrom(_)));
-    let minor = checker.settings.from_ruff.target_version.minor;
+    let minor = checker.target_version().minor;
     let stdlib: Vec<(&Stmt, (bool, String))> = block
         .filter_map(|stmt| match stmt {
             Stmt::Import(ast::StmtImport { names, .. }) => names

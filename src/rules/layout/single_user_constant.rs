@@ -348,7 +348,7 @@ fn local_fix(checker: &Checker, constant: &Constant, value_text: &str, deletion:
     let declared = local_annotation(checker, constant)
         .map_or_else(|| local.clone(), |annotation| format!("{local}: {annotation}"));
     let declaration = format!("{declared} = {value_text}");
-    let eol = checker.stylist.line_ending().as_str();
+    let eol = checker.line_ending();
     let placements = if on_header {
         let mut gap_start = TextSize::of(source[..function.body[0].start().to_usize()].trim_end());
         let mut placements = Vec::new();

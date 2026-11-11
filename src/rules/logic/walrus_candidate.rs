@@ -17,7 +17,7 @@ use crate::rules::{expr_mentions, has_version_gate, needs_parentheses};
 
 pub fn walrus_candidate(checker: &Checker) {
     // `:=` arrived in Python 3.8.
-    if checker.settings.from_ruff.target_version < PythonVersion::PY38 || has_version_gate(checker.body()) {
+    if checker.target_version() < PythonVersion::PY38 || has_version_gate(checker.body()) {
         return;
     }
     let mentions = OnceCell::new();

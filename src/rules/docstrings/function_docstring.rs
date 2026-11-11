@@ -233,7 +233,7 @@ fn comment_replacement(
     {
         return None;
     }
-    let newline = format!("{}{indent}", checker.stylist.line_ending().as_str());
+    let newline = format!("{}{indent}", checker.line_ending());
     let block = comments.join(&newline);
     let start = if on_header { TextSize::of(source[..stmt.start().to_usize()].trim_end()) } else { stmt.start() };
     let prefix = if on_header { newline.as_str() } else { "" };
@@ -253,10 +253,7 @@ fn comment_replacement(
                 .trailing_comment(stmt)
                 .filter(|comment| !is_directive_comment(checker, *comment))
                 .map_or_else(String::new, |comment| format!("  {}", checker.text(comment)));
-            (
-                lines_with_trailing_blanks(source, stmt.range()).end(),
-                format!("{comment}{}", checker.stylist.line_ending().as_str()),
-            )
+            (lines_with_trailing_blanks(source, stmt.range()).end(), format!("{comment}{}", checker.line_ending()))
         }
     };
     Some(Edit::range_replacement(format!("{prefix}{block}{suffix}"), TextRange::new(start, end)))

@@ -20,10 +20,7 @@ use super::is_type_parameter_constructor;
 pub fn missing_final(checker: &Checker) {
     // `typing.Final` arrived in Python 3.8.
     // Sphinx reads the module variables of `conf.py` by name, so a `Final` there would change nothing.
-    if checker.settings.from_ruff.target_version < PythonVersion::PY38
-        || has_version_gate(checker.body())
-        || is_sphinx_conf(checker)
-    {
+    if checker.target_version() < PythonVersion::PY38 || has_version_gate(checker.body()) || is_sphinx_conf(checker) {
         return;
     }
     let spelling = OnceCell::new();

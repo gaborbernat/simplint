@@ -160,7 +160,7 @@ fn is_exception_type(checker: &Checker, annotation: &Expr, resolved: bool) -> bo
 // a cycle of classes that derive from each other.
 fn is_exception_class_name(checker: &Checker, expr: &Expr, resolved: bool, seen: &mut Vec<TextRange>) -> bool {
     expr.as_name_expr().is_some_and(|name| {
-        let minor = checker.settings.from_ruff.target_version.minor;
+        let minor = checker.target_version().minor;
         let builtin = if resolved {
             checker.semantic().is_builtin(expr, name.id.as_str())
         } else {

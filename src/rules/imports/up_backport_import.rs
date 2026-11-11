@@ -53,7 +53,7 @@ const BACKPORTS: &[Backport] = &[
 ];
 
 pub fn up_backport_import(checker: &Checker) {
-    let target = checker.settings.from_ruff.target_version;
+    let target = checker.target_version();
     for_each_body(checker.body(), &mut |statements, owner| {
         // A guarded import is a fallback, which the import guard rule reviews, so it is left alone here.
         if matches!(owner, Some(Stmt::Try(_))) {

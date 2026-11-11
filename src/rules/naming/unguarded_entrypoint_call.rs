@@ -30,7 +30,7 @@ pub fn unguarded_entrypoint_call(checker: &Checker) {
     let source = checker.source;
     let fix = (is_alone_on_lines(source, stmt.range()) && !source.contains_line_break(stmt.range())).then(|| {
         let lines = source.full_lines_range(stmt.range());
-        let eol = checker.stylist.line_ending().as_str();
+        let eol = checker.line_ending();
         let indent = checker.stylist.indentation().as_str();
         Fix::unsafe_edit(Edit::range_replacement(
             format!("if __name__ == \"__main__\":{eol}{indent}{}", &source[lines]),
