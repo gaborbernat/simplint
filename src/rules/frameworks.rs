@@ -9,7 +9,8 @@ use crate::syntax::single_assignment;
 pub(super) fn framework_names<'a>(checker: &Checker<'a>) -> FxHashSet<&'a str> {
     const DB_API_GLOBALS: [&str; 3] = ["apilevel", "threadsafety", "paramstyle"];
 
-    // The calls that build a WSGI, ASGI or Typer application; Pyramid's comes from `Configurator.make_wsgi_app()` instead.
+    // The calls that build a WSGI, ASGI or Typer application; Pyramid's comes from `Configurator.make_wsgi_app()`
+    // instead.
     const APPLICATIONS: &[&[&str]] = &[
         &["aiohttp", "web", "Application"],
         &["bottle", "Bottle"],
