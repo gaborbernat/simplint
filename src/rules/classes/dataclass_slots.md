@@ -452,7 +452,10 @@ class Release:
   ```
 
 - the class has a field with a default that code reads or assigns through the class name, such as `Config.timeout`, or
-  through `cls` in a classmethod: a slotted class replaces that class attribute with a descriptor
+  through `cls` in a classmethod: a slotted class replaces that class attribute with a descriptor. The class name may be
+  an import alias, a name bound to the class, or a subclass of it; an access simplint cannot tie to one class, such as
+  `type(obj).timeout`, `obj.__class__.timeout`, `getattr(obj, "timeout")` or `setattr(obj, "timeout", value)` on an
+  object of unknown class, counts against every dataclass of the run with a default of that name
 
   ```python report
   from dataclasses import dataclass
@@ -478,6 +481,40 @@ class Release:
 
   def default_timeout() -> int:
       return Config.timeout
+  ```
+
+  ```python report
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Config:
+      timeout: int = 30
+
+
+  class Sub(Config):
+      pass
+
+
+  def default_timeout() -> int:
+      return Sub.timeout
+  ```
+
+  ```python fixed
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Config:
+      timeout: int = 30
+
+
+  class Sub(Config):
+      pass
+
+
+  def default_timeout() -> int:
+      return Sub.timeout
   ```
 
 - a decorator listed below `@dataclass`, which runs first: `slots=True` makes the dataclass return a new class, which

@@ -1224,8 +1224,22 @@ impl Writes {
         let mut writes = Self::default();
         let classes: FxHashSet<&str> =
             files.iter().flat_map(|(_, facts)| facts.attribute_writes.classes.iter().map(String::as_str)).collect();
+        let mut bases: FxHashMap<&str, Vec<&str>> = FxHashMap::default();
+        for (class, base) in files.iter().flat_map(|(_, facts)| &facts.attribute_writes.class_bases) {
+            bases.entry(class.as_str()).or_default().push(base.as_str());
+        }
         for (_, facts) in files {
             let facts = &facts.attribute_writes;
+            for (class, attribute) in &facts.class_attributes {
+                let mut reached = vec![class.as_str()];
+                let mut seen = FxHashSet::default();
+                while let Some(reached_class) = reached.pop() {
+                    if seen.insert(reached_class) {
+                        writes.class_attributes.entry(reached_class.to_owned()).or_default().insert(attribute.clone());
+                        reached.extend(bases.get(reached_class).into_iter().flatten().copied());
+                    }
+                }
+            }
             for (class, attribute) in &facts.typed {
                 writes.on_class.entry(class.clone()).or_default().insert(attribute.clone());
             }
@@ -1237,9 +1251,6 @@ impl Writes {
                 } else if attribute != ANY_ATTRIBUTE {
                     writes.untyped.insert(attribute.clone());
                 }
-            }
-            for (class, attribute) in &facts.class_attributes {
-                writes.class_attributes.entry(class.clone()).or_default().insert(attribute.clone());
             }
             writes.untyped.extend(facts.untyped.iter().cloned());
             writes.dict_stores.extend(facts.dict_stores.iter().cloned());

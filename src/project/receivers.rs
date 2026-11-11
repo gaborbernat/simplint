@@ -43,9 +43,16 @@ pub struct AttributeWrites {
     // class, a type alias or a type variable names no class the run defines.
     pub(super) classes: Vec<String>,
     // The attributes the file reads, sets or deletes through a class name, as (qualified class, attribute), which
-    // replace a class attribute a slotted class turns into a descriptor.
+    // replace a class attribute a slotted class turns into a descriptor. A class the file cannot resolve is
+    // `UNRESOLVED_CLASS`, which counts against every class.
     pub(super) class_attributes: Vec<(String, String)>,
+    // The classes the file defines with each base they name, as (qualified class, qualified base), so an access through
+    // a subclass reaches the base's attributes.
+    pub(super) class_bases: Vec<(String, String)>,
 }
+
+// The class of an access the file cannot tie to one class, such as `type(obj).timeout` on an `obj` of unknown class.
+pub(crate) const UNRESOLVED_CLASS: &str = "*";
 
 impl AttributeWrites {
     pub(super) fn collect(body: &[Stmt], aliases: &FxHashMap<&str, String>, module: &str) -> Self {
@@ -119,6 +126,8 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
                         Some(self.qualified(&written))
                     })
                     .collect();
+                let qualified_class = format!("{}.{}", self.module, class.name);
+                self.writes.class_bases.extend(bases.iter().map(|base| (qualified_class.clone(), base.clone())));
                 let members = members(class);
                 if !members.is_empty() {
                     self.writes.stateful_bases.extend(bases.iter().cloned());
@@ -142,10 +151,8 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
     }
 
     fn visit_expr(&mut self, expr: &'a Expr) {
-        if let Expr::Attribute(ast::ExprAttribute { value, attr, .. }) = expr
-            && let Some(class) = self.class_of(value)
-        {
-            self.writes.class_attributes.push((class, attr.to_string()));
+        if let Some(access) = self.class_access(expr) {
+            self.writes.class_attributes.push(access);
         }
         match expr {
             Expr::Attribute(ast::ExprAttribute { value, attr, ctx: ExprContext::Store | ExprContext::Del, .. }) => {
@@ -294,10 +301,47 @@ impl<'a> Collector<'a, '_> {
         })
     }
 
-    // A class name as written here, qualified through the imports that bind its head, or else by this module.
+    // The class a name stands for, qualified through the imports and aliases that bind its head, or else by this
+    // module, when the qualified name is capitalized as a class is.
     fn class_of(&self, expr: &Expr) -> Option<String> {
         let written = UnqualifiedName::from_expr(expr)?.segments().join(".");
-        class_name(&written).map(|class| self.qualified(&class))
+        class_name(&self.qualified(&written))
+    }
+
+    // An attribute read, set or deleted through a class, and the attribute `getattr`, `setattr` and `delattr` name with
+    // a literal. `type(obj)` and `obj.__class__` name the class of `obj`, which counts against every class when it cannot
+    // be resolved.
+    fn class_access(&self, expr: &Expr) -> Option<(String, String)> {
+        match expr {
+            Expr::Attribute(ast::ExprAttribute { value, attr, .. }) => {
+                let class = match value.as_ref() {
+                    Expr::Call(ast::ExprCall { func, arguments, .. })
+                        if is_name(func, "type") && arguments.args.len() == 1 =>
+                    {
+                        self.class_of(&arguments.args[0]).unwrap_or_else(|| UNRESOLVED_CLASS.to_owned())
+                    }
+                    Expr::Attribute(ast::ExprAttribute { value: object, attr: dunder, .. })
+                        if dunder.as_str() == "__class__" =>
+                    {
+                        self.class_of(object).unwrap_or_else(|| UNRESOLVED_CLASS.to_owned())
+                    }
+                    other => self.class_of(other)?,
+                };
+                Some((class, attr.to_string()))
+            }
+            Expr::Call(ast::ExprCall { func, arguments, .. }) => {
+                let [target, name, ..] = &*arguments.args else {
+                    return None;
+                };
+                let name = name.as_string_literal_expr()?.value.to_str();
+                let function = func.as_name_expr()?.id.as_str();
+                matches!(function, "getattr" | "setattr" | "delattr").then(|| {
+                    let class = self.class_of(target).unwrap_or_else(|| UNRESOLVED_CLASS.to_owned());
+                    (class, name.to_owned())
+                })
+            }
+            _ => None,
+        }
     }
 
     fn qualified(&self, written: &str) -> String {

@@ -717,3 +717,29 @@ fn subclass_through_a_name_bound_to_a_class_of_the_same_file_keeps_frozen_unset(
     common::fix_unsafe(root.path(), "dataclass-frozen");
     assert!(!common::read(root.path(), "main.py").contains("frozen=True"));
 }
+
+// A slotted class replaces a field's default with a descriptor, so reading or setting the default through the class breaks
+// it, however the class is named: through an import alias, a name bound to it, a subclass, or `type(...)`, `__class__`,
+// `getattr` and `setattr` that simplint cannot tie to it. A read of a field that has no default and an instance's read keep
+// the option.
+#[test_case("from models import Config as C\n\nprint(C.timeout + 1)\n", false ; "import_alias")]
+#[test_case("from models import Config as config_class\n\nprint(config_class.timeout)\n", false ; "lowercase_import_alias")]
+#[test_case("from models import Config\n\nklass = Config\nprint(klass.timeout)\n", false ; "name_bound_to_class")]
+#[test_case("from models import Config\n\n\nclass Sub(Config):\n    pass\n\n\nprint(Sub.timeout)\n", false ; "subclass")]
+#[test_case("import models\n\nprint(type(models.Config()).timeout)\n", false ; "type_of_unresolved_object")]
+#[test_case("import models\n\nprint(models.Config().__class__.timeout)\n", false ; "dunder_class_of_unresolved_object")]
+#[test_case("import models\n\nprint(getattr(models.Config, \"timeout\"))\n", false ; "getattr_of_class")]
+#[test_case("import models\n\nsetattr(models.Config, \"timeout\", 5)\n", false ; "setattr_of_class")]
+#[test_case("from models import Config\n\nprint(Config().timeout)\n", true ; "instance_read")]
+#[test_case("from models import Config\n\nprint(Config.name)\n", true ; "read_of_field_without_default")]
+fn class_level_access_to_a_default_keeps_slots_unset(caller: &str, fixed: bool) {
+    let root = common::project(&[
+        (
+            "models.py",
+            "from dataclasses import dataclass\n\n\n@dataclass\nclass Config:\n    name: str\n    timeout: int = 30\n",
+        ),
+        ("main.py", caller),
+    ]);
+    common::fix_unsafe(root.path(), "dataclass-slots");
+    assert_eq!(common::read(root.path(), "models.py").contains("slots=True"), fixed);
+}
