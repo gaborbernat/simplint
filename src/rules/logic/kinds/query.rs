@@ -423,8 +423,9 @@ impl<'w, 'a> Kinds<'w, 'a> {
             .iter()
             .enumerate()
             .rev()
-            .filter(|(index, scope)| {
-                !matches!(scope, Scope::Class(_)) || index + 1 == depth || type_params_bind(scope, name)
+            .filter(|(index, scope)| match scope {
+                Scope::Class(class) => index + 1 == depth || type_params_bind(class, name),
+                Scope::Function(_) | Scope::Lambda(_) => true,
             })
             .map(|(index, scope)| (bindings_in(checker, Some(*scope), name), index + 1))
             .chain(std::iter::once_with(|| (bindings_in(checker, None, name), 0)))
@@ -526,11 +527,9 @@ impl<'w, 'a> Kinds<'w, 'a> {
 }
 
 // A type parameter binds its name in a scope the code here does not follow, so the name is unknown there.
-pub(super) fn type_params_bind(scope: &Scope, name: &str) -> bool {
-    let type_params = match scope {
-        Scope::Function(function) => function.type_params.as_deref(),
-        Scope::Class(class) => class.type_params.as_deref(),
-        Scope::Lambda(_) => None,
-    };
-    type_params.is_some_and(|type_params| type_params.type_params.iter().any(|param| param.name() == name))
+pub(super) fn type_params_bind(class: &ast::StmtClassDef, name: &str) -> bool {
+    class
+        .type_params
+        .as_deref()
+        .is_some_and(|type_params| type_params.type_params.iter().any(|param| param.name() == name))
 }

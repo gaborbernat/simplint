@@ -149,12 +149,11 @@ impl<'a> Collected<'a> {
 
     fn parameters(&mut self, checker: &Checker<'a>, parameters: &'a ast::Parameters) {
         let mut declared = FxHashSet::default();
-        for parameter in parameters.iter_non_variadic_params() {
-            let name = parameter.name().as_str();
-            if declared.insert(name) {
-                let kind = parameter.annotation().and_then(|annotation| self::annotation(checker, annotation));
-                self.of(name).declare(kind);
-            }
+        for parameter in
+            parameters.iter_non_variadic_params().filter(|parameter| declared.insert(parameter.name().as_str()))
+        {
+            let kind = parameter.annotation().and_then(|annotation| self::annotation(checker, annotation));
+            self.of(parameter.name().as_str()).declare(kind);
         }
         for variadic in [&parameters.vararg, &parameters.kwarg].into_iter().flatten() {
             self.of(variadic.name.as_str()).opaque = true;
