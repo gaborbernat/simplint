@@ -173,14 +173,17 @@ def parse_day(text):
 
 For `.date()` the fix is safe when the format is a string literal without a seconds directive, `%S`, or a composite that
 includes seconds, `%X`, `%c`, `%T` or `%r`, and unsafe otherwise: `date.strptime` accepts the second 60 that
-`datetime.strptime` rejects. For `.time()` it is safe when the format is a string literal whose directives are all
-time-of-day ones, `%H`, `%I`, `%M`, `%f` and `%p`, with `%%`, and unsafe otherwise: `time.strptime` keeps the zone that
-`.time()` drops, does not check the date that `datetime.strptime` checks, and accepts the second 60, so `%z`, `%:z`, a
-date directive and a seconds directive change the result. When the class is imported by name, the fix adds `date` or
-`time` to that `from datetime import` line. It reports without a fix when the file already spells `date` or `time`
-outside an attribute, since the new name would take that binding's place. No fix is offered when a comment lies in the
-class or in the `.date()` or `.time()` call it drops, since the rewrite would drop it. A comment inside the `.date()`
-call keeps the report without a fix:
+`datetime.strptime` rejects.
+
+The `.time()` fix is safe when the format is a string literal whose directives are all time-of-day ones, `%H`, `%I`,
+`%M`, `%f` and `%p`, with `%%`, and unsafe otherwise. `time.strptime` keeps the zone that `.time()` drops, does not
+check the date that `datetime.strptime` checks, and accepts the second 60, so `%z`, `%:z`, a date directive and a
+seconds directive change the result.
+
+When the class is imported by name, the fix adds `date` or `time` to that `from datetime import` line. It reports
+without a fix when the file already spells `date` or `time` outside an attribute, since the new name would take that
+binding's place. No fix is offered when a comment lies in the class or in the `.date()` or `.time()` call it drops,
+since the rewrite would drop it. A comment inside the `.date()` call keeps the report without a fix:
 
 ```toml config
 [project]
