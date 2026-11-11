@@ -93,8 +93,8 @@ print(json.dumps([1]), pathlib.Path("demo").name)
   import json
   ```
 
-- **Imports inside a `try`, a function or a class**: they are not module-level imports, so the rule does not look at
-  them.
+- **Imports in the body or the handlers of a `try`, in a function, or in a class**: CPython loads them eagerly even
+  under the list, so the rule does not count them as matches.
 
   ```toml config
   [project]
@@ -114,11 +114,131 @@ print(json.dumps([1]), pathlib.Path("demo").name)
 ### Fix
 
 The fix is safe. It puts `lazy` in front of each matching import and deletes the list. It is offered only when every
-entry has a matching import that can take `lazy`, and the list is alone on its lines.
+entry has a matching import that can take `lazy`, and the list is alone on its lines. An import that is `lazy` already
+needs no second `lazy`, and counts as matching.
 
 An import that names a listed module together with other modules, such as `import json, os`, is reported with no fix:
 `lazy` would make the other modules lazy too. A statement that is not `lazy`-able keeps its entry, so the fix does not
 apply.
+
+The fix is also withheld when a listed module is imported again where the list keeps the import lazy and the fix would
+make it eager: under an `if`, `with`, `for`, `while` or `match` at module level, in the `else` of a `try` without a
+`finally`, or in its `finally`. A relative import is held by the module it names after `from`, so `from . import helper`
+is held by a listed `pkg`, and not by a listed `pkg.helper`. The list is what keeps those imports lazy, and deleting it
+would make them eager.
+
+```toml config
+[project]
+name = "demo"
+requires-python = ">=3.15"
+```
+
+```python report
+# Demo module.
+__lazy_modules__ = ["json"]
+
+import json
+
+if __name__ == "__main__":
+    import json as parser
+```
+
+```python fixed
+# Demo module.
+__lazy_modules__ = ["json"]
+
+import json
+
+if __name__ == "__main__":
+    import json as parser
+```
+
+```toml config
+[project]
+name = "demo"
+requires-python = ">=3.15"
+```
+
+```python report
+# Demo module.
+__lazy_modules__ = ["json"]
+
+lazy import json
+
+print(json.dumps([1]))
+```
+
+```python fixed
+# Demo module.
+
+lazy import json
+
+print(json.dumps([1]))
+```
+
+```toml config
+[project]
+name = "demo"
+requires-python = ">=3.15"
+```
+
+```python report
+__lazy_modules__ = ["json"]
+
+import json
+
+try:
+    pass
+except ImportError:
+    pass
+else:
+    import json as fallback
+```
+
+```python fixed
+__lazy_modules__ = ["json"]
+
+import json
+
+try:
+    pass
+except ImportError:
+    pass
+else:
+    import json as fallback
+```
+
+```toml config
+[project]
+name = "demo"
+requires-python = ">=3.15"
+```
+
+```python context file=pkg/__init__.py
+# A package.
+```
+
+```python context file=pkg/helper.py
+VALUE = 1
+```
+
+```python report file=pkg/consumer.py
+__lazy_modules__ = ["pkg"]
+
+import pkg
+from . import helper
+
+print(pkg, helper.VALUE)
+```
+
+```python fixed file=pkg/consumer.py
+__lazy_modules__ = ["pkg"]
+
+import pkg
+from . import helper
+
+print(pkg, helper.VALUE)
+```
 
 ## Other tools
 

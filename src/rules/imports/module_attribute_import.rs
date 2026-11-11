@@ -48,9 +48,11 @@ pub fn module_attribute_import(checker: &Checker) {
         attributes.sort_unstable_by_key(|attribute| attribute.range.start());
         let path = module_path(statement, alias);
         // The fix replaces the import, so it is offered only when every use of the module is convertible: a single
-        // import, no stores, no computed write the import would miss, each name importable from the module, and no
-        // other module that imports or reads the bound name, which the replaced import would no longer bind.
+        // import without a comment, no stores, no computed write the import would miss, each name importable from the
+        // module, and no other module that imports or reads the bound name, which the replaced import would no longer
+        // bind.
         let mut convertible = aliases(statement).len() == 1
+            && !checker.has_comment_in(statement.range())
             && !module.computed_written
             && !checker.project().is_referenced(&module.bound)
             && !checker.dunder_all().may_list(&module.bound);

@@ -93,7 +93,12 @@ pub fn up_backport_import(checker: &Checker) {
                                 continue;
                             }
                             let unaliased = import.names.iter().all(|alias| alias.asname.is_none());
-                            (unaliased && is_alone_on_lines(checker.source, stmt.range()))
+                            // Another module that imports the name from this one, or `__all__`, would lose it.
+                            let exported = import.names.iter().any(|alias| {
+                                checker.project().is_referenced(alias.name.as_str())
+                                    || checker.dunder_all().may_list(alias.name.as_str())
+                            });
+                            (unaliased && !exported && is_alone_on_lines(checker.source, stmt.range()))
                                 .then(|| Fix::safe_edit(delete_statement(checker.source, stmt, statements)))
                         }
                         Replacement::Review(_) => None,

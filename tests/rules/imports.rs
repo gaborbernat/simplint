@@ -72,6 +72,7 @@ use crate::common;
 #[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_ignored.py", "py315" ; "type_checking_lazy_import_ignored")]
 #[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_module.py", "py315" ; "type_checking_lazy_import_module")]
 #[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_typeshed_module.py", "py315" ; "type_checking_lazy_import_typeshed_module")]
+#[test_case("up-type-checking-lazy-import", "up_type_checking_lazy_import_already_lazy.py", "py315" ; "type_checking_lazy_import_already_lazy")]
 #[test_case("up-lazy-modules-list", "up_lazy_modules_list.py", "py315" ; "lazy_modules_list")]
 #[test_case("up-lazy-modules-list", "up_lazy_modules_list.py", "py314" ; "lazy_modules_list_py314")]
 #[test_case("up-lazy-modules-list", "up_lazy_modules_list_partial.py", "py315" ; "lazy_modules_list_partial")]
@@ -82,6 +83,8 @@ use crate::common;
 #[test_case("up-lazy-modules-list", "up_lazy_modules_list_inline.py", "py315" ; "lazy_modules_list_inline")]
 #[test_case("up-lazy-modules-list", "up_lazy_modules_list_tuple.py", "py315" ; "lazy_modules_list_tuple")]
 #[test_case("up-lazy-modules-list", "up_lazy_modules_list_set.py", "py315" ; "lazy_modules_list_set")]
+#[test_case("up-lazy-modules-list", "up_lazy_modules_list_nested.py", "py315" ; "lazy_modules_list_nested")]
+#[test_case("up-lazy-modules-list", "up_lazy_modules_list_lazy.py", "py315" ; "lazy_modules_list_already_lazy")]
 fn rule(rule: &str, fixture: &str, target_version: &str) {
     common::assert_rule_snapshot(rule, fixture, target_version);
 }
@@ -628,4 +631,124 @@ fn module_attribute_import_reports_private_names_with_runtime_evaluation_setting
             assert!(stdout.contains(&common::native(location)), "{stdout}");
         }
     }
+}
+
+// The builtins define these names, so their import goes, unless another module takes the name from this one or
+// `__all__` lists it: the backport is reported either way.
+#[test_case("from exceptiongroup import ExceptionGroup\n", "from pkg.compat import ExceptionGroup\n", true ; "imported_by_another_module")]
+#[test_case("from exceptiongroup import ExceptionGroup\n__all__ = [\"ExceptionGroup\"]\n", "", true ; "listed_in_all")]
+#[test_case("from exceptiongroup import ExceptionGroup\n", "from pkg.other import ExceptionGroup\n", false ; "imported_from_another_module")]
+#[test_case("from exceptiongroup import ExceptionGroup\n", "from pkg import compat\n", false ; "module_imported")]
+fn backport_import_keeps_builtin_name_another_module_takes(compat: &str, consumer: &str, kept: bool) {
+    let root = common::project(&[
+        ("pyproject.toml", "[project]\nname = \"x\"\nversion = \"0\"\nrequires-python = \">=3.11\"\n"),
+        ("pkg/__init__.py", ""),
+        ("pkg/compat.py", compat),
+        ("pkg/other.py", "ExceptionGroup = object()\n"),
+        ("pkg/run.py", consumer),
+    ]);
+    let reported = common::check(root.path(), &["--select", "SMP305", "pkg"]).1;
+    assert!(reported.contains(&common::native("pkg/compat.py:1:1: SMP305")), "{reported}");
+    common::fix_unsafe(root.path(), "SMP305");
+    assert_eq!(common::read(root.path(), "pkg/compat.py").contains("from exceptiongroup"), kept);
+}
+
+// A listed import that the list keeps lazy stays eager once the list goes, so the list stays. CPython compiles the body
+// and the handlers of a `try` eagerly, but the `else` of a `try` without a `finally` and the `finally` lazily.
+#[test_case("import json\n\nif FLAG:\n    import json as nested\n", false ; "nested_in_if")]
+#[test_case("import json\n\nif FLAG:\n    pass\nelse:\n    import json as fallback\n", false ; "nested_in_else")]
+#[test_case("import json\n\nwith LOCK:\n    from json import dumps\n", false ; "nested_in_with")]
+#[test_case("import json\n\nfor _ in range(1):\n    import json as loop\n", false ; "nested_in_for")]
+#[test_case("import json\n\nwhile FLAG:\n    from json import dumps\n", false ; "nested_in_while")]
+#[test_case("import json\n\nmatch FLAG:\n    case 1:\n        import json as matched\n", false ; "nested_in_match")]
+#[test_case("import json\n\ntry:\n    pass\nexcept ImportError:\n    pass\nelse:\n    import json as fallback\n", false ; "try_else")]
+#[test_case("import json\n\ntry:\n    pass\nfinally:\n    import json as cleanup\n", false ; "try_finally")]
+#[test_case("import json\n\ntry:\n    pass\nexcept ImportError:\n    pass\nelse:\n    import json as fallback\nfinally:\n    pass\n", true ; "try_else_with_finally")]
+#[test_case("import json\n\ntry:\n    if FLAG:\n        import json as guarded\nexcept ImportError:\n    pass\n", true ; "try_body")]
+#[test_case("import json\n\ntry:\n    pass\nexcept ImportError:\n    import json as fallback\n", true ; "try_handler")]
+#[test_case("import json\n\nfrom . import helper\n", true ; "relative_import_without_a_package")]
+#[test_case("import json\n\ndef load():\n    import json as local\n    return local\n", true ; "function_body")]
+fn lazy_modules_list_keeps_list_for_an_import_the_fix_leaves_eager(body: &str, fixable: bool) {
+    let source = format!("__lazy_modules__ = [\"json\"]\n\n{body}");
+    let root = common::project(&[
+        ("pyproject.toml", "[project]\nname = \"x\"\nversion = \"0\"\nrequires-python = \">=3.15\"\n"),
+        ("consumer.py", &source),
+    ]);
+    common::fix_unsafe(root.path(), "SMP307");
+    assert_eq!(common::read(root.path(), "consumer.py").contains("__lazy_modules__"), !fixable);
+}
+
+// A relative import names the module after `from`, so `from . import helper` is held by a list of `pkg`, not by one of
+// `pkg.helper`, and `from .helper import VALUE` is held by `pkg.helper`.
+#[test_case("pkg.helper", "import pkg.helper", "from . import helper\n", true ; "relative_name_of_listed_submodule")]
+#[test_case("pkg.helper", "import pkg.helper", "from .helper import VALUE\n", false ; "relative_module_of_listed_module")]
+#[test_case("pkg.helper", "import pkg.helper", "from . import other\n", true ; "relative_import_of_another_module")]
+#[test_case("pkg", "import pkg", "from . import helper\n", false ; "relative_name_under_listed_package")]
+fn lazy_modules_list_matches_a_relative_import_by_its_module(
+    listed: &str,
+    import: &str,
+    relative: &str,
+    fixable: bool,
+) {
+    let root = common::project(&[
+        ("pyproject.toml", "[project]\nname = \"x\"\nversion = \"0\"\nrequires-python = \">=3.15\"\n"),
+        ("pkg/__init__.py", ""),
+        ("pkg/helper.py", "VALUE = 1\n"),
+        ("pkg/other.py", "VALUE = 2\n"),
+        (
+            "pkg/consumer.py",
+            &format!("__lazy_modules__ = [\"{listed}\"]\n\n{import}\n{relative}\nprint(pkg.helper.VALUE)\n"),
+        ),
+    ]);
+    common::fix_unsafe(root.path(), "SMP307");
+    assert_eq!(common::read(root.path(), "pkg/consumer.py").contains("__lazy_modules__"), !fixable);
+}
+
+// A comment in the import the fix replaces would be deleted with it, so the import keeps its report and no fix.
+#[test_case("from pkg import config\n", true ; "uncommented_import")]
+#[test_case("from pkg import (  # keep: settings live here\n    config,\n)\n", false ; "comment_in_import")]
+#[test_case("from pkg import config  # keep: settings live here\n", true ; "trailing_comment_survives")]
+fn module_attribute_import_keeps_an_import_with_a_comment(import: &str, fixable: bool) {
+    let root = common::project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/config.py", "LIMIT = 1\n"),
+        ("pkg/use.py", &format!("{import}\n\ndef limit() -> int:\n    return config.LIMIT\n")),
+    ]);
+    let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP304", "pkg"]).1;
+    assert!(stdout.contains(&common::native("pkg/use.py:")), "{stdout}");
+    common::fix_unsafe(root.path(), "SMP304");
+    assert_eq!(common::read(root.path(), "pkg/use.py").contains("config.LIMIT"), !fixable);
+}
+
+// A comment anywhere in the guard, including its handler, would be deleted with the guard, so the guard keeps its
+// report and no fix.
+#[test_case("try:\n    import json\nexcept ImportError:\n    json = None\n", true ; "uncommented_guard")]
+#[test_case("try:\n    import json  # keep\nexcept ImportError:\n    json = None\n", false ; "comment_in_body")]
+#[test_case("try:\n    import json\nexcept ImportError:  # pragma: no cover\n    json = None\n", false ; "comment_in_handler")]
+fn dependency_import_guard_keeps_a_guard_with_a_comment(guard: &str, fixable: bool) {
+    let root = common::project(&[("mod.py", guard)]);
+    let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP303", "mod.py"]).1;
+    assert!(stdout.contains("mod.py:1:1: SMP303"), "{stdout}");
+    common::fix_unsafe(root.path(), "SMP303");
+    assert_eq!(common::read(root.path(), "mod.py").contains("except ImportError"), !fixable);
+}
+
+// A platform-only module raises `ImportError` on the other platforms, and CPython guards its C accelerators with a
+// fallback, so a guard around them is legitimate. Other private modules, such as `_thread`, ship with every Python.
+#[test_case("asyncio.unix_events", "asyncio", 0 ; "asyncio_unix_events")]
+#[test_case("multiprocessing.popen_forkserver", "multiprocessing", 0 ; "multiprocessing_popen_forkserver")]
+#[test_case("_pickle", "_pickle", 0 ; "accelerator_pickle")]
+#[test_case("_json", "_json", 0 ; "accelerator_json")]
+#[test_case("json", "json", 1 ; "ordinary_module")]
+#[test_case("_thread", "_thread", 1 ; "private_thread")]
+#[test_case("_collections_abc", "_collections_abc", 1 ; "private_collections_abc")]
+#[test_case("_io", "_io", 1 ; "private_io")]
+#[test_case("_weakref", "_weakref", 1 ; "private_weakref")]
+#[test_case("concurrent.futures._base", "concurrent", 1 ; "private_submodule_base")]
+#[test_case("importlib._bootstrap", "importlib", 1 ; "private_submodule_bootstrap")]
+fn dependency_import_guard_ignores_platform_and_accelerator_modules(module: &str, name: &str, reports: usize) {
+    let root =
+        common::project(&[("mod.py", &format!("try:\n    import {module}\nexcept ImportError:\n    {name} = None\n"))]);
+    let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP303"]).1;
+    assert_eq!(stdout.matches("SMP303").count(), reports, "{stdout}");
 }

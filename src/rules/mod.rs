@@ -166,6 +166,15 @@ pub fn is_alone_on_lines(source: &str, range: TextRange) -> bool {
     !has_leading_content(range.start(), source) && !has_trailing_content(range.end(), source)
 }
 
+// Whether the statement is a `lazy` import already, which needs no `lazy` of its own.
+pub fn is_lazy(stmt: &Stmt) -> bool {
+    matches!(
+        stmt,
+        Stmt::Import(ast::StmtImport { is_lazy: true, .. })
+            | Stmt::ImportFrom(ast::StmtImportFrom { is_lazy: true, .. })
+    )
+}
+
 pub fn docstring(body: &[Stmt]) -> Option<&ast::ExprStringLiteral> {
     match body.first()? {
         Stmt::Expr(ast::StmtExpr { value, .. }) => value.as_string_literal_expr(),

@@ -462,3 +462,26 @@ fn getattr_reached_dataclass_keeps_its_positional_calls(caller: &str, fixed: boo
     common::fix_unsafe(root.path(), "dataclass-kw-only");
     assert_eq!(common::read(root.path(), "models.py").contains("kw_only=True"), fixed);
 }
+
+// A handler that names a tuple of classes catches each class in it, in whichever module the tuple is defined, and
+// `suppress` catches each class it is given, starred or not. A class no handler names is still reported.
+#[test_case("", "from typing import Final\n\nfrom app.errors import AError, BError\n\nRETRY: Final = (AError, BError)\n\ntry:\n    pass\nexcept RETRY:\n    pass\n" ; "annotated_final_tuple")]
+#[test_case("", "from app.errors import AError, BError\n\nRETRY: tuple[type[Exception], ...] = (AError, BError)\n\ntry:\n    pass\nexcept RETRY:\n    pass\n" ; "annotated_generic_tuple")]
+#[test_case("", "from app.errors import AError, BError\n\nFIRST = (AError,)\nBOTH = (*FIRST, BError)\n\ntry:\n    pass\nexcept BOTH:\n    pass\n" ; "starred_tuple")]
+#[test_case("", "import contextlib\n\nfrom app.errors import AError, BError\n\nRETRY = (AError, BError)\n\nwith contextlib.suppress(*RETRY):\n    pass\n" ; "starred_suppress")]
+#[test_case("RETRY: Final = (AError, BError)\n", "from app.errors import RETRY\n\ntry:\n    pass\nexcept RETRY:\n    pass\n" ; "tuple_in_other_module")]
+fn indistinct_error_class_counts_the_classes_a_tuple_or_suppress_catches(errors_extra: &str, main: &str) {
+    let root = common::project(&[
+        ("app/__init__.py", ""),
+        (
+            "app/errors.py",
+            &format!(
+                "from typing import Final\n\n\nclass AError(Exception):\n    pass\n\n\nclass BError(Exception):\n    pass\n\n\nclass PlainError(Exception):\n    pass\n\n\n{errors_extra}"
+            ),
+        ),
+        ("app/main.py", main),
+    ]);
+    let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP704"]).1;
+    assert!(stdout.contains("`PlainError`"), "{stdout}");
+    assert!(!stdout.contains("`AError`") && !stdout.contains("`BError`"), "{stdout}");
+}

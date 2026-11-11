@@ -6,7 +6,7 @@ use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::is_alone_on_lines;
+use crate::rules::{is_alone_on_lines, is_lazy};
 
 pub fn up_type_checking_lazy_import(checker: &Checker) {
     let body = checker.body();
@@ -62,7 +62,10 @@ fn lazy_fix(checker: &Checker, body: &[Stmt], stmt: &Stmt, imports: &[Stmt]) -> 
     }
     let lazy = imports
         .iter()
-        .map(|import| format!("lazy {}", dedent(&source[source.full_lines_range(import.range())])))
+        .map(|import| {
+            let prefix = if is_lazy(import) { "" } else { "lazy " };
+            format!("{prefix}{}", dedent(&source[source.full_lines_range(import.range())]))
+        })
         .collect::<Vec<_>>()
         .concat();
     let replacement = Edit::range_replacement(lazy, source.full_lines_range(stmt.range()));

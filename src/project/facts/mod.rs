@@ -92,6 +92,9 @@ pub struct FileFacts {
     // The classes handlers catch, and those `isinstance` checks and class patterns name inside a handler, as
     // (module, name).
     pub(super) caught: Vec<(String, String)>,
+    // The module-level names bound to a tuple, with the classes each of its elements names, as (module, name): a
+    // handler that names the tuple catches each of them.
+    pub(super) class_tuples: Vec<(String, Vec<(String, String)>)>,
     // The names the file may request as fixtures: its function parameters, the names it imports, those whose `__name__`
     // it reads, and any string that spells a name, as `usefixtures("db")` does. The index keeps those of test modules,
     // where pytest reads them.
@@ -182,19 +185,7 @@ impl FileFacts {
         );
         imports.visit_body(&parsed.syntax().body);
         let functions = module_functions(&parsed.syntax().body);
-        let classes = module_statements(&parsed.syntax().body)
-            .filter_map(Stmt::as_class_def_stmt)
-            .map(|class| ClassBases {
-                name: class.name.to_string(),
-                bases: class.bases().iter().filter_map(|base| imports.class_path(base)).collect(),
-                methods: class
-                    .body
-                    .iter()
-                    .filter_map(Stmt::as_function_def_stmt)
-                    .map(|function| function.name.to_string())
-                    .collect(),
-            })
-            .collect();
+        let classes = module_classes(&parsed.syntax().body, &imports);
         // A stub publishes what it declares, so its names are the API of the module it describes.
         let declared = if path.extension().is_some_and(|extension| extension == "pyi") {
             parsed.syntax().body.iter().flat_map(declared_names).collect()
@@ -260,6 +251,7 @@ impl FileFacts {
             reads_class_names: imports.reads_class_names,
             reflected_names: imports.reflected_names.into_iter().collect(),
             caught: imports.caught,
+            class_tuples: imports.class_tuples,
             classes,
             functions,
             plain_modules: imports.plain_modules,
@@ -301,6 +293,23 @@ fn module_digest(module_path: Option<&[String]>, importable: Option<&[String]>) 
     module_path.cache_key(&mut hasher);
     importable.cache_key(&mut hasher);
     hasher.finish()
+}
+
+// The module-level classes, each with the classes its bases name and the names of the methods it defines.
+fn module_classes(body: &[Stmt], imports: &FactVisitor<'_>) -> Vec<ClassBases> {
+    module_statements(body)
+        .filter_map(Stmt::as_class_def_stmt)
+        .map(|class| ClassBases {
+            name: class.name.to_string(),
+            bases: class.bases().iter().filter_map(|base| imports.class_path(base)).collect(),
+            methods: class
+                .body
+                .iter()
+                .filter_map(Stmt::as_function_def_stmt)
+                .map(|function| function.name.to_string())
+                .collect(),
+        })
+        .collect()
 }
 
 fn module_functions(body: &[Stmt]) -> Vec<String> {

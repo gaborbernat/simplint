@@ -28,6 +28,7 @@ fn report_guards<'a>(checker: &Checker, body: &'a [Stmt], function: Option<&'a [
             let fix = (stmt.orelse.is_empty()
                 && stmt.finalbody.is_empty()
                 && is_alone_on_lines(checker.source, stmt.range())
+                && !checker.has_comment_in(stmt.range())
                 && !shares_line_with_unused_import(checker, &stmt.body, function))
             .then(|| unwrap_try(checker, stmt, function));
             let message = if stmt
@@ -118,6 +119,7 @@ fn is_standard_library(checker: &Checker, module: &str) -> bool {
         "tkinter",
         "turtle",
         "zlib",
+        "asyncio.unix_events",
         "asyncio.windows_events",
         "asyncio.windows_utils",
         "crypt",
@@ -127,6 +129,7 @@ fn is_standard_library(checker: &Checker, module: &str) -> bool {
         "fcntl",
         "grp",
         "msvcrt",
+        "multiprocessing.popen_forkserver",
         "multiprocessing.popen_spawn_win32",
         "multiprocessing.synchronize",
         "nis",
@@ -145,6 +148,12 @@ fn is_standard_library(checker: &Checker, module: &str) -> bool {
         "winsound",
         "xml.parsers.expat",
     ];
+    // The C accelerators that CPython itself imports under an `ImportError` fallback, so a guard around one is CPython's
+    // own pattern: `_bisect` (Lib/bisect.py:111-114), `_collections` (Lib/collections/__init__.py:46-49),
+    // `_datetime` (Lib/datetime.py:7-10), `_functools` (Lib/functools.py:225-228), `_heapq` (Lib/heapq.py:596-599),
+    // `_json` (Lib/json/scanner.py:4-7), `_operator` (Lib/operator.py:421-424) and `_pickle` (Lib/pickle.py:1970-1971).
+    const ACCELERATORS: &[&str] =
+        &["_bisect", "_collections", "_datetime", "_functools", "_heapq", "_json", "_operator", "_pickle"];
     let target = checker.settings.from_ruff.target_version.minor;
     let root = module.split_once('.').map_or(module, |(root, _)| root);
     // A module removed in a later version, such as `distutils` in 3.12, is optional for a project that supports both.
@@ -154,6 +163,7 @@ fn is_standard_library(checker: &Checker, module: &str) -> bool {
         && !root.starts_with("_test")
         && !PLATFORM_MODULES.contains(&root)
         && !PLATFORM_MODULES.contains(&module)
+        && !ACCELERATORS.contains(&module)
         && (root == module || is_standard_submodule(target, module))
 }
 

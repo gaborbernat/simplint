@@ -2,6 +2,7 @@ use std::cell::OnceCell;
 
 use ruff_diagnostics::{Edit, Fix, IsolationLevel};
 use ruff_python_ast::helpers::is_dunder;
+use ruff_python_ast::parenthesize::parenthesized_range;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, ExprContext, PythonVersion, Stmt};
 use ruff_text_size::{Ranged, TextRange};
@@ -59,9 +60,16 @@ pub fn missing_final(checker: &Checker) {
         {
             continue;
         }
-        let fix = spelling.get_or_init(|| final_qualifier(checker)).as_ref().and_then(|(qualifier, import)| {
-            final_fix(checker, qualifier, import.as_ref(), target.range, annotation, value)
-        });
+        // `(LIMIT: Final[int]) = 3` is not valid Python, so a parenthesized name gets no annotation of its own.
+        let parenthesized = annotation.is_none()
+            && parenthesized_range(target.into(), stmt.into(), checker.comment_ranges(), checker.source).is_some();
+        let fix = (!parenthesized)
+            .then(|| {
+                spelling.get_or_init(|| final_qualifier(checker)).as_ref().and_then(|(qualifier, import)| {
+                    final_fix(checker, qualifier, import.as_ref(), target.range, annotation, value)
+                })
+            })
+            .flatten();
         checker.report_fix(
             Rule::MissingFinal,
             target.range,
@@ -72,17 +80,20 @@ pub fn missing_final(checker: &Checker) {
     }
 }
 
-// The names a module writes through `globals()`, and whether a write may set any name: a computed key, or the `update`,
-// `setdefault` or `pop` of the dict, names the module cannot list.
+// The names a module writes through `globals()`, or through `vars()` and `locals()` with no argument at module level,
+// and whether a write may set any name: a computed key, or the `update`, `setdefault` or `pop` of the dict, names the
+// module cannot list.
 struct GlobalsWrites<'a, 'c> {
     checker: &'c Checker<'a>,
     names: FxHashSet<&'a str>,
     any: bool,
+    // The bodies of the functions, classes and lambdas the walk is in, whose `vars()` and `locals()` are not the module's.
+    scopes: u32,
 }
 
 impl<'a, 'c> GlobalsWrites<'a, 'c> {
     fn of(checker: &'c Checker<'a>) -> Self {
-        let mut writes = Self { checker, names: FxHashSet::default(), any: false };
+        let mut writes = Self { checker, names: FxHashSet::default(), any: false, scopes: 0 };
         writes.visit_body(checker.body());
         writes
     }
@@ -92,12 +103,69 @@ impl<'a, 'c> GlobalsWrites<'a, 'c> {
     }
 
     fn is_globals_call(&self, expr: &Expr) -> bool {
-        expr.as_call_expr().is_some_and(|call| self.checker.semantic().is_builtin(&call.func, "globals"))
+        let semantic = self.checker.semantic();
+        expr.as_call_expr().is_some_and(|call| {
+            semantic.is_builtin(&call.func, "globals")
+                || self.scopes == 0
+                    && call.arguments.is_empty()
+                    && (semantic.is_builtin(&call.func, "vars") || semantic.is_builtin(&call.func, "locals"))
+        })
+    }
+}
+
+impl<'a> GlobalsWrites<'a, '_> {
+    // The body of a function, class or lambda is its own scope, while its header runs in the enclosing one.
+    fn scoped_body(&mut self, body: &'a [Stmt]) {
+        self.scopes += 1;
+        self.visit_body(body);
+        self.scopes -= 1;
     }
 }
 
 impl<'a> Visitor<'a> for GlobalsWrites<'a, '_> {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        match stmt {
+            Stmt::FunctionDef(ast::StmtFunctionDef {
+                parameters, body, decorator_list, returns, type_params, ..
+            }) => {
+                for decorator in decorator_list {
+                    self.visit_decorator(decorator);
+                }
+                if let Some(type_params) = type_params {
+                    self.visit_type_params(type_params);
+                }
+                self.visit_parameters(parameters);
+                if let Some(returns) = returns {
+                    self.visit_annotation(returns);
+                }
+                self.scoped_body(body);
+            }
+            Stmt::ClassDef(ast::StmtClassDef { arguments, body, decorator_list, type_params, .. }) => {
+                for decorator in decorator_list {
+                    self.visit_decorator(decorator);
+                }
+                if let Some(type_params) = type_params {
+                    self.visit_type_params(type_params);
+                }
+                if let Some(arguments) = arguments {
+                    self.visit_arguments(arguments);
+                }
+                self.scoped_body(body);
+            }
+            _ => visitor::walk_stmt(self, stmt),
+        }
+    }
+
     fn visit_expr(&mut self, expr: &'a Expr) {
+        if let Expr::Lambda(ast::ExprLambda { parameters, body, .. }) = expr {
+            if let Some(parameters) = parameters {
+                self.visit_parameters(parameters);
+            }
+            self.scopes += 1;
+            self.visit_expr(body);
+            self.scopes -= 1;
+            return;
+        }
         match expr {
             Expr::Subscript(ast::ExprSubscript {
                 value, slice, ctx: ExprContext::Store | ExprContext::Del, ..

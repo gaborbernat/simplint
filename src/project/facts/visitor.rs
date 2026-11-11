@@ -129,6 +129,8 @@ pub(super) struct FactVisitor<'a> {
     // The module the file is, so a bare class name it uses that no import binds names one of its own classes.
     pub(super) own_module: String,
     pub(super) caught: Vec<(String, String)>,
+    // The module-level names bound to a tuple, with the classes each of its elements names, as (module, name).
+    pub(super) class_tuples: Vec<(String, Vec<(String, String)>)>,
     pub(super) fixture_requests: BTreeSet<String>,
     pub(super) pytest_requests: BTreeSet<String>,
     // The strings that name a fixture in its own decorator.
@@ -205,6 +207,7 @@ impl<'a> FactVisitor<'a> {
             plain_modules: Vec::new(),
             own_module,
             caught: Vec::new(),
+            class_tuples: Vec::new(),
             fixture_requests: BTreeSet::new(),
             pytest_requests: BTreeSet::new(),
             fixture_names: FxHashSet::default(),
@@ -346,6 +349,35 @@ impl<'a> FactVisitor<'a> {
                 }
             }
             _ => None,
+        }
+    }
+
+    // Records each module-level name an assignment binds to a tuple, with the classes its elements name, so a handler
+    // that names the tuple catches each of them.
+    fn bind_class_tuple(&mut self, stmt: &'a Stmt) {
+        let (target, value) = match stmt {
+            Stmt::Assign(ast::StmtAssign { targets, value, .. }) => match targets.as_slice() {
+                [target] => (target, value),
+                _ => return,
+            },
+            Stmt::AnnAssign(ast::StmtAnnAssign { target, value: Some(value), .. }) => (target.as_ref(), value),
+            _ => return,
+        };
+        if let Expr::Name(target) = target
+            && self.top_level
+            && self.parts.has(Parts::CAUGHT)
+            && value.is_tuple_expr()
+        {
+            self.class_tuples.push((target.id.as_str().to_owned(), self.tuple_classes(value)));
+        }
+    }
+
+    // The classes a tuple names, through its elements and the starred tuples it unpacks.
+    fn tuple_classes(&self, value: &Expr) -> Vec<(String, String)> {
+        match value {
+            Expr::Tuple(ast::ExprTuple { elts, .. }) => elts.iter().flat_map(|elt| self.tuple_classes(elt)).collect(),
+            Expr::Starred(ast::ExprStarred { value, .. }) => self.tuple_classes(value),
+            _ => self.class_path(value).into_iter().collect(),
         }
     }
 
@@ -645,6 +677,7 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
             self.bind_globals(targets, value);
             self.bind_string_rows(targets, value);
         }
+        self.bind_class_tuple(stmt);
         let top_level = self.top_level;
         let runtime = self.runtime;
         self.top_level &= matches!(stmt, Stmt::If(_) | Stmt::Try(_));
@@ -777,6 +810,7 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
         {
             self.catch(classes);
         }
+        self.catch_suppressed(expr);
         self.record_value_load(expr);
         match expr {
             Expr::Attribute(ast::ExprAttribute { value, attr, ctx: ExprContext::Store | ExprContext::Del, .. }) => {
@@ -1063,8 +1097,21 @@ impl FactVisitor<'_> {
             for elt in elts {
                 self.catch(elt);
             }
+        } else if let Expr::Starred(ast::ExprStarred { value, .. }) = expr {
+            self.catch(value);
         } else if let Some(path) = self.class_path(expr) {
             self.caught.push(path);
+        }
+    }
+
+    // Records the classes a `contextlib.suppress` call is given, which the context manager catches.
+    fn catch_suppressed(&mut self, expr: &Expr) {
+        if let Expr::Call(ast::ExprCall { func, arguments, .. }) = expr
+            && self.qualified(func).as_deref() == Some("contextlib.suppress")
+        {
+            for argument in &arguments.args {
+                self.catch(argument);
+            }
         }
     }
 

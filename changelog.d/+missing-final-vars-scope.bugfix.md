@@ -1,0 +1,2 @@
+[`missing-final`](../src/rules/typing/missing_final.md) no longer reports a name that a module-level `vars()` or
+`locals()` write reassigns, including one in the default, decorator or base of a `def` or `class`.

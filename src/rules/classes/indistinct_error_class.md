@@ -94,6 +94,81 @@ def load(path: str) -> None:
             pass
     ```
 
+  - **A tuple of classes named by an `except` clause**: a module-level tuple of classes, such as
+    `RETRYABLE = (ConfigError,)`, counts as each class it holds, in whichever module the tuple is defined. An annotated
+    tuple counts too, and so does a tuple that unpacks another, as `BOTH = (*RETRYABLE, OtherError)` does.
+
+    ```python ok file=app/errors.py
+    class ConfigError(Exception):
+        pass
+
+
+    RETRYABLE = (ConfigError,)
+    ```
+
+    ```python context file=app/main.py
+    from app.errors import RETRYABLE
+
+
+    def load() -> None:
+        try:
+            raise ValueError()
+        except RETRYABLE:
+            pass
+    ```
+
+    ```toml config
+    [project]
+    name = "demo"
+    requires-python = ">=3.11"
+    ```
+
+    ```python ok file=app/limits.py
+    from typing import Final
+
+
+    class ConfigError(Exception):
+        pass
+
+
+    class LimitError(Exception):
+        pass
+
+
+    RETRYABLE: Final = (ConfigError,)
+    BOTH = (*RETRYABLE, LimitError)
+    ```
+
+    ```python context file=app/main.py
+    from app.limits import BOTH
+
+
+    def load() -> None:
+        try:
+            raise ValueError()
+        except BOTH:
+            pass
+    ```
+
+  - **A class given to `contextlib.suppress`**: each argument of `suppress` counts, starred or not, since the context
+    manager catches it.
+
+    ```python ok file=app/errors.py
+    class ConfigError(Exception):
+        pass
+    ```
+
+    ```python context file=app/main.py
+    import contextlib
+
+    from app.errors import ConfigError
+
+
+    def load() -> None:
+        with contextlib.suppress(ConfigError):
+            raise ConfigError()
+    ```
+
   - **An `except*` clause**: an exception group handler names a class the same way.
 
     ```toml config

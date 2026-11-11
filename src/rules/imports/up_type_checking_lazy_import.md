@@ -150,8 +150,29 @@ def first(values: Sequence[int]) -> int:
 ### Fix
 
 The fix is unsafe, as described under "Active on" above. It replaces the block with one `lazy` import per statement,
-and, when `TYPE_CHECKING` is then unused, removes its `from typing import TYPE_CHECKING` line. A block with a comment in
-it is reported without a fix, because the fix would drop the comment. A block importing `_typeshed` is too.
+leaving a statement that is `lazy` already as it is, and, when `TYPE_CHECKING` is then unused, removes its
+`from typing import TYPE_CHECKING` line. A block with a comment in it is reported without a fix, because the fix would
+drop the comment. A block importing `_typeshed` is too.
+
+```toml config
+[project]
+name = "demo"
+requires-python = ">=3.15"
+```
+
+```python report
+# Demo module.
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    lazy import json
+```
+
+```python fixed
+# Demo module.
+
+lazy import json
+```
 
 ```toml config
 [project]
