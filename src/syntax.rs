@@ -46,7 +46,8 @@ impl Nesting {
 
     // The indices of the ranges that hold `range`, the innermost first. A range that holds `range` starts no later
     // than it, and each such range encloses the last one that starts before it, so the holders are that one and the
-    // ranges it is nested in.
+    // ranges it is nested in. Exact for a non-empty `range`, and for an empty one that no two ranges touch at; there it
+    // returns one of the two holders a linear scan finds.
     pub fn holders(&self, range: TextRange) -> impl Iterator<Item = usize> + '_ {
         let last = self.order.partition_point(|&(index, _)| self.ranges[index].start() <= range.start()).checked_sub(1);
         std::iter::successors(last, |&position| self.order[position].1)
