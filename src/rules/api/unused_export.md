@@ -519,6 +519,36 @@ from config import LIMIT
 print(LIMIT)
 ```
 
+A comment after the whole list stays with the list, so a list written on one line keeps its comment:
+
+```python report file=config.py
+LIMIT = 3
+
+
+def local() -> int:
+    return 1
+
+
+__all__ = ["LIMIT", "local"]  # the public names
+```
+
+```python fixed file=config.py
+LIMIT = 3
+
+
+def local() -> int:
+    return 1
+
+
+__all__ = ["LIMIT"]  # the public names
+```
+
+```python context file=cli.py
+from config import LIMIT
+
+print(LIMIT)
+```
+
 A name in parentheses goes with its parentheses:
 
 ```python context file=cli.py
@@ -601,6 +631,42 @@ No fix is offered when:
       "parse", "tokenize",  # the entry points
   ]
   # fmt: on
+  ```
+
+- a removed name sits alone on its line with a comment after it, since the comment may belong to that name:
+
+  ```python report file=config.py
+  LIMIT = 3
+
+
+  def local() -> int:
+      return 1
+
+
+  __all__ = [
+      "LIMIT",
+      "local",  # kept for old imports
+  ]
+  ```
+
+  ```python fixed file=config.py
+  LIMIT = 3
+
+
+  def local() -> int:
+      return 1
+
+
+  __all__ = [
+      "LIMIT",
+      "local",  # kept for old imports
+  ]
+  ```
+
+  ```python context file=cli.py
+  from config import LIMIT
+
+  print(LIMIT)
   ```
 
 - more than one statement builds `__all__`, such as `__all__ += [...]`, since there is no one place to remove a name

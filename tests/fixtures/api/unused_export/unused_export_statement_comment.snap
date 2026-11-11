@@ -1,0 +1,13 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+7:30 SMP402 `spare_statement` is in `__all__`, yet no other module imports it; list only what other modules use [unsafe fix: Remove `spare_statement` from `__all__`]
+--- fixed (1 applied, 0 remaining) ---
+def used_statement() -> None: ...
+
+
+def spare_statement() -> None: ...
+
+
+__all__ = ["used_statement"]  # names

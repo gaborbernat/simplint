@@ -1,0 +1,19 @@
+---
+source: tests/common/mod.rs
+expression: "lint_fixture(rule, fixture, target_version)"
+---
+12:5 SMP402 `spare_middle` is in `__all__`, yet no other module imports it; list only what other modules use [unsafe fix: Remove `spare_middle` from `__all__`]
+--- fixed (1 applied, 0 remaining) ---
+def kept_first() -> None: ...
+
+
+def spare_middle() -> None: ...
+
+
+def kept_last() -> None: ...
+
+
+__all__ = [
+    "kept_first",  # the first name
+    "kept_last",  # the last name
+]

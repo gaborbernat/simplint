@@ -1,5 +1,6 @@
 use ruff_diagnostics::{Applicability, Edit, Fix};
 use ruff_python_ast::{self as ast, Expr, Stmt};
+use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -84,8 +85,8 @@ fn builds_all(stmt: &Stmt) -> bool {
 }
 
 // Each run of unused names goes with the separator after it, or, at the end of the list, with the separator before it,
-// so the layout and comments around the names kept stay as they are, whatever the layout. A comment inside a run may
-// belong to a removed name, so the fix leaves such a list alone.
+// so the layout and comments around the names kept stay as they are, whatever the layout. A comment inside a run, or
+// after a removed name that sits alone on its line, may belong to it, so the fix leaves such a list alone.
 fn removal(
     checker: &Checker,
     statement: &Stmt,
@@ -119,6 +120,9 @@ fn removal(
         while index < elements.len() && is_unused(&elements[index]) {
             index += 1;
         }
+        if (first..index).any(|removed| owns_comment(checker, ranges[removed])) {
+            return None;
+        }
         let edit = if let Some(next) = ranges.get(index) {
             Edit::range_deletion(TextRange::new(ranges[first].start(), next.start()))
         } else {
@@ -145,6 +149,16 @@ fn removal(
     let mut edits = edits.into_iter();
     let first = edits.next()?;
     Some(Fix::applicable_edits(first, edits, applicability(checker)))
+}
+
+// Whether a comment after a name that sits alone on its line may be the name's, rather than one after the statement.
+fn owns_comment(checker: &Checker, name: TextRange) -> bool {
+    let Some(comment) = checker.trailing_comment(name) else {
+        return false;
+    };
+    let alone = checker.text(TextRange::new(checker.source.line_start(name.start()), name.start())).trim().is_empty();
+    let before_comment = checker.text(TextRange::new(name.end(), comment.start())).trim();
+    alone && matches!(before_comment, "" | ",")
 }
 
 // Code outside the run, such as a library's users, may import a name the run does not; an application has no such code.

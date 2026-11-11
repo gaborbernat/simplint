@@ -11,3 +11,10 @@ from _exporting.unused_export_tuple import used_tuple
 from _exporting.unused_export_tuple_end import used_end
 
 USED = (used, used_end, used_noted, used_packed, used_call, used_comment, used_extend, used_inline, used_tuple, used_first, used_last, starred)
+from _exporting.unused_export_kept_comment import kept_first, kept_last
+from _exporting.unused_export_trailing_comment import used_trailing
+from _exporting.unused_export_kept_entry_comment import used_run
+
+from _exporting.unused_export_statement_comment import used_statement
+
+KEPT = (kept_first, kept_last, used_trailing, used_run, used_statement)
