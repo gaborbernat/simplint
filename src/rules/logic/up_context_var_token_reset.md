@@ -204,7 +204,10 @@ with request_id.set("one"):
 ### Fix
 
 The fix is safe and reports without a fix when a comment sits in the lines it would remove, which would lose the
-comment, or when the assignment shares its line with an earlier statement.
+comment, when the assignment shares its line with an earlier statement, or when the line before it ends with a backslash
+that joins the two lines. A module-level token that another module of the run reads, through an import, a star import or
+an attribute, or that `__all__` lists, keeps its report without a fix, since removing the assignment would break those
+readers:
 
 ```toml config
 [project]
@@ -241,6 +244,111 @@ def handle(value):
         return process()
     finally:
         request_id.reset(token)
+```
+
+```toml config
+[project]
+requires-python = ">=3.14"
+```
+
+```python report
+import contextvars
+
+request_id = contextvars.ContextVar("request_id")
+
+
+def handle(value):
+    # fmt: off
+    started = True; \
+    token = request_id.set(value)
+    # fmt: on
+    try:
+        return process()
+    finally:
+        request_id.reset(token)
+```
+
+```python fixed
+import contextvars
+
+request_id = contextvars.ContextVar("request_id")
+
+
+def handle(value):
+    # fmt: off
+    started = True; \
+    token = request_id.set(value)
+    # fmt: on
+    try:
+        return process()
+    finally:
+        request_id.reset(token)
+```
+
+```toml config
+[project]
+requires-python = ">=3.14"
+```
+
+```python context file=user.py
+from state import token
+```
+
+```python report file=state.py
+import contextvars
+
+request_id = contextvars.ContextVar("request_id")
+token = request_id.set("one")
+try:
+    print(request_id.get())
+finally:
+    request_id.reset(token)
+```
+
+```python fixed file=state.py
+import contextvars
+
+request_id = contextvars.ContextVar("request_id")
+token = request_id.set("one")
+try:
+    print(request_id.get())
+finally:
+    request_id.reset(token)
+```
+
+A star import of the module counts as a read of the name, so the report stays without a fix:
+
+```toml config
+[project]
+requires-python = ">=3.14"
+```
+
+```python context file=user.py
+from state import *
+
+print(token)
+```
+
+```python report file=state.py
+import contextvars
+
+request_id = contextvars.ContextVar("request_id")
+token = request_id.set("one")
+try:
+    print(request_id.get())
+finally:
+    request_id.reset(token)
+```
+
+```python fixed file=state.py
+import contextvars
+
+request_id = contextvars.ContextVar("request_id")
+token = request_id.set("one")
+try:
+    print(request_id.get())
+finally:
+    request_id.reset(token)
 ```
 
 ## Other tools

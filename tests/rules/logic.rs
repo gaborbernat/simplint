@@ -1132,3 +1132,83 @@ fn unnamed_regex_group_keeps_a_pattern_another_module_imports() {
         )
     );
 }
+
+// A module-level name another module imports, or `__all__` lists, keeps its report, and the fix that removes it is
+// withheld.
+#[test_case("SMP512", "py314", "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\ntoken = request_id.set(\"one\")\ntry:\n    print(request_id.get())\nfinally:\n    request_id.reset(token)\n", "from state import token\n", "state.py:4:1: SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit\nFound 1 error.\n" ; "context_var_imported")]
+#[test_case("SMP512", "py314", "__all__ = [\"token\"]\nimport contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\ntoken = request_id.set(\"one\")\ntry:\n    print(request_id.get())\nfinally:\n    request_id.reset(token)\n", "", "state.py:5:1: SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit\nFound 1 error.\n" ; "context_var_listed_in_all")]
+#[test_case("SMP513", "py311", "import contextlib\nimport os\n\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd())\nfinally:\n    os.chdir(old)\n", "from state import old\n", "state.py:4:1: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n" ; "chdir_imported")]
+#[test_case("SMP512", "py314", "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\ntoken = request_id.set(\"one\")\ntry:\n    print(request_id.get())\nfinally:\n    request_id.reset(token)\n", "from state import *\nprint(token)\n", "state.py:4:1: SMP512 `token` resets the variable in a `finally`; a `with` block does that on exit\nFound 1 error.\n" ; "context_var_star_imported")]
+#[test_case("SMP513", "py311", "import contextlib\nimport os\n\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd())\nfinally:\n    os.chdir(old)\n", "from state import *\nprint(old)\n", "state.py:4:1: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n" ; "chdir_star_imported")]
+fn module_name_another_module_uses_keeps_report_without_fix(
+    select: &str,
+    target: &str,
+    state: &str,
+    user: &str,
+    report: &str,
+) {
+    let root = common::project(&[
+        ("pyproject.toml", &format!("[tool.ruff]\ntarget-version = \"{target}\"\n")),
+        ("state.py", state),
+        ("user.py", user),
+    ]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", select]);
+    assert_eq!((code, stdout.as_str()), (1, report));
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", select, "--fix"]);
+    assert_eq!((code, stdout.as_str(), read(root.path(), "state.py")), (1, report, state.to_owned()));
+}
+
+// A name in a function is not the module's, so another module importing the same name does not withhold its fix.
+#[test]
+fn context_var_token_local_named_like_an_imported_name_is_still_fixed() {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py314\"\n"),
+        (
+            "state.py",
+            "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    token = request_id.set(value)\n    try:\n        run()\n    finally:\n        request_id.reset(token)\n",
+        ),
+        ("user.py", "from state import token\n"),
+    ]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP512", "--fix"]);
+    assert_eq!(
+        (code, stdout.as_str(), read(root.path(), "state.py")),
+        (
+            0,
+            "Found 1 error (1 fixed, 0 remaining).\n",
+            "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    with request_id.set(value):\n        run()\n".to_owned()
+        )
+    );
+}
+
+// A backslash joins the line before the assignment to it, so the `with` block would keep that line's statement before it.
+#[test]
+fn chdir_restore_keeps_report_without_fix_after_a_line_joined_by_backslash() {
+    let source = "import os\n\nstarted = True; \\\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(started)\nfinally:\n    os.chdir(old)\n";
+    let root = common::project(&[("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"), ("mod.py", source)]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
+    assert_eq!(
+        (code, stdout.as_str(), read(root.path(), "mod.py")),
+        (
+            1,
+            "mod.py:4:1: SMP513 Restoring the directory in a `finally` is what `contextlib.chdir` does\nFound 1 error.\n",
+            source.to_owned()
+        )
+    );
+}
+
+// A comment ends no line with a backslash, so a backslash in one does not join the lines and the fix stays.
+#[test]
+fn chdir_restore_fixes_after_a_comment_ending_in_backslash() {
+    let root = common::project(&[
+        ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py311\"\n"),
+        (
+            "mod.py",
+            "import os\n\nstarted = True  # see \\\nold = os.getcwd()\nos.chdir(\"..\")\ntry:\n    print(os.getcwd(), started)\nfinally:\n    os.chdir(old)\n",
+        ),
+    ]);
+    let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
+    assert_eq!(
+        (code, stdout.as_str(), read(root.path(), "mod.py")),
+        (0, "Found 1 error (1 fixed, 0 remaining).\n", "import contextlib\nimport os\n\nstarted = True  # see \\\nwith contextlib.chdir(\"..\"):\n    print(os.getcwd(), started)\n".to_owned())
+    );
+}

@@ -5,7 +5,7 @@ use ruff_diagnostics::Edit;
 use ruff_python_ast::token::TokenKind;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_source_file::LineRanges;
-use ruff_text_size::{Ranged, TextLen, TextRange};
+use ruff_text_size::{Ranged, TextLen, TextRange, TextSize};
 
 use crate::lint::checker::Checker;
 
@@ -56,6 +56,16 @@ pub fn identifier_uses(checker: &Checker, scope: TextRange, name: &str) -> usize
         .count()
 }
 
+// Whether `target` binds a module-level name that another module of the run reads, through an import, a star import or
+// an attribute, or that `__all__` lists. Removing that binding would break those readers, so the report stays without a
+// fix.
+pub fn is_exported_module_name(checker: &Checker, target: &ast::ExprName) -> bool {
+    let name = target.id.as_str();
+    checker.semantic().bindings(name).iter().any(|binding| binding.module_scope && binding.range == target.range())
+        && (checker.project().is_used_elsewhere(name)
+            || checker.state().export_strings(checker).iter().any(|element| element.value.to_str() == name))
+}
+
 // The edits that replace `first` through the `try` header with the line `header`, and delete the `finally` clause.
 // Comments in the lines they remove would go with them, so they block the edit.
 pub fn wrap_edits(checker: &Checker, first: TextRange, try_stmt: &ast::StmtTry, header: &str) -> Option<[Edit; 2]> {
@@ -66,8 +76,11 @@ pub fn wrap_edits(checker: &Checker, first: TextRange, try_stmt: &ast::StmtTry, 
     if source.line_start(body_first.start()) <= try_stmt.start() {
         return None;
     }
+    let line_start = source.line_start(first.start());
     // A statement that shares its line with an earlier one would keep that statement's text before the `with`.
-    if !checker.text(TextRange::new(source.line_start(first.start()), first.start())).trim().is_empty() {
+    if !checker.text(TextRange::new(line_start, first.start())).trim().is_empty()
+        || continues_previous_line(checker, line_start)
+    {
         return None;
     }
     let head = TextRange::new(first.start(), source.line_start(body_first.start()));
@@ -77,4 +90,12 @@ pub fn wrap_edits(checker: &Checker, first: TextRange, try_stmt: &ast::StmtTry, 
     }
     let header = format!("{header}{}", checker.stylist.line_ending().as_str());
     Some([Edit::range_replacement(header, head), Edit::range_deletion(tail)])
+}
+
+// Whether the line before `line_start` ends with a backslash that joins it to the line starting there. A backslash in a
+// comment joins nothing, so a line with a comment does not count.
+fn continues_previous_line(checker: &Checker, line_start: TextSize) -> bool {
+    let newline = line_start.checked_sub(TextSize::new(1)).unwrap_or_default();
+    let previous = TextRange::new(checker.source.line_start(newline), line_start);
+    checker.text(previous).trim_end().ends_with('\\') && !checker.has_comment_in(previous)
 }
