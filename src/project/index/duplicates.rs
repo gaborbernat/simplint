@@ -53,6 +53,7 @@ type Place = (FileId, usize);
 // blocks still count every file that repeats a window.
 const PARTNERS: usize = 3;
 
+// Only repeats in another file count, as pylint's duplicate check compares files with each other.
 // Windows match by the hash of their statements' hashes first, and then by the statements' token texts, so a hash
 // collision never reports code that differs.
 pub(super) fn duplicate_runs(

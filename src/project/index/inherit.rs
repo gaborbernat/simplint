@@ -8,6 +8,8 @@ use super::classes::{ClassGraph, Reexports};
 use super::resolve::{ClassBase, ClassKey};
 use crate::syntax::Visibility;
 
+// Users reach a private base's members through the public class that inherits them, as `Unix` reaches the methods of
+// `XDGMixin`.
 pub(super) fn inherited_api(
     library_api: &FxHashMap<FileId, FxHashMap<String, Option<PathBuf>>>,
     library_reached: &FxHashMap<FileId, FxHashSet<String>>,

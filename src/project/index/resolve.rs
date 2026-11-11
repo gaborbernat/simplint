@@ -24,6 +24,8 @@ use crate::syntax::is_stdlib_root;
 use super::reach::last_name;
 use super::{FileId, FileIds, SearchRoots};
 
+// Kept for the whole run so a fix round resolves only the files it rewrote: fixes never add or remove a file, so the
+// rest stay current.
 pub struct ImportResolver {
     pub(super) search: SearchRoots,
     pub(super) db: ModuleDb,
@@ -249,6 +251,7 @@ pub(super) struct RunFiles<'a> {
     namesakes: &'a FxHashMap<&'a str, Vec<&'a PathBuf>>,
 }
 
+// Owns its names, since it outlives the facts of a round. `F` is a file's path, or its id once the id table knows it.
 pub(super) struct ModuleFacts<F> {
     pub(super) constructors: Vec<(F, Vec<NameUse>)>,
     pub(super) names: Channels<Resolved<F>>,

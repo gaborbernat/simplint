@@ -37,6 +37,7 @@ pub(super) fn documented_members(
                     .into_iter()
                     .filter(|name| !module.exclude.iter().any(|excluded| excluded == name))
                     .collect();
+                // A rendered class documents its members too.
                 for class in facts.classes.iter().filter(|class| members.contains(&class.name.as_str())) {
                     expanded.add_scope(format!("{dotted}.{}.", class.name));
                 }
@@ -47,6 +48,7 @@ pub(super) fn documented_members(
     expanded
 }
 
+// Sphinx renders underscore and dunder names only when the directive's flags take them in.
 fn is_rendered(name: &str, module: &Module) -> bool {
     let special = name.len() > 4 && name.starts_with("__") && name.ends_with("__");
     if special {

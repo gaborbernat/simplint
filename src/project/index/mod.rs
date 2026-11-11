@@ -497,6 +497,7 @@ fn importers(files: &[(FileId, &FileFacts)], resolver: &ImportResolver) -> FxHas
     let mut importers: FxHashMap<FileId, FxHashSet<FileId>> = FxHashMap::default();
     for (id, _) in files {
         let module = &resolver.modules[id];
+        // A star import uses the names of the module it reads, as a named import does.
         for file in module.names[Channel::Import]
             .files
             .iter()

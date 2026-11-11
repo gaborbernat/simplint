@@ -29,6 +29,7 @@ pub(super) fn run_calls(
     calls
 }
 
+// Entry points and dotted strings reach these names through calls simplint cannot follow.
 fn hide_names(
     calls: &mut RunCalls,
     entry_names: Vec<(FileId, String)>,
@@ -44,6 +45,7 @@ fn hide_names(
     }
 }
 
+// Counted per member, so a member's calls are checked against every read.
 fn method_loads(calls: &mut RunCalls, files: &[(FileId, &FileFacts)]) {
     let mut loads: FxHashMap<&str, u32> = FxHashMap::default();
     for (_, facts) in files {

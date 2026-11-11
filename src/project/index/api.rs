@@ -22,13 +22,12 @@ use super::{FileId, FileIds, Project, RunReads};
 pub struct ModuleUse {
     pub bound: String,
     pub module: String,
-    // The names a dotted string or a store names in the module, as a `mock.patch` target or `module.NAME = value` does,
-    // so an import of one of them would miss the patch or the write.
+    // A dotted string or a store reaches these, and an import of one would miss the patch or the write.
     pub patched: FxHashSet<String>,
     pub defined: FxHashSet<String>,
-    // The names the module's functions rebind through `global`, whose value an import would keep from load time.
+    // A `global` statement rebinds these, and an import would keep the value from load time.
     pub rebound: FxHashSet<String>,
-    // Whether a write under a computed name may set any of the module's names, so an import would miss the write.
+    // A write under a computed name may set the module's names, so an import would miss that write.
     pub computed_written: bool,
     pub top_level_package: bool,
 }
@@ -45,6 +44,7 @@ impl CacheKey for ModuleUse {
     }
 }
 
+// The docstring rules require docs only for the first two.
 #[derive(Clone, Copy)]
 pub enum Exposure<'a> {
     Offered,
@@ -258,18 +258,22 @@ impl<'a> FileIndex<'a> {
         self.answers.api_reached.is_some_and(|names| names.contains(name))
     }
 
+    // Users reach the member through the public class that inherits it, so it is part of the API.
     pub fn is_inherited_api(&self, class: &str, member: &str) -> bool {
         self.answers.inherited.and_then(|classes| classes.get(class)).is_some_and(|members| members.contains(member))
     }
 
+    // A call through a value loaded from the file reaches its names, and no import shows that.
     pub fn is_loaded_as_value(&self) -> bool {
         self.answers.loaded_as_value
     }
 
+    // A production file loads the module as a value, or a star import binds it, so any of its names may be read.
     pub fn is_read_whole(&self) -> bool {
         self.answers.read_whole
     }
 
+    // An `import *` or a computed module read may use a public name from anywhere, so it is not test-only.
     pub fn is_used_only_by_tests(&self, name: &str) -> bool {
         self.answers.test_only.is_some_and(|names| names.contains(name)) && !self.is_read_unnamed(name)
     }
@@ -288,9 +292,8 @@ impl<'a> FileIndex<'a> {
         self.answers.written.is_some_and(|names| names.contains(name))
     }
 
-    // The index as it holds for `source`. The cycle and repeated statements it keeps for the file are ranges
-    // of the source it read, so a source that fixes have changed since, which the fix loop lints, has none of them;
-    // a fix round lints the fixed file again, when it reports one.
+    // The cycle and duplicate ranges are offsets into the source the index read, so a changed source has none of them.
+    // A fix round lints the fixed file again, when it reports one.
     pub fn at(self, source: &str) -> Self {
         if self.source == Some(source_digest(source)) {
             self
@@ -364,6 +367,7 @@ impl<'a> FileIndex<'a> {
         self.project.wide.fixture_requests.contains(name)
     }
 
+    // A plugin's fixtures may request a fixture that overrides one of the run's, so the requests count.
     pub fn loads_pytest_plugins(&self) -> bool {
         self.project.wide.fixture_requests.contains(PYTEST_PLUGINS_REQUEST)
     }
@@ -372,10 +376,12 @@ impl<'a> FileIndex<'a> {
         self.project.wide.reads.docstrings
     }
 
+    // Renaming a function or class changes what a read of its `__name__` or `__qualname__` returns.
     pub fn reads_name_of(&self, name: &str) -> bool {
         self.project.wide.reads.reflected.contains(name)
     }
 
+    // A class renamed here may be read by its name off an object.
     pub fn reads_class_names(&self) -> bool {
         self.project.wide.reads.class_names
     }
@@ -388,6 +394,7 @@ impl<'a> FileIndex<'a> {
         self.project.wide.writes.on_class.get(class).into_iter().flatten().map(String::as_str)
     }
 
+    // A re-export can hide which class a name is, so a namesake of this class may be the one written to.
     pub fn has_namesake_hazards(&self, class: &str) -> bool {
         let writes = &self.project.wide.writes;
         let own =
@@ -395,10 +402,12 @@ impl<'a> FileIndex<'a> {
         writes.namesakes.get(unqualified(class)).is_some_and(|count| *count > own)
     }
 
+    // Storing `__dict__` fails on a frozen instance, unlike reading it through `vars(obj)`.
     pub fn dict_stored_on(&self, class: &str) -> bool {
         self.project.wide.writes.dict_stores.contains(class)
     }
 
+    // An object of unknown class may have this attribute set; mocks do not count.
     pub fn is_attribute_written(&self, name: &str) -> bool {
         self.project.wide.writes.untyped.contains(name)
     }
@@ -423,6 +432,7 @@ impl<'a> FileIndex<'a> {
     }
 }
 
+// Only modules that resolve to a file of the run count, so a third-party or standard-library module never does.
 pub(super) fn module_uses(
     names: Vec<(FileId, String, String, FileId)>,
     sources: &FxHashMap<FileId, &FileFacts>,
