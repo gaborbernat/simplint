@@ -27,7 +27,7 @@ use super::append::is_list_append;
 use super::django::unordered_model_statements;
 use super::runtime::Runtime;
 use crate::semantic::future_import;
-use crate::syntax::{pattern_capture, signature_annotations, string_values, string_words};
+use crate::syntax::{Exports, dunder_all, pattern_capture, signature_annotations, string_values, string_words};
 
 pub struct Model<'a> {
     pub semantic: SemanticModel<'a>,
@@ -98,6 +98,7 @@ pub fn build<'a>(
 // bindings of each module and function scope once their references resolve. Keyed by the range of the name a binding
 // makes, which is the alias of its import.
 fn private_import_reports(semantic: &SemanticModel, body: &[Stmt], package: Option<&Path>) -> FxHashSet<TextRange> {
+    let exports = dunder_all(body);
     let strings = string_values(body);
     let words = string_words(&strings);
     semantic
@@ -105,7 +106,9 @@ fn private_import_reports(semantic: &SemanticModel, body: &[Stmt], package: Opti
         .iter()
         .filter(|scope| matches!(scope.kind, ScopeKind::Function(_) | ScopeKind::Module))
         .flat_map(ruff_python_semantic::Scope::bindings)
-        .filter(|&(name, binding_id)| is_private_import(semantic, semantic.binding(binding_id), name, package, &words))
+        .filter(|&(name, binding_id)| {
+            is_private_import(semantic, semantic.binding(binding_id), name, package, &exports, &words)
+        })
         .map(|(_, binding_id)| semantic.binding(binding_id).range)
         .collect()
 }
@@ -115,6 +118,7 @@ fn is_private_import(
     binding: &Binding,
     name: &str,
     package: Option<&Path>,
+    exports: &Exports,
     words: &FxHashSet<&str>,
 ) -> bool {
     let Some(import) = binding.as_any_import().filter(|import| !import.is_submodule_import()) else {
@@ -134,6 +138,10 @@ fn is_private_import(
     }
     if !segments.iter().any(|name| name.starts_with('_') && !is_dunder(name)) || matches!(segments, ["os", "_exit"]) {
         return false;
+    }
+    // Ruff marks a module-level name that `__all__` lists as used at runtime.
+    if binding.scope == ScopeId::global() && exports.lists(name) {
+        return true;
     }
     // Ruff resolves the names a string type expression spells, which this model does not, so the string may be
     // the only use of the import.
