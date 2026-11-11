@@ -106,16 +106,33 @@ fn dataclass_kw_only_suppressed_class_silences_cross_file_calls() {
 // A library's public dataclass keeps its positional calls, which its users make: one defined in a public module's
 // `__all__`, or re-exported from one. A dataclass that only a sibling module imports stays internal, so its class and
 // its positional calls are reported and rewritten.
-#[test_case(&[("models.py", "__all__ = [\"Partition\"]\n\n")], "from models import Partition\n\nPartition(\"a\", \
-    1)\n", false ; "defined_public")]
+#[test_case(
+    &[("models.py", "__all__ = [\"Partition\"]\n\n")],
+    concat!(
+        "from models import Partition\n",
+        "\n",
+        "Partition(\"a\", 1)\n"
+    ),
+    false ; "defined_public"
+)]
 #[test_case(
     &[("models.py", "__all__ = []\n\n"), ("relay.py", "from models import Partition\n\n__all__ = [\"Partition\"]\n")],
-    "from relay import Partition\n\nPartition(\"a\", 1)\n",
-    false
-    ; "reexported_public"
+    concat!(
+        "from relay import Partition\n",
+        "\n",
+        "Partition(\"a\", 1)\n"
+    ),
+    false ; "reexported_public"
 )]
-#[test_case(&[("models.py", "__all__ = []\n\n")], "from models import Partition\n\nPartition(\"a\", \
-    1)\n", true ; "imported_by_sibling")]
+#[test_case(
+    &[("models.py", "__all__ = []\n\n")],
+    concat!(
+        "from models import Partition\n",
+        "\n",
+        "Partition(\"a\", 1)\n"
+    ),
+    true ; "imported_by_sibling"
+)]
 fn dataclass_kw_only_leaves_public_api_alone(files: &[(&str, &str)], caller: &str, reported: bool) {
     let mut models = String::new();
     let mut others = Vec::new();
@@ -137,30 +154,31 @@ fn dataclass_kw_only_leaves_public_api_alone(files: &[(&str, &str)], caller: &st
 }
 
 #[test_case(&[("caller.py", "from models import *\n\nPartition(\"a\", 1)\n")] ; "star_import")]
-#[test_case(&[("caller.py", "import functools\n\nfrom models import Partition\n\nfunctools.partial(Partition, \
-    \"a\")\nPartition(\"b\", 2)\n")] ; "partial")]
+#[test_case(
+    &[("caller.py", "import functools\n\nfrom models import Partition\n\nfunctools.partial(Partition, \
+    \"a\")\nPartition(\"b\", 2)\n")] ; "partial"
+)]
 #[test_case(&[("caller.py", "from models import Partition\n\nrow = (\"a\", 1)\nPartition(*row)\n")] ; "unpacked")]
 #[test_case(&[("caller.py", "from models import Partition\n\nPartition(\"a\", 1, 2)\n")] ; "too_many")]
 #[test_case(
     &[("relay.py", "from models import Partition\n"), ("caller.py", "from relay import \
-    Partition\n\nPartition(topic=\"a\", number=1)\n")]
-    ; "reexported"
+    Partition\n\nPartition(topic=\"a\", number=1)\n")] ; "reexported"
 )]
 #[test_case(
     &[("caller.py", "from models import Partition\n\n\ndef run(make):\n    Partition = make\n    Partition(\"a\", \
-    1)\n")]
-    ; "shadowed"
+    1)\n")] ; "shadowed"
 )]
 #[test_case(&[("caller.py", "from models import Partition\n\nPartition(\"a\", 1)  # noqa: SMP703\n")] ; "suppressed")]
 #[test_case(&[("caller.py", "from models import Partition\n\nPartition(\"a\", 1)  # noqa\n")] ; "suppressed_blanket")]
 #[test_case(
     &[("caller.py", "from models import Partition\n\nPartition(\n    \"a\",  # simplint: ignore[SMP703] paper\n    \
-    1,\n)\n")]
-    ; "ignored_inside"
+    1,\n)\n")] ; "ignored_inside"
 )]
 #[test_case(
-    &[("caller.py", "import importlib\n\nloaded = importlib.import_module(\"models\")\nloaded.Partition(\"a\", 1)\n")]
-    ; "loaded_module"
+    &[(
+        "caller.py",
+        "import importlib\n\nloaded = importlib.import_module(\"models\")\nloaded.Partition(\"a\", 1)\n",
+    )] ; "loaded_module"
 )]
 #[test_case(
     &[
@@ -235,13 +253,23 @@ fn relative_import_from_namespace_package_counts_as_imported() {
 )]
 #[test_case("def test_app(mod: ModuleType) -> None:\n    assert mod.client\n" ; "module_type_parameter")]
 #[test_case(
-    "def test_app(mod: ModuleType) -> None:\n    assert getattr(mod, \"client\")\n    assert hasattr(mod, _NAME)\n" ;
-    "getattr"
+    concat!(
+        "def test_app(mod: ModuleType) -> None:\n",
+        "    assert getattr(mod, \"client\")\n",
+        "    assert hasattr(mod, _NAME)\n"
+    ) ; "getattr"
 )]
 #[test_case(
-    "@pytest.fixture(name=\"loaded\")\ndef get_mod():\n    return importlib.import_module(f\"docs.{_NAME}\")\n\n\n\
-     def test_app(loaded) -> None:\n    alias = cast(Any, loaded)\n    alias.client = None\n" ;
-    "fixture_alias"
+    concat!(
+        "@pytest.fixture(name=\"loaded\")\n",
+        "def get_mod():\n",
+        "    return importlib.import_module(f\"docs.{_NAME}\")\n",
+        "\n",
+        "\n",
+        "def test_app(loaded) -> None:\n",
+        "    alias = cast(Any, loaded)\n",
+        "    alias.client = None\n"
+    ) ; "fixture_alias"
 )]
 fn attributes_of_dynamically_loaded_modules_keep_their_names(test: &str) {
     let root = project(&[

@@ -157,14 +157,41 @@ fn name_read_by_a_nested_project_is_unused_in_the_outer_project() {
     &format!("__all__ = [\"public\"]\n\n\n{FUNCTIONS}"),
     ".. automodule:: pkg.api\n   :members:\n", &["_hidden", "other"] ; "members_are_the_names_of_all"
 )]
-#[test_case(FUNCTIONS, ".. automodule:: pkg.api\n   :members:\n   \
-    :private-members:\n", &[] ; "private_members_are_taken_in")]
-#[test_case(FUNCTIONS, ".. automodule:: pkg.api\n   :members:\n   :exclude-members: \
-    other\n", &["_hidden", "other"] ; "excluded_members_are_left_out")]
-#[test_case(&format!("{FUNCTIONS}\n\ndef __special__() -> None:\n    pass\n"), ".. automodule:: pkg.api\n   \
-    :members:\n", &["_hidden"] ; "special_names_are_not_reported_without_the_flag")]
-#[test_case(&format!("{FUNCTIONS}\n\ndef __special__() -> None:\n    pass\n"), ".. automodule:: pkg.api\n   \
-    :members:\n   :special-members:\n", &["_hidden"] ; "special_names_are_not_reported_with_the_flag")]
+#[test_case(
+    FUNCTIONS,
+    concat!(
+        ".. automodule:: pkg.api\n",
+        "   :members:\n",
+        "   :private-members:\n"
+    ),
+    &[] ; "private_members_are_taken_in"
+)]
+#[test_case(
+    FUNCTIONS,
+    concat!(
+        ".. automodule:: pkg.api\n",
+        "   :members:\n",
+        "   :exclude-members: other\n"
+    ),
+    &["_hidden", "other"] ; "excluded_members_are_left_out"
+)]
+#[test_case(
+    &format!("{FUNCTIONS}\n\ndef __special__() -> None:\n    pass\n"),
+    concat!(
+        ".. automodule:: pkg.api\n",
+        "   :members:\n"
+    ),
+    &["_hidden"] ; "special_names_are_not_reported_without_the_flag"
+)]
+#[test_case(
+    &format!("{FUNCTIONS}\n\ndef __special__() -> None:\n    pass\n"),
+    concat!(
+        ".. automodule:: pkg.api\n",
+        "   :members:\n",
+        "   :special-members:\n"
+    ),
+    &["_hidden"] ; "special_names_are_not_reported_with_the_flag"
+)]
 #[test_case(FUNCTIONS, ".. automodule:: pkg.api\n   :members: public\n", &["_hidden", "other"] ; "listed_members_only")]
 #[test_case(FUNCTIONS, ".. automodule:: pkg.api\n", &["_hidden", "other", "public"] ; "module_without_members")]
 fn automodule_members_are_used_as_sphinx_renders_them(source: &str, directive: &str, expected: &[&str]) {
@@ -221,14 +248,46 @@ fn docstring_and_visibility_rules_leave_a_nested_project_alone() {
 
 // A module that a test patches by attribute keeps its `module.Name` reads: binding the name at import time would miss
 // the patch, so SMP304 offers no fix for any of the patch forms.
-#[test_case("from unittest import mock\n\n\ndef test_run() -> None:\n    with \
-    mock.patch(\"bench.operations.OPERATIONS\"):\n        pass\n" ; "dotted_string")]
-#[test_case("from bench import operations\n\n\ndef test_run() -> None:\n    setattr(operations, \"OPERATIONS\", \
-    {})\n" ; "setattr")]
-#[test_case("from bench import operations\n\n\ndef test_run(monkeypatch) -> None:\n    monkeypatch.setattr(operations, \
-    \"OPERATIONS\", {})\n" ; "monkeypatch")]
-#[test_case("from unittest import mock\n\nfrom bench import operations\n\n\ndef test_run() -> None:\n    with \
-    mock.patch.object(operations, \"OPERATIONS\"):\n        pass\n" ; "patch_object")]
+#[test_case(
+    concat!(
+        "from unittest import mock\n",
+        "\n",
+        "\n",
+        "def test_run() -> None:\n",
+        "    with mock.patch(\"bench.operations.OPERATIONS\"):\n",
+        "        pass\n"
+    ) ; "dotted_string"
+)]
+#[test_case(
+    concat!(
+        "from bench import operations\n",
+        "\n",
+        "\n",
+        "def test_run() -> None:\n",
+        "    setattr(operations, \"OPERATIONS\", {})\n"
+    ) ; "setattr"
+)]
+#[test_case(
+    concat!(
+        "from bench import operations\n",
+        "\n",
+        "\n",
+        "def test_run(monkeypatch) -> None:\n",
+        "    monkeypatch.setattr(operations, \"OPERATIONS\", {})\n"
+    ) ; "monkeypatch"
+)]
+#[test_case(
+    concat!(
+        "from unittest import mock\n",
+        "\n",
+        "from bench import operations\n",
+        "\n",
+        "\n",
+        "def test_run() -> None:\n",
+        "    with mock.patch.object(operations, \"OPERATIONS\"):\n",
+        "        pass\n"
+    ) ; "patch_object"
+)]
 fn patched_module_attribute_keeps_module_reads(test: &str) {
     let root = project(&[
         ("tools/bench/__init__.py", ""),
@@ -251,16 +310,32 @@ fn patched_module_attribute_keeps_module_reads(test: &str) {
 // the module's other attributes still move into the importer.
 #[test_case(
     "pkg/setup.py",
-    "from pkg import exc\n\nexc._version_token = 1\n",
-    "pkg/use.py:5:12: SMP304 Import `Error` from `pkg.exc` instead of reaching it through the module\npkg/use.py:5:23: \
-     SMP304 Import `Other` from `pkg.exc` instead of reaching it through the module\nFound 2 errors.\n1 unsafe fix \
-     available with `--fix --unsafe-fixes`.\n" ; "store"
+    concat!(
+        "from pkg import exc\n",
+        "\n",
+        "exc._version_token = 1\n"
+    ),
+    concat!(
+        "pkg/use.py:5:12: SMP304 Import `Error` from `pkg.exc` instead of reaching it through the module\n",
+        "pkg/use.py:5:23: SMP304 Import `Other` from `pkg.exc` instead of reaching it through the module\n",
+        "Found 2 errors.\n",
+        "1 unsafe fix available with `--fix --unsafe-fixes`.\n"
+    ) ; "store"
 )]
 #[test_case(
     "pkg/test_use.py",
-    "from unittest import mock\n\n\ndef test_it() -> None:\n    with mock.patch(\"pkg.exc.Error\"):\n        pass\n",
-    "pkg/use.py:5:23: SMP304 Import `Other` from `pkg.exc` instead of reaching it through the module\nFound 1 \
-    error.\n" ; "patched"
+    concat!(
+        "from unittest import mock\n",
+        "\n",
+        "\n",
+        "def test_it() -> None:\n",
+        "    with mock.patch(\"pkg.exc.Error\"):\n",
+        "        pass\n"
+    ),
+    concat!(
+        "pkg/use.py:5:23: SMP304 Import `Other` from `pkg.exc` instead of reaching it through the module\n",
+        "Found 1 error.\n"
+    ) ; "patched"
 )]
 fn stored_attribute_leaves_other_attributes_reported(path: &str, body: &str, expected: &str) {
     let root = project(&[

@@ -5,12 +5,37 @@ use test_case::test_case;
 // A module no file of the run resolves, such as `distutils.log` for a tree that shims its own `log`, reads the run's
 // file of the same last name when the call's value is used, and only then, so the function returning that value is not
 // reported.
-#[test_case("from distutils import log\n\n\ndef run() -> int:\n    saved = log.set_threshold(1)\n    return \
-    saved\n", false ; "value_used_through_namesake")]
-#[test_case("from distutils import log\n\n\ndef run() -> None:\n    \
-    log.set_threshold(1)\n", true ; "value_dropped_through_namesake")]
-#[test_case("from elsewhere import tools\n\n\ndef run() -> int:\n    return \
-    tools.set_threshold(1)\n", true ; "unrelated_module_reads_nothing")]
+#[test_case(
+    concat!(
+        "from distutils import log\n",
+        "\n",
+        "\n",
+        "def run() -> int:\n",
+        "    saved = log.set_threshold(1)\n",
+        "    return saved\n"
+    ),
+    false ; "value_used_through_namesake"
+)]
+#[test_case(
+    concat!(
+        "from distutils import log\n",
+        "\n",
+        "\n",
+        "def run() -> None:\n",
+        "    log.set_threshold(1)\n"
+    ),
+    true ; "value_dropped_through_namesake"
+)]
+#[test_case(
+    concat!(
+        "from elsewhere import tools\n",
+        "\n",
+        "\n",
+        "def run() -> int:\n",
+        "    return tools.set_threshold(1)\n"
+    ),
+    true ; "unrelated_module_reads_nothing"
+)]
 fn namesake_module_reads_count_only_with_their_value(caller: &str, reported: bool) {
     let root = project(&[
         ("pkg/__init__.py", ""),
@@ -24,8 +49,16 @@ fn namesake_module_reads_count_only_with_their_value(caller: &str, reported: boo
 
 // A doctest in a module runs in the module's globals, so an example that names a class of the module uses it without
 // importing it, while a docstring that only describes the class leaves it unused.
-#[test_case("    \"\"\"A release.\n\n    >>> _Trimmed(\"1.0.0\").release\n    '1'\n    \
-    \"\"\"\n", false ; "doctest_names_it")]
+#[test_case(
+    concat!(
+        "    \"\"\"A release.\n",
+        "\n",
+        "    >>> _Trimmed(\"1.0.0\").release\n",
+        "    '1'\n",
+        "    \"\"\"\n"
+    ),
+    false ; "doctest_names_it"
+)]
 #[test_case("    \"\"\"A release.\"\"\"\n", true ; "docstring_only_describes_it")]
 fn class_named_by_its_own_module_doctest_is_used(docstring: &str, reported: bool) {
     let source = format!(
@@ -106,8 +139,17 @@ fn stdlib_module_reads_are_not_namesake_reads() {
 // which reports it with no fix.
 #[test_case("cli.py", "from pkg import report\n\nreport.tableJson = 5\n" ; "assignment")]
 #[test_case("cli.py", "from pkg import report\n\nsetattr(report, \"tableJson\", 5)\n" ; "setattr")]
-#[test_case("test_report.py", "from unittest import mock\n\n\ndef test_it() -> None:\n    with \
-    mock.patch(\"pkg.report.tableJson\"):\n        pass\n" ; "dotted_patch")]
+#[test_case(
+    "test_report.py",
+    concat!(
+        "from unittest import mock\n",
+        "\n",
+        "\n",
+        "def test_it() -> None:\n",
+        "    with mock.patch(\"pkg.report.tableJson\"):\n",
+        "        pass\n"
+    ) ; "dotted_patch"
+)]
 fn stored_module_variable_left_to_n816_without_fix(path: &str, body: &str) {
     let report = "tableJson = 0\n\n\ndef read() -> int:\n    return tableJson\n";
     let root = project(&[("pkg/__init__.py", ""), ("pkg/report.py", report), (path, body)]);

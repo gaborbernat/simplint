@@ -21,22 +21,34 @@ const DOCSTRINGED_PLUGIN: &str = "\"\"\"Plugin.\"\"\"\n\n\ndef pytest_addoption(
     "entry-points.pytest11.demo = \"missing.plugin\"\n",
     DOCSTRINGED_PLUGIN,
     "SMP901",
-    "pkg/plugin.py:5:5: SMP901 Function docstring on internal code; let the name, signature and types document it\n\
-     Found 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ; "unresolved_module_names_nothing"
+    concat!(
+        "pkg/plugin.py:5:5: SMP901 Function docstring on internal code; let the name, signature and ",
+        "types document it\n",
+        "Found 1 error.\n",
+        "1 unsafe fix available with `--fix --unsafe-fixes`.\n"
+    ) ; "unresolved_module_names_nothing"
 )]
 #[test_case(
     "",
     DOCSTRINGED_PLUGIN,
     "SMP901",
-    "pkg/plugin.py:5:5: SMP901 Function docstring on internal code; let the name, signature and types document it\n\
-     Found 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ; "unlisted_hook_is_internal"
+    concat!(
+        "pkg/plugin.py:5:5: SMP901 Function docstring on internal code; let the name, signature and ",
+        "types document it\n",
+        "Found 1 error.\n",
+        "1 unsafe fix available with `--fix --unsafe-fixes`.\n"
+    ) ; "unlisted_hook_is_internal"
 )]
 #[test_case(
     "entry-points.pytest11.demo = \"pkg.plugin:Formatter\"\n",
     DOCSTRINGED_PLUGIN,
     "SMP901",
-    "pkg/plugin.py:5:5: SMP901 Function docstring on internal code; let the name, signature and types document it\n\
-     Found 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ; "attribute_entry_point_names_one_name"
+    concat!(
+        "pkg/plugin.py:5:5: SMP901 Function docstring on internal code; let the name, signature and ",
+        "types document it\n",
+        "Found 1 error.\n",
+        "1 unsafe fix available with `--fix --unsafe-fixes`.\n"
+    ) ; "attribute_entry_point_names_one_name"
 )]
 #[test_case(
     "entry-points.pytest11.demo = \"pkg.plugin\"\n",
@@ -48,8 +60,11 @@ const DOCSTRINGED_PLUGIN: &str = "\"\"\"Plugin.\"\"\"\n\n\ndef pytest_addoption(
     "entry-points.pytest11.demo = \"pkg.plugin\"\n",
     UNDOCUMENTED_PLUGIN,
     "SMP903",
-    "pkg/plugin.py:4:5: SMP903 Public function `pytest_addoption` has no docstring; document it for its users\n\
-     Found 1 error.\n" ; "bare_module_undocumented_hook_reported"
+    concat!(
+        "pkg/plugin.py:4:5: SMP903 Public function `pytest_addoption` has no docstring; document it for ",
+        "its users\n",
+        "Found 1 error.\n"
+    ) ; "bare_module_undocumented_hook_reported"
 )]
 #[test_case(
     "",
@@ -99,8 +114,10 @@ const UNUSED_PLUGIN: &str = "\"\"\"Plugin.\"\"\"\n\n\ndef pytest_addoption(parse
 )]
 #[test_case(
     "",
-    "pkg/plugin.py:8:5: SMP409 `helper` is never used in the run; remove it or give it a caller\nFound 1 error.\n" ;
-    "unlisted_names_are_unused"
+    concat!(
+        "pkg/plugin.py:8:5: SMP409 `helper` is never used in the run; remove it or give it a caller\n",
+        "Found 1 error.\n"
+    ) ; "unlisted_names_are_unused"
 )]
 fn bare_module_entry_point_names_are_used(entry_points: &str, stdout: &str) {
     let root = project(&[
@@ -118,9 +135,11 @@ fn bare_module_entry_point_names_are_used(entry_points: &str, stdout: &str) {
 // re-export is. Without the entry point, a plain import in a module without `__all__` keeps the name internal.
 #[test_case(
     "entry-points.pytest11.demo = \"pkg\"\n",
-    "pkg/_core.py:1:5: SMP903 Public function `plugin_hook` has no docstring; document it for its users; \
-    `pkg/__init__.py` \
-     re-exports it\nFound 1 error.\n" ; "package_imports_are_public"
+    concat!(
+        "pkg/_core.py:1:5: SMP903 Public function `plugin_hook` has no docstring; document it for its ",
+        "users; `pkg/__init__.py` re-exports it\n",
+        "Found 1 error.\n"
+    ) ; "package_imports_are_public"
 )]
 #[test_case("", common::PASSED ; "unlisted_package_imports_stay_internal")]
 fn bare_package_entry_point_imports_are_public_api(entry_points: &str, stdout: &str) {
@@ -140,9 +159,12 @@ fn bare_package_entry_point_imports_are_public_api(entry_points: &str, stdout: &
 #[test_case("pkg/errors.py", common::PASSED ; "public_module_kept")]
 #[test_case(
     "pkg/_errors.py",
-    "pkg/_errors.py:4:12: SMP402 `Oops` is in `__all__`, yet no other module imports it; list only what other modules \
-     use\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
-    "private_module_reported"
+    concat!(
+        "pkg/_errors.py:4:12: SMP402 `Oops` is in `__all__`, yet no other module imports it; list only ",
+        "what other modules use\n",
+        "Found 1 error.\n",
+        "1 unsafe fix available with `--fix --unsafe-fixes`.\n"
+    ) ; "private_module_reported"
 )]
 fn public_module_all_is_the_declared_api(module: &str, stdout: &str) {
     let root = project(&[
@@ -161,11 +183,17 @@ fn public_module_all_is_the_declared_api(module: &str, stdout: &str) {
 #[test_case("from app import config as c\n\nsettings = c\nprint(settings.LIMIT)\n", common::PASSED ; "loaded_as_value")]
 #[test_case("from app import *\n\nprint(config.LIMIT)\n", common::PASSED ; "star_bound_by_package_all")]
 #[test_case(
-    "from app import config\n\nprint(config.LIMIT)\n",
-    "app/config.py:8:21: SMP402 [*] `local` is in `__all__`, yet no other module imports it; list only what other \
-    modules \
-     use\nFound 1 error.\n[*] 1 fixable with `--fix`.\n" ;
-    "module_attribute"
+    concat!(
+        "from app import config\n",
+        "\n",
+        "print(config.LIMIT)\n"
+    ),
+    concat!(
+        "app/config.py:8:21: SMP402 [*] `local` is in `__all__`, yet no other module imports it; list ",
+        "only what other modules use\n",
+        "Found 1 error.\n",
+        "[*] 1 fixable with `--fix`.\n"
+    ) ; "module_attribute"
 )]
 fn names_read_through_a_whole_module_are_used(consumer: &str, stdout: &str) {
     let root = project(&[
@@ -234,19 +262,52 @@ fn names_another_module_reads_from_all_are_used(consumer: &str) {
     assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::PASSED);
 }
 
-#[test_case("import pkgutil\n\nHANDLER = \
-    pkgutil.resolve_name(\"pkg._cli._validate:run\")\n", true ; "direct_resolve_name")]
-#[test_case("from pkgutil import resolve_name\n\nHANDLER = \
-    resolve_name(\"pkg._cli._validate:run\")\n", true ; "imported_resolve_name")]
-#[test_case("def build_parser(parser):\n    \
-    parser.set_defaults(handler=\"pkg._cli._validate:run\")\n", true ; "argparse_handler")]
+#[test_case(
+    concat!(
+        "import pkgutil\n",
+        "\n",
+        "HANDLER = pkgutil.resolve_name(\"pkg._cli._validate:run\")\n"
+    ),
+    true ; "direct_resolve_name"
+)]
+#[test_case(
+    concat!(
+        "from pkgutil import resolve_name\n",
+        "\n",
+        "HANDLER = resolve_name(\"pkg._cli._validate:run\")\n"
+    ),
+    true ; "imported_resolve_name"
+)]
+#[test_case(
+    concat!(
+        "def build_parser(parser):\n",
+        "    parser.set_defaults(handler=\"pkg._cli._validate:run\")\n"
+    ),
+    true ; "argparse_handler"
+)]
 #[test_case("HANDLER = \"pkg._cli._validate:run\"\n", false ; "unresolved_string")]
-#[test_case("def build_parser(parser):\n    \
-    parser.set_defaults(description=\"pkg._cli._validate:run\")\n", false ; "other_default")]
-#[test_case("def build_parser(parser):\n    \
-    parser.set_defaults(handler=\"pkg._cli._validate:run!\")\n", false ; "invalid_attribute")]
-#[test_case("import pkgutil\n\nHANDLER = \
-    pkgutil.resolve_name(\"pkg._cli._validate.run\")\n", true ; "dotted_resolve_name")]
+#[test_case(
+    concat!(
+        "def build_parser(parser):\n",
+        "    parser.set_defaults(description=\"pkg._cli._validate:run\")\n"
+    ),
+    false ; "other_default"
+)]
+#[test_case(
+    concat!(
+        "def build_parser(parser):\n",
+        "    parser.set_defaults(handler=\"pkg._cli._validate:run!\")\n"
+    ),
+    false ; "invalid_attribute"
+)]
+#[test_case(
+    concat!(
+        "import pkgutil\n",
+        "\n",
+        "HANDLER = pkgutil.resolve_name(\"pkg._cli._validate.run\")\n"
+    ),
+    true ; "dotted_resolve_name"
+)]
 fn string_named_handlers_count_as_imported(consumer: &str, imported: bool) {
     let root = project(&[
         ("pyproject.toml", LIBRARY),
@@ -274,8 +335,13 @@ fn string_named_handler_requires_an_export() {
     assert!(check(root.path(), &["--select", "SMP401"]).1.contains("`run` is imported by other modules"));
 }
 
-#[test_case("[tool.setuptools.dynamic]\nversion = { attr = \"pkg._plugin.version\" \
-    }\n", "version" ; "setuptools_dynamic_attribute")]
+#[test_case(
+    concat!(
+        "[tool.setuptools.dynamic]\n",
+        "version = { attr = \"pkg._plugin.version\" }\n"
+    ),
+    "version" ; "setuptools_dynamic_attribute"
+)]
 #[test_case("[tool.setuptools.cmdclass]\nbuild_py = \"pkg._plugin.Build\"\n", "Build" ; "setuptools_command_class")]
 #[test_case("[tool.mypy]\nplugins = [\"pkg._plugin\"]\n", "plugin" ; "mypy_plugin")]
 #[test_case("[tool.mypy]\nplugins = [\"pkg._plugin:custom\"]\n", "custom" ; "mypy_custom_plugin")]

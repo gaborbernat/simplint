@@ -11,28 +11,51 @@ use test_case::test_case;
     common::PASSED ; "import_in_function"
 )]
 #[test_case(
-    "class Service:\n    from pkg import fast as codec\n\n\ndef run(text: str) -> str:\n    return \
-    Service.codec.decode(text)\n",
-    common::PASSED ;
-    "import_in_class_read_as_an_attribute"
+    concat!(
+        "class Service:\n",
+        "    from pkg import fast as codec\n",
+        "\n",
+        "\n",
+        "def run(text: str) -> str:\n",
+        "    return Service.codec.decode(text)\n"
+    ),
+    common::PASSED ; "import_in_class_read_as_an_attribute"
 )]
 #[test_case(
     "import pkg.fast\n",
-    "pkg/fast.py:1:5: SMP408 `decode` is used only by tests; move it into the tests or a test helper module\nFound 1 \
-    error.\n" ;
-    "dotted_import_alone"
+    concat!(
+        "pkg/fast.py:1:5: SMP408 `decode` is used only by tests; move it into the tests or a test helper ",
+        "module\n",
+        "Found 1 error.\n"
+    ) ; "dotted_import_alone"
 )]
 #[test_case(
-    "class Service:\n    import pkg.fast\n\n\ndef run(text: str) -> str:\n    return Service.pkg.fast.decode(text)\n",
-    common::PASSED ;
-    "dotted_import_in_class_read_through_the_class"
+    concat!(
+        "class Service:\n",
+        "    import pkg.fast\n",
+        "\n",
+        "\n",
+        "def run(text: str) -> str:\n",
+        "    return Service.pkg.fast.decode(text)\n"
+    ),
+    common::PASSED ; "dotted_import_in_class_read_through_the_class"
 )]
 #[test_case(
-    "def run(text: str) -> str:\n    from pkg import fast\n\n    return str(fast.OTHER)\n\n\ndef other(fast: object) \
-    -> object:\n    return fast\n",
-    "pkg/fast.py:1:5: SMP408 `decode` is used only by tests; move it into the tests or a test helper module\nFound 1 \
-    error.\n" ;
-    "function_attribute_while_another_parameter_is_named_the_module"
+    concat!(
+        "def run(text: str) -> str:\n",
+        "    from pkg import fast\n",
+        "\n",
+        "    return str(fast.OTHER)\n",
+        "\n",
+        "\n",
+        "def other(fast: object) -> object:\n",
+        "    return fast\n"
+    ),
+    concat!(
+        "pkg/fast.py:1:5: SMP408 `decode` is used only by tests; move it into the tests or a test helper ",
+        "module\n",
+        "Found 1 error.\n"
+    ) ; "function_attribute_while_another_parameter_is_named_the_module"
 )]
 fn module_loaded_through_a_nested_or_dotted_name_has_no_test_only_names(service: &str, stdout: &str) {
     let root = project(&[
@@ -91,14 +114,27 @@ const PROGRAM_SERVICE: &str = "from app.mail import send\n\n\ndef escalate(addre
     common::PASSED ;
     "star_imported_by_program"
 )]
-#[test_case("from app.plain import \
-    notify\n\nprint(notify(\"x\"))\n", PROGRAM_SERVICE, common::PASSED ; "guard_runs_as_program")]
 #[test_case(
-    "from app.plain import notify\n\nprint(notify(\"x\"))\n",
+    concat!(
+        "from app.plain import notify\n",
+        "\n",
+        "print(notify(\"x\"))\n"
+    ),
+    PROGRAM_SERVICE,
+    common::PASSED ; "guard_runs_as_program"
+)]
+#[test_case(
+    concat!(
+        "from app.plain import notify\n",
+        "\n",
+        "print(notify(\"x\"))\n"
+    ),
     SERVICE,
-    "app/mail.py:1:24: SMP410 Only tests pass `urgent` to `send`; production calls leave it at its default\nFound 1 \
-    error.\n" ;
-    "imported_only_by_tests"
+    concat!(
+        "app/mail.py:1:24: SMP410 Only tests pass `urgent` to `send`; production calls leave it at its ",
+        "default\n",
+        "Found 1 error.\n"
+    ) ; "imported_only_by_tests"
 )]
 fn module_run_as_a_program_makes_production_calls(main: &str, service: &str, stdout: &str) {
     let root = project(&[
@@ -123,10 +159,16 @@ fn module_run_as_a_program_makes_production_calls(main: &str, service: &str, std
 // imports.
 #[test_case("from pkg import fast\n\nCODEC = fast\n", common::PASSED ; "module_loaded_as_value")]
 #[test_case(
-    "from pkg.fast import LIMIT\n\nCODEC = LIMIT\n",
-    "pkg/fast.py:1:1: SMP401 `LIMIT` is imported by other modules; list it in `__all__`\nFound 1 error.\n1 unsafe fix \
-     available with `--fix --unsafe-fixes`.\n" ;
-    "imported_by_production"
+    concat!(
+        "from pkg.fast import LIMIT\n",
+        "\n",
+        "CODEC = LIMIT\n"
+    ),
+    concat!(
+        "pkg/fast.py:1:1: SMP401 `LIMIT` is imported by other modules; list it in `__all__`\n",
+        "Found 1 error.\n",
+        "1 unsafe fix available with `--fix --unsafe-fixes`.\n"
+    ) ; "imported_by_production"
 )]
 fn module_loaded_as_value_has_no_test_only_names_for_all(service: &str, stdout: &str) {
     let root = project(&[
@@ -143,23 +185,101 @@ fn module_loaded_as_value_has_no_test_only_names_for_all(service: &str, stdout: 
 
 // A version check that holds on Python 3 leaves its else branch unreachable, a `TYPE_CHECKING` bound to a true constant
 // guards nothing, and a star import rebinds a flag bound false.
-#[test_case("import sys\n\nif sys.version_info[0] == 3:\n    pass\nelse:\n    from a import VALUE\n\nSCALE = \
-    2\n", false ; "else_of_three_never_runs")]
-#[test_case("import sys\n\nif sys.version_info[0] == 3:\n    from a import VALUE\n\nSCALE = \
-    2\n", true ; "body_of_three_runs")]
-#[test_case("import sys\n\nif sys.version_info[0] == 2:\n    from a import VALUE\n\nSCALE = \
-    2\n", false ; "body_of_two_never_runs")]
-#[test_case("import sys\n\nif sys.version_info[0] == 2:\n    pass\nelse:\n    from a import VALUE\n\nSCALE = \
-    2\n", true ; "else_of_two_runs")]
-#[test_case("from typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from a import VALUE\n\nSCALE = \
-    2\n", false ; "typing_guard")]
-#[test_case("TYPE_CHECKING = True\n\nif TYPE_CHECKING:\n    from a import VALUE\n\nSCALE = \
-    2\n", true ; "true_constant_is_no_guard")]
+#[test_case(
+    concat!(
+        "import sys\n",
+        "\n",
+        "if sys.version_info[0] == 3:\n",
+        "    pass\n",
+        "else:\n",
+        "    from a import VALUE\n",
+        "\n",
+        "SCALE = 2\n"
+    ),
+    false ; "else_of_three_never_runs"
+)]
+#[test_case(
+    concat!(
+        "import sys\n",
+        "\n",
+        "if sys.version_info[0] == 3:\n",
+        "    from a import VALUE\n",
+        "\n",
+        "SCALE = 2\n"
+    ),
+    true ; "body_of_three_runs"
+)]
+#[test_case(
+    concat!(
+        "import sys\n",
+        "\n",
+        "if sys.version_info[0] == 2:\n",
+        "    from a import VALUE\n",
+        "\n",
+        "SCALE = 2\n"
+    ),
+    false ; "body_of_two_never_runs"
+)]
+#[test_case(
+    concat!(
+        "import sys\n",
+        "\n",
+        "if sys.version_info[0] == 2:\n",
+        "    pass\n",
+        "else:\n",
+        "    from a import VALUE\n",
+        "\n",
+        "SCALE = 2\n"
+    ),
+    true ; "else_of_two_runs"
+)]
+#[test_case(
+    concat!(
+        "from typing import TYPE_CHECKING\n",
+        "\n",
+        "if TYPE_CHECKING:\n",
+        "    from a import VALUE\n",
+        "\n",
+        "SCALE = 2\n"
+    ),
+    false ; "typing_guard"
+)]
+#[test_case(
+    concat!(
+        "TYPE_CHECKING = True\n",
+        "\n",
+        "if TYPE_CHECKING:\n",
+        "    from a import VALUE\n",
+        "\n",
+        "SCALE = 2\n"
+    ),
+    true ; "true_constant_is_no_guard"
+)]
 #[test_case("FLAG = False\n\nif FLAG:\n    from a import VALUE\n\nSCALE = 2\n", false ; "false_constant_guard")]
-#[test_case("FLAG = False\nfrom flags import *\n\nif FLAG:\n    from a import VALUE\n\nSCALE = \
-    2\n", true ; "star_rebinds_flag")]
-#[test_case("_FLAG = False\nfrom flags import *\n\nif _FLAG:\n    from a import VALUE\n\nSCALE = \
-    2\n", false ; "star_keeps_private_flag")]
+#[test_case(
+    concat!(
+        "FLAG = False\n",
+        "from flags import *\n",
+        "\n",
+        "if FLAG:\n",
+        "    from a import VALUE\n",
+        "\n",
+        "SCALE = 2\n"
+    ),
+    true ; "star_rebinds_flag"
+)]
+#[test_case(
+    concat!(
+        "_FLAG = False\n",
+        "from flags import *\n",
+        "\n",
+        "if _FLAG:\n",
+        "    from a import VALUE\n",
+        "\n",
+        "SCALE = 2\n"
+    ),
+    false ; "star_keeps_private_flag"
+)]
 fn runtime_guards_follow_versions_and_constants(module: &str, reported: bool) {
     let root =
         project(&[("a.py", "import b\n\nVALUE = b.SCALE + 1\n"), ("b.py", module), ("flags.py", "FLAG = True\n")]);

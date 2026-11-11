@@ -5,8 +5,13 @@ use test_case::test_case;
 // A module loaded by a string-named import call is the module the names read off its result belong to, whether the
 // call's result is read directly or through a variable it is assigned to.
 #[test_case(
-    "import importlib\n\n\ndef test_app() -> None:\n    assert importlib.import_module(\"docs.tutorial\").client\n" ;
-    "import_module"
+    concat!(
+        "import importlib\n",
+        "\n",
+        "\n",
+        "def test_app() -> None:\n",
+        "    assert importlib.import_module(\"docs.tutorial\").client\n"
+    ) ; "import_module"
 )]
 #[test_case("def test_app() -> None:\n    assert __import__(\"docs.tutorial\").tutorial.client\n" ; "dunder_import")]
 #[test_case(
@@ -18,9 +23,14 @@ use test_case::test_case;
     "importorskip"
 )]
 #[test_case(
-    "import pytest\n\n\ndef test_app() -> None:\n    mod = pytest.importorskip(\"docs.tutorial\")\n    assert \
-    mod.client\n" ;
-    "importorskip_variable"
+    concat!(
+        "import pytest\n",
+        "\n",
+        "\n",
+        "def test_app() -> None:\n",
+        "    mod = pytest.importorskip(\"docs.tutorial\")\n",
+        "    assert mod.client\n"
+    ) ; "importorskip_variable"
 )]
 fn attributes_of_statically_named_dynamic_imports_keep_their_names(test: &str) {
     let root = project(&[
@@ -144,8 +154,12 @@ fn local_named_like_a_module_variable_reads_no_module() {
 // A name a function binds to several modules reads the names of each of them, and of no other module. Binding it to a
 // value that is no module too keeps those reads.
 #[test_case(
-    "    m = pytest.importorskip(\"pkg.cli\")\n    assert m.client\n    m = pytest.importorskip(\"pkg.other\")\n    \
-    assert m.engine\n",
+    concat!(
+        "    m = pytest.importorskip(\"pkg.cli\")\n",
+        "    assert m.client\n",
+        "    m = pytest.importorskip(\"pkg.other\")\n",
+        "    assert m.engine\n"
+    ),
     false ; "several_modules"
 )]
 #[test_case(
@@ -195,13 +209,20 @@ fn attribute_of_an_import_call_result_is_no_module() {
 // one, given by keyword or by position, names nothing, while a non-empty literal, or one that may hold names, returns
 // the module itself.
 #[test_case(
-    "__import__(\"pkg.sub\", globals(), locals(), [], 0)", "pkg/sub.py:3:1: SMP404 `helper`", "pkg/__init__.py:3:1" ;
-    "positional_empty_list"
+    "__import__(\"pkg.sub\", globals(), locals(), [], 0)",
+    "pkg/sub.py:3:1: SMP404 `helper`",
+    "pkg/__init__.py:3:1" ; "positional_empty_list"
 )]
-#[test_case("__import__(\"pkg.sub\", fromlist=())", "pkg/sub.py:3:1: SMP404 \
-    `helper`", "pkg/__init__.py:3:1" ; "empty_tuple")]
-#[test_case("__import__(\"pkg.sub\", fromlist=None)", "pkg/sub.py:3:1: SMP404 \
-    `helper`", "pkg/__init__.py:3:1" ; "none")]
+#[test_case(
+    "__import__(\"pkg.sub\", fromlist=())",
+    "pkg/sub.py:3:1: SMP404 `helper`",
+    "pkg/__init__.py:3:1" ; "empty_tuple"
+)]
+#[test_case(
+    "__import__(\"pkg.sub\", fromlist=None)",
+    "pkg/sub.py:3:1: SMP404 `helper`",
+    "pkg/__init__.py:3:1" ; "none"
+)]
 #[test_case(
     "__import__(\"pkg.sub\", fromlist=[\"x\"])", "pkg/__init__.py:3:1: SMP404 `helper`", "pkg/sub.py:3:1" ;
     "literal_names"
@@ -296,37 +317,70 @@ fn spec_loading_test(path: &str) -> String {
 
 // A module `runpy` runs keeps the names a string key reads off its globals, however the call spells the module.
 #[test_case(
-    "import runpy\n\n\ndef test_app() -> None:\n    assert runpy.run_module(\"docs.tutorial\")[\"client\"]\n" ;
-    "run_module_subscript"
+    concat!(
+        "import runpy\n",
+        "\n",
+        "\n",
+        "def test_app() -> None:\n",
+        "    assert runpy.run_module(\"docs.tutorial\")[\"client\"]\n"
+    ) ; "run_module_subscript"
 )]
 #[test_case(
-    "import runpy\n\n\ndef test_app() -> None:\n    ns = runpy.run_module(\"docs.tutorial\", run_name=\"x\")\n    \
-    assert ns.get(\"client\")\n" ;
-    "run_module_get"
+    concat!(
+        "import runpy\n",
+        "\n",
+        "\n",
+        "def test_app() -> None:\n",
+        "    ns = runpy.run_module(\"docs.tutorial\", run_name=\"x\")\n",
+        "    assert ns.get(\"client\")\n"
+    ) ; "run_module_get"
 )]
 #[test_case(
-    "import runpy\nfrom pathlib import Path\n\n\ndef test_app() -> None:\n    ns = \
-    runpy.run_path(str(Path(__file__).parents[1] / \"docs\" / \"tutorial.py\"))\n    assert ns[\"client\"]\n" ;
-    "run_path_computed"
+    concat!(
+        "import runpy\n",
+        "from pathlib import Path\n",
+        "\n",
+        "\n",
+        "def test_app() -> None:\n",
+        "    ns = runpy.run_path(str(Path(__file__).parents[1] / \"docs\" / \"tutorial.py\"))\n",
+        "    assert ns[\"client\"]\n"
+    ) ; "run_path_computed"
 )]
 #[test_case(
-    "import runpy\nfrom pathlib import Path\n\n\ndef test_app() -> None:\n    assert \
-    runpy.run_path(Path(__file__).parents[1] / \"docs\" / \"tutorial.py\")[\"client\"]\n" ;
-    "run_path_static"
+    concat!(
+        "import runpy\n",
+        "from pathlib import Path\n",
+        "\n",
+        "\n",
+        "def test_app() -> None:\n",
+        "    assert runpy.run_path(Path(__file__).parents[1] / \"docs\" / \"tutorial.py\")[\"client\"]\n"
+    ) ; "run_path_static"
 )]
 #[test_case(
     "import runpy\n\n\ndef test_app(name: str) -> None:\n    assert runpy.run_module(name)[\"client\"]\n" ;
     "run_module_computed"
 )]
 #[test_case(
-    "import runpy\n\n\ndef test_app() -> None:\n    ns = runpy.run_module(\"docs.tutorial\")\n    ns = {}\n    assert \
-    ns[\"client\"]\n" ;
-    "rebound_to_dict"
+    concat!(
+        "import runpy\n",
+        "\n",
+        "\n",
+        "def test_app() -> None:\n",
+        "    ns = runpy.run_module(\"docs.tutorial\")\n",
+        "    ns = {}\n",
+        "    assert ns[\"client\"]\n"
+    ) ; "rebound_to_dict"
 )]
 #[test_case(
-    "import runpy\n\n\ndef test_app() -> None:\n    ns = runpy.run_module(\"docs.tutorial\")\n    ns = \
-    runpy.run_module(\"docs.other\")\n    assert ns[\"client\"]\n" ;
-    "rebound_to_other_globals"
+    concat!(
+        "import runpy\n",
+        "\n",
+        "\n",
+        "def test_app() -> None:\n",
+        "    ns = runpy.run_module(\"docs.tutorial\")\n",
+        "    ns = runpy.run_module(\"docs.other\")\n",
+        "    assert ns[\"client\"]\n"
+    ) ; "rebound_to_other_globals"
 )]
 fn runpy_globals_keep_names_read_by_key(test: &str) {
     let root = project(&[
@@ -368,14 +422,40 @@ fn computed_run_globals_read_keeps_listed_names() {
 
 // A test that patches a module attribute by its dotted path, or through the module object, uses the name, so `__all__`
 // keeps it.
-#[test_case("import unittest.mock\n\n\ndef test_app() -> None:\n    with \
-    unittest.mock.patch(\"docs.tutorial.client\"):\n        pass\n" ; "mock_patch_string")]
-#[test_case("def test_app(monkeypatch) -> None:\n    monkeypatch.setattr(\"docs.tutorial.client\", \
-    None)\n" ; "monkeypatch_string")]
-#[test_case("from docs import tutorial\n\n\ndef test_app(mocker) -> None:\n    mocker.patch.object(tutorial, \
-    \"client\")\n" ; "patch_object_module")]
-#[test_case("from docs import tutorial\n\n\ndef test_app(monkeypatch) -> None:\n    monkeypatch.setattr(tutorial, \
-    \"client\", None)\n" ; "setattr_module")]
+#[test_case(
+    concat!(
+        "import unittest.mock\n",
+        "\n",
+        "\n",
+        "def test_app() -> None:\n",
+        "    with unittest.mock.patch(\"docs.tutorial.client\"):\n",
+        "        pass\n"
+    ) ; "mock_patch_string"
+)]
+#[test_case(
+    concat!(
+        "def test_app(monkeypatch) -> None:\n",
+        "    monkeypatch.setattr(\"docs.tutorial.client\", None)\n"
+    ) ; "monkeypatch_string"
+)]
+#[test_case(
+    concat!(
+        "from docs import tutorial\n",
+        "\n",
+        "\n",
+        "def test_app(mocker) -> None:\n",
+        "    mocker.patch.object(tutorial, \"client\")\n"
+    ) ; "patch_object_module"
+)]
+#[test_case(
+    concat!(
+        "from docs import tutorial\n",
+        "\n",
+        "\n",
+        "def test_app(monkeypatch) -> None:\n",
+        "    monkeypatch.setattr(tutorial, \"client\", None)\n"
+    ) ; "setattr_module"
+)]
 fn patched_names_are_used_by_all(test: &str) {
     let root = project(&[
         ("docs/__init__.py", ""),

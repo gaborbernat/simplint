@@ -216,11 +216,20 @@ fn nested_test_directory_repeats_are_not_compared(directory: &str, reported: boo
 
 // A nested project is indexed on its own: a name `widget.helper()` in one nested project uses is not a use of another
 // nested project's `helper`, while the same layout outside a test-named directory shares one index.
-#[test_case("roots/test-a", "roots/test-b", &["roots/test-a/support.py:1:5: SMP409 `helper` is never used in the run; \
-    remove it or give it a caller", "roots/test-b/use.py:4:5: SMP409 `run` is never used in the run; remove it or give it \
-    a caller"] ; "nested_projects_are_indexed_apart")]
-#[test_case("roots/fixtures", "roots/other", &["roots/other/use.py:4:5: SMP409 `run` is never used in the run; remove \
-    it or give it a caller"] ; "directories_without_test_names_share_one_index")]
+#[test_case(
+    "roots/test-a",
+    "roots/test-b",
+    &[
+        "roots/test-a/support.py:1:5: SMP409 `helper` is never used in the run; remove it or give it a caller",
+        "roots/test-b/use.py:4:5: SMP409 `run` is never used in the run; remove it or give it a caller",
+    ] ; "nested_projects_are_indexed_apart"
+)]
+#[test_case(
+    "roots/fixtures",
+    "roots/other",
+    &["roots/other/use.py:4:5: SMP409 `run` is never used in the run; remove \
+    it or give it a caller"] ; "directories_without_test_names_share_one_index"
+)]
 fn name_reached_only_from_another_project_is_unused(first: &str, second: &str, expected: &[&str]) {
     let root = project(&[
         (&format!("{first}/conf.py"), ""),

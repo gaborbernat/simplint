@@ -73,10 +73,17 @@ fn test_imports_under_src_do_not_require_exports(files: &[(&str, &str)]) {
 )]
 #[test_case(
     "cli.py",
-    "[build-system]\nrequires = [\"setuptools\"]\nbuild-backend = \"setuptools.build_meta\"\n\
-     [project]\nscripts = { tool = \"cli:run\" }\n[tool.setuptools]\npy-modules = [\"cli\"]\n\
-     [tool.ruff]\nsrc = [\"src\"]\n"
-    ; "flat_layout_py_modules"
+    concat!(
+        "[build-system]\n",
+        "requires = [\"setuptools\"]\n",
+        "build-backend = \"setuptools.build_meta\"\n",
+        "[project]\n",
+        "scripts = { tool = \"cli:run\" }\n",
+        "[tool.setuptools]\n",
+        "py-modules = [\"cli\"]\n",
+        "[tool.ruff]\n",
+        "src = [\"src\"]\n"
+    ) ; "flat_layout_py_modules"
 )]
 #[test_case(
     "src/pkg/cli.py",
@@ -194,9 +201,11 @@ fn stub_only_module_attribute_is_not_reported() {
 #[test_case("backend.pyi", common::PASSED ; "stub_of_the_module")]
 #[test_case(
     "other.pyi",
-    "backend.py:10:7: SMP403 `Missing` is not in `__all__`; name it `_Missing`\nFound 1 error.\n1 unsafe fix available \
-     with `--fix --unsafe-fixes`.\n" ;
-    "stub_of_another_module"
+    concat!(
+        "backend.py:10:7: SMP403 `Missing` is not in `__all__`; name it `_Missing`\n",
+        "Found 1 error.\n",
+        "1 unsafe fix available with `--fix --unsafe-fixes`.\n"
+    ) ; "stub_of_another_module"
 )]
 fn stub_declarations_are_public_api(stub: &str, stdout: &str) {
     let root = project(&[
@@ -226,9 +235,11 @@ fn module_import_is_not_an_export(reference: &str) {
 #[test_case("pkg.manager._load", common::PASSED ; "patched")]
 #[test_case(
     "pkg.manager.run",
-    "pkg/manager.py:1:5: SMP501 `_load` only forwards to `import_module`; call `import_module` at its call sites \
-     instead\nFound 1 error.\n" ;
-    "not_patched"
+    concat!(
+        "pkg/manager.py:1:5: SMP501 `_load` only forwards to `import_module`; call `import_module` at ",
+        "its call sites instead\n",
+        "Found 1 error.\n"
+    ) ; "not_patched"
 )]
 fn patched_forwarding_function_is_a_seam(target: &str, stdout: &str) {
     let root = project(&[
@@ -247,9 +258,11 @@ fn patched_forwarding_function_is_a_seam(target: &str, stdout: &str) {
 #[test_case("", common::PASSED ; "every_public_name")]
 #[test_case(
     "__all__ = [\"run\"]\n",
-    "pkg/data.py:2:1: SMP404 `TAG` is not in `__all__`; name it `_TAG`\nFound 1 error.\n1 unsafe fix available \
-     with `--fix --unsafe-fixes`.\n" ;
-    "listed_names"
+    concat!(
+        "pkg/data.py:2:1: SMP404 `TAG` is not in `__all__`; name it `_TAG`\n",
+        "Found 1 error.\n",
+        "1 unsafe fix available with `--fix --unsafe-fixes`.\n"
+    ) ; "listed_names"
 )]
 fn star_import_reaches_public_names(all: &str, stdout: &str) {
     let root = project(&[
@@ -335,21 +348,37 @@ fn unresolved_star_import_keeps_names_of_modules_by_its_name() {
     ; "namesake"
 )]
 #[test_case(
-    "import pickle\n\n    result = Result(log=\"\")\n    result.log = log\n    pickle.dumps(result, \
-    1)\n", "", "@dataclass" ; "low_protocol_pickle"
+    concat!(
+        "import pickle\n",
+        "\n",
+        "    result = Result(log=\"\")\n",
+        "    result.log = log\n",
+        "    pickle.dumps(result, 1)\n"
+    ),
+    "",
+    "@dataclass" ; "low_protocol_pickle"
 )]
 #[test_case(
-    "from pickle import dumps as write\n\n    result = Result(log=\"\")\n    result.log = log\n    write(result, 1)\n",
+    concat!(
+        "from pickle import dumps as write\n",
+        "\n",
+        "    result = Result(log=\"\")\n",
+        "    result.log = log\n",
+        "    write(result, 1)\n"
+    ),
     "",
-    "@dataclass"
-    ; "low_protocol_aliased_pickle"
+    "@dataclass" ; "low_protocol_aliased_pickle"
 )]
 #[test_case(
-    "import pickle\n\n    result = Result(log=\"\")\n    result.log = log\n    pickle.dumps(result, \
-    protocol=pickle.HIGHEST_PROTOCOL)\n",
+    concat!(
+        "import pickle\n",
+        "\n",
+        "    result = Result(log=\"\")\n",
+        "    result.log = log\n",
+        "    pickle.dumps(result, protocol=pickle.HIGHEST_PROTOCOL)\n"
+    ),
     "",
-    "@dataclass"
-    ; "highest_protocol_pickle"
+    "@dataclass" ; "highest_protocol_pickle"
 )]
 fn dataclass_frozen_reads_writes_in_other_files(body: &str, marker: &str, decorator: &str) {
     let root = project(&[
