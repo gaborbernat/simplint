@@ -337,6 +337,11 @@ impl<'a> FileIndex<'a> {
         self.is_referenced(name) || self.is_api_reached(name)
     }
 
+    // Whether another file imports the module's `__all__`, or reads it off an import of the module, as `module.__all__`.
+    pub fn is_all_read(&self) -> bool {
+        self.is_imported("__all__") || self.referenced.is_some_and(|names| names.contains("__all__"))
+    }
+
     // Whether an `import *` takes every public name of the module, which adding an `__all__` would narrow.
     pub fn is_star_imported(&self) -> bool {
         self.star_imported

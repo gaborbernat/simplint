@@ -1818,6 +1818,26 @@ fn public_module_all_is_the_declared_api(module: &str, stdout: &str) {
     );
 }
 
+// A `__all__` read off a module the index cannot name may be any module's, so it does not exempt the `__all__` of a module
+// the run defines.
+#[test]
+fn all_read_off_an_unnamed_module_keeps_other_modules_checked() {
+    let root = project(&[
+        ("pyproject.toml", DEMO),
+        ("a.py", "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\"LIMIT\", \"local\"]\n"),
+        ("b.py", "from a import LIMIT\n\nprint(LIMIT)\n"),
+        (
+            "tests/test_json.py",
+            "import sys\n\n\ndef test_json_lists_names() -> None:\n    module = sys.modules[\"json\"]\n    assert \"dumps\" in module.__all__\n",
+        ),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP402"]).1,
+        "a.py:8:21: SMP402 [*] `local` is in `__all__`, yet no other module imports it; list only what other modules use\n\
+         Found 1 error.\n[*] 1 fixable with `--fix`.\n"
+    );
+}
+
 #[test_case("from a import __all__ as base\n\n__all__ = [*base, \"Z\"]\n" ; "imported")]
 #[test_case("import a\n\n__all__ = [*a.__all__, \"Z\"]\n" ; "read_through_module")]
 #[test_case("import a\n\nprint([name for name in a.__all__])\n" ; "iterated_through_module")]

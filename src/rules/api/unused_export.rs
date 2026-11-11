@@ -21,7 +21,7 @@ pub fn unused_export(checker: &Checker) {
         || checker.is_init_module()
         || project.role().public
         || project.is_star_import_source()
-        || project.is_referenced("__all__")
+        || project.is_all_read()
         || module_statements(checker.body())
             .any(|stmt| stmt.as_function_def_stmt().is_some_and(|def| def.name.as_str() == "__getattr__"))
     {

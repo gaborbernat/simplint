@@ -256,6 +256,35 @@ __all__ = ["parse"]
     LIMIT: int
     ```
 
+- **Reads of `__all__` off a module the run cannot name**: `sys.modules["json"].__all__` reads the standard library's
+  list, not one of the run's, so it exempts none of them.
+
+  ```python report file=config.py
+  LIMIT = 3
+
+
+  def local() -> int:
+      return 1
+
+
+  __all__ = ["LIMIT", "local"]
+  ```
+
+  ```python context file=cli.py
+  from config import LIMIT
+
+  print(LIMIT)
+  ```
+
+  ```python context file=tests/test_json.py
+  import sys
+
+
+  def test_json_lists_names() -> None:
+      module = sys.modules["json"]
+      assert "dumps" in module.__all__
+  ```
+
 ### Exceptions
 
 - **Public modules of a library**: their `__all__` declares the interface users outside the project import, so no name
