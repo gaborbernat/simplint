@@ -33,15 +33,15 @@ fn long_operator_chain_does_not_crash() {
 fn link_to_a_file_outside_the_run_is_skipped(flags: &[&str]) {
     let outside = tempfile::TempDir::new().expect("temporary directory");
     let target = outside.path().join("secret.py");
-    fs::write(&target, "# --- helpers ---\nVALUE = 1\n").expect("write");
-    let root = project(&[("module.py", "VALUE = 1\n")]);
+    fs::write(&target, common::SECTIONED).expect("write");
+    let root = project(&[("module.py", common::CLEAN_MODULE)]);
     std::os::unix::fs::symlink(&target, root.path().join("link.py")).expect("symlink");
     let (code, stdout, stderr) = check(root.path(), flags);
     assert_eq!(
         (code, stdout.contains("helpers"), stderr.contains("Skipped symlink"), stderr.contains("link.py")),
         (0, false, true, true)
     );
-    assert_eq!(read(outside.path(), "secret.py"), "# --- helpers ---\nVALUE = 1\n");
+    assert_eq!(read(outside.path(), "secret.py"), common::SECTIONED);
 }
 
 // A link whose target is in the run is linted as any file is, unless the run also finds the target, which is then linted
@@ -64,12 +64,12 @@ fn link_inside_the_run_is_linted_once(paths: &[&str], reported: (bool, bool)) {
 #[cfg(unix)]
 #[test]
 fn file_reached_through_a_link_is_fixed_once() {
-    let root = project(&[("module.py", "# --- helpers ---\nVALUE = 1\n")]);
+    let root = project(&[("module.py", common::SECTIONED)]);
     std::os::unix::fs::symlink("module.py", root.path().join("link.py")).expect("symlink");
     let (code, stdout, _) = check(root.path(), &["--fix", "--select", "SMP001"]);
     assert_eq!(
         (code, stdout.contains("Found 1 error (1 fixed, 0 remaining)"), read(root.path(), "module.py")),
-        (0, true, "VALUE = 1\n".to_owned())
+        (0, true, common::CLEAN_MODULE.to_owned())
     );
 }
 
@@ -91,7 +91,7 @@ fn hard_links_to_one_file_are_linted_once() {
 fn suppression_refuses_standard_input(flag: &str) {
     let source = "def run(x):\n    return x\n";
     let root = project(&[("module.py", source)]);
-    let (code, _, stderr) = check_with_stdin(root.path(), &["--select", "SMP101", flag, "-"], "VALUE = 1\n");
+    let (code, _, stderr) = check_with_stdin(root.path(), &["--select", "SMP101", flag, "-"], common::CLEAN_MODULE);
     assert_eq!(
         (code, stderr.contains(&format!("{flag} cannot be used with standard input")), read(root.path(), "module.py")),
         (2, true, source.to_owned())

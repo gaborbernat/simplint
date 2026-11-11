@@ -134,7 +134,7 @@ fn docstring_comment_stays_after_removal(file: &str, source: &str, select: &str,
 // module's.
 #[test_case(
     "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    help = __doc__\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "class_body_reads_it"
 )]
 #[test_case(
@@ -149,22 +149,22 @@ fn docstring_comment_stays_after_removal(file: &str, source: &str, select: &str,
 )]
 #[test_case(
     "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    def run(self, text=__doc__):\n        return text\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "method_default_reads_it"
 )]
 #[test_case(
     "def show(text):\n    return lambda func: func\n\n\nclass Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    @show(__doc__)\n    def run(self):\n        return 1\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "decorator_reads_it"
 )]
 #[test_case(
     "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    run = staticmethod(lambda text=__doc__: text)\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "lambda_default_reads_it"
 )]
 #[test_case(
     "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    class Inner(dict, doc=__doc__):\n        pass\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "nested_class_header_reads_it"
 )]
 #[test_case(
@@ -179,7 +179,7 @@ fn docstring_comment_stays_after_removal(file: &str, source: &str, select: &str,
 )]
 #[test_case(
     "def show(text):\n    return lambda func: func\n\n\nclass Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    @show(__doc__)\n    class Inner:\n        pass\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "nested_class_decorator_reads_it"
 )]
 fn class_body_reading_doc_keeps_its_docstring(source: &str, stdout: &str) {
@@ -266,17 +266,17 @@ fn function_docstring_comment_waits_for_a_removed_statement() {
 // dataclass keeps the name.
 #[test_case(
     "from attrs import define\n\n@define\nclass Point:\n    \"\"\"A point.\n\n    :param x: Where it sits.\n    \"\"\"\n\n    _x: int\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "attrs_without_underscores"
 )]
 #[test_case(
     "from attrs import define, field\n\n@define\nclass Point:\n    \"\"\"A point.\n\n    :param pos: Where it sits.\n    \"\"\"\n\n    _x: int = field(alias=\"pos\")\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "attrs_alias"
 )]
 #[test_case(
     "from dataclasses import dataclass\n\n@dataclass\nclass Point:\n    \"\"\"A point.\n\n    :param _x: Where it sits.\n    \"\"\"\n\n    _x: int\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "dataclass_keeps_name"
 )]
 #[test_case(
@@ -286,7 +286,7 @@ fn function_docstring_comment_waits_for_a_removed_statement() {
 )]
 #[test_case(
     "from attrs import define, field\n\nPOS = \"pos\"\n\n\n@define\nclass Point:\n    \"\"\"A point.\n\n    :param pos: Where it sits.\n    \"\"\"\n\n    _x: int = field(alias=POS)\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "attrs_alias_not_a_literal_is_unknown"
 )]
 fn constructor_parameters_follow_the_generator(source: &str, stdout: &str) {
@@ -319,12 +319,12 @@ fn attrs_private_field_is_a_documented_parameter() {
 // for the fields of a value it has not written. A body with code is held to the same rules.
 #[test_case(
     "from collections.abc import Iterator\n\n\ndef rows() -> Iterator[str]:\n    \"\"\"Read the rows.\n\n    :yields: Each row.\n    \"\"\"\n    ...\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "placeholder_yields"
 )]
 #[test_case(
     "def rows():\n    \"\"\"Read the rows.\n\n    :yields: Each row.\n    \"\"\"\n    raise NotImplementedError\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "placeholder_raises"
 )]
 #[test_case(
@@ -351,7 +351,7 @@ fn placeholder_body_documents_no_return(source: &str, stdout: &str) {
 // The members of a class include those in its `if` blocks and the loop variables of its body, so a field documents them.
 #[test_case(
     "import sys\n\n\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar speed: Units per second.\n    :ivar run: The entry point.\n    :ivar size: How many jobs wait.\n    \"\"\"\n\n    if sys.version_info >= (3, 12):\n\n        @property\n        def speed(self) -> int:\n            return 2\n\n    else:\n\n        def run(self) -> None:\n            pass\n\n    for size in (1, 2):\n        pass\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "members_in_blocks_and_loops"
 )]
 #[test_case(
@@ -375,7 +375,7 @@ fn rst_rules_need_the_docstring_style() {
             "def run(path: str) -> str:\n    \"\"\"Run.\n\n    :parm path: Where.\n    \"\"\"\n    return path\n",
         ),
     ]);
-    assert_eq!(common::check(root.path(), &["--select", "SMP91,SMP92"]).1, "All checks passed!\n");
+    assert_eq!(common::check(root.path(), &["--select", "SMP91,SMP92"]).1, common::PASSED);
 }
 
 // Sphinx reads `kwarg` and `kwparam` as spellings of `param`, and `paramtype` as one of `type`, so the fields document

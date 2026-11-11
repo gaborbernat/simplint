@@ -143,9 +143,9 @@ fn missing_from_all_ignores_test_only_imports(exports: &str, production: &str, e
 #[test]
 fn init_module_content_allows_test_packages_and_pep_562_hooks() {
     let root = common::project(&[
-        ("tests/__init__.py", "VALUE = 1\n"),
+        ("tests/__init__.py", common::CLEAN_MODULE),
         ("roots/test-example/pyproject.toml", "[project]\nname = \"example\"\n"),
-        ("roots/test-example/package/__init__.py", "VALUE = 1\n"),
+        ("roots/test-example/package/__init__.py", common::CLEAN_MODULE),
         (
             "package/__init__.py",
             "from typing import TYPE_CHECKING\n\nif TYPE_CHECKING:\n    from package import model\n\n\ndef __getattr__(name: str):\n    return name\n\n\ndef __dir__():\n    return []\n\nVALUE = 1\n",
@@ -172,8 +172,8 @@ fn init_module_content_allows_explicit_api_in_applications() {
 #[test]
 fn missing_from_all_allows_main_modules() {
     let root = common::project(&[
-        ("package/__main__.py", "VALUE = 1\n"),
-        ("package/module.py", "VALUE = 1\n"),
+        ("package/__main__.py", common::CLEAN_MODULE),
+        ("package/module.py", common::CLEAN_MODULE),
         ("package/user.py", "from package.module import VALUE\n\nprint(VALUE)\n"),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP401"]);
@@ -368,7 +368,7 @@ const RUF067_STRICT: &str = "[tool.ruff.lint]\npreview = true\nselect = [\"RUF06
 // RUF067 reports the statements of an `__init__.py` only in preview mode, and then the statements it does not allow, so
 // the run leaves those to Ruff. The default allows imports, dunder assignments and `if TYPE_CHECKING` blocks, and a
 // project that bans all code leaves nothing to the run but attribute docstrings.
-#[test_case(RUF067_PREVIEW, "VALUE = 1\n", 0 ; "preview_assignment")]
+#[test_case(RUF067_PREVIEW, common::CLEAN_MODULE, 0 ; "preview_assignment")]
 #[test_case(RUF067_PREVIEW, "import os\n", 1 ; "preview_import_allowed")]
 #[test_case(RUF067_PREVIEW, "__version__ = \"1\"\n", 1 ; "preview_dunder_allowed")]
 #[test_case(RUF067_PREVIEW, "if TYPE_CHECKING:\n    pass\n", 0 ; "preview_type_checking_allowed")]
@@ -377,7 +377,7 @@ const RUF067_STRICT: &str = "[tool.ruff.lint]\npreview = true\nselect = [\"RUF06
 #[test_case(RUF067_PREVIEW, "def helper() -> None:\n    pass\n\n\"stray\"\n", 0 ; "preview_stray_string")]
 #[test_case(RUF067_STRICT, "import os\n", 0 ; "preview_strict_import")]
 #[test_case(RUF067_STRICT, "X = 1\n\"\"\"Doc of X.\"\"\"\n", 1 ; "preview_strict_attribute_docstring")]
-#[test_case("[tool.ruff.lint]\nselect = [\"RUF067\"]\n", "VALUE = 1\n", 1 ; "preview_off_leaves_it_to_the_run")]
+#[test_case("[tool.ruff.lint]\nselect = [\"RUF067\"]\n", common::CLEAN_MODULE, 1 ; "preview_off_leaves_it_to_the_run")]
 #[test_case(RUF067_PREVIEW, "__all__: list[str] = []\n", 0 ; "preview_dunder_annotated_allowed")]
 #[test_case(RUF067_PREVIEW, "__all__ += [\"x\"]\n", 1 ; "preview_dunder_augmented_allowed")]
 #[test_case(RUF067_PREVIEW, "counter += 1\n", 0 ; "preview_augmented_reported")]
@@ -435,7 +435,7 @@ fn unused_definition_keeps_framework_hooks_called_by_name() {
     )]);
     let (_, stdout, _) =
         common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP409", "--output-format", "concise"]);
-    assert_eq!(stdout, "All checks passed!\n");
+    assert_eq!(stdout, common::PASSED);
 }
 
 // A definition a page of the project's documentation names is used: by a Sphinx role, an autodoc directive, or the
@@ -736,7 +736,7 @@ fn unresolved_import_does_not_change_the_module_variables_of_other_modules() {
         ("app/other.py", "from itertools import count\n\nprint(count)\n"),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--select", "SMP102,SMP404"]);
-    assert_eq!(stdout, "All checks passed!\n");
+    assert_eq!(stdout, common::PASSED);
 }
 
 // A name an unresolved import may read keeps its report, and only the rename is withheld.
@@ -785,7 +785,7 @@ fn documented_function_is_not_test_only_code() {
         ),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--select", "SMP408"]);
-    assert_eq!(stdout, "All checks passed!\n");
+    assert_eq!(stdout, common::PASSED);
 }
 
 // A listed name with a leading underscore keeps its name in a public module of a library, so its report asks for the
@@ -812,5 +812,5 @@ fn doctest_relative_import_counts_as_a_read_of_the_name() {
         ("app/cli.py", "def run() -> None:\n    \"\"\"Run.\n\n    >>> from .mod import LIMIT\n    \"\"\"\n"),
     ]);
     let (_, stdout, _) = common::check(root.path(), &["--select", "SMP404"]);
-    assert_eq!(stdout, "All checks passed!\n");
+    assert_eq!(stdout, common::PASSED);
 }

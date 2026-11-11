@@ -320,7 +320,7 @@ fn unused_ignore_keeps_required_selectors() {
     let root = project(&[("module.py", source)]);
     assert_eq!(
         check(root.path(), &["--select", "SMP101,SMP009", "--fix"]),
-        (0, "All checks passed!\n".to_owned(), String::new())
+        (0, common::PASSED.to_owned(), String::new())
     );
     assert_eq!(read(root.path(), "module.py"), source);
 }

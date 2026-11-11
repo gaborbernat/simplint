@@ -201,7 +201,7 @@ fn sibling_package(prefix: &str) -> Vec<(String, &'static str)> {
     [
         ("package/__init__.py", ""),
         ("package/sub/__init__.py", ""),
-        ("package/sub/sibling.py", "VALUE = 1\n"),
+        ("package/sub/sibling.py", common::CLEAN_MODULE),
         ("package/sub/module.py", "from package.sub import sibling\n"),
     ]
     .map(|(name, content)| (format!("{prefix}{name}"), content))
@@ -688,7 +688,7 @@ fn lazy_modules_list_matches_a_relative_import_by_its_module(
     let root = common::project(&[
         ("pyproject.toml", "[project]\nname = \"x\"\nversion = \"0\"\nrequires-python = \">=3.15\"\n"),
         ("pkg/__init__.py", ""),
-        ("pkg/helper.py", "VALUE = 1\n"),
+        ("pkg/helper.py", common::CLEAN_MODULE),
         ("pkg/other.py", "VALUE = 2\n"),
         (
             "pkg/consumer.py",

@@ -49,7 +49,7 @@ fn check_watch_reruns_when_a_hook_configuration_turns_the_rule_off(name: &str, c
     let root = project(&[
         ("package/__init__.py", ""),
         ("package/sub/__init__.py", ""),
-        ("package/sub/sibling.py", "VALUE = 1\n"),
+        ("package/sub/sibling.py", common::CLEAN_MODULE),
         ("package/sub/module.py", "from package.sub import sibling\n"),
     ]);
     let mut watched = Watched::start(root.path(), &["--select", "absolute-sibling-import"]);

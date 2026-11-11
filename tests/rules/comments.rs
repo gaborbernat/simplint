@@ -29,7 +29,7 @@ fn numeric_ignore_fixes_known_codes_and_keeps_the_reason() {
 #[test]
 fn named_ignore_needs_no_migration() {
     let root = common::project(&[("module.py", "x = 1  # simplint: ignore[single-letter-name] # external name\n")]);
-    assert_eq!(common::check(root.path(), &["--select", "SMP008"]).1, "All checks passed!\n");
+    assert_eq!(common::check(root.path(), &["--select", "SMP008"]).1, common::PASSED);
 }
 
 // Ruff's PGH003, PGH004 and RUF103 report a blanket directive, which SMP004 leaves to them while the project's Ruff

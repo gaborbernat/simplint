@@ -133,7 +133,7 @@ fn check_statistics_marks_partly_fixable_rules() {
 
 #[test]
 fn check_statistics_of_a_clean_project_prints_nothing() {
-    let root = project(&[("module.py", "VALUE = 1\n")]);
+    let root = project(&[("module.py", common::CLEAN_MODULE)]);
     assert_eq!(check(root.path(), &["--statistics", "--select", "SMP101"]), (0, String::new(), String::new()));
 }
 
@@ -195,10 +195,7 @@ fn preview_shows_codes_only_for_rules() {
 
 #[test]
 fn preview_names_rules_as_ruff_does() {
-    let root = project(&[
-        ("pyproject.toml", "[tool.ruff]\npreview = true\n"),
-        ("module.py", "# --- helpers ---\nVALUE = 1\n"),
-    ]);
+    let root = project(&[("pyproject.toml", "[tool.ruff]\npreview = true\n"), ("module.py", common::SECTIONED)]);
     let reported = check(root.path(), &["--select", "SMP001"]).1;
     let fixed = check(root.path(), &["--select", "SMP001", "--fix", "--show-fixes"]).1;
     assert_eq!(

@@ -9,11 +9,11 @@ use common::{check, fix_unsafe, project, read};
 
 #[test]
 fn check_fix_writes_file() {
-    let root = project(&[("module.py", "# --- helpers ---\nVALUE = 1\n")]);
+    let root = project(&[("module.py", common::SECTIONED)]);
     let result = check(root.path(), &["--fix", "--select", "SMP001"]);
     assert_eq!(
         (result, read(root.path(), "module.py")),
-        ((0, "Found 1 error (1 fixed, 0 remaining).\n".to_owned(), String::new()), "VALUE = 1\n".to_owned())
+        ((0, common::ONE_FIXED.to_owned(), String::new()), common::CLEAN_MODULE.to_owned())
     );
 }
 
@@ -25,7 +25,7 @@ fn check_fix_writes_file() {
     "hinted_by_default"
 )]
 #[test_case(
-    &["--fix", "--unsafe-fixes"], "Found 1 error (1 fixed, 0 remaining).\n", "def run() -> None:\n    print()\n" ;
+    &["--fix", "--unsafe-fixes"], common::ONE_FIXED, "def run() -> None:\n    print()\n" ;
     "applied_when_enabled"
 )]
 #[test_case(
@@ -61,7 +61,7 @@ fn check_safe_and_unsafe_fixes_are_counted_apart() {
 
 #[test]
 fn check_diff_prints_without_writing() {
-    let source = "# --- helpers ---\nVALUE = 1\n";
+    let source = common::SECTIONED;
     let root = project(&[("module.py", source)]);
     let (code, stdout, _) = check(root.path(), &["--diff", "--select", "SMP001"]);
     assert_eq!(
@@ -77,14 +77,14 @@ fn check_diff_prints_without_writing() {
 
 #[test]
 fn check_diff_without_fixes_prints_nothing() {
-    let root = project(&[("module.py", "VALUE = 1\n")]);
+    let root = project(&[("module.py", common::CLEAN_MODULE)]);
     assert_eq!(check(root.path(), &["--diff", "--select", "SMP101"]), (0, String::new(), String::new()));
 }
 
 #[test]
 fn check_diff_prints_files_in_order() {
     let names: Vec<String> = (0..20).map(|index| format!("module{index:02}.py")).collect();
-    let files: Vec<(&str, &str)> = names.iter().map(|name| (name.as_str(), "# --- helpers ---\nVALUE = 1\n")).collect();
+    let files: Vec<(&str, &str)> = names.iter().map(|name| (name.as_str(), common::SECTIONED)).collect();
     let root = project(&files);
     let mut diffs = String::new();
     for name in &names {
@@ -98,9 +98,9 @@ fn check_diff_prints_files_in_order() {
 
 #[test_case(&["--fix-only"], 0, "Fixed 1 error.\n" ; "fix_only")]
 #[test_case(&["--fix-only", "--exit-non-zero-on-fix"], 1, "Fixed 1 error.\n" ; "fix_only_exit_non_zero")]
-#[test_case(&["--fix", "--exit-non-zero-on-fix"], 1, "Found 1 error (1 fixed, 0 remaining).\n" ; "fix_exit_non_zero")]
+#[test_case(&["--fix", "--exit-non-zero-on-fix"], 1, common::ONE_FIXED ; "fix_exit_non_zero")]
 fn check_fix_exit_status(flags: &[&str], code: i32, stdout: &str) {
-    let root = project(&[("module.py", "# --- helpers ---\nVALUE = 1\n")]);
+    let root = project(&[("module.py", common::SECTIONED)]);
     let mut args = vec!["--select", "SMP001"];
     args.extend_from_slice(flags);
     assert_eq!(check(root.path(), &args), (code, stdout.to_owned(), String::new()));
@@ -108,7 +108,7 @@ fn check_fix_exit_status(flags: &[&str], code: i32, stdout: &str) {
 
 #[test]
 fn check_fix_only_reports_unsafe_fixes_left() {
-    let root = project(&[("module.py", "def run() -> None:\n    \"\"\"Run.\"\"\"\n    print()\n")]);
+    let root = project(&[("module.py", DOCUMENTED)]);
     assert_eq!(
         check(root.path(), &["--fix-only", "--select", "SMP901"]),
         (0, "No errors fixed (1 fix available with `--unsafe-fixes`).\n".to_owned(), String::new())
@@ -126,7 +126,7 @@ fn check_fix_only_reports_fixed_and_unsafe_fixes_left() {
 
 #[test]
 fn check_show_fixes_lists_what_was_fixed() {
-    let root = project(&[("module.py", "# --- helpers ---\nVALUE = 1\n")]);
+    let root = project(&[("module.py", common::SECTIONED)]);
     assert_eq!(
         check(root.path(), &["--fix", "--show-fixes", "--select", "SMP001"]).1,
         "\nFixed 1 error:\n- module.py:\n    1 × SMP001 (section-comment)\n\nFound 1 error (1 fixed, 0 remaining).\n"
@@ -135,7 +135,7 @@ fn check_show_fixes_lists_what_was_fixed() {
 
 #[test]
 fn check_fix_on_read_only_file_is_reported() {
-    let root = project(&[("module.py", "# --- helpers ---\nVALUE = 1\n")]);
+    let root = project(&[("module.py", common::SECTIONED)]);
     common::make_read_only(&root.path().join("module.py"));
     let stdout = check(root.path(), &["--fix", "--select", "SMP001"]).1;
     assert_eq!((stdout.starts_with("module.py:1:1: E902 writing"), stdout.contains("(os error")), (true, true));
@@ -145,33 +145,33 @@ fn check_fix_on_read_only_file_is_reported() {
 #[test]
 fn check_fix_keeps_the_file_mode() {
     use std::os::unix::fs::PermissionsExt;
-    let root = project(&[("module.py", "# --- helpers ---\nVALUE = 1\n")]);
+    let root = project(&[("module.py", common::SECTIONED)]);
     common::set_mode(&root.path().join("module.py"), 0o751);
     check(root.path(), &["--fix", "--select", "SMP001"]);
     let mode = std::fs::metadata(root.path().join("module.py")).expect("metadata").permissions().mode();
-    assert_eq!((mode & 0o777, read(root.path(), "module.py")), (0o751, "VALUE = 1\n".to_owned()));
+    assert_eq!((mode & 0o777, read(root.path(), "module.py")), (0o751, common::CLEAN_MODULE.to_owned()));
 }
 
 #[cfg(unix)]
 #[test]
 fn check_fix_writes_through_a_symlink() {
-    let root = project(&[("source.txt", "# --- helpers ---\nVALUE = 1\n")]);
+    let root = project(&[("source.txt", common::SECTIONED)]);
     std::os::unix::fs::symlink("source.txt", root.path().join("module.py")).expect("symlink");
     check(root.path(), &["--fix", "--select", "SMP001", "module.py"]);
     let link = std::fs::symlink_metadata(root.path().join("module.py")).expect("metadata");
-    assert_eq!((link.is_symlink(), read(root.path(), "source.txt")), (true, "VALUE = 1\n".to_owned()));
+    assert_eq!((link.is_symlink(), read(root.path(), "source.txt")), (true, common::CLEAN_MODULE.to_owned()));
 }
 
 #[cfg(unix)]
 #[test]
 fn check_fix_keeps_the_file_and_its_hard_links() {
     use std::os::unix::fs::MetadataExt;
-    let root = project(&[("module.py", "# --- helpers ---\nVALUE = 1\n")]);
+    let root = project(&[("module.py", common::SECTIONED)]);
     std::fs::hard_link(root.path().join("module.py"), root.path().join("link.txt")).expect("hard link");
     let inode = std::fs::metadata(root.path().join("module.py")).expect("metadata").ino();
     check(root.path(), &["--fix", "--select", "SMP001", "module.py"]);
     let after = std::fs::metadata(root.path().join("module.py")).expect("metadata").ino();
-    assert_eq!((after, read(root.path(), "link.txt")), (inode, "VALUE = 1\n".to_owned()));
+    assert_eq!((after, read(root.path(), "link.txt")), (inode, common::CLEAN_MODULE.to_owned()));
 }
 
 #[test_case(&[], true ; "fixable_by_default")]
@@ -182,7 +182,7 @@ fn check_fix_keeps_the_file_and_its_hard_links() {
 #[test_case(&["--unfixable", "SMP0", "--extend-fixable", "SMP001"], true ; "specific_fixable_wins")]
 #[test_case(&["--config", "unfixable = ['SMP001']"], false ; "inline_config")]
 fn fixable_flags(flags: &[&str], fixable: bool) {
-    let root = project(&[("module.py", "# --- helpers ---\nVALUE = 1\n")]);
+    let root = project(&[("module.py", common::SECTIONED)]);
     let mut args = vec!["--select", "SMP001"];
     args.extend_from_slice(flags);
     assert_eq!(check(root.path(), &args).1.contains("[*]"), fixable);
@@ -233,29 +233,29 @@ fn fix_lets_ruff_clean_up_over_several_passes() {
     assert_eq!(read(root.path(), "module.py"), "\n\ndef limit() -> int:\n    return 3 + 1\n");
 }
 
-// Ruff's PLR2004 would report the value the fix inlines into a comparison.
-const RUFF_PLR2004: (&str, &str) = ("pyproject.toml", "[tool.ruff.lint]\nselect = [\"PLR2004\"]\n");
-const COMPARED: &str = "_LIMIT = 3\n\n\ndef over(value: int) -> bool:\n    return value > _LIMIT\n";
 const SINGLE_USER: &str = "SMP202 `_LIMIT` is used by one function only; define it there";
 
 #[test]
 fn fix_is_withdrawn_when_ruff_would_report_the_result() {
-    let root = project(&[RUFF_PLR2004, ("module.py", COMPARED)]);
+    let root = project(&[common::RUFF_PLR2004, ("module.py", common::COMPARED)]);
     let stdout = fix_unsafe(root.path(), "SMP202").1;
     assert_eq!(
         (stdout, read(root.path(), "module.py")),
-        (format!("module.py:1:1: {SINGLE_USER}\nFound 1 error.\n"), COMPARED.to_owned())
+        (format!("module.py:1:1: {SINGLE_USER}\nFound 1 error.\n"), common::COMPARED.to_owned())
     );
 }
 
 #[test]
 fn fix_withdraws_only_the_rule_whose_result_ruff_would_report() {
-    let source = COMPARED.replace("def", "# --- helpers ---\ndef");
-    let root = project(&[RUFF_PLR2004, ("module.py", &source)]);
+    let source = common::COMPARED.replace("def", "# --- helpers ---\ndef");
+    let root = project(&[common::RUFF_PLR2004, ("module.py", &source)]);
     let stdout = fix_unsafe(root.path(), "SMP001,SMP202").1;
     assert_eq!(
         (stdout, read(root.path(), "module.py")),
-        (format!("module.py:1:1: {SINGLE_USER}\nFound 2 errors (1 fixed, 1 remaining).\n"), COMPARED.to_owned())
+        (
+            format!("module.py:1:1: {SINGLE_USER}\nFound 2 errors (1 fixed, 1 remaining).\n"),
+            common::COMPARED.to_owned()
+        )
     );
 }
 
@@ -381,8 +381,8 @@ fn ruff_violations_already_present_are_not_fixed_by_simplint() {
 
 #[test]
 fn fix_is_withdrawn_when_ruff_already_reports_the_same_rule_elsewhere() {
-    let source = format!("def first(value: int) -> bool:\n    return value > 7\n\n\n{COMPARED}");
-    let root = project(&[RUFF_PLR2004, ("module.py", &source)]);
+    let source = format!("def first(value: int) -> bool:\n    return value > 7\n\n\n{}", common::COMPARED);
+    let root = project(&[common::RUFF_PLR2004, ("module.py", &source)]);
     let stdout = fix_unsafe(root.path(), "SMP202").1;
     assert_eq!(
         (stdout, read(root.path(), "module.py")),
@@ -499,7 +499,7 @@ fn fix_settles_constructors_with_the_methods_that_call_them() {
         (read(root.path(), "module.py"), check(root.path(), &["--select", "SMP201,SMP203"])),
         (
             "class Holder:\n    def __init__(self) -> None:\n        self.value = self.helper()\n\n    def helper(self) -> int:\n        return 1\n\n    def reset(self) -> None:\n        self.__init__()\n".to_owned(),
-            (0, "All checks passed!\n".to_owned(), String::new())
+            (0, common::PASSED.to_owned(), String::new())
         )
     );
 }
@@ -517,7 +517,7 @@ fn fix_places_a_helper_after_the_constructor_that_calls_it() {
         (read(root.path(), "module.py"), check(root.path(), &["--select", "SMP201,SMP203"])),
         (
             "class Holder:\n    def __init_subclass__(cls) -> None:\n        cls.compile()\n\n    @classmethod\n    def compile(cls) -> None:\n        pass\n\n    def run(self) -> int:\n        return 1\n".to_owned(),
-            (0, "All checks passed!\n".to_owned(), String::new())
+            (0, common::PASSED.to_owned(), String::new())
         )
     );
 }
@@ -632,7 +632,7 @@ fn fix_lints_again_the_files_another_fix_changed_the_facts_of() {
             "Found 3 errors (3 fixed, 0 remaining).\n".to_owned(),
             "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass User:\n    uuid: int\n"
                 .to_owned(),
-            "All checks passed!\n".to_owned()
+            common::PASSED.to_owned()
         )
     );
 }

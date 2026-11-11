@@ -221,7 +221,7 @@ fn clean_keeps_links_and_what_they_point_at(ruff_cache_is_link: bool) {
     let outside = tempfile::TempDir::new().expect("temporary directory");
     fs::create_dir_all(outside.path().join("simplint/0.1.0")).expect("create");
     fs::write(outside.path().join("simplint/0.1.0/1234"), "").expect("write");
-    let root = project(&[("module.py", "VALUE = 1\n")]);
+    let root = project(&[("module.py", common::CLEAN_MODULE)]);
     let (link, target) = if ruff_cache_is_link {
         (root.path().join(".ruff_cache"), outside.path().to_path_buf())
     } else {

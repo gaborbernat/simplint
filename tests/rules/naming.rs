@@ -195,7 +195,7 @@ fn rule(rule: &str, fixture: &str) {
     common::assert_rule_snapshot(rule, fixture, "py314");
 }
 
-#[test_case("docs/conf.py", "All checks passed!\n" ; "sphinx_conf")]
+#[test_case("docs/conf.py", common::PASSED ; "sphinx_conf")]
 #[test_case(
     "docs/settings.py",
     "docs/settings.py:1:1: SMP102 Module-scope variable `project` should be named `PROJECT`\ndocs/settings.py:2:1: \

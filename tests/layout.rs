@@ -196,10 +196,7 @@ fn fix_is_withdrawn_under_format_settings(pyproject: &str, source: &str, select:
     "long line the fix does not touch"
 )]
 fn fix_is_kept_when_a_layout_fits(line_length: usize, source: &str, select: &str, expected: &str) {
-    assert_eq!(
-        fixed(line_length, source, select),
-        (0, "Found 1 error (1 fixed, 0 remaining).\n".to_owned(), expected.to_owned())
-    );
+    assert_eq!(fixed(line_length, source, select), (0, common::ONE_FIXED.to_owned(), expected.to_owned()));
 }
 
 // The formatter starts a line with the operator when it splits a binary operation, `not in` included, but never with
@@ -216,7 +213,7 @@ fn fix_is_kept_when_a_layout_fits(line_length: usize, source: &str, select: &str
     41,
     "_SKIP = \"some words that are long\"\n\n\ndef skipped(name: str) -> bool:\n    return name not in _SKIP\n",
     0,
-    "Found 1 error (1 fixed, 0 remaining).\n",
+    common::ONE_FIXED,
     "def skipped(name: str) -> bool:\n    return name not in \"some words that are long\"\n" ;
     "operand after not in"
 )]

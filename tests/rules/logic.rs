@@ -176,11 +176,7 @@ fn walrus_candidate_leaving_collapsible_if_is_merged(outer: &str, assignment: &s
     let result = read(root.path(), "module.py");
     assert_eq!(
         (code, stdout.as_str(), result),
-        (
-            0,
-            "Found 1 error (1 fixed, 0 remaining).\n",
-            format!("def run(text, flag):\n    {merged}\n        return text\n")
-        )
+        (0, common::ONE_FIXED, format!("def run(text, flag):\n    {merged}\n        return text\n"))
     );
 }
 
@@ -204,7 +200,7 @@ fn walrus_candidate_keeping_if_branches_is_fixed(body: &str, fixed: &str) {
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP502", "--fix"]);
     assert_eq!(
         (code, stdout.as_str(), read(root.path(), "module.py")),
-        (0, "Found 1 error (1 fixed, 0 remaining).\n", format!("def run(text, flag):\n{fixed}"))
+        (0, common::ONE_FIXED, format!("def run(text, flag):\n{fixed}"))
     );
 }
 
@@ -489,7 +485,7 @@ fn unused_default_leaves_the_public_api_alone() {
         ("main.py", "from core import connect\n\nconnect(\"a\", 1)\n"),
     ]);
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP506"]);
-    assert_eq!((code, stdout.as_str()), (0, "All checks passed!\n"));
+    assert_eq!((code, stdout.as_str()), (0, common::PASSED));
 }
 
 // Outside code calls the public methods of a public class, not its private ones, so a private method keeps its judgment.
@@ -565,7 +561,7 @@ fn unused_default_leaves_star_imported_modules_alone() {
         ("main.py", "from core import *\n\nconnect(\"a\", 1)\n"),
     ]);
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP506"]);
-    assert_eq!((code, stdout.as_str()), (0, "All checks passed!\n"));
+    assert_eq!((code, stdout.as_str()), (0, common::PASSED));
 }
 
 // Test modules may assert on the messages their code raises.
@@ -576,7 +572,7 @@ fn error_message_matching_leaves_test_modules_alone() {
         "def test_load():\n    try:\n        load()\n    except OSError as exc:\n        assert \"gone\" in str(exc)\n",
     )]);
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
-    assert_eq!((code, stdout.as_str()), (0, "All checks passed!\n"));
+    assert_eq!((code, stdout.as_str()), (0, common::PASSED));
 }
 
 // Ruff's PT017 reports an `assert` naming the exception, which SMP507 leaves to it while the project's Ruff
@@ -700,7 +696,7 @@ fn error_message_matching_stops_at_rebound_class_cycles() {
     let source = "def outer():\n    class B(Exception):\n        pass\n\n    class A(B):\n        pass\n\n    class B(A):\n        pass\n\n    def inner(f, other: A):\n        try:\n            f()\n        except OSError as exc:\n            return str(exc) == str(other)\n    return inner\n";
     let root = common::project(&[("module.py", source)]);
     let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
-    assert_eq!(stdout.as_str(), "All checks passed!\n");
+    assert_eq!(stdout.as_str(), common::PASSED);
 }
 
 // An exception class of the file counts as an exception type for a parameter annotation.
@@ -711,7 +707,7 @@ fn error_message_matching_reads_exception_classes_of_the_file() {
         "class Offset(Exception):\n    pass\n\n\ndef replay(target, error: Offset):\n    try:\n        target()\n    except Offset as replay_error:\n        return replay_error.args == error.args\n",
     )]);
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP507"]);
-    assert_eq!((code, stdout.as_str()), (0, "All checks passed!\n"));
+    assert_eq!((code, stdout.as_str()), (0, common::PASSED));
 }
 
 // A class the run defines that a star import brings into the module, which the annotation then names.
@@ -1182,7 +1178,7 @@ fn context_var_token_local_named_like_an_imported_name_is_still_fixed() {
         (code, stdout.as_str(), read(root.path(), "state.py")),
         (
             0,
-            "Found 1 error (1 fixed, 0 remaining).\n",
+            common::ONE_FIXED,
             "import contextvars\n\nrequest_id = contextvars.ContextVar(\"request_id\")\n\n\ndef handle(value):\n    with request_id.set(value):\n        run()\n".to_owned()
         )
     );
@@ -1217,7 +1213,7 @@ fn chdir_restore_fixes_after_a_comment_ending_in_backslash() {
     let (code, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP513", "--fix"]);
     assert_eq!(
         (code, stdout.as_str(), read(root.path(), "mod.py")),
-        (0, "Found 1 error (1 fixed, 0 remaining).\n", "import contextlib\nimport os\n\nstarted = True  # see \\\nwith contextlib.chdir(\"..\"):\n    print(os.getcwd(), started)\n".to_owned())
+        (0, common::ONE_FIXED, "import contextlib\nimport os\n\nstarted = True  # see \\\nwith contextlib.chdir(\"..\"):\n    print(os.getcwd(), started)\n".to_owned())
     );
 }
 
@@ -1236,7 +1232,7 @@ fn chdir_restore_import_goes_above_the_comment_of_the_import_it_precedes() {
         (code, stdout.as_str(), read(root.path(), "block.py")),
         (
             0,
-            "Found 1 error (1 fixed, 0 remaining).\n",
+            common::ONE_FIXED,
             "import abc\nimport contextlib\n# os: the build runs in the target directory\nimport os\nimport sys\n\n\ndef run(target):\n    with contextlib.chdir(target):\n        return abc, sys, os.listdir()\n".to_owned()
         )
     );
@@ -1258,7 +1254,7 @@ fn chdir_restore_import_skips_a_docstring_line_starting_with_hash() {
         (code, stdout.as_str(), read(root.path(), "h.py")),
         (
             0,
-            "Found 1 error (1 fixed, 0 remaining).\n",
+            common::ONE_FIXED,
             "\"\"\"Doc.\n\n# heading\"\"\"\nimport contextlib\n\n# comment\nVALUE = 1\n\n\ndef run(target):\n    import os\n\n    with contextlib.chdir(target):\n        return os.listdir()\n".to_owned()
         )
     );
@@ -1279,7 +1275,7 @@ fn chdir_restore_import_stays_below_a_header_comment_on_the_first_line() {
         (code, stdout.as_str(), read(root.path(), "first.py")),
         (
             0,
-            "Found 1 error (1 fixed, 0 remaining).\n",
+            common::ONE_FIXED,
             "# Runs the step in the target directory; see docs/build.md.\nimport contextlib\n\n\ndef run(target):\n    import os\n\n    with contextlib.chdir(target):\n        return os.listdir()\n".to_owned()
         )
     );
@@ -1316,7 +1312,7 @@ fn chdir_restore_fixes_a_method_whose_class_attribute_takes_the_module_name() {
         (code, stdout.as_str(), read(root.path(), "mod.py")),
         (
             0,
-            "Found 1 error (1 fixed, 0 remaining).\n",
+            common::ONE_FIXED,
             "import contextlib\nimport os\n\n\nclass Runner:\n    contextlib = None\n\n    def run(self, target):\n        with contextlib.chdir(target):\n            return os.listdir()\n".to_owned()
         )
     );
@@ -1351,7 +1347,7 @@ fn asyncio_import_after_a_comment_on_the_import_line_is_inserted_below_it() {
         (code, stdout.as_str(), read(root.path(), "mod.py")),
         (
             0,
-            "Found 1 error (1 fixed, 0 remaining).\n",
+            common::ONE_FIXED,
             "import asyncio  # loop\nimport inspect\n\n\ndef check(task):\n    asyncio.sleep(0)\n    return inspect.iscoroutinefunction(task)\n".to_owned()
         )
     );

@@ -10,7 +10,7 @@ use common::{check, command, fix_unsafe, project, quoted, read, simplint, simpli
 
 #[test]
 fn cache_is_kept_in_ruffs_cache_directory() {
-    let root = project(&[("pyproject.toml", "[project]\nname = \"demo\"\n"), ("module.py", "VALUE = 1\n")]);
+    let root = project(&[("pyproject.toml", "[project]\nname = \"demo\"\n"), ("module.py", common::CLEAN_MODULE)]);
     check(root.path(), &["--select", "SMP101"]);
     let cache = root.path().join(".ruff_cache");
     assert_eq!(
@@ -40,7 +40,7 @@ fn cache_leaves_ruffs_files_alone() {
         (".ruff_cache/.gitignore", "# by ruff\n*\n"),
         (".ruff_cache/0.17.3/12345", "ruff's cache"),
     ];
-    let mut files = vec![("module.py", "VALUE = 1\n")];
+    let mut files = vec![("module.py", common::CLEAN_MODULE)];
     files.extend_from_slice(&ruff_files);
     let root = project(&files);
     check(root.path(), &["--select", "SMP101"]);
@@ -50,7 +50,7 @@ fn cache_leaves_ruffs_files_alone() {
 
 #[test]
 fn no_cache_writes_nothing() {
-    let root = project(&[("module.py", "VALUE = 1\n")]);
+    let root = project(&[("module.py", common::CLEAN_MODULE)]);
     check(root.path(), &["--select", "SMP101", "--no-cache"]);
     assert!(!root.path().join(".ruff_cache").exists());
 }
@@ -59,7 +59,7 @@ fn no_cache_writes_nothing() {
 #[test_case(&[], &[], &[("RUFF_CACHE_DIR", "elsewhere")] ; "environment")]
 #[test_case(&[], &[("pyproject.toml", "[tool.ruff]\ncache-dir = \"elsewhere\"\n")], &[] ; "pyproject")]
 fn cache_dir_moves_the_cache(flags: &[&str], extra: &[(&str, &str)], env: &[(&str, &str)]) {
-    let mut files = vec![("module.py", "VALUE = 1\n")];
+    let mut files = vec![("module.py", common::CLEAN_MODULE)];
     files.extend_from_slice(extra);
     let root = project(&files);
     let mut args = vec!["check", "--select", "SMP101"];
@@ -93,7 +93,7 @@ fn cache_is_not_written_when_nothing_changed() {
 
 #[test]
 fn unreadable_cache_is_replaced() {
-    let root = project(&[("module.py", "VALUE = 1\n")]);
+    let root = project(&[("module.py", common::CLEAN_MODULE)]);
     check(root.path(), &["--select", "SMP101"]);
     let directory = root.path().join(".ruff_cache/simplint").join(concat!(
         env!("CARGO_PKG_VERSION"),
@@ -114,14 +114,14 @@ fn file_rewritten_under_the_same_modified_time_is_checked_again() {
     let path = root.path().join("module.py");
     check(root.path(), &["--select", "SMP101"]);
     let modified = filetime::FileTime::from_last_modification_time(&fs::metadata(&path).expect("metadata"));
-    fs::write(&path, "VALUE = 1\n").expect("write");
+    fs::write(&path, common::CLEAN_MODULE).expect("write");
     filetime::set_file_mtime(&path, modified).expect("set modified time");
-    assert_eq!(check(root.path(), &["--select", "SMP101"]), (0, "All checks passed!\n".to_owned(), String::new()));
+    assert_eq!(check(root.path(), &["--select", "SMP101"]), (0, common::PASSED.to_owned(), String::new()));
 }
 
 #[test]
 fn cache_directory_that_cannot_be_created_fails_the_run() {
-    let root = project(&[("module.py", "VALUE = 1\n"), ("blocked", "")]);
+    let root = project(&[("module.py", common::CLEAN_MODULE), ("blocked", "")]);
     let (code, _, stderr) = check(root.path(), &["--select", "SMP101", "--cache-dir", "blocked"]);
     assert_eq!(
         (code, stderr.contains("Failed to initialize cache"), stderr.contains("Failed to create cache directory")),
@@ -132,7 +132,7 @@ fn cache_directory_that_cannot_be_created_fails_the_run() {
 // A file this run did not check keeps its cached result, as Ruff keeps files seen within the last 30 days.
 #[test]
 fn cache_keeps_files_other_runs_checked() {
-    let root = project(&[("module.py", "VALUE = 1\n"), ("other.py", "OTHER = 1\n")]);
+    let root = project(&[("module.py", common::CLEAN_MODULE), ("other.py", "OTHER = 1\n")]);
     let path = root.path().join("module.py");
     let modified = fs::metadata(&path).expect("metadata").modified().expect("modified time");
     check(root.path(), &["--select", "SMP101", "module.py"]);
@@ -144,7 +144,7 @@ fn cache_keeps_files_other_runs_checked() {
 
 #[test]
 fn cached_clean_file_is_checked_again_when_another_file_starts_importing_it() {
-    let root = project(&[("helpers.py", "def helper() -> None:\n    pass\n"), ("client.py", "VALUE = 1\n")]);
+    let root = project(&[("helpers.py", "def helper() -> None:\n    pass\n"), ("client.py", common::CLEAN_MODULE)]);
     let first = check(root.path(), &["--select", "SMP401"]).0;
     fs::write(root.path().join("client.py"), "from helpers import helper\n").expect("write");
     assert_eq!((first, check(root.path(), &["--select", "SMP401"]).0), (0, 1));
@@ -172,7 +172,7 @@ fn cached_absolute_sibling_import_report_is_checked_again_when_flake8_lazy_is_co
     let root = project(&[
         ("package/__init__.py", ""),
         ("package/sub/__init__.py", ""),
-        ("package/sub/sibling.py", "VALUE = 1\n"),
+        ("package/sub/sibling.py", common::CLEAN_MODULE),
         ("package/sub/module.py", "from package.sub import sibling\n"),
     ]);
     let first = check(root.path(), &["--select", "SMP302"]).0;
@@ -195,7 +195,7 @@ const REPEATED: &str = "def run(items):\n    total = 0\n    for item in items:\n
     "SMP102", "pyproject.toml", "[tool.simplint]\n" ; "keep_names_setting_removed"
 )]
 #[test_case(
-    &[("pkg/a.py", "from pkg.b import VALUE\n\nprint(VALUE)\n"), ("pkg/b.py", "VALUE = 1\n")],
+    &[("pkg/a.py", "from pkg.b import VALUE\n\nprint(VALUE)\n"), ("pkg/b.py", common::CLEAN_MODULE)],
     "SMP302", "pkg/__init__.py", "" ; "directory_becomes_a_package"
 )]
 // With the directory a namespace package, a file's package root stays the same when `__init__.py` appears beside it, so
@@ -204,12 +204,12 @@ const REPEATED: &str = "def run(items):\n    total = 0\n    for item in items:\n
     &[
         ("pyproject.toml", "[tool.ruff]\nnamespace-packages = [\"pkg\"]\n"),
         ("pkg/a.py", "from pkg.b import VALUE\n\nprint(VALUE)\n"),
-        ("pkg/b.py", "VALUE = 1\n"),
+        ("pkg/b.py", common::CLEAN_MODULE),
     ],
     "SMP302", "pkg/__init__.py", "" ; "namespace_package_gains_an_init_module"
 )]
 #[test_case(
-    &[("cycle_a.py", "import cycle_b\n"), ("cycle_b.py", "import cycle_c\n"), ("cycle_c.py", "VALUE = 1\n")],
+    &[("cycle_a.py", "import cycle_b\n"), ("cycle_b.py", "import cycle_c\n"), ("cycle_c.py", common::CLEAN_MODULE)],
     "SMP308", "cycle_c.py", "import cycle_a\n" ; "import_closes_a_cycle_elsewhere"
 )]
 #[test_case(
@@ -357,7 +357,7 @@ fn documentation_cache_that_cannot_be_written_is_reported() {
 
 #[test]
 fn cached_clean_file_is_checked_again_once_edited() {
-    let root = project(&[("module.py", "VALUE = 1\n")]);
+    let root = project(&[("module.py", common::CLEAN_MODULE)]);
     let first = check(root.path(), &["--select", "SMP101"]).0;
     fs::write(root.path().join("module.py"), "x = 1\n").expect("write");
     assert_eq!((first, check(root.path(), &["--select", "SMP101"]).0), (0, 1));
@@ -367,7 +367,7 @@ fn cached_clean_file_is_checked_again_once_edited() {
 // cached result instead of linting again.
 #[test]
 fn cached_clean_result_is_reused() {
-    let root = project(&[("module.py", "VALUE = 1\n")]);
+    let root = project(&[("module.py", common::CLEAN_MODULE)]);
     let path = root.path().join("module.py");
     let modified = fs::metadata(&path).expect("metadata").modified().expect("modified time");
     check(root.path(), &["--select", "SMP101"]);
@@ -395,9 +395,6 @@ fn cache_tracks_skip_magic_trailing_comma() {
     assert_eq!((quiet, check(root.path(), &["--select", "SMP405"]).0), (0, 1));
 }
 
-// Ruff's PLR2004 would report the value inlined into a comparison, so the fix loop withdraws SMP202's fix.
-const RUFF_PLR2004: (&str, &str) = ("pyproject.toml", "[tool.ruff.lint]\nselect = [\"PLR2004\"]\n");
-const COMPARED: &str = "_LIMIT = 3\n\n\ndef over(value: int) -> bool:\n    return value > _LIMIT\n";
 const ADDED: &str = "_LIMIT = 3\n\n\ndef over(value: int) -> bool:\n    return value + _LIMIT\n";
 
 #[test_case(&["--fix", "--unsafe-fixes"] ; "fix")]
@@ -407,7 +404,7 @@ const ADDED: &str = "_LIMIT = 3\n\n\ndef over(value: int) -> bool:\n    return v
 #[test_case(&["--fix", "--unsafe-fixes", "--exit-non-zero-on-fix"] ; "exit_non_zero_on_fix")]
 #[test_case(&["--fix", "--unsafe-fixes", "--statistics"] ; "statistics")]
 fn settled_file_reports_the_same_from_the_cache(flags: &[&str]) {
-    let root = project(&[RUFF_PLR2004, ("module.py", &format!("{COMPARED}\n\nx = 1\n"))]);
+    let root = project(&[common::RUFF_PLR2004, ("module.py", &format!("{}\n\nx = 1\n", common::COMPARED))]);
     let args = [&["--select", "SMP202,SMP101"], flags].concat();
     let (first, cached) = (check(root.path(), &args), check(root.path(), &args));
     assert_eq!((&first, &cached), (&check(root.path(), &[&args[..], &["--no-cache"]].concat()), &first));
@@ -416,7 +413,7 @@ fn settled_file_reports_the_same_from_the_cache(flags: &[&str]) {
 // An edit that keeps the modification time and size goes unseen, so the cached withdrawal holds back a fix the loop would apply.
 #[test]
 fn settled_file_reuses_the_withdrawn_fixes() {
-    let root = project(&[RUFF_PLR2004, ("module.py", COMPARED)]);
+    let root = project(&[common::RUFF_PLR2004, ("module.py", common::COMPARED)]);
     let path = root.path().join("module.py");
     let modified = fs::metadata(&path).expect("metadata").modified().expect("modified time");
     fix_unsafe(root.path(), "SMP202");
@@ -429,7 +426,7 @@ fn settled_file_reuses_the_withdrawn_fixes() {
 }
 
 #[test_case(&[("module.py", ADDED)], &["--fix"], None, &["--fix", "--unsafe-fixes"] ; "unsafe_fixes")]
-#[test_case(&[RUFF_PLR2004, ("module.py", COMPARED)], &["--fix", "--unsafe-fixes"], Some(""), &["--fix", "--unsafe-fixes"] ; "ruff_settings")]
+#[test_case(&[common::RUFF_PLR2004, ("module.py", common::COMPARED)], &["--fix", "--unsafe-fixes"], Some(""), &["--fix", "--unsafe-fixes"] ; "ruff_settings")]
 #[test_case(&[("pyproject.toml", "[tool.simplint]\nunfixable = [\"SMP202\"]\n"), ("module.py", ADDED)], &["--fix", "--unsafe-fixes"], Some(""), &["--fix", "--unsafe-fixes"] ; "fixable")]
 #[test_case(&[("module.py", ADDED)], &["--fix"], Some("[tool.simplint]\nextend-safe-fixes = [\"SMP202\"]\n"), &["--fix"] ; "fix_safety")]
 fn settled_file_is_fixed_again(files: &[(&str, &str)], first: &[&str], pyproject: Option<&str>, second: &[&str]) {
@@ -465,7 +462,7 @@ fn reexport_added_later_checks_the_source_again() {
     let second = check(root.path(), &["--select", "SMP903"]).1;
     assert_eq!(
         (first, second.lines().next().map(|line| line.contains("`run`"))),
-        ("All checks passed!\n".to_owned(), Some(true))
+        (common::PASSED.to_owned(), Some(true))
     );
 }
 
@@ -474,7 +471,7 @@ fn reexport_added_later_checks_the_source_again() {
 #[test]
 fn cached_clean_file_is_checked_again_once_a_name_moves_between_run_sets() {
     let root = project(&[
-        ("module.py", COMPARED),
+        ("module.py", common::COMPARED),
         ("reader.py", "import importlib\n\nloaded = importlib.import_module(\"module\")\nprint(loaded._LIMIT)\n"),
     ]);
     let first = check(root.path(), &["--select", "SMP202"]).0;
@@ -485,7 +482,7 @@ fn cached_clean_file_is_checked_again_once_a_name_moves_between_run_sets() {
 #[test]
 fn caches_of_other_builds_expire_after_thirty_days() {
     let root = project(&[
-        ("module.py", "VALUE = 1\n"),
+        ("module.py", common::CLEAN_MODULE),
         (".ruff_cache/simplint/0.0.1-00000000000000a1/1", "old"),
         (".ruff_cache/simplint/0.0.2-00000000000000b2/1", "new"),
     ]);
@@ -503,7 +500,7 @@ fn caches_of_other_builds_expire_after_thirty_days() {
 // Another build's run creates its directory before it writes a cache there, so an empty directory goes by its own age.
 #[test]
 fn empty_caches_of_other_builds_expire_by_their_own_age() {
-    let root = project(&[("module.py", "VALUE = 1\n")]);
+    let root = project(&[("module.py", common::CLEAN_MODULE)]);
     let simplint = root.path().join(".ruff_cache/simplint");
     let (stale, fresh) = (simplint.join("0.0.1-00000000000000a1"), simplint.join("0.0.2-00000000000000b2"));
     fs::create_dir_all(&stale).expect("create");
@@ -520,7 +517,7 @@ fn empty_caches_of_other_builds_expire_by_their_own_age() {
 fn cache_dir_outside_the_project_falls_back_to_the_default() {
     let outside = tempfile::TempDir::new().expect("temporary directory");
     let pyproject = format!("[tool.ruff]\ncache-dir = {}\n", quoted(outside.path()));
-    let root = project(&[("pyproject.toml", pyproject.as_str()), ("module.py", "VALUE = 1\n")]);
+    let root = project(&[("pyproject.toml", pyproject.as_str()), ("module.py", common::CLEAN_MODULE)]);
     check(root.path(), &["--select", "SMP101"]);
     assert_eq!(
         (root.path().join(".ruff_cache/simplint").is_dir(), fs::read_dir(outside.path()).expect("read").count()),
@@ -532,8 +529,10 @@ fn cache_dir_outside_the_project_falls_back_to_the_default() {
 #[test]
 fn cache_dir_through_a_link_outside_the_project_falls_back_to_the_default() {
     let outside = tempfile::TempDir::new().expect("temporary directory");
-    let root =
-        project(&[("pyproject.toml", "[tool.ruff]\ncache-dir = \"link/cache\"\n"), ("module.py", "VALUE = 1\n")]);
+    let root = project(&[
+        ("pyproject.toml", "[tool.ruff]\ncache-dir = \"link/cache\"\n"),
+        ("module.py", common::CLEAN_MODULE),
+    ]);
     std::os::unix::fs::symlink(outside.path(), root.path().join("link")).expect("symlink");
     check(root.path(), &["--select", "SMP101"]);
     assert_eq!(
@@ -550,7 +549,7 @@ fn cache_dir_through_a_link_outside_the_project_falls_back_to_the_default() {
 #[test_case(&[("pyproject.toml", "[tool.ruff]\n"), (".ruff_cache/keep", "")], ".ruff_cache/simplint" ; "simplint")]
 fn cache_directory_linked_outside_the_project_is_not_used(extra: &[(&str, &str)], link: &str) {
     let outside = tempfile::TempDir::new().expect("temporary directory");
-    let root = project(&[extra, &[("module.py", "VALUE = 1\n")]].concat());
+    let root = project(&[extra, &[("module.py", common::CLEAN_MODULE)]].concat());
     std::os::unix::fs::symlink(outside.path(), root.path().join(link)).expect("symlink");
     let (code, _, stderr) = check(root.path(), &["--select", "SMP101"]);
     assert_eq!(
@@ -563,7 +562,7 @@ fn cache_directory_linked_outside_the_project_is_not_used(extra: &[(&str, &str)]
 #[test]
 fn show_settings_names_no_cache_directory_when_it_leads_outside_the_project() {
     let outside = tempfile::TempDir::new().expect("temporary directory");
-    let root = project(&[("module.py", "VALUE = 1\n")]);
+    let root = project(&[("module.py", common::CLEAN_MODULE)]);
     std::os::unix::fs::symlink(outside.path(), root.path().join(".ruff_cache")).expect("symlink");
     assert!(check(root.path(), &["--show-settings"]).1.contains("\ncache_dir = none\n"));
 }
@@ -572,7 +571,7 @@ fn show_settings_names_no_cache_directory_when_it_leads_outside_the_project() {
 #[test]
 fn cache_dir_flag_may_point_outside_the_project() {
     let outside = tempfile::TempDir::new().expect("temporary directory");
-    let root = project(&[("module.py", "VALUE = 1\n")]);
+    let root = project(&[("module.py", common::CLEAN_MODULE)]);
     check(root.path(), &["--select", "SMP101", "--cache-dir", outside.path().to_str().expect("utf-8 path")]);
     assert_eq!((outside.path().join("simplint").is_dir(), root.path().join(".ruff_cache").exists()), (true, false));
 }
@@ -583,7 +582,7 @@ fn cache_dir_flag_may_point_outside_the_project() {
 #[test_case("0.0.1-00000000000000a1", "notes.txt" ; "holds_a_file_other_than_a_cache")]
 fn stale_directories_that_are_not_caches_of_other_builds_stay(name: &str, file: &str) {
     let path = format!(".ruff_cache/simplint/{name}/{file}");
-    let root = project(&[("module.py", "VALUE = 1\n"), (path.as_str(), "kept")]);
+    let root = project(&[("module.py", common::CLEAN_MODULE), (path.as_str(), "kept")]);
     let old = filetime::FileTime::from_system_time(std::time::SystemTime::now() - Duration::from_hours(24 * 31));
     filetime::set_file_mtime(root.path().join(&path), old).expect("set modified time");
     check(root.path(), &["--select", "SMP101"]);
@@ -599,7 +598,7 @@ fn link_in_the_cache_directory_is_kept_with_its_target() {
     fs::write(&target, "kept").expect("write");
     let old = filetime::FileTime::from_system_time(std::time::SystemTime::now() - Duration::from_hours(24 * 31));
     filetime::set_file_mtime(&target, old).expect("set modified time");
-    let root = project(&[("module.py", "VALUE = 1\n")]);
+    let root = project(&[("module.py", common::CLEAN_MODULE)]);
     let simplint = root.path().join(".ruff_cache/simplint");
     fs::create_dir_all(&simplint).expect("create");
     let link = simplint.join("0.0.1-00000000000000a1");
@@ -629,7 +628,7 @@ fn cached_findings_report_the_same_as_a_fresh_run(flags: &[&str]) {
 
 #[test]
 fn cached_findings_are_checked_again_once_edited() {
-    let root = project(&[("module.py", "VALUE = 1\n")]);
+    let root = project(&[("module.py", common::CLEAN_MODULE)]);
     let first = check(root.path(), &["--select", "SMP601"]).0;
     fs::write(root.path().join("module.py"), "from typing import Final\n\nVALUE: Final[int] = 1\n").expect("write");
     let second = check(root.path(), &["--select", "SMP601"]).0;
@@ -654,7 +653,7 @@ fn cached_findings_are_reported_again_under_other_settings() {
 #[test_case(b"name = \"\xff\"\n", &["--output-format", "full"] ; "not_utf_8_full")]
 #[test_case(b"name = \"\xff\"\n", &["--output-format", "json"] ; "not_utf_8_json")]
 fn warm_run_reuses_the_reports_of_a_file_no_rule_reports(source: &[u8], flags: &[&str]) {
-    let root = project(&[("module.py", "VALUE = 1\n")]);
+    let root = project(&[("module.py", common::CLEAN_MODULE)]);
     fs::write(root.path().join("broken.py"), source).expect("write");
     let run = |extra: &[&str]| {
         simplint_with(root.path(), &[&["check", "--select", "SMP401"], flags, extra].concat(), "", &[])
@@ -709,11 +708,11 @@ fn warm_run_after_change_matches_a_fresh_run(files: &[(&str, &str)], change: Cha
 
 // `helpers.py` is reported while nothing imports it, so each change to the importer flips its reports, and a warm run
 // that reused them from the first run would miss the flip.
-#[test_case(&[("helpers.py", HELPER), ("client.py", "VALUE = 1\n")], Change::Write("client.py", CLIENT), "SMP401", &["."] ; "importer_edited")]
+#[test_case(&[("helpers.py", HELPER), ("client.py", common::CLEAN_MODULE)], Change::Write("client.py", CLIENT), "SMP401", &["."] ; "importer_edited")]
 #[test_case(&[("helpers.py", HELPER)], Change::Write("client.py", CLIENT), "SMP401", &["."] ; "importer_added")]
 #[test_case(&[("helpers.py", HELPER), ("client.py", CLIENT)], Change::Remove("client.py"), "SMP401", &["."] ; "importer_removed")]
 #[test_case(
-    &[("pyproject.toml", "[tool.ruff]\nnamespace-packages = [\"pkg\"]\n"), ("pkg/a.py", "from pkg.b import VALUE\n\nprint(VALUE)\n"), ("pkg/b.py", "VALUE = 1\n")],
+    &[("pyproject.toml", "[tool.ruff]\nnamespace-packages = [\"pkg\"]\n"), ("pkg/a.py", "from pkg.b import VALUE\n\nprint(VALUE)\n"), ("pkg/b.py", common::CLEAN_MODULE)],
     Change::Write("pkg/__init__.py", ""), "SMP302", &["."] ; "namespace_package_gains_an_init_module"
 )]
 #[test_case(
@@ -782,7 +781,7 @@ fn warm_run_after_a_module_behind_a_link_is_removed_matches_a_fresh_run() {
 // the new index too, so the run after it skips the index again.
 #[test]
 fn warm_run_skips_the_index_again_after_an_edit() {
-    let root = project(&[("helpers.py", HELPER), ("client.py", CLIENT), ("other.py", "VALUE = 1\n")]);
+    let root = project(&[("helpers.py", HELPER), ("client.py", CLIENT), ("other.py", common::CLEAN_MODULE)]);
     let indexed = |root: &std::path::Path| check(root, &["--select", "SMP401", "-v"]).2.contains("Indexed ");
     let before = [indexed(root.path()), indexed(root.path())];
     fs::write(root.path().join("other.py"), "VALUE = 2\n").expect("write");
@@ -911,7 +910,7 @@ fn full_text_is_rendered_for_a_file_without_a_cache_entry() {
 fn full_text_is_kept_when_another_file_joins_the_run() {
     let root = project(&[("module.py", FIXABLE)]);
     full_report(root.path(), &[], &[]);
-    fs::write(root.path().join("other.py"), "VALUE = 1\n").expect("write");
+    fs::write(root.path().join("other.py"), common::CLEAN_MODULE).expect("write");
     let warm = full_report(root.path(), &[], &[]);
     assert_eq!(warm, full_report(root.path(), &["--no-cache"], &[]));
 }
@@ -983,7 +982,7 @@ fn diff_run_does_not_cache_reports_computed_from_fixes_it_kept_in_memory() {
 #[test]
 fn private_import_is_checked_again_once_its_linked_source_is_deleted() {
     let outside = tempfile::TempDir::new().expect("temporary directory");
-    fs::write(outside.path().join("_api.py"), "VALUE = 1\n").expect("write");
+    fs::write(outside.path().join("_api.py"), common::CLEAN_MODULE).expect("write");
     let root = project(&[
         ("pyproject.toml", "[tool.ruff]\nsrc = [\"lib\"]\n"),
         ("lib/.keep", ""),
@@ -1028,7 +1027,7 @@ fn cached_report_names_the_paths_of_the_directory_it_runs_in(files: &[(&str, &st
 fn private_import_is_checked_again_once_its_mirrored_module_is_deleted() {
     let root = project(&[
         ("src/pkg/__init__.py", ""),
-        ("src/pkg/_helper.py", "VALUE = 1\n"),
+        ("src/pkg/_helper.py", common::CLEAN_MODULE),
         (
             "tests/pkg/test_helper.py",
             "from pkg._helper import VALUE\n\n\ndef test_value() -> None:\n    assert VALUE == 1\n",
@@ -1050,7 +1049,7 @@ fn private_import_is_checked_again_once_its_source_outside_the_search_roots_is_d
         ("pyproject.toml", "[tool.ruff]\nsrc = [\"lib\"]\n"),
         ("lib/.keep", ""),
         ("src/pkg/__init__.py", ""),
-        ("src/pkg/_api.py", "VALUE = 1\n"),
+        ("src/pkg/_api.py", common::CLEAN_MODULE),
         ("tests/pkg/test_api.py", "from pkg._api import VALUE\n\n\ndef test_value() -> None:\n    assert VALUE == 1\n"),
     ]);
     let select = ["check", "--select", "SMP310", "tests"];

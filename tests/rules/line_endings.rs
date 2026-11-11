@@ -59,6 +59,6 @@ fn comment_above_exempts_constant(line_ending: &str) {
     let root = common::project(&[("pyproject.toml", PROJECT), ("module.py", &source.replace('\n', line_ending))]);
     assert_eq!(
         common::check(root.path(), &["--no-cache", "--select", "SMP202"]),
-        (0, "All checks passed!\n".to_owned(), String::new())
+        (0, common::PASSED.to_owned(), String::new())
     );
 }

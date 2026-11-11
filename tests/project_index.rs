@@ -115,7 +115,7 @@ fn src_layout_test_imports_do_not_require_exports() {
         ("src/pkg/helpers.py", "def helper() -> None:\n    pass\n"),
         ("tests/test_helpers.py", "from pkg.helpers import helper\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP401"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP401"]).1, common::PASSED);
 }
 
 // An entry point names a module in the directory its `pyproject.toml` is in, which a flat layout keeps its modules in,
@@ -163,7 +163,7 @@ fn flat_layout_module_entry_point_uses_its_public_names() {
         ("src/pkg/__init__.py", ""),
         ("plugin.py", "__all__ = []\n\n\ndef activate() -> None:\n    pass\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP401,SMP403,SMP409"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP401,SMP403,SMP409"]).1, common::PASSED);
 }
 
 // A local module named after a standard-library one is the module the run imports, not the standard-library one.
@@ -236,7 +236,7 @@ fn stub_only_module_attribute_is_not_reported() {
         ("writers/findings.pyi", "def save() -> None: ...\n"),
         ("client.py", "from writers import findings\n\n\nfindings.save()\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP304"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP304"]).1, common::PASSED);
 }
 
 // A namespace package under `src` has no `__init__.py` at any level, and its modules import by their dotted path.
@@ -246,11 +246,11 @@ fn namespace_package_test_imports_do_not_require_exports() {
         ("src/outer/inner/helpers.py", "def helper() -> None:\n    pass\n"),
         ("tests/test_helpers.py", "from outer.inner.helpers import helper\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP401"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP401"]).1, common::PASSED);
 }
 
 // A stub for another module declares nothing about `backend.py`.
-#[test_case("backend.pyi", "All checks passed!\n" ; "stub_of_the_module")]
+#[test_case("backend.pyi", common::PASSED ; "stub_of_the_module")]
 #[test_case(
     "other.pyi",
     "backend.py:10:7: SMP403 `Missing` is not in `__all__`; name it `_Missing`\nFound 1 error.\n1 unsafe fix available \
@@ -278,10 +278,10 @@ fn module_import_is_not_an_export(reference: &str) {
         ("pkg/files.py", "import os\n\n\ndef cwd() -> str:\n    return os.getcwd()\n"),
         ("test_files.py", &format!("def test_cwd(mocker):\n    {reference}\n")),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP401"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP401"]).1, common::PASSED);
 }
 
-#[test_case("pkg.manager._load", "All checks passed!\n" ; "patched")]
+#[test_case("pkg.manager._load", common::PASSED ; "patched")]
 #[test_case(
     "pkg.manager.run",
     "pkg/manager.py:1:5: SMP501 `_load` only forwards to `import_module`; call `import_module` at its call sites \
@@ -301,7 +301,7 @@ fn patched_forwarding_function_is_a_seam(target: &str, stdout: &str) {
 }
 
 // `import *` takes the names `__all__` lists, or without one every public name, so those may be in use unnamed.
-#[test_case("", "All checks passed!\n" ; "every_public_name")]
+#[test_case("", common::PASSED ; "every_public_name")]
 #[test_case(
     "__all__ = [\"run\"]\n",
     "pkg/data.py:2:1: SMP404 `TAG` is not in `__all__`; name it `_TAG`\nFound 1 error.\n1 unsafe fix available \
@@ -331,10 +331,7 @@ fn stored_module_variable_stays_module_level(store: &str) {
         ("pkg/cli.py", &format!("from pathlib import Path\n\nfrom pkg import report\n\n{store}")),
     ]);
     let (_, stdout, _) = check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP202,SMP404"]);
-    assert_eq!(
-        (stdout, common::read(root.path(), "pkg/report.py")),
-        ("All checks passed!\n".to_owned(), report.to_owned())
-    );
+    assert_eq!((stdout, common::read(root.path(), "pkg/report.py")), (common::PASSED.to_owned(), report.to_owned()));
 }
 
 // A name imported from a package counts in the module its `__init__.py` star-imports it from, where an `__all__` would
@@ -521,7 +518,7 @@ fn dataclass_kw_only_related_locations_in_machine_formats(format: &str) {
 fn dataclass_kw_only_fixes_same_file_calls_with_the_class() {
     let root = project(&[("models.py", &format!("{PARTITION}\nPartition(\"a\", 1)\n"))]);
     let fix = ["--select", "SMP703", "--fix", "--unsafe-fixes", "--target-version", "py314"];
-    assert_eq!(check(root.path(), &fix).1, "Found 1 error (1 fixed, 0 remaining).\n");
+    assert_eq!(check(root.path(), &fix).1, common::ONE_FIXED);
     assert_eq!(common::read(root.path(), "models.py").lines().last(), Some("Partition(topic=\"a\", number=1)"));
 }
 
@@ -534,7 +531,7 @@ fn dataclass_kw_only_suppressed_class_silences_cross_file_calls() {
         ("models.py", &format!("__all__ = []\n\n{models}")),
         ("caller.py", "from models import Partition\n\nPartition(\"a\", 1)\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP703"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP703"]).1, common::PASSED);
 }
 
 // A library's public dataclass keeps its positional calls, which its users make: one defined in a public module's
@@ -615,7 +612,7 @@ fn docstring_reader_keeps_docstrings(reader: &str) {
         ("pkg/helpers.py", "def _helper() -> None:\n    \"\"\"Help.\"\"\"\n"),
         ("pkg/reader.py", &format!("from pkg.helpers import _helper\n\n{reader}")),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP901"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP901"]).1, common::PASSED);
 }
 
 #[test]
@@ -756,7 +753,7 @@ fn variable_reused_for_each_loaded_module_reads_each_module() {
              mod.engine\n",
         ),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP404"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP404"]).1, common::PASSED);
 }
 
 // `__import__` returns the top package of a dotted name, so the names read off its result are the package's, and a
@@ -950,7 +947,7 @@ fn spec_loaded_module_read_keeps_name_listed() {
         ("docs/tutorial.py", "__all__ = [\"client\"]\n\n\nclient = object()\n"),
         ("tests/test_docs.py", &spec_loading_test("Path(__file__).parents[1] / \"docs\" / \"tutorial.py\"")),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::native("All checks passed!\n"));
+    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::native(common::PASSED));
 }
 
 // A test module that loads `docs/tutorial.py` from `path` and reads its names off the module, once directly and once
@@ -1065,7 +1062,7 @@ fn names_read_in_loops_over_string_literals_are_used(body: &str) {
         ("docs/tutorial.py", "__all__ = [\"client\", \"engine\"]\n\nclient = object()\nengine = object()\n"),
         ("tests/test_docs.py", &test),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::native("All checks passed!\n"));
+    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::native(common::PASSED));
 }
 
 // A loop over anything but string rows of the same width, whose items the run cannot know, names no attribute, and
@@ -1223,7 +1220,7 @@ fn constants_a_string_spells_are_not_inlined(test: &str) {
         ("tests/test_docs.py", test),
     ]);
     let fix = ["--select", "SMP202", "--fix", "--unsafe-fixes"];
-    assert_eq!(check(root.path(), &fix).1, common::native("All checks passed!\n"));
+    assert_eq!(check(root.path(), &fix).1, common::native(common::PASSED));
     assert_eq!(
         common::read(root.path(), "docs/tutorial.py"),
         "__all__ = []\n\nLIMIT: int | None = None\n\n\ndef limit() -> int | None:\n    return LIMIT or 3\n"
@@ -1240,7 +1237,7 @@ fn constants_a_string_spells_are_not_inlined(test: &str) {
 fn module_variables_patched_through_a_monkeypatch_are_not_final(test: &str) {
     let test = format!("from docs import tutorial\n\n\n{test}");
     let root = project(&[("docs/__init__.py", ""), ("docs/tutorial.py", "LIMIT = 3\n"), ("tests/test_docs.py", &test)]);
-    assert_eq!(check(root.path(), &["--select", "SMP601"]).1, common::native("All checks passed!\n"));
+    assert_eq!(check(root.path(), &["--select", "SMP601"]).1, common::native(common::PASSED));
 }
 
 // A `setattr` on an object that is not a module of the run writes no module variable, so the variable stays `Final`.
@@ -1662,7 +1659,7 @@ fn standard_input_reads_its_own_exports() {
         "def run() -> None: ...\n\n\ndef helper() -> None: ...\n\n\n__all__ = [\"run\"]\n",
     )
     .1;
-    assert_eq!(stdout, "All checks passed!\n");
+    assert_eq!(stdout, common::PASSED);
 }
 
 // A class a listed function returns is library API, so its docstring and its method's docstring stay when SMP901's
@@ -1714,7 +1711,7 @@ const UNDOCUMENTED_PLUGIN: &str = "\"\"\"Plugin.\"\"\"\n\n\ndef pytest_addoption
     "entry-points.pytest11.demo = \"pkg.plugin\"\n",
     DOCSTRINGED_PLUGIN,
     "SMP901",
-    "All checks passed!\n" ; "bare_module_hook_is_not_internal"
+    common::PASSED ; "bare_module_hook_is_not_internal"
 )]
 #[test_case(
     "entry-points.pytest11.demo = \"missing.plugin\"\n",
@@ -1741,7 +1738,7 @@ const UNDOCUMENTED_PLUGIN: &str = "\"\"\"Plugin.\"\"\"\n\n\ndef pytest_addoption
     "entry-points.pytest11.demo = \"pkg.plugin\"\n",
     DOCSTRINGED_PLUGIN,
     "SMP401",
-    "All checks passed!\n" ; "bare_module_names_are_not_imports"
+    common::PASSED ; "bare_module_names_are_not_imports"
 )]
 #[test_case(
     "entry-points.pytest11.demo = \"pkg.plugin\"\n",
@@ -1754,7 +1751,7 @@ const UNDOCUMENTED_PLUGIN: &str = "\"\"\"Plugin.\"\"\"\n\n\ndef pytest_addoption
     "",
     UNDOCUMENTED_PLUGIN,
     "SMP903",
-    "All checks passed!\n" ; "unlisted_undocumented_hook_not_reported"
+    common::PASSED ; "unlisted_undocumented_hook_not_reported"
 )]
 fn bare_module_entry_point_names_are_public_api(entry_points: &str, source: &str, rule: &str, stdout: &str) {
     let root = project(&[
@@ -1783,7 +1780,7 @@ fn bare_module_future_import_is_not_public_api() {
             "\"\"\"Plugin.\"\"\"\n\nfrom __future__ import annotations\n\n__all__ = [\"pytest_addoption\"]\n\n\ndef pytest_addoption(parser: object) -> None:\n    \"\"\"Register the flag.\"\"\"\n    print(parser)\n",
         ),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP401"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP401"]).1, common::PASSED);
 }
 
 const UNUSED_PLUGIN: &str = "\"\"\"Plugin.\"\"\"\n\n\ndef pytest_addoption(parser: object) -> None:\n    print(parser)\n\n\ndef helper() -> None:\n    print(\"helper\")\n\n\n__all__ = [\"pytest_addoption\"]\n";
@@ -1792,7 +1789,7 @@ const UNUSED_PLUGIN: &str = "\"\"\"Plugin.\"\"\"\n\n\ndef pytest_addoption(parse
 // it does not import is not a stale export.
 #[test_case(
     "entry-points.pytest11.demo = \"pkg.plugin\"\n",
-    "All checks passed!\n" ; "bare_module_names_are_used"
+    common::PASSED ; "bare_module_names_are_used"
 )]
 #[test_case(
     "",
@@ -1818,7 +1815,7 @@ fn bare_module_entry_point_names_are_used(entry_points: &str, stdout: &str) {
     "pkg/_core.py:1:5: SMP903 Public function `plugin_hook` has no docstring; document it for its users; `pkg/__init__.py` \
      re-exports it\nFound 1 error.\n" ; "package_imports_are_public"
 )]
-#[test_case("", "All checks passed!\n" ; "unlisted_package_imports_stay_internal")]
+#[test_case("", common::PASSED ; "unlisted_package_imports_stay_internal")]
 fn bare_package_entry_point_imports_are_public_api(entry_points: &str, stdout: &str) {
     let root = project(&[
         ("pyproject.toml", &format!("[project]\nname = \"pkg\"\n{entry_points}[build-system]\nrequires = []\n")),
@@ -1833,7 +1830,7 @@ fn bare_package_entry_point_imports_are_public_api(entry_points: &str, stdout: &
 
 // The `__all__` of a public module of a library is the interface its users import, so no module of the run needs to
 // import it. A private module of the same library still reports the names nothing imports.
-#[test_case("pkg/errors.py", "All checks passed!\n" ; "public_module_kept")]
+#[test_case("pkg/errors.py", common::PASSED ; "public_module_kept")]
 #[test_case(
     "pkg/_errors.py",
     "pkg/_errors.py:4:12: SMP402 `Oops` is in `__all__`, yet no other module imports it; list only what other modules \
@@ -1854,8 +1851,8 @@ fn public_module_all_is_the_declared_api(module: &str, stdout: &str) {
 
 // A module that a file loads as a value, or that a star import binds from its package's `__all__`, has every name read
 // through it, so none of its names is reported. Reading only one name through a module leaves the others reported.
-#[test_case("from app import config as c\n\nsettings = c\nprint(settings.LIMIT)\n", "All checks passed!\n" ; "loaded_as_value")]
-#[test_case("from app import *\n\nprint(config.LIMIT)\n", "All checks passed!\n" ; "star_bound_by_package_all")]
+#[test_case("from app import config as c\n\nsettings = c\nprint(settings.LIMIT)\n", common::PASSED ; "loaded_as_value")]
+#[test_case("from app import *\n\nprint(config.LIMIT)\n", common::PASSED ; "star_bound_by_package_all")]
 #[test_case(
     "from app import config\n\nprint(config.LIMIT)\n",
     "app/config.py:8:21: SMP402 [*] `local` is in `__all__`, yet no other module imports it; list only what other modules \
@@ -1923,7 +1920,7 @@ fn names_another_module_reads_from_all_are_used(consumer: &str) {
         ("a.py", "X = 1\nY = 2\n\n__all__ = [\"X\", \"Y\"]\n"),
         ("b.py", consumer),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::PASSED);
 }
 
 #[test_case("import pkgutil\n\nHANDLER = pkgutil.resolve_name(\"pkg._cli._validate:run\")\n", true ; "direct_resolve_name")]
@@ -1942,7 +1939,7 @@ fn string_named_handlers_count_as_imported(consumer: &str, imported: bool) {
         ("pkg/_cli/_parser.py", consumer),
     ]);
     let report = check(root.path(), &["--select", "SMP402"]).1;
-    assert_eq!(report == "All checks passed!\n", imported, "{report}");
+    assert_eq!(report == common::PASSED, imported, "{report}");
 }
 
 #[test]
@@ -1972,7 +1969,7 @@ fn pyproject_named_attribute_counts_as_used(tool: &str, name: &str) {
         ("pkg/__init__.py", ""),
         ("pkg/_plugin.py", &format!("__all__ = [\"{name}\"]\n\n\ndef {name}() -> None: ...\n")),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::PASSED);
 }
 
 #[test_case("[tool.pytest.ini_options]\naddopts = \"-q -p pkg._plugin\"\n" ; "ini_options")]
@@ -1983,7 +1980,7 @@ fn pyproject_pytest_plugin_counts_as_used(tool: &str) {
         ("pkg/__init__.py", ""),
         ("pkg/_plugin.py", "__all__ = [\"pytest_configure\"]\n\n\ndef pytest_configure() -> None: ...\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::PASSED);
 }
 
 #[test]
@@ -2008,7 +2005,7 @@ fn pdm_build_hooks_count_as_used(config: &str, file: &str) {
         ),
         (file, "__all__ = [\"pdm_build_initialize\"]\n\n\ndef pdm_build_initialize(context: object) -> None: ...\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::PASSED);
 }
 
 #[test]
@@ -2094,7 +2091,7 @@ fn listed_build_hooks_are_not_unused_exports() {
              __all__ = [\"build_wheel\"]\n",
         ),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::PASSED);
 }
 
 #[test]
@@ -2129,7 +2126,7 @@ fn build_backend_object_is_used() {
             ),
         ),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP403,SMP409"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP403,SMP409"]).1, common::PASSED);
 }
 
 // Only the backend's hooks count as used, so a helper the backend does not call is still reported.
@@ -2161,7 +2158,7 @@ fn build_backend_by_dotted_name(backend: &str, file: &str) {
         ("pyproject.toml", &format!("[build-system]\nbuild-backend = \"{backend}\"\nrequires = []\n")),
         (file, "def build_wheel(wheel_directory: str) -> str:\n    return wheel_directory\n\n\n__all__ = []\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP409"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP409"]).1, common::PASSED);
 }
 
 #[test]
@@ -2195,7 +2192,7 @@ fn configured_hatch_hook_class_is_used(hatch: &str, file: &str, source: &str) {
         ("pyproject.toml", &format!("[project]\nname = \"demo\"\nversion = \"1\"\n{hatch}")),
         (file, source),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP409"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP409"]).1, common::PASSED);
 }
 
 #[test_case("[tool.hatch]\nbuild.hooks.custom = { path = \"other.py\" }\n" ; "other_path")]
@@ -2237,7 +2234,7 @@ fn hatch_toml_configures_the_hook(hatch: &str, file: &str, source: &str) {
         ("hatch.toml", hatch),
         (file, source),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP409"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP409"]).1, common::PASSED);
 }
 
 // A `hatch.toml` that cannot be parsed configures no hook, with a warning, rather than stopping the run.
@@ -2262,7 +2259,7 @@ fn unparsable_hatch_toml_configures_nothing() {
 
 // A `hatch.toml` is merged over the `[tool.hatch]` table key by key, so a key it sets wins and one it leaves unset keeps
 // the pyproject's value.
-#[test_case("[tool.hatch.build.hooks.custom]\npath = \"other.py\"\n", "[build.hooks.custom]\npath = \"hatch_build.py\"\n", "All checks passed!\n" ; "hatch_toml_overrides_the_path")]
+#[test_case("[tool.hatch.build.hooks.custom]\npath = \"other.py\"\n", "[build.hooks.custom]\npath = \"hatch_build.py\"\n", common::PASSED ; "hatch_toml_overrides_the_path")]
 #[test_case(
     "[tool.hatch.build.hooks.custom]\npath = \"other.py\"\n",
     "[build.hooks.custom]\n",
@@ -2297,12 +2294,12 @@ fn hatch_hook_path_is_normalized(path: &str) {
         ),
         ("hooks/h.py", BUILD_HOOK),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP409"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP409"]).1, common::PASSED);
 }
 
 // hatchling uses `issubclass` over the names of the hook file, so a class that subclasses a class of the run which
 // subclasses the hook interface is the hook, while a base of the run that does not is not.
-#[test_case("class CommonHook(BuildHookInterface):\n    pass\n", "All checks passed!\n" ; "inherited_from_hook_class")]
+#[test_case("class CommonHook(BuildHookInterface):\n    pass\n", common::PASSED ; "inherited_from_hook_class")]
 #[test_case(
     "class CommonHook:\n    pass\n",
     "hatch_build.py:4:7: SMP409 `_Hook` is never used in the run; remove it or give it a user\nFound 1 error.\n" ;
@@ -2322,10 +2319,10 @@ const HOOK_PROJECT: &str = "def _run() -> None:\n    print(\"hook\")\n";
 
 // The interpreter runs the `import` lines of a `.pth` file at startup, so a name they read is used outside the tests, as
 // an entry point's is. A bare import reads no name, and a path line or a line with no `import` is not run.
-#[test_case("import pkg.hook; pkg.hook._run()\n", "All checks passed!\n" ; "startup_read_keeps_the_name")]
-#[test_case("import sys; from pkg.hook import _run; _run()\n", "All checks passed!\n" ; "startup_from_import_keeps_the_name")]
-#[test_case("import\tpkg.hook; pkg.hook._run()\n", "All checks passed!\n" ; "tab_after_import_keeps_the_name")]
-#[test_case("import pkg.hook as hook; hook._run()\n", "All checks passed!\n" ; "alias_keeps_the_name")]
+#[test_case("import pkg.hook; pkg.hook._run()\n", common::PASSED ; "startup_read_keeps_the_name")]
+#[test_case("import sys; from pkg.hook import _run; _run()\n", common::PASSED ; "startup_from_import_keeps_the_name")]
+#[test_case("import\tpkg.hook; pkg.hook._run()\n", common::PASSED ; "tab_after_import_keeps_the_name")]
+#[test_case("import pkg.hook as hook; hook._run()\n", common::PASSED ; "alias_keeps_the_name")]
 #[test_case("import pkg.hook\n", "pkg/hook.py:1:5: SMP408 `_run` is used only by tests; move it into the tests or a test helper module\nFound 1 error.\n" ; "bare_import_reads_no_name")]
 #[test_case("pkg.hook._run()\n", "pkg/hook.py:1:5: SMP408 `_run` is used only by tests; move it into the tests or a test helper module\nFound 1 error.\n" ; "line_without_import_is_not_run")]
 #[test_case("pkg/hook.py\n", "pkg/hook.py:1:5: SMP408 `_run` is used only by tests; move it into the tests or a test helper module\nFound 1 error.\n" ; "path_line_names_nothing")]
@@ -2354,7 +2351,7 @@ fn startup_pth_under_src_keeps_the_name() {
         ("src/pkg/hook.py", HOOK_PROJECT),
         ("tests/test_hook.py", "from pkg.hook import _run\n\n\ndef test_run() -> None:\n    _run()\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP408"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP408"]).1, common::PASSED);
 }
 
 // A production module that passes another module on as a value calls that module's functions through the value, which
@@ -2362,17 +2359,17 @@ fn startup_pth_under_src_keeps_the_name() {
 // imports still reports the functions the tests alone call.
 #[test_case(
     "from pkg import fast\n\nCODEC = fast if CHOSEN else None\n",
-    "All checks passed!\n" ; "conditional_alias"
+    common::PASSED ; "conditional_alias"
 )]
 #[test_case(
     "from pkg import fast\n\n\ndef parse(text, backend=fast):\n    return backend.decode(text)\n",
-    "All checks passed!\n" ; "default_argument"
+    common::PASSED ; "default_argument"
 )]
 #[test_case(
     "from pkg import fast\n\n\nclass Service:\n    def __init__(self):\n        self.backend = fast\n",
-    "All checks passed!\n" ; "instance_attribute"
+    common::PASSED ; "instance_attribute"
 )]
-#[test_case("from pkg import fast\n\nBACKENDS = {\"fast\": fast}\n", "All checks passed!\n" ; "dict_value")]
+#[test_case("from pkg import fast\n\nBACKENDS = {\"fast\": fast}\n", common::PASSED ; "dict_value")]
 #[test_case(
     "from pkg import fast\n",
     "pkg/fast.py:1:5: SMP408 `decode` is used only by tests; move it into the tests or a test helper \
@@ -2398,14 +2395,14 @@ fn module_loaded_as_value_has_no_test_only_names(service: &str, stdout: &str) {
 // A production module reaches another as a value through a dotted name, or through an import in a function or class
 // body, so a call through the value reaches the module's functions with no import of them. Only the import alone is not
 // a value.
-#[test_case("import pkg.fast\n\nCODEC = pkg.fast\n", "All checks passed!\n" ; "dotted_name_loaded")]
+#[test_case("import pkg.fast\n\nCODEC = pkg.fast\n", common::PASSED ; "dotted_name_loaded")]
 #[test_case(
     "def codec():\n    from pkg import fast\n\n    return fast\n",
-    "All checks passed!\n" ; "import_in_function"
+    common::PASSED ; "import_in_function"
 )]
 #[test_case(
     "class Service:\n    from pkg import fast as codec\n\n\ndef run(text: str) -> str:\n    return Service.codec.decode(text)\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "import_in_class_read_as_an_attribute"
 )]
 #[test_case(
@@ -2415,7 +2412,7 @@ fn module_loaded_as_value_has_no_test_only_names(service: &str, stdout: &str) {
 )]
 #[test_case(
     "class Service:\n    import pkg.fast\n\n\ndef run(text: str) -> str:\n    return Service.pkg.fast.decode(text)\n",
-    "All checks passed!\n" ;
+    common::PASSED ;
     "dotted_import_in_class_read_through_the_class"
 )]
 #[test_case(
@@ -2473,10 +2470,10 @@ const PROGRAM_SERVICE: &str = "from app.mail import send\n\n\ndef escalate(addre
 #[test_case(
     "from app.plain import notify\nfrom app.service import *\n\nprint(notify(\"x\"), escalate(\"x\"))\n",
     SERVICE,
-    "All checks passed!\n" ;
+    common::PASSED ;
     "star_imported_by_program"
 )]
-#[test_case("from app.plain import notify\n\nprint(notify(\"x\"))\n", PROGRAM_SERVICE, "All checks passed!\n" ; "guard_runs_as_program")]
+#[test_case("from app.plain import notify\n\nprint(notify(\"x\"))\n", PROGRAM_SERVICE, common::PASSED ; "guard_runs_as_program")]
 #[test_case(
     "from app.plain import notify\n\nprint(notify(\"x\"))\n",
     SERVICE,
@@ -2502,7 +2499,7 @@ fn module_run_as_a_program_makes_production_calls(main: &str, service: &str, std
 }
 
 // The value load only hides the module's test-only names from SMP408. SMP401 still lists a name that production imports.
-#[test_case("from pkg import fast\n\nCODEC = fast\n", "All checks passed!\n" ; "module_loaded_as_value")]
+#[test_case("from pkg import fast\n\nCODEC = fast\n", common::PASSED ; "module_loaded_as_value")]
 #[test_case(
     "from pkg.fast import LIMIT\n\nCODEC = LIMIT\n",
     "pkg/fast.py:1:1: SMP401 `LIMIT` is imported by other modules; list it in `__all__`\nFound 1 error.\n1 unsafe fix \
@@ -2584,7 +2581,7 @@ fn startup_pth_reads_are_not_unused(prefix: &str, name: &str, rule: &str) {
         ("pkg/__init__.py", ""),
         ("pkg/hook.py", &format!("{prefix}def {name}() -> None:\n    print(\"hook\")\n")),
     ]);
-    assert_eq!(check(root.path(), &["--select", rule]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", rule]).1, common::PASSED);
 }
 
 // A `.pth` file that is not UTF-8 is skipped with a warning, as an unreadable Python file is, so the names it would
@@ -3057,7 +3054,7 @@ fn docstring_and_visibility_rules_leave_a_nested_project_alone() {
         ),
     ]);
     let stdout = check(root.path(), &["--select", "SMP9,SMP102,SMP401,SMP402,SMP403,SMP404"]).1;
-    assert_eq!(stdout, "All checks passed!\n");
+    assert_eq!(stdout, common::PASSED);
 }
 
 // A module that a test patches by attribute keeps its `module.Name` reads: binding the name at import time would miss
@@ -3077,7 +3074,7 @@ fn patched_module_attribute_keeps_module_reads(test: &str) {
         ("tests/test_ops.py", test),
     ]);
     let (_, stdout, _) = check(root.path(), &["--select", "SMP304", "--unsafe-fixes", "--fix"]);
-    assert_eq!(stdout, "All checks passed!\n");
+    assert_eq!(stdout, common::PASSED);
     assert_eq!(
         common::read(root.path(), "tools/bench/report.py"),
         "from bench import operations\n\n\ndef render() -> dict:\n    return operations.OPERATIONS\n"
@@ -3174,7 +3171,7 @@ fn doctest_reads_are_opaque_to_call_sites_but_not_imports() {
         ("q/guide.py", "\"\"\"Guide.\n\n>>> import q.calc\n>>> q.calc.ratio(3)\n1.5\n\"\"\"\n"),
         ("q/main.py", "from q.calc import total\n\nprint(total(1))\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP411"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP411"]).1, common::PASSED);
     let stdout = check(root.path(), &["--select", "SMP401"]).1;
     assert!(stdout.contains("`total` is imported by other modules"), "{stdout}");
     assert!(!stdout.contains("`ratio`"), "{stdout}");
@@ -3191,7 +3188,7 @@ fn doctest_module_reads_leave_the_definition_public_and_used() {
         ),
         ("p/doc.py", "\"\"\"Docs.\n\n>>> import p.util\n>>> p.util.helper()\n1\n\"\"\"\n"),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP401,SMP409"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP401,SMP409"]).1, common::PASSED);
 }
 
 // A constant a doctest of its module reads is kept, as inlining it would leave the example reading a name that is gone.
@@ -3201,7 +3198,7 @@ fn constant_read_by_its_own_module_doctest_is_kept() {
         "pkg/consts.py",
         "_TIMEOUT = 30\n\n\ndef wait():\n    \"\"\"Wait.\n\n    >>> _TIMEOUT\n    30\n    \"\"\"\n    return _TIMEOUT\n",
     )]);
-    assert_eq!(check(root.path(), &["--select", "SMP202"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP202"]).1, common::PASSED);
 }
 
 // The stdlib's `json` is a module of its own, so a `json.loads` value a file of the run reads is not a read of the run's
@@ -3302,7 +3299,7 @@ fn autodoc_names_a_package_function_by_its_package() {
         ("docs/index.rst", "API\n===\n\n.. autofunction:: app.helper\n"),
     ]);
     let stdout = check(root.path(), &["--select", "SMP901,SMP409"]).1;
-    assert_eq!(stdout, "All checks passed!\n");
+    assert_eq!(stdout, common::PASSED);
 }
 
 // An autodoc directive names a method by its class, so the method's docstring is documented rather than internal.
@@ -3319,7 +3316,7 @@ fn autodoc_names_a_method_by_its_class() {
         ("docs/index.rst", "API\n===\n\n.. autoclass:: app.mod.Foo\n   :members:\n"),
     ]);
     let stdout = check(root.path(), &["--select", "SMP901"]).1;
-    assert_eq!(stdout, "All checks passed!\n");
+    assert_eq!(stdout, common::PASSED);
 }
 
 // A nested project's files are test input, so the rules it leaves out do not run there. Its results are cached apart
@@ -3342,7 +3339,7 @@ fn nested_project_results_are_not_reused_by_the_outer_project() {
         root.path(),
         &["check", "--cache-dir", cache, "--select", "SMP904", "--output-format", "concise"],
     );
-    assert_eq!(outer, "All checks passed!\n");
+    assert_eq!(outer, common::PASSED);
 }
 
 const COVERAGE_PLUGIN: &str = "def coverage_init(reg: object, options: dict[str, str]) -> None:\n    pass\n\n\n";
@@ -3356,7 +3353,7 @@ fn coverage_plugin_init_is_used(all: &str) {
         ("tasks/__init__.py", ""),
         ("tasks/coverage_pragmas.py", &format!("{COVERAGE_PLUGIN}{all}")),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP401,SMP402,SMP403,SMP409"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP401,SMP402,SMP403,SMP409"]).1, common::PASSED);
 }
 
 // Only `coverage_init` is called by coverage, so another function of the plugin module is still reported.
@@ -3405,7 +3402,7 @@ fn coverage_plugin_resolves_from_import_paths(paths: &str) {
         ("pyproject.toml", &format!("[project]\nname = \"demo\"\n[tool.coverage.run]\nplugins = [\"cov\"]\n{paths}")),
         ("tasks/cov.py", &format!("{COVERAGE_PLUGIN}__all__ = []\n")),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP401,SMP402,SMP403,SMP409"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP401,SMP402,SMP403,SMP409"]).1, common::PASSED);
 }
 
 // Without an import path naming its directory, coverage's plugin module is not found, so it is judged as any module.
@@ -3439,5 +3436,5 @@ fn coverage_plugin_init_imported_by_a_test_is_not_test_only() {
              def test_init() -> None:\n    coverage_init(object(), {})\n",
         ),
     ]);
-    assert_eq!(check(root.path(), &["--select", "SMP408"]).1, "All checks passed!\n");
+    assert_eq!(check(root.path(), &["--select", "SMP408"]).1, common::PASSED);
 }
