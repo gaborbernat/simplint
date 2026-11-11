@@ -19,7 +19,7 @@ What to know about the hook:
 - List it after Ruff's ``ruff-check`` hook and before its ``ruff-format`` hook, the order shown in the :doc:`tutorial </tutorial/getting-started>`.
 - The mirror installs the wheel from `PyPI <https://pypi.org/project/simplint>`__, so it needs no Rust toolchain and
   runs on `pre-commit.ci <https://pre-commit.ci>`__.
-- The mirror gets a tag for each release within a day.
+- The mirror gets a tag for each release minutes after it reaches PyPI.
 
 To run a commit that is not released yet, use ``https://github.com/gaborbernat/simplint`` as the ``repo`` and the
 commit as the ``rev``.

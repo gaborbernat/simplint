@@ -296,7 +296,9 @@ automatically. Documentation builds show pending fragments under Draft on the ch
 
 Release preparation folds the fragments into [CHANGELOG.md](CHANGELOG.md), formats it with prek, commits the new
 version, and pushes the tag. The tag starts the build and publish workflow, which creates a GitHub Release after PyPI
-succeeds.
+succeeds and then starts the [simplint-pre-commit](https://github.com/gaborbernat/simplint-pre-commit) mirror, which
+tags the same version. The mirror job mints its token from the release App, which needs access to the mirror repository.
+If a release ran before that access existed, run the mirror's workflow by hand.
 
 ## Generated files
 
