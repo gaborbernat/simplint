@@ -102,7 +102,9 @@ def test_main_writes_the_table_and_formats_it(tmp_path: Path, mocker: MockerFixt
 
     main(tmp_path)
 
-    assert '    ("asyncio.taskgroups", 10, None),\n' in table.read_text(encoding="utf-8")
+    assert '    Submodule { name: "asyncio.taskgroups", added: 10, removed: None },\n' in table.read_text(
+        encoding="utf-8"
+    )
     check_call.assert_called_once_with(["rustfmt", "--edition", "2024", str(table)])
 
 
