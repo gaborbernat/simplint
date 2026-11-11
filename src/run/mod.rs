@@ -1,8 +1,11 @@
 // The lint pipeline and the run over a set of files: what a file's lint reports, how a run finds its files, indexes
 // them and lints them. The command line reads these, and the project cache stores their results.
 mod cache;
+mod check;
 mod conflicts;
+mod digest;
 mod discover;
+mod files;
 mod overlay;
 mod rounds;
 
@@ -34,9 +37,9 @@ use crate::lint::Linter;
 use crate::settings::SettingsResolver;
 
 pub(crate) use cache::FullDisplay;
+pub(crate) use check::{add_suppressions, check_files, check_stdin};
 pub(crate) use discover::{Discovered, discover, linted_roots, redact_extended, warn_missing, within};
 pub(crate) use overlay::Overlay;
-pub(crate) use rounds::{add_suppressions, check_files, check_stdin};
 
 // Ruff's configuration and simplint's, from the same command line, as a run reads them.
 pub(crate) struct Resolved {
