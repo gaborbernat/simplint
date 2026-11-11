@@ -595,18 +595,19 @@ fn unexported_public_name_checks_strings_of_other_files() {
     assert!(!stdout.contains("SMP403 [*]"));
 }
 
-// Ruff's COM812 reports a list whose closing bracket follows a line break with no trailing comma, which SMP405 leaves to
-// it while the project's Ruff configuration selects it. A list that closes on its last element's line is not COM812's.
+// Ruff's COM812 reports a list whose closing bracket follows a line break with no trailing comma, so SMP405 leaves that
+// list to it whether or not the project selects the rule. A list that closes on its last element's line is not
+// COM812's.
 #[test_case("__all__ = [\n    \"a\",\n    \"b\"\n]\n", false ; "closing_bracket_on_own_line")]
 #[test_case("__all__ = [\n    \"a\"  # note\n]\n", false ; "comment_before_closing_bracket")]
 #[test_case("__all__ = [\n    (\"a\")\n]\n", false ; "parenthesized_last_element")]
 #[test_case("__all__ = [\n    \"a\",\n    \"b\"]\n", true ; "closing_bracket_after_last_element")]
 #[test_case("__all__ = [\"a\", \"b\"]\n", true ; "single_line")]
 #[test_case("__all__ = [\n    \"a\" \\\n]\n", true ; "line_continuation")]
-fn all_format_follows_ruff_com812(source: &str, reported_when_selected: bool) {
-    let case =
-        common::RuffOverlap { settings: "", select: "SMP405", ruff_code: "COM812", files: &[("module.py", source)] };
-    assert_eq!(common::reported_without_and_with_ruff(&case, "has no trailing comma"), [true, reported_when_selected]);
+fn all_format_leaves_com812_lists_to_ruff(source: &str, reported: bool) {
+    let root = common::project(&[("module.py", source)]);
+    let stdout = common::check(root.path(), &["--select", "SMP405"]).1;
+    assert_eq!(stdout.contains("has no trailing comma"), reported, "{stdout}");
 }
 
 // A parenthesized last element keeps the comma after it, so the list has one and SMP405 has nothing to add.

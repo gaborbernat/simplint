@@ -130,14 +130,8 @@ literal.
 
 - **A list whose closing bracket follows a line break with no comma before it**, such as a last name on its own line
   above `]` with no comma after it: Ruff's
-  [missing-trailing-comma](https://docs.astral.sh/ruff/rules/missing-trailing-comma/) reports it while the project's
-  Ruff configuration selects it, so this rule leaves it to Ruff. A tuple written that way, which COM812 reports too,
-  stays here for the fix that turns it into a list.
-
-  ```toml config
-  [tool.ruff.lint]
-  select = ["COM812"]
-  ```
+  [missing-trailing-comma](https://docs.astral.sh/ruff/rules/missing-trailing-comma/) reports it, so this rule leaves it
+  to Ruff. A tuple written that way, which COM812 reports too, stays here for the fix that turns it into a list.
 
   ```python ok
   # fmt: off
@@ -150,12 +144,12 @@ literal.
 
 ### Fix
 
-| Value                                                                                | Fix                                                   | Safe |
-| ------------------------------------------------------------------------------------ | ----------------------------------------------------- | :--: |
-| list without the trailing comma, no comment, closing bracket after a name            | rewrites it, one name per line, with a trailing comma |  ✓   |
-| list without the trailing comma, with a comment or a closing bracket on its own line | adds the comma after the last name                    |  ✓   |
-| tuple                                                                                | rewrites it as a list                                 |  ✗   |
-| empty tuple                                                                          | becomes `[]`                                          |  ✗   |
+| Value                                                                              | Fix                                                   | Safe |
+| ---------------------------------------------------------------------------------- | ----------------------------------------------------- | :--: |
+| list without the trailing comma, no comment, closing bracket after a name          | rewrites it, one name per line, with a trailing comma |  ✓   |
+| list without the trailing comma, with a comment and a closing bracket after a name | adds the comma after the last name                    |  ✓   |
+| tuple                                                                              | rewrites it as a list                                 |  ✗   |
+| empty tuple                                                                        | becomes `[]`                                          |  ✗   |
 
 ```python report
 __all__ = ["load", "save"]
@@ -166,24 +160,6 @@ __all__ = [
     "load",
     "save",
 ]
-```
-
-```python report
-# fmt: off
-__all__ = [
-    "load",
-    "save"
-]
-# fmt: on
-```
-
-```python fixed
-# fmt: off
-__all__ = [
-    "load",
-    "save",
-]
-# fmt: on
 ```
 
 ```python report
@@ -229,68 +205,24 @@ The fix keeps the names in their order. The layout depends on how the literal is
   # fmt: on
   ```
 
-- **A list whose closing bracket is on its own line, or that holds a comment**: the fix adds only the comma after the
-  last name, after its closing parenthesis if it has one, so the layout and the comment stay.
+- **A list that holds a comment, with its closing bracket after a name**: the fix adds only the comma after the last
+  name, after its closing parenthesis if it has one, so the layout and the comment stay.
 
-  - the closing bracket on its own line:
+  ```python report
+  # fmt: off
+  __all__ = [
+      "load",  # the loader
+      "save"]
+  # fmt: on
+  ```
 
-    ```python report
-    # fmt: off
-    __all__ = [
-        "load",
-        "save"
-    ]
-    # fmt: on
-    ```
-
-    ```python fixed
-    # fmt: off
-    __all__ = [
-        "load",
-        "save",
-    ]
-    # fmt: on
-    ```
-
-  - a comment inside the list:
-
-    ```python report
-    # fmt: off
-    __all__ = [
-        "load",
-        "save"  # the public API
-    ]
-    # fmt: on
-    ```
-
-    ```python fixed
-    # fmt: off
-    __all__ = [
-        "load",
-        "save",  # the public API
-    ]
-    # fmt: on
-    ```
-
-  - a parenthesized last name:
-
-    ```python report
-    # fmt: off
-    __all__ = [
-        "load",
-        ("save")
-    ]
-    # fmt: on
-    ```
-
-    ```python fixed
-    # fmt: off
-    __all__ = [
-        "load",
-        ("save"),
-    ]
-    # fmt: on
-    ```
+  ```python fixed
+  # fmt: off
+  __all__ = [
+      "load",  # the loader
+      "save",]
+  # fmt: on
+  ```
 
 - **A tuple across several lines**: it keeps its layout; the fix swaps the brackets and adds the comma.
 
