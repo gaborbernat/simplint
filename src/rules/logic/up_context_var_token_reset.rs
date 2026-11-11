@@ -41,20 +41,17 @@ fn report_reset(checker: &Checker, assign: &ast::StmtAssign, try_stmt: &ast::Stm
     let Some(reset_attribute) = reset.func.as_attribute_expr() else {
         return;
     };
-    let same_variable = checker.text(reset_attribute.value.as_ref()) == checker.text(set_attribute.value.as_ref());
     if reset_attribute.attr.as_str() != "reset"
-        || !same_variable
+        || checker.text(reset_attribute.value.as_ref()) != checker.text(set_attribute.value.as_ref())
         || !sole_argument(reset).is_some_and(|argument| is_name(argument, token.id.as_str()))
     {
         return;
     }
     // The assignment and the `reset` argument are the token's only spellings; any other use reads it after the block.
-    let uses = checker.identifier_count_in(checker.enclosing_scope(assign.range()), token.id.as_str());
-    if uses != 2 {
+    if checker.identifier_count_in(checker.enclosing_scope(assign.range()), token.id.as_str()) != 2 {
         return;
     }
-    let header = format!("with {}:", checker.text(set));
-    let fix = wrap_edits(checker, assign.range(), try_stmt, &header)
+    let fix = wrap_edits(checker, assign.range(), try_stmt, &format!("with {}:", checker.text(set)))
         .filter(|_| !is_exported_module_name(checker, token))
         .map(|[head, tail]| Fix::safe_edits(head, [tail]));
     checker.report_fix(
@@ -66,8 +63,9 @@ fn report_reset(checker: &Checker, assign: &ast::StmtAssign, try_stmt: &ast::Stm
     );
 }
 
-// Whether every binding of the receiver gives it a `ContextVar`: an assignment of a `contextvars.ContextVar(...)` call, or
-// a parameter annotated as one. Any other object's `set` returns something that need not enter as a context manager.
+// Whether every binding of the receiver gives it a `ContextVar`: an assignment of a `contextvars.ContextVar(...)`
+// call, or a parameter annotated as one. Any other object's `set` returns something that need not enter as a context
+// manager.
 fn is_context_var(checker: &Checker, receiver: &Expr) -> bool {
     let Expr::Name(name) = receiver else {
         return false;
