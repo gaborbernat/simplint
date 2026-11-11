@@ -2,7 +2,7 @@ mod common;
 
 use test_case::test_case;
 
-use common::{SINGLE_X, check, project, read, simplint, simplint_with};
+use common::{SINGLE_X, check, empty_project, json, project, read, simplint, simplint_with};
 
 // Each report as the format renders it, one with a fix and one without, with the project's temporary directory as
 // `[ROOT]`.
@@ -70,9 +70,8 @@ fn check_keeps_report_order_across_chunks(format: &str) {
 #[test_case(&["--ignore-noqa"] ; "suppressions_ignored")]
 fn check_json_gives_the_row_a_noqa_comment_goes_on(flags: &[&str]) {
     let root = project(&[("module.py", "x = \"\"\"a\nb\"\"\"\n")]);
-    let stdout =
-        simplint(root.path(), &[&["check", "--output-format", "json", "--select", "SMP101"], flags].concat()).1;
-    let diagnostics: Vec<serde_json::Value> = serde_json::from_str(&stdout).expect("json report");
+    let diagnostics: Vec<serde_json::Value> =
+        json(root.path(), &[&["check", "--output-format", "json", "--select", "SMP101"], flags].concat());
     assert_eq!(diagnostics[0]["noqa_row"], 2);
 }
 
@@ -176,7 +175,7 @@ fn color_follows_the_flag_then_force_color(flags: &[&str], env: &[(&str, &str)],
 
 #[test]
 fn preview_help_says_simplint_has_no_preview_rules() {
-    let root = project(&[]);
+    let root = empty_project();
     let help = simplint(root.path(), &["check", "--help"]).1;
     let preview = help.lines().skip_while(|line| !line.contains("--preview")).skip(1);
     assert_eq!(

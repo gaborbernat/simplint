@@ -8,7 +8,7 @@ use serde_json::Value;
 use similar::TextDiff;
 use test_case::test_case;
 
-use common::{project, simplint};
+use common::{empty_project, simplint};
 
 // Read the Docs builds the pages from these files rather than from a binary it would need minutes to compile, and
 // SchemaStore and editors check `[tool.simplint]` against the schema, so a change to a flag or an option fails here
@@ -16,7 +16,7 @@ use common::{project, simplint};
 #[test_case(&["cli-schema"], "docs/_data/cli-schema.json" ; "cli_schema")]
 #[test_case(&["config-schema"], "simplint.schema.json" ; "config_schema")]
 fn docs_data_matches_the_binary(args: &[&str], file: &str) {
-    let root = project(&[]);
+    let root = empty_project();
     let (code, stdout, stderr) = simplint(root.path(), args);
     assert_eq!((code, stderr.as_str()), (0, ""));
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(file);
@@ -33,7 +33,7 @@ fn docs_data_matches_the_binary(args: &[&str], file: &str) {
 // the derivation must list every rule the binary lists, with the same fields.
 #[test]
 fn rules_data_matches_the_binary() {
-    let root = project(&[]);
+    let root = empty_project();
     let (code, stdout, stderr) = simplint(root.path(), &["rules", "--output-format", "json"]);
     assert_eq!((code, stderr.as_str()), (0, ""));
     let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("docs").join("rules_data.py");

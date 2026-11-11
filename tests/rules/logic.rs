@@ -798,7 +798,7 @@ fn single_caller_helper_reports_when_ruff_limits_hold(rule: &str, option: &str, 
 #[test_case("[tool.simplint.logic]\nmax-cognitive-complexity = 17\n", 2 ; "limit_seventeen_reports_eighteen")]
 #[test_case("[tool.simplint.logic]\nmax-cognitive-complexity = 18\n", 1 ; "limit_eighteen_keeps_eighteen")]
 fn cognitive_complexity_limit(settings: &str, reports: usize) {
-    let source = fixture_source("cognitive_complexity/cognitive_complexity.py");
+    let source = common::fixture_source("logic/cognitive_complexity/cognitive_complexity.py");
     let root = common::project(&[("pyproject.toml", settings), ("module.py", &source)]);
     let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP529"]);
     assert_eq!(stdout.matches("SMP529").count(), reports);
@@ -807,7 +807,7 @@ fn cognitive_complexity_limit(settings: &str, reports: usize) {
 // Each function in the fixture ends its name with the score SonarSource gives it, which a limit of zero reports.
 #[test]
 fn cognitive_complexity_scores() {
-    let source = fixture_source("cognitive_complexity/cognitive_complexity_scores.py");
+    let source = common::fixture_source("logic/cognitive_complexity/cognitive_complexity_scores.py");
     let settings = "[tool.simplint.logic]\nmax-cognitive-complexity = 0\n";
     let root = common::project(&[("pyproject.toml", settings), ("module.py", &source)]);
     let (_, stdout, _) = check(root.path(), &["--no-cache", "--select", "SMP529"]);
@@ -826,11 +826,6 @@ fn cognitive_complexity_scores() {
         .map(|score| (score, score))
         .collect();
     assert_eq!(scores, expected);
-}
-
-fn fixture_source(path: &str) -> String {
-    std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/logic").join(path))
-        .expect("fixture")
 }
 
 // Ruff's RET504 reports `return name` after an assignment, and RUF070 reports a `yield from` of one, which SMP504 leaves

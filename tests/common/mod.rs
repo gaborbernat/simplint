@@ -9,13 +9,14 @@ use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::{Duration, Instant};
 
 use assert_cmd::Command;
+use serde::de::DeserializeOwned;
 use serde_json::Value;
 use tempfile::TempDir;
 
 pub const SECTION: &str = "SMP001 [*] Section comment groups code; extract a named function or class instead";
 pub const SINGLE_X: &str = "SMP101 Single-letter name `x`; use a descriptive name";
 
-pub fn project(files: &[(&str, &str)]) -> TempDir {
+pub fn project<N: AsRef<Path>>(files: &[(N, &str)]) -> TempDir {
     let root = TempDir::new().expect("temporary directory");
     for (name, content) in files {
         let path = root.path().join(name);
@@ -23,6 +24,10 @@ pub fn project(files: &[(&str, &str)]) -> TempDir {
         fs::write(path, content).expect("write file");
     }
     root
+}
+
+pub fn empty_project() -> TempDir {
+    TempDir::new().expect("temporary directory")
 }
 
 pub fn check(root: &Path, args: &[&str]) -> (i32, String, String) {
@@ -83,6 +88,14 @@ pub fn simplint(root: &Path, args: &[&str]) -> (i32, String, String) {
     simplint_with_stdin(root, args, "")
 }
 
+pub fn json<T: DeserializeOwned>(root: &Path, args: &[&str]) -> T {
+    serde_json::from_str(&simplint(root, args).1).expect("json output")
+}
+
+pub fn fixture_source(path: &str) -> String {
+    fs::read_to_string(fixtures().join(path)).expect("fixture")
+}
+
 pub fn simplint_with_stdin(root: &Path, args: &[&str], stdin: &str) -> (i32, String, String) {
     simplint_with(root, args, stdin, &[])
 }
@@ -141,8 +154,7 @@ fn lint_fixture(rule: &str, fixture: &str, target_version: &str) -> String {
     let root = fixture_project();
     let path = root.path().join(fixture);
     let select = ["check", "--no-cache", "--select", rule, "--target-version", target_version];
-    let report = simplint(root.path(), &[&select[..], &["--output-format", "json"]].concat()).1;
-    let diagnostics: Vec<Value> = serde_json::from_str(&report).expect("json report");
+    let diagnostics: Vec<Value> = json(root.path(), &[&select[..], &["--output-format", "json"]].concat());
     let diagnostics: Vec<&Value> =
         diagnostics.iter().filter(|diagnostic| Path::new(text(&diagnostic["filename"])) == path).collect();
     let mut output = String::new();

@@ -4,7 +4,7 @@ use std::fs;
 
 use test_case::test_case;
 
-use common::{SECTION, SINGLE_X, check, check_with_stdin, project, simplint_with_stdin};
+use common::{SECTION, SINGLE_X, check, check_with_stdin, empty_project, project, simplint_with_stdin};
 
 #[test]
 fn check_clean_project_passes() {
@@ -193,7 +193,7 @@ fn check_points_ruff_selectors_to_ruff(selector: &str) {
 #[test_case(&["--statistics", "--watch"] ; "statistics_watch")]
 #[test_case(&["--show-settings", "--stdin-filename", "x.py"] ; "show_settings_stdin")]
 fn conflicting_flags_fail(flags: &[&str]) {
-    let root = project(&[]);
+    let root = empty_project();
     let (code, _, stderr) = check(root.path(), flags);
     assert_eq!((code, stderr.contains("cannot be used with")), (2, true));
 }
@@ -279,7 +279,7 @@ fn check_verbose_logs_debug_output() {
 
 #[test]
 fn check_reads_stdin() {
-    let root = project(&[]);
+    let root = empty_project();
     assert_eq!(
         check_with_stdin(root.path(), &["--select", "SMP101", "-"], "x = 1\n"),
         (1, format!("-:1:1: {SINGLE_X}\nFound 1 error.\n"), String::new())
@@ -300,7 +300,7 @@ fn check_reads_stdin() {
     "diff_prints_the_diff"
 )]
 fn check_fix_from_stdin(flag: &str, stdin: &str, code: i32, stdout: &str, stderr: &str) {
-    let root = project(&[]);
+    let root = empty_project();
     assert_eq!(
         check_with_stdin(root.path(), &[flag, "--select", "SMP001", "--stdin-filename", "module.py"], stdin),
         (code, stdout.to_owned(), stderr.to_owned())

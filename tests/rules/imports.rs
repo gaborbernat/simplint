@@ -1,7 +1,6 @@
 use std::fs;
 use std::path::Path;
 
-use tempfile::TempDir;
 use test_case::test_case;
 
 use crate::common;
@@ -209,11 +208,6 @@ fn sibling_package(prefix: &str) -> Vec<(String, &'static str)> {
     .into()
 }
 
-fn project_of(files: &[(String, &str)]) -> TempDir {
-    let borrowed: Vec<(&str, &str)> = files.iter().map(|(name, content)| (name.as_str(), *content)).collect();
-    common::project(&borrowed)
-}
-
 fn reported(root: &Path) -> bool {
     common::check(root, &["--select", "absolute-sibling-import"]).1.contains("SMP302")
 }
@@ -253,7 +247,7 @@ fn absolute_sibling_import_follows_flake8_lazy(pyproject: &str, hook: Option<(&s
     let mut files = sibling_package("");
     files.push(("pyproject.toml".to_owned(), pyproject));
     files.extend(hook.map(|(name, text)| (name.to_owned(), text)));
-    assert_eq!(reported(project_of(&files).path()), reported_);
+    assert_eq!(reported(common::project(&files).path()), reported_);
 }
 
 // The hook of the repository that holds the project counts, as pre-commit reads it from the repository root.
@@ -263,7 +257,7 @@ fn absolute_sibling_import_finds_hook_above_the_project() {
     files.push(("monorepo/pkg/pyproject.toml".to_owned(), PROJECT));
     files.push(("monorepo/.pre-commit-config.yaml".to_owned(), HOOK));
     files.push(("monorepo/.git/HEAD".to_owned(), "ref: refs/heads/main\n"));
-    assert!(!reported(project_of(&files).path().join("monorepo").as_path()));
+    assert!(!reported(common::project(&files).path().join("monorepo").as_path()));
 }
 
 // The search stops at the repository root, so a hook above it does not count.
@@ -273,7 +267,7 @@ fn absolute_sibling_import_stops_at_the_repository_root() {
     files.push(("outer/.pre-commit-config.yaml".to_owned(), HOOK));
     files.push(("outer/repo/pyproject.toml".to_owned(), PROJECT));
     files.push(("outer/repo/.git/HEAD".to_owned(), "ref: refs/heads/main\n"));
-    assert!(reported(project_of(&files).path().join("outer/repo").as_path()));
+    assert!(reported(common::project(&files).path().join("outer/repo").as_path()));
 }
 
 // Outside a repository, the search stops at the run's project, so a hook above it, as in the home directory, does not
@@ -283,7 +277,7 @@ fn absolute_sibling_import_outside_a_repository_stops_at_the_project() {
     let mut files = sibling_package("home/repo/");
     files.push(("home/.pre-commit-config.yaml".to_owned(), HOOK));
     files.push(("home/repo/pyproject.toml".to_owned(), PROJECT));
-    assert!(reported(project_of(&files).path().join("home/repo").as_path()));
+    assert!(reported(common::project(&files).path().join("home/repo").as_path()));
 }
 
 // A `[tool.flake8-lazy]` table in the settings pyproject, which a workspace member's own `pyproject.toml` does not hold.
@@ -295,7 +289,7 @@ fn absolute_sibling_import_finds_table_in_settings_pyproject() {
         "workspace/pyproject.toml".to_owned(),
         "[tool.simplint]\n[tool.flake8-lazy.standalone]\napply = \"list\"\n",
     ));
-    assert!(!reported(project_of(&files).path().join("workspace").as_path()));
+    assert!(!reported(common::project(&files).path().join("workspace").as_path()));
 }
 
 // A nested project with its own `[project]` sees the hook of the project around it.
@@ -306,7 +300,7 @@ fn absolute_sibling_import_nested_project_sees_outer_hook() {
     files.push((".pre-commit-config.yaml".to_owned(), HOOK));
     files.extend(sibling_package("tests/fixture/"));
     files.push(("tests/fixture/pyproject.toml".to_owned(), PROJECT));
-    assert!(!reported(project_of(&files).path()));
+    assert!(!reported(common::project(&files).path()));
 }
 
 // A nested project without a `pyproject.toml` of its own takes the metadata of the project around it.
@@ -317,7 +311,7 @@ fn absolute_sibling_import_nested_project_without_pyproject_sees_outer_hook() {
     files.push((".pre-commit-config.yaml".to_owned(), HOOK));
     files.extend(sibling_package("tests/proj/"));
     files.push(("tests/proj/conf.py".to_owned(), ""));
-    assert!(!reported(project_of(&files).path()));
+    assert!(!reported(common::project(&files).path()));
 }
 
 // Without a `pyproject.toml`, the hook configuration of the directory the run starts from counts.
@@ -325,7 +319,7 @@ fn absolute_sibling_import_nested_project_without_pyproject_sees_outer_hook() {
 fn absolute_sibling_import_without_pyproject_reads_hook_at_run_root() {
     let mut files = sibling_package("");
     files.push((".pre-commit-config.yaml".to_owned(), HOOK));
-    assert!(!reported(project_of(&files).path()));
+    assert!(!reported(common::project(&files).path()));
 }
 
 // `--isolated` reads no pyproject and no hook configuration, so the hook of the project does not count.
@@ -334,7 +328,7 @@ fn isolated_run_does_not_read_hook_configurations() {
     let mut files = sibling_package("");
     files.push(("pyproject.toml".to_owned(), PROJECT));
     files.push(("prek.toml".to_owned(), "[[repos]]\nrepo = \"x\"\nhooks = [{ id = \"flake8-lazy\" }]\n"));
-    let root = project_of(&files);
+    let root = common::project(&files);
     let isolated = common::check(root.path(), &["--isolated", "--select", "absolute-sibling-import"]).1;
     assert_eq!((isolated.contains("SMP302"), reported(root.path())), (true, false));
 }
@@ -345,7 +339,7 @@ fn isolated_run_does_not_read_hook_configurations() {
 fn unparsable_hook_configuration_counts_as_no_hook(select: &str, expected: (i32, bool)) {
     let mut files = sibling_package("");
     files.push(("prek.toml".to_owned(), "[[repos]\n"));
-    let root = project_of(&files);
+    let root = common::project(&files);
     let (status, _, stderr) = common::check(root.path(), &["--select", select]);
     assert_eq!((status, stderr.contains("Failed to parse")), expected);
 }
@@ -356,7 +350,7 @@ fn unparsable_hook_configuration_counts_as_no_hook(select: &str, expected: (i32,
 fn unreadable_hook_configuration_counts_as_no_hook(select: &str, expected: (i32, bool)) {
     let mut files = sibling_package("");
     files.push((".pre-commit-config.yaml".to_owned(), HOOK));
-    let root = project_of(&files);
+    let root = common::project(&files);
     common::set_mode(&root.path().join(".pre-commit-config.yaml"), 0o000);
     let (status, _, stderr) = common::check(root.path(), &["--select", select]);
     assert_eq!((status, stderr.contains("Failed to read")), expected);
@@ -367,7 +361,7 @@ fn unreadable_hook_configuration_counts_as_no_hook(select: &str, expected: (i32,
 fn latin1_hook_configuration_still_counts() {
     let mut files = sibling_package("");
     files.push(("pyproject.toml".to_owned(), PROJECT));
-    let root = project_of(&files);
+    let root = common::project(&files);
     fs::write(
         root.path().join(".pre-commit-config.yaml"),
         b"repos:\n  - repo: x # \xe9\xe9\n    hooks:\n      - id: flake8-lazy\n",

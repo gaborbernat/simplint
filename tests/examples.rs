@@ -8,13 +8,13 @@ use ruff_python_ast::{PySourceType, PythonVersion};
 use ruff_python_parser::{ParseOptions, parse_unchecked};
 use serde_json::Value;
 
-use common::{project, read, simplint, text};
+use common::{empty_project, project, read, simplint, text};
 use examples::{Block, Example, Fence, Role, parse};
 
 // Each rule's examples are checked in one run, so a wrong example is reported along with every other one.
 #[test]
 fn rule_examples_hold() {
-    let root = project(&[]);
+    let root = empty_project();
     let (code, stdout, stderr) = simplint(root.path(), &["rules", "--output-format", "json"]);
     assert_eq!((code, stderr.as_str()), (0, ""));
     let rules: Vec<Value> = serde_json::from_str(&stdout).expect("json");

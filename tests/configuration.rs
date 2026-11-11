@@ -249,7 +249,7 @@ fn isolated_rejects_a_config_file() {
 fn config_file_is_used_for_every_file(name: &str, content: &str, stdout: &str) {
     let path = format!("config/{name}");
     let root = project(&[
-        (&path, content),
+        (path.as_str(), content),
         ("pyproject.toml", "[tool.simplint]\nselect = [\"SMP001\"]\n"),
         ("module.py", "x = 1\n"),
     ]);

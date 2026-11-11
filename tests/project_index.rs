@@ -2,7 +2,7 @@ mod common;
 
 use test_case::test_case;
 
-use common::{check, check_with_stdin, project};
+use common::{check, check_with_stdin, empty_project, project};
 
 #[test]
 fn import_through_directory_without_init_counts_as_imported() {
@@ -2873,7 +2873,7 @@ fn invalid_pyproject_of_a_nested_project_is_an_error(content: &str) {
 #[test_case(true ; "standard_input")]
 fn working_directory_that_is_not_utf8_is_an_error(stdin: bool) {
     use std::os::unix::ffi::OsStrExt;
-    let root = project(&[]);
+    let root = empty_project();
     let directory = root.path().join(std::ffi::OsStr::from_bytes(b"bad\xff"));
     std::fs::create_dir(&directory).expect("create directory");
     let (code, _, stderr) = if stdin {
@@ -3279,8 +3279,8 @@ fn sarif_related_location_is_a_file_uri() {
         ("models.py", &format!("__all__ = []\n\n{PARTITION}")),
         ("caller.py", "from models import Partition\n\nPartition(\"a\", 1)\n"),
     ]);
-    let stdout = common::simplint(root.path(), &["check", "--select", "SMP703", "--output-format", "sarif"]).1;
-    let report: serde_json::Value = serde_json::from_str(&stdout).expect("sarif report");
+    let report: serde_json::Value =
+        common::json(root.path(), &["check", "--select", "SMP703", "--output-format", "sarif"]);
     let result = &report["runs"][0]["results"][0];
     let primary = result["locations"][0]["physicalLocation"]["artifactLocation"]["uri"].as_str().unwrap_or_default();
     let related =
