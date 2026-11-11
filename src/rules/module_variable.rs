@@ -68,7 +68,7 @@ pub fn module_variables<'a>(checker: &Checker<'a>) -> Vec<ModuleVariable<'a>> {
         let private = if checker.project().is_used_elsewhere(name) {
             Visibility::of(name) != Visibility::Public
         } else {
-            !exported.is_some_and(|names| names.contains(&name))
+            !exported.is_some_and(|names| names.contains(name))
         };
         variables.push(ModuleVariable { name, range: first.range, private });
     }

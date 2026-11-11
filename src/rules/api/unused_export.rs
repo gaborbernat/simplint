@@ -35,7 +35,7 @@ pub fn unused_export(checker: &Checker) {
     // A name another exported name's signature reaches is part of the interface the module exports, and a dotted path
     // that names it, as a `mock.patch("pkg.mod.name")` target does, uses it as an import does. Code the index cannot
     // follow may still read a name, so the removal below is withheld for it, while the report stays.
-    let unused: Vec<&str> = exported.iter().copied().filter(|name| !project.is_used_elsewhere(name)).collect();
+    let unused: Vec<&str> = exported.names().iter().copied().filter(|name| !project.is_used_elsewhere(name)).collect();
     if unused.is_empty() {
         return;
     }

@@ -10,7 +10,7 @@ use rustc_hash::FxHashMap;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::project::computed_reads::ComputedReads;
-use crate::rules::api::{listed_exports, references_outside};
+use crate::rules::api::references_outside;
 use crate::rules::docstrings::Need;
 use crate::rules::is_named_by_doctest;
 use crate::semantic::Evaluation;
@@ -23,7 +23,6 @@ pub fn unused_definition(checker: &Checker) {
         return;
     }
     let api = checker.state().public_api(checker);
-    let listed = listed_exports(checker);
     let local_reads = ComputedReads::of(checker.body());
     // Most definitions are ruled out before their name is looked up in the strings, so the words are split only then.
     let strings = LazyCell::new(|| string_words(checker));
@@ -45,7 +44,7 @@ pub fn unused_definition(checker: &Checker) {
             && !is_protocol_name(name)
             && !computed_read_hides(checker, name, &local_reads)
             && !api.covers(stmt.range(), Need::Any)
-            && !listed.contains(&name)
+            && !checker.dunder_all().lists(name)
             && !is_framework_hook(name)
             && !project.is_used_elsewhere(name)
             && !project.is_base_class(name)

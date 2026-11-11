@@ -211,7 +211,7 @@ impl FileFacts {
         let listed = dunder_all(&parsed.syntax().body);
         let interface = interface(&parsed.syntax().body);
         let (exports, dynamic_exports) = match listed {
-            Exports::Listed(names) => (Some(names.into_iter().map(str::to_owned).collect()), false),
+            Exports::Listed(names) => (Some(names.names().iter().copied().map(str::to_owned).collect()), false),
             Exports::Absent => (None, false),
             Exports::Dynamic => (None, true),
         };

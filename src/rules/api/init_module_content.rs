@@ -98,7 +98,7 @@ fn is_reexport(stmt: &Stmt, exports: &Exports, facade: bool) -> bool {
                     facade
                         && (alias.name.as_str() == "*"
                             || alias.asname.as_ref().is_some_and(|asname| asname.as_str() == alias.name.as_str()))
-                        || matches!(exports, Exports::Listed(names) if names.contains(&bound))
+                        || exports.lists(bound)
                 })
         }
         _ => all_binding(stmt).is_some() || all_mutation(stmt).is_some() || is_lazy_modules_binding(stmt),

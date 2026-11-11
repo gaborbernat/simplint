@@ -9,6 +9,7 @@ use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_python_parser::parse_expression;
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
+use rustc_hash::FxHashSet;
 
 pub fn for_each_body<'a>(body: &'a [Stmt], visit: &mut impl FnMut(&'a [Stmt], Option<&'a Stmt>)) {
     walk_bodies(body, None, visit);
@@ -309,18 +310,47 @@ pub fn module_statements(body: &[Stmt]) -> impl Iterator<Item = &Stmt> {
 
 pub enum Exports<'a> {
     Absent,
-    Listed(Vec<&'a str>),
+    Listed(Listing<'a>),
     Dynamic,
+}
+
+// The names `__all__` lists in the order it gives them, with a set of them for the membership checks.
+pub struct Listing<'a> {
+    names: Vec<&'a str>,
+    members: FxHashSet<&'a str>,
+}
+
+impl<'a> Listing<'a> {
+    fn new(names: Vec<&'a str>) -> Self {
+        Self { members: names.iter().copied().collect(), names }
+    }
+
+    fn extend(&mut self, names: Vec<&'a str>) {
+        self.members.extend(names.iter().copied());
+        self.names.extend(names);
+    }
+
+    pub fn names(&self) -> &[&'a str] {
+        &self.names
+    }
+
+    pub fn contains(&self, name: &str) -> bool {
+        self.members.contains(name)
+    }
 }
 
 impl Exports<'_> {
     // Whether `__all__` lists `name`, or may list it because it cannot be read statically.
     pub fn may_list(&self, name: &str) -> bool {
         match self {
-            Self::Listed(names) => names.contains(&name),
+            Self::Listed(listing) => listing.contains(name),
             Self::Dynamic => true,
             Self::Absent => false,
         }
+    }
+
+    pub fn lists(&self, name: &str) -> bool {
+        matches!(self, Self::Listed(listing) if listing.contains(name))
     }
 }
 
@@ -368,7 +398,7 @@ pub fn dunder_all(body: &[Stmt]) -> Exports<'_> {
                 listed.extend(names);
                 Exports::Listed(listed)
             }
-            (_, Some(names)) => Exports::Listed(names),
+            (_, Some(names)) => Exports::Listed(Listing::new(names)),
         };
     }
     exports

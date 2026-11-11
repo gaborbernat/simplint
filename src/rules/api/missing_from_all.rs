@@ -24,11 +24,9 @@ pub fn missing_from_all(checker: &Checker) {
     {
         return;
     }
-    let exported = match checker.dunder_all() {
-        Exports::Absent => &[][..],
-        Exports::Listed(names) => names.as_slice(),
-        Exports::Dynamic => return,
-    };
+    if matches!(checker.dunder_all(), Exports::Dynamic) {
+        return;
+    }
     // The package's `import *` of this module would bind its namesake over the attribute holding the module.
     let shadows_module = |name: &str| {
         checker.project().is_package_star_imported() && checker.path.file_stem().is_some_and(|stem| stem == name)
@@ -45,7 +43,7 @@ pub fn missing_from_all(checker: &Checker) {
         .all_bindings()
         .filter(|(name, bindings)| {
             Visibility::of(name) == Visibility::Public
-                && !exported.contains(name)
+                && !checker.dunder_all().lists(name)
                 && !bindings.iter().all(|binding| type_checking.iter().any(|block| block.contains_range(binding.range)))
                 // Another module reaching a name this one imports and uses, as `app.sys`, borrows it rather than
                 // relying on an export; an import the module never uses is there for its importers, a re-export.

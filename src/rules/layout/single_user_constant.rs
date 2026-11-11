@@ -27,7 +27,7 @@ pub fn single_user_constant(checker: &Checker) {
         };
         let name = target.id.as_str();
         let private = match checker.dunder_all() {
-            Exports::Listed(names) => !names.contains(&name),
+            Exports::Listed(names) => !names.contains(name),
             Exports::Absent | Exports::Dynamic => Visibility::of(name) != Visibility::Public,
         };
         if !private
