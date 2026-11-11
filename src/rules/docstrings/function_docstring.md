@@ -57,9 +57,10 @@ withdraws the fix and keeps the report.
 
 Ruff's [empty-docstring](https://docs.astral.sh/ruff/rules/empty-docstring/) (D419) and
 [overload-with-docstring](https://docs.astral.sh/ruff/rules/overload-with-docstring/) (D418) report a docstring this
-rule offers no fix for, such as under a file-level `# ruff: noqa`. This rule leaves to them an empty docstring of a
-single string, and a non-empty one of a function decorated with `@overload`, whether or not the project selects them. A
-definition that `ignore-decorators` lists stays with this rule, since Ruff skips it.
+rule offers no fix for, such as under a file-level `# ruff: noqa`. Where this rule offers no fix, it leaves to them an
+empty docstring of a single string, and a non-empty one of a function decorated with `@overload` in a `.py` file,
+whether or not the project selects them. A definition that `ignore-decorators` lists stays with this rule, since Ruff
+skips it.
 
 ## What it does
 
