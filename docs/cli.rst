@@ -58,6 +58,9 @@ The options of ``simplint check`` are the ones ``ruff check`` has, with the same
       - Turns on Ruff's preview mode. simplint has no preview rules, so it only changes the output, which names rules
         instead of showing their codes, and lets simplint's fixes account for Ruff's preview rules.
 
+Several names for one file, through hard links or symlinks, are linted once, under the smallest path in sort order, with
+symlinks last.
+
 Standard input
 --------------
 
@@ -72,6 +75,11 @@ so the rules that depend on the file's path apply to it. It ignores the paths be
     warning: Ignoring file a.py in favor of standard input.
     src/app.py:1:1: SMP101 Single-letter name `x`; use a descriptive name
     Found 1 error.
+
+Standard input follows the file filters of a file of its name on disk: a notebook, TOML or Markdown name, or a name
+``--force-exclude`` leaves out, reports nothing and exits 0, and with ``--fix`` its source goes out unchanged, as Ruff
+writes it. The exception is a stub: a ``.pyi`` name is linted from standard input, though discovery only indexes stubs
+on disk and never lints them.
 
 Errors
 ------

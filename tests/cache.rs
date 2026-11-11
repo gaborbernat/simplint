@@ -668,6 +668,18 @@ fn warm_run_reuses_the_reports_of_a_file_no_rule_reports(source: &[u8], flags: &
     );
 }
 
+// A read error is reported only while `io-error` is selected: without it the run logs a warning, which a cached clean
+// result would not log again.
+#[test_case("F", (false, true) ; "logged_without_io_error")]
+#[test_case("E902", (true, false) ; "reported_with_io_error")]
+fn unreadable_file_is_reported_again_on_a_warm_run(select: &str, expected: (bool, bool)) {
+    let root = project(&[("pyproject.toml", &format!("[tool.ruff.lint]\nselect = [\"{select}\"]\n"))]);
+    fs::write(root.path().join("latin.py"), b"name = \"\xff\"\n").expect("write");
+    check(root.path(), &[]);
+    let (_, stdout, stderr) = check(root.path(), &[]);
+    assert_eq!((stdout.contains("E902"), stderr.contains("Failed to lint latin.py")), expected);
+}
+
 const HELPER: &str = "def helper() -> None:\n    pass\n";
 const CLIENT: &str = "from helpers import helper\n";
 
@@ -939,6 +951,77 @@ fn unwritten_fix_is_not_cached_as_clean() {
     );
 }
 
+// A `--diff` run keeps its fixes in memory. A file linted after a fix in another file sees that fix, so its reports are
+// not the disk's and a later run must not reuse them: `writer.py` repeats `reader.py` only until `reader.py`'s fix
+// changes its statements.
+#[test]
+fn diff_run_does_not_cache_reports_computed_from_fixes_it_kept_in_memory() {
+    let body = r#"def parse_lines(text):
+    lines = text.splitlines()
+    values = {}
+    for line in lines:
+        key, _, value = line.partition("=")
+        values[key] = value
+"#;
+    let tail =
+        "    count = len(values)\n    if count == 0:\n        raise ValueError(\"no values\")\n    return values\n";
+    let root = project(&[
+        ("reader.py", &[body, tail].concat()),
+        ("writer.py", &[body, tail].concat().replace("len(values)\n", "len(values)  # noqa: SMP502\n")),
+    ]);
+    let args = ["--select", "SMP502,SMP530"];
+    check(root.path(), &args);
+    check(root.path(), &[&args[..], &["--diff"]].concat());
+    let warm = check(root.path(), &args);
+    let fresh = check(root.path(), &[&args[..], &["--no-cache"]].concat());
+    assert_eq!((warm.1.matches("SMP530").count(), warm.1.contains("SMP502"), warm), (2, true, fresh));
+}
+
+// A mirrored source that links to a file outside the project keeps its target out of the directories the run walks, so
+// the cache must key the link by whether its target still exists.
+#[cfg(unix)]
+#[test]
+fn private_import_is_checked_again_once_its_linked_source_is_deleted() {
+    let outside = tempfile::TempDir::new().expect("temporary directory");
+    fs::write(outside.path().join("_api.py"), "VALUE = 1\n").expect("write");
+    let root = project(&[
+        ("pyproject.toml", "[tool.ruff]\nsrc = [\"lib\"]\n"),
+        ("lib/.keep", ""),
+        ("src/pkg/__init__.py", ""),
+        ("tests/pkg/test_api.py", "from pkg._api import VALUE\n\n\ndef test_value() -> None:\n    assert VALUE == 1\n"),
+    ]);
+    std::os::unix::fs::symlink(outside.path().join("_api.py"), root.path().join("src/pkg/_api.py")).expect("symlink");
+    let select = ["check", "--select", "SMP310", "tests"];
+    let cold = simplint(root.path(), &select).0;
+    let kept = simplint_with(root.path(), &[&select[..], &["-v"]].concat(), "", &[]);
+    fs::remove_file(outside.path().join("_api.py")).expect("remove");
+    let warm = simplint(root.path(), &select);
+    let fresh = simplint(root.path(), &[&select[..], &["--no-cache"]].concat());
+    assert_eq!((cold, kept.0, kept.2.contains("Indexed "), warm.0, warm == fresh), (0, 0, false, 1, true));
+}
+
+// Reports that name a path relative to the working directory are cached with the directory they were made in, so a run
+// from another directory names its paths as a run without the cache does.
+#[test_case(&[("pyproject.toml", "[tool.ruff]\n\n[tool.simplint]\n"), ("app/__init__.py", ""), ("app/a.py", "from app import b\n\nVALUE = 1\n"), ("app/b.py", "from app import a\n\nOTHER = 2\n")], "SMP308" ; "import_cycle")]
+#[test_case(&[("pyproject.toml", "[tool.ruff]\n\n[tool.simplint]\n"), ("app/__init__.py", ""), ("app/a.py", REPEATED), ("app/b.py", REPEATED)], "SMP530" ; "duplicate_code")]
+#[test_case(&[("pyproject.toml", "[tool.ruff]\n\n[tool.simplint]\nproject-kind = \"library\"\n"), ("app/__init__.py", "from app._core import fetch\n\n__all__ = [\"fetch\"]\n"), ("app/_core.py", "def fetch() -> None:\n    print()\n")], "SMP903" ; "undocumented_public_api")]
+fn cached_report_names_the_paths_of_the_directory_it_runs_in(files: &[(&str, &str)], select: &str) {
+    let root = project(files);
+    let run = |dir: &Path, extra: &[&str]| {
+        let output = command(root.path())
+            .current_dir(dir)
+            .args(["check", "--output-format", "concise", "--select", select])
+            .args(extra)
+            .output()
+            .expect("runs");
+        String::from_utf8(output.stdout).expect("utf-8 stdout")
+    };
+    let app = root.path().join("app");
+    run(root.path(), &[]);
+    let warm = run(&app, &[]);
+    assert_eq!(warm, run(&app, &["--no-cache"]));
+}
+
 // A private import in a test is judged by the source file the test mirrors, which is on disk, so a clean result of an
 // earlier run does not stand once that file is gone.
 #[test]
@@ -957,4 +1040,24 @@ fn private_import_is_checked_again_once_its_mirrored_module_is_deleted() {
     let warm = simplint(root.path(), &select);
     let fresh = simplint(root.path(), &[&select[..], &["--no-cache"]].concat());
     assert_eq!((cold, warm), (0, fresh));
+}
+
+// Ruff's `src` may leave out the directory the mirrored source sits in, yet the paired-test lookup reads it, so a source
+// deleted from there is checked again even though no run names it.
+#[test]
+fn private_import_is_checked_again_once_its_source_outside_the_search_roots_is_deleted() {
+    let root = project(&[
+        ("pyproject.toml", "[tool.ruff]\nsrc = [\"lib\"]\n"),
+        ("lib/.keep", ""),
+        ("src/pkg/__init__.py", ""),
+        ("src/pkg/_api.py", "VALUE = 1\n"),
+        ("tests/pkg/test_api.py", "from pkg._api import VALUE\n\n\ndef test_value() -> None:\n    assert VALUE == 1\n"),
+    ]);
+    let select = ["check", "--select", "SMP310", "tests"];
+    let cold = simplint(root.path(), &select).0;
+    let kept = simplint_with(root.path(), &[&select[..], &["-v"]].concat(), "", &[]);
+    fs::remove_file(root.path().join("src/pkg/_api.py")).expect("remove");
+    let warm = simplint(root.path(), &select);
+    let fresh = simplint(root.path(), &[&select[..], &["--no-cache"]].concat());
+    assert_eq!((cold, kept.0, kept.2.contains("Indexed "), warm.0, warm == fresh), (0, 0, false, 1, true));
 }

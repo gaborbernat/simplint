@@ -145,7 +145,7 @@ pub struct Mode {
 // diagnostic's suppression comment belongs on, which the cache stores with the reports. A file whose fixes cannot be
 // written is not cacheable: the cache keys a file by its metadata, not by whether its directory and the run's roots let
 // it be written, so its reports would outlive what they depend on. A file that cannot be read fails the same way for
-// the same key, so its report is stored.
+// the same key, so its report is stored, unless the error is only logged and so leaves no report.
 pub struct Linting {
     pub diagnostics: Diagnostics,
     pub settled: Option<Withdrawn>,
@@ -161,11 +161,10 @@ pub struct Linting {
 // fix loop withdrew from a file it left as it was: the one passed from an earlier run, which spares running the loop,
 // the one returned from this run.
 pub fn lint_path(path: &Path, linter: &Linter, mode: &Mode, settled: Option<Withdrawn>, overlay: &Overlay) -> Linting {
-    fix_path(path, linter, mode, settled, overlay).unwrap_or_else(|error| Linting {
-        diagnostics: Diagnostics::from_error(path, format!("{error:#}"), linter),
-        settled: None,
-        noqa_rows: Vec::new(),
-        cacheable: true,
+    fix_path(path, linter, mode, settled, overlay).unwrap_or_else(|error| {
+        let diagnostics = Diagnostics::from_error(path, format!("{error:#}"), linter);
+        // A cached clean result would leave out the warning of a read error that was only logged.
+        Linting { cacheable: !diagnostics.inner.is_empty(), diagnostics, settled: None, noqa_rows: Vec::new() }
     })
 }
 

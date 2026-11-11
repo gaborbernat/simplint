@@ -20,8 +20,8 @@ impl Overlay {
         self.0.lock().expect("no worker panics while fixing").get(path).map(|fixed| fixed.current.clone())
     }
 
-    pub fn holds(&self, path: &Path) -> bool {
-        self.0.lock().expect("no worker panics while fixing").contains_key(path)
+    pub fn is_empty(&self) -> bool {
+        self.0.lock().expect("no worker panics while fixing").is_empty()
     }
 
     // Records `fixed` as the source of `path` after a fix that changed `source`, and returns the diff from the source

@@ -17,7 +17,7 @@ use ruff_python_ast::helpers::to_module_path;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::conflicts::{self, Scope};
-use super::discover::{Discovered, discover, linted_roots};
+use super::discover::{Discovered, discover, linted_roots, lints_stdin};
 use super::{
     Diagnostics, Mode, Overlay, Resolved, StdinLint, io_error, lint_path, lint_stdin, warn_missing, write_source,
 };
@@ -136,10 +136,15 @@ fn missing_diagnostics(missing: Vec<(PathBuf, String)>, resolved: &Resolved) -> 
 }
 
 // Ruff's `check_stdin`: the source comes from standard input, and nothing else is indexed. Otherwise it is linted as
-// the file it stands for would be, so its settings, package and search roots come from that file's absolute path.
+// the file it stands for would be, so its settings, package and search roots come from that file's absolute path. A name
+// the file filters leave out reports nothing, and with `--fix` its source goes out unchanged, as Ruff writes it.
 pub(crate) fn check_stdin(path: &Path, source: &str, resolved: &Resolved, mode: &Mode) -> Result<StdinLint> {
     let ruff = &resolved.pyproject_config.settings;
     let absolute = std::path::absolute(path)?;
+    if !lints_stdin(&absolute, resolved)? {
+        let output = mode.fix.is_apply().then(|| source.to_owned());
+        return Ok(StdinLint { diagnostics: Diagnostics::default(), output });
+    }
     let settings = resolved.settings_resolver.for_file(&absolute)?;
     let package = absolute
         .parent()
@@ -377,6 +382,7 @@ struct ProjectInputs<'f> {
     coverage_plugins: Vec<(PathBuf, String)>,
     coverage_paths: Vec<(PathBuf, PathBuf)>,
     duplicate_statements: Option<usize>,
+    probed: Option<u64>,
     roles: FxHashMap<&'f Path, ModuleRole>,
     test_modules: FxHashSet<&'f Path>,
     distribution_roots: FxHashMap<&'f Path, &'f Path>,
@@ -426,6 +432,7 @@ impl<'f> ProjectInputs<'f> {
                 .dedup()
                 .collect(),
             duplicate_statements: duplicate_window(&linted, rules_of(&linted)),
+            probed: probed_layout_key(&linted),
             roles: module_roles(files, roots),
             test_modules: files
                 .iter()
@@ -475,6 +482,7 @@ fn run_digest(
         project.coverage_plugins.cache_key(&mut hasher);
         project.coverage_paths.cache_key(&mut hasher);
         project.duplicate_statements.cache_key(&mut hasher);
+        project.probed.cache_key(&mut hasher);
         let mut test_modules: Vec<&Path> = project.test_modules.iter().copied().collect();
         test_modules.sort_unstable();
         test_modules.cache_key(&mut hasher);
@@ -595,6 +603,7 @@ fn index_and_lint<'f, T: Send>(
         distribution_roots: &project.distribution_roots,
         docs,
         duplicate_statements: project.duplicate_statements,
+        probed: project.probed,
         external,
     };
     let mut imports = ImportResolver::new(
@@ -623,6 +632,26 @@ fn rules_of(files: &[&RunFile]) -> RuleSet {
 // The facts the run's rules read, which only those rules' runs need collected.
 fn wanted_parts(rules: RuleSet) -> Parts {
     rules.iter().fold(Parts::default(), |parts, rule| parts.with(rule.fact_parts()))
+}
+
+// The layout beside each project whose files check for `private-import-path`, which that rule's paired-test lookup reads.
+// `None` when no linted file checks for it.
+fn probed_layout_key(files: &[&RunFile]) -> Option<u64> {
+    let mut roots: Vec<&Path> = files
+        .iter()
+        .filter(|file| file.settings.rules.contains(Rule::PrivateImportPath))
+        .map(|file| file.settings.project.root.as_path())
+        .unique()
+        .collect();
+    if roots.is_empty() {
+        return None;
+    }
+    roots.sort_unstable();
+    let mut hasher = CacheKeyHasher::new();
+    for root in roots {
+        SearchRoots::probed_layout(root, &mut hasher);
+    }
+    Some(hasher.finish())
 }
 
 // The fewest statements a duplicate block spans: each file reports the blocks its own setting allows, so the index finds
@@ -702,11 +731,11 @@ fn lint_rounds<'f, T: Send>(
     // Two files whose fixes keep changing each other's facts would not settle; past this many rounds, the last
     // reports stand.
     const ROUNDS: usize = 8;
-    // A file an applied fix rewrote has a new key. A diff run's fixes leave the disk as it was, and the reports of a
-    // file it fixed are not its source's, so such a file is not cached.
+    // A file an applied fix rewrote has a new key. A diff run's fixes leave the disk as it was, so every file a later
+    // round lints sees an index the disk does not hold, and nothing such a round reports is cached.
     let overlay = index.overlay;
     let recache = |at: usize| {
-        if overlay.holds(files[at].path) {
+        if !overlay.is_empty() {
             return None;
         }
         Some((file_caches[at]?.0, FileKey::of(files[at].path)?))

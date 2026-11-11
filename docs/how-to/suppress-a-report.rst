@@ -45,8 +45,9 @@ The file-level comments work as in Ruff.
 To silence every remaining report at once:
 
 - ``simplint check --add-noqa`` writes a ``# noqa`` comment for every report left, merged into the line's existing
-  ``# noqa`` comment.
-- ``--add-ignore`` writes ``# simplint: ignore`` comments the same way.
+  ``# noqa`` comment. It skips a line whose ``# noqa`` is blanket, since a blanket ``# noqa`` takes no codes.
+- ``--add-ignore`` writes ``# simplint: ignore`` comments the same way, on a line with a blanket ``# noqa`` too, where
+  the comment silences the reports the blanket one leaves.
 - Both take a reason to write after the codes: ``--add-noqa="matches the paper's notation"``.
 - Neither takes standard input: ``simplint check --add-noqa -`` fails with an error.
 

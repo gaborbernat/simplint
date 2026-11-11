@@ -142,6 +142,17 @@ fn add_ignore_merges_into_ignore_comments() {
     );
 }
 
+// A blanket `# noqa` takes no codes, so `--add-noqa` leaves its line alone, while `--add-ignore` writes its comment there,
+// which silences the reports the blanket `# noqa` leaves. Other lines get their comments either way.
+#[test_case("--add-noqa=legacy", "import os  # noqa\nVALUE = vars(os)  # noqa: SMP604 legacy\n", 1 ; "noqa_leaves_the_line")]
+#[test_case("--add-ignore=legacy", "import os  # noqa  # simplint: ignore[blanket-ignore, suppression-without-reason] legacy\nVALUE = vars(os)  # simplint: ignore[vars-call] legacy\n", 0 ; "ignore_is_added_beside_it")]
+fn add_suppression_handles_a_line_with_a_blanket_noqa(flag: &str, expected: &str, code: i32) {
+    let root = project(&[("module.py", "import os  # noqa\nVALUE = vars(os)\n")]);
+    check(root.path(), &["--select", "SMP003,SMP004,SMP604", flag]);
+    let (after, _, _) = check(root.path(), &["--select", "SMP003,SMP004,SMP604"]);
+    assert_eq!((read(root.path(), "module.py"), after), (expected.to_owned(), code));
+}
+
 // The reason after the codes and any comment after it stay, unless a new reason replaces the old one.
 #[test_case("--add-noqa", "x = 1  # noqa: E501 long  # type: ignore[misc]\n", "x = 1  # noqa: E501, SMP101 long  # type: ignore[misc]\n" ; "noqa_keeps_reason_and_comment")]
 #[test_case("--add-noqa=why", "x = 1  # noqa: E501 long  # type: ignore[misc]\n", "x = 1  # noqa: E501, SMP101 why  # type: ignore[misc]\n" ; "noqa_replaces_reason")]

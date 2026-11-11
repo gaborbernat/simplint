@@ -159,12 +159,13 @@ macro_rules! rules {
 }
 
 // A fact a rule reads beyond its own file's syntax: an index part, what the other files contribute to the index, the
-// documentation the run names, or whether the file's directory holds an `__init__.py`.
+// documentation the run names, whether the file's directory holds an `__init__.py`, or the working directory.
 #[derive(Clone, Copy, PartialEq)]
 pub(crate) enum Read {
     CrossFile,
     SiblingInit,
     Documentation,
+    WorkingDirectory,
     Part(Parts),
 }
 
@@ -189,6 +190,9 @@ macro_rules! read {
     };
     (docs) => {
         Read::Documentation
+    };
+    (working_directory) => {
+        Read::WorkingDirectory
     };
     ($part:ident) => {
         Read::Part(Parts::$part)
@@ -273,7 +277,7 @@ rules! {
     BackportImport => ("SMP305", "up-backport-import", "Imports of backports that the standard library replaces", Sometimes, imports::up_backport_import { module } reads [cross_file]),
     TypeCheckingLazyImport => ("SMP306", "up-type-checking-lazy-import", "`if TYPE_CHECKING:` imports that can be `lazy` imports", Sometimes, imports::up_type_checking_lazy_import { module } since PY315),
     LazyModulesList => ("SMP307", "up-lazy-modules-list", "`__lazy_modules__` lists that `lazy` imports replace", Sometimes, imports::up_lazy_modules_list { module } since PY315),
-    ImportCycle => ("SMP308", "import-cycle", "Runtime imports that close a cycle between modules", None, imports::import_cycle { module } reads [cross_file, RUNTIME_IMPORTS]),
+    ImportCycle => ("SMP308", "import-cycle", "Runtime imports that close a cycle between modules", None, imports::import_cycle { module } reads [cross_file, RUNTIME_IMPORTS, working_directory]),
     PrivateImportPath => ("SMP310", "private-import-path", "Private module objects and imports beyond a direct relative path", None, imports::private_import_path { statement } reads [cross_file]),
     MissingFromAll => ("SMP401", "missing-from-all", "Names other modules import that `__all__` omits", Sometimes, api::missing_from_all { module } reads [cross_file] skips [nested]),
     UnusedExport => ("SMP402", "unused-export", "`__all__` entries no other module imports", Sometimes, api::unused_export { module } reads [cross_file, DOCTESTS] skips [nested]),
@@ -315,7 +319,7 @@ rules! {
     SuperForwardingMethod => ("SMP527", "super-forwarding-method", "Methods that only return the parent's method called with their own arguments", Sometimes, logic::super_forwarding_method { module }),
     LongTupleReturn => ("SMP528", "long-tuple-return", "Functions returning tuples too long to unpack by position", None, logic::long_tuple_return { statement }),
     CognitiveComplexity => ("SMP529", "cognitive-complexity", "Functions whose cognitive complexity is over the limit", None, logic::cognitive_complexity { module }),
-    DuplicateCode => ("SMP530", "duplicate-code", "Statements that another module repeats", None, logic::duplicate_code { module } reads [cross_file, STATEMENTS]),
+    DuplicateCode => ("SMP530", "duplicate-code", "Statements that another module repeats", None, logic::duplicate_code { module } reads [cross_file, STATEMENTS, working_directory]),
     CollectionBuiltByStatements => ("SMP531", "collection-built-by-statements", "Empty collections filled by the statements right after them", Sometimes, logic::collection_built_by_statements { module }),
     UnnamedRegexGroup => ("SMP532", "unnamed-regex-group", "Regular expressions with unnamed capture groups", Sometimes, logic::unnamed_regex_group { module } reads [cross_file]),
     UnexplainedRegex => ("SMP533", "unexplained-regex", "Regular expressions with four or more parts and no comments", None, logic::unexplained_regex { module }),
@@ -342,7 +346,7 @@ rules! {
     UnusedFixture => ("SMP815", "unused-fixture", "Pytest fixtures no test or fixture requests", None, testing::unused_fixture { module } reads [cross_file, FIXTURES]),
     FunctionDocstring => ("SMP901", "function-docstring", "Docstrings on internal functions and classes", Sometimes, docstrings::function_docstring { module } reads [cross_file, docs] skips [nested]),
     TestModuleDocstring => ("SMP902", "test-module-docstring", "Docstrings on test modules", Sometimes, docstrings::test_module_docstring { module } skips [nested]),
-    UndocumentedPublicApi => ("SMP903", "undocumented-public-api", "Public functions, classes, methods and variables without documentation", None, docstrings::undocumented_public_api { module } reads [cross_file] skips [nested]),
+    UndocumentedPublicApi => ("SMP903", "undocumented-public-api", "Public functions, classes, methods and variables without documentation", None, docstrings::undocumented_public_api { module } reads [cross_file, working_directory] skips [nested]),
     LongDocstringParagraph => ("SMP904", "long-docstring-paragraph", "Docstring paragraphs over the word limit", None, docstrings::long_docstring_paragraph { module } skips [nested]),
     RstFieldSyntax => ("SMP910", "rst-field-syntax", "Malformed or misplaced reStructuredText docstring fields", Sometimes, docstrings::rst_field_syntax { module } reads [docs] skips [nested]),
     RstInlineMarkup => ("SMP911", "rst-inline-markup", "Roles without backticks and unclosed inline literals", Sometimes, docstrings::rst_inline_markup { module } reads [docs] skips [nested]),
@@ -440,6 +444,12 @@ impl RuleSet {
             RuleSet::from_rules(Rule::ALL.iter().copied().filter(|rule| rule.skips().contains(&Skip::Nested)))
         });
         *SKIPPED_IN_NESTED
+    }
+
+    // The rules whose messages name paths relative to the working directory.
+    pub fn working_directory() -> Self {
+        static WORKING_DIRECTORY: LazyLock<RuleSet> = LazyLock::new(|| RuleSet::reading(Read::WorkingDirectory));
+        *WORKING_DIRECTORY
     }
 
     // The rules that read the documentation the run names.

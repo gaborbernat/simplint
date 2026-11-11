@@ -25,11 +25,18 @@ Like Ruff, simplint caches which files had nothing to report, keyed by each file
 permissions, and also by its size. With a :ref:`cross-file rule <cross-file-rules>` enabled, a cached result also
 depends on the names other files use from that file, so editing an importer checks the files it imports again. A file
 only per-file rules check keeps its cached result. A file whose fixes cannot be written is not cached, because whether
-its directory lets it be written is not part of its key, and a file that ``--diff`` fixes is not cached either, because
-its reports are those of the fixed source.
+its directory lets it be written is not part of its key. A ``--diff`` run caches nothing computed from a fix it keeps in
+memory, neither for the file it fixes nor for another file linted after that fix, because those reports describe the
+fixed source, not the disk. A report that names a path relative to the working directory, as
+:doc:`import-cycle </rules/SMP308>`, :doc:`duplicate-code </rules/SMP530>` and
+:doc:`undocumented-public-api </rules/SMP903>` do, is kept for the directory it was made in, so a run from
+another directory checks the file again. With :doc:`private-import-path </rules/SMP310>` enabled, the
+directory listing under the project root and under ``src/``, and the ``.py`` and ``.pyi`` links in it, are part of the
+key, so adding, removing or renaming a module checks the tests again, while editing a module's content does not.
 
 Without fixes, a file that does not parse, or cannot be read because it is not UTF-8, keeps its syntax error or read
-error too, so a warm run reports it again without building the project index.
+error too, so a warm run reports it again without building the project index. A read error that is only logged, because
+``io-error`` (E902) is not selected, is not cached, so every run logs it again.
 
 .. mermaid::
 

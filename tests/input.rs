@@ -73,6 +73,17 @@ fn file_reached_through_a_link_is_fixed_once() {
     );
 }
 
+// Hard links share one file, so the run lints it once: under the smallest path in sort order, with symlinks last, rather
+// than under each name in parallel, where a fix would race on the file and each report would show once per name.
+#[cfg(unix)]
+#[test]
+fn hard_links_to_one_file_are_linted_once() {
+    let root = project(&[("module.py", "VALUE = vars(None)\n"), ("other.py", "VALUE = vars(None)\n")]);
+    fs::hard_link(root.path().join("module.py"), root.path().join("link.py")).expect("hard link");
+    let (_, stdout, _) = check(root.path(), &["--select", "SMP604"]);
+    assert_eq!(stdout.matches("SMP604").count(), 2);
+}
+
 // Standard input names no file, so `--add-noqa` and `--add-ignore` have nothing to edit and must not edit the files
 // under the working directory instead.
 #[test_case("--add-noqa" ; "noqa")]
@@ -113,4 +124,39 @@ fn dash_beside_paths_is_not_standard_input() {
     let (_, stdout, _) =
         check_with_stdin(root.path(), &["--select", "SMP101", "-", "on_disk.py"], "def other(w):\n    return w\n");
     assert_eq!((stdout.contains("`q`"), stdout.contains("`w`")), (true, false));
+}
+
+// Standard input is filtered as the file of its name on disk is: under `--force-exclude` an excluded name, and a
+// notebook, TOML or Markdown name, report nothing. Without `--force-exclude` an excluded name is linted, as on disk.
+#[test_case(&["--exclude", "module.py", "--force-exclude"], "module.py", (0, false) ; "excluded_under_force_exclude")]
+#[test_case(&["--exclude", "module.py"], "module.py", (1, true) ; "excluded_without_force_exclude")]
+#[test_case(&[], "module.ipynb", (0, false) ; "notebook")]
+#[test_case(&[], "pyproject.toml", (0, false) ; "toml")]
+#[test_case(&[], "module.md", (0, false) ; "markdown")]
+#[test_case(&[], "module.py", (1, true) ; "python")]
+fn stdin_name_the_file_filters_leave_out_reports_nothing(flags: &[&str], name: &str, expected: (i32, bool)) {
+    let root = project(&[]);
+    let args = [&["--select", "SMP101", "--stdin-filename", name], flags, &["-"]].concat();
+    let (code, stdout, _) = check_with_stdin(root.path(), &args, "def run(x):\n    return x\n");
+    assert_eq!((code, stdout.contains("SMP101")), expected);
+}
+
+// Ruff's `--fix` writes an excluded standard input back as it came, so a pipeline keeps the source.
+#[test]
+fn fix_writes_back_standard_input_excluded_by_force_exclude() {
+    let source = "def run(items):\n    count = len(items)\n    if count == 0:\n        return 1\n    return 2\n";
+    let root = project(&[]);
+    let args = [
+        "--fix",
+        "--select",
+        "SMP502",
+        "--exclude",
+        "module.py",
+        "--force-exclude",
+        "--stdin-filename",
+        "module.py",
+        "-",
+    ];
+    let (code, stdout, _) = check_with_stdin(root.path(), &args, source);
+    assert_eq!((code, stdout), (0, source.to_owned()));
 }

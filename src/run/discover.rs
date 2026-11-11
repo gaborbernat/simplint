@@ -70,6 +70,24 @@ pub(crate) fn discover<'a>(files: &[PathBuf], configuration: &'a Resolved) -> Re
     Ok(Discovered { python: distinct(python), unlinted, resolver, missing })
 }
 
+// Whether standard input, named by `--stdin-filename`, is linted as a file of that name on disk would be, except for a
+// stub, which is linted here although discovery only indexes a `.pyi` file on disk. A notebook, TOML or Markdown file is
+// not linted, and neither is a file Ruff's walk leaves out under `--force-exclude`. The name need not exist, so the walk
+// reports it as missing rather than as a file.
+pub(crate) fn lints_stdin(path: &Path, configuration: &Resolved) -> Result<bool> {
+    let extension = path.extension().and_then(|extension| extension.to_str());
+    if matches!(extension, Some("ipynb" | "toml" | "md")) {
+        return Ok(false);
+    }
+    let (found, resolver) =
+        project_files_in_path(&[path.to_path_buf()], &configuration.pyproject_config, &configuration.config_arguments)
+            .map_err(|error| redact_extended(error, &configuration.settings_resolver.root.root))?;
+    let settings = resolver.resolve(path);
+    let excluded = settings.file_resolver.force_exclude
+        && match_exclusion(path, path.file_name().unwrap_or_default(), &settings.linter.exclude);
+    Ok(!found.is_empty() && !excluded)
+}
+
 // The path and message of a walk error for a path the run names that does not exist, which Ruff reports as `io-error`.
 fn missing_path(error: &WalkError) -> Option<(PathBuf, String)> {
     let WalkError::WithPath { path, err } = error else {
@@ -87,13 +105,25 @@ pub(crate) fn warn_missing(missing: &[(PathBuf, String)]) {
 }
 
 // The files sorted, with each file the links in the run reach kept once, by its own path when the run found it: files
-// lint in parallel, so a fix applied through two paths to one file would race, and its reports would show twice.
+// lint in parallel, so a fix applied through two paths to one file would race, and its reports would show twice. Hard
+// links share a file's device and inode, which their canonical paths do not show.
 fn distinct(mut python: Vec<PathBuf>) -> Vec<PathBuf> {
     python.sort_by_cached_key(|path| (path.is_symlink(), path.clone()));
     let mut seen = FxHashSet::default();
-    python.retain(|path| fs::canonicalize(path).map_or(true, |target| seen.insert(target)));
+    python.retain(|path| identity(path).is_none_or(|identity| seen.insert(identity)));
     python.sort();
     python
+}
+
+#[cfg(unix)]
+fn identity(path: &Path) -> Option<(u64, u64)> {
+    use std::os::unix::fs::MetadataExt;
+    fs::metadata(path).ok().map(|metadata| (metadata.dev(), metadata.ino()))
+}
+
+#[cfg(not(unix))]
+fn identity(path: &Path) -> Option<PathBuf> {
+    fs::canonicalize(path).ok()
 }
 
 // Ruff quotes the text of an `extend`ed file it cannot load. The repository may point `extend` anywhere, so such a file
