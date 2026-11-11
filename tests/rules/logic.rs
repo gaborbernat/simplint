@@ -1003,45 +1003,43 @@ fn collection_built_by_statements_leaves_repeated_appends_to_ruff(source: &str, 
     assert_eq!(stdout.matches("\"code\": \"SMP531\"").count(), reported, "{stdout}");
 }
 
-// RUF055 rewrites a `re.match` call with a plain-text pattern that is only tested for truth into `str.startswith`, when
-// preview mode is on and the project selects it. SMP522 leaves those calls to Ruff and keeps the rest.
-#[test_case("preview = true\n", "if re.match(\"ab\", text):\n        pass", 0 ; "if_test")]
-#[test_case("", "if re.match(\"ab\", text):\n        pass", 1 ; "preview_off")]
-#[test_case("preview = true\n", "while re.match(\"ab\", text):\n        break", 0 ; "while_test")]
-#[test_case("preview = true\n", "if text:\n        pass\n    elif re.match(\"ab\", text):\n        pass", 0 ; "elif_test")]
-#[test_case("preview = true\n", "assert re.match(\"ab\", text)", 0 ; "assert_test")]
-#[test_case("preview = true\n", "assert text, re.match(\"ab\", text)", 1 ; "assert_message")]
-#[test_case("preview = true\n", "return re.match(\"ab\", text)", 1 ; "value_used")]
-#[test_case("preview = true\n", "return not re.match(\"ab\", text)", 0 ; "not_operand")]
-#[test_case("preview = true\n", "return bool(re.match(\"ab\", text))", 0 ; "bool_argument")]
-#[test_case("preview = true\n", "return str(re.match(\"ab\", text))", 1 ; "str_argument")]
-#[test_case("preview = true\n", "return not (re.match(\"ab\", text) or text)", 0 ; "or_under_not")]
-#[test_case("preview = true\n", "return re.match(\"ab\", text) or text", 1 ; "or_value_used")]
-#[test_case("preview = true\n", "return 1 if re.match(\"ab\", text) else 2", 0 ; "ternary_test")]
-#[test_case("preview = true\n", "return re.match(\"ab\", text) if text else 2", 1 ; "ternary_body")]
-#[test_case("preview = true\n", "return [t for t in text if re.match(\"ab\", t)]", 0 ; "list_condition")]
-#[test_case("preview = true\n", "return {t: 1 for t in text if re.match(\"ab\", t)}", 0 ; "dict_condition")]
-#[test_case("preview = true\n", "return {t for t in text if re.match(\"ab\", t)}", 0 ; "set_condition")]
-#[test_case("preview = true\n", "return any(True for t in text if re.match(\"ab\", t))", 0 ; "generator_condition")]
-#[test_case("preview = true\n", "return [re.match(\"ab\", t) for t in text]", 1 ; "comprehension_element")]
-#[test_case("preview = true\n", "return re.match", 1 ; "reference")]
-#[test_case("preview = true\n", "match text:\n        case str() if re.match(\"ab\", text):\n            pass", 0 ; "match_guard")]
-#[test_case("preview = true\n", "return re.match(\"ab\", text) is None", 0 ; "compared_to_none")]
-#[test_case("preview = true\n", "return re.match(\"ab\", text) == None", 1 ; "equal_to_none")]
-#[test_case("preview = true\n", "return re.match(\"a.\", text) is None", 1 ; "metacharacter")]
-#[test_case("preview = true\n", "return re.match(b\"ab\", text) is None", 0 ; "bytes_pattern")]
-#[test_case("preview = true\n", "return re.match(b\"a.\", text) is None", 1 ; "bytes_metacharacter")]
-#[test_case("preview = true\n", "return re.match(PLAIN, text) is None", 0 ; "name_bound_once")]
-#[test_case("preview = true\n", "return re.match(REBOUND, text) is None", 1 ; "name_bound_twice")]
-#[test_case("preview = true\n", "return re.match(\"ab\", text, 0) is None", 1 ; "flags_argument")]
-#[test_case("preview = true\n", "return re.match(\"ab\", *text) is None", 1 ; "starred_string")]
-#[test_case("preview = true\n", "if (found := re.match(\"ab\", text)):\n        pass", 1 ; "walrus")]
-fn up_re_prefixmatch_leaves_truth_tests_to_ruf055(preview: &str, body: &str, reported: usize) {
-    let settings =
-        format!("[project]\nrequires-python = \">=3.15\"\n\n[tool.ruff.lint]\n{preview}select = [\"RUF055\"]\n");
+// RUF055 rewrites a `re.match` call with a plain-text pattern that is only tested for truth into `str.startswith`, so
+// SMP522 leaves those calls to Ruff whether or not the project selects it, and keeps the rest.
+#[test_case("if re.match(\"ab\", text):\n        pass", 0 ; "if_test")]
+#[test_case("while re.match(\"ab\", text):\n        break", 0 ; "while_test")]
+#[test_case("if text:\n        pass\n    elif re.match(\"ab\", text):\n        pass", 0 ; "elif_test")]
+#[test_case("assert re.match(\"ab\", text)", 0 ; "assert_test")]
+#[test_case("assert text, re.match(\"ab\", text)", 1 ; "assert_message")]
+#[test_case("return re.match(\"ab\", text)", 1 ; "value_used")]
+#[test_case("return not re.match(\"ab\", text)", 0 ; "not_operand")]
+#[test_case("return bool(re.match(\"ab\", text))", 0 ; "bool_argument")]
+#[test_case("return str(re.match(\"ab\", text))", 1 ; "str_argument")]
+#[test_case("return not (re.match(\"ab\", text) or text)", 0 ; "or_under_not")]
+#[test_case("return re.match(\"ab\", text) or text", 1 ; "or_value_used")]
+#[test_case("return 1 if re.match(\"ab\", text) else 2", 0 ; "ternary_test")]
+#[test_case("return re.match(\"ab\", text) if text else 2", 1 ; "ternary_body")]
+#[test_case("return [t for t in text if re.match(\"ab\", t)]", 0 ; "list_condition")]
+#[test_case("return {t: 1 for t in text if re.match(\"ab\", t)}", 0 ; "dict_condition")]
+#[test_case("return {t for t in text if re.match(\"ab\", t)}", 0 ; "set_condition")]
+#[test_case("return any(True for t in text if re.match(\"ab\", t))", 0 ; "generator_condition")]
+#[test_case("return [re.match(\"ab\", t) for t in text]", 1 ; "comprehension_element")]
+#[test_case("return re.match", 1 ; "reference")]
+#[test_case("match text:\n        case str() if re.match(\"ab\", text):\n            pass", 0 ; "match_guard")]
+#[test_case("return re.match(\"ab\", text) is None", 0 ; "compared_to_none")]
+#[test_case("return re.match(\"ab\", text) == None", 1 ; "equal_to_none")]
+#[test_case("return re.match(\"a.\", text) is None", 1 ; "metacharacter")]
+#[test_case("return re.match(b\"ab\", text) is None", 0 ; "bytes_pattern")]
+#[test_case("return re.match(b\"a.\", text) is None", 1 ; "bytes_metacharacter")]
+#[test_case("return re.match(PLAIN, text) is None", 0 ; "name_bound_once")]
+#[test_case("return re.match(REBOUND, text) is None", 1 ; "name_bound_twice")]
+#[test_case("return re.match(\"ab\", text, 0) is None", 1 ; "flags_argument")]
+#[test_case("return re.match(\"ab\", *text) is None", 1 ; "starred_string")]
+#[test_case("if (found := re.match(\"ab\", text)):\n        pass", 1 ; "walrus")]
+fn up_re_prefixmatch_leaves_truth_tests_to_ruf055(body: &str, reported: usize) {
+    let settings = "[project]\nrequires-python = \">=3.15\"\n\n[tool.ruff.lint]\nselect = []\n";
     let source =
         format!("import re\n\nPLAIN = \"ab\"\nREBOUND = \"ab\"\nREBOUND = \"cd\"\n\n\ndef check(text):\n    {body}\n");
-    let root = common::project(&[("pyproject.toml", &settings), ("module.py", &source)]);
+    let root = common::project(&[("pyproject.toml", settings), ("module.py", &source)]);
     let (_, stdout, _) =
         common::simplint(root.path(), &["check", "--no-cache", "--select", "SMP522", "--output-format", "json"]);
     assert_eq!(stdout.matches("\"code\": \"SMP522\"").count(), reported, "{stdout}");

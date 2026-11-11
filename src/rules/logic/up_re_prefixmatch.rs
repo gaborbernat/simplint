@@ -1,5 +1,4 @@
 use ruff_diagnostics::Fix;
-use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::{self as ast, BoolOp, CmpOp, Expr, Stmt, UnaryOp};
 use ruff_text_size::Ranged;
 
@@ -28,13 +27,9 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     );
 }
 
-// Ruff's RUF055, in preview, rewrites a `re.match` call with a plain-text pattern whose result is only tested for truth
-// into `str.startswith`, a fix that conflicts with this rule's, so such a call is left to it while it runs.
+// Ruff's RUF055 rewrites a `re.match` call with a plain-text pattern whose result is only tested for truth into
+// `str.startswith`, a fix that conflicts with this rule's, so such a call is left to it.
 fn left_to_ruff(walker: &Walker, expr: &Expr) -> bool {
-    let from_ruff = &walker.checker.settings.from_ruff;
-    if !from_ruff.preview || !from_ruff.ruff_runs(RuffRule::UnnecessaryRegularExpression) {
-        return false;
-    }
     let expressions = walker.expressions();
     let [outer @ .., Expr::Call(call), _] = expressions else {
         return false;

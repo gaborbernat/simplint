@@ -148,18 +148,14 @@ def parse_version(text):
       return match(r"\d+\.\d+", text)
   ```
 
-- **Truth tests with a plain-text pattern Ruff rewrites**: when Ruff's preview mode is on and the project selects
-  [RUF055](https://docs.astral.sh/ruff/rules/unnecessary-regular-expression/), Ruff rewrites a `re.match` call whose
-  pattern has no regular expression metacharacter, and whose result is only tested for truth or compared to `None`, to
+- **Truth tests with a plain-text pattern Ruff rewrites**:
+  [RUF055](https://docs.astral.sh/ruff/rules/unnecessary-regular-expression/) rewrites a `re.match` call whose pattern
+  has no regular expression metacharacter, and whose result is only tested for truth or compared to `None`, to
   `str.startswith`, so this rule leaves that call to Ruff.
 
   ```toml config
   [project]
   requires-python = ">=3.15"
-
-  [tool.ruff.lint]
-  preview = true
-  select = ["RUF055"]
   ```
 
   ```python ok
