@@ -1,6 +1,5 @@
 Flags `try`/`except ImportError` guards around imports of modules that are always installed: the standard library and
-the project's required dependencies. The fallback never runs in a working environment, and in a broken one the guard
-hides the import error.
+the project's required dependencies.
 
 ## Why is this bad?
 
