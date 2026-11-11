@@ -86,13 +86,13 @@ pub(crate) fn choose_cache_dir(named: bool, config: &PyprojectConfig) -> Option<
 // What a run reports: the remaining diagnostics and the fixes applied per file, as Ruff's `Diagnostics` holds them, and
 // the diffs `--diff` prints, each with the path of its file.
 #[derive(Default)]
-pub struct Diagnostics {
-    pub inner: Vec<Diagnostic>,
-    pub fixed: FixMap,
-    pub diffs: Vec<(String, String)>,
+pub(crate) struct Diagnostics {
+    pub(crate) inner: Vec<Diagnostic>,
+    pub(crate) fixed: FixMap,
+    pub(crate) diffs: Vec<(String, String)>,
     // The `full` text of some files' diagnostics, by the name the output shows each file by, when the cache held or
     // rendered it.
-    pub rendered: FxHashMap<String, Vec<u8>>,
+    pub(crate) rendered: FxHashMap<String, Vec<u8>>,
 }
 
 // Whether Ruff's `io-error` rule is on, which reports a path that cannot be read, written or found as a diagnostic
@@ -104,12 +104,23 @@ pub(super) fn reports_io_errors(settings: &LinterSettings) -> bool {
 impl Diagnostics {
     // As `ruff check` reports a file it cannot read or write: Ruff's own `io-error` diagnostic while that rule is on,
     // otherwise a warning.
-    pub fn from_error(path: &Path, message: String, linter: &Linter) -> Self {
+    pub(crate) fn from_error(path: &Path, message: String, linter: &Linter) -> Self {
         if !reports_io_errors(linter.ruff.settings) {
             warn!("{}{}{} {message}", "Failed to lint ".bold(), relativize_path(path).bold(), ":".bold());
             return Self::default();
         }
         Self { inner: vec![io_error(path, message)], ..Self::default() }
+    }
+
+    // A later pass over a file replaces its reports, while the fixes of every pass count. Each pass's diff is from the
+    // source as read, so the last pass that has one holds all of the file's fixes.
+    pub(crate) fn then(mut self, later: Self) -> Self {
+        self.inner = later.inner;
+        self.fixed += later.fixed;
+        if !later.diffs.is_empty() {
+            self.diffs = later.diffs;
+        }
+        self
     }
 }
 
@@ -138,18 +149,22 @@ impl AddAssign for Diagnostics {
 }
 
 #[derive(Default)]
-pub struct FixMap(FxHashMap<String, FixTable>);
+pub(crate) struct FixMap(FxHashMap<String, FixTable>);
 
 impl FixMap {
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn of(path: &Path, fixed: FixTable) -> Self {
+        Self::from_iter([(relativize_path(path), fixed)])
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = (&String, &FixTable)> {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = (&String, &FixTable)> {
         self.0.iter()
     }
 
-    pub fn values(&self) -> impl Iterator<Item = &FixTable> {
+    pub(crate) fn values(&self) -> impl Iterator<Item = &FixTable> {
         self.0.values()
     }
 }
@@ -169,12 +184,12 @@ impl AddAssign for FixMap {
     }
 }
 
-pub struct Mode {
-    pub fix: flags::FixMode,
-    pub unsafe_fixes: UnsafeFixes,
-    pub noqa: flags::Noqa,
+pub(crate) struct Mode {
+    pub(crate) fix: flags::FixMode,
+    pub(crate) unsafe_fixes: UnsafeFixes,
+    pub(crate) noqa: flags::Noqa,
     // The paths named on the command line, canonical, which a fix may write files under.
-    pub roots: Vec<PathBuf>,
+    pub(crate) roots: Vec<PathBuf>,
 }
 
 // A file's lint: its diagnostics and fixes, the fixes a settled fix loop withdrew, and, without fixes, the line each
@@ -182,11 +197,11 @@ pub struct Mode {
 // written is not cacheable: the cache keys a file by its metadata, not by whether its directory and the run's roots let
 // it be written, so its reports would outlive what they depend on. A file that cannot be read fails the same way for
 // the same key, so its report is stored, unless the error is only logged and so leaves no report.
-pub struct Linting {
-    pub diagnostics: Diagnostics,
-    pub settled: Option<Withdrawn>,
-    pub noqa_rows: Vec<TextSize>,
-    pub cacheable: bool,
+pub(crate) struct Linting {
+    pub(crate) diagnostics: Diagnostics,
+    pub(crate) settled: Option<Withdrawn>,
+    pub(crate) noqa_rows: Vec<TextSize>,
+    pub(crate) cacheable: bool,
 }
 
 // Ruff's `lint_path`: lint a file, and with `--fix` or `--diff` fix it and write the result back or keep the diff for
@@ -196,7 +211,13 @@ pub struct Linting {
 // cannot be written keeps its diagnostics, with the error reported beside them. Both `settled` sets name the fixes the
 // fix loop withdrew from a file it left as it was: the one passed from an earlier run, which spares running the loop,
 // the one returned from this run.
-pub fn lint_path(path: &Path, linter: &Linter, mode: &Mode, settled: Option<Withdrawn>, overlay: &Overlay) -> Linting {
+pub(crate) fn lint_path(
+    path: &Path,
+    linter: &Linter,
+    mode: &Mode,
+    settled: Option<Withdrawn>,
+    overlay: &Overlay,
+) -> Linting {
     fix_path(path, linter, mode, settled, overlay).unwrap_or_else(|error| {
         let diagnostics = Diagnostics::from_error(path, format!("{error:#}"), linter);
         // A cached clean result would leave out the warning of a read error that was only logged.
@@ -225,7 +246,7 @@ fn fix_path(
             diffs.push((path.to_string_lossy().into_owned(), diff));
         }
     }
-    let fixed = FixMap::from_iter([(relativize_path(path), fixed)]);
+    let fixed = FixMap::of(path, fixed);
     Ok(Linting {
         diagnostics: Diagnostics { inner: diagnostics, fixed, diffs, ..Diagnostics::default() },
         settled,
@@ -281,7 +302,7 @@ pub(crate) fn lint_stdin(path: &Path, source: &str, linter: &Linter, mode: &Mode
     StdinLint {
         diagnostics: Diagnostics {
             inner: diagnostics,
-            fixed: FixMap::from_iter([(relativize_path(path), fixed)]),
+            fixed: FixMap::of(path, fixed),
             diffs: Vec::new(),
             rendered: FxHashMap::default(),
         },

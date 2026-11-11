@@ -111,18 +111,7 @@ pub(crate) fn check_files(
         };
         cache.lint_or_reuse(file.path, key, fingerprints.of(&file.linter, mode), full, lint)
     })?;
-    // A later pass over a file replaces its reports, while the fixes of every pass count. Each pass's diff is from the
-    // source as read, so the last pass that has one holds all of the file's fixes.
-    let file_results = results.into_iter().flatten().filter_map(|passes| {
-        passes.into_iter().reduce(|mut earlier, later| {
-            earlier.inner = later.inner;
-            earlier.fixed += later.fixed;
-            if !later.diffs.is_empty() {
-                earlier.diffs = later.diffs;
-            }
-            earlier
-        })
-    });
+    let file_results = results.into_iter().flatten().filter_map(|passes| passes.into_iter().reduce(Diagnostics::then));
     Ok(file_results.fold(Diagnostics::default(), |left, right| left + right) + missing_diagnostics(missing, resolved))
 }
 

@@ -13,7 +13,7 @@ use std::hash::Hasher;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::SystemTime;
 
 use anyhow::{Context, Result};
@@ -275,7 +275,7 @@ impl<'a> Cache<'a> {
     // Keeps the `full` text a run rendered for a file, which the package holds once the run writes its cache.
     fn store_text(&self, path: &Path, rendered: Rendered) {
         if let Some(relative) = self.relative(path) {
-            self.texts.lock().expect("no worker panics while recording").push((relative.to_owned(), rendered));
+            recorded(&self.texts).push((relative.to_owned(), rendered));
         }
     }
 
@@ -290,14 +290,14 @@ impl<'a> Cache<'a> {
         if file.key.to_native() != key.hash {
             return None;
         }
-        self.seen.lock().expect("no worker panics while recording").insert(relative.to_owned());
+        recorded(&self.seen).insert(relative.to_owned());
         Some(file)
     }
 
     fn update(&self, path: &Path, key: FileKey, data: ChangeData) {
         if let Some(relative) = self.relative(path) {
             let change = Change { path: relative.to_owned(), key: key.hash, data };
-            self.changes.lock().expect("no worker panics while recording").push(change);
+            recorded(&self.changes).push(change);
         }
     }
 
@@ -311,8 +311,8 @@ impl<'a> Cache<'a> {
     }
 
     fn write(&mut self) -> Result<()> {
-        let changes = std::mem::take(self.changes.get_mut().expect("no worker panics while recording"));
-        let texts = std::mem::take(self.texts.get_mut().expect("no worker panics while recording"));
+        let changes = std::mem::take(&mut *recorded(&self.changes));
+        let texts = std::mem::take(&mut *recorded(&self.texts));
         if changes.is_empty() && texts.is_empty() {
             return Ok(());
         }
@@ -321,7 +321,7 @@ impl<'a> Cache<'a> {
             Some(archived) => PackageCache::read(archived)?,
             None => PackageCache { package_root: self.package_root.to_path_buf(), files: FxHashMap::default() },
         };
-        for relative in self.seen.get_mut().expect("no worker panics while recording").drain() {
+        for relative in recorded(&self.seen).drain() {
             if let Some(file) = package.files.get_mut(&relative) {
                 file.last_seen.store(now, Ordering::Relaxed);
             }
@@ -385,6 +385,10 @@ impl<'a> Cache<'a> {
         }
         Ok(())
     }
+}
+
+fn recorded<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().expect("no worker panics while recording")
 }
 
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]

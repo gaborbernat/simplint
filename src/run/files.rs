@@ -221,7 +221,7 @@ fn ensure_compatible(files: &[&RunFile], resolved: &Resolved) -> Result<()> {
         .iter()
         .map(|file| Scope {
             path: file.path,
-            settings: file.settings.clone(),
+            settings: &file.settings,
             ruff: file.ruff,
             ruff_config: file.ruff_config,
             package: file.package,
