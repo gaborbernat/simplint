@@ -12574,7 +12574,7 @@
     "name": "test-only-parameter",
     "summary": "Parameters only test calls pass, which production calls leave at their default",
     "fix": "None",
-    "explanation": "Flags a parameter with a default that only test calls pass, while production calls leave it at the default.\n\n## Why is this bad?\n\nA parameter that only tests set is a seam for the test suite in production code. Callers see an option the program never\nuses, and the variation it offers lives where no reader expects it. Keeping the variation in the tests, through a helper\nor a fixture, leaves the production signature to what the program does.\n\n## Example\n\n```python context file=app/service.py\nfrom app.mail import send\n\n\ndef notify(address: str) -> None:\n    send(address)\n```\n\n```python report file=app/mail.py\ndef send(address: str, urgent: bool = False) -> None:\n    print(address, urgent)\n```\n\n```python context file=tests/test_mail.py\nfrom app.mail import send\n\n\ndef test_send() -> None:\n    send(\"a@b.c\", urgent=True)\n```\n\nUse instead:\n\n```python ok file=app/mail.py\ndef send(address: str) -> None:\n    print(address, False)\n```\n\n```python context file=tests/test_mail.py\nfrom app.mail import send\n\n\ndef test_send() -> None:\n    send(\"a@b.c\")\n```\n\n## What it does\n\nFor each module-level function, the rule compares the calls that production code makes with the calls tests make. A\nproduction call that passes an argument by position or by keyword counts for that parameter, and so does one that\nunpacks `**kwargs`, which may pass any keyword.\n\n### Active on\n\n- **Defaulted parameters that no production call passes**, when at least one test call passes them and production code\n  calls the function at least once. A required parameter is always passed, so it is never reported.\n\n  ```python context file=app/service.py\n  from app.mail import send\n\n\n  def notify(address: str) -> None:\n      send(address)\n  ```\n\n  ```python report file=app/mail.py\n  def send(address: str, urgent: bool = False) -> None:\n      print(address, urgent)\n  ```\n\n  ```python context file=tests/test_mail.py\n  from app.mail import send\n\n\n  def test_send() -> None:\n      send(\"a@b.c\", urgent=True)\n  ```\n\n- **Keyword-only parameters**, which a call passes only by keyword.\n\n  ```python context file=app/service.py\n  from app.mail import send\n\n\n  def notify(address: str) -> None:\n      send(address)\n  ```\n\n  ```python report file=app/mail.py\n  def send(address: str, *, urgent: bool = False) -> None:\n      print(address, urgent)\n  ```\n\n  ```python context file=tests/test_mail.py\n  from app.mail import send\n\n\n  def test_send() -> None:\n      send(\"a@b.c\", urgent=True)\n  ```\n\n### Exceptions\n\n- **Parameters production code passes**: a single production call that passes the parameter keeps it.\n\n  ```python context file=app/service.py\n  from app.mail import send\n\n\n  def notify(address: str) -> None:\n      send(address, urgent=True)\n  ```\n\n  ```python ok file=app/mail.py\n  def send(address: str, urgent: bool = False) -> None:\n      print(address, urgent)\n  ```\n\n  ```python context file=tests/test_mail.py\n  from app.mail import send\n\n\n  def test_send() -> None:\n      send(\"a@b.c\", urgent=True)\n  ```\n\n- **Modules a program runs**: a module with an `if __name__ == \"__main__\":` block, or one that production code\n  star-imports, runs as production code even when a test imports it, so its calls count as production calls.\n\n  ```python context file=app/notify.py\n  from app.mail import send\n\n\n  def notify(address: str) -> None:\n      send(address)\n  ```\n\n  ```python ok file=app/mail.py\n  def send(address: str, urgent: bool = False) -> None:\n      print(address, urgent)\n  ```\n\n  ```python context file=app/service.py\n  from app.mail import send\n\n\n  def escalate(address: str) -> None:\n      send(address, urgent=True)\n\n\n  if __name__ == \"__main__\":\n      escalate(\"a@b.c\")\n  ```\n\n  ```python context file=tests/test_service.py\n  from app.service import escalate\n\n\n  def test_escalate() -> None:\n      escalate(\"a@b.c\")\n  ```\n\n- **Modules production code star-imports**: a module that a star import of production code reads runs as production code\n  too, so its calls count as production calls.\n\n  ```python context file=app/notify.py\n  from app.mail import send\n\n\n  def notify(address: str) -> None:\n      send(address)\n  ```\n\n  ```python ok file=app/mail.py\n  def send(address: str, urgent: bool = False) -> None:\n      print(address, urgent)\n  ```\n\n  ```python context file=app/service.py\n  from app.mail import send\n\n\n  def escalate(address: str) -> None:\n      send(address, urgent=True)\n  ```\n\n  ```python context file=app/__main__.py\n  from app.service import *\n\n\n  escalate(\"a@b.c\")\n  ```\n\n  ```python context file=tests/test_service.py\n  from app.service import escalate\n\n\n  def test_escalate() -> None:\n      escalate(\"a@b.c\")\n  ```\n\n- **Functions with no production call**: a function only tests call is test support, which `test-only-code` reports\n  instead.\n\n  ```python ok file=app/mail.py\n  def send(address: str, urgent: bool = False) -> None:\n      print(address, urgent)\n  ```\n\n  ```python context file=tests/test_mail.py\n  from app.mail import send\n\n\n  def test_send() -> None:\n      send(\"a@b.c\", urgent=True)\n  ```\n\n- **Functions used other than as a call**: passed as a value, or named by a dotted string or an entry point, where the\n  calls that reach them are not all visible.\n\n  ```python ok file=app/mail.py\n  def send(address: str, urgent: bool = False) -> None:\n      print(address, urgent)\n\n\n  HANDLERS = [send]\n  ```\n\n  ```python context file=tests/test_mail.py\n  from app.mail import send\n\n\n  def test_send() -> None:\n      send(\"a@b.c\", urgent=True)\n  ```\n\n- **Decorated functions**: a decorator may register or wrap the function, so its calls may not be the ones written.\n\n  ```python ok\n  from functools import cache\n\n\n  @cache\n  def send(address: str, urgent: bool = False) -> None:\n      print(address, urgent)\n\n\n  send(\"a@b.c\")\n  ```\n\n- **Public functions of a library**: code outside the project may call them without the argument.\n\n  ```toml config\n  [build-system]\n  requires = [\"setuptools\"]\n\n  [project]\n  name = \"mylib\"\n  ```\n\n  ```python ok file=mylib/api.py\n  def send(address: str, urgent: bool = False) -> None:\n      print(address, urgent)\n  ```\n\n  ```python context file=tests/test_api.py\n  from mylib.api import send\n\n\n  def test_send() -> None:\n      send(\"a@b.c\", urgent=True)\n  ```\n\n- **A program's entry**: a call from an `if __name__ == \"__main__\":` block or a `__main__.py` runs the module as a\n  program, whose arguments come from the command line, so `main(argv=None)` leaves `argv` out on purpose.\n\n  ```python ok file=app/cli.py\n  def main(argv: list[str] | None = None) -> int:\n      return len(argv or [])\n\n\n  if __name__ == \"__main__\":\n      main()\n  ```\n\n  ```python context file=tests/test_cli.py\n  from app.cli import main\n\n\n  def test_main() -> None:\n      assert main([\"a\"]) == 1\n  ```\n\n  ```python ok file=app/run.py\n  def main(argv: list[str] | None = None) -> int:\n      return len(argv or [])\n  ```\n\n  ```python context file=app/__main__.py\n  from app.run import main\n\n  main()\n  ```\n\n  ```python context file=tests/test_run.py\n  from app.run import main\n\n\n  def test_main() -> None:\n      assert main([\"a\"]) == 1\n  ```\n\n- **Modules only tests import**: a helper module outside the test directories, such as `testing/fixtures.py`, that only\n  test modules import, directly or through other such modules, serves the tests, so its calls are test code.\n\n  ```python ok file=testing/fixtures.py\n  def make_config(rev: str = \"main\") -> str:\n      return rev\n\n\n  def default_config() -> str:\n      return make_config()\n  ```\n\n  ```python context file=tests/test_config.py\n  from testing.fixtures import default_config, make_config\n\n\n  def test_config() -> None:\n      assert make_config(rev=\"v1\") != default_config()\n  ```\n\n- **Calls that unpack `*args` or `**kwargs`**: the unpacked values may pass the parameter.\n\n  ```python context file=app/service.py\n  from app.mail import send\n\n\n  def notify(address: str, options: dict[str, bool]) -> None:\n      send(address, **options)\n  ```\n\n  ```python ok file=app/mail.py\n  def send(address: str, urgent: bool = False) -> None:\n      print(address, urgent)\n  ```\n\n  ```python context file=tests/test_mail.py\n  from app.mail import send\n\n\n  def test_send() -> None:\n      send(\"a@b.c\", urgent=True)\n  ```\n\n### Fix\n\nThe rule has no fix. Removing the parameter changes the signature every caller sees, and the tests that pass it would\nneed the variation moved elsewhere first. The author decides where the variation belongs.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
+    "explanation": "Flags a parameter with a default that only test calls pass, while production calls leave it at the default.\n\n## Why is this bad?\n\nA parameter that only tests set is a seam for the test suite in production code. Callers see an option the program never\nuses, and the variation it offers lives where no reader expects it. Keeping the variation in the tests, through a helper\nor a fixture, leaves the production signature to what the program does.\n\n## Example\n\n```python context file=app/service.py\nfrom app.mail import send\n\n\ndef notify(address: str) -> None:\n    send(address)\n```\n\n```python report file=app/mail.py\ndef send(address: str, urgent: bool = False) -> None:\n    print(address, urgent)\n```\n\n```python context file=tests/test_mail.py\nfrom app.mail import send\n\n\ndef test_send() -> None:\n    send(\"a@b.c\", urgent=True)\n```\n\nUse instead:\n\n```python ok file=app/mail.py\ndef send(address: str) -> None:\n    print(address, False)\n```\n\n```python context file=tests/test_mail.py\nfrom app.mail import send\n\n\ndef test_send() -> None:\n    send(\"a@b.c\")\n```\n\n## What it does\n\nFor each module-level function, the rule compares the calls that production code makes with the calls tests make. A\nproduction call that passes an argument by position or by keyword counts for that parameter, and so does one that\nunpacks `**kwargs`, which may pass any keyword.\n\n### Active on\n\n- **Defaulted parameters that no production call passes**, when at least one test call passes them and production code\n  calls the function at least once. A required parameter is always passed, so it is never reported.\n\n  ```python context file=app/service.py\n  from app.mail import send\n\n\n  def notify(address: str) -> None:\n      send(address)\n  ```\n\n  ```python report file=app/mail.py\n  def send(address: str, urgent: bool = False) -> None:\n      print(address, urgent)\n  ```\n\n  ```python context file=tests/test_mail.py\n  from app.mail import send\n\n\n  def test_send() -> None:\n      send(\"a@b.c\", urgent=True)\n  ```\n\n- **Keyword-only parameters**, which a call passes only by keyword.\n\n  ```python context file=app/service.py\n  from app.mail import send\n\n\n  def notify(address: str) -> None:\n      send(address)\n  ```\n\n  ```python report file=app/mail.py\n  def send(address: str, *, urgent: bool = False) -> None:\n      print(address, urgent)\n  ```\n\n  ```python context file=tests/test_mail.py\n  from app.mail import send\n\n\n  def test_send() -> None:\n      send(\"a@b.c\", urgent=True)\n  ```\n\n### Exceptions\n\n- **Parameters production code passes**: a single production call that passes the parameter keeps it.\n\n  ```python context file=app/service.py\n  from app.mail import send\n\n\n  def notify(address: str) -> None:\n      send(address, urgent=True)\n  ```\n\n  ```python ok file=app/mail.py\n  def send(address: str, urgent: bool = False) -> None:\n      print(address, urgent)\n  ```\n\n  ```python context file=tests/test_mail.py\n  from app.mail import send\n\n\n  def test_send() -> None:\n      send(\"a@b.c\", urgent=True)\n  ```\n\n- **Modules a program runs**: a module with an `if __name__ == \"__main__\":` block runs as production code even when a\n  test imports it, so its calls count as production calls.\n\n  ```python context file=app/notify.py\n  from app.mail import send\n\n\n  def notify(address: str) -> None:\n      send(address)\n  ```\n\n  ```python ok file=app/mail.py\n  def send(address: str, urgent: bool = False) -> None:\n      print(address, urgent)\n  ```\n\n  ```python context file=app/service.py\n  from app.mail import send\n\n\n  def escalate(address: str) -> None:\n      send(address, urgent=True)\n\n\n  if __name__ == \"__main__\":\n      escalate(\"a@b.c\")\n  ```\n\n  ```python context file=tests/test_service.py\n  from app.service import escalate\n\n\n  def test_escalate() -> None:\n      escalate(\"a@b.c\")\n  ```\n\n  A module that production code star-imports runs as production code too, so its calls count the same way:\n\n  ```python context file=app/notify.py\n  from app.mail import send\n\n\n  def notify(address: str) -> None:\n      send(address)\n  ```\n\n  ```python ok file=app/mail.py\n  def send(address: str, urgent: bool = False) -> None:\n      print(address, urgent)\n  ```\n\n  ```python context file=app/service.py\n  from app.mail import send\n\n\n  def escalate(address: str) -> None:\n      send(address, urgent=True)\n  ```\n\n  ```python context file=app/__main__.py\n  from app.service import *\n\n\n  escalate(\"a@b.c\")\n  ```\n\n  ```python context file=tests/test_service.py\n  from app.service import escalate\n\n\n  def test_escalate() -> None:\n      escalate(\"a@b.c\")\n  ```\n\n- **Functions with no production call**: a function only tests call is test support, which `test-only-code` reports\n  instead.\n\n  ```python ok file=app/mail.py\n  def send(address: str, urgent: bool = False) -> None:\n      print(address, urgent)\n  ```\n\n  ```python context file=tests/test_mail.py\n  from app.mail import send\n\n\n  def test_send() -> None:\n      send(\"a@b.c\", urgent=True)\n  ```\n\n- **Functions used other than as a call**: passed as a value, or named by a dotted string or an entry point, where the\n  calls that reach them are not all visible.\n\n  ```python ok file=app/mail.py\n  def send(address: str, urgent: bool = False) -> None:\n      print(address, urgent)\n\n\n  HANDLERS = [send]\n  ```\n\n  ```python context file=tests/test_mail.py\n  from app.mail import send\n\n\n  def test_send() -> None:\n      send(\"a@b.c\", urgent=True)\n  ```\n\n- **Decorated functions**: a decorator may register or wrap the function, so its calls may not be the ones written.\n\n  ```python ok\n  from functools import cache\n\n\n  @cache\n  def send(address: str, urgent: bool = False) -> None:\n      print(address, urgent)\n\n\n  send(\"a@b.c\")\n  ```\n\n- **Public functions of a library**: code outside the project may call them without the argument.\n\n  ```toml config\n  [build-system]\n  requires = [\"setuptools\"]\n\n  [project]\n  name = \"mylib\"\n  ```\n\n  ```python ok file=mylib/api.py\n  def send(address: str, urgent: bool = False) -> None:\n      print(address, urgent)\n  ```\n\n  ```python context file=tests/test_api.py\n  from mylib.api import send\n\n\n  def test_send() -> None:\n      send(\"a@b.c\", urgent=True)\n  ```\n\n- **A program's entry**: a call from an `if __name__ == \"__main__\":` block or a `__main__.py` runs the module as a\n  program, whose arguments come from the command line, so `main(argv=None)` leaves `argv` out on purpose.\n\n  ```python ok file=app/cli.py\n  def main(argv: list[str] | None = None) -> int:\n      return len(argv or [])\n\n\n  if __name__ == \"__main__\":\n      main()\n  ```\n\n  ```python context file=tests/test_cli.py\n  from app.cli import main\n\n\n  def test_main() -> None:\n      assert main([\"a\"]) == 1\n  ```\n\n  ```python ok file=app/run.py\n  def main(argv: list[str] | None = None) -> int:\n      return len(argv or [])\n  ```\n\n  ```python context file=app/__main__.py\n  from app.run import main\n\n  main()\n  ```\n\n  ```python context file=tests/test_run.py\n  from app.run import main\n\n\n  def test_main() -> None:\n      assert main([\"a\"]) == 1\n  ```\n\n- **Modules only tests import**: a helper module outside the test directories, such as `testing/fixtures.py`, that only\n  test modules import, directly or through other such modules, serves the tests, so its calls are test code.\n\n  ```python ok file=testing/fixtures.py\n  def make_config(rev: str = \"main\") -> str:\n      return rev\n\n\n  def default_config() -> str:\n      return make_config()\n  ```\n\n  ```python context file=tests/test_config.py\n  from testing.fixtures import default_config, make_config\n\n\n  def test_config() -> None:\n      assert make_config(rev=\"v1\") != default_config()\n  ```\n\n- **Calls that unpack `*args` or `**kwargs`**: the unpacked values may pass the parameter.\n\n  ```python context file=app/service.py\n  from app.mail import send\n\n\n  def notify(address: str, options: dict[str, bool]) -> None:\n      send(address, **options)\n  ```\n\n  ```python ok file=app/mail.py\n  def send(address: str, urgent: bool = False) -> None:\n      print(address, urgent)\n  ```\n\n  ```python context file=tests/test_mail.py\n  from app.mail import send\n\n\n  def test_send() -> None:\n      send(\"a@b.c\", urgent=True)\n  ```\n\n### Fix\n\nThe rule has no fix. Removing the parameter changes the signature every caller sees, and the tests that pass it would\nneed the variation moved elsewhere first. The author decides where the variation belongs.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.\n",
     "examples": {
       "parsed": [
         {
@@ -12789,8 +12789,8 @@
         },
         {
           "section": "What it does",
-          "line": 166,
-          "end_line": 200,
+          "line": 165,
+          "end_line": 199,
           "config": null,
           "blocks": [
             {
@@ -12798,8 +12798,8 @@
               "language": "python",
               "file": "app/notify.py",
               "named": true,
-              "line": 166,
-              "end_line": 172,
+              "line": 165,
+              "end_line": 171,
               "source": "from app.mail import send\n\n\ndef notify(address: str) -> None:\n    send(address)\n"
             },
             {
@@ -12807,8 +12807,8 @@
               "language": "python",
               "file": "app/mail.py",
               "named": true,
-              "line": 174,
-              "end_line": 177,
+              "line": 173,
+              "end_line": 176,
               "source": "def send(address: str, urgent: bool = False) -> None:\n    print(address, urgent)\n"
             },
             {
@@ -12816,8 +12816,8 @@
               "language": "python",
               "file": "app/service.py",
               "named": true,
-              "line": 179,
-              "end_line": 185,
+              "line": 178,
+              "end_line": 184,
               "source": "from app.mail import send\n\n\ndef escalate(address: str) -> None:\n    send(address, urgent=True)\n"
             },
             {
@@ -12825,8 +12825,8 @@
               "language": "python",
               "file": "app/__main__.py",
               "named": true,
-              "line": 187,
-              "end_line": 192,
+              "line": 186,
+              "end_line": 191,
               "source": "from app.service import *\n\n\nescalate(\"a@b.c\")\n"
             },
             {
@@ -12834,16 +12834,16 @@
               "language": "python",
               "file": "tests/test_service.py",
               "named": true,
-              "line": 194,
-              "end_line": 200,
+              "line": 193,
+              "end_line": 199,
               "source": "from app.service import escalate\n\n\ndef test_escalate() -> None:\n    escalate(\"a@b.c\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 205,
-          "end_line": 216,
+          "line": 204,
+          "end_line": 215,
           "config": null,
           "blocks": [
             {
@@ -12851,8 +12851,8 @@
               "language": "python",
               "file": "app/mail.py",
               "named": true,
-              "line": 205,
-              "end_line": 208,
+              "line": 204,
+              "end_line": 207,
               "source": "def send(address: str, urgent: bool = False) -> None:\n    print(address, urgent)\n"
             },
             {
@@ -12860,16 +12860,16 @@
               "language": "python",
               "file": "tests/test_mail.py",
               "named": true,
-              "line": 210,
-              "end_line": 216,
+              "line": 209,
+              "end_line": 215,
               "source": "from app.mail import send\n\n\ndef test_send() -> None:\n    send(\"a@b.c\", urgent=True)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 221,
-          "end_line": 235,
+          "line": 220,
+          "end_line": 234,
           "config": null,
           "blocks": [
             {
@@ -12877,8 +12877,8 @@
               "language": "python",
               "file": "app/mail.py",
               "named": true,
-              "line": 221,
-              "end_line": 227,
+              "line": 220,
+              "end_line": 226,
               "source": "def send(address: str, urgent: bool = False) -> None:\n    print(address, urgent)\n\n\nHANDLERS = [send]\n"
             },
             {
@@ -12886,16 +12886,16 @@
               "language": "python",
               "file": "tests/test_mail.py",
               "named": true,
-              "line": 229,
-              "end_line": 235,
+              "line": 228,
+              "end_line": 234,
               "source": "from app.mail import send\n\n\ndef test_send() -> None:\n    send(\"a@b.c\", urgent=True)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 239,
-          "end_line": 249,
+          "line": 238,
+          "end_line": 248,
           "config": null,
           "blocks": [
             {
@@ -12903,19 +12903,19 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 239,
-              "end_line": 249,
+              "line": 238,
+              "end_line": 248,
               "source": "from functools import cache\n\n\n@cache\ndef send(address: str, urgent: bool = False) -> None:\n    print(address, urgent)\n\n\nsend(\"a@b.c\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 253,
-          "end_line": 272,
+          "line": 252,
+          "end_line": 271,
           "config": {
-            "line": 253,
-            "end_line": 259,
+            "line": 252,
+            "end_line": 258,
             "source": "[build-system]\nrequires = [\"setuptools\"]\n\n[project]\nname = \"mylib\"\n"
           },
           "blocks": [
@@ -12924,8 +12924,8 @@
               "language": "python",
               "file": "mylib/api.py",
               "named": true,
-              "line": 261,
-              "end_line": 264,
+              "line": 260,
+              "end_line": 263,
               "source": "def send(address: str, urgent: bool = False) -> None:\n    print(address, urgent)\n"
             },
             {
@@ -12933,16 +12933,16 @@
               "language": "python",
               "file": "tests/test_api.py",
               "named": true,
-              "line": 266,
-              "end_line": 272,
+              "line": 265,
+              "end_line": 271,
               "source": "from mylib.api import send\n\n\ndef test_send() -> None:\n    send(\"a@b.c\", urgent=True)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 277,
-          "end_line": 311,
+          "line": 276,
+          "end_line": 310,
           "config": null,
           "blocks": [
             {
@@ -12950,8 +12950,8 @@
               "language": "python",
               "file": "app/cli.py",
               "named": true,
-              "line": 277,
-              "end_line": 284,
+              "line": 276,
+              "end_line": 283,
               "source": "def main(argv: list[str] | None = None) -> int:\n    return len(argv or [])\n\n\nif __name__ == \"__main__\":\n    main()\n"
             },
             {
@@ -12959,8 +12959,8 @@
               "language": "python",
               "file": "tests/test_cli.py",
               "named": true,
-              "line": 286,
-              "end_line": 292,
+              "line": 285,
+              "end_line": 291,
               "source": "from app.cli import main\n\n\ndef test_main() -> None:\n    assert main([\"a\"]) == 1\n"
             },
             {
@@ -12968,8 +12968,8 @@
               "language": "python",
               "file": "app/run.py",
               "named": true,
-              "line": 294,
-              "end_line": 297,
+              "line": 293,
+              "end_line": 296,
               "source": "def main(argv: list[str] | None = None) -> int:\n    return len(argv or [])\n"
             },
             {
@@ -12977,8 +12977,8 @@
               "language": "python",
               "file": "app/__main__.py",
               "named": true,
-              "line": 299,
-              "end_line": 303,
+              "line": 298,
+              "end_line": 302,
               "source": "from app.run import main\n\nmain()\n"
             },
             {
@@ -12986,16 +12986,16 @@
               "language": "python",
               "file": "tests/test_run.py",
               "named": true,
-              "line": 305,
-              "end_line": 311,
+              "line": 304,
+              "end_line": 310,
               "source": "from app.run import main\n\n\ndef test_main() -> None:\n    assert main([\"a\"]) == 1\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 316,
-          "end_line": 331,
+          "line": 315,
+          "end_line": 330,
           "config": null,
           "blocks": [
             {
@@ -13003,8 +13003,8 @@
               "language": "python",
               "file": "testing/fixtures.py",
               "named": true,
-              "line": 316,
-              "end_line": 323,
+              "line": 315,
+              "end_line": 322,
               "source": "def make_config(rev: str = \"main\") -> str:\n    return rev\n\n\ndef default_config() -> str:\n    return make_config()\n"
             },
             {
@@ -13012,16 +13012,16 @@
               "language": "python",
               "file": "tests/test_config.py",
               "named": true,
-              "line": 325,
-              "end_line": 331,
+              "line": 324,
+              "end_line": 330,
               "source": "from testing.fixtures import default_config, make_config\n\n\ndef test_config() -> None:\n    assert make_config(rev=\"v1\") != default_config()\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 335,
-          "end_line": 354,
+          "line": 334,
+          "end_line": 353,
           "config": null,
           "blocks": [
             {
@@ -13029,8 +13029,8 @@
               "language": "python",
               "file": "app/service.py",
               "named": true,
-              "line": 335,
-              "end_line": 341,
+              "line": 334,
+              "end_line": 340,
               "source": "from app.mail import send\n\n\ndef notify(address: str, options: dict[str, bool]) -> None:\n    send(address, **options)\n"
             },
             {
@@ -13038,8 +13038,8 @@
               "language": "python",
               "file": "app/mail.py",
               "named": true,
-              "line": 343,
-              "end_line": 346,
+              "line": 342,
+              "end_line": 345,
               "source": "def send(address: str, urgent: bool = False) -> None:\n    print(address, urgent)\n"
             },
             {
@@ -13047,8 +13047,8 @@
               "language": "python",
               "file": "tests/test_mail.py",
               "named": true,
-              "line": 348,
-              "end_line": 354,
+              "line": 347,
+              "end_line": 353,
               "source": "from app.mail import send\n\n\ndef test_send() -> None:\n    send(\"a@b.c\", urgent=True)\n"
             }
           ]

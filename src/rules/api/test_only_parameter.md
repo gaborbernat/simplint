@@ -124,8 +124,8 @@ unpacks `**kwargs`, which may pass any keyword.
       send("a@b.c", urgent=True)
   ```
 
-- **Modules a program runs**: a module with an `if __name__ == "__main__":` block, or one that production code
-  star-imports, runs as production code even when a test imports it, so its calls count as production calls.
+- **Modules a program runs**: a module with an `if __name__ == "__main__":` block runs as production code even when a
+  test imports it, so its calls count as production calls.
 
   ```python context file=app/notify.py
   from app.mail import send
@@ -160,8 +160,7 @@ unpacks `**kwargs`, which may pass any keyword.
       escalate("a@b.c")
   ```
 
-- **Modules production code star-imports**: a module that a star import of production code reads runs as production code
-  too, so its calls count as production calls.
+  A module that production code star-imports runs as production code too, so its calls count the same way:
 
   ```python context file=app/notify.py
   from app.mail import send
