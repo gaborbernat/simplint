@@ -4,6 +4,7 @@ use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange};
+use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
@@ -12,6 +13,7 @@ use crate::rules::logic::kinds::class_named;
 use crate::syntax::{alias_binding, is_name};
 
 pub fn super_forwarding_method(checker: &Checker) {
+    let bindings = class_bindings(checker);
     for stmt in checker.body() {
         let Stmt::ClassDef(class) = stmt else { continue };
         // A class decorator or a metaclass may rebuild the class, such as a dataclass generating `__init__`, so
@@ -20,13 +22,21 @@ pub fn super_forwarding_method(checker: &Checker) {
             continue;
         }
         let Some(parent) = parent_class(checker, class) else { continue };
+        let uses = ClassBodyUses::of(&class.body);
         for stmt in &class.body {
-            check_method(checker, &class.body, parent, stmt);
+            check_method(checker, &class.body, &uses, &bindings, parent, stmt);
         }
     }
 }
 
-fn check_method<'a>(checker: &Checker<'a>, body: &[Stmt], parent: &'a ast::StmtClassDef, stmt: &Stmt) {
+fn check_method<'a>(
+    checker: &Checker<'a>,
+    body: &[Stmt],
+    uses: &ClassBodyUses<'_>,
+    bindings: &FxHashMap<TextRange, FxHashMap<&str, Vec<&'a Stmt>>>,
+    parent: &'a ast::StmtClassDef,
+    stmt: &Stmt,
+) {
     let Stmt::FunctionDef(function) = stmt else { return };
     let name = function.name.as_str();
     // A comment above the method or in its body says why it is there, such as a workaround for a type checker, and the
@@ -42,15 +52,15 @@ fn check_method<'a>(checker: &Checker<'a>, body: &[Stmt], parent: &'a ast::StmtC
         return;
     }
     // Once the method is deleted, the class body looks the name up in the globals, so another binding of the name
-    // there, or a read of it, would change what it gets.
-    let mut uses = ClassBodyUses { name, method: function.range, found: false };
-    uses.visit_body(body);
-    if uses.found {
+    // there, or a read of it, would change what it gets. The method's own header is one of the counted uses, so it is
+    // taken out.
+    let own = ClassBodyUses::of(std::slice::from_ref(stmt));
+    if uses.count(name) > own.count(name) {
         return;
     }
     // The parent's method must take the same arguments: a forwarder for an abstract method makes the class concrete,
     // and one that narrows the signature or renames a parameter rejects calls the parent's method takes.
-    let Some(inherited) = inherited_method(checker, parent, name) else { return };
+    let Some(inherited) = inherited_method(checker, bindings, parent, name) else { return };
     if !inherited.decorator_list.is_empty()
         || inherited.is_async
         || !same_signature(&function.parameters, &inherited.parameters)
@@ -85,6 +95,7 @@ fn parent_class<'a>(checker: &Checker<'a>, class: &ast::StmtClassDef) -> Option<
 // another way. Classes can name each other as bases, so the walk stops after as many classes as the module holds.
 fn inherited_method<'a>(
     checker: &Checker<'a>,
+    bindings: &FxHashMap<TextRange, FxHashMap<&str, Vec<&'a Stmt>>>,
     parent: &'a ast::StmtClassDef,
     name: &str,
 ) -> Option<&'a ast::StmtFunctionDef> {
@@ -92,14 +103,42 @@ fn inherited_method<'a>(
         if !class.decorator_list.is_empty() {
             return None;
         }
-        let bindings: Vec<&Stmt> = class.body.iter().filter(|stmt| binds(stmt, name)).collect();
-        match bindings.as_slice() {
+        let bound = bindings.get(&class.range).and_then(|names| names.get(name));
+        match bound.map_or(&[][..], Vec::as_slice) {
             [] => {}
             [Stmt::FunctionDef(function)] => return Some(function),
             _ => return None,
         }
     }
     None
+}
+
+// Indexed once per file, since every forwarding method looks its name up along the chain of parents.
+fn class_bindings<'a>(checker: &Checker<'a>) -> FxHashMap<TextRange, FxHashMap<&'a str, Vec<&'a Stmt>>> {
+    let mut classes = FxHashMap::default();
+    for class in checker.body().iter().filter_map(Stmt::as_class_def_stmt) {
+        let mut names: FxHashMap<&str, Vec<&Stmt>> = FxHashMap::default();
+        for stmt in &class.body {
+            for name in bound_names(stmt) {
+                names.entry(name).or_default().push(stmt);
+            }
+        }
+        classes.insert(class.range, names);
+    }
+    classes
+}
+
+// The names a statement of a class body binds on its own, so that it is the one the class keeps.
+fn bound_names(stmt: &Stmt) -> Vec<&str> {
+    match stmt {
+        Stmt::FunctionDef(function) => vec![function.name.as_str()],
+        Stmt::ClassDef(class) => vec![class.name.as_str()],
+        Stmt::Assign(assign) => {
+            assign.targets.iter().filter_map(|target| target.as_name_expr()).map(|name| name.id.as_str()).collect()
+        }
+        Stmt::AnnAssign(assign) => assign.target.as_name_expr().map(|name| name.id.as_str()).into_iter().collect(),
+        _ => Vec::new(),
+    }
 }
 
 // Both methods take the same parameters after the receiver, of the same kinds and under the same names, none with a
@@ -191,33 +230,34 @@ fn forwards_own_arguments(parameters: &ast::Parameters, call: &ast::ExprCall) ->
     positional_ok && vararg_ok && args.next().is_none() && keyword_only_ok && kwarg_ok && keywords.next().is_none()
 }
 
-// Whether a statement of a class body binds `name` on its own, so that it is the one the class keeps.
-fn binds(stmt: &Stmt, name: &str) -> bool {
-    match stmt {
-        Stmt::FunctionDef(function) => function.name.as_str() == name,
-        Stmt::ClassDef(class) => class.name.as_str() == name,
-        Stmt::Assign(assign) => assign.targets.iter().any(|target| is_name(target, name)),
-        Stmt::AnnAssign(assign) => is_name(&assign.target, name),
-        _ => false,
+// How many times each name is bound or read in a class body. The bodies of methods and of nested scopes run in their
+// own scope, which does not see the class body's names, so they are left out.
+#[derive(Default)]
+struct ClassBodyUses<'a> {
+    counts: FxHashMap<&'a str, usize>,
+}
+
+impl<'a> ClassBodyUses<'a> {
+    fn of(body: &'a [Stmt]) -> Self {
+        let mut uses = Self::default();
+        uses.visit_body(body);
+        uses
+    }
+
+    fn count(&self, name: &str) -> usize {
+        self.counts.get(name).copied().unwrap_or_default()
+    }
+
+    fn add(&mut self, name: &'a str) {
+        *self.counts.entry(name).or_default() += 1;
     }
 }
 
-// Whether the class body binds or reads `name` outside the body of the `method` being deleted. The bodies of other
-// methods and of nested scopes run in their own scope, which does not see the class body's names, so they are left out.
-struct ClassBodyUses<'n> {
-    name: &'n str,
-    method: TextRange,
-    found: bool,
-}
-
-impl<'a> Visitor<'a> for ClassBodyUses<'_> {
+impl<'a> Visitor<'a> for ClassBodyUses<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         match stmt {
             Stmt::FunctionDef(function) => {
-                if function.range == self.method {
-                    return;
-                }
-                self.found |= function.name.as_str() == self.name;
+                self.add(function.name.as_str());
                 for decorator in &function.decorator_list {
                     self.visit_decorator(decorator);
                 }
@@ -227,7 +267,7 @@ impl<'a> Visitor<'a> for ClassBodyUses<'_> {
                 }
             }
             Stmt::ClassDef(class) => {
-                self.found |= class.name.as_str() == self.name;
+                self.add(class.name.as_str());
                 for decorator in &class.decorator_list {
                     self.visit_decorator(decorator);
                 }
@@ -236,7 +276,10 @@ impl<'a> Visitor<'a> for ClassBodyUses<'_> {
                 }
             }
             Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
-                self.found |= names.iter().any(|alias| alias_binding(alias).split('.').next() == Some(self.name));
+                for alias in names {
+                    let bound = alias_binding(alias);
+                    self.add(bound.split_once('.').map_or(bound, |(first, _)| first));
+                }
             }
             _ => visitor::walk_stmt(self, stmt),
         }
@@ -244,7 +287,7 @@ impl<'a> Visitor<'a> for ClassBodyUses<'_> {
 
     fn visit_expr(&mut self, expr: &'a Expr) {
         match expr {
-            Expr::Name(name) => self.found |= name.id.as_str() == self.name,
+            Expr::Name(name) => self.add(name.id.as_str()),
             Expr::Lambda(lambda) => {
                 if let Some(parameters) = &lambda.parameters {
                     self.visit_parameters(parameters);
@@ -256,7 +299,9 @@ impl<'a> Visitor<'a> for ClassBodyUses<'_> {
 
     fn visit_except_handler(&mut self, handler: &'a ast::ExceptHandler) {
         let ast::ExceptHandler::ExceptHandler(ast::ExceptHandlerExceptHandler { name, .. }) = handler;
-        self.found |= name.as_ref().is_some_and(|bound| bound.as_str() == self.name);
+        if let Some(bound) = name {
+            self.add(bound.as_str());
+        }
         visitor::walk_except_handler(self, handler);
     }
 
@@ -267,7 +312,9 @@ impl<'a> Visitor<'a> for ClassBodyUses<'_> {
             | ast::Pattern::MatchMapping(ast::PatternMatchMapping { rest: name, .. }) => name.as_ref(),
             _ => None,
         };
-        self.found |= captured.is_some_and(|bound| bound.as_str() == self.name);
+        if let Some(bound) = captured {
+            self.add(bound.as_str());
+        }
         visitor::walk_pattern(self, pattern);
     }
 }

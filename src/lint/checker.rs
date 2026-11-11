@@ -54,6 +54,7 @@ pub struct Checker<'a> {
     dunder_all: OnceCell<Exports<'a>>,
     function_defs: OnceCell<Vec<&'a ast::StmtFunctionDef>>,
     class_defs: OnceCell<Vec<&'a ast::StmtClassDef>>,
+    module_classes: OnceCell<FxHashMap<&'a str, &'a ast::StmtClassDef>>,
     name_tokens: OnceCell<FxHashMap<&'a str, usize>>,
     string_values: OnceCell<Vec<(TextRange, Cow<'a, str>)>>,
     project: OnceCell<FileIndex<'a>>,
@@ -90,6 +91,7 @@ impl<'a> Checker<'a> {
             dunder_all: OnceCell::new(),
             function_defs: OnceCell::new(),
             class_defs: OnceCell::new(),
+            module_classes: OnceCell::new(),
             name_tokens: OnceCell::new(),
             string_values: OnceCell::new(),
             project: OnceCell::new(),
@@ -321,6 +323,13 @@ impl<'a> Checker<'a> {
                 classes.extend(statements.iter().filter_map(Stmt::as_class_def_stmt));
             });
             classes
+        })
+    }
+
+    // The classes of the module's top level by name, so that a name read as a class is found without a scan.
+    pub fn module_classes(&self) -> &FxHashMap<&'a str, &'a ast::StmtClassDef> {
+        self.module_classes.get_or_init(|| {
+            self.body().iter().filter_map(Stmt::as_class_def_stmt).map(|class| (class.name.as_str(), class)).collect()
         })
     }
 
