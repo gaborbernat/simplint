@@ -54,8 +54,7 @@ pub fn module_attribute_import(checker: &Checker) {
         let mut convertible = import_aliases(statement).len() == 1
             && !checker.has_comment_in(statement.range())
             && !module.computed_written
-            && !checker.project().is_referenced(&module.bound)
-            && !checker.dunder_all().may_list(&module.bound);
+            && !checker.is_exported(&module.bound);
         let private_path = path.split('.').any(|part| Visibility::of(part) == Visibility::Private);
         let mut reports = Vec::new();
         for attribute in attributes {

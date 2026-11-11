@@ -447,7 +447,7 @@ impl<'a> Facts<'_, 'a> {
     // A module name another module imports or `__all__` lists, whose reads this file does not all contain. Asked only
     // here, since reading the project is a cross-file read that the other rules sharing the walk do not declare.
     fn exported(&self, scope: Scope, name: &str) -> bool {
-        scope.is_none() && (self.checker.project().is_referenced(name) || self.checker.dunder_all().may_list(name))
+        scope.is_none() && self.checker.is_exported(name)
     }
 
     fn usages_of(&self, scope: Scope, name: &'a str) -> &[Usage] {

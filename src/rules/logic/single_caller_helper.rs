@@ -34,8 +34,7 @@ fn check_helper<'a>(
         || !helper.decorator_list.is_empty()
         || helper.is_async
         || yields(&helper.body)
-        || checker.project().is_referenced(name)
-        || checker.dunder_all().may_list(name)
+        || checker.is_exported(name)
         || helper.returns.as_deref().is_some_and(|returns| is_type_guard(checker, returns))
     {
         return;

@@ -22,7 +22,7 @@ pub fn finally_call(try_stmt: &ast::StmtTry) -> Option<&ast::ExprCall> {
 
 // Whether `target` binds a module-level name that another module of the run reads, through an import, a star import or
 // an attribute, or that `__all__` lists. Removing that binding would break those readers, so the report stays without a
-// fix.
+// fix. Unlike `Checker::is_exported`, this also counts a name that the signature of an exported name reaches.
 pub fn is_exported_module_name(checker: &Checker, target: &ast::ExprName) -> bool {
     let name = target.id.as_str();
     checker.semantic().bindings(name).iter().any(|binding| binding.module_scope && binding.range == target.range())

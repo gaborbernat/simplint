@@ -176,9 +176,7 @@ fn candidate<'a>(
                     .contains(name)
             }),
         ),
-        Scope::Module => {
-            (checker.file_range(), checker.project().is_referenced(name) || checker.dunder_all().may_list(name))
-        }
+        Scope::Module => (checker.file_range(), checker.is_exported(name)),
     };
     let mentions = mentions.get_or_init(|| Mentions::of(checker.body()));
     // `globals()` reads the module's names, so it keeps only a module-level name alive.

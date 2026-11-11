@@ -298,6 +298,12 @@ impl<'a> Checker<'a> {
         self.dunder_all.get_or_init(|| dunder_all(self.body()))
     }
 
+    // Whether another file of the run reads the name from this module, or `__all__` lists it, so that removing its
+    // binding would break a reader.
+    pub fn is_exported(&self, name: &str) -> bool {
+        self.project().is_referenced(name) || self.dunder_all().may_list(name)
+    }
+
     // Every `def` of the module, nested ones included.
     pub fn function_defs(&self) -> &[&'a ast::StmtFunctionDef] {
         self.function_defs.get_or_init(|| {
