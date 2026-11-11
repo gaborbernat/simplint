@@ -5,8 +5,10 @@ use rustc_hash::FxHashMap;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::project::constructors::{CallSites, Use};
-use crate::rules::api::{OwnCalls, candidate_functions, is_closed_class, judges_call_sites, returns_value};
-use crate::rules::call_sites::{method_candidate, method_uses};
+use crate::rules::api::returns_value;
+use crate::rules::call_sites::{
+    OwnCalls, candidate_functions, is_closed_class, judges_call_sites, method_candidate, method_uses, self_only_uses,
+};
 
 pub fn unused_return_value(checker: &Checker) {
     if !judges_call_sites(checker) {
@@ -43,15 +45,11 @@ fn method_value(
     if !method_candidate(checker, function) || !returns_value(function) {
         return;
     }
-    let found = methods.get(name).map_or(&[][..], Vec::as_slice);
-    if found.len() != checker.project().calls().attribute_loads(name) as usize {
+    let Some(uses) = self_only_uses(checker, name, methods.get(name).map_or(&[][..], Vec::as_slice)) else {
         return;
-    }
+    };
     let mut sites = CallSites::default();
-    for (is_self, found) in found {
-        if !is_self {
-            return;
-        }
+    for found in uses {
         own.add(&mut sites, std::slice::from_ref(found));
     }
     let qualified = format!("{}.{name}", class.name.as_str());

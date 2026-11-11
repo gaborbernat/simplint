@@ -4,7 +4,7 @@ use ruff_text_size::Ranged;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::project::constructors::{CallShape, CallSites};
-use crate::rules::api::{OwnCalls, candidate_functions, judges_call_sites};
+use crate::rules::call_sites::{OwnCalls, candidate_functions, judges_call_sites};
 
 pub fn test_only_parameter(checker: &Checker) {
     if !judges_call_sites(checker) {
