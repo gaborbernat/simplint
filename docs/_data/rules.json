@@ -25285,7 +25285,7 @@
     "name": "dataclass-kw-only",
     "summary": "Dataclasses without `kw_only`",
     "fix": "Always",
-    "explanation": "Flags dataclasses declared without `kw_only=True`, and the calls that pass their fields by position.\n\n## Why is this bad?\n\nPositional construction ties every caller to the field order, so reordering or inserting a field silently shifts values\ninto the wrong fields. Keyword-only fields name each value at the call site.\n\n## Example\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n    version: str\n\n\nRelease(\"simplint\", \"1.0.0\")\n```\n\nUse instead:\n\n```python ok\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass Release:\n    name: str\n    version: str\n\n\nRelease(name=\"simplint\", version=\"1.0.0\")\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py39\"\n  ```\n\n  ```python ok\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Release:\n      name: str\n  ```\n\n## What it does\n\n### Active on\n\n- **[Dataclass](https://docs.python.org/3/library/dataclasses.html#dataclasses.dataclass) decorators**: a decorator\n  spelled `@dataclass` or `@dataclasses.dataclass` without `kw_only=True`. Any value other than a literal `True`, such\n  as `kw_only=False`, is reported too, since only a literal `True` shows that every field is keyword-only. The report\n  points at each call in the run that passes the fields by position. Its fix sets `kw_only=True` and passes those\n  arguments by keyword, but only when every such call is in the same module. The forms are:\n\n  - `@dataclass(frozen=True, slots=True)`: no `kw_only` option, so it is reported.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=True, slots=True)\n    class Release:\n        name: str\n        version: str\n    ```\n\n  - `@dataclass(**DC_KW)`: a `**` splat of a module-level dict literal, or of a `dict(...)` call with keyword arguments,\n    counts the options its keys set. A splat simplint cannot read leaves the class unreported, as for the other\n    dataclass rules.\n\n  - `@dataclass(frozen=True, slots=True, kw_only=False)`: a value other than a literal `True`.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=True, slots=True, kw_only=False)\n    class Release:\n        name: str\n        version: str\n    ```\n\n  - `@dataclass(frozen=True, slots=True, kw_only=True)`: accepted.\n\n    ```python ok\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=True, slots=True, kw_only=True)\n    class Release:\n        name: str\n        version: str\n    ```\n\n  **Unsafe fix:** code outside the checked files, such as the users of a published library, can still call the class by\n  position. A library's public dataclasses are not reported at all, as the exceptions below describe.\n\n- **Positional calls in other files**: each call in another file that passes the fields by position is a related\n  location of the class's report, and the report gets no fix, since a rewrite does not reach another file. The message\n  counts the calls that need converting by hand. A call gets no report of its own, so a suppression comment on the class\n  silences the report with its related locations.\n\n  ```python report file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      version: str\n  ```\n\n  ```python ok file=app/use.py\n  from app.models import Release\n\n\n  def build() -> Release:\n      return Release(\"simplint\", \"1.0.0\")\n  ```\n\n  The full output lists the call as a related location of the class report:\n\n  ```text\n  SMP703 Dataclass is missing kw_only; set `kw_only=True`; 1 positional call in another file needs keyword arguments by hand\n   --> app/models.py:4:2\n    |\n  4 | @dataclass(frozen=True, slots=True)\n    |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  5 | class Release:\n  6 |     name: str\n    |\n   ::: app/use.py:5:12\n    |\n  4 | def build() -> Release:\n  5 |     return Release(\"simplint\", \"1.0.0\")\n    |            ---------------------------- positional arguments pass the fields by position\n\n  Found 1 error.\n  ```\n\n### Exceptions\n\n- **Public API of a library**: a dataclass that a public module offers, defined in or re-exported from it, where its\n  `__all__` lists it or, without one, its name is public. Also a dataclass a public name's signature refers to, such as\n  the base class of a listed class or a return annotation. Users of the library call it by position, so neither the\n  class nor its positional calls in other files are reported. A class a module with an `__all__` leaves out is still\n  reported, unless such a signature refers to it.\n\n  ```toml config\n  [build-system]\n  requires = []\n  ```\n\n  ```python ok\n  from dataclasses import dataclass\n\n  __all__ = [\"Release\"]\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n  ```\n\n- **Target versions before 3.10**: the `kw_only` option needs Python 3.10 or later, so nothing is reported when the\n  target version is older.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py39\"\n  ```\n\n  ```python ok\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n  ```\n\n### Fix\n\nThe fix sets `kw_only=True` and rewrites the positional calls of the class in its own module, including `cls(...)` in\nits classmethods. A `cls` parameter of an ordinary method is some other value, so its calls stay as they are. A call\nthat unpacks `**kwargs` passes those fields by keyword, so it keeps working.\n\nA call that has positional arguments and a `**` splat is rewritten only when the splat is one simplint can read and it\ndoes not pass one of the fields the rewrite names, since the keyword would repeat it. The class gets no fix when one of\nits calls is not rewritten, so its other calls keep their positional arguments.\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n\n    @classmethod\n    def named(cls, name: str) -> \"Release\":\n        return cls(name)\n```\n\n```python fixed\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass Release:\n    name: str\n\n    @classmethod\n    def named(cls, name: str) -> \"Release\":\n        return cls(name=name)\n```\n\nThe `cls` of an ordinary method is left alone:\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n\n    def build(self, cls: type, name: str) -> object:\n        return cls(name)\n```\n\n```python fixed\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass Release:\n    name: str\n\n    def build(self, cls: type, name: str) -> object:\n        return cls(name)\n```\n\nA positional call inside an annotation, as `Doc(\"...\")` in `Annotated[str, Doc(\"...\")]`, runs with the others, and a\npositional walrus becomes the value of its keyword in parentheses:\n\n```python report\nfrom dataclasses import dataclass\nfrom typing import Annotated\n\n\n@dataclass\nclass Doc:\n    text: str\n\n\ndef load(path: Annotated[str, Doc(\"where to read from\")]) -> None:\n    print(path)\n```\n\n```python fixed\nfrom dataclasses import dataclass\nfrom typing import Annotated\n\n\n@dataclass(kw_only=True)\nclass Doc:\n    text: str\n\n\ndef load(path: Annotated[str, Doc(text=\"where to read from\")]) -> None:\n    print(path)\n```\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    name: str\n    version: str\n\n\ndef build(raw: str) -> Release:\n    return Release(name := raw.strip(), version=raw)\n```\n\n```python fixed\nfrom dataclasses import dataclass\n\n\n@dataclass(kw_only=True)\nclass Release:\n    name: str\n    version: str\n\n\ndef build(raw: str) -> Release:\n    return Release(name=(name := raw.strip()), version=raw)\n```\n\nThe keywords follow the field order of the generated `__init__`:\n\n- inherited fields come first\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Base:\n      name: str\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release(Base):\n      version: str\n\n\n  Release(\"simplint\", \"1.0.0\")\n  ```\n\n- `ClassVar` fields are left out, as are fields with `init=False` or `kw_only=True` and the fields after `KW_ONLY`\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  from dataclasses import KW_ONLY, dataclass, field\n  from typing import ClassVar\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      count: ClassVar[int] = 0\n      name: str\n      cached: str = field(init=False, default=\"\")\n      _: KW_ONLY\n      version: str\n\n\n  Release(\"simplint\", version=\"1.0.0\")\n  ```\n\n- `InitVar` fields are included\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  from dataclasses import InitVar, dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      token: InitVar[str]\n\n\n  Release(\"simplint\", \"secret\")\n  ```\n\nNo fix is offered while any use could still pass fields by position, or while a positional call is in another file:\n\n- a call that unpacks `*args`, or passes more arguments than the class has positional fields;\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n\n\n  def build(*args: str) -> Release:\n      return Release(*args)\n  ```\n\n- the class used as a value, as in `functools.partial(Partition, topic)`, or matched by position in a `case` pattern;\n\n  ```python report\n  from dataclasses import dataclass\n  from functools import partial\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      version: str\n\n\n  make = partial(Release, \"simplint\")\n  ```\n\n- the class read by `getattr(module, \"Name\")` from another file, which calls it by position under a name no import\n  shows;\n\n  ```python report file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      version: str\n  ```\n\n  ```python context file=app/main.py\n  import app.models\n\n\n  Release = getattr(app.models, \"Release\")(\"simplint\", \"1\")\n  ```\n\n- a subclass, or a call through `type(self)(...)` or `self.__class__(...)`;\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n\n      def copy(self) -> \"Release\":\n          return type(self)(self.name)\n  ```\n\n- a file that imports the module with `*`, or that imports the class and passes it on to other modules;\n\n  ```python report file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      version: str\n  ```\n\n  ```python context file=app/use.py\n  from app.models import *\n\n\n  Release(\"simplint\", \"1.0.0\")\n  ```\n\n- a positional call simplint cannot tie to the class, such as through a local name that shadows the import, or of an\n  attribute with the class's name on something no import binds, such as `module.Partition(\"a\", 1)` on a module a test\n  loads from its file path;\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      version: str\n\n\n  def build(Release: type) -> object:\n      return Release(\"simplint\", \"1.0.0\")\n  ```\n\n- a positional call with a suppression comment for SMP703 on the call, which the fix would rewrite regardless;\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      version: str\n\n\n  Release(\"simplint\", \"1.0.0\")  # noqa: SMP703\n  ```\n\n- a class in one of these forms:\n\n  - nested in a function or another class.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    def build() -> object:\n        @dataclass(frozen=True, slots=True)\n        class Release:\n            name: str\n\n        return Release(\"simplint\")\n    ```\n\n  - that defines `__init__` or `__new__`.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=True, slots=True)\n    class Release:\n        name: str\n\n        def __init__(self, name: str) -> None:\n            self.name = name\n    ```\n\n  - that sets `init=False`.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=True, slots=True, init=False)\n    class Release:\n        name: str\n    ```\n\n  - that has a base class that is not a dataclass of the same module.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    class Base:\n        name: str\n\n\n    @dataclass(frozen=True, slots=True)\n    class Release(Base):\n        version: str\n    ```\n\nA call in an f-string `=` debug field keeps the printed text: the call's source text stays, and its value follows in a\nplain field, so the output is the same once the call passes its fields by keyword.\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n\n\ndef show() -> str:\n    return f\"{Release('simplint')=}\"\n```\n\n```python fixed\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass Release:\n    name: str\n\n\ndef show() -> str:\n    return f\"Release('simplint')={Release(name='simplint')!r}\"\n```\n\n### Related rules\n\n[dataclass-frozen](SMP701.html) asks for `frozen=True` and [dataclass-slots](SMP702.html) for `slots=True` on the same\ndecorator.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#28777](https://github.com/astral-sh/ruff/issues/28777).\n",
+    "explanation": "Flags dataclasses declared without `kw_only=True`, and the calls that pass their fields by position.\n\n## Why is this bad?\n\nPositional construction ties every caller to the field order, so reordering or inserting a field silently shifts values\ninto the wrong fields. Keyword-only fields name each value at the call site.\n\n## Example\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n    version: str\n\n\nRelease(\"simplint\", \"1.0.0\")\n```\n\nUse instead:\n\n```python ok\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass Release:\n    name: str\n    version: str\n\n\nRelease(name=\"simplint\", version=\"1.0.0\")\n```\n\n## Configuration\n\n- [`target-version`](https://docs.astral.sh/ruff/settings/#target-version) and\n  [`per-file-target-version`](https://docs.astral.sh/ruff/settings/#per-file-target-version), falling back to\n  [`project.requires-python`](https://packaging.python.org/en/latest/specifications/pyproject-toml/#requires-python);\n  see [Python version](https://simplint.readthedocs.io/en/latest/configuration/project.html#python-version)\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py39\"\n  ```\n\n  ```python ok\n  from dataclasses import dataclass\n\n\n  @dataclass\n  class Release:\n      name: str\n  ```\n\n## What it does\n\n### Active on\n\n- **[Dataclass](https://docs.python.org/3/library/dataclasses.html#dataclasses.dataclass) decorators**: a decorator\n  spelled `@dataclass` or `@dataclasses.dataclass` without `kw_only=True`. Any value other than a literal `True`, such\n  as `kw_only=False`, is reported too, since only a literal `True` shows that every field is keyword-only. The report\n  points at each call in the run that passes the fields by position. Its fix sets `kw_only=True` and passes those\n  arguments by keyword, but only when every such call is in the same module. The forms are:\n\n  - `@dataclass(frozen=True, slots=True)`: no `kw_only` option, so it is reported.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=True, slots=True)\n    class Release:\n        name: str\n        version: str\n    ```\n\n  - `@dataclass(**DC_KW)`: a `**` splat of a module-level dict literal, or of a `dict(...)` call with keyword arguments,\n    counts the options its keys set. A splat simplint cannot read leaves the class unreported, as for the other\n    dataclass rules.\n\n  - `@dataclass(frozen=True, slots=True, kw_only=False)`: a value other than a literal `True`.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=True, slots=True, kw_only=False)\n    class Release:\n        name: str\n        version: str\n    ```\n\n  - `@dataclass(frozen=True, slots=True, kw_only=True)`: accepted.\n\n    ```python ok\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=True, slots=True, kw_only=True)\n    class Release:\n        name: str\n        version: str\n    ```\n\n  **Unsafe fix:** code outside the checked files, such as the users of a published library, can still call the class by\n  position. A library's public dataclasses are not reported at all, as the exceptions below describe.\n\n- **Positional calls in other files**: each call in another file that passes the fields by position is a related\n  location of the class's report, and the report gets no fix, since a rewrite does not reach another file. The message\n  counts the calls that need converting by hand. A call gets no report of its own, so a suppression comment on the class\n  silences the report with its related locations.\n\n  ```python report file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      version: str\n  ```\n\n  ```python ok file=app/use.py\n  from app.models import Release\n\n\n  def build() -> Release:\n      return Release(\"simplint\", \"1.0.0\")\n  ```\n\n  The full output lists the call as a related location of the class report:\n\n  ```text\n  SMP703 Dataclass is missing kw_only; set `kw_only=True`; 1 positional call in another file needs keyword arguments by hand\n   --> app/models.py:4:2\n    |\n  4 | @dataclass(frozen=True, slots=True)\n    |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  5 | class Release:\n  6 |     name: str\n    |\n   ::: app/use.py:5:12\n    |\n  4 | def build() -> Release:\n  5 |     return Release(\"simplint\", \"1.0.0\")\n    |            ---------------------------- positional arguments pass the fields by position\n\n  Found 1 error.\n  ```\n\n### Exceptions\n\n- **Public API of a library**: a dataclass that a public module offers, defined in or re-exported from it, where its\n  `__all__` lists it or, without one, its name is public. Also a dataclass a public name's signature refers to, such as\n  the base class of a listed class or a return annotation. Users of the library call it by position, so neither the\n  class nor its positional calls in other files are reported. A class a module with an `__all__` leaves out is still\n  reported, unless such a signature refers to it.\n\n  ```toml config\n  [build-system]\n  requires = []\n  ```\n\n  ```python ok\n  from dataclasses import dataclass\n\n  __all__ = [\"Release\"]\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n  ```\n\n- **Target versions before 3.10**: the `kw_only` option needs Python 3.10 or later, so nothing is reported when the\n  target version is older.\n\n  ```toml config\n  [tool.ruff]\n  target-version = \"py39\"\n  ```\n\n  ```python ok\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n  ```\n\n### Fix\n\nThe fix sets `kw_only=True` and rewrites the positional calls of the class in its own module, including `cls(...)` in\nits classmethods. A `cls` parameter of an ordinary method is some other value, so its calls stay as they are. A call\nthat unpacks `**kwargs` passes those fields by keyword, so it keeps working.\n\nA call that has positional arguments and a `**` splat is rewritten only when the splat is one simplint can read and it\ndoes not pass one of the fields the rewrite names, since the keyword would repeat it. The class gets no fix when one of\nits calls is not rewritten, so its other calls keep their positional arguments.\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n\n    @classmethod\n    def named(cls, name: str) -> \"Release\":\n        return cls(name)\n```\n\n```python fixed\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass Release:\n    name: str\n\n    @classmethod\n    def named(cls, name: str) -> \"Release\":\n        return cls(name=name)\n```\n\nThe `cls` of an ordinary method is left alone:\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n\n    def build(self, cls: type, name: str) -> object:\n        return cls(name)\n```\n\n```python fixed\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass Release:\n    name: str\n\n    def build(self, cls: type, name: str) -> object:\n        return cls(name)\n```\n\nA positional call inside an annotation, as `Doc(\"...\")` in `Annotated[str, Doc(\"...\")]`, runs with the others, and a\npositional walrus becomes the value of its keyword in parentheses:\n\n```python report\nfrom dataclasses import dataclass\nfrom typing import Annotated\n\n\n@dataclass\nclass Doc:\n    text: str\n\n\ndef load(path: Annotated[str, Doc(\"where to read from\")]) -> None:\n    print(path)\n```\n\n```python fixed\nfrom dataclasses import dataclass\nfrom typing import Annotated\n\n\n@dataclass(kw_only=True)\nclass Doc:\n    text: str\n\n\ndef load(path: Annotated[str, Doc(text=\"where to read from\")]) -> None:\n    print(path)\n```\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    name: str\n    version: str\n\n\ndef build(raw: str) -> Release:\n    return Release(name := raw.strip(), version=raw)\n```\n\n```python fixed\nfrom dataclasses import dataclass\n\n\n@dataclass(kw_only=True)\nclass Release:\n    name: str\n    version: str\n\n\ndef build(raw: str) -> Release:\n    return Release(name=(name := raw.strip()), version=raw)\n```\n\nA call in a string annotation is rewritten like one in the code, as `Doc(\"where\")` in `\"Annotated[str, Doc('where')]\"`:\n\n```python report\nfrom dataclasses import dataclass\nfrom typing import Annotated\n\n\n@dataclass\nclass Doc:\n    text: str\n\n\ndef load(path: \"Annotated[str, Doc('where')]\") -> None:\n    print(path)\n```\n\n```python fixed\nfrom dataclasses import dataclass\nfrom typing import Annotated\n\n\n@dataclass(kw_only=True)\nclass Doc:\n    text: str\n\n\ndef load(path: \"Annotated[str, Doc(text='where')]\") -> None:\n    print(path)\n```\n\nThe keywords follow the field order of the generated `__init__`:\n\n- inherited fields come first\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Base:\n      name: str\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release(Base):\n      version: str\n\n\n  Release(\"simplint\", \"1.0.0\")\n  ```\n\n- `ClassVar` fields are left out, as are fields with `init=False` or `kw_only=True` and the fields after `KW_ONLY`\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  from dataclasses import KW_ONLY, dataclass, field\n  from typing import ClassVar\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      count: ClassVar[int] = 0\n      name: str\n      cached: str = field(init=False, default=\"\")\n      _: KW_ONLY\n      version: str\n\n\n  Release(\"simplint\", version=\"1.0.0\")\n  ```\n\n- `InitVar` fields are included\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  from dataclasses import InitVar, dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      token: InitVar[str]\n\n\n  Release(\"simplint\", \"secret\")\n  ```\n\nNo fix is offered while any use could still pass fields by position, or while a positional call is in another file:\n\n- a call that unpacks `*args`, or passes more arguments than the class has positional fields;\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n\n\n  def build(*args: str) -> Release:\n      return Release(*args)\n  ```\n\n- the class used as a value, as in `functools.partial(Partition, topic)`, matched by position in a `case` pattern, or\n  named in the metadata of an `Annotated[...]` type, where a caller may call it by position later;\n\n  ```python report\n  from dataclasses import dataclass\n  from typing import Annotated\n\n\n  @dataclass\n  class Doc:\n      text: str\n\n\n  def load(path: Annotated[str, Doc]) -> None:\n      print(path)\n  ```\n\n  ```python report\n  from dataclasses import dataclass\n  from functools import partial\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      version: str\n\n\n  make = partial(Release, \"simplint\")\n  ```\n\n- the class read by `getattr(module, \"Name\")` from another file, which calls it by position under a name no import\n  shows;\n\n  ```python report file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      version: str\n  ```\n\n  ```python context file=app/main.py\n  import app.models\n\n\n  Release = getattr(app.models, \"Release\")(\"simplint\", \"1\")\n  ```\n\n- a subclass, or a call through `type(self)(...)` or `self.__class__(...)`;\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n\n      def copy(self) -> \"Release\":\n          return type(self)(self.name)\n  ```\n\n- a file that imports the module with `*`, or that imports the class and passes it on to other modules;\n\n  ```python report file=app/models.py\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      version: str\n  ```\n\n  ```python context file=app/use.py\n  from app.models import *\n\n\n  Release(\"simplint\", \"1.0.0\")\n  ```\n\n- a positional call simplint cannot tie to the class, such as through a local name that shadows the import, or of an\n  attribute with the class's name on something no import binds, such as `module.Partition(\"a\", 1)` on a module a test\n  loads from its file path;\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      version: str\n\n\n  def build(Release: type) -> object:\n      return Release(\"simplint\", \"1.0.0\")\n  ```\n\n- a class one of the implicitly concatenated parts of a string annotation spells, as `\"Annotated[str, \" \"Doc('x')]\"`:\n  Ruff parses such a string without the positions a rewrite needs\n\n  ```python report\n  from dataclasses import dataclass\n  from typing import Annotated\n\n\n  @dataclass\n  class Doc:\n      text: str\n\n\n  def load(path: \"Annotated[str, Doc('where')]\") -> None:\n      print(path)\n  ```\n\n- a positional call with a suppression comment for SMP703 on the call, which the fix would rewrite regardless;\n\n  ```python report\n  from dataclasses import dataclass\n\n\n  @dataclass(frozen=True, slots=True)\n  class Release:\n      name: str\n      version: str\n\n\n  Release(\"simplint\", \"1.0.0\")  # noqa: SMP703\n  ```\n\n- a class in one of these forms:\n\n  - nested in a function or another class.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    def build() -> object:\n        @dataclass(frozen=True, slots=True)\n        class Release:\n            name: str\n\n        return Release(\"simplint\")\n    ```\n\n  - that defines `__init__` or `__new__`.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=True, slots=True)\n    class Release:\n        name: str\n\n        def __init__(self, name: str) -> None:\n            self.name = name\n    ```\n\n  - that sets `init=False`.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    @dataclass(frozen=True, slots=True, init=False)\n    class Release:\n        name: str\n    ```\n\n  - that has a base class that is not a dataclass of the same module.\n\n    ```python report\n    from dataclasses import dataclass\n\n\n    class Base:\n        name: str\n\n\n    @dataclass(frozen=True, slots=True)\n    class Release(Base):\n        version: str\n    ```\n\nA call in an f-string `=` debug field keeps the printed text: the call's source text stays, and its value follows in a\nplain field, so the output is the same once the call passes its fields by keyword.\n\n```python report\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n\n\ndef show() -> str:\n    return f\"{Release('simplint')=}\"\n```\n\n```python fixed\nfrom dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass Release:\n    name: str\n\n\ndef show() -> str:\n    return f\"Release('simplint')={Release(name='simplint')!r}\"\n```\n\n### Related rules\n\n[dataclass-frozen](SMP701.html) asks for `frozen=True` and [dataclass-slots](SMP702.html) for `slots=True` on the same\ndecorator.\n\n## Other tools\n\n- **[Ruff](https://github.com/astral-sh/ruff):** open issue [#28777](https://github.com/astral-sh/ruff/issues/28777).\n",
     "examples": {
       "parsed": [
         {
@@ -25568,8 +25568,8 @@
         },
         {
           "section": "What it does",
-          "line": 321,
-          "end_line": 336,
+          "line": 319,
+          "end_line": 345,
           "config": null,
           "blocks": [
             {
@@ -25577,16 +25577,42 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 321,
-              "end_line": 336,
+              "line": 319,
+              "end_line": 331,
+              "source": "from dataclasses import dataclass\nfrom typing import Annotated\n\n\n@dataclass\nclass Doc:\n    text: str\n\n\ndef load(path: \"Annotated[str, Doc('where')]\") -> None:\n    print(path)\n"
+            },
+            {
+              "role": "fixed",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 333,
+              "end_line": 345,
+              "source": "from dataclasses import dataclass\nfrom typing import Annotated\n\n\n@dataclass(kw_only=True)\nclass Doc:\n    text: str\n\n\ndef load(path: \"Annotated[str, Doc(text='where')]\") -> None:\n    print(path)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 351,
+          "end_line": 366,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 351,
+              "end_line": 366,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Base:\n    name: str\n\n\n@dataclass(frozen=True, slots=True)\nclass Release(Base):\n    version: str\n\n\nRelease(\"simplint\", \"1.0.0\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 340,
-          "end_line": 358,
+          "line": 370,
+          "end_line": 388,
           "config": null,
           "blocks": [
             {
@@ -25594,16 +25620,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 340,
-              "end_line": 358,
+              "line": 370,
+              "end_line": 388,
               "source": "from dataclasses import dataclass\n\n\nfrom dataclasses import KW_ONLY, dataclass, field\nfrom typing import ClassVar\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    count: ClassVar[int] = 0\n    name: str\n    cached: str = field(init=False, default=\"\")\n    _: KW_ONLY\n    version: str\n\n\nRelease(\"simplint\", version=\"1.0.0\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 362,
-          "end_line": 376,
+          "line": 392,
+          "end_line": 406,
           "config": null,
           "blocks": [
             {
@@ -25611,16 +25637,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 362,
-              "end_line": 376,
+              "line": 392,
+              "end_line": 406,
               "source": "from dataclasses import dataclass\n\n\nfrom dataclasses import InitVar, dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n    token: InitVar[str]\n\n\nRelease(\"simplint\", \"secret\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 382,
-          "end_line": 393,
+          "line": 412,
+          "end_line": 423,
           "config": null,
           "blocks": [
             {
@@ -25628,16 +25654,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 382,
-              "end_line": 393,
+              "line": 412,
+              "end_line": 423,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n\n\ndef build(*args: str) -> Release:\n    return Release(*args)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 397,
-          "end_line": 409,
+          "line": 428,
+          "end_line": 440,
           "config": null,
           "blocks": [
             {
@@ -25645,16 +25671,33 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 397,
-              "end_line": 409,
+              "line": 428,
+              "end_line": 440,
+              "source": "from dataclasses import dataclass\nfrom typing import Annotated\n\n\n@dataclass\nclass Doc:\n    text: str\n\n\ndef load(path: Annotated[str, Doc]) -> None:\n    print(path)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 442,
+          "end_line": 454,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 442,
+              "end_line": 454,
               "source": "from dataclasses import dataclass\nfrom functools import partial\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n    version: str\n\n\nmake = partial(Release, \"simplint\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 414,
-          "end_line": 429,
+          "line": 459,
+          "end_line": 474,
           "config": null,
           "blocks": [
             {
@@ -25662,8 +25705,8 @@
               "language": "python",
               "file": "app/models.py",
               "named": true,
-              "line": 414,
-              "end_line": 422,
+              "line": 459,
+              "end_line": 467,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n    version: str\n"
             },
             {
@@ -25671,16 +25714,16 @@
               "language": "python",
               "file": "app/main.py",
               "named": true,
-              "line": 424,
-              "end_line": 429,
+              "line": 469,
+              "end_line": 474,
               "source": "import app.models\n\n\nRelease = getattr(app.models, \"Release\")(\"simplint\", \"1\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 433,
-          "end_line": 443,
+          "line": 478,
+          "end_line": 488,
           "config": null,
           "blocks": [
             {
@@ -25688,16 +25731,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 433,
-              "end_line": 443,
+              "line": 478,
+              "end_line": 488,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n\n    def copy(self) -> \"Release\":\n        return type(self)(self.name)\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 447,
-          "end_line": 462,
+          "line": 492,
+          "end_line": 507,
           "config": null,
           "blocks": [
             {
@@ -25705,8 +25748,8 @@
               "language": "python",
               "file": "app/models.py",
               "named": true,
-              "line": 447,
-              "end_line": 455,
+              "line": 492,
+              "end_line": 500,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n    version: str\n"
             },
             {
@@ -25714,66 +25757,15 @@
               "language": "python",
               "file": "app/use.py",
               "named": true,
-              "line": 457,
-              "end_line": 462,
+              "line": 502,
+              "end_line": 507,
               "source": "from app.models import *\n\n\nRelease(\"simplint\", \"1.0.0\")\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 468,
-          "end_line": 480,
-          "config": null,
-          "blocks": [
-            {
-              "role": "report",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 468,
-              "end_line": 480,
-              "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n    version: str\n\n\ndef build(Release: type) -> object:\n    return Release(\"simplint\", \"1.0.0\")\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 484,
-          "end_line": 495,
-          "config": null,
-          "blocks": [
-            {
-              "role": "report",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 484,
-              "end_line": 495,
-              "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n    version: str\n\n\nRelease(\"simplint\", \"1.0.0\")  # noqa: SMP703\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 501,
-          "end_line": 511,
-          "config": null,
-          "blocks": [
-            {
-              "role": "report",
-              "language": "python",
-              "file": "example.py",
-              "named": false,
-              "line": 501,
-              "end_line": 511,
-              "source": "from dataclasses import dataclass\n\n\ndef build() -> object:\n    @dataclass(frozen=True, slots=True)\n    class Release:\n        name: str\n\n    return Release(\"simplint\")\n"
-            }
-          ]
-        },
-        {
-          "section": "What it does",
-          "line": 515,
+          "line": 513,
           "end_line": 525,
           "config": null,
           "blocks": [
@@ -25782,16 +25774,84 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 515,
+              "line": 513,
               "end_line": 525,
+              "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n    version: str\n\n\ndef build(Release: type) -> object:\n    return Release(\"simplint\", \"1.0.0\")\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 530,
+          "end_line": 542,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 530,
+              "end_line": 542,
+              "source": "from dataclasses import dataclass\nfrom typing import Annotated\n\n\n@dataclass\nclass Doc:\n    text: str\n\n\ndef load(path: \"Annotated[str, Doc('where')]\") -> None:\n    print(path)\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 546,
+          "end_line": 557,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 546,
+              "end_line": 557,
+              "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n    version: str\n\n\nRelease(\"simplint\", \"1.0.0\")  # noqa: SMP703\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 563,
+          "end_line": 573,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 563,
+              "end_line": 573,
+              "source": "from dataclasses import dataclass\n\n\ndef build() -> object:\n    @dataclass(frozen=True, slots=True)\n    class Release:\n        name: str\n\n    return Release(\"simplint\")\n"
+            }
+          ]
+        },
+        {
+          "section": "What it does",
+          "line": 577,
+          "end_line": 587,
+          "config": null,
+          "blocks": [
+            {
+              "role": "report",
+              "language": "python",
+              "file": "example.py",
+              "named": false,
+              "line": 577,
+              "end_line": 587,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n\n    def __init__(self, name: str) -> None:\n        self.name = name\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 529,
-          "end_line": 536,
+          "line": 591,
+          "end_line": 598,
           "config": null,
           "blocks": [
             {
@@ -25799,16 +25859,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 529,
-              "end_line": 536,
+              "line": 591,
+              "end_line": 598,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True, init=False)\nclass Release:\n    name: str\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 540,
-          "end_line": 551,
+          "line": 602,
+          "end_line": 613,
           "config": null,
           "blocks": [
             {
@@ -25816,16 +25876,16 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 540,
-              "end_line": 551,
+              "line": 602,
+              "end_line": 613,
               "source": "from dataclasses import dataclass\n\n\nclass Base:\n    name: str\n\n\n@dataclass(frozen=True, slots=True)\nclass Release(Base):\n    version: str\n"
             }
           ]
         },
         {
           "section": "What it does",
-          "line": 556,
-          "end_line": 580,
+          "line": 618,
+          "end_line": 642,
           "config": null,
           "blocks": [
             {
@@ -25833,8 +25893,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 556,
-              "end_line": 567,
+              "line": 618,
+              "end_line": 629,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass Release:\n    name: str\n\n\ndef show() -> str:\n    return f\"{Release('simplint')=}\"\n"
             },
             {
@@ -25842,8 +25902,8 @@
               "language": "python",
               "file": "example.py",
               "named": false,
-              "line": 569,
-              "end_line": 580,
+              "line": 631,
+              "end_line": 642,
               "source": "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True, kw_only=True)\nclass Release:\n    name: str\n\n\ndef show() -> str:\n    return f\"Release('simplint')={Release(name='simplint')!r}\"\n"
             }
           ]

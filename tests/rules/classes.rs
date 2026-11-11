@@ -751,3 +751,42 @@ fn weak_container_holding_a_dataclass_keeps_slots_unset(caller: &str, fixed: boo
     common::fix_unsafe(root.path(), "dataclass-slots");
     assert_eq!(common::read(root.path(), "models.py").contains("slots=True"), fixed);
 }
+
+// A class in the metadata of `Annotated` is a value, which a caller may call by position, so the keyword-only fix leaves
+// the class alone. A call in the metadata is rewritten, and so is a call in a string annotation, as an unquoted one is.
+#[test_case("def load(path: Annotated[str, Release]) -> None:\n    print(path)\n", false ; "bare_class_in_metadata")]
+#[test_case("def load(path: Annotated[str, Release(\"where\")]) -> None:\n    print(path)\n", true ; "call_in_metadata")]
+#[test_case("def load(path: \"Annotated[str, Release('where')]\") -> None:\n    print(path)\n", true ; "call_in_string_annotation")]
+#[test_case("def load(path: \"Annotated[str, Release]\") -> None:\n    print(path)\n", false ; "bare_class_in_string_annotation")]
+#[test_case("def load(path: \"Annotated[str, make(Release)]\") -> None:\n    print(path)\n", false ; "class_passed_in_string_annotation")]
+#[test_case("def load(path: Release(\"where\")) -> None:\n    print(path)\n", true ; "call_as_annotation")]
+#[test_case("def load(path: Annotated[Release]) -> None:\n    print(path)\n", true ; "single_argument_annotated")]
+#[test_case("def load(path: \"Annotated[str, \" \"Release('where')]\") -> None:\n    print(path)\n", false ; "call_in_concatenated_string_annotation")]
+fn annotated_metadata_keeps_keyword_only_fix_unsafe(annotation: &str, fixed: bool) {
+    let source = format!(
+        "from dataclasses import dataclass\nfrom typing import Annotated\n\n\n@dataclass\nclass Release:\n    name: str\n\n\n{annotation}"
+    );
+    let root = common::project(&[("main.py", &source)]);
+    common::fix_unsafe(root.path(), "dataclass-kw-only");
+    let fixed_source = common::read(root.path(), "main.py");
+    assert_eq!(fixed_source.contains("@dataclass(kw_only=True)"), fixed, "{fixed_source}");
+    if fixed && annotation.contains("where") {
+        assert!(
+            fixed_source.contains("Release(name='where')") || fixed_source.contains("Release(name=\"where\")"),
+            "{fixed_source}"
+        );
+    }
+}
+
+#[test]
+fn string_annotation_call_of_another_module_needs_keyword_arguments_by_hand() {
+    let root = common::project(&[
+        ("models.py", "from dataclasses import dataclass\n\n\n@dataclass\nclass Doc:\n    text: str\n"),
+        (
+            "main.py",
+            "import models\n\n\ndef load(path: \"Annotated[str, models.Doc('where')]\") -> None:\n    print(path)\n",
+        ),
+    ]);
+    common::fix_unsafe(root.path(), "dataclass-kw-only");
+    assert!(!common::read(root.path(), "models.py").contains("kw_only=True"));
+}
