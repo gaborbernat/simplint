@@ -390,21 +390,17 @@ fn init_module_content_leaves_ruf067_to_ruff(config: &str, source: &str, reporte
 }
 
 // PYI046 and PYI049 report a private protocol or TypedDict that its file never reads, so the run leaves those to Ruff
-// when the project selects the rule. A class Ruff reads, or one that is not its last binding, stays with the run.
-#[test_case("from typing import Protocol\n\n\nclass _Proto(Protocol):\n    def run(self) -> None: ...\n", "\"PYI046\"", 0 ; "protocol_selected")]
-#[test_case("from typing import Protocol\n\n\nclass _Proto(Protocol):\n    def run(self) -> None: ...\n", "\"PYI049\"", 1 ; "protocol_other_rule")]
-#[test_case("from typing import Protocol\n\n\nclass _Proto(Protocol):\n    def run(self) -> None: ...\n", "", 1 ; "protocol_unselected")]
-#[test_case("import typing_extensions\n\n\nclass _Proto(typing_extensions.Protocol[int]):\n    pass\n", "\"PYI046\"", 0 ; "protocol_typing_extensions_subscript")]
-#[test_case("from mylib import Protocol\n\n\nclass _Proto(Protocol):\n    pass\n", "\"PYI046\"", 1 ; "protocol_foreign")]
-#[test_case("from typing import TypedDict\n\n\nclass _Row(TypedDict):\n    a: int\n", "\"PYI049\"", 0 ; "typed_dict_selected")]
-#[test_case("from typing import TypedDict\n\n\nclass _Row(TypedDict):\n    a: int\n", "\"PYI046\"", 1 ; "typed_dict_other_rule")]
-#[test_case("from typing import Protocol\n\n\nclass _P(Protocol):\n    pass\n\n\nclass _P(Protocol):\n    pass\n", "\"PYI046\"", 1 ; "protocol_rebound")]
-#[test_case("from __future__ import annotations\n\nfrom typing import Protocol\n\n\nclass _P(Protocol):\n    def run(self) -> _P: ...\n", "\"PYI046\"", 1 ; "protocol_read_by_own_annotation")]
-#[test_case("from typing import Protocol\n\n\nclass _P(Protocol):\n    def run(self) -> '_P': ...\n", "\"PYI046\"", 1 ; "protocol_string_annotation")]
-#[test_case("from typing import Protocol\n\n\nclass _P(Protocol):\n    \"\"\"Protocol of _P.\"\"\"\n", "\"PYI046\"", 0 ; "protocol_docstring_mention")]
-fn unused_definition_leaves_private_protocols_and_typed_dicts_to_ruff(source: &str, select: &str, reported: usize) {
-    let ruff = format!("[tool.ruff.lint]\nselect = [{select}]\n");
-    let root = common::project(&[("pyproject.toml", ruff.as_str()), ("module.py", source)]);
+// whether or not the project selects them. A class Ruff reads, or one that is not its last binding, stays with the run.
+#[test_case("from typing import Protocol\n\n\nclass _Proto(Protocol):\n    def run(self) -> None: ...\n", 0 ; "protocol")]
+#[test_case("import typing_extensions\n\n\nclass _Proto(typing_extensions.Protocol[int]):\n    pass\n", 0 ; "protocol_typing_extensions_subscript")]
+#[test_case("from typing import TypedDict\n\n\nclass _Row(TypedDict):\n    a: int\n", 0 ; "typed_dict")]
+#[test_case("from mylib import Protocol\n\n\nclass _Proto(Protocol):\n    pass\n", 1 ; "protocol_foreign")]
+#[test_case("from typing import Protocol\n\n\nclass _P(Protocol):\n    pass\n\n\nclass _P(Protocol):\n    pass\n", 1 ; "protocol_rebound")]
+#[test_case("from __future__ import annotations\n\nfrom typing import Protocol\n\n\nclass _P(Protocol):\n    def run(self) -> _P: ...\n", 1 ; "protocol_read_by_own_annotation")]
+#[test_case("from typing import Protocol\n\n\nclass _P(Protocol):\n    def run(self) -> '_P': ...\n", 1 ; "protocol_string_annotation")]
+#[test_case("from typing import Protocol\n\n\nclass _P(Protocol):\n    \"\"\"Protocol of _P.\"\"\"\n", 0 ; "protocol_docstring_mention")]
+fn unused_definition_leaves_private_protocols_and_typed_dicts_to_ruff(source: &str, reported: usize) {
+    let root = common::project(&[("module.py", source)]);
     let (_, stdout, _) = common::check(root.path(), &["--no-cache", "--select", "SMP409"]);
     assert_eq!(common::reports(&stdout, "SMP409").len(), reported, "{stdout}");
 }

@@ -1,6 +1,5 @@
 use std::cell::LazyCell;
 
-use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::helpers::map_subscript;
 use ruff_python_ast::visitor::{Visitor, walk_expr, walk_stmt};
 use ruff_python_ast::{self as ast, Expr, Stmt};
@@ -70,12 +69,9 @@ pub fn unused_definition(checker: &Checker) {
 // a name only, so a string outside the class's own docstrings and bare strings keeps the class here.
 fn left_to_ruff(checker: &Checker, class: &ast::StmtClassDef, strings: &StringWords) -> bool {
     let name = class.name.as_str();
-    let from_ruff = &checker.settings.from_ruff;
     let semantic = checker.semantic();
-    let protocol = from_ruff.ruff_runs(RuffRule::UnusedPrivateProtocol)
-        && class.bases().iter().any(|base| semantic.match_typing_expr(map_subscript(base), "Protocol"));
-    let typed_dict = from_ruff.ruff_runs(RuffRule::UnusedPrivateTypedDict)
-        && class.bases().iter().any(|base| semantic.match_typing_expr(base, "TypedDict"));
+    let protocol = class.bases().iter().any(|base| semantic.match_typing_expr(map_subscript(base), "Protocol"));
+    let typed_dict = class.bases().iter().any(|base| semantic.match_typing_expr(base, "TypedDict"));
     let lazy = semantic.annotations_are_lazy();
     (protocol || typed_dict)
         && name.starts_with('_')
