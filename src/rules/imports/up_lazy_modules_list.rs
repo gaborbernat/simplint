@@ -34,13 +34,12 @@ pub fn up_lazy_modules_list(checker: &Checker) {
     if !matched {
         return;
     }
-    let source = checker.source;
     let fix = (modules.iter().all(|module| converted.contains(module))
         && !stays_eager(checker, body, false, &modules)
         && checker.is_alone_on_lines(list_stmt.range()))
     .then(|| {
         let mut edits = lazy_imports;
-        edits.push(Edit::range_deletion(statement_lines(source, list_stmt.range(), Blanks::Keep)));
+        edits.push(Edit::range_deletion(statement_lines(checker.source, list_stmt.range(), Blanks::Keep)));
         fix_of(edits, Applicability::Safe)
     })
     .flatten();
@@ -53,7 +52,6 @@ pub fn up_lazy_modules_list(checker: &Checker) {
     );
 }
 
-// The modules of a module-level `__lazy_modules__` literal of strings, or `None` for any other value.
 fn lazy_modules(stmt: &Stmt) -> Option<Vec<&str>> {
     let Stmt::Assign(ast::StmtAssign { targets, value, .. }) = stmt else {
         return None;
@@ -73,10 +71,24 @@ fn lazy_modules(stmt: &Stmt) -> Option<Vec<&str>> {
     elements.iter().map(|element| element.as_string_literal_expr().map(|literal| literal.value.to_str())).collect()
 }
 
+// A relative import has no absolute name to match, and `from x import *` has no `lazy` form.
+fn plain_import_names(stmt: &Stmt) -> Option<Vec<&str>> {
+    match stmt {
+        Stmt::Import(ast::StmtImport { names, .. }) => Some(names.iter().map(|alias| alias.name.as_str()).collect()),
+        Stmt::ImportFrom(ast::StmtImportFrom { module: Some(module), names, level: 0, .. })
+            if names.iter().all(|alias| alias.name.as_str() != "*") =>
+        {
+            Some(vec![module.as_str()])
+        }
+        _ => None,
+    }
+}
+
 // Whether an import of a listed module stays eager once the list goes, which the fix must not allow. CPython keeps an
-// import lazy under the list unless it is compiled inside a `try`, so the imports the fix leaves lazy are the ones under
-// an `if`, `with`, `for`, `while` or `match`, the `else` of a `try` without a `finally`, and the `finally` of a `try`,
-// which runs lazily on its normal path. The body and the handlers of a `try` are eager, and so is a function body.
+// import lazy under the list unless it is compiled inside a `try`, so the imports the fix leaves lazy are the ones
+// under an `if`, `with`, `for`, `while` or `match`, the `else` of a `try` without a `finally`, and the `finally` of a
+// `try`, which runs lazily on its normal path. The body and the handlers of a `try` are eager, and so is a function
+// body.
 fn stays_eager(checker: &Checker, body: &[Stmt], nested: bool, modules: &[&str]) -> bool {
     body.iter().any(|stmt| match stmt {
         Stmt::Import(ast::StmtImport { names, .. }) => {
@@ -107,18 +119,4 @@ fn stays_eager(checker: &Checker, body: &[Stmt], nested: bool, modules: &[&str])
         }
         _ => false,
     })
-}
-
-// The module names of an import that `lazy` can apply to, which are every name it binds. A relative import has no
-// absolute name to match, and `from x import *` has no `lazy` form.
-fn plain_import_names(stmt: &Stmt) -> Option<Vec<&str>> {
-    match stmt {
-        Stmt::Import(ast::StmtImport { names, .. }) => Some(names.iter().map(|alias| alias.name.as_str()).collect()),
-        Stmt::ImportFrom(ast::StmtImportFrom { module: Some(module), names, level: 0, .. })
-            if names.iter().all(|alias| alias.name.as_str() != "*") =>
-        {
-            Some(vec![module.as_str()])
-        }
-        _ => None,
-    }
 }

@@ -13,8 +13,6 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::syntax::{Visibility, for_each_body, import_aliases, is_lazy};
 
-// A module bound by an import of this run's own code is reached through an attribute, which the name itself reaches
-// without the module.
 pub fn module_attribute_import(checker: &Checker) {
     let semantic = checker.semantic();
     let uses = OnceCell::new();
@@ -46,7 +44,6 @@ pub fn module_attribute_import(checker: &Checker) {
             continue;
         }
         attributes.sort_unstable_by_key(|attribute| attribute.range.start());
-        let path = module_path(statement, alias);
         // The fix replaces the import, so it is offered only when every use of the module is convertible: a single
         // import without a comment, no stores, no computed write the import would miss, each name importable from the
         // module, and no other module that imports or reads the bound name, which the replaced import would no longer
@@ -55,6 +52,7 @@ pub fn module_attribute_import(checker: &Checker) {
             && !checker.has_comment_in(statement.range())
             && !module.computed_written
             && !checker.is_exported(&module.bound);
+        let path = module_path(statement, alias);
         let private_path = path.split('.').any(|part| Visibility::of(part) == Visibility::Private);
         let mut reports = Vec::new();
         for attribute in attributes {
@@ -100,18 +98,7 @@ pub fn module_attribute_import(checker: &Checker) {
     }
 }
 
-// Whether a local binding of the attribute's name shares the top-level statement of the use, so the bare name may
-// resolve to it: a parameter, a local, a comprehension target, a match capture or a type parameter.
-fn is_shadowed(checker: &Checker, attribute: &Attribute) -> bool {
-    let body = checker.body();
-    let index = body.partition_point(|stmt| stmt.end() <= attribute.range.start());
-    body.get(index).filter(|stmt| stmt.range().contains_range(attribute.range)).is_some_and(|stmt| {
-        checker.semantic().local_bindings(attribute.name).iter().any(|binding| stmt.range().contains_range(*binding))
-    })
-}
-
-// The import statement and alias that create the module-level binding at `binding`, so a same-named import in a function
-// stays out of it.
+// The import that creates the module-level binding at `binding`, so a same-named import in a function stays out of it.
 fn binding_import(body: &[Stmt], binding: TextRange) -> Option<(&Stmt, &ast::Alias)> {
     let mut found = None;
     for_each_body(body, &mut |statements, _| {
@@ -124,25 +111,8 @@ fn binding_import(body: &[Stmt], binding: TextRange) -> Option<(&Stmt, &ast::Ali
     found
 }
 
-// The `lazy` keyword of a lazy import, which the rewritten import keeps so the module still loads on first use.
-fn lazy_prefix(stmt: &Stmt) -> &'static str {
-    if is_lazy(stmt) { "lazy " } else { "" }
-}
-
-// The module as the import spells it, relative with its dots, such as `.findings` for `from . import findings`.
-fn module_path(stmt: &Stmt, alias: &ast::Alias) -> String {
-    match stmt {
-        Stmt::ImportFrom(ast::StmtImportFrom { module, level, .. }) => {
-            let parts: Vec<&str> = module.iter().map(ast::Identifier::as_str).chain([alias.name.as_str()]).collect();
-            format!("{}{}", ".".repeat(*level as usize), parts.join("."))
-        }
-        _ => alias.name.to_string(),
-    }
-}
-
-// How each name of a file is used, by the name's range: as the object of an attribute access, or as a value. One walk
-// serves every imported module, whose references the semantic model resolves, so a parameter or local of the same name
-// is not a use of it.
+// One walk serves every imported module: the semantic model resolves each reference, so a parameter or local of the
+// same name is not a use of it.
 struct Uses<'a>(FxHashMap<TextRange, Use<'a>>);
 
 impl<'a> Uses<'a> {
@@ -161,7 +131,6 @@ enum Use<'a> {
 struct Attribute<'a> {
     range: TextRange,
     name: &'a str,
-    // Whether the access reads the attribute, rather than storing or deleting it.
     load: bool,
 }
 
@@ -181,4 +150,28 @@ impl<'a> Visitor<'a> for Uses<'a> {
         }
         visitor::walk_expr(self, expr);
     }
+}
+
+fn module_path(stmt: &Stmt, alias: &ast::Alias) -> String {
+    match stmt {
+        Stmt::ImportFrom(ast::StmtImportFrom { module, level, .. }) => {
+            let parts: Vec<&str> = module.iter().map(ast::Identifier::as_str).chain([alias.name.as_str()]).collect();
+            format!("{}{}", ".".repeat(*level as usize), parts.join("."))
+        }
+        _ => alias.name.to_string(),
+    }
+}
+
+// A local binding in the same top-level statement, such as a parameter, can make the bare name resolve to it.
+fn is_shadowed(checker: &Checker, attribute: &Attribute) -> bool {
+    let body = checker.body();
+    let index = body.partition_point(|stmt| stmt.end() <= attribute.range.start());
+    body.get(index).filter(|stmt| stmt.range().contains_range(attribute.range)).is_some_and(|stmt| {
+        checker.semantic().local_bindings(attribute.name).iter().any(|binding| stmt.range().contains_range(*binding))
+    })
+}
+
+// The `lazy` keyword of a lazy import, which the rewritten import keeps so the module still loads on first use.
+fn lazy_prefix(stmt: &Stmt) -> &'static str {
+    if is_lazy(stmt) { "lazy " } else { "" }
 }

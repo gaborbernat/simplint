@@ -19,7 +19,7 @@ pub fn absolute_sibling_import(checker: &Checker) {
     }
     // A module that expects some other `__name__` than its dotted path runs outside its package: as a script under
     // `"__main__"`, or as source sent to another interpreter, like execnet's `"__channelexec__"`.
-    if checker.body().iter().any(tests_module_name) {
+    if checker.body().iter().any(compares_module_name) {
         return;
     }
     let current = package.join(".");
@@ -58,8 +58,7 @@ pub fn absolute_sibling_import(checker: &Checker) {
     }
 }
 
-// Whether `stmt` is an `if` that compares `__name__` with a string, in its test or in an `elif`.
-fn tests_module_name(stmt: &Stmt) -> bool {
+fn compares_module_name(stmt: &Stmt) -> bool {
     let Stmt::If(ast::StmtIf { test, elif_else_clauses, .. }) = stmt else {
         return false;
     };
@@ -79,8 +78,7 @@ fn tests_module_name(stmt: &Stmt) -> bool {
     )
 }
 
-// Names passed as the first argument to execnet's `remote_exec` or to `inspect.getsource`, which turn a function
-// into source text that runs elsewhere.
+// `remote_exec` and `inspect.getsource` turn a function into source text that runs elsewhere.
 fn shipped_functions(body: &[Stmt]) -> FxHashSet<&str> {
     let mut finder = ShippedFinder { names: FxHashSet::default() };
     finder.visit_body(body);
