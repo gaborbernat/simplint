@@ -1852,6 +1852,29 @@ fn public_module_all_is_the_declared_api(module: &str, stdout: &str) {
     );
 }
 
+// A module that a file loads as a value, or that a star import binds from its package's `__all__`, has every name read
+// through it, so none of its names is reported. Reading only one name through a module leaves the others reported.
+#[test_case("from app import config as c\n\nsettings = c\nprint(settings.LIMIT)\n", "All checks passed!\n" ; "loaded_as_value")]
+#[test_case("from app import *\n\nprint(config.LIMIT)\n", "All checks passed!\n" ; "star_bound_by_package_all")]
+#[test_case(
+    "from app import config\n\nprint(config.LIMIT)\n",
+    "app/config.py:8:21: SMP402 [*] `local` is in `__all__`, yet no other module imports it; list only what other modules \
+     use\nFound 1 error.\n[*] 1 fixable with `--fix`.\n" ;
+    "module_attribute"
+)]
+fn names_read_through_a_whole_module_are_used(consumer: &str, stdout: &str) {
+    let root = project(&[
+        ("pyproject.toml", DEMO),
+        ("app/__init__.py", "__all__ = [\"config\"]\n"),
+        ("app/config.py", "LIMIT = 3\n\n\ndef local() -> int:\n    return 1\n\n\n__all__ = [\"LIMIT\", \"local\"]\n"),
+        ("cli.py", consumer),
+    ]);
+    assert_eq!(
+        check(root.path(), &["--select", "SMP402"]).1,
+        stdout.replace("app/", &format!("app{}", std::path::MAIN_SEPARATOR_STR))
+    );
+}
+
 // A `__all__` read off a module the index cannot name may be any module's, so it does not exempt the `__all__` of a module
 // the run defines.
 #[test]

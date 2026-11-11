@@ -221,6 +221,9 @@ pub struct Project {
     pub(super) library_api: FxHashMap<FileId, FxHashMap<String, Option<PathBuf>>>,
     // The names a file uses from other files only when they are test modules, which no other file uses.
     pub(super) test_only: FxHashMap<FileId, FxHashSet<String>>,
+    // The modules whose every name some code of the run may read: those a production file loads as a value, and the
+    // submodules a star import binds from their package's `__all__`.
+    pub(super) read_whole: FxHashSet<FileId>,
     // The files production code loads as a value, whose functions a call through the value reaches with no import.
     pub(super) loaded_as_value: FxHashSet<FileId>,
     // The exception classes each file defines that no handler of the run names by name, or through a subclass.
@@ -365,6 +368,7 @@ impl Project {
             computed_writes,
             written,
             module_values,
+            read_whole,
         } = Gathered::of(&indexed, resolver, &test_modules, &test_support);
         for (file, name) in plugin_names {
             referenced.entry(file).or_default().insert(name.clone());
@@ -398,7 +402,7 @@ impl Project {
             },
         );
         let (cycle_reports, duplicate_reports, reads) = aside;
-        let StarTargets { star_imported, package_star_imported, star_sources } =
+        let StarTargets { star_imported, package_star_imported, star_sources, package_bound } =
             StarTargets::of(&stars, &sources, &unresolved_stars, &resolver.files);
         let RunNames {
             assigned_attributes,
@@ -467,6 +471,7 @@ impl Project {
             star_imported,
             package_star_imported,
             star_sources,
+            read_whole: read_whole.into_iter().chain(package_bound).collect(),
             roles,
             library_api,
             test_only: only_tests(from_tests, &from_others),
@@ -598,6 +603,7 @@ struct Gathered<'r> {
     computed_writes: FxHashSet<FileId>,
     written: FxHashMap<FileId, FxHashSet<String>>,
     module_values: FxHashSet<FileId>,
+    read_whole: FxHashSet<FileId>,
 }
 
 impl<'r> Gathered<'r> {
@@ -621,6 +627,7 @@ impl<'r> Gathered<'r> {
             let production = !test_modules.contains(&id) && !test_support.contains(&id);
             if production {
                 gathered.module_values.extend(module.values.iter().copied());
+                gathered.read_whole.extend(module.values.iter().copied());
             }
             gathered.constructor_uses.push(FileUses {
                 caller: id,

@@ -131,6 +131,7 @@ impl FileIndex<'_> {
             (
                 self.test_only,
                 self.is_loaded_as_value(),
+                self.is_read_whole(),
                 self.uncaught_exceptions,
                 self.exception_types,
                 self.hook_classes,
@@ -162,6 +163,7 @@ impl CacheKey for FileIndex<'_> {
         self.modules.iter().for_each(|module| module.cache_key(state));
         self.test_only.cache_key(state);
         self.is_loaded_as_value().cache_key(state);
+        self.is_read_whole().cache_key(state);
         self.uncaught_exceptions.cache_key(state);
         self.exception_types.cache_key(state);
         self.hook_classes.cache_key(state);
@@ -267,6 +269,12 @@ impl<'a> FileIndex<'a> {
     // no import of a name shows the use.
     pub fn is_loaded_as_value(&self) -> bool {
         self.id.is_some_and(|id| self.project.loaded_as_value.contains(&id))
+    }
+
+    // Whether the module is read as a whole, so any of its names may be read: a production file of the run loads it as
+    // a value, or a star import binds it from its package's `__all__`.
+    pub fn is_read_whole(&self) -> bool {
+        self.id.is_some_and(|id| self.project.read_whole.contains(&id))
     }
 
     // Whether every use of the name in the run comes from a test module. An `import *` that may read a public name, or
