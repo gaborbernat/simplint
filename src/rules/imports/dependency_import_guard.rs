@@ -28,6 +28,7 @@ fn report_guards<'a>(checker: &Checker, body: &'a [Stmt], function: Option<&'a [
             let fix = (stmt.orelse.is_empty()
                 && stmt.finalbody.is_empty()
                 && is_alone_on_lines(checker.source, stmt.range())
+                && !checker.has_comment_in(stmt.range())
                 && !shares_line_with_unused_import(checker, &stmt.body, function))
             .then(|| unwrap_try(checker, stmt, function));
             let message = if stmt

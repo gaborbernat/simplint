@@ -164,6 +164,29 @@ A module is required when its top-level package is one of these:
 
 ### Exceptions
 
+- **A guard with a comment anywhere in it**: the fix would delete the comment, so the rule reports the guard without a
+  fix.
+
+  ```toml config
+  [project]
+  name = "demo"
+  requires-python = ">=3.11"
+  ```
+
+  ```python report
+  try:
+      import tomllib
+  except ImportError:  # pragma: no cover
+      tomllib = None
+  ```
+
+  ```python fixed
+  try:
+      import tomllib
+  except ImportError:  # pragma: no cover
+      tomllib = None
+  ```
+
 - **Standard library modules that exist on one platform only**, such as `fcntl`, `msvcrt` or `winreg`: the import fails
   on the other platforms.
 

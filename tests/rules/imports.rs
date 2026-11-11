@@ -703,3 +703,32 @@ fn lazy_modules_list_matches_a_relative_import_by_its_module(
     common::fix_unsafe(root.path(), "SMP307");
     assert_eq!(common::read(root.path(), "pkg/consumer.py").contains("__lazy_modules__"), !fixable);
 }
+
+// A comment in the import the fix replaces would be deleted with it, so the import keeps its report and no fix.
+#[test_case("from pkg import config\n", true ; "uncommented_import")]
+#[test_case("from pkg import (  # keep: settings live here\n    config,\n)\n", false ; "comment_in_import")]
+#[test_case("from pkg import config  # keep: settings live here\n", true ; "trailing_comment_survives")]
+fn module_attribute_import_keeps_an_import_with_a_comment(import: &str, fixable: bool) {
+    let root = common::project(&[
+        ("pkg/__init__.py", ""),
+        ("pkg/config.py", "LIMIT = 1\n"),
+        ("pkg/use.py", &format!("{import}\n\ndef limit() -> int:\n    return config.LIMIT\n")),
+    ]);
+    let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP304", "pkg"]).1;
+    assert!(stdout.contains(&common::native("pkg/use.py:")), "{stdout}");
+    common::fix_unsafe(root.path(), "SMP304");
+    assert_eq!(common::read(root.path(), "pkg/use.py").contains("config.LIMIT"), !fixable);
+}
+
+// A comment anywhere in the guard, including its handler, would be deleted with the guard, so the guard keeps its
+// report and no fix.
+#[test_case("try:\n    import json\nexcept ImportError:\n    json = None\n", true ; "uncommented_guard")]
+#[test_case("try:\n    import json  # keep\nexcept ImportError:\n    json = None\n", false ; "comment_in_body")]
+#[test_case("try:\n    import json\nexcept ImportError:  # pragma: no cover\n    json = None\n", false ; "comment_in_handler")]
+fn dependency_import_guard_keeps_a_guard_with_a_comment(guard: &str, fixable: bool) {
+    let root = common::project(&[("mod.py", guard)]);
+    let stdout = common::check(root.path(), &["--no-cache", "--select", "SMP303", "mod.py"]).1;
+    assert!(stdout.contains("mod.py:1:1: SMP303"), "{stdout}");
+    common::fix_unsafe(root.path(), "SMP303");
+    assert_eq!(common::read(root.path(), "mod.py").contains("except ImportError"), !fixable);
+}

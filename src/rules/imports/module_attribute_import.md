@@ -310,6 +310,34 @@ writer = DbWriter()
       mocker.patch("pkg.findings.DbWriter")
   ```
 
+- **An import with a comment inside its statement**, such as a comment after an opening parenthesis: the rule reports
+  the accesses without a fix, because the fix would replace the import and delete the comment.
+
+  ```python context file=pkg/__init__.py
+  # A package.
+  ```
+
+  ```python context file=pkg/findings.py
+  class DbWriter:
+      pass
+  ```
+
+  ```python report file=pkg/consumer.py
+  from . import (  # keep: the writer lives here
+      findings,
+  )
+
+  writer = findings.DbWriter()
+  ```
+
+  ```python fixed file=pkg/consumer.py
+  from . import (  # keep: the writer lives here
+      findings,
+  )
+
+  writer = findings.DbWriter()
+  ```
+
 ### Fix
 
 **Unsafe fix:** the fix rewrites the import to bind the names, so the object is bound when the module loads. A test that
@@ -317,8 +345,9 @@ patches the module attribute later no longer reaches the name. The fix replaces 
 access in the file, and it is offered only when every use of the module is such an access to a name the module defines,
 no computed write, such as `setattr(module, name, value)`, may set a name of the module, no other module of the run
 imports or reads the module's name, and `__all__` does not list it, since the replaced import would no longer bind it.
-The fix is attached to the first report only, since it covers all of them; when a comment suppresses that report, the
-first report still shown carries it.
+The import must hold no comment inside its statement, since the fix would delete it. The fix is attached to the first
+report only, since it covers all of them; when a comment suppresses that report, the first report still shown carries
+it.
 
 ```python context file=pkg/__init__.py
 # A package.
