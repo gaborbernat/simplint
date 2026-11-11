@@ -29,21 +29,21 @@ use super::runtime::Runtime;
 use crate::semantic::future_import;
 use crate::syntax::{export_names, pattern_capture, signature_annotations, type_string_words};
 
-pub struct Model<'a> {
-    pub semantic: SemanticModel<'a>,
-    pub loads: Vec<(&'a ast::ExprName, Snapshot)>,
+pub(super) struct Model<'a> {
+    pub(super) semantic: SemanticModel<'a>,
+    pub(super) loads: Vec<(&'a ast::ExprName, Snapshot)>,
     // The model at module level once every top-level statement ran.
-    pub module: Snapshot,
-    pub annotations_are_lazy: bool,
-    pub django_reports: FxHashSet<TextRange>,
-    pub list_appends: FxHashSet<TextRange>,
-    pub type_checking_stubs: FxHashSet<TextRange>,
-    pub module_stores: FxHashSet<TextRange>,
-    pub comprehensions: Vec<(TextRange, TextRange)>,
-    pub private_imports: FxHashSet<TextRange>,
+    pub(super) module: Snapshot,
+    pub(super) annotations_are_lazy: bool,
+    pub(super) django_reports: FxHashSet<TextRange>,
+    pub(super) list_appends: FxHashSet<TextRange>,
+    pub(super) type_checking_stubs: FxHashSet<TextRange>,
+    pub(super) module_stores: FxHashSet<TextRange>,
+    pub(super) comprehensions: Vec<(TextRange, TextRange)>,
+    pub(super) private_imports: FxHashSet<TextRange>,
 }
 
-pub fn build<'a>(
+pub(super) fn build<'a>(
     path: &'a Path,
     body: &'a [Stmt],
     target_version: PythonVersion,
@@ -133,8 +133,7 @@ fn is_private_import(
     }
     let segments = import.qualified_name().segments();
     let root_module = segments[0];
-    let member_name = import.member_name();
-    if is_dunder(root_module) || is_dunder(&member_name) {
+    if is_dunder(root_module) || is_dunder(&import.member_name()) {
         return false;
     }
     if package.is_some_and(|path| path.ends_with(root_module)) {
@@ -174,26 +173,18 @@ struct Builder<'a> {
     comprehensions: Vec<(TextRange, TextRange)>,
 }
 
-impl Builder<'_> {
-    // The appends on a list that Ruff's FURB113 matches, recorded where the scope reads as Ruff reads it.
-    fn note_list_append(&mut self, stmt: &Stmt) {
-        if self.matches.list_appends && is_list_append(&self.semantic, stmt) {
-            self.list_appends.insert(stmt.range());
-        }
-    }
-}
-
 impl<'a> Visitor<'a> for Builder<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         self.semantic.push_node(stmt);
-        self.note_list_append(stmt);
+        if self.matches.list_appends && is_list_append(&self.semantic, stmt) {
+            self.list_appends.insert(stmt.range());
+        }
         if let Some(import) = future_import(stmt)
             && !import.is_lazy
             && import.names.iter().any(|alias| alias.name.as_str() == "annotations")
         {
             self.semantic.flags |= SemanticModelFlags::FUTURE_ANNOTATIONS;
         }
-        let flags = self.semantic.flags;
         match stmt {
             Stmt::Import(import) => self.bind_import(import),
             Stmt::ImportFrom(import) => self.bind_import_from(import),
@@ -213,6 +204,7 @@ impl<'a> Visitor<'a> for Builder<'a> {
             }
             _ => {}
         }
+        let flags = self.semantic.flags;
         match stmt {
             Stmt::FunctionDef(function_def) => self.visit_function_def(stmt, function_def),
             Stmt::ClassDef(class_def) => {
@@ -553,7 +545,8 @@ impl<'a> Builder<'a> {
             self.semantic.scope_id
         };
         let binding_id = self.semantic.push_binding(name, range, kind, flags);
-        // A later annotation of a bound name leaves its value alone, so it annotates the binding instead of shadowing it.
+        // A later annotation of a bound name leaves its value alone, so it annotates the binding instead of shadowing
+        // it.
         if let Some(shadowed_id) = self.semantic.scopes[scope_id].get(name)
             && self.semantic.binding(binding_id).kind.is_annotation()
         {

@@ -13,7 +13,7 @@ use rustc_hash::FxHashSet;
 
 use crate::syntax::{annotated_names, export_names, type_string_words};
 
-pub fn unused_imports(model: &SemanticModel, body: &[Stmt], extend_generics: &[String]) -> FxHashSet<TextRange> {
+pub(super) fn unused_imports(model: &SemanticModel, body: &[Stmt], extend_generics: &[String]) -> FxHashSet<TextRange> {
     let scope = model.global_scope();
     if !scope.bindings().any(|(_, live)| is_import(model.binding(live))) {
         return FxHashSet::default();
@@ -33,11 +33,10 @@ pub fn unused_imports(model: &SemanticModel, body: &[Stmt], extend_generics: &[S
             continue;
         }
         let listed = exports.contains(name);
-        let read = listed || annotated.contains(name);
         let found =
             if scope.shadowed_bindings(live).nth(1).is_some() && has_simple_shadowed_bindings(model, scope, live) {
                 refined_unused(model, scope, live, name, listed, annotated.contains(name))
-            } else if read || copied_references(model, scope, live).next().is_some() {
+            } else if listed || annotated.contains(name) || copied_references(model, scope, live).next().is_some() {
                 Vec::new()
             } else {
                 vec![live]
@@ -141,7 +140,6 @@ impl Marked {
     }
 }
 
-// The import that shares the longest prefix with the prototype, and of the fewest segments among those.
 fn best_match(model: &SemanticModel, bindings: &[BindingId], prototype: &QualifiedName) -> Option<BindingId> {
     bindings.iter().copied().max_by_key(|binding| rank_matches(model, *binding, prototype))
 }
@@ -157,7 +155,7 @@ fn rank_matches(
     (left, std::cmp::Reverse(qualified.segments().len()))
 }
 
-// The qualified name of the maximal attribute chain that an expression starts, as `a.b.foo` for `a` in `a.b.foo()`.
+// The attribute chain an expression starts is maximal, so `a` in `a.b.foo()` reads `a.b.foo`.
 fn expand_to_qualified_name_attribute<'b>(model: &SemanticModel<'b>, expr_id: NodeId) -> QualifiedName<'b> {
     let mut builder = QualifiedNameBuilder::with_capacity(16);
     let mut expr_id = expr_id;
