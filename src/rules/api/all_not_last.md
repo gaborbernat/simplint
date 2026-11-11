@@ -153,8 +153,9 @@ if __name__ == "__main__":
 ### Fix
 
 The fix is safe. It moves the statement to the end of the module, before a trailing `__main__` block, with two blank
-lines before it, also when the file has no trailing newline. Comments on the lines above the statement stay where they
-are.
+lines before it, also when the file has no trailing newline. Comments further up stay where they are. A comment on the
+line directly above the statement blocks the fix, and so does one above a `# fmt: off` / `# fmt: on` pair around the
+statement; the pair itself moves with it.
 
 ```python report
 __all__ = ["main"]
@@ -182,15 +183,59 @@ if __name__ == "__main__":
 
 The fix is offered only when:
 
-- a single statement binds `__all__`
+- a single statement binds `__all__`, to a list or tuple of string literals
 - no later statement reads `__all__` or calls a method on it
 - no later statement reads `__all__` at run time, through an attribute such as `sys.modules[__name__].__all__`, a
   `"__all__"` string or a call to `globals()`, `vars()` or `dir()`
+- no function or lambda reads `__all__`, by name or at run time, wherever it is defined
 - the statement shares no line with other code
+- no comment sits on the line above it, or above the `# fmt: off` / `# fmt: on` pair around it
 
 With several bindings or a later reader, moving the statement could change the value of `__all__` or what that reader
-sees. A module that reads `__all__` at run time still needs it bound above, so the statement is reported without a fix
-when the module reads it through:
+sees:
+
+```python report
+__all__ = ["main"]
+__all__ += ["stop"]
+
+
+def main() -> None:
+    pass
+```
+
+```python fixed
+__all__ = ["main"]
+__all__ += ["stop"]
+
+
+def main() -> None:
+    pass
+```
+
+```python report
+__all__ = ["main"]
+
+
+def main() -> None:
+    pass
+
+
+print(__all__)
+```
+
+```python fixed
+__all__ = ["main"]
+
+
+def main() -> None:
+    pass
+
+
+print(__all__)
+```
+
+A module that reads `__all__` at run time still needs it bound above, so the statement is reported without a fix when
+the module reads it through:
 
 - an attribute, such as `sys.modules[__name__].__all__`:
 
@@ -320,45 +365,133 @@ when the module reads it through:
   print(dir())
   ```
 
+- a function or lambda that reads it when called, by name or with `globals()`, `vars()` or `dir()`, even one defined
+  above the statement:
+
+  ```python report
+  def check() -> list[str]:
+      return [globals()[name] for name in __all__]
+
+
+  __all__ = ["check"]
+
+
+  RESULT = check()
+  ```
+
+  ```python fixed
+  def check() -> list[str]:
+      return [globals()[name] for name in __all__]
+
+
+  __all__ = ["check"]
+
+
+  RESULT = check()
+  ```
+
+- a lambda that calls `dir()`, even one defined above the statement:
+
+  ```python report
+  read = lambda: sorted(dir())
+
+
+  __all__ = ["check"]
+
+
+  def check() -> list[str]:
+      return read()
+  ```
+
+  ```python fixed
+  read = lambda: sorted(dir())
+
+
+  __all__ = ["check"]
+
+
+  def check() -> list[str]:
+      return read()
+  ```
+
+A value that depends on where it runs, such as a comprehension over `dir()`, gives another list once the statement
+moves, so only a list or tuple of string literals is moved:
+
 ```python report
-__all__ = ["main"]
-__all__ += ["stop"]
+__all__ = [name for name in dir() if not name.startswith("_")]
 
 
-def main() -> None:
-    pass
+def helper() -> str:
+    return "helper"
 ```
 
 ```python fixed
-__all__ = ["main"]
-__all__ += ["stop"]
+__all__ = [name for name in dir() if not name.startswith("_")]
 
 
-def main() -> None:
-    pass
+def helper() -> str:
+    return "helper"
 ```
 
+A comment on the line above the statement would stay behind on the line above the next statement, so the statement is
+reported without a fix:
+
 ```python report
-__all__ = ["main"]
+import os
 
 
-def main() -> None:
-    pass
+# The public API of this module.
+__all__ = ["helper"]
 
 
-print(__all__)
+def helper() -> str:
+    return os.sep
 ```
 
 ```python fixed
-__all__ = ["main"]
+import os
 
 
-def main() -> None:
-    pass
+# The public API of this module.
+__all__ = ["helper"]
 
 
-print(__all__)
+def helper() -> str:
+    return os.sep
 ```
+
+The same holds for a comment above a `# fmt: off` / `# fmt: on` pair around the statement, which would stay behind as
+well:
+
+```python report
+import os
+
+
+# The public API of this module.
+# fmt: off
+__all__ = ["helper"]
+# fmt: on
+
+
+def helper() -> str:
+    return os.sep
+```
+
+```python fixed
+import os
+
+
+# The public API of this module.
+# fmt: off
+__all__ = ["helper"]
+# fmt: on
+
+
+def helper() -> str:
+    return os.sep
+```
+
+A statement that shares its line with other code is reported without a fix as well:
 
 ```python report
 # fmt: off
