@@ -6,5 +6,5 @@ def test_calls() -> None:
     assert connect("db", timeout=5) == "db:5"
     assert orphan(1, scale=2) == 2
     assert dispatch("x", verbose=True) == "x"
-    assert encode("x", strict=True, ascii_only=True) == "X"
+    assert encode("x", codec="utf-8", strict=True, ascii_only=True) == "X"
     assert main(["a"]) == 1

@@ -5,4 +5,4 @@ RETRY_ARGS = (1,)
 
 
 def run() -> str:
-    return send("x") + str(retry(1, delay=2.0)) + str(retry(*RETRY_ARGS)) + connect("db") + encode("x", ascii_only=True)
+    return send("x") + str(retry(1, delay=2.0)) + str(retry(*RETRY_ARGS)) + connect("db") + encode("x", codec="utf-8", ascii_only=True)

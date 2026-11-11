@@ -4,4 +4,4 @@ expression: "lint_fixture(rule, fixture, target_version)"
 ---
 1:21 SMP410 Only tests pass `flush` to `send`; production calls leave it at its default
 9:24 SMP410 Only tests pass `timeout` to `connect`; production calls leave it at its default
-21:26 SMP410 Only tests pass `strict` to `encode`; production calls leave it at its default
+21:38 SMP410 Only tests pass `strict` to `encode`; production calls leave it at its default

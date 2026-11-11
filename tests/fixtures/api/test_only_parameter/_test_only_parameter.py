@@ -18,8 +18,8 @@ def orphan(value: int, scale: int = 1) -> int:
     return value * scale
 
 
-def encode(text: str, *, strict: bool = False, ascii_only: bool = False) -> str:
-    return text.upper() if strict or ascii_only else text
+def encode(text: str, *, codec: str, strict: bool = False, ascii_only: bool = False) -> str:
+    return text.upper() if strict or ascii_only else f"{codec}:{text}"
 
 
 def main(argv: list[str] | None = None) -> int:
