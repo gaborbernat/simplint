@@ -42,6 +42,8 @@ pub struct Semantic<'a> {
     list_appends: FxHashSet<TextRange>,
     // The annotations alone, without a value, that `if TYPE_CHECKING:` declares, which a module's `__getattr__` serves.
     type_checking_stubs: FxHashSet<TextRange>,
+    // Each comprehension with the range of its first iterable, which the enclosing scope evaluates.
+    comprehensions: Vec<(TextRange, TextRange)>,
 }
 
 impl<'a> Semantic<'a> {
@@ -60,6 +62,7 @@ impl<'a> Semantic<'a> {
             django_reports,
             list_appends,
             type_checking_stubs,
+            comprehensions,
         } = builder::build(path, body, target_version, settings, matches);
         let mut index = Index::default();
         let module_bindings = index.collect_bindings(&model);
@@ -72,7 +75,7 @@ impl<'a> Semantic<'a> {
             references.sort_by_key(|reference| reference.range.start());
         }
         model.restore(module);
-        Self { model, annotations_are_lazy, index, django_reports, list_appends, type_checking_stubs }
+        Self { model, annotations_are_lazy, index, django_reports, list_appends, type_checking_stubs, comprehensions }
     }
 
     // Whether Ruff's DJ012 reports the statement at `range`, a statement of a Django model's body; only answered when
@@ -116,8 +119,8 @@ impl<'a> Semantic<'a> {
 
     // Whether a binding of `name` made directly in a scope that encloses `at` shadows the name there: a function or lambda
     // body, a class body that no function inside it encloses, or a comprehension past its first iterable, which the
-    // enclosing scope evaluates. `comprehensions` holds each comprehension with the range of its first iterable.
-    pub fn is_bound_around(&self, name: &str, at: TextRange, comprehensions: &[(TextRange, TextRange)]) -> bool {
+    // enclosing scope evaluates.
+    pub fn is_bound_around(&self, name: &str, at: TextRange) -> bool {
         let scopes = || self.model.scopes.iter().filter_map(|scope| Some((scope, scope_ranges(&scope.kind)?)));
         let nested_in_class = |class: TextRange| {
             scopes().any(|(scope, (node, body))| {
@@ -132,7 +135,7 @@ impl<'a> Semantic<'a> {
         }) || self.model.scopes.iter().filter(|scope| scope.kind.is_generator()).any(|scope| {
             scope.get_all(name).any(|id| {
                 let range = self.model.binding(id).range;
-                comprehensions
+                self.comprehensions
                     .iter()
                     .filter(|(comprehension, _)| comprehension.contains_range(range))
                     .min_by_key(|(comprehension, _)| comprehension.len())
@@ -312,6 +315,11 @@ impl<'a> Semantic<'a> {
 
     pub fn is_bound(&self, name: &str) -> bool {
         self.index.bindings.contains_key(name)
+    }
+
+    // Whether `name` is bound nowhere a read at `at` could see, so a builtin of that name is what `at` reads.
+    pub fn is_free_at(&self, name: &str, at: TextRange) -> bool {
+        !self.is_bound(name) && !self.is_bound_around(name, at)
     }
 
     pub fn name_ranges(&self, name: &str) -> Vec<TextRange> {

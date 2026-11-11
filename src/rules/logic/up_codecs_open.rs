@@ -5,7 +5,6 @@ use ruff_text_size::Ranged;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
-use crate::rules::edits::is_bound_around;
 use crate::rules::needs_parentheses;
 use crate::syntax::argument;
 
@@ -39,10 +38,7 @@ fn fix(checker: &Checker, call: &ast::ExprCall) -> Option<Fix> {
         return None;
     }
     // A name the rewrite would call `open` could be something else.
-    if checker.semantic().is_bound("open")
-        || is_bound_around(checker, "open", call.range())
-        || checker.has_comment_in(call.range())
-    {
+    if !checker.semantic().is_free_at("open", call.range()) || checker.has_comment_in(call.range()) {
         return None;
     }
     let parameter = |index: usize| argument(call, index, PARAMETERS[index]);

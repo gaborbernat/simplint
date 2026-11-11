@@ -37,6 +37,7 @@ pub struct Model<'a> {
     pub django_reports: FxHashSet<TextRange>,
     pub list_appends: FxHashSet<TextRange>,
     pub type_checking_stubs: FxHashSet<TextRange>,
+    pub comprehensions: Vec<(TextRange, TextRange)>,
 }
 
 pub fn build<'a>(
@@ -63,6 +64,7 @@ pub fn build<'a>(
         django_reports: FxHashSet::default(),
         list_appends: FxHashSet::default(),
         type_checking_stubs: FxHashSet::default(),
+        comprehensions: Vec::new(),
     };
     builder.visit_body(body);
     let module = builder.semantic.snapshot();
@@ -76,6 +78,7 @@ pub fn build<'a>(
         django_reports: builder.django_reports,
         list_appends: builder.list_appends,
         type_checking_stubs: builder.type_checking_stubs,
+        comprehensions: builder.comprehensions,
     }
 }
 
@@ -90,6 +93,7 @@ struct Builder<'a> {
     django_reports: FxHashSet<TextRange>,
     list_appends: FxHashSet<TextRange>,
     type_checking_stubs: FxHashSet<TextRange>,
+    comprehensions: Vec<(TextRange, TextRange)>,
 }
 
 impl Builder<'_> {
@@ -223,19 +227,19 @@ impl<'a> Visitor<'a> for Builder<'a> {
                 ExprContext::Del | ExprContext::Invalid => self.handle_node_delete(name),
             },
             Expr::ListComp(ast::ExprListComp { elt, generators, .. }) => {
-                self.visit_generators(GeneratorKind::ListComprehension, generators);
+                self.visit_generators(GeneratorKind::ListComprehension, expr.range(), generators);
                 self.visit_expr(elt);
             }
             Expr::SetComp(ast::ExprSetComp { elt, generators, .. }) => {
-                self.visit_generators(GeneratorKind::SetComprehension, generators);
+                self.visit_generators(GeneratorKind::SetComprehension, expr.range(), generators);
                 self.visit_expr(elt);
             }
             Expr::Generator(ast::ExprGenerator { elt, generators, .. }) => {
-                self.visit_generators(GeneratorKind::Generator, generators);
+                self.visit_generators(GeneratorKind::Generator, expr.range(), generators);
                 self.visit_expr(elt);
             }
             Expr::DictComp(ast::ExprDictComp { key, value, generators, .. }) => {
-                self.visit_generators(GeneratorKind::DictComprehension, generators);
+                self.visit_generators(GeneratorKind::DictComprehension, expr.range(), generators);
                 if let Some(key) = key {
                     self.visit_expr(key);
                 }
@@ -400,8 +404,9 @@ impl<'a> Builder<'a> {
         self.semantic.current_scope_mut().add(name, binding_id);
     }
 
-    fn visit_generators(&mut self, kind: GeneratorKind, generators: &'a [Comprehension]) {
+    fn visit_generators(&mut self, kind: GeneratorKind, range: TextRange, generators: &'a [Comprehension]) {
         // The first iterable evaluates in the enclosing scope; everything after it in the comprehension's own scope.
+        self.comprehensions.push((range, generators[0].iter.range()));
         self.visit_expr(&generators[0].iter);
         let is_async = generators.iter().any(|generator| generator.is_async);
         self.semantic.push_scope(ScopeKind::Generator { kind, is_async });

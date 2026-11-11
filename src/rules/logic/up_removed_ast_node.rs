@@ -4,7 +4,6 @@ use ruff_text_size::Ranged;
 
 use crate::lint::registry::Rule;
 use crate::lint::walker::{Scope, Walker};
-use crate::rules::edits::is_bound_around;
 
 // The `ast` classes Python 3.14 removed, which were aliases of `ast.Constant` since Python 3.8.
 const REMOVED: [&str; 5] = ["Num", "Str", "Bytes", "NameConstant", "Ellipsis"];
@@ -60,8 +59,7 @@ fn fix(walker: &Walker, expr: &Expr, attribute: &ast::ExprAttribute, class: &str
     };
     let is_test = call.func.as_name_expr().is_some_and(|name| name.id.as_str() == "isinstance");
     if !is_test
-        || checker.semantic().is_bound("isinstance")
-        || is_bound_around(checker, "isinstance", call.range())
+        || !checker.semantic().is_free_at("isinstance", call.range())
         || call.arguments.args.len() != 2
         || !call.arguments.keywords.is_empty()
         || !call.arguments.args.get(1).is_some_and(|argument| std::ptr::eq(argument, expr))

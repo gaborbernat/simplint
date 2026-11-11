@@ -5,7 +5,7 @@ use ruff_text_size::Ranged;
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::lint::walker::Walker;
-use crate::rules::edits::{ensure_import, is_bound_around};
+use crate::rules::edits::ensure_import;
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     let checker = walker.checker;
@@ -27,7 +27,7 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
 // The legacy marker of `asyncio.coroutine` counts for `asyncio` only, so the rewrite can change the result.
 fn fix(checker: &Checker, func: &Expr) -> Option<Fix> {
     let replacement = Edit::range_replacement("inspect.iscoroutinefunction".to_owned(), func.range());
-    if is_bound_around(checker, "inspect", func.range()) {
+    if checker.semantic().is_bound_around("inspect", func.range()) {
         return None;
     }
     if checker.state().top_level_imports(checker).contains(&("inspect", None)) {

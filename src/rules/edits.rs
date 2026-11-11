@@ -225,7 +225,7 @@ pub fn ensure_import(
     at: TextRange,
 ) -> Option<(String, Option<Edit>)> {
     let binding = member.unwrap_or(module);
-    if is_bound_around(checker, binding, at) {
+    if checker.semantic().is_bound_around(binding, at) {
         return None;
     }
     if checker.state().top_level_imports(checker).contains(&(module, member)) {
@@ -235,11 +235,6 @@ pub fn ensure_import(
         return None;
     }
     Some((binding.to_owned(), Some(import_insertion(checker, module, member)?)))
-}
-
-// Whether a scope around `at` binds the name, which hides the module-level binding or the builtin a fix writes there.
-pub fn is_bound_around(checker: &Checker, name: &str, at: TextRange) -> bool {
-    checker.semantic().is_bound_around(name, at, checker.state().comprehensions(checker))
 }
 
 // The import goes where Ruff's isort keeps it: in the standard library section of the leading import block, plain
