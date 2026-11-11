@@ -485,6 +485,48 @@ fn undocumented_public_api_follows_ruff_pydocstyle(source: &str, code: &str, fra
     assert_eq!(common::reported_without_and_with_ruff(&case, fragment), [true, false]);
 }
 
+// Ruff's D418 and D419 report a docstring that SMP901 can only remove without a fix, when a file-level `noqa` withdraws
+// the fix. SMP901 leaves those to Ruff whether or not the project selects them, and it keeps what Ruff skips.
+#[test_case("D419", "# ruff: noqa: E501\ndef run() -> None:\n    \"\"\"\"\"\"\n    print()\n", [false, false] ; "empty_function")]
+#[test_case("D419", "# ruff: noqa: E501\nclass Config:\n    \"\"\"\"\"\"\n    VALUE = 1\n", [false, false] ; "empty_class")]
+#[test_case("D419", "def run() -> None:\n    \"\"\"\"\"\"\n    print()\n", [true, true] ; "fixable_empty_function")]
+#[test_case("D419", "# ruff: noqa: E501\ndef run() -> None:\n    \"\" \"\"\n    print()\n", [true, true] ; "implicit_concatenation")]
+#[test_case("D419", "# ruff: noqa: E501\ndef run() -> None:\n    \"\"\"Run.\"\"\"\n    print()\n", [true, true] ; "not_empty")]
+#[test_case("D418", "# ruff: noqa: E501\nfrom typing import overload\n\n\n@overload\ndef load(path: int) -> int:\n    \"\"\"Load an int.\"\"\"\n\n\n@overload\ndef load(path: str) -> str: ...\ndef load(path):\n    return path\n", [false, false] ; "overload")]
+#[test_case("D418", "from typing import overload\n\n\n@overload\ndef load(path: int) -> int:\n    \"\"\"Load an int.\"\"\"\n\n\n@overload\ndef load(path: str) -> str: ...\ndef load(path):\n    return path\n", [true, true] ; "fixable_overload")]
+#[test_case("D419", "# ruff: noqa: E501\nfrom typing import overload\n\n\n@overload\ndef load(path: int) -> int:\n    \"\"\"\"\"\"\n\n\n@overload\ndef load(path: str) -> str: ...\ndef load(path):\n    return path\n", [false, false] ; "empty_overload")]
+#[test_case("D418", "# ruff: noqa: E501\ndef run() -> None:\n    \"\"\"Run it.\"\"\"\n    print()\n", [true, true] ; "not_overload")]
+#[test_case("D419", "# ruff: noqa: E501\nimport pytest\n\n\n@pytest.fixture\ndef client() -> None:\n    \"\"\"\"\"\"\n    print()\n", [false, false] ; "decorator_not_listed")]
+fn function_docstring_is_left_to_ruff_d418_d419(ruff_code: &str, source: &str, reported: [bool; 2]) {
+    let case = common::RuffOverlap { settings: "", select: "SMP901", ruff_code, files: &[("module.py", source)] };
+    assert_eq!(common::reported_without_and_with_ruff(&case, "docstring on internal code"), reported);
+}
+
+// A decorator that `ignore-decorators` lists makes Ruff skip the function, so SMP901 keeps its docstring.
+#[test]
+fn function_docstring_keeps_ignored_decorator_docstring() {
+    let case = common::RuffOverlap {
+        settings: "[tool.ruff.lint.pydocstyle]\nignore-decorators = [\"pytest.fixture\"]\n",
+        select: "SMP901",
+        ruff_code: "D419",
+        files: &[(
+            "module.py",
+            "# ruff: noqa: E501\nimport pytest\n\n\n@pytest.fixture\ndef client() -> None:\n    \"\"\"\"\"\"\n    print()\n",
+        )],
+    };
+    assert_eq!(common::reported_without_and_with_ruff(&case, "docstring on internal code"), [true, true]);
+}
+
+// Ruff's D418 does not report a stub, so SMP901 keeps the overload docstring of a stub read from standard input.
+#[test]
+fn function_docstring_keeps_overload_docstring_in_a_stub() {
+    let root = common::project(&[("pyproject.toml", "[tool.ruff.lint]\nselect = [\"D418\"]\n")]);
+    let source = "# ruff: noqa: E501\nfrom typing import overload\n\n\n@overload\ndef load(path: int) -> int:\n    \"\"\"Load an int.\"\"\"\n";
+    let (_, stdout, _) =
+        common::check_with_stdin(root.path(), &["--select", "SMP901", "--stdin-filename", "stub.pyi", "-"], source);
+    assert!(stdout.contains("docstring on internal code"), "{stdout}");
+}
+
 // A public class of a library inherits the members of its private base without overriding them, so users reach them
 // through the public class: their docstrings are documentation, and an undocumented one is reported. The override is
 // the public class's own, so the base's docstring of it stays internal.

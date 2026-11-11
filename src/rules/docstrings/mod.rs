@@ -41,12 +41,32 @@ pub(crate) use test_module_docstring::test_module_docstring;
 pub(crate) use undocumented_public_api::undocumented_public_api;
 
 use ruff_diagnostics::Edit;
-use ruff_python_ast::{Expr, Stmt};
+use ruff_python_ast::helpers::map_callable;
+use ruff_python_ast::name::QualifiedName;
+use ruff_python_ast::{self as ast, Decorator, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::rules::comments::is_tool_directive;
 use crate::rules::edits::{Blanks, statement_deletion};
+
+// Whether a decorator of a function names one in Ruff's `ignore-decorators`, which Ruff's pydocstyle rules skip: they
+// neither check its docstring nor report it as undocumented.
+pub(crate) fn ruff_ignores_function(checker: &Checker, decorators: &[Decorator]) -> bool {
+    let ignored = &checker.settings.from_ruff.ignore_decorators;
+    decorators.iter().any(|decorator| {
+        checker
+            .semantic()
+            .qualified_name(map_callable(&decorator.expression))
+            .is_some_and(|name| ignored.iter().any(|listed| QualifiedName::from_dotted_name(listed) == name))
+    })
+}
+
+// Whether Ruff's D419 reports a docstring: a single string with only whitespace in its text, which Ruff reads from the
+// source, so an escape such as `\x20` counts as text. Ruff skips an implicitly concatenated docstring.
+pub(crate) fn ruff_reports_empty_docstring(checker: &Checker, literal: &ast::ExprStringLiteral) -> bool {
+    literal.as_single_part_string().is_some_and(|part| checker.text(part.content_range()).trim().is_empty())
+}
 
 fn raised_class(exc: &Expr) -> &Expr {
     exc.as_call_expr().map_or(exc, |call| call.func.as_ref())
