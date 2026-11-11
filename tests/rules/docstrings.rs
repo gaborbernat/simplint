@@ -102,6 +102,28 @@ fn docstring_comment_stays_after_removal(file: &str, source: &str, select: &str,
     assert_eq!(common::read(root.path(), file), fixed);
 }
 
+// A class body that reads `__doc__` reads its own docstring, which a method does not: the method's `__doc__` is the
+// module's.
+#[test_case(
+    "class Sync:\n    \"\"\"Synchronise the mirror.\"\"\"\n\n    help = __doc__\n",
+    "All checks passed!\n" ;
+    "class_body_reads_it"
+)]
+#[test_case(
+    "class Sync:\n    \"\"\"Synchronise the mirror.\"\"\"\n\n    def help(self) -> str:\n        return __doc__\n",
+    "module.py:2:5: SMP901 Class docstring on internal code; let the name, signature and types document it\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    "method_reads_module_doc"
+)]
+#[test_case(
+    "class Sync:\n    \"\"\"Synchronise the mirror.\"\"\"\n\n    fetch = lambda: 1\n",
+    "module.py:2:5: SMP901 Class docstring on internal code; let the name, signature and types document it\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    "lambda_reads_nothing"
+)]
+fn class_body_reading_doc_keeps_its_docstring(source: &str, stdout: &str) {
+    let root = common::project(&[("pyproject.toml", ""), ("module.py", source)]);
+    assert_eq!(common::check(root.path(), &["--select", "SMP901"]).1, stdout);
+}
+
 // The comment wraps to the shorter of Ruff's line and doc line limits at the indentation `ruff format` gives the body,
 // so a body indented by two spaces wraps the same.
 #[test_case("    " ; "formatted")]

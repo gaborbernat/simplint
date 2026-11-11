@@ -2,7 +2,8 @@ use std::cell::OnceCell;
 
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::token::TokenKind;
-use ruff_python_ast::{Expr, Stmt};
+use ruff_python_ast::visitor::{self, Visitor};
+use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 use ruff_python_trivia::textwrap::dedent;
 use ruff_python_trivia::{
     SuppressionKind as FormatSuppression, has_leading_content, has_trailing_content, is_pragma_comment,
@@ -34,7 +35,7 @@ pub fn function_docstring(checker: &Checker) {
             checker
                 .class_defs()
                 .iter()
-                .filter(|class| !api.covers(class.range, Need::Any))
+                .filter(|class| !api.covers(class.range, Need::Any) && !reads_own_docstring(class))
                 .map(|class| (class.range, class.body.as_slice(), class.decorator_list.as_slice(), "Class")),
         );
     let levels = OnceCell::new();
@@ -100,6 +101,36 @@ fn block_levels(checker: &Checker) -> Vec<(TextSize, usize)> {
         levels.push((token.start(), level));
     }
     levels
+}
+
+// A class body that names `__doc__` reads its own docstring, which the compiler binds in the class namespace before the
+// body runs. Methods do not see the class namespace, so their bodies are left out.
+fn reads_own_docstring(class: &ast::StmtClassDef) -> bool {
+    if docstring(&class.body).is_none() {
+        return false;
+    }
+    let mut reads = ClassDocstringReads(false);
+    reads.visit_body(&class.body);
+    reads.0
+}
+
+struct ClassDocstringReads(bool);
+
+impl<'a> Visitor<'a> for ClassDocstringReads {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        match stmt {
+            Stmt::FunctionDef(_) | Stmt::ClassDef(_) => {}
+            _ => visitor::walk_stmt(self, stmt),
+        }
+    }
+
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        match expr {
+            Expr::Name(ast::ExprName { id, ctx: ExprContext::Load, .. }) => self.0 |= id.as_str() == "__doc__",
+            Expr::Lambda(_) => {}
+            _ => visitor::walk_expr(self, expr),
+        }
+    }
 }
 
 // Decorators that wrap or register the object without reading its docstring; copying it, as `functools.wraps` or
