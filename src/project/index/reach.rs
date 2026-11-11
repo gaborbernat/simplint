@@ -81,7 +81,7 @@ pub(super) fn signature_reached(
 }
 
 pub(super) fn unqualified(class: &str) -> &str {
-    class.rsplit('.').next().unwrap_or(class)
+    class.rsplit_once('.').map_or(class, |(_, name)| name)
 }
 
 // A module whose `__getattr__` supplies names lazily offers only what it defines, since the names it re-exports are

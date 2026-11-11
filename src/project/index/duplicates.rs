@@ -49,10 +49,6 @@ impl CacheKey for DuplicateRun {
 
 type Place = (FileId, usize);
 
-// Pairs each window with a few partners, so the pairs grow with the files rather than with every pair of them. The
-// blocks still count every file that repeats a window.
-const PARTNERS: usize = 3;
-
 // Only repeats in another file count, as pylint's duplicate check compares files with each other.
 // Windows match by the hash of their statements' hashes first, and then by the statements' token texts, so a hash
 // collision never reports code that differs.
@@ -113,8 +109,9 @@ pub(super) fn duplicate_runs(
         let heads: Vec<Place> = chunks.iter().map(|copies| copies[0]).collect();
         for copies in chunks {
             let file = copies[0].0;
-            let partners: Vec<Place> =
-                heads.iter().filter(|(other, _)| *other != file).take(PARTNERS).copied().collect();
+            // Pairs each window with a few partners, so the pairs grow with the files rather than with every pair of
+            // them. The blocks still count every file that repeats a window.
+            let partners: Vec<Place> = heads.iter().filter(|(other, _)| *other != file).take(3).copied().collect();
             for &(place_file, start) in copies {
                 for &(other, other_start) in &partners {
                     let offset = start.cast_signed() - other_start.cast_signed();
@@ -128,10 +125,7 @@ pub(super) fn duplicate_runs(
     }
     shared
         .into_iter()
-        .map(|(file, copies)| {
-            let blocks = blocks(&copies, file, &statements, paths, window, &windows[&file], &set_files);
-            (file, blocks)
-        })
+        .map(|(file, copies)| (file, blocks(&copies, file, &statements, paths, window, &windows[&file], &set_files)))
         .collect()
 }
 

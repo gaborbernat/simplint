@@ -203,7 +203,6 @@ impl Project {
         wide.opaque_names.extend(external.opaque.iter().cloned());
         let reexports = Reexports::new(&bindings, &stars);
         let graph = ClassGraph::of(&resolver.modules, &reexports);
-        let hook_classes = hatch_hook_classes(&graph);
         let RunImports { names: run_imports, modules: run_modules, members: run_members } =
             run_import_kinds(&resolver.modules, &bindings, &reexports);
         let (
@@ -263,7 +262,7 @@ impl Project {
             loaded_as_value: read_whole,
             uncaught_exceptions,
             exception_types,
-            hook_classes,
+            hook_classes: hatch_hook_classes(&graph),
             run_imports,
             run_modules,
             run_members,
@@ -332,8 +331,8 @@ fn interned_inputs(
     resolver: &mut ImportResolver,
     inputs: &IndexInputs,
 ) -> (FxHashSet<FileId>, FxHashMap<FileId, ModuleRole>) {
-    let test_modules = inputs.test_modules.iter().map(|path| resolver.intern(path)).collect();
-    let roles = inputs.roles.iter().map(|(path, role)| (resolver.intern(path), *role)).collect();
+    let test_modules = inputs.test_modules.iter().map(|path| FileIds::intern(&mut resolver.files, path)).collect();
+    let roles = inputs.roles.iter().map(|(path, role)| (FileIds::intern(&mut resolver.files, path), *role)).collect();
     (test_modules, roles)
 }
 

@@ -33,8 +33,6 @@ pub(super) fn exception_classes(
     expand_tuples(&mut caught, &tuples);
     let home = graph.home(reexports);
     let exceptions = graph.descending_from(|module, name| is_exception_name(module, name, minor));
-    let warnings =
-        graph.descending_from(|module, name| name.ends_with("Warning") && is_exception_name(module, name, minor));
     // A handler catches its class and every base of it, so each base of a caught class is covered too.
     let mut covered: FxHashSet<ClassKey> = FxHashSet::default();
     let mut pending: Vec<ClassKey> = caught.iter().filter_map(|(file, name)| home(*file, name)).collect();
@@ -43,6 +41,8 @@ pub(super) fn exception_classes(
             pending.extend(graph.parents.get(&key).into_iter().flatten().cloned());
         }
     }
+    let warnings =
+        graph.descending_from(|module, name| name.ends_with("Warning") && is_exception_name(module, name, minor));
     let mut uncaught: FxHashMap<FileId, FxHashSet<String>> = FxHashMap::default();
     for (file, name) in graph.classes.keys() {
         let key = (*file, name.clone());
@@ -50,7 +50,6 @@ pub(super) fn exception_classes(
             uncaught.entry(*file).or_default().insert(name.clone());
         }
     }
-    let mut types: FxHashMap<FileId, FxHashSet<String>> = FxHashMap::default();
     let exception_names: FxHashSet<&str> = exceptions.iter().map(|key| key.1.as_str()).collect();
     let mut declared: FxHashMap<FileId, Vec<&str>> = FxHashMap::default();
     for (file, name) in graph.classes.keys() {
@@ -72,6 +71,7 @@ pub(super) fn exception_classes(
                 .into_iter()
                 .flat_map(|(importer, names)| names.into_iter().map(move |name| (importer, name))),
         );
+    let mut types: FxHashMap<FileId, FxHashSet<String>> = FxHashMap::default();
     for (file, name) in candidates {
         if home(file, name).is_some_and(|key| exceptions.contains(&key)) {
             types.entry(file).or_default().insert(name.to_owned());

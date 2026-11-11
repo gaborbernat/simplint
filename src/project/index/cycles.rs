@@ -40,6 +40,12 @@ impl Cycle {
 
 pub(super) type RuntimeGraph = FxHashMap<FileId, Vec<(FileId, TextRange)>>;
 
+#[derive(Clone, Copy)]
+struct Component<'a> {
+    ids: &'a FxHashMap<FileId, usize>,
+    home: usize,
+}
+
 pub(super) fn cycles(mut graph: RuntimeGraph) -> FxHashMap<FileId, Cycle> {
     for imports in graph.values_mut() {
         imports.sort_by_key(|(_, range)| range.start());
@@ -54,7 +60,7 @@ pub(super) fn cycles(mut graph: RuntimeGraph) -> FxHashMap<FileId, Cycle> {
     let mut rings: FxHashMap<usize, usize> = FxHashMap::default();
     for (&file, imports) in &graph {
         let home = component[&file];
-        if sizes[&home] >= 2 && inside(imports, &component, home).count() == 1 {
+        if sizes[&home] >= 2 && inside(imports, Component { ids: &component, home }).count() == 1 {
             *rings.entry(home).or_default() += 1;
         }
     }
@@ -66,13 +72,13 @@ pub(super) fn cycles(mut graph: RuntimeGraph) -> FxHashMap<FileId, Cycle> {
         if size < 2 {
             continue;
         }
-        let &(first, range) =
-            inside(imports, &component, home).next().expect("a file in a cycle imports a file of its component");
+        let scc = Component { ids: &component, home };
+        let &(first, range) = inside(imports, scc).next().expect("a file in a cycle imports a file of its component");
         let (chain, omitted) = if rings.get(&home) == Some(&size) {
-            ring_chain(&graph, &component, home, file, size)
+            ring_chain(&graph, scc, file, size)
         } else {
             let mut chain = vec![file];
-            chain.extend(shortest_path(&graph, &component, home, first, file));
+            chain.extend(shortest_path(&graph, scc, first, file));
             // The path ends on `file`, which the chain closes on once more after the files it keeps.
             chain.pop();
             let omitted = chain.len().saturating_sub(SHOWN);
@@ -145,38 +151,22 @@ fn components(graph: &RuntimeGraph) -> FxHashMap<FileId, usize> {
     component
 }
 
-fn inside<'a>(
-    imports: &'a [(FileId, TextRange)],
-    component: &'a FxHashMap<FileId, usize>,
-    home: usize,
-) -> impl Iterator<Item = &'a (FileId, TextRange)> {
-    imports.iter().filter(move |(target, _)| component.get(target) == Some(&home))
+fn inside<'a>(imports: &'a [(FileId, TextRange)], scc: Component<'a>) -> impl Iterator<Item = &'a (FileId, TextRange)> {
+    imports.iter().filter(move |(target, _)| scc.ids.get(target) == Some(&scc.home))
 }
 
-fn ring_chain(
-    graph: &RuntimeGraph,
-    component: &FxHashMap<FileId, usize>,
-    home: usize,
-    file: FileId,
-    size: usize,
-) -> (Vec<FileId>, usize) {
+fn ring_chain(graph: &RuntimeGraph, scc: Component, file: FileId, size: usize) -> (Vec<FileId>, usize) {
     let mut chain = vec![file];
     let mut at = file;
     while chain.len() < size.min(SHOWN) {
-        at = inside(&graph[&at], component, home).next().expect("a file in a ring imports a file of it").0;
+        at = inside(&graph[&at], scc).next().expect("a file in a ring imports a file of it").0;
         chain.push(at);
     }
     chain.push(file);
     (chain, size.saturating_sub(SHOWN))
 }
 
-fn shortest_path(
-    graph: &RuntimeGraph,
-    component: &FxHashMap<FileId, usize>,
-    home: usize,
-    from: FileId,
-    to: FileId,
-) -> Vec<FileId> {
+fn shortest_path(graph: &RuntimeGraph, scc: Component, from: FileId, to: FileId) -> Vec<FileId> {
     let mut previous: FxHashMap<FileId, FileId> = FxHashMap::default();
     let mut seen: FxHashSet<FileId> = FxHashSet::from_iter([from]);
     let mut queue = VecDeque::from([from]);
@@ -185,7 +175,7 @@ fn shortest_path(
             break;
         }
         for (next, _) in graph.get(&file).into_iter().flatten() {
-            if component.get(next) == Some(&home) && seen.insert(*next) {
+            if scc.ids.get(next) == Some(&scc.home) && seen.insert(*next) {
                 previous.insert(*next, file);
                 queue.push_back(*next);
             }

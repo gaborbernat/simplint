@@ -118,7 +118,7 @@ impl ImportResolver {
                 self.names.extend(name.map(|name| name.strip_suffix("-stubs").unwrap_or(name).to_owned()));
             }
         }
-        let ids: Vec<FileId> = files.iter().map(|(path, _)| self.intern(path)).collect();
+        let ids: Vec<FileId> = files.iter().map(|(path, _)| FileIds::intern(&mut self.files, path)).collect();
         // The files of one directory share the resolution of each module name: a name the search paths do not hold
         // resolves from the directories above the importing file, which files of one directory have in common. Large
         // directories are split, so one of them does not run as a single job.
@@ -160,10 +160,6 @@ impl ImportResolver {
             self.modules.insert(id, facts);
         }
         ids
-    }
-
-    pub(super) fn intern(&mut self, path: &Path) -> FileId {
-        FileIds::intern(&mut self.files, path)
     }
 }
 
@@ -299,7 +295,6 @@ impl ModuleFacts<PathBuf> {
         };
         let mut imports = resolve_all(&facts.names[Channel::Import]);
         let references = resolve_all(&facts.names[Channel::Reference]);
-        let written = written_names(facts, &resolved);
         let unresolved_names = facts
             .names
             .iter()
@@ -343,6 +338,7 @@ impl ModuleFacts<PathBuf> {
                 (class.name.clone(), bases.collect(), class.methods.clone())
             })
             .collect();
+        let written = written_names(facts, &resolved);
         Self {
             constructors,
             names: Channels([
@@ -450,7 +446,7 @@ fn unreached_names<'f>(
             };
             let package = resolved(top)?;
             let directory = package.parent().filter(|_| package.ends_with("__init__.py"))?.to_path_buf();
-            let last = rest.rsplit('.').next()?;
+            let last = rest.rsplit_once('.').map_or(rest, |(_, name)| name);
             resolved(module).is_none().then(|| UnreachedPath {
                 package: directory,
                 last: last.to_owned(),
@@ -470,7 +466,7 @@ fn star_targets<'f>(
     for module in modules {
         match resolve(module) {
             Some(file) => stars.extend((file != own).then_some(file)),
-            None => unresolved.extend(module.rsplit('.').next().map(str::to_owned)),
+            None => unresolved.push(module.rsplit_once('.').map_or(module.as_str(), |(_, name)| name).to_owned()),
         }
     }
     (stars, unresolved)
@@ -493,7 +489,7 @@ fn constructor_reads<'f>(
     if reads.is_empty() {
         return Vec::new();
     }
-    let last = module.rsplit('.').next().unwrap_or(module);
+    let last = module.rsplit_once('.').map_or(module, |(_, name)| name);
     match run.namesakes.get(last) {
         Some(namesakes) if !found(module) => namesakes.iter().map(|path| ((*path).clone(), reads.clone())).collect(),
         _ => Vec::new(),

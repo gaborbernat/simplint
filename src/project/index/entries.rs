@@ -6,7 +6,7 @@ use ruff_graph::ResolverEnvironment;
 use crate::project::FileFacts;
 use crate::syntax::Visibility;
 
-use super::files::FileId;
+use super::files::{FileId, FileIds};
 use super::resolve::{ImportResolver, resolve};
 
 type FileNames = Vec<(FileId, String)>;
@@ -20,11 +20,12 @@ pub(super) fn interned_entry_names(
     indexed: &[(FileId, &FileFacts)],
 ) -> (FileNames, FileNames) {
     let facts: FxHashMap<FileId, &FileFacts> = indexed.iter().copied().collect();
-    let hooks: FileNames = build_hooks.iter().map(|(file, name)| (resolver.intern(file), name.clone())).collect();
+    let hooks: FileNames =
+        build_hooks.iter().map(|(file, name)| (FileIds::intern(&mut resolver.files, file), name.clone())).collect();
     let mut names = Vec::new();
     let mut bare = Vec::new();
     for (file, attribute) in entry_point_targets(resolver, entry_points) {
-        let id = resolver.intern(&file);
+        let id = FileIds::intern(&mut resolver.files, &file);
         match attribute {
             Some(attribute) => names.push((id, attribute)),
             None => bare.extend(
@@ -47,7 +48,7 @@ fn entry_point_targets(
         .filter_map(|(root, entry_point)| {
             let (module, attribute) = match entry_point.split_once(':') {
                 Some((module, attribute)) => {
-                    (module, Some(attribute.split('.').next().unwrap_or_default().trim().to_owned()))
+                    (module, Some(attribute.split_once('.').map_or(attribute, |(first, _)| first).trim().to_owned()))
                 }
                 None => (entry_point.as_str(), None),
             };
@@ -82,7 +83,7 @@ pub(super) fn coverage_plugin_names(
             resolve(&resolver.db, environment, None, module)
         })
         .collect();
-    files.iter().map(|file| (resolver.intern(file), "coverage_init".to_owned())).collect()
+    files.iter().map(|file| (FileIds::intern(&mut resolver.files, file), "coverage_init".to_owned())).collect()
 }
 
 pub(super) fn startup_entries(
@@ -92,7 +93,7 @@ pub(super) fn startup_entries(
     let mut loaded = FxHashSet::default();
     let mut reads = Vec::new();
     for (file, attribute) in startup_targets(resolver, startup) {
-        let id = resolver.intern(&file);
+        let id = FileIds::intern(&mut resolver.files, &file);
         loaded.insert(id);
         reads.extend(attribute.map(|attribute| (id, attribute)));
     }

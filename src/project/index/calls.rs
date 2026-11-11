@@ -17,13 +17,17 @@ pub(super) fn run_calls(
     referenced: &FxHashMap<FileId, FxHashSet<String>>,
     library_api: &FxHashMap<FileId, FxHashMap<String, Option<PathBuf>>>,
 ) -> RunCalls {
-    let declared = files.iter().map(|(id, facts)| (*id, facts.constructors.dataclasses.as_slice()));
     let dynamic: FxHashSet<&str> =
         files.iter().flat_map(|(_, facts)| facts.constructors.dynamic.iter().map(String::as_str)).collect();
-    let defined: FxHashMap<FileId, FxHashSet<&str>> =
-        sources.iter().map(|(file, facts)| (*file, facts.defined.iter().map(String::as_str).collect())).collect();
-    let hidden: FxHashSet<&str> = dynamic.iter().copied().chain(module_reads.iter().map(String::as_str)).collect();
-    let mut calls = RunCalls::index(declared, constructor_uses, imported, &dynamic, &defined, &hidden, library_api);
+    let mut calls = RunCalls::index(
+        files.iter().map(|(id, facts)| (*id, facts.constructors.dataclasses.as_slice())),
+        constructor_uses,
+        imported,
+        &dynamic,
+        &sources.iter().map(|(file, facts)| (*file, facts.defined.iter().map(String::as_str).collect())).collect(),
+        &dynamic.iter().copied().chain(module_reads.iter().map(String::as_str)).collect(),
+        library_api,
+    );
     hide_names(&mut calls, entry_names, referenced);
     method_loads(&mut calls, files);
     calls
@@ -61,8 +65,9 @@ fn method_loads(calls: &mut RunCalls, files: &[(FileId, &FileFacts)]) {
             .chain(&constructors.attributes)
             .chain(&facts.functions)
             .chain(facts.classes.iter().map(|class| &class.name));
-        let method_loads =
-            members.map(|member| (member.clone(), loads.get(member.as_str()).copied().unwrap_or_default())).collect();
-        calls.set_method_loads(*id, method_loads);
+        calls.set_method_loads(
+            *id,
+            members.map(|member| (member.clone(), loads.get(member.as_str()).copied().unwrap_or_default())).collect(),
+        );
     }
 }
