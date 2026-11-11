@@ -21,7 +21,6 @@ pub fn up_chdir_restore(checker: &Checker) {
 }
 
 fn report_restore(checker: &Checker, assign: &ast::StmtAssign, change: &Expr, try_stmt: &ast::StmtTry) {
-    let semantic = checker.semantic();
     let Some(old) = sole_name_target(assign) else {
         return;
     };
@@ -37,13 +36,12 @@ fn report_restore(checker: &Checker, assign: &ast::StmtAssign, change: &Expr, tr
     let Some(reset) = finally_call(try_stmt) else {
         return;
     };
-    let restores_old =
-        sole_argument(reset).is_some_and(|argument| matches!(argument, Expr::Name(name) if name.id == old.id));
+    let semantic = checker.semantic();
     if !get.arguments.is_empty()
         || !semantic.resolves_to(&get.func, &["os", "getcwd"])
         || !semantic.resolves_to(&chdir.func, &["os", "chdir"])
         || !semantic.resolves_to(&reset.func, &["os", "chdir"])
-        || !restores_old
+        || !sole_argument(reset).is_some_and(|argument| matches!(argument, Expr::Name(name) if name.id == old.id))
     {
         return;
     }
@@ -51,10 +49,10 @@ fn report_restore(checker: &Checker, assign: &ast::StmtAssign, change: &Expr, tr
     if checker.identifier_count_in(checker.enclosing_scope(assign.range()), old.id.as_str()) != 2 {
         return;
     }
-    let header = format!("with contextlib.chdir({}):", checker.text(target));
     let fix = ensure_import(checker, "contextlib", None, assign.range())
         .filter(|_| !is_exported_module_name(checker, old))
         .and_then(|import| {
+            let header = format!("with contextlib.chdir({}):", checker.text(target));
             let [head, tail] = wrap_edits(checker, assign.range(), try_stmt, &header)?;
             let mut edits = vec![tail];
             if let Import::Add(edit) = import {

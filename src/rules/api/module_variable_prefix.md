@@ -8,7 +8,7 @@ A leading underscore tells readers whether other modules may use a name
 ([PEP 8](https://peps.python.org/pep-0008/#public-and-internal-interfaces)). Deriving it from `__all__` and from the
 imports of other modules keeps the underscore in line with what the module exports.
 
-The expected underscore comes from two questions, asked in this order:
+The expected underscore comes from the first of these cases that applies:
 
 1. **Another module in the run imports it**: keep its leading underscore as it is.
 1. **`__all__` lists it**: no leading underscore.
@@ -138,7 +138,7 @@ simplint reads `__all__` from assignments, `+=`, `.extend([...])` and `.append("
   ```
 
 - **Names bound and read only inside one module-level `if`, `try` or `with` block**: a block such as a version check
-  binds a name for its own use, and nothing outside the block reads it. A name that another file reads stays here.
+  binds a name for its own use, and nothing outside the block reads it. A name that another file reads is still checked.
 
   ```python ok
   import sys

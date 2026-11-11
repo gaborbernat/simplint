@@ -27,18 +27,55 @@ pub fn rst_returns(checker: &Checker) {
     }
 }
 
+// The function whose return the docstring documents. A class's and a property's docstrings describe the class and the
+// value instead, so their return fields are reported here, and moving their text into the description is for the
+// author.
+fn returning_function<'a>(checker: &Checker, target: &Target<'a>) -> Option<&'a ast::StmtFunctionDef> {
+    let value_fields = || {
+        target.docstring.fields(&[FieldKind::Returns, FieldKind::ReturnType, FieldKind::Yields, FieldKind::YieldType])
+    };
+    let report = |field: &Field, message: String| {
+        checker.report(Rule::RstReturns, field.range_in(&target.docstring), message);
+    };
+    match target.owner {
+        Owner::Class(class) => {
+            for field in value_fields() {
+                report(
+                    field,
+                    format!("`{}` is a class, so its docstring has no `{}` to document", class.name, field.text()),
+                );
+            }
+            None
+        }
+        Owner::Function { def, .. } => {
+            if !has_decorator(&def.decorator_list, &["property", "cached_property", "setter", "deleter"]) {
+                return Some(def);
+            }
+            for field in value_fields() {
+                report(
+                    field,
+                    format!(
+                        "`{}` is a property; describe its value in the text rather than in `{}`",
+                        def.name,
+                        field.text()
+                    ),
+                );
+            }
+            None
+        }
+    }
+}
+
 // A generator documents what it yields, so its `:returns:` field is `:yields:` and the field is missing when absent.
 fn generator_fields(checker: &Checker, target: &Target, name: &str) {
     let docstring = &target.docstring;
     let (has_returns, has_yields) = (docstring.has(FieldKind::Returns), docstring.has(FieldKind::Yields));
     if has_returns && !has_yields {
-        // The `returns` of the field's name becomes `yields`, keeping its description.
-        let fix = docstring.fields(&[FieldKind::Returns]).next().and_then(|field| field.rename("yields"));
         checker.report_fix(
             Rule::RstReturns,
             docstring.range(),
             format!("`{name}` is a generator; document what it yields with `:yields:` instead of `:returns:`"),
-            fix,
+            docstring.fields(&[FieldKind::Returns]).next().and_then(|field| field.rename("yields")),
             "Rename the field to `:yields:`",
         );
     } else if target.public(checker) && !has_yields {
@@ -93,15 +130,6 @@ fn return_fields(checker: &Checker, target: &Target, def: &ast::StmtFunctionDef,
     }
 }
 
-// A quoted annotation, as in `-> "None"`, returns what its unquoted form does.
-fn is_nothing_annotation(annotation: &Expr) -> bool {
-    if let Expr::StringLiteral(literal) = annotation {
-        return parse_expression(literal.value.to_str()).is_ok_and(|parsed| is_nothing_annotation(parsed.expr()));
-    }
-    annotation.is_none_literal_expr() || matches!(last_segment(annotation), Some("NoReturn" | "Never"))
-}
-
-// A body of `...`, `pass` or `raise NotImplementedError`, after the docstring.
 fn is_placeholder(body: &[Stmt]) -> bool {
     body.iter().skip(1).all(|stmt| match stmt {
         Stmt::Pass(_) => true,
@@ -113,40 +141,10 @@ fn is_placeholder(body: &[Stmt]) -> bool {
     })
 }
 
-// The function whose return the docstring documents. A class's and a property's docstrings describe the class and the
-// value instead, so their return fields are reported here, and moving their text into the description is for the
-// author.
-fn returning_function<'a>(checker: &Checker, target: &Target<'a>) -> Option<&'a ast::StmtFunctionDef> {
-    let value_fields = || {
-        target.docstring.fields(&[FieldKind::Returns, FieldKind::ReturnType, FieldKind::Yields, FieldKind::YieldType])
-    };
-    let report = |field: &Field, message: String| {
-        checker.report(Rule::RstReturns, field.range_in(&target.docstring), message);
-    };
-    match target.owner {
-        Owner::Class(class) => {
-            for field in value_fields() {
-                report(
-                    field,
-                    format!("`{}` is a class, so its docstring has no `{}` to document", class.name, field.text()),
-                );
-            }
-            None
-        }
-        Owner::Function { def, .. } => {
-            let is_property = has_decorator(&def.decorator_list, &["property", "cached_property", "setter", "deleter"]);
-            if !is_property {
-                return Some(def);
-            }
-            for field in value_fields() {
-                let message = format!(
-                    "`{}` is a property; describe its value in the text rather than in `{}`",
-                    def.name,
-                    field.text()
-                );
-                report(field, message);
-            }
-            None
-        }
+// A quoted annotation, as in `-> "None"`, returns what its unquoted form does.
+fn is_nothing_annotation(annotation: &Expr) -> bool {
+    if let Expr::StringLiteral(literal) = annotation {
+        return parse_expression(literal.value.to_str()).is_ok_and(|parsed| is_nothing_annotation(parsed.expr()));
     }
+    annotation.is_none_literal_expr() || matches!(last_segment(annotation), Some("NoReturn" | "Never"))
 }

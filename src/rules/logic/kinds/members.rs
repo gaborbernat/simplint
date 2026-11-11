@@ -21,8 +21,6 @@ pub(super) fn members_of<'a>(checker: &Checker<'a>, class: &'a ast::StmtClassDef
     members
 }
 
-// How a class gives an attribute to its instances: annotations, values set in its body or on the instance in its
-// methods, and methods or properties of that name.
 pub(super) struct Members<'a> {
     pub(super) declared: Option<Kind>,
     // Each value, with the method that sets it on the instance, or none for the class body.
@@ -41,7 +39,7 @@ impl<'a> Members<'a> {
         }
     }
 
-    pub(super) fn of_class(checker: &Checker<'a>, class: &'a ast::StmtClassDef, attr: &'a str) -> Self {
+    fn of_class(checker: &Checker<'a>, class: &'a ast::StmtClassDef, attr: &'a str) -> Self {
         let body = bindings_in(checker, Some(Scope::Class(class)), attr);
         let (properties, methods) = body
             .functions
@@ -73,10 +71,9 @@ impl<'a> Members<'a> {
     }
 }
 
-// Whether code outside the class writes or deletes an attribute of this name, on any object.
 pub(super) fn written_outside(checker: &Checker, class: &ast::StmtClassDef, attr: &str) -> bool {
-    struct Writes<'a>(FxHashMap<&'a str, Vec<TextRange>>);
-    impl<'a> Visitor<'a> for Writes<'a> {
+    struct AttributeWrites<'a>(FxHashMap<&'a str, Vec<TextRange>>);
+    impl<'a> Visitor<'a> for AttributeWrites<'a> {
         fn visit_expr(&mut self, expr: &'a Expr) {
             if let Expr::Attribute(ast::ExprAttribute { ctx, attr, range, .. }) = expr
                 && *ctx != ExprContext::Load
@@ -87,26 +84,25 @@ pub(super) fn written_outside(checker: &Checker, class: &ast::StmtClassDef, attr
         }
     }
     let writes = checker.state().kinds().attribute_writes.get_or_init(|| {
-        let mut writes = Writes(FxHashMap::default());
+        let mut writes = AttributeWrites(FxHashMap::default());
         writes.visit_body(checker.body());
         writes.0
     });
     writes.get(attr).is_some_and(|ranges| ranges.iter().any(|range| !class.range.contains_range(*range)))
 }
 
-// The writes a method makes to an attribute of its instance.
-pub(super) struct Writes<'c, 'a, 'm> {
-    pub(super) checker: &'c Checker<'a>,
-    pub(super) receiver: &'a str,
-    pub(super) attr: &'c str,
-    pub(super) method: &'a ast::StmtFunctionDef,
-    pub(super) members: &'m mut Members<'a>,
+struct Writes<'c, 'a, 'm> {
+    checker: &'c Checker<'a>,
+    receiver: &'a str,
+    attr: &'c str,
+    method: &'a ast::StmtFunctionDef,
+    members: &'m mut Members<'a>,
     // Inside a nested def the value would read names of a scope this does not track.
-    pub(super) nested: usize,
+    nested: usize,
 }
 
 impl Writes<'_, '_, '_> {
-    pub(super) fn is_member(&self, target: &Expr) -> bool {
+    fn is_member(&self, target: &Expr) -> bool {
         matches!(target, Expr::Attribute(ast::ExprAttribute { value, attr, .. })
             if attr == self.attr && is_name(value, self.receiver))
     }
@@ -144,7 +140,6 @@ impl<'a> Visitor<'a> for Writes<'_, 'a, '_> {
         }
     }
 
-    // Any other write to the attribute, on the instance or on another object of the class, leaves it unknown.
     fn visit_expr(&mut self, expr: &'a Expr) {
         if let Expr::Attribute(ast::ExprAttribute { ctx, attr, .. }) = expr
             && *ctx != ExprContext::Load

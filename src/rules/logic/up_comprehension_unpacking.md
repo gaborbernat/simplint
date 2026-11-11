@@ -3,9 +3,9 @@ allows.
 
 ## Why is this bad?
 
-A second `for` clause that does nothing but unpack the outer item takes a loop to say what the element can say in one
-place. [PEP 798](https://peps.python.org/pep-0798/) lets the element unpack with `*` for lists, sets and generators, and
-with `**` for dicts.
+A second `for` clause that only unpacks the outer item can move into the element.
+[PEP 798](https://peps.python.org/pep-0798/) lets the element unpack with `*` for lists, sets and generators, and with
+`**` for dicts.
 
 ## Example
 

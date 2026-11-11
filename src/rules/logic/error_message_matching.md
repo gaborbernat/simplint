@@ -123,14 +123,7 @@ asserts may check the messages the code raises.
 
 - **`assert` statements that name the exception**: Ruff's
   [pytest-assert-in-except](https://docs.astral.sh/ruff/rules/pytest-assert-in-except/) (PT017) reports an `assert` in
-  an `except` body that names the exception, so this rule leaves the comparison inside it to Ruff while the project's
-  Ruff configuration selects that rule. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are
-  respected too.
-
-  ```toml config
-  [tool.ruff.lint]
-  select = ["PT017"]
-  ```
+  an `except` body that names the exception, so this rule leaves the comparison inside it to Ruff.
 
   ```python ok
   def run(exc_source):

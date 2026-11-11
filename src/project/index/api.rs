@@ -18,23 +18,17 @@ use super::reach::unqualified;
 use super::run_imports::Members;
 use super::{FileId, FileIds, Project, RunReads};
 
-// A module a file binds at its top level, as `from pkg import module` and `import pkg.module as module` do, and the
-// file it resolves to.
 #[derive(PartialEq)]
 pub struct ModuleUse {
     pub bound: String,
-    // The absolute dotted name of the module, such as `pkg.module`.
     pub module: String,
-    // The names a dotted string or a store names in the module, as a `mock.patch` target or `module.NAME = value` does,
-    // so an import of one of them would miss the patch or the write.
+    // A dotted string or a store reaches these, and an import of one would miss the patch or the write.
     pub patched: FxHashSet<String>,
-    // The names the module's top-level statements define, which `from module import name` can import.
     pub defined: FxHashSet<String>,
-    // The names the module's functions rebind through `global`, whose value an import would keep from load time.
+    // A `global` statement rebinds these, and an import would keep the value from load time.
     pub rebound: FxHashSet<String>,
-    // Whether a write under a computed name may set any of the module's names, so an import would miss the write.
+    // A write under a computed name may set the module's names, so an import would miss that write.
     pub computed_written: bool,
-    // Whether the module is a package at the top of a package root, such as `pkg` for `pkg/__init__.py`.
     pub top_level_package: bool,
 }
 
@@ -50,9 +44,7 @@ impl CacheKey for ModuleUse {
     }
 }
 
-// How users reach a name of a module: the module offers it (through `__all__`, or as a public name without one), another
-// module re-exports it, or a name the module exposes reaches it through a signature, as a base class or an annotation
-// does. The docstring rules require docs only for the first two.
+// The docstring rules require docs only for the first two.
 #[derive(Clone, Copy)]
 pub enum Exposure<'a> {
     Offered,
@@ -73,8 +65,6 @@ impl<'a> Exposure<'a> {
     }
 }
 
-// What the index knows about one file: the names other files use from it, and the attribute and base class names of
-// the whole run.
 #[derive(Clone, Copy)]
 pub struct FileIndex<'a> {
     pub(super) project: &'a Project,
@@ -90,16 +80,16 @@ pub(super) struct RunModules<'a> {
     pub(super) members: &'a FxHashMap<FileId, Members>,
 }
 
+impl PartialEq for RunModules<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.by_alias() == other.by_alias()
+    }
+}
+
 impl<'a> RunModules<'a> {
     fn by_alias(&self) -> Option<BTreeMap<&'a str, &'a Members>> {
         self.modules
             .map(|modules| modules.iter().map(|(alias, target)| (alias.as_str(), &self.members[target])).collect())
-    }
-}
-
-impl PartialEq for RunModules<'_> {
-    fn eq(&self, other: &Self) -> bool {
-        self.by_alias() == other.by_alias()
     }
 }
 
@@ -138,7 +128,6 @@ pub(super) struct FileAnswers<'a> {
     pub(super) computed_reads: &'a ComputedReads,
 }
 
-// Two indexes give a file the same answers when their `answers` match.
 impl PartialEq for FileIndex<'_> {
     fn eq(&self, other: &Self) -> bool {
         self.answers == other.answers
@@ -214,23 +203,20 @@ impl CacheKey for FileIndex<'_> {
 }
 
 impl<'a> FileIndex<'a> {
-    pub fn is_imported(&self, name: &str) -> bool {
-        self.answers.imported.is_some_and(|names| names.contains(name))
-    }
-
     // Whether another module of the run imports the name, as opposed to only an entry point naming it, which the host
     // loads without an import.
     pub fn is_imported_by_others(&self, name: &str) -> bool {
         self.is_imported(name) && !self.answers.entry_only.is_some_and(|names| names.contains(name))
     }
 
-    // How many files of the run hold `word` as a whole word of a string literal, the file being checked among them.
+    pub fn is_imported(&self, name: &str) -> bool {
+        self.answers.imported.is_some_and(|names| names.contains(name))
+    }
+
     pub fn string_word_count(&self, word: &str) -> u32 {
         self.project.wide.reads.string_words.get(word).copied().unwrap_or_default()
     }
 
-    // Whether the name is part of a library's public API, and how users reach it: what a public module's `__all__`
-    // lists, or its public names without one, a re-export, or a name another exported name's signature reaches.
     pub fn library_exposure(&self, name: &str) -> Option<Exposure<'a>> {
         exposure(self.answers.library_api, self.answers.library_reached, name)
     }
@@ -243,71 +229,60 @@ impl<'a> FileIndex<'a> {
         self.answers.role
     }
 
-    // The modules this file binds at its top level, which a rule may reach through an attribute.
     pub fn modules(&self) -> &'a [ModuleUse] {
         self.answers.modules
     }
 
-    // Whether the file defines an exception class that no handler of the run catches by name, nor catches a subclass of.
     pub fn is_uncaught_exception(&self, name: &str) -> bool {
         self.answers.uncaught_exceptions.is_some_and(|names| names.contains(name))
     }
 
-    // Whether the name, as the file binds it, is an exception class of the run: one it defines, or imports from a file of
-    // the run, which derives from a builtin or standard-library exception directly or through other classes of the run.
     pub fn is_exception_type(&self, name: &str) -> bool {
         self.answers.exception_types.is_some_and(|names| names.contains(name))
     }
 
-    // Whether the file defines a class that subclasses hatchling's hook interface, directly or through a base of the run.
     pub fn is_hatch_hook_class(&self, name: &str) -> bool {
         self.answers.hook_classes.is_some_and(|names| names.contains(name))
     }
 
-    // Whether the name the file binds by an import from a file of the run is a class there (true), or a function (false).
-    // `None` when the import comes from outside the run, or the run defines the name as neither.
     pub fn run_import_class(&self, name: &str) -> Option<bool> {
         self.answers.run_imports.and_then(|names| names.get(name).copied())
     }
 
-    // Whether the attribute `name` of a module of the run that the file binds as `module` is a class there (true), or a
-    // function (false). `None` when the index does not know it.
     pub fn run_module_member(&self, module: &str, name: &str) -> Option<bool> {
         let target = self.answers.run_modules.modules?.get(module)?;
         self.answers.run_modules.members[target].get(name).copied()
     }
 
-    // Whether another exported name's annotations, bases or bounds reach the module's class or alias `name`, which makes
-    // it public API though no file imports it.
     pub fn is_api_reached(&self, name: &str) -> bool {
         self.answers.api_reached.is_some_and(|names| names.contains(name))
     }
 
-    // Whether a public class of the library inherits the member `member` of the class `class` this file defines
-    // without overriding it, so users reach the member through that public class.
+    // Users reach the member through the public class that inherits it, so it is part of the API.
     pub fn is_inherited_api(&self, class: &str, member: &str) -> bool {
         self.answers.inherited.and_then(|classes| classes.get(class)).is_some_and(|members| members.contains(member))
     }
 
-    // Whether production code of the run loads the file as a value, so a call through that value reaches its names, and
-    // no import of a name shows the use.
+    // A call through a value loaded from the file reaches its names, and no import shows that.
     pub fn is_loaded_as_value(&self) -> bool {
         self.answers.loaded_as_value
     }
 
-    // Whether the module is read as a whole, so any of its names may be read: a production file of the run loads it as
-    // a value, or a star import binds it from its package's `__all__`.
+    // A production file loads the module as a value, or a star import binds it, so any of its names may be read.
     pub fn is_read_whole(&self) -> bool {
         self.answers.read_whole
     }
 
-    // Whether every use of the name in the run comes from a test module. An `import *` that may read a public name, or
-    // a computed module read, may use it from anywhere, so those names count as used outside the tests.
+    // An `import *` or a computed module read may use a public name from anywhere, so it is not test-only.
     pub fn is_used_only_by_tests(&self, name: &str) -> bool {
         self.answers.test_only.is_some_and(|names| names.contains(name)) && !self.is_read_unnamed(name)
     }
 
-    // Whether some file star-imports the module, so the names its `__all__` lists land there.
+    fn is_read_unnamed(&self, name: &str) -> bool {
+        (self.answers.star_imported && Visibility::of(name) == Visibility::Public)
+            || self.project.wide.module_reads.contains(name)
+    }
+
     pub fn is_star_import_source(&self) -> bool {
         self.answers.star_source
     }
@@ -318,14 +293,12 @@ impl<'a> FileIndex<'a> {
         self.answers.computed_written
     }
 
-    // Whether a `setattr` call of the run sets the module's name, as `monkeypatch.setattr(module, "NAME", value)` does.
     pub fn is_module_written(&self, name: &str) -> bool {
         self.answers.written.is_some_and(|names| names.contains(name))
     }
 
-    // The index as it holds for `source`. The cycle and repeated statements it keeps for the file are ranges
-    // of the source it read, so a source that fixes have changed since, which the fix loop lints, has none of them;
-    // a fix round lints the fixed file again, when it reports one.
+    // The cycle and duplicate ranges are offsets into the source the index read, so a changed source has none of them.
+    // A fix round lints the fixed file again, when it reports one.
     pub fn at(self, source: &str) -> Self {
         if self.source == Some(source_digest(source)) {
             self
@@ -334,54 +307,36 @@ impl<'a> FileIndex<'a> {
         }
     }
 
-    // The statement that closes a cycle of runtime imports this file takes part in, if it is the file that reports it.
     pub fn import_cycle(&self) -> Option<&'a Cycle> {
         self.answers.cycle
     }
 
-    // The path of a file of the run, by the id a cycle names it with.
     pub fn path_of(&self, id: FileId) -> &'a Path {
         self.project.files.path(id)
     }
 
-    // The runs of statements of this file that another file repeats.
     pub fn duplicate_runs(&self) -> &'a [DuplicateRun] {
         self.answers.duplicates
     }
 
-    // A public name of a module some `import *` reads may be used under that import, though no file names it, and any
-    // name may be read off a module loaded by a computed name.
     pub fn is_referenced(&self, name: &str) -> bool {
         self.is_imported(name)
             || self.answers.referenced.is_some_and(|names| names.contains(name))
             || self.is_read_unnamed(name)
     }
 
-    // Whether code reads the name without naming it: an `import *` of the module reads its public names, and a computed
-    // module read may read any name.
-    fn is_read_unnamed(&self, name: &str) -> bool {
-        (self.answers.star_imported && Visibility::of(name) == Visibility::Public)
-            || self.project.wide.module_reads.contains(name)
-    }
-
-    // Whether another file, or a doctest of the run, reads the name, or the signature of an exported name reaches it,
-    // so it is not unused. Code the index cannot follow may read any bare name, so it does not count here.
     pub fn is_used_elsewhere(&self, name: &str) -> bool {
         self.is_referenced(name) || self.is_api_reached(name)
     }
 
-    // Whether another file imports the module's `__all__`, or reads it off an import of the module, as `module.__all__`.
     pub fn is_all_read(&self) -> bool {
         self.is_imported("__all__") || self.answers.referenced.is_some_and(|names| names.contains("__all__"))
     }
 
-    // Whether an `import *` takes every public name of the module, which adding an `__all__` would narrow.
     pub fn is_star_imported(&self) -> bool {
         self.answers.star_imported
     }
 
-    // Whether the `__init__.py` of the module's package star-imports it, so a name the module exports lands in the
-    // package next to its submodules.
     pub fn is_package_star_imported(&self) -> bool {
         self.answers.package_star_imported
     }
@@ -394,7 +349,6 @@ impl<'a> FileIndex<'a> {
         self.project.wide.base_classes.contains(name)
     }
 
-    // The attributes the run reads under computed names.
     pub fn computed_reads(&self) -> &'a ComputedReads {
         self.answers.computed_reads
     }
@@ -405,18 +359,15 @@ impl<'a> FileIndex<'a> {
         self.project.wide.opaque_names.contains(name)
     }
 
-    // Whether the project's documentation names the definition with the dotted name `qualified`.
     pub fn is_documented(&self, qualified: &str, anchored: bool) -> bool {
         self.project.docs.covers(qualified, anchored)
     }
 
-    // Whether a test module requests the fixture by parameter, `usefixtures` or `getfixturevalue`.
     pub fn is_fixture_requested(&self, name: &str) -> bool {
         self.project.wide.fixture_requests.contains(name)
     }
 
-    // Whether a test module sets `pytest_plugins`, whose fixtures may request a fixture of the run that overrides one of
-    // theirs.
+    // A plugin's fixtures may request a fixture that overrides one of the run's, so the requests count.
     pub fn loads_pytest_plugins(&self) -> bool {
         self.project.wide.fixture_requests.contains(PYTEST_PLUGINS_REQUEST)
     }
@@ -425,32 +376,25 @@ impl<'a> FileIndex<'a> {
         self.project.wide.reads.docstrings
     }
 
-    // Whether some file of the run reads the `__name__` or `__qualname__` of an object named `name`, so renaming the
-    // function or class changes what it returns.
+    // Renaming a function or class changes what a read of its `__name__` or `__qualname__` returns.
     pub fn reads_name_of(&self, name: &str) -> bool {
         self.project.wide.reads.reflected.contains(name)
     }
 
-    // Whether a file of the run reads a class's name off an object, so a class renamed here may be read by that name.
+    // A class renamed here may be read by its name off an object.
     pub fn reads_class_names(&self) -> bool {
         self.project.wide.reads.class_names
     }
 
-    // How other files of the run use this file's dataclass `name`, and the positional fields of the dataclass a call
-    // spelled `written` constructs in this file.
     pub fn calls(&self) -> FileCalls<'a> {
         self.answers.calls
     }
 
-    // The attributes the run sets or deletes on instances it knows are of the class with this qualified name, `self`
-    // included.
     pub fn attributes_written_on(&self, class: &str) -> impl Iterator<Item = &str> {
         self.project.wide.writes.on_class.get(class).into_iter().flatten().map(String::as_str)
     }
 
-    // Whether the run writes attributes on instances of another class with the same name, or has subclasses of it that a
-    // slotted base breaks: a name that resolves differently than simplint sees, as through a re-export, may still be
-    // this class.
+    // A re-export can hide which class a name is, so a namesake of this class may be the one written to.
     pub fn has_namesake_hazards(&self, class: &str) -> bool {
         let writes = &self.project.wide.writes;
         let own =
@@ -458,19 +402,16 @@ impl<'a> FileIndex<'a> {
         writes.namesakes.get(unqualified(class)).is_some_and(|count| *count > own)
     }
 
-    // Whether the run stores `__dict__` on an instance of the class with this qualified name, which a frozen instance
-    // rejects, unlike a read of it such as `vars(obj)`.
+    // Storing `__dict__` fails on a frozen instance, unlike reading it through `vars(obj)`.
     pub fn dict_stored_on(&self, class: &str) -> bool {
         self.project.wide.writes.dict_stores.contains(class)
     }
 
-    // Whether the run sets or deletes an attribute with this name on an object of unknown class; mocks do not count.
+    // An object of unknown class may have this attribute set; mocks do not count.
     pub fn is_attribute_written(&self, name: &str) -> bool {
         self.project.wide.writes.untyped.contains(name)
     }
 
-    // Whether the run reads, sets or deletes the attribute `name` through the class with this qualified name, as
-    // `Config.timeout` does, through a subclass of it, or through an access simplint cannot tie to a class.
     pub fn is_class_attribute_accessed(&self, class: &str, name: &str) -> bool {
         let accessed = |class: &str| {
             self.project.wide.writes.class_attributes.get(class).is_some_and(|names| names.contains(name))
@@ -478,25 +419,20 @@ impl<'a> FileIndex<'a> {
         accessed(class) || accessed(UNRESOLVED_CLASS)
     }
 
-    // Whether a class of the run that a slotted base breaks inherits from the class with this qualified name.
     pub fn has_unslottable_subclass(&self, name: &str) -> bool {
         self.project.wide.writes.unslottable_bases.contains(name)
     }
 
-    // Whether a class of the run whose methods store attributes on `self` inherits from the class with this qualified
-    // name.
     pub fn has_stateful_subclass(&self, name: &str) -> bool {
         self.project.wide.writes.stateful_bases.contains(name)
     }
 
-    // Whether the run pickles with a protocol that may be 0 or 1.
     pub fn pickles_low_protocol(&self) -> bool {
         self.project.wide.writes.pickles_low_protocol
     }
 }
 
-// The modules each file binds, with what the run knows of each. Only modules that resolve to a file of the run count,
-// so a third-party or standard-library module never does.
+// Only modules that resolve to a file of the run count, so a third-party or standard-library module never does.
 pub(super) fn module_uses(
     names: Vec<(FileId, String, String, FileId)>,
     sources: &FxHashMap<FileId, &FileFacts>,
@@ -520,8 +456,6 @@ pub(super) fn module_uses(
     uses
 }
 
-// How users reach `name` of a file, given the names it offers or re-exports, and the names a signature of an exposed
-// name reaches.
 pub(super) fn exposure<'a>(
     offered: Option<&'a FxHashMap<String, Option<PathBuf>>>,
     signatures: Option<&FxHashSet<String>>,

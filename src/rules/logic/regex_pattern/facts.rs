@@ -50,7 +50,7 @@ pub(crate) enum Context<'a> {
 }
 
 // A function or lambda, by its range, or the module when `None`.
-pub(crate) type Scope = Option<TextRange>;
+type Scope = Option<TextRange>;
 
 // Which groups a read of a match object or a pattern reaches.
 #[derive(Clone, Copy)]
@@ -325,15 +325,17 @@ impl<'a> Facts<'_, 'a> {
 
     // A name is only ever the value of an attribute, so an attribute parent is a read of the name's groups.
     fn record_usage(&mut self, name: &'a str) {
-        let (parent, grandparent, top) = (self.ancestor(1), self.ancestor(2), self.ancestor(0));
+        let parent = self.ancestor(1);
         let usage = match parent {
-            Some(Expr::Attribute(attribute)) => match grandparent {
+            Some(Expr::Attribute(attribute)) => match self.ancestor(2) {
                 Some(Expr::Call(call)) if parent.is_some_and(|parent| ptr::eq(parent, call.func.as_ref())) => {
                     Usage::Method { call: call.range(), reads: method_reads(attribute.attr.as_str(), &call.arguments) }
                 }
                 _ => Usage::Other,
             },
-            Some(Expr::Subscript(subscript)) if top.is_some_and(|top| ptr::eq(top, subscript.value.as_ref())) => {
+            Some(Expr::Subscript(subscript))
+                if self.ancestor(0).is_some_and(|top| ptr::eq(top, subscript.value.as_ref())) =>
+            {
                 Usage::Subscript(subscript_reads(&subscript.slice))
             }
             _ if self.context() == Context::Test => Usage::Test,
@@ -353,8 +355,8 @@ impl<'a> Facts<'_, 'a> {
         }
     }
 
-    // The context of the current expression. The operands of `and` and `or` share the context of the expression they
-    // are in, so the walk goes up through them first.
+    // The operands of `and` and `or` share the context of the expression they are in, so the walk goes up through them
+    // first.
     fn context(&self) -> Context<'a> {
         let mut up = 0;
         while let Some(Expr::BoolOp(_)) = self.ancestor(up + 1) {
@@ -363,7 +365,6 @@ impl<'a> Facts<'_, 'a> {
         self.ancestor(up).map_or(Context::Other, |child| self.context_under(child, up))
     }
 
-    // The context of `child`, which is `up` levels below the current expression.
     fn context_under(&self, child: &'a Expr, up: usize) -> Context<'a> {
         match self.ancestor(up + 1) {
             None => self.statement_context(child),
@@ -422,8 +423,9 @@ impl<'a> Facts<'_, 'a> {
     }
 
     fn name_flows(&self, scope: Scope, name: &'a str) -> bool {
-        !self.escaping.contains(&(scope, name))
-            && !self.exported(scope, name)
+        // Asked only here, since reading the project is a cross-file read that the other rules sharing the walk do not
+        // declare. A module name another module imports or `__all__` lists has reads this file does not all contain.
+        !(self.escaping.contains(&(scope, name)) || (scope.is_none() && self.checker.is_exported(name)))
             && self.bindings.get(&(scope, name)) == Some(&1)
             && self.usages_of(scope, name).iter().all(|usage| match usage {
                 Usage::Test => true,
@@ -442,12 +444,6 @@ impl<'a> Facts<'_, 'a> {
             "sub" | "subn" => call.plain_replacement,
             attr => GROUP_READS.contains(&attr),
         }
-    }
-
-    // A module name another module imports or `__all__` lists, whose reads this file does not all contain. Asked only
-    // here, since reading the project is a cross-file read that the other rules sharing the walk do not declare.
-    fn exported(&self, scope: Scope, name: &str) -> bool {
-        scope.is_none() && self.checker.is_exported(name)
     }
 
     fn usages_of(&self, scope: Scope, name: &'a str) -> &[Usage] {
@@ -532,13 +528,6 @@ fn is_plain(expr: &Expr) -> bool {
     Literal::of(expr).is_some_and(|literal| literal.parts.iter().all(|(value, _)| !value.contains(&b'\\')))
 }
 
-fn int_value(expr: &Expr) -> Option<u64> {
-    match expr {
-        Expr::NumberLiteral(ast::ExprNumberLiteral { value: ast::Number::Int(int), .. }) => int.as_u64(),
-        _ => None,
-    }
-}
-
 // The reads a method called on a name makes. The pattern methods return matches that are read elsewhere, so they
 // read no group here.
 fn method_reads(attr: &str, arguments: &ast::Arguments) -> Reads {
@@ -550,6 +539,13 @@ fn method_reads(attr: &str, arguments: &ast::Arguments) -> Reads {
         },
         "groups" => Reads::NUMBERED,
         _ => Reads::NAMED,
+    }
+}
+
+fn int_value(expr: &Expr) -> Option<u64> {
+    match expr {
+        Expr::NumberLiteral(ast::ExprNumberLiteral { value: ast::Number::Int(int), .. }) => int.as_u64(),
+        _ => None,
     }
 }
 

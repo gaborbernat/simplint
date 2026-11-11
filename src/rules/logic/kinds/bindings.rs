@@ -11,7 +11,7 @@ use crate::lint::checker::Checker;
 use crate::lint::walker::Scope;
 use crate::syntax::{alias_root_binding, for_each_child_body, pattern_capture};
 
-// The bindings of `name` in `scope`, or in the module for none. A scope is walked once for all of its names.
+// A scope is walked once for all of its names.
 pub(super) fn bindings_in<'a>(checker: &Checker<'a>, scope: Option<Scope<'a>>, name: &'a str) -> Rc<Bindings<'a>> {
     let range = match scope {
         Some(Scope::Function(function)) => function.range,
@@ -39,9 +39,6 @@ pub(super) enum Value<'a> {
     Entered(&'a Expr),
 }
 
-// How one scope binds a name: the values assignments and loops give it, the kind an annotation declares for it, the
-// functions it names, whether an import binds it, and whether anything else (a parameter, `with` target, `global`)
-// binds it to a value the code does not show.
 #[derive(Default)]
 pub(super) struct Bindings<'a> {
     pub(super) values: Vec<Value<'a>>,
@@ -56,7 +53,7 @@ pub(super) struct Bindings<'a> {
 
 impl<'a> Bindings<'a> {
     // An annotation the code shows no kind for, or two that disagree, leave the name unknown.
-    pub(super) fn declare(&mut self, kind: Option<Kind>) {
+    fn declare(&mut self, kind: Option<Kind>) {
         match kind {
             Some(kind) if self.declared.is_none_or(|declared| declared == kind) => self.declared = Some(kind),
             _ => self.opaque = true,
@@ -86,7 +83,6 @@ impl<'a> Bindings<'a> {
     }
 }
 
-// The bindings of every name a scope binds, which one walk of the scope collects.
 pub(super) struct ScopeBindings<'a> {
     names: FxHashMap<&'a str, Rc<Bindings<'a>>>,
     // A `from` import of `*` in the scope binds every name to a value the code does not show.
@@ -131,7 +127,6 @@ impl<'a> ScopeBindings<'a> {
     }
 }
 
-// The bindings of each name as the walk finds them, before the star import of the scope reaches the names.
 #[derive(Default)]
 struct Collected<'a> {
     names: FxHashMap<&'a str, Bindings<'a>>,
@@ -177,36 +172,6 @@ impl<'a> Collected<'a> {
 struct Collector<'c, 'a, 'b> {
     checker: &'c Checker<'a>,
     scope: &'b mut Collected<'a>,
-}
-
-impl<'a> Collector<'_, 'a, '_> {
-    // Visits `expr` for the names that `skip` does not hold, for a statement that binds the names it skips on its own.
-    fn visit_expr_except(&mut self, expr: &'a Expr, skip: impl Fn(&str) -> bool) {
-        let mut nested = Collected::default();
-        Collector { checker: self.checker, scope: &mut nested }.visit_expr(expr);
-        for (name, bindings) in nested.names {
-            if bindings.opaque && !skip(name) {
-                self.scope.of(name).opaque = true;
-            }
-        }
-    }
-
-    fn declared_in(&mut self, body: &'a [Stmt]) {
-        let mut names = FxHashSet::default();
-        declared_names(body, &mut names);
-        for name in names {
-            self.scope.of(name).opaque = true;
-        }
-    }
-
-    fn visit_generators(&mut self, generators: &'a [ast::Comprehension]) {
-        for generator in generators {
-            self.visit_expr(&generator.iter);
-            for condition in &generator.ifs {
-                self.visit_expr(condition);
-            }
-        }
-    }
 }
 
 impl<'a> Visitor<'a> for Collector<'_, 'a, '_> {
@@ -355,7 +320,36 @@ impl<'a> Visitor<'a> for Collector<'_, 'a, '_> {
     }
 }
 
-// The names a `global` or `nonlocal` declares in `body`, nested bodies included.
+impl<'a> Collector<'_, 'a, '_> {
+    // Visits `expr` without the names `skip` holds, which the statement binds on its own.
+    fn visit_expr_except(&mut self, expr: &'a Expr, skip: impl Fn(&str) -> bool) {
+        let mut nested = Collected::default();
+        Collector { checker: self.checker, scope: &mut nested }.visit_expr(expr);
+        for (name, bindings) in nested.names {
+            if bindings.opaque && !skip(name) {
+                self.scope.of(name).opaque = true;
+            }
+        }
+    }
+
+    fn declared_in(&mut self, body: &'a [Stmt]) {
+        let mut names = FxHashSet::default();
+        declared_names(body, &mut names);
+        for name in names {
+            self.scope.of(name).opaque = true;
+        }
+    }
+
+    fn visit_generators(&mut self, generators: &'a [ast::Comprehension]) {
+        for generator in generators {
+            self.visit_expr(&generator.iter);
+            for condition in &generator.ifs {
+                self.visit_expr(condition);
+            }
+        }
+    }
+}
+
 fn declared_names<'a>(body: &'a [Stmt], names: &mut FxHashSet<&'a str>) {
     for stmt in body {
         match stmt {

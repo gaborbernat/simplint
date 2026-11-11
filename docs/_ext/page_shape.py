@@ -46,7 +46,6 @@ def _add_controls(app: Sphinx, doctree: nodes.document, docname: str) -> None:
         script = '<script>setupRulesTable(document.querySelector("table.rules"))</script>'
         table.replace_self(nodes.raw("", f"{table.astext()}{script}", format="html"))
     examples = list(doctree.findall(dropdown_main))
-    # one pill in the badge row opens every example, or closes them all once each is open; rules.js keeps its label
     badges = next((node for node in raws if '<div class="badges">' in node.astext()), None)
     if examples and badges is not None:
         switch = '<button type="button" class="badge example-switch" aria-expanded="false">Expand all examples</button>'
@@ -69,7 +68,6 @@ def _add_controls(app: Sphinx, doctree: nodes.document, docname: str) -> None:
             count += 1
             example["ids"].append(f"rule-example-{count}")
         icon, label = _EXAMPLE_TOGGLES[kind]
-        # a pair's icon is both marks, colored apart by the stylesheet
         marks = "".join(
             f'<span class="mark-{"reported" if mark == "✗" else "not-reported"}">{mark}</span>'
             if kind == "example-pair"
@@ -140,8 +138,7 @@ def _point_generated_pages_at_their_source(pagename: str, context: _PageContext)
 
 
 def _mark_sidebar_link(pagename: str, match: re.Match[str]) -> str:
-    # The stylesheet gives each sidebar entry the icon of the page it names. Rule pages lead with their code and take
-    # none; Furo links the current page as `#`.
+    # Rule pages lead with their code and take no icon; Furo links the current page as `#`.
     classes, href = match["classes"].split(), match["href"]
     if "internal" not in classes:
         return match[0]
@@ -190,7 +187,6 @@ def _inline_assets(app: Sphinx, exception: Exception | None) -> None:
         page.write_text(_ASSET.sub(inline, text), encoding="utf-8")
 
 
-# Each example dropdown of a rule page gets an icon at the end of its list item's first paragraph, which toggles it.
 _EXAMPLE_TOGGLES: Final[dict[str, tuple[str, str]]] = {
     "example-reported": ("✗", "Show an example it reports"),
     "example-not-reported": ("✓", "Show an example it accepts"),

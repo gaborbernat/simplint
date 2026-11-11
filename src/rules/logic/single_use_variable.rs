@@ -32,29 +32,29 @@ pub fn single_use_variable(checker: &Checker) {
             if let [Stmt::Assign(assign), next] = pair
                 && let Some(target) = sole_name_target(assign)
             {
-                let names = names.entry(function.range).or_insert_with(|| Names::of(&function.body));
-                check_pair(checker, (names, &rebindable), (assign, target), next, depth);
+                let function_names = names.entry(function.range).or_insert_with(|| Names::of(&function.body));
+                check_pair(checker, (function_names, &rebindable), (assign, target), next, &function.body, depth);
             }
         }
     });
 }
 
-// `assign` binds `target`, its only target.
 fn check_pair<'a>(
     checker: &Checker<'a>,
     (names, rebindable): (&Names<'a>, &FxHashSet<&str>),
     (assign, target): (&'a ast::StmtAssign, &'a ast::ExprName),
     next: &'a Stmt,
+    body: &'a [Stmt],
     depth: usize,
 ) {
     let name = target.id.as_str();
-    let Some((use_range, reading)) = single_read(checker, names, (assign, target), next) else {
+    let Some((use_range, reading)) = single_read(checker, names, (assign, target), next, body) else {
         return;
     };
     let Some((range, replacement)) = inlined_replacement(checker, assign, next, (use_range, &reading)) else {
         return;
     };
-    if ruff_reports_yield_from(checker, target, next) {
+    if ruff_reports_yield_from(target, next) {
         return;
     }
     let deletion = statement_deletion(checker, assign.range, Some(next.range()), Blanks::Shared)
@@ -63,8 +63,7 @@ fn check_pair<'a>(
     // An empty value, such as `''` spliced into an f-string, leaves nothing to write, which only a deletion expresses.
     let edit =
         if replacement.is_empty() { Edit::range_deletion(range) } else { Edit::range_replacement(replacement, range) };
-    let edits = keep_debug_text(checker, vec![edit]);
-    let fix = match edits {
+    let fix = match keep_debug_text(checker, vec![edit]) {
         Some(edits) if !reading.in_tstring => {
             // A read in a `=` debug field rewrites the whole field, so the width is measured on the field it becomes.
             let Some(replace) = edits.first() else { return };
@@ -88,13 +87,13 @@ fn check_pair<'a>(
     );
 }
 
-// The one read of the assigned name that the statement after the assignment makes, with its range, when inlining the
-// value there keeps the value's evaluation in order.
+// Only a read that keeps the value's evaluation in order can take it.
 fn single_read<'a>(
     checker: &Checker<'a>,
     names: &Names<'a>,
     (assign, target): (&'a ast::StmtAssign, &'a ast::ExprName),
     next: &'a Stmt,
+    body: &'a [Stmt],
 ) -> Option<(TextRange, ReadSite<'a>)> {
     let name = target.id.as_str();
     let value = assign.value.as_ref();
@@ -106,7 +105,7 @@ fn single_read<'a>(
         || checker.has_comment_in(TextRange::new(assign.start(), next.start()))
         || names.declared_outer.contains(name)
         || leads_if_test(next, name)
-        || returns_or_yields(checker, next, name)
+        || returns_or_yields(body, next, name)
         || raises_with_name(next, name)
         || names.rebound.contains(name)
         || names.string_reads.contains(name)

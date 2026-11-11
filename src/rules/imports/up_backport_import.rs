@@ -1,55 +1,12 @@
 use ruff_diagnostics::{Edit, Fix};
 use ruff_python_ast::{self as ast, PythonVersion, Stmt};
+use ruff_python_stdlib::builtins::is_python_builtin;
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::edits::{Blanks, statement_removal};
 use crate::syntax::for_each_body;
-
-enum Replacement {
-    // The standard library module keeps the backport's API, so only the module name changes.
-    Module(&'static str),
-    // The builtins define these names from the version on, so the import goes.
-    Builtins(&'static [&'static str]),
-    // The standard library moved the API, so each use needs a review.
-    Review(&'static str),
-}
-
-struct Backport {
-    package: &'static str,
-    since: PythonVersion,
-    replacement: Replacement,
-}
-
-const BACKPORTS: &[Backport] = &[
-    Backport { package: "tomli", since: PythonVersion::PY311, replacement: Replacement::Module("tomllib") },
-    Backport {
-        package: "exceptiongroup",
-        since: PythonVersion::PY311,
-        replacement: Replacement::Builtins(&["ExceptionGroup", "BaseExceptionGroup"]),
-    },
-    Backport {
-        package: "async_timeout",
-        since: PythonVersion::PY311,
-        replacement: Replacement::Review("asyncio.timeout"),
-    },
-    Backport {
-        package: "taskgroup",
-        since: PythonVersion::PY311,
-        replacement: Replacement::Review("asyncio.TaskGroup"),
-    },
-    Backport {
-        package: "importlib_metadata",
-        since: PythonVersion::PY310,
-        replacement: Replacement::Review("importlib.metadata"),
-    },
-    Backport {
-        package: "importlib_resources",
-        since: PythonVersion::PY310,
-        replacement: Replacement::Review("importlib.resources"),
-    },
-];
 
 pub fn up_backport_import(checker: &Checker) {
     let target = checker.target_version();
@@ -101,7 +58,12 @@ pub fn up_backport_import(checker: &Checker) {
                         }
                         Replacement::Review(_) => None,
                     };
-                    report(checker, import.range(), backport, fix);
+                    let left_to_ruff = fix.is_none()
+                        && matches!(backport.replacement, Replacement::Builtins(_))
+                        && import.names.iter().all(|alias| binds_builtin(checker, alias));
+                    if !left_to_ruff {
+                        report(checker, import.range(), backport, fix);
+                    }
                 }
                 _ => {}
             }
@@ -109,8 +71,51 @@ pub fn up_backport_import(checker: &Checker) {
     });
 }
 
+enum Replacement {
+    // The standard library module keeps the backport's API, so only the module name changes.
+    Module(&'static str),
+    // The builtins define these names from the version on, so the import goes.
+    Builtins(&'static [&'static str]),
+    // The standard library moved the API, so each use needs a review.
+    Review(&'static str),
+}
+
 fn backport_named(module: &str, target: PythonVersion) -> Option<&'static Backport> {
+    const BACKPORTS: &[Backport] = &[
+        Backport { package: "tomli", since: PythonVersion::PY311, replacement: Replacement::Module("tomllib") },
+        Backport {
+            package: "exceptiongroup",
+            since: PythonVersion::PY311,
+            replacement: Replacement::Builtins(&["ExceptionGroup", "BaseExceptionGroup"]),
+        },
+        Backport {
+            package: "async_timeout",
+            since: PythonVersion::PY311,
+            replacement: Replacement::Review("asyncio.timeout"),
+        },
+        Backport {
+            package: "taskgroup",
+            since: PythonVersion::PY311,
+            replacement: Replacement::Review("asyncio.TaskGroup"),
+        },
+        Backport {
+            package: "importlib_metadata",
+            since: PythonVersion::PY310,
+            replacement: Replacement::Review("importlib.metadata"),
+        },
+        Backport {
+            package: "importlib_resources",
+            since: PythonVersion::PY310,
+            replacement: Replacement::Review("importlib.resources"),
+        },
+    ];
     BACKPORTS.iter().find(|backport| backport.package == module && target >= backport.since)
+}
+
+struct Backport {
+    package: &'static str,
+    since: PythonVersion,
+    replacement: Replacement,
 }
 
 fn report(checker: &Checker, range: TextRange, backport: &Backport, fix: Option<Fix>) {
@@ -136,4 +141,12 @@ fn report(checker: &Checker, range: TextRange, backport: &Backport, fix: Option<
         ),
     };
     checker.report_fix(Rule::BackportImport, range, message, fix, title);
+}
+
+// Ruff's A004 reports an import that binds a builtin of the target version, unless the builtins ignorelist names it. A
+// builtin-only backport without a fix is left to A004 for that reason.
+fn binds_builtin(checker: &Checker, alias: &ast::Alias) -> bool {
+    let name = alias.asname.as_ref().unwrap_or(&alias.name);
+    is_python_builtin(name.as_str(), checker.target_version().minor, false)
+        && checker.settings.from_ruff.builtins_ignorelist.iter().all(|ignored| ignored.as_str() != name.as_str())
 }

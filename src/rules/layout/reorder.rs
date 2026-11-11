@@ -14,7 +14,6 @@ pub(super) struct Suite<'a> {
     pub(super) blank_lines: usize,
 }
 
-// A statement that reads a definition, and where in the statement the read starts.
 #[derive(Clone)]
 pub(super) struct Read {
     pub(super) reader: usize,
@@ -32,7 +31,6 @@ pub(super) fn depth_first(roots: impl Iterator<Item = usize>, children: &[Vec<us
     }
 }
 
-// The positions a reordering moves: from the first to the last statement that `expected` puts elsewhere.
 pub(super) fn moved_span(expected: &[usize]) -> Option<RangeInclusive<usize>> {
     let low = (0..expected.len()).find(|&position| expected[position] != position)?;
     let high = (0..expected.len()).rfind(|&position| expected[position] != position).unwrap_or(low);

@@ -66,7 +66,6 @@ pub(super) fn alternative_constructors(class: &ast::StmtClassDef) -> FxHashSet<&
     factories
 }
 
-// A call through a classmethod's receiver: of the class itself, as `cls(...)`, or of a method, as `cls.name(...)`.
 enum ReceiverCall<'a> {
     Class,
     Method(&'a str),
@@ -85,7 +84,6 @@ fn receiver_call<'a>(expr: &'a Expr, receiver: &str) -> Option<ReceiverCall<'a>>
     }
 }
 
-// Whether a return annotation names the class: `Self`, `typing.Self`, or the class's own name, quoted or not.
 fn names_class(annotation: &Expr, class: &ast::StmtClassDef) -> bool {
     match annotation {
         Expr::Name(name) => name.id.as_str() == "Self" || name.id.as_str() == class.name.as_str(),

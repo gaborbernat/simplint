@@ -6,7 +6,9 @@ use crate::rules::classes::{Offer, require_options};
 pub fn dataclass_slots(checker: &Checker) {
     require_options(checker, Rule::DataclassSlots, &["slots"], |decorated, missing| {
         let analysis = analyze(checker, decorated)?;
-        let options = if analysis.slots_breaks { Vec::new() } else { missing.to_vec() };
-        Some(Offer::options(options, analysis.slots_applicability()))
+        Some(Offer::options(
+            if analysis.slots_breaks { Vec::new() } else { missing.to_vec() },
+            analysis.slots_applicability(),
+        ))
     });
 }

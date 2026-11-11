@@ -5,9 +5,8 @@ use std::sync::Mutex;
 use ruff_linter::source_kind::SourceKindDiff;
 use rustc_hash::FxHashMap;
 
-// The fixes of a `--diff` run, kept in memory since the run writes nothing: each file the fixes changed, with its
-// source as read and its source after the fixes so far. A later round fixes the source after the fixes so far, which
-// the disk does not hold.
+// Kept in memory because a `--diff` run writes nothing, so a later round reads the source after the earlier fixes,
+// which the disk does not hold.
 #[derive(Default)]
 pub(crate) struct Overlay(Mutex<FxHashMap<PathBuf, Fixed>>);
 
@@ -32,8 +31,6 @@ impl Overlay {
         self.0.lock().expect("no worker panics while fixing").is_empty()
     }
 
-    // Records `fixed` as the source of `path` after a fix that changed `source`, and returns the diff from the source
-    // as read to `fixed`.
     pub(crate) fn record(&self, path: &Path, source: &str, fixed: &str) -> String {
         let mut files = self.0.lock().expect("no worker panics while fixing");
         let entry = files

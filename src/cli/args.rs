@@ -33,16 +33,16 @@ const STYLES: Styles = Styles::styled()
     after_help = "For help with a specific command, see: `simplint help <command>`.",
     styles = STYLES
 )]
-pub struct Cli {
+pub(crate) struct Cli {
     #[command(subcommand)]
-    pub command: Command,
+    pub(crate) command: Command,
     #[command(flatten)]
     pub global_options: GlobalConfigArgs,
 }
 
 // The subcommands mirror `ruff`'s, with the same names, flags and help text.
 #[derive(Subcommand)]
-pub enum Command {
+pub(crate) enum Command {
     /// Run simplint on the given files or directories.
     Check(Box<CheckCommand>),
     /// Explain a rule (or all rules).
@@ -101,7 +101,7 @@ pub enum Command {
 #[derive(Args)]
 pub struct GlobalConfigArgs {
     #[command(flatten)]
-    pub log_level_args: LogLevelArgs,
+    log_level_args: LogLevelArgs,
     /// Either a path to a TOML configuration file (`pyproject.toml` or `ruff.toml`), or a TOML `<KEY> = <VALUE>` pair
     /// (such as you might find in a `ruff.toml` configuration file or a `[tool.simplint]` table) overriding a specific
     /// configuration option (e.g., `--config "fix = true"` or `--config "line-length = 100"`).
@@ -118,21 +118,21 @@ pub struct GlobalConfigArgs {
     pub config: Vec<ConfigArgument>,
     /// Ignore all configuration files.
     #[arg(long, help_heading = "Global options", global = true)]
-    pub isolated: bool,
+    pub(crate) isolated: bool,
     /// Control when colored output is used.
     #[arg(long, value_name = "WHEN", help_heading = "Global options", global = true)]
-    pub color: Option<TerminalColor>,
+    pub(crate) color: Option<TerminalColor>,
 }
 
 impl GlobalConfigArgs {
-    pub fn log_level(&self) -> LogLevel {
+    pub(crate) fn log_level(&self) -> LogLevel {
         LogLevel::from(&self.log_level_args)
     }
 }
 
 /// Control when colored output is used.
 #[derive(Clone, Copy, ValueEnum)]
-pub enum TerminalColor {
+pub(crate) enum TerminalColor {
     /// Display colors if the output goes to an interactive terminal.
     Auto,
     /// Always display colors.
@@ -165,10 +165,10 @@ pub struct CheckCommand {
     /// Avoid writing any fixed files back; instead, output a diff for each changed file to stdout, and exit 0 if there
     /// are no diffs. Implies `--fix-only`.
     #[arg(long, conflicts_with = "show_fixes")]
-    pub diff: bool,
+    pub(crate) diff: bool,
     /// Run in watch mode by re-running whenever files change.
     #[arg(short, long)]
-    pub watch: bool,
+    pub(super) watch: bool,
     /// Apply fixes to resolve lint violations, but don't report on, or exit non-zero for, leftover violations. Implies
     /// `--fix`. Use `--no-fix-only` to disable or `--unsafe-fixes` to include unsafe fixes.
     #[arg(long, overrides_with("no_fix_only"))]
@@ -177,13 +177,13 @@ pub struct CheckCommand {
     no_fix_only: bool,
     /// Ignore any `# noqa` comments.
     #[arg(long)]
-    pub ignore_noqa: bool,
+    pub(super) ignore_noqa: bool,
     /// Output serialization format for violations. The default serialization format is "full".
     #[arg(long, value_enum, env = "SIMPLINT_OUTPUT_FORMAT")]
     output_format: Option<OutputFormat>,
     /// Specify file to write the linter output to (default: stdout).
     #[arg(short, long, env = "SIMPLINT_OUTPUT_FILE")]
-    pub output_file: Option<PathBuf>,
+    pub(super) output_file: Option<PathBuf>,
     /// The minimum Python version that should be supported.
     #[arg(long, value_enum)]
     target_version: Option<PythonVersion>,
@@ -245,22 +245,22 @@ pub struct CheckCommand {
     no_force_exclude: bool,
     /// Disable cache reads.
     #[arg(short, long, env = "SIMPLINT_NO_CACHE", help_heading = "Miscellaneous")]
-    pub no_cache: bool,
+    pub(crate) no_cache: bool,
     /// Path to Ruff's cache directory, which simplint keeps its cache in.
     #[arg(long, env = "RUFF_CACHE_DIR", help_heading = "Miscellaneous")]
-    pub cache_dir: Option<PathBuf>,
+    pub(crate) cache_dir: Option<PathBuf>,
     /// The name of the file when passing it through stdin.
     #[arg(long, help_heading = "Miscellaneous")]
-    pub stdin_filename: Option<PathBuf>,
+    pub(super) stdin_filename: Option<PathBuf>,
     /// Exit with status code "0", even upon detecting lint violations.
     #[arg(short, long, help_heading = "Miscellaneous", conflicts_with = "exit_non_zero_on_fix")]
-    pub exit_zero: bool,
+    pub(super) exit_zero: bool,
     /// Exit with a non-zero status code if any files were modified via fix, even if no lint violations remain.
     #[arg(long, help_heading = "Miscellaneous", conflicts_with = "exit_zero")]
-    pub exit_non_zero_on_fix: bool,
+    pub(super) exit_non_zero_on_fix: bool,
     /// Show counts for every rule with at least one violation.
     #[arg(long, conflicts_with = "diff", conflicts_with = "watch")]
-    pub statistics: bool,
+    pub(super) statistics: bool,
     /// Enable automatic additions of `noqa` directives to failing lines. Optionally provide a reason to append after
     /// the codes.
     #[arg(
@@ -309,7 +309,7 @@ pub struct CheckCommand {
         conflicts_with = "stdin_filename",
         conflicts_with = "watch"
     )]
-    pub show_files: bool,
+    pub(super) show_files: bool,
     /// See the settings simplint will use to lint a given Python file.
     #[arg(
         long,
@@ -320,7 +320,7 @@ pub struct CheckCommand {
         conflicts_with = "stdin_filename",
         conflicts_with = "watch"
     )]
-    pub show_settings: bool,
+    pub(super) show_settings: bool,
 }
 
 impl CheckCommand {
@@ -368,14 +368,18 @@ impl CheckCommand {
         format.extend(switch("preview", self.preview, self.no_preview));
         let ruff_global = RuffGlobalConfigArgs::try_parse_from(ruff_global)?.global_options;
         let (_, config_arguments) = FormatCommand::try_parse_from(format)?.partition(ruff_global)?;
-        let overrides =
-            Overrides { inline, flags: Configuration::from_options(self.simplint_options(), &cwd, &Source::Cli) };
-        let arguments = SimplintArguments { config_file, isolated: global_options.isolated, overrides };
+        let arguments = SimplintArguments {
+            config_file,
+            isolated: global_options.isolated,
+            overrides: Overrides {
+                inline,
+                flags: Configuration::from_options(self.simplint_options(), &cwd, &Source::Cli),
+            },
+        };
         Ok((config_arguments, arguments))
     }
 
-    // The suppression comments `--add-noqa` or `--add-ignore` asks for: the reason and the kind.
-    pub fn suppression(&self) -> Option<(&str, SuppressionKind)> {
+    pub(crate) fn suppression(&self) -> Option<(&str, SuppressionKind)> {
         let noqa = self.add_noqa.as_deref().map(|reason| (reason, SuppressionKind::Noqa));
         noqa.or_else(|| self.add_ignore.as_deref().map(|reason| (reason, SuppressionKind::Ignore)))
     }
@@ -410,27 +414,6 @@ impl CheckCommand {
     }
 }
 
-// The flag that asks for a kind of suppression comment.
-pub fn suppression_flag(kind: SuppressionKind) -> &'static str {
-    match kind {
-        SuppressionKind::Noqa => "--add-noqa",
-        SuppressionKind::Ignore => "--add-ignore",
-    }
-}
-
-// What the command line says about `[tool.simplint]`: where to read it from, and what overrides it.
-pub struct SimplintArguments {
-    pub config_file: Option<PathBuf>,
-    pub isolated: bool,
-    pub overrides: Overrides,
-}
-
-#[derive(Parser)]
-struct RuffGlobalConfigArgs {
-    #[command(flatten)]
-    global_options: ruff::args::GlobalConfigArgs,
-}
-
 fn switch(flag: &str, yes: bool, no: bool) -> Option<OsString> {
     resolve_bool_arg(yes, no)
         .map(|value| OsString::from(if value { format!("--{flag}") } else { format!("--no-{flag}") }))
@@ -458,7 +441,25 @@ fn collect_per_file_ignores(pairs: &[PatternPrefixPair]) -> BTreeMap<String, Vec
     per_file_ignores
 }
 
-// One `--config` value: a configuration file, or inline options split into simplint's and Ruff's.
+pub(super) fn suppression_flag(kind: SuppressionKind) -> &'static str {
+    match kind {
+        SuppressionKind::Noqa => "--add-noqa",
+        SuppressionKind::Ignore => "--add-ignore",
+    }
+}
+
+pub struct SimplintArguments {
+    pub(crate) config_file: Option<PathBuf>,
+    pub(crate) isolated: bool,
+    pub(crate) overrides: Overrides,
+}
+
+#[derive(Parser)]
+struct RuffGlobalConfigArgs {
+    #[command(flatten)]
+    global_options: ruff::args::GlobalConfigArgs,
+}
+
 #[derive(Clone)]
 pub enum ConfigArgument {
     File(PathBuf),

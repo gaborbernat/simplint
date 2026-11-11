@@ -31,13 +31,13 @@ use ruff_text_size::TextRange;
 use crate::lint::checker::Checker;
 use crate::syntax::ReturnVisitor;
 
-// The module uses the name outside its own definition, so the module needs it whatever the tests do.
+// A use outside the definition keeps the name needed, whatever the tests do.
 pub(super) fn references_outside(checker: &Checker, name: &str, definition: TextRange) -> bool {
     checker.semantic().references_to(name).iter().any(|reference| !definition.contains_range(reference.range))
 }
 
-// The function's `return` statements hand back a value other than `None`, which a caller may read. A method that only
-// returns `self` offers chaining, a style of its interface rather than a value, so it counts as returning none.
+// A caller reads only a returned value, so a bare `return` or `return None` does not count. A method that only returns
+// `self` offers chaining, a style of its interface rather than a value, so it counts as returning none too.
 pub(super) fn returns_value(function: &ast::StmtFunctionDef) -> bool {
     let mut returns = ReturnVisitor::default();
     returns.visit_body(&function.body);
@@ -51,13 +51,6 @@ pub(super) fn returns_value(function: &ast::StmtFunctionDef) -> bool {
         && !values.iter().all(|value| value.as_name_expr().is_some_and(|name| name.id.as_str() == "self"))
 }
 
-// A module-level function or class, with whether a decorator may register it with something outside the run.
-pub(super) struct Definition<'a> {
-    pub(super) stmt: &'a Stmt,
-    pub(super) name: &'a ast::Identifier,
-    pub(super) decorated: bool,
-}
-
 pub(super) fn definitions<'a>(statements: impl Iterator<Item = &'a Stmt>) -> impl Iterator<Item = Definition<'a>> {
     statements.filter_map(|stmt| match stmt {
         Stmt::FunctionDef(ast::StmtFunctionDef { name, decorator_list, .. })
@@ -66,6 +59,13 @@ pub(super) fn definitions<'a>(statements: impl Iterator<Item = &'a Stmt>) -> imp
         }
         _ => None,
     })
+}
+
+// A module-level function or class, with whether a decorator may register it with something outside the run.
+pub(super) struct Definition<'a> {
+    pub(super) stmt: &'a Stmt,
+    pub(super) name: &'a ast::Identifier,
+    pub(super) decorated: bool,
 }
 
 // An `import *` of this module hands its names to code the index cannot follow, as `unused-export` assumes too.

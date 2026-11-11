@@ -17,21 +17,21 @@ use crate::syntax::ExprCollector;
 use crate::syntax::{dataclass_decorator, is_classmethod, is_name, receiver};
 
 // `slots=`, `kw_only=` and the keyword calls the rule writes arrived in Python 3.10.
-pub(crate) const SINCE: PythonVersion = PythonVersion::PY310;
+pub(super) const SINCE: PythonVersion = PythonVersion::PY310;
 
 pub fn dataclass_kw_only(checker: &Checker) {
     let module = OnceCell::new();
     require_options(checker, Rule::DataclassKwOnly, &["kw_only"], |decorated, missing| {
         let module = module.get_or_init(|| ModuleClasses::of(checker));
         let class = decorated.class;
-        let name = class.name.as_str();
+        let call_message = "positional arguments pass the fields by position";
         // The report names every positional call of the class, here and in other files; the fix needs all of them in
         // this file, since a rewrite does not reach another file.
         let mut related: Vec<Related> = positional_calls(checker.source, module, class)
             .into_iter()
-            .map(|range| Related { path: checker.path.to_path_buf(), range, message: CALL_MESSAGE.to_owned() })
+            .map(|range| Related { path: checker.path.to_path_buf(), range, message: call_message.to_owned() })
             .collect();
-        let calls = checker.project().calls().positional_calls(name);
+        let calls = checker.project().calls().positional_calls(class.name.as_str());
         // A call that suppresses this rule leaves the report, but still withholds the fix, which would pass that call
         // by keyword anyway, against the comment's wish.
         let others: Vec<&CallSite> = calls
@@ -41,7 +41,7 @@ pub fn dataclass_kw_only(checker: &Checker) {
         related.extend(others.iter().map(|site| Related {
             path: site.caller.clone(),
             range: TextRange::new(TextSize::new(site.start), TextSize::new(site.end)),
-            message: CALL_MESSAGE.to_owned(),
+            message: call_message.to_owned(),
         }));
         let note = match others.len() {
             0 => String::new(),
@@ -59,11 +59,67 @@ pub fn dataclass_kw_only(checker: &Checker) {
     });
 }
 
-// The message of each positional call a dataclass report points at.
-const CALL_MESSAGE: &str = "positional arguments pass the fields by position";
+// The module-level classes by name in source order, and every use of them in the module, found in one walk.
+struct ModuleClasses<'a> {
+    classes: FxHashMap<&'a str, Vec<&'a ast::StmtClassDef>>,
+    uses: FxHashMap<&'a str, Vec<Use<'a>>>,
+}
 
-// The calls in this module that pass the class fields by position: the class's own calls, and `cls(...)` in its
-// classmethods.
+impl<'a> ModuleClasses<'a> {
+    fn of(checker: &Checker<'a>) -> Self {
+        let mut classes: FxHashMap<&str, Vec<&ast::StmtClassDef>> = FxHashMap::default();
+        for class in checker.body().iter().filter_map(ast::Stmt::as_class_def_stmt) {
+            classes.entry(class.name.as_str()).or_default().push(class);
+        }
+        let mut references: FxHashMap<TextRange, &str> = classes
+            .keys()
+            .flat_map(|name| checker.semantic().references_to(name).iter().map(|reference| (reference.range, *name)))
+            .collect();
+        let mut strings = StringNames { source: checker.source, classes: &classes, found: Vec::new() };
+        strings.visit_body(checker.body());
+        references.extend(strings.found);
+        let mut walk =
+            Uses::new(|expr: &Expr| references.get(&expr.as_name_expr()?.range).copied()).with_source(checker.source);
+        walk.visit_body(checker.body());
+        let mut uses: FxHashMap<&str, Vec<Use>> = FxHashMap::default();
+        for (name, found) in walk.found {
+            uses.entry(name).or_default().push(found);
+        }
+        Self { classes, uses }
+    }
+}
+
+// The module-level class names a string annotation spells, with where each is. Ruff resolves no reference inside a
+// string annotation, so the names are matched by name, as the string is read as an expression of the module.
+struct StringNames<'c, 'a> {
+    source: &'c str,
+    classes: &'c FxHashMap<&'a str, Vec<&'a ast::StmtClassDef>>,
+    found: Vec<(TextRange, &'a str)>,
+}
+
+impl<'a> Visitor<'a> for StringNames<'_, 'a> {
+    fn visit_annotation(&mut self, annotation: &'a Expr) {
+        let mut strings = ExprCollector::new(|expr: &'a Expr| expr.as_string_literal_expr());
+        strings.visit_expr(annotation);
+        for literal in strings.found {
+            let Some(string) = literal.as_single_part_string() else {
+                continue;
+            };
+            let Ok(parsed) = parse_string_annotation(self.source, string) else {
+                continue;
+            };
+            let classes = self.classes;
+            let mut names = ExprCollector::new(|expr: &Expr| {
+                let name = expr.as_name_expr()?;
+                let (class, _) = classes.get_key_value(name.id.as_str())?;
+                Some((name.range, *class))
+            });
+            names.visit_expr(parsed.expr());
+            self.found.extend(names.found);
+        }
+    }
+}
+
 fn positional_calls(source: &str, module: &ModuleClasses, class: &ast::StmtClassDef) -> Vec<TextRange> {
     let module_uses = module.uses.get(class.name.as_str()).map_or(&[][..], Vec::as_slice);
     module_uses
@@ -116,67 +172,7 @@ fn keyword_calls(checker: &Checker, module: &ModuleClasses, class: &ast::StmtCla
     keep_debug_text(checker, edits)
 }
 
-// The module-level class names a string annotation spells, with where each is. Ruff resolves no reference to them, so
-// they are matched by name, as the string is read as an expression of the module.
-struct StringNames<'c, 'a> {
-    source: &'c str,
-    classes: &'c FxHashMap<&'a str, Vec<&'a ast::StmtClassDef>>,
-    found: Vec<(TextRange, &'a str)>,
-}
-
-impl<'a> Visitor<'a> for StringNames<'_, 'a> {
-    fn visit_annotation(&mut self, annotation: &'a Expr) {
-        let mut strings = ExprCollector::new(|expr: &'a Expr| expr.as_string_literal_expr());
-        strings.visit_expr(annotation);
-        for literal in strings.found {
-            let Some(string) = literal.as_single_part_string() else {
-                continue;
-            };
-            let Ok(parsed) = parse_string_annotation(self.source, string) else {
-                continue;
-            };
-            let classes = self.classes;
-            let mut names = ExprCollector::new(|expr: &Expr| {
-                let name = expr.as_name_expr()?;
-                let (class, _) = classes.get_key_value(name.id.as_str())?;
-                Some((name.range, *class))
-            });
-            names.visit_expr(parsed.expr());
-            self.found.extend(names.found);
-        }
-    }
-}
-
-// The module-level classes by name in source order, and every use of them in the module, found in one walk.
-struct ModuleClasses<'a> {
-    classes: FxHashMap<&'a str, Vec<&'a ast::StmtClassDef>>,
-    uses: FxHashMap<&'a str, Vec<Use<'a>>>,
-}
-
-impl<'a> ModuleClasses<'a> {
-    fn of(checker: &Checker<'a>) -> Self {
-        let mut classes: FxHashMap<&str, Vec<&ast::StmtClassDef>> = FxHashMap::default();
-        for class in checker.body().iter().filter_map(ast::Stmt::as_class_def_stmt) {
-            classes.entry(class.name.as_str()).or_default().push(class);
-        }
-        let semantic = checker.semantic();
-        let mut references: FxHashMap<TextRange, &str> = classes
-            .keys()
-            .flat_map(|name| semantic.references_to(name).iter().map(|reference| (reference.range, *name)))
-            .collect();
-        let mut strings = StringNames { source: checker.source, classes: &classes, found: Vec::new() };
-        strings.visit_body(checker.body());
-        references.extend(strings.found);
-        let mut walk =
-            Uses::new(|expr: &Expr| references.get(&expr.as_name_expr()?.range).copied()).with_source(checker.source);
-        walk.visit_body(checker.body());
-        let mut uses: FxHashMap<&str, Vec<Use>> = FxHashMap::default();
-        for (name, found) in walk.found {
-            uses.entry(name).or_default().push(found);
-        }
-        Self { classes, uses }
-    }
-
+impl ModuleClasses<'_> {
     fn is_module_level(&self, class: &ast::StmtClassDef) -> bool {
         self.classes
             .get(class.name.as_str())
@@ -184,7 +180,6 @@ impl<'a> ModuleClasses<'a> {
     }
 }
 
-// `type(self)(...)` and `self.__class__(...)` call the class without naming it.
 fn makes_own_instances(class: &ast::StmtClassDef) -> bool {
     let mut calls = ExprCollector::new(|expr: &Expr| {
         let func = &expr.as_call_expr()?.func;
@@ -196,7 +191,6 @@ fn makes_own_instances(class: &ast::StmtClassDef) -> bool {
     !calls.found.is_empty()
 }
 
-// The fields the class takes by position, following its bases while they are dataclasses of this module.
 fn positional_fields(checker: &Checker, module: &ModuleClasses, class: &ast::StmtClassDef) -> Option<Vec<String>> {
     let is_dataclass = |expr: &Expr| checker.semantic().resolves_to(expr, &["dataclasses", "dataclass"]);
     let decorator = dataclass_decorator(class, &is_dataclass)?;
@@ -214,8 +208,8 @@ fn keyword_edits(checker: &Checker, call: &ast::ExprCall, fields: &[String]) -> 
         _ if call.arguments.args.len() > fields.len() => return None,
         _ => {}
     }
-    // A `**` splat that passes one of the fields the call now names would repeat it, and one whose keys are unknown
-    // may pass any.
+    // A `**` splat that passes one of the fields the call now names would repeat it, and one whose keys are unknown may
+    // pass any.
     let named = &fields[..call.arguments.args.len()];
     if !named.is_empty()
         && splatted_options(checker, &call.arguments.keywords)

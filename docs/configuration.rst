@@ -10,7 +10,8 @@ simplint takes two kinds of settings:
     * - Settings
       - Where they come from
     * - Which files to check, which Python version to assume
-      - Ruff's configuration, found and merged exactly as ``ruff check`` finds it. See :ref:`settings-shared-with-ruff`.
+      - `Ruff <https://docs.astral.sh/ruff/>`__'s configuration, found and merged exactly as ``ruff check`` finds it.
+        See :ref:`settings-shared-with-ruff`.
     * - simplint's own settings
       - The ``[tool.simplint]`` table of
         `pyproject.toml <https://packaging.python.org/en/latest/specifications/pyproject-toml/>`__.
@@ -93,10 +94,10 @@ Choosing rules, suppressing a report and pairing with Ruff are tasks, covered by
 Editor support
 --------------
 
-``simplint.schema.json`` in the repository describes the ``[tool.simplint]`` table, so an editor that checks TOML against
-a JSON Schema flags unknown keys and wrong values as you type. Editors that read SchemaStore, such as VS Code with Even
-Better TOML or Tombi, apply it once SchemaStore lists it. Until then, no editor applies it to ``pyproject.toml`` on its
-own, because the schema describes the table, not the whole file.
+``simplint.schema.json`` in the repository describes the ``[tool.simplint]`` table, so an editor that checks TOML
+against a JSON Schema flags unknown keys and wrong values as you type. Editors that read SchemaStore, such as VS Code
+with Even Better TOML or Tombi, apply it once SchemaStore lists it. Until then, no editor applies it to
+``pyproject.toml`` on its own, because the schema describes the table, not the whole file.
 
 .. toctree::
    :hidden:
@@ -121,8 +122,8 @@ directory is the root of its project, so:
   when only another nested project uses it, and duplicate code is compared within the project alone, so the copies two
   nested projects make of one another are not reported;
 - its ``[tool.simplint]`` is the outer project's, unless a ``pyproject.toml`` at or below the directory has one;
-- its metadata and project kind are those of the project around it, unless a ``pyproject.toml`` at or below the directory
-  describes a project, which then decides as it does for any project;
+- its metadata and project kind are those of the project around it, unless a ``pyproject.toml`` at or below the
+  directory describes a project, which then decides as it does for any project;
 - its documentation is the ``.rst`` and ``.md`` pages under the directory, so a name they give is used within it, and
   the pages of the project around it do not reach it, and its pages do not reach the project around it;
 - a name the project around it reads, through an import, an attribute, a doctest or a dynamic load, is used within it,

@@ -4,8 +4,8 @@ use ruff_text_size::{Ranged, TextRange, TextSize};
 use crate::lint::checker::Checker;
 use crate::rules::docstrings::lines::{doc_lines, indent_width};
 
-// What a field documents, by its name: the info fields of Sphinx's Python domain and their aliases, and the `yields` and
-// `ytype` fields documentation tools accept for generators.
+// What a field documents, by its name: the info fields of Sphinx's Python domain and their aliases, and the `yields`
+// and `ytype` fields documentation tools accept for generators.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum FieldKind {
     Param,
@@ -21,30 +21,6 @@ pub(crate) enum FieldKind {
     Unknown,
 }
 
-// The kind of a field by its first word, and the name Sphinx reads it as when the word is an alias. `var`, `ivar` and
-// `cvar` have no name of their own: Sphinx renders them alike, yet `rst-attribute-kind` tells instance attributes from
-// class variables by them.
-fn field_name(word: &str) -> (FieldKind, Option<&'static str>) {
-    match word {
-        "param" => (FieldKind::Param, None),
-        "parameter" | "arg" | "argument" | "key" | "keyword" | "kwarg" | "kwparam" => (FieldKind::Param, Some("param")),
-        "type" => (FieldKind::Type, None),
-        "paramtype" => (FieldKind::Type, Some("type")),
-        "raises" => (FieldKind::Raises, None),
-        "raise" | "except" | "exception" => (FieldKind::Raises, Some("raises")),
-        "var" | "ivar" | "cvar" => (FieldKind::Var, None),
-        "vartype" => (FieldKind::VarType, None),
-        "returns" => (FieldKind::Returns, None),
-        "return" => (FieldKind::Returns, Some("returns")),
-        "rtype" => (FieldKind::ReturnType, None),
-        "yields" => (FieldKind::Yields, None),
-        "yield" => (FieldKind::Yields, Some("yields")),
-        "ytype" => (FieldKind::YieldType, None),
-        "meta" => (FieldKind::Meta, None),
-        _ => (FieldKind::Unknown, None),
-    }
-}
-
 // One field of a field list, as `:param int count: How many.` with the lines that continue it.
 pub(crate) struct Field {
     pub(crate) kind: FieldKind,
@@ -52,8 +28,8 @@ pub(crate) struct Field {
     pub(crate) words: Vec<String>,
     // The name an alias of the field stands for, such as `param` for `:arg:`.
     pub(crate) primary: Option<&'static str>,
-    // Where the field and its continuation lines sit in the source, whole lines with their line break, and where the text
-    // between its colons sits; `None` when escapes make the docstring's text differ from its source, or the field
+    // Where the field and its continuation lines sit in the source, whole lines with their line break, and where the
+    // text between its colons sits; `None` when escapes make the docstring's text differ from its source, or the field
     // shares the line of the opening quotes.
     pub(crate) lines: Option<TextRange>,
     pub(crate) marker: Option<TextRange>,
@@ -68,24 +44,7 @@ pub(crate) struct Field {
 }
 
 impl Field {
-    // The name a field documents, its last word without the `*` or `\*` of `*args`; `None` for a field of one word.
-    pub(crate) fn subject(&self) -> Option<&str> {
-        match self.words.as_slice() {
-            [_, .., last] => Some(last.trim_start_matches(['\\', '*'])),
-            _ => None,
-        }
-    }
-
-    pub(crate) fn text(&self) -> String {
-        format!(":{}:", self.words.join(" "))
-    }
-
-    // Where a report on the field points: its marker, or the whole docstring when the field has none.
-    pub(crate) fn range_in(&self, docstring: &Docstring) -> TextRange {
-        self.marker.unwrap_or_else(|| docstring.range())
-    }
-
-    // What is wrong with the field's name or its arguments, as Sphinx reads them; the other field rules wait for it.
+    // The problem with the field's name or arguments, as Sphinx reads them; rst-empty-field skips a field that has one.
     pub(crate) fn problem(&self) -> Option<String> {
         let text = self.text();
         let word = &self.words[0];
@@ -107,6 +66,22 @@ impl Field {
             }
             _ => None,
         }
+    }
+
+    pub(crate) fn text(&self) -> String {
+        format!(":{}:", self.words.join(" "))
+    }
+
+    // The name a field documents, its last word without the `*` or `\*` of `*args`; `None` for a field of one word.
+    pub(crate) fn subject(&self) -> Option<&str> {
+        match self.words.as_slice() {
+            [_, .., last] => Some(last.trim_start_matches(['\\', '*'])),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn range_in(&self, docstring: &Docstring) -> TextRange {
+        self.marker.unwrap_or_else(|| docstring.range())
     }
 }
 
@@ -147,20 +122,17 @@ impl<'a> Docstring<'a> {
         let mut open: Option<(usize, usize)> = None;
         let mut text_since_field = false;
         for (index, line) in lines.iter().enumerate() {
-            let content = line.text;
-            if content.is_empty() {
+            if line.text.is_empty() {
                 continue;
             }
             let level = line.indent;
-            let trimmed = content.trim_start();
+            let trimmed = line.text.trim_start();
             if level == base
                 && let Some(marker) = field_marker(trimmed)
             {
                 let words: Vec<String> = marker.split_whitespace().map(str::to_owned).collect();
                 let in_source = start.filter(|_| index > 0);
                 let description = trimmed[marker.len() + 2..].trim().to_owned();
-                let described = !description.is_empty();
-                let joins_text = index > 0 && open.is_none() && !lines[index - 1].text.is_empty();
                 let (kind, primary) = field_name(&words[0]);
                 fields.push(Field {
                     kind,
@@ -174,9 +146,9 @@ impl<'a> Docstring<'a> {
                         )
                     }),
                     after_text: text_since_field && !fields.is_empty(),
-                    described,
+                    described: !description.is_empty(),
                     description,
-                    joins_text,
+                    joins_text: index > 0 && open.is_none() && !lines[index - 1].text.is_empty(),
                 });
                 open = Some((fields.len() - 1, level));
                 text_since_field = false;
@@ -187,8 +159,8 @@ impl<'a> Docstring<'a> {
                 field.described = true;
                 field.description.push(' ');
                 field.description.push_str(trimmed);
-                if let (Some(start), Some(lines)) = (start, field.lines) {
-                    field.lines = Some(TextRange::new(lines.start(), start + line.start + TextSize::of(line.raw)));
+                if let (Some(start), Some(range)) = (start, field.lines) {
+                    field.lines = Some(TextRange::new(range.start(), start + line.start + TextSize::of(line.raw)));
                 }
                 continue;
             }
@@ -200,16 +172,15 @@ impl<'a> Docstring<'a> {
                 sections.push(section);
             }
         }
-        let commented = checker.trailing_comment(literal).is_some();
-        Self { literal, fields, sections, content, commented }
-    }
-
-    pub(crate) fn fields(&self, kinds: &[FieldKind]) -> impl Iterator<Item = &Field> {
-        self.fields.iter().filter(move |field| kinds.contains(&field.kind))
+        Self { literal, fields, sections, content, commented: checker.trailing_comment(literal).is_some() }
     }
 
     pub(crate) fn subjects(&self, kinds: &[FieldKind]) -> impl Iterator<Item = &str> {
         self.fields(kinds).filter_map(Field::subject)
+    }
+
+    pub(crate) fn fields(&self, kinds: &[FieldKind]) -> impl Iterator<Item = &Field> {
+        self.fields.iter().filter(move |field| kinds.contains(&field.kind))
     }
 
     pub(crate) fn has(&self, kind: FieldKind) -> bool {
@@ -221,7 +192,7 @@ impl<'a> Docstring<'a> {
     }
 }
 
-// The text between the colons of a field, as `param count` in `:param count: How many.`. A role such as `:class:`Name``
+// The text between the colons of a field, as `param count` in `:param count: How many.` A role such as `:class:`Name``
 // starting a line of prose has a backtick after its colon, not a space.
 pub(crate) fn field_marker(line: &str) -> Option<&str> {
     let rest = line.strip_prefix(':')?;
@@ -233,6 +204,48 @@ pub(crate) fn field_marker(line: &str) -> Option<&str> {
         && !marker.contains('`')
         && (after.is_empty() || after.starts_with(char::is_whitespace)))
     .then_some(marker)
+}
+
+// The kind of a field by its first word, and the name Sphinx reads it as when the word is an alias. `var`, `ivar` and
+// `cvar` have no name of their own: Sphinx renders them alike, yet `rst-attribute-kind` tells instance attributes from
+// class variables by them.
+fn field_name(word: &str) -> (FieldKind, Option<&'static str>) {
+    match word {
+        "param" => (FieldKind::Param, None),
+        "parameter" | "arg" | "argument" | "key" | "keyword" | "kwarg" | "kwparam" => (FieldKind::Param, Some("param")),
+        "type" => (FieldKind::Type, None),
+        "paramtype" => (FieldKind::Type, Some("type")),
+        "raises" => (FieldKind::Raises, None),
+        "raise" | "except" | "exception" => (FieldKind::Raises, Some("raises")),
+        "var" | "ivar" | "cvar" => (FieldKind::Var, None),
+        "vartype" => (FieldKind::VarType, None),
+        "returns" => (FieldKind::Returns, None),
+        "return" => (FieldKind::Returns, Some("returns")),
+        "rtype" => (FieldKind::ReturnType, None),
+        "yields" => (FieldKind::Yields, None),
+        "yield" => (FieldKind::Yields, Some("yields")),
+        "ytype" => (FieldKind::YieldType, None),
+        "meta" => (FieldKind::Meta, None),
+        _ => (FieldKind::Unknown, None),
+    }
+}
+
+// A Google section is `Args:` over indented lines; a numpydoc one is `Parameters` over a line of dashes.
+fn section(line: &str, next: Option<&str>, level: usize) -> Option<Section> {
+    let next = next.filter(|next| !next.is_empty())?;
+    let next_level = indent_width(next);
+    if let Some(heading) = line.strip_suffix(':').filter(|heading| is_section(heading))
+        && next_level > level
+    {
+        return Some(Section { heading: heading.to_owned(), numpy: false });
+    }
+    let underline = next.trim();
+    (is_section(line) && underline.len() >= 3 && underline.chars().all(|char| char == '-'))
+        .then(|| Section { heading: line.to_owned(), numpy: true })
+}
+
+fn is_section(heading: &str) -> bool {
+    heading == "Attributes" || SIGNATURE_SECTIONS.contains(&heading)
 }
 
 // The Google and numpydoc sections documenting a function's parameters and results.
@@ -250,21 +263,3 @@ pub(crate) const SIGNATURE_SECTIONS: &[&str] = &[
     "Yield",
     "Raises",
 ];
-
-fn is_section(heading: &str) -> bool {
-    heading == "Attributes" || SIGNATURE_SECTIONS.contains(&heading)
-}
-
-// `Args:` over indented lines, as Google style writes a section, or `Parameters` over a line of dashes, as numpydoc does.
-fn section(line: &str, next: Option<&str>, level: usize) -> Option<Section> {
-    let next = next.filter(|next| !next.is_empty())?;
-    let next_level = indent_width(next);
-    if let Some(heading) = line.strip_suffix(':').filter(|heading| is_section(heading))
-        && next_level > level
-    {
-        return Some(Section { heading: heading.to_owned(), numpy: false });
-    }
-    let underline = next.trim();
-    (is_section(line) && underline.len() >= 3 && underline.chars().all(|char| char == '-'))
-        .then(|| Section { heading: line.to_owned(), numpy: true })
-}

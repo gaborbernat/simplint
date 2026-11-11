@@ -27,8 +27,8 @@ pub fn long_docstring_paragraph(checker: &Checker) {
     }
 }
 
-// The paragraphs of `text` longer than `limit` words, each from its first line to the line that passes the limit. A
-// blank line ends a paragraph, and so does a doctest line, which is code rather than prose.
+// Each paragraph of `text` longer than `limit` words, from its first line to the line that passes the limit. A blank
+// line and a doctest line, which is code rather than prose, each end a paragraph.
 fn long_paragraphs_of(text: &str, start: TextSize, limit: usize) -> Vec<TextRange> {
     let mut offset = start;
     let lines = text.split_inclusive('\n').map(|line| {
@@ -38,7 +38,7 @@ fn long_paragraphs_of(text: &str, start: TextSize, limit: usize) -> Vec<TextRang
         if content.is_empty() || content.starts_with(">>>") || content.starts_with("...") {
             return None;
         }
-        let indent = TextSize::try_from(indent_width(line)).unwrap_or_default();
+        let indent = TextSize::of(&line[..indent_width(line)]);
         let range = TextRange::new(line_start + indent, line_start + indent + content.text_len());
         Some((range, content.split_whitespace().count()))
     });

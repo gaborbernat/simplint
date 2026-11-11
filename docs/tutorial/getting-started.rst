@@ -4,9 +4,9 @@ Getting started
 Install
 =======
 
-simplint ships as a single binary inside a Python wheel, like Ruff, so it needs no Python at runtime. Install it as a
-tool with `uv <https://docs.astral.sh/uv/concepts/tools/>`__ or `pipx <https://pipx.pypa.io/stable/>`__, which keeps it
-apart from the project it lints.
+simplint ships as a single binary inside a Python wheel, like `Ruff <https://docs.astral.sh/ruff/>`__, so it needs no
+Python at runtime. Install it as a tool with `uv <https://docs.astral.sh/uv/concepts/tools/>`__ or `pipx
+<https://pipx.pypa.io/stable/>`__, which keeps it apart from the project it lints.
 
 .. tab:: uv
 

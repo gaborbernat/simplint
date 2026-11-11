@@ -1,5 +1,4 @@
-Flags `__init__.py` files that hold code beyond a module docstring and deliberate API re-exports. Importing any
-submodule runs the package's `__init__.py` first, so code there can slow down or break unrelated modules.
+Flags `__init__.py` files that hold code beyond a module docstring and deliberate API re-exports.
 
 ## Why is this bad?
 
@@ -19,6 +18,8 @@ class Client:
 """HTTP client."""
 
 from .client import Client
+
+DEFAULT = Client()
 ```
 
 Use instead:
@@ -64,10 +65,12 @@ it belongs.
   """HTTP client."""
 
   from .client import Client
+
+  DEFAULT = Client()
   ```
 
-- **Other statements in a public package of a library**: anything beyond the re-exports listed under Exceptions is
-  reported there too.
+- **Other statements in a public package of a library**: an import beyond the re-exports listed under Exceptions, and a
+  dunder assignment, are reported there too. The other statements are left to RUF067, see Exceptions.
 
   - an import of a name it does not export:
 
@@ -87,9 +90,11 @@ it belongs.
     from ._core import stop as stop
 
     __all__ = ["stop"]
+
+    DEFAULT = run
     ```
 
-  - any other statement, such as an assignment:
+  - a dunder assignment, such as `__version__`, which Ruff's RUF067 allows:
 
     ```toml config
     [build-system]
@@ -103,7 +108,7 @@ it belongs.
     ```python report file=demo/__init__.py
     """HTTP client."""
 
-    VERSION = "1.0"
+    __version__ = "1.0"
     ```
 
 ### Exceptions
@@ -213,16 +218,21 @@ it belongs.
     __all__ = ["run"]
     ```
 
-- **Statements Ruff reports**: with Ruff's preview mode on and
-  [RUF067](https://docs.astral.sh/ruff/rules/non-empty-init-module/) selected, Ruff reports the statements of an
-  `__init__.py` that it does not allow, so this rule leaves them to Ruff. Ruff allows imports, dunder assignments and
-  `if TYPE_CHECKING` blocks, unless `strictly-empty-init-modules` is set.
+- **Unused imports**: [F401](https://docs.astral.sh/ruff/rules/unused-import/) reports an import that nothing reads, so
+  this rule does not report it, whether or not the run selects F401. A statement keeps its report when one of its names
+  is not one F401 reports, such as a name that a string Ruff reads as a type expression spells, a star import, or a
+  redundant alias that the package does not expose.
 
-  ```toml config
-  [tool.ruff.lint]
-  preview = true
-  select = ["RUF067"]
+  ```python ok file=pkg/__init__.py
+  """HTTP client."""
+
+  from .client import Client
   ```
+
+- **Statements Ruff reports**: [RUF067](https://docs.astral.sh/ruff/rules/non-empty-init-module/) reports the statements
+  of an `__init__.py` that it does not allow, so this rule does not report them, whether or not the run selects RUF067
+  or Ruff's preview mode is on. Ruff allows imports, dunder assignments and `if TYPE_CHECKING` blocks, unless
+  `strictly-empty-init-modules` is set.
 
   ```python ok file=pkg/__init__.py
   """HTTP client."""
@@ -237,7 +247,7 @@ see [undocumented-public-api](SMP903.html).
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rule
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of rule
   [RUF067](https://docs.astral.sh/ruff/rules/non-empty-init-module/), which reports code in `__init__.py` except imports
   and dunder assignments (all of it with `strictly-empty-init-modules`) and which this rule leaves to it; this rule also
   reports the imports a library's public package does not re-export.

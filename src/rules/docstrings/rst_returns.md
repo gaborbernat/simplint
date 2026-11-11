@@ -1,6 +1,4 @@
-Flags missing, extraneous and misused `:returns:` and `:yields:` fields in reStructuredText docstrings. What a function
-hands back is half of its contract, so a missing field leaves it unsaid and a wrong one describes a value no caller
-receives.
+Flags missing, extraneous and misused `:returns:` and `:yields:` fields in reStructuredText docstrings.
 
 ## Why is this bad?
 
@@ -41,8 +39,7 @@ def total(values: list[int]) -> int:
 Ruff's [docstring-missing-returns](https://docs.astral.sh/ruff/rules/docstring-missing-returns/) and
 [docstring-missing-yields](https://docs.astral.sh/ruff/rules/docstring-missing-yields/) read Google and numpydoc
 sections only, so they report the `:returns:` and `:yields:` fields this rule asks for as missing sections. simplint
-stops with an error before linting while either applies to a file this rule checks; turn them off in Ruff, or turn this
-rule off.
+stops with an error when either applies to the same file, so turn the Ruff rules off, or this one.
 
 ## Configuration
 

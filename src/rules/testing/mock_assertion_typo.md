@@ -99,21 +99,15 @@ Reports an attribute, read or called, whose name is one of these:
           mock.called_once()
   ```
 
-- **Names that Ruff's PGH005 reports**: [PGH005](https://docs.astral.sh/ruff/rules/invalid-mock-access/) reports these
-  names, so this rule leaves them to Ruff only when the project's Ruff configuration selects PGH005. With Ruff's preview
-  mode off, the test of an `assert` is the only place, bare or called. With preview on, a name on a line of its own is
-  one too. The set follows the project's preview setting. The operand of a `not` or `and`, or a comparison, is not
-  checked by Ruff, so this rule still reports a name there.
-
-  ```toml config
-  [tool.ruff.lint]
-  select = ["PGH005"]
-  ```
+- **Names that Ruff's PGH005 reports and this rule cannot fix**:
+  [PGH005](https://docs.astral.sh/ruff/rules/invalid-mock-access/) reports these names in the test of an `assert` and on
+  a line of their own, bare or called, so this rule leaves them to Ruff when it has no fix for them. The operand of a
+  `not` or `and`, or a comparison, is not checked by Ruff, so this rule still reports a name there.
 
   ```python ok
   def test_save(save: MagicMock) -> None:
       run_save()
-      assert save.not_called()
+      assert save.not_called
   ```
 
 ### Fix
@@ -136,11 +130,6 @@ def test_save(save: MagicMock) -> None:
 An assertion method returns `None`, so when the call is the whole test of an `assert` without a message, the fix drops
 the `assert` and any parentheses around the call.
 
-```toml config
-[tool.ruff.lint]
-select = []
-```
-
 ```python report
 def test_save(save: MagicMock) -> None:
     run_save()
@@ -155,11 +144,6 @@ def test_save(save: MagicMock) -> None:
     # fmt: off
     save.assert_not_called()
     # fmt: on
-```
-
-```toml config
-[tool.ruff.lint]
-select = []
 ```
 
 ```python report
@@ -184,22 +168,10 @@ def test_save(save: MagicMock) -> None:
 ```
 
 A comment in the text the fix drops, such as one inside the parentheses of the test, keeps the call unfixed, so the
-comment is not lost. A comment inside the call does not block the fix.
+comment is not lost. PGH005 reports such a name without a fix, so this rule leaves it to Ruff. A comment inside the call
+does not block the fix.
 
-```toml config
-[tool.ruff.lint]
-select = []
-```
-
-```python report
-def test_save(save: MagicMock) -> None:
-    run_save()
-    assert (  # the writer must be reached exactly once
-        save.called_once_with("out.json")
-    )
-```
-
-```python fixed
+```python ok
 def test_save(save: MagicMock) -> None:
     run_save()
     assert (  # the writer must be reached exactly once
@@ -209,12 +181,11 @@ def test_save(save: MagicMock) -> None:
 
 ## Ruff overlap
 
-There is no overlap. Ruff's [invalid-mock-access](https://docs.astral.sh/ruff/rules/invalid-mock-access/) (PGH005)
-reports the prefix-less assertion names in the test of an `assert`, bare or called, such as `assert mock.not_called()`,
-and with Ruff's preview mode on, also those names on a line of their own. This rule follows the same preview setting: it
-leaves those names to Ruff only when the project's Ruff configuration selects PGH005, and reports the rest, which are
-operands of `not` and `and`, comparisons, names in call arguments, and every misspelling, since Ruff does not report
-those. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are respected too.
+Ruff's [invalid-mock-access](https://docs.astral.sh/ruff/rules/invalid-mock-access/) (PGH005) reports the prefix-less
+assertion names in the test of an `assert`, bare or called, such as `assert mock.not_called()`, and the names on a line
+of their own. This rule leaves those names to Ruff when it has no fix for them, and reports the rest: the names it can
+rename, such as `assert mock.called_once_with()`, since PGH005 offers no fix, the operands of `not` and `and`,
+comparisons, names in call arguments, and every misspelling, which Ruff does not report.
 
 ## Other tools
 

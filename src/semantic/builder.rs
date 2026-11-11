@@ -6,7 +6,7 @@ use std::path::Path;
 
 use ruff_linter::rules::flake8_type_checking::settings::RuntimeSemantics;
 use ruff_linter::settings::LinterSettings;
-use ruff_python_ast::helpers::collect_import_from_member;
+use ruff_python_ast::helpers::{collect_import_from_member, is_dunder};
 use ruff_python_ast::identifier::Identifier;
 use ruff_python_ast::name::QualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
@@ -16,8 +16,8 @@ use ruff_python_ast::{
 };
 use ruff_python_semantic::analyze::typing::is_type_checking_block;
 use ruff_python_semantic::{
-    BindingFlags, BindingKind, FromImport, GeneratorKind, Import, Module, ModuleKind, ModuleSource, ScopeId, ScopeKind,
-    SemanticModel, SemanticModelFlags, Snapshot, StarImport, SubmoduleImport,
+    Binding, BindingFlags, BindingKind, FromImport, GeneratorKind, Import, Imported, Module, ModuleKind, ModuleSource,
+    ResolvedReference, ScopeId, ScopeKind, SemanticModel, SemanticModelFlags, Snapshot, StarImport, SubmoduleImport,
 };
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::FxHashSet;
@@ -27,25 +27,28 @@ use super::append::is_list_append;
 use super::django::unordered_model_statements;
 use super::runtime::Runtime;
 use crate::semantic::future_import;
-use crate::syntax::{pattern_capture, signature_annotations};
+use crate::syntax::{export_names, pattern_capture, signature_annotations, type_string_words};
 
-pub struct Model<'a> {
-    pub semantic: SemanticModel<'a>,
-    pub loads: Vec<(&'a ast::ExprName, Snapshot)>,
+pub(super) struct Model<'a> {
+    pub(super) semantic: SemanticModel<'a>,
+    pub(super) loads: Vec<(&'a ast::ExprName, Snapshot)>,
     // The model at module level once every top-level statement ran.
-    pub module: Snapshot,
-    pub annotations_are_lazy: bool,
-    pub django_reports: FxHashSet<TextRange>,
-    pub list_appends: FxHashSet<TextRange>,
-    pub type_checking_stubs: FxHashSet<TextRange>,
-    pub comprehensions: Vec<(TextRange, TextRange)>,
+    pub(super) module: Snapshot,
+    pub(super) annotations_are_lazy: bool,
+    pub(super) django_reports: FxHashSet<TextRange>,
+    pub(super) list_appends: FxHashSet<TextRange>,
+    pub(super) type_checking_stubs: FxHashSet<TextRange>,
+    pub(super) module_stores: FxHashSet<TextRange>,
+    pub(super) comprehensions: Vec<(TextRange, TextRange)>,
+    pub(super) private_imports: FxHashSet<TextRange>,
 }
 
-pub fn build<'a>(
+pub(super) fn build<'a>(
     path: &'a Path,
     body: &'a [Stmt],
     target_version: PythonVersion,
     settings: &'a LinterSettings,
+    package: Option<&'a Path>,
     matches: RuffMatches,
 ) -> Model<'a> {
     let module = Module {
@@ -65,12 +68,18 @@ pub fn build<'a>(
         django_reports: FxHashSet::default(),
         list_appends: FxHashSet::default(),
         type_checking_stubs: FxHashSet::default(),
+        module_stores: FxHashSet::default(),
         comprehensions: Vec::new(),
     };
     builder.visit_body(body);
     let module = builder.semantic.snapshot();
     let annotations_are_lazy = builder.annotations_are_lazy();
     builder.visit_deferred();
+    let private_imports = if builder.matches.private_imports {
+        private_import_reports(&builder.semantic, body, package, &settings.pyflakes.extend_generics)
+    } else {
+        FxHashSet::default()
+    };
     Model {
         semantic: builder.semantic,
         loads: builder.loads,
@@ -79,8 +88,74 @@ pub fn build<'a>(
         django_reports: builder.django_reports,
         list_appends: builder.list_appends,
         type_checking_stubs: builder.type_checking_stubs,
+        module_stores: builder.module_stores,
         comprehensions: builder.comprehensions,
+        private_imports,
     }
+}
+
+// Ported from Ruff's PLC2701 (crates/ruff_linter/src/rules/pylint/rules/import_private_name.rs, MIT), which reads the
+// bindings of each module and function scope once their references resolve. Keyed by the range of the name a binding
+// makes, which is the alias of its import.
+fn private_import_reports(
+    semantic: &SemanticModel,
+    body: &[Stmt],
+    package: Option<&Path>,
+    extend_generics: &[String],
+) -> FxHashSet<TextRange> {
+    let exports = export_names(body);
+    let words = type_string_words(body, extend_generics);
+    semantic
+        .scopes
+        .iter()
+        .filter(|scope| matches!(scope.kind, ScopeKind::Function(_) | ScopeKind::Module))
+        .flat_map(ruff_python_semantic::Scope::bindings)
+        .filter(|&(name, binding_id)| {
+            is_private_import(semantic, semantic.binding(binding_id), name, package, &exports, &words)
+        })
+        .map(|(_, binding_id)| semantic.binding(binding_id).range)
+        .collect()
+}
+
+fn is_private_import(
+    semantic: &SemanticModel,
+    binding: &Binding,
+    name: &str,
+    package: Option<&Path>,
+    exports: &FxHashSet<&str>,
+    words: &FxHashSet<&str>,
+) -> bool {
+    let Some(import) = binding.as_any_import().filter(|import| !import.is_submodule_import()) else {
+        return false;
+    };
+    if import.module_name().starts_with(&["."]) {
+        return false;
+    }
+    let segments = import.qualified_name().segments();
+    let root_module = segments[0];
+    if is_dunder(root_module) || is_dunder(&import.member_name()) {
+        return false;
+    }
+    if package.is_some_and(|path| path.ends_with(root_module)) {
+        return false;
+    }
+    if !segments.iter().any(|name| name.starts_with('_') && !is_dunder(name)) || matches!(segments, ["os", "_exit"]) {
+        return false;
+    }
+    // Ruff marks a module-level name that `__all__` lists as used at runtime.
+    if binding.scope == ScopeId::global() && exports.contains(name) {
+        return true;
+    }
+    // Ruff resolves the names a string type expression spells, which this model does not, so the string may be
+    // the only use of the import.
+    if words.contains(name) {
+        return false;
+    }
+    binding.references().next().is_none() || binding.references().any(|id| !is_typing_only(semantic.reference(id)))
+}
+
+fn is_typing_only(reference: &ResolvedReference) -> bool {
+    reference.in_typing_context() || reference.in_runtime_evaluated_annotation()
 }
 
 struct Builder<'a> {
@@ -94,69 +169,25 @@ struct Builder<'a> {
     django_reports: FxHashSet<TextRange>,
     list_appends: FxHashSet<TextRange>,
     type_checking_stubs: FxHashSet<TextRange>,
+    module_stores: FxHashSet<TextRange>,
     comprehensions: Vec<(TextRange, TextRange)>,
-}
-
-impl Builder<'_> {
-    // The appends on a list that Ruff's FURB113 matches, recorded where the scope reads as Ruff reads it.
-    fn note_list_append(&mut self, stmt: &Stmt) {
-        if self.matches.list_appends && is_list_append(&self.semantic, stmt) {
-            self.list_appends.insert(stmt.range());
-        }
-    }
 }
 
 impl<'a> Visitor<'a> for Builder<'a> {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
         self.semantic.push_node(stmt);
-        self.note_list_append(stmt);
+        if self.matches.list_appends && is_list_append(&self.semantic, stmt) {
+            self.list_appends.insert(stmt.range());
+        }
         if let Some(import) = future_import(stmt)
             && !import.is_lazy
             && import.names.iter().any(|alias| alias.name.as_str() == "annotations")
         {
             self.semantic.flags |= SemanticModelFlags::FUTURE_ANNOTATIONS;
         }
-        let flags = self.semantic.flags;
         match stmt {
-            Stmt::Import(ast::StmtImport { names, .. }) => {
-                for alias in names {
-                    self.semantic.add_module(alias.name.split_once('.').map_or(alias.name.as_str(), |(top, _)| top));
-                    let qualified_name = Box::new(QualifiedName::user_defined(&alias.name));
-                    match (&alias.asname, alias.name.split_once('.')) {
-                        (None, Some((module, _))) => {
-                            let kind = BindingKind::SubmoduleImport(SubmoduleImport { qualified_name });
-                            self.add_binding(module, alias.identifier(), kind);
-                        }
-                        (asname, _) => {
-                            let name = asname.as_ref().unwrap_or(&alias.name);
-                            self.add_binding(name, alias.identifier(), BindingKind::Import(Import { qualified_name }));
-                        }
-                    }
-                }
-            }
-            Stmt::ImportFrom(ast::StmtImportFrom { names, module, level, is_lazy, .. }) => {
-                let module = module.as_deref();
-                if *level == 0
-                    && let Some(module) = module
-                {
-                    self.semantic.add_module(module.split_once('.').map_or(module, |(top, _)| top));
-                }
-                for alias in names {
-                    let name = alias.asname.as_ref().unwrap_or(&alias.name);
-                    if !is_lazy && module == Some("__future__") {
-                        self.add_binding(name, alias.identifier(), BindingKind::FutureImport);
-                    } else if &alias.name == "*" {
-                        self.semantic.current_scope_mut().add_star_import(StarImport { level: *level, module });
-                    } else {
-                        let qualified_name = Box::new(collect_import_from_member(*level, module, &alias.name));
-                        self.add_binding(
-                            name,
-                            alias.identifier(),
-                            BindingKind::FromImport(FromImport { qualified_name }),
-                        );
-                    }
-                }
-            }
+            Stmt::Import(import) => self.bind_import(import),
+            Stmt::ImportFrom(import) => self.bind_import_from(import),
             Stmt::Global(ast::StmtGlobal { names, .. }) if !self.semantic.scope_id.is_global() => {
                 for name in names {
                     let global = self.semantic.global_binding(name);
@@ -173,6 +204,7 @@ impl<'a> Visitor<'a> for Builder<'a> {
             }
             _ => {}
         }
+        let flags = self.semantic.flags;
         match stmt {
             Stmt::FunctionDef(function_def) => self.visit_function_def(stmt, function_def),
             Stmt::ClassDef(class_def) => {
@@ -297,6 +329,9 @@ impl<'a> Visitor<'a> for Builder<'a> {
     fn visit_pattern(&mut self, pattern: &'a Pattern) {
         if let Some(name) = pattern_capture(pattern) {
             self.add_binding(name, name.range(), BindingKind::Assignment);
+            if self.semantic.current_scope().kind.is_module() {
+                self.module_stores.insert(name.range());
+            }
         }
         visitor::walk_pattern(self, pattern);
     }
@@ -312,6 +347,54 @@ impl<'a> Visitor<'a> for Builder<'a> {
 }
 
 impl<'a> Builder<'a> {
+    fn bind_import(&mut self, import: &'a ast::StmtImport) {
+        for alias in &import.names {
+            self.semantic.add_module(alias.name.split_once('.').map_or(alias.name.as_str(), |(top, _)| top));
+            let qualified_name = Box::new(QualifiedName::user_defined(&alias.name));
+            match (&alias.asname, alias.name.split_once('.')) {
+                (None, Some((module, _))) => {
+                    let kind = BindingKind::SubmoduleImport(SubmoduleImport { qualified_name });
+                    self.add_binding(module, alias.identifier(), kind);
+                }
+                (asname, _) => {
+                    let name = asname.as_ref().unwrap_or(&alias.name);
+                    self.add_flagged_binding(
+                        name,
+                        alias.identifier(),
+                        BindingKind::Import(Import { qualified_name }),
+                        alias_flags(alias),
+                    );
+                }
+            }
+        }
+    }
+
+    fn bind_import_from(&mut self, import: &'a ast::StmtImportFrom) {
+        let ast::StmtImportFrom { names, module, level, is_lazy, .. } = import;
+        let module = module.as_deref();
+        if *level == 0
+            && let Some(module) = module
+        {
+            self.semantic.add_module(module.split_once('.').map_or(module, |(top, _)| top));
+        }
+        for alias in names {
+            let name = alias.asname.as_ref().unwrap_or(&alias.name);
+            if !is_lazy && module == Some("__future__") {
+                self.add_binding(name, alias.identifier(), BindingKind::FutureImport);
+            } else if &alias.name == "*" {
+                self.semantic.current_scope_mut().add_star_import(StarImport { level: *level, module });
+            } else {
+                let qualified_name = Box::new(collect_import_from_member(*level, module, &alias.name));
+                self.add_flagged_binding(
+                    name,
+                    alias.identifier(),
+                    BindingKind::FromImport(FromImport { qualified_name }),
+                    alias_flags(alias),
+                );
+            }
+        }
+    }
+
     fn visit_type_alias(&mut self, type_alias: &'a ast::StmtTypeAlias) {
         let ast::StmtTypeAlias { name, type_params, value, .. } = type_alias;
         self.semantic.push_scope(ScopeKind::Type);
@@ -447,6 +530,10 @@ impl<'a> Builder<'a> {
     }
 
     fn add_binding(&mut self, name: &'a str, range: TextRange, kind: BindingKind<'a>) {
+        self.add_flagged_binding(name, range, kind, BindingFlags::empty());
+    }
+
+    fn add_flagged_binding(&mut self, name: &'a str, range: TextRange, kind: BindingKind<'a>, flags: BindingFlags) {
         // PEP 572: a named expression in a comprehension binds in the scope that contains the outermost comprehension.
         let scope_id = if kind.is_named_expr_assignment() {
             self.semantic
@@ -457,8 +544,9 @@ impl<'a> Builder<'a> {
         } else {
             self.semantic.scope_id
         };
-        let binding_id = self.semantic.push_binding(name, range, kind, BindingFlags::empty());
-        // A later annotation of a bound name leaves its value alone, so it annotates the binding instead of shadowing it.
+        let binding_id = self.semantic.push_binding(name, range, kind, flags);
+        // A later annotation of a bound name leaves its value alone, so it annotates the binding instead of shadowing
+        // it.
         if let Some(shadowed_id) = self.semantic.scopes[scope_id].get(name)
             && self.semantic.binding(binding_id).kind.is_annotation()
         {
@@ -488,6 +576,9 @@ impl<'a> Builder<'a> {
         {
             self.type_checking_stubs.insert(name.range);
         }
+        if self.semantic.current_scope().kind.is_module() {
+            self.module_stores.insert(name.range);
+        }
         self.add_binding(&name.id, name.range, kind);
     }
 
@@ -496,5 +587,14 @@ impl<'a> Builder<'a> {
         self.semantic.resolve_del(&name.id, name.range);
         let binding_id = self.semantic.push_binding(&name.id, name.range, BindingKind::Deletion, BindingFlags::empty());
         self.semantic.current_scope_mut().add(&name.id, binding_id);
+    }
+}
+
+// The flags Ruff gives an import: `ALIAS` for an `as` name, and `EXPLICIT_EXPORT` for a redundant one, as `x as x`.
+fn alias_flags(alias: &ast::Alias) -> BindingFlags {
+    match &alias.asname {
+        Some(asname) if asname.as_str() == alias.name.as_str() => BindingFlags::ALIAS | BindingFlags::EXPLICIT_EXPORT,
+        Some(_) => BindingFlags::ALIAS,
+        None => BindingFlags::empty(),
     }
 }

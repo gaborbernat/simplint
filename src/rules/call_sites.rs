@@ -45,7 +45,6 @@ fn eligible(checker: &Checker, function: &ast::StmtFunctionDef) -> bool {
         && !checker.state().public_api(checker).covers(function.range(), Need::Any)
 }
 
-// The uses of each candidate method of a class by its name, whether through `self`, found in one walk of the class.
 pub(crate) fn method_uses<'a>(
     checker: &Checker<'a>,
     class: &'a ast::StmtClassDef,
@@ -93,7 +92,6 @@ pub(crate) fn judges_call_sites(checker: &Checker) -> bool {
     !(checker.is_test_module() || project.calls().is_test_support() || project.is_star_import_source())
 }
 
-// How this module calls its own functions: the uses of each by name, and where those calls sit.
 pub(crate) struct OwnCalls<'a> {
     uses: FxHashMap<&'a str, Vec<Use<'a>>>,
     contexts: CallContexts,
@@ -107,8 +105,6 @@ impl<'a> OwnCalls<'a> {
         }
     }
 
-    // The calls a module-level function of this module gets: the calls other files make through the index, and the
-    // calls this module makes, which are production code.
     pub(crate) fn function(&self, checker: &Checker, name: &str) -> CallSites {
         let mut sites = checker.project().calls().call_sites(name).cloned().unwrap_or_default();
         self.add(&mut sites, self.uses.get(name).map_or(&[][..], Vec::as_slice));

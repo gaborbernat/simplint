@@ -15,8 +15,7 @@ use ruff_python_parser::parse_unchecked_source;
 
 const MAX_ITERATIONS: usize = 100;
 
-// A bug one of simplint's fixes hit. The fix loop drops a withdrawal candidate that hits one, so it is reported only
-// once the loop gives up on the file.
+// The fix loop drops a withdrawal candidate that hits one, so it is reported only once the loop gives up on the file.
 #[derive(Debug)]
 pub enum FixBug {
     BrokenSyntax { transformed: String, rules: String, error: String },
@@ -51,7 +50,6 @@ impl fmt::Display for FixBug {
 
 impl std::error::Error for FixBug {}
 
-// Fails with the message of the syntax error a fix introduced, if `introduced` names one.
 pub fn ensure_syntax(transformed: &str, fixed: &FixTable, introduced: Result<(), String>) -> Result<(), FixBug> {
     introduced.map_err(|error| FixBug::BrokenSyntax {
         transformed: transformed.to_owned(),
@@ -74,7 +72,6 @@ pub fn ruff_broken_syntax(path: &Path, transformed: &str, fixed: &FixTable) -> E
     anyhow!("Fix introduced a syntax error")
 }
 
-// Whether Ruff's fixes went on for too many passes, reported as Ruff's `lint_fix` does.
 pub fn ruff_failed_to_converge(path: &Path, iterations: usize, transformed: &str, diagnostics: &[Diagnostic]) -> bool {
     if iterations < MAX_ITERATIONS {
         return false;
@@ -82,7 +79,8 @@ pub fn ruff_failed_to_converge(path: &Path, iterations: usize, transformed: &str
     let rules = codes(diagnostics.iter().map(Diagnostic::secondary_code_or_id));
     if cfg!(debug_assertions) {
         eprintln!(
-            "{}{} Failed to converge after {MAX_ITERATIONS} iterations in `{}` with rule codes {rules}:---\n{transformed}\n---",
+            "{}{} Failed to converge after {MAX_ITERATIONS} iterations in `{}` with rule codes {rules}:---\n\
+            {transformed}\n---",
             "debug error".red().bold(),
             ":".bold(),
             relativize_path(path),

@@ -16,7 +16,8 @@ What to know about the hook:
 
 - It runs ``simplint check --fix`` on the **whole project** rather than on the changed files, because several rules
   need to know which names other modules import.
-- List it after Ruff's ``ruff-check`` hook and before its ``ruff-format`` hook, the order shown in the :doc:`tutorial </tutorial/getting-started>`.
+- List it after `Ruff <https://docs.astral.sh/ruff/>`__'s ``ruff-check`` hook and before its ``ruff-format`` hook, the
+  order shown in the :doc:`tutorial </tutorial/getting-started>`.
 - The mirror installs the wheel from `PyPI <https://pypi.org/project/simplint>`__, so it needs no Rust toolchain and
   runs on `pre-commit.ci <https://pre-commit.ci>`__.
 - The mirror gets a tag for each release minutes after it reaches PyPI.

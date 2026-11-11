@@ -31,10 +31,9 @@ pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
     );
 }
 
-// The fix covers the call the class is in: `Str(s=...)` builds a constant, and `isinstance(name, Str)` tests one.
 fn fix(walker: &Walker, expr: &Expr, attribute: &ast::ExprAttribute, class: &str) -> Option<Fix> {
-    let checker = walker.checker;
     let call = walker.expression_parent()?.as_call_expr()?;
+    let checker = walker.checker;
     if checker.has_comment_in(call.range()) {
         return None;
     }
@@ -57,8 +56,7 @@ fn fix(walker: &Walker, expr: &Expr, attribute: &ast::ExprAttribute, class: &str
         "Bytes" => "bytes",
         _ => return None,
     };
-    let is_test = call.func.as_name_expr().is_some_and(|name| name.id.as_str() == "isinstance");
-    if !is_test
+    if call.func.as_name_expr().is_none_or(|name| name.id.as_str() != "isinstance")
         || !checker.semantic().is_free_at("isinstance", call.range())
         || call.arguments.args.len() != 2
         || !call.arguments.keywords.is_empty()
@@ -72,7 +70,6 @@ fn fix(walker: &Walker, expr: &Expr, attribute: &ast::ExprAttribute, class: &str
     Some(Fix::safe_edit(Edit::range_replacement(replacement, call.range())))
 }
 
-// The keyword that holds the value of each class, which `ast.Constant` takes as `value`.
 fn value_keyword(class: &str) -> Option<&'static str> {
     match class {
         "Num" => Some("n"),
@@ -89,18 +86,17 @@ pub fn statement<'a>(walker: &mut Walker<'_, 'a>, stmt: &'a Stmt) {
     let Some(Scope::Class(class)) = walker.scopes().last() else {
         return;
     };
-    let checker = walker.checker;
     let Some(name) = function.name.as_str().strip_prefix("visit_").filter(|name| REMOVED.contains(name)) else {
         return;
     };
+    let checker = walker.checker;
     let semantic = checker.semantic();
-    let visitor = class.arguments.as_deref().is_some_and(|arguments| {
+    if class.arguments.as_deref().is_some_and(|arguments| {
         arguments.args.iter().any(|base| {
             semantic.resolves_to(base, &["ast", "NodeVisitor"])
                 || semantic.resolves_to(base, &["ast", "NodeTransformer"])
         })
-    });
-    if visitor {
+    }) {
         checker.report(
             Rule::RemovedAstNode,
             function.name.range(),

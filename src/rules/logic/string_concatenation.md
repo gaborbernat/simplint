@@ -1,5 +1,5 @@
-Flags `+` chains that join a string literal or f-string with other values. An f-string shows the final text in one
-piece, where a `+` chain scatters it across quotes and operators.
+Flags `+` chains that join a string literal or f-string with other values. An f-string builds the same text in a single
+expression, without `+`.
 
 ## Why is this bad?
 
@@ -67,13 +67,9 @@ message = f"Hello, {name}!"
   ```
 
 - **The message of a logging call**, such as `logger.info("Hello, " + name)`: Ruff's
-  [logging-string-concat](https://docs.astral.sh/ruff/rules/logging-string-concat/) reports it while the project's Ruff
-  configuration selects it, so this rule leaves it to Ruff.
-
-  ```toml config
-  [tool.ruff.lint]
-  select = ["G003"]
-  ```
+  [logging-string-concat](https://docs.astral.sh/ruff/rules/logging-string-concat/) reports it, so this rule leaves it
+  to Ruff. Its f-string fix would only trade that report for Ruff's
+  [logging-f-string](https://docs.astral.sh/ruff/rules/logging-f-string/) (G004).
 
   ```python ok
   import logging
@@ -86,9 +82,12 @@ message = f"Hello, {name}!"
   ```
 
 - **Two literals joined by `+` across lines**, such as `("Hello, "` followed by `+ "world")`: Ruff's
-  [explicit-string-concatenation](https://docs.astral.sh/ruff/rules/explicit-string-concatenation/) reports it while the
-  project's Ruff configuration selects it and `allow-multiline` is on, so this rule leaves it to Ruff. A longer chain
-  that starts with such a pair is left to Ruff as well, since both would report the same spot.
+  [explicit-string-concatenation](https://docs.astral.sh/ruff/rules/explicit-string-concatenation/) reports it when
+  `allow-multiline` is on, so this rule leaves it to Ruff while the project's Ruff configuration selects ISC003. Without
+  it, this rule reports the pair: `ruff format` joins the lines when they fit on one, where ISC003 no longer reports it,
+  and the next run would bring it back here. A longer chain that starts with such a pair is left to Ruff as well, since
+  both would report the same spot. Ruff gives no fix to a pair with a parenthesized operand, so this rule keeps that
+  pair and its chain, where its own fix stays available.
 
   ```toml config
   [tool.ruff.lint]
@@ -102,6 +101,10 @@ message = f"Hello, {name}!"
       + "world"
   )
   # fmt: on
+  ```
+
+  ```python report
+  title = ("Hello, ") + "world"
   ```
 
 - **Chains with an operand that is an instance of a class**, such as `Markup("<b>")` for a `Markup` class that overrides
@@ -315,7 +318,7 @@ No fix is offered when:
 - **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules
   [G003](https://docs.astral.sh/ruff/rules/logging-string-concat/) and
   [ISC003](https://docs.astral.sh/ruff/rules/explicit-string-concatenation/), which report `+` in logging calls and
-  between two literals split across lines and which this rule leaves to them; open issue
+  between two literals split across lines and which this rule leaves to them, ISC003 only while it runs; open issue
   [#11060](https://github.com/astral-sh/ruff/issues/11060) lists Sourcery's use-fstring-for-concatenation.
 - [Sourcery](https://sourcery.ai) rewrites the same `+` chains as an f-string through its
   [use-fstring-for-concatenation](https://docs.sourcery.ai/reference/refactorings/python/use-fstring-for-concatenation/)

@@ -4,8 +4,7 @@ value removes the name and keeps the value next to the code that uses it.
 ## Why is this bad?
 
 A name that exists only to be read on the next line adds a step to follow without adding meaning. The reader has to find
-the assignment, remember the value, and then reach the line that uses it. Inlining the value keeps the decision in one
-place.
+the assignment, remember the value, and then reach the line that uses it. Inlining removes that step.
 
 ## Example
 
@@ -226,9 +225,9 @@ def total_price(prices: list[float]) -> str:
 
 - **A read as the argument of [`next`](https://docs.python.org/3/library/functions.html#next) or
   [`anext`](https://docs.python.org/3/library/functions.html#anext), or as the receiver of `send`, `throw`, `close` or
-  `__next__`**: the call steps or closes the object the name holds. Without the name, the call would be the only holder
-  of the object, so the object would be released as soon as the call returns, which runs a generator's `finally` early.
-  Keeping the name is the only way to leave the object alone, so the variable is not reported.
+  `__next__`**: the call steps or closes the object the name holds. Without the name, the call holds the last reference
+  to the object, so the object is released when the call returns, which runs a generator's `finally` early. Keeping the
+  name keeps the object alive, so the variable is not reported.
 
   ```python ok
   def run(rows: list[int]) -> None:
@@ -236,15 +235,10 @@ def total_price(prices: list[float]) -> str:
       print(next(stream))
   ```
 
-- **A next statement that is `return name` or `yield name`**: Ruff's
-  [unnecessary-assign](https://docs.astral.sh/ruff/rules/unnecessary-assign/) covers the `return` case while the
-  project's Ruff configuration selects it, and `yield` keeps the same shape. The inline is skipped whenever Ruff selects
-  the rule, even where `per-file-ignores` or `noqa` silence it.
-
-  ```toml config
-  [tool.ruff.lint]
-  select = ["RET504"]
-  ```
+- **A next statement that is `return name` in a function that does not yield**: Ruff's
+  [unnecessary-assign](https://docs.astral.sh/ruff/rules/unnecessary-assign/) (RET504) covers it, so this rule leaves it
+  to Ruff whether or not the project selects that rule. RET504 skips a function that yields, so a generator's return is
+  inlined here.
 
   ```python ok
   def run(items: list[str]) -> int:
@@ -252,11 +246,24 @@ def total_price(prices: list[float]) -> str:
       return count
   ```
 
-- **A next statement that is `yield from name`, while Ruff's preview mode is on**: Ruff's preview rule
-  [unnecessary-assign-before-yield](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/) covers it when
-  the project's Ruff configuration selects it, even when this rule's fix would differ. With preview off, or without
-  RUF070, this rule reports the pair. The inline is skipped whenever Ruff selects the rule, even where
-  `per-file-ignores` or `noqa` silence it.
+  ```python report
+  def run(items: list[str]) -> Iterator[int]:
+      yield 0
+      count = len(items)
+      return count
+  ```
+
+  ```python fixed
+  def run(items: list[str]) -> Iterator[int]:
+      yield 0
+      return len(items)
+  ```
+
+- **A next statement that is `yield name`**: never reported, since the value is yielded, not returned.
+
+- **A next statement that is `yield from name`**: Ruff's preview rule
+  [unnecessary-assign-before-yield](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/) (RUF070) covers
+  it, so this rule leaves the pair to Ruff whether or not the project selects that rule or enables preview.
 
 - **A read in a parameter's default, while Ruff's
   [mutable-argument-default](https://docs.astral.sh/ruff/rules/mutable-argument-default/) (B006) or
@@ -521,9 +528,9 @@ def run(stack: list[int]) -> str:
 
 Inlined, `stack` is formatted before `stack.pop()` runs, so the message shows the popped item still in the list.
 
-The fix is also unsafe when the value calls something and the next statement reads an attribute or a subscript of the
-name, such as `tmp.name`, because the call's object is dropped right after that read, so its finalizer runs early. A
-method call on the name, such as `tmp.describe()`, keeps the object alive while it runs, so that fix stays safe.
+A call in the value also makes the fix unsafe when the next statement reads an attribute or a subscript of the name,
+such as `tmp.name`, because the call's object is dropped right after that read, so its finalizer runs early. A method
+call on the name, such as `tmp.describe()`, keeps the object alive while it runs, so that fix stays safe.
 
 ```python report
 import tempfile
@@ -544,8 +551,8 @@ def make_note() -> None:
     Path(tempfile.TemporaryDirectory().name, "note").write_text("hi")
 ```
 
-The fix is also unsafe when the value calls something and the next statement reads a name in an operator before the
-read, such as `not queue`, because the operator takes the name's state before the call runs.
+A value that calls something is unsafe to inline when the next statement reads a name in an operator before the read,
+such as `not queue`, because the operator takes the name's state before the call runs.
 
 ```python report
 def pop_once(queue: list[int]) -> tuple[bool, int]:
@@ -647,11 +654,11 @@ def render(value: object) -> str:
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules
-  [RET504](https://docs.astral.sh/ruff/rules/unnecessary-assign/) and preview
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
+  [RET504](https://docs.astral.sh/ruff/rules/unnecessary-assign/) and preview rule
   [RUF070](https://docs.astral.sh/ruff/rules/unnecessary-assign-before-yield/), which cover a value returned or yielded
-  on the next line and which this rule leaves to them; every other single read is open issue
-  [#10108](https://github.com/astral-sh/ruff/issues/10108).
+  on the next line and which this rule leaves to them, except the return of a generator; every other single read is open
+  issue [#10108](https://github.com/astral-sh/ruff/issues/10108).
 - [Sourcery](https://sourcery.ai) inlines a variable that is used once anywhere in its block through
   [inline-variable](https://docs.sourcery.ai/reference/refactorings/python/inline-variable/). This rule only inlines a
   value read on the line right below its assignment.

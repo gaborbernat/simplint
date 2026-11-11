@@ -5,7 +5,7 @@ mod early_assignment;
 pub(crate) mod error_message_matching;
 mod forwarding_function;
 mod inline;
-pub(crate) mod kinds;
+mod kinds;
 pub(crate) mod long_tuple_return;
 mod modernize;
 mod regex_pattern;

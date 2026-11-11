@@ -4,9 +4,8 @@ the test with `:=`, keeps the value next to the check that uses it.
 ## Why is this bad?
 
 A name that exists only to feed the next test splits one decision over two statements. It also stays in scope after it
-stops mattering. Inlining the value, or binding it in the test with an
-[assignment expression](https://docs.python.org/3/reference/expressions.html#assignment-expressions) (`:=`, from
-[PEP 572](https://peps.python.org/pep-0572/)), keeps the value next to the check that uses it.
+stops mattering. An [assignment expression](https://docs.python.org/3/reference/expressions.html#assignment-expressions)
+(`:=`, from [PEP 572](https://peps.python.org/pep-0572/)) binds the value inside the test that uses it.
 
 ## Example
 

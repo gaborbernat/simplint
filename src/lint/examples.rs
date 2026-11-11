@@ -56,7 +56,6 @@ pub struct Example {
     pub blocks: Vec<Block>,
 }
 
-// A rule's examples, or the error that keeps them from parsing, under one key of the rules listing.
 #[derive(Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Examples {
@@ -158,7 +157,6 @@ pub fn parse(explanation: &str) -> Result<Vec<Example>, String> {
     }
 }
 
-// Returns the index of the example the block landed in.
 fn push(
     examples: &mut Vec<Example>,
     open: Option<usize>,
@@ -204,15 +202,31 @@ mod tests {
     #[test_case("```python loud\nX = 1\n```\n", "line 1: unknown role `loud`" ; "unknown_role")]
     #[test_case("```python report size=2\n```\n", "line 1: unknown attribute `size=2`" ; "unknown_attribute")]
     #[test_case("```python report file=a.py extra\n```\n", "line 1: more than one attribute" ; "two_attributes")]
-    #[test_case("```python fixed\nX = 1\n```\n", "line 1: `fixed` must directly follow the `report` block of its file" ; "fixed_first")]
+    #[test_case(
+        "```python fixed\nX = 1\n```\n",
+        "line 1: `fixed` must directly follow the `report` block of its file" ;
+        "fixed_first"
+    )]
     #[test_case(
         "```python report\nX = 1\n```\n\n```python fixed file=a.py\nX = 1\n```\n",
         "line 5: `fixed` must directly follow the `report` block of its file" ;
         "fixed_of_other_file"
     )]
-    #[test_case("```toml config\n[tool]\n```\n", "example 1: a config block has no python block after it" ; "config_alone")]
-    #[test_case("```rst ok file=a.rst\nA\n```\n", "line 1: a `rst` block is a `context` block with a file" ; "markup_not_context")]
-    #[test_case("```rst context\nA\n```\n", "line 1: a `rst` block is a `context` block with a file" ; "markup_without_file")]
+    #[test_case(
+        "```toml config\n[tool]\n```\n",
+        "example 1: a config block has no python block after it" ;
+        "config_alone"
+    )]
+    #[test_case(
+        "```rst ok file=a.rst\nA\n```\n",
+        "line 1: a `rst` block is a `context` block with a file" ;
+        "markup_not_context"
+    )]
+    #[test_case(
+        "```rst context\nA\n```\n",
+        "line 1: a `rst` block is a `context` block with a file" ;
+        "markup_without_file"
+    )]
     fn parse_rejects_malformed_examples(explanation: &str, reason: &str) {
         assert_eq!(parse(explanation), Err(reason.to_owned()));
     }

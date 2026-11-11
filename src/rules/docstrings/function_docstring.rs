@@ -5,11 +5,12 @@ use std::cell::OnceCell;
 
 use ruff_diagnostics::Fix;
 use ruff_python_ast::visitor::{self, Visitor};
-use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
+use ruff_python_ast::{self as ast, Decorator, Expr, ExprContext, Stmt};
 use ruff_text_size::Ranged;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
+use crate::rules::docstrings::{ruff_ignores_function, ruff_reports_empty_docstring};
 use crate::rules::public_api::Need;
 use crate::syntax::docstring;
 use edit::{block_levels, comment_replacement, removal};
@@ -75,6 +76,9 @@ pub fn function_docstring(checker: &Checker) {
                 "Turn the docstring into a comment",
             )
         };
+        if fix.is_none() && left_to_ruff(checker, decorators, kind == "Function", literal) {
+            continue;
+        }
         checker.report_fix(
             Rule::FunctionDocstring,
             stmt.range(),
@@ -92,12 +96,14 @@ fn reads_own_docstring(class: &ast::StmtClassDef) -> bool {
     if docstring(&class.body).is_none() {
         return false;
     }
-    let mut reads = ClassDocstringReads(false);
+    let mut reads = ClassDocstringReads { reads_docstring: false };
     reads.visit_body(&class.body);
-    reads.0
+    reads.reads_docstring
 }
 
-struct ClassDocstringReads(bool);
+struct ClassDocstringReads {
+    reads_docstring: bool,
+}
 
 impl<'a> Visitor<'a> for ClassDocstringReads {
     fn visit_stmt(&mut self, stmt: &'a Stmt) {
@@ -125,7 +131,9 @@ impl<'a> Visitor<'a> for ClassDocstringReads {
 
     fn visit_expr(&mut self, expr: &'a Expr) {
         match expr {
-            Expr::Name(ast::ExprName { id, ctx: ExprContext::Load, .. }) => self.0 |= id.as_str() == "__doc__",
+            Expr::Name(ast::ExprName { id, ctx: ExprContext::Load, .. }) => {
+                self.reads_docstring |= id.as_str() == "__doc__";
+            }
             Expr::Lambda(ast::ExprLambda { parameters, .. }) => {
                 if let Some(parameters) = parameters {
                     self.visit_parameters(parameters);
@@ -168,4 +176,24 @@ fn is_doc_blind(checker: &Checker, decorator: &Expr) -> bool {
                 | ["pytest", "mark", ..]
         )
     })
+}
+
+// Ruff's D418 and D419 report the docstring of a definition this rule has no fix for. Ruff skips a definition that
+// `ignore-decorators` lists, and it leaves a stub's `@overload` docstrings alone.
+fn left_to_ruff(
+    checker: &Checker,
+    decorators: &[Decorator],
+    is_function: bool,
+    literal: &ast::ExprStringLiteral,
+) -> bool {
+    if is_function && ruff_ignores_function(checker, decorators) {
+        return false;
+    }
+    if ruff_reports_empty_docstring(checker, literal) {
+        return true;
+    }
+    is_function
+        && checker.path.extension().is_none_or(|extension| extension != "pyi")
+        && literal.as_single_part_string().is_some_and(|part| !checker.text(part.content_range()).trim().is_empty())
+        && decorators.iter().any(|decorator| checker.semantic().match_typing_expr(&decorator.expression, "overload"))
 }

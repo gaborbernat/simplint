@@ -4,7 +4,6 @@ use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_python_semantic::SemanticModel;
 use ruff_python_semantic::analyze::typing::is_list;
 
-// Whether `stmt` is `name.append(value)` on a list that its scope binds once before the statement.
 pub(super) fn is_list_append(semantic: &SemanticModel, stmt: &Stmt) -> bool {
     let Stmt::Expr(ast::StmtExpr { value, .. }) = stmt else {
         return false;

@@ -70,119 +70,9 @@ impl<'a> Suppressions<'a> {
         !self.lines.is_empty() || !self.file.is_empty()
     }
 
-    // Each diagnostic no comment suppresses, with the line its suppression comment belongs on.
     pub fn pending(&self, mut diagnostics: Vec<Diagnostic>) -> Vec<(Diagnostic, TextSize)> {
         let lines = self.locate(&mut diagnostics);
         self.unsuppressed(diagnostics, lines)
-    }
-
-    fn unsuppressed(&self, diagnostics: Vec<Diagnostic>, lines: Vec<TextSize>) -> Vec<(Diagnostic, TextSize)> {
-        diagnostics
-            .into_iter()
-            .zip(lines)
-            .filter(|(diagnostic, line)| {
-                let code = diagnostic.secondary_code().expect("a rule diagnostic has a code").as_str();
-                !self.file.iter().any(|directive| directive.suppresses(code))
-                    && self.lines.get(line).is_none_or(|directives| !directives.suppresses(code))
-            })
-            .collect()
-    }
-
-    fn ignore_candidates(&self, located: &[Diagnostic], rows: &[TextSize]) -> Vec<(TextSize, String)> {
-        let mut used = FxHashSet::default();
-        for (diagnostic, line) in located.iter().zip(rows) {
-            let code = diagnostic.secondary_code().expect("a rule diagnostic has a code").as_str();
-            if self.file.iter().any(|directive| directive.suppresses(code)) {
-                continue;
-            }
-            let Some(directives) = self.lines.get(line) else { continue };
-            if directives.noqa.as_ref().is_some_and(|(_, directive)| directive.suppresses(code)) {
-                continue;
-            }
-            let Some((start, codes)) = &directives.ignore else { continue };
-            let mut matches = codes.iter().filter(|candidate| matches_ignore(candidate, code));
-            if let Some(candidate) = matches.next()
-                && matches.next().is_none()
-            {
-                used.insert((*start, candidate.clone()));
-            }
-        }
-        self.indexer
-            .comment_ranges()
-            .iter()
-            .filter_map(|range| {
-                let (offset, codes) = parse_ignore(&self.source[*range])?;
-                Some(codes.into_iter().map(move |code| (range.start() + offset, code)))
-            })
-            .flatten()
-            .filter(|candidate| !used.contains(candidate))
-            .collect()
-    }
-
-    // The selectors whose removal leaves no report that was not there before. Each lint of a proposed source costs a
-    // pass over the whole file, so the selectors are tried all at once, and a set whose removal adds a report is split
-    // in halves until the selectors that add one stand alone.
-    pub fn unused_ignores(
-        &self,
-        mut diagnostics: Vec<Diagnostic>,
-        relint: impl Fn(&str) -> Vec<Diagnostic>,
-    ) -> Option<UnusedIgnore> {
-        let rows = self.locate(&mut diagnostics);
-        let candidates = self.ignore_candidates(&diagnostics, &rows);
-        if candidates.is_empty() {
-            return None;
-        }
-        let baseline: Vec<Diagnostic> =
-            self.unsuppressed(diagnostics, rows).into_iter().map(|(diagnostic, _)| diagnostic).collect();
-        let mut removed = Vec::new();
-        self.remove_unused(&candidates, &mut removed, &baseline, &relint);
-        let first = removed.iter().map(|(start, _)| *start).min()?;
-        let count = removed.len();
-        let mut edits = self.removal_edits(&removed);
-        edits.reverse();
-        Some(UnusedIgnore { start: first, count, edits })
-    }
-
-    fn remove_unused<'c>(
-        &self,
-        candidates: &'c [(TextSize, String)],
-        removed: &mut Vec<&'c (TextSize, String)>,
-        baseline: &[Diagnostic],
-        relint: &impl Fn(&str) -> Vec<Diagnostic>,
-    ) {
-        let mut trial = removed.clone();
-        trial.extend(candidates);
-        let edits = self.removal_edits(&trial);
-        if no_new_reports(baseline, &relint(&apply(self.source, &edits)), &edits) {
-            *removed = trial;
-        } else if candidates.len() > 1 {
-            let (head, tail) = candidates.split_at(candidates.len() / 2);
-            self.remove_unused(head, removed, baseline, relint);
-            self.remove_unused(tail, removed, baseline, relint);
-        }
-    }
-
-    // The edit of each comment that loses selectors, in source order.
-    fn removal_edits(&self, removed: &[&(TextSize, String)]) -> Vec<(TextRange, String)> {
-        let mut by_comment: BTreeMap<TextSize, Vec<&str>> = BTreeMap::new();
-        for (start, selector) in removed {
-            by_comment.entry(*start).or_default().push(selector);
-        }
-        by_comment
-            .into_iter()
-            .map(|(start, selectors)| {
-                let line = self.source.full_line_range(start);
-                let before = &self.source[line];
-                let mut after = before.to_owned();
-                for selector in selectors {
-                    let (edit, replacement) = remove_ignore_selector(&after, start - line.start(), selector)
-                        .expect("a parsed selector exists in its comment");
-                    after.replace_range(usize::from(edit.start())..usize::from(edit.end()), &replacement);
-                }
-                let (range, replacement) = changed_region(before, &after);
-                (range + line.start(), replacement)
-            })
-            .collect()
     }
 
     // Ruff expects a `noqa` comment on the diagnostic's line, or on the last line of the multi-line string or
@@ -218,10 +108,116 @@ impl<'a> Suppressions<'a> {
         .collect()
     }
 
+    fn unsuppressed(&self, diagnostics: Vec<Diagnostic>, lines: Vec<TextSize>) -> Vec<(Diagnostic, TextSize)> {
+        diagnostics
+            .into_iter()
+            .zip(lines)
+            .filter(|(diagnostic, line)| {
+                let code = diagnostic.secondary_code().expect("a rule diagnostic has a code").as_str();
+                !self.file.iter().any(|directive| directive.suppresses(code))
+                    && self.lines.get(line).is_none_or(|directives| !directives.suppresses(code))
+            })
+            .collect()
+    }
+
+    // Each lint of a proposed source costs a pass over the whole file, so the selectors are tried all at once, and a
+    // set whose removal adds a report is split in halves until the selectors that add one stand alone.
+    pub fn unused_ignores(
+        &self,
+        mut diagnostics: Vec<Diagnostic>,
+        relint: impl Fn(&str) -> Vec<Diagnostic>,
+    ) -> Option<UnusedIgnore> {
+        let rows = self.locate(&mut diagnostics);
+        let candidates = self.ignore_candidates(&diagnostics, &rows);
+        if candidates.is_empty() {
+            return None;
+        }
+        let baseline: Vec<Diagnostic> =
+            self.unsuppressed(diagnostics, rows).into_iter().map(|(diagnostic, _)| diagnostic).collect();
+        let mut removed = Vec::new();
+        self.remove_unused(&candidates, &mut removed, &baseline, &relint);
+        let first = removed.iter().map(|(start, _)| *start).min()?;
+        let count = removed.len();
+        let mut edits = self.removal_edits(&removed);
+        edits.reverse();
+        Some(UnusedIgnore { start: first, count, edits })
+    }
+
+    fn ignore_candidates(&self, located: &[Diagnostic], rows: &[TextSize]) -> Vec<(TextSize, String)> {
+        let mut used = FxHashSet::default();
+        for (diagnostic, line) in located.iter().zip(rows) {
+            let code = diagnostic.secondary_code().expect("a rule diagnostic has a code").as_str();
+            if self.file.iter().any(|directive| directive.suppresses(code)) {
+                continue;
+            }
+            let Some(directives) = self.lines.get(line) else { continue };
+            if directives.noqa.as_ref().is_some_and(|(_, directive)| directive.suppresses(code)) {
+                continue;
+            }
+            let Some((start, codes)) = &directives.ignore else { continue };
+            let mut matches = codes.iter().filter(|candidate| matches_ignore(candidate, code));
+            if let Some(candidate) = matches.next()
+                && matches.next().is_none()
+            {
+                used.insert((*start, candidate.clone()));
+            }
+        }
+        self.indexer
+            .comment_ranges()
+            .iter()
+            .filter_map(|range| {
+                let (offset, codes) = parse_ignore(&self.source[*range])?;
+                Some(codes.into_iter().map(move |code| (range.start() + offset, code)))
+            })
+            .flatten()
+            .filter(|candidate| !used.contains(candidate))
+            .collect()
+    }
+
+    fn remove_unused<'c>(
+        &self,
+        candidates: &'c [(TextSize, String)],
+        removed: &mut Vec<&'c (TextSize, String)>,
+        baseline: &[Diagnostic],
+        relint: &impl Fn(&str) -> Vec<Diagnostic>,
+    ) {
+        let mut trial = removed.clone();
+        trial.extend(candidates);
+        let edits = self.removal_edits(&trial);
+        if no_new_reports(baseline, &relint(&apply(self.source, &edits)), &edits) {
+            *removed = trial;
+        } else if candidates.len() > 1 {
+            let (head, tail) = candidates.split_at(candidates.len() / 2);
+            self.remove_unused(head, removed, baseline, relint);
+            self.remove_unused(tail, removed, baseline, relint);
+        }
+    }
+
+    fn removal_edits(&self, removed: &[&(TextSize, String)]) -> Vec<(TextRange, String)> {
+        let mut by_comment: BTreeMap<TextSize, Vec<&str>> = BTreeMap::new();
+        for (start, selector) in removed {
+            by_comment.entry(*start).or_default().push(selector);
+        }
+        by_comment
+            .into_iter()
+            .map(|(start, selectors)| {
+                let line = self.source.full_line_range(start);
+                let before = &self.source[line];
+                let mut after = before.to_owned();
+                for selector in selectors {
+                    let (edit, replacement) = remove_ignore_selector(&after, start - line.start(), selector)
+                        .expect("a parsed selector exists in its comment");
+                    after.replace_range(usize::from(edit.start())..usize::from(edit.end()), &replacement);
+                }
+                let (range, replacement) = changed_region(before, &after);
+                (range + line.start(), replacement)
+            })
+            .collect()
+    }
+
     // Ruff's `add_suppression_inner`: one comment per line naming every code reported there, merged into the line's
     // comment of the same kind. A blanket `# noqa` takes no codes, so a line with one gets no `# noqa`, while an ignore
-    // comment beside it still silences the reports the blanket one leaves. Returns the number of lines changed and the
-    // new source.
+    // comment beside it still silences the reports the blanket one leaves.
     pub fn add(
         &self,
         pending: &[(Diagnostic, TextSize)],
@@ -313,7 +309,6 @@ impl<'a> Suppressions<'a> {
         (count, output)
     }
 
-    // Where the codes of the directive whose `#` is at `start` end; its reason and any later comment follow.
     fn codes_end(&self, start: TextSize, kind: SuppressionKind) -> TextSize {
         let comment = &self.source[TextRange::new(start, self.source.line_end(start))];
         let head = match kind {
@@ -331,79 +326,119 @@ impl<'a> Suppressions<'a> {
     }
 }
 
-// The text after a directive's codes with `reason` in place of the one it gives, keeping any comment after the reason.
-fn with_reason(after: &str, reason: Option<&str>) -> String {
-    let Some(reason) = reason else {
-        return after.to_owned();
-    };
-    let (old, tail) = after.split_at(comment_start(after).unwrap_or(after.len()));
-    let gap = match &old[old.trim_end().len()..] {
-        _ if tail.is_empty() => "",
-        "" => "  ",
-        gap => gap,
-    };
-    format!(" {reason}{gap}{tail}")
+impl Line {
+    fn suppresses(&self, code: &str) -> bool {
+        self.noqa.as_ref().is_some_and(|(_, directive)| directive.suppresses(code))
+            || self
+                .ignore
+                .as_ref()
+                .is_some_and(|(_, codes)| codes.iter().any(|candidate| matches_ignore(candidate, code)))
+    }
 }
 
-// The `#` of a comment after a directive, which a `#` followed by a space or the end of the text starts, so an issue
-// number such as `#12` in a reason is not one.
-fn comment_start(text: &str) -> Option<usize> {
-    text.match_indices('#')
-        .map(|(index, _)| index)
-        .find(|index| matches!(text[index + 1..].chars().next(), None | Some(' ')))
+// A `noqa` directive; one without codes suppresses every rule.
+struct Directive {
+    codes: Vec<String>,
 }
 
-fn remove_ignore_selector(source: &str, start: TextSize, selector: &str) -> Option<(TextRange, String)> {
-    let comment = &source[TextRange::new(start, source.line_end(start))];
-    let (offset, contents) = ignore_contents(comment)?;
-    let mut codes: Vec<&str> =
-        contents.split(|char: char| char == ',' || char.is_whitespace()).filter(|code| !code.is_empty()).collect();
-    codes.remove(codes.iter().position(|code| *code == selector)?);
-    if !codes.is_empty() {
-        let from = start + offset;
-        return Some((TextRange::new(from, from + TextSize::of(contents)), codes.join(", ")));
+impl Directive {
+    // Ruff reads the first `# noqa` only, and when its codes do not lex it applies none, rather than looking further
+    // along the comment.
+    fn parse(comment: &str) -> Option<(TextSize, Self)> {
+        let (index, after) = comment
+            .match_indices('#')
+            .find_map(|(index, _)| Some((index, strip_noqa(comment[index + 1..].trim_start())?)))?;
+        let (codes, _) = noqa_codes(after)?;
+        Some((TextSize::try_from(index).expect("a comment fits a text size"), Self { codes: owned(codes) }))
     }
-    let line_start = source.line_start(start);
-    let prefix = &source[TextRange::new(line_start, start)];
-    let directive_end = start + offset + TextSize::of(contents) + TextSize::from(1);
-    // A comment after the directive stays with its line, so only the directive and its reason go.
-    let rest = &source[TextRange::new(directive_end, source.line_end(start))];
-    let next = comment_start(rest).map(|index| directive_end + TextSize::of(&rest[..index]));
-    if prefix.trim().is_empty() {
-        return Some(match next {
-            Some(next) => (TextRange::new(start, next), String::new()),
-            None => (TextRange::new(line_start, source.full_line_end(start)), String::new()),
-        });
+
+    // Ruff skips a `noqa` whose codes do not parse rather than reading it as blanket, so the codes follow Ruff's
+    // `lex_directive`.
+    fn parse_file_level(comment: &str, indentation: Option<&str>) -> Option<Self> {
+        if let Some((_, codes)) = parse_bracket(comment, "ruff", "file-ignore[") {
+            return (indentation == Some("") && !codes.is_empty()).then_some(Self { codes });
+        }
+        indentation?;
+        let rest = comment.match_indices('#').find_map(|(index, _)| {
+            let rest = comment[index + 1..].trim_start();
+            let rest = after_tool(rest, "ruff").or_else(|| after_tool(rest, "flake8"))?;
+            strip_noqa(rest)
+        })?;
+        Some(Self { codes: owned(noqa_codes(rest)?.0) })
     }
-    let code_end = line_start + TextSize::of(prefix.trim_end());
-    Some(match next {
-        Some(next) => (TextRange::new(code_end, next), "  ".to_owned()),
-        None => (TextRange::new(code_end, source.line_end(start)), String::new()),
+
+    // A blanket `# noqa` is itself what SMP003 and SMP004 report, so it cannot silence those reports. A `file-ignore`
+    // takes rule names as well as codes, as a line's `ruff: ignore` does.
+    fn suppresses(&self, code: &str) -> bool {
+        if self.is_blanket() {
+            code != Rule::SuppressionWithoutReason.code() && code != Rule::BlanketIgnore.code()
+        } else {
+            self.codes.iter().any(|candidate| matches_ignore(candidate, code))
+        }
+    }
+
+    fn is_blanket(&self) -> bool {
+        self.codes.is_empty()
+    }
+}
+
+pub fn suppresses(comment: &str, code: &str) -> bool {
+    Directive::parse(comment).is_some_and(|(_, directive)| directive.suppresses(code))
+        || parse_ignore(comment).is_some_and(|(_, codes)| codes.iter().any(|candidate| matches_ignore(candidate, code)))
+}
+
+// Whether the file has a file-level `ruff: noqa`, `flake8: noqa` or `ruff: file-ignore`, the directives `Suppressions`
+// applies to every line. A fix that rewrites a docstring can shorten the lines or drop the words such a directive
+// silences, which leaves its codes unused, and Ruff reports them as RUF100.
+pub fn has_file_noqa(source: &str, comments: &CommentRanges) -> bool {
+    comments.iter().any(|range| {
+        Directive::parse_file_level(&source[*range], indentation_at_offset(range.start(), source)).is_some()
     })
 }
 
-fn changed_region(before: &str, after: &str) -> (TextRange, String) {
-    let prefix: usize = before
-        .chars()
-        .zip(after.chars())
-        .take_while(|(left, right)| left == right)
-        .map(|(char, _)| char.len_utf8())
-        .sum();
-    let suffix: usize = before[prefix..]
-        .chars()
-        .rev()
-        .zip(after[prefix..].chars().rev())
-        .take_while(|(left, right)| left == right)
-        .map(|(char, _)| char.len_utf8())
-        .sum();
-    let range = TextRange::new(
-        TextSize::try_from(prefix).expect("a source fits a text size"),
-        TextSize::try_from(before.len() - suffix).expect("a source fits a text size"),
-    );
-    (range, after[prefix..after.len() - suffix].to_owned())
+pub fn ruff_ignores(comment: &str, rule: [&str; 2]) -> bool {
+    parse_bracket(comment, "ruff", "ignore[")
+        .is_some_and(|(_, codes)| codes.iter().any(|code| rule.contains(&code.as_str())))
 }
 
-// The source with sorted, disjoint edits applied.
+// Whether a comment is a `noqa` that names no code, or only `code`, so that once `code` is not reported the comment
+// silences nothing and Ruff reports it as unused.
+pub fn is_noqa_for_only(comment: &str, code: &str) -> bool {
+    let rest = comment.trim().trim_start_matches('#').trim_start();
+    let Some((codes, _)) = strip_noqa(rest).and_then(noqa_codes) else {
+        return false;
+    };
+    codes.into_iter().all(|candidate| candidate == code)
+}
+
+// A `# simplint: ignore[SMP001, SMP901]` comment, simplint's counterpart of Ruff's `# ruff: ignore[...]`.
+fn parse_ignore(comment: &str) -> Option<(TextSize, Vec<String>)> {
+    parse_bracket(comment, "simplint", "ignore[")
+}
+
+fn parse_bracket(comment: &str, tool: &str, action: &str) -> Option<(TextSize, Vec<String>)> {
+    comment.match_indices('#').find_map(|(index, _)| {
+        let rest = after_tool(comment[index + 1..].trim_start(), tool)?;
+        let (codes, _) = rest.strip_prefix(action)?.split_once(']')?;
+        let codes = code_list(codes).map(str::to_owned).collect();
+        Some((TextSize::try_from(index).expect("a comment fits a text size"), codes))
+    })
+}
+
+// What follows `tool:` at the start of a directive, with any space around the colon, as Ruff reads `# ruff : noqa`. The
+// tool name is matched in lowercase only, as Ruff does.
+pub fn after_tool<'t>(text: &'t str, tool: &str) -> Option<&'t str> {
+    Some(text.strip_prefix(tool)?.trim_start().strip_prefix(':')?.trim_start())
+}
+
+fn code_list(codes: &str) -> impl Iterator<Item = &str> {
+    codes.split(|char: char| char == ',' || char.is_whitespace()).filter(|part| !part.is_empty())
+}
+
+fn matches_ignore(candidate: &str, code: &str) -> bool {
+    candidate == code || Rule::from_code(code).is_some_and(|rule| rule.name() == candidate)
+}
+
 fn apply(source: &str, edits: &[(TextRange, String)]) -> String {
     let mut output = String::with_capacity(source.len());
     let mut last = 0;
@@ -458,101 +493,92 @@ fn no_new_reports(before: &[Diagnostic], after: &[Diagnostic], edits: &[(TextRan
     })
 }
 
-impl Line {
-    fn suppresses(&self, code: &str) -> bool {
-        self.noqa.as_ref().is_some_and(|(_, directive)| directive.suppresses(code))
-            || self
-                .ignore
-                .as_ref()
-                .is_some_and(|(_, codes)| codes.iter().any(|candidate| matches_ignore(candidate, code)))
+fn remove_ignore_selector(source: &str, start: TextSize, selector: &str) -> Option<(TextRange, String)> {
+    let comment = &source[TextRange::new(start, source.line_end(start))];
+    let (offset, contents) = ignore_contents(comment)?;
+    let mut codes: Vec<&str> =
+        contents.split(|char: char| char == ',' || char.is_whitespace()).filter(|code| !code.is_empty()).collect();
+    codes.remove(codes.iter().position(|code| *code == selector)?);
+    if !codes.is_empty() {
+        let from = start + offset;
+        return Some((TextRange::new(from, from + TextSize::of(contents)), codes.join(", ")));
     }
-}
-
-// Whether a comment's `noqa` or `simplint: ignore` directive suppresses `code` on its line.
-pub fn suppresses(comment: &str, code: &str) -> bool {
-    Directive::parse(comment).is_some_and(|(_, directive)| directive.suppresses(code))
-        || parse_ignore(comment).is_some_and(|(_, codes)| codes.iter().any(|candidate| matches_ignore(candidate, code)))
-}
-
-fn matches_ignore(candidate: &str, code: &str) -> bool {
-    candidate == code || Rule::from_code(code).is_some_and(|rule| rule.name() == candidate)
-}
-
-// Whether the file has a file-level `ruff: noqa`, `flake8: noqa` or `ruff: file-ignore`, the directives `Suppressions`
-// applies to every line. A fix that rewrites a docstring can shorten the lines or drop the words such a directive
-// silences, which leaves its codes unused, and Ruff reports them as RUF100.
-pub fn has_file_noqa(source: &str, comments: &CommentRanges) -> bool {
-    comments.iter().any(|range| {
-        Directive::parse_file_level(&source[*range], indentation_at_offset(range.start(), source)).is_some()
+    let line_start = source.line_start(start);
+    let prefix = &source[TextRange::new(line_start, start)];
+    let directive_end = start + offset + TextSize::of(contents) + TextSize::from(1);
+    // A comment after the directive stays with its line, so only the directive and its reason go.
+    let rest = &source[TextRange::new(directive_end, source.line_end(start))];
+    let next = comment_start(rest).map(|index| directive_end + TextSize::of(&rest[..index]));
+    if prefix.trim().is_empty() {
+        return Some(match next {
+            Some(next) => (TextRange::new(start, next), String::new()),
+            None => (TextRange::new(line_start, source.full_line_end(start)), String::new()),
+        });
+    }
+    let code_end = line_start + TextSize::of(prefix.trim_end());
+    Some(match next {
+        Some(next) => (TextRange::new(code_end, next), "  ".to_owned()),
+        None => (TextRange::new(code_end, source.line_end(start)), String::new()),
     })
 }
 
-// Whether a comment's `ruff: ignore` directive names one of `rule`, a rule's code and name, as Ruff takes either.
-pub fn ruff_ignores(comment: &str, rule: [&str; 2]) -> bool {
-    parse_bracket(comment, "ruff", "ignore[")
-        .is_some_and(|(_, codes)| codes.iter().any(|code| rule.contains(&code.as_str())))
+pub(crate) fn ignore_contents(comment: &str) -> Option<(TextSize, &str)> {
+    comment.match_indices('#').find_map(|(index, _)| {
+        let rest = after_tool(comment[index + 1..].trim_start(), "simplint")?.strip_prefix("ignore[")?;
+        let (codes, _) = rest.split_once(']')?;
+        Some((TextSize::try_from(comment.len() - rest.len()).expect("a comment fits a text size"), codes))
+    })
 }
 
-// A `noqa` directive; one without codes suppresses every rule.
-struct Directive {
-    codes: Vec<String>,
+// The `#` of a comment after a directive, which a `#` followed by a space or the end of the text starts, so an issue
+// number such as `#12` in a reason is not one.
+fn comment_start(text: &str) -> Option<usize> {
+    text.match_indices('#')
+        .map(|(index, _)| index)
+        .find(|index| matches!(text[index + 1..].chars().next(), None | Some(' ')))
 }
 
-impl Directive {
-    // The directive and the offset of its `#` in the comment. Ruff reads the first `# noqa` only, and when its codes do
-    // not lex it applies none, rather than looking further along the comment.
-    fn parse(comment: &str) -> Option<(TextSize, Self)> {
-        let (index, after) = comment
-            .match_indices('#')
-            .find_map(|(index, _)| Some((index, strip_noqa(comment[index + 1..].trim_start())?)))?;
-        let (codes, _) = noqa_codes(after)?;
-        Some((TextSize::try_from(index).expect("a comment fits a text size"), Self { codes: owned(codes) }))
-    }
-
-    // Ruff's file-level exemptions: `# ruff: noqa` (or `# flake8: noqa`) on its own line, blanket or with codes, and
-    // `# ruff: file-ignore[...]` at module scope. Ruff skips a `noqa` whose codes do not parse rather than reading it
-    // as blanket, so the codes follow Ruff's `lex_directive`.
-    fn parse_file_level(comment: &str, indentation: Option<&str>) -> Option<Self> {
-        if let Some((_, codes)) = parse_bracket(comment, "ruff", "file-ignore[") {
-            return (indentation == Some("") && !codes.is_empty()).then_some(Self { codes });
-        }
-        indentation?;
-        let rest = comment.match_indices('#').find_map(|(index, _)| {
-            let rest = comment[index + 1..].trim_start();
-            let rest = after_tool(rest, "ruff").or_else(|| after_tool(rest, "flake8"))?;
-            strip_noqa(rest)
-        })?;
-        Some(Self { codes: owned(noqa_codes(rest)?.0) })
-    }
-
-    fn is_blanket(&self) -> bool {
-        self.codes.is_empty()
-    }
-
-    // A blanket `# noqa` is itself what SMP003 and SMP004 report, so it cannot silence those reports. A `file-ignore`
-    // takes rule names as well as codes, as a line's `ruff: ignore` does.
-    fn suppresses(&self, code: &str) -> bool {
-        if self.is_blanket() {
-            code != Rule::SuppressionWithoutReason.code() && code != Rule::BlanketIgnore.code()
-        } else {
-            self.codes.iter().any(|candidate| matches_ignore(candidate, code))
-        }
-    }
+fn changed_region(before: &str, after: &str) -> (TextRange, String) {
+    let prefix: usize = before
+        .chars()
+        .zip(after.chars())
+        .take_while(|(left, right)| left == right)
+        .map(|(char, _)| char.len_utf8())
+        .sum();
+    let suffix: usize = before[prefix..]
+        .chars()
+        .rev()
+        .zip(after[prefix..].chars().rev())
+        .take_while(|(left, right)| left == right)
+        .map(|(char, _)| char.len_utf8())
+        .sum();
+    let range = TextRange::new(
+        TextSize::try_from(prefix).expect("a source fits a text size"),
+        TextSize::try_from(before.len() - suffix).expect("a source fits a text size"),
+    );
+    (range, after[prefix..after.len() - suffix].to_owned())
 }
 
-// Whether a comment is a `noqa` that names no code, or only `code`, so that once `code` is not reported the comment
-// silences nothing and Ruff reports it as unused.
-pub fn is_noqa_for_only(comment: &str, code: &str) -> bool {
-    let rest = comment.trim().trim_start_matches('#').trim_start();
-    let Some((codes, _)) = strip_noqa(rest).and_then(noqa_codes) else {
-        return false;
+fn with_reason(after: &str, reason: Option<&str>) -> String {
+    let Some(reason) = reason else {
+        return after.to_owned();
     };
-    codes.into_iter().all(|candidate| candidate == code)
+    let (old, tail) = after.split_at(comment_start(after).unwrap_or(after.len()));
+    let gap = match &old[old.trim_end().len()..] {
+        _ if tail.is_empty() => "",
+        "" => "  ",
+        gap => gap,
+    };
+    format!(" {reason}{gap}{tail}")
 }
 
 // The text after a `noqa` keyword, which Ruff matches in any case.
 fn strip_noqa(text: &str) -> Option<&str> {
     strip_ignore_case(text, "noqa")
+}
+
+fn strip_ignore_case<'t>(text: &'t str, prefix: &str) -> Option<&'t str> {
+    text.get(..prefix.len()).filter(|head| head.eq_ignore_ascii_case(prefix)).map(|_| &text[prefix.len()..])
 }
 
 // The codes a `noqa` directive names after its keyword and the text after them, as Ruff's `NoqaLexer` reads them; no
@@ -597,42 +623,4 @@ pub fn noqa_codes(after: &str) -> Option<(Vec<&str>, &str)> {
 
 fn owned(codes: Vec<&str>) -> Vec<String> {
     codes.into_iter().map(str::to_owned).collect()
-}
-
-fn strip_ignore_case<'t>(text: &'t str, prefix: &str) -> Option<&'t str> {
-    text.get(..prefix.len()).filter(|head| head.eq_ignore_ascii_case(prefix)).map(|_| &text[prefix.len()..])
-}
-
-fn code_list(codes: &str) -> impl Iterator<Item = &str> {
-    codes.split(|char: char| char == ',' || char.is_whitespace()).filter(|part| !part.is_empty())
-}
-
-// A `# simplint: ignore[SMP001, SMP901]` comment, simplint's counterpart of Ruff's `# ruff: ignore[...]`: the codes
-// and the offset of its `#` in the comment.
-fn parse_ignore(comment: &str) -> Option<(TextSize, Vec<String>)> {
-    parse_bracket(comment, "simplint", "ignore[")
-}
-
-pub(crate) fn ignore_contents(comment: &str) -> Option<(TextSize, &str)> {
-    comment.match_indices('#').find_map(|(index, _)| {
-        let rest = after_tool(comment[index + 1..].trim_start(), "simplint")?.strip_prefix("ignore[")?;
-        let (codes, _) = rest.split_once(']')?;
-        Some((TextSize::try_from(comment.len() - rest.len()).expect("a comment fits a text size"), codes))
-    })
-}
-
-// A `# tool: action[CODES]` comment: the codes and the offset of its `#` in the comment.
-fn parse_bracket(comment: &str, tool: &str, action: &str) -> Option<(TextSize, Vec<String>)> {
-    comment.match_indices('#').find_map(|(index, _)| {
-        let rest = after_tool(comment[index + 1..].trim_start(), tool)?;
-        let (codes, _) = rest.strip_prefix(action)?.split_once(']')?;
-        let codes = code_list(codes).map(str::to_owned).collect();
-        Some((TextSize::try_from(index).expect("a comment fits a text size"), codes))
-    })
-}
-
-// What follows `tool:` at the start of a directive, with any space around the colon, as Ruff reads `# ruff : noqa`. The
-// tool name is matched in lowercase only, as Ruff does.
-pub fn after_tool<'t>(text: &'t str, tool: &str) -> Option<&'t str> {
-    Some(text.strip_prefix(tool)?.trim_start().strip_prefix(':')?.trim_start())
 }

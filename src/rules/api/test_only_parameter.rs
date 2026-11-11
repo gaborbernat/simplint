@@ -10,6 +10,7 @@ pub fn test_only_parameter(checker: &Checker) {
     if !judges_call_sites(checker) {
         return;
     }
+    // Built once per module: building it walks the module, and every function's lookup reuses it.
     let own = OwnCalls::of(checker);
     for function in candidate_functions(checker) {
         let sites = own.function(checker, function.name.as_str());
@@ -26,25 +27,23 @@ pub fn test_only_parameter(checker: &Checker) {
     }
 }
 
-// Reports each default that no production call passes while a test call does. Only a default can be left out, so a
-// required parameter is never reported.
+// Only a default can be left out, so a required parameter is never reported.
 fn report_parameters(checker: &Checker, function: &ast::StmtFunctionDef, sites: &CallSites) {
     let parameters = &function.parameters;
-    let positional_only = parameters.posonlyargs.len();
     for (index, param) in parameters.posonlyargs.iter().chain(&parameters.args).enumerate() {
-        let name = param.parameter.name.as_str();
-        let passed = |shape: &CallShape| {
-            index < shape.positional as usize
-                || (index >= positional_only && shape.keywords.iter().any(|keyword| keyword == name))
-        };
         if param.default.is_some() {
+            let name = param.parameter.name.as_str();
+            let passed = |shape: &CallShape| {
+                index < shape.positional as usize
+                    || (index >= parameters.posonlyargs.len() && shape.keywords.iter().any(|keyword| keyword == name))
+            };
             report_if_test_only(checker, function, param, sites, passed);
         }
     }
     for param in &parameters.kwonlyargs {
-        let name = param.parameter.name.as_str();
-        let passed = |shape: &CallShape| shape.keywords.iter().any(|keyword| keyword == name);
         if param.default.is_some() {
+            let passed =
+                |shape: &CallShape| shape.keywords.iter().any(|keyword| keyword == param.parameter.name.as_str());
             report_if_test_only(checker, function, param, sites, passed);
         }
     }

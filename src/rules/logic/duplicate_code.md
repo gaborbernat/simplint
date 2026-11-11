@@ -85,7 +85,7 @@ from parsing import parse_lines
   statements most reports are the generated codec classes of `encodings`, and at eight the copied file classes of `bz2`
   and `lzma` go unreported.
 
-## Conflicts with Ruff
+## Ruff overlap
 
 Ruff has no rule for repeated code, so the two do not overlap.
 

@@ -7,9 +7,13 @@ use crate::rules::docstrings::rst::{FieldKind, Owner};
 
 pub fn rst_type_field(checker: &Checker) {
     for target in checker.state().rst_targets(checker) {
-        let parameters = target.parameters().unwrap_or_default();
-        let annotated: FxHashSet<&str> =
-            parameters.iter().filter(|parameter| parameter.annotated).map(|parameter| parameter.name).collect();
+        let annotated: FxHashSet<&str> = target
+            .parameters()
+            .unwrap_or_default()
+            .iter()
+            .filter(|parameter| parameter.annotated)
+            .map(|parameter| parameter.name)
+            .collect();
         let returns_annotated = matches!(target.owner, Owner::Function { def, .. } if def.returns.is_some());
         for field in &target.docstring.fields {
             let range = field.range_in(&target.docstring);

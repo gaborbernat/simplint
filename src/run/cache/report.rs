@@ -25,8 +25,7 @@ pub(super) struct Findings {
 }
 
 impl Findings {
-    // The diagnostics of an archived entry's reports, for the file that asks for them. The `full` text is kept beside
-    // the entry, so a run that shows other output never reads it.
+    // The `full` text is kept beside the entry, so a run that shows other output never reads it.
     pub(super) fn diagnostics(archived: &ArchivedFindings, path: &Path) -> Option<Diagnostics> {
         let reports: Vec<Report> = rkyv::deserialize::<_, rkyv::rancor::Error>(&archived.reports).ok()?;
         // A file that cannot be read has no source to read back, and its report is built from none.
@@ -39,12 +38,6 @@ impl Findings {
         let inner = reports.iter().map(|report| report.diagnostic(&file)).collect::<Option<_>>()?;
         Some(Diagnostics { inner, ..Diagnostics::default() })
     }
-}
-
-// The rule of a code, looked up in a map since a warm run looks up every cached report.
-fn rule_by_code(code: &str) -> Option<Rule> {
-    static RULES: OnceLock<FxHashMap<&'static str, Rule>> = OnceLock::new();
-    RULES.get_or_init(|| Rule::ALL.iter().map(|rule| (rule.code(), *rule)).collect()).get(code).copied()
 }
 
 // A diagnostic a rule reported, or one of the two a file gets that no rule reports, with the fields the output shows.
@@ -65,13 +58,10 @@ pub(super) struct Report {
 enum ReportKind {
     // The rule's code, and the line of its suppression comment, as `Suppressions::locate` sets it.
     Rule { code: String, noqa_offset: u32 },
-    // A file that does not parse, whose syntax error `Linter::check` builds from its message and range alone.
-    InvalidSyntax,
     // A file that cannot be read, which `Diagnostics::from_error` builds from its message alone.
     IoError,
 }
 
-// A location a report points at besides its primary one, as the file it is in, its byte range and its message.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 struct StoredRelated {
     path: String,
@@ -98,7 +88,7 @@ impl StoredRelated {
 
 impl Report {
     // All of the reports, or `None` when a diagnostic is one `of` cannot store. Only a rule's diagnostic has a
-    // suppression line, so a file's syntax error or unreadable file takes none.
+    // suppression line, so an unreadable file takes none.
     pub(super) fn all(diagnostics: &[Diagnostic], noqa_rows: &[TextSize]) -> Option<Vec<Self>> {
         let mut rows = noqa_rows.iter().copied();
         diagnostics.iter().map(|diagnostic| Self::of(diagnostic, rows.next())).collect()
@@ -120,14 +110,10 @@ impl Report {
                 related: Vec::new(),
             })
         };
-        if diagnostic.is_invalid_syntax() {
-            return unruled(ReportKind::InvalidSyntax);
-        }
         if diagnostic.id() == DiagnosticId::Lint(RuffRule::IOError.name()) {
             return unruled(ReportKind::IoError);
         }
         let rule = rule_by_code(diagnostic.secondary_code()?.as_str())?;
-        let url = rule.url();
         let related: Vec<StoredRelated> =
             diagnostic.secondary_annotations().map(StoredRelated::of).collect::<Option<_>>()?;
         let help: Vec<String> = diagnostic
@@ -144,7 +130,7 @@ impl Report {
             && diagnostic.primary_tags().is_none_or(<[_]>::is_empty)
             && diagnostic.id() == DiagnosticId::Lint(LintName::of(rule.name()))
             && diagnostic.severity() == Severity::Error
-            && diagnostic.documentation_url() == Some(url.as_str())
+            && diagnostic.documentation_url() == Some(rule.url().as_str())
             && diagnostic.parent().is_none();
         let fix = diagnostic.fix().map(StoredFix::of);
         let noqa_offset = noqa_row?.to_u32();
@@ -165,9 +151,6 @@ impl Report {
         let length = file.source_text().len();
         let range = stored_range(self.start, self.end, length)?;
         let (rule, noqa_offset) = match &self.kind {
-            ReportKind::InvalidSyntax => {
-                return Some(Diagnostic::invalid_syntax(Span::from(file.clone()), self.message.as_str(), range));
-            }
             ReportKind::IoError => {
                 return Some(IOError { message: self.message.clone() }.into_diagnostic(range, file));
             }
@@ -180,8 +163,8 @@ impl Report {
         for related in &self.related {
             let file = source_file_at(Path::new(&related.path))?;
             let range = stored_range(related.start, related.end, file.source_text().len())?;
-            let span = Span::from(file).with_range(range);
-            diagnostic.annotate(Annotation::secondary(span).message(related.message.as_str()));
+            diagnostic
+                .annotate(Annotation::secondary(Span::from(file).with_range(range)).message(related.message.as_str()));
         }
         diagnostic.set_secondary_code(SecondaryCode::new(rule.code().to_owned()));
         diagnostic.set_documentation_url(Some(rule.url()));
@@ -194,6 +177,12 @@ impl Report {
         diagnostic.set_noqa_offset(TextSize::new(noqa_offset));
         Some(diagnostic)
     }
+}
+
+// The rule of a code, looked up in a map since a warm run looks up every cached report.
+fn rule_by_code(code: &str) -> Option<Rule> {
+    static RULES: OnceLock<FxHashMap<&'static str, Rule>> = OnceLock::new();
+    RULES.get_or_init(|| Rule::ALL.iter().map(|rule| (rule.code(), *rule)).collect()).get(code).copied()
 }
 
 // A fix as rkyv data. Ruff's `Fix` keeps its fields private, so `fix` rebuilds it from its edits and levels, in the
@@ -229,8 +218,8 @@ impl StoredFix {
         }
     }
 
-    // `None` for a fix without edits, which no rule builds and which a cache file therefore cannot hold, or with an edit
-    // outside a source of `length` bytes.
+    // `None` for a fix without edits, which no rule builds and which a cache file therefore cannot hold, or with an
+    // edit outside a source of `length` bytes.
     fn fix(&self, length: usize) -> Option<Fix> {
         let applicability = match self.applicability {
             StoredApplicability::DisplayOnly => Applicability::DisplayOnly,
@@ -260,7 +249,6 @@ enum StoredIsolation {
     NonOverlapping,
 }
 
-// An edit's range, and its replacement content, `None` for a deletion.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 struct StoredEdit {
     start: u32,
@@ -366,7 +354,10 @@ mod tests {
     #[test_case(
         Fix::unsafe_edits(
             Edit::range_deletion(range(0, 3)),
-            [Edit::insertion("import os\n".to_owned(), TextSize::new(12)), Edit::range_replacement("z".to_owned(), range(20, 25))],
+            [
+                Edit::insertion("import os\n".to_owned(), TextSize::new(12)),
+                Edit::range_replacement("z".to_owned(), range(20, 25)),
+            ],
         )
         .isolate(IsolationLevel::Group(7)) ; "unsafe_edits_in_a_group"
     )]

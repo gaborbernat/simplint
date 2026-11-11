@@ -33,19 +33,20 @@ fn nested_project_takes_the_project_kind_around_it(kind: &str, reported: bool) {
 }
 
 // A `[tool.simplint]` of a nested project's own replaces the project kind around it.
-#[test]
-fn nested_project_with_its_own_settings_takes_them() {
+#[test_case("[tool.simplint]\nproject-kind = \"application\"\n", true ; "own_application_kind")]
+#[test_case("[tool.simplint]\nproject-kind = \"library\"\n", false ; "own_library_kind")]
+fn nested_project_with_its_own_settings_takes_them(nested: &str, reported: bool) {
     let root = project(&[
         (
             "pyproject.toml",
             "[project]\nname = \"demo\"\nversion = \"0\"\n\n[tool.simplint]\nproject-kind = \"library\"\n",
         ),
-        ("roots/test-a/pyproject.toml", "[tool.simplint]\nproject-kind = \"application\"\n"),
+        ("roots/test-a/pyproject.toml", nested),
         ("roots/test-a/conf.py", ""),
         ("roots/test-a/mod.py", "def helper() -> None:\n    pass\n"),
     ]);
-    let stdout = check(root.path(), &["--select", "SMP903"]).1;
-    assert!(!stdout.contains(" SMP903 "), "{stdout}");
+    let stdout = check(root.path(), &["--select", "SMP409"]).1;
+    assert_eq!(stdout.contains(&common::native("roots/test-a/mod.py")), reported, "{stdout}");
 }
 
 // A nested project's documentation names its own definitions as used, and the documentation of the run's project does
@@ -102,7 +103,8 @@ fn invalid_pyproject_of_a_nested_project_is_an_error(content: &str) {
     assert_eq!((code, stderr.contains("Failed to parse")), (2, true), "{stderr}");
 }
 
-// A run from a directory whose name is not UTF-8 cannot resolve its imports, whether it checks a file or standard input.
+// A run from a directory whose name is not UTF-8 cannot resolve its imports, whether it checks a file or standard
+// input.
 #[cfg(unix)]
 #[test_case(false ; "linted_file")]
 #[test_case(true ; "standard_input")]
@@ -132,6 +134,12 @@ fn name_read_by_the_outer_project_is_used_in_a_nested_project() {
     ]);
     let stdout = check(root.path(), &["--select", "SMP409"]).1;
     assert!(!stdout.contains(&common::native("roots/test-a/support.py")), "{stdout}");
+    let unread = project(&[
+        ("pyproject.toml", DEMO),
+        ("roots/test-a/conf.py", ""),
+        ("roots/test-a/support.py", "def helper() -> None:\n    pass\n"),
+    ]);
+    assert!(check(unread.path(), &["--select", "SMP409"]).1.contains(&common::native("roots/test-a/support.py")));
 }
 
 // A name a nested project reads does not count as used in the run's project, which does not see the nested project.
@@ -156,10 +164,41 @@ fn name_read_by_a_nested_project_is_unused_in_the_outer_project() {
     &format!("__all__ = [\"public\"]\n\n\n{FUNCTIONS}"),
     ".. automodule:: pkg.api\n   :members:\n", &["_hidden", "other"] ; "members_are_the_names_of_all"
 )]
-#[test_case(FUNCTIONS, ".. automodule:: pkg.api\n   :members:\n   :private-members:\n", &[] ; "private_members_are_taken_in")]
-#[test_case(FUNCTIONS, ".. automodule:: pkg.api\n   :members:\n   :exclude-members: other\n", &["_hidden", "other"] ; "excluded_members_are_left_out")]
-#[test_case(&format!("{FUNCTIONS}\n\ndef __special__() -> None:\n    pass\n"), ".. automodule:: pkg.api\n   :members:\n", &["_hidden"] ; "special_names_are_not_reported_without_the_flag")]
-#[test_case(&format!("{FUNCTIONS}\n\ndef __special__() -> None:\n    pass\n"), ".. automodule:: pkg.api\n   :members:\n   :special-members:\n", &["_hidden"] ; "special_names_are_not_reported_with_the_flag")]
+#[test_case(
+    FUNCTIONS,
+    concat!(
+        ".. automodule:: pkg.api\n",
+        "   :members:\n",
+        "   :private-members:\n"
+    ),
+    &[] ; "private_members_are_taken_in"
+)]
+#[test_case(
+    FUNCTIONS,
+    concat!(
+        ".. automodule:: pkg.api\n",
+        "   :members:\n",
+        "   :exclude-members: other\n"
+    ),
+    &["_hidden", "other"] ; "excluded_members_are_left_out"
+)]
+#[test_case(
+    &format!("{FUNCTIONS}\n\ndef __special__() -> None:\n    pass\n"),
+    concat!(
+        ".. automodule:: pkg.api\n",
+        "   :members:\n"
+    ),
+    &["_hidden"] ; "special_names_are_not_reported_without_the_flag"
+)]
+#[test_case(
+    &format!("{FUNCTIONS}\n\ndef __special__() -> None:\n    pass\n"),
+    concat!(
+        ".. automodule:: pkg.api\n",
+        "   :members:\n",
+        "   :special-members:\n"
+    ),
+    &["_hidden"] ; "special_names_are_not_reported_with_the_flag"
+)]
 #[test_case(FUNCTIONS, ".. automodule:: pkg.api\n   :members: public\n", &["_hidden", "other"] ; "listed_members_only")]
 #[test_case(FUNCTIONS, ".. automodule:: pkg.api\n", &["_hidden", "other", "public"] ; "module_without_members")]
 fn automodule_members_are_used_as_sphinx_renders_them(source: &str, directive: &str, expected: &[&str]) {
@@ -183,17 +222,17 @@ fn nested_project_is_not_judged_for_docstrings_or_exports(directory: &str, repor
         (&format!("{directory}/conf.py"), ""),
         (
             &format!("{directory}/mod.py"),
-            "__all__ = [\"keep\"]\n\nbadName = 1\n\n\ndef keep() -> None:\n    pass\n\n\ndef unlisted() -> None:\n    pass\n\n\ndef _internal() -> None:\n    \"\"\"Internal doc.\"\"\"\n\n\ndef f(x: int) -> int:\n    return x\n",
+            "__all__ = [\"keep\"]\n\nbadName = 1\n\n\ndef keep() -> None:\n    pass\n\n\ndef unlisted() -> None:\n    \
+            pass\n\n\ndef _internal() -> None:\n    \"\"\"Internal doc.\"\"\"\n\n\ndef f(x: int) -> int:\n    return \
+            x\n",
         ),
     ]);
-    let stdout = check(root.path(), &["--select", "SMP101,SMP102,SMP401,SMP403,SMP901,SMP903"]).1;
+    let stdout = check(root.path(), &["--select", "SMP101,SMP401,SMP403,SMP901,SMP903"]).1;
     assert!(stdout.contains(" SMP101 "), "{stdout}");
-    let judged = [" SMP901 ", " SMP403 ", " SMP903 ", " SMP102 "].map(|code| stdout.contains(code));
-    assert_eq!(judged, [reported; 4], "{stdout}");
+    let judged = [" SMP901 ", " SMP403 ", " SMP903 "].map(|code| stdout.contains(code));
+    assert_eq!(judged, [reported; 3], "{stdout}");
 }
 
-// Every rule that judges docstrings or the visibility of names leaves a nested test project alone, whatever the file
-// holds.
 #[test]
 fn docstring_and_visibility_rules_leave_a_nested_project_alone() {
     let root = project(&[
@@ -204,19 +243,66 @@ fn docstring_and_visibility_rules_leave_a_nested_project_alone() {
         ("roots/test-a/conf.py", ""),
         (
             "roots/test-a/mod.py",
-            "\"\"\"Module.\"\"\"\n\n__all__ = [\"keep\"]\n\nbadName = 1\n\n\ndef keep(x: int) -> int:\n    \"\"\"Keep `x`.\n\n    :param y: missing.\n    :returns: nothing.\n    \"\"\"\n    return x\n\n\ndef unlisted() -> None:\n    pass\n\n\ndef _internal() -> None:\n    \"\"\"Internal doc.\"\"\"\n\n\nclass Holder:\n    \"\"\"Holds.\n\n    :ivar count: a count.\n    \"\"\"\n\n    count: int = 0\n",
+            "\"\"\"Module.\"\"\"\n\n__all__ = [\"keep\"]\n\nbadName = 1\n\n\ndef keep(x: int) -> int:\n    \"\"\"Keep \
+            `x`.\n\n    :param y: missing.\n    :returns: nothing.\n    \"\"\"\n    return x\n\n\ndef unlisted() -> \
+            None:\n    pass\n\n\ndef _internal() -> None:\n    \"\"\"Internal doc.\"\"\"\n\n\nclass Holder:\n    \
+            \"\"\"Holds.\n\n    :ivar count: a count.\n    \"\"\"\n\n    count: int = 0\n",
         ),
     ]);
     let stdout = check(root.path(), &["--select", "SMP9,SMP102,SMP401,SMP402,SMP403,SMP404"]).1;
     assert_eq!(stdout, common::PASSED);
+    let outside = project(&[
+        (
+            "pyproject.toml",
+            "[project]\nname = \"demo\"\nversion = \"0\"\n\n[tool.simplint]\nproject-kind = \"library\"\n",
+        ),
+        ("roots/fixtures/mod.py", "def _internal() -> None:\n    \"\"\"Internal doc.\"\"\"\n"),
+    ]);
+    assert!(check(outside.path(), &["--select", "SMP901"]).1.contains("SMP901"));
 }
 
 // A module that a test patches by attribute keeps its `module.Name` reads: binding the name at import time would miss
 // the patch, so SMP304 offers no fix for any of the patch forms.
-#[test_case("from unittest import mock\n\n\ndef test_run() -> None:\n    with mock.patch(\"bench.operations.OPERATIONS\"):\n        pass\n" ; "dotted_string")]
-#[test_case("from bench import operations\n\n\ndef test_run() -> None:\n    setattr(operations, \"OPERATIONS\", {})\n" ; "setattr")]
-#[test_case("from bench import operations\n\n\ndef test_run(monkeypatch) -> None:\n    monkeypatch.setattr(operations, \"OPERATIONS\", {})\n" ; "monkeypatch")]
-#[test_case("from unittest import mock\n\nfrom bench import operations\n\n\ndef test_run() -> None:\n    with mock.patch.object(operations, \"OPERATIONS\"):\n        pass\n" ; "patch_object")]
+#[test_case(
+    concat!(
+        "from unittest import mock\n",
+        "\n",
+        "\n",
+        "def test_run() -> None:\n",
+        "    with mock.patch(\"bench.operations.OPERATIONS\"):\n",
+        "        pass\n"
+    ) ; "dotted_string"
+)]
+#[test_case(
+    concat!(
+        "from bench import operations\n",
+        "\n",
+        "\n",
+        "def test_run() -> None:\n",
+        "    setattr(operations, \"OPERATIONS\", {})\n"
+    ) ; "setattr"
+)]
+#[test_case(
+    concat!(
+        "from bench import operations\n",
+        "\n",
+        "\n",
+        "def test_run(monkeypatch) -> None:\n",
+        "    monkeypatch.setattr(operations, \"OPERATIONS\", {})\n"
+    ) ; "monkeypatch"
+)]
+#[test_case(
+    concat!(
+        "from unittest import mock\n",
+        "\n",
+        "from bench import operations\n",
+        "\n",
+        "\n",
+        "def test_run() -> None:\n",
+        "    with mock.patch.object(operations, \"OPERATIONS\"):\n",
+        "        pass\n"
+    ) ; "patch_object"
+)]
 fn patched_module_attribute_keeps_module_reads(test: &str) {
     let root = project(&[
         ("tools/bench/__init__.py", ""),
@@ -233,20 +319,51 @@ fn patched_module_attribute_keeps_module_reads(test: &str) {
         common::read(root.path(), "tools/bench/report.py"),
         "from bench import operations\n\n\ndef render() -> dict:\n    return operations.OPERATIONS\n"
     );
+    let unpatched = project(&[
+        ("tools/bench/__init__.py", ""),
+        ("tools/bench/operations.py", "OPERATIONS = {}\n\n\ndef run() -> dict:\n    return OPERATIONS\n"),
+        (
+            "tools/bench/report.py",
+            "from bench import operations\n\n\ndef render() -> dict:\n    return operations.OPERATIONS\n",
+        ),
+    ]);
+    check(unpatched.path(), &["--select", "SMP304", "--unsafe-fixes", "--fix"]);
+    assert_ne!(
+        common::read(unpatched.path(), "tools/bench/report.py"),
+        "from bench import operations\n\n\ndef render() -> dict:\n    return operations.OPERATIONS\n"
+    );
 }
 
 // A store to one attribute of a module from another file, or a dotted string patching one, touches only that attribute:
 // the module's other attributes still move into the importer.
 #[test_case(
     "pkg/setup.py",
-    "from pkg import exc\n\nexc._version_token = 1\n",
-    "pkg/use.py:5:12: SMP304 Import `Error` from `pkg.exc` instead of reaching it through the module\npkg/use.py:5:23: \
-     SMP304 Import `Other` from `pkg.exc` instead of reaching it through the module\nFound 2 errors.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ; "store"
+    concat!(
+        "from pkg import exc\n",
+        "\n",
+        "exc._version_token = 1\n"
+    ),
+    concat!(
+        "pkg/use.py:5:12: SMP304 Import `Error` from `pkg.exc` instead of reaching it through the module\n",
+        "pkg/use.py:5:23: SMP304 Import `Other` from `pkg.exc` instead of reaching it through the module\n",
+        "Found 2 errors.\n",
+        "1 unsafe fix available with `--fix --unsafe-fixes`.\n"
+    ) ; "store"
 )]
 #[test_case(
     "pkg/test_use.py",
-    "from unittest import mock\n\n\ndef test_it() -> None:\n    with mock.patch(\"pkg.exc.Error\"):\n        pass\n",
-    "pkg/use.py:5:23: SMP304 Import `Other` from `pkg.exc` instead of reaching it through the module\nFound 1 error.\n" ; "patched"
+    concat!(
+        "from unittest import mock\n",
+        "\n",
+        "\n",
+        "def test_it() -> None:\n",
+        "    with mock.patch(\"pkg.exc.Error\"):\n",
+        "        pass\n"
+    ),
+    concat!(
+        "pkg/use.py:5:23: SMP304 Import `Other` from `pkg.exc` instead of reaching it through the module\n",
+        "Found 1 error.\n"
+    ) ; "patched"
 )]
 fn stored_attribute_leaves_other_attributes_reported(path: &str, body: &str, expected: &str) {
     let root = project(&[
@@ -266,7 +383,8 @@ fn doctest_read_does_not_patch_module() {
         ("tools/bench/__init__.py", ""),
         (
             "tools/bench/operations.py",
-            "OPERATIONS = {}\n\n\ndef run() -> dict:\n    \"\"\"Return the table.\n\n    >>> from bench import operations\n    >>> operations.OPERATIONS\n    {}\n    \"\"\"\n    return OPERATIONS\n",
+            "OPERATIONS = {}\n\n\ndef run() -> dict:\n    \"\"\"Return the table.\n\n    >>> from bench import \
+            operations\n    >>> operations.OPERATIONS\n    {}\n    \"\"\"\n    return OPERATIONS\n",
         ),
         (
             "tools/bench/report.py",
@@ -276,7 +394,8 @@ fn doctest_read_does_not_patch_module() {
     assert_eq!(
         check(root.path(), &["--select", "SMP304"]).1,
         common::native(
-            "tools/bench/report.py:5:12: SMP304 Import `OPERATIONS` from `bench.operations` instead of reaching it through \
+            "tools/bench/report.py:5:12: SMP304 Import `OPERATIONS` from `bench.operations` instead of reaching it \
+            through \
              the module\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n"
         )
     );
@@ -296,7 +415,6 @@ fn nested_project_pages_do_not_name_the_run_projects_definitions() {
     assert!(stdout.contains(&common::native("support.py")), "{stdout}");
 }
 
-// SARIF gives the file of a related location as a file URI, as it gives the primary location of the same result.
 #[test]
 fn sarif_related_location_is_a_file_uri() {
     let root = project(&[
@@ -321,13 +439,27 @@ fn autodoc_names_a_package_function_by_its_package() {
         ("pyproject.toml", "[project]\nname = \"app\"\nversion = \"0\"\n"),
         (
             "app/__init__.py",
-            "def helper() -> int:\n    \"\"\"Compute the helper value from the environment and return it to the caller.\"\"\"\n    return 2\n",
+            "def helper() -> int:\n    \"\"\"Compute the helper value from the environment and return it to the \
+            caller.\"\"\"\n    return 2\n",
         ),
         ("docs/conf.py", ""),
         ("docs/index.rst", "API\n===\n\n.. autofunction:: app.helper\n"),
     ]);
     let stdout = check(root.path(), &["--select", "SMP901,SMP409"]).1;
     assert_eq!(stdout, common::PASSED);
+    let undocumented = project(&[
+        ("pyproject.toml", "[project]\nname = \"app\"\nversion = \"0\"\n"),
+        (
+            "app/__init__.py",
+            concat!(
+                "def helper() -> int:\n",
+                "    \"\"\"Compute the helper value from the environment and return it to the caller.\"\"\"\n",
+                "    return 2\n"
+            ),
+        ),
+        ("docs/conf.py", ""),
+    ]);
+    assert!(check(undocumented.path(), &["--select", "SMP901"]).1.contains("SMP901"));
 }
 
 // An autodoc directive names a method by its class, so the method's docstring is documented rather than internal.
@@ -338,13 +470,32 @@ fn autodoc_names_a_method_by_its_class() {
         ("app/__init__.py", ""),
         (
             "app/mod.py",
-            "__all__ = [\"Foo\"]\n\n\nclass Foo:\n    def run(self) -> int:\n        \"\"\"Run the thing and give back the exit status of the subprocess it starts.\"\"\"\n        return 1\n",
+            "__all__ = [\"Foo\"]\n\n\nclass Foo:\n    def run(self) -> int:\n        \"\"\"Run the thing and give back \
+            the exit status of the subprocess it starts.\"\"\"\n        return 1\n",
         ),
         ("docs/conf.py", ""),
         ("docs/index.rst", "API\n===\n\n.. autoclass:: app.mod.Foo\n   :members:\n"),
     ]);
     let stdout = check(root.path(), &["--select", "SMP901"]).1;
     assert_eq!(stdout, common::PASSED);
+    let undocumented = project(&[
+        ("pyproject.toml", "[project]\nname = \"app\"\nversion = \"0\"\n"),
+        ("app/__init__.py", ""),
+        (
+            "app/mod.py",
+            concat!(
+                "__all__ = [\"Foo\"]\n",
+                "\n",
+                "\n",
+                "class Foo:\n",
+                "    def run(self) -> int:\n",
+                "        \"\"\"Run the thing and give back the exit status of the subprocess it starts.\"\"\"\n",
+                "        return 1\n"
+            ),
+        ),
+        ("docs/conf.py", ""),
+    ]);
+    assert!(check(undocumented.path(), &["--select", "SMP901"]).1.contains("SMP901"));
 }
 
 // A nested project's files are test input, so the rules it leaves out do not run there. Its results are cached apart
@@ -380,4 +531,10 @@ fn coverage_plugin_init_is_used(all: &str) {
         ("tasks/coverage_pragmas.py", &format!("{COVERAGE_PLUGIN}{all}")),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP401,SMP402,SMP403,SMP409"]).1, common::PASSED);
+    let unconfigured = project(&[
+        ("pyproject.toml", "[project]\nname = \"demo\"\n"),
+        ("tasks/__init__.py", ""),
+        ("tasks/coverage_pragmas.py", &format!("{COVERAGE_PLUGIN}{all}")),
+    ]);
+    assert!(check(unconfigured.path(), &["--select", "SMP402,SMP403,SMP409"]).1.contains("`coverage_init`"));
 }

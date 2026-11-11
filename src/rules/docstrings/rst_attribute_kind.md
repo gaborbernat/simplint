@@ -1,11 +1,10 @@
 Flags an `:ivar:` field documenting a class variable, or a `:cvar:` field documenting an instance attribute, in
-reStructuredText class docstrings. Sphinx renders the two under different headings, so the wrong field sends readers to
-the wrong place.
+reStructuredText class docstrings.
 
 ## Why is this bad?
 
-Sphinx renders the two as "Instance Variables" and "Class Variables", so the wrong one tells readers to look for the
-value in the wrong place.
+Sphinx lists the two under different headings, "Instance Variables" and "Class Variables", so the wrong field sends
+readers to the wrong list.
 
 ## Example
 

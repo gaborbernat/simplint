@@ -50,98 +50,58 @@ use self::resolve::UnreachedPath;
 use self::run_imports::{Members, RunImports, run_import_kinds};
 use self::run_reads::{RunReads, RunWide, run_names};
 
-// Which names of each file other files use, keyed by the file a name resolves to. Module names resolve with ty's module
-// resolver, the one Ruff's import graph uses, so a module counts under the name Python would import it by, whether its
-// package has an `__init__.py` or sits in a pytest rootdir.
+// Module names resolve with ty's resolver, the one Ruff's import graph uses, so a module is named as Python imports it.
 pub struct Project {
     pub(super) imported: FxHashMap<FileId, FxHashSet<String>>,
-    // The names the entry points of the run name that no file imports, which the host loads rather than a module.
     pub(super) entry_only: FxHashMap<FileId, FxHashSet<String>>,
-    // Names other code reaches by a dotted string, such as a `mock.patch` target: renaming them breaks that code, yet
-    // they are not part of the module's API.
+    // Renaming these breaks the dotted-string code that reaches them, yet they are not part of the module's API.
     pub(super) referenced: FxHashMap<FileId, FxHashSet<String>>,
-    // Modules without a static `__all__` that an `import *` may read, so each of their public names may be in use.
     pub(super) star_imported: FxHashSet<FileId>,
-    // Modules their own package's `__init__.py` star-imports, where the package binds the submodule under its own name.
     pub(super) package_star_imported: FxHashSet<FileId>,
-    // Modules some file star-imports, whatever their `__all__`, so a name they export may be in use where it lands.
     pub(super) star_sources: FxHashSet<FileId>,
-    // Where each file sits in its library's public API.
     pub(super) roles: FxHashMap<FileId, ModuleRole>,
-    // The public API of each file: the names its public module exports, and those it re-exports, each with the file that
-    // re-exports it, if any.
     pub(super) library_api: FxHashMap<FileId, FxHashMap<String, Option<PathBuf>>>,
-    // The names a file uses from other files only when they are test modules, which no other file uses.
     pub(super) test_only: FxHashMap<FileId, FxHashSet<String>>,
-    // The modules whose every name some code of the run may read: those a production file loads as a value, and the
-    // submodules a star import binds from their package's `__all__`.
     pub(super) read_whole: FxHashSet<FileId>,
-    // The files production code loads as a value, whose functions a call through the value reaches with no import.
     pub(super) loaded_as_value: FxHashSet<FileId>,
-    // The exception classes each file defines that no handler of the run names by name, or through a subclass.
     pub(super) uncaught_exceptions: FxHashMap<FileId, FxHashSet<String>>,
-    // The names each file gives to an exception class of the run, defined there or imported from there.
     pub(super) exception_types: FxHashMap<FileId, FxHashSet<String>>,
-    // The classes each file defines that subclass a hook interface hatchling loads a custom hook's class from.
     pub(super) hook_classes: FxHashMap<FileId, FxHashSet<String>>,
-    // Whether each name a file imports from a file of the run is a class there, by the name it binds.
     pub(super) run_imports: FxHashMap<FileId, FxHashMap<String, bool>>,
-    // The file each module a file binds by importing a file of the run as a module names, by the name it binds.
     pub(super) run_modules: FxHashMap<FileId, FxHashMap<String, FileId>>,
-    // The members of each file of the run that `run_modules` names.
     pub(super) run_members: FxHashMap<FileId, Members>,
-    // The classes and aliases each file defines that another exported name's signature reaches.
     pub(super) api_reached: FxHashMap<FileId, FxHashSet<String>>,
     pub(super) library_reached: FxHashMap<FileId, FxHashSet<String>>,
-    // The members of each file's private classes that a public class of the run inherits unoverridden, by class.
     pub(super) inherited: FxHashMap<FileId, FxHashMap<String, FxHashSet<String>>>,
     pub(super) docs: DocReferences,
-    // The statement each file's runtime imports close a cycle with, keyed by the file that reports it.
     pub(super) cycles: FxHashMap<FileId, Cycle>,
-    // The statements each file shares with another file, which `duplicate-code` reports.
     pub(super) duplicates: FxHashMap<FileId, Vec<DuplicateRun>>,
-    // The digest of each file's source the index read, whose offsets the ranges of `cycles` and `duplicates` are.
+    // Cycle and duplicate ranges are offsets into these sources, so the digest tells when they went stale.
     pub(super) sources: FxHashMap<FileId, u64>,
-    // The modules each file binds at its top level, keyed by that file.
     pub(super) module_uses: FxHashMap<FileId, Vec<ModuleUse>>,
-    // The modules a write under a computed name reaches, whose names any of them may be set by it.
     pub(super) computed_writes: FxHashSet<FileId>,
-    // The names a `setattr` call of each file sets on that file's module, which only the file's own names count.
     pub(super) written: FxHashMap<FileId, FxHashSet<String>>,
     pub(super) calls: RunCalls,
-    // The names of the run that every file's answers depend on, and their digest.
     pub(super) wide: RunWide,
     pub(super) digest: u64,
-    // The layout `private-import-path` probes beside the run's projects, when a file of the run checks for it.
     pub(super) probed: Option<u64>,
     pub(super) files: Arc<FileIds>,
 }
 
-// What the index reads besides the files' facts.
 pub struct IndexInputs<'a> {
-    // Each entry point with the directory its `pyproject.toml` is in, which the entry point's module resolves from.
     pub entry_points: &'a [(PathBuf, String)],
-    // The build backend's hooks, each with the file that defines it, which a build frontend calls by name.
     pub build_hooks: &'a [(PathBuf, String)],
-    // The coverage plugin modules, each with the directory its `pyproject.toml` is in, which coverage calls by name.
     pub coverage_plugins: &'a [(PathBuf, String)],
-    // The dotted names the `.pth` files of the run's roots make the interpreter load and read at startup.
     pub startup: &'a [String],
     pub roles: &'a FxHashMap<&'a Path, ModuleRole>,
     pub test_modules: &'a FxHashSet<&'a Path>,
     pub distribution_roots: &'a FxHashMap<&'a Path, &'a Path>,
-    // The Python objects the project's documentation names.
     pub docs: &'a DocReferences,
-    // The fewest statements a duplicate block of any file of the run spans, when a file checks for duplicate code.
     pub duplicate_statements: Option<usize>,
-    // The layout `private-import-path` probes beside the run's projects, when a file of the run checks for it.
     pub probed: Option<u64>,
-    // What another project of the run reads, which counts as use in these files as an entry point's names do.
     pub external: &'a External,
 }
 
-// What the files of one project read that another project's files may define: the names it imports, the names it reads
-// and stores to, the names its doctests use, and the attributes it reads under computed names.
 #[derive(Default)]
 pub struct External {
     pub imported: FxHashSet<String>,
@@ -243,7 +203,6 @@ impl Project {
         wide.opaque_names.extend(external.opaque.iter().cloned());
         let reexports = Reexports::new(&bindings, &stars);
         let graph = ClassGraph::of(&resolver.modules, &reexports);
-        let hook_classes = hatch_hook_classes(&graph);
         let RunImports { names: run_imports, modules: run_modules, members: run_members } =
             run_import_kinds(&resolver.modules, &bindings, &reexports);
         let (
@@ -303,7 +262,7 @@ impl Project {
             loaded_as_value: read_whole,
             uncaught_exceptions,
             exception_types,
-            hook_classes,
+            hook_classes: hatch_hook_classes(&graph),
             run_imports,
             run_modules,
             run_members,
@@ -329,8 +288,7 @@ impl Project {
         self.wide.changed(&other.wide)
     }
 
-    // A file's entry is looked up once, so rules asking about many names do not normalize and hash its path each time.
-    // A file the index never saw has no entries, so it gets the same empty answers as one with none.
+    // Looked up once, so rules asking about many names do not normalize and hash the path each time.
     pub fn file(&self, path: &Path) -> FileIndex<'_> {
         let id = self.files.get(path);
         FileIndex {
@@ -369,59 +327,56 @@ impl Project {
     }
 }
 
-// Whether a use comes from a test module or from any other module, so a name only tests use is found.
-#[derive(Clone, Copy)]
-enum Origin {
-    Test,
-    Other,
+fn interned_inputs(
+    resolver: &mut ImportResolver,
+    inputs: &IndexInputs,
+) -> (FxHashSet<FileId>, FxHashMap<FileId, ModuleRole>) {
+    let test_modules = inputs.test_modules.iter().map(|path| FileIds::intern(&mut resolver.files, path)).collect();
+    let roles = inputs.roles.iter().map(|(path, role)| (FileIds::intern(&mut resolver.files, path), *role)).collect();
+    (test_modules, roles)
 }
 
-// The names each file uses, by the way it uses them: an import binds a name, a reference reads or stores it, and a
-// read reaches it without patching anything, as a doctest or a coverage plugin does.
-#[derive(Default)]
-struct Uses {
-    imported: FxHashMap<FileId, FxHashSet<String>>,
-    referenced: FxHashMap<FileId, FxHashSet<String>>,
-    // The references that patch a module, such as stores, dotted strings and `setattr` names. Doctests' reads are in
-    // `referenced` but not here, as reading a name patches nothing.
-    stored_references: FxHashMap<FileId, FxHashSet<String>>,
-    from_tests: FxHashMap<FileId, FxHashSet<String>>,
-    from_others: FxHashMap<FileId, FxHashSet<String>>,
-}
-
-impl Uses {
-    fn import(&mut self, file: FileId, names: &[String], origin: Origin) {
-        self.imported.entry(file).or_default().extend(names.iter().cloned());
-        self.bucket(file, names, origin);
-    }
-
-    fn reference(&mut self, file: FileId, names: &[String], origin: Origin) {
-        self.referenced.entry(file).or_default().extend(names.iter().cloned());
-        self.stored_references.entry(file).or_default().extend(names.iter().cloned());
-        self.bucket(file, names, origin);
-    }
-
-    fn read(&mut self, file: FileId, names: &[String], origin: Origin) {
-        self.referenced.entry(file).or_default().extend(names.iter().cloned());
-        self.bucket(file, names, origin);
-    }
-
-    fn bucket(&mut self, file: FileId, names: &[String], origin: Origin) {
-        let bucket = match origin {
-            Origin::Test => &mut self.from_tests,
-            Origin::Other => &mut self.from_others,
-        };
-        bucket.entry(file).or_default().extend(names.iter().cloned());
-    }
-
-    fn reexport(&mut self, stars: &[(FileId, FileId)], sources: &FxHashMap<FileId, &FileFacts>) {
-        for names in [&mut self.imported, &mut self.referenced, &mut self.from_tests, &mut self.from_others] {
-            reexport(names, stars, sources);
+fn importers(files: &[(FileId, &FileFacts)], resolver: &ImportResolver) -> FxHashMap<FileId, FxHashSet<FileId>> {
+    let mut importers: FxHashMap<FileId, FxHashSet<FileId>> = FxHashMap::default();
+    for (id, _) in files {
+        let module = &resolver.modules[id];
+        // A star import uses the names of the module it reads, as a named import does.
+        for file in module.names[Channel::Import]
+            .files
+            .iter()
+            .chain(&module.names[Channel::Reference].files)
+            .map(|(file, _)| file)
+            .chain(&module.stars)
+        {
+            importers.entry(*file).or_default().insert(*id);
         }
     }
+    importers
 }
 
-// What the modules of the run contribute to the index, gathered in one pass over them.
+// The modules that only test modules, or modules found this way, import: helpers such as a `testing/fixtures.py`, whose
+// calls are test code though its path does not say so. An entry point or a module a `.pth` file loads runs without an
+// import, and a module with a `__main__` guard runs as a program, so none of them is one.
+fn test_support(
+    importers: &FxHashMap<FileId, FxHashSet<FileId>>,
+    test_modules: &FxHashSet<FileId>,
+    entries: &FxHashSet<FileId>,
+) -> FxHashSet<FileId> {
+    let mut support: FxHashSet<FileId> = FxHashSet::default();
+    loop {
+        let found: Vec<FileId> = importers
+            .iter()
+            .filter(|(file, _)| !test_modules.contains(*file) && !support.contains(*file) && !entries.contains(*file))
+            .filter(|(_, by)| by.iter().all(|importer| test_modules.contains(importer) || support.contains(importer)))
+            .map(|(file, _)| *file)
+            .collect();
+        if found.is_empty() {
+            return support;
+        }
+        support.extend(found);
+    }
+}
+
 #[derive(Default)]
 struct Gathered<'r> {
     uses: Uses,
@@ -489,7 +444,67 @@ impl<'r> Gathered<'r> {
     }
 }
 
-// The facts of the files that are not stubs, by id: a stub declares the names of its module, whose source holds them.
+fn every(files: &[(FileId, &FileFacts)], names: impl Fn(&FileFacts) -> &Vec<String>) -> FxHashSet<String> {
+    every_in(files, |_| true, names)
+}
+
+fn every_in(
+    files: &[(FileId, &FileFacts)],
+    selected: impl Fn(FileId) -> bool,
+    names: impl Fn(&FileFacts) -> &Vec<String>,
+) -> FxHashSet<String> {
+    files.iter().filter(|(id, _)| selected(*id)).flat_map(|(_, facts)| names(facts).iter().cloned()).collect()
+}
+
+#[derive(Clone, Copy)]
+enum Origin {
+    Test,
+    Other,
+}
+
+#[derive(Default)]
+struct Uses {
+    imported: FxHashMap<FileId, FxHashSet<String>>,
+    referenced: FxHashMap<FileId, FxHashSet<String>>,
+    // Doctests' reads are in `referenced` but not here, as reading a name patches nothing.
+    stored_references: FxHashMap<FileId, FxHashSet<String>>,
+    from_tests: FxHashMap<FileId, FxHashSet<String>>,
+    from_others: FxHashMap<FileId, FxHashSet<String>>,
+}
+
+impl Uses {
+    fn import(&mut self, file: FileId, names: &[String], origin: Origin) {
+        self.imported.entry(file).or_default().extend(names.iter().cloned());
+        self.bucket(file, names, origin);
+    }
+
+    fn reference(&mut self, file: FileId, names: &[String], origin: Origin) {
+        self.referenced.entry(file).or_default().extend(names.iter().cloned());
+        self.stored_references.entry(file).or_default().extend(names.iter().cloned());
+        self.bucket(file, names, origin);
+    }
+
+    fn read(&mut self, file: FileId, names: &[String], origin: Origin) {
+        self.referenced.entry(file).or_default().extend(names.iter().cloned());
+        self.bucket(file, names, origin);
+    }
+
+    fn bucket(&mut self, file: FileId, names: &[String], origin: Origin) {
+        let bucket = match origin {
+            Origin::Test => &mut self.from_tests,
+            Origin::Other => &mut self.from_others,
+        };
+        bucket.entry(file).or_default().extend(names.iter().cloned());
+    }
+
+    fn reexport(&mut self, stars: &[(FileId, FileId)], sources: &FxHashMap<FileId, &FileFacts>) {
+        for names in [&mut self.imported, &mut self.referenced, &mut self.from_tests, &mut self.from_others] {
+            reexport(names, stars, sources);
+        }
+    }
+}
+
+// A stub declares its module's names, which the module's own source already holds.
 fn non_stub_facts<'a>(ids: &[FileId], files: &[(&Path, &'a FileFacts)]) -> FxHashMap<FileId, &'a FileFacts> {
     ids.iter()
         .zip(files)
@@ -531,79 +546,7 @@ fn duplicate_reports(
         .collect()
 }
 
-// The entry of a file's id, if the file has one.
-fn entry<V>(map: &FxHashMap<FileId, V>, id: Option<FileId>) -> Option<&V> {
-    map.get(&id?)
-}
-
-// The names any file of the run lists in one of its facts.
-fn every(files: &[(FileId, &FileFacts)], names: impl Fn(&FileFacts) -> &Vec<String>) -> FxHashSet<String> {
-    every_in(files, |_| true, names)
-}
-
-// The files that import each file of the run, by an import or a dotted reference.
-fn importers(files: &[(FileId, &FileFacts)], resolver: &ImportResolver) -> FxHashMap<FileId, FxHashSet<FileId>> {
-    let mut importers: FxHashMap<FileId, FxHashSet<FileId>> = FxHashMap::default();
-    for (id, _) in files {
-        let module = &resolver.modules[id];
-        // A star import uses the names of the module it reads, as a named import does.
-        for file in module.names[Channel::Import]
-            .files
-            .iter()
-            .chain(&module.names[Channel::Reference].files)
-            .map(|(file, _)| file)
-            .chain(&module.stars)
-        {
-            importers.entry(*file).or_default().insert(*id);
-        }
-    }
-    importers
-}
-
-// The modules that only test modules, or modules found this way, import: helpers such as a `testing/fixtures.py`, whose
-// calls are test code though its path does not say so. An entry point or a module a `.pth` file loads runs without an
-// import, and a module with a `__main__` guard runs as a program, so none of them is one.
-fn test_support(
-    importers: &FxHashMap<FileId, FxHashSet<FileId>>,
-    test_modules: &FxHashSet<FileId>,
-    entries: &FxHashSet<FileId>,
-) -> FxHashSet<FileId> {
-    let mut support: FxHashSet<FileId> = FxHashSet::default();
-    loop {
-        let found: Vec<FileId> = importers
-            .iter()
-            .filter(|(file, _)| !test_modules.contains(*file) && !support.contains(*file) && !entries.contains(*file))
-            .filter(|(_, by)| by.iter().all(|importer| test_modules.contains(importer) || support.contains(importer)))
-            .map(|(file, _)| *file)
-            .collect();
-        if found.is_empty() {
-            return support;
-        }
-        support.extend(found);
-    }
-}
-
-// The names the files `selected` accepts list in one of their facts.
-fn every_in(
-    files: &[(FileId, &FileFacts)],
-    selected: impl Fn(FileId) -> bool,
-    names: impl Fn(&FileFacts) -> &Vec<String>,
-) -> FxHashSet<String> {
-    files.iter().filter(|(id, _)| selected(*id)).flat_map(|(_, facts)| names(facts).iter().cloned()).collect()
-}
-
-// The test modules and the roles, each keyed by file id.
-fn interned_inputs(
-    resolver: &mut ImportResolver,
-    inputs: &IndexInputs,
-) -> (FxHashSet<FileId>, FxHashMap<FileId, ModuleRole>) {
-    let test_modules = inputs.test_modules.iter().map(|path| resolver.intern(path)).collect();
-    let roles = inputs.roles.iter().map(|(path, role)| (resolver.intern(path), *role)).collect();
-    (test_modules, roles)
-}
-
-// The names another project reads that a file of this one defines, which count as used in it as an entry point's names
-// do. A name the file only imports is no definition of its own, so another project reading it is no use of the file.
+// A name the file only imports is no definition of its own, so another project reading it is no use of the file.
 fn external_uses(indexed: &[(FileId, &FileFacts)], external: &External, uses: &mut Uses) {
     for (file, facts) in indexed {
         let constructors = &facts.constructors;
@@ -643,7 +586,6 @@ fn entry_uses(
     entry_only
 }
 
-// The names each file's test modules use that no other file uses, so only tests use them.
 fn only_tests(
     from_tests: FxHashMap<FileId, FxHashSet<String>>,
     from_others: &FxHashMap<FileId, FxHashSet<String>>,
@@ -658,7 +600,10 @@ fn only_tests(
         .collect()
 }
 
-// A statement's range, keyed by its offsets; the cache key of each index value that holds one hashes it this way.
+fn entry<V>(map: &FxHashMap<FileId, V>, id: Option<FileId>) -> Option<&V> {
+    map.get(&id?)
+}
+
 fn range_key(range: TextRange, state: &mut CacheKeyHasher) {
     u32::from(range.start()).cache_key(state);
     u32::from(range.end()).cache_key(state);

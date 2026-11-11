@@ -2,18 +2,7 @@ mod common;
 
 use test_case::test_case;
 
-use common::fixed_file;
-
-// What a fix leaves of `module.py` under a line length limit with E501 on: a fix that makes a line too long for any
-// layout `ruff format` can give it is withdrawn, one that only seems to is kept.
-fn fixed(line_length: usize, source: &str, select: &str) -> (i32, String, String) {
-    let pyproject = format!("[tool.ruff]\nline-length = {line_length}\n[tool.ruff.lint]\nselect = [\"E501\"]\n");
-    fixed_with(&pyproject, source, select)
-}
-
-fn fixed_with(pyproject: &str, source: &str, select: &str) -> (i32, String, String) {
-    fixed_file(pyproject, "module.py", source, select)
-}
+use common::{fix_unsafe, project, read};
 
 #[test_case(
     27, "_DOC = \"\"\"Some words here\nmore\"\"\"\n\n\ndef show() -> str:\n    return _DOC\n", "SMP202",
@@ -27,7 +16,8 @@ fn fixed_with(pyproject: &str, source: &str, select: &str) -> (i32, String, Stri
 )]
 #[test_case(
     38,
-    "_TEXT = \"some words that are long\"\n\n\ndef text(flag: bool) -> str:\n    return (\"short\" if flag else _TEXT)\n",
+    "_TEXT = \"some words that are long\"\n\n\ndef text(flag: bool) -> str:\n    \
+     return (\"short\" if flag else _TEXT)\n",
     "SMP202",
     "module.py:1:1: SMP202 `_TEXT` is used by one function only; define it there\nFound 1 error.\n" ;
     "operand after else"
@@ -41,8 +31,8 @@ fn fixed_with(pyproject: &str, source: &str, select: &str) -> (i32, String, Stri
 )]
 #[test_case(
     40,
-    "_SKIP = {\n    # a comment long enough to matter\n    \"a\",\n}\n\n\ndef skipped(name: str) -> bool:\n    return name in \
-     _SKIP\n",
+    "_SKIP = {\n    # a comment long enough to matter\n    \"a\",\n}\n\n\ndef skipped(name: str) -> bool:\n    \
+     return name in _SKIP\n",
     "SMP202",
     "module.py:1:1: SMP202 `_SKIP` is used by one function only; define it there\nFound 1 error.\n" ;
     "comment on its own line in brackets"
@@ -54,15 +44,16 @@ fn fixed_with(pyproject: &str, source: &str, select: &str) -> (i32, String, Stri
 )]
 #[test_case(
     57,
-    "def label(name: str) -> str:\n    value = (\"abc \" + name + \" more words\")  # explains the value\n    return value\n",
+    "def label(name: str) -> str:\n    value = (\"abc \" + name + \" more words\")  # explains the value\n    \
+     return value\n",
     "SMP503",
     "module.py:2:14: SMP503 Build text with an f-string instead of `+`\nFound 1 error.\n" ;
     "comment after a value whose parentheses go"
 )]
 #[test_case(
     50,
-    "def show(name: str) -> None:\n    print(\n        \"x\",\n        end=\"aaaa\"\n        + name\n        + \"bbbb\",  # a \
-     trailing comment\n    )\n",
+    "def show(name: str) -> None:\n    print(\n        \"x\",\n        end=\"aaaa\"\n        + name\n        \
+     + \"bbbb\",  # a trailing comment\n    )\n",
     "SMP503",
     "module.py:4:13: SMP503 Build text with an f-string instead of `+`\nFound 1 error.\n" ;
     "comment after the last operand of an item"
@@ -80,8 +71,8 @@ fn fixed_with(pyproject: &str, source: &str, select: &str) -> (i32, String, Stri
 #[test_case(
     17, "# fmt: off\nvalue = [1, 2, 3]\nNAME = \"abc\"\n# fmt: on\nprint(value, NAME)\n", "SMP601,SMP404",
     "module.py:2:1: SMP404 `value` is not in `__all__`; name it `_value`\nmodule.py:2:1: SMP601 `value` is never \
-     reassigned; annotate it `Final`\nmodule.py:3:1: SMP404 `NAME` is not in `__all__`; name it `_NAME`\nmodule.py:3:1: \
-     SMP601 `NAME` is never reassigned; annotate it `Final`\nFound 4 errors.\n" ;
+     reassigned; annotate it `Final`\nmodule.py:3:1: SMP404 `NAME` is not in `__all__`; name it `_NAME`\n\
+     module.py:3:1: SMP601 `NAME` is never reassigned; annotate it `Final`\nFound 4 errors.\n" ;
     "two rules under fmt off"
 )]
 #[test_case(
@@ -100,7 +91,10 @@ fn fixed_with(pyproject: &str, source: &str, select: &str) -> (i32, String, Stri
     "statement under fmt skip"
 )]
 #[test_case(
-    40, "NAME = \"x\"\nNESTED = f\"{f'{NAME}'}\"\nGREETING = \"<div>\" + NAME + \"</div><span>text</span>\"\n", "SMP503",
+    40,
+    "NAME = \"x\"\nNESTED = f\"{f'{NAME}'}\"\n\
+     GREETING = \"<div>\" + NAME + \"</div><span>text</span>\"\n",
+    "SMP503",
     "module.py:3:12: SMP503 Build text with an f-string instead of `+`\nFound 1 error.\n" ;
     "f-string too long for its line"
 )]
@@ -117,7 +111,9 @@ fn fix_is_withdrawn_when_no_layout_fits(line_length: usize, source: &str, select
 // the return annotation it splits: `def test_settings_loads() -> (`.
 #[test_case(25, "class TestSettings:\n    def test_loads(self) -> None:\n        assert True\n" ; "return annotation")]
 #[test_case(24, "class TestSettings:\n    def test_loads(self):\n        assert True\n" ; "no return annotation")]
-#[test_case(20, "class TestSettings:\n    def test_loads(self) -> None:\n        assert True\n" ; "name alone too long")]
+#[test_case(
+    20, "class TestSettings:\n    def test_loads(self) -> None:\n        assert True\n" ; "name alone too long"
+)]
 fn fix_is_withdrawn_when_a_def_line_cannot_fit(line_length: usize, source: &str) {
     let pyproject = format!("[tool.ruff]\nline-length = {line_length}\n[tool.ruff.lint]\nselect = [\"E501\"]\n");
     assert_eq!(
@@ -133,7 +129,8 @@ fn fix_is_withdrawn_when_a_def_line_cannot_fit(line_length: usize, source: &str)
 }
 
 #[test_case(
-    "[tool.ruff]\nline-length = 17\n[tool.ruff.lint]\nselect = [\"E501\"]\n[tool.ruff.format]\nexclude = [\"module.py\"]\n",
+    "[tool.ruff]\nline-length = 17\n[tool.ruff.lint]\nselect = [\"E501\"]\n\
+     [tool.ruff.format]\nexclude = [\"module.py\"]\n",
     "value = [1, 2, 3]\nprint(value)\n",
     "SMP404",
     "module.py:1:1: SMP404 `value` is not in `__all__`; name it `_value`\nFound 1 error.\n" ;
@@ -162,19 +159,21 @@ fn fix_is_withdrawn_when_a_def_line_cannot_fit(line_length: usize, source: &str)
     "line length suppression ruff would remove"
 )]
 fn fix_is_withdrawn_under_format_settings(pyproject: &str, source: &str, select: &str, report: &str) {
-    assert_eq!(fixed_with(pyproject, source, select), (1, report.to_owned(), source.to_owned()));
+    assert_eq!(fixed_file(pyproject, "module.py", source, select), (1, report.to_owned(), source.to_owned()));
 }
 
 #[test_case(
     40,
-    "_M = \"a message with some spaces\"\n\n\ndef fail(error: Exception) -> None:\n    raise ValueError(_M) from error\n",
+    "_M = \"a message with some spaces\"\n\n\ndef fail(error: Exception) -> None:\n    \
+     raise ValueError(_M) from error\n",
     "SMP202",
     "def fail(error: Exception) -> None:\n    raise ValueError(\"a message with some spaces\") from error\n" ;
     "code after a bracket the formatter splits"
 )]
 #[test_case(
     60,
-    "def link() -> str:\n    return \"see the docs at \" + \"https://example.com/\" + \"some/very/long/path/to/page\"\n",
+    "def link() -> str:\n    return \"see the docs at \" + \"https://example.com/\" \
+     + \"some/very/long/path/to/page\"\n",
     "SMP503",
     "def link() -> str:\n    return \"see the docs at https://example.com/some/very/long/path/to/page\"\n" ;
     "line ending in a url"
@@ -188,11 +187,11 @@ fn fix_is_withdrawn_under_format_settings(pyproject: &str, source: &str, select:
 )]
 #[test_case(
     40,
-    "\"\"\"Greetings.\n\nA docstring line that runs past the forty character limit.\n\"\"\"\n\nfrom typing import Final\n\nGREETING \
-     = \"hello, \" \"general kenobi\"\nprint(GREETING)\n",
+    "\"\"\"Greetings.\n\nA docstring line that runs past the forty character limit.\n\"\"\"\n\n\
+     from typing import Final\n\nGREETING = \"hello, \" \"general kenobi\"\nprint(GREETING)\n",
     "SMP601",
-    "\"\"\"Greetings.\n\nA docstring line that runs past the forty character limit.\n\"\"\"\n\nfrom typing import Final\n\nGREETING: \
-     Final[str] = \"hello, \" \"general kenobi\"\nprint(GREETING)\n" ;
+    "\"\"\"Greetings.\n\nA docstring line that runs past the forty character limit.\n\"\"\"\n\n\
+     from typing import Final\n\nGREETING: Final[str] = \"hello, \" \"general kenobi\"\nprint(GREETING)\n" ;
     "long line the fix does not touch"
 )]
 fn fix_is_kept_when_a_layout_fits(line_length: usize, source: &str, select: &str, expected: &str) {
@@ -203,33 +202,36 @@ fn fix_is_kept_when_a_layout_fits(line_length: usize, source: &str, select: &str
 // an augmented assignment. The formatter's line width is narrower than Ruff's limit, so the split is all that decides.
 #[test_case(
     38,
-    "_TEXT = \"some words that are long\"\n\n\ndef text() -> str:\n    value = \"a\"\n    value |= _TEXT\n    return value\n",
-    1,
-    "module.py:1:1: SMP202 `_TEXT` is used by one function only; define it there\nFound 1 error.\n",
-    "_TEXT = \"some words that are long\"\n\n\ndef text() -> str:\n    value = \"a\"\n    value |= _TEXT\n    return value\n" ;
+    "_TEXT = \"some words that are long\"\n\n\ndef text() -> str:\n    value = \"a\"\n    \
+     value |= _TEXT\n    return value\n",
+    (
+        1,
+        "module.py:1:1: SMP202 `_TEXT` is used by one function only; define it there\nFound 1 error.\n",
+        "_TEXT = \"some words that are long\"\n\n\ndef text() -> str:\n    value = \"a\"\n    \
+         value |= _TEXT\n    return value\n"
+    ) ;
     "augmented assignment stays on its line"
 )]
 #[test_case(
     41,
     "_SKIP = \"some words that are long\"\n\n\ndef skipped(name: str) -> bool:\n    return name not in _SKIP\n",
-    0,
-    common::ONE_FIXED,
-    "def skipped(name: str) -> bool:\n    return name not in \"some words that are long\"\n" ;
+    (0, common::ONE_FIXED, "def skipped(name: str) -> bool:\n    return name not in \"some words that are long\"\n") ;
     "operand after not in"
 )]
-fn split_operation_starts_with_its_operator(limit: usize, source: &str, code: i32, stdout: &str, expected: &str) {
+fn split_operation_starts_with_its_operator(limit: usize, source: &str, (code, stdout, expected): (i32, &str, &str)) {
     let pyproject = format!(
         "[tool.ruff]\nline-length = 30\n[tool.ruff.lint]\nselect = [\"E501\"]\n[tool.ruff.lint.pycodestyle]\n\
          max-line-length = {limit}\n"
     );
-    assert_eq!(fixed_with(&pyproject, source, "SMP202"), (code, stdout.to_owned(), expected.to_owned()));
+    assert_eq!(fixed_file(&pyproject, "module.py", source, "SMP202"), (code, stdout.to_owned(), expected.to_owned()));
 }
 
 // Comments and pragmas that keep their lines whatever the layout: a comment of one word, one after strings joined
 // without an operator, and a pragma after a value too long even in parentheses of its own.
 #[test]
 fn fix_is_kept_when_comments_and_pragmas_keep_their_lines() {
-    let source = "names = [\n    #tight\n    \"a\" \"b\"  # joined\n]\nVALUE = (\"a long string value that cannot fit\")  # \
+    let source = "names = [\n    #tight\n    \"a\" \"b\"  # joined\n]\n\
+                  VALUE = (\"a long string value that cannot fit\")  # \
                   noqa: E501\nprint(names, VALUE)\n";
     assert_eq!(
         fixed(40, source, "SMP404"),
@@ -239,4 +241,17 @@ fn fix_is_kept_when_comments_and_pragmas_keep_their_lines() {
             source.replace("names", "_names").replace("VALUE", "_VALUE")
         )
     );
+}
+
+// What a fix leaves of `module.py` under a line length limit with E501 on: a fix that makes a line too long for any
+// layout `ruff format` can give it is withdrawn, one that only seems to is kept.
+fn fixed(line_length: usize, source: &str, select: &str) -> (i32, String, String) {
+    let pyproject = format!("[tool.ruff]\nline-length = {line_length}\n[tool.ruff.lint]\nselect = [\"E501\"]\n");
+    fixed_file(&pyproject, "module.py", source, select)
+}
+
+fn fixed_file(pyproject: &str, name: &str, source: &str, select: &str) -> (i32, String, String) {
+    let root = project(&[("pyproject.toml", pyproject), (name, source)]);
+    let (code, stdout, _) = fix_unsafe(root.path(), select);
+    (code, stdout, read(root.path(), name))
 }

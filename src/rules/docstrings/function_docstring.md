@@ -1,5 +1,5 @@
-Flags docstrings on internal functions, methods and classes. Their readers have the source open, where a docstring
-restates the name and signature and nothing checks that it stays accurate.
+Flags docstrings on internal functions, methods and classes. Their readers have the source open, so a docstring there
+mostly repeats the name and signature.
 
 ## Why is this bad?
 
@@ -52,6 +52,15 @@ a leading `_` as public, while [undocumented-public-api](SMP903.html) follows `_
 When the comment the fix writes gives a Ruff rule a new report, such as
 [commented-out-code](https://docs.astral.sh/ruff/rules/commented-out-code/) for code in the docstring, simplint
 withdraws the fix and keeps the report.
+
+## Ruff overlap
+
+Ruff's [empty-docstring](https://docs.astral.sh/ruff/rules/empty-docstring/) (D419) and
+[overload-with-docstring](https://docs.astral.sh/ruff/rules/overload-with-docstring/) (D418) report a docstring this
+rule offers no fix for, such as under a file-level `# ruff: noqa`. Where this rule offers no fix, it leaves to them an
+empty docstring of a single string, and a non-empty one of a function decorated with `@overload` in a `.py` file,
+whether or not the project selects them. A definition that `ignore-decorators` lists stays with this rule, since Ruff
+skips it.
 
 ## What it does
 
@@ -338,12 +347,6 @@ The fix depends on the docstring's length:
       return max(items)
   ```
 
-What the fix does with a reported docstring:
-
-- **One line of at most five words**: the fix deletes it.
-- **Anything longer, when the comment is safe to write**: the fix turns it into a `#` comment.
-- **Anything longer, when it is not**: no fix is offered.
-
 The conditions under which the comment is not safe to write are listed under "No fix is offered" below.
 
 The comment text is built this way:
@@ -493,4 +496,7 @@ No fix is offered when:
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rules
+  [D418](https://docs.astral.sh/ruff/rules/overload-with-docstring/) and
+  [D419](https://docs.astral.sh/ruff/rules/empty-docstring/), which this rule leaves to them where it has no fix (see
+  Ruff overlap).

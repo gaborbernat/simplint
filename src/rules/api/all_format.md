@@ -1,5 +1,4 @@
-Flags an `__all__` written as a tuple, or as a list without a trailing comma after its last name. With the comma, Ruff's
-formatter puts each name on its own line, so adding or removing an export changes one line.
+Flags an `__all__` written as a tuple, or as a list without a trailing comma after its last name.
 
 ## Why is this bad?
 
@@ -130,9 +129,10 @@ literal.
 
 - **A list whose closing bracket follows a line break with no comma before it**, such as a last name on its own line
   above `]` with no comma after it: Ruff's
-  [missing-trailing-comma](https://docs.astral.sh/ruff/rules/missing-trailing-comma/) reports it while the project's
-  Ruff configuration selects it, so this rule leaves it to Ruff. A tuple written that way, which COM812 reports too,
-  stays here for the fix that turns it into a list.
+  [missing-trailing-comma](https://docs.astral.sh/ruff/rules/missing-trailing-comma/) reports it, so this rule leaves it
+  to Ruff while the project's Ruff configuration selects COM812. Without it, this rule reports the list: `ruff format`
+  joins a list that fits on one line, where COM812 no longer reports it, and the next run would bring it back here. A
+  tuple written that way, which COM812 reports too, stays here for the fix that turns it into a list.
 
   ```toml config
   [tool.ruff.lint]
@@ -166,24 +166,6 @@ __all__ = [
     "load",
     "save",
 ]
-```
-
-```python report
-# fmt: off
-__all__ = [
-    "load",
-    "save"
-]
-# fmt: on
-```
-
-```python fixed
-# fmt: off
-__all__ = [
-    "load",
-    "save",
-]
-# fmt: on
 ```
 
 ```python report
@@ -229,68 +211,24 @@ The fix keeps the names in their order. The layout depends on how the literal is
   # fmt: on
   ```
 
-- **A list whose closing bracket is on its own line, or that holds a comment**: the fix adds only the comma after the
-  last name, after its closing parenthesis if it has one, so the layout and the comment stay.
+- **A list that holds a comment, with its closing bracket after a name**: the fix adds only the comma after the last
+  name, after its closing parenthesis if it has one, so the layout and the comment stay.
 
-  - the closing bracket on its own line:
+  ```python report
+  # fmt: off
+  __all__ = [
+      "load",  # the loader
+      "save"]
+  # fmt: on
+  ```
 
-    ```python report
-    # fmt: off
-    __all__ = [
-        "load",
-        "save"
-    ]
-    # fmt: on
-    ```
-
-    ```python fixed
-    # fmt: off
-    __all__ = [
-        "load",
-        "save",
-    ]
-    # fmt: on
-    ```
-
-  - a comment inside the list:
-
-    ```python report
-    # fmt: off
-    __all__ = [
-        "load",
-        "save"  # the public API
-    ]
-    # fmt: on
-    ```
-
-    ```python fixed
-    # fmt: off
-    __all__ = [
-        "load",
-        "save",  # the public API
-    ]
-    # fmt: on
-    ```
-
-  - a parenthesized last name:
-
-    ```python report
-    # fmt: off
-    __all__ = [
-        "load",
-        ("save")
-    ]
-    # fmt: on
-    ```
-
-    ```python fixed
-    # fmt: off
-    __all__ = [
-        "load",
-        ("save"),
-    ]
-    # fmt: on
-    ```
+  ```python fixed
+  # fmt: off
+  __all__ = [
+      "load",  # the loader
+      "save",]
+  # fmt: on
+  ```
 
 - **A tuple across several lines**: it keeps its layout; the fix swaps the brackets and adds the comma.
 
@@ -312,9 +250,10 @@ The fix keeps the names in their order. The layout depends on how the literal is
 
 - **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
   [COM812](https://docs.astral.sh/ruff/rules/missing-trailing-comma/), which reports a missing trailing comma when the
-  closing bracket is on its own line and which this rule leaves to it for a list; this rule covers the rest of the
-  layout, and keeps a multi-line tuple COM812 also reports, for the fix that turns it into a list. Open issues
-  [#22443](https://github.com/astral-sh/ruff/issues/22443) and [#27983](https://github.com/astral-sh/ruff/issues/27983).
+  closing bracket is on its own line and which this rule leaves to it for a list while it runs; this rule covers the
+  rest of the layout, and keeps a multi-line tuple COM812 also reports, for the fix that turns it into a list. Open
+  issues [#22443](https://github.com/astral-sh/ruff/issues/22443) and
+  [#27983](https://github.com/astral-sh/ruff/issues/27983).
 - [flake8-dunder-all](https://github.com/python-formate/flake8-dunder-all) reports
   [DALL002](https://github.com/python-formate/flake8-dunder-all) when `__all__` is not a list or tuple of strings. It
   accepts tuples, which this rule reports, and it does not check the trailing comma.

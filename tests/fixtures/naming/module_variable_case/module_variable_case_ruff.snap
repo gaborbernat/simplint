@@ -2,6 +2,7 @@
 source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
+9:1 SMP102 Module-scope variable `limitValue` should be named `LIMITVALUE` [unsafe fix: Rename `limitValue` to `LIMITVALUE`]
 16:1 SMP102 Module-scope variable `__dunderValue` should be named `__DUNDERVALUE`
 20:1 SMP102 Module-scope variable `maxDiff` should be named `MAXDIFF`
 24:1 SMP102 Module-scope variable `pointTuple` should be named `POINTTUPLE`
@@ -23,7 +24,7 @@ expression: "lint_fixture(rule, fixture, target_version)"
 71:1 SMP102 Module-scope variable `starredTuple` should be named `STARREDTUPLE`
 71:16 SMP102 Module-scope variable `restTuple` should be named `RESTTUPLE` [unsafe fix: Rename `restTuple` to `RESTTUPLE`]
 79:5 SMP102 Module-scope variable `sharedValue` should be named `SHAREDVALUE`
---- fixed (2 applied, 19 remaining) ---
+--- fixed (3 applied, 19 remaining) ---
 import os
 from collections import namedtuple
 from typing import NamedTuple
@@ -32,8 +33,8 @@ myValue = 1
 MYVALUE = 2
 print(myValue, MYVALUE)
 
-limitValue = 3
-print(limitValue)
+LIMITVALUE = 3
+print(LIMITVALUE)
 
 _privateValue = 1
 _PRIVATEVALUE = 2

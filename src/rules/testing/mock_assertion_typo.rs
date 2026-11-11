@@ -1,5 +1,4 @@
 use ruff_diagnostics::{Applicability, Edit};
-use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
@@ -53,14 +52,7 @@ const RUFF_NON_EXISTENT_NAMES: &[&str] = &[
 const MAX_DISTANCE: usize = 2;
 
 pub fn mock_assertion_typo(checker: &Checker) {
-    let ruff_pgh005 = checker.settings.from_ruff.ruff_runs(RuffRule::InvalidMockAccess);
-    let mut finder = Typos {
-        found: Vec::new(),
-        fixable: FxHashMap::default(),
-        ruff_reported: FxHashSet::default(),
-        ruff_pgh005,
-        preview: checker.settings.from_ruff.preview,
-    };
+    let mut finder = Typos { found: Vec::new(), fixable: FxHashMap::default(), ruff_reported: FxHashSet::default() };
     finder.visit_body(checker.body());
     let defined: FxHashSet<&str> = checker.function_defs().iter().map(|function| function.name.as_str()).collect();
     for (attr, intended) in finder.found {
@@ -80,6 +72,9 @@ pub fn mock_assertion_typo(checker: &Checker) {
                 edits.push(rename);
                 fix_of(edits, Applicability::Unsafe)
             });
+        if fix.is_none() && finder.ruff_reported.contains(&attr.range()) {
+            continue;
+        }
         checker.report_fix(
             Rule::MockAssertionTypo,
             attr.range(),
@@ -97,11 +92,8 @@ struct Typos<'a> {
     // test, since an assertion method returns `None`. Renamed anywhere else, the name would be a bound method, which is
     // always true, or a `None` the code goes on to use.
     fixable: FxHashMap<TextRange, Vec<TextRange>>,
-    // The names Ruff's PGH005 reports, by their range, so this rule leaves them to it when PGH005 runs.
+    // The names Ruff's PGH005 reports, by their range, which this rule leaves to it when it has no fix for them.
     ruff_reported: FxHashSet<TextRange>,
-    ruff_pgh005: bool,
-    // Whether Ruff's preview mode is on, which makes PGH005 report the names of statements on their own too.
-    preview: bool,
 }
 
 impl<'a> Visitor<'a> for Typos<'a> {
@@ -127,12 +119,8 @@ impl<'a> Visitor<'a> for Typos<'a> {
         match stmt {
             // Code under `assertRaises` or `pytest.raises` expects the call to fail, so the misspelling is the point.
             Stmt::With(ast::StmtWith { items, .. }) if items.iter().any(|item| expects_error(&item.context_expr)) => {}
-            Stmt::Assert(ast::StmtAssert { test, .. }) if self.ruff_pgh005 => {
-                self.ruff_reported.extend(ruff_reported_name(test).map(Ranged::range));
-                visitor::walk_stmt(self, stmt);
-            }
-            Stmt::Expr(ast::StmtExpr { value, .. }) if self.ruff_pgh005 && self.preview => {
-                self.ruff_reported.extend(ruff_reported_name(value).map(Ranged::range));
+            Stmt::Assert(ast::StmtAssert { test: expr, .. }) | Stmt::Expr(ast::StmtExpr { value: expr, .. }) => {
+                self.ruff_reported.extend(ruff_reported_name(expr).map(Ranged::range));
                 visitor::walk_stmt(self, stmt);
             }
             _ => visitor::walk_stmt(self, stmt),
@@ -142,7 +130,6 @@ impl<'a> Visitor<'a> for Typos<'a> {
     fn visit_expr(&mut self, expr: &'a Expr) {
         if let Expr::Attribute(attribute) = expr
             && attribute.ctx.is_load()
-            && !self.ruff_reported.contains(&attribute.attr.range())
             && let Some(intended) = intended_assertion(attribute.attr.as_str())
         {
             self.found.push((&attribute.attr, intended));
@@ -151,7 +138,7 @@ impl<'a> Visitor<'a> for Typos<'a> {
     }
 }
 
-// The name of the attribute that Ruff's PGH005 reports in the test of an `assert`, or in a statement with preview on: the
+// The name of the attribute that Ruff's PGH005 reports in the test of an `assert` or in a statement of its own: the
 // expression itself or the callee of a call. The operand of a `not` or `and`, or a comparison, is not checked by Ruff,
 // so it stays with this rule.
 fn ruff_reported_name(expr: &Expr) -> Option<&ast::Identifier> {

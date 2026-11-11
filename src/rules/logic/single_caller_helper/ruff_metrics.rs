@@ -38,6 +38,11 @@ pub(super) fn mccabe_complexity(stmts: &[Stmt]) -> usize {
         .sum()
 }
 
+fn handler_body(handler: &ExceptHandler) -> &[Stmt] {
+    let ExceptHandler::ExceptHandler(ast::ExceptHandlerExceptHandler { body, .. }) = handler;
+    body
+}
+
 // Ruff's `num_branches` for PLR0912.
 pub(super) fn ruff_branches(stmts: &[Stmt]) -> usize {
     stmts
@@ -105,9 +110,4 @@ pub(super) fn ruff_returns(body: &[Stmt]) -> usize {
     let mut visitor = ReturnStatementVisitor::default();
     visitor.visit_body(body);
     visitor.returns.len()
-}
-
-fn handler_body(handler: &ExceptHandler) -> &[Stmt] {
-    let ExceptHandler::ExceptHandler(ast::ExceptHandlerExceptHandler { body, .. }) = handler;
-    body
 }

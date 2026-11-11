@@ -23,7 +23,7 @@ pub fn missing_final(checker: &Checker) {
     if checker.target_version() < PythonVersion::PY38 || has_version_gate(checker.body()) || is_sphinx_conf(checker) {
         return;
     }
-    let spelling = OnceCell::new();
+    let final_spelling = OnceCell::new();
     let globals_writes = OnceCell::new();
     for stmt in checker.body() {
         let Some((target, annotation, value)) = single_assignment(stmt) else {
@@ -32,12 +32,11 @@ pub fn missing_final(checker: &Checker) {
         let name = target.id.as_str();
         // The annotation already declares a constant, so every name qualifies, dunders and class-like names included.
         if let Some(annotation) = annotation.filter(|annotation| is_bare_final(annotation)) {
-            let fix = bare_final_fix(checker, annotation, value);
             checker.report_fix(
                 Rule::MissingFinal,
                 target.range,
                 format!("`{name}` is annotated bare `Final`; give it a type, as in `Final[int]`"),
-                fix,
+                bare_final_fix(checker, annotation, value),
                 format!("Give `{name}` its type inside `Final`"),
             );
             continue;
@@ -64,9 +63,10 @@ pub fn missing_final(checker: &Checker) {
         // stands for all of them and one answer serves every target.
         let fix = (!parenthesized)
             .then(|| {
-                spelling.get_or_init(|| final_qualifier(checker, TextRange::default())).as_ref().and_then(
-                    |(qualifier, import)| final_fix(checker, qualifier, import, target.range, annotation, value),
-                )
+                final_spelling
+                    .get_or_init(|| final_qualifier(checker, TextRange::default()))
+                    .as_ref()
+                    .and_then(|spelling| final_fix(checker, spelling, target.range, annotation, value))
             })
             .flatten();
         checker.report_fix(
@@ -79,14 +79,79 @@ pub fn missing_final(checker: &Checker) {
     }
 }
 
-// The names a module writes through `globals()`, or through `vars()` and `locals()` with no argument at module level,
-// and whether a write may set any name: a computed key, or the `update`, `setdefault` or `pop` of the dict, names the
-// module cannot list.
+// `Final` with no brackets, spelled `Final`, `typing.Final` or an alias such as `t.Final`.
+fn is_bare_final(annotation: &Expr) -> bool {
+    last_segment(annotation) == Some("Final")
+}
+
+// A type checker infers `Final` on a bare literal as `Literal[1]`, which `Final[int]` widens, so the fix is unsafe.
+fn bare_final_fix(checker: &Checker, annotation: &Expr, value: &Expr) -> Option<Fix> {
+    let literal_type = literal_type(value)?;
+    let edit =
+        Edit::range_replacement(format!("{}[{literal_type}]", checker.text(annotation.range())), annotation.range());
+    Some(Fix::unsafe_edit(edit))
+}
+
+// The type of a literal value, which is what `Final` infers from a bare assignment.
+fn literal_type(value: &Expr) -> Option<&'static str> {
+    Some(match value {
+        Expr::NumberLiteral(ast::ExprNumberLiteral { value: ast::Number::Int(_), .. }) => "int",
+        Expr::NumberLiteral(ast::ExprNumberLiteral { value: ast::Number::Float(_), .. }) => "float",
+        Expr::StringLiteral(_) | Expr::FString(_) => "str",
+        Expr::BytesLiteral(_) => "bytes",
+        Expr::BooleanLiteral(_) => "bool",
+        _ => return None,
+    })
+}
+
+// An unannotated assignment of a type, such as `JSON = dict[str, Any]` or `_PathLike = str | bytes`, is an implicit
+// type alias, which `Final` would turn into a variable that type expressions cannot use.
+fn is_type_alias(value: &Expr) -> bool {
+    const GENERICS: &[&str] = &[
+        "dict",
+        "list",
+        "set",
+        "frozenset",
+        "tuple",
+        "type",
+        "Literal",
+        "Union",
+        "Optional",
+        "Callable",
+        "Annotated",
+        "Mapping",
+        "Sequence",
+        "Iterable",
+        "Iterator",
+        "MutableMapping",
+        "MutableSequence",
+        "Generator",
+    ];
+    const TYPES: &[&str] = &["str", "bytes", "int", "float", "bool", "complex", "object", "Any"];
+    match value {
+        Expr::Subscript(ast::ExprSubscript { value, .. }) => {
+            last_segment(value).is_some_and(|last| GENERICS.contains(&last))
+        }
+        Expr::BinOp(ast::ExprBinOp { left, op: ast::Operator::BitOr, right, .. }) => {
+            [left, right].into_iter().all(|side| {
+                matches!(side.as_ref(), Expr::NoneLiteral(_))
+                    || side.as_name_expr().is_some_and(|name| TYPES.contains(&name.id.as_str()))
+                    || is_type_alias(side)
+            })
+        }
+        _ => false,
+    }
+}
+
+// The names a module writes through `globals()`, or through `vars()` and `locals()` with no argument at module level.
+// A computed key, or an `update`, `setdefault` or `pop` of that dict, may set any name, so the module's names cannot be
+// listed.
 struct GlobalsWrites<'a, 'c> {
     checker: &'c Checker<'a>,
     names: FxHashSet<&'a str>,
     any: bool,
-    // The bodies of the functions, classes and lambdas the walk is in, whose `vars()` and `locals()` are not the module's.
+    // The bodies of the functions, classes and lambdas the walk is in, whose `vars()` and `locals()` are not the
+    // module's.
     scopes: u32,
 }
 
@@ -186,11 +251,6 @@ impl<'a> Visitor<'a> for GlobalsWrites<'a, '_> {
     }
 }
 
-// `Final` with no brackets, spelled `Final`, `typing.Final` or an alias such as `t.Final`.
-fn is_bare_final(annotation: &Expr) -> bool {
-    last_segment(annotation) == Some("Final")
-}
-
 fn is_qualifier(annotation: &Expr) -> bool {
     if let Expr::StringLiteral(literal) = annotation {
         let base = literal.value.to_str().trim().split('[').next().unwrap_or_default();
@@ -219,95 +279,23 @@ fn is_type_construct(semantic: &Semantic, value: &Expr) -> bool {
     })
 }
 
-// An unannotated assignment of a type, such as `JSON = dict[str, Any]` or `_PathLike = str | bytes`, is an implicit type
-// alias, which `Final` would turn into a variable that type expressions cannot use.
-fn is_type_alias(value: &Expr) -> bool {
-    const GENERICS: &[&str] = &[
-        "dict",
-        "list",
-        "set",
-        "frozenset",
-        "tuple",
-        "type",
-        "Literal",
-        "Union",
-        "Optional",
-        "Callable",
-        "Annotated",
-        "Mapping",
-        "Sequence",
-        "Iterable",
-        "Iterator",
-        "MutableMapping",
-        "MutableSequence",
-        "Generator",
-    ];
-    const TYPES: &[&str] = &["str", "bytes", "int", "float", "bool", "complex", "object", "Any"];
-    match value {
-        Expr::Subscript(ast::ExprSubscript { value, .. }) => {
-            last_segment(value).is_some_and(|last| GENERICS.contains(&last))
-        }
-        Expr::BinOp(ast::ExprBinOp { left, op: ast::Operator::BitOr, right, .. }) => {
-            [left, right].into_iter().all(|side| {
-                matches!(side.as_ref(), Expr::NoneLiteral(_))
-                    || side.as_name_expr().is_some_and(|name| TYPES.contains(&name.id.as_str()))
-                    || is_type_alias(side)
-            })
-        }
-        _ => false,
-    }
-}
-
-fn final_fix(
-    checker: &Checker,
-    qualifier: &str,
-    import: &Import,
-    target: TextRange,
-    annotation: Option<&Expr>,
-    value: &Expr,
-) -> Option<Fix> {
-    let edit = if let Some(annotation) = annotation {
-        Edit::range_replacement(format!("{qualifier}[{}]", checker.text(annotation.range())), annotation.range())
-    } else {
-        let literal_type = literal_type(value)?;
-        Edit::insertion(format!(": {qualifier}[{literal_type}]"), target.end())
-    };
-    Some(with_import(edit, import.clone(), Applicability::Unsafe))
-}
-
-// The type of a literal value, which is what `Final` infers from a bare assignment.
-fn literal_type(value: &Expr) -> Option<&'static str> {
-    Some(match value {
-        Expr::NumberLiteral(ast::ExprNumberLiteral { value: ast::Number::Int(_), .. }) => "int",
-        Expr::NumberLiteral(ast::ExprNumberLiteral { value: ast::Number::Float(_), .. }) => "float",
-        Expr::StringLiteral(_) | Expr::FString(_) => "str",
-        Expr::BytesLiteral(_) => "bytes",
-        Expr::BooleanLiteral(_) => "bool",
-        _ => return None,
-    })
-}
-
-// A type checker infers `Final` on a bare literal as `Literal[1]`, which `Final[int]` widens, so the fix is unsafe.
-fn bare_final_fix(checker: &Checker, annotation: &Expr, value: &Expr) -> Option<Fix> {
-    let literal_type = literal_type(value)?;
-    let edit =
-        Edit::range_replacement(format!("{}[{literal_type}]", checker.text(annotation.range())), annotation.range());
-    Some(Fix::unsafe_edit(edit))
+struct Spelling {
+    qualifier: String,
+    import: Import,
 }
 
 // The name a fix annotates with, and the import it adds; `None` when the import cannot be added without shadowing.
-fn final_qualifier(checker: &Checker, at: TextRange) -> Option<(String, Import)> {
+fn final_qualifier(checker: &Checker, at: TextRange) -> Option<Spelling> {
     let body = checker.body();
-    // A `Final` bound only under `if TYPE_CHECKING:` is missing at runtime, where eager annotations evaluate it.
-    let lazy = checker.semantic().annotations_are_lazy();
     let bound_at_top = body.iter().any(|stmt| match stmt {
         Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => {
             names.iter().any(|alias| alias_binding(alias) == "Final")
         }
         _ => false,
     });
-    if checker.semantic().is_bound("Final") && (lazy || bound_at_top) {
-        return Some(("Final".to_owned(), Import::Present));
+    // A `Final` bound only under `if TYPE_CHECKING:` is missing at runtime, where eager annotations evaluate it.
+    if checker.semantic().is_bound("Final") && (checker.semantic().annotations_are_lazy() || bound_at_top) {
+        return Some(Spelling { qualifier: "Final".to_owned(), import: Import::Present });
     }
     let typing_module = body
         .iter()
@@ -315,7 +303,10 @@ fn final_qualifier(checker: &Checker, at: TextRange) -> Option<(String, Import)>
         .flat_map(|import| &import.names)
         .find(|alias| alias.name.as_str() == "typing");
     if let Some(alias) = typing_module {
-        return Some((format!("{}.Final", alias.asname.as_ref().unwrap_or(&alias.name)), Import::Present));
+        return Some(Spelling {
+            qualifier: format!("{}.Final", alias.asname.as_ref().unwrap_or(&alias.name)),
+            import: Import::Present,
+        });
     }
     let existing = from_imports(body, "typing")
         .map(|import| &import.names)
@@ -331,5 +322,24 @@ fn final_qualifier(checker: &Checker, at: TextRange) -> Option<(String, Import)>
         }
         None => ensure_import(checker, "typing", Some("Final"), at)?,
     };
-    Some(("Final".to_owned(), import))
+    Some(Spelling { qualifier: "Final".to_owned(), import })
+}
+
+fn final_fix(
+    checker: &Checker,
+    spelling: &Spelling,
+    target: TextRange,
+    annotation: Option<&Expr>,
+    value: &Expr,
+) -> Option<Fix> {
+    let edit = if let Some(annotation) = annotation {
+        Edit::range_replacement(
+            format!("{}[{}]", spelling.qualifier, checker.text(annotation.range())),
+            annotation.range(),
+        )
+    } else {
+        let literal_type = literal_type(value)?;
+        Edit::insertion(format!(": {}[{literal_type}]", spelling.qualifier), target.end())
+    };
+    Some(with_import(edit, spelling.import.clone(), Applicability::Unsafe))
 }

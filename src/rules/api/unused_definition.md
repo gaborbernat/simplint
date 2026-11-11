@@ -150,15 +150,10 @@ definition a Sphinx page names is used.
   print(Point().x, cast("list[_Entry]", []))
   ```
 
-- **Private protocols and TypedDicts Ruff reports**: when the project's Ruff configuration selects
-  [PYI046](https://docs.astral.sh/ruff/rules/unused-private-protocol/) or
-  [PYI049](https://docs.astral.sh/ruff/rules/unused-private-typed-dict/), Ruff reports a private `Protocol` or
-  `TypedDict` class that nothing in its file reads, so this rule leaves it to Ruff.
-
-  ```toml config
-  [tool.ruff.lint]
-  select = ["PYI046", "PYI049"]
-  ```
+- **Private protocols and TypedDicts Ruff reports**:
+  [PYI046](https://docs.astral.sh/ruff/rules/unused-private-protocol/) and
+  [PYI049](https://docs.astral.sh/ruff/rules/unused-private-typed-dict/) report a private `Protocol` or `TypedDict`
+  class that nothing in its file reads, so this rule leaves it to Ruff.
 
   ```python ok
   from typing import Protocol, TypedDict
@@ -191,13 +186,16 @@ definition a Sphinx page names is used.
 
 - **Names the documentation gives**: a `.rst` or `.md` file under the project names a definition with a Sphinx role such
   as `:func:`, an autodoc directive such as `.. autofunction::`, or the `:module:` and `:func:` options of a
-  sphinx-argparse or sphinx-argparse-cli directive. An `.. automodule::` with `:members:` documents the members Sphinx
-  renders: the names its module's `__all__` lists, or else its public names, without the ones `:exclude-members:` names,
-  and with the private and special names when `:private-members:` or `:special-members:` is set. For a package the
-  module is its `__init__.py`. Its classes' members are documented too, and so is every member of an `.. autoclass::`
-  with `:members:`. Names match by their dotted ending, so a page under `.. currentmodule::`, or one whose `conf.py`
-  puts another directory on `sys.path`, still matches. The files are read from the directory of each `pyproject.toml`,
-  outside hidden directories and the paths Ruff excludes.
+  sphinx-argparse or sphinx-argparse-cli directive.
+
+  An `.. automodule::` with `:members:` documents the members Sphinx renders: the names its module's `__all__` lists, or
+  else its public names, without the ones `:exclude-members:` names, and with the private and special names when
+  `:private-members:` or `:special-members:` is set. For a package the module is its `__init__.py`. Its classes' members
+  are documented too, and so is every member of an `.. autoclass::` with `:members:`.
+
+  Names match by their dotted ending, so a page under `.. currentmodule::`, or one whose `conf.py` puts another
+  directory on `sys.path`, still matches. The files are read from the directory of each `pyproject.toml`, outside hidden
+  directories and the paths Ruff excludes.
 
   ```toml config
   [project]
@@ -273,9 +271,10 @@ definition a Sphinx page names is used.
   in the file a custom hook loads. A hook is declared in `[tool.hatch.build.hooks.custom]`,
   `[tool.hatch.build.targets.<target>.hooks.custom]` or `[tool.hatch.metadata.hooks.custom]`, or in the same table of a
   `hatch.toml` next to `pyproject.toml`, which overrides the keys it sets. The file is the `path` the table gives,
-  `hatch_build.py` in the project's directory by default, after `..` is collapsed. The class may subclass a class of the
-  run that subclasses the interface, and the other classes of the file are still judged. A hook given as a
-  `get_build_hook()` function instead of a class is out of scope and is not read.
+  `hatch_build.py` in the project's directory by default, after `..` is collapsed.
+
+  The class may subclass a class of the run that subclasses the interface, and the other classes of the file are still
+  judged. A hook given as a `get_build_hook()` function instead of a class is out of scope and is not read.
 
   ```toml config
   [tool.hatch]

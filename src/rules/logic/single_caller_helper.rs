@@ -50,7 +50,7 @@ fn check_helper<'a>(
     if !is_called(checker, reference.range) {
         return;
     }
-    // A helper that only forwards its arguments is forwarding-function's (SMP501), which asks to call the target instead.
+    // A helper that only forwards its arguments is SMP501's, which asks to call the target instead.
     if forward_target(checker, helper, &[reference.range], None).is_some() {
         return;
     }
@@ -70,9 +70,8 @@ fn check_helper<'a>(
     let knobs = &checker.settings.project.knobs;
     let helper_body = body_without_leading_docstring(&helper.body);
     let helper_statements = helper_body.len();
-    let caller_statements = body_without_leading_docstring(&caller.body).len();
     if helper_statements >= knobs.max_helper_statements
-        || caller_statements + helper_statements > knobs.max_caller_statements
+        || body_without_leading_docstring(&caller.body).len() + helper_statements > knobs.max_caller_statements
     {
         return;
     }
@@ -82,11 +81,12 @@ fn check_helper<'a>(
     }
     // Inlining at the call site adds the helper's nesting-sensitive increments, so a caller that would pass the limit
     // cognitive-complexity reports stays as it is. A call the walk cannot place is left alone.
-    let limit = knobs.max_cognitive_complexity;
     let (caller_score, nesting) = cognitive_complexity::score_probed(&caller.body, reference.range);
     let inlined =
         nesting.map_or(usize::MAX, |nesting| caller_score + cognitive_complexity::score(&helper.body, nesting));
-    if inlined > limit || ruff_limit_crossed(checker, &caller.body, helper_body, reference.range) {
+    if inlined > knobs.max_cognitive_complexity
+        || ruff_limit_crossed(checker, &caller.body, helper_body, reference.range)
+    {
         return;
     }
     let caller_name = caller.name.as_str();
@@ -95,6 +95,78 @@ fn check_helper<'a>(
         helper.name.range(),
         format!("`{name}` is called only from `{caller_name}`, and inlining keeps `{caller_name}` short; inline it"),
     );
+}
+
+// A generator's body runs only when it is iterated, so inlining it into a caller would make the caller a generator.
+fn yields(body: &[Stmt]) -> bool {
+    let mut finder = Yields { found: false };
+    finder.visit_body(body);
+    finder.found
+}
+
+struct Yields {
+    found: bool,
+}
+
+impl<'a> Visitor<'a> for Yields {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        if !matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_)) {
+            visitor::walk_stmt(self, stmt);
+        }
+    }
+
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        match expr {
+            Expr::Yield(_) | Expr::YieldFrom(_) => self.found = true,
+            Expr::Lambda(_) => return,
+            _ => {}
+        }
+        visitor::walk_expr(self, expr);
+    }
+}
+
+// Inlining replaces the call with a bare expression, which drops the narrowing a `TypeGuard` or `TypeIs` return gives.
+fn is_type_guard(checker: &Checker, returns: &Expr) -> bool {
+    let Expr::Subscript(subscript) = returns else {
+        return false;
+    };
+    checker
+        .semantic()
+        .qualified_name(&subscript.value)
+        .is_some_and(|name| matches!(name.segments(), ["typing" | "typing_extensions", "TypeGuard" | "TypeIs"]))
+}
+
+// Whether the call sits in a loop, comprehension or lambda of its caller, where inlining would run the helper's body
+// once per pass.
+fn in_repeat(body: &[Stmt], reference: TextRange) -> bool {
+    let mut finder = Repeats { reference, depth: 0, repeated: false };
+    finder.visit_body(body);
+    finder.repeated
+}
+
+struct Repeats {
+    reference: TextRange,
+    depth: usize,
+    repeated: bool,
+}
+
+impl<'a> Visitor<'a> for Repeats {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        let repeats = matches!(stmt, Stmt::For(_) | Stmt::While(_));
+        self.depth += usize::from(repeats);
+        visitor::walk_stmt(self, stmt);
+        self.depth -= usize::from(repeats);
+    }
+
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        if expr.range() == self.reference {
+            self.repeated = self.depth > 0;
+        }
+        let repeats = is_repeating_expr(expr);
+        self.depth += usize::from(repeats);
+        visitor::walk_expr(self, expr);
+        self.depth -= usize::from(repeats);
+    }
 }
 
 // Ruff's complexity and size rules count the inlined statements too. The counts are conservative estimates, so a caller
@@ -154,7 +226,6 @@ fn ruff_limit_crossed(checker: &Checker, caller: &[Stmt], helper: &[Stmt], refer
         || (from_ruff.ruff_runs(RuffRule::TooManyReturnStatements) && returns > from_ruff.max_returns)
 }
 
-// Where the call sits in its caller: as the value of a `return`, in the test of an `elif`, or in a conditional operand.
 struct CallSite {
     reference: TextRange,
     returned: bool,
@@ -205,21 +276,6 @@ fn is_nested_block(stmt: &Stmt) -> bool {
     matches!(stmt, Stmt::If(_) | Stmt::While(_) | Stmt::For(_) | Stmt::Try(_) | Stmt::With(_))
 }
 
-#[derive(Default)]
-struct NestedDepth {
-    depth: usize,
-    maximum: usize,
-}
-
-impl<'a> Visitor<'a> for NestedDepth {
-    fn visit_stmt(&mut self, stmt: &'a Stmt) {
-        self.depth += usize::from(is_nested_block(stmt));
-        self.maximum = self.maximum.max(self.depth);
-        visitor::walk_stmt(self, stmt);
-        self.depth -= usize::from(is_nested_block(stmt));
-    }
-}
-
 struct TryContext<'a> {
     reference: TextRange,
     statements: usize,
@@ -248,81 +304,24 @@ impl<'a> Visitor<'a> for TryContext<'a> {
     }
 }
 
+#[derive(Default)]
+struct NestedDepth {
+    depth: usize,
+    maximum: usize,
+}
+
+impl<'a> Visitor<'a> for NestedDepth {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        self.depth += usize::from(is_nested_block(stmt));
+        self.maximum = self.maximum.max(self.depth);
+        visitor::walk_stmt(self, stmt);
+        self.depth -= usize::from(is_nested_block(stmt));
+    }
+}
+
 fn catches(handler: &Expr, raised: &str) -> bool {
     match handler {
         Expr::Tuple(tuple) => tuple.elts.iter().any(|element| catches(element, raised)),
         _ => last_segment(handler).is_some_and(|name| name == raised || matches!(name, "Exception" | "BaseException")),
-    }
-}
-
-// Inlining replaces the call with a bare expression, which drops the narrowing a `TypeGuard` or `TypeIs` return gives.
-fn is_type_guard(checker: &Checker, returns: &Expr) -> bool {
-    let Expr::Subscript(subscript) = returns else {
-        return false;
-    };
-    checker
-        .semantic()
-        .qualified_name(&subscript.value)
-        .is_some_and(|name| matches!(name.segments(), ["typing" | "typing_extensions", "TypeGuard" | "TypeIs"]))
-}
-
-// A generator's body runs only when it is iterated, so inlining it into a caller would make the caller a generator.
-fn yields(body: &[Stmt]) -> bool {
-    let mut finder = Yields { found: false };
-    finder.visit_body(body);
-    finder.found
-}
-
-struct Yields {
-    found: bool,
-}
-
-impl<'a> Visitor<'a> for Yields {
-    fn visit_stmt(&mut self, stmt: &'a Stmt) {
-        if !matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_)) {
-            visitor::walk_stmt(self, stmt);
-        }
-    }
-
-    fn visit_expr(&mut self, expr: &'a Expr) {
-        match expr {
-            Expr::Yield(_) | Expr::YieldFrom(_) => self.found = true,
-            Expr::Lambda(_) => return,
-            _ => {}
-        }
-        visitor::walk_expr(self, expr);
-    }
-}
-
-// Whether the call sits in a loop, comprehension or lambda of its caller, where inlining would run the helper's body
-// once per pass.
-fn in_repeat(body: &[Stmt], reference: TextRange) -> bool {
-    let mut finder = Repeats { reference, depth: 0, repeated: false };
-    finder.visit_body(body);
-    finder.repeated
-}
-
-struct Repeats {
-    reference: TextRange,
-    depth: usize,
-    repeated: bool,
-}
-
-impl<'a> Visitor<'a> for Repeats {
-    fn visit_stmt(&mut self, stmt: &'a Stmt) {
-        let repeats = matches!(stmt, Stmt::For(_) | Stmt::While(_));
-        self.depth += usize::from(repeats);
-        visitor::walk_stmt(self, stmt);
-        self.depth -= usize::from(repeats);
-    }
-
-    fn visit_expr(&mut self, expr: &'a Expr) {
-        if expr.range() == self.reference {
-            self.repeated = self.depth > 0;
-        }
-        let repeats = is_repeating_expr(expr);
-        self.depth += usize::from(repeats);
-        visitor::walk_expr(self, expr);
-        self.depth -= usize::from(repeats);
     }
 }

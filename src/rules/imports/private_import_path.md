@@ -9,6 +9,9 @@ as `from .._api import API` also crosses a package boundary.
 
 ## Example
 
+```python context file=package/__init__.py
+```
+
 ```python context file=package/_api.py
 def make() -> object:
     return object()
@@ -60,13 +63,23 @@ re-export or replacing uses of a module object may require changes elsewhere.
   `package._render.intersphinx`. A colocated `package/test_api.py` may also import names from `._api`. The remaining
   directories and the stem after `test_` must match an existing source file. A dedicated subtree may instead take the
   module's name: `tests/_html/url/test_url.py` may import names from `package._html` when `_html.py` or `_html.pyi`
-  exists. A relative import from the mirrored test tree resolves inside that tree, so it is not paired with the source
-  module. Importing the private module as an object remains disallowed.
+  exists.
+
+  A relative import from the mirrored test tree resolves inside that tree, so it is not paired with the source module.
+  Importing the private module as an object remains disallowed.
 
 - **Dunder names**: `__future__` and `__version__` do not count as private names.
 
 - **Documented public underscore names**: [`os._exit`](https://docs.python.org/3/library/os.html#os._exit) is a public
   API despite its underscore.
+
+## Ruff overlap
+
+Ruff's [import-private-name](https://docs.astral.sh/ruff/rules/import-private-name/) (PLC2701, a preview rule) reports a
+private import that a module or function uses at runtime or never uses, and this rule leaves those reports to it whether
+or not the project selects PLC2701. It keeps the rest, such as imports used only in annotations or bound in a class
+body, relative imports, imports within their own package, and `import package._api` without an alias, which Ruff does
+not report.
 
 ## Other tools
 

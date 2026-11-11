@@ -25,18 +25,19 @@ pub fn rst_inline_markup(checker: &Checker) {
         let at = |offset: usize| content.start() + TextSize::try_from(offset).unwrap_or_default();
         let lines = lines(text);
         for role in roles_without_backticks(&lines) {
-            let written = &text[role.start..role.end];
-            let fix = role.fixable.then(|| {
-                Fix::unsafe_edits(
-                    Edit::insertion("`".to_owned(), at(role.target)),
-                    [Edit::insertion("`".to_owned(), at(role.end))],
-                )
-            });
             checker.report_fix(
                 Rule::RstInlineMarkup,
                 TextRange::new(at(role.start), at(role.end)),
-                format!("Role `{written}` has no backticks around its target, so it renders as plain text"),
-                fix,
+                format!(
+                    "Role `{}` has no backticks around its target, so it renders as plain text",
+                    &text[role.start..role.end]
+                ),
+                role.fixable.then(|| {
+                    Fix::unsafe_edits(
+                        Edit::insertion("`".to_owned(), at(role.target)),
+                        [Edit::insertion("`".to_owned(), at(role.end))],
+                    )
+                }),
                 "Put the target in backticks",
             );
         }
@@ -133,15 +134,14 @@ fn roles_without_backticks(lines: &[Line]) -> Vec<Role> {
             if !target.starts_with(|char: char| char.is_alphanumeric() || char == '_' || char == '~') {
                 continue;
             }
-            // A character a reference cannot hold, as the `=` of `:attr:debug=True`, leaves where the target ends to
-            // the author.
-            let fixable = target.chars().all(|char| char.is_alphanumeric() || "_.~-/+()<>!".contains(char));
             let target_start = line.start + index + 1 + domain + close + 1;
             found.push(Role {
                 start: line.start + index,
                 target: target_start,
                 end: target_start + target.len(),
-                fixable,
+                // A character a reference cannot hold, as the `=` of `:attr:debug=True`, leaves where the target ends
+                // to the author.
+                fixable: target.chars().all(|char| char.is_alphanumeric() || "_.~-/+()<>!".contains(char)),
             });
         }
     }

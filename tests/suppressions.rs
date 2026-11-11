@@ -14,9 +14,10 @@ fn check_noqa_suppresses_listed_code() {
     );
 }
 
-#[test]
-fn check_ignore_noqa_reports_suppressed_code() {
-    let root = project(&[("module.py", "x = 1  # noqa: SMP101\n")]);
+#[test_case("x = 1  # noqa: SMP101\n" ; "line_noqa")]
+#[test_case("# ruff: noqa: SMP101\nx = 1\n" ; "file_noqa")]
+fn ignore_noqa_reports_suppressed_code(source: &str) {
+    let root = project(&[("module.py", source)]);
     assert_eq!(check(root.path(), &["--select", "SMP101", "--ignore-noqa"]).0, 1);
 }
 
@@ -94,12 +95,6 @@ fn blanket_file_level_noqa_keeps_its_reason_report() {
 }
 
 #[test]
-fn ignore_noqa_reports_file_level_suppressed_code() {
-    let root = project(&[("module.py", "# ruff: noqa: SMP101\nx = 1\n")]);
-    assert_eq!(check(root.path(), &["--select", "SMP101", "--ignore-noqa"]).0, 1);
-}
-
-#[test]
 fn simplint_ignore_comment_suppresses_its_codes() {
     let root =
         project(&[("module.py", "x = 1  # simplint: ignore[SMP101, SMP601]\ny = 2  # simplint:ignore[SMP601]\n")]);
@@ -109,10 +104,21 @@ fn simplint_ignore_comment_suppresses_its_codes() {
     );
 }
 
-#[test_case(&["--add-noqa"], "x = 1  # noqa: E501, SMP101 long\ny = \"\"\"a\nb\"\"\"  # noqa: SMP101\nz = 1  # noqa\n# --- helpers ---  # noqa: SMP001\n" ; "codes")]
-#[test_case(&["--add-noqa=why"], "x = 1  # noqa: E501, SMP101 why\ny = \"\"\"a\nb\"\"\"  # noqa: SMP101 why\nz = 1  # noqa\n# --- helpers ---  # noqa: SMP001 why\n" ; "reason")]
+#[test_case(
+    &["--add-noqa"],
+    "x = 1  # noqa: E501, SMP101 long\ny = \"\"\"a\nb\"\"\"  # noqa: SMP101\nz = 1  # noqa\n\
+     # --- helpers ---  # noqa: SMP001\n" ;
+    "codes"
+)]
+#[test_case(
+    &["--add-noqa=why"],
+    "x = 1  # noqa: E501, SMP101 why\ny = \"\"\"a\nb\"\"\"  # noqa: SMP101 why\nz = 1  # noqa\n\
+     # --- helpers ---  # noqa: SMP001 why\n" ;
+    "reason"
+)]
 fn add_noqa_adds_directives(flags: &[&str], expected: &str) {
-    let root = project(&[("module.py", NOQA_SOURCE)]);
+    let root =
+        project(&[("module.py", "x = 1  # noqa: E501 long\ny = \"\"\"a\nb\"\"\"\nz = 1  # noqa\n# --- helpers ---\n")]);
     let mut args = vec!["--select", "SMP001,SMP101,SMP003"];
     args.extend_from_slice(flags);
     let result = check(root.path(), &args);
@@ -121,8 +127,6 @@ fn add_noqa_adds_directives(flags: &[&str], expected: &str) {
         ((0, String::new(), "Added 3 noqa directives.\n".to_owned()), expected.to_owned())
     );
 }
-
-const NOQA_SOURCE: &str = "x = 1  # noqa: E501 long\ny = \"\"\"a\nb\"\"\"\nz = 1  # noqa\n# --- helpers ---\n";
 
 #[test]
 fn add_ignore_merges_into_ignore_comments() {
@@ -135,15 +139,29 @@ fn add_ignore_merges_into_ignore_comments() {
         (result, read(root.path(), "module.py")),
         (
             (0, String::new(), "Added 3 ignore comments.\n".to_owned()),
-            "x = 1  # simplint: ignore[missing-final, single-letter-name] kept\n# simplint: ignore[long-paragraph, suppression-without-reason]\ny = 1  # noqa: SMP601  # simplint: ignore[single-letter-name, suppression-without-reason]\n".to_owned()
+            "x = 1  # simplint: ignore[missing-final, single-letter-name] kept\n\
+             # simplint: ignore[long-paragraph, suppression-without-reason]\n\
+             y = 1  # noqa: SMP601  # simplint: ignore[single-letter-name, suppression-without-reason]\n"
+                .to_owned()
         )
     );
 }
 
-// A blanket `# noqa` takes no codes, so `--add-noqa` leaves its line alone, while `--add-ignore` writes its comment there,
-// which silences the reports the blanket `# noqa` leaves. Other lines get their comments either way.
-#[test_case("--add-noqa=legacy", "import os  # noqa\nVALUE = vars(os)  # noqa: SMP604 legacy\n", 1 ; "noqa_leaves_the_line")]
-#[test_case("--add-ignore=legacy", "import os  # noqa  # simplint: ignore[blanket-ignore, suppression-without-reason] legacy\nVALUE = vars(os)  # simplint: ignore[vars-call] legacy\n", 0 ; "ignore_is_added_beside_it")]
+// A blanket `# noqa` takes no codes, so `--add-noqa` leaves its line alone, while `--add-ignore` writes its comment
+// there, which silences the reports the blanket `# noqa` leaves. Other lines get their comments either way.
+#[test_case(
+    "--add-noqa=legacy",
+    "import os  # noqa\nVALUE = vars(os)  # noqa: SMP604 legacy\n",
+    1 ;
+    "noqa_leaves_the_line"
+)]
+#[test_case(
+    "--add-ignore=legacy",
+    "import os  # noqa  # simplint: ignore[suppression-without-reason] legacy\n\
+     VALUE = vars(os)  # simplint: ignore[vars-call] legacy\n",
+    0 ;
+    "ignore_is_added_beside_it"
+)]
 fn add_suppression_handles_a_line_with_a_blanket_noqa(flag: &str, expected: &str, code: i32) {
     let root = project(&[("module.py", "import os  # noqa\nVALUE = vars(os)\n")]);
     check(root.path(), &["--select", "SMP003,SMP004,SMP604", flag]);
@@ -151,15 +169,54 @@ fn add_suppression_handles_a_line_with_a_blanket_noqa(flag: &str, expected: &str
     assert_eq!((read(root.path(), "module.py"), after), (expected.to_owned(), code));
 }
 
-// The reason after the codes and any comment after it stay, unless a new reason replaces the old one.
-#[test_case("--add-noqa", "x = 1  # noqa: E501 long  # type: ignore[misc]\n", "x = 1  # noqa: E501, SMP101 long  # type: ignore[misc]\n" ; "noqa_keeps_reason_and_comment")]
-#[test_case("--add-noqa=why", "x = 1  # noqa: E501 long  # type: ignore[misc]\n", "x = 1  # noqa: E501, SMP101 why  # type: ignore[misc]\n" ; "noqa_replaces_reason")]
-#[test_case("--add-noqa=why", "x = 1  # noqa: E501# type: ignore[misc]\n", "x = 1  # noqa: E501, SMP101 why  # type: ignore[misc]\n" ; "noqa_reason_before_joined_comment")]
-#[test_case("--add-noqa=why", "x = 1  # noqa: E501 long\n", "x = 1  # noqa: E501, SMP101 why\n" ; "noqa_replaces_reason_without_comment")]
-#[test_case("--add-noqa=why", "x = 1  # noqa: E501 see issue #12 for why\n", "x = 1  # noqa: E501, SMP101 why\n" ; "noqa_reason_with_issue_number")]
-#[test_case("--add-noqa=why", "x = 1  # noqa: E501 see #12  # type: ignore[misc]\n", "x = 1  # noqa: E501, SMP101 why  # type: ignore[misc]\n" ; "noqa_reason_with_issue_number_before_comment")]
-#[test_case("--add-ignore", "x = 1  # simplint: ignore[SMP601] kept  # pragma: no cover\n", "x = 1  # simplint: ignore[missing-final, single-letter-name] kept  # pragma: no cover\n" ; "ignore_keeps_reason_and_comment")]
-#[test_case("--add-ignore=paper", "x = 1  # simplint: ignore[SMP601] kept  # pragma: no cover\n", "x = 1  # simplint: ignore[missing-final, single-letter-name] paper  # pragma: no cover\n" ; "ignore_replaces_reason")]
+#[test_case(
+    "--add-noqa",
+    "x = 1  # noqa: E501 long  # type: ignore[misc]\n",
+    "x = 1  # noqa: E501, SMP101 long  # type: ignore[misc]\n" ;
+    "noqa_keeps_reason_and_comment"
+)]
+#[test_case(
+    "--add-noqa=why",
+    "x = 1  # noqa: E501 long  # type: ignore[misc]\n",
+    "x = 1  # noqa: E501, SMP101 why  # type: ignore[misc]\n" ;
+    "noqa_replaces_reason"
+)]
+#[test_case(
+    "--add-noqa=why",
+    "x = 1  # noqa: E501# type: ignore[misc]\n",
+    "x = 1  # noqa: E501, SMP101 why  # type: ignore[misc]\n" ;
+    "noqa_reason_before_joined_comment"
+)]
+#[test_case(
+    "--add-noqa=why",
+    "x = 1  # noqa: E501 long\n",
+    "x = 1  # noqa: E501, SMP101 why\n" ;
+    "noqa_replaces_reason_without_comment"
+)]
+#[test_case(
+    "--add-noqa=why",
+    "x = 1  # noqa: E501 see issue #12 for why\n",
+    "x = 1  # noqa: E501, SMP101 why\n" ;
+    "noqa_reason_with_issue_number"
+)]
+#[test_case(
+    "--add-noqa=why",
+    "x = 1  # noqa: E501 see #12  # type: ignore[misc]\n",
+    "x = 1  # noqa: E501, SMP101 why  # type: ignore[misc]\n" ;
+    "noqa_reason_with_issue_number_before_comment"
+)]
+#[test_case(
+    "--add-ignore",
+    "x = 1  # simplint: ignore[SMP601] kept  # pragma: no cover\n",
+    "x = 1  # simplint: ignore[missing-final, single-letter-name] kept  # pragma: no cover\n" ;
+    "ignore_keeps_reason_and_comment"
+)]
+#[test_case(
+    "--add-ignore=paper",
+    "x = 1  # simplint: ignore[SMP601] kept  # pragma: no cover\n",
+    "x = 1  # simplint: ignore[missing-final, single-letter-name] paper  # pragma: no cover\n" ;
+    "ignore_replaces_reason"
+)]
 fn add_suppression_keeps_what_follows_the_codes(flag: &str, source: &str, expected: &str) {
     let root = project(&[("module.py", source)]);
     check(root.path(), &["--select", "SMP101", flag]);
@@ -178,7 +235,10 @@ fn add_ignore_does_not_name_the_numeric_codes_it_renames() {
         (result, read(root.path(), "module.py")),
         (
             (0, String::new(), "Added 3 ignore comments.\n".to_owned()),
-            "x = 1  # simplint: ignore[missing-final, single-letter-name] kept\ny = 2  # simplint: ignore[single-letter-name] kept\n# simplint: ignore[single-letter-name]\n".to_owned()
+            "x = 1  # simplint: ignore[missing-final, single-letter-name] kept\n\
+             y = 2  # simplint: ignore[single-letter-name] kept\n\
+             # simplint: ignore[single-letter-name]\n"
+                .to_owned()
         )
     );
 }
@@ -194,13 +254,11 @@ fn add_ignore_keeps_a_code_no_rule_has() {
 fn add_ignore_counts_one_comment() {
     let root = project(&[("module.py", "x = 1")]);
     let result = check(root.path(), &["--select", "SMP101", "--add-ignore=paper"]);
-    // A file without a line break gets the platform's, as in Ruff.
-    let newline = if cfg!(windows) { "\r\n" } else { "\n" };
     assert_eq!(
         (result, read(root.path(), "module.py")),
         (
             (0, String::new(), "Added 1 ignore comment.\n".to_owned()),
-            format!("x = 1  # simplint: ignore[single-letter-name] paper{newline}")
+            format!("x = 1  # simplint: ignore[single-letter-name] paper{}", platform_newline())
         )
     );
 }
@@ -264,11 +322,17 @@ fn add_suppression_refuses_conflicting_rules(flag: &str) {
     let root = project(&[
         (
             "pyproject.toml",
-            "[project]\nrequires-python = \">=3.14\"\n[tool.ruff]\nlint.select = [\"I002\"]\nlint.isort.required-imports = [\"from __future__ import annotations\"]\n",
+            "[project]\nrequires-python = \">=3.14\"\n[tool.ruff]\nlint.select = [\"I002\"]\n\
+             lint.isort.required-imports = [\"from __future__ import annotations\"]\n",
         ),
         ("module.py", source),
     ]);
     let (code, stdout, stderr) = check(root.path(), &["--select", "SMP301", flag]);
     assert_eq!((code, stdout, read(root.path(), "module.py")), (2, String::new(), source.to_owned()));
     assert!(stderr.contains("SMP301 (future-annotations) and Ruff's I002"), "{stderr}");
+}
+
+// A file without a line break gets the platform's, as in Ruff.
+fn platform_newline() -> &'static str {
+    if cfg!(windows) { "\r\n" } else { "\n" }
 }

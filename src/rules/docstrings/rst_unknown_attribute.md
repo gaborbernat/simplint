@@ -1,5 +1,5 @@
 Flags `:ivar:`, `:cvar:`, `:var:` and `:vartype:` fields in a reStructuredText class docstring that name an attribute
-the class does not have. Such a field, often left behind by a rename or removal, documents state no instance has.
+the class does not have.
 
 ## Why is this bad?
 

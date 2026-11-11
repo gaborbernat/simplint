@@ -341,10 +341,13 @@ writer = DbWriter()
 ### Fix
 
 **Unsafe fix:** the fix rewrites the import to bind the names, so the object is bound when the module loads. A test that
-patches the module attribute later no longer reaches the name. The fix replaces the import and every `findings.Name`
-access in the file, and it is offered only when every use of the module is such an access to a name the module defines,
-no computed write, such as `setattr(module, name, value)`, may set a name of the module, no other module of the run
-imports or reads the module's name, and `__all__` does not list it, since the replaced import would no longer bind it.
+patches the module attribute later no longer reaches the name.
+
+The fix replaces the import and every `findings.Name` access in the file. It is offered only when every use of the
+module is such an access to a name the module defines, no computed write, such as `setattr(module, name, value)`, may
+set a name of the module, no other module of the run imports or reads the module's name, and `__all__` does not list it,
+since the replaced import would no longer bind it.
+
 The import must hold no comment inside its statement, since the fix would delete it. The fix is attached to the first
 report only, since it covers all of them; when a comment suppresses that report, the first report still shown carries
 it.

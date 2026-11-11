@@ -27,8 +27,7 @@ fn script_targets<'a>(checker: &'a Checker<'_>) -> Vec<&'a str> {
     let Some(module) = checker.module_path().map(|path| path.join(".")).or_else(|| {
         let path = checker.path.strip_prefix(&checker.settings.project.root).ok()?;
         let path = path.strip_prefix("src").unwrap_or(path);
-        let parts = path.with_extension("");
-        Some(parts.iter().map(|part| part.to_str()).collect::<Option<Vec<_>>>()?.join("."))
+        Some(path.with_extension("").iter().map(|part| part.to_str()).collect::<Option<Vec<_>>>()?.join("."))
     }) else {
         return Vec::new();
     };
@@ -45,20 +44,25 @@ fn script_targets<'a>(checker: &'a Checker<'_>) -> Vec<&'a str> {
         .collect()
 }
 
-// The names the naming rules reported in each def, class or lambda, by its range, the module's an empty one: each name
-// is reported once per scope, at its first binding.
+// Each def, class and lambda, keyed by its range (the module's is empty), reports a name once, at its first binding.
 #[derive(Default)]
 pub(crate) struct ReportedNames<'a>(RefCell<FxHashSet<(TextRange, &'a str)>>);
 
 impl<'a> ReportedNames<'a> {
-    // Whether `name` is new in `scope`, which records it as reported.
     fn first_in_scope(&self, scope: TextRange, name: &'a str) -> bool {
         self.0.borrow_mut().insert((scope, name))
     }
 }
 
-// The check a naming rule runs on each name a binding site introduces, with the scope it binds in and its range.
-type NameCheck<'a> = fn(&Walker<'_, 'a>, TextRange, &'a str, TextRange);
+// A name as a binding site introduces it, with the range of the name itself.
+#[derive(Clone, Copy)]
+struct NameSite<'a> {
+    text: &'a str,
+    range: TextRange,
+}
+
+// The check a naming rule runs on each name a binding site introduces, with the scope it binds in.
+type NameCheck<'a> = fn(&Walker<'_, 'a>, TextRange, NameSite<'a>);
 
 fn current(walker: &Walker) -> TextRange {
     walker.scopes().last().map_or_else(TextRange::default, Ranged::range)
@@ -86,7 +90,8 @@ fn parameters<'a>(
         _ => return,
     };
     for parameter in parameters {
-        check(walker, scope.range(), parameter.name().as_str(), parameter.name().range);
+        let site = NameSite { text: parameter.name().as_str(), range: parameter.name().range };
+        check(walker, scope.range(), site);
     }
 }
 
@@ -94,11 +99,11 @@ fn except_name<'a>(walker: &mut Walker<'_, 'a>, handler: &'a ast::ExceptHandler,
     let ast::ExceptHandler::ExceptHandler(ast::ExceptHandlerExceptHandler { name: Some(name), .. }) = handler else {
         return;
     };
-    check(walker, current(walker), name.as_str(), name.range);
+    check(walker, current(walker), NameSite { text: name.as_str(), range: name.range });
 }
 
 fn pattern_name<'a>(walker: &mut Walker<'_, 'a>, pattern: &'a Pattern, check: NameCheck<'a>) {
     if let Some(name) = pattern_capture(pattern) {
-        check(walker, current(walker), name.as_str(), name.range);
+        check(walker, current(walker), NameSite { text: name.as_str(), range: name.range });
     }
 }

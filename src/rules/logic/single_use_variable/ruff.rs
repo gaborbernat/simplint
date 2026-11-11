@@ -64,12 +64,7 @@ impl<'a> Visitor<'a> for DefaultCalls<'_, '_> {
 }
 
 // Ruff's RUF070 reports the same pair even when its fix writes a different expression.
-pub(super) fn ruff_reports_yield_from(checker: &Checker, target: &ast::ExprName, next: &Stmt) -> bool {
-    if !checker.settings.from_ruff.preview
-        || !checker.settings.from_ruff.ruff_runs(RuffRule::UnnecessaryAssignBeforeYield)
-    {
-        return false;
-    }
+pub(super) fn ruff_reports_yield_from(target: &ast::ExprName, next: &Stmt) -> bool {
     let Stmt::Expr(ast::StmtExpr { value, .. }) = next else {
         return false;
     };
@@ -87,15 +82,12 @@ pub(super) fn raises_with_name(next: &Stmt, name: &str) -> bool {
     exc.as_call_expr().is_some_and(|call| call.arguments.args.iter().any(|argument| is_name(argument, name)))
 }
 
-// `return name` is left to Ruff's RET504 while that rule runs, which covers the return case. This rule would also add an
-// inferred return annotation to a literal value, which Ruff does not write. `yield name` is never reported, as before.
-pub(super) fn returns_or_yields(checker: &Checker, next: &Stmt, name: &str) -> bool {
+// `return name` is left to Ruff's RET504, which covers the return case of a function that does not yield. This rule
+// would also add an inferred return annotation to a literal value, which Ruff does not write. `yield name` is never
+// reported, as before.
+pub(super) fn returns_or_yields(body: &[Stmt], next: &Stmt, name: &str) -> bool {
     let value = match next {
-        Stmt::Return(ast::StmtReturn { value, .. })
-            if checker.settings.from_ruff.ruff_runs(RuffRule::UnnecessaryAssign) =>
-        {
-            value.as_deref()
-        }
+        Stmt::Return(ast::StmtReturn { value, .. }) if !is_generator(body) => value.as_deref(),
         Stmt::Expr(ast::StmtExpr { value, .. }) => match value.as_ref() {
             Expr::Yield(ast::ExprYield { value, .. }) => value.as_deref(),
             _ => None,
@@ -103,6 +95,47 @@ pub(super) fn returns_or_yields(checker: &Checker, next: &Stmt, name: &str) -> b
         _ => None,
     };
     value.is_some_and(|value| is_name(value, name))
+}
+
+// Ruff's RET504 skips a function that yields, and its return visitor reads the lambdas and comprehensions of the body
+// and the decorators, annotations and defaults of a nested function, but not the bodies of nested functions or classes.
+fn is_generator(body: &[Stmt]) -> bool {
+    let mut finder = Yields { found: false };
+    finder.visit_body(body);
+    finder.found
+}
+
+struct Yields {
+    found: bool,
+}
+
+impl<'a> Visitor<'a> for Yields {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        match stmt {
+            Stmt::FunctionDef(ast::StmtFunctionDef { decorator_list, parameters, returns, .. }) => {
+                for decorator in decorator_list {
+                    self.visit_decorator(decorator);
+                }
+                if let Some(returns) = returns {
+                    visitor::walk_expr(self, returns);
+                }
+                self.visit_parameters(parameters);
+            }
+            Stmt::ClassDef(ast::StmtClassDef { decorator_list, .. }) => {
+                for decorator in decorator_list {
+                    self.visit_decorator(decorator);
+                }
+            }
+            _ => visitor::walk_stmt(self, stmt),
+        }
+    }
+
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        match expr {
+            Expr::Yield(_) | Expr::YieldFrom(_) => self.found = true,
+            _ => visitor::walk_expr(self, expr),
+        }
+    }
 }
 
 // An `if` whose test starts with the name is SMP502's, which writes the value into the test itself.

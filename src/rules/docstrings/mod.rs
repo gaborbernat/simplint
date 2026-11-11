@@ -41,18 +41,37 @@ pub(crate) use test_module_docstring::test_module_docstring;
 pub(crate) use undocumented_public_api::undocumented_public_api;
 
 use ruff_diagnostics::Edit;
-use ruff_python_ast::{Expr, Stmt};
+use ruff_python_ast::helpers::map_callable;
+use ruff_python_ast::name::QualifiedName;
+use ruff_python_ast::{self as ast, Decorator, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 
 use crate::lint::checker::Checker;
 use crate::rules::comments::is_tool_directive;
 use crate::rules::edits::{Blanks, statement_deletion};
 
+// Ruff's pydocstyle rules skip these functions, so this rule does too.
+fn ruff_ignores_function(checker: &Checker, decorators: &[Decorator]) -> bool {
+    let ignored = &checker.settings.from_ruff.ignore_decorators;
+    decorators.iter().any(|decorator| {
+        checker
+            .semantic()
+            .ruff_qualified_name(map_callable(&decorator.expression), checker.module_path())
+            .is_some_and(|name| ignored.iter().any(|listed| QualifiedName::from_dotted_name(listed) == name))
+    })
+}
+
+// Ruff's D419 reads the text from the source, so an escape such as `\x20` counts as text. It skips implicitly
+// concatenated docstrings.
+fn ruff_reports_empty_docstring(checker: &Checker, literal: &ast::ExprStringLiteral) -> bool {
+    literal.as_single_part_string().is_some_and(|part| checker.text(part.content_range()).trim().is_empty())
+}
+
 fn raised_class(exc: &Expr) -> &Expr {
     exc.as_call_expr().map_or(exc, |call| call.func.as_ref())
 }
 
-// A variable is documented the two ways Sphinx autodoc reads: a string right after it, or `#:` comments right above.
+// Sphinx autodoc reads a string after a variable, or a `#:` comment above it or at the end of its line.
 fn is_documented_variable(checker: &Checker, stmt: &Stmt, next: Option<&Stmt>) -> bool {
     let docstring_below =
         next.is_some_and(|next| next.as_expr_stmt().is_some_and(|expr| expr.value.is_string_literal_expr()));
@@ -62,16 +81,7 @@ fn is_documented_variable(checker: &Checker, stmt: &Stmt, next: Option<&Stmt>) -
         || checker.trailing_comment(stmt).is_some_and(is_doc_comment)
 }
 
-// Whether a comment after a docstring is a pragma or a tool directive. Such a comment covers the docstring's line only,
-// so it goes with the docstring.
-pub(crate) fn is_directive_comment(checker: &Checker, comment: TextRange) -> bool {
-    let text = checker.text(comment);
-    text.match_indices('#').any(|(start, _)| is_tool_directive(&text[start..]))
-}
-
-// Deletes the docstring that starts a body. A comment after it stays on a line of its own, unless it is a pragma or a
-// tool directive, which goes with it.
-pub(crate) fn docstring_deletion(checker: &Checker, body: &[Stmt]) -> Option<Edit> {
+fn docstring_deletion(checker: &Checker, body: &[Stmt]) -> Option<Edit> {
     let stmt = &body[0];
     let deletion = statement_deletion(checker, stmt.range(), body.get(1).map(Ranged::range), Blanks::Trailing)?;
     let comment = checker.trailing_comment(stmt).filter(|comment| !is_directive_comment(checker, *comment));
@@ -83,4 +93,10 @@ pub(crate) fn docstring_deletion(checker: &Checker, body: &[Stmt]) -> Option<Edi
         }
         _ => Some(Edit::range_deletion(deletion)),
     }
+}
+
+// Such a comment covers only the docstring's line, so it goes with the docstring.
+fn is_directive_comment(checker: &Checker, comment: TextRange) -> bool {
+    let text = checker.text(comment);
+    text.match_indices('#').any(|(start, _)| is_tool_directive(&text[start..]))
 }

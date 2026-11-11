@@ -17,8 +17,8 @@ def generate(docs: Path) -> dict[str, str]:
     # the rule list is derived from the sources the binary is built from, and `tests/docs_data.rs` holds it to the
     # binary's own listing, so the pages and `simplint rule` cannot drift
     rules = rule_entries()
-    # each group's title and short title by its family, the directory its rules live in, which names its pages since
-    # titles have spaces; the binary lists rules by code, so each group appears where its first rule does
+    # groups are keyed by family, the directory of their rules, since titles have spaces; the binary lists rules by
+    # code, so each group appears where its first rule does
     groups = {rule["family"]: (rule["group"], rule["short_group"]) for rule in rules}
     rules_dir, groups_dir = docs / "rules", docs / "groups"
     rules_dir.mkdir(exist_ok=True)
@@ -30,7 +30,6 @@ def generate(docs: Path) -> dict[str, str]:
         write_if_changed(rules_dir / f"{rule['code']}.md", _rule_page(rule))
     remove_stale(rules_dir, {f"{rule['code']}.md" for rule in rules})
     remove_stale(groups_dir, {f"{family}.rst" for family in groups})
-    # each explanation sits next to its rule, in the directory of the rule's family
     root = docs.parent
     explanations: dict[str, str] = {}
     for rule in rules:
@@ -42,17 +41,10 @@ def generate(docs: Path) -> dict[str, str]:
     return explanations
 
 
-def remove_stale(folder: Path, current: set[str]) -> None:
-    # a page whose rule or group is gone would still build, under a name that no longer exists
-    for stale in (page for page in folder.iterdir() if page.name not in current):
-        stale.unlink()
-
-
-_FIX_BADGES: Final[dict[str, tuple[str, str]]] = {
-    "Always": ("fix-always", "🛠️ Fix always available"),
-    "Sometimes": ("fix-sometimes", "🔧 Fix sometimes available"),
-    "None": ("fix-none", "No fix"),
-}
+def write_if_changed(path: Path, content: str) -> None:
+    # sphinx-llm reruns this configuration in a second build that reads these files, so rewrite only what changed
+    if not path.exists() or path.read_text(encoding="utf-8") != content:
+        path.write_text(content, encoding="utf-8")
 
 
 def _rules_index(rules: list[RuleEntry], groups: dict[str, tuple[str, str]]) -> str:
@@ -128,7 +120,6 @@ def _rule_page(rule: RuleEntry) -> str:
         raise ValueError(msg)
     title = f"{rule['name']} ({rule['code']})"
     badge_class, badge_text = _FIX_BADGES[rule["fix"]]
-    # links to the page that explains what reading other files means for a rule
     cross_file = (
         '<a class="badge cross-file" href="../explanation/how-it-works.html#cross-file-rules"'
         ' title="Other files of the run can change what this rule reports">🔗 Cross-file</a>'
@@ -182,23 +173,6 @@ def _section_body(heading: str, lines: list[str], start: int, stop: int, by_line
     return [*body, "::::", ""]
 
 
-def _body(lines: list[str], fence: Fence) -> list[str]:
-    # the lines between a fence's opening and closing lines, which the page keeps as written
-    return lines[fence["line"] : fence["end_line"] - 1]
-
-
-def _indent(lines: list[str], example: Example) -> str:
-    # the fence indentation, which the dropdown keeps so it sits inside the list item
-    line = lines[example["line"] - 1]
-    return line[: len(line) - len(line.lstrip())]
-
-
-def _own_config(example: Example) -> Fence | None:
-    # an Example section config holds for the examples after it, but only the example it opens shows it
-    config = example["config"]
-    return config if config is not None and config["line"] == example["line"] else None
-
-
 def _examples(lines: list[str], start: int, stop: int, by_line: dict[int, Example], *, settings: bool) -> str:
     # Examples with no prose between them form a run, rendered together so a reported one can sit beside its accepted
     # one. Only the Active on cases pair a reported example with its accepted one.
@@ -228,7 +202,6 @@ def _examples(lines: list[str], start: int, stop: int, by_line: dict[int, Exampl
 
 
 def _gap_lines(lines: list[str], example: Example) -> list[str]:
-    # the blank lines between an example's fences, which the page keeps where they are
     fences = [*([config] if (config := _own_config(example)) is not None else []), *example["blocks"]]
     gaps: list[str] = []
     previous = example["line"] - 1
@@ -236,6 +209,12 @@ def _gap_lines(lines: list[str], example: Example) -> list[str]:
         gaps.extend(lines[previous : fence["line"] - 1])
         previous = fence["end_line"]
     return gaps
+
+
+def _own_config(example: Example) -> Fence | None:
+    # an Example section config holds for the examples after it, but only the example it opens shows it
+    config = example["config"]
+    return config if config is not None and config["line"] == example["line"] else None
 
 
 def _render(run: list[Example], lines: list[str], *, settings: bool, pair: bool) -> list[str]:
@@ -270,7 +249,6 @@ def _pair(reported: Example, accepted: Example, lines: list[str]) -> list[str]:
     ]
     if (config := reported["config"]) is not None:
         out.extend(_code_block(indent, "toml", "`pyproject.toml`", _body(lines, config)))
-    # captioned like a fix's before and after
     for example, side in ((reported, "reported"), (accepted, "not reported")):
         out.extend([f"{indent}:::{{container}} example-side", ""])
         for block in example["blocks"]:
@@ -278,6 +256,28 @@ def _pair(reported: Example, accepted: Example, lines: list[str]) -> list[str]:
             out.extend(_code_block(indent, block["language"], label, _body(lines, block)))
         out.extend([f"{indent}:::", ""])
     return [*out, f"{indent}::::", ""]
+
+
+def _indent(lines: list[str], example: Example) -> str:
+    # the fence indentation, which the dropdown keeps so it sits inside the list item
+    line = lines[example["line"] - 1]
+    return line[: len(line) - len(line.lstrip())]
+
+
+def _code_block(indent: str, language: str, label: str, body: list[str]) -> list[str]:
+    return [*_fence_lines(indent, language, label, body), ""]
+
+
+# the file name is a paragraph rather than a caption, since sphinx-llm cannot translate captions
+def _fence_lines(indent: str, language: str, label: str, body: list[str], *, linenos: bool = True) -> list[str]:
+    heading = [f"{indent}{label}", ""] if label else []
+    # numbered lines tell a soft-wrapped line from the next one, which matters in the narrow side-by-side columns
+    numbering = [f"{indent}:linenos:"] if linenos else []
+    return [*heading, f"{indent}```{{code-block}} {language}", *numbering, "", *body, f"{indent}```"]
+
+
+def _body(lines: list[str], fence: Fence) -> list[str]:
+    return lines[fence["line"] : fence["end_line"] - 1]
 
 
 def _caption(block: Block, side: str) -> str:
@@ -356,19 +356,14 @@ def _cards(lines: list[str], example: Example, *, skip_blank: bool) -> tuple[lis
     return out, skip_blank
 
 
-def _code_block(indent: str, language: str, label: str, body: list[str]) -> list[str]:
-    return [*_fence_lines(indent, language, label, body), ""]
+def remove_stale(folder: Path, current: set[str]) -> None:
+    # a page whose rule or group is gone would still build, under a name that no longer exists
+    for stale in (page for page in folder.iterdir() if page.name not in current):
+        stale.unlink()
 
 
-# the file name is a paragraph rather than a caption, since sphinx-llm cannot translate captions
-def _fence_lines(indent: str, language: str, label: str, body: list[str], *, linenos: bool = True) -> list[str]:
-    heading = [f"{indent}{label}", ""] if label else []
-    # numbered lines tell a soft-wrapped line from the next one, which matters in the narrow side-by-side columns
-    numbering = [f"{indent}:linenos:"] if linenos else []
-    return [*heading, f"{indent}```{{code-block}} {language}", *numbering, "", *body, f"{indent}```"]
-
-
-def write_if_changed(path: Path, content: str) -> None:
-    # sphinx-llm reruns this configuration in a second build that reads these files, so rewrite only what changed
-    if not path.exists() or path.read_text(encoding="utf-8") != content:
-        path.write_text(content, encoding="utf-8")
+_FIX_BADGES: Final[dict[str, tuple[str, str]]] = {
+    "Always": ("fix-always", "🛠️ Fix always available"),
+    "Sometimes": ("fix-sometimes", "🔧 Fix sometimes available"),
+    "None": ("fix-none", "No fix"),
+}

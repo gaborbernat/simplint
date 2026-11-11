@@ -12,8 +12,8 @@ use crate::project::Ending;
 use crate::run::{CacheUse, Resolved, check_files};
 use crate::settings::HOOK_CONFIGS;
 
-// Ruff's watch mode: check, then check again on every change to a watched Python file, resolving the configuration
-// again when a `.toml` file changes. It runs until watching fails or a check cannot run.
+// Ruff's watch mode: it checks again on every change to a watched Python file, and resolves the configuration again
+// when a `.toml` file changes. It runs until watching fails or a check cannot run.
 pub(super) fn watch(
     cli: &CheckCommand,
     global_options: &GlobalConfigArgs,
@@ -31,8 +31,7 @@ pub(super) fn watch(
     clearscreen::clear()?;
     printer.write_to_user("Starting linter in watch mode...\n");
     loop {
-        let diagnostics = check_files(files, &resolved, printer.mode, usage, Ending::Drop)?;
-        printer.write_continuously(&mut writer, &diagnostics)?;
+        printer.write_continuously(&mut writer, &check_files(files, &resolved, printer.mode, usage, Ending::Drop)?)?;
         let change = loop {
             if let Some(change) = change_detected(&receiver.recv()??) {
                 break change;
@@ -44,13 +43,6 @@ pub(super) fn watch(
         clearscreen::clear()?;
         printer.write_to_user("File change detected...\n");
     }
-}
-
-// Ruff's watch mode change detection, which the `ruff` crate keeps private.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum ChangeKind {
-    Configuration,
-    SourceFile,
 }
 
 // A change to a `.toml` file or a hook configuration can change the configuration; one to a Python file only needs
@@ -73,4 +65,11 @@ fn change_detected(event: &notify::Event) -> Option<ChangeKind> {
         }
     }
     source_file.then_some(ChangeKind::SourceFile)
+}
+
+// Ruff's watch mode change detection, which the `ruff` crate keeps private.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ChangeKind {
+    Configuration,
+    SourceFile,
 }

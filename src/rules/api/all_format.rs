@@ -27,17 +27,20 @@ pub fn all_format(checker: &Checker) {
         };
         let Some(last) = elements.last() else {
             if !is_list {
-                let fix = Fix::unsafe_edit(Edit::range_replacement("[]".to_owned(), value.range()));
                 checker.report_fix(
                     Rule::AllFormat,
                     value.range(),
                     "`__all__` is a tuple; make it a list",
-                    Some(fix),
+                    Some(Fix::unsafe_edit(Edit::range_replacement("[]".to_owned(), value.range()))),
                     "Convert `__all__` to a list",
                 );
             }
             continue;
         };
+        let all_list = AllList::new(stmt, value.range(), elements);
+        let has_comment = all_list.has_comment(checker);
+        let items = all_list.items(checker);
+        let base = leading_indentation(checker.source.full_line_str(value.start()));
         let comma = checker
             .parsed
             .tokens()
@@ -45,25 +48,22 @@ pub fn all_format(checker: &Checker) {
             .iter()
             .find(|token| !matches!(token.kind(), TokenKind::NonLogicalNewline | TokenKind::Comment | TokenKind::Rpar))
             .filter(|token| token.kind() == TokenKind::Comma);
-        let all = AllList::new(stmt, value.range(), elements);
-        let multiline = checker.source.contains_line_break(value.range());
-        let has_comment = all.has_comment(checker);
-        let items = all.items(checker);
-        let base = leading_indentation(checker.source.full_line_str(value.start()));
         // With `skip-magic-trailing-comma`, `ruff format` drops the comma from a list that fits on one line.
         let magic = checker.settings.from_ruff.magic_trailing_comma;
+        let after_last = checker.parenthesized_range(last, value.into()).end();
         if is_list {
             if comma.is_none() && magic {
-                // A comma right before a closing bracket on the same line is one Ruff's COM819 removes again.
-                let closes_on_own_line = checker.source[TextRange::new(last.end(), value.end())].contains('\n');
                 // Ruff's COM812 reports a list whose closing bracket follows a line break with no comma before it.
+                // The list is left to it only while Ruff runs it: `ruff format` joins a list that fits on one line
+                // once simplint is done, and the list would come back to this rule on the next run.
                 if checker.settings.from_ruff.ruff_runs(RuffRule::MissingTrailingComma)
                     && closing_bracket_follows_line_break(checker, last, value)
                 {
                     continue;
                 }
-                let edit = if multiline && closes_on_own_line || has_comment {
-                    Edit::insertion(",".to_owned(), checker.parenthesized_range(last, value.into()).end())
+                // A comma right before a closing bracket on the same line is one Ruff's COM819 removes again.
+                let edit = if checker.source[TextRange::new(last.end(), value.end())].contains('\n') || has_comment {
+                    Edit::insertion(",".to_owned(), after_last)
                 } else {
                     Edit::range_replacement(exploded(checker, base, &items), value.range())
                 };
@@ -79,15 +79,14 @@ pub fn all_format(checker: &Checker) {
         }
         // A list holds the same names; only code that concatenates `__all__` with a tuple would notice the change.
         let parenthesized = value.as_tuple_expr().is_some_and(|tuple| tuple.parenthesized);
-        let fix = if parenthesized && (multiline || has_comment) {
+        let fix = if parenthesized && (checker.source.contains_line_break(value.range()) || has_comment) {
             // Swapping the brackets keeps the layout of a tuple written one name per line.
             let open = Edit::range_replacement("[".to_owned(), TextRange::at(value.start(), TextSize::from(1)));
             let close = Edit::range_replacement(
                 "]".to_owned(),
                 TextRange::at(value.end() - TextSize::from(1), TextSize::from(1)),
             );
-            let edits = (comma.is_none() && magic)
-                .then(|| Edit::insertion(",".to_owned(), checker.parenthesized_range(last, value.into()).end()));
+            let edits = (comma.is_none() && magic).then(|| Edit::insertion(",".to_owned(), after_last));
             Fix::unsafe_edits(open, std::iter::once(close).chain(edits))
         } else if magic {
             Fix::unsafe_edit(Edit::range_replacement(exploded(checker, base, &items), value.range()))

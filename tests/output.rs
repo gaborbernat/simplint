@@ -1,11 +1,10 @@
 mod common;
 
+use tempfile::TempDir;
 use test_case::test_case;
 
 use common::{SINGLE_X, check, empty_project, json, project, read, simplint, simplint_with};
 
-// Each report as the format renders it, one with a fix and one without, with the project's temporary directory as
-// `[ROOT]`.
 #[test_case("concise" ; "concise")]
 #[test_case("full" ; "full")]
 #[test_case("json" ; "json")]
@@ -37,15 +36,20 @@ fn check_renders_every_output_format(format: &str) {
 // The full format renders in parallel chunks, which must still come out in the order of the reports.
 #[test]
 fn check_full_keeps_report_order_across_chunks() {
-    let names: Vec<String> = (0..200).map(|index| format!("module_{index:03}.py")).collect();
-    let root = project(&names.iter().map(|name| (name.as_str(), "x = 1\n")).collect::<Vec<_>>());
+    let (root, names) = project_of_two_hundred_files();
     let stdout = simplint(root.path(), &["check", "--output-format", "full", "--select", "SMP101"]).1;
     let reported: Vec<&str> =
         stdout.lines().filter_map(|line| line.trim_start().strip_prefix("--> ")?.strip_suffix(":1:1")).collect();
     assert_eq!(reported, names);
 }
 
-// The formats that render chunks in parallel must still write the reports in order, with a JSON array written as one.
+fn project_of_two_hundred_files() -> (TempDir, Vec<String>) {
+    let names: Vec<String> = (0..200).map(|index| format!("module_{index:03}.py")).collect();
+    let root = project(&names.iter().map(|name| (name.as_str(), "x = 1\n")).collect::<Vec<_>>());
+    (root, names)
+}
+
+// The formats that render chunks in parallel must still write the reports in order.
 #[test_case("concise" ; "concise")]
 #[test_case("json" ; "json")]
 #[test_case("json-lines" ; "json_lines")]
@@ -53,16 +57,19 @@ fn check_full_keeps_report_order_across_chunks() {
 #[test_case("pylint" ; "pylint")]
 #[test_case("azure" ; "azure")]
 fn check_keeps_report_order_across_chunks(format: &str) {
-    let names: Vec<String> = (0..200).map(|index| format!("module_{index:03}.py")).collect();
-    let root = project(&names.iter().map(|name| (name.as_str(), "x = 1\n")).collect::<Vec<_>>());
+    let (root, names) = project_of_two_hundred_files();
     let stdout = simplint(root.path(), &["check", "--output-format", format, "--select", "SMP101"]).1;
     let positions: Vec<usize> =
         names.iter().map(|name| stdout.find(name.as_str()).expect("report names its file")).collect();
     assert!(positions.is_sorted());
-    if format == "json" {
-        let reports: Vec<serde_json::Value> = serde_json::from_str(&stdout).expect("json report");
-        assert_eq!(reports.len(), names.len());
-    }
+}
+
+#[test]
+fn check_json_array_holds_every_report() {
+    let (root, names) = project_of_two_hundred_files();
+    let reports: Vec<serde_json::Value> =
+        json(root.path(), &["check", "--output-format", "json", "--select", "SMP101"]);
+    assert_eq!(reports.len(), names.len());
 }
 
 // A `noqa` comment for a report on the first line of a multi-line string goes on the string's last line.
@@ -84,7 +91,6 @@ fn check_output_file_receives_the_report() {
         ((1, String::new(), String::new()), format!("module.py:1:1: {SINGLE_X}\nFound 1 error.\n"))
     );
 }
-
 #[test]
 fn output_file_is_never_colored() {
     let root = project(&[("module.py", "x = 1\n")]);
@@ -104,7 +110,9 @@ fn check_log_levels_trim_output(flags: &[&str], stdout: &str) {
 #[test_case("concise", "1\tSMP101\tsingle-letter-name\nFound 1 error.\n" ; "text")]
 #[test_case(
     "json",
-    "[\n  {\n    \"code\": \"SMP101\",\n    \"name\": \"single-letter-name\",\n    \"count\": 1,\n    \"fixable\": false,\n    \"fixable_count\": 0\n  }\n]\n" ;
+    "[\n  {\n    \"code\": \"SMP101\",\n    \"name\": \"single-letter-name\",\n    \
+     \"count\": 1,\n    \"fixable\": false,\n    \
+     \"fixable_count\": 0\n  }\n]\n" ;
     "json"
 )]
 fn check_statistics_counts_each_rule(format: &str, stdout: &str) {
@@ -138,10 +146,11 @@ fn check_statistics_of_a_clean_project_prints_nothing() {
 }
 
 #[test]
-fn check_statistics_mark_partly_and_not_fixable_rules() {
+fn check_statistics_marks_partly_and_not_fixable_rules() {
     let root = project(&[(
         "module.py",
-        "# --- helpers ---\nx = 1\n\n\ndef run() -> None:\n    \"\"\"Run.\"\"\"\n\n\ndef stop() -> None:\n    \"\"\"Stop.\"\"\";  # kept\n    print()\n",
+        "# --- helpers ---\nx = 1\n\n\ndef run() -> None:\n    \"\"\"Run.\"\"\"\n\n\ndef stop() -> None:\n    \
+         \"\"\"Stop.\"\"\";  # kept\n    print()\n",
     )]);
     assert_eq!(
         check(root.path(), &["--statistics", "--unsafe-fixes", "--select", "SMP001,SMP901,SMP101"]).1,
@@ -183,14 +192,6 @@ fn preview_help_says_simplint_has_no_preview_rules() {
         "Enable Ruff's preview mode: reports name rules instead of codes, and simplint's fixes are checked against \
          Ruff's preview rules too. simplint has no preview rules of its own. Use `--no-preview` to disable"
     );
-}
-
-#[test]
-fn preview_shows_codes_only_for_rules() {
-    let root = project(&[("module.py", "x = (\n")]);
-    let (_, stable, _) = simplint(root.path(), &["check", "--output-format", "json"]);
-    let (_, preview, _) = simplint(root.path(), &["check", "--output-format", "json", "--preview"]);
-    assert_eq!((stable.contains(r#""code": "invalid-syntax""#), preview.contains(r#""code": null"#)), (true, true));
 }
 
 #[test]

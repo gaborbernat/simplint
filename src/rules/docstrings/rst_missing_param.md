@@ -1,5 +1,5 @@
 Flags parameters that a public API docstring leaves without a `:param name:` field, when the project uses
-reStructuredText docstrings. Without the field, the reference shows only the parameter's name and type.
+reStructuredText docstrings.
 
 ## Why is this bad?
 

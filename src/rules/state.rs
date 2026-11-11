@@ -180,7 +180,6 @@ impl<'a> FileState<'a> {
         })
     }
 
-    // The functions and classes of the file, searched for the ones that hold a range.
     pub(crate) fn scope_nesting(&self, checker: &Checker<'a>) -> &Nesting {
         self.scope_nesting.get_or_init(|| {
             let scopes = checker
@@ -193,8 +192,6 @@ impl<'a> FileState<'a> {
         })
     }
 
-    // The modules and the members that the top-level imports bring in under their own names, as `import x` and
-    // `from x import y` do.
     pub(crate) fn top_level_imports(&self, checker: &Checker<'a>) -> &FxHashSet<(&'a str, Option<&'a str>)> {
         self.top_level_imports.get_or_init(|| {
             let mut imports = FxHashSet::default();
@@ -224,12 +221,11 @@ impl<'a> FileState<'a> {
 
     pub(crate) fn own_line_comments(&self, checker: &Checker) -> &[TextRange] {
         self.own_line_comments.get_or_init(|| {
-            let source = checker.source;
             checker
                 .comment_ranges()
                 .iter()
                 .copied()
-                .filter(|range| !has_leading_content(range.start(), source))
+                .filter(|range| !has_leading_content(range.start(), checker.source))
                 .collect()
         })
     }
@@ -255,7 +251,6 @@ impl<'a> Visitor<'a> for CallEnds {
     }
 }
 
-// The attributes read off each bare name in a file.
 #[derive(Default)]
 struct AttributeReads<'a> {
     attributes: FxHashMap<&'a str, Vec<&'a str>>,

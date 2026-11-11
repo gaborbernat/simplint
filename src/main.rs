@@ -61,21 +61,6 @@ fn main() -> ExitCode {
 
 const STACK_SIZE: usize = 64 * 1024 * 1024;
 
-// As `ruff` does: a failed run prints its cause chain and exits 2, while a closed pipe ends the run quietly.
-fn report_error(error: &anyhow::Error) -> ExitCode {
-    if error.chain().any(|cause| {
-        cause.downcast_ref::<std::io::Error>().is_some_and(|io| io.kind() == std::io::ErrorKind::BrokenPipe)
-    }) {
-        return ExitCode::from(0);
-    }
-    let mut stderr = std::io::stderr().lock();
-    writeln!(stderr, "{}", "simplint failed".red().bold()).ok();
-    for cause in error.chain() {
-        writeln!(stderr, "  {} {cause}", "Cause:".bold()).ok();
-    }
-    ExitStatus::Error.into()
-}
-
 fn run(Cli { command, global_options }: Cli) -> Result<ExitStatus> {
     if let Some(color) = colored_override(global_options.color, std::env::var_os("FORCE_COLOR")) {
         colored::control::set_override(color);
@@ -101,6 +86,15 @@ fn run(Cli { command, global_options }: Cli) -> Result<ExitStatus> {
         Command::ConfigSchema => subcommands::config_schema()?,
     }
     Ok(ExitStatus::Success)
+}
+
+// Ruff's `colored_override`: `--color` wins over a nonempty `FORCE_COLOR`.
+fn colored_override(color: Option<TerminalColor>, force_color: Option<OsString>) -> Option<bool> {
+    match color {
+        Some(TerminalColor::Always) => Some(true),
+        Some(TerminalColor::Never) => Some(false),
+        Some(TerminalColor::Auto) | None => force_color.map(|force_color| !force_color.is_empty()),
+    }
 }
 
 // Ruff's `set_up_logging`, without the warnings Ruff gives about its own configuration while simplint resolves it:
@@ -135,11 +129,17 @@ fn set_up_logging(level: LogLevel) -> Result<()> {
     Ok(())
 }
 
-// Ruff's `colored_override`: `--color` wins over a nonempty `FORCE_COLOR`.
-fn colored_override(color: Option<TerminalColor>, force_color: Option<OsString>) -> Option<bool> {
-    match color {
-        Some(TerminalColor::Always) => Some(true),
-        Some(TerminalColor::Never) => Some(false),
-        Some(TerminalColor::Auto) | None => force_color.map(|force_color| !force_color.is_empty()),
+// As `ruff` does: a failed run prints its cause chain and exits 2, while a closed pipe ends the run quietly.
+fn report_error(error: &anyhow::Error) -> ExitCode {
+    if error.chain().any(|cause| {
+        cause.downcast_ref::<std::io::Error>().is_some_and(|io| io.kind() == std::io::ErrorKind::BrokenPipe)
+    }) {
+        return ExitCode::from(0);
     }
+    let mut stderr = std::io::stderr().lock();
+    writeln!(stderr, "{}", "simplint failed".red().bold()).ok();
+    for cause in error.chain() {
+        writeln!(stderr, "  {} {cause}", "Cause:".bold()).ok();
+    }
+    ExitStatus::Error.into()
 }

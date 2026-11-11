@@ -9,13 +9,13 @@ use serde::Deserialize;
 #[derive(Deserialize, Default)]
 #[serde(from = "ProjectTable")]
 pub struct ProjectMetadata {
-    pub name: Option<String>,
-    pub dependencies: BTreeSet<String>,
+    pub(crate) name: Option<String>,
+    pub(crate) dependencies: BTreeSet<String>,
     // Every module the project lists, whatever its marker, in optional dependencies and dependency groups too. A rule
     // asks whether a tool is declared at all, which an install may leave out.
     pub declared: BTreeSet<String>,
-    pub entry_points: Vec<String>,
-    pub scripts: Vec<String>,
+    pub(crate) entry_points: Vec<String>,
+    pub(crate) scripts: Vec<String>,
 }
 
 impl ProjectMetadata {
@@ -150,20 +150,18 @@ struct ProjectTable {
     entry_points: BTreeMap<String, BTreeMap<String, String>>,
 }
 
-// How a `pyproject.toml` builds the project: whether a `[build-system]` declares a backend, the packages the backend's
-// own settings ship, the settings that make a build install no Python package, and the backend a build frontend loads.
 #[derive(Default)]
-pub struct BuildConfiguration {
-    pub has_build_system: bool,
-    pub packages: Vec<String>,
-    pub uv_package: Option<bool>,
-    pub maturin_bindings: Option<String>,
+pub(super) struct BuildConfiguration {
+    pub(super) has_build_system: bool,
+    pub(crate) packages: Vec<String>,
+    pub(super) uv_package: Option<bool>,
+    pub(super) maturin_bindings: Option<String>,
     // The `build-backend` as written, `module` or `module:object`, and the `backend-path` directories it loads from.
-    pub backend: Option<String>,
-    pub backend_path: Vec<String>,
+    backend: Option<String>,
+    backend_path: Vec<String>,
     // The `path` of each custom build or metadata hook of hatchling, which loads the hook's class from that file.
-    pub hatch_hooks: Vec<String>,
-    pub pdm_hook: Option<String>,
+    pub(crate) hatch_hooks: Vec<String>,
+    pdm_hook: Option<String>,
 }
 
 impl BuildConfiguration {
@@ -173,8 +171,7 @@ impl BuildConfiguration {
         if let Some(file) = hatch_file {
             overlay(&mut hatch, file);
         }
-        let system = pyproject.get("build-system").and_then(toml::Value::as_table);
-        let system_value = |key: &str| system.and_then(|table| table.get(key));
+        let system_value = |key: &str| pyproject.get("build-system")?.as_table()?.get(key);
         // Each backend names the importable packages it ships its own way; a `find` table discovers them instead.
         let packages = [
             &["hatch", "build", "targets", "wheel", "packages"][..],
@@ -201,48 +198,8 @@ impl BuildConfiguration {
     }
 }
 
-// The modules coverage loads as plugins, which it calls `coverage_init` on by name, and the directories their import
-// path is searched in: the project's own, then the `pythonpath` of pytest and the `extra-paths` of ty, as the project
-// configures them. Without a plugin there is nothing to search for, so no directory is kept.
-#[derive(Default)]
-pub struct CoveragePlugins {
-    pub modules: Vec<String>,
-    pub search_paths: Vec<PathBuf>,
-}
-
-impl CoveragePlugins {
-    pub(super) fn of(pyproject: &toml::Table, project_dir: &Path) -> Self {
-        let lookup = |path: &[&str]| path.iter().try_fold(pyproject.get("tool")?, |value, key| value.get(key));
-        let modules = strings(lookup(&["coverage", "run", "plugins"]));
-        if modules.is_empty() {
-            return Self::default();
-        }
-        let keys = [
-            &["pytest", "ini_options", "pythonpath"][..],
-            &["pytest", "pythonpath"],
-            &["ty", "environment", "extra-paths"],
-        ];
-        let directories = keys.iter().flat_map(|path| strings(lookup(path)));
-        let search_paths = std::iter::once(project_dir.to_path_buf())
-            .chain(directories.map(|directory| project_dir.join(directory)))
-            .map(|path| path.components().collect::<PathBuf>())
-            // A configured directory a source distribution leaves out would fail the whole search path.
-            .filter(|path| path.is_dir())
-            .collect();
-        Self { modules, search_paths }
-    }
-}
-
-fn strings(value: Option<&toml::Value>) -> Vec<String> {
-    match value {
-        Some(toml::Value::String(text)) => vec![text.clone()],
-        Some(toml::Value::Array(items)) => items.iter().filter_map(|item| item.as_str().map(str::to_owned)).collect(),
-        _ => Vec::new(),
-    }
-}
-
-// hatchling reads a `hatch.toml` next to `pyproject.toml` over the `[tool.hatch]` table, so its tables replace the ones of
-// the same name.
+// hatchling reads a `hatch.toml` next to `pyproject.toml` over the `[tool.hatch]` table, so its tables replace the ones
+// of the same name.
 fn overlay(base: &mut toml::Table, over: &toml::Table) {
     for (key, value) in over {
         match (base.get_mut(key), value) {
@@ -267,6 +224,49 @@ fn hatch_hook_paths(hatch: &toml::Table) -> Vec<String> {
         .filter_map(|table| table?.get("hooks")?.get("custom"))
         .map(|hook| hook.get("path").and_then(toml::Value::as_str).unwrap_or("hatch_build.py").to_owned())
         .collect()
+}
+
+// The modules coverage loads as plugins, which it calls `coverage_init` on by name, and the directories their import
+// path is searched in: the project's own, then the `pythonpath` of pytest and the `extra-paths` of ty, as the project
+// configures them. Without a plugin there is nothing to search for, so no directory is kept.
+#[derive(Default)]
+pub struct CoveragePlugins {
+    pub(crate) modules: Vec<String>,
+    pub(crate) search_paths: Vec<PathBuf>,
+}
+
+impl CoveragePlugins {
+    pub(super) fn of(pyproject: &toml::Table, project_dir: &Path) -> Self {
+        let lookup = |path: &[&str]| path.iter().try_fold(pyproject.get("tool")?, |value, key| value.get(key));
+        let modules = strings(lookup(&["coverage", "run", "plugins"]));
+        if modules.is_empty() {
+            return Self::default();
+        }
+        let search_paths = std::iter::once(project_dir.to_path_buf())
+            .chain(
+                [
+                    &["pytest", "ini_options", "pythonpath"][..],
+                    &["pytest", "pythonpath"],
+                    &["ty", "environment", "extra-paths"],
+                ]
+                .iter()
+                .flat_map(|path| strings(lookup(path)))
+                .map(|directory| project_dir.join(directory)),
+            )
+            .map(|path| path.components().collect::<PathBuf>())
+            // A configured directory a source distribution leaves out would fail the whole search path.
+            .filter(|path| path.is_dir())
+            .collect();
+        Self { modules, search_paths }
+    }
+}
+
+fn strings(value: Option<&toml::Value>) -> Vec<String> {
+    match value {
+        Some(toml::Value::String(text)) => vec![text.clone()],
+        Some(toml::Value::Array(items)) => items.iter().filter_map(|item| item.as_str().map(str::to_owned)).collect(),
+        _ => Vec::new(),
+    }
 }
 
 // The files hatchling loads as its custom build and metadata hooks, each `path` relative to the project's directory.

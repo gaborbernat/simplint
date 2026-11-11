@@ -1,13 +1,11 @@
 use std::cell::OnceCell;
 
-use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::{self as ast, Expr, Stmt};
 use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::FxHashSet;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::rules::module_variable::ModuleVariable;
 use crate::rules::rename::rename_fix;
 use crate::syntax::target_leaves;
 
@@ -20,12 +18,10 @@ pub fn module_variable_case(checker: &Checker) {
         if expected == variable.name {
             continue;
         }
-        if checker.settings.from_ruff.ruff_runs(RuffRule::MixedCaseVariableInGlobalScope)
-            && ruff_reports(checker, variable, &named_tuples)
-        {
+        let fix = rename_fix(checker, variable.name, &expected);
+        if fix.is_none() && ruff_reports(checker, variable.name, &named_tuples) {
             continue;
         }
-        let fix = rename_fix(checker, variable.name, &expected);
         checker.report_fix(
             Rule::ModuleVariableCase,
             variable.range,
@@ -36,20 +32,22 @@ pub fn module_variable_case(checker: &Checker) {
     }
 }
 
-// Ruff's mixed-case-variable-in-global-scope (N816) reports a mixedCase module name at its binding. The checks N816
-// makes are repeated here to leave those names to Ruff while it runs.
-fn ruff_reports(checker: &Checker, variable: &ModuleVariable, named_tuples: &OnceCell<FxHashSet<TextRange>>) -> bool {
-    let first = checker.semantic().bindings(variable.name).first();
-    is_mixed_case(variable.name)
-        && first.is_some_and(|binding| binding.module_scope)
-        && !checker.settings.from_ruff.ignored_names.matches(variable.name)
-        && !named_tuples
-            .get_or_init(|| {
-                let mut targets = FxHashSet::default();
-                collect_named_tuples(checker, checker.body(), &mut targets);
-                targets
-            })
-            .contains(&variable.range)
+// Ruff's mixed-case-variable-in-global-scope (N816) reports a mixedCase name at each of its stores in the module scope,
+// except in a namedtuple assignment. A name Ruff reports is left to it when this rule offers no rename for it, and kept
+// here when it does.
+fn ruff_reports(checker: &Checker, name: &str, named_tuples: &OnceCell<FxHashSet<TextRange>>) -> bool {
+    is_mixed_case(name)
+        && !checker.settings.from_ruff.ignored_names.matches(name)
+        && checker.semantic().bindings(name).iter().any(|binding| {
+            checker.semantic().is_module_store(binding.range)
+                && !named_tuples
+                    .get_or_init(|| {
+                        let mut targets = FxHashSet::default();
+                        collect_named_tuples(checker, checker.body(), &mut targets);
+                        targets
+                    })
+                    .contains(&binding.range)
+        })
 }
 
 // Ruff's `mixedCase`: an uppercase letter, and a lowercase first letter after one leading underscore.
@@ -57,8 +55,8 @@ fn is_mixed_case(name: &str) -> bool {
     name.contains(char::is_uppercase) && name.strip_prefix('_').unwrap_or(name).starts_with(char::is_lowercase)
 }
 
-// The names bound by an assignment that calls `namedtuple` or `NamedTuple`, which N816 skips. The assignment may sit in
-// a block of the module body, but not in a function or class body, which binds its names in its own scope.
+// N816 skips names bound by a `namedtuple` or `NamedTuple` call. A function or class body binds in its own scope, so
+// only the blocks of the module body are walked.
 fn collect_named_tuples(checker: &Checker, body: &[Stmt], targets: &mut FxHashSet<TextRange>) {
     for stmt in body {
         match stmt {

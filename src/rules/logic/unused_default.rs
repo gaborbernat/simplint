@@ -5,7 +5,7 @@ use rustc_hash::FxHashMap;
 
 use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
-use crate::project::constructors::{CallShape, CallSites, Use};
+use crate::project::constructors::{CallSites, Use};
 use crate::rules::call_sites::{
     add_use, is_closed_class, method_candidate, method_uses, module_candidate, module_uses, self_only_uses,
 };
@@ -23,7 +23,7 @@ pub(crate) fn unused_default(checker: &Checker) {
             Stmt::ClassDef(class) if is_closed_class(checker, class) => {
                 let methods = method_uses(checker, class);
                 for method in class.body.iter().filter_map(Stmt::as_function_def_stmt) {
-                    method_of(checker, method, &methods);
+                    method_of(checker, class, method, &methods);
                 }
             }
             _ => {}
@@ -41,13 +41,18 @@ fn module_function(checker: &Checker, function: &ast::StmtFunctionDef, functions
     for found in functions.get(name).into_iter().flatten() {
         add_use(&mut sites, found);
     }
-    report(checker, function, name, &sites, false);
+    report(checker, function, &sites, None);
 }
 
 // A method of a module-level class without bases, called through `self` in its class. Another file's `obj.name` read
 // would count as a load the class does not account for, so the method is judged only when every load of its name is
 // one of the class's `self.name(...)` calls.
-fn method_of(checker: &Checker, function: &ast::StmtFunctionDef, methods: &FxHashMap<&str, Vec<(bool, Use)>>) {
+fn method_of(
+    checker: &Checker,
+    class: &ast::StmtClassDef,
+    function: &ast::StmtFunctionDef,
+    methods: &FxHashMap<&str, Vec<(bool, Use)>>,
+) {
     let name = function.name.as_str();
     if !method_candidate(checker, function) {
         return;
@@ -59,41 +64,47 @@ fn method_of(checker: &Checker, function: &ast::StmtFunctionDef, methods: &FxHas
     for found in uses {
         add_use(&mut sites, found);
     }
-    report(checker, function, name, &sites, true);
+    report(checker, function, &sites, Some(class));
 }
 
-// Reports each default that every call passes. The receiver of a method is not a parameter of its calls, so `receiver`
-// skips the first positional parameter.
-fn report(checker: &Checker, function: &ast::StmtFunctionDef, name: &str, sites: &CallSites, receiver: bool) {
+// The receiver of a method is not a parameter of its calls, so a method's calls skip the first positional parameter.
+// PT028 reports the defaults of a pytest test with a display-only fix, so one this rule cannot fix is left to it there.
+fn report(checker: &Checker, function: &ast::StmtFunctionDef, sites: &CallSites, class: Option<&ast::StmtClassDef>) {
     if sites.opaque || sites.shapes.is_empty() || sites.shapes.iter().any(|shape| shape.unpacks_mapping) {
         return;
     }
+    let name = function.name.as_str();
+    let pytest_test = name.starts_with("test")
+        && class.is_none_or(|class| {
+            class.name.as_str().starts_with("Test")
+                && class
+                    .body
+                    .iter()
+                    .filter_map(Stmt::as_function_def_stmt)
+                    .all(|method| method.name.as_str() != "__init__")
+        });
     let parameters = &function.parameters;
-    let positional: Vec<_> = parameters.posonlyargs.iter().chain(parameters.args.iter()).collect();
-    let skip = usize::from(receiver);
+    let skip = usize::from(class.is_some());
     let mut defaulted_before = false;
-    for (index, param) in positional.iter().enumerate().skip(skip) {
-        let position = index - skip;
-        let positional_only = index < parameters.posonlyargs.len();
-        let passed = |shape: &CallShape| {
-            position < shape.positional as usize
-                || (!positional_only && shape.keywords.iter().any(|keyword| keyword == param_name(param)))
-        };
+    for (index, param) in parameters.posonlyargs.iter().chain(&parameters.args).enumerate().skip(skip) {
         if let Some(default) = param.default.as_deref()
-            && sites.shapes.iter().all(passed)
+            && sites.shapes.iter().all(|shape| {
+                index - skip < shape.positional as usize
+                    || (index >= parameters.posonlyargs.len()
+                        && shape.keywords.iter().any(|keyword| keyword == param_name(param)))
+            })
         {
-            // Dropping a default after another defaulted parameter leaves a parameter without one after it, which breaks
-            // the signature, so only defaults with no defaulted parameter before them are offered a fix.
-            report_default(checker, name, param, default, !defaulted_before);
+            // Dropping a default after another defaulted parameter leaves one without a default after it, which
+            // breaks the signature, so only defaults with no defaulted parameter before them are offered a fix.
+            report_default(checker, name, param, default, !defaulted_before, pytest_test);
         }
         defaulted_before |= param.default.is_some();
     }
     for param in &parameters.kwonlyargs {
-        let passed = |shape: &CallShape| shape.keywords.iter().any(|keyword| keyword == param_name(param));
         if let Some(default) = param.default.as_deref()
-            && sites.shapes.iter().all(passed)
+            && sites.shapes.iter().all(|shape| shape.keywords.iter().any(|keyword| keyword == param_name(param)))
         {
-            report_default(checker, name, param, default, true);
+            report_default(checker, name, param, default, true, pytest_test);
         }
     }
 }
@@ -108,6 +119,7 @@ fn report_default(
     param: &ast::ParameterWithDefault,
     default: &Expr,
     removable: bool,
+    pytest_test: bool,
 ) {
     let parameter = &param.parameter;
     let range = checker.parenthesized_range(default, param.into());
@@ -123,6 +135,9 @@ fn report_default(
     let removed = TextRange::new(start, range.end());
     // A comment in the default goes with it, so the fix would delete a note the code keeps.
     let fix = (removable && !checker.has_comment_in(removed)).then(|| Fix::unsafe_edit(Edit::range_deletion(removed)));
+    if fix.is_none() && pytest_test {
+        return;
+    }
     checker.report_fix(
         Rule::UnusedDefault,
         range,

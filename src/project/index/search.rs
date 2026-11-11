@@ -13,8 +13,6 @@ use crate::project::cache::{Stat, stat};
 use super::resolve::normalized;
 use super::startup;
 
-// Where imports resolve, as `ruff analyze graph` searches: the configured `src` directories first, then the directory
-// above each package.
 #[derive(Clone)]
 pub struct SearchRoots {
     pub(super) roots: Vec<PathBuf>,
@@ -29,28 +27,10 @@ impl CacheKey for SearchRoots {
 }
 
 impl SearchRoots {
-    // What the resolver sees beyond the run's own files, which a cached run that skips it must not miss. It only asks
-    // which files and directories exist, under each root and under each directory between an importing file and its
-    // root, which ty searches too for a name the roots do not hold. A directory's time changes whenever an entry in it
-    // is added, removed or renamed. Below those it walks only directories an import can name, `name-stubs` providing
-    // `name`, and follows links as the resolver does, each directory once.
+    // A cached run that skips the resolver must not miss what it sees beyond the run's files. A directory's time moves
+    // when an entry is added, removed or renamed, so the directories stand in for their entries.
     pub fn layout_key<'a>(&self, files: impl Iterator<Item = &'a Path>, hasher: &mut CacheKeyHasher) {
         Self::hash_directories(&Self::walk(&self.roots, files), hasher);
-    }
-
-    // The layout `private-import-path` probes beside a project: the sources it looks for sit under the project's root
-    // and under its `src` directory, which the search roots need not cover, so the cache keys those trees too, and
-    // the links among their module files, whose targets `is_file` follows.
-    pub fn probed_layout(root: &Path, hasher: &mut CacheKeyHasher) {
-        let directories = Self::walk(&[root.to_path_buf(), root.join("src")], std::iter::empty());
-        Self::hash_directories(&directories, hasher);
-        let mut links: Vec<PathBuf> =
-            directories.par_iter().flat_map_iter(|directory| module_links(directory)).collect();
-        links.sort_unstable();
-        for link in links {
-            link.cache_key(hasher);
-            link.is_file().cache_key(hasher);
-        }
     }
 
     fn hash_directories(directories: &[PathBuf], hasher: &mut CacheKeyHasher) {
@@ -88,6 +68,19 @@ impl SearchRoots {
         walked
     }
 
+    // The sources `private-import-path` looks for may sit outside the search roots, so the cache keys those trees too.
+    pub fn probed_layout(root: &Path, hasher: &mut CacheKeyHasher) {
+        let directories = Self::walk(&[root.to_path_buf(), root.join("src")], std::iter::empty());
+        Self::hash_directories(&directories, hasher);
+        let mut links: Vec<PathBuf> =
+            directories.par_iter().flat_map_iter(|directory| module_links(directory)).collect();
+        links.sort_unstable();
+        for link in links {
+            link.cache_key(hasher);
+            link.is_file().cache_key(hasher);
+        }
+    }
+
     pub fn new<'a>(settings: &ruff_workspace::Settings, packages: impl IntoIterator<Item = PackageRoot<'a>>) -> Self {
         let mut roots: Vec<PathBuf> = settings.linter.src.iter().filter(|path| path.is_dir()).cloned().collect();
         for root in packages.into_iter().filter_map(|package| package.path().parent()) {
@@ -98,13 +91,12 @@ impl SearchRoots {
         Self { roots, python_version: settings.linter.unresolved_target_version.linter_version() }
     }
 
-    // The dotted names the `.pth` files of the roots make the interpreter read at startup.
     pub fn startup_names(&self) -> Vec<String> {
         startup::names(&self.roots)
     }
 
-    // The module a file imports as from the innermost search root above it, which is how Python names a module of a
-    // namespace package, one without an `__init__.py` that Ruff does not count as a package.
+    // Ruff does not count a namespace package, one without an `__init__.py`, as a package, but Python still names its
+    // modules from the root above them.
     pub fn module_path(&self, path: &Path) -> Option<Vec<String>> {
         self.module_paths(path).into_iter().next()
     }
@@ -128,21 +120,6 @@ impl SearchRoots {
     }
 }
 
-// The links to a `.py` or `.pyi` file in a directory. A link's target can go away without changing any entry of the
-// directory, so each link is keyed by whether it still leads to a file.
-fn module_links(directory: &Path) -> Vec<PathBuf> {
-    fs::read_dir(directory)
-        .into_iter()
-        .flatten()
-        .filter_map(Result::ok)
-        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_symlink()))
-        .map(|entry| entry.path())
-        .filter(|path| matches!(path.extension().and_then(|extension| extension.to_str()), Some("py" | "pyi")))
-        .collect()
-}
-
-// The directories in `directory` an import can name, `name-stubs` providing `name`, each with the target it resolves
-// to when it is a link to a directory, which the resolver follows.
 fn importable_directories(directory: &Path) -> Vec<(PathBuf, Option<PathBuf>)> {
     fs::read_dir(directory)
         .into_iter()
@@ -164,5 +141,18 @@ fn importable_directories(directory: &Path) -> Vec<(PathBuf, Option<PathBuf>)> {
                 None
             }
         })
+        .collect()
+}
+
+// The links to a `.py` or `.pyi` file in a directory. A link's target can go away without changing any entry of the
+// directory, so each link is keyed by whether it still leads to a file.
+fn module_links(directory: &Path) -> Vec<PathBuf> {
+    fs::read_dir(directory)
+        .into_iter()
+        .flatten()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_type().is_ok_and(|kind| kind.is_symlink()))
+        .map(|entry| entry.path())
+        .filter(|path| matches!(path.extension().and_then(|extension| extension.to_str()), Some("py" | "pyi")))
         .collect()
 }

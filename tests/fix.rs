@@ -1,19 +1,23 @@
 mod common;
 
 use std::fmt::Write as _;
+use std::fs;
+use std::ops::Range;
 use std::time::{Duration, Instant};
 
 use test_case::test_case;
 
-use common::{check, fix_unsafe, project, read};
+use common::{
+    CLEAN_MODULE, COMPARED, ONE_FIXED, PASSED, RUFF_PLR2004, SECTIONED, check, fix_unsafe, make_read_only, project,
+    read,
+};
 
 #[test]
 fn check_fix_writes_file() {
-    let root = project(&[("module.py", common::SECTIONED)]);
-    let result = check(root.path(), &["--fix", "--select", "SMP001"]);
+    let root = project(&[("module.py", SECTIONED)]);
     assert_eq!(
-        (result, read(root.path(), "module.py")),
-        ((0, common::ONE_FIXED.to_owned(), String::new()), common::CLEAN_MODULE.to_owned())
+        (check(root.path(), &["--fix", "--select", "SMP001"]), read(root.path(), "module.py")),
+        ((0, ONE_FIXED.to_owned(), String::new()), CLEAN_MODULE.to_owned())
     );
 }
 
@@ -25,7 +29,7 @@ fn check_fix_writes_file() {
     "hinted_by_default"
 )]
 #[test_case(
-    &["--fix", "--unsafe-fixes"], common::ONE_FIXED, "def run() -> None:\n    print()\n" ;
+    &["--fix", "--unsafe-fixes"], ONE_FIXED, "def run() -> None:\n    print()\n" ;
     "applied_when_enabled"
 )]
 #[test_case(
@@ -37,32 +41,36 @@ fn check_fix_writes_file() {
 )]
 #[test_case(
     &["--unsafe-fixes"],
-    "module.py:2:5: SMP901 [*] Function docstring on internal code; let the name, signature and types document it\nFound \
+    "module.py:2:5: SMP901 [*] Function docstring on internal code; \
+     let the name, signature and types document it\nFound \
      1 error.\n[*] 1 fixable with `--fix`.\n",
     DOCUMENTED ;
     "fixable_when_enabled"
 )]
 fn check_unsafe_fixes(flags: &[&str], stdout: &str, content: &str) {
     let root = project(&[("module.py", DOCUMENTED)]);
-    let result = check(root.path(), &[&["--select", "SMP901"], flags].concat()).1;
-    assert_eq!((result, read(root.path(), "module.py")), (stdout.to_owned(), content.to_owned()));
+    assert_eq!(
+        (check(root.path(), &[&["--select", "SMP901"], flags].concat()).1, read(root.path(), "module.py")),
+        (stdout.to_owned(), content.to_owned())
+    );
 }
 
 const DOCUMENTED: &str = "def run() -> None:\n    \"\"\"Run.\"\"\"\n    print()\n";
 
 #[test]
 fn check_safe_and_unsafe_fixes_are_counted_apart() {
-    let root = project(&[("module.py", "# --- helpers ---\ndef run() -> None:\n    \"\"\"Run.\"\"\"\n    print()\n")]);
+    let root = project(&[("module.py", SECTIONED_DOCUMENTED)]);
     assert_eq!(
         check(root.path(), &["--select", "SMP001,SMP901"]).1.lines().last(),
         Some("[*] 1 fixable with `--fix` (1 unsafe fix available with `--fix --unsafe-fixes`).")
     );
 }
 
+const SECTIONED_DOCUMENTED: &str = "# --- helpers ---\ndef run() -> None:\n    \"\"\"Run.\"\"\"\n    print()\n";
+
 #[test]
 fn check_diff_prints_without_writing() {
-    let source = common::SECTIONED;
-    let root = project(&[("module.py", source)]);
+    let root = project(&[("module.py", SECTIONED)]);
     let (code, stdout, _) = check(root.path(), &["--diff", "--select", "SMP001"]);
     assert_eq!(
         (code, stdout, read(root.path(), "module.py")),
@@ -70,21 +78,21 @@ fn check_diff_prints_without_writing() {
             1,
             "--- module.py\n+++ module.py\n@@ -1,2 +1 @@\n-# --- helpers ---\n VALUE = 1\n\nWould fix 1 error.\n"
                 .to_owned(),
-            source.to_owned()
+            SECTIONED.to_owned()
         )
     );
 }
 
 #[test]
 fn check_diff_without_fixes_prints_nothing() {
-    let root = project(&[("module.py", common::CLEAN_MODULE)]);
+    let root = project(&[("module.py", CLEAN_MODULE)]);
     assert_eq!(check(root.path(), &["--diff", "--select", "SMP101"]), (0, String::new(), String::new()));
 }
 
 #[test]
 fn check_diff_prints_files_in_order() {
     let names: Vec<String> = (0..20).map(|index| format!("module{index:02}.py")).collect();
-    let files: Vec<(&str, &str)> = names.iter().map(|name| (name.as_str(), common::SECTIONED)).collect();
+    let files: Vec<(&str, &str)> = names.iter().map(|name| (name.as_str(), SECTIONED)).collect();
     let root = project(&files);
     let mut diffs = String::new();
     for name in &names {
@@ -98,9 +106,9 @@ fn check_diff_prints_files_in_order() {
 
 #[test_case(&["--fix-only"], 0, "Fixed 1 error.\n" ; "fix_only")]
 #[test_case(&["--fix-only", "--exit-non-zero-on-fix"], 1, "Fixed 1 error.\n" ; "fix_only_exit_non_zero")]
-#[test_case(&["--fix", "--exit-non-zero-on-fix"], 1, common::ONE_FIXED ; "fix_exit_non_zero")]
+#[test_case(&["--fix", "--exit-non-zero-on-fix"], 1, ONE_FIXED ; "fix_exit_non_zero")]
 fn check_fix_exit_status(flags: &[&str], code: i32, stdout: &str) {
-    let root = project(&[("module.py", common::SECTIONED)]);
+    let root = project(&[("module.py", SECTIONED)]);
     let mut args = vec!["--select", "SMP001"];
     args.extend_from_slice(flags);
     assert_eq!(check(root.path(), &args), (code, stdout.to_owned(), String::new()));
@@ -117,7 +125,7 @@ fn check_fix_only_reports_unsafe_fixes_left() {
 
 #[test]
 fn check_fix_only_reports_fixed_and_unsafe_fixes_left() {
-    let root = project(&[("module.py", "# --- helpers ---\ndef run() -> None:\n    \"\"\"Run.\"\"\"\n    print()\n")]);
+    let root = project(&[("module.py", SECTIONED_DOCUMENTED)]);
     assert_eq!(
         check(root.path(), &["--fix-only", "--select", "SMP001,SMP901"]).1,
         "Fixed 1 error (1 additional fix available with `--unsafe-fixes`).\n"
@@ -126,7 +134,7 @@ fn check_fix_only_reports_fixed_and_unsafe_fixes_left() {
 
 #[test]
 fn check_show_fixes_lists_what_was_fixed() {
-    let root = project(&[("module.py", common::SECTIONED)]);
+    let root = project(&[("module.py", SECTIONED)]);
     assert_eq!(
         check(root.path(), &["--fix", "--show-fixes", "--select", "SMP001"]).1,
         "\nFixed 1 error:\n- module.py:\n    1 × SMP001 (section-comment)\n\nFound 1 error (1 fixed, 0 remaining).\n"
@@ -135,8 +143,8 @@ fn check_show_fixes_lists_what_was_fixed() {
 
 #[test]
 fn check_fix_on_read_only_file_is_reported() {
-    let root = project(&[("module.py", common::SECTIONED)]);
-    common::make_read_only(&root.path().join("module.py"));
+    let root = project(&[("module.py", SECTIONED)]);
+    make_read_only(&root.path().join("module.py"));
     let stdout = check(root.path(), &["--fix", "--select", "SMP001"]).1;
     assert_eq!((stdout.starts_with("module.py:1:1: E902 writing"), stdout.contains("(os error")), (true, true));
 }
@@ -145,33 +153,38 @@ fn check_fix_on_read_only_file_is_reported() {
 #[test]
 fn check_fix_keeps_the_file_mode() {
     use std::os::unix::fs::PermissionsExt;
-    let root = project(&[("module.py", common::SECTIONED)]);
+    let root = project(&[("module.py", SECTIONED)]);
     common::set_mode(&root.path().join("module.py"), 0o751);
     check(root.path(), &["--fix", "--select", "SMP001"]);
-    let mode = std::fs::metadata(root.path().join("module.py")).expect("metadata").permissions().mode();
-    assert_eq!((mode & 0o777, read(root.path(), "module.py")), (0o751, common::CLEAN_MODULE.to_owned()));
+    let mode = fs::metadata(root.path().join("module.py")).expect("metadata").permissions().mode();
+    assert_eq!((mode & 0o777, read(root.path(), "module.py")), (0o751, CLEAN_MODULE.to_owned()));
 }
 
 #[cfg(unix)]
 #[test]
 fn check_fix_writes_through_a_symlink() {
-    let root = project(&[("source.txt", common::SECTIONED)]);
+    let root = project(&[("source.txt", SECTIONED)]);
     std::os::unix::fs::symlink("source.txt", root.path().join("module.py")).expect("symlink");
     check(root.path(), &["--fix", "--select", "SMP001", "module.py"]);
-    let link = std::fs::symlink_metadata(root.path().join("module.py")).expect("metadata");
-    assert_eq!((link.is_symlink(), read(root.path(), "source.txt")), (true, common::CLEAN_MODULE.to_owned()));
+    assert_eq!(
+        (
+            fs::symlink_metadata(root.path().join("module.py")).expect("metadata").is_symlink(),
+            read(root.path(), "source.txt")
+        ),
+        (true, CLEAN_MODULE.to_owned())
+    );
 }
 
 #[cfg(unix)]
 #[test]
 fn check_fix_keeps_the_file_and_its_hard_links() {
     use std::os::unix::fs::MetadataExt;
-    let root = project(&[("module.py", common::SECTIONED)]);
-    std::fs::hard_link(root.path().join("module.py"), root.path().join("link.txt")).expect("hard link");
-    let inode = std::fs::metadata(root.path().join("module.py")).expect("metadata").ino();
+    let root = project(&[("module.py", SECTIONED)]);
+    fs::hard_link(root.path().join("module.py"), root.path().join("link.txt")).expect("hard link");
+    let inode = fs::metadata(root.path().join("module.py")).expect("metadata").ino();
     check(root.path(), &["--fix", "--select", "SMP001", "module.py"]);
-    let after = std::fs::metadata(root.path().join("module.py")).expect("metadata").ino();
-    assert_eq!((after, read(root.path(), "link.txt")), (inode, common::CLEAN_MODULE.to_owned()));
+    let after = fs::metadata(root.path().join("module.py")).expect("metadata").ino();
+    assert_eq!((after, read(root.path(), "link.txt")), (inode, CLEAN_MODULE.to_owned()));
 }
 
 #[test_case(&[], true ; "fixable_by_default")]
@@ -182,7 +195,7 @@ fn check_fix_keeps_the_file_and_its_hard_links() {
 #[test_case(&["--unfixable", "SMP0", "--extend-fixable", "SMP001"], true ; "specific_fixable_wins")]
 #[test_case(&["--config", "unfixable = ['SMP001']"], false ; "inline_config")]
 fn fixable_flags(flags: &[&str], fixable: bool) {
-    let root = project(&[("module.py", common::SECTIONED)]);
+    let root = project(&[("module.py", SECTIONED)]);
     let mut args = vec!["--select", "SMP001"];
     args.extend_from_slice(flags);
     assert_eq!(check(root.path(), &args).1.contains("[*]"), fixable);
@@ -190,8 +203,16 @@ fn fixable_flags(flags: &[&str], fixable: bool) {
 
 #[test_case("extend-safe-fixes = [\"SMP601\"]", "[*] 2 fixable with `--fix`." ; "safe")]
 #[test_case("extend-unsafe-fixes = [\"SMP0\"]", "2 unsafe fixes available with `--fix --unsafe-fixes`." ; "unsafe")]
-#[test_case("extend-safe-fixes = [\"SMP601\"]\nextend-unsafe-fixes = [\"SMP601\"]", "[*] 1 fixable with `--fix` (1 unsafe fix available with `--fix --unsafe-fixes`)." ; "unsafe_wins_a_tie")]
-#[test_case("extend-safe-fixes = [\"SMP601\"]\nextend-unsafe-fixes = [\"SMP6\"]", "[*] 2 fixable with `--fix`." ; "specific_wins")]
+#[test_case(
+    "extend-safe-fixes = [\"SMP601\"]\nextend-unsafe-fixes = [\"SMP601\"]",
+    "[*] 1 fixable with `--fix` (1 unsafe fix available with `--fix --unsafe-fixes`)."
+    ; "unsafe_wins_a_tie"
+)]
+#[test_case(
+    "extend-safe-fixes = [\"SMP601\"]\nextend-unsafe-fixes = [\"SMP6\"]",
+    "[*] 2 fixable with `--fix`."
+    ; "specific_wins"
+)]
 fn fix_safety_options(options: &str, summary: &str) {
     let root = project(&[
         ("pyproject.toml", &format!("[tool.simplint]\n{options}\n")),
@@ -225,7 +246,8 @@ fn fix_lets_ruff_clean_up_over_several_passes() {
         ("pyproject.toml", "[tool.ruff.lint]\nselect = [\"F401\"]\n"),
         (
             "module.py",
-            "from typing import Final\nimport typing as t\n\n_LIMIT: Final = 3\n_STEP: t.Final = 1\n\n\ndef limit() -> int:\n    \
+            "from typing import Final\nimport typing as t\n\n_LIMIT: Final = 3\n_STEP: t.Final = 1\n\n\ndef \
+             limit() -> int:\n    \
              return _LIMIT + _STEP\n",
         ),
     ]);
@@ -233,28 +255,54 @@ fn fix_lets_ruff_clean_up_over_several_passes() {
     assert_eq!(read(root.path(), "module.py"), "\n\ndef limit() -> int:\n    return 3 + 1\n");
 }
 
+#[test]
+fn fix_is_withdrawn_when_ruff_would_report_the_result() {
+    let root = project(&[RUFF_PLR2004, ("module.py", COMPARED)]);
+    assert_eq!(
+        (fix_unsafe(root.path(), "SMP202").1, read(root.path(), "module.py")),
+        (format!("module.py:1:1: {SINGLE_USER}\nFound 1 error.\n"), COMPARED.to_owned())
+    );
+}
+
 const SINGLE_USER: &str = "SMP202 `_LIMIT` is used by one function only; define it there";
 
 #[test]
-fn fix_is_withdrawn_when_ruff_would_report_the_result() {
-    let root = project(&[common::RUFF_PLR2004, ("module.py", common::COMPARED)]);
-    let stdout = fix_unsafe(root.path(), "SMP202").1;
+fn fix_withdraws_only_the_rule_whose_result_ruff_would_report() {
+    let root = project(&[RUFF_PLR2004, ("module.py", &COMPARED.replace("def", "# --- helpers ---\ndef"))]);
     assert_eq!(
-        (stdout, read(root.path(), "module.py")),
-        (format!("module.py:1:1: {SINGLE_USER}\nFound 1 error.\n"), common::COMPARED.to_owned())
+        (fix_unsafe(root.path(), "SMP001,SMP202").1, read(root.path(), "module.py")),
+        (format!("module.py:1:1: {SINGLE_USER}\nFound 2 errors (1 fixed, 1 remaining).\n"), COMPARED.to_owned())
     );
 }
 
 #[test]
-fn fix_withdraws_only_the_rule_whose_result_ruff_would_report() {
-    let source = common::COMPARED.replace("def", "# --- helpers ---\ndef");
-    let root = project(&[common::RUFF_PLR2004, ("module.py", &source)]);
-    let stdout = fix_unsafe(root.path(), "SMP001,SMP202").1;
-    assert_eq!(
-        (stdout, read(root.path(), "module.py")),
+fn fix_withdraws_only_the_report_whose_result_ruff_would_report() {
+    let root = project(&[
+        RUFF_PLR2004_WIDE,
         (
-            format!("module.py:1:1: {SINGLE_USER}\nFound 2 errors (1 fixed, 1 remaining).\n"),
-            common::COMPARED.to_owned()
+            "module.py",
+            "import sys\n\n\ndef _environment() -> str:\n    \
+             gil = getattr(sys, \"_is_gil_enabled\", lambda: True)()\n    \
+             build = \"gil\" if gil else \"free-threaded\"\n    \
+             return f\"x {build}\"\n\n\ndef _compared(value):\n    \
+             limit = 5\n\n    \
+             if value > limit:\n        \
+             print(value)\n",
+        ),
+    ]);
+    assert_eq!(
+        (fix_unsafe(root.path(), "SMP504").1, read(root.path(), "module.py")),
+        (
+            "module.py:10:5: SMP504 `limit` is used once, right below; inline its value\nFound \
+             2 errors (1 fixed, 1 remaining).\n"
+                .to_owned(),
+            "import sys\n\n\ndef _environment() -> str:\n    \
+             build = \"gil\" if getattr(sys, \"_is_gil_enabled\", lambda: True)() else \"free-threaded\"\n    \
+             return f\"x {build}\"\n\n\ndef _compared(value):\n    \
+             limit = 5\n\n    \
+             if value > limit:\n        \
+             print(value)\n"
+                .to_owned()
         )
     );
 }
@@ -264,31 +312,19 @@ fn fix_withdraws_only_the_rule_whose_result_ruff_would_report() {
 const RUFF_PLR2004_WIDE: (&str, &str) =
     ("pyproject.toml", "[tool.ruff]\nline-length = 120\n[tool.ruff.lint]\nselect = [\"PLR2004\"]\n");
 
-#[test]
-fn fix_withdraws_only_the_report_whose_result_ruff_would_report() {
-    let root = project(&[RUFF_PLR2004_WIDE, ("module.py", SINGLE_USE_BUILDS)]);
-    let stdout = fix_unsafe(root.path(), "SMP504").1;
-    assert_eq!(
-        (stdout, read(root.path(), "module.py")),
-        (
-            "module.py:10:5: SMP504 `limit` is used once, right below; inline its value\nFound 2 errors (1 fixed, 1 remaining).\n"
-                .to_owned(),
-            GIL_INLINED.to_owned()
-        )
-    );
-}
-
 // The `limit` of `_printed` is valid to inline, as its report is the same as `_compared`'s, yet it is fixed.
 #[test]
 fn fix_withholds_only_the_identical_report_ruff_would_report() {
-    let root = project(&[RUFF_PLR2004_WIDE, ("module.py", COLLIDING)]);
-    let stdout = fix_unsafe(root.path(), "SMP504").1;
+    let colliding = "def _compared(value):\n    limit = 5\n\n    if value > limit:\n        print(value)\n\n\n\
+                     def _printed():\n    limit = 5\n    print(limit)\n";
+    let root = project(&[RUFF_PLR2004_WIDE, ("module.py", colliding)]);
     assert_eq!(
-        (stdout, read(root.path(), "module.py")),
+        (fix_unsafe(root.path(), "SMP504").1, read(root.path(), "module.py")),
         (
-            "module.py:2:5: SMP504 `limit` is used once, right below; inline its value\nFound 2 errors (1 fixed, 1 remaining).\n"
+            "module.py:2:5: SMP504 `limit` is used once, right below; inline its value\nFound \
+             2 errors (1 fixed, 1 remaining).\n"
                 .to_owned(),
-            COLLIDING.replace("    limit = 5\n    print(limit)\n", "    print(5)\n")
+            colliding.replace("    limit = 5\n    print(limit)\n", "    print(5)\n")
         )
     );
 }
@@ -301,7 +337,7 @@ fn fix_finds_a_bad_fix_among_many_valid_ones_quickly() {
     for index in 0..400 {
         write!(
             source,
-            "def func_{index}(arg):\n    value_{index} = arg.compute({index})\n    return value_{index}\n\n\n"
+            "def func_{index}(arg):\n    value_{index} = arg.compute({index})\n    arg.record(value_{index})\n\n\n"
         )
         .expect("write source");
     }
@@ -315,20 +351,16 @@ fn fix_finds_a_bad_fix_among_many_valid_ones_quickly() {
     );
 }
 
+const UNCONTENDED: &str = "def _compared(value):\n    limit = 5\n\n    if value > limit:\n        print(value)\n";
+
 // The valid inlines have the same text, so a withheld report is told apart from them only by its occurrence, which the
 // inlines applied before it change. The bad inline sits between them and must stay withheld as they apply.
 #[test]
 fn fix_withholds_a_bad_fix_among_identical_valid_ones() {
-    let mut source = String::new();
-    let mut inlined = String::new();
-    for index in 0..100 {
-        if index == 50 {
-            source.push_str(UNCONTENDED);
-            inlined.push_str(UNCONTENDED);
-        }
-        write!(source, "def valid_{index}():\n    limit = 5\n    print(limit)\n\n\n").expect("write source");
-        write!(inlined, "def valid_{index}():\n    print(5)\n\n\n").expect("write source");
-    }
+    let (before, before_inlined) = valid_functions(0..50);
+    let (after, after_inlined) = valid_functions(50..100);
+    let source = format!("{before}{UNCONTENDED}{after}");
+    let inlined = format!("{before_inlined}{UNCONTENDED}{after_inlined}");
     let root = project(&[RUFF_PLR2004_WIDE, ("module.py", &source)]);
     let started = Instant::now();
     let stdout = fix_unsafe(root.path(), "SMP504").1;
@@ -340,6 +372,16 @@ fn fix_withholds_a_bad_fix_among_identical_valid_ones() {
         ),
         (true, inlined, true)
     );
+}
+
+fn valid_functions(indices: Range<usize>) -> (String, String) {
+    let mut source = String::new();
+    let mut inlined = String::new();
+    for index in indices {
+        write!(source, "def valid_{index}():\n    limit = 5\n    print(limit)\n\n\n").expect("write source");
+        write!(inlined, "def valid_{index}():\n    print(5)\n\n\n").expect("write source");
+    }
+    (source, inlined)
 }
 
 // Every inline here is withdrawn, so each fix keeps its report and the second run over the file gives the same output.
@@ -363,12 +405,6 @@ fn fix_keeps_every_report_of_many_withdrawn_fixes_and_is_stable() {
     );
 }
 
-const UNCONTENDED: &str = "def _compared(value):\n    limit = 5\n\n    if value > limit:\n        print(value)\n";
-const COLLIDING: &str = "def _compared(value):\n    limit = 5\n\n    if value > limit:\n        print(value)\n\n\ndef _printed():\n    limit = 5\n    print(limit)\n";
-
-const SINGLE_USE_BUILDS: &str = "import sys\n\n\ndef _environment() -> str:\n    gil = getattr(sys, \"_is_gil_enabled\", lambda: True)()\n    build = \"gil\" if gil else \"free-threaded\"\n    return f\"x {build}\"\n\n\ndef _compared(value):\n    limit = 5\n\n    if value > limit:\n        print(value)\n";
-const GIL_INLINED: &str = "import sys\n\n\ndef _environment() -> str:\n    build = \"gil\" if getattr(sys, \"_is_gil_enabled\", lambda: True)() else \"free-threaded\"\n    return f\"x {build}\"\n\n\ndef _compared(value):\n    limit = 5\n\n    if value > limit:\n        print(value)\n";
-
 #[test]
 fn ruff_violations_already_present_are_not_fixed_by_simplint() {
     let root = project(&[
@@ -381,11 +417,10 @@ fn ruff_violations_already_present_are_not_fixed_by_simplint() {
 
 #[test]
 fn fix_is_withdrawn_when_ruff_already_reports_the_same_rule_elsewhere() {
-    let source = format!("def first(value: int) -> bool:\n    return value > 7\n\n\n{}", common::COMPARED);
-    let root = project(&[common::RUFF_PLR2004, ("module.py", &source)]);
-    let stdout = fix_unsafe(root.path(), "SMP202").1;
+    let source = format!("def first(value: int) -> bool:\n    return value > 7\n\n\n{COMPARED}");
+    let root = project(&[RUFF_PLR2004, ("module.py", &source)]);
     assert_eq!(
-        (stdout, read(root.path(), "module.py")),
+        (fix_unsafe(root.path(), "SMP202").1, read(root.path(), "module.py")),
         (format!("module.py:5:1: {SINGLE_USER}\nFound 1 error.\n"), source)
     );
 }
@@ -424,7 +459,8 @@ fn fix_lets_ruff_clean_up_after_its_own_fixes() {
         ("pyproject.toml", "[tool.ruff]\npreview = true\n[tool.ruff.lint]\nselect = [\"E402\", \"I001\"]\n"),
         (
             "module.py",
-            "import os\nimport sys\n\nLIMIT = 3\n\ntry:\n    import uuid\nexcept ImportError:\n    uuid = None\n\nprint(os, \
+            "import os\nimport sys\n\nLIMIT = 3\n\ntry:\n    import \
+             uuid\nexcept ImportError:\n    uuid = None\n\nprint(os, \
              sys, uuid, LIMIT)\n",
         ),
     ]);
@@ -441,14 +477,16 @@ fn fix_takes_the_work_ruff_cleanup_leaves_for_the_rules() {
         ("pyproject.toml", "[tool.ruff]\ntarget-version = \"py314\"\n[tool.ruff.lint]\nselect = [\"UP036\"]\n"),
         (
             "module.py",
-            "import sys\n\nPY3 = sys.version_info[0] >= 3\n\nif PY3:\n    basestring = str\n\n\ndef is_text(value: object) \
+            "import sys\n\nPY3 = sys.version_info[0] >= 3\n\nif PY3:\n    basestring = \
+             str\n\n\ndef is_text(value: object) \
              -> bool:\n    return isinstance(value, basestring)\n",
         ),
     ]);
     fix_unsafe(root.path(), "SMP202,SMP502,SMP102");
     assert_eq!(
         read(root.path(), "module.py"),
-        "import sys\n\n\nBASESTRING = str\n\n\ndef is_text(value: object) -> bool:\n    return isinstance(value, BASESTRING)\n"
+        "import sys\n\n\nBASESTRING = str\n\n\ndef is_text(value: object) \
+         -> bool:\n    return isinstance(value, BASESTRING)\n"
     );
 }
 
@@ -458,7 +496,8 @@ fn fix_keeps_suppressions_of_rules_the_cleanup_does_not_fix() {
         ("pyproject.toml", "[tool.ruff]\npreview = true\n[tool.ruff.lint]\nselect = [\"F401\", \"RUF100\"]\n"),
         (
             "a.py",
-            "from b import (\n    _hidden,  # ruff: ignore[unused-import]\n    shown,  # ruff: ignore[unused-import]\n)\n",
+            "from b import (\n    _hidden,  # ruff: ignore[unused-import]\n    shown,  # \
+             ruff: ignore[unused-import]\n)\n",
         ),
         ("b.py", "shown = 1\n_hidden = 2\n"),
         ("c.py", "from a import shown\n\nprint(shown)\n"),
@@ -466,7 +505,8 @@ fn fix_keeps_suppressions_of_rules_the_cleanup_does_not_fix() {
     fix_unsafe(root.path(), "SMP401");
     assert_eq!(
         read(root.path(), "a.py"),
-        "from b import (\n    _hidden,  # ruff: ignore[unused-import]\n    shown,\n)\n\n\n__all__ = [\n    \"shown\",\n]\n"
+        "from b import (\n    _hidden,  # ruff: ignore[unused-import]\n    shown,\n)\n\n\n__all__ = \
+         [\n    \"shown\",\n]\n"
     );
 }
 
@@ -492,32 +532,72 @@ fn fix_handles_a_byte_order_mark() {
 fn fix_settles_constructors_with_the_methods_that_call_them() {
     let root = project(&[(
         "module.py",
-        "class Holder:\n    def helper(self) -> int:\n        return 1\n\n    def __init__(self) -> None:\n        self.value = self.helper()\n\n    def reset(self) -> None:\n        self.__init__()\n",
+        r"class Holder:
+    def helper(self) -> int:
+        return 1
+
+    def __init__(self) -> None:
+        self.value = self.helper()
+
+    def reset(self) -> None:
+        self.__init__()
+",
     )]);
     fix_unsafe(root.path(), "SMP201,SMP203");
     assert_eq!(
         (read(root.path(), "module.py"), check(root.path(), &["--select", "SMP201,SMP203"])),
         (
-            "class Holder:\n    def __init__(self) -> None:\n        self.value = self.helper()\n\n    def helper(self) -> int:\n        return 1\n\n    def reset(self) -> None:\n        self.__init__()\n".to_owned(),
-            (0, common::PASSED.to_owned(), String::new())
+            r"class Holder:
+    def __init__(self) -> None:
+        self.value = self.helper()
+
+    def helper(self) -> int:
+        return 1
+
+    def reset(self) -> None:
+        self.__init__()
+"
+            .to_owned(),
+            (0, PASSED.to_owned(), String::new())
         )
     );
 }
 
-// A helper follows the first constructor that calls it, as SMP201 places it, and SMP203 moves that constructor above the
-// methods. Both rules settle on one order, and a second fix changes nothing.
+// A helper follows the first constructor that calls it, as SMP201 places it, and SMP203 moves that constructor
+// above the methods. Both rules settle on one order, and a second fix changes nothing.
 #[test]
 fn fix_places_a_helper_after_the_constructor_that_calls_it() {
     let root = project(&[(
         "module.py",
-        "class Holder:\n    def run(self) -> int:\n        return 1\n\n    @classmethod\n    def compile(cls) -> None:\n        pass\n\n    def __init_subclass__(cls) -> None:\n        cls.compile()\n",
+        r"class Holder:
+    def run(self) -> int:
+        return 1
+
+    @classmethod
+    def compile(cls) -> None:
+        pass
+
+    def __init_subclass__(cls) -> None:
+        cls.compile()
+",
     )]);
     fix_unsafe(root.path(), "SMP201,SMP203");
     assert_eq!(
         (read(root.path(), "module.py"), check(root.path(), &["--select", "SMP201,SMP203"])),
         (
-            "class Holder:\n    def __init_subclass__(cls) -> None:\n        cls.compile()\n\n    @classmethod\n    def compile(cls) -> None:\n        pass\n\n    def run(self) -> int:\n        return 1\n".to_owned(),
-            (0, common::PASSED.to_owned(), String::new())
+            r"class Holder:
+    def __init_subclass__(cls) -> None:
+        cls.compile()
+
+    @classmethod
+    def compile(cls) -> None:
+        pass
+
+    def run(self) -> int:
+        return 1
+"
+            .to_owned(),
+            (0, PASSED.to_owned(), String::new())
         )
     );
 }
@@ -529,8 +609,7 @@ fn fix_that_ruff_undoes_is_not_a_fix() {
         ("pyproject.toml", "[tool.ruff.lint]\nselect = [\"COM819\"]\n"),
         ("module.py", "__all__ = [\"alpha\",  # first\n           \"delta\"]\n"),
     ]);
-    let (code, stdout, _) = check(root.path(), &["--diff", "--select", "SMP405"]);
-    assert_eq!((code, stdout), (0, String::new()));
+    assert_eq!(check(root.path(), &["--diff", "--select", "SMP405"]), (0, String::new(), String::new()));
 }
 
 // Ruff's cleanup of an inlined constant turns `%` formatting into an f-string, which SMP503 then joins with the text
@@ -572,12 +651,22 @@ fn fix_keeps_a_line_length_noqa_when_ruff_removes_unused_ones() {
 // Ruff sorts an import block only once `ruff format` moves the statement after its `;` to a line of its own.
 #[test]
 fn fix_lets_ruff_sort_an_import_block_it_joins_across_a_semicolon() {
-    let source = "import os\n\n__all__ = [\"run\"]\n\nimport sys; sys.setrecursionlimit(100)\n\n\ndef run() -> str:\n    return os.sep\n";
+    let source = r#"import os
+
+__all__ = ["run"]
+
+import sys; sys.setrecursionlimit(100)
+
+
+def run() -> str:
+    return os.sep
+"#;
     let root = project(&[("pyproject.toml", "[tool.ruff.lint]\nselect = [\"I001\"]\n"), ("module.py", source)]);
     check(root.path(), &["--fix", "--select", "SMP406"]);
     assert_eq!(
         read(root.path(), "module.py"),
-        "import os\nimport sys\n\nsys.setrecursionlimit(100)\n\n\ndef run() -> str:\n    return os.sep\n\n\n__all__ = [\"run\"]\n"
+        "import os\nimport sys\n\nsys.setrecursionlimit(100)\n\n\ndef run() -> str:\n    return os.sep\n\n\n__all__ = \
+         [\"run\"]\n"
     );
 }
 
@@ -621,24 +710,28 @@ fn fix_lints_again_the_files_another_fix_changed_the_facts_of() {
         ("model.py", "from dataclasses import dataclass\n\n\n@dataclass\nclass User:\n    uuid: int\n"),
         (
             "test_model.py",
-            "from unittest.mock import MagicMock\n\n\ndef test_user() -> None:\n    user = MagicMock()\n    user.uuid = \
+            "from unittest.mock import MagicMock\n\n\ndef test_user() -> \
+             None:\n    user = MagicMock()\n    user.uuid = \
              7\n    assert user.uuid == 7\n",
         ),
     ]);
-    let fixed = check(root.path(), &["--fix", "--select", "SMP701,SMP702,SMP805"]);
     assert_eq!(
-        (fixed.1, read(root.path(), "model.py"), check(root.path(), &["--select", "SMP701,SMP702,SMP805"]).1),
+        (
+            check(root.path(), &["--fix", "--select", "SMP701,SMP702,SMP805"]).1,
+            read(root.path(), "model.py"),
+            check(root.path(), &["--select", "SMP701,SMP702,SMP805"]).1,
+        ),
         (
             "Found 3 errors (3 fixed, 0 remaining).\n".to_owned(),
             "from dataclasses import dataclass\n\n\n@dataclass(frozen=True, slots=True)\nclass User:\n    uuid: int\n"
                 .to_owned(),
-            common::PASSED.to_owned()
+            PASSED.to_owned()
         )
     );
 }
 
-// Renaming `other.Lit` to `_Lit` leaves the dataclass `Lit` no namesake whose instances get attributes, so its fix turns
-// safe and applies in the same run.
+// Renaming `other.Lit` to `_Lit` leaves the dataclass `Lit` no namesake whose instances get attributes, so its
+// fix turns safe and applies in the same run.
 #[test]
 fn fix_lints_again_the_dataclasses_whose_class_writes_changed() {
     let root = project(&[
@@ -651,9 +744,11 @@ fn fix_lints_again_the_dataclasses_whose_class_writes_changed() {
         ),
     ]);
     let select = ["--select", "SMP403,SMP701,SMP702", "--target-version", "py314"];
-    let fixed = check(root.path(), &[&["--fix"], &select[..]].concat());
     assert_eq!(
-        (fixed.1, read(root.path(), "models.py").lines().nth(3).map(str::to_owned)),
+        (
+            check(root.path(), &[&["--fix"], &select[..]].concat()).1,
+            read(root.path(), "models.py").lines().nth(3).map(str::to_owned)
+        ),
         (
             "Found 3 errors (3 fixed, 0 remaining).\n".to_owned(),
             Some("@dataclass(kw_only=True, frozen=True, slots=True)".to_owned())
@@ -682,11 +777,19 @@ fn single_use_variable_inlines_a_comprehension_into_all(comprehension: &str, bod
 fn early_assignment_splits_a_shared_line() {
     let source = "def build(ffi):\n    name = \"struct ab\"\n    ffi2 = ffi.FFI(); ffi2.cdef(name)\n    return ffi2\n";
     let root = project(&[("module.py", source)]);
-    let (code, _, _) = fix_unsafe(root.path(), "SMP526");
-    let fixed =
-        "def build(ffi):\n    ffi2 = ffi.FFI()\n    name = \"struct ab\"\n    ffi2.cdef(name)\n    return ffi2\n";
-    let (again, _, _) = check(root.path(), &["--select", "SMP526"]);
-    assert_eq!((code, again, read(root.path(), "module.py")), (0, 0, fixed.to_owned()));
+    assert_eq!(
+        (
+            fix_unsafe(root.path(), "SMP526").0,
+            check(root.path(), &["--select", "SMP526"]).0,
+            read(root.path(), "module.py"),
+        ),
+        (
+            0,
+            0,
+            "def build(ffi):\n    ffi2 = ffi.FFI()\n    name = \"struct ab\"\n    ffi2.cdef(name)\n    return ffi2\n"
+                .to_owned()
+        )
+    );
 }
 
 // A fix that rewrites the file's comment or docstring leaves it alone when a `noqa` silences a line the rewrite would
@@ -694,13 +797,15 @@ fn early_assignment_splits_a_shared_line() {
 #[test_case(
     "tests/test_module.py",
     "SMP902",
-    "\"\"\"Tests for a module whose long docstring line is silenced by the file-level noqa directive below.\"\"\"\n# ruff: noqa: E501\n\n\ndef test_a() -> None:\n    pass\n",
+    "\"\"\"Tests for a module whose long docstring line is silenced by the \
+    file-level noqa directive below.\"\"\"\n# ruff: noqa: E501\n\n\ndef test_a() -> None:\n    pass\n",
     1 ; "test_module_docstring_under_file_noqa"
 )]
 #[test_case(
     "module.py",
     "SMP901",
-    "# ruff: noqa: E501\n\n\nclass Box:\n    \"\"\"Holds one value, with a tie-break rule the code does not show.\"\"\"\n\n    value: int = 0\n",
+    "# ruff: noqa: E501\n\n\nclass Box:\n    \"\"\"Holds one value, with a \
+    tie-break rule the code does not show.\"\"\"\n\n    value: int = 0\n",
     1 ; "function_docstring_under_file_noqa"
 )]
 #[test_case(
@@ -712,13 +817,13 @@ fn early_assignment_splits_a_shared_line() {
 #[test_case(
     "tests/test_box.py",
     "SMP801",
-    "class TestBox:\n    def test_value(self) -> None:\n        value = 1  # ruff: ignore[E501]\n        assert value\n",
+    "class TestBox:\n    def test_value(self) -> None:\n        value = 1  # \
+    ruff: ignore[E501]\n        assert value\n",
     1 ; "test_class_with_ruff_ignore_on_a_long_line"
 )]
 fn fix_leaves_a_file_its_noqa_directive_depends_on(path: &str, select: &str, source: &str, code: i32) {
     let root = project(&[(path, source)]);
-    let (actual, _, _) = fix_unsafe(root.path(), select);
-    assert_eq!((actual, read(root.path(), path)), (code, source.to_owned()));
+    assert_eq!((fix_unsafe(root.path(), select).0, read(root.path(), path)), (code, source.to_owned()));
 }
 
 // The statement that uses the constant shares its line with one after it, which the fix splits off as well.
@@ -726,27 +831,48 @@ fn fix_leaves_a_file_its_noqa_directive_depends_on(path: &str, select: &str, sou
 fn early_assignment_splits_a_line_the_use_shares_with_a_later_statement() {
     let source = "def build(ffi):\n    name = \"struct ab\"\n    ffi.reset()\n    ffi.cdef(name); ffi.verify(name)\n";
     let root = project(&[("module.py", source)]);
-    let (code, _, _) = fix_unsafe(root.path(), "SMP526");
-    let fixed =
-        "def build(ffi):\n    ffi.reset()\n    name = \"struct ab\"\n    ffi.cdef(name)\n    ffi.verify(name)\n";
-    assert_eq!((code, read(root.path(), "module.py")), (0, fixed.to_owned()));
+    assert_eq!(
+        (fix_unsafe(root.path(), "SMP526").0, read(root.path(), "module.py")),
+        (
+            0,
+            "def build(ffi):\n    ffi.reset()\n    name = \"struct ab\"\n    ffi.cdef(name)\n    ffi.verify(name)\n"
+                .to_owned()
+        )
+    );
 }
 
 // The words of a statement that spans lines count whole, since `ruff format` joins such a statement onto one line.
 #[test]
 fn restating_comment_counts_a_statement_across_its_lines() {
-    let source = "def build(base):\n    # recursive selector\n    selector = make(\n        base, recursive=True\n    )\n    return selector\n";
+    let source = r"def build(base):
+    # recursive selector
+    selector = make(
+        base, recursive=True
+    )
+    return selector
+";
     let root = project(&[("module.py", source)]);
-    let (code, _, _) = fix_unsafe(root.path(), "SMP005");
-    let fixed = "def build(base):\n    selector = make(\n        base, recursive=True\n    )\n    return selector\n";
-    assert_eq!((code, read(root.path(), "module.py")), (0, fixed.to_owned()));
+    assert_eq!(
+        (fix_unsafe(root.path(), "SMP005").0, read(root.path(), "module.py")),
+        (
+            0,
+            "def build(base):\n    selector = make(\n        base, recursive=True\n    )\n    return selector\n"
+                .to_owned()
+        )
+    );
 }
 
 // The index holds the import that closes the cycle as a range of the source it read. The fix shortens the file, so the
 // lint of the fixed source in the fix loop must not report that range, which now runs past its end.
 #[test]
 fn import_cycle_survives_a_fix_before_the_import() {
-    let source = "def run():\n    value = \"a value long enough to move the import well back\"\n    print(value)\n\n\nimport b\n";
+    let source = r#"def run():
+    value = "a value long enough to move the import well back"
+    print(value)
+
+
+import b
+"#;
     let root = project(&[("a.py", source), ("b.py", "import a\n")]);
     let (code, stdout, _) = check(root.path(), &["--fix", "--select", "SMP308,SMP504"]);
     assert_eq!((code, stdout.contains("a.py:5:1: SMP308")), (1, true));
@@ -759,12 +885,14 @@ fn fix_keeps_the_import_cycle_report_of_a_rewritten_file() {
     let root = project(&[
         (
             "alpha.py",
-            "from beta import beta_value\n\n\ndef alpha_value(source):\n    found = source.get(\"alpha\")\n    if found is not \
+            "from beta import beta_value\n\n\ndef alpha_value(source):\n    found = source.get(\"alpha\")\n    if \
+             found is not \
              None:\n        return found\n    return beta_value()\n",
         ),
         (
             "beta.py",
-            "from alpha import alpha_value\n\n\ndef beta_value():\n    found = alpha_value({})\n    if found is not None:\n        \
+            "from alpha import alpha_value\n\n\ndef beta_value():\n    found = alpha_value({})\n    if found is not \
+             None:\n        \
              return found\n    return 0\n",
         ),
     ]);
@@ -772,8 +900,8 @@ fn fix_keeps_the_import_cycle_report_of_a_rewritten_file() {
     assert_eq!((code, stdout.matches("SMP308").count()), (1, 2));
 }
 
-// Ruff warns about a `noqa` comment each time it lints a source, and the fix loop lints sources the disk does not hold, so
-// the warning shows once, with the line the comment has on disk.
+// Ruff warns about a `noqa` comment each time it lints a source, and the fix loop lints sources the disk does not
+// hold, so the warning shows once, with the line the comment has on disk.
 #[test]
 fn fix_warns_about_a_noqa_comment_once_with_its_line_on_disk() {
     let source =

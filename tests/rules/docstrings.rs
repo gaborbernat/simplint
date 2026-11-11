@@ -18,11 +18,21 @@ use crate::common;
 #[test_case("test-module-docstring", "tests/test_module_docstring_inline.py", None ; "test_module_docstring_inline")]
 #[test_case("test-module-docstring", "multiline_module_docstring.py", None ; "test_module_docstring_non_test")]
 #[test_case("undocumented-public-api", "undocumented_public_api.py", None ; "undocumented_public_api")]
-#[test_case("undocumented-public-api", "undocumented_public_api_imported.py", None ; "undocumented_public_api_imported")]
-#[test_case("undocumented-public-api", "undocumented_public_api_inherited.py", None ; "undocumented_public_api_inherited")]
-#[test_case("undocumented-public-api", "undocumented_public_api_type_alias.py", None ; "undocumented_public_api_type_alias")]
-#[test_case("undocumented-public-api", "undocumented_public_api_ruff_overlap.py", None ; "undocumented_public_api_ruff_overlap")]
-#[test_case("undocumented-public-api", "undocumented_public_api_all_forms.py", None ; "undocumented_public_api_all_forms")]
+#[test_case(
+    "undocumented-public-api", "undocumented_public_api_imported.py", None ; "undocumented_public_api_imported"
+)]
+#[test_case(
+    "undocumented-public-api", "undocumented_public_api_inherited.py", None ; "undocumented_public_api_inherited"
+)]
+#[test_case(
+    "undocumented-public-api", "undocumented_public_api_type_alias.py", None ; "undocumented_public_api_type_alias"
+)]
+#[test_case(
+    "undocumented-public-api", "undocumented_public_api_ruff_overlap.py", None ; "undocumented_public_api_ruff_overlap"
+)]
+#[test_case(
+    "undocumented-public-api", "undocumented_public_api_all_forms.py", None ; "undocumented_public_api_all_forms"
+)]
 #[test_case("undocumented-public-api", "function_docstring_dynamic.py", None ; "undocumented_public_api_dynamic_all")]
 #[test_case("undocumented-public-api", "tests/test_module_docstring.py", None ; "undocumented_public_api_test_module")]
 #[test_case("undocumented-public-api", "facade/_core.py", None ; "undocumented_public_api_reexported_through_all")]
@@ -47,7 +57,9 @@ use crate::common;
 #[test_case("rst-duplicate-param", "rst_duplicate_param.py", None ; "rst_duplicate_param")]
 #[test_case("rst-param-order", "rst_param_order.py", None ; "rst_param_order")]
 #[test_case("rst-missing-attribute", "rst_missing_attribute.py", None ; "rst_missing_attribute")]
-#[test_case("rst-missing-attribute", "rst_missing_attribute_nested_class.py", None ; "rst_missing_attribute_nested_class")]
+#[test_case(
+    "rst-missing-attribute", "rst_missing_attribute_nested_class.py", None ; "rst_missing_attribute_nested_class"
+)]
 #[test_case("rst-unknown-attribute", "rst_unknown_attribute.py", None ; "rst_unknown_attribute")]
 #[test_case("rst-unknown-attribute", "rst_unknown_attribute_delete.py", None ; "rst_unknown_attribute_delete")]
 #[test_case("rst-unknown-attribute", "rst_unknown_attribute_type_alias.py", None ; "rst_unknown_attribute_type_alias")]
@@ -77,7 +89,8 @@ fn test_module_docstring_removal_leaves_no_blank_lines_ending_the_file() {
 // with the docstring's line.
 #[test_case(
     "module.py",
-    "def _acquire() -> int:\n    \"\"\"Take the lock.\"\"\"  # callers must already hold the registry mutex\n    return 1\n",
+    "def _acquire() -> int:\n    \"\"\"Take the lock.\"\"\"  # callers must already hold the registry mutex\n    \
+        return 1\n",
     "SMP901",
     "def _acquire() -> int:\n    # callers must already hold the registry mutex\n    return 1\n" ;
     "function"
@@ -139,12 +152,12 @@ fn docstring_comment_stays_after_removal(file: &str, source: &str, select: &str,
 )]
 #[test_case(
     "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    def help(self) -> str:\n        return __doc__\n",
-    "module.py:2:5: SMP901 Class docstring on internal code; let the name, signature and types document it\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    CLASS_DOCSTRING_REPORT ;
     "method_reads_module_doc"
 )]
 #[test_case(
     "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    fetch = lambda: 1\n",
-    "module.py:2:5: SMP901 Class docstring on internal code; let the name, signature and types document it\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    CLASS_DOCSTRING_REPORT ;
     "lambda_reads_nothing"
 )]
 #[test_case(
@@ -153,7 +166,8 @@ fn docstring_comment_stays_after_removal(file: &str, source: &str, select: &str,
     "method_default_reads_it"
 )]
 #[test_case(
-    "def show(text):\n    return lambda func: func\n\n\nclass Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    @show(__doc__)\n    def run(self):\n        return 1\n",
+    "def show(text):\n    return lambda func: func\n\n\nclass Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    @\
+        show(__doc__)\n    def run(self):\n        return 1\n",
     common::PASSED ;
     "decorator_reads_it"
 )]
@@ -169,16 +183,17 @@ fn docstring_comment_stays_after_removal(file: &str, source: &str, select: &str,
 )]
 #[test_case(
     "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    fetch = lambda: __doc__\n",
-    "module.py:2:5: SMP901 Class docstring on internal code; let the name, signature and types document it\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    CLASS_DOCSTRING_REPORT ;
     "lambda_body_reads_module_doc"
 )]
 #[test_case(
     "class Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    class Inner:\n        help = __doc__\n",
-    "module.py:2:5: SMP901 Class docstring on internal code; let the name, signature and types document it\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    CLASS_DOCSTRING_REPORT ;
     "nested_class_body_reads_module_doc"
 )]
 #[test_case(
-    "def show(text):\n    return lambda func: func\n\n\nclass Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    @show(__doc__)\n    class Inner:\n        pass\n",
+    "def show(text):\n    return lambda func: func\n\n\nclass Sync:\n    \"\"\"Synchronize the mirror.\"\"\"\n\n    @\
+        show(__doc__)\n    class Inner:\n        pass\n",
     common::PASSED ;
     "nested_class_decorator_reads_it"
 )]
@@ -186,6 +201,9 @@ fn class_body_reading_doc_keeps_its_docstring(source: &str, stdout: &str) {
     let root = common::project(&[("pyproject.toml", ""), ("module.py", source)]);
     assert_eq!(common::check(root.path(), &["--select", "SMP901"]).1, stdout);
 }
+
+const CLASS_DOCSTRING_REPORT: &str = "module.py:2:5: SMP901 Class docstring on internal code; let the name, signature \
+    and types document it\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n";
 
 // The comment wraps to the shorter of Ruff's line and doc line limits at the indentation `ruff format` gives the body,
 // so a body indented by two spaces wraps the same.
@@ -201,7 +219,8 @@ fn function_docstring_comment_wraps_to_ruff_limits(indent: &str) {
         (
             "module.py",
             &format!(
-                "def _run() -> None:\n{indent}\"\"\"Retry once, as the first call after a restart times out.\"\"\"\n{indent}print()\n"
+                "def _run() -> None:\n{indent}\"\"\"Retry once, as the first call after a restart times out.\"\"\"\n\
+                    {indent}print()\n"
             ),
         ),
     ]);
@@ -209,7 +228,8 @@ fn function_docstring_comment_wraps_to_ruff_limits(indent: &str) {
     assert_eq!(
         common::read(root.path(), "module.py"),
         format!(
-            "def _run() -> None:\n{indent}# Retry once, as the first\n{indent}# call after a restart\n{indent}# times out.\n{indent}print()\n"
+            "def _run() -> None:\n{indent}# Retry once, as the first\n{indent}# call after a restart\n{indent}# times \
+                out.\n{indent}print()\n"
         )
     );
 }
@@ -252,7 +272,8 @@ fn function_docstring_comment_waits_for_a_removed_statement() {
         ("pyproject.toml", ""),
         (
             "test_module.py",
-            "def test_probe() -> None:\n    \"\"\"Check that adding one more test keeps the run stable.\"\"\"\n    assert True\n",
+            "def test_probe() -> None:\n    \"\"\"Check that adding one more test keeps the run stable.\"\"\"\n    \
+                assert True\n",
         ),
     ]);
     common::check(root.path(), &["--fix", "--unsafe-fixes", "--select", "SMP901,SMP804"]);
@@ -265,27 +286,33 @@ fn function_docstring_comment_waits_for_a_removed_statement() {
 // attrs names a field's constructor parameter by its `alias`, or by its name without the leading underscores, where a
 // dataclass keeps the name.
 #[test_case(
-    "from attrs import define\n\n@define\nclass Point:\n    \"\"\"A point.\n\n    :param x: Where it sits.\n    \"\"\"\n\n    _x: int\n",
+    "from attrs import define\n\n@define\nclass Point:\n    \"\"\"A point.\n\n    :param x: Where it sits.\n    \"\"\"\
+        \n\n    _x: int\n",
     common::PASSED ;
     "attrs_without_underscores"
 )]
 #[test_case(
-    "from attrs import define, field\n\n@define\nclass Point:\n    \"\"\"A point.\n\n    :param pos: Where it sits.\n    \"\"\"\n\n    _x: int = field(alias=\"pos\")\n",
+    "from attrs import define, field\n\n@define\nclass Point:\n    \"\"\"A point.\n\n    :param pos: Where it sits.\
+        \n    \"\"\"\n\n    _x: int = field(alias=\"pos\")\n",
     common::PASSED ;
     "attrs_alias"
 )]
 #[test_case(
-    "from dataclasses import dataclass\n\n@dataclass\nclass Point:\n    \"\"\"A point.\n\n    :param _x: Where it sits.\n    \"\"\"\n\n    _x: int\n",
+    "from dataclasses import dataclass\n\n@dataclass\nclass Point:\n    \"\"\"A point.\n\n    :param _x: Where it sits.\
+        \n    \"\"\"\n\n    _x: int\n",
     common::PASSED ;
     "dataclass_keeps_name"
 )]
 #[test_case(
-    "from attrs import define, field\n\n@define\nclass Point:\n    \"\"\"A point.\n\n    :param x: Where it sits.\n    \"\"\"\n\n    _x: int = field(alias=\"pos\")\n",
-    "model.py:7:6: SMP917 `:param x:` documents `x`, which `Point` does not take\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    "from attrs import define, field\n\n@define\nclass Point:\n    \"\"\"A point.\n\n    :param x: Where it sits.\n    \
+        \"\"\"\n\n    _x: int = field(alias=\"pos\")\n",
+    "model.py:7:6: SMP917 `:param x:` documents `x`, which `Point` does not take\nFound 1 error.\n1 unsafe fix \
+        available with `--fix --unsafe-fixes`.\n" ;
     "attrs_alias_replaces_name"
 )]
 #[test_case(
-    "from attrs import define, field\n\nPOS = \"pos\"\n\n\n@define\nclass Point:\n    \"\"\"A point.\n\n    :param pos: Where it sits.\n    \"\"\"\n\n    _x: int = field(alias=POS)\n",
+    "from attrs import define, field\n\nPOS = \"pos\"\n\n\n@define\nclass Point:\n    \"\"\"A point.\n\n    :param pos\
+        : Where it sits.\n    \"\"\"\n\n    _x: int = field(alias=POS)\n",
     common::PASSED ;
     "attrs_alias_not_a_literal_is_unknown"
 )]
@@ -306,7 +333,8 @@ fn attrs_private_field_is_a_documented_parameter() {
         ),
         (
             "model.py",
-            "from attrs import define\n\n__all__ = [\"Point\"]\n\n\n@define\nclass Point:\n    \"\"\"A point on the horizontal axis.\"\"\"\n\n    _x: int\n",
+            "from attrs import define\n\n__all__ = [\"Point\"]\n\n\n@define\nclass Point:\n    \"\"\"A point on the \
+                horizontal axis.\"\"\"\n\n    _x: int\n",
         ),
     ]);
     assert_eq!(
@@ -315,10 +343,11 @@ fn attrs_private_field_is_a_documented_parameter() {
     );
 }
 
-// A placeholder body, as in an abstract method, says nothing of what it returns or yields, so its docstring is not asked
-// for the fields of a value it has not written. A body with code is held to the same rules.
+// A placeholder body, as in an abstract method, says nothing of what it returns or yields, so its docstring is not
+// asked for the fields of a value it has not written. A body with code is held to the same rules.
 #[test_case(
-    "from collections.abc import Iterator\n\n\ndef rows() -> Iterator[str]:\n    \"\"\"Read the rows.\n\n    :yields: Each row.\n    \"\"\"\n    ...\n",
+    "from collections.abc import Iterator\n\n\ndef rows() -> Iterator[str]:\n    \"\"\"Read the rows.\n\n    :yields: \
+        Each row.\n    \"\"\"\n    ...\n",
     common::PASSED ;
     "placeholder_yields"
 )]
@@ -334,7 +363,9 @@ fn attrs_private_field_is_a_documented_parameter() {
 )]
 #[test_case(
     "def rows() -> list[str]:\n    \"\"\"Read the rows.\n\n    :yields: Each row.\n    \"\"\"\n    return []\n",
-    "model.py:2:5: SMP923 `rows` returns a value, yet its docstring has no `:returns:` field\nmodel.py:4:6: SMP923 `rows` is not a generator, yet its docstring has a `:yields:` field\nFound 2 errors.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    "model.py:2:5: SMP923 `rows` returns a value, yet its docstring has no `:returns:` field\nmodel.py:4:6: SMP923 \
+        `rows` is not a generator, yet its docstring has a `:yields:` field\nFound 2 errors.\n1 unsafe fix available with `\
+        --fix --unsafe-fixes`.\n" ;
     "computed_yields"
 )]
 fn placeholder_body_documents_no_return(source: &str, stdout: &str) {
@@ -348,15 +379,21 @@ fn placeholder_body_documents_no_return(source: &str, stdout: &str) {
     assert_eq!(common::check(root.path(), &["--select", "SMP923"]).1, stdout);
 }
 
-// The members of a class include those in its `if` blocks and the loop variables of its body, so a field documents them.
+// The members of a class include those in its `if` blocks and the loop variables of its body, so a field documents
+// them.
 #[test_case(
-    "import sys\n\n\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar speed: Units per second.\n    :ivar run: The entry point.\n    :ivar size: How many jobs wait.\n    \"\"\"\n\n    if sys.version_info >= (3, 12):\n\n        @property\n        def speed(self) -> int:\n            return 2\n\n    else:\n\n        def run(self) -> None:\n            pass\n\n    for size in (1, 2):\n        pass\n",
+    "import sys\n\n\nclass Engine:\n    \"\"\"Run jobs.\n\n    :ivar speed: Units per second.\n    :ivar run: The \
+        entry point.\n    :ivar size: How many jobs wait.\n    \"\"\"\n\n    if sys.version_info >= (3, 12):\n\n        @\
+        property\n        def speed(self) -> int:\n            return 2\n\n    else:\n\n        def run(self) -> None:\
+        \n            pass\n\n    for size in (1, 2):\n        pass\n",
     common::PASSED ;
     "members_in_blocks_and_loops"
 )]
 #[test_case(
-    "class Engine:\n    \"\"\"Run jobs.\n\n    :ivar missing: Not a member.\n    \"\"\"\n\n    if True:\n        speed = 1\n\n    for size in (1, 2):\n        pass\n",
-    "model.py:4:6: SMP921 `:ivar missing:` documents `missing`, which `Engine` does not have\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    "class Engine:\n    \"\"\"Run jobs.\n\n    :ivar missing: Not a member.\n    \"\"\"\n\n    if True:\n        speed \
+        = 1\n\n    for size in (1, 2):\n        pass\n",
+    "model.py:4:6: SMP921 `:ivar missing:` documents `missing`, which `Engine` does not have\nFound 1 error.\n1 unsafe \
+        fix available with `--fix --unsafe-fixes`.\n" ;
     "unknown_member_still_reported"
 )]
 fn class_members_in_blocks_are_documented(source: &str, stdout: &str) {
@@ -381,18 +418,25 @@ fn rst_rules_need_the_docstring_style() {
 // Sphinx reads `kwarg` and `kwparam` as spellings of `param`, and `paramtype` as one of `type`, so the fields document
 // their parameter and are not reported as unknown.
 #[test_case(
-    "def load(path: str, mode: str) -> None:\n    \"\"\"Load.\n\n    :param path: Where.\n    :kwarg mode: How.\n    \"\"\"\n    print(path, mode)\n",
-    "model.py:5:6: SMP910 Field `:kwarg mode:` uses the alias `kwarg`; write `param`\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    "def load(path: str, mode: str) -> None:\n    \"\"\"Load.\n\n    :param path: Where.\n    :kwarg mode: How.\n    \"\
+        \"\"\n    print(path, mode)\n",
+    "model.py:5:6: SMP910 Field `:kwarg mode:` uses the alias `kwarg`; write `param`\nFound 1 error.\n1 unsafe fix \
+        available with `--fix --unsafe-fixes`.\n" ;
     "kwarg"
 )]
 #[test_case(
-    "def load(mode: str) -> None:\n    \"\"\"Load.\n\n    :param mode: How.\n    :paramtype mode: str\n    \"\"\"\n    print(mode)\n",
-    "model.py:5:6: SMP910 Field `:paramtype mode:` uses the alias `paramtype`; write `type`\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n" ;
+    "def load(mode: str) -> None:\n    \"\"\"Load.\n\n    :param mode: How.\n    :paramtype mode: str\n    \"\"\"\n    \
+        print(mode)\n",
+    "model.py:5:6: SMP910 Field `:paramtype mode:` uses the alias `paramtype`; write `type`\nFound 1 error.\n1 unsafe \
+        fix available with `--fix --unsafe-fixes`.\n" ;
     "paramtype"
 )]
 #[test_case(
-    "def load(path: str, mode: str) -> None:\n    \"\"\"Load.\n\n    :param path: Where.\n    :kwargs mode: How.\n    \"\"\"\n    print(path, mode)\n",
-    "model.py:2:5: SMP916 Docstring of `load` does not document parameter `mode`; add `:param mode:`\nmodel.py:5:6: SMP910 Unknown field `:kwargs mode:`; Sphinx reads `param`, `type`, `raises`, `returns`, `rtype`, `var`, `vartype` and their aliases\nFound 2 errors.\n" ;
+    "def load(path: str, mode: str) -> None:\n    \"\"\"Load.\n\n    :param path: Where.\n    :kwargs mode: How.\n    \
+        \"\"\"\n    print(path, mode)\n",
+    "model.py:2:5: SMP916 Docstring of `load` does not document parameter `mode`; add `:param mode:`\nmodel.py:5:6: \
+        SMP910 Unknown field `:kwargs mode:`; Sphinx reads `param`, `type`, `raises`, `returns`, `rtype`, `var`, \
+        `vartype` and their aliases\nFound 2 errors.\n" ;
     "misspelled"
 )]
 fn sphinx_parameter_aliases_document_their_parameter(source: &str, stdout: &str) {
@@ -408,8 +452,10 @@ fn sphinx_parameter_aliases_document_their_parameter(source: &str, stdout: &str)
 
 // Dropping the type of a parameter keeps the stars that mark `*args` and `**kwargs`, which the name is written with.
 #[test_case(
-    "def call(*args: int, **kwargs: str) -> None:\n    r\"\"\"Call it.\n\n    :param int \\*args: The numbers.\n    :param str \\*\\*kwargs: The options.\n    \"\"\"\n",
-    "def call(*args: int, **kwargs: str) -> None:\n    r\"\"\"Call it.\n\n    :param \\*args: The numbers.\n    :param \\*\\*kwargs: The options.\n    \"\"\"\n" ;
+    "def call(*args: int, **kwargs: str) -> None:\n    r\"\"\"Call it.\n\n    :param int \\*args: The numbers.\n    :\
+        param str \\*\\*kwargs: The options.\n    \"\"\"\n",
+    "def call(*args: int, **kwargs: str) -> None:\n    r\"\"\"Call it.\n\n    :param \\*args: The numbers.\n    :param \
+        \\*\\*kwargs: The options.\n    \"\"\"\n" ;
     "star_parameters"
 )]
 #[test_case(
@@ -424,8 +470,8 @@ fn type_field_fix_keeps_the_star_markers(source: &str, fixed: &str) {
     assert_eq!(common::read(root.path(), "demo.py"), fixed);
 }
 
-// Renaming an alias changes the docstring, which code may read through `__doc__`, so it is an unsafe fix like the rule's
-// others.
+// Renaming an alias changes the docstring, which code may read through `__doc__`, so it is an unsafe fix like the
+// rule's others.
 #[test]
 fn alias_rename_is_an_unsafe_fix() {
     let source = "def run(path: str) -> None:\n    \"\"\"Run.\n\n    :arg path: Where.\n    \"\"\"\n    print(path)\n";
@@ -440,7 +486,9 @@ fn alias_rename_is_an_unsafe_fix() {
     assert_eq!(
         (stdout, common::read(root.path(), "demo.py")),
         (
-            "demo.py:4:6: SMP910 Field `:arg path:` uses the alias `arg`; write `param`\nFound 1 error.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n".to_owned(),
+            "demo.py:4:6: SMP910 Field `:arg path:` uses the alias `arg`; write `param`\nFound 1 error.\n1 unsafe fix \
+                available with `--fix --unsafe-fixes`.\n"
+                .to_owned(),
             source.to_owned()
         )
     );
@@ -448,13 +496,16 @@ fn alias_rename_is_an_unsafe_fix() {
 
 // Renaming an alias edits the field another rule's fix rewrites or removes, so one of the two waits for the next pass.
 #[test_case(
-    "def run(path: str) -> None:\n    \"\"\"Run.\n\n    :param path: Where.\n    :arg gone: Removed.\n    \"\"\"\n    print(path)\n",
+    "def run(path: str) -> None:\n    \"\"\"Run.\n\n    :param path: Where.\n    :arg gone: Removed.\n    \"\"\"\n    \
+        print(path)\n",
     "def run(path: str) -> None:\n    \"\"\"Run.\n\n    :param path: Where.\n    \"\"\"\n    print(path)\n" ;
     "removed_field"
 )]
 #[test_case(
-    "def run(count: int):\n    \"\"\"Run.\n\n    :param count: How far.\n    :return: Each number.\n    \"\"\"\n    yield from range(count)\n",
-    "def run(count: int):\n    \"\"\"Run.\n\n    :param count: How far.\n    :yields: Each number.\n    \"\"\"\n    yield from range(count)\n" ;
+    "def run(count: int):\n    \"\"\"Run.\n\n    :param count: How far.\n    :return: Each number.\n    \"\"\"\n    \
+        yield from range(count)\n",
+    "def run(count: int):\n    \"\"\"Run.\n\n    :param count: How far.\n    :yields: Each number.\n    \"\"\"\n    \
+        yield from range(count)\n" ;
     "renamed_field"
 )]
 fn alias_fix_composes(source: &str, fixed: &str) {
@@ -469,8 +520,8 @@ fn alias_fix_composes(source: &str, fixed: &str) {
     assert_eq!(common::read(root.path(), "demo.py"), fixed);
 }
 
-// Ruff's D101, D102, D103 and D106 report the undocumented public definitions of their kind, which SMP903 leaves to them
-// while the project's Ruff configuration runs that code.
+// Ruff's D101, D102, D103 and D106 report the undocumented public definitions of their kind, which SMP903 leaves to
+// them while the project's Ruff configuration runs that code.
 #[test_case("def f() -> None:\n    pass\n", "D103", "Public function `f`" ; "function")]
 #[test_case("class C:\n    pass\n", "D101", "Public class `C`" ; "class")]
 #[test_case("class C:\n    class N:\n        pass\n", "D106", "Public class `C.N`" ; "nested_class")]
@@ -485,6 +536,148 @@ fn undocumented_public_api_follows_ruff_pydocstyle(source: &str, code: &str, fra
     assert_eq!(common::reported_without_and_with_ruff(&case, fragment), [true, false]);
 }
 
+// Ruff's pydocstyle skips a function that `ignore-decorators` lists, so it reports no D103 for it, and SMP903 keeps it.
+#[test_case("@route", "app.route", [true, true] ; "listed_decorator")]
+#[test_case("@route(\"/run\")", "app.route", [true, true] ; "listed_call")]
+#[test_case("@route", "app.other", [true, false] ; "unlisted_decorator")]
+fn undocumented_public_api_keeps_ignore_decorator_functions(decorator: &str, listed: &str, reported: [bool; 2]) {
+    let source = format!("from app import route\n\n\n{decorator}\ndef run() -> None:\n    pass\n");
+    let settings = format!(
+        "[tool.simplint]\nproject-kind = \"library\"\n[tool.ruff.lint.pydocstyle]\nignore-decorators = [\"{listed}\"]\n"
+    );
+    let case = common::RuffOverlap {
+        settings: &settings,
+        select: "SMP903",
+        ruff_code: "D103",
+        files: &[("module.py", source.as_str())],
+    };
+    assert_eq!(common::reported_without_and_with_ruff(&case, "Public function `run`"), reported);
+}
+
+// Ruff names a decorator in a package by its dotted path, so `ignore-decorators` also matches one imported relatively or
+// defined in the same module.
+#[test_case("from ._decos import skip\n\n\n@skip", "pkg._decos.skip", [true, true] ; "relative_import")]
+#[test_case("def skip(func):\n    return func\n\n\n@skip", "pkg.api.skip", [true, true] ; "same_module")]
+#[test_case("import pkg._decos\n\n\n@pkg._decos.skip", "pkg._decos.skip", [true, true] ; "absolute_import")]
+#[test_case("@undefined", "pkg.api.undefined", [true, false] ; "unbound_not_listed")]
+fn undocumented_public_api_keeps_package_ignore_decorator_functions(
+    decorated: &str,
+    listed: &str,
+    reported: [bool; 2],
+) {
+    let source = format!("{decorated}\ndef run() -> None:\n    pass\n");
+    let settings = format!(
+        "[tool.simplint]\nproject-kind = \"library\"\n[tool.ruff.lint.pydocstyle]\nignore-decorators = [\"{listed}\"]\n"
+    );
+    let case = common::RuffOverlap {
+        settings: &settings,
+        select: "SMP903",
+        ruff_code: "D103",
+        files: &[
+            ("pkg/__init__.py", ""),
+            ("pkg/_decos.py", "def skip(func):\n    return func\n"),
+            ("pkg/api.py", source.as_str()),
+        ],
+    };
+    assert_eq!(common::reported_without_and_with_ruff(&case, "Public function `run`"), reported);
+}
+
+// Ruff's D418 and D419 report a docstring that SMP901 can only remove without a fix, when a file-level `noqa` withdraws
+// the fix. SMP901 leaves those to Ruff whether or not the project selects them, and it keeps what Ruff skips.
+#[test_case(
+    "D419", "# ruff: noqa: E501\ndef run() -> None:\n    \"\"\"\"\"\"\n    print()\n", [false, false] ; "empty_function"
+)]
+#[test_case(
+    "D419", "# ruff: noqa: E501\nclass Config:\n    \"\"\"\"\"\"\n    VALUE = 1\n", [false, false] ; "empty_class"
+)]
+#[test_case("D419", "def run() -> None:\n    \"\"\"\"\"\"\n    print()\n", [true, true] ; "fixable_empty_function")]
+#[test_case(
+    "D419",
+    "# ruff: noqa: E501\ndef run() -> None:\n    \"\" \"\"\n    print()\n",
+    [true, true] ;
+    "implicit_concatenation"
+)]
+#[test_case(
+    "D419", "# ruff: noqa: E501\ndef run() -> None:\n    \"\"\"Run.\"\"\"\n    print()\n", [true, true] ; "not_empty"
+)]
+#[test_case(
+    "D418",
+    "# ruff: noqa: E501\nfrom typing import overload\n\n\n@overload\ndef load(path: int) -> int:\n    \"\"\"Load an int\
+        .\"\"\"\n\n\n@overload\ndef load(path: str) -> str: ...\ndef load(path):\n    return path\n",
+    [false, false] ;
+    "overload"
+)]
+#[test_case(
+    "D418",
+    "from typing import overload\n\n\n@overload\ndef load(path: int) -> int:\n    \"\"\"Load an int.\"\"\"\n\n\n@\
+        overload\ndef load(path: str) -> str: ...\ndef load(path):\n    return path\n",
+    [true, true] ;
+    "fixable_overload"
+)]
+#[test_case(
+    "D419",
+    "# ruff: noqa: E501\nfrom typing import overload\n\n\n@overload\ndef load(path: int) -> int:\n    \"\"\"\"\"\"\n\n\
+        \n@overload\ndef load(path: str) -> str: ...\ndef load(path):\n    return path\n",
+    [false, false] ;
+    "empty_overload"
+)]
+#[test_case(
+    "D418",
+    "# ruff: noqa: E501\ndef run() -> None:\n    \"\"\"Run it.\"\"\"\n    print()\n",
+    [true, true] ;
+    "not_overload"
+)]
+#[test_case(
+    "D419",
+    "# ruff: noqa: E501\nimport pytest\n\n\n@pytest.fixture\ndef client() -> None:\n    \"\"\"\"\"\"\n    print()\n",
+    [false, false] ;
+    "decorator_not_listed"
+)]
+fn function_docstring_is_left_to_ruff_d418_d419(ruff_code: &str, source: &str, reported: [bool; 2]) {
+    let case = common::RuffOverlap { settings: "", select: "SMP901", ruff_code, files: &[("module.py", source)] };
+    assert_eq!(common::reported_without_and_with_ruff(&case, "docstring on internal code"), reported);
+}
+
+// A decorator that `ignore-decorators` lists makes Ruff skip the function, so SMP901 keeps its docstring.
+#[test]
+fn function_docstring_keeps_ignored_decorator_docstring() {
+    let case = common::RuffOverlap {
+        settings: "[tool.ruff.lint.pydocstyle]\nignore-decorators = [\"pytest.fixture\"]\n",
+        select: "SMP901",
+        ruff_code: "D419",
+        files: &[(
+            "module.py",
+            "# ruff: noqa: E501\nimport pytest\n\n\n@pytest.fixture\ndef client() -> None:\n    \"\"\"\"\"\"\n    print\
+                ()\n",
+        )],
+    };
+    assert_eq!(common::reported_without_and_with_ruff(&case, "docstring on internal code"), [true, true]);
+}
+
+// Ruff's D418 does not report a stub, so SMP901 keeps the overload docstring of a stub read from standard input.
+#[test]
+fn function_docstring_keeps_overload_docstring_in_a_stub() {
+    let root = common::project(&[("pyproject.toml", "[tool.ruff.lint]\nselect = [\"D418\"]\n")]);
+    let source = "# ruff: noqa: E501\nfrom typing import overload\n\n\n@overload\ndef load(path: int) -> int:\n    \"\"\
+        \"Load an int.\"\"\"\n";
+    let (_, stdout, _) =
+        common::check_with_stdin(root.path(), &["--select", "SMP901", "--stdin-filename", "stub.pyi", "-"], source);
+    assert!(stdout.contains("docstring on internal code"), "{stdout}");
+}
+
+// Ruff's D419 reports an empty docstring of a single string, which SMP902 can remove only with its fix. A file-level
+// `noqa` withdraws that fix, and then SMP902 leaves the docstring to Ruff whether or not the project selects D419.
+#[test_case("# ruff: noqa: E501\n\"\"\"\"\"\"\n\nimport os\n", [false, false] ; "empty_with_file_noqa")]
+#[test_case("\"\"\"\"\"\"\n\nimport os\n", [true, true] ; "fixable_empty")]
+#[test_case("# ruff: noqa: E501\n\"\" \"\"\n\nimport os\n", [true, true] ; "implicit_concatenation")]
+#[test_case("# ruff: noqa: E501\n\"\"\"\\x20\"\"\"\n\nimport os\n", [true, true] ; "escape_is_text")]
+#[test_case("# ruff: noqa: E501\n\"\"\"Tests.\"\"\"\n\nimport os\n", [true, true] ; "not_empty")]
+fn test_module_docstring_is_left_to_ruff_d419(source: &str, reported: [bool; 2]) {
+    let case =
+        common::RuffOverlap { settings: "", select: "SMP902", ruff_code: "D419", files: &[("test_module.py", source)] };
+    assert_eq!(common::reported_without_and_with_ruff(&case, "Test module carries a docstring"), reported);
+}
+
 // A public class of a library inherits the members of its private base without overriding them, so users reach them
 // through the public class: their docstrings are documentation, and an undocumented one is reported. The override is
 // the public class's own, so the base's docstring of it stays internal.
@@ -494,13 +687,16 @@ fn inherited_members_of_a_private_base_are_public_api() {
         ("pyproject.toml", "[tool.simplint]\nproject-kind = \"library\"\n"),
         (
             "pkg/_xdg.py",
-            "class XDGMixin:\n    @property\n    def user_data_dir(self) -> str:\n        \"\"\"Data directory.\"\"\"\n        \
-             return \"/data\"\n\n    def site_dir(self) -> str:\n        return \"/site\"\n\n    def ensure(self, path: \
+            "class XDGMixin:\n    @property\n    def user_data_dir(self) -> str:\n        \"\"\"Data directory.\"\"\"\
+                \n        \
+             return \"/data\"\n\n    def site_dir(self) -> str:\n        return \"/site\"\n\n    def ensure(self, path\
+             : \
              str) -> str:\n        \"\"\"Make it.\"\"\"\n        return path\n",
         ),
         (
             "pkg/unix.py",
-            "from ._xdg import XDGMixin\n\n__all__ = [\"Unix\"]\n\n\nclass Unix(XDGMixin):\n    \"\"\"Unix.\"\"\"\n\n    \
+            "from ._xdg import XDGMixin\n\n__all__ = [\"Unix\"]\n\n\nclass Unix(XDGMixin):\n    \"\"\"Unix.\"\"\"\n\
+                \n    \
              def ensure(self, path: str) -> str:\n        \"\"\"Unix override.\"\"\"\n        return path\n",
         ),
     ]);
@@ -509,7 +705,8 @@ fn inherited_members_of_a_private_base_are_public_api() {
         stdout,
         common::native(
             "pkg/_xdg.py:7:9: SMP903 Public method `XDGMixin.site_dir` has no docstring; document it for its users\n\
-             pkg/_xdg.py:11:9: SMP901 Function docstring on internal code; let the name, signature and types document it\n\
+             pkg/_xdg.py:11:9: SMP901 Function docstring on internal code; let the name, signature and types document \
+             it\n\
              Found 2 errors.\n1 unsafe fix available with `--fix --unsafe-fixes`.\n"
         )
     );

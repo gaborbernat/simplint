@@ -50,7 +50,7 @@ fn rules_json_lists_parsed_examples() {
             first["blocks"][0]["source"].as_str().map(|source| source.starts_with("# ---------- parsing")),
             imports["short_group"].as_str(),
         ),
-        (0, Some("Example"), Some(11), Some(15), Some("report"), Some(11), Some(true), Some("Imports"))
+        (0, Some("Example"), Some(10), Some(14), Some("report"), Some(10), Some(true), Some("Imports"))
     );
 }
 
@@ -59,7 +59,8 @@ fn rules_json_lists_parsed_examples() {
 #[test_case(
     "SMP002",
     "# long-paragraph (SMP002)",
-    "Flags comment paragraphs longer than 100 words by default, since a paragraph that long usually mixes topics and gets" ;
+    "Flags comment paragraphs longer than 100 words by default, since a paragraph that long usually mixes topics and \
+     gets" ;
     "by_code_never"
 )]
 fn rule_explains(selector: &str, title: &str, third: &str) {
@@ -120,8 +121,8 @@ fn rule_points_ruff_rules_to_ruff(rule: &str) {
             2,
             String::new(),
             format!(
-                "error: invalid value '{rule}' for '[RULE]'\n\n  tip: `{rule}` is a Ruff rule; run `ruff rule {rule}`\n\nFor \
-                 more information, try '--help'.\n"
+                "error: invalid value '{rule}' for '[RULE]'\n\n  tip: `{rule}` is a Ruff rule; \
+                 run `ruff rule {rule}`\n\nFor more information, try '--help'.\n"
             )
         )
     );
@@ -188,7 +189,13 @@ fn config_rejects_unknown_options() {
 }
 
 #[test_case("text", "Comments: SMP001, SMP002, SMP003, SMP004, SMP005, SMP006, SMP008, SMP009\n" ; "text")]
-#[test_case("json", "[\n  {\n    \"name\": \"Comments\",\n    \"codes\": [\n      \"SMP001\",\n      \"SMP002\",\n      \"SMP003\",\n      \"SMP004\",\n      \"SMP005\",\n      \"SMP006\",\n      \"SMP008\",\n      \"SMP009\"\n    ]\n  }," ; "json")]
+#[test_case(
+    "json",
+    "[\n  {\n    \"name\": \"Comments\",\n    \"codes\": [\n      \
+     \"SMP001\",\n      \"SMP002\",\n      \"SMP003\",\n      \
+     \"SMP004\",\n      \"SMP005\",\n      \"SMP006\",\n      \"SMP008\",\n      \"SMP009\"\n    ]\n  }," ;
+    "json"
+)]
 fn linter_lists_rule_groups(format: &str, first_group: &str) {
     let root = empty_project();
     let (code, stdout, stderr) = simplint(root.path(), &["linter", "--output-format", format]);
@@ -213,7 +220,6 @@ fn clean_removes_caches(flags: &[&str], stderr: &str) {
     );
 }
 
-// A link where the cache or its simplint directory should be is not the run's to remove, nor what it points at.
 #[cfg(unix)]
 #[test_case(true ; "ruff_cache_is_a_link")]
 #[test_case(false ; "simplint_is_a_link")]
@@ -241,7 +247,11 @@ fn clean_keeps_links_and_what_they_point_at(ruff_cache_is_link: bool) {
 }
 
 #[test_case("text", &format!("simplint {}\n", env!("CARGO_PKG_VERSION")) ; "text")]
-#[test_case("json", &format!("{{\n  \"version\": \"{}\",\n  \"commit_info\": null\n}}", env!("CARGO_PKG_VERSION")) ; "json")]
+#[test_case(
+    "json",
+    &format!("{{\n  \"version\": \"{}\",\n  \"commit_info\": null\n}}", env!("CARGO_PKG_VERSION")) ;
+    "json"
+)]
 fn version_prints_the_version(format: &str, stdout: &str) {
     let root = empty_project();
     assert_eq!(simplint(root.path(), &["version", "--output-format", format]), (0, stdout.to_owned(), String::new()));

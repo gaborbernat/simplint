@@ -4,8 +4,7 @@ use super::Parts;
 use super::visitor::FactVisitor;
 
 impl<'a> FactVisitor<'a> {
-    // Records each module-level name an assignment binds to a tuple, with the classes its elements name, so a handler
-    // that names the tuple catches each of them.
+    // A handler that names a module-level tuple catches each of its classes, so the tuple's classes are recorded.
     pub(super) fn bind_class_tuple(&mut self, stmt: &'a Stmt) {
         let (target, value) = match stmt {
             Stmt::Assign(ast::StmtAssign { targets, value, .. }) => match targets.as_slice() {
@@ -24,7 +23,6 @@ impl<'a> FactVisitor<'a> {
         }
     }
 
-    // The classes a tuple names, through its elements and the starred tuples it unpacks.
     fn tuple_classes(&self, value: &Expr) -> Vec<(String, String)> {
         match value {
             Expr::Tuple(ast::ExprTuple { elts, .. }) => elts.iter().flat_map(|elt| self.tuple_classes(elt)).collect(),
@@ -33,7 +31,16 @@ impl<'a> FactVisitor<'a> {
         }
     }
 
-    // Records the classes an `except` clause names, each alternative of a tuple on its own.
+    pub(super) fn catch_suppressed(&mut self, expr: &Expr) {
+        if let Expr::Call(ast::ExprCall { func, arguments, .. }) = expr
+            && self.qualified(func).as_deref() == Some("contextlib.suppress")
+        {
+            for argument in &arguments.args {
+                self.catch(argument);
+            }
+        }
+    }
+
     pub(super) fn catch(&mut self, expr: &Expr) {
         if !self.parts.has(Parts::CAUGHT) {
             return;
@@ -48,21 +55,8 @@ impl<'a> FactVisitor<'a> {
             self.caught.push(path);
         }
     }
-
-    // Records the classes a `contextlib.suppress` call is given, which the context manager catches.
-    pub(super) fn catch_suppressed(&mut self, expr: &Expr) {
-        if let Expr::Call(ast::ExprCall { func, arguments, .. }) = expr
-            && self.qualified(func).as_deref() == Some("contextlib.suppress")
-        {
-            for argument in &arguments.args {
-                self.catch(argument);
-            }
-        }
-    }
 }
 
-// The argument that names the classes a call checks or splits: the second of `isinstance(error, Cls)`, and the first
-// of `group.split(Cls)` or `group.subgroup(Cls)` on an exception group.
 pub(super) fn class_argument<'a>(func: &Expr, arguments: &'a ast::Arguments) -> Option<&'a Expr> {
     if func.as_name_expr().is_some_and(|name| name.id.as_str() == "isinstance") {
         arguments.args.get(1)

@@ -25,20 +25,10 @@ thread_local! {
     static DIRECTIVE_WARNINGS: Cell<bool> = const { Cell::new(true) };
 }
 
-// Runs `lint` with the warnings Ruff logs about `noqa` directives shown or hidden. They name lines of the source Ruff
-// lints, which only the source as read from disk has in common with the reports.
-pub fn with_directive_warnings<T>(shown: bool, lint: impl FnOnce() -> T) -> T {
-    let outer = DIRECTIVE_WARNINGS.replace(shown);
-    let result = lint();
-    DIRECTIVE_WARNINGS.set(outer);
-    result
-}
-
 pub fn directive_warnings_shown() -> bool {
     DIRECTIVE_WARNINGS.get()
 }
 
-// The file as Ruff sees it: the project's Ruff settings for it and the package it belongs to.
 pub struct RuffFile<'a> {
     pub settings: &'a LinterSettings,
     package: Option<PackageRoot<'a>>,
@@ -52,6 +42,11 @@ pub struct RuffFile<'a> {
 impl<'a> RuffFile<'a> {
     pub fn new(settings: &'a LinterSettings, package: Option<PackageRoot<'a>>) -> Self {
         Self { settings, package, unbounded: OnceLock::new(), lean: OnceLock::new(), lean_unbounded: OnceLock::new() }
+    }
+
+    // The directory of the package the file belongs to, which Ruff's own-package checks compare with.
+    pub fn package(&self) -> Option<&'a Path> {
+        self.package.map(PackageRoot::path)
     }
 
     // Ruff's report on the source at no line length limit. Layout is `ruff format`'s job, as it runs after simplint: a
@@ -81,7 +76,7 @@ impl<'a> RuffFile<'a> {
         }) {
             let counts = findings.counts.entry(diagnostic.name()).or_default();
             counts.all += 1;
-            let fixable = diagnostic.fix().is_some_and(|fix| fix.applies(Applicability::Unsafe));
+            let fixable = fixable_unsafely(diagnostic);
             counts.fixable += usize::from(fixable);
             // An unsorted import block's finding is about the whole block: one that gained imports is new work, which
             // Ruff can take up once `ruff format` splits a statement sharing its last line. An unused suppression
@@ -103,7 +98,6 @@ impl<'a> RuffFile<'a> {
         Checked { diagnostics, parses: valid_syntax, findings }
     }
 
-    // The source as Ruff takes it, and its syntax tree.
     pub fn parse(source: &str, parser_version: PythonVersion) -> (SourceKind, Parsed<ModModule>) {
         let source_kind = SourceKind::Python { code: source.to_owned(), is_stub: false };
         let parsed = parse_unchecked_source(&source_kind, PySourceType::Python, parser_version);
@@ -144,7 +138,7 @@ impl<'a> RuffFile<'a> {
         })
         .diagnostics
         .iter()
-        .filter(|diagnostic| diagnostic.fix().is_some_and(|fix| fix.applies(Applicability::Unsafe)))
+        .filter(|diagnostic| fixable_unsafely(diagnostic))
         .map(Diagnostic::name)
         .collect()
     }
@@ -163,10 +157,22 @@ impl<'a> RuffFile<'a> {
     }
 }
 
-// The rules about whitespace, blank lines and line length, by the prefixes of their codes: `ruff format` settles them.
-const LAYOUT: [&str; 8] = ["E1", "E2", "E3", "W1", "W2", "W3", "E501", "W505"];
+// Runs `lint` with the warnings Ruff logs about `noqa` directives shown or hidden. They name lines of the source Ruff
+// lints, which only the source as read from disk has in common with the reports.
+fn with_directive_warnings<T>(shown: bool, lint: impl FnOnce() -> T) -> T {
+    let outer = DIRECTIVE_WARNINGS.replace(shown);
+    let result = lint();
+    DIRECTIVE_WARNINGS.set(outer);
+    result
+}
 
+fn fixable_unsafely(diagnostic: &Diagnostic) -> bool {
+    diagnostic.fix().is_some_and(|fix| fix.applies(Applicability::Unsafe))
+}
+
+// The rules about whitespace, blank lines and line length, by the prefixes of their codes: `ruff format` settles them.
 fn is_layout(code: &str) -> bool {
+    const LAYOUT: [&str; 8] = ["E1", "E2", "E3", "W1", "W2", "W3", "E501", "W505"];
     LAYOUT.iter().any(|prefix| code.starts_with(prefix))
 }
 
@@ -204,7 +210,6 @@ fn spells_layout_code(source: &str) -> bool {
     })
 }
 
-// Ruff's diagnostics for a source, whether it parses, and the findings they make.
 pub struct Checked {
     pub diagnostics: Vec<Diagnostic>,
     pub parses: bool,
@@ -213,8 +218,8 @@ pub struct Checked {
 
 // Counted per rule, all findings and those `ruff check --fix --unsafe-fixes` would fix: a fix that edits code inside an
 // existing finding, such as a rename, keeps its count. The fixable ones are also kept by rule and the lines they span:
-// `ruff check --fix` already ran at the project's line length, so one it left is a fix offered only to a line that fits,
-// such as merging nested `with` statements, and a fix that rewrites or reindents its lines can let it fit.
+// `ruff check --fix` already ran at the project's line length, so one it left is a fix offered only to a line that
+// fits, such as merging nested `with` statements, and a fix that rewrites or reindents its lines can let it fit.
 #[derive(Default)]
 pub struct Findings {
     counts: FxHashMap<&'static str, Counts>,

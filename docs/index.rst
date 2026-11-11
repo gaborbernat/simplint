@@ -6,8 +6,9 @@ simplint
     <section class="hero">
       <img class="hero-logo" src="_static/logo.webp" alt="" width="256" height="256">
       <p class="hero-title">Python that is <span>easier to read and review</span>.</p>
-      <p class="hero-tagline">A fast companion linter for Ruff, written in Rust. It checks for what reviewers keep
-      pointing out, and fixes most of what it finds.</p>
+      <p class="hero-tagline">A fast companion linter for <a href="https://docs.astral.sh/ruff/">Ruff</a>, written in
+      <a href="https://rust-lang.org/">Rust</a>. It checks for what reviewers keep pointing out, and fixes most of what
+      it finds.</p>
       <div class="hero-actions">
         <a class="primary" href="tutorial/getting-started.html">Get started</a>
         <a class="secondary" href="rules.html">Browse the rules</a>
@@ -24,8 +25,8 @@ easier to read and review:
 - :doc:`flat test modules <rules/SMP801>`
 - and more
 
-The rules are opinionated. They reflect the maintainer's preferences while aiming to be as objective as possible, so
-select the ones that fit your project.
+The rules are opinionated, so select the ones that fit your project. :doc:`explanation/design-principles` says where
+the opinions come from.
 
 simplint is written in `Rust <https://rust-lang.org/>`__ on top of Ruff's parser crates, and lints the 264 files of
 :gh:`tox-dev/tox` in about 10 ms. When the fix for a report is mechanical, it can apply it for you. The
@@ -52,7 +53,8 @@ simplint is written in `Rust <https://rust-lang.org/>`__ on top of Ruff's parser
     .. grid-item-card:: 🤝 Built to pair with Ruff
         :class-card: feature
 
-        Few rules overlap with Ruff's, and both tools read the same ``noqa`` comments and ``pyproject.toml``.
+        simplint does not report what Ruff reports, and both tools read the same ``noqa`` comments and
+        ``pyproject.toml``.
 
 A run over two tox modules, limited to two rules:
 
@@ -117,5 +119,6 @@ Documentation
    :hidden:
    :caption: Explanation
 
+   explanation/design-principles
    explanation/how-it-works
    explanation/simplint-and-ruff

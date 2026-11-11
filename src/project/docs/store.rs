@@ -3,7 +3,6 @@ use std::path::Path;
 use super::{DocReferences, Module};
 use crate::project::cache;
 
-// What a root's pages name, as the cache keeps it, with the key of the pages it was read from.
 #[derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 struct CachedDocs {
     key: u64,
@@ -13,10 +12,9 @@ struct CachedDocs {
 }
 
 impl DocReferences {
-    // The references a cache file holds, when it was written under `key`.
+    // Any read failure or key mismatch is a miss: the pages are read again and the cache is written anew.
     pub(super) fn cached(path: &Path, key: u64) -> Option<Self> {
-        let bytes = cache::read_aligned(path).ok()?;
-        let cached = rkyv::from_bytes::<CachedDocs, rkyv::rancor::Error>(&bytes).ok()?;
+        let cached = rkyv::from_bytes::<CachedDocs, rkyv::rancor::Error>(&cache::read_aligned(path).ok()?).ok()?;
         (cached.key == key).then(|| Self {
             names: cached.names.into_iter().collect(),
             scopes: cached.scopes.into_iter().collect(),

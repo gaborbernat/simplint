@@ -1,7 +1,6 @@
 use std::cmp::Ordering;
 
 use ruff_diagnostics::{Applicability, Edit, Fix};
-use ruff_linter::registry::Rule as RuffRule;
 use ruff_python_ast::helpers::{Truthiness, any_over_expr, contains_effect};
 use ruff_python_ast::{self as ast, BoolOp, CmpOp, Expr, Operator, Stmt, UnaryOp};
 use ruff_text_size::Ranged;
@@ -34,12 +33,6 @@ fn is_truthy_constant(test: &Expr, is_builtin: impl Fn(&str) -> bool) -> bool {
 
 fn report_constant_assert(checker: &Checker, stmt: &Stmt, assert: &ast::StmtAssert, statements: &[Stmt]) {
     let ast::StmtAssert { test, msg, .. } = assert;
-    if matches!(test.as_ref(), Expr::Tuple(_)) && checker.settings.from_ruff.ruff_runs(RuffRule::AssertTuple)
-        || matches!(test.as_ref(), Expr::StringLiteral(_) | Expr::BytesLiteral(_) | Expr::FString(_))
-            && checker.settings.from_ruff.ruff_runs(RuffRule::AssertOnStringLiteral)
-    {
-        return;
-    }
     let fix = match (test.as_ref(), msg) {
         // Rewriting or deleting the statement would drop a comment inside it.
         _ if checker.has_comment_in(stmt.range()) => None,
@@ -85,6 +78,12 @@ fn report_constant_assert(checker: &Checker, stmt: &Stmt, assert: &ast::StmtAsse
                 )
             }),
     };
+    // Ruff's F631 and PLW0129 report these cases without a fix, so a case without one of ours is left to them.
+    if fix.is_none()
+        && matches!(test.as_ref(), Expr::Tuple(_) | Expr::StringLiteral(_) | Expr::BytesLiteral(_) | Expr::FString(_))
+    {
+        return;
+    }
     let title = match test.as_ref() {
         Expr::Tuple(_) => "Split the tuple into a test and a message",
         Expr::Generator(_) => "Check every item with `all()`",

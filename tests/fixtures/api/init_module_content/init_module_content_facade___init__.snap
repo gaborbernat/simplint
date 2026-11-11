@@ -3,4 +3,3 @@ source: tests/common/mod.rs
 expression: "lint_fixture(rule, fixture, target_version)"
 ---
 4:1 SMP407 `__init__.py` holds code; keep only its docstring and the re-exports of its public API
-10:1 SMP407 `__init__.py` holds code; keep only its docstring and the re-exports of its public API

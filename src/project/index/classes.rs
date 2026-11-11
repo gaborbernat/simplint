@@ -7,13 +7,10 @@ use super::reach::starred_by_importer;
 use super::resolve::{ClassBase, ClassKey, ModuleFacts};
 use crate::project::facts::ImportBinding;
 
-// A file and a name of it, as `Reexports::home` walks the imports that re-export a class.
 type Node<'n> = (FileId, &'n str);
 
-// The file and name each import binds, by the importing file and the name it binds.
 type Bound<'b> = FxHashMap<FileId, FxHashMap<&'b str, Vec<(FileId, &'b str)>>>;
 
-// The imports of a run, built once, and the files each file star-imports.
 pub(super) struct Reexports<'b> {
     bound: Bound<'b>,
     pub(super) starred: FxHashMap<FileId, Vec<FileId>>,
@@ -40,9 +37,7 @@ impl<'b> Reexports<'b> {
         Self { bound, starred, acyclic }
     }
 
-    // The class a name of a file is, following the imports that re-export it from the file that defines it. `is_class`
-    // tells the classes of the run apart from the names they bind. The memo is kept per closure, since two predicates
-    // can answer the same name differently.
+    // The memo is kept per closure, since two predicates can answer the same name differently.
     pub(super) fn home<'s>(
         &'s self,
         is_class: impl Fn(&ClassKey) -> bool + 's,
@@ -103,9 +98,8 @@ impl<'b> Reexports<'b> {
     }
 }
 
-// The files whose imports reach no cycle, each listed after the files it imports. The class memo covers only these: a
-// walk through a cycle skips the files on its own path, so from a file above a cycle it can reach a different class than
-// a walk started at that file would.
+// Only these files may be memoized: a walk through a cycle skips the files on its own path, so from a file above a
+// cycle it can reach a different class than a walk started at that file would.
 pub(super) fn acyclic_order(edges: impl IntoIterator<Item = (FileId, FileId)>) -> Vec<FileId> {
     let mut imports: FxHashMap<FileId, usize> = FxHashMap::default();
     let mut importers: FxHashMap<FileId, Vec<FileId>> = FxHashMap::default();
@@ -128,9 +122,6 @@ pub(super) fn acyclic_order(edges: impl IntoIterator<Item = (FileId, FileId)>) -
     order
 }
 
-// The classes of a run, each with its bases and methods. A base that resolves to a class of the run is a parent of
-// the class, and the class a child of that parent; any other base is outside the run, by the module and name it is
-// imported by.
 pub(super) struct ClassGraph<'m> {
     pub(super) classes: FxHashMap<ClassKey, (&'m [ClassBase], &'m [String])>,
     pub(super) parents: FxHashMap<ClassKey, Vec<ClassKey>>,
@@ -165,12 +156,10 @@ impl<'m> ClassGraph<'m> {
         Self { classes, parents, children, outside }
     }
 
-    // The class a name of a file is, among the classes of the run.
     pub(super) fn home<'s>(&'s self, reexports: &'s Reexports<'_>) -> impl Fn(FileId, &str) -> Option<ClassKey> + 's {
         reexports.home(|key| self.classes.contains_key(key))
     }
 
-    // The classes with a base outside the run that `is_root` accepts, and every class that derives from one of them.
     pub(super) fn descending_from(&self, is_root: impl Fn(&str, &str) -> bool) -> FxHashSet<&ClassKey> {
         let mut pending: Vec<&ClassKey> = self
             .outside

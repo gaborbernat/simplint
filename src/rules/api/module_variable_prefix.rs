@@ -33,12 +33,11 @@ pub fn module_variable_prefix(checker: &Checker) {
         } else {
             format!("`{}` is in `__all__`; name it `{expected}`", variable.name)
         };
-        let fix = rename_fix(checker, variable.name, &expected);
         checker.report_fix(
             Rule::ModuleVariablePrefix,
             variable.range,
             message,
-            fix,
+            rename_fix(checker, variable.name, &expected),
             format!("Rename `{}` to `{expected}`", variable.name),
         );
     }

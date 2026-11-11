@@ -33,21 +33,24 @@ fn documentation_is_not_public_api() {
     ]);
     assert_eq!(
         check(root.path(), &["--select", "SMP903"]).1,
-        "_lib.py:1:5: SMP903 Public function `run` has no docstring; document it for its users; `lib.py` re-exports it\n\
+        "_lib.py:1:5: SMP903 Public function `run` has no docstring; document it for its users; `lib.py` re-exports \
+        it\n\
          Found 1 error.\n"
     );
 }
 
-// A package picks its implementation in top-level `if` and `try` blocks, and re-exports whichever it picked.
 #[test]
 fn reexports_in_top_level_blocks_count() {
     let root = project(&[
         ("pyproject.toml", LIBRARY),
         (
             "pkg/__init__.py",
-            "import sys\n\ntry:\n    from ._fast import run\nexcept ImportError:\n    from ._slow import run\nelse:\n    \
-             pass\nfinally:\n    pass\nif sys.platform == \"win32\":\n    from ._windows import path\nelif sys.platform == \
-             \"linux\":\n    from ._linux import path\nelse:\n    from ._posix import path\n\n__all__ = [\"path\", \"run\"]\n",
+            "import sys\n\ntry:\n    from ._fast import run\nexcept ImportError:\n    from ._slow import \
+            run\nelse:\n    \
+             pass\nfinally:\n    pass\nif sys.platform == \"win32\":\n    from ._windows import path\nelif \
+             sys.platform == \
+             \"linux\":\n    from ._linux import path\nelse:\n    from ._posix import path\n\n__all__ = [\"path\", \
+             \"run\"]\n",
         ),
         ("pkg/_fast.py", "def run() -> None: ...\n"),
         ("pkg/_slow.py", "def run() -> None: ...\n"),
@@ -59,8 +62,8 @@ fn reexports_in_top_level_blocks_count() {
     assert_eq!(reports.lines().count(), 6, "{reports}");
 }
 
-// A public class a library re-exports from a private module passes its inherited public methods on to its users, so
-// the docstring rules judge them as the class's API.
+// A public class a library re-exports from a private module passes its inherited public methods on to its users, so the
+// docstring rules judge them as the class's API.
 #[test]
 fn inherited_methods_of_reexported_class_are_public_api() {
     let root = project(&[
@@ -83,15 +86,17 @@ fn inherited_methods_of_signature_reached_class_are_public_api() {
         ("pyproject.toml", LIBRARY),
         (
             "pkg/core.py",
-            "class _Base:\n    def run(self) -> None: ...\n\n\nclass _Config(_Base):\n    \"\"\"Config.\"\"\"\n\n\n__all__ = [\"load\"]\n\n\ndef load() -> _Config:\n    \"\"\"Load.\"\"\"\n    return _Config()\n",
+            "class _Base:\n    def run(self) -> None: ...\n\n\nclass _Config(_Base):\n    \
+            \"\"\"Config.\"\"\"\n\n\n__all__ = [\"load\"]\n\n\ndef load() -> _Config:\n    \"\"\"Load.\"\"\"\n    \
+            return _Config()\n",
         ),
     ]);
     let reports = check(root.path(), &["--select", "SMP903"]).1;
     assert_eq!(reports.matches("Public method `_Base.run`").count(), 1, "{reports}");
 }
 
-// A public module with an `__all__` offers what the list names, so a name another module imports from it without listing
-// it is not part of its API, and its docstring is not required.
+// A public module with an `__all__` offers what the list names, so a name another module imports from it without
+// listing it is not part of its API, and its docstring is not required.
 #[test]
 fn imported_name_all_omits_is_not_public_api() {
     let root = project(&[
@@ -107,8 +112,8 @@ fn imported_name_all_omits_is_not_public_api() {
     assert!(!reports.contains("`helper`"), "{reports}");
 }
 
-// A module whose `__getattr__` supplies names lazily offers what it defines, not a name it imports from a private module
-// and another file reads off it, as the re-exports of such a module are not offered either.
+// A module whose `__getattr__` supplies names lazily offers what it defines, not a name it imports from a private
+// module and another file reads off it, as the re-exports of such a module are not offered either.
 #[test]
 fn name_read_off_lazy_module_is_not_public_api() {
     let root = project(&[
@@ -117,7 +122,8 @@ fn name_read_off_lazy_module_is_not_public_api() {
         ("pkg/_compat.py", "def f() -> None: ...\n"),
         (
             "pkg/utils.py",
-            "from ._compat import f\n\n\ndef local() -> None: ...\n\n\ndef __getattr__(name: str) -> object:\n    raise AttributeError(name)\n",
+            "from ._compat import f\n\n\ndef local() -> None: ...\n\n\ndef __getattr__(name: str) -> object:\n    \
+            raise AttributeError(name)\n",
         ),
         ("pkg/testing.py", "from pkg import utils\n\nold = utils.f\n"),
     ]);
@@ -133,7 +139,8 @@ fn signature_reached_base_needs_no_docstring_but_its_inherited_methods_do() {
         ("pyproject.toml", LIBRARY),
         (
             "pkg/core.py",
-            "_StrPath = str\n\n\nclass _Base:\n    def run(self, path: _StrPath) -> None: ...\n\n\nclass Child(_Base):\n    \"\"\"Child.\"\"\"\n\n\n__all__ = [\"Child\"]\n",
+            "_StrPath = str\n\n\nclass _Base:\n    def run(self, path: _StrPath) -> None: ...\n\n\nclass \
+            Child(_Base):\n    \"\"\"Child.\"\"\"\n\n\n__all__ = [\"Child\"]\n",
         ),
     ]);
     let reports = check(root.path(), &["--select", "SMP903"]).1;
@@ -156,15 +163,16 @@ fn standard_input_module_has_the_api_of_its_file() {
     assert!(stdout.contains("`public`") && !stdout.contains("`_private`"), "{stdout}");
 }
 
-// A standard-input module that a library exposes keeps its public functions' default, since outside code may leave it out,
-// and a helper it does not expose is still judged.
+// A standard-input module that a library exposes keeps its public functions' default, since outside code may leave it
+// out, and a helper it does not expose is still judged.
 #[test]
 fn standard_input_module_keeps_the_defaults_of_its_public_api() {
     let root = project(&[("pyproject.toml", LIBRARY), ("pkg/__init__.py", "")]);
     let stdout = check_with_stdin(
         root.path(),
         &["--select", "SMP506", "--stdin-filename", "pkg/core.py", "-"],
-        "def connect(host, timeout=30):\n    return host, timeout\n\n\ndef _helper(host, timeout=30):\n    return host, timeout\n\n\nconnect(\"a\", 1)\n_helper(\"a\", 1)\n",
+        "def connect(host, timeout=30):\n    return host, timeout\n\n\ndef _helper(host, timeout=30):\n    return \
+        host, timeout\n\n\nconnect(\"a\", 1)\n_helper(\"a\", 1)\n",
     )
     .1;
     assert_eq!(stdout.matches("Every call to").count(), 1, "{stdout}");
@@ -179,7 +187,8 @@ fn standard_input_fix_keeps_the_docstring_of_public_api() {
     let stdout = check_with_stdin(
         root.path(),
         &["--select", "SMP901", "--fix", "--unsafe-fixes", "--stdin-filename", "pkg/core.py", "-"],
-        "def connect(host: str) -> str:\n    \"\"\"Connect to the host.\"\"\"\n    return host\n\n\ndef _inner(host: str) -> str:\n    \"\"\"Inner.\"\"\"\n    return host\n",
+        "def connect(host: str) -> str:\n    \"\"\"Connect to the host.\"\"\"\n    return host\n\n\ndef _inner(host: \
+        str) -> str:\n    \"\"\"Inner.\"\"\"\n    return host\n",
     )
     .1;
     assert!(stdout.contains("\"\"\"Connect to the host.\"\"\""), "{stdout}");
@@ -190,7 +199,8 @@ fn standard_input_fix_keeps_the_docstring_of_public_api() {
 // behaves the same as when the module itself exposes it.
 #[test]
 fn signature_reach_is_the_same_through_a_reexport() {
-    let child = "class _Base:\n    def run(self) -> None: ...\n\n\nclass Child(_Base):\n    \"\"\"Child.\"\"\"\n\n\n__all__ = [\"Child\"]\n";
+    let child = "class _Base:\n    def run(self) -> None: ...\n\n\nclass Child(_Base):\n    \
+    \"\"\"Child.\"\"\"\n\n\n__all__ = [\"Child\"]\n";
     let direct = project(&[("pyproject.toml", LIBRARY), ("pkg/core.py", child)]);
     let reexported = project(&[
         ("pyproject.toml", LIBRARY),
@@ -203,12 +213,13 @@ fn signature_reach_is_the_same_through_a_reexport() {
     assert_eq!(reexported_reports.matches("Public method `_Base.run`").count(), 1, "{reexported_reports}");
 }
 
-// A public signature reaches a class that is not listed in `__all__`, and the library's users get the
-// base class of a dataclass it returns, so the dataclass keeps its options in both layouts.
+// A public signature reaches a class that is not listed in `__all__`, and the library's users get the base class of a
+// dataclass it returns, so the dataclass keeps its options in both layouts.
 #[test_case(false ; "defined_in_public_module")]
 #[test_case(true ; "re-exported_from_private_module")]
 fn signature_reached_dataclass_base_keeps_its_options_in_both_layouts(reexported: bool) {
-    let core = "from dataclasses import dataclass\n\n\n@dataclass\nclass Base:\n    x: int\n\n\nclass Child(Base):\n    \"\"\"Child.\"\"\"\n\n\n@dataclass\nclass Hidden:\n    x: int\n\n\n__all__ = [\"Child\"]\n";
+    let core = "from dataclasses import dataclass\n\n\n@dataclass\nclass Base:\n    x: int\n\n\nclass \
+    Child(Base):\n    \"\"\"Child.\"\"\"\n\n\n@dataclass\nclass Hidden:\n    x: int\n\n\n__all__ = [\"Child\"]\n";
     let files: Vec<(&str, &str)> = if reexported {
         vec![
             ("pyproject.toml", "[tool.simplint]\nproject-kind = \"library\"\n"),
@@ -240,11 +251,16 @@ fn excluded_init_module_still_reexports() {
 }
 
 // A module read from standard input has no index, so its own `__all__` tells what it offers. Ruff's D103 reports the
-// undocumented `run` of such a module, so SMP903 leaves it to Ruff.
-#[test]
-fn standard_input_reads_its_own_exports() {
+// undocumented `run` of such a module, so SMP903 leaves it to Ruff while Ruff runs it.
+#[test_case("\"D103\"", common::PASSED ; "left_to_d103")]
+#[test_case(
+    "",
+    "pkg/mod.py:1:5: SMP903 Public function `run` has no docstring; document it for its users\nFound 1 error.\n" ;
+    "reported_without_d103"
+)]
+fn standard_input_reads_its_own_exports(select: &str, expected: &str) {
     let root = project(&[
-        ("pyproject.toml", &format!("{LIBRARY}[tool.ruff.lint]\nselect = [\"D103\"]\n")),
+        ("pyproject.toml", &format!("{LIBRARY}[tool.ruff.lint]\nselect = [{select}]\n")),
         ("pkg/__init__.py", ""),
     ]);
     let stdout = check_with_stdin(
@@ -253,7 +269,7 @@ fn standard_input_reads_its_own_exports() {
         "def run() -> None: ...\n\n\ndef helper() -> None: ...\n\n\n__all__ = [\"run\"]\n",
     )
     .1;
-    assert_eq!(stdout, common::PASSED);
+    assert_eq!(stdout, common::native(expected));
 }
 
 // A class a listed function returns is library API, so its docstring and its method's docstring stay when SMP901's
@@ -264,7 +280,9 @@ fn signature_reached_class_keeps_its_docstrings() {
         ("pyproject.toml", LIBRARY),
         (
             "pkg/core.py",
-            "class Config:\n    def describe(self) -> str:\n        \"\"\"Describe the settings.\"\"\"\n        return \"config\"\n\n\ndef load() -> Config:\n    \"\"\"Load.\"\"\"\n    return Config()\n\n\ndef _helper() -> None:\n    \"\"\"Internal.\"\"\"\n\n\n__all__ = [\"load\"]\n",
+            "class Config:\n    def describe(self) -> str:\n        \"\"\"Describe the settings.\"\"\"\n        return \
+            \"config\"\n\n\ndef load() -> Config:\n    \"\"\"Load.\"\"\"\n    return Config()\n\n\ndef _helper() -> \
+            None:\n    \"\"\"Internal.\"\"\"\n\n\n__all__ = [\"load\"]\n",
         ),
     ]);
     common::fix_unsafe(root.path(), "SMP901");

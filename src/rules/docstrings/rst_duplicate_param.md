@@ -4,8 +4,7 @@ docstring. Sphinx shows the class docstring by default, so the two copies drift 
 ## Why is this bad?
 
 [autodoc](https://www.sphinx-doc.org/en/master/usage/extensions/autodoc.html#confval-autoclass_content) shows the class
-docstring by default, so the copy in `__init__` is read by those who open the source only, and the two drift apart as
-each is edited on its own.
+docstring by default, so the copy in `__init__` is read only by those who open the source.
 
 ## Example
 

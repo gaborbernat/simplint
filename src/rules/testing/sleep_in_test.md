@@ -65,13 +65,7 @@ def test_worker_finishes():
 
 - **`await asyncio.sleep` as the whole body of a `while`**: Ruff's
   [async-busy-wait](https://docs.astral.sh/ruff/rules/async-busy-wait/) (ASYNC110) reports a loop that waits on a sleep
-  this way, so this rule leaves that sleep to Ruff while the project's Ruff configuration selects it. Ruff's own
-  suppressions of it, through `per-file-ignores` or `noqa`, are respected too.
-
-  ```toml config
-  [tool.ruff.lint]
-  select = ["ASYNC110"]
-  ```
+  this way, so this rule leaves that sleep to Ruff.
 
   ```python ok file=test_busy.py
   import asyncio

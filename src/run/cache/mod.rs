@@ -1,9 +1,9 @@
 // Ruff's cache, adapted from the `ruff` crate's `cache.rs`: one file per package, keyed by the package root, remembers
-// per file, by its modification time, permissions and size, that it had nothing to report, so a later run skips it. Without
-// fixes, a file with reports keeps them too. simplint also keeps each file's import facts, so the project index does
-// not parse unchanged files, and a clean result counts only while the file's settings and its slice of the project
+// per file, by its modification time, permissions and size, that it had nothing to report, so a later run skips it.
+// Without fixes, a file with reports keeps them too. simplint also keeps each file's import facts, so the project index
+// does not parse unchanged files, and a clean result counts only while the file's settings and its slice of the project
 // index are what they were. With fixes on, a file the fix loop left as it was keeps the rules whose fixes the loop
-// withdrew, so a later run reproduces its reports from one lint. The files live where `project::cache` places them.
+// withdrew, so a later run reproduces its reports from one lint.
 mod fingerprint;
 mod rendered;
 mod report;
@@ -28,7 +28,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::fix::Withdrawn;
 use crate::project::cache::{FileKey, MAX_LAST_SEEN, build_directory, read_aligned, tempfile_in, write_atomically};
 use crate::project::{Ending, FileFacts};
-use crate::run::{Diagnostics, Linting};
+use crate::run::{Diagnostics, Linting, warn_unparsed};
 
 use self::fingerprint::Fingerprint;
 use self::rendered::{Rendered, RenderedPackage, read_rendered, text};
@@ -41,7 +41,6 @@ pub(crate) use rendered::{DisplayKey, FullDisplay};
 // bytes are read up front and checked once by `views`, a package per thread, and read in place.
 pub(super) struct Caches(FxHashMap<PathBuf, Stored>);
 
-// A package's cache file as read, with the root it is kept for.
 struct Stored {
     path: PathBuf,
     bytes: Option<AlignedVec<16>>,
@@ -110,14 +109,14 @@ impl<'a> Cache<'a> {
                 .ok()
                 .filter(|archived| Path::new(archived.package_root.as_str()) == package_root)
         });
-        let now = SystemTime::UNIX_EPOCH.elapsed().map_or(0, |elapsed| elapsed.as_millis());
         Self {
             path: stored.path.clone(),
             package_root,
             archived,
             seen: Mutex::new(FxHashSet::default()),
             changes: Mutex::new(Vec::new()),
-            now: u64::try_from(now).unwrap_or(u64::MAX),
+            now: u64::try_from(SystemTime::UNIX_EPOCH.elapsed().map_or(0, |elapsed| elapsed.as_millis()))
+                .unwrap_or(u64::MAX),
             run,
             rendered: OnceLock::new(),
             rendered_path: stored.rendered.clone(),
@@ -168,7 +167,7 @@ impl<'a> Cache<'a> {
             && file.clean.as_ref().is_some_and(|clean| clean.to_native() == fingerprint.clean)
         {
             relabel(file);
-            return Diagnostics::default();
+            return clean_result(file, path);
         }
         if fingerprint.settled.is_none()
             && let Some(file) = file
@@ -184,18 +183,17 @@ impl<'a> Cache<'a> {
             .filter(|settled| fingerprint.settled == Some(settled.fingerprint.to_native()))
             .map(withdrawn);
         let fresh = known.is_none();
-        let Linting { mut diagnostics, settled, noqa_rows, cacheable } = lint(known);
+        let Linting { mut diagnostics, settled, noqa_rows, cacheable, unparsed } = lint(known);
         if !cacheable {
             return diagnostics;
         }
         // Text is kept only for a file the cache already held reports for, so a first run that has nothing to reuse
         // renders the output as it did before, and the next run reuses the text.
-        let held = file.is_some_and(|file| file.findings.is_some());
         let rendered = full
-            .filter(|_| held && !diagnostics.inner.is_empty())
+            .filter(|_| file.is_some_and(|file| file.findings.is_some()) && !diagnostics.inner.is_empty())
             .map(|full| text(full, &path.to_string_lossy(), &mut diagnostics, key.hash, fingerprint.clean));
         if diagnostics.inner.is_empty() && diagnostics.fixed.is_empty() {
-            self.update(path, key, ChangeData::Clean(fingerprint.clean, index));
+            self.update(path, key, ChangeData::Clean(fingerprint.clean, index, unparsed));
         } else if let (true, Some(fingerprint), Some(withdrawn)) = (fresh, fingerprint.settled, settled) {
             self.update(path, key, ChangeData::Settled(fingerprint, withdrawn));
         } else if fingerprint.settled.is_none()
@@ -224,12 +222,11 @@ impl<'a> Cache<'a> {
             return None;
         }
         if file.clean.is_some() {
-            return Some(Diagnostics::default());
+            return Some(clean_result(file, path));
         }
         self.stored_findings(path, key, file.findings.as_ref()?, full)
     }
 
-    // The diagnostics of a file's stored reports, with the `full` text the run shows, when the reports still read back.
     fn stored_findings(
         &self,
         path: &Path,
@@ -272,18 +269,12 @@ impl<'a> Cache<'a> {
         self.rendered.get_or_init(|| read_rendered(&self.rendered_path))
     }
 
-    // Keeps the `full` text a run rendered for a file, which the package holds once the run writes its cache.
     fn store_text(&self, path: &Path, rendered: Rendered) {
         if let Some(relative) = self.relative(path) {
             recorded(&self.texts).push((relative.to_owned(), rendered));
         }
     }
 
-    fn relative<'b>(&self, path: &'b Path) -> Option<&'b str> {
-        path.strip_prefix(self.package_root).ok()?.to_str()
-    }
-
-    // The archived entry of a file whose key matches, which is then remembered as seen.
     fn get(&self, path: &Path, key: FileKey) -> Option<&'a ArchivedFileCache> {
         let relative = self.relative(path)?;
         let file = self.archived?.files.get(relative)?;
@@ -299,6 +290,10 @@ impl<'a> Cache<'a> {
             let change = Change { path: relative.to_owned(), key: key.hash, data };
             recorded(&self.changes).push(change);
         }
+    }
+
+    fn relative<'b>(&self, path: &'b Path) -> Option<&'b str> {
+        path.strip_prefix(self.package_root).ok()?.to_str()
     }
 
     // Ruff's `persist`: files not seen for 30 days are dropped, and the cache goes to a temporary file renamed over the
@@ -341,8 +336,9 @@ impl<'a> Cache<'a> {
                 .or_insert_with(|| FileCache::new(key, now));
             match data {
                 ChangeData::Facts(facts) => file.facts = Some(facts),
-                ChangeData::Clean(fingerprint, index) => {
+                ChangeData::Clean(fingerprint, index, unparsed) => {
                     file.clean = Some(fingerprint);
+                    file.unparsed = unparsed;
                     file.findings = None;
                     file.index = Some(index);
                 }
@@ -387,6 +383,15 @@ impl<'a> Cache<'a> {
     }
 }
 
+// The result of a file whose clean fingerprint matches: nothing to report, and for a file that does not parse, its
+// warning again.
+fn clean_result(file: &ArchivedFileCache, path: &Path) -> Diagnostics {
+    if file.unparsed {
+        warn_unparsed(path);
+    }
+    Diagnostics::default()
+}
+
 fn recorded<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().expect("no worker panics while recording")
 }
@@ -424,10 +429,11 @@ struct FileCache {
     // The file's `FileFacts`, archived on their own: writing the cache reads back every file it keeps, and bytes copy
     // where the facts' strings and lists would each be rebuilt.
     facts: Option<Vec<u8>>,
-    // The fingerprint the file last linted clean under.
+    // The fingerprint the file last linted clean under. A file that does not parse also lints clean, and `unparsed`
+    // marks it, since its warning shows on every run.
     clean: Option<u64>,
+    unparsed: bool,
     settled: Option<Settled>,
-    // The reports the file last had without fixes, under their fingerprint.
     findings: Option<Findings>,
     // The index and base settings the clean result or the reports were stored under.
     index: Option<IndexKey>,
@@ -440,6 +446,7 @@ impl FileCache {
             last_seen: AtomicU64::new(now),
             facts: None,
             clean: None,
+            unparsed: false,
             settled: None,
             findings: None,
             index: None,
@@ -447,7 +454,6 @@ impl FileCache {
     }
 }
 
-// The digest of the import index a result was computed under, and the file's settings without its index slice.
 #[derive(Clone, Copy, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 struct IndexKey {
     run: u64,
@@ -468,7 +474,7 @@ struct Change {
 
 enum ChangeData {
     Facts(Vec<u8>),
-    Clean(u64, IndexKey),
+    Clean(u64, IndexKey, bool),
     Findings(u64, Vec<Report>, IndexKey),
     Settled(u64, Withdrawn),
     Index(IndexKey),

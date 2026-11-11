@@ -1,9 +1,15 @@
 mod common;
 
 use std::fs;
+use std::io::{BufRead, BufReader};
+use std::path::Path;
+use std::process;
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::time::{Duration, Instant};
 
-use common::{SINGLE_X, Watched, project};
 use test_case::test_case;
+
+use common::{SINGLE_X, command, project};
 
 #[test]
 fn check_watch_reruns_on_changes() {
@@ -80,8 +86,75 @@ fn check_watch_ignores_unrelated_changes() {
 fn check_watch_quiet_prints_only_diagnostics() {
     let root = project(&[("module.py", "x = 1\n")]);
     let mut watched = Watched::start(root.path(), &["--quiet"]);
-    // The screen is cleared before each check, by escape codes or, on Windows without a console, a form feed.
-    let clear = if cfg!(windows) { "\u{c}" } else { "\u{1b}[H\u{1b}[2J\u{1b}[3J" };
     let first = watched.wait_for("SMP101");
-    assert_eq!((first, watched.stop(root.path()).0), (format!("{clear}module.py:1:1: {SINGLE_X}"), Some(2)));
+    assert_eq!((first, watched.stop(root.path()).0), (format!("{}module.py:1:1: {SINGLE_X}", clear_screen()), Some(2)));
+}
+
+// A `--watch` run, read line by line; a run that misses an expected line within the deadline is killed.
+struct Watched {
+    child: process::Child,
+    lines: mpsc::Receiver<String>,
+}
+
+impl Watched {
+    fn start(root: &Path, flags: &[&str]) -> Self {
+        let mut child = command(root)
+            .args(["check", "--watch", "--output-format", "concise", "--select", "SMP101"])
+            .args(flags)
+            .stdout(process::Stdio::piped())
+            .stderr(process::Stdio::piped())
+            .spawn()
+            .expect("spawns");
+        let (sender, lines) = mpsc::channel();
+        let stdout = BufReader::new(child.stdout.take().expect("piped stdout"));
+        std::thread::spawn(move || stdout.lines().map_while(Result::ok).try_for_each(|line| sender.send(line)));
+        Self { child, lines }
+    }
+
+    fn wait_for(&mut self, needle: &str) -> String {
+        loop {
+            match self.lines.recv_timeout(Duration::from_secs(60)) {
+                Ok(line) if line.contains(needle) => return line,
+                Ok(_) => {}
+                Err(error) => {
+                    self.child.kill().ok();
+                    panic!("no `{needle}` in the watch output: {error}");
+                }
+            }
+        }
+    }
+
+    // Watch mode runs until a check cannot run, so a configuration simplint cannot read ends it.
+    fn stop(mut self, root: &Path) -> (Option<i32>, String) {
+        fs::write(root.join("pyproject.toml"), "[tool.simplint\n").expect("write configuration");
+        self.drain();
+        let output = self.child.wait_with_output().expect("exits");
+        (output.status.code(), String::from_utf8(output.stderr).expect("utf-8 stderr"))
+    }
+
+    // The output closes when the run ends, so a run still going at the deadline missed the event that should end it.
+    fn drain(&mut self) -> Vec<String> {
+        let deadline = Instant::now() + Duration::from_secs(60);
+        let mut rest = Vec::new();
+        loop {
+            match self.lines.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+                Ok(line) => rest.push(line),
+                Err(RecvTimeoutError::Disconnected) => return rest,
+                Err(RecvTimeoutError::Timeout) => {
+                    self.child.kill().ok();
+                    panic!("the watch run did not end");
+                }
+            }
+        }
+    }
+
+    fn finish(mut self) -> (Option<i32>, Vec<String>) {
+        let rest = self.drain();
+        (self.child.wait_with_output().expect("exits").status.code(), rest)
+    }
+}
+
+// The screen is cleared before each check, by escape codes or, on Windows without a console, a form feed.
+fn clear_screen() -> &'static str {
+    if cfg!(windows) { "\u{c}" } else { "\u{1b}[H\u{1b}[2J\u{1b}[3J" }
 }

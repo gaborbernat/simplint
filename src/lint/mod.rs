@@ -28,7 +28,6 @@ use crate::settings::FileSettings;
 pub struct Linter<'a> {
     pub settings: FileSettings<'a>,
     pub project: FileIndex<'a>,
-    // Where the file sits in its package, such as `["package", "module"]`; `None` outside a package.
     pub module_path: Option<Vec<String>>,
     pub ruff: RuffFile<'a>,
     // Whether the file's directory holds an `__init__.py`, when a rule reads it; the run checks only then.
@@ -57,13 +56,10 @@ impl<'a> Linter<'a> {
         Self { settings, project, module_path, ruff: RuffFile::new(&ruff.linter, package), sibling_init }
     }
 
-    // Like Ruff, a file that does not parse reports its syntax errors; the rules, which need a valid tree, skip it.
+    // The syntax errors of a file that does not parse come back for the fix loop, which reads them to catch a fix that
+    // breaks the syntax; a run leaves them out, as Ruff reports them.
     pub fn lint(&self, path: &Path, source: &str, noqa: flags::Noqa) -> Lint {
         self.lint_inner(path, source, noqa, noqa.is_enabled())
-    }
-
-    pub(crate) fn lint_without_unused_ignore(&self, path: &Path, source: &str) -> Lint {
-        self.lint_inner(path, source, flags::Noqa::Enabled, false)
     }
 
     fn lint_inner(&self, path: &Path, source: &str, noqa: flags::Noqa, include_unused_ignore: bool) -> Lint {
@@ -83,23 +79,7 @@ impl<'a> Linter<'a> {
         }
     }
 
-    // Ruff's `add_suppressions_to_path`: a comment for each report no comment suppresses yet. A file that does not parse
-    // has no reports to suppress. Returns the number of lines changed and the new source.
-    pub fn add_suppressions(
-        &self,
-        path: &Path,
-        source: &str,
-        kind: SuppressionKind,
-        reason: Option<&str>,
-    ) -> (usize, String) {
-        let (_, outcome) = self.check(path, source, false, |diagnostics, suppressions| {
-            suppressions.add(&suppressions.pending(diagnostics), kind, reason)
-        });
-        outcome.unwrap_or_else(|_| (0, source.to_owned()))
-    }
-
-    // Hands the rules' reports over a file that parses, with its suppression comments, to `then`; a file that does not
-    // parse gives its syntax errors instead. The syntax errors of the target version come from the same parse.
+    // The syntax errors of the target version come from the same parse.
     fn check<T>(
         &self,
         path: &Path,
@@ -128,9 +108,27 @@ impl<'a> Linter<'a> {
             .run(include_unused_ignore.then_some(&suppressions));
         (unsupported, Ok(then(diagnostics, &suppressions)))
     }
+
+    pub(crate) fn lint_without_unused_ignore(&self, path: &Path, source: &str) -> Lint {
+        self.lint_inner(path, source, flags::Noqa::Enabled, false)
+    }
+
+    // Ruff's `add_suppressions_to_path`: a comment for each report no comment suppresses yet. A file that does not
+    // parse has no reports to suppress.
+    pub fn add_suppressions(
+        &self,
+        path: &Path,
+        source: &str,
+        kind: SuppressionKind,
+        reason: Option<&str>,
+    ) -> (usize, String) {
+        let (_, outcome) = self.check(path, source, false, |diagnostics, suppressions| {
+            suppressions.add(&suppressions.pending(diagnostics), kind, reason)
+        });
+        outcome.unwrap_or_else(|_| (0, source.to_owned()))
+    }
 }
 
-// A path as reports name it: relative to the working directory when it lies below it.
 pub(crate) fn relative_path(path: &Path) -> String {
     let relative = std::env::current_dir().ok().and_then(|cwd| path.strip_prefix(cwd).ok());
     relative.unwrap_or(path).display().to_string()

@@ -25,8 +25,6 @@ fn is_underline(line: &str) -> bool {
     trimmed.len() >= 3 && trimmed.chars().all(|char| matches!(char, '-' | '=' | '~' | '^' | '*' | '+' | '#' | '_'))
 }
 
-// Drops the reST fields and the sections that document the signature, with their bodies, and the blank lines that
-// would be left separating nothing.
 pub(super) fn drop_fields(lines: &[String]) -> Vec<String> {
     let mut kept: Vec<String> = Vec::new();
     let mut index = 0;
@@ -47,7 +45,6 @@ pub(super) fn drop_fields(lines: &[String]) -> Vec<String> {
     kept
 }
 
-// The index after the field or section starting at `start`, when it starts one.
 fn field_block_end(lines: &[String], start: usize) -> Option<usize> {
     let line = &lines[start];
     let trimmed = line.trim();
@@ -74,7 +71,6 @@ fn field_block_end(lines: &[String], start: usize) -> Option<usize> {
     Some(start + 1 + body)
 }
 
-// The index after the last line indented past `lead` that follows `start`, blank lines in between included.
 fn indented_end(lines: &[String], start: usize, lead: usize) -> usize {
     let mut end = start + 1;
     for (offset, line) in lines[start + 1..].iter().enumerate() {
@@ -108,16 +104,7 @@ pub(super) fn comment_lines(lines: &[String], room: usize) -> Vec<String> {
     comments
 }
 
-// A line at the same indentation starting in lowercase goes on with a sentence; one opening with a field name such as
-// `name:` or `name (int):` starts an item of its own.
-fn continues(line: &str, lead: &str) -> bool {
-    line.strip_prefix(lead).is_some_and(|text| {
-        text.starts_with(char::is_lowercase) && !text.split_whitespace().take(2).any(|word| word.ends_with(':'))
-    })
-}
-
-// Splits a line too long for `room` at spaces, keeping its indentation on each part; a word longer than `room`, such as
-// a URL, keeps a line of its own.
+// A word longer than `room`, such as a URL, keeps a line of its own.
 fn wrapped(line: &str, room: usize) -> Vec<String> {
     if line.chars().count() <= room {
         return vec![line.to_owned()];
@@ -139,4 +126,12 @@ fn wrapped(line: &str, room: usize) -> Vec<String> {
     }
     parts.push(current);
     parts
+}
+
+// A line at the same indentation starting in lowercase goes on with a sentence; one opening with a field name such as
+// `name:` or `name (int):` starts an item of its own.
+fn continues(line: &str, lead: &str) -> bool {
+    line.strip_prefix(lead).is_some_and(|text| {
+        text.starts_with(char::is_lowercase) && !text.split_whitespace().take(2).any(|word| word.ends_with(':'))
+    })
 }

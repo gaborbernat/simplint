@@ -5,8 +5,13 @@ use test_case::test_case;
 // A module loaded by a string-named import call is the module the names read off its result belong to, whether the
 // call's result is read directly or through a variable it is assigned to.
 #[test_case(
-    "import importlib\n\n\ndef test_app() -> None:\n    assert importlib.import_module(\"docs.tutorial\").client\n" ;
-    "import_module"
+    concat!(
+        "import importlib\n",
+        "\n",
+        "\n",
+        "def test_app() -> None:\n",
+        "    assert importlib.import_module(\"docs.tutorial\").client\n"
+    ) ; "import_module"
 )]
 #[test_case("def test_app() -> None:\n    assert __import__(\"docs.tutorial\").tutorial.client\n" ; "dunder_import")]
 #[test_case(
@@ -18,8 +23,14 @@ use test_case::test_case;
     "importorskip"
 )]
 #[test_case(
-    "import pytest\n\n\ndef test_app() -> None:\n    mod = pytest.importorskip(\"docs.tutorial\")\n    assert mod.client\n" ;
-    "importorskip_variable"
+    concat!(
+        "import pytest\n",
+        "\n",
+        "\n",
+        "def test_app() -> None:\n",
+        "    mod = pytest.importorskip(\"docs.tutorial\")\n",
+        "    assert mod.client\n"
+    ) ; "importorskip_variable"
 )]
 fn attributes_of_statically_named_dynamic_imports_keep_their_names(test: &str) {
     let root = project(&[
@@ -30,7 +41,8 @@ fn attributes_of_statically_named_dynamic_imports_keep_their_names(test: &str) {
     assert_eq!(
         check(root.path(), &["--select", "SMP404"]).1,
         common::native(
-            "docs/tutorial.py:2:1: SMP404 `engine` is not in `__all__`; name it `_engine`\nFound 1 error.\n1 unsafe fix \
+            "docs/tutorial.py:2:1: SMP404 `engine` is not in `__all__`; name it `_engine`\nFound 1 error.\n1 unsafe \
+            fix \
              available with `--fix --unsafe-fixes`.\n"
         )
     );
@@ -45,20 +57,21 @@ fn variable_rebound_to_another_value_reads_names_of_any_module() {
         ("docs/tutorial.py", "client = object()\nengine = object()\n"),
         (
             "tests/test_docs.py",
-            "import pytest\n\n\ndef test_app(other) -> None:\n    mod = pytest.importorskip(\"docs.tutorial\")\n    mod = \
+            "import pytest\n\n\ndef test_app(other) -> None:\n    mod = pytest.importorskip(\"docs.tutorial\")\n    \
+            mod = \
              other\n    assert mod.client\n",
         ),
     ]);
     assert_eq!(
         check(root.path(), &["--select", "SMP404"]).1,
         common::native(
-            "docs/tutorial.py:2:1: SMP404 `engine` is not in `__all__`; name it `_engine`\nFound 1 error.\n1 unsafe fix \
+            "docs/tutorial.py:2:1: SMP404 `engine` is not in `__all__`; name it `_engine`\nFound 1 error.\n1 unsafe \
+            fix \
              available with `--fix --unsafe-fixes`.\n"
         )
     );
 }
 
-// Two tests each load a module into the same variable, and each reads a name of its module, so both names are read.
 #[test]
 fn variable_reused_for_each_loaded_module_reads_each_module() {
     let root = project(&[
@@ -67,12 +80,30 @@ fn variable_reused_for_each_loaded_module_reads_each_module() {
         ("docs/other.py", "engine = object()\n"),
         (
             "tests/test_docs.py",
-            "import pytest\n\n\ndef test_client() -> None:\n    mod = pytest.importorskip(\"docs.tutorial\")\n    assert \
+            "import pytest\n\n\ndef test_client() -> None:\n    mod = pytest.importorskip(\"docs.tutorial\")\n    \
+            assert \
              mod.client\n\n\ndef test_engine() -> None:\n    mod = pytest.importorskip(\"docs.other\")\n    assert \
              mod.engine\n",
         ),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP404"]).1, common::PASSED);
+    let unread = project(&[
+        ("docs/__init__.py", ""),
+        ("docs/tutorial.py", "client = object()\n"),
+        ("docs/other.py", "engine = object()\n"),
+        (
+            "tests/test_docs.py",
+            concat!(
+                "import pytest\n",
+                "\n",
+                "\n",
+                "def test_engine() -> None:\n",
+                "    mod = pytest.importorskip(\"docs.other\")\n",
+                "    assert mod.engine\n"
+            ),
+        ),
+    ]);
+    assert!(check(unread.path(), &["--select", "SMP404"]).1.contains("`client`"));
 }
 
 // `__import__` returns the top package of a dotted name, so the names read off its result are the package's, and a
@@ -87,7 +118,8 @@ fn dunder_import_reads_names_of_the_top_package() {
     assert_eq!(
         check(root.path(), &["--select", "SMP404"]).1,
         common::native(
-            "docs/tutorial.py:1:1: SMP404 `client` is not in `__all__`; name it `_client`\ndocs/tutorial.py:2:1: SMP404 \
+            "docs/tutorial.py:1:1: SMP404 `client` is not in `__all__`; name it `_client`\ndocs/tutorial.py:2:1: \
+            SMP404 \
              `engine` is not in `__all__`; name it `_engine`\nFound 2 errors.\n2 unsafe fixes available with `--fix \
              --unsafe-fixes`.\n"
         )
@@ -105,7 +137,8 @@ fn names_bound_to_a_module_in_one_function_do_not_clash_with_another() {
         ("pkg/other.py", "__all__: list[str] = []\n\nengine = object()\n"),
         (
             "tests/test_cli.py",
-            "import pytest\n\n\ndef test_one() -> None:\n    m = pytest.importorskip(\"pkg.cli\")\n    assert m.client\n\n\n\
+            "import pytest\n\n\ndef test_one() -> None:\n    m = pytest.importorskip(\"pkg.cli\")\n    assert \
+            m.client\n\n\n\
              def test_two() -> None:\n    m = object()\n    assert m.engine\n",
         ),
     ]);
@@ -127,7 +160,8 @@ fn local_named_like_a_module_variable_reads_no_module() {
         ("scripts/run.py", "import sys\n\nif __name__ == \"__main__\":\n    url = sys.argv[1]\n    print(url)\n"),
         (
             "tests/test_proxy.py",
-            "import pytest\n\nproxy = pytest.importorskip(\"proxy\")\n\n\ndef test_one(make_proxy) -> None:\n    proxy = \
+            "import pytest\n\nproxy = pytest.importorskip(\"proxy\")\n\n\ndef test_one(make_proxy) -> None:\n    proxy \
+            = \
              make_proxy()\n    assert proxy.url\n",
         ),
     ]);
@@ -137,7 +171,12 @@ fn local_named_like_a_module_variable_reads_no_module() {
 // A name a function binds to several modules reads the names of each of them, and of no other module. Binding it to a
 // value that is no module too keeps those reads.
 #[test_case(
-    "    m = pytest.importorskip(\"pkg.cli\")\n    assert m.client\n    m = pytest.importorskip(\"pkg.other\")\n    assert m.engine\n",
+    concat!(
+        "    m = pytest.importorskip(\"pkg.cli\")\n",
+        "    assert m.client\n",
+        "    m = pytest.importorskip(\"pkg.other\")\n",
+        "    assert m.engine\n"
+    ),
     false ; "several_modules"
 )]
 #[test_case(
@@ -169,7 +208,8 @@ fn attribute_of_an_import_call_result_is_no_module() {
         ("pkg/other.py", "__all__: list[str] = []\n\nengine = object()\n"),
         (
             "tests/test_cli.py",
-            "import importlib\n\n\ndef test_one() -> None:\n    app = importlib.import_module(\"pkg.cli\").client\n    assert \
+            "import importlib\n\n\ndef test_one() -> None:\n    app = importlib.import_module(\"pkg.cli\").client\n    \
+            assert \
              app\n\n\ndef test_two() -> None:\n    app = object()\n    assert app.engine\n",
         ),
     ]);
@@ -183,14 +223,23 @@ fn attribute_of_an_import_call_result_is_no_module() {
 }
 
 // `__import__` returns the package a dotted name starts with, unless its `fromlist` names something: an empty or absent
-// one, given by keyword or by position, names nothing, while a non-empty literal, or one that may hold names, returns the
-// module itself.
+// one, given by keyword or by position, names nothing, while a non-empty literal, or one that may hold names, returns
+// the module itself.
 #[test_case(
-    "__import__(\"pkg.sub\", globals(), locals(), [], 0)", "pkg/sub.py:3:1: SMP404 `helper`", "pkg/__init__.py:3:1" ;
-    "positional_empty_list"
+    "__import__(\"pkg.sub\", globals(), locals(), [], 0)",
+    "pkg/sub.py:3:1: SMP404 `helper`",
+    "pkg/__init__.py:3:1" ; "positional_empty_list"
 )]
-#[test_case("__import__(\"pkg.sub\", fromlist=())", "pkg/sub.py:3:1: SMP404 `helper`", "pkg/__init__.py:3:1" ; "empty_tuple")]
-#[test_case("__import__(\"pkg.sub\", fromlist=None)", "pkg/sub.py:3:1: SMP404 `helper`", "pkg/__init__.py:3:1" ; "none")]
+#[test_case(
+    "__import__(\"pkg.sub\", fromlist=())",
+    "pkg/sub.py:3:1: SMP404 `helper`",
+    "pkg/__init__.py:3:1" ; "empty_tuple"
+)]
+#[test_case(
+    "__import__(\"pkg.sub\", fromlist=None)",
+    "pkg/sub.py:3:1: SMP404 `helper`",
+    "pkg/__init__.py:3:1" ; "none"
+)]
 #[test_case(
     "__import__(\"pkg.sub\", fromlist=[\"x\"])", "pkg/__init__.py:3:1: SMP404 `helper`", "pkg/sub.py:3:1" ;
     "literal_names"
@@ -252,7 +301,8 @@ fn attributes_of_unresolved_spec_loaded_modules_keep_every_name(path: &str) {
     assert_eq!(
         check(root.path(), &["--select", "SMP404"]).1,
         common::native(
-            "docs/tutorial.py:2:1: SMP404 `engine` is not in `__all__`; name it `_engine`\nFound 1 error.\n1 unsafe fix \
+            "docs/tutorial.py:2:1: SMP404 `engine` is not in `__all__`; name it `_engine`\nFound 1 error.\n1 unsafe \
+            fix \
              available with `--fix --unsafe-fixes`.\n"
         )
     );
@@ -267,6 +317,12 @@ fn spec_loaded_module_read_keeps_name_listed() {
         ("tests/test_docs.py", &spec_loading_test("Path(__file__).parents[1] / \"docs\" / \"tutorial.py\"")),
     ]);
     assert_eq!(check(root.path(), &["--select", "SMP402"]).1, common::native(common::PASSED));
+    let unread = project(&[
+        ("docs/__init__.py", ""),
+        ("docs/tutorial.py", "__all__ = [\"client\"]\n\n\nclient = object()\n"),
+        ("tests/test_docs.py", "def test_app() -> None:\n    pass\n"),
+    ]);
+    assert!(check(unread.path(), &["--select", "SMP402"]).1.contains("`client` is in `__all__`"));
 }
 
 // A test module that loads `docs/tutorial.py` from `path` and reads its names off the module, once directly and once
@@ -274,40 +330,80 @@ fn spec_loaded_module_read_keeps_name_listed() {
 fn spec_loading_test(path: &str) -> String {
     format!(
         "import importlib.util\nimport os\nimport pathlib\nfrom pathlib import Path\n\n\ndef test_app() -> None:\n    \
-         spec = importlib.util.spec_from_file_location(\"tutorial\", {path})\n    assert spec is not None\n    module = \
-         importlib.util.module_from_spec(spec)\n    assert spec.loader is not None\n    spec.loader.exec_module(module)\n    \
+         spec = importlib.util.spec_from_file_location(\"tutorial\", {path})\n    assert spec is not None\n    module \
+         = \
+         importlib.util.module_from_spec(spec)\n    assert spec.loader is not None\n    \
+         spec.loader.exec_module(module)\n    \
          alias = module\n    assert alias.client\n"
     )
 }
 
 // A module `runpy` runs keeps the names a string key reads off its globals, however the call spells the module.
 #[test_case(
-    "import runpy\n\n\ndef test_app() -> None:\n    assert runpy.run_module(\"docs.tutorial\")[\"client\"]\n" ;
-    "run_module_subscript"
+    concat!(
+        "import runpy\n",
+        "\n",
+        "\n",
+        "def test_app() -> None:\n",
+        "    assert runpy.run_module(\"docs.tutorial\")[\"client\"]\n"
+    ) ; "run_module_subscript"
 )]
 #[test_case(
-    "import runpy\n\n\ndef test_app() -> None:\n    ns = runpy.run_module(\"docs.tutorial\", run_name=\"x\")\n    assert ns.get(\"client\")\n" ;
-    "run_module_get"
+    concat!(
+        "import runpy\n",
+        "\n",
+        "\n",
+        "def test_app() -> None:\n",
+        "    ns = runpy.run_module(\"docs.tutorial\", run_name=\"x\")\n",
+        "    assert ns.get(\"client\")\n"
+    ) ; "run_module_get"
 )]
 #[test_case(
-    "import runpy\nfrom pathlib import Path\n\n\ndef test_app() -> None:\n    ns = runpy.run_path(str(Path(__file__).parents[1] / \"docs\" / \"tutorial.py\"))\n    assert ns[\"client\"]\n" ;
-    "run_path_computed"
+    concat!(
+        "import runpy\n",
+        "from pathlib import Path\n",
+        "\n",
+        "\n",
+        "def test_app() -> None:\n",
+        "    ns = runpy.run_path(str(Path(__file__).parents[1] / \"docs\" / \"tutorial.py\"))\n",
+        "    assert ns[\"client\"]\n"
+    ) ; "run_path_computed"
 )]
 #[test_case(
-    "import runpy\nfrom pathlib import Path\n\n\ndef test_app() -> None:\n    assert runpy.run_path(Path(__file__).parents[1] / \"docs\" / \"tutorial.py\")[\"client\"]\n" ;
-    "run_path_static"
+    concat!(
+        "import runpy\n",
+        "from pathlib import Path\n",
+        "\n",
+        "\n",
+        "def test_app() -> None:\n",
+        "    assert runpy.run_path(Path(__file__).parents[1] / \"docs\" / \"tutorial.py\")[\"client\"]\n"
+    ) ; "run_path_static"
 )]
 #[test_case(
     "import runpy\n\n\ndef test_app(name: str) -> None:\n    assert runpy.run_module(name)[\"client\"]\n" ;
     "run_module_computed"
 )]
 #[test_case(
-    "import runpy\n\n\ndef test_app() -> None:\n    ns = runpy.run_module(\"docs.tutorial\")\n    ns = {}\n    assert ns[\"client\"]\n" ;
-    "rebound_to_dict"
+    concat!(
+        "import runpy\n",
+        "\n",
+        "\n",
+        "def test_app() -> None:\n",
+        "    ns = runpy.run_module(\"docs.tutorial\")\n",
+        "    ns = {}\n",
+        "    assert ns[\"client\"]\n"
+    ) ; "rebound_to_dict"
 )]
 #[test_case(
-    "import runpy\n\n\ndef test_app() -> None:\n    ns = runpy.run_module(\"docs.tutorial\")\n    ns = runpy.run_module(\"docs.other\")\n    assert ns[\"client\"]\n" ;
-    "rebound_to_other_globals"
+    concat!(
+        "import runpy\n",
+        "\n",
+        "\n",
+        "def test_app() -> None:\n",
+        "    ns = runpy.run_module(\"docs.tutorial\")\n",
+        "    ns = runpy.run_module(\"docs.other\")\n",
+        "    assert ns[\"client\"]\n"
+    ) ; "rebound_to_other_globals"
 )]
 fn runpy_globals_keep_names_read_by_key(test: &str) {
     let root = project(&[
@@ -318,14 +414,15 @@ fn runpy_globals_keep_names_read_by_key(test: &str) {
     assert_eq!(
         check(root.path(), &["--select", "SMP403"]).1,
         common::native(
-            "docs/tutorial.py:7:5: SMP403 `engine` is not in `__all__`; name it `_engine`\nFound 1 error.\n1 unsafe fix \
+            "docs/tutorial.py:7:5: SMP403 `engine` is not in `__all__`; name it `_engine`\nFound 1 error.\n1 unsafe \
+            fix \
              available with `--fix --unsafe-fixes`.\n"
         )
     );
 }
 
-// A computed read a run cannot resolve may read any name of a module, so the names `__all__` lists keep their place only
-// when nothing reads them.
+// A computed read a run cannot resolve may read any name of a module, so the names `__all__` lists keep their place
+// only when nothing reads them.
 #[test]
 fn computed_run_globals_read_keeps_listed_names() {
     let root = project(&[
@@ -339,7 +436,8 @@ fn computed_run_globals_read_keeps_listed_names() {
     assert_eq!(
         check(root.path(), &["--select", "SMP402"]).1,
         common::native(
-            "docs/tutorial.py:1:22: SMP402 [*] `engine` is in `__all__`, yet no other module imports it; list only what \
+            "docs/tutorial.py:1:22: SMP402 [*] `engine` is in `__all__`, yet no other module imports it; list only \
+            what \
              other modules use\nFound 1 error.\n[*] 1 fixable with `--fix`.\n"
         )
     );
@@ -347,10 +445,40 @@ fn computed_run_globals_read_keeps_listed_names() {
 
 // A test that patches a module attribute by its dotted path, or through the module object, uses the name, so `__all__`
 // keeps it.
-#[test_case("import unittest.mock\n\n\ndef test_app() -> None:\n    with unittest.mock.patch(\"docs.tutorial.client\"):\n        pass\n" ; "mock_patch_string")]
-#[test_case("def test_app(monkeypatch) -> None:\n    monkeypatch.setattr(\"docs.tutorial.client\", None)\n" ; "monkeypatch_string")]
-#[test_case("from docs import tutorial\n\n\ndef test_app(mocker) -> None:\n    mocker.patch.object(tutorial, \"client\")\n" ; "patch_object_module")]
-#[test_case("from docs import tutorial\n\n\ndef test_app(monkeypatch) -> None:\n    monkeypatch.setattr(tutorial, \"client\", None)\n" ; "setattr_module")]
+#[test_case(
+    concat!(
+        "import unittest.mock\n",
+        "\n",
+        "\n",
+        "def test_app() -> None:\n",
+        "    with unittest.mock.patch(\"docs.tutorial.client\"):\n",
+        "        pass\n"
+    ) ; "mock_patch_string"
+)]
+#[test_case(
+    concat!(
+        "def test_app(monkeypatch) -> None:\n",
+        "    monkeypatch.setattr(\"docs.tutorial.client\", None)\n"
+    ) ; "monkeypatch_string"
+)]
+#[test_case(
+    concat!(
+        "from docs import tutorial\n",
+        "\n",
+        "\n",
+        "def test_app(mocker) -> None:\n",
+        "    mocker.patch.object(tutorial, \"client\")\n"
+    ) ; "patch_object_module"
+)]
+#[test_case(
+    concat!(
+        "from docs import tutorial\n",
+        "\n",
+        "\n",
+        "def test_app(monkeypatch) -> None:\n",
+        "    monkeypatch.setattr(tutorial, \"client\", None)\n"
+    ) ; "setattr_module"
+)]
 fn patched_names_are_used_by_all(test: &str) {
     let root = project(&[
         ("docs/__init__.py", ""),
@@ -360,7 +488,8 @@ fn patched_names_are_used_by_all(test: &str) {
     assert_eq!(
         check(root.path(), &["--select", "SMP402"]).1,
         common::native(
-            "docs/tutorial.py:1:22: SMP402 [*] `engine` is in `__all__`, yet no other module imports it; list only what \
+            "docs/tutorial.py:1:22: SMP402 [*] `engine` is in `__all__`, yet no other module imports it; list only \
+            what \
              other modules use\nFound 1 error.\n[*] 1 fixable with `--fix`.\n"
         )
     );

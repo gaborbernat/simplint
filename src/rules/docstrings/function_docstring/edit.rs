@@ -10,21 +10,6 @@ use crate::rules::docstrings::function_docstring::text::comment_lines;
 use crate::rules::docstrings::{docstring_deletion, is_directive_comment};
 use crate::rules::edits::{Blanks, statement_lines};
 
-// The level of the block that starts after each indent or dedent token, by where the token starts, the module's being 1.
-pub(super) fn block_levels(checker: &Checker) -> Vec<(TextSize, usize)> {
-    let mut level: usize = 1;
-    let mut levels = Vec::new();
-    for token in checker.parsed.tokens() {
-        match token.kind() {
-            TokenKind::Indent => level += 1,
-            TokenKind::Dedent => level = level.saturating_sub(1),
-            _ => continue,
-        }
-        levels.push((token.start(), level));
-    }
-    levels
-}
-
 pub(super) fn removal(checker: &Checker, stmt: &Stmt, owner_body: &[Stmt]) -> Option<Edit> {
     // `ruff format` puts a body on lines of its own, so the fix must not depend on whether it already is. A pragma or
     // tool directive after the docstring, such as `# noqa: E501`, covers its line only and goes with it.
@@ -32,6 +17,11 @@ pub(super) fn removal(checker: &Checker, stmt: &Stmt, owner_body: &[Stmt]) -> Op
         return Some(Edit::range_replacement("...".to_owned(), with_directive(checker, stmt)));
     }
     docstring_deletion(checker, owner_body)
+}
+
+fn with_directive(checker: &Checker, stmt: &Stmt) -> TextRange {
+    let directive = checker.trailing_comment(stmt).filter(|comment| is_directive_comment(checker, *comment));
+    stmt.range().cover(directive.unwrap_or(stmt.range()))
 }
 
 // The comment goes where the docstring was, on lines of its own as `ruff format` would leave the body, wrapped to the
@@ -66,14 +56,13 @@ pub(super) fn comment_replacement(
     // comments stays.
     if comments.iter().any(|comment| {
         comment.match_indices('#').any(|(start, _)| is_tool_directive(&comment[start..]))
-            || comment.chars().count() > room + 2
-                && !comment.split_whitespace().last().is_some_and(|word| word.contains("://"))
-    }) || indent.chars().count() % from_ruff.indent_width.max(1) != 0 && is_left_alone(checker, stmt)
+            || (comment.chars().count() > room + 2
+                && !comment.split_whitespace().last().is_some_and(|word| word.contains("://")))
+    }) || (indent.chars().count() % from_ruff.indent_width.max(1) != 0 && is_left_alone(checker, stmt))
     {
         return None;
     }
     let newline = format!("{}{indent}", checker.line_ending());
-    let block = comments.join(&newline);
     let start = if on_header { TextSize::of(source[..stmt.start().to_usize()].trim_end()) } else { stmt.start() };
     let prefix = if on_header { newline.as_str() } else { "" };
     let (end, suffix) = match owner_body.get(1) {
@@ -98,30 +87,39 @@ pub(super) fn comment_replacement(
             )
         }
     };
-    Some(Edit::range_replacement(format!("{prefix}{block}{suffix}"), TextRange::new(start, end)))
+    Some(Edit::range_replacement(format!("{prefix}{}{suffix}", comments.join(&newline)), TextRange::new(start, end)))
 }
 
 // Whether `ruff format` leaves the statement as it is: its settings exclude the file, the statement ends in
 // `# fmt: skip`, or it follows an own-line `# fmt: off` with no `# fmt: on` between.
 fn is_left_alone(checker: &Checker, stmt: &Stmt) -> bool {
-    let source = checker.source;
     let suppression = |comment: &TextRange| FormatSuppression::from_comment(checker.text(*comment));
-    let mut off = false;
+    let mut formatting_off = false;
     for comment in checker.comment_ranges().iter().take_while(|comment| comment.start() < stmt.start()) {
-        if has_leading_content(comment.start(), source) {
+        if has_leading_content(comment.start(), checker.source) {
             continue;
         }
         match suppression(comment) {
-            Some(FormatSuppression::Off) => off = true,
-            Some(FormatSuppression::On) => off = false,
+            Some(FormatSuppression::Off) => formatting_off = true,
+            Some(FormatSuppression::On) => formatting_off = false,
             _ => {}
         }
     }
-    off || !checker.settings.from_ruff.formatted
+    formatting_off
+        || !checker.settings.from_ruff.formatted
         || checker.trailing_comment(stmt).and_then(|comment| suppression(&comment)) == Some(FormatSuppression::Skip)
 }
 
-fn with_directive(checker: &Checker, stmt: &Stmt) -> TextRange {
-    let directive = checker.trailing_comment(stmt).filter(|comment| is_directive_comment(checker, *comment));
-    stmt.range().cover(directive.unwrap_or(stmt.range()))
+pub(super) fn block_levels(checker: &Checker) -> Vec<(TextSize, usize)> {
+    let mut level: usize = 1;
+    let mut levels = Vec::new();
+    for token in checker.parsed.tokens() {
+        match token.kind() {
+            TokenKind::Indent => level += 1,
+            TokenKind::Dedent => level = level.saturating_sub(1),
+            _ => continue,
+        }
+        levels.push((token.start(), level));
+    }
+    levels
 }

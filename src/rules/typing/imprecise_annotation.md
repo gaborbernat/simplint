@@ -166,18 +166,12 @@ annotations are still checked.
 
 - **An `Any` that ANN401 reports on a parameter or return**, such as `def f(value: Any)`, `-> Optional[Any]` or
   `def f(value: int | Any)`: Ruff's [ANN401](https://docs.astral.sh/ruff/rules/any-type/) reports it, so this rule
-  leaves it alone to avoid a double report, but only when the project's Ruff configuration selects ANN401. ANN401
-  reports an `Any` that is the annotation, or sits in an `Optional`, a `Union`, a `|` or the first argument of
-  `Annotated`. Ruff's own suppressions of it, through `per-file-ignores` or `noqa`, are respected too.
+  leaves it alone to avoid a double report. ANN401 reports an `Any` that is the annotation, or sits in an `Optional`, a
+  `Union`, a `|` or the first argument of `Annotated`.
 
 ANN401 skips the `self` or `cls` of a method, `@override` signatures, overload implementations and, with
-`allow-star-arg-any`, `*args` and `**kwargs`. This rule still reports the `Any` in those while ANN401 runs, since no
-tool would report it otherwise.
-
-```toml config
-[tool.ruff.lint]
-select = ["ANN401"]
-```
+`allow-star-arg-any`, `*args` and `**kwargs`. This rule still reports the `Any` in those, since no tool would report it
+otherwise.
 
 ```python ok
 from typing import Any
@@ -238,10 +232,10 @@ def run(value: Any) -> None:
 
 Each tool owns a different part of the `Any` reports:
 
-- **[ANN401](https://docs.astral.sh/ruff/rules/any-type/) owns the `Any` it reports** on a parameter or return value,
-  when the project's Ruff configuration selects it: the whole annotation, or an `Any` inside `Optional`, `Union`, `|` or
-  `Annotated`. It reports each such annotation once, at its first character, so `Any | None` and `Optional[Any]` are one
-  report each, at the start of the annotation, not at the `Any`.
+- **[ANN401](https://docs.astral.sh/ruff/rules/any-type/) owns the `Any` it reports** on a parameter or return value:
+  the whole annotation, or an `Any` inside `Optional`, `Union`, `|` or `Annotated`. It reports each such annotation
+  once, at its first character, so `Any | None` and `Optional[Any]` are one report each, at the start of the annotation,
+  not at the `Any`.
 - **This rule owns everything else**: `object` everywhere except as the annotation of `*args` or `**kwargs`, `Any` in
   variable annotations, and `Any` in other nested positions such as `list[Any]`, which ANN401 does not report. It also
   keeps the `Any` of the signatures ANN401 skips, such as `self: Any` or an `@override` method.

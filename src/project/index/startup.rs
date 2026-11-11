@@ -43,8 +43,6 @@ pub(super) fn names(roots: &[PathBuf]) -> Vec<String> {
     names
 }
 
-// The names one import line reads: the modules it imports, and the dotted names of the attributes its statements read
-// off the modules it binds. A line that does not parse makes the interpreter fail at startup, so it names nothing here.
 fn line_names(line: &str) -> Vec<String> {
     let Ok(parsed) = parse_module(line) else { return Vec::new() };
     let mut reads = Reads::default();
@@ -74,7 +72,6 @@ fn line_names(line: &str) -> Vec<String> {
     reads.names
 }
 
-// The module or name each name an import line binds stands for, and the dotted names the line reads off them.
 #[derive(Default)]
 struct Reads<'a> {
     aliases: FxHashMap<&'a str, String>,

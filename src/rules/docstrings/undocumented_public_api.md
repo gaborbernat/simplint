@@ -1,5 +1,4 @@
-Flags functions, classes, methods and variables of a library's public API that have no documentation. Users read the API
-through hover help and the generated reference, where the docstring is all they see.
+Flags functions, classes, methods and variables of a library's public API that have no documentation.
 
 ## Why is this bad?
 
@@ -200,8 +199,7 @@ Checks that a library's public API is documented. No fix is offered, since only 
 - **Functions, classes and methods a public module defines**: each needs a
   [docstring](https://docs.python.org/3/glossary.html#term-docstring), which Ruff's pydocstyle rules
   [D101 to D103 and D106](https://www.pydocstyle.org/en/stable/error_codes.html) report. This rule leaves them to Ruff
-  only when the project's Ruff configuration selects the rule for the definition's kind. Ruff's own suppressions of it,
-  through `per-file-ignores` or `noqa`, are respected too.
+  only when the project's Ruff configuration selects the rule for the definition's kind.
 
   ```toml config
   [tool.simplint]
@@ -373,8 +371,9 @@ flowchart TD
   [D102](https://docs.astral.sh/ruff/rules/undocumented-public-method/),
   [D103](https://docs.astral.sh/ruff/rules/undocumented-public-function/) and
   [D106](https://docs.astral.sh/ruff/rules/undocumented-public-nested-class/), which cover definitions in public modules
-  and which this rule leaves to them; this rule covers public variables and names re-exported from private modules
-  (variables: open issue [#20766](https://github.com/astral-sh/ruff/issues/20766)).
+  and which this rule leaves to them while the project selects them, except a function that `ignore-decorators` lists,
+  which Ruff skips; this rule covers public variables and names re-exported from private modules (variables: open issue
+  [#20766](https://github.com/astral-sh/ruff/issues/20766)).
 - [pydocstyle](https://www.pydocstyle.org/en/stable/error_codes.html) reports public functions and methods without a
   docstring as [D103](https://www.pydocstyle.org/en/stable/error_codes.html) and
   [D102](https://www.pydocstyle.org/en/stable/error_codes.html). It has no check for variables.

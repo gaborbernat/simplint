@@ -31,13 +31,13 @@ pub(crate) fn is_named_by_doctest(checker: &Checker, name: &str) -> bool {
 }
 
 // Whether the file is a Sphinx configuration, whose module variables Sphinx reads by their names and types.
-pub fn is_sphinx_conf(checker: &Checker) -> bool {
+pub(crate) fn is_sphinx_conf(checker: &Checker) -> bool {
     checker.file_name() == "conf.py"
 }
 
 // A class name is CapWords, which starts with an uppercase letter once leading underscores are dropped, and is not all
 // caps, as PEP 8 spells classes.
-pub fn is_class_like(name: &str) -> bool {
+pub(crate) fn is_class_like(name: &str) -> bool {
     let trimmed = name.trim_start_matches('_');
     trimmed.chars().next().is_some_and(char::is_uppercase) && trimmed.chars().any(char::is_lowercase)
 }
@@ -71,7 +71,7 @@ pub(crate) fn long_paragraphs(
 // orders differ in the details: RUF022, sorting `__all__`, takes any name with a letter and no lowercase one for a
 // constant and compares case-sensitively, while isort, sorting the names of a `from` import, wants more than one
 // character for a constant and ignores case.
-pub fn export_key(name: &str) -> (u8, String) {
+pub(crate) fn export_key(name: &str) -> (u8, String) {
     let rank = if name.chars().any(char::is_alphabetic) && !name.chars().any(char::is_lowercase) {
         0
     } else if name.starts_with(char::is_uppercase) {
@@ -82,7 +82,7 @@ pub fn export_key(name: &str) -> (u8, String) {
     (rank, name.to_owned())
 }
 
-pub fn isort_key(name: &str) -> (u8, String) {
+pub(crate) fn isort_key(name: &str) -> (u8, String) {
     let rank = if name.len() > 1 && !name.chars().any(char::is_lowercase) {
         0
     } else if name.starts_with(char::is_uppercase) {

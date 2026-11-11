@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from sphinx.application import Sphinx
     from sphinx.builders import Builder
 
-DIAGRAMS: Final[Path] = Path(__file__).parents[1] / "_derived" / "mermaid"
+_DIAGRAMS: Final[Path] = Path(__file__).parents[1] / "_derived" / "mermaid"
 # the labels use a face every viewer has, or one with its widths, so the text fits the boxes drawn around it
 _DIAGRAM_FONT: Final[dict[str, str]] = {
     "fontFamily": "Arial, 'Liberation Sans', Helvetica, sans-serif",
@@ -39,19 +39,19 @@ _DIAGRAM_CONFIG: Final[str] = json.dumps({
 # The extension passes this file as the mermaid configuration and names each drawing after its path, and reuses a
 # drawing it finds under that name; a path that holds the content's hash redraws every diagram when the configuration
 # changes.
-CONFIG_PATH: Final[Path] = DIAGRAMS / f"config-{sha256(_DIAGRAM_CONFIG.encode()).hexdigest()[:12]}.json"
-PUPPETEER_PATH: Final[Path] = DIAGRAMS / "puppeteer.json"
+CONFIG_PATH: Final[Path] = _DIAGRAMS / f"config-{sha256(_DIAGRAM_CONFIG.encode()).hexdigest()[:12]}.json"
+PUPPETEER_PATH: Final[Path] = _DIAGRAMS / "puppeteer.json"
 
 
 def write_settings() -> None:
     # The browser renders only the diagrams of these pages, so it needs no sandbox, which containers often cannot give
     # it. Read the Docs builds in a small container: its /dev/shm is too small for Chrome, and a slow start there can
     # outlast puppeteer's default 30 s wait.
-    DIAGRAMS.mkdir(parents=True, exist_ok=True)
+    _DIAGRAMS.mkdir(parents=True, exist_ok=True)
     write_if_changed(CONFIG_PATH, _DIAGRAM_CONFIG)
     puppeteer = {"args": ["--no-sandbox", "--disable-dev-shm-usage"], "timeout": 180_000}
     write_if_changed(PUPPETEER_PATH, json.dumps(puppeteer))
-    remove_stale(DIAGRAMS, {CONFIG_PATH.name, PUPPETEER_PATH.name})
+    remove_stale(_DIAGRAMS, {CONFIG_PATH.name, PUPPETEER_PATH.name})
 
 
 def setup(app: Sphinx) -> dict[str, bool]:
@@ -61,10 +61,9 @@ def setup(app: Sphinx) -> dict[str, bool]:
 
 
 def _draw_diagrams(app: Sphinx, builder: Builder) -> None:
-    # The extension starts a browser for each diagram as it writes the page, and with parallel writers several start at
-    # once, more than a small container can launch in time. One mermaid-cli run draws every diagram the pages hold
-    # before they are written, under the name the extension looks for, so it reuses them and starts no browser; a
-    # rebuild draws only diagrams that changed.
+    # The extension starts a browser for each diagram it writes, and parallel writers start several at once, more than a
+    # small container can launch in time. One mermaid-cli run draws the diagrams before the pages are written, under the
+    # names the extension looks for, so the extension reuses them and starts no browser.
     if builder.format != "html":
         return
     images = Path(builder.outdir) / builder.imagedir

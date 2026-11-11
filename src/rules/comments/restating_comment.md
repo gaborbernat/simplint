@@ -24,8 +24,8 @@ file.close()
 ### Active on
 
 - **Own-line comments above code**: every word of the comment appears among the identifiers and keywords of the next
-  line. Words compare without case, and a name matches only as a whole, so `# create user` does not restate
-  `create_user()`, which the comment would have to spell out as `create` and `user` on their own.
+  line. Words compare without case, and a name matches only as a whole: `# create user` does not restate
+  `create_user()`, since `create` and `user` are not words of the code.
 
   Consecutive own-line comments form one block, which is judged as a whole and removed whole.
 
@@ -89,9 +89,17 @@ file.close()
 file.close()
 ```
 
+## Ruff overlap
+
+Ruff's [commented-out-code](https://docs.astral.sh/ruff/rules/commented-out-code/) (ERA001) reports some of the same
+comments without a fix that applies. This rule keeps those comments and reports them with its safe fix, which deletes
+the comment.
+
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet.
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of released rule
+  [ERA001](https://docs.astral.sh/ruff/rules/commented-out-code/), which reports some of the same comments without an
+  applicable fix; this rule keeps them (see Ruff overlap).
 - [flake8-comments](https://github.com/orsinium-labs/flake8-comments) reports the same comments as
   [CM001](https://github.com/orsinium-labs/flake8-comments/blob/master/flake8_comments/_checker.py), such as
   `# create user` above `user.create()`. It only reports them, where this rule's fix deletes the comment.

@@ -10,13 +10,12 @@ use crate::lint::registry::RuleSet;
 use crate::run::Mode;
 use crate::settings::FileSettings;
 
-// The parts of a file that its fingerprint base covers: its settings, its Ruff settings, where it sits in its
-// package and whether its directory holds an `__init__.py`.
 #[derive(Clone, Copy)]
 pub(crate) struct FileIdentity<'a> {
     pub(crate) settings: &'a FileSettings<'a>,
     pub(crate) ruff: &'a LinterSettings,
     pub(crate) module_path: Option<&'a Vec<String>>,
+    // The index does not read the sibling `__init__.py`, so the fingerprint covers it directly.
     pub(crate) sibling_init: bool,
 }
 
@@ -31,13 +30,12 @@ impl<'a> FileIdentity<'a> {
     }
 }
 
-// A file's fingerprint: its settings, where it sits in its package, and its slice of the project index. Most files
-// share their project's settings and Ruff's, so those, Ruff's linter settings above all, are hashed once per pair.
+// Most files share their project's settings and Ruff's, so those, Ruff's linter settings above all, are hashed once per
+// pair.
 #[derive(Default)]
 pub(crate) struct Fingerprints(Mutex<FxHashMap<(usize, usize), u64>>);
 
 impl Fingerprints {
-    // A file's settings, where it sits in its package and its sibling `__init__.py`, which the index does not read.
     // The run's digest covers the index, so `base` with it says whether a stored result is still valid.
     pub(crate) fn base(&self, identity: &FileIdentity) -> u64 {
         let FileIdentity { settings, ruff, module_path, sibling_init } = *identity;
@@ -71,11 +69,10 @@ impl Fingerprints {
     }
 
     pub(crate) fn of(&self, linter: &Linter, mode: &Mode) -> Fingerprint {
-        let rules = linter.settings.rules;
         let base = self.base(&FileIdentity::of(linter));
         // Only a rule that reads other files depends on the index of the run, so the others keep their results when
         // another file changes.
-        let clean = if rules.overlaps(RuleSet::cross_file()) {
+        let clean = if linter.settings.rules.overlaps(RuleSet::cross_file()) {
             let mut hasher = CacheKeyHasher::new();
             base.cache_key(&mut hasher);
             linter.project.cache_key(&mut hasher);
@@ -96,7 +93,6 @@ impl Fingerprints {
     }
 }
 
-// What a clean result is valid under, and with fixes on, what a settled fix loop is valid under.
 #[derive(Clone, Copy)]
 pub(crate) struct Fingerprint {
     pub(super) clean: u64,

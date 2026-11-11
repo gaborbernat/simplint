@@ -9,8 +9,6 @@ use crate::syntax::Visibility;
 use super::resolve::UnreachedPath;
 use super::{FileId, FileIds};
 
-// The files `import *` reaches: those it reads every public name of, those a package's `__init__.py` star-imports, and
-// every file a star import names.
 pub(super) struct StarTargets {
     pub(super) star_imported: FxHashSet<FileId>,
     pub(super) package_star_imported: FxHashSet<FileId>,
@@ -60,8 +58,7 @@ impl StarTargets {
     }
 }
 
-// The classes and aliases each file defines that a signature reaches: from the names its `__all__` lists, and from the
-// names a library exposes, which include re-exports. One pass per file, so both root sets share its references.
+// One pass per file, so both root sets share its references.
 pub(super) fn signature_reached(
     indexed: &[(FileId, &FileFacts)],
     library_api: &FxHashMap<FileId, FxHashMap<String, Option<PathBuf>>>,
@@ -84,16 +81,12 @@ pub(super) fn signature_reached(
 }
 
 pub(super) fn unqualified(class: &str) -> &str {
-    class.rsplit('.').next().unwrap_or(class)
+    class.rsplit_once('.').map_or(class, |(_, name)| name)
 }
 
-// The names a library's users reach. A public module offers what its `__all__` lists, or, without one, every name it
-// defines or re-exports without a leading underscore, as the typing spec reads a module; a name another module imports
-// from a module without `__all__` counts too, since such a module offers what it imports. A module that re-exports a
-// public name, through `__all__`, a redundant alias or `import *`, makes it public where it is defined, through any
-// chain of re-exports. Names only spread, so this settles. A module whose `__getattr__` supplies names lazily offers
-// only what it defines, since the names it re-exports are not all known. A public name an entry point or build hook
-// loads is reached whatever `__all__` says, since the tool that loads it is outside the run.
+// A module whose `__getattr__` supplies names lazily offers only what it defines, since the names it re-exports are
+// not all known. A public name an entry point or build hook loads is reached whatever `__all__` says, since the tool
+// that loads it is outside the run.
 pub(super) fn library_api(
     sources: &FxHashMap<FileId, &FileFacts>,
     roles: &FxHashMap<FileId, ModuleRole>,
@@ -103,7 +96,6 @@ pub(super) fn library_api(
     stars: &[(FileId, FileId)],
     files: &FileIds,
 ) -> FxHashMap<FileId, FxHashMap<String, Option<PathBuf>>> {
-    // What `import *` of a module takes: its `__all__`, or every name it defines without a leading underscore.
     let starred = |name: &&str| Visibility::of(name) == Visibility::Public;
     let star_exports: FxHashMap<FileId, Vec<&str>> = stars
         .iter()
@@ -199,9 +191,7 @@ pub(super) fn starred_by_importer(stars: &[(FileId, FileId)]) -> FxHashMap<FileI
     by_importer
 }
 
-// A name another module takes from a module that star-imports it, as `from pkg import Name` where `pkg/__init__.py` has
-// `from ._types import *`, comes from the star-imported module, so it counts there too, through any chain of star
-// re-exports, unless that module's `__all__` leaves it out of the `import *`. Names only spread, so this settles.
+// Names only spread, so this settles.
 pub(super) fn reexport(
     names: &mut FxHashMap<FileId, FxHashSet<String>>,
     stars: &[(FileId, FileId)],
@@ -234,9 +224,8 @@ pub(super) fn reexport(
     }
 }
 
-// An `import *` of a module that does not resolve, as one found on a `sys.path` entry a `conftest.py` adds, may read any
-// file of the run Python could import under that module's last name: `name.py` or `name/__init__.py`. A module no file
-// of the run is named after is outside the run, so it reads none of them.
+// A `conftest.py` may add a `sys.path` entry the resolver does not see, so an unresolved `import *` may read any file
+// under that module's last name.
 fn unresolved_candidates(
     paths: &FileIds,
     files: impl Iterator<Item = FileId>,
@@ -245,7 +234,6 @@ fn unresolved_candidates(
     files.filter(|file| last_name(paths.path(*file)).is_some_and(|name| unresolved.contains(name))).collect()
 }
 
-// The files of the run by the last name of their module, for the dotted paths that reach a package's modules by name.
 pub(super) struct LastNames<'p> {
     by_name: FxHashMap<&'p str, Vec<FileId>>,
     paths: &'p FileIds,
@@ -262,9 +250,7 @@ impl<'p> LastNames<'p> {
         Self { by_name, paths }
     }
 
-    // A dotted path through a package that names no module, as `nx.reportviews.Name` where `networkx` re-exports its
-    // `networkx.classes.reportviews` submodule, may reach any module of that package with the path's last name. Each
-    // file it reaches comes with the names the path was written with.
+    // A dotted path through a package may reach any module of that package with the path's last name.
     pub(super) fn reached<'s>(
         &'s self,
         unreached: impl IntoIterator<Item = &'s UnreachedPath> + 's,
@@ -280,7 +266,6 @@ impl<'p> LastNames<'p> {
     }
 }
 
-// The last name of the module a file defines: `name` for `name.py` and `name/__init__.py`.
 pub(super) fn last_name(file: &Path) -> Option<&str> {
     let stem = file.file_stem().and_then(|stem| stem.to_str());
     if stem == Some("__init__") { file.parent().and_then(Path::file_name).and_then(|name| name.to_str()) } else { stem }

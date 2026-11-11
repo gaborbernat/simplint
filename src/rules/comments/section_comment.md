@@ -1,5 +1,4 @@
-Flags own-line comments used as dividers or section headers. Such a comment groups code by its position in the file, and
-nothing keeps that grouping accurate as code moves.
+Flags own-line comments used as dividers or section headers.
 
 ## Why is this bad?
 
@@ -139,13 +138,15 @@ longer.
 
 ## Ruff overlap
 
-Ruff's
-[multiple-leading-hashes-for-block-comment](https://docs.astral.sh/ruff/rules/multiple-leading-hashes-for-block-comment/)
-also reports the `## Setup` form.
+[E266](https://docs.astral.sh/ruff/rules/multiple-leading-hashes-for-block-comment/) and
+[E265](https://docs.astral.sh/ruff/rules/no-space-after-block-comment/), preview rules, report a prose heading such as
+`## Remove this return to update the cron job`, whose fix here would be the same, so this rule leaves it to them whether
+or not the project enables preview. Short headings such as `## Setup`, decorated dividers and regions stay with this
+rule, since they report a section divider to replace with a function or remove, not the hash count E266 reports.
 
 ## Other tools
 
-- **[Ruff](https://github.com/astral-sh/ruff):** not requested yet. Preview rules
+- **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rules
   [E265](https://docs.astral.sh/ruff/rules/no-space-after-block-comment/) and
-  [E266](https://docs.astral.sh/ruff/rules/multiple-leading-hashes-for-block-comment/) reformat some of the same
-  comments, such as `## Setup` or `#---`, but keep them.
+  [E266](https://docs.astral.sh/ruff/rules/multiple-leading-hashes-for-block-comment/), which reformat some of the same
+  comments, such as `## Setup` or `#---`; this rule leaves the plain prose ones to them (see Ruff overlap).

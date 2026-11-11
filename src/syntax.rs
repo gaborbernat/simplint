@@ -8,6 +8,7 @@ use ruff_python_ast::name::UnqualifiedName;
 use ruff_python_ast::visitor::{self, Visitor};
 use ruff_python_ast::{self as ast, Expr, OperatorPrecedence, Stmt};
 use ruff_python_parser::parse_expression;
+use ruff_python_stdlib::typing::{is_literal_member, is_pep_593_generic_member, is_standard_library_generic_member};
 use ruff_source_file::LineRanges;
 use ruff_text_size::{Ranged, TextRange, TextSize};
 use rustc_hash::FxHashSet;
@@ -56,57 +57,6 @@ impl Nesting {
     }
 }
 
-pub fn for_each_body<'a>(body: &'a [Stmt], visit: &mut impl FnMut(&'a [Stmt], Option<&'a Stmt>)) {
-    walk_bodies(body, None, visit);
-}
-
-fn walk_bodies<'a>(body: &'a [Stmt], owner: Option<&'a Stmt>, visit: &mut impl FnMut(&'a [Stmt], Option<&'a Stmt>)) {
-    visit(body, owner);
-    for stmt in body {
-        for_each_child_body(stmt, &mut |child| walk_bodies(child, Some(stmt), visit));
-    }
-}
-
-// A class defined in a method has its own `self`, so its body is left out of the method's bodies.
-fn for_each_body_outside_classes<'a>(body: &'a [Stmt], visit: &mut impl FnMut(&'a [Stmt])) {
-    visit(body);
-    for stmt in body.iter().filter(|stmt| !matches!(stmt, Stmt::ClassDef(_))) {
-        for_each_child_body(stmt, &mut |child| for_each_body_outside_classes(child, visit));
-    }
-}
-
-pub fn for_each_child_body<'a>(stmt: &'a Stmt, visit: &mut impl FnMut(&'a [Stmt])) {
-    match stmt {
-        Stmt::FunctionDef(ast::StmtFunctionDef { body, .. })
-        | Stmt::ClassDef(ast::StmtClassDef { body, .. })
-        | Stmt::With(ast::StmtWith { body, .. }) => visit(body),
-        Stmt::For(ast::StmtFor { body, orelse, .. }) | Stmt::While(ast::StmtWhile { body, orelse, .. }) => {
-            visit(body);
-            visit(orelse);
-        }
-        Stmt::If(ast::StmtIf { body, elif_else_clauses, .. }) => {
-            visit(body);
-            for clause in elif_else_clauses {
-                visit(&clause.body);
-            }
-        }
-        Stmt::Try(ast::StmtTry { body, handlers, orelse, finalbody, .. }) => {
-            visit(body);
-            for ast::ExceptHandler::ExceptHandler(handler) in handlers {
-                visit(&handler.body);
-            }
-            visit(orelse);
-            visit(finalbody);
-        }
-        Stmt::Match(ast::StmtMatch { cases, .. }) => {
-            for case in cases {
-                visit(&case.body);
-            }
-        }
-        _ => {}
-    }
-}
-
 // A `\r\n` terminator is stepped over whole: one byte back is a `\n`, which `line_start` reads as a line of its own.
 pub fn previous_line_start(source: &str, line_start: TextSize) -> TextSize {
     let terminator = if source[..line_start.to_usize()].ends_with("\r\n") { 2 } else { 1 };
@@ -135,44 +85,22 @@ impl Visibility {
     }
 }
 
-// The name an expression such as `typing.Final` or `@name.setter` ends with.
-pub fn last_segment(expr: &Expr) -> Option<&str> {
-    UnqualifiedName::from_expr(expr)?.segments().last().copied()
-}
-
-// The last segment of each decorator, so `typing.override` and `@name.setter` read as `override` and `setter`.
-pub fn decorator_names(decorators: &[ast::Decorator]) -> Vec<&str> {
-    decorators.iter().filter_map(|decorator| last_segment(&decorator.expression)).collect()
-}
-
-// Whether a decorator's last name is one of `names`, so `typing.overload` and `overload` both match `"overload"`.
-pub fn has_decorator(decorators: &[ast::Decorator], names: &[&str]) -> bool {
-    decorator_names(decorators).iter().any(|name| names.contains(name))
-}
-
 // Whether a function is an `@overload` stub, which the type checker reads in place of the implementation below it.
 pub fn is_overload(decorators: &[ast::Decorator]) -> bool {
     has_decorator(decorators, &["overload"])
 }
 
-// Whether `expr` is the plain name `name`.
-pub fn is_name(expr: &Expr, name: &str) -> bool {
-    expr.as_name_expr().is_some_and(|found| found.id.as_str() == name)
+// Matches by last segment, so `typing.overload` and `overload` both match `"overload"`.
+pub fn has_decorator(decorators: &[ast::Decorator], names: &[&str]) -> bool {
+    decorator_names(decorators).iter().any(|name| names.contains(name))
 }
 
-// The object and the name argument of a call to one of `builtins` with two positional arguments, such as `getattr`,
-// which reads the attribute named by the second.
 pub fn attribute_call<'a>(expr: &'a Expr, builtins: &[&str]) -> Option<(&'a Expr, &'a Expr)> {
     let ast::ExprCall { func, arguments, .. } = expr.as_call_expr()?;
     let [object, attribute, ..] = &*arguments.args else {
         return None;
     };
     builtins.contains(&func.as_name_expr()?.id.as_str()).then_some((object, attribute))
-}
-
-// The name an `import` alias binds: its `as` name, or the name it imports.
-pub fn alias_binding(alias: &ast::Alias) -> &str {
-    alias.asname.as_ref().unwrap_or(&alias.name).as_str()
 }
 
 // The name an `import` binds in its scope: its `as` name, or the first part of a dotted module name, which `import a.b`
@@ -184,7 +112,6 @@ pub fn alias_root_binding(alias: &ast::Alias) -> &str {
         .map_or_else(|| alias.name.as_str().split('.').next().unwrap_or_default(), |name| name.as_str())
 }
 
-// The aliases an import statement binds, and none for any other statement.
 pub fn import_aliases(stmt: &Stmt) -> &[ast::Alias] {
     match stmt {
         Stmt::Import(ast::StmtImport { names, .. }) | Stmt::ImportFrom(ast::StmtImportFrom { names, .. }) => names,
@@ -192,7 +119,6 @@ pub fn import_aliases(stmt: &Stmt) -> &[ast::Alias] {
     }
 }
 
-// The `from` imports of `module` among the statements of a body, which for a module body are its top-level imports.
 pub fn from_imports<'a>(body: &'a [Stmt], module: &'a str) -> impl Iterator<Item = &'a ast::StmtImportFrom> {
     body.iter().filter_map(move |stmt| match stmt {
         Stmt::ImportFrom(import)
@@ -204,7 +130,6 @@ pub fn from_imports<'a>(body: &'a [Stmt], module: &'a str) -> impl Iterator<Item
     })
 }
 
-// The name a match pattern captures, as in `case [*rest]` or `case {**rest}`.
 pub fn pattern_capture(pattern: &ast::Pattern) -> Option<&ast::Identifier> {
     match pattern {
         ast::Pattern::MatchAs(ast::PatternMatchAs { name, .. })
@@ -214,12 +139,6 @@ pub fn pattern_capture(pattern: &ast::Pattern) -> Option<&ast::Identifier> {
     }
 }
 
-// The annotations in a `def`'s signature: its parameters and its return type.
-pub fn signature_annotations(function: &ast::StmtFunctionDef) -> impl Iterator<Item = &Expr> {
-    function.parameters.iter().filter_map(AnyParameterRef::annotation).chain(function.returns.as_deref())
-}
-
-// The one positional argument of a call, when it has no keyword arguments.
 pub fn sole_argument(call: &ast::ExprCall) -> Option<&Expr> {
     match call.arguments.args.as_ref() {
         [argument] if call.arguments.keywords.is_empty() => Some(argument),
@@ -227,35 +146,20 @@ pub fn sole_argument(call: &ast::ExprCall) -> Option<&Expr> {
     }
 }
 
-// The argument a call passes at `position`, or under `keyword` when it is not passed by position.
-pub fn argument<'a>(call: &'a ast::ExprCall, position: usize, keyword: &str) -> Option<&'a Expr> {
-    call.arguments.args.get(position).or_else(|| {
-        call.arguments
-            .keywords
-            .iter()
-            .find(|item| item.arg.as_ref().is_some_and(|name| name.as_str() == keyword))
-            .map(|item| &item.value)
-    })
-}
-
-// Whether `expr` runs its body once per pass of the iteration around it: a lambda or a comprehension.
 pub fn is_repeating_expr(expr: &Expr) -> bool {
     matches!(expr, Expr::Lambda(_) | Expr::ListComp(_) | Expr::SetComp(_) | Expr::DictComp(_) | Expr::Generator(_))
 }
 
-// Whether `expr` is the literal `True`.
-pub fn is_true_literal(expr: &Expr) -> bool {
-    expr.as_boolean_literal_expr().is_some_and(|literal| literal.value)
-}
-
-// Whether `expr`, a call or a decorator, passes `arg=True`.
 pub fn keyword_is_true(expr: &Expr, arg: &str) -> bool {
     expr.as_call_expr()
         .and_then(|call| call.arguments.find_keyword(arg))
         .is_some_and(|keyword| is_true_literal(&keyword.value))
 }
 
-// The `@dataclass` decorator of `class`, bare or called, where `is_dataclass` resolves the decorator's function.
+pub fn is_true_literal(expr: &Expr) -> bool {
+    expr.as_boolean_literal_expr().is_some_and(|literal| literal.value)
+}
+
 pub fn dataclass_decorator<'a>(
     class: &'a ast::StmtClassDef,
     is_dataclass: &impl Fn(&Expr) -> bool,
@@ -265,18 +169,6 @@ pub fn dataclass_decorator<'a>(
         .iter()
         .map(|decorator| &decorator.expression)
         .find(|expr| is_dataclass(expr.as_call_expr().map_or(expr, |call| &call.func)))
-}
-
-// The parameter a method receives its instance or class in: the first positional one, unless the method is static.
-pub fn receiver(method: &ast::StmtFunctionDef) -> Option<&str> {
-    if decorator_names(&method.decorator_list).contains(&"staticmethod") {
-        return None;
-    }
-    first_positional(&method.parameters)
-}
-
-pub fn first_positional(parameters: &ast::Parameters) -> Option<&str> {
-    parameters.posonlyargs.iter().chain(&parameters.args).next().map(|parameter| parameter.name().as_str())
 }
 
 // An attribute a method writes on its instance through its receiver, with the statement that writes it, the one after
@@ -289,9 +181,8 @@ pub struct InstanceWrite<'a> {
     pub through_object: bool,
 }
 
-// Every write to `receiver.attr` in the methods of `class`, nested defs included but not nested classes, for whatever
-// the receiver is named.
-// A class method's receiver is the class, so callers that want instances skip those.
+// Writes in nested defs count and nested classes do not. A class method's receiver is the class, so callers that
+// want instances skip those.
 pub fn instance_writes(class: &ast::StmtClassDef) -> Vec<InstanceWrite<'_>> {
     let mut writes = Vec::new();
     for method in module_statements(&class.body).filter_map(Stmt::as_function_def_stmt) {
@@ -315,6 +206,50 @@ pub fn instance_writes(class: &ast::StmtClassDef) -> Vec<InstanceWrite<'_>> {
         });
     }
     writes
+}
+
+// The statements that run when the module loads, including those of its top-level `if`, `try` and `match` blocks, where
+// modules pick an implementation by version, availability or platform.
+pub fn module_statements(body: &[Stmt]) -> impl Iterator<Item = &Stmt> {
+    body.iter().flat_map(|stmt| -> Box<dyn Iterator<Item = &Stmt> + '_> {
+        match stmt {
+            Stmt::If(ast::StmtIf { body, elif_else_clauses, .. }) => Box::new(
+                module_statements(body)
+                    .chain(elif_else_clauses.iter().flat_map(|clause| module_statements(&clause.body))),
+            ),
+            Stmt::Match(ast::StmtMatch { cases, .. }) => {
+                Box::new(cases.iter().flat_map(|case| module_statements(&case.body)))
+            }
+            Stmt::Try(ast::StmtTry { body, handlers, orelse, finalbody, .. }) => Box::new(
+                module_statements(body)
+                    .chain(handlers.iter().flat_map(|handler| match handler {
+                        ast::ExceptHandler::ExceptHandler(handler) => module_statements(&handler.body),
+                    }))
+                    .chain(module_statements(orelse))
+                    .chain(module_statements(finalbody)),
+            ),
+            _ => Box::new(std::iter::once(stmt)),
+        }
+    })
+}
+
+pub fn receiver(method: &ast::StmtFunctionDef) -> Option<&str> {
+    if decorator_names(&method.decorator_list).contains(&"staticmethod") {
+        return None;
+    }
+    first_positional(&method.parameters)
+}
+
+pub fn first_positional(parameters: &ast::Parameters) -> Option<&str> {
+    parameters.posonlyargs.iter().chain(&parameters.args).next().map(|parameter| parameter.name().as_str())
+}
+
+// A class defined in a method has its own `self`, so its body is left out of the method's bodies.
+fn for_each_body_outside_classes<'a>(body: &'a [Stmt], visit: &mut impl FnMut(&'a [Stmt])) {
+    visit(body);
+    for stmt in body.iter().filter(|stmt| !matches!(stmt, Stmt::ClassDef(_))) {
+        for_each_child_body(stmt, &mut |child| for_each_body_outside_classes(child, visit));
+    }
 }
 
 // The attribute an `object.__setattr__(receiver, "name", value)` call sets, which a frozen dataclass uses to set its
@@ -391,29 +326,8 @@ pub fn is_classmethod(method: &ast::StmtFunctionDef) -> bool {
     decorator_names(&method.decorator_list).contains(&"classmethod")
 }
 
-// The statements that run when the module loads, including those of its top-level `if`, `try` and `match` blocks, where
-// modules pick an implementation by version, availability or platform.
-pub fn module_statements(body: &[Stmt]) -> impl Iterator<Item = &Stmt> {
-    body.iter().flat_map(|stmt| -> Box<dyn Iterator<Item = &Stmt> + '_> {
-        match stmt {
-            Stmt::If(ast::StmtIf { body, elif_else_clauses, .. }) => Box::new(
-                module_statements(body)
-                    .chain(elif_else_clauses.iter().flat_map(|clause| module_statements(&clause.body))),
-            ),
-            Stmt::Match(ast::StmtMatch { cases, .. }) => {
-                Box::new(cases.iter().flat_map(|case| module_statements(&case.body)))
-            }
-            Stmt::Try(ast::StmtTry { body, handlers, orelse, finalbody, .. }) => Box::new(
-                module_statements(body)
-                    .chain(handlers.iter().flat_map(|handler| match handler {
-                        ast::ExceptHandler::ExceptHandler(handler) => module_statements(&handler.body),
-                    }))
-                    .chain(module_statements(orelse))
-                    .chain(module_statements(finalbody)),
-            ),
-            _ => Box::new(std::iter::once(stmt)),
-        }
-    })
+pub fn decorator_names(decorators: &[ast::Decorator]) -> Vec<&str> {
+    decorators.iter().filter_map(|decorator| last_segment(&decorator.expression)).collect()
 }
 
 pub fn statement_index(body: &[Stmt], offset: TextSize) -> usize {
@@ -426,33 +340,7 @@ pub enum Exports<'a> {
     Dynamic,
 }
 
-// The names `__all__` lists in the order it gives them, with a set of them for the membership checks.
-pub struct Listing<'a> {
-    names: Vec<&'a str>,
-    members: FxHashSet<&'a str>,
-}
-
-impl<'a> Listing<'a> {
-    fn new(names: Vec<&'a str>) -> Self {
-        Self { members: names.iter().copied().collect(), names }
-    }
-
-    fn extend(&mut self, names: Vec<&'a str>) {
-        self.members.extend(names.iter().copied());
-        self.names.extend(names);
-    }
-
-    pub fn names(&self) -> &[&'a str] {
-        &self.names
-    }
-
-    pub fn contains(&self, name: &str) -> bool {
-        self.members.contains(name)
-    }
-}
-
 impl Exports<'_> {
-    // Whether `__all__` lists `name`, or may list it because it cannot be read statically.
     pub fn may_list(&self, name: &str) -> bool {
         match self {
             Self::Listed(listing) => listing.contains(name),
@@ -464,6 +352,11 @@ impl Exports<'_> {
     pub fn lists(&self, name: &str) -> bool {
         matches!(self, Self::Listed(listing) if listing.contains(name))
     }
+}
+
+pub struct Listing<'a> {
+    names: Vec<&'a str>,
+    members: FxHashSet<&'a str>,
 }
 
 pub fn dunder_all(body: &[Stmt]) -> Exports<'_> {
@@ -516,37 +409,19 @@ pub fn dunder_all(body: &[Stmt]) -> Exports<'_> {
     exports
 }
 
-pub struct AllBinding<'a> {
-    pub value: Option<&'a Expr>,
-    // Set for `__all__ += ...`, which extends the list instead of replacing it.
-    pub operator: Option<ast::Operator>,
+pub fn for_each_body<'a>(body: &'a [Stmt], visit: &mut impl FnMut(&'a [Stmt], Option<&'a Stmt>)) {
+    walk_bodies(body, None, visit);
 }
 
-pub fn all_binding(stmt: &Stmt) -> Option<AllBinding<'_>> {
-    match stmt {
-        Stmt::Assign(ast::StmtAssign { targets, value, .. }) if targets.iter().any(is_all_target) => {
-            Some(AllBinding { value: Some(value), operator: None })
-        }
-        Stmt::AnnAssign(ast::StmtAnnAssign { target, value, .. }) if is_all_target(target) => {
-            Some(AllBinding { value: value.as_deref(), operator: None })
-        }
-        Stmt::AugAssign(ast::StmtAugAssign { target, op, value, .. }) if is_all_target(target) => {
-            Some(AllBinding { value: Some(value), operator: Some(*op) })
-        }
-        _ => None,
+fn walk_bodies<'a>(body: &'a [Stmt], owner: Option<&'a Stmt>, visit: &mut impl FnMut(&'a [Stmt], Option<&'a Stmt>)) {
+    visit(body, owner);
+    for stmt in body {
+        for_each_child_body(stmt, &mut |child| walk_bodies(child, Some(stmt), visit));
     }
 }
 
-// A method call on `__all__` as a statement, such as `__all__.append("name")`: the method and its arguments.
-pub fn all_mutation(stmt: &Stmt) -> Option<(&str, &ast::Arguments)> {
-    let call = stmt.as_expr_stmt()?.value.as_call_expr()?;
-    let attribute = call.func.as_attribute_expr().filter(|attribute| is_all_target(&attribute.value))?;
-    Some((attribute.attr.as_str(), &call.arguments))
-}
-
-pub struct AllLiteral<'a> {
-    pub value: TextRange,
-    pub elements: &'a [Expr],
+pub fn alias_binding(alias: &ast::Alias) -> &str {
+    alias.asname.as_ref().unwrap_or(&alias.name).as_str()
 }
 
 pub fn all_literal(stmt: &Stmt) -> Option<AllLiteral<'_>> {
@@ -565,11 +440,168 @@ pub fn all_literal(stmt: &Stmt) -> Option<AllLiteral<'_>> {
     }
 }
 
-pub fn is_all_target(target: &Expr) -> bool {
+pub fn all_binding(stmt: &Stmt) -> Option<AllBinding<'_>> {
+    match stmt {
+        Stmt::Assign(ast::StmtAssign { targets, value, .. }) if targets.iter().any(is_all_target) => {
+            Some(AllBinding { value: Some(value), operator: None })
+        }
+        Stmt::AnnAssign(ast::StmtAnnAssign { target, value, .. }) if is_all_target(target) => {
+            Some(AllBinding { value: value.as_deref(), operator: None })
+        }
+        Stmt::AugAssign(ast::StmtAugAssign { target, op, value, .. }) if is_all_target(target) => {
+            Some(AllBinding { value: Some(value), operator: Some(*op) })
+        }
+        _ => None,
+    }
+}
+
+pub fn all_mutation(stmt: &Stmt) -> Option<(&str, &ast::Arguments)> {
+    let call = stmt.as_expr_stmt()?.value.as_call_expr()?;
+    let attribute = call.func.as_attribute_expr().filter(|attribute| is_all_target(&attribute.value))?;
+    Some((attribute.attr.as_str(), &call.arguments))
+}
+
+impl<'a> Listing<'a> {
+    fn new(names: Vec<&'a str>) -> Self {
+        Self { members: names.iter().copied().collect(), names }
+    }
+
+    fn extend(&mut self, names: Vec<&'a str>) {
+        self.members.extend(names.iter().copied());
+        self.names.extend(names);
+    }
+
+    pub fn names(&self) -> &[&'a str] {
+        &self.names
+    }
+
+    pub fn contains(&self, name: &str) -> bool {
+        self.members.contains(name)
+    }
+}
+
+// The names Ruff reads from the module's `__all__` bindings, in any block of the module but not in a function or class.
+// Ruff reads the strings of a list, a tuple, a `list()` or `tuple()` of one, and the operands of a `+` chain, and no
+// name that `extend` or `append` adds.
+pub fn export_names(body: &[Stmt]) -> FxHashSet<&str> {
+    let mut names = FxHashSet::default();
+    module_scope_statements(body, &mut |stmt| {
+        if let Some(value) = export_value(stmt) {
+            add_export_names(value, &mut names);
+        }
+    });
+    names
+}
+
+fn module_scope_statements<'a>(body: &'a [Stmt], visit: &mut impl FnMut(&'a Stmt)) {
+    for stmt in body {
+        visit(stmt);
+        if !matches!(stmt, Stmt::FunctionDef(_) | Stmt::ClassDef(_)) {
+            for_each_child_body(stmt, &mut |child| module_scope_statements(child, visit));
+        }
+    }
+}
+
+pub fn for_each_child_body<'a>(stmt: &'a Stmt, visit: &mut impl FnMut(&'a [Stmt])) {
+    match stmt {
+        Stmt::FunctionDef(ast::StmtFunctionDef { body, .. })
+        | Stmt::ClassDef(ast::StmtClassDef { body, .. })
+        | Stmt::With(ast::StmtWith { body, .. }) => visit(body),
+        Stmt::For(ast::StmtFor { body, orelse, .. }) | Stmt::While(ast::StmtWhile { body, orelse, .. }) => {
+            visit(body);
+            visit(orelse);
+        }
+        Stmt::If(ast::StmtIf { body, elif_else_clauses, .. }) => {
+            visit(body);
+            for clause in elif_else_clauses {
+                visit(&clause.body);
+            }
+        }
+        Stmt::Try(ast::StmtTry { body, handlers, orelse, finalbody, .. }) => {
+            visit(body);
+            for ast::ExceptHandler::ExceptHandler(handler) in handlers {
+                visit(&handler.body);
+            }
+            visit(orelse);
+            visit(finalbody);
+        }
+        Stmt::Match(ast::StmtMatch { cases, .. }) => {
+            for case in cases {
+                visit(&case.body);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn export_value(stmt: &Stmt) -> Option<&Expr> {
+    match stmt {
+        Stmt::Assign(ast::StmtAssign { targets, value, .. }) if targets.first().is_some_and(is_all_target) => {
+            Some(value)
+        }
+        Stmt::AnnAssign(ast::StmtAnnAssign { target, value, .. }) if is_all_target(target) => value.as_deref(),
+        Stmt::AugAssign(ast::StmtAugAssign { target, value, .. }) if is_all_target(target) => Some(value),
+        _ => None,
+    }
+}
+
+fn is_all_target(target: &Expr) -> bool {
     is_name(target, "__all__")
 }
 
-// The expressions an assignment target stores into, with tuples, lists and starred targets taken apart.
+fn add_export_names<'a>(value: &'a Expr, names: &mut FxHashSet<&'a str>) {
+    let Expr::BinOp(ast::ExprBinOp { left, right, .. }) = value else {
+        return add_export_elements(value, names);
+    };
+    let mut left = left;
+    let mut right = right;
+    loop {
+        add_export_elements(right, names);
+        let Expr::BinOp(ast::ExprBinOp { left: inner_left, right: inner_right, .. }) = left.as_ref() else {
+            return add_export_elements(left, names);
+        };
+        left = inner_left;
+        right = inner_right;
+    }
+}
+
+fn add_export_elements<'a>(expr: &'a Expr, names: &mut FxHashSet<&'a str>) {
+    let elements = match expr {
+        Expr::List(ast::ExprList { elts, .. }) | Expr::Tuple(ast::ExprTuple { elts, .. }) => elts,
+        Expr::Call(ast::ExprCall { func, arguments, .. })
+            if arguments.keywords.is_empty() && (is_name(func, "list") || is_name(func, "tuple")) =>
+        {
+            let [
+                Expr::List(ast::ExprList { elts, .. })
+                | Expr::Set(ast::ExprSet { elts, .. })
+                | Expr::Tuple(ast::ExprTuple { elts, .. }),
+            ] = &*arguments.args
+            else {
+                return;
+            };
+            elts
+        }
+        Expr::Named(ast::ExprNamed { value, .. }) => return add_export_elements(value, names),
+        _ => return,
+    };
+    names.extend(elements.iter().filter_map(|element| Some(element.as_string_literal_expr()?.value.to_str())));
+}
+
+pub struct AllBinding<'a> {
+    pub value: Option<&'a Expr>,
+    // Set for `__all__ += ...`, which extends the list instead of replacing it.
+    pub operator: Option<ast::Operator>,
+}
+
+pub struct AllLiteral<'a> {
+    pub value: TextRange,
+    pub elements: &'a [Expr],
+}
+
+pub fn target_names(target: &Expr) -> Vec<&str> {
+    target_leaves(target).into_iter().filter_map(Expr::as_name_expr).map(|name| name.id.as_str()).collect()
+}
+
 pub fn target_leaves(target: &Expr) -> Vec<&Expr> {
     match target {
         Expr::Tuple(ast::ExprTuple { elts, .. }) | Expr::List(ast::ExprList { elts, .. }) => {
@@ -580,23 +612,148 @@ pub fn target_leaves(target: &Expr) -> Vec<&Expr> {
     }
 }
 
-// The names an assignment target binds, through tuple and list unpacking and starred targets.
-pub fn target_names(target: &Expr) -> Vec<&str> {
-    target_leaves(target).into_iter().filter_map(Expr::as_name_expr).map(|name| name.id.as_str()).collect()
-}
-
-// The pieces of a text split at each character that is not a letter, digit or underscore, so an identifier comes out as
-// one piece. A separator at either end, or two in a row, yields an empty piece, which a caller that needs only words skips.
-pub fn identifier_words(text: &str) -> impl Iterator<Item = &str> {
-    text.split(|char: char| !(char.is_alphanumeric() || char == '_'))
-}
-
-// The text of every string and bytes literal of the module, and of each literal part of an f-string or t-string, with
-// its range.
+// An f-string or t-string contributes each of its literal parts as a string of its own.
 pub(crate) fn string_values(body: &[Stmt]) -> Vec<(TextRange, Cow<'_, str>)> {
     let mut values = StringValues { values: Vec::new(), with_prose: true };
     values.visit_body(body);
     values.values
+}
+
+// The identifier words of the strings Ruff parses as type expressions, the only strings that read a name: those in an
+// annotation or type parameter, in an argument of a typing call that takes types, in a generic subscript, and the type
+// of `Annotated`. A string anywhere else is data or prose.
+pub(crate) fn type_string_words<'a>(body: &'a [Stmt], extend_generics: &'a [String]) -> FxHashSet<&'a str> {
+    let mut strings = TypeStrings { words: FxHashSet::default(), in_type: false, extend_generics };
+    strings.visit_body(body);
+    strings.words
+}
+
+struct TypeStrings<'a> {
+    words: FxHashSet<&'a str>,
+    in_type: bool,
+    extend_generics: &'a [String],
+}
+
+impl<'a> Visitor<'a> for TypeStrings<'a> {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        match stmt {
+            Stmt::AnnAssign(ast::StmtAnnAssign { annotation, value, .. }) => {
+                self.visit_in(annotation, true);
+                if let Some(value) = value.as_deref().filter(|_| last_name(annotation) == Some("TypeAlias")) {
+                    self.visit_in(value, true);
+                }
+            }
+            Stmt::FunctionDef(function) => {
+                for annotation in signature_annotations(function) {
+                    self.visit_in(annotation, true);
+                }
+                self.visit_type_params(function.type_params.as_deref());
+            }
+            Stmt::ClassDef(class) => self.visit_type_params(class.type_params.as_deref()),
+            Stmt::TypeAlias(alias) => {
+                self.visit_in(&alias.value, true);
+                self.visit_type_params(alias.type_params.as_deref());
+            }
+            _ => {}
+        }
+        visitor::walk_stmt(self, stmt);
+    }
+
+    fn visit_expr(&mut self, expr: &'a Expr) {
+        match expr {
+            Expr::StringLiteral(literal) => {
+                if self.in_type {
+                    self.words.extend(identifier_words(literal.value.to_str()));
+                }
+            }
+            Expr::Call(ast::ExprCall { func, arguments, .. }) => {
+                let takes_types = last_name(func).is_some_and(|name| {
+                    matches!(
+                        name,
+                        "cast"
+                            | "NamedTuple"
+                            | "NewType"
+                            | "ParamSpec"
+                            | "TypeAliasType"
+                            | "TypeForm"
+                            | "TypedDict"
+                            | "TypeVar"
+                    )
+                });
+                let in_type = self.in_type || takes_types;
+                self.visit_expr(func);
+                for argument in &arguments.args {
+                    self.visit_in(argument, in_type);
+                }
+                for keyword in &arguments.keywords {
+                    self.visit_in(&keyword.value, in_type);
+                }
+            }
+            Expr::Subscript(ast::ExprSubscript { value, slice, .. }) => {
+                self.visit_expr(value);
+                match last_name(value) {
+                    Some(name) if is_literal_member(name) => self.visit_in(slice, false),
+                    Some(name) if is_pep_593_generic_member(name) => match slice.as_ref() {
+                        Expr::Tuple(ast::ExprTuple { elts, .. }) => {
+                            for (index, element) in elts.iter().enumerate() {
+                                self.visit_in(element, index == 0);
+                            }
+                        }
+                        _ => self.visit_expr(slice),
+                    },
+                    Some(name) if is_standard_library_generic_member(name) || self.is_extended_generic(name) => {
+                        self.visit_in(slice, true);
+                    }
+                    _ => self.visit_expr(slice),
+                }
+            }
+            _ => visitor::walk_expr(self, expr),
+        }
+    }
+}
+
+fn last_name(expr: &Expr) -> Option<&str> {
+    match expr {
+        Expr::Name(name) => Some(name.id.as_str()),
+        Expr::Attribute(attribute) => Some(attribute.attr.as_str()),
+        _ => None,
+    }
+}
+
+// Splits at each character that is not a letter, digit or underscore, so an identifier stays one piece. A separator at
+// either end, or two in a row, yields an empty piece, which a caller that needs only words skips.
+pub fn identifier_words(text: &str) -> impl Iterator<Item = &str> {
+    text.split(|char: char| !(char.is_alphanumeric() || char == '_'))
+}
+
+pub fn argument<'a>(call: &'a ast::ExprCall, position: usize, keyword: &str) -> Option<&'a Expr> {
+    call.arguments.args.get(position).or_else(|| {
+        call.arguments
+            .keywords
+            .iter()
+            .find(|item| item.arg.as_ref().is_some_and(|name| name.as_str() == keyword))
+            .map(|item| &item.value)
+    })
+}
+
+impl<'a> TypeStrings<'a> {
+    fn visit_type_params(&mut self, type_params: Option<&'a ast::TypeParams>) {
+        for expr in type_param_exprs(type_params) {
+            self.visit_in(expr, true);
+        }
+    }
+
+    fn visit_in(&mut self, expr: &'a Expr, in_type: bool) {
+        let outer = std::mem::replace(&mut self.in_type, in_type);
+        self.visit_expr(expr);
+        self.in_type = outer;
+    }
+
+    // Ruff matches the qualified name of a subscripted value against `extend-generics`; this walk has no resolution,
+    // so it matches the last name the value is written with, as it does for the typing generics.
+    fn is_extended_generic(&self, name: &str) -> bool {
+        self.extend_generics.iter().any(|target| target.rsplit('.').next() == Some(name))
+    }
 }
 
 // The strings a name may be spelled in to patch or look it up, which leaves out the prose of the statements that hold a
@@ -605,12 +762,6 @@ pub(crate) fn code_string_values(body: &[Stmt]) -> Vec<(TextRange, Cow<'_, str>)
     let mut values = StringValues { values: Vec::new(), with_prose: false };
     values.visit_body(body);
     values.values
-}
-
-// A string a statement holds alone is prose, unless it is a doctest, whose examples read the names of the module.
-pub(crate) fn is_prose_statement(stmt: &Stmt) -> bool {
-    matches!(stmt, Stmt::Expr(ast::StmtExpr { value, .. })
-        if value.as_string_literal_expr().is_some_and(|literal| !literal.value.to_str().contains(">>>")))
 }
 
 struct StringValues<'a> {
@@ -639,6 +790,12 @@ impl<'a> Visitor<'a> for StringValues<'a> {
         }
         visitor::walk_interpolated_string_element(self, element);
     }
+}
+
+// A string a statement holds alone is prose, unless it is a doctest, whose examples read the names of the module.
+pub(crate) fn is_prose_statement(stmt: &Stmt) -> bool {
+    matches!(stmt, Stmt::Expr(ast::StmtExpr { value, .. })
+        if value.as_string_literal_expr().is_some_and(|literal| !literal.value.to_str().contains(">>>")))
 }
 
 // Ruff's own return visitor stopped reporting generators, so a function's `return` statements and whether it yields
@@ -672,7 +829,6 @@ pub fn is_main_guard(stmt: &Stmt) -> bool {
     stmt.as_if_stmt().is_some_and(|stmt| is_main_test(&stmt.test))
 }
 
-// Whether a test is `__name__ == "__main__"`, either way round.
 pub fn is_main_test(test: &Expr) -> bool {
     let Expr::Compare(ast::ExprCompare { ops, operands, .. }) = test else {
         return false;
@@ -691,24 +847,77 @@ pub fn is_main_test(test: &Expr) -> bool {
 pub(crate) const MOCK_CLASSES: &[&str] =
     &["Mock", "MagicMock", "AsyncMock", "NonCallableMock", "NonCallableMagicMock", "PropertyMock", "create_autospec"];
 
-// The names an annotation or bound refers to, through subscripts, unions and string annotations.
+// The names the annotations of a module spell, including those of string annotations, which Ruff reads as uses, and
+// those of type aliases and type parameters, which Ruff reads once the module binds the names they spell.
+pub(crate) fn annotated_names(body: &[Stmt]) -> FxHashSet<String> {
+    let mut names = AnnotatedNames::default();
+    names.visit_body(body);
+    names.0
+}
+
+#[derive(Default)]
+struct AnnotatedNames(FxHashSet<String>);
+
+impl<'a> Visitor<'a> for AnnotatedNames {
+    fn visit_stmt(&mut self, stmt: &'a Stmt) {
+        match stmt {
+            Stmt::AnnAssign(ast::StmtAnnAssign { annotation, .. }) => self.0.extend(annotation_names(annotation)),
+            Stmt::FunctionDef(function) => {
+                self.0.extend(signature_annotations(function).flat_map(annotation_names));
+                self.0.extend(type_param_exprs(function.type_params.as_deref()).flat_map(annotation_names));
+            }
+            Stmt::ClassDef(class) => {
+                self.0.extend(type_param_exprs(class.type_params.as_deref()).flat_map(annotation_names));
+            }
+            Stmt::TypeAlias(alias) => {
+                self.0.extend(annotation_names(&alias.value));
+                self.0.extend(type_param_exprs(alias.type_params.as_deref()).flat_map(annotation_names));
+            }
+            _ => {}
+        }
+        visitor::walk_stmt(self, stmt);
+    }
+}
+
+// Leaves out the strings of an annotation, which the module's type strings read.
+fn annotation_names(expr: &Expr) -> Vec<String> {
+    let mut names = Vec::new();
+    TypeNames { names: &mut names, strings: false }.visit_expr(expr);
+    names
+}
+
+pub fn signature_annotations(function: &ast::StmtFunctionDef) -> impl Iterator<Item = &Expr> {
+    function.parameters.iter().filter_map(AnyParameterRef::annotation).chain(function.returns.as_deref())
+}
+
+fn type_param_exprs(type_params: Option<&ast::TypeParams>) -> impl Iterator<Item = &Expr> {
+    type_params.into_iter().flat_map(|params| &params.type_params).flat_map(|param| {
+        let bound = match param {
+            ast::TypeParam::TypeVar(ast::TypeParamTypeVar { bound, .. }) => bound.as_deref(),
+            ast::TypeParam::TypeVarTuple(_) | ast::TypeParam::ParamSpec(_) => None,
+        };
+        bound.into_iter().chain(param.default())
+    })
+}
+
 pub(crate) fn names_in(expr: &Expr) -> Vec<String> {
     let mut names = Vec::new();
-    TypeNames { names: &mut names }.visit_expr(expr);
+    TypeNames { names: &mut names, strings: true }.visit_expr(expr);
     names
 }
 
 struct TypeNames<'n> {
     names: &'n mut Vec<String>,
+    strings: bool,
 }
 
 impl<'a> Visitor<'a> for TypeNames<'_> {
     fn visit_expr(&mut self, expr: &'a Expr) {
         match expr {
             Expr::Name(name) => self.names.push(name.id.to_string()),
-            Expr::StringLiteral(literal) => {
+            Expr::StringLiteral(literal) if self.strings => {
                 if let Ok(parsed) = parse_expression(literal.value.to_str()) {
-                    TypeNames { names: self.names }.visit_expr(parsed.expr());
+                    TypeNames { names: self.names, strings: true }.visit_expr(parsed.expr());
                 }
             }
             _ => visitor::walk_expr(self, expr),
@@ -726,17 +935,14 @@ pub fn is_type_checking_name(test: &Expr) -> bool {
     }
 }
 
-// The top-level package of a dotted module name, which the standard library lists.
-pub(crate) fn top_level(module: &str) -> &str {
-    module.split_once('.').map_or(module, |(root, _)| root)
-}
-
-// Whether the standard library of the minor version ships the module's top-level package.
 pub(crate) fn is_stdlib_root(minor: u8, module: &str) -> bool {
     ruff_python_stdlib::sys::is_known_standard_library(minor, top_level(module))
 }
 
-// Whether the statement is a `lazy` import already, which needs no `lazy` of its own.
+pub(crate) fn top_level(module: &str) -> &str {
+    module.split_once('.').map_or(module, |(root, _)| root)
+}
+
 pub fn is_lazy(stmt: &Stmt) -> bool {
     matches!(
         stmt,
@@ -761,9 +967,12 @@ pub fn expr_mentions(expr: &Expr, name: &str) -> bool {
     any_over_expr(expr, |expr| is_name(expr, name))
 }
 
-// A module-level `if sys.version_info < ...: raise ...` or `sys.exit(...)` exists to run on interpreters older than the
-// target and report them, so fixes must not add syntax or imports those
-// interpreters lack.
+pub fn is_name(expr: &Expr, name: &str) -> bool {
+    expr.as_name_expr().is_some_and(|found| found.id.as_str() == name)
+}
+
+// A module-level `if sys.version_info < ...: raise ...` or `sys.exit(...)` exists to run on interpreters older than
+// the target and report them, so fixes must not add syntax or imports those interpreters lack.
 pub fn has_version_gate(body: &[Stmt]) -> bool {
     body.iter().filter_map(Stmt::as_if_stmt).any(|gate| {
         any_over_expr(&gate.test, &|expr: &Expr| last_segment(expr) == Some("version_info"))
@@ -777,7 +986,10 @@ pub fn has_version_gate(body: &[Stmt]) -> bool {
     })
 }
 
-// `name = value` or `name: annotation = value`, binding a single plain name.
+pub fn last_segment(expr: &Expr) -> Option<&str> {
+    UnqualifiedName::from_expr(expr)?.segments().last().copied()
+}
+
 pub fn single_assignment(stmt: &Stmt) -> Option<(&ast::ExprName, Option<&Expr>, &Expr)> {
     let (target, annotation, value) = match stmt {
         Stmt::Assign(ast::StmtAssign { targets, value, .. }) if targets.len() == 1 => (&targets[0], None, value),

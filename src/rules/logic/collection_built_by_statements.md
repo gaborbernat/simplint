@@ -33,19 +33,19 @@ for a set. The run stops at the first statement that is not such an add.
 
 Keys and values must be constants or plain names, and must not read the collection itself.
 
-- **A list filled with appends**: the entries are written in the order they were added.
+- **A list filled with an append**: the entry is written in the literal. A run of two or more appends is left to Ruff's
+  FURB113, under Exceptions.
 
   ```python report
-  def names(first: str, second: str) -> list[str]:
+  def names(first: str) -> list[str]:
       out = []
       out.append(first)
-      out.append(second)
       return out
   ```
 
   ```python fixed
-  def names(first: str, second: str) -> list[str]:
-      out = [first, second]
+  def names(first: str) -> list[str]:
+      out = [first]
       return out
   ```
 
@@ -142,15 +142,10 @@ Keys and values must be constants or plain names, and must not read the collecti
       return table
   ```
 
-- **A list that Ruff's FURB113 reports**: with Ruff's preview mode on and
-  [FURB113](https://docs.astral.sh/ruff/rules/repeated-append/) selected, Ruff reports two or more appends to a list,
-  even with appends to other lists between them, and this rule leaves that list to Ruff.
-
-  ```toml config
-  [tool.ruff.lint]
-  preview = true
-  select = ["FURB113"]
-  ```
+- **Two or more appends to a list that run one after another**:
+  [FURB113](https://docs.astral.sh/ruff/rules/repeated-append/) fixes them, so this rule leaves them to Ruff. With an
+  append to another list or a comment between them, Ruff reports without a fix, and this rule keeps its fix for the
+  first entry.
 
   ```python ok
   def build() -> list[int]:
@@ -191,7 +186,7 @@ Ruff's [unnecessary-collection-call](https://docs.astral.sh/ruff/rules/unnecessa
 
 - **[Ruff](https://github.com/astral-sh/ruff):** variation of preview rule
   [FURB113](https://docs.astral.sh/ruff/rules/repeated-append/), which merges consecutive `append` calls into `extend`
-  and which this rule leaves to it; this rule covers dicts, sets and single appends right after an empty literal.
+  and which this rule leaves to it; this rule covers dicts, sets and the appends FURB113 does not fix.
 - [flake8-simplify](https://github.com/MartinThoma/flake8-simplify) reports a dictionary filled by the statements after
   it as [SIM904](https://github.com/MartinThoma/flake8-simplify#sim904). It covers dictionaries only, and it does not
   fix them.

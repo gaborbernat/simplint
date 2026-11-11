@@ -11,10 +11,10 @@ use crate::syntax::{argument, needs_parentheses};
 const PARAMETERS: [&str; 5] = ["filename", "mode", "encoding", "errors", "buffering"];
 
 pub fn expression<'a>(walker: &mut Walker<'_, 'a>, expr: &'a Expr) {
-    let checker = walker.checker;
     let Expr::Call(call) = expr else {
         return;
     };
+    let checker = walker.checker;
     if !checker.semantic().resolves_to(&call.func, &["codecs", "open"]) {
         return;
     }
@@ -60,8 +60,7 @@ fn fix(checker: &Checker, call: &ast::ExprCall) -> Option<Fix> {
     parameters.push(keyword_argument(checker, call, "encoding", encoding));
     parameters.extend(parameter(3).map(|errors| keyword_argument(checker, call, "errors", errors)));
     parameters.push("newline=\"\"".to_owned());
-    let replacement = format!("open({})", parameters.join(", "));
-    Some(Fix::unsafe_edit(Edit::range_replacement(replacement, call.range())))
+    Some(Fix::unsafe_edit(Edit::range_replacement(format!("open({})", parameters.join(", ")), call.range())))
 }
 
 // A value that needs parentheses keeps the ones it has in the source, and gets them when it has none, since a walrus,
