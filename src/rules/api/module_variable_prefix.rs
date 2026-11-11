@@ -4,7 +4,7 @@ use crate::lint::checker::Checker;
 use crate::lint::registry::Rule;
 use crate::rules::rename::{kept_message, rename_fix};
 
-pub(crate) fn module_variable_prefix(checker: &Checker) {
+pub fn module_variable_prefix(checker: &Checker) {
     let public = checker.project().role().public;
     for variable in checker.state().module_variables(checker) {
         if variable.name.starts_with('_') == variable.private {

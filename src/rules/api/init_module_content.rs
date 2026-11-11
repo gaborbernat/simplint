@@ -10,7 +10,7 @@ use crate::rules::is_type_checking;
 use crate::semantic::future_import;
 use crate::syntax::{Exports, alias_binding, all_binding, all_mutation, import_aliases, is_name};
 
-pub(crate) fn init_module_content(checker: &Checker) {
+pub fn init_module_content(checker: &Checker) {
     if !checker.is_init_module() || checker.is_test_module() || checker.settings.project.nested {
         return;
     }

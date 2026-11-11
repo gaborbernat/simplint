@@ -11,7 +11,7 @@ use crate::rules::edits::{Blanks, statement_lines};
 use crate::syntax::is_main_guard;
 use crate::syntax::{all_binding, all_mutation, is_name};
 
-pub(crate) fn all_not_last(checker: &Checker) {
+pub fn all_not_last(checker: &Checker) {
     let body = checker.body();
     let positions: Vec<usize> =
         body.iter().enumerate().filter(|(_, stmt)| all_binding(stmt).is_some()).map(|(index, _)| index).collect();

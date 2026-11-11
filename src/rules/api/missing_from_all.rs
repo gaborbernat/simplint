@@ -18,7 +18,7 @@ use crate::semantic::BindingKind;
 use crate::syntax::is_main_guard;
 use crate::syntax::{Exports, Visibility, alias_binding, all_binding, import_aliases};
 
-pub(crate) fn missing_from_all(checker: &Checker) {
+pub fn missing_from_all(checker: &Checker) {
     if checker.is_init_module()
         || checker.is_test_module()
         || checker.path.file_stem().is_some_and(|stem| stem == "__main__")

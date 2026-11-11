@@ -10,7 +10,7 @@ use crate::lint::registry::Rule;
 use crate::rules::api::{AllList, exploded};
 use crate::syntax::{AllBinding, all_binding, module_statements};
 
-pub(crate) fn all_format(checker: &Checker) {
+pub fn all_format(checker: &Checker) {
     for stmt in checker.body() {
         let Some(AllBinding { value: Some(value), operator }) = all_binding(stmt) else {
             continue;
