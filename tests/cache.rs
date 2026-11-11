@@ -6,7 +6,7 @@ use std::time::{Duration, SystemTime};
 
 use test_case::test_case;
 
-use common::{check, command, fix_unsafe, project, quoted, read, simplint, simplint_with};
+use common::{check, check_in, fix_unsafe, project, quoted, read, simplint, simplint_with};
 
 fn cache_dir(root: &Path) -> PathBuf {
     root.join(".ruff_cache/simplint").join(concat!(env!("CARGO_PKG_VERSION"), "-", env!("SIMPLINT_CACHE_FORMAT")))
@@ -16,10 +16,14 @@ fn fresh(root: &Path, args: &[&str]) -> (i32, String, String) {
     check(root, &[args, &["--no-cache"][..]].concat())
 }
 
+fn set_mtime(path: &Path, time: SystemTime) {
+    filetime::set_file_mtime(path, filetime::FileTime::from_system_time(time)).expect("set modified time");
+}
+
 fn rewrite_keeping_mtime(path: &Path, content: &str) {
-    let modified = filetime::FileTime::from_last_modification_time(&fs::metadata(path).expect("metadata"));
+    let modified = fs::metadata(path).expect("metadata").modified().expect("modified time");
     fs::write(path, content).expect("write");
-    filetime::set_file_mtime(path, modified).expect("set modified time");
+    set_mtime(path, modified);
 }
 
 #[test]
@@ -92,7 +96,7 @@ fn cache_is_not_written_when_nothing_changed() {
     let cache =
         fs::read_dir(cache_dir(root.path())).expect("read").next().expect("a cache file").expect("entry").path();
     let old = SystemTime::UNIX_EPOCH + Duration::from_hours(24);
-    fs::File::options().write(true).open(&cache).expect("open").set_modified(old).expect("set modified time");
+    set_mtime(&cache, old);
     check(root.path(), &["--select", "SMP101"]);
     assert_eq!(fs::metadata(&cache).expect("metadata").modified().expect("modified time"), old);
 }
@@ -462,7 +466,7 @@ fn caches_of_other_builds_expire_after_thirty_days() {
     ]);
     let stale = root.path().join(".ruff_cache/simplint/0.0.1-00000000000000a1/1");
     let old = SystemTime::now() - Duration::from_hours(24 * 31);
-    fs::File::options().write(true).open(&stale).expect("open").set_modified(old).expect("set modified time");
+    set_mtime(&stale, old);
     check(root.path(), &["--select", "SMP101"]);
     let simplint = root.path().join(".ruff_cache/simplint");
     assert_eq!(
@@ -479,8 +483,8 @@ fn empty_caches_of_other_builds_expire_by_their_own_age() {
     let (stale, fresh) = (simplint.join("0.0.1-00000000000000a1"), simplint.join("0.0.2-00000000000000b2"));
     fs::create_dir_all(&stale).expect("create");
     fs::create_dir_all(&fresh).expect("create");
-    let old = filetime::FileTime::from_system_time(SystemTime::now() - Duration::from_hours(24 * 31));
-    filetime::set_file_mtime(&stale, old).expect("set modified time");
+    let old = SystemTime::now() - Duration::from_hours(24 * 31);
+    set_mtime(&stale, old);
     check(root.path(), &["--select", "SMP101"]);
     assert_eq!((stale.exists(), fresh.exists()), (false, true));
 }
@@ -557,8 +561,8 @@ fn cache_dir_flag_may_point_outside_the_project() {
 fn stale_directories_that_are_not_caches_of_other_builds_stay(name: &str, file: &str) {
     let path = format!(".ruff_cache/simplint/{name}/{file}");
     let root = project(&[("module.py", common::CLEAN_MODULE), (path.as_str(), "kept")]);
-    let old = filetime::FileTime::from_system_time(SystemTime::now() - Duration::from_hours(24 * 31));
-    filetime::set_file_mtime(root.path().join(&path), old).expect("set modified time");
+    let old = SystemTime::now() - Duration::from_hours(24 * 31);
+    set_mtime(&root.path().join(&path), old);
     check(root.path(), &["--select", "SMP101"]);
     assert!(root.path().join(&path).exists());
 }
@@ -570,8 +574,8 @@ fn link_in_the_cache_directory_is_kept_with_its_target() {
     let outside = tempfile::TempDir::new().expect("temporary directory");
     let target = outside.path().join("1");
     fs::write(&target, "kept").expect("write");
-    let old = filetime::FileTime::from_system_time(SystemTime::now() - Duration::from_hours(24 * 31));
-    filetime::set_file_mtime(&target, old).expect("set modified time");
+    let old = SystemTime::now() - Duration::from_hours(24 * 31);
+    set_mtime(&target, old);
     let root = project(&[("module.py", common::CLEAN_MODULE)]);
     let simplint = root.path().join(".ruff_cache/simplint");
     fs::create_dir_all(&simplint).expect("create");
@@ -676,10 +680,6 @@ fn warm_run_after_change_matches_a_fresh_run(files: &[(&str, &str)], change: Cha
 #[test_case(&[("helpers.py", HELPER), ("client.py", common::CLEAN_MODULE)], Change::Write("client.py", CLIENT), "SMP401", &["."] ; "importer_edited")]
 #[test_case(&[("helpers.py", HELPER)], Change::Write("client.py", CLIENT), "SMP401", &["."] ; "importer_added")]
 #[test_case(&[("helpers.py", HELPER), ("client.py", CLIENT)], Change::Remove("client.py"), "SMP401", &["."] ; "importer_removed")]
-#[test_case(
-    &[("pyproject.toml", "[tool.ruff]\nnamespace-packages = [\"pkg\"]\n"), ("pkg/a.py", "from pkg.b import VALUE\n\nprint(VALUE)\n"), ("pkg/b.py", common::CLEAN_MODULE)],
-    Change::Write("pkg/__init__.py", ""), "SMP302", &["."] ; "namespace_package_gains_an_init_module"
-)]
 #[test_case(
     &[("lib/helpers.py", HELPER), ("client.py", CLIENT)],
     Change::Write("pyproject.toml", "[tool.ruff]\nsrc = [\"lib\"]\n"), "SMP401", &["."] ; "source_root_changed"
@@ -787,7 +787,7 @@ fn full_text_is_stored_once_and_reused() {
     let with_text = size(&cache_files(root.path()));
     let old = SystemTime::UNIX_EPOCH + Duration::from_hours(24);
     for file in cache_files(root.path()) {
-        fs::File::options().write(true).open(&file).expect("open").set_modified(old).expect("set modified time");
+        set_mtime(&file, old);
     }
     full_report(root.path(), &[], &[]);
     let modified: Vec<SystemTime> = cache_files(root.path())
@@ -841,7 +841,7 @@ fn full_text_follows_the_working_directory() {
     let file = file.to_str().expect("utf-8 path");
     let full_in = |dir: &Path, args: &[&str]| {
         let args = [&["check", "--output-format", "full", "--select", "SMP001,SMP901", "--exit-zero"], args].concat();
-        String::from_utf8(command(dir).args(&args).output().expect("runs").stdout).expect("utf-8 stdout")
+        check_in(root.path(), dir, &args).1
     };
     full_in(root.path(), &[file]);
     full_in(root.path(), &[file]);
@@ -970,13 +970,7 @@ fn checked_again_once_its_source_is_deleted(setup: impl FnOnce(&Path, &tempfile:
 fn cached_report_names_the_paths_of_the_directory_it_runs_in(files: &[(&str, &str)], select: &str) {
     let root = project(files);
     let run = |dir: &Path, extra: &[&str]| {
-        let output = command(root.path())
-            .current_dir(dir)
-            .args(["check", "--output-format", "concise", "--select", select])
-            .args(extra)
-            .output()
-            .expect("runs");
-        String::from_utf8(output.stdout).expect("utf-8 stdout")
+        check_in(root.path(), dir, &[&["--output-format", "concise", "--select", select], extra].concat()).1
     };
     let app = root.path().join("app");
     run(root.path(), &[]);

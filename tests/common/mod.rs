@@ -94,6 +94,16 @@ pub fn reported_without_and_with_ruff(case: &RuffOverlap, fragment: &str) -> [bo
     })
 }
 
+// Runs `check` with `args` from `cwd`, a directory of the project at `root`.
+pub fn check_in(root: &Path, cwd: &Path, args: &[&str]) -> (i32, String, String) {
+    let output = command(root).current_dir(cwd).arg("check").args(args).output().expect("runs");
+    (
+        output.status.code().expect("exit code"),
+        String::from_utf8(output.stdout).expect("utf-8 stdout"),
+        String::from_utf8(output.stderr).expect("utf-8 stderr"),
+    )
+}
+
 pub fn check_with_stdin(root: &Path, args: &[&str], stdin: &str) -> (i32, String, String) {
     simplint_with_stdin(root, &[&["check", "--output-format", "concise"], args].concat(), stdin)
 }
