@@ -29,7 +29,6 @@ pub struct Configuration {
     pub(super) run: RunOptions,
 }
 
-// The rules a configuration enables and those it lets fix, each chosen from selectors the same way.
 #[derive(Clone)]
 pub(super) struct RuleSelection {
     pub(super) enabled: SelectorLayer,
@@ -65,7 +64,6 @@ impl Selector {
     }
 }
 
-// The Ruff rules a selector names, by code, prefix or name; `None` when it names none.
 pub fn ruff_selector(text: &str) -> Option<RuleSelector> {
     RuleSelector::from_str(text).ok().or_else(|| {
         let rule = ruff_linter::registry::Rule::from_name(text).ok()?;
@@ -97,7 +95,8 @@ pub(super) struct PerFileIgnoreSource {
 }
 
 impl Configuration {
-    // Relative patterns are anchored at `base`: the project root for a file, the working directory for the command line.
+    // Relative patterns are anchored at `base`: the project root for a file, the working directory for the command
+    // line.
     pub fn from_options(options: SimplintOptions, base: &Path, source: &Source) -> Self {
         let tag = |setting: &'static str, selectors: Vec<String>| {
             selectors.into_iter().map(|text| Selector { text, setting, source: source.clone() }).collect_vec()
@@ -111,8 +110,6 @@ impl Configuration {
                 })
                 .collect_vec()
         };
-        let logic = options.logic.unwrap_or_default();
-        let naming = options.naming.unwrap_or_default();
         Self {
             rule_selections: vec![RuleSelection {
                 enabled: SelectorLayer {
@@ -139,9 +136,9 @@ impl Configuration {
             extend_unsafe_fixes: tag("extend-unsafe-fixes", options.extend_unsafe_fixes.unwrap_or_default()),
             project: ProjectOptions {
                 max_paragraph_words: options.max_paragraph_words,
-                naming,
+                naming: options.naming.unwrap_or_default(),
                 imports: options.imports.unwrap_or_default(),
-                logic,
+                logic: options.logic.unwrap_or_default(),
                 project_kind: options.project_kind,
                 api_packages: options.api_packages,
                 docstring_style: options.docstring_style,
@@ -189,7 +186,6 @@ impl Overrides {
     }
 }
 
-// The options that describe the project and its API, each taken from the last layer that sets it.
 #[derive(Clone, Default)]
 pub(super) struct ProjectOptions {
     pub(super) max_paragraph_words: Option<usize>,

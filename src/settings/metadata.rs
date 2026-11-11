@@ -150,8 +150,6 @@ struct ProjectTable {
     entry_points: BTreeMap<String, BTreeMap<String, String>>,
 }
 
-// How a `pyproject.toml` builds the project: whether a `[build-system]` declares a backend, the packages the backend's
-// own settings ship, the settings that make a build install no Python package, and the backend a build frontend loads.
 #[derive(Default)]
 pub struct BuildConfiguration {
     pub has_build_system: bool,
@@ -173,8 +171,7 @@ impl BuildConfiguration {
         if let Some(file) = hatch_file {
             overlay(&mut hatch, file);
         }
-        let system = pyproject.get("build-system").and_then(toml::Value::as_table);
-        let system_value = |key: &str| system.and_then(|table| table.get(key));
+        let system_value = |key: &str| pyproject.get("build-system")?.as_table()?.get(key);
         // Each backend names the importable packages it ships its own way; a `find` table discovers them instead.
         let packages = [
             &["hatch", "build", "targets", "wheel", "packages"][..],
@@ -217,14 +214,17 @@ impl CoveragePlugins {
         if modules.is_empty() {
             return Self::default();
         }
-        let keys = [
-            &["pytest", "ini_options", "pythonpath"][..],
-            &["pytest", "pythonpath"],
-            &["ty", "environment", "extra-paths"],
-        ];
-        let directories = keys.iter().flat_map(|path| strings(lookup(path)));
         let search_paths = std::iter::once(project_dir.to_path_buf())
-            .chain(directories.map(|directory| project_dir.join(directory)))
+            .chain(
+                [
+                    &["pytest", "ini_options", "pythonpath"][..],
+                    &["pytest", "pythonpath"],
+                    &["ty", "environment", "extra-paths"],
+                ]
+                .iter()
+                .flat_map(|path| strings(lookup(path)))
+                .map(|directory| project_dir.join(directory)),
+            )
             .map(|path| path.components().collect::<PathBuf>())
             // A configured directory a source distribution leaves out would fail the whole search path.
             .filter(|path| path.is_dir())
@@ -241,8 +241,8 @@ fn strings(value: Option<&toml::Value>) -> Vec<String> {
     }
 }
 
-// hatchling reads a `hatch.toml` next to `pyproject.toml` over the `[tool.hatch]` table, so its tables replace the ones of
-// the same name.
+// hatchling reads a `hatch.toml` next to `pyproject.toml` over the `[tool.hatch]` table, so its tables replace the ones
+// of the same name.
 fn overlay(base: &mut toml::Table, over: &toml::Table) {
     for (key, value) in over {
         match (base.get_mut(key), value) {

@@ -123,8 +123,10 @@ impl Settings {
         let (metadata_path, metadata, build) = match metadata {
             Some((path, table)) => {
                 let hatch_file = path.with_file_name("hatch.toml");
-                let hatch = hatch_file.is_file().then(|| optional(&hatch_file, read_table)).flatten();
-                let build = BuildConfiguration::of(table, hatch.as_ref());
+                let build = BuildConfiguration::of(
+                    table,
+                    hatch_file.is_file().then(|| optional(&hatch_file, read_table)).flatten().as_ref(),
+                );
                 let mut project: ProjectFile =
                     table.clone().try_into().with_context(|| format!("Failed to parse {}", path.display()))?;
                 project.project.add_groups(&project.dependency_groups);
@@ -137,8 +139,7 @@ impl Settings {
             Some((path, table)) => {
                 let pyproject: Pyproject =
                     table.clone().try_into().with_context(|| format!("Failed to parse {}", path.display()))?;
-                let source = Source::File(Arc::from(path));
-                Configuration::from_options(pyproject.tool.simplint, root, &source)
+                Configuration::from_options(pyproject.tool.simplint, root, &Source::File(Arc::from(path)))
             }
             None => Configuration::default(),
         };
@@ -167,7 +168,6 @@ impl Settings {
             FixSafetyTable::from_selectors(&configuration.extend_safe_fixes, &configuration.extend_unsafe_fixes)?;
         let ProjectOptions { max_paragraph_words, naming, imports, logic, project_kind, api_packages, docstring_style } =
             configuration.project;
-        let knobs = Knobs::resolve(max_paragraph_words, naming, imports, logic);
         let api = ApiScope::resolve(
             project_dir,
             project_kind.unwrap_or_default(),
@@ -189,7 +189,7 @@ impl Settings {
             api,
             docstring_style,
             run: configuration.run,
-            knobs,
+            knobs: Knobs::resolve(max_paragraph_words, naming, imports, logic),
             rules,
             fixable,
             fix_safety,
@@ -240,7 +240,6 @@ impl Settings {
         [self.rules, self.fixable, self.fix_safety.forced_safe, self.fix_safety.forced_unsafe]
     }
 
-    // Each per-file ignore's pattern, anchored at the configuration that set it, and the rules it turns off.
     pub fn per_file_ignores(&self) -> impl Iterator<Item = (&str, RuleSet)> {
         self.per_file_ignores.iter().map(|ignore| (ignore.pattern.as_str(), ignore.rules))
     }
@@ -411,8 +410,8 @@ impl SettingsResolver {
 // Ruff's `PyprojectDiscoveryStrategy`: one configuration for every file, or the one each file's location points at,
 // read once per project. A file under a nested project resolves to that project's directory as its root.
 enum Discovery {
-    // With `--config`, the settings of the run's project, which a file of a nested project overrides. With `--isolated`,
-    // no `pyproject.toml` is read, nested projects' included.
+    // With `--config`, the settings of the run's project, which a file of a nested project overrides. With
+    // `--isolated`, no `pyproject.toml` is read, nested projects' included.
     Fixed { settings: Arc<Settings>, projects: Mutex<Projects>, isolated: bool },
     // `run_root` is the directory the run starts from, which roots a project without a `pyproject.toml`.
     Hierarchical { run_root: PathBuf, projects: Mutex<Projects> },
@@ -423,11 +422,12 @@ impl Discovery {
     // or `[build-system]` holds the project's metadata. Each falls back to the closest `pyproject.toml` when nothing
     // matches, so a nested package without its own table inherits its parent's settings. Without any
     // `pyproject.toml`, the defaults apply, rooted at the run's directory or the nearest ancestor of it holding the
-    // file, as Ruff roots a project without configuration at the working directory. A nested project is rooted at its
-    // directory, with the settings of the project around it, and the metadata of a `pyproject.toml` at or below it that
-    // describes a project, or else the metadata of the project around it. Settings are cached by the directory a lookup
-    // starts from, and by the root and metadata file they resolve to, since files of one root can have different
-    // metadata.
+    // file, as Ruff roots a project without configuration at the working directory.
+    //
+    // A nested project is rooted at its directory, with the settings of the project around it, and the metadata of a
+    // `pyproject.toml` at or below it that describes a project, or else the metadata of the project around it. Settings
+    // are cached by the directory a lookup starts from, and by the root and metadata file they resolve to, since files
+    // of one root can have different metadata.
     fn settings(&self, path: &Path, overrides: &Overrides) -> Result<Arc<Settings>> {
         let absolute = std::path::absolute(path)?;
         let start = if absolute.is_dir() { absolute.as_path() } else { absolute.parent().unwrap_or(&absolute) };
@@ -479,8 +479,8 @@ impl Discovery {
         Ok(settings)
     }
 
-    // Makes `main` the run's project, which a nested project lies strictly below. The settings found so far are dropped,
-    // since directories below `main` may have resolved as projects around it.
+    // Makes `main` the run's project, which a nested project lies strictly below. The settings found so far are
+    // dropped, since directories below `main` may have resolved as projects around it.
     fn set_main(&self, main: &Path) {
         let mut projects = self.projects().lock().expect("no worker panics while resolving settings");
         projects.main = Some(main.to_path_buf());
@@ -531,8 +531,8 @@ impl Projects {
             .map(Path::to_path_buf)
     }
 
-    // For each of `matches`, the closest `pyproject.toml` from `start` upwards, down to `limit` when there is one, whose
-    // table it accepts. One walk answers them all, and stops once each has its file, so no file is read twice.
+    // For each of `matches`, the closest `pyproject.toml` from `start` upwards, down to `limit` when there is one,
+    // whose table it accepts. One walk answers them all, and stops once each has its file, so no file is read twice.
     fn nearest<const N: usize>(
         &mut self,
         start: &Path,
@@ -690,7 +690,6 @@ mod tests {
 
     use super::*;
 
-    // Each option's documented default parses to the value `Knobs::resolve` gives it with no option set.
     #[test]
     fn documented_defaults_are_the_resolved_ones() {
         let knobs = Knobs::resolve(None, NamingOptions::default(), ImportsOptions::default(), LogicOptions::default());
