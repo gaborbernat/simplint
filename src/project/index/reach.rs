@@ -6,7 +6,7 @@ use crate::project::facts::{Closure, ExportsUnknown, ImportBinding};
 use crate::settings::ModuleRole;
 use crate::syntax::Visibility;
 
-use super::resolve::Unreached;
+use super::resolve::UnreachedPath;
 use super::{FileId, FileIds};
 
 // The files `import *` reaches: those it reads every public name of, those a package's `__init__.py` star-imports, and
@@ -265,15 +265,15 @@ impl<'p> LastNames<'p> {
     // file it reaches comes with the names the path was written with.
     pub(super) fn reached<'s>(
         &'s self,
-        unreached: &'s [Unreached],
+        unreached: impl IntoIterator<Item = &'s UnreachedPath> + 's,
     ) -> impl Iterator<Item = (FileId, &'s [String])> + 's {
-        unreached.iter().flat_map(move |(package, name, names)| {
+        unreached.into_iter().flat_map(move |path| {
             self.by_name
-                .get(name)
+                .get(path.last.as_str())
                 .into_iter()
                 .flatten()
-                .filter(move |file| self.paths.path(**file).starts_with(package))
-                .map(move |file| (*file, *names))
+                .filter(move |file| self.paths.path(**file).starts_with(&path.package))
+                .map(move |file| (*file, path.names.as_slice()))
         })
     }
 }

@@ -30,7 +30,7 @@ use ruff_text_size::TextRange;
 use crate::project::computed_reads::ComputedReads;
 use crate::project::constructors::{FileUses, RunCalls};
 use crate::project::docs::{Module, Stat, stat};
-use crate::project::facts::ImportBinding;
+use crate::project::facts::{Channel, Channels, ImportBinding};
 use crate::project::receivers::{ANY_ATTRIBUTE, module_parts};
 use crate::project::{DocReferences, FileFacts};
 use crate::settings::ModuleRole;
@@ -43,7 +43,7 @@ use self::duplicates::DuplicateRun;
 use self::exceptions::exception_classes;
 use self::hatch::hatch_hook_classes;
 use self::reach::{LastNames, StarTargets, library_api, reexport, signature_reached, unqualified};
-use self::resolve::{Unreached, normalized, resolve};
+use self::resolve::{UnreachedPath, normalized, resolve};
 use self::run_imports::{Members, RunImports, run_import_kinds};
 
 // Where imports resolve, as `ruff analyze graph` searches: the configured `src` directories first, then the directory
@@ -398,9 +398,7 @@ impl Project {
             mut uses,
             stars,
             unresolved_stars,
-            unreached_imports,
-            unreached_references,
-            unreached_doctests,
+            unreached,
             constructor_uses,
             bindings,
             module_names,
@@ -430,13 +428,13 @@ impl Project {
                 // A dotted path that may reach any module of a package could come from any file, so it counts as used
                 // outside the tests as well.
                 let last_names = LastNames::new(ids_of, sources.keys().copied());
-                for (file, names) in last_names.reached(&unreached_imports) {
+                for (file, names) in last_names.reached(unreached[Channel::Import].iter().copied()) {
                     uses.import(file, names, Origin::Other);
                 }
-                for (file, names) in last_names.reached(&unreached_references) {
+                for (file, names) in last_names.reached(unreached[Channel::Reference].iter().copied()) {
                     uses.reference(file, names, Origin::Other);
                 }
-                for (file, names) in last_names.reached(&unreached_doctests) {
+                for (file, names) in last_names.reached(unreached[Channel::Doctest].iter().copied()) {
                     uses.read(file, names, Origin::Other);
                 }
                 uses.reexport(&stars, &sources);
@@ -688,9 +686,7 @@ struct Gathered<'r> {
     stars: Vec<(FileId, FileId)>,
     opaque_names: FxHashSet<String>,
     unresolved_stars: FxHashSet<&'r str>,
-    unreached_imports: Vec<Unreached<'r>>,
-    unreached_references: Vec<Unreached<'r>>,
-    unreached_doctests: Vec<Unreached<'r>>,
+    unreached: Channels<Vec<&'r UnreachedPath>>,
     constructor_uses: Vec<FileUses<'r>>,
     bindings: Vec<(FileId, FileId, &'r ImportBinding)>,
     module_names: Vec<(FileId, String, String, FileId)>,
@@ -733,28 +729,24 @@ impl<'r> Gathered<'r> {
             });
             gathered.bindings.extend(module.bindings.iter().map(|(source, binding)| (id, *source, binding)));
             let origin = if test_modules.contains(&id) { Origin::Test } else { Origin::Other };
-            for (file, names) in &module.imports {
+            for (file, names) in &module.names[Channel::Import].files {
                 gathered.uses.import(*file, names, origin);
             }
-            for (file, names) in &module.references {
+            for (file, names) in &module.names[Channel::Reference].files {
                 gathered.uses.reference(*file, names, origin);
             }
-            for (file, names) in &module.doctest_references {
+            for (file, names) in &module.names[Channel::Doctest].files {
                 gathered.uses.read(*file, names, origin);
             }
             gathered.stars.extend(module.stars.iter().map(|source| (id, *source)));
             gathered.opaque_names.extend(module.unresolved_names.iter().cloned());
             gathered.unresolved_stars.extend(module.unresolved_stars.iter().map(String::as_str));
-            gathered.unreached_imports.extend(module.unreached_imports.iter().map(borrowed_unreached));
-            gathered.unreached_references.extend(module.unreached_references.iter().map(borrowed_unreached));
-            gathered.unreached_doctests.extend(module.unreached_doctests.iter().map(borrowed_unreached));
+            for channel in [Channel::Import, Channel::Reference, Channel::Doctest] {
+                gathered.unreached[channel].extend(&module.names[channel].unreached);
+            }
         }
         gathered
     }
-}
-
-fn borrowed_unreached(entry: &(PathBuf, String, Vec<String>)) -> Unreached<'_> {
-    (entry.0.as_path(), entry.1.as_str(), entry.2.as_slice())
 }
 
 // The facts of the files that are not stubs, by id: a stub declares the names of its module, whose source holds them.
@@ -856,7 +848,13 @@ fn importers(files: &[(FileId, &FileFacts)], resolver: &ImportResolver) -> FxHas
     for (id, _) in files {
         let module = &resolver.modules[id];
         // A star import uses the names of the module it reads, as a named import does.
-        for file in module.imports.iter().chain(&module.references).map(|(file, _)| file).chain(&module.stars) {
+        for file in module.names[Channel::Import]
+            .files
+            .iter()
+            .chain(&module.names[Channel::Reference].files)
+            .map(|(file, _)| file)
+            .chain(&module.stars)
+        {
             importers.entry(*file).or_default().insert(*id);
         }
     }

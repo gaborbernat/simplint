@@ -13,6 +13,7 @@ use crate::syntax::is_main_guard;
 use std::collections::BTreeSet;
 use std::hash::Hasher;
 use std::mem::take;
+use std::ops::{Index, IndexMut};
 use std::path::Path;
 
 use ruff_cache::{CacheKey, CacheKeyHasher};
@@ -48,10 +49,7 @@ pub(super) enum ExportsUnknown {
 // Names are grouped by module, so each module resolves once per file.
 #[derive(Clone, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
 pub struct FileFacts {
-    pub(super) imports: Vec<ModuleNames>,
-    pub(super) references: Vec<ModuleNames>,
-    // The modules and names a docstring's examples read, which a call-site rule must see but which patch nothing.
-    pub(super) doctest_references: Vec<ModuleNames>,
+    pub(super) names: Channels<Vec<ModuleNames>>,
     pub(super) declared: Vec<String>,
     pub(super) assigned_attributes: Vec<String>,
     // The names a `<receiver>.setattr` call sets on each module, as `monkeypatch.setattr(module, "NAME", value)`.
@@ -224,9 +222,7 @@ impl FileFacts {
         let bindings = top_level_bindings(&imports.from_statements);
         let (module_names, module_values) = module_bindings(&bindings, &imports);
         Some(Self {
-            imports: grouped(imports.edges),
-            references: grouped(imports.references),
-            doctest_references: grouped(imports.doctest_references),
+            names: imports.names.map(grouped),
             declared,
             assigned_attributes: imports.assigned_attributes,
             module_writes: grouped(imports.module_writes),
@@ -436,11 +432,48 @@ pub struct ClassBases {
 // A module and the names used from it.
 pub(super) type ModuleNames = (String, Vec<String>);
 
+// The ways a file names another module's names: by importing them, by referencing them, and in the examples of its
+// docstrings, which read names but patch nothing.
+#[derive(Clone, Copy)]
+pub(super) enum Channel {
+    Import,
+    Reference,
+    Doctest,
+}
+
+// One value for each channel of a file's names.
+#[derive(Clone, Default, rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)]
+pub(super) struct Channels<T>(pub(super) [T; 3]);
+
+impl<T> Channels<T> {
+    pub(super) fn map<U>(self, to: impl FnMut(T) -> U) -> Channels<U> {
+        Channels(self.0.map(to))
+    }
+
+    pub(super) fn iter(&self) -> impl Iterator<Item = &T> {
+        self.0.iter()
+    }
+}
+
+impl<T> Index<Channel> for Channels<T> {
+    type Output = T;
+
+    fn index(&self, channel: Channel) -> &T {
+        &self.0[channel as usize]
+    }
+}
+
+impl<T> IndexMut<Channel> for Channels<T> {
+    fn index_mut(&mut self, channel: Channel) -> &mut T {
+        &mut self.0[channel as usize]
+    }
+}
+
 impl FileFacts {
     // The names the file imports from modules or reads off them, attributes of objects included, which a project outside
     // the file's own may use.
     pub fn imported_names(&self) -> impl Iterator<Item = &str> {
-        self.imports.iter().flat_map(|(_, names)| names.iter().map(String::as_str))
+        self.names[Channel::Import].iter().flat_map(|(_, names)| names.iter().map(String::as_str))
     }
 
     // The attributes the file stores to or deletes, which a project outside the file's own may store to as well.
@@ -459,10 +492,9 @@ impl FileFacts {
     }
 
     pub fn read_names(&self) -> impl Iterator<Item = &str> {
-        self.imports
+        self.names
             .iter()
-            .chain(&self.references)
-            .chain(&self.doctest_references)
+            .flatten()
             .flat_map(|(_, names)| names.iter().map(String::as_str))
             .chain(self.module_reads.iter().map(String::as_str))
             .chain(self.constructors.attribute_loads.keys().map(String::as_str))

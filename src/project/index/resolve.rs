@@ -17,7 +17,7 @@ use ty_module_resolver::{
 };
 
 use crate::project::constructors::{NameUse, UseKind};
-use crate::project::facts::{ImportBinding, ImportSite, ModuleNames};
+use crate::project::facts::{Channel, Channels, ImportBinding, ImportSite, ModuleNames};
 use crate::project::{Ending, FileFacts};
 use crate::syntax::is_stdlib_root;
 
@@ -179,7 +179,27 @@ pub(super) fn normalized(path: &Path) -> PathBuf {
 
 // A dotted path that resolves to no module, by the directory of the package of the run it starts from and its last
 // name, with the names it uses.
-pub(super) type Unreached<'f> = (&'f Path, &'f str, &'f [String]);
+pub(super) struct UnreachedPath {
+    pub(super) package: PathBuf,
+    pub(super) last: String,
+    pub(super) names: Vec<String>,
+}
+
+// The files a channel's module names resolve to, with the names used from each, and the dotted paths it reaches
+// through a package of the run whose submodule no file of the run is.
+pub(super) struct Resolved<F> {
+    pub(super) files: Vec<(F, Vec<String>)>,
+    pub(super) unreached: Vec<UnreachedPath>,
+}
+
+impl<F> Resolved<F> {
+    fn map_files<G>(self, mut to: impl FnMut(F) -> G) -> Resolved<G> {
+        Resolved {
+            files: self.files.into_iter().map(|(file, names)| (to(file), names)).collect(),
+            unreached: self.unreached,
+        }
+    }
+}
 
 // A class of the run, by the file that defines it and its name.
 pub(super) type ClassKey = (FileId, String);
@@ -253,15 +273,10 @@ pub(super) struct RunFiles<'a> {
 // `F` is the path of a file, as resolution yields it, or its id once the id table knows it.
 pub(super) struct ModuleFacts<F> {
     pub(super) constructors: Vec<(F, Vec<NameUse>)>,
-    pub(super) imports: Vec<(F, Vec<String>)>,
+    pub(super) names: Channels<Resolved<F>>,
     pub(super) bindings: Vec<(F, ImportBinding)>,
-    pub(super) references: Vec<(F, Vec<String>)>,
-    pub(super) doctest_references: Vec<(F, Vec<String>)>,
     pub(super) stars: Vec<F>,
     pub(super) unresolved_stars: Vec<String>,
-    pub(super) unreached_imports: Vec<(PathBuf, String, Vec<String>)>,
-    pub(super) unreached_references: Vec<(PathBuf, String, Vec<String>)>,
-    pub(super) unreached_doctests: Vec<(PathBuf, String, Vec<String>)>,
     // The names the file imports or reads from modules that resolve to no file of the run, which may be definitions of
     // the run under a name simplint cannot resolve, as CPython's frozen `_frozen_importlib_external` is.
     pub(super) unresolved_names: Vec<String>,
@@ -290,15 +305,10 @@ impl<F> ModuleFacts<F> {
     fn map_files<G>(self, mut to: impl FnMut(F) -> G) -> ModuleFacts<G> {
         ModuleFacts {
             constructors: self.constructors.into_iter().map(|(file, uses)| (to(file), uses)).collect(),
-            imports: self.imports.into_iter().map(|(file, names)| (to(file), names)).collect(),
+            names: self.names.map(|resolved| resolved.map_files(&mut to)),
             bindings: self.bindings.into_iter().map(|(file, binding)| (to(file), binding)).collect(),
-            references: self.references.into_iter().map(|(file, names)| (to(file), names)).collect(),
-            doctest_references: self.doctest_references.into_iter().map(|(file, names)| (to(file), names)).collect(),
             stars: self.stars.into_iter().map(&mut to).collect(),
             unresolved_stars: self.unresolved_stars,
-            unreached_imports: self.unreached_imports,
-            unreached_references: self.unreached_references,
-            unreached_doctests: self.unreached_doctests,
             unresolved_names: self.unresolved_names,
             modules: self.modules.into_iter().map(|(bound, module, file)| (bound, module, to(file))).collect(),
             values: self.values.into_iter().map(&mut to).collect(),
@@ -368,19 +378,19 @@ impl ModuleFacts<PathBuf> {
                 .filter(|(file, _)| *file != own)
                 .collect()
         };
-        let mut imports = resolve_all(&facts.imports);
-        let references = resolve_all(&facts.references);
+        let mut imports = resolve_all(&facts.names[Channel::Import]);
+        let references = resolve_all(&facts.names[Channel::Reference]);
         let written = written_names(facts, &resolved);
         let unresolved_names = facts
-            .imports
+            .names
             .iter()
-            .chain(&facts.references)
-            .chain(&facts.doctest_references)
+            .flatten()
             .filter(|(module, _)| resolved(module).is_none())
             .flat_map(|(_, names)| names.iter().cloned())
             .collect();
-        let unreached_imports = unreached_names(&facts.imports, &resolved, run, &own);
-        let unreached_references = unreached_names(&facts.references, &resolved, run, &own);
+        let unreached_imports = unreached_names(&facts.names[Channel::Import], &resolved, run, &own);
+        let unreached_references = unreached_names(&facts.names[Channel::Reference], &resolved, run, &own);
+        let unreached_doctests = unreached_names(&facts.names[Channel::Doctest], &resolved, run, &own);
         if !facts.declared.is_empty() {
             imports.push((own.with_extension("py"), facts.declared.clone()));
         }
@@ -416,15 +426,14 @@ impl ModuleFacts<PathBuf> {
             .collect();
         Self {
             constructors,
-            imports,
+            names: Channels([
+                Resolved { files: imports, unreached: unreached_imports },
+                Resolved { files: references, unreached: unreached_references },
+                Resolved { files: resolve_all(&facts.names[Channel::Doctest]), unreached: unreached_doctests },
+            ]),
             bindings,
-            references,
-            doctest_references: resolve_all(&facts.doctest_references),
             stars,
             unresolved_stars,
-            unreached_imports,
-            unreached_references,
-            unreached_doctests: unreached_names(&facts.doctest_references, &resolved, run, &own),
             unresolved_names,
             modules,
             values,
@@ -495,7 +504,7 @@ fn unreached_names<'f>(
     resolved: &impl Fn(&'f str) -> Option<PathBuf>,
     run: RunFiles,
     own: &Path,
-) -> Vec<(PathBuf, String, Vec<String>)> {
+) -> Vec<UnreachedPath> {
     modules
         .iter()
         .filter_map(|(module, names)| {
@@ -507,12 +516,20 @@ fn unreached_names<'f>(
                 let shadows = run.names.contains(module.as_str())
                     && !resolved(module).is_some_and(|file| run.paths.contains(&file))
                     && last_name(own) != Some(module.as_str());
-                return shadows.then(|| (PathBuf::new(), module.clone(), names.clone()));
+                return shadows.then(|| UnreachedPath {
+                    package: PathBuf::new(),
+                    last: module.clone(),
+                    names: names.clone(),
+                });
             };
             let package = resolved(top)?;
             let directory = package.parent().filter(|_| package.ends_with("__init__.py"))?.to_path_buf();
             let last = rest.rsplit('.').next()?;
-            resolved(module).is_none().then(|| (directory, last.to_owned(), names.clone()))
+            resolved(module).is_none().then(|| UnreachedPath {
+                package: directory,
+                last: last.to_owned(),
+                names: names.clone(),
+            })
         })
         .collect()
 }

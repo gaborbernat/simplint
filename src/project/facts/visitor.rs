@@ -12,7 +12,7 @@ use ruff_text_size::{Ranged, TextRange};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use super::runtime::{Constants, Runs, catches_import_error};
-use super::{ImportSite, ModuleNames, Parts};
+use super::{Channel, Channels, ImportSite, ModuleNames, Parts};
 use crate::project::receivers::module_parts;
 use crate::syntax::{attribute_call, has_decorator, last_segment};
 
@@ -116,9 +116,7 @@ struct Scope<'a> {
 pub(super) struct FactVisitor<'a> {
     pub(super) module_path: Option<&'a [String]>,
     pub(super) aliases: FxHashMap<&'a str, String>,
-    pub(super) edges: BTreeMap<String, BTreeSet<String>>,
-    pub(super) references: BTreeMap<String, BTreeSet<String>>,
-    pub(super) doctest_references: BTreeMap<String, BTreeSet<String>>,
+    pub(super) names: Channels<BTreeMap<String, BTreeSet<String>>>,
     pub(super) assigned_attributes: Vec<String>,
     // The names a `<receiver>.setattr` call sets on each module, which count only when the module is a file of the run.
     pub(super) module_writes: BTreeMap<String, BTreeSet<String>>,
@@ -216,9 +214,7 @@ impl<'a> FactVisitor<'a> {
         Self {
             module_path,
             aliases: FxHashMap::default(),
-            edges: BTreeMap::new(),
-            references: BTreeMap::new(),
-            doctest_references: BTreeMap::new(),
+            names: Channels::default(),
             assigned_attributes: Vec::new(),
             module_writes: BTreeMap::new(),
             computed_writes: BTreeSet::new(),
@@ -365,7 +361,7 @@ impl<'a> FactVisitor<'a> {
                 if self.parts.has(Parts::FIXTURES) {
                     self.fixture_requests.insert(alias.name.to_string());
                 }
-                self.edges.entry(resolved.clone()).or_default().insert(alias.name.as_str().to_owned());
+                self.names[Channel::Import].entry(resolved.clone()).or_default().insert(alias.name.as_str().to_owned());
                 let bound = alias.asname.as_ref().unwrap_or(&alias.name).as_str();
                 self.aliases.insert(bound, format!("{resolved}.{}", alias.name.as_str()));
             }
@@ -585,7 +581,9 @@ impl<'a> FactVisitor<'a> {
     // module's name when no static path names it.
     fn read_globals(&mut self, value: &Expr, key: &str) {
         match self.globals_of(value) {
-            Some(Globals::Module(module)) => _ = self.edges.entry(module).or_default().insert(key.to_owned()),
+            Some(Globals::Module(module)) => {
+                _ = self.names[Channel::Import].entry(module).or_default().insert(key.to_owned());
+            }
             Some(Globals::Unknown) => _ = self.unresolved_globals.insert(key.to_owned()),
             None => {}
         }
@@ -940,7 +938,7 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
             Expr::Attribute(ast::ExprAttribute { value, attr, .. }) => {
                 // A read off a loaded module is an import of the name, as `module.name` after `import module` is.
                 for module in self.loaded_modules_of(value) {
-                    self.edges.entry(module).or_default().insert(attr.as_str().to_owned());
+                    self.names[Channel::Import].entry(module).or_default().insert(attr.as_str().to_owned());
                 }
                 // `lazy_fixture(db.__name__)` and `usefixtures(db.__name__)` request a fixture by its function's name.
                 if attr.as_str() == "__name__"
@@ -950,7 +948,7 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
                     self.fixture_requests.insert(name.id.to_string());
                 }
                 if let Some(path) = self.qualified(expr) {
-                    Self::record_path(&mut self.edges, &path);
+                    Self::record_path(&mut self.names[Channel::Import], &path);
                     return;
                 }
             }
@@ -969,7 +967,7 @@ impl<'a> Visitor<'a> for FactVisitor<'a> {
                     self.fixture_requests.insert(text.to_owned());
                 }
                 if text.contains('.') && text.split('.').all(is_identifier) {
-                    Self::record_path(&mut self.references, text);
+                    Self::record_path(&mut self.names[Channel::Reference], text);
                 }
             }
             Expr::Subscript(ast::ExprSubscript { value, slice, ctx: ExprContext::Load, .. }) => {
@@ -1030,7 +1028,7 @@ impl FactVisitor<'_> {
             None
         };
         if let Some((module, name)) = target.and_then(|literal| module_attribute(literal.value.to_str())) {
-            self.edges.entry(module.to_owned()).or_default().insert(name.to_owned());
+            self.names[Channel::Import].entry(module.to_owned()).or_default().insert(name.to_owned());
             self.record_references(module.to_owned(), [name.to_owned()]);
         }
     }
@@ -1273,7 +1271,7 @@ impl FactVisitor<'_> {
 
     // Records the names other code reaches on a module by a store or a call that names them, which a rename would break.
     fn record_references(&mut self, module: String, names: impl IntoIterator<Item = String>) {
-        self.references.entry(module).or_default().extend(names);
+        self.names[Channel::Reference].entry(module).or_default().extend(names);
     }
 
     // The module and the names a call writes on it: a `<receiver>.setattr` call, a `patch.object` call, or a `mock.patch`
@@ -1322,12 +1320,15 @@ impl FactVisitor<'_> {
                 && let Some(resolved) =
                     resolve_imported_module_path(level, (!module.is_empty()).then_some(module), self.module_path)
             {
-                self.edges.entry(resolved.into_owned()).or_default().extend(names.into_iter().map(str::to_owned));
+                self.names[Channel::Import]
+                    .entry(resolved.into_owned())
+                    .or_default()
+                    .extend(names.into_iter().map(str::to_owned));
             }
             // A doctest reads a name off a module, which no patch of the module is, but the call-site rules must see it.
             for path in code.split(|char: char| !(char.is_alphanumeric() || matches!(char, '_' | '.'))) {
                 if path.contains('.') && path.split('.').all(is_identifier) {
-                    Self::record_path(&mut self.doctest_references, path);
+                    Self::record_path(&mut self.names[Channel::Doctest], path);
                 }
             }
         }
