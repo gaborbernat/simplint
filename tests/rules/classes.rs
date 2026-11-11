@@ -550,3 +550,67 @@ fn annotated_field_is_an_instance_of_its_class(body: &str, fixed: bool) {
     common::fix_unsafe(root.path(), "dataclass-frozen");
     assert_eq!(common::read(root.path(), "main.py").contains("@dataclass(frozen=True)\nclass Config:"), fixed);
 }
+
+// A slotted class replaces a field's default, its class attribute, with a descriptor, so reading or assigning the default
+// through the class name breaks it. A field without a default and a plain instance read keep the option.
+#[test_case("print(Config.timeout + 1)\n", false ; "read_through_class")]
+#[test_case("Config.timeout = 60\n", false ; "assigned_through_class")]
+#[test_case("print(Config().timeout)\n", true ; "read_through_instance")]
+#[test_case("print(Config.name)\n", true ; "read_of_field_without_default")]
+fn class_level_use_of_a_default_keeps_slots_unset(module_level: &str, fixed: bool) {
+    let source = format!(
+        "from dataclasses import dataclass\n\n\n@dataclass\nclass Config:\n    name: str\n    timeout: int = 30\n\n\n{module_level}"
+    );
+    let root = common::project(&[("main.py", &source)]);
+    common::fix_unsafe(root.path(), "dataclass-slots");
+    assert_eq!(common::read(root.path(), "main.py").contains("@dataclass(slots=True)\nclass Config:"), fixed);
+}
+
+#[test_case("        return cls.timeout\n", false ; "read_through_cls")]
+#[test_case("        cls.timeout = 0\n", false ; "assigned_through_cls")]
+#[test_case("        cls.total = 0\n", true ; "assigned_non_field_through_cls")]
+fn classmethod_use_of_a_default_keeps_slots_unset(body: &str, fixed: bool) {
+    let source = format!(
+        "from dataclasses import dataclass\n\n\n@dataclass\nclass Config:\n    name: str\n    timeout: int = 30\n\n    @classmethod\n    def reset(cls) -> int:\n{body}"
+    );
+    let root = common::project(&[("main.py", &source)]);
+    common::fix_unsafe(root.path(), "dataclass-slots");
+    assert_eq!(common::read(root.path(), "main.py").contains("@dataclass(slots=True)\nclass Config:"), fixed);
+}
+
+// A nested class has instances of its own, so the writes its methods make to `self` leave the dataclass's options alone.
+#[test]
+fn nested_class_writes_keep_the_dataclass_options() {
+    let root = common::project(&[(
+        "main.py",
+        "from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n\n    class Meta:\n        def mark(self) -> None:\n            self.flag = True\n",
+    )]);
+    common::fix_unsafe(root.path(), "dataclass-frozen,dataclass-slots");
+    assert!(common::read(root.path(), "main.py").contains("@dataclass(frozen=True, slots=True)\nclass Release:"));
+}
+
+// A class keyword such as `metaclass=` makes the class's slotted copy a second class, so `slots=True` is an unsafe fix.
+#[test_case("class Release(metaclass=ABCMeta):", "from abc import ABCMeta", false ; "metaclass")]
+#[test_case("class Release:", "", true ; "no_keyword")]
+fn class_keyword_makes_the_slots_fix_unsafe(class: &str, import: &str, fixed: bool) {
+    let source = format!("{import}\nfrom dataclasses import dataclass\n\n\n@dataclass\n{class}\n    version: str\n");
+    let root = common::project(&[("main.py", &source)]);
+    common::check(root.path(), &["--no-cache", "--select", "dataclass-slots", "--fix", "."]);
+    assert_eq!(common::read(root.path(), "main.py").contains("slots=True"), fixed);
+    common::fix_unsafe(root.path(), "dataclass-slots");
+    assert!(common::read(root.path(), "main.py").contains("slots=True"));
+}
+
+// A weak container holds its items through `weakref.ref`, which needs a `__weakref__` slot a slotted class lacks.
+#[test_case("import weakref\nLIVE = weakref.WeakSet()\n", false ; "weak_set")]
+#[test_case("import weakref\nNAMES = weakref.WeakKeyDictionary()\n", false ; "weak_key_dictionary")]
+#[test_case("import weakref\nNAMES = weakref.WeakValueDictionary()\n", false ; "weak_value_dictionary")]
+#[test_case("import weakref\nNAMES = weakref.WeakMethod\n", false ; "weak_method")]
+#[test_case("import weakref\nNAMES = {}\n", true ; "no_weak_container")]
+fn module_with_a_weak_container_keeps_slots_unset(header: &str, fixed: bool) {
+    let source =
+        format!("{header}from dataclasses import dataclass\n\n\n@dataclass\nclass Release:\n    version: str\n");
+    let root = common::project(&[("main.py", &source)]);
+    common::check(root.path(), &["--no-cache", "--select", "dataclass-slots", "--fix", "."]);
+    assert_eq!(common::read(root.path(), "main.py").contains("slots=True"), fixed);
+}

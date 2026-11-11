@@ -42,6 +42,9 @@ pub struct AttributeWrites {
     // The classes the module defines at its top level, qualified, except protocols: an annotation naming any other
     // class, a type alias or a type variable names no class the run defines.
     pub(super) classes: Vec<String>,
+    // The attributes the file reads, sets or deletes through a class name, as (qualified class, attribute), which
+    // replace a class attribute a slotted class turns into a descriptor.
+    pub(super) class_attributes: Vec<(String, String)>,
 }
 
 impl AttributeWrites {
@@ -139,6 +142,11 @@ impl<'a> Visitor<'a> for Collector<'a, '_> {
     }
 
     fn visit_expr(&mut self, expr: &'a Expr) {
+        if let Expr::Attribute(ast::ExprAttribute { value, attr, .. }) = expr
+            && let Some(class) = self.class_of(value)
+        {
+            self.writes.class_attributes.push((class, attr.to_string()));
+        }
         match expr {
             Expr::Attribute(ast::ExprAttribute { value, attr, ctx: ExprContext::Store | ExprContext::Del, .. }) => {
                 self.record(value, attr.as_str());
@@ -287,6 +295,11 @@ impl<'a> Collector<'a, '_> {
     }
 
     // A class name as written here, qualified through the imports that bind its head, or else by this module.
+    fn class_of(&self, expr: &Expr) -> Option<String> {
+        let written = UnqualifiedName::from_expr(expr)?.segments().join(".");
+        class_name(&written).map(|class| self.qualified(&class))
+    }
+
     fn qualified(&self, written: &str) -> String {
         let segments: Vec<&str> = written.split('.').collect();
         qualified(&segments, self.aliases).unwrap_or_else(|| format!("{}.{written}", self.module))

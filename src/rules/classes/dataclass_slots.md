@@ -154,6 +154,43 @@ The fix sets `slots=True` on the decorator. No fix is offered for:
               name: str
   ```
 
+A class nested in the dataclass has instances of its own, and a classmethod that sets an attribute which is no field
+sets the class, not an instance, so neither keeps the fix off:
+
+```python report
+from dataclasses import dataclass
+
+
+@dataclass
+class Release:
+    version: str
+
+    class Meta:
+        def mark(self) -> None:
+            self.flag = True
+
+    @classmethod
+    def reset(cls) -> None:
+        cls.total = 0
+```
+
+```python fixed
+from dataclasses import dataclass
+
+
+@dataclass(slots=True)
+class Release:
+    version: str
+
+    class Meta:
+        def mark(self) -> None:
+            self.flag = True
+
+    @classmethod
+    def reset(cls) -> None:
+        cls.total = 0
+```
+
 Otherwise the fix leaves out `slots` when checked code shows that a slotted instance breaks the class.
 
 ```mermaid
@@ -351,8 +388,8 @@ class Release:
       setattr(release, key, value)
   ```
 
-- a weak reference to an instance, from `weakref.ref`, `weakref.proxy` or `weakref.finalize`, which needs a
-  `__weakref__` slot the class does not have
+- a weak reference to an instance, from `weakref.ref`, `weakref.proxy` or `weakref.finalize`, or a module that uses a
+  weak container such as `weakref.WeakSet`, which needs a `__weakref__` slot the class does not have
 
   ```python report
   import weakref
@@ -384,6 +421,63 @@ class Release:
   reference = weakref.ref(release)
   proxy = weakref.proxy(release)
   finalizer = weakref.finalize(release, print, "released")
+  ```
+
+  ```python report
+  import weakref
+  from dataclasses import dataclass
+
+
+  @dataclass(frozen=True)
+  class Release:
+      version: str
+
+
+  LIVE = weakref.WeakSet()
+  LIVE.add(Release("1"))
+  ```
+
+  ```python fixed
+  import weakref
+  from dataclasses import dataclass
+
+
+  @dataclass(frozen=True)
+  class Release:
+      version: str
+
+
+  LIVE = weakref.WeakSet()
+  LIVE.add(Release("1"))
+  ```
+
+- the class has a field with a default that code reads or assigns through the class name, such as `Config.timeout`, or
+  through `cls` in a classmethod: a slotted class replaces that class attribute with a descriptor
+
+  ```python report
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Config:
+      timeout: int = 30
+
+
+  def default_timeout() -> int:
+      return Config.timeout
+  ```
+
+  ```python fixed
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Config:
+      timeout: int = 30
+
+
+  def default_timeout() -> int:
+      return Config.timeout
   ```
 
 - a decorator listed below `@dataclass`, which runs first: `slots=True` makes the dataclass return a new class, which
@@ -587,6 +681,28 @@ The fix is safe only when nothing else in the checked files might notice the cha
       version: str
   ```
 
+- the class has a keyword, such as `metaclass=`, which runs again when `slots` builds the class a second time
+
+  ```python report
+  from abc import ABCMeta
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Release(metaclass=ABCMeta):
+      version: str
+  ```
+
+  ```python fixed
+  from abc import ABCMeta
+  from dataclasses import dataclass
+
+
+  @dataclass(slots=True)
+  class Release(metaclass=ABCMeta):
+      version: str
+  ```
+
 - the class has base classes;
 
   ```python report
@@ -646,8 +762,8 @@ The fix is safe only when nothing else in the checked files might notice the cha
   release.label = "x"
   ```
 
-- the class body assigns or deletes an attribute on anything other than `self`, or mentions `super`, `__dict__`,
-  `__weakref__`, `__setattr__` or `__delattr__`.
+- the class body, outside any class nested in it, assigns or deletes an attribute on anything other than `self`, or
+  mentions `super`, `__dict__`, `__weakref__`, `__setattr__` or `__delattr__`.
 
   ```python report
   from dataclasses import dataclass

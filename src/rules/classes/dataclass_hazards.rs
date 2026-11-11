@@ -8,7 +8,7 @@ use ruff_python_ast::{self as ast, Expr, ExprContext, Stmt};
 use crate::lint::checker::Checker;
 use crate::project::receivers::module_name;
 use crate::rules::classes::Decorated;
-use crate::syntax::{is_name, is_true_literal, last_segment, receiver};
+use crate::syntax::{ExprCollector, is_classmethod, is_name, is_true_literal, last_segment, receiver};
 
 // What freezing or slotting the class would break, and whether the walk met code it cannot judge, which makes the fix
 // unsafe.
@@ -66,14 +66,24 @@ pub(super) fn analyze<'a>(
         })
         .count();
     let fields: FxHashSet<&str> = fields.into_iter().map(|(field, _)| field).collect();
+    let defaults: FxHashSet<&str> = class
+        .body
+        .iter()
+        .filter_map(Stmt::as_ann_assign_stmt)
+        .filter(|stmt| has_default(stmt.value.as_deref()))
+        .filter_map(|stmt| Some(stmt.target.as_name_expr()?.id.as_str()))
+        .filter(|name| fields.contains(name))
+        .collect();
     let mut hazards = Hazards {
         fields: &fields,
+        defaults: &defaults,
         frozen: false,
         slots: false,
         mutated: false,
         suspected: false,
         depth: 0,
         receiver: None,
+        classmethod: false,
     };
     hazards.visit_body(&class.body);
     for attribute in project.attributes_written_on(&qualified) {
@@ -101,6 +111,8 @@ pub(super) fn analyze<'a>(
     }
     hazards.slots |= project.has_unslottable_subclass(&qualified);
     hazards.slots |= decorated.wrapped;
+    hazards.slots |= defaults.iter().any(|field| project.is_class_attribute_accessed(&qualified, field));
+    hazards.slots |= holds_weakly(checker.body());
     // Only a frozen slotted dataclass gets a `__getstate__`: without one, pickle protocols 0 and 1 refuse a slotted
     // instance, and with one, a pickled subclass instance keeps only the fields. The fixes of both options apply
     // together, so the state is the one after freezing, whichever fix goes first.
@@ -108,7 +120,10 @@ pub(super) fn analyze<'a>(
     hazards.slots |= if frozen { project.has_stateful_subclass(&qualified) } else { project.pickles_low_protocol() };
     let explicit =
         ["frozen", "slots"].iter().any(|option| decorated.option(option).is_some_and(|value| !is_true_literal(value)));
-    hazards.suspected |= explicit || !class.bases().is_empty() || project.has_namesake_hazards(&qualified);
+    hazards.suspected |= explicit
+        || !class.bases().is_empty()
+        || !class.keywords().is_empty()
+        || project.has_namesake_hazards(&qualified);
     Some(Analysis {
         frozen_breaks: hazards.frozen,
         slots_breaks: hazards.slots,
@@ -192,6 +207,8 @@ fn is_generic(base: &Expr) -> bool {
 #[expect(clippy::struct_excessive_bools, reason = "each flag is one finding of the walk")]
 struct Hazards<'f, 'a> {
     fields: &'f FxHashSet<&'f str>,
+    // The fields whose class attribute is their default, which slots replace with a descriptor.
+    defaults: &'f FxHashSet<&'f str>,
     frozen: bool,
     slots: bool,
     mutated: bool,
@@ -200,6 +217,8 @@ struct Hazards<'f, 'a> {
     depth: usize,
     // The receiver of the method being walked, which a nested def keeps: a write through it is an instance write.
     receiver: Option<&'a str>,
+    // Whether the method being walked is a classmethod, whose receiver is the class rather than an instance.
+    classmethod: bool,
 }
 
 impl Hazards<'_, '_> {
@@ -211,6 +230,22 @@ impl Hazards<'_, '_> {
         self.mutated = true;
         self.frozen = true;
         self.slots |= !self.fields.contains(attribute);
+    }
+
+    // A write to `cls` in a classmethod replaces a class attribute rather than writing an instance, so only a field is a
+    // hazard for it.
+    fn receiver_written(&mut self, attribute: &str) {
+        if self.classmethod {
+            self.class_access(attribute);
+            if !self.fields.contains(attribute) {
+                return;
+            }
+        }
+        self.written(attribute);
+    }
+
+    fn class_access(&mut self, attribute: &str) {
+        self.slots |= self.defaults.contains(attribute);
     }
 
     fn mention(&mut self, name: &str) {
@@ -229,16 +264,19 @@ impl<'a> Visitor<'a> for Hazards<'_, 'a> {
                 self.frozen = true;
             }
             Stmt::FunctionDef(function) => {
-                let outer = self.receiver;
+                let outer = (self.receiver, self.classmethod);
                 if self.depth == 0 {
                     self.receiver = receiver(function);
+                    self.classmethod = is_classmethod(function);
                 }
                 self.depth += 1;
                 visitor::walk_stmt(self, stmt);
                 self.depth -= 1;
-                self.receiver = outer;
+                (self.receiver, self.classmethod) = outer;
                 return;
             }
+            // A class nested in the dataclass has instances of its own, so its methods write nothing on the dataclass's.
+            Stmt::ClassDef(_) => return,
             _ => {}
         }
         visitor::walk_stmt(self, stmt);
@@ -248,7 +286,7 @@ impl<'a> Visitor<'a> for Hazards<'_, 'a> {
         match expr {
             Expr::Attribute(ast::ExprAttribute { value, attr, ctx: ExprContext::Store | ExprContext::Del, .. }) => {
                 if self.depth > 0 && self.receiver.is_some_and(|receiver| is_name(value, receiver)) {
-                    self.written(attr.as_str());
+                    self.receiver_written(attr.as_str());
                 } else {
                     self.suspected = true;
                 }
@@ -257,9 +295,34 @@ impl<'a> Visitor<'a> for Hazards<'_, 'a> {
                 self.slots = true;
             }
             Expr::Name(ast::ExprName { id, .. }) => self.mention(id.as_str()),
-            Expr::Attribute(ast::ExprAttribute { attr, .. }) => self.mention(attr.as_str()),
+            Expr::Attribute(ast::ExprAttribute { value, attr, .. }) => {
+                if self.classmethod && self.receiver.is_some_and(|receiver| is_name(value, receiver)) {
+                    self.class_access(attr.as_str());
+                }
+                self.mention(attr.as_str());
+            }
             _ => {}
         }
         visitor::walk_expr(self, expr);
     }
+}
+
+// Whether a field's value leaves it a class attribute: `dataclasses` deletes the class attribute of a `field(...)` that
+// has no default.
+fn has_default(value: Option<&Expr>) -> bool {
+    let Some(value) = value else {
+        return false;
+    };
+    value.as_call_expr().is_none_or(|call| last_segment(&call.func) != Some("field"))
+        || field_keyword(Some(value), "default").is_some()
+}
+
+// Whether the module uses a weak container, which holds the instances it is given through `weakref.ref`.
+fn holds_weakly(body: &[Stmt]) -> bool {
+    let mut containers = ExprCollector::new(|expr: &Expr| {
+        matches!(last_segment(expr)?, "WeakSet" | "WeakKeyDictionary" | "WeakValueDictionary" | "WeakMethod")
+            .then_some(())
+    });
+    containers.visit_body(body);
+    !containers.found.is_empty()
 }

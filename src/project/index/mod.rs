@@ -279,6 +279,8 @@ pub struct Project {
 #[derive(Default)]
 pub(super) struct Writes {
     pub(super) on_class: FxHashMap<String, FxHashSet<String>>,
+    // The attributes the run reads, sets or deletes through each class's name, by the class's qualified name.
+    pub(super) class_attributes: FxHashMap<String, FxHashSet<String>>,
     pub(super) untyped: FxHashSet<String>,
     pub(super) dict_stores: FxHashSet<String>,
     pub(super) unslottable_bases: FxHashSet<String>,
@@ -1201,6 +1203,7 @@ fn digest(
         names.cache_key(&mut hasher);
     }
     writes.on_class.cache_key(&mut hasher);
+    writes.class_attributes.cache_key(&mut hasher);
     writes.pickles_low_protocol.cache_key(&mut hasher);
     hasher.finish()
 }
@@ -1234,6 +1237,9 @@ impl Writes {
                 } else if attribute != ANY_ATTRIBUTE {
                     writes.untyped.insert(attribute.clone());
                 }
+            }
+            for (class, attribute) in &facts.class_attributes {
+                writes.class_attributes.entry(class.clone()).or_default().insert(attribute.clone());
             }
             writes.untyped.extend(facts.untyped.iter().cloned());
             writes.dict_stores.extend(facts.dict_stores.iter().cloned());

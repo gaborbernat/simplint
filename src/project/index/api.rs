@@ -444,6 +444,12 @@ impl<'a> FileIndex<'a> {
         self.project.writes.untyped.contains(name)
     }
 
+    // Whether the run reads, sets or deletes the attribute `name` through the class with this qualified name, as
+    // `Config.timeout` does.
+    pub fn is_class_attribute_accessed(&self, class: &str, name: &str) -> bool {
+        self.project.writes.class_attributes.get(class).is_some_and(|names| names.contains(name))
+    }
+
     // Whether a class of the run that a slotted base breaks inherits from the class with this qualified name.
     pub fn has_unslottable_subclass(&self, name: &str) -> bool {
         self.project.writes.unslottable_bases.contains(name)

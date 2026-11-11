@@ -211,6 +211,43 @@ The fix sets `frozen=True` on the decorator. No fix is offered for:
               name: str
   ```
 
+A class nested in the dataclass has instances of its own, and a classmethod that sets an attribute which is no field
+sets the class, not an instance, so neither keeps the fix off:
+
+```python report
+from dataclasses import dataclass
+
+
+@dataclass
+class Release:
+    version: str
+
+    class Meta:
+        def mark(self) -> None:
+            self.flag = True
+
+    @classmethod
+    def reset(cls) -> None:
+        cls.total = 0
+```
+
+```python fixed
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class Release:
+    version: str
+
+    class Meta:
+        def mark(self) -> None:
+            self.flag = True
+
+    @classmethod
+    def reset(cls) -> None:
+        cls.total = 0
+```
+
 Otherwise the fix leaves out `frozen` when checked code shows that a frozen instance breaks it.
 
 ```mermaid
@@ -649,6 +686,28 @@ The fix is safe only when nothing else in the checked files might notice the cha
       version: str
   ```
 
+- the class has a keyword, such as `metaclass=`, which runs again when `frozen` builds the class a second time
+
+  ```python report
+  from abc import ABCMeta
+  from dataclasses import dataclass
+
+
+  @dataclass
+  class Release(metaclass=ABCMeta):
+      version: str
+  ```
+
+  ```python fixed
+  from abc import ABCMeta
+  from dataclasses import dataclass
+
+
+  @dataclass(frozen=True)
+  class Release(metaclass=ABCMeta):
+      version: str
+  ```
+
 - the class has a `Generic[...]` base class;
 
   ```python report
@@ -706,8 +765,8 @@ The fix is safe only when nothing else in the checked files might notice the cha
   release.label = "x"
   ```
 
-- the class body assigns or deletes an attribute on anything other than `self`, or mentions `super`, `__dict__`,
-  `__weakref__`, `__setattr__` or `__delattr__`.
+- the class body, outside any class nested in it, assigns or deletes an attribute on anything other than `self`, or
+  mentions `super`, `__dict__`, `__weakref__`, `__setattr__` or `__delattr__`.
 
   ```python report
   from dataclasses import dataclass
